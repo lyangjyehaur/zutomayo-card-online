@@ -5,8 +5,8 @@ const crypto = require('crypto');
 
 // ===== Config =====
 const PORT = Number(process.env.PORT) || 3000;
-const DB_PATH = process.env.DB_PATH || '/data/zutomayo.db';
-const STATIC_DIR = path.join(__dirname, '..', 'dist');
+// Serve frontend static files
+const STATIC_DIR = path.join(__dirname, 'dist');
 
 // ===== In-memory DB (JSON file persistence) =====
 let db = {
