@@ -1,248 +1,150 @@
-import type { GameState } from '../types';
-import type { ParsedEffect, Condition, EffectAction } from './types';
+import type { CardInstance, GameState, PlayerIndex } from '../types';
+import type { ParsedEffect, Condition } from './types';
 import { getCardDef } from '../cards/loader';
 
-// ===== Condition Evaluator =====
+function power(G: GameState, player: PlayerIndex): number {
+  return G.players[player].powerCharger.reduce(
+    (sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0), 0,
+  );
+}
 
-function evaluateCondition(cond: Condition, G: GameState, playerIdx: number): boolean {
-  const me = G.players[playerIdx];
-  const opp = G.players[1 - playerIdx];
-
+function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): boolean {
+  const me = G.players[player];
+  const opponent = G.players[(1 - player) as PlayerIndex];
   switch (cond.type) {
-    case 'chronos': {
-      const currentTime = G.chronos.position < 6 ? 'night' : 'day';
-      return currentTime === cond.value;
-    }
-
-    case 'opponentElement': {
-      if (!opp.battleZone) return false;
-      const def = getCardDef(opp.battleZone.defId);
-      return def?.element === cond.value;
-    }
-
-    case 'selfElement': {
-      if (!me.battleZone) return false;
-      const def = getCardDef(me.battleZone.defId);
-      return def?.element === cond.value;
-    }
-
+    case 'chronos': return (G.chronos.position < 6 ? 'night' : 'day') === cond.value;
+    case 'opponentElement': return !!opponent.battleZone && getCardDef(opponent.battleZone.defId)?.element === cond.value;
+    case 'selfElement': return !!me.battleZone && getCardDef(me.battleZone.defId)?.element === cond.value;
+    case 'powerAtLeast': return power(G, player) >= Number(cond.value);
     case 'abyssElements': {
-      const target = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
-      const elements = new Set<string>();
-      for (const card of target) {
-        const def = getCardDef(card.defId);
-        if (def) elements.add(def.element);
-      }
-      return elements.size >= cond.value;
+      const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
+      return new Set(cards.map(card => getCardDef(card.defId)?.element).filter(Boolean)).size >= Number(cond.value);
     }
-
-    case 'abyssCount': {
-      return me.abyss.length >= cond.value;
-    }
-
-    case 'handCount': {
-      return me.hand.length >= cond.value;
-    }
-
-    case 'hpLessOrEqual': {
-      return me.hp <= cond.value;
-    }
-
-    case 'chronosChanged': {
-      // Simplified: always true if it's past turn 1
-      return G.turn > 0;
-    }
-
-    case 'previousCharElement': {
-      // TODO: Track previous turn's character
-      return false;
-    }
-
-    case 'and': {
-      return (cond.value as Condition[]).every(c => evaluateCondition(c, G, playerIdx));
-    }
-
-    case 'or': {
-      return (cond.value as Condition[]).some(c => evaluateCondition(c, G, playerIdx));
-    }
-
-    default:
-      return true;
+    case 'abyssCount': return me.abyss.length >= Number(cond.value);
+    case 'handCount': return me.hand.length >= Number(cond.value);
+    case 'hpLessOrEqual': return me.hp <= Number(cond.value);
+    case 'chronosChanged': return G.chronos.position !== G.chronosAtTurnStart;
+    case 'hasAreaEnchant': return !!me.setZoneC && me.setZoneC.defId === cond.value;
+    case 'previousCharElement': return false;
+    case 'and': return (cond.value as Condition[]).every(item => evaluateCondition(item, G, player));
+    case 'or': return (cond.value as Condition[]).some(item => evaluateCondition(item, G, player));
   }
 }
 
-// ===== Action Executor =====
+function loseOnEffectOverdraw(G: GameState, player: PlayerIndex, count: number): boolean {
+  if (G.players[player].deck.length >= count) return false;
+  G.step = 'gameOver';
+  G.winner = (1 - player) as PlayerIndex;
+  G.gameoverReason = `Player ${player} loses: effect attempted to draw ${count} with only ${G.players[player].deck.length} cards.`;
+  G.log.push(G.gameoverReason);
+  return true;
+}
 
 export function executeEffect(
   effect: ParsedEffect,
   G: GameState,
-  playerIdx: number
+  player: PlayerIndex,
 ): { success: boolean; message: string } {
-  // Check all conditions
-  const allConditionsMet = effect.conditions.every(c => evaluateCondition(c, G, playerIdx));
-  if (!allConditionsMet) {
+  if (!effect.conditions.every(condition => evaluateCondition(condition, G, player))) {
     return { success: false, message: 'Condition not met' };
   }
-
-  const me = G.players[playerIdx];
-  const opp = G.players[1 - playerIdx];
-
+  const me = G.players[player];
+  const opponentIndex = (1 - player) as PlayerIndex;
+  const opponent = G.players[opponentIndex];
+  const value = Number(effect.action.params.value ?? 0);
   switch (effect.action.type) {
-    case 'boostAttack': {
-      const value = effect.action.params.value;
-      if (me.battleZone) {
-        // Store boost in log (actual calculation happens in battle)
-        G.log.push(`  Effect: Attack +${value}`);
-        // We'll apply this during battle calculation
-        return { success: true, message: `Attack +${value}` };
-      }
-      return { success: false, message: 'No battle character' };
-    }
-
-    case 'reduceAttack': {
-      const value = effect.action.params.value;
-      if (opp.battleZone) {
-        G.log.push(`  Effect: Opponent attack -${value}`);
-        return { success: true, message: `Opponent attack -${value}` };
-      }
-      return { success: false, message: 'No opponent battle character' };
-    }
-
-    case 'heal': {
-      const value = effect.action.params.value;
+    case 'boostAttack':
+      G.modifiers.attack[player] += value;
+      return { success: true, message: `Attack +${value}` };
+    case 'reduceAttack':
+      G.modifiers.attack[opponentIndex] -= value;
+      return { success: true, message: `Opponent attack -${value}` };
+    case 'heal':
       me.hp = Math.min(100, me.hp + value);
-      G.log.push(`  Effect: Heal ${value} HP (now ${me.hp})`);
-      return { success: true, message: `Heal ${value} HP` };
-    }
-
-    case 'directDamage': {
-      const value = effect.action.params.value;
-      if (value === -1) {
-        // "damage cannot be reduced" - marker effect
-        G.log.push(`  Effect: Damage cannot be reduced`);
-        return { success: true, message: 'Unreduceable damage' };
-      }
-      opp.hp = Math.max(0, opp.hp - value);
-      G.log.push(`  Effect: ${value} damage to opponent (HP: ${opp.hp})`);
-      return { success: true, message: `${value} damage` };
-    }
-
-    case 'damageReduce': {
-      const value = effect.action.params.value;
-      G.log.push(`  Effect: Reduce damage by ${value}`);
-      // Store for battle calculation
-      return { success: true, message: `Damage reduce ${value}` };
-    }
-
+      return { success: true, message: `Heal ${value}` };
+    case 'directDamage':
+      if (value === -1) G.modifiers.unreduceableDamage[player] = true;
+      else opponent.hp = Math.max(0, opponent.hp - value);
+      return { success: true, message: value === -1 ? 'Battle damage cannot be reduced' : `Deal ${value}` };
+    case 'damageReduce':
+      G.modifiers.damageReduction[player] += value;
+      return { success: true, message: `Damage reduction +${value}` };
     case 'drawCards': {
-      const value = effect.action.params.value;
-      for (let i = 0; i < value && me.deck.length > 0; i++) {
+      if (loseOnEffectOverdraw(G, player, value)) return { success: false, message: 'Not enough cards to draw' };
+      for (let i = 0; i < value; i++) {
         const card = me.deck.shift()!;
         card.faceUp = true;
         me.hand.push(card);
       }
-      G.log.push(`  Effect: Draw ${value} cards`);
       return { success: true, message: `Draw ${value}` };
     }
-
-    case 'swapAttack': {
-      if (opp.battleZone) {
-        const def = getCardDef(opp.battleZone.defId);
-        if (def?.attack) {
-          // Swap night and day attack values
-          // This is a visual/logic marker - actual swap happens in battle calculation
-          G.log.push(`  Effect: Swap opponent's day/night attack`);
-          return { success: true, message: 'Swap attack' };
-        }
-      }
-      return { success: false, message: 'No opponent character' };
-    }
-
-    case 'clockReset': {
-      G.log.push(`  Effect: Chronos reset to start of turn`);
-      // Reset to position 0
-      G.chronos.position = 0;
-      return { success: true, message: 'Chronos reset' };
-    }
-
-    case 'clockSet': {
+    case 'swapAttack':
+      G.modifiers.swapAttack[opponentIndex] = !G.modifiers.swapAttack[opponentIndex];
+      return { success: true, message: 'Swap opponent day/night attack' };
+    case 'clockReset':
+      G.chronos.position = G.chronosAtTurnStart;
+      return { success: true, message: 'Reset Chronos' };
+    case 'clockSet':
       if (effect.action.params.value === 'any') {
-        G.log.push(`  Effect: Set Chronos to any position`);
-        // For now, set to midnight
         G.chronos.position = 0;
-        return { success: true, message: 'Chronos set' };
+        return { success: true, message: 'Set Chronos to position 0 (choice UI not implemented)' };
       }
-      if (effect.action.params.value === 'expand_midnight') {
-        G.log.push(`  Effect: Expand midnight range`);
-        return { success: true, message: 'Midnight expanded' };
-      }
-      return { success: false, message: 'Unknown clock set' };
-    }
-
-    case 'clockAdvance': {
-      const value = effect.action.params.value;
+      return { success: false, message: 'Unsupported clock range effect' };
+    case 'clockAdvance':
       G.chronos.position = (G.chronos.position + value) % 12;
-      G.log.push(`  Effect: Chronos +${value} (now ${G.chronos.position})`);
       return { success: true, message: `Chronos +${value}` };
-    }
-
     case 'recoverFromAbyss': {
-      if (effect.action.params.source === 'powerCharger' && me.powerCharger.length > 0) {
-        const card = me.powerCharger.pop()!;
-        card.faceUp = true;
-        me.hand.push(card);
-        G.log.push(`  Effect: Recover card from Power Charger`);
-        return { success: true, message: 'Recover from Power Charger' };
-      }
-      if (me.abyss.length > 0) {
-        const card = me.abyss.pop()!;
-        card.faceUp = true;
-        me.hand.push(card);
-        G.log.push(`  Effect: Recover card from Abyss`);
-        return { success: true, message: 'Recover from Abyss' };
-      }
-      return { success: false, message: 'No cards in abyss' };
+      const source = effect.action.params.source === 'powerCharger' ? me.powerCharger : me.abyss;
+      const card = source.pop();
+      if (!card) return { success: false, message: 'No card to recover' };
+      card.faceUp = true;
+      me.hand.push(card);
+      return { success: true, message: 'Recover one card' };
     }
-
-    case 'noEffect': {
-      G.log.push(`  Effect: Opponent effects disabled`);
-      return { success: true, message: 'Effects disabled' };
+    case 'sendToAbyss': {
+      const card = opponent.battleZone;
+      if (!card) return { success: false, message: 'No opposing character' };
+      opponent.battleZone = null;
+      opponent.abyss.push(card);
+      return { success: true, message: 'Send opposing character to Abyss' };
     }
-
-    case 'addSettableCard': {
-      G.log.push(`  Effect: May set additional card`);
-      return { success: true, message: 'Extra set allowed' };
-    }
-
-    default:
-      return { success: false, message: 'Unknown action type' };
+    case 'noEffect':
+      G.modifiers.effectsDisabled[opponentIndex] = true;
+      return { success: true, message: 'Disable opponent effects this turn' };
+    case 'addSettableCard':
+      return { success: false, message: 'Optional extra-set effects require a card-specific choice flow' };
   }
 }
 
-// ===== Process All Effects for a Turn =====
-
-export function processTurnEffects(G: GameState, parsedEffects: Map<string, ParsedEffect[]>): void {
-  // Process priority player first
-  const priorityPlayer = G.chronos.position < 6 ? G.chronos.nightSidePlayer : (1 - G.chronos.nightSidePlayer) as 0 | 1;
-
-  for (const playerIdx of [priorityPlayer, 1 - priorityPlayer] as const) {
-    const player = G.players[playerIdx];
-
-    // Check all cards in play (battle zone, set zone C)
-    const cardsToCheck = [
-      player.battleZone,
-      player.setZoneC,
-    ].filter(c => c !== null);
-
-    for (const card of cardsToCheck) {
-      if (!card) continue;
-      const effects = parsedEffects.get(card.defId);
-      if (!effects) continue;
-
+export function processTurnEffects(
+  G: GameState,
+  parsedEffects: Map<string, ParsedEffect[]>,
+  playedCards: [CardInstance[], CardInstance[]] = [[], []],
+): void {
+  const priority: PlayerIndex = G.chronos.position < 6
+    ? G.chronos.nightSidePlayer
+    : ((1 - G.chronos.nightSidePlayer) as PlayerIndex);
+  const order: PlayerIndex[] = [priority, (1 - priority) as PlayerIndex];
+  for (const player of order) {
+    if (G.step === 'gameOver' || G.modifiers.effectsDisabled[player]) continue;
+    const playedIds = new Set(playedCards[player].map(card => card.instanceId));
+    const candidates = [...playedCards[player], G.players[player].battleZone, G.players[player].setZoneC]
+      .filter((card): card is CardInstance => card !== null)
+      .filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
+    for (const card of candidates) {
+      const definition = getCardDef(card.defId);
+      const effects = parsedEffects.get(card.defId) ?? [];
       for (const effect of effects) {
-        if (effect.trigger === 'onUse' || effect.trigger === 'onBattle') {
-          executeEffect(effect, G, playerIdx);
+        const isNew = playedIds.has(card.instanceId);
+        if ((effect.trigger === 'onUse' || effect.trigger === 'onEnter') && !isNew) continue;
+        if (!['onUse', 'onEnter', 'onBattle'].includes(effect.trigger)) continue;
+        if (!definition || power(G, player) < definition.powerCost) {
+          G.log.push(`Player ${player}: ${definition?.name ?? card.defId} effect skipped (power cost).`);
+          continue;
         }
+        const result = executeEffect(effect, G, player);
+        if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
+        if ((G.step as GameState['step']) === 'gameOver') return;
       }
     }
   }

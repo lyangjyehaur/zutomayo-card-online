@@ -1,12 +1,11 @@
-// ===== Card Definitions =====
-
 export type Element = '闇' | '炎' | '電気' | '風' | 'カオス';
 export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
 export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
 export type ChronosTime = 'night' | 'day';
 export type JankenChoice = 'rock' | 'paper' | 'scissors';
-
-export type GamePhase = 'set' | 'reveal' | 'time' | 'swap' | 'effect' | 'battle' | 'end';
+export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'gameOver';
+export type PlayerIndex = 0 | 1;
+export type SetSlot = 'A' | 'B';
 
 export interface CardDef {
   id: string;
@@ -30,8 +29,6 @@ export interface CardInstance {
   faceUp: boolean;
 }
 
-// ===== Player State =====
-
 export interface PlayerState {
   hp: number;
   deck: CardInstance[];
@@ -42,40 +39,43 @@ export interface PlayerState {
   setZoneC: CardInstance | null;
   powerCharger: CardInstance[];
   abyss: CardInstance[];
-  // Track how many cards were set this turn (for draw count)
   cardsSetThisTurn: number;
-  // Track the raw attack value this turn (before effects)
   rawAttack: number;
 }
 
-// ===== Game State =====
-
 export interface ChronosState {
-  // 0-11 position on the clock face
   position: number;
-  // Which player is the "night side"
-  nightSidePlayer: 0 | 1;
+  nightSidePlayer: PlayerIndex;
 }
 
 export interface LastBattleResult {
-  winner: 0 | 1 | null; // null = draw
+  winner: PlayerIndex | null;
   damage: number;
   winnerAttack: number;
   loserAttack: number;
 }
 
+export interface CombatModifiers {
+  attack: [number, number];
+  damageReduction: [number, number];
+  swapAttack: [boolean, boolean];
+  effectsDisabled: [boolean, boolean];
+  unreduceableDamage: [boolean, boolean];
+}
+
 export interface GameState {
   players: [PlayerState, PlayerState];
+  step: GameStep;
+  ready: [boolean, boolean];
   chronos: ChronosState;
-  turn: number;
+  chronosAtTurnStart: number;
+  turnNumber: number;
   lastBattleResult: LastBattleResult;
-  setCardsThisTurn: {
-    player0: CardInstance[];
-    player1: CardInstance[];
-  };
+  setCardsThisTurn: [CardInstance[], CardInstance[]];
+  jankenChoices: [JankenChoice | null, JankenChoice | null];
+  mulliganUsed: [boolean, boolean];
+  modifiers: CombatModifiers;
+  winner: PlayerIndex | null;
+  gameoverReason: string | null;
   log: string[];
-  // Setup sub-phases
-  setupPhase?: 'janken' | 'mulligan' | 'initial-set' | 'done';
-  mulliganUsed?: [boolean, boolean];
-  jankenChoices?: [JankenChoice | null, JankenChoice | null];
 }

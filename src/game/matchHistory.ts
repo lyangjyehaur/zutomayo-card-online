@@ -24,7 +24,7 @@ export function saveMatchRecord(G: GameState, winner: string | null): void {
     id: `match_${Date.now()}`,
     date: new Date().toISOString(),
     duration: 0, // TODO: track actual duration
-    winner: winner === 'Player 0 wins!' ? 0 : winner === 'Player 1 wins!' ? 1 : null,
+    winner: winner === '0' ? 0 : winner === '1' ? 1 : null,
     players: G.players.map(p => ({
       hp: p.hp,
       deckSize: p.deck.length,
@@ -34,7 +34,7 @@ export function saveMatchRecord(G: GameState, winner: string | null): void {
       nightSidePlayer: G.chronos.nightSidePlayer,
       finalPosition: G.chronos.position,
     },
-    turns: G.turn,
+    turns: G.turnNumber,
     log: G.log.slice(-20), // Last 20 log entries
   };
 

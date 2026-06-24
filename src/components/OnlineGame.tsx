@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Client } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { ZutomayoCard } from '../game/Game';
@@ -7,10 +7,11 @@ import { Board } from './Board';
 interface OnlineGameProps {
   matchID: string;
   playerID: string;
+  playerCredentials: string;
   onBack: () => void;
 }
 
-export function OnlineGame({ matchID, playerID, onBack }: OnlineGameProps) {
+export function OnlineGame({ matchID, playerID, playerCredentials, onBack }: OnlineGameProps) {
   const [OnlineClient] = useState(() => Client({
     game: ZutomayoCard,
     board: Board,
@@ -26,7 +27,7 @@ export function OnlineGame({ matchID, playerID, onBack }: OnlineGameProps) {
         <span className="ai-label">⚔️ Online Match: {matchID}</span>
       </div>
       <div className="game-container single">
-        <OnlineClient playerID={playerID} matchID={matchID} />
+        <OnlineClient playerID={playerID} matchID={matchID} credentials={playerCredentials} />
       </div>
     </div>
   );

@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "smoke": "node --import tsx scripts/game-smoke.ts",
     "preview": "vite preview",
-    "server": "tsx src/server.ts"
+    "server": "node --import tsx src/server.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1075.0",
     "@types/koa-static": "^4.0.4",
     "boardgame.io": "^0.50.2",
     "koa-static": "^5.0.0",

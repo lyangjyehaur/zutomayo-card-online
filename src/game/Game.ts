@@ -1,117 +1,118 @@
-import { Game } from 'boardgame.io';
-import { INVALID_MOVE } from 'boardgame.io/core';
-import type { GameState } from './types';
+import type { Game, Move } from 'boardgame.io';
+import type { CardInstance, GameState, JankenChoice, PlayerIndex, SetSlot } from './types';
 import { getAllCardDefs } from './cards/loader';
 import { parseAllEffects } from './effects';
-import type { ParsedEffect } from './effects';
-import type { JankenChoice } from './GameLogic';
 import {
+  chooseJanken,
+  confirmReady,
+  finishMulligan,
+  setInitialCard,
+  setTurnCard,
   setupGame,
-  selectCard,
-  revealCards,
-  advanceChronos,
-  swapCards,
-  resolveBattle,
-  endTurn,
-  checkGameEnd,
-  resolveJanken,
-  mulligan,
-  isSetupComplete,
+  undoSetCard,
 } from './GameLogic';
-import { processTurnEffects } from './effects/executor';
 
-const allCards = getAllCardDefs();
-const parsedEffects: Map<string, ParsedEffect[]> = parseAllEffects(
-  allCards.map(c => ({ id: c.id, effect: c.effect }))
+// boardgame.io 0.50 publishes core as a CommonJS directory that Node ESM cannot
+// import directly. The documented sentinel is the stable string consumed by
+// its reducer, so keeping it local works in both Vite and the Node server.
+const INVALID_MOVE = 'INVALID_MOVE';
+
+const parsedEffects = parseAllEffects(
+  getAllCardDefs().map(card => ({ id: card.id, effect: card.effect })),
 );
+
+function playerIndex(playerID: string | null): PlayerIndex | null {
+  return playerID === '0' || playerID === '1' ? Number(playerID) as PlayerIndex : null;
+}
+
+function hiddenCard(instanceId: string): CardInstance {
+  return { instanceId, defId: '__hidden__', faceUp: false };
+}
+
+function redactHiddenCard(card: CardInstance | null, placeholder: string): CardInstance | null {
+  if (!card) return null;
+  return card.faceUp ? { ...card } : hiddenCard(placeholder);
+}
+
+function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerIndex | null) {
+  const player = G.players[owner];
+  const isOwner = viewer === owner;
+  if (isOwner) return { ...player, hand: [...player.hand], deck: [...player.deck] };
+
+  return {
+    ...player,
+    hand: player.hand.map((_, index) => hiddenCard(`hidden-p${owner}-hand-${index}`)),
+    deck: player.deck.map((_, index) => hiddenCard(`hidden-p${owner}-deck-${index}`)),
+    setZoneA: redactHiddenCard(player.setZoneA, `hidden-p${owner}-set-a`),
+    setZoneB: redactHiddenCard(player.setZoneB, `hidden-p${owner}-set-b`),
+  };
+}
+
+function redactPlayedCardsForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerIndex | null): CardInstance[] {
+  if (viewer === owner) return G.setCardsThisTurn[owner].map(card => ({ ...card }));
+  return G.setCardsThisTurn[owner].map((card, index) => (
+    card.faceUp ? { ...card } : hiddenCard(`hidden-p${owner}-played-${index}`)
+  ));
+}
+
+function playerView({ G, playerID }: { G: GameState; playerID: string | null }): GameState {
+  const viewer = playerIndex(playerID);
+  const bothChose = G.jankenChoices[0] !== null && G.jankenChoices[1] !== null;
+  const jankenChoices = G.jankenChoices.map((choice, index) => {
+    if (bothChose || viewer === index) return choice;
+    return null;
+  }) as GameState['jankenChoices'];
+
+  return {
+    ...G,
+    players: [redactPlayerForViewer(G, 0, viewer), redactPlayerForViewer(G, 1, viewer)],
+    setCardsThisTurn: [redactPlayedCardsForViewer(G, 0, viewer), redactPlayedCardsForViewer(G, 1, viewer)],
+    jankenChoices,
+  };
+}
+
+const moves: Record<string, Move<GameState>> = {
+  janken: ({ G, playerID }, choice: JankenChoice) => {
+    const player = playerIndex(playerID);
+    if (player === null || !chooseJanken(G, player, choice)) return INVALID_MOVE;
+  },
+  mulligan: ({ G, playerID }, indices: number[]) => {
+    const player = playerIndex(playerID);
+    if (player === null || !Array.isArray(indices) || !finishMulligan(G, player, indices)) return INVALID_MOVE;
+  },
+  keepHand: ({ G, playerID }) => {
+    const player = playerIndex(playerID);
+    if (player === null || !finishMulligan(G, player, [])) return INVALID_MOVE;
+  },
+  setInitialCard: ({ G, playerID }, handIndex: number) => {
+    const player = playerIndex(playerID);
+    if (player === null || !setInitialCard(G, player, handIndex)) return INVALID_MOVE;
+  },
+  setTurnCard: ({ G, playerID }, handIndex: number, slot: SetSlot) => {
+    const player = playerIndex(playerID);
+    if (player === null || !setTurnCard(G, player, handIndex, slot)) return INVALID_MOVE;
+  },
+  undoSetCard: ({ G, playerID }, slot: SetSlot) => {
+    const player = playerIndex(playerID);
+    if (player === null || !undoSetCard(G, player, slot)) return INVALID_MOVE;
+  },
+  confirmReady: ({ G, playerID }) => {
+    const player = playerIndex(playerID);
+    if (player === null || !confirmReady(G, player, parsedEffects)) return INVALID_MOVE;
+  },
+};
 
 export const ZutomayoCard: Game<GameState> = {
   name: 'zutomayo-card',
-
   setup: () => setupGame(),
-
-  moves: {
-    // Janken (rock-paper-scissors)
-    janken: ({ G, playerID }, choice: JankenChoice) => {
-      const idx = parseInt(playerID) as 0 | 1;
-      if (!G.jankenChoices) G.jankenChoices = [null, null];
-      G.jankenChoices[idx] = choice;
-
-      // If both chose, resolve
-      if (G.jankenChoices[0] && G.jankenChoices[1]) {
-        const result = resolveJanken(G, G.jankenChoices[0], G.jankenChoices[1]);
-        if (result.winner === null) {
-          // Draw — reset and try again
-          G.jankenChoices = [null, null];
-          G.log.push('Janken draw! Try again.');
-        }
-      }
-    },
-
-    // Mulligan
-    mulligan: ({ G, playerID }, indicesToRedraw: number[]) => {
-      const idx = parseInt(playerID) as 0 | 1;
-      if (G.mulliganUsed?.[idx]) return INVALID_MOVE;
-      mulligan(G, idx, indicesToRedraw);
-      // If both done, move to game
-      if (G.mulliganUsed?.[0] && G.mulliganUsed?.[1]) {
-        G.setupPhase = 'done';
-        G.log.push('Both players ready. Game begins!');
-      }
-    },
-
-    // Skip mulligan
-    keepHand: ({ G, playerID }) => {
-      const idx = parseInt(playerID) as 0 | 1;
-      if (G.mulliganUsed?.[idx]) return INVALID_MOVE;
-      mulligan(G, idx, []);
-      if (G.mulliganUsed?.[0] && G.mulliganUsed?.[1]) {
-        G.setupPhase = 'done';
-        G.log.push('Both players ready. Game begins!');
-      }
-    },
-
-    // Select card during gameplay
-    selectCard: ({ G, playerID }, handIndex: number, slot: 'A' | 'B') => {
-      const idx = parseInt(playerID) as 0 | 1;
-      if (!selectCard(G, idx, handIndex, slot)) return INVALID_MOVE;
-    },
-
-    // Confirm set
-    confirmSet: ({ G, playerID }) => {
-      const idx = parseInt(playerID) as 0 | 1;
-      if (G.players[idx].cardsSetThisTurn === 0) return INVALID_MOVE;
-    },
-  },
-
+  playerView,
+  moves,
   turn: {
-    minMoves: 1,
-    maxMoves: 2,
-
-    onBegin: ({ G }) => {
-      if (G.setupPhase === 'done') {
-        G.players[0].cardsSetThisTurn = 0;
-        G.players[1].cardsSetThisTurn = 0;
-        G.setCardsThisTurn = { player0: [], player1: [] };
-      }
-    },
-
-    onEnd: ({ G }) => {
-      if (G.setupPhase !== 'done') return;
-
-      // Phase pipeline: reveal → time → swap → effects → battle → end
-      revealCards(G);
-      advanceChronos(G);
-      swapCards(G);
-      processTurnEffects(G, parsedEffects);
-      resolveBattle(G);
-      endTurn(G);
-    },
+    activePlayers: { all: 'simultaneous' },
+    stages: { simultaneous: { moves } },
   },
-
   endIf: ({ G }) => {
-    if (G.setupPhase !== 'done') return;
-    const result = checkGameEnd(G);
-    if (result) return { winner: result };
+    if (G.step !== 'gameOver') return;
+    return G.winner === null ? { draw: true } : { winner: String(G.winner) };
   },
 };

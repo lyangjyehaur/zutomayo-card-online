@@ -1,48 +1,45 @@
-import { useEffect, useRef, useCallback } from 'react';
-import type { GameState } from '../game/types';
-import { aiSelectCards, type AIDifficulty } from '../game/ai';
-import { getMaxSetCards } from '../game/GameLogic';
+import { useEffect, useRef } from 'react';
+import type { GameState } from './types';
+import { aiSelectCards, type AIDifficulty } from './ai';
+import { getRequiredSetCount } from './GameLogic';
 
-// Hook to run AI moves on a boardgame.io client
 export function useAIMoves(
   G: GameState | null,
   ctx: any,
   moves: any,
   playerID: string,
-  difficulty: AIDifficulty
+  difficulty: AIDifficulty,
 ) {
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isAITurn = playerID === '1' && ctx && !ctx.gameover;
+  const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const active = playerID === '1' && !!ctx && !ctx.gameover;
 
   useEffect(() => {
-    if (!isAITurn || !G) return;
-
-    // Small delay to make AI feel natural
-    const delay = difficulty === 'easy' ? 1500 : difficulty === 'normal' ? 1000 : 500;
-
-    timeoutRef.current = setTimeout(() => {
-      const playerIdx = 1;
-      const player = G.players[playerIdx];
-      const maxCards = getMaxSetCards(G, playerIdx);
-
-      if (player.cardsSetThisTurn < maxCards && player.hand.length > 0) {
-        const aiMoves = aiSelectCards(G, playerIdx, difficulty);
-        if (aiMoves.length > player.cardsSetThisTurn) {
-          const move = aiMoves[player.cardsSetThisTurn];
-          moves.selectCard(move.handIndex, move.slot);
-        }
-      } else if (player.cardsSetThisTurn > 0) {
-        moves.confirmSet();
-      } else {
-        // No cards, just confirm
-        moves.confirmSet();
+    if (!active || !G || G.step === 'gameOver') return;
+    const delay = difficulty === 'easy' ? 700 : difficulty === 'normal' ? 450 : 250;
+    timeout.current = setTimeout(() => {
+      const player = G.players[1];
+      if (G.step === 'janken') {
+        if (!G.jankenChoices[1]) moves.janken('scissors');
+        return;
       }
+      if (G.step === 'mulligan') {
+        if (!G.mulliganUsed[1]) moves.keepHand();
+        return;
+      }
+      const required = getRequiredSetCount(G, 1);
+      if (G.ready[1]) return;
+      if (player.cardsSetThisTurn === required) {
+        moves.confirmReady();
+        return;
+      }
+      if (player.hand.length === 0) return;
+      const choice = aiSelectCards(G, 1, difficulty)[0];
+      const handIndex = choice?.handIndex ?? 0;
+      if (G.step === 'initialSet') moves.setInitialCard(handIndex);
+      else moves.setTurnCard(handIndex, player.setZoneA ? 'B' : 'A');
     }, delay);
+    return () => { if (timeout.current) clearTimeout(timeout.current); };
+  }, [G, ctx, moves, active, difficulty]);
 
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [G, ctx, moves, isAITurn, difficulty]);
-
-  return isAITurn;
+  return active;
 }

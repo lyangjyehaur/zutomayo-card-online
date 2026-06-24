@@ -1,75 +1,32 @@
-# zutomayo-card-online
+# ZUTOMAYO CARD Online
 
-ZUTOMAYO CARD 線上對戰平台
+A React + TypeScript implementation of the two-player ZUTOMAYO CARD flow. boardgame.io provides local/online synchronization and match lifecycle; the rules use an explicit simultaneous state machine in `GameState` rather than boardgame.io's alternating-turn model.
 
-## 數據來源
+## Run
 
-- 卡牌數據: [zutomayo-card.net/search](https://zutomayocard.net/search/) (Meilisearch API)
-- 規則: [Start Guide](https://zutomayocard.net/start-guide/) + [ルールガイド v1.0.0](https://etbr-cms-site.s3.ap-northeast-1.amazonaws.com/zutomayocard.net/rule/ruleguide_260216.pdf)
-
-## 數據統計
-
-| 項目 | 數量 |
-|------|------|
-| 總卡牌數 | 422 |
-| Character | 242 |
-| Enchant | 153 |
-| Area Enchant | 27 |
-| 有效果文字 | 251 |
-| 純數值卡 | 171 |
-
-### 卡包
-
-| 卡包 | 數量 |
-|------|------|
-| THE WORLD IS CHANGING | 106 |
-| ALL ALONG THE WATCHTOWER | 106 |
-| Off Minor | 106 |
-| Fantasy Is Reality | 104 |
-
-### 屬性
-
-闇(104) / 炎(104) / 電気(106) / 風(104) / カオス(4)
-
-## 檔案結構
-
-```
-zutomayo-card-online/
-├── README.md           # 本文件
-├── cards.json          # 全部 422 張卡（遊戲用格式）
-├── schema.json         # 數據結構定義 + 效果模式統計
-├── rules.md            # 完整遊戲規則
-└── cards-by-pack/      # 按卡包分類
-    ├── the-world-is-changing.json
-    ├── all-along-the-watchtower.json
-    ├── off-minor.json
-    └── fantasy-is-reality.json
+```bash
+npm install
+npm run dev       # frontend development
+npm run server    # boardgame.io + built static frontend on PORT (default 3000)
+npm run smoke     # deterministic rules smoke tests
+npm run build
 ```
 
-## cards.json 格式
+For the production server, run `npm run build` before `npm run server`, or use `docker compose up --build`.
 
-```json
-{
-  "id": "1st_1",
-  "name": "にらちゃん（お勉強しといてよ）",
-  "pack": "THE WORLD IS CHANGING",
-  "song": "お勉強しといてよ",
-  "illustrator": "はなぶし",
-  "rarity": "UR",
-  "element": "闇",
-  "type": "Character",
-  "clock": 5,
-  "attack": { "night": 130, "day": 50 },
-  "powerCost": 5,
-  "sendToPower": 0,
-  "effect": "",
-  "image": "https://d12oj0i0pu43cb.cloudfront.net/...",
-  "errata": ""
-}
-```
+## Implemented rules
 
-## 技術計劃
+- Two 20-card decks, 100 HP, janken for night side, five-card hands, one mulligan.
+- Simultaneous initial face-down card setup and simultaneous per-turn confirmation.
+- Winner sets one card; loser sets two; a draw means one each.
+- Twelve-position Chronos, type-aware zone replacement, A-before-B conflict precedence, Power Cost attack checks, battle damage, and exact overdraw loss.
+- Chronos-side effect priority and a partial parsed-effect engine with real HP, draw, Chronos, attack, and damage-reduction mutations.
+- Local two-player, basic AI, and boardgame.io online rooms.
+- Online `playerView` hides opponent hands, decks, face-down set cards, and unpaired janken choices from clients.
+- Match history is stored only in the current browser.
 
-- 框架: boardgame.io (回合制) + React (UI)
-- 效果引擎: Pattern matching + 少量腳本
-- 多人: boardgame.io 內建 WebSocket
+## Known limitations
+
+Card text is not fully implemented. Effects needing a target/position choice, previous-card history, optional extra setting, or detailed timing windows may be skipped or use a documented deterministic fallback. Deck editing is currently a browser-side reference; selected decks are not sent through boardgame.io match setup. There are no deployed accounts, server leaderboard, or cross-device match history.
+
+Card data remains in `cards.json`; its shape is defined by the existing loader and schema. See [rules.md](rules.md) for the rules represented by the engine and [PLAN.md](PLAN.md) for remaining work.

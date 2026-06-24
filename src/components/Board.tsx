@@ -1,220 +1,155 @@
-import { BoardProps } from 'boardgame.io/react';
-import { useState, useEffect, useRef } from 'react';
-import type { GameState, JankenChoice } from '../game/types';
+import type { BoardProps } from 'boardgame.io/react';
+import { useEffect, useRef, useState } from 'react';
+import type { GameState, JankenChoice, PlayerIndex } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { Card } from './Card';
 import { Chronos } from './Chronos';
-import { getChronosTime, getMaxSetCards } from '../game/GameLogic';
+import { getChronosTime, getRequiredSetCount } from '../game/GameLogic';
 import { saveMatchRecord } from '../game/matchHistory';
 
 const TURN_TIMER_SECONDS = 60;
+type Props = BoardProps<GameState>;
 
-export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
-  const myIdx = parseInt(playerID || '0') as 0 | 1;
-  const oppIdx = (1 - myIdx) as 0 | 1;
-  const me = G.players[myIdx];
-  const opp = G.players[oppIdx];
-  const currentTime = getChronosTime(G);
-
-  // ===== Setup Phases =====
-
-  // Janken screen
-  if (G.setupPhase === 'janken') {
-    const myChoice = G.jankenChoices?.[myIdx];
-    const oppChoice = G.jankenChoices?.[oppIdx];
-    const bothChose = myChoice && oppChoice;
-
-    return (
-      <div className="setup-screen">
-        <h2>✊ パー ✋ チョキ ✌️</h2>
-        <p className="setup-hint">猜拳決定誰是夜側玩家</p>
-
-        {!myChoice ? (
-          <div className="janken-buttons">
-            <button className="janken-btn" onClick={() => moves.janken('rock')}>✊ Rock</button>
-            <button className="janken-btn" onClick={() => moves.janken('paper')}>✋ Paper</button>
-            <button className="janken-btn" onClick={() => moves.janken('scissors')}>✌️ Scissors</button>
-          </div>
-        ) : (
-          <div className="janken-waiting">
-            <p>You chose: {myChoice === 'rock' ? '✊' : myChoice === 'paper' ? '✋' : '✌️'}</p>
-            <p>{oppChoice ? `Opponent chose: ${oppChoice === 'rock' ? '✊' : oppChoice === 'paper' ? '✋' : '✌️'}` : 'Waiting for opponent...'}</p>
-            {bothChose && <p className="janken-result">Resolving...</p>}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Mulligan screen
-  if (G.setupPhase === 'mulligan') {
-    const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
-    const myMulliganUsed = G.mulliganUsed?.[myIdx];
-
-    const toggleCard = (idx: number) => {
-      setSelectedIndices(prev =>
-        prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
-      );
-    };
-
-    return (
-      <div className="setup-screen">
-        <h2>🃏 手牌確認</h2>
-        <p className="setup-hint">選擇要重抽的卡（可不選直接確認）</p>
-
-        <div className="mulligan-hand">
-          {me.hand.map((card, i) => (
-            <div
-              key={card.instanceId}
-              className={`mulligan-card ${selectedIndices.includes(i) ? 'selected' : ''}`}
-              onClick={() => !myMulliganUsed && toggleCard(i)}
-            >
-              <Card card={card} small />
-              {selectedIndices.includes(i) && <div className="mulligan-mark">🔄</div>}
-            </div>
+function JankenScreen({ G, moves, playerID }: Props) {
+  const me = Number(playerID ?? '0') as PlayerIndex;
+  const choice = G.jankenChoices[me];
+  const labels: Record<JankenChoice, string> = { rock: '✊ Rock', paper: '✋ Paper', scissors: '✌️ Scissors' };
+  return (
+    <div className="setup-screen">
+      <h2>✊ Rock · ✋ Paper · ✌️ Scissors</h2>
+      <p className="setup-hint">Janken determines the night-side player.</p>
+      {choice ? <p className="janken-waiting">You chose {labels[choice]}. Waiting for opponent…</p> : (
+        <div className="janken-buttons">
+          {(Object.keys(labels) as JankenChoice[]).map(value => (
+            <button key={value} className="janken-btn" onClick={() => moves.janken(value)}>{labels[value]}</button>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
 
-        {!myMulliganUsed ? (
-          <div className="mulligan-actions">
-            <button className="mulligan-btn" onClick={() => { moves.mulligan(selectedIndices); setSelectedIndices([]); }}>
-              🔄 重抽 {selectedIndices.length} 張
-            </button>
-            <button className="mulligan-btn keep" onClick={() => moves.keepHand()}>
-              ✅ 確認手牌
-            </button>
+function MulliganScreen({ G, moves, playerID }: Props) {
+  const me = Number(playerID ?? '0') as PlayerIndex;
+  const [selected, setSelected] = useState<number[]>([]);
+  const done = G.mulliganUsed[me];
+  const toggle = (index: number) => setSelected(current =>
+    current.includes(index) ? current.filter(item => item !== index) : [...current, index],
+  );
+  return (
+    <div className="setup-screen">
+      <h2>Opening hand</h2>
+      <p className="setup-hint">Select any cards to redraw once, or keep all five.</p>
+      <div className="mulligan-hand">
+        {G.players[me].hand.map((card, index) => (
+          <div key={card.instanceId} className={`mulligan-card ${selected.includes(index) ? 'selected' : ''}`} onClick={() => !done && toggle(index)}>
+            <Card card={card} small />
           </div>
-        ) : (
-          <p className="mulligan-done">等待對手確認...</p>
-        )}
+        ))}
       </div>
-    );
-  }
+      {done ? <p className="mulligan-done">Waiting for opponent…</p> : (
+        <div className="mulligan-actions">
+          <button className="mulligan-btn" onClick={() => moves.mulligan(selected)}>Redraw {selected.length}</button>
+          <button className="mulligan-btn keep" onClick={() => moves.keepHand()}>Keep hand</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
-  // ===== Main Game =====
+function GameOverScreen({ G, ctx }: Props) {
+  useEffect(() => {
+    saveMatchRecord(G, G.winner === null ? 'draw' : String(G.winner));
+  }, []); // Persist this terminal snapshot once per mounted match.
+  return (
+    <div className="game-over">
+      <h1>Game Over</h1>
+      <p>{G.winner === null ? 'Draw' : `Player ${G.winner} wins`}</p>
+      <p>{G.gameoverReason}</p>
+      {ctx.gameover && <button onClick={() => window.location.reload()}>Play Again</button>}
+    </div>
+  );
+}
 
-  const maxSet = getMaxSetCards(G, myIdx);
-  const canSet = me.cardsSetThisTurn < maxSet;
+function powerTotal(G: GameState, player: PlayerIndex): number {
+  return G.players[player].powerCharger.reduce(
+    (sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0), 0,
+  );
+}
 
-  // Turn timer
+function BattleBoard({ G, moves, playerID }: Props) {
+  const meIndex = Number(playerID ?? '0') as PlayerIndex;
+  const opponentIndex = (1 - meIndex) as PlayerIndex;
+  const me = G.players[meIndex];
+  const opponent = G.players[opponentIndex];
+  const required = getRequiredSetCount(G, meIndex);
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setTimeLeft(TURN_TIMER_SECONDS);
-    if (timerRef.current) clearInterval(timerRef.current);
+    if (timer.current) clearInterval(timer.current);
+    timer.current = setInterval(() => setTimeLeft(value => Math.max(0, value - 1)), 1000);
+    return () => { if (timer.current) clearInterval(timer.current); };
+  }, [G.turnNumber, G.step]);
 
-    timerRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          if (me.cardsSetThisTurn > 0) moves.confirmSet();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+  useEffect(() => {
+    if (timeLeft === 0 && !G.ready[meIndex] && me.cardsSetThisTurn === required) moves.confirmReady();
+  }, [timeLeft, G.ready, me.cardsSetThisTurn, required, meIndex, moves]);
 
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [G.turn, me.cardsSetThisTurn]);
-
+  const setFromHand = (handIndex: number) => {
+    if (G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
+    if (G.step === 'initialSet') moves.setInitialCard(handIndex);
+    else moves.setTurnCard(handIndex, me.setZoneA ? 'B' : 'A');
+  };
+  const time = getChronosTime(G);
   const timerColor = timeLeft > 30 ? '#2ec4b6' : timeLeft > 10 ? '#f4d35e' : '#e63946';
-
-  if (ctx.gameover) {
-    saveMatchRecord(G, ctx.gameover.winner as string);
-    return (
-      <div className="game-over">
-        <h1>Game Over</h1>
-        <p>{ctx.gameover.winner}</p>
-        <button onClick={() => window.location.reload()}>Play Again</button>
-      </div>
-    );
-  }
-
   return (
     <div className="board">
-      {/* Opponent */}
       <div className="player-area opponent">
-        <div className="player-info">
-          <span className="hp">❤️ {opp.hp}</span>
-          <span className="deck-cards">🃏 {opp.deck.length}</span>
-          <span className="power">⚡ {opp.powerCharger.reduce((s, c) => s + (getCardDef(c.defId)?.sendToPower || 0), 0)}</span>
-        </div>
-
+        <div className="player-info"><span>❤️ {opponent.hp}</span><span>🃏 {opponent.deck.length}</span><span>⚡ {powerTotal(G, opponentIndex)}</span></div>
         <div className="zones opponent-zones">
-          <div className="zone set-zone"><div className="zone-label">Set A</div>{opp.setZoneA && <Card card={opp.setZoneA} small />}</div>
-          <div className="zone battle-zone"><div className="zone-label">Battle</div>{opp.battleZone && <Card card={opp.battleZone} />}</div>
-          <div className="zone set-zone"><div className="zone-label">Set B</div>{opp.setZoneB && <Card card={opp.setZoneB} small />}</div>
-          <div className="zone area-zone"><div className="zone-label">Area E</div>{opp.setZoneC && <Card card={opp.setZoneC} small />}</div>
+          <div className="zone set-zone"><div className="zone-label">Set A</div>{opponent.setZoneA && <Card card={opponent.setZoneA} small />}</div>
+          <div className="zone battle-zone"><div className="zone-label">Battle</div>{opponent.battleZone && <Card card={opponent.battleZone} />}</div>
+          <div className="zone set-zone"><div className="zone-label">Set B</div>{opponent.setZoneB && <Card card={opponent.setZoneB} small />}</div>
+          <div className="zone area-zone"><div className="zone-label">Area</div>{opponent.setZoneC && <Card card={opponent.setZoneC} small />}</div>
         </div>
-
-        <div className="side-zones">
-          <span title="Power Charger">⚡{opp.powerCharger.length}</span>
-          <span title="Abyss">🕳️{opp.abyss.length}</span>
-        </div>
-
-        <div className="opponent-hand">
-          {opp.hand.map((c) => <Card key={c.instanceId} card={{ ...c, faceUp: false }} small />)}
-        </div>
+        <div className="opponent-hand">{opponent.hand.map(card => <Card key={card.instanceId} card={{ ...card, faceUp: false }} small />)}</div>
       </div>
 
-      {/* Center */}
       <div className="center-area">
-        <Chronos chronos={G.chronos} currentTime={currentTime} />
+        <Chronos chronos={G.chronos} currentTime={time} />
         <div className="turn-info">
-          <div>Turn {G.turn + 1}</div>
-          <div>{currentTime === 'night' ? '🌙 Night' : '☀️ Day'} Phase</div>
+          <div>Turn {G.turnNumber}</div><div>{time === 'night' ? '🌙 Night' : '☀️ Day'}</div>
           <div className="turn-timer" style={{ color: timerColor }}>⏱ {timeLeft}s</div>
-          {G.lastBattleResult.winner !== null && (
-            <div className="last-battle">
-              Last: {G.lastBattleResult.winnerAttack} vs {G.lastBattleResult.loserAttack}
-              {G.lastBattleResult.damage > 0 && ` (${G.lastBattleResult.damage} dmg)`}
-            </div>
-          )}
+          <div>{G.step === 'initialSet' ? 'Initial battle-zone setup' : `Set ${required} card${required === 1 ? '' : 's'}`}</div>
+          <div>{G.ready[opponentIndex] ? 'Opponent ready' : 'Opponent choosing'}</div>
         </div>
       </div>
 
-      {/* Self */}
       <div className="player-area self">
         <div className="zones my-zones">
-          <div className="zone set-zone"><div className="zone-label">Set A</div>{me.setZoneA && <Card card={me.setZoneA} small />}</div>
+          <div className="zone set-zone" onClick={() => moves.undoSetCard('A')}><div className="zone-label">Set A</div>{me.setZoneA && <Card card={{ ...me.setZoneA, faceUp: true }} small />}</div>
           <div className="zone battle-zone"><div className="zone-label">Battle</div>{me.battleZone && <Card card={me.battleZone} />}</div>
-          <div className="zone set-zone"><div className="zone-label">Set B</div>{me.setZoneB && <Card card={me.setZoneB} small />}</div>
-          <div className="zone area-zone"><div className="zone-label">Area E</div>{me.setZoneC && <Card card={me.setZoneC} small />}</div>
+          <div className="zone set-zone" onClick={() => moves.undoSetCard('B')}><div className="zone-label">Set B</div>{me.setZoneB && <Card card={{ ...me.setZoneB, faceUp: true }} small />}</div>
+          <div className="zone area-zone"><div className="zone-label">Area</div>{me.setZoneC && <Card card={me.setZoneC} small />}</div>
         </div>
-
-        <div className="player-info">
-          <span className="hp">❤️ {me.hp}</span>
-          <span className="deck-cards">🃏 {me.deck.length}</span>
-          <span className="power">⚡ {me.powerCharger.reduce((s, c) => s + (getCardDef(c.defId)?.sendToPower || 0), 0)}</span>
-          <span className="abyss">🕳️ {me.abyss.length}</span>
-        </div>
-
-        <div className="hand">
-          {me.hand.map((card, i) => (
-            <Card
-              key={card.instanceId}
-              card={card}
-              small
-              onClick={canSet ? () => {
-                const slot = !me.setZoneA ? 'A' : 'B';
-                moves.selectCard(i, slot);
-              } : undefined}
-            />
-          ))}
-        </div>
-
+        <div className="player-info"><span>❤️ {me.hp}</span><span>🃏 {me.deck.length}</span><span>⚡ {powerTotal(G, meIndex)}</span><span>🕳️ {me.abyss.length}</span></div>
+        <div className="hand">{me.hand.map((card, index) => <Card key={card.instanceId} card={card} small onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined} />)}</div>
         <div className="actions">
-          <button disabled={me.cardsSetThisTurn === 0} onClick={() => moves.confirmSet()}>
-            Confirm Set ({me.cardsSetThisTurn}/{maxSet})
+          <button disabled={G.ready[meIndex] || me.cardsSetThisTurn !== required} onClick={() => moves.confirmReady()}>
+            {G.ready[meIndex] ? 'Ready — waiting' : `Confirm (${me.cardsSetThisTurn}/${required})`}
           </button>
         </div>
       </div>
-
-      {/* Game log */}
-      <details className="game-log">
-        <summary>Game Log</summary>
-        <div>{G.log.slice(-10).map((entry, i) => <div key={i} className="log-entry">{entry}</div>)}</div>
-      </details>
+      <details className="game-log"><summary>Game Log</summary>{G.log.slice(-12).map((entry, index) => <div key={index}>{entry}</div>)}</details>
     </div>
   );
+}
+
+export function Board(props: Props) {
+  if (props.G.step === 'janken') return <JankenScreen {...props} />;
+  if (props.G.step === 'mulligan') return <MulliganScreen {...props} />;
+  if (props.G.step === 'gameOver') return <GameOverScreen {...props} />;
+  return <BattleBoard {...props} />;
 }

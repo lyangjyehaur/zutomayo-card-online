@@ -5,10 +5,4 @@ services:
       - "3000:3000"
     environment:
       - PORT=3000
-      - DB_PATH=/data/zutomayo.db
-    volumes:
-      - zutomayo-data:/data
     restart: unless-stopped
-
-volumes:
-  zutomayo-data:

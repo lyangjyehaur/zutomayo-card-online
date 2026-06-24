@@ -1,6 +1,6 @@
 import type { GameState, CardInstance, CardDef } from './types';
 import { getCardDef } from './cards/loader';
-import { getChronosTime, getPlayerPowerExport as getPlayerPower } from './GameLogic';
+import { getChronosTime, getPlayerPower } from './GameLogic';
 
 export type AIDifficulty = 'easy' | 'normal' | 'hard';
 
@@ -49,7 +49,9 @@ export function aiSelectCards(
   difficulty: AIDifficulty
 ): { handIndex: number; slot: 'A' | 'B' }[] {
   const player = G.players[playerIdx];
-  const maxCards = G.turn === 0 ? 1 : (G.lastBattleResult.winner === playerIdx ? 1 : 2);
+  const maxCards = G.step === 'initialSet' || G.lastBattleResult.winner === null
+    ? 1
+    : (G.lastBattleResult.winner === playerIdx ? 1 : 2);
 
   if (player.hand.length === 0) return [];
 

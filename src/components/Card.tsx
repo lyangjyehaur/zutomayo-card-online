@@ -25,9 +25,6 @@ interface CardProps {
 }
 
 export function Card({ card, onClick, selected, small }: CardProps) {
-  const def = getCardDef(card.defId);
-  if (!def) return <div className="card card-unknown">?</div>;
-
   if (!card.faceUp) {
     return (
       <div className="card card-back" onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
@@ -35,6 +32,9 @@ export function Card({ card, onClick, selected, small }: CardProps) {
       </div>
     );
   }
+
+  const def = getCardDef(card.defId);
+  if (!def) return <div className="card card-unknown">?</div>;
 
   const size = small ? { width: 120, height: 170 } : { width: 160, height: 225 };
 
