@@ -8,11 +8,22 @@ let ZutomayoCard;
 
 try {
   // Try loading compiled game module
-  ZutomayoCard = require('./dist-server/game/Game.js').ZutomayoCard;
+  ZutomayoCard = require('./dist-server/game/Game').ZutomayoCard;
 } catch (e) {
   console.error('Failed to load game module:', e.message);
-  console.error('Run: npx tsc --outDir dist-server --module commonjs --moduleResolution node src/game/Game.ts');
-  process.exit(1);
+  try {
+    // Try alternative path
+    ZutomayoCard = require('./dist-server/src/game/Game').ZutomayoCard;
+  } catch (e2) {
+    console.error('Also failed:', e2.message);
+    console.error('Files in dist-server:');
+    try {
+      const fs = require('fs');
+      const files = fs.readdirSync('./dist-server', { recursive: true });
+      console.error(files.join('\n'));
+    } catch(e3) {}
+    process.exit(1);
+  }
 }
 
 const server = Server({
