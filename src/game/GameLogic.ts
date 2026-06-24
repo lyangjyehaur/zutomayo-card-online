@@ -49,16 +49,14 @@ export function getPlayerPowerExport(player: PlayerState): number {
 export function getEffectiveAttack(card: CardInstance, G: GameState, playerIdx: number): number {
   const def = getCardDef(card.defId);
   if (!def || !def.attack) return 0;
-
   const time = getChronosTime(G);
   const rawAttack = time === 'night' ? def.attack.night : def.attack.day;
   const power = getPlayerPower(G.players[playerIdx]);
-
   if (power < def.powerCost) return 0;
   return rawAttack;
 }
 
-// ===== Setup =====
+// ===== Setup Phase =====
 
 export function setupGame(deck0Name?: string, deck1Name?: string): GameState {
   const deck0 = shuffleDeck(deck0Name ? getPresetDeck(deck0Name) : randomDeck());
@@ -80,23 +78,83 @@ export function setupGame(deck0Name?: string, deck1Name?: string): GameState {
 
   const G: GameState = {
     players: [makePlayer(), makePlayer()],
-    chronos: { position: 0, nightSidePlayer: Math.random() < 0.5 ? 0 : 1 },
+    chronos: { position: 0, nightSidePlayer: 0 }, // Will be set by janken
     turn: 0,
     lastBattleResult: { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 },
     setCardsThisTurn: { player0: [], player1: [] },
     log: [],
+    setupPhase: 'janken', // Track setup sub-phases
+    mulliganUsed: [false, false],
   };
 
+  // Step 3: Shuffle, exchange, shuffle again, exchange back
   G.players[0].deck = deck0;
   G.players[1].deck = deck1;
 
+  // Step 5: Draw 5 cards each
   drawCards(G.players[0], 5);
   drawCards(G.players[1], 5);
 
-  G.log.push(`Game started. Player ${G.chronos.nightSidePlayer} is night side.`);
-  G.log.push(`Each player drew 5 cards.`);
-
+  G.log.push('Game initialized. Janken to determine night side.');
   return G;
+}
+
+// ===== Janken (Rock-Paper-Scissors) =====
+
+export type JankenChoice = 'rock' | 'paper' | 'scissors';
+
+export function resolveJanken(G: GameState, choice0: JankenChoice, choice1: JankenChoice): { winner: 0 | 1 | null } {
+  const beats: Record<JankenChoice, JankenChoice> = {
+    rock: 'scissors',
+    paper: 'rock',
+    scissors: 'paper',
+  };
+
+  if (choice0 === choice1) {
+    G.log.push(`Janken: Both chose ${choice0} — Draw!`);
+    return { winner: null };
+  }
+
+  const winner = beats[choice0] === choice1 ? 0 : 1;
+  G.chronos.nightSidePlayer = winner;
+  G.setupPhase = 'mulligan';
+  G.log.push(`Janken: ${choice0} vs ${choice1} — Player ${winner} wins and becomes night side!`);
+  return { winner };
+}
+
+// ===== Mulligan =====
+
+export function mulligan(G: GameState, playerIdx: number, indicesToRedraw: number[]): void {
+  if (G.mulliganUsed?.[playerIdx]) return;
+
+  const player = G.players[playerIdx];
+  const toRedraw = indicesToRedraw
+    .filter(i => i >= 0 && i < player.hand.length)
+    .sort((a, b) => b - a);
+
+  if (toRedraw.length === 0) {
+    if (G.mulliganUsed) G.mulliganUsed[playerIdx] = true;
+    G.log.push(`Player ${playerIdx} keeps hand.`);
+    return;
+  }
+
+  const aside: CardInstance[] = [];
+  for (const idx of toRedraw) {
+    aside.push(player.hand.splice(idx, 1)[0]);
+  }
+
+  drawCards(player, aside.length);
+
+  player.deck.push(...aside);
+  player.deck = shuffleDeck(player.deck);
+
+  if (G.mulliganUsed) G.mulliganUsed[playerIdx] = true;
+  G.log.push(`Player ${playerIdx} redraws ${aside.length} cards.`);
+}
+
+// Check if both players have completed mulligan
+export function isSetupComplete(G: GameState): boolean {
+  return G.mulliganUsed?.[0] === true && G.mulliganUsed?.[1] === true;
 }
 
 // ===== Phase: Set =====
@@ -109,7 +167,7 @@ export function selectCard(G: GameState, playerIdx: number, handIndex: number, s
   if (player.cardsSetThisTurn >= maxCards) return false;
 
   const card = player.hand.splice(handIndex, 1)[0];
-  card.faceUp = false;
+  card.faceUp = false; // Face down until reveal
 
   if (slot === 'A' && !player.setZoneA) {
     player.setZoneA = card;
@@ -136,11 +194,15 @@ export function getMaxSetCards(G: GameState, playerIdx: number): number {
 // ===== Phase: Reveal =====
 
 export function revealCards(G: GameState): void {
+  // "嫌（やぁ）" — simultaneously reveal
+  G.log.push('「嫌（やぁ）」— Cards revealed!');
+
   for (const player of G.players) {
     if (player.setZoneA) player.setZoneA.faceUp = true;
     if (player.setZoneB) player.setZoneB.faceUp = true;
   }
 
+  // Non-character cards go to power charger/abyss immediately
   for (const player of G.players) {
     for (const slot of ['setZoneA', 'setZoneB'] as const) {
       const card = player[slot];
@@ -153,8 +215,6 @@ export function revealCards(G: GameState): void {
       }
     }
   }
-
-  G.log.push('Cards revealed.');
 }
 
 // ===== Phase: Time =====

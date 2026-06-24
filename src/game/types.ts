@@ -4,6 +4,8 @@ export type Element = '闇' | '炎' | '電気' | '風' | 'カオス';
 export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
 export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
 export type ChronosTime = 'night' | 'day';
+export type JankenChoice = 'rock' | 'paper' | 'scissors';
+
 export type GamePhase = 'set' | 'reveal' | 'time' | 'swap' | 'effect' | 'battle' | 'end';
 
 export interface CardDef {
@@ -67,11 +69,13 @@ export interface GameState {
   chronos: ChronosState;
   turn: number;
   lastBattleResult: LastBattleResult;
-  // Cards that were set this turn (for reveal/swap processing)
   setCardsThisTurn: {
     player0: CardInstance[];
     player1: CardInstance[];
   };
-  // Game log for debugging
   log: string[];
+  // Setup sub-phases
+  setupPhase?: 'janken' | 'mulligan' | 'initial-set' | 'done';
+  mulliganUsed?: [boolean, boolean];
+  jankenChoices?: [JankenChoice | null, JankenChoice | null];
 }

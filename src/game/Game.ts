@@ -4,6 +4,7 @@ import type { GameState } from './types';
 import { getAllCardDefs } from './cards/loader';
 import { parseAllEffects } from './effects';
 import type { ParsedEffect } from './effects';
+import type { JankenChoice } from './GameLogic';
 import {
   setupGame,
   selectCard,
@@ -13,10 +14,12 @@ import {
   resolveBattle,
   endTurn,
   checkGameEnd,
+  resolveJanken,
+  mulligan,
+  isSetupComplete,
 } from './GameLogic';
 import { processTurnEffects } from './effects/executor';
 
-// Pre-parse all card effects at load time
 const allCards = getAllCardDefs();
 const parsedEffects: Map<string, ParsedEffect[]> = parseAllEffects(
   allCards.map(c => ({ id: c.id, effect: c.effect }))
@@ -28,17 +31,47 @@ export const ZutomayoCard: Game<GameState> = {
   setup: () => setupGame(),
 
   moves: {
-    selectCard: ({ G, playerID }, handIndex: number, slot: 'A' | 'B') => {
+    // Janken (rock-paper-scissors)
+    janken: ({ G, playerID }, choice: JankenChoice) => {
       const idx = parseInt(playerID) as 0 | 1;
-      if (!selectCard(G, idx, handIndex, slot)) {
-        return INVALID_MOVE;
+      if (!G.jankenChoices) G.jankenChoices = [null, null];
+      G.jankenChoices[idx] = choice;
+
+      // If both chose, resolve
+      if (G.jankenChoices[0] && G.jankenChoices[1]) {
+        const result = resolveJanken(G, G.jankenChoices[0], G.jankenChoices[1]);
+        if (result.winner === null) {
+          // Draw — reset and try again
+          G.jankenChoices = [null, null];
+          G.log.push('Janken draw! Try again.');
+        }
       }
     },
 
+    // Mulligan
+    mulligan: ({ G, playerID }, indicesToRedraw: number[]) => {
+      const idx = parseInt(playerID) as 0 | 1;
+      if (G.mulliganUsed?.[idx]) return INVALID_MOVE;
+      mulligan(G, idx, indicesToRedraw);
+    },
+
+    // Skip mulligan
+    keepHand: ({ G, playerID }) => {
+      const idx = parseInt(playerID) as 0 | 1;
+      if (G.mulliganUsed?.[idx]) return INVALID_MOVE;
+      mulligan(G, idx, []);
+    },
+
+    // Select card during gameplay
+    selectCard: ({ G, playerID }, handIndex: number, slot: 'A' | 'B') => {
+      const idx = parseInt(playerID) as 0 | 1;
+      if (!selectCard(G, idx, handIndex, slot)) return INVALID_MOVE;
+    },
+
+    // Confirm set
     confirmSet: ({ G, playerID }) => {
       const idx = parseInt(playerID) as 0 | 1;
-      const player = G.players[idx];
-      if (player.cardsSetThisTurn === 0) return INVALID_MOVE;
+      if (G.players[idx].cardsSetThisTurn === 0) return INVALID_MOVE;
     },
   },
 
@@ -47,12 +80,16 @@ export const ZutomayoCard: Game<GameState> = {
     maxMoves: 2,
 
     onBegin: ({ G }) => {
-      G.players[0].cardsSetThisTurn = 0;
-      G.players[1].cardsSetThisTurn = 0;
-      G.setCardsThisTurn = { player0: [], player1: [] };
+      if (G.setupPhase === 'done') {
+        G.players[0].cardsSetThisTurn = 0;
+        G.players[1].cardsSetThisTurn = 0;
+        G.setCardsThisTurn = { player0: [], player1: [] };
+      }
     },
 
     onEnd: ({ G }) => {
+      if (G.setupPhase !== 'done') return;
+
       // Phase pipeline: reveal → time → swap → effects → battle → end
       revealCards(G);
       advanceChronos(G);
@@ -64,6 +101,7 @@ export const ZutomayoCard: Game<GameState> = {
   },
 
   endIf: ({ G }) => {
+    if (G.setupPhase !== 'done') return;
     const result = checkGameEnd(G);
     if (result) return { winner: result };
   },

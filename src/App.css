@@ -306,6 +306,90 @@ body {
 .game-log summary { cursor: pointer; color: #888; }
 .log-entry { padding: 0.1rem 0; border-bottom: 1px solid #222; }
 
+/* Setup Screens (Janken & Mulligan) */
+.setup-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: 2rem;
+}
+
+.setup-screen h2 { color: #f4d35e; font-size: 1.5rem; margin-bottom: 0.5rem; }
+.setup-hint { color: #888; font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+/* Janken */
+.janken-buttons { display: flex; gap: 1rem; }
+
+.janken-btn {
+  padding: 1rem 1.5rem;
+  border: 2px solid #333;
+  border-radius: 12px;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.janken-btn:hover { border-color: #f4d35e; transform: scale(1.1); }
+
+.janken-waiting { text-align: center; color: #ccc; font-size: 1rem; }
+.janken-result { color: #f4d35e; font-weight: bold; margin-top: 1rem; }
+
+/* Mulligan */
+.mulligan-hand {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.mulligan-card {
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.mulligan-card:hover { transform: translateY(-8px); }
+.mulligan-card.selected { transform: translateY(-12px); }
+.mulligan-card.selected::after {
+  content: '🔄';
+  position: absolute;
+  top: -8px;
+  right: -4px;
+  font-size: 1.2rem;
+}
+
+.mulligan-mark {
+  position: absolute;
+  inset: 0;
+  background: rgba(244,211,94,0.3);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+.mulligan-actions { display: flex; gap: 1rem; }
+
+.mulligan-btn {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  background: #f4d35e;
+  color: #1a1a2e;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.mulligan-btn.keep { background: #2ec4b6; }
+.mulligan-done { color: #888; margin-top: 1rem; }
+
 /* Lobby */
 .lobby {
   min-height: 100vh;

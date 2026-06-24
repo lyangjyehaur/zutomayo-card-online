@@ -1,6 +1,6 @@
 import { BoardProps } from 'boardgame.io/react';
 import { useState, useEffect, useRef } from 'react';
-import type { GameState } from '../game/types';
+import type { GameState, JankenChoice } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { Card } from './Card';
 import { Chronos } from './Chronos';
@@ -16,6 +16,83 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
   const opp = G.players[oppIdx];
   const currentTime = getChronosTime(G);
 
+  // ===== Setup Phases =====
+
+  // Janken screen
+  if (G.setupPhase === 'janken') {
+    const myChoice = G.jankenChoices?.[myIdx];
+    const oppChoice = G.jankenChoices?.[oppIdx];
+    const bothChose = myChoice && oppChoice;
+
+    return (
+      <div className="setup-screen">
+        <h2>✊ パー ✋ チョキ ✌️</h2>
+        <p className="setup-hint">猜拳決定誰是夜側玩家</p>
+
+        {!myChoice ? (
+          <div className="janken-buttons">
+            <button className="janken-btn" onClick={() => moves.janken('rock')}>✊ Rock</button>
+            <button className="janken-btn" onClick={() => moves.janken('paper')}>✋ Paper</button>
+            <button className="janken-btn" onClick={() => moves.janken('scissors')}>✌️ Scissors</button>
+          </div>
+        ) : (
+          <div className="janken-waiting">
+            <p>You chose: {myChoice === 'rock' ? '✊' : myChoice === 'paper' ? '✋' : '✌️'}</p>
+            <p>{oppChoice ? `Opponent chose: ${oppChoice === 'rock' ? '✊' : oppChoice === 'paper' ? '✋' : '✌️'}` : 'Waiting for opponent...'}</p>
+            {bothChose && <p className="janken-result">Resolving...</p>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Mulligan screen
+  if (G.setupPhase === 'mulligan') {
+    const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
+    const myMulliganUsed = G.mulliganUsed?.[myIdx];
+
+    const toggleCard = (idx: number) => {
+      setSelectedIndices(prev =>
+        prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+      );
+    };
+
+    return (
+      <div className="setup-screen">
+        <h2>🃏 手牌確認</h2>
+        <p className="setup-hint">選擇要重抽的卡（可不選直接確認）</p>
+
+        <div className="mulligan-hand">
+          {me.hand.map((card, i) => (
+            <div
+              key={card.instanceId}
+              className={`mulligan-card ${selectedIndices.includes(i) ? 'selected' : ''}`}
+              onClick={() => !myMulliganUsed && toggleCard(i)}
+            >
+              <Card card={card} small />
+              {selectedIndices.includes(i) && <div className="mulligan-mark">🔄</div>}
+            </div>
+          ))}
+        </div>
+
+        {!myMulliganUsed ? (
+          <div className="mulligan-actions">
+            <button className="mulligan-btn" onClick={() => { moves.mulligan(selectedIndices); setSelectedIndices([]); }}>
+              🔄 重抽 {selectedIndices.length} 張
+            </button>
+            <button className="mulligan-btn keep" onClick={() => moves.keepHand()}>
+              ✅ 確認手牌
+            </button>
+          </div>
+        ) : (
+          <p className="mulligan-done">等待對手確認...</p>
+        )}
+      </div>
+    );
+  }
+
+  // ===== Main Game =====
+
   const maxSet = getMaxSetCards(G, myIdx);
   const canSet = me.cardsSetThisTurn < maxSet;
 
@@ -30,25 +107,19 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
-          // Auto-confirm when timer runs out
-          if (me.cardsSetThisTurn > 0) {
-            moves.confirmSet();
-          }
+          if (me.cardsSetThisTurn > 0) moves.confirmSet();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [G.turn, me.cardsSetThisTurn]);
 
   const timerColor = timeLeft > 30 ? '#2ec4b6' : timeLeft > 10 ? '#f4d35e' : '#e63946';
 
   if (ctx.gameover) {
-    // Save match record
     saveMatchRecord(G, ctx.gameover.winner as string);
     return (
       <div className="game-over">
@@ -61,7 +132,7 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
 
   return (
     <div className="board">
-      {/* Opponent area */}
+      {/* Opponent */}
       <div className="player-area opponent">
         <div className="player-info">
           <span className="hp">❤️ {opp.hp}</span>
@@ -70,22 +141,10 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
         </div>
 
         <div className="zones opponent-zones">
-          <div className="zone set-zone">
-            <div className="zone-label">Set A</div>
-            {opp.setZoneA && <Card card={opp.setZoneA} small />}
-          </div>
-          <div className="zone battle-zone">
-            <div className="zone-label">Battle</div>
-            {opp.battleZone && <Card card={opp.battleZone} />}
-          </div>
-          <div className="zone set-zone">
-            <div className="zone-label">Set B</div>
-            {opp.setZoneB && <Card card={opp.setZoneB} small />}
-          </div>
-          <div className="zone area-zone">
-            <div className="zone-label">Area E</div>
-            {opp.setZoneC && <Card card={opp.setZoneC} small />}
-          </div>
+          <div className="zone set-zone"><div className="zone-label">Set A</div>{opp.setZoneA && <Card card={opp.setZoneA} small />}</div>
+          <div className="zone battle-zone"><div className="zone-label">Battle</div>{opp.battleZone && <Card card={opp.battleZone} />}</div>
+          <div className="zone set-zone"><div className="zone-label">Set B</div>{opp.setZoneB && <Card card={opp.setZoneB} small />}</div>
+          <div className="zone area-zone"><div className="zone-label">Area E</div>{opp.setZoneC && <Card card={opp.setZoneC} small />}</div>
         </div>
 
         <div className="side-zones">
@@ -94,21 +153,17 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
         </div>
 
         <div className="opponent-hand">
-          {opp.hand.map((c, i) => (
-            <Card key={c.instanceId} card={{ ...c, faceUp: false }} small />
-          ))}
+          {opp.hand.map((c) => <Card key={c.instanceId} card={{ ...c, faceUp: false }} small />)}
         </div>
       </div>
 
-      {/* Center: Chronos */}
+      {/* Center */}
       <div className="center-area">
         <Chronos chronos={G.chronos} currentTime={currentTime} />
         <div className="turn-info">
           <div>Turn {G.turn + 1}</div>
           <div>{currentTime === 'night' ? '🌙 Night' : '☀️ Day'} Phase</div>
-          <div className="turn-timer" style={{ color: timerColor }}>
-            ⏱ {timeLeft}s
-          </div>
+          <div className="turn-timer" style={{ color: timerColor }}>⏱ {timeLeft}s</div>
           {G.lastBattleResult.winner !== null && (
             <div className="last-battle">
               Last: {G.lastBattleResult.winnerAttack} vs {G.lastBattleResult.loserAttack}
@@ -118,25 +173,13 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
         </div>
       </div>
 
-      {/* My area */}
+      {/* Self */}
       <div className="player-area self">
         <div className="zones my-zones">
-          <div className="zone set-zone">
-            <div className="zone-label">Set A</div>
-            {me.setZoneA && <Card card={me.setZoneA} small />}
-          </div>
-          <div className="zone battle-zone">
-            <div className="zone-label">Battle</div>
-            {me.battleZone && <Card card={me.battleZone} />}
-          </div>
-          <div className="zone set-zone">
-            <div className="zone-label">Set B</div>
-            {me.setZoneB && <Card card={me.setZoneB} small />}
-          </div>
-          <div className="zone area-zone">
-            <div className="zone-label">Area E</div>
-            {me.setZoneC && <Card card={me.setZoneC} small />}
-          </div>
+          <div className="zone set-zone"><div className="zone-label">Set A</div>{me.setZoneA && <Card card={me.setZoneA} small />}</div>
+          <div className="zone battle-zone"><div className="zone-label">Battle</div>{me.battleZone && <Card card={me.battleZone} />}</div>
+          <div className="zone set-zone"><div className="zone-label">Set B</div>{me.setZoneB && <Card card={me.setZoneB} small />}</div>
+          <div className="zone area-zone"><div className="zone-label">Area E</div>{me.setZoneC && <Card card={me.setZoneC} small />}</div>
         </div>
 
         <div className="player-info">
@@ -146,7 +189,6 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
           <span className="abyss">🕳️ {me.abyss.length}</span>
         </div>
 
-        {/* Hand */}
         <div className="hand">
           {me.hand.map((card, i) => (
             <Card
@@ -162,10 +204,7 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
         </div>
 
         <div className="actions">
-          <button
-            disabled={me.cardsSetThisTurn === 0}
-            onClick={() => moves.confirmSet()}
-          >
+          <button disabled={me.cardsSetThisTurn === 0} onClick={() => moves.confirmSet()}>
             Confirm Set ({me.cardsSetThisTurn}/{maxSet})
           </button>
         </div>
@@ -174,11 +213,7 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
       {/* Game log */}
       <details className="game-log">
         <summary>Game Log</summary>
-        <div>
-          {G.log.slice(-10).map((entry, i) => (
-            <div key={i} className="log-entry">{entry}</div>
-          ))}
-        </div>
+        <div>{G.log.slice(-10).map((entry, i) => <div key={i} className="log-entry">{entry}</div>)}</div>
       </details>
     </div>
   );
