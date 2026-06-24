@@ -18,13 +18,26 @@ export interface MatchRecord {
   log: string[];
 }
 
+type MatchWinnerInput = string | number | null | undefined;
+
+function normalizeWinner(winner: MatchWinnerInput): 0 | 1 | null {
+  if (winner === 0 || winner === '0') return 0;
+  if (winner === 1 || winner === '1') return 1;
+  if (typeof winner !== 'string') return null;
+
+  const playerWins = winner.match(/player\s*([01])\s*wins?/i);
+  if (playerWins?.[1] === '0') return 0;
+  if (playerWins?.[1] === '1') return 1;
+  return null;
+}
+
 // Save match record to localStorage
-export function saveMatchRecord(G: GameState, winner: string | null): void {
+export function saveMatchRecord(G: GameState, winner: MatchWinnerInput): void {
   const record: MatchRecord = {
     id: `match_${Date.now()}`,
     date: new Date().toISOString(),
     duration: 0, // TODO: track actual duration
-    winner: winner === '0' ? 0 : winner === '1' ? 1 : null,
+    winner: normalizeWinner(winner),
     players: G.players.map(p => ({
       hp: p.hp,
       deckSize: p.deck.length,

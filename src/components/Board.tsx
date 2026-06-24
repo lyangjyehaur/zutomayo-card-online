@@ -59,7 +59,8 @@ function MulliganScreen({ G, moves, playerID }: Props) {
 
 function GameOverScreen({ G, ctx }: Props) {
   useEffect(() => {
-    saveMatchRecord(G, G.winner === null ? 'draw' : String(G.winner));
+    const gameover = ctx.gameover as { winner?: string | number; draw?: boolean } | undefined;
+    saveMatchRecord(G, gameover?.winner ?? (G.winner === null ? null : G.winner));
   }, []); // Persist this terminal snapshot once per mounted match.
   return (
     <div className="game-over">

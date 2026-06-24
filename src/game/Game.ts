@@ -12,6 +12,11 @@ import {
   undoSetCard,
 } from './GameLogic';
 
+export interface ZutomayoSetupData {
+  deck0Name?: string;
+  deck1Name?: string;
+}
+
 // boardgame.io 0.50 publishes core as a CommonJS directory that Node ESM cannot
 // import directly. The documented sentinel is the stable string consumed by
 // its reducer, so keeping it local works in both Vite and the Node server.
@@ -102,9 +107,9 @@ const moves: Record<string, Move<GameState>> = {
   },
 };
 
-export const ZutomayoCard: Game<GameState> = {
+export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetupData> = {
   name: 'zutomayo-card',
-  setup: () => setupGame(),
+  setup: (_context, setupData) => setupGame(setupData?.deck0Name, setupData?.deck1Name),
   playerView,
   moves,
   turn: {
@@ -116,3 +121,15 @@ export const ZutomayoCard: Game<GameState> = {
     return G.winner === null ? { draw: true } : { winner: String(G.winner) };
   },
 };
+
+export function createZutomayoCard(
+  defaultSetupData: ZutomayoSetupData = {},
+): Game<GameState, Record<string, unknown>, ZutomayoSetupData> {
+  return {
+    ...ZutomayoCard,
+    setup: (_context, setupData) => setupGame(
+      setupData?.deck0Name ?? defaultSetupData.deck0Name,
+      setupData?.deck1Name ?? defaultSetupData.deck1Name,
+    ),
+  };
+}

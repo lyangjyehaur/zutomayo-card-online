@@ -3,7 +3,7 @@ import type { CardDef, Element, CardType } from '../game/types';
 import { getAllCardDefs } from '../game/cards/loader';
 import { Card } from './Card';
 import { createInstance } from '../game/cards/loader';
-import type { CardInstance } from '../game/types';
+import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/deckBuilder';
 
 interface DeckEditorProps {
   onSave: (deckIds: string[]) => void;
@@ -18,7 +18,7 @@ const MAX_COPIES = 2;
 
 export function DeckEditor({ onSave, onCancel, initialDeck = [] }: DeckEditorProps) {
   const allCards = useMemo(() => getAllCardDefs(), []);
-  const [deck, setDeck] = useState<string[]>(initialDeck);
+  const [deck, setDeck] = useState<string[]>(() => initialDeck.length > 0 ? initialDeck : loadCustomDeckIds() ?? []);
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
   const [searchText, setSearchText] = useState('');
@@ -82,7 +82,15 @@ export function DeckEditor({ onSave, onCancel, initialDeck = [] }: DeckEditorPro
   }, [deck, allCards]);
 
   const characterCount = deckCards.filter(c => c.type === 'Character').length;
-  const isValid = deck.length === DECK_SIZE && characterCount >= Math.ceil(DECK_SIZE * 0.5);
+  const copyLimitValid = [...deckCounts.values()].every(count => count <= MAX_COPIES);
+  const isValid = deck.length === DECK_SIZE
+    && deckCards.length === deck.length
+    && characterCount >= Math.ceil(DECK_SIZE * 0.5)
+    && copyLimitValid;
+  const saveDeck = () => {
+    localStorage.setItem(CUSTOM_DECK_STORAGE_KEY, JSON.stringify(deck));
+    onSave(deck);
+  };
 
   return (
     <div className="deck-editor">
@@ -95,7 +103,7 @@ export function DeckEditor({ onSave, onCancel, initialDeck = [] }: DeckEditorPro
           <span className={characterCount >= 10 ? 'valid' : 'invalid'}>
             Characters: {characterCount}
           </span>
-          <button className="save-btn" disabled={!isValid} onClick={() => onSave(deck)}>
+          <button className="save-btn" disabled={!isValid} onClick={saveDeck}>
             Save Deck
           </button>
           <button className="cancel-btn" onClick={onCancel}>Cancel</button>

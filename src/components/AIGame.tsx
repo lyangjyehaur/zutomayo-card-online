@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
 import { BoardProps } from 'boardgame.io/react';
-import { ZutomayoCard } from '../game/Game';
+import { createZutomayoCard } from '../game/Game';
 import { Board } from './Board';
 import { useAIMoves } from '../game/useAIMoves';
 import type { AIDifficulty } from '../game/ai';
@@ -11,6 +11,8 @@ import type { GameState } from '../game/types';
 interface AIGameProps {
   difficulty: AIDifficulty;
   onBack: () => void;
+  deck0Name?: string;
+  deck1Name?: string;
 }
 
 // Board wrapper that runs AI for player 1
@@ -20,9 +22,9 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
   return <Board {...boardProps} />;
 }
 
-export function AIGame({ difficulty, onBack }: AIGameProps) {
+export function AIGame({ difficulty, onBack, deck0Name, deck1Name }: AIGameProps) {
   const [AIClient] = useState(() => Client({
-    game: ZutomayoCard,
+    game: createZutomayoCard({ deck0Name, deck1Name }),
     board: (props: BoardProps<GameState>) => <AIBoard {...props} difficulty={difficulty} />,
     numPlayers: 2,
     multiplayer: Local(),
