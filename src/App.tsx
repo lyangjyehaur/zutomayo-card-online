@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
-import { SocketIO } from 'boardgame.io/multiplayer';
 import { ZutomayoCard } from './game/Game';
 import { Board } from './components/Board';
 import { DeckEditor } from './components/DeckEditor';
@@ -18,16 +17,17 @@ import './components/InteractiveTutorial.css';
 import './components/Account.css';
 
 const deckNames = Object.keys(PRESET_DECKS);
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
 
-// Local mode client (2 players on same screen)
-const LocalClient = Client({
-  game: ZutomayoCard,
-  board: Board,
-  numPlayers: 2,
-  multiplayer: Local(),
-  debug: false,
-});
+// Factory: create a fresh Local client for 2-player same-screen
+function createLocalClient() {
+  return Client({
+    game: ZutomayoCard,
+    board: Board,
+    numPlayers: 2,
+    multiplayer: Local(),
+    debug: false,
+  });
+}
 
 // Lobby
 function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory, onStartAI, onTutorial, onLeaderboard, user, onLogout }: {
@@ -92,7 +92,6 @@ function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory, onStartAI, onT
               <button className="start-btn" disabled={!matchID} onClick={() => onOnline('join', matchID)}>🚪 Join Room</button>
             </div>
           </div>
-          <p className="lobby-hint">Server: {SERVER_URL}</p>
         </div>
       )}
 
@@ -116,20 +115,30 @@ function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory, onStartAI, onT
   );
 }
 
+// Local Battle wrapper — fresh client each mount
+function LocalBattle() {
+  const [LocalClient] = useState(() => createLocalClient());
+
+  return (
+    <div className="app">
+      <div className="game-container">
+        <div className="player-view"><h3>Player 0</h3><LocalClient playerID="0" /></div>
+        <div className="player-view"><h3>Player 1</h3><LocalClient playerID="1" /></div>
+      </div>
+    </div>
+  );
+}
+
 // Main App
 export default function App() {
   const [mode, setMode] = useState<string>('menu');
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>('normal');
-  const [matchID, setMatchID] = useState('');
   const [showTutorial, setShowTutorial] = useState(() => !localStorage.getItem('zutomayo_tutorial_seen'));
   const [user, setUser] = useState<{ id: string; email: string; nickname: string; elo: number } | null>(null);
 
-  // Check if logged in on mount
   useEffect(() => {
     if (isLoggedIn()) {
-      getProfile().then(setUser).catch(() => {
-        localStorage.removeItem('zutomayo_token');
-      });
+      getProfile().then(setUser).catch(() => localStorage.removeItem('zutomayo_token'));
     }
   }, []);
 
@@ -148,16 +157,9 @@ export default function App() {
     setUser(null);
   };
 
-  // Auth gate — show auth panel if not logged in and not guest
+  // Auth gate
   if (!user && !localStorage.getItem('zutomayo_guest') && mode === 'menu') {
-    return (
-      <AuthPanel
-        onAuth={handleAuth}
-        onSkip={() => {
-          localStorage.setItem('zutomayo_guest', '1');
-        }}
-      />
-    );
+    return <AuthPanel onAuth={handleAuth} onSkip={() => localStorage.setItem('zutomayo_guest', '1')} />;
   }
 
   // Tutorial overlay
@@ -166,8 +168,8 @@ export default function App() {
       <>
         <InteractiveTutorial onComplete={closeTutorial} onStartPractice={() => { closeTutorial(); setAiDifficulty('easy'); setMode('ai-game'); }} />
         <Lobby
-          onStart={(_, __) => setMode('local')}
-          onOnline={(action, id) => { setMatchID(id); setMode(action === 'create' ? 'online-create' : 'online-join'); }}
+          onStart={() => setMode('local')}
+          onOnline={(action, id) => setMode(action === 'create' ? 'online-create' : 'online-join')}
           onDeckEditor={() => setMode('deck-editor')}
           onMatchHistory={() => setMode('match-history')}
           onStartAI={(d) => { setAiDifficulty(d); setMode('ai-game'); }}
@@ -180,13 +182,13 @@ export default function App() {
     );
   }
 
-  // Mode routing
+  // Mode routing — each mode renders independently
   switch (mode) {
     case 'menu':
       return (
         <Lobby
-          onStart={(_, __) => setMode('local')}
-          onOnline={(action, id) => { setMatchID(id); setMode(action === 'create' ? 'online-create' : 'online-join'); }}
+          onStart={() => setMode('local')}
+          onOnline={(action) => setMode(action === 'create' ? 'online-create' : 'online-join')}
           onDeckEditor={() => setMode('deck-editor')}
           onMatchHistory={() => setMode('match-history')}
           onStartAI={(d) => { setAiDifficulty(d); setMode('ai-game'); }}
@@ -199,13 +201,10 @@ export default function App() {
 
     case 'local':
       return (
-        <div className="app">
-          <div className="game-container">
-            <div className="player-view"><h3>Player 0</h3><LocalClient playerID="0" /></div>
-            <div className="player-view"><h3>Player 1</h3><LocalClient playerID="1" /></div>
-          </div>
+        <>
+          <LocalBattle />
           <button className="back-btn" onClick={() => setMode('menu')}>← Back to Lobby</button>
-        </div>
+        </>
       );
 
     case 'ai-game':
@@ -222,8 +221,8 @@ export default function App() {
 
     default:
       return <Lobby
-        onStart={(_, __) => setMode('local')}
-        onOnline={(action, id) => { setMatchID(id); setMode(action === 'create' ? 'online-create' : 'online-join'); }}
+        onStart={() => setMode('local')}
+        onOnline={(action) => setMode(action === 'create' ? 'online-create' : 'online-join')}
         onDeckEditor={() => setMode('deck-editor')}
         onMatchHistory={() => setMode('match-history')}
         onStartAI={(d) => { setAiDifficulty(d); setMode('ai-game'); }}
