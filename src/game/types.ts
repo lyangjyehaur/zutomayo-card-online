@@ -10,6 +10,7 @@ export interface CardDef {
   id: string;
   name: string;
   pack: string;
+  song: string;
   element: Element;
   type: CardType;
   clock: number;

@@ -4,6 +4,7 @@ import { Local } from 'boardgame.io/multiplayer';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { ZutomayoCard } from './game/Game';
 import { Board } from './components/Board';
+import { DeckEditor } from './components/DeckEditor';
 import { PRESET_DECKS } from './game/cards/presetDecks';
 import './App.css';
 
@@ -29,9 +30,10 @@ function createOnlineClient() {
   });
 }
 
-function Lobby({ onStart, onOnline }: {
+function Lobby({ onStart, onOnline, onDeckEditor }: {
   onStart: (d0: string, d1: string) => void;
   onOnline: (mode: 'create' | 'join', matchID: string) => void;
+  onDeckEditor: () => void;
 }) {
   const [deck0, setDeck0] = useState(deckNames[0]);
   const [deck1, setDeck1] = useState(deckNames[1]);
@@ -106,6 +108,14 @@ function Lobby({ onStart, onOnline }: {
         </div>
       )}
 
+      <div className="lobby-actions">
+        {tab === 'local' && (
+          <button className="deck-editor-btn" onClick={() => onDeckEditor()}>
+            🃏 Deck Editor
+          </button>
+        )}
+      </div>
+
       <p className="lobby-hint">
         422 cards • 4 packs • Chronos day/night system
       </p>
@@ -114,7 +124,7 @@ function Lobby({ onStart, onOnline }: {
 }
 
 export default function App() {
-  const [mode, setMode] = useState<'menu' | 'local' | 'online-create' | 'online-join'>('menu');
+  const [mode, setMode] = useState<'menu' | 'local' | 'online-create' | 'online-join' | 'deck-editor'>('menu');
   const [matchID, setMatchID] = useState('');
 
   const handleLocalStart = (_d0: string, _d1: string) => {
@@ -123,7 +133,6 @@ export default function App() {
 
   const handleOnline = (action: 'create' | 'join', id: string) => {
     if (action === 'create') {
-      // Generate a simple match ID
       const newID = Math.random().toString(36).substring(2, 8);
       setMatchID(newID);
       setMode('online-create');
@@ -133,8 +142,20 @@ export default function App() {
     }
   };
 
+  if (mode === 'deck-editor') {
+    return (
+      <DeckEditor
+        onSave={(deck) => {
+          console.log('Saved deck:', deck);
+          setMode('menu');
+        }}
+        onCancel={() => setMode('menu')}
+      />
+    );
+  }
+
   if (mode === 'menu') {
-    return <Lobby onStart={handleLocalStart} onOnline={handleOnline} />;
+    return <Lobby onStart={handleLocalStart} onOnline={handleOnline} onDeckEditor={() => setMode('deck-editor')} />;
   }
 
   if (mode === 'local') {
