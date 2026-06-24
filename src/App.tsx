@@ -57,7 +57,7 @@ async function joinMatch(matchID: string, playerID: string): Promise<{ playerID:
   const res = await fetch(`/games/zutomayo-card/${matchID}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ playerID }),
+    body: JSON.stringify({ playerID, playerName: `Player ${playerID}` }),
   });
   return res.json();
 }
