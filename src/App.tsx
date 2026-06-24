@@ -6,6 +6,8 @@ import { ZutomayoCard } from './game/Game';
 import { Board } from './components/Board';
 import { DeckEditor } from './components/DeckEditor';
 import { MatchHistory } from './components/MatchHistory';
+import { AIGame } from './components/AIGame';
+import type { AIDifficulty } from './game/ai';
 import { PRESET_DECKS } from './game/cards/presetDecks';
 import './App.css';
 
@@ -31,11 +33,12 @@ function createOnlineClient() {
   });
 }
 
-function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory }: {
+function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory, onStartAI }: {
   onStart: (d0: string, d1: string) => void;
   onOnline: (mode: 'create' | 'join', matchID: string) => void;
   onDeckEditor: () => void;
   onMatchHistory: () => void;
+  onStartAI: (difficulty: AIDifficulty) => void;
 }) {
   const [deck0, setDeck0] = useState(deckNames[0]);
   const [deck1, setDeck1] = useState(deckNames[1]);
@@ -123,6 +126,15 @@ function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory }: {
         )}
       </div>
 
+      <div className="ai-section">
+        <h3>🤖 Practice vs AI</h3>
+        <div className="ai-buttons">
+          <button className="ai-btn easy" onClick={() => onStartAI('easy')}>Easy</button>
+          <button className="ai-btn normal" onClick={() => onStartAI('normal')}>Normal</button>
+          <button className="ai-btn hard" onClick={() => onStartAI('hard')}>Hard</button>
+        </div>
+      </div>
+
       <p className="lobby-hint">
         422 cards • 4 packs • Chronos day/night system
       </p>
@@ -131,7 +143,8 @@ function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory }: {
 }
 
 export default function App() {
-  const [mode, setMode] = useState<'menu' | 'local' | 'online-create' | 'online-join' | 'deck-editor' | 'match-history'>('menu');
+  const [mode, setMode] = useState<'menu' | 'local' | 'online-create' | 'online-join' | 'deck-editor' | 'match-history' | 'ai-game'>('menu');
+  const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>('normal');
   const [matchID, setMatchID] = useState('');
 
   const handleLocalStart = (_d0: string, _d1: string) => {
@@ -148,6 +161,10 @@ export default function App() {
       setMode('online-join');
     }
   };
+
+  if (mode === 'ai-game') {
+    return <AIGame difficulty={aiDifficulty} onBack={() => setMode('menu')} />;
+  }
 
   if (mode === 'match-history') {
     return <MatchHistory onBack={() => setMode('menu')} />;
@@ -166,7 +183,7 @@ export default function App() {
   }
 
   if (mode === 'menu') {
-    return <Lobby onStart={handleLocalStart} onOnline={handleOnline} onDeckEditor={() => setMode('deck-editor')} onMatchHistory={() => setMode('match-history')} />;
+    return <Lobby onStart={handleLocalStart} onOnline={handleOnline} onDeckEditor={() => setMode('deck-editor')} onMatchHistory={() => setMode('match-history')} onStartAI={(d) => { setAiDifficulty(d); setMode('ai-game'); }} />;
   }
 
   if (mode === 'local') {
