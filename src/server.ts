@@ -9,7 +9,13 @@ const { Server } = require('boardgame.io/server') as typeof import('boardgame.io
 
 const server = Server({
   games: [ZutomayoCard],
-  origins: ['http://localhost:3000', /localhost:\d+/, /127\.0\.0\.1:\d+/, /149\.104\.6\.238:\d+/, /\d+\.\d+\.\d+\.\d+:\d+/],
+  origins: [
+    'http://localhost:3000',
+    /localhost:\d+/,
+    /127\.0\.0\.1:\d+/,
+    /\d+\.\d+\.\d+\.\d+:\d+/,
+    ...(process.env.ALLOWED_ORIGINS?.split(',').map(origin => new RegExp(origin.trim())) || []),
+  ],
 });
 
 const here = path.dirname(fileURLToPath(import.meta.url));

@@ -48,7 +48,9 @@ export function getPlayerPower(player: PlayerState): number {
 }
 
 export function getChronosTime(G: GameState): ChronosTime {
-  return G.chronos.position < 6 ? 'night' : 'day';
+  const position = ((G.chronos.position % 12) + 12) % 12;
+  const distanceFromMidnight = Math.min(position, 12 - position);
+  return position < 6 || distanceFromMidnight <= G.midnightRange ? 'night' : 'day';
 }
 
 export function getPriorityPlayer(G: GameState): PlayerIndex {
@@ -76,10 +78,12 @@ export function setupGame(deck0Name?: string, deck1Name?: string): GameState {
     step: 'janken',
     ready: [false, false],
     chronos: { position: 0, nightSidePlayer: 0 },
+    midnightRange: 0,
     chronosAtTurnStart: 0,
     turnNumber: 1,
     lastBattleResult: { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 },
     setCardsThisTurn: [[], []],
+    swappedCardsThisTurn: [[], []],
     jankenChoices: [null, null],
     mulliganUsed: [false, false],
     modifiers: emptyModifiers(),
@@ -222,21 +226,53 @@ export function advanceChronos(G: GameState): void {
   G.log.push(`Chronos +${total} (${before}→${G.chronos.position}).`);
 }
 
-function replaceDestination(player: PlayerState, cards: CardInstance[], destination: 'battleZone' | 'setZoneC'): void {
+function hasOptionalSwapEffect(
+  G: GameState,
+  player: PlayerIndex,
+  parsedEffects: Map<string, ParsedEffect[]> | null,
+): boolean {
+  if (!parsedEffects || !G.players[player].battleZone) return false;
+  return G.setCardsThisTurn[player].some(card => {
+    const def = getCardDef(card.defId);
+    if (!def || getPlayerPower(G.players[player]) < def.powerCost) return false;
+    return (parsedEffects.get(card.defId) ?? []).some(effect => (
+      effect.action.type === 'addSettableCard' && effect.action.params.optional
+    ));
+  });
+}
+
+function replaceDestination(
+  G: GameState,
+  playerIndex: PlayerIndex,
+  cards: CardInstance[],
+  destination: 'battleZone' | 'setZoneC',
+  skipBattleSwap = false,
+): void {
   if (cards.length === 0) return;
+  const player = G.players[playerIndex];
+  if (destination === 'battleZone' && skipBattleSwap && player.battleZone) {
+    for (const card of cards) sendToOwnerZone(card, player);
+    return;
+  }
   const selected = cards[0];
   const old = player[destination];
   player[destination] = selected;
+  if (destination === 'battleZone' && old) G.swappedCardsThisTurn[playerIndex].push(selected);
   if (old) sendToOwnerZone(old, player);
   for (const extra of cards.slice(1)) sendToOwnerZone(extra, player);
 }
 
-export function placeRevealedCards(G: GameState, initial: boolean): void {
-  for (const player of G.players) {
+export function placeRevealedCards(
+  G: GameState,
+  initial: boolean,
+  parsedEffects: Map<string, ParsedEffect[]> | null = null,
+): void {
+  for (const index of playerIndexes) {
+    const player = G.players[index];
     const slots = [player.setZoneA, player.setZoneB].filter((card): card is CardInstance => card !== null);
     if (initial) {
       const characters = slots.filter(card => getCardDef(card.defId)?.type === 'Character');
-      replaceDestination(player, characters, 'battleZone');
+      replaceDestination(G, index, characters, 'battleZone');
       for (const card of slots.filter(card => getCardDef(card.defId)?.type !== 'Character')) {
         sendToOwnerZone(card, player);
       }
@@ -246,8 +282,8 @@ export function placeRevealedCards(G: GameState, initial: boolean): void {
     }
     const characters = slots.filter(card => getCardDef(card.defId)?.type === 'Character');
     const areas = slots.filter(card => getCardDef(card.defId)?.type === 'Area Enchant');
-    replaceDestination(player, characters, 'battleZone');
-    replaceDestination(player, areas, 'setZoneC');
+    replaceDestination(G, index, characters, 'battleZone', hasOptionalSwapEffect(G, index, parsedEffects));
+    replaceDestination(G, index, areas, 'setZoneC');
     for (const zone of ['setZoneA', 'setZoneB'] as const) {
       const card = player[zone];
       const type = card && getCardDef(card.defId)?.type;
@@ -315,6 +351,7 @@ function finishTurn(G: GameState): void {
     player.rawAttack = 0;
   }
   G.setCardsThisTurn = [[], []];
+  G.swappedCardsThisTurn = [[], []];
   G.modifiers = emptyModifiers();
   G.turnNumber++;
   G.step = 'turnSet';
@@ -330,11 +367,11 @@ export function resolveTurn(G: GameState, parsedEffects: Map<string, ParsedEffec
   if (initial) {
     // Initial non-Characters leave immediately after reveal, but their entries
     // remain in setCardsThisTurn and therefore still advance Chronos.
-    placeRevealedCards(G, true);
+    placeRevealedCards(G, true, parsedEffects);
     advanceChronos(G);
   } else {
     advanceChronos(G);
-    placeRevealedCards(G, false);
+    placeRevealedCards(G, false, parsedEffects);
   }
   processTurnEffects(G, parsedEffects, G.setCardsThisTurn);
   if (G.step === 'gameOver') return;

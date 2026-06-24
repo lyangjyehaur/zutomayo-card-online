@@ -34,6 +34,8 @@ export type ConditionType =
   | 'handCount'         // Hand has N cards
   | 'hpLessOrEqual'     // Player HP <= N
   | 'chronosChanged'    // Chronos changed this turn
+  | 'namedCardCondition' // Named-song Character in a relevant zone
+  | 'simultaneousCharacter' // Character was played with this effect
   | 'previousCharElement' // Previous turn's character element
   | 'hasAreaEnchant'    // Set zone C has specific card
   | 'and'               // Compound AND

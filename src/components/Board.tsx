@@ -90,13 +90,14 @@ function BattleBoard({ G, moves, playerID }: Props) {
   useEffect(() => {
     setTimeLeft(TURN_TIMER_SECONDS);
     if (timer.current) clearInterval(timer.current);
+    if (G.step !== 'turnSet') return;
     timer.current = setInterval(() => setTimeLeft(value => Math.max(0, value - 1)), 1000);
     return () => { if (timer.current) clearInterval(timer.current); };
   }, [G.turnNumber, G.step]);
 
   useEffect(() => {
-    if (timeLeft === 0 && !G.ready[meIndex] && me.cardsSetThisTurn === required) moves.confirmReady();
-  }, [timeLeft, G.ready, me.cardsSetThisTurn, required, meIndex, moves]);
+    if (G.step === 'turnSet' && timeLeft === 0 && !G.ready[meIndex] && me.cardsSetThisTurn === required) moves.confirmReady();
+  }, [G.step, timeLeft, G.ready, me.cardsSetThisTurn, required, meIndex, moves]);
 
   const setFromHand = (handIndex: number) => {
     if (G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
@@ -122,7 +123,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
         <Chronos chronos={G.chronos} currentTime={time} />
         <div className="turn-info">
           <div>Turn {G.turnNumber}</div><div>{time === 'night' ? '🌙 Night' : '☀️ Day'}</div>
-          <div className="turn-timer" style={{ color: timerColor }}>⏱ {timeLeft}s</div>
+          {G.step === 'turnSet' && <div className="turn-timer" style={{ color: timerColor }}>⏱ {timeLeft}s</div>}
           <div>{G.step === 'initialSet' ? 'Initial battle-zone setup' : `Set ${required} card${required === 1 ? '' : 's'}`}</div>
           <div>{G.ready[opponentIndex] ? 'Opponent ready' : 'Opponent choosing'}</div>
         </div>

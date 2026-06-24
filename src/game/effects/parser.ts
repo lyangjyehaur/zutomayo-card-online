@@ -9,6 +9,10 @@ function parseNum(text: string): number {
   return parseInt(normalized, 10) || 0;
 }
 
+function namedSong(text: string): string | null {
+  return text.match(/[（(]([^（）()]+)[）)]/)?.[1].trim() ?? null;
+}
+
 // ===== Main Parser =====
 
 export function parseEffect(rawText: string): ParsedEffect | null {
@@ -26,8 +30,14 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   let actionText = text;
 
   // "真夜中の前後Xマスも真夜中として扱う"
-  if (text.includes('真夜中として扱う')) {
-    return { trigger: 'onUse', conditions: [], action: { type: 'clockSet', params: { value: 'expand_midnight' } }, rawText };
+  const midnightRangeMatch = text.match(/真夜中の前後([0-9０-９]+)マスも真夜中として扱う/);
+  if (midnightRangeMatch) {
+    return {
+      trigger: 'onUse',
+      conditions: [],
+      action: { type: 'clockSet', params: { value: 'expand_midnight', range: parseNum(midnightRangeMatch[1]) } },
+      rawText,
+    };
   }
 
   // "同時に出したキャラクターカードを、変えなくてもよい"
@@ -36,15 +46,37 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   // "パワーチャージャーからX枚まで選び、このカードの効果として使用する"
+  const powerChargerRecoverMatch = text.match(/パワーチャージャーから[（(]([^）)]+)[）)]のキャラクターを([0-9０-９]+)枚まで選び、このカードの効果として使用する/);
+  if (powerChargerRecoverMatch) {
+    return {
+      trigger: 'onUse',
+      conditions: [],
+      action: {
+        type: 'recoverFromAbyss',
+        params: {
+          source: 'powerCharger',
+          song: powerChargerRecoverMatch[1].trim(),
+          cardType: 'Character',
+          max: parseNum(powerChargerRecoverMatch[2]),
+        },
+      },
+      rawText,
+    };
+  }
+
   if (text.includes('パワーチャージャーから') && text.includes('効果として使用')) {
-    return { trigger: 'onUse', conditions: [], action: { type: 'recoverFromAbyss', params: { source: 'powerCharger' } }, rawText };
+    return { trigger: 'onUse', conditions: [], action: { type: 'recoverFromAbyss', params: { source: 'powerCharger', max: 1 } }, rawText };
   }
 
   // "夜なら..."
-  const chronosMatch = text.match(/^(夜|昼)なら(.+)$/);
+  const chronosMatch = text.match(/^(夜|昼)なら[、,]?(.+)$/);
   if (chronosMatch) {
     conditions.push({ type: 'chronos', value: chronosMatch[1] === '夜' ? 'night' : 'day' });
     actionText = chronosMatch[2];
+  }
+
+  if (actionText.includes('同時に出した自分のキャラクターカード') || actionText.includes('同時にセットした自分のキャラクターカード')) {
+    conditions.push({ type: 'simultaneousCharacter', value: true });
   }
 
   // "相手の属性がXなら..."
@@ -62,14 +94,14 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   // "アビスにX種類の属性があると..."
-  const abyssElementMatch = text.match(/アビスに(\d)種類の属性があると(.+)$/);
+  const abyssElementMatch = text.match(/アビスに([0-9０-９]+)種類の属性があると(.+)$/);
   if (abyssElementMatch) {
     conditions.push({ type: 'abyssElements', value: parseNum(abyssElementMatch[1]) });
     actionText = abyssElementMatch[2];
   }
 
   // "パワーチャージャーにX属性以上あるなら..."
-  const pcElementMatch = text.match(/パワーチャージャーに(\d)属性以上あるなら(.+)$/);
+  const pcElementMatch = text.match(/パワーチャージャーに([0-9０-９]+)属性以上あるなら[、,]?(.+)$/);
   if (pcElementMatch) {
     conditions.push({ type: 'abyssElements', value: parseNum(pcElementMatch[1]), target: 'powerCharger' });
     actionText = pcElementMatch[2];
@@ -90,16 +122,20 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   // "このターンにXのキャラクターと入れ替えていたなら..."
-  const swappedMatch = text.match(/このターンに.+キャラクターと入れ替えていたなら(.+)$/);
+  const swappedMatch = text.match(/このターンに[（(]([^）)]+)[）)]のキャラクターと入れ替えていたなら[、,]?(.+)$/);
   if (swappedMatch) {
-    conditions.push({ type: 'chronosChanged', value: true });
-    actionText = swappedMatch[1];
+    conditions.push({ type: 'namedCardCondition', value: swappedMatch[1].trim(), target: 'swappedThisTurn' });
+    actionText = swappedMatch[2];
   }
 
   // "バトルゾーンのカードがXのキャラクターなら..."
-  const namedCardMatch = text.match(/バトルゾーンのカードが.+キャラクターなら(.+)$/);
+  const namedCardMatch = text.match(/バトルゾーンの(?:カード|キャラクター)が[（(]([^）)]+)[）)]のキャラクターなら[、,]?(.+)$/);
   if (namedCardMatch) {
-    actionText = namedCardMatch[1];
+    conditions.push({ type: 'namedCardCondition', value: namedCardMatch[1].trim(), target: 'battleZone' });
+    actionText = namedCardMatch[2];
+  } else if (text.includes('バトルゾーン') && text.includes('キャラクターなら')) {
+    const song = namedSong(text);
+    if (song) conditions.push({ type: 'namedCardCondition', value: song, target: 'battleZone' });
   }
 
   // Parse action from the remaining text
@@ -118,35 +154,35 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 
 function parseAction(text: string): EffectAction | null {
   // "攻撃力+50"
-  const boostMatch = text.match(/攻撃力[＋+](\d+)/);
+  const boostMatch = text.match(/攻撃力(?:を)?[＋+]([0-9０-９]+)/);
   if (boostMatch) return { type: 'boostAttack', params: { value: parseNum(boostMatch[1]) } };
 
   // "攻撃力-30"
-  const reduceMatch = text.match(/攻撃力[ー\-](\d+)/);
+  const reduceMatch = text.match(/攻撃力(?:を)?[ー\-]([0-9０-９]+)/);
   if (reduceMatch) return { type: 'reduceAttack', params: { value: parseNum(reduceMatch[1]) } };
 
   // "HPをX回復"
-  const healMatch = text.match(/HP[をが](\d+)回復/);
+  const healMatch = text.match(/HP[をが]([0-9０-９]+)回復/);
   if (healMatch) return { type: 'heal', params: { value: parseNum(healMatch[1]) } };
 
   // "HP+20" or "HP+50" (without を/が)
-  const hpBoostMatch = text.match(/HP[＋+](\d+)/);
+  const hpBoostMatch = text.match(/HP[＋+]([0-9０-９]+)/);
   if (hpBoostMatch) return { type: 'heal', params: { value: parseNum(hpBoostMatch[1]) } };
 
   // "相手のHP-20"
-  const hpReduceMatch = text.match(/相手のHP[ー\-](\d+)/);
+  const hpReduceMatch = text.match(/相手のHP[ー\-]([0-9０-９]+)/);
   if (hpReduceMatch) return { type: 'directDamage', params: { value: parseNum(hpReduceMatch[1]) } };
 
   // "Xダメージを軽減"
-  const damageReduceMatch = text.match(/(\d+)ダメージ[を]?軽減/);
+  const damageReduceMatch = text.match(/([0-9０-９]+)ダメージ[を]?軽減/);
   if (damageReduceMatch) return { type: 'damageReduce', params: { value: parseNum(damageReduceMatch[1]) } };
 
   // "Xダメージ" (direct damage)
-  const directDamageMatch = text.match(/(\d+)ダメージ/);
+  const directDamageMatch = text.match(/([0-9０-９]+)ダメージ/);
   if (directDamageMatch) return { type: 'directDamage', params: { value: parseNum(directDamageMatch[1]) } };
 
   // "カードをX枚引く"
-  const drawMatch = text.match(/カード[をが](\d+)枚/);
+  const drawMatch = text.match(/カード[をが]([0-9０-９]+)枚/);
   if (drawMatch) return { type: 'drawCards', params: { value: parseNum(drawMatch[1]) } };
 
   // "昼夜逆転"

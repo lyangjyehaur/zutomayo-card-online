@@ -8,11 +8,23 @@ function power(G: GameState, player: PlayerIndex): number {
   );
 }
 
+function isNight(G: GameState): boolean {
+  const position = ((G.chronos.position % 12) + 12) % 12;
+  const distanceFromMidnight = Math.min(position, 12 - position);
+  return position < 6 || distanceFromMidnight <= G.midnightRange;
+}
+
+function isNamedCharacter(card: CardInstance | null, song: string): boolean {
+  if (!card) return false;
+  const def = getCardDef(card.defId);
+  return def?.type === 'Character' && def.song === song;
+}
+
 function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): boolean {
   const me = G.players[player];
   const opponent = G.players[(1 - player) as PlayerIndex];
   switch (cond.type) {
-    case 'chronos': return (G.chronos.position < 6 ? 'night' : 'day') === cond.value;
+    case 'chronos': return (isNight(G) ? 'night' : 'day') === cond.value;
     case 'opponentElement': return !!opponent.battleZone && getCardDef(opponent.battleZone.defId)?.element === cond.value;
     case 'selfElement': return !!me.battleZone && getCardDef(me.battleZone.defId)?.element === cond.value;
     case 'powerAtLeast': return power(G, player) >= Number(cond.value);
@@ -24,6 +36,15 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     case 'handCount': return me.hand.length >= Number(cond.value);
     case 'hpLessOrEqual': return me.hp <= Number(cond.value);
     case 'chronosChanged': return G.chronos.position !== G.chronosAtTurnStart;
+    case 'namedCardCondition': {
+      const song = String(cond.value);
+      if (cond.target === 'battleZone') return isNamedCharacter(me.battleZone, song);
+      if (cond.target === 'playedThisTurn') return G.setCardsThisTurn[player].some(card => isNamedCharacter(card, song));
+      if (cond.target === 'swappedThisTurn') return G.swappedCardsThisTurn[player].some(card => isNamedCharacter(card, song));
+      return isNamedCharacter(me.battleZone, song) || G.setCardsThisTurn[player].some(card => isNamedCharacter(card, song));
+    }
+    case 'simultaneousCharacter':
+      return G.setCardsThisTurn[player].some(card => getCardDef(card.defId)?.type === 'Character');
     case 'hasAreaEnchant': return !!me.setZoneC && me.setZoneC.defId === cond.value;
     case 'previousCharElement': return false;
     case 'and': return (cond.value as Condition[]).every(item => evaluateCondition(item, G, player));
@@ -89,17 +110,30 @@ export function executeEffect(
         G.chronos.position = 0;
         return { success: true, message: 'Set Chronos to position 0 (choice UI not implemented)' };
       }
+      if (effect.action.params.value === 'expand_midnight') {
+        G.midnightRange = Math.max(G.midnightRange, Number(effect.action.params.range ?? 0));
+        return { success: true, message: `Midnight range +${G.midnightRange}` };
+      }
       return { success: false, message: 'Unsupported clock range effect' };
     case 'clockAdvance':
       G.chronos.position = (G.chronos.position + value) % 12;
       return { success: true, message: `Chronos +${value}` };
     case 'recoverFromAbyss': {
       const source = effect.action.params.source === 'powerCharger' ? me.powerCharger : me.abyss;
-      const card = source.pop();
-      if (!card) return { success: false, message: 'No card to recover' };
-      card.faceUp = true;
-      me.hand.push(card);
-      return { success: true, message: 'Recover one card' };
+      const max = Number(effect.action.params.max ?? 1);
+      let recovered = 0;
+      for (let i = source.length - 1; i >= 0 && recovered < max; i--) {
+        const card = source[i];
+        const def = getCardDef(card.defId);
+        if (effect.action.params.song && def?.song !== effect.action.params.song) continue;
+        if (effect.action.params.cardType && def?.type !== effect.action.params.cardType) continue;
+        source.splice(i, 1);
+        card.faceUp = true;
+        me.hand.push(card);
+        recovered++;
+      }
+      if (recovered === 0) return { success: false, message: 'No card to recover' };
+      return { success: true, message: `Recover ${recovered} card${recovered === 1 ? '' : 's'}` };
     }
     case 'sendToAbyss': {
       const card = opponent.battleZone;
@@ -121,7 +155,7 @@ export function processTurnEffects(
   parsedEffects: Map<string, ParsedEffect[]>,
   playedCards: [CardInstance[], CardInstance[]] = [[], []],
 ): void {
-  const priority: PlayerIndex = G.chronos.position < 6
+  const priority: PlayerIndex = isNight(G)
     ? G.chronos.nightSidePlayer
     : ((1 - G.chronos.nightSidePlayer) as PlayerIndex);
   const order: PlayerIndex[] = [priority, (1 - priority) as PlayerIndex];

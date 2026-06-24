@@ -26,6 +26,7 @@ export function useAIMoves(
         if (!G.mulliganUsed[1]) moves.keepHand();
         return;
       }
+      if (G.step !== 'initialSet' && G.step !== 'turnSet') return;
       const required = getRequiredSetCount(G, 1);
       if (G.ready[1]) return;
       if (player.cardsSetThisTurn === required) {

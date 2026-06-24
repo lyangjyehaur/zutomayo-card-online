@@ -68,10 +68,12 @@ export interface GameState {
   step: GameStep;
   ready: [boolean, boolean];
   chronos: ChronosState;
+  midnightRange: number;
   chronosAtTurnStart: number;
   turnNumber: number;
   lastBattleResult: LastBattleResult;
   setCardsThisTurn: [CardInstance[], CardInstance[]];
+  swappedCardsThisTurn: [CardInstance[], CardInstance[]];
   jankenChoices: [JankenChoice | null, JankenChoice | null];
   mulliganUsed: [boolean, boolean];
   modifiers: CombatModifiers;
