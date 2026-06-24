@@ -8,22 +8,23 @@ COPY . .
 # Build frontend
 RUN npx vite build
 
-# Compile game module to CJS for boardgame.io server
-# Use tsconfig with commonjs module
-RUN echo '{"compilerOptions":{"module":"commonjs","moduleResolution":"node","esModuleInterop":true,"skipLibCheck":true,"resolveJsonModule":true,"target":"es2020","outDir":"dist-server","rootDir":"src","declaration":false}}' > tsconfig.server.json && \
-    npx tsc --project tsconfig.server.json \
-      src/game/Game.ts \
-      src/game/types.ts \
-      src/game/GameLogic.ts \
-      src/game/cards/loader.ts \
-      src/game/cards/deckBuilder.ts \
-      src/game/cards/presetDecks.ts \
-      src/game/effects/parser.ts \
-      src/game/effects/executor.ts \
-      src/game/effects/types.ts \
-      src/game/effects/index.ts 2>&1 || echo "TSC failed, checking errors..."
-
-RUN ls -la dist-server/game/ 2>/dev/null || echo "dist-server/game/ not found"
+# Compile game module to CJS
+RUN mkdir -p dist-server && \
+    npx tsc \
+      --outDir dist-server \
+      --module commonjs \
+      --moduleResolution node \
+      --esModuleInterop \
+      --skipLibCheck \
+      --resolveJsonModule \
+      --target es2020 \
+      --declaration false \
+      --noEmit false \
+      src/game/Game.ts src/game/types.ts src/game/GameLogic.ts \
+      src/game/cards/loader.ts src/game/cards/deckBuilder.ts src/game/cards/presetDecks.ts \
+      src/game/effects/parser.ts src/game/effects/executor.ts src/game/effects/types.ts src/game/effects/index.ts \
+    && ls -la dist-server/game/ \
+    || echo "TSC compilation failed"
 
 FROM node:22-alpine
 
