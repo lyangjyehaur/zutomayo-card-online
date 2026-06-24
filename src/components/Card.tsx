@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { CardDef, CardInstance, Element } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 
@@ -25,6 +26,12 @@ interface CardProps {
 }
 
 export function Card({ card, onClick, selected, small }: CardProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [card.defId]);
+
   if (!card.faceUp) {
     return (
       <div className="card card-back" onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
@@ -54,7 +61,17 @@ export function Card({ card, onClick, selected, small }: CardProps) {
       </div>
 
       <div className="card-image">
-        <img src={def.image} alt={def.name} loading="lazy" referrerPolicy="no-referrer" />
+        {imageFailed ? (
+          <div className="card-image-fallback">{def.name}</div>
+        ) : (
+          <img
+            src={def.image}
+            alt={def.name}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onError={() => setImageFailed(true)}
+          />
+        )}
       </div>
 
       <div className="card-info">

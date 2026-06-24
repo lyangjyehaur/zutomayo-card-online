@@ -128,13 +128,13 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = swappedMatch[2];
   }
 
-  // "バトルゾーンのカードがXのキャラクターなら..."
-  const namedCardMatch = text.match(/バトルゾーンの(?:カード|キャラクター)が[（(]([^）)]+)[）)]のキャラクターなら[、,]?(.+)$/);
-  if (namedCardMatch) {
-    conditions.push({ type: 'namedCardCondition', value: namedCardMatch[1].trim(), target: 'battleZone' });
-    actionText = namedCardMatch[2];
-  } else if (text.includes('バトルゾーン') && text.includes('キャラクターなら')) {
-    const song = namedSong(text);
+  // "バトルゾーンのカードが（X）のキャラクターなら..."
+  const battleZoneNamedCharacterMatch = actionText.match(/バトルゾーンの(?:カード|キャラクター)が[（(]([^）)]+)[）)]のキャラクターなら[、,]?(.+)$/);
+  if (battleZoneNamedCharacterMatch) {
+    conditions.push({ type: 'namedCardCondition', value: battleZoneNamedCharacterMatch[1].trim(), target: 'battleZone' });
+    actionText = battleZoneNamedCharacterMatch[2];
+  } else if (actionText.includes('バトルゾーン') && actionText.includes('キャラクターなら')) {
+    const song = namedSong(actionText);
     if (song) conditions.push({ type: 'namedCardCondition', value: song, target: 'battleZone' });
   }
 

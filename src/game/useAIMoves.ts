@@ -1,12 +1,21 @@
 import { useEffect, useRef } from 'react';
-import type { GameState } from './types';
+import type { Ctx } from 'boardgame.io';
+import type { GameState, JankenChoice, SetSlot } from './types';
 import { aiSelectCards, type AIDifficulty } from './ai';
 import { getRequiredSetCount } from './GameLogic';
 
+export interface ZutomayoMoveDispatchers {
+  janken: (choice: JankenChoice) => void;
+  keepHand: () => void;
+  setInitialCard: (handIndex: number) => void;
+  setTurnCard: (handIndex: number, slot: SetSlot) => void;
+  confirmReady: () => void;
+}
+
 export function useAIMoves(
   G: GameState | null,
-  ctx: any,
-  moves: any,
+  ctx: Ctx | null,
+  moves: ZutomayoMoveDispatchers,
   playerID: string,
   difficulty: AIDifficulty,
 ) {

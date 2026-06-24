@@ -166,6 +166,14 @@ body {
   object-fit: cover;
 }
 
+.card-image-fallback {
+  padding: 0.5rem;
+  color: #d8dee9;
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .card-info {
   padding: 0.15rem 0.4rem;
   display: flex;

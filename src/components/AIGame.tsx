@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
 import { BoardProps } from 'boardgame.io/react';
 import { createZutomayoCard } from '../game/Game';
 import { Board } from './Board';
-import { useAIMoves } from '../game/useAIMoves';
+import { useAIMoves, type ZutomayoMoveDispatchers } from '../game/useAIMoves';
 import type { AIDifficulty } from '../game/ai';
 import type { GameState } from '../game/types';
 
@@ -18,7 +18,14 @@ interface AIGameProps {
 // Board wrapper that runs AI for player 1
 function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
   const { difficulty, ...boardProps } = props;
-  useAIMoves(boardProps.G, boardProps.ctx, boardProps.moves, boardProps.playerID || '0', difficulty);
+  const aiMoves = useMemo<ZutomayoMoveDispatchers>(() => ({
+    janken: boardProps.moves.janken,
+    keepHand: boardProps.moves.keepHand,
+    setInitialCard: boardProps.moves.setInitialCard,
+    setTurnCard: boardProps.moves.setTurnCard,
+    confirmReady: boardProps.moves.confirmReady,
+  }), [boardProps.moves]);
+  useAIMoves(boardProps.G, boardProps.ctx, aiMoves, boardProps.playerID || '0', difficulty);
   return <Board {...boardProps} />;
 }
 

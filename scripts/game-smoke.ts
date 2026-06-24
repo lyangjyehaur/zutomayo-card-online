@@ -150,6 +150,9 @@ function parsedCardEffect(defId: string): ParsedEffect {
 {
   const ids = ['2nd_26', '2nd_62', '3rd_26', '4th_2', '4th_55', '4th_59', '4th_73', '4th_75', '4th_93'];
   for (const id of ids) assert.ok(parsedCardEffect(id), `${id} should parse`);
+  const taidadaEffect = parsedCardEffect('4th_55');
+  assert.deepEqual(taidadaEffect.conditions, [{ type: 'namedCardCondition', value: 'TAIDADA', target: 'battleZone' }]);
+  assert.deepEqual(taidadaEffect.action, { type: 'heal', params: { value: 20 } });
 }
 
 {

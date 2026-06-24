@@ -57,11 +57,16 @@ function MulliganScreen({ G, moves, playerID }: Props) {
   );
 }
 
-function GameOverScreen({ G, ctx }: Props) {
+function GameOverScreen({ G, ctx, matchStartedAt }: Props & { matchStartedAt: number }) {
+  const saved = useRef(false);
+
   useEffect(() => {
+    if (saved.current) return;
+    saved.current = true;
     const gameover = ctx.gameover as { winner?: string | number; draw?: boolean } | undefined;
-    saveMatchRecord(G, gameover?.winner ?? (G.winner === null ? null : G.winner));
-  }, []); // Persist this terminal snapshot once per mounted match.
+    const durationSeconds = (Date.now() - matchStartedAt) / 1000;
+    saveMatchRecord(G, gameover?.winner ?? (G.winner === null ? null : G.winner), durationSeconds);
+  }, [G, ctx.gameover, matchStartedAt]); // Persist this terminal snapshot once per mounted match.
   return (
     <div className="game-over">
       <h1>Game Over</h1>
@@ -150,8 +155,10 @@ function BattleBoard({ G, moves, playerID }: Props) {
 }
 
 export function Board(props: Props) {
+  const matchStartedAt = useRef(Date.now());
+
   if (props.G.step === 'janken') return <JankenScreen {...props} />;
   if (props.G.step === 'mulligan') return <MulliganScreen {...props} />;
-  if (props.G.step === 'gameOver') return <GameOverScreen {...props} />;
+  if (props.G.step === 'gameOver') return <GameOverScreen {...props} matchStartedAt={matchStartedAt.current} />;
   return <BattleBoard {...props} />;
 }

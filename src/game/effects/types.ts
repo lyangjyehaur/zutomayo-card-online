@@ -2,6 +2,8 @@ import type { ChronosTime, Element } from '../types';
 
 // ===== Effect DSL Types =====
 
+export type EffectValue = string | number | boolean | string[];
+
 export interface ParsedEffect {
   trigger: EffectTrigger;
   conditions: Condition[];
@@ -18,11 +20,17 @@ export type EffectTrigger =
   | 'onTurnEnd'     // End of turn
   | 'onDamageReceived'; // When taking damage
 
-export interface Condition {
-  type: ConditionType;
-  value: any;
-  target?: string; // e.g. 'powerCharger' vs 'abyss'
-}
+export type Condition =
+  | {
+      type: Exclude<ConditionType, 'and' | 'or'>;
+      value: EffectValue;
+      target?: string; // e.g. 'powerCharger' vs 'abyss'
+    }
+  | {
+      type: 'and' | 'or';
+      value: Condition[];
+      target?: string;
+    };
 
 export type ConditionType =
   | 'chronos'           // Night or day
@@ -43,7 +51,7 @@ export type ConditionType =
 
 export interface EffectAction {
   type: ActionType;
-  params: Record<string, any>;
+  params: Record<string, EffectValue>;
 }
 
 export type ActionType =

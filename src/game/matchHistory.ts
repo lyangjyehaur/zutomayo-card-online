@@ -32,11 +32,11 @@ function normalizeWinner(winner: MatchWinnerInput): 0 | 1 | null {
 }
 
 // Save match record to localStorage
-export function saveMatchRecord(G: GameState, winner: MatchWinnerInput): void {
+export function saveMatchRecord(G: GameState, winner: MatchWinnerInput, durationSeconds = 0): void {
   const record: MatchRecord = {
     id: `match_${Date.now()}`,
     date: new Date().toISOString(),
-    duration: 0, // TODO: track actual duration
+    duration: Math.max(0, Math.round(durationSeconds)),
     winner: normalizeWinner(winner),
     players: G.players.map(p => ({
       hp: p.hp,
