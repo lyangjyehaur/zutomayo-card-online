@@ -627,3 +627,71 @@ body {
   background: #f4d35e;
   color: #1a1a2e;
 }
+
+/* Match History */
+.match-history {
+  min-height: 100vh;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  padding: 1rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.match-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.match-history-header h2 { color: #f4d35e; font-size: 1.2rem; }
+
+.stats-bar {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.stat {
+  text-align: center;
+  padding: 0.5rem 1rem;
+  background: #16213e;
+  border-radius: 8px;
+}
+
+.stat-value { display: block; font-size: 1.5rem; font-weight: bold; color: #f4d35e; }
+.stat-label { font-size: 0.7rem; color: #888; }
+
+.no-records { text-align: center; color: #555; padding: 2rem; }
+
+.records-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.record-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #16213e;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+
+.record-result { font-size: 1rem; min-width: 50px; }
+.record-details { flex: 1; display: flex; gap: 0.75rem; flex-wrap: wrap; color: #aaa; }
+.record-date { color: #555; font-size: 0.7rem; }
+
+.clear-btn {
+  display: block;
+  margin: 1.5rem auto 0;
+  padding: 0.4rem 1.2rem;
+  border: 1px solid #e63946;
+  border-radius: 4px;
+  background: transparent;
+  color: #e63946;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.clear-btn:hover { background: #e63946; color: #fff; }

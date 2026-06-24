@@ -5,6 +5,7 @@ import { SocketIO } from 'boardgame.io/multiplayer';
 import { ZutomayoCard } from './game/Game';
 import { Board } from './components/Board';
 import { DeckEditor } from './components/DeckEditor';
+import { MatchHistory } from './components/MatchHistory';
 import { PRESET_DECKS } from './game/cards/presetDecks';
 import './App.css';
 
@@ -30,10 +31,11 @@ function createOnlineClient() {
   });
 }
 
-function Lobby({ onStart, onOnline, onDeckEditor }: {
+function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory }: {
   onStart: (d0: string, d1: string) => void;
   onOnline: (mode: 'create' | 'join', matchID: string) => void;
   onDeckEditor: () => void;
+  onMatchHistory: () => void;
 }) {
   const [deck0, setDeck0] = useState(deckNames[0]);
   const [deck1, setDeck1] = useState(deckNames[1]);
@@ -110,9 +112,14 @@ function Lobby({ onStart, onOnline, onDeckEditor }: {
 
       <div className="lobby-actions">
         {tab === 'local' && (
-          <button className="deck-editor-btn" onClick={() => onDeckEditor()}>
-            🃏 Deck Editor
-          </button>
+          <>
+            <button className="deck-editor-btn" onClick={() => onDeckEditor()}>
+              🃏 Deck Editor
+            </button>
+            <button className="deck-editor-btn" onClick={() => onMatchHistory()}>
+              📊 Match History
+            </button>
+          </>
         )}
       </div>
 
@@ -124,7 +131,7 @@ function Lobby({ onStart, onOnline, onDeckEditor }: {
 }
 
 export default function App() {
-  const [mode, setMode] = useState<'menu' | 'local' | 'online-create' | 'online-join' | 'deck-editor'>('menu');
+  const [mode, setMode] = useState<'menu' | 'local' | 'online-create' | 'online-join' | 'deck-editor' | 'match-history'>('menu');
   const [matchID, setMatchID] = useState('');
 
   const handleLocalStart = (_d0: string, _d1: string) => {
@@ -142,6 +149,10 @@ export default function App() {
     }
   };
 
+  if (mode === 'match-history') {
+    return <MatchHistory onBack={() => setMode('menu')} />;
+  }
+
   if (mode === 'deck-editor') {
     return (
       <DeckEditor
@@ -155,7 +166,7 @@ export default function App() {
   }
 
   if (mode === 'menu') {
-    return <Lobby onStart={handleLocalStart} onOnline={handleOnline} onDeckEditor={() => setMode('deck-editor')} />;
+    return <Lobby onStart={handleLocalStart} onOnline={handleOnline} onDeckEditor={() => setMode('deck-editor')} onMatchHistory={() => setMode('match-history')} />;
   }
 
   if (mode === 'local') {

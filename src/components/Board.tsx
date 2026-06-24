@@ -5,6 +5,7 @@ import { getCardDef } from '../game/cards/loader';
 import { Card } from './Card';
 import { Chronos } from './Chronos';
 import { getChronosTime, getMaxSetCards } from '../game/GameLogic';
+import { saveMatchRecord } from '../game/matchHistory';
 
 const TURN_TIMER_SECONDS = 60;
 
@@ -47,6 +48,8 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
   const timerColor = timeLeft > 30 ? '#2ec4b6' : timeLeft > 10 ? '#f4d35e' : '#e63946';
 
   if (ctx.gameover) {
+    // Save match record
+    saveMatchRecord(G, ctx.gameover.winner as string);
     return (
       <div className="game-over">
         <h1>Game Over</h1>
