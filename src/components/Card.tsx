@@ -54,7 +54,7 @@ export function Card({ card, onClick, selected, small }: CardProps) {
       </div>
 
       <div className="card-image">
-        <img src={def.image} alt={def.name} loading="lazy" />
+        <img src={def.image} alt={def.name} loading="lazy" referrerPolicy="no-referrer" />
       </div>
 
       <div className="card-info">
