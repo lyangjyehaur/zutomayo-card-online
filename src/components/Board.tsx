@@ -1,9 +1,12 @@
 import { BoardProps } from 'boardgame.io/react';
+import { useState, useEffect, useRef } from 'react';
 import type { GameState } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { Card } from './Card';
 import { Chronos } from './Chronos';
-import { getChronosTime } from '../game/GameLogic';
+import { getChronosTime, getMaxSetCards } from '../game/GameLogic';
+
+const TURN_TIMER_SECONDS = 60;
 
 export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
   const myIdx = parseInt(playerID || '0') as 0 | 1;
@@ -12,8 +15,36 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
   const opp = G.players[oppIdx];
   const currentTime = getChronosTime(G);
 
-  const maxSet = G.turn === 0 ? 1 : (G.lastBattleResult.winner === myIdx ? 1 : 2);
+  const maxSet = getMaxSetCards(G, myIdx);
   const canSet = me.cardsSetThisTurn < maxSet;
+
+  // Turn timer
+  const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setTimeLeft(TURN_TIMER_SECONDS);
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          // Auto-confirm when timer runs out
+          if (me.cardsSetThisTurn > 0) {
+            moves.confirmSet();
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [G.turn, me.cardsSetThisTurn]);
+
+  const timerColor = timeLeft > 30 ? '#2ec4b6' : timeLeft > 10 ? '#f4d35e' : '#e63946';
 
   if (ctx.gameover) {
     return (
@@ -72,6 +103,9 @@ export function Board({ G, ctx, moves, playerID }: BoardProps<GameState>) {
         <div className="turn-info">
           <div>Turn {G.turn + 1}</div>
           <div>{currentTime === 'night' ? '🌙 Night' : '☀️ Day'} Phase</div>
+          <div className="turn-timer" style={{ color: timerColor }}>
+            ⏱ {timeLeft}s
+          </div>
           {G.lastBattleResult.winner !== null && (
             <div className="last-battle">
               Last: {G.lastBattleResult.winnerAttack} vs {G.lastBattleResult.loserAttack}

@@ -237,6 +237,12 @@ body {
   margin-top: 0.25rem;
 }
 
+.turn-timer {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-top: 0.25rem;
+}
+
 /* Actions */
 .actions {
   display: flex;
