@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
+import { SocketIO } from 'boardgame.io/multiplayer';
 import { ZutomayoCard } from './game/Game';
 import { Board } from './components/Board';
 import { DeckEditor } from './components/DeckEditor';
 import { MatchHistory } from './components/MatchHistory';
 import { AIGame } from './components/AIGame';
+import { OnlineGame } from './components/OnlineGame';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
 import { AuthPanel, UserBadge } from './components/AuthPanel';
 import { Leaderboard } from './components/Leaderboard';
@@ -27,6 +29,37 @@ function createLocalClient() {
     multiplayer: Local(),
     debug: false,
   });
+}
+
+// Factory: create a fresh Online client (connects to boardgame.io server)
+function createOnlineClient() {
+  return Client({
+    game: ZutomayoCard,
+    board: Board,
+    numPlayers: 2,
+    multiplayer: SocketIO({ server: window.location.origin }),
+    debug: false,
+  });
+}
+
+// Create a match on the boardgame.io server
+async function createMatch(): Promise<{ matchID: string }> {
+  const res = await fetch('/games/zutomayo-card/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ numPlayers: 2 }),
+  });
+  return res.json();
+}
+
+// Join an existing match
+async function joinMatch(matchID: string, playerID: string): Promise<{ playerID: string }> {
+  const res = await fetch(`/games/zutomayo-card/${matchID}/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playerID }),
+  });
+  return res.json();
 }
 
 // Lobby
@@ -135,6 +168,7 @@ export default function App() {
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>('normal');
   const [showTutorial, setShowTutorial] = useState(() => !localStorage.getItem('zutomayo_tutorial_seen'));
   const [user, setUser] = useState<{ id: string; email: string; nickname: string; elo: number } | null>(null);
+  const [onlineMatch, setOnlineMatch] = useState<{ matchID: string; playerID: string } | null>(null);
 
   useEffect(() => {
     if (isLoggedIn()) {
@@ -188,7 +222,25 @@ export default function App() {
       return (
         <Lobby
           onStart={() => setMode('local')}
-          onOnline={(action) => setMode(action === 'create' ? 'online-create' : 'online-join')}
+          onOnline={async (action, matchID) => {
+            if (action === 'create') {
+              try {
+                const { matchID } = await createMatch();
+                setOnlineMatch({ matchID, playerID: '0' });
+                setMode('online-play');
+              } catch (e) {
+                alert('Failed to create match. Is the server running?');
+              }
+            } else {
+              try {
+                const { playerID } = await joinMatch(matchID, '1');
+                setOnlineMatch({ matchID, playerID });
+                setMode('online-play');
+              } catch (e) {
+                alert('Failed to join match. Check the Match ID.');
+              }
+            }
+          }}
           onDeckEditor={() => setMode('deck-editor')}
           onMatchHistory={() => setMode('match-history')}
           onStartAI={(d) => { setAiDifficulty(d); setMode('ai-game'); }}
@@ -209,6 +261,16 @@ export default function App() {
 
     case 'ai-game':
       return <AIGame difficulty={aiDifficulty} onBack={() => setMode('menu')} />;
+
+    case 'online-play':
+      if (!onlineMatch) { setMode('menu'); return null; }
+      return (
+        <OnlineGame
+          matchID={onlineMatch.matchID}
+          playerID={onlineMatch.playerID}
+          onBack={() => { setOnlineMatch(null); setMode('menu'); }}
+        />
+      );
 
     case 'deck-editor':
       return <DeckEditor onSave={() => setMode('menu')} onCancel={() => setMode('menu')} />;
