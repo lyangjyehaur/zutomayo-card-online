@@ -7,7 +7,8 @@ import { Board } from './components/Board';
 import { DeckEditor } from './components/DeckEditor';
 import { MatchHistory } from './components/MatchHistory';
 import { AIGame } from './components/AIGame';
-import { Tutorial } from './components/Tutorial';
+import { InteractiveTutorial } from './components/InteractiveTutorial';
+import './components/InteractiveTutorial.css';
 import type { AIDifficulty } from './game/ai';
 import { PRESET_DECKS } from './game/cards/presetDecks';
 import './App.css';
@@ -196,7 +197,16 @@ export default function App() {
   if (mode === 'menu') {
     return (
       <>
-        {showTutorial && <Tutorial onClose={closeTutorial} />}
+        {showTutorial && (
+          <InteractiveTutorial
+            onComplete={closeTutorial}
+            onStartPractice={() => {
+              closeTutorial();
+              setAiDifficulty('easy');
+              setMode('ai-game');
+            }}
+          />
+        )}
         <Lobby onStart={handleLocalStart} onOnline={handleOnline} onDeckEditor={() => setMode('deck-editor')} onMatchHistory={() => setMode('match-history')} onStartAI={(d) => { setAiDifficulty(d); setMode('ai-game'); }} onTutorial={() => setShowTutorial(true)} />
       </>
     );

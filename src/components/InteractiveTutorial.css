@@ -1,0 +1,87 @@
+/* Interactive Tutorial */
+.tutorial-overlay.interactive {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.tutorial-overlay.interactive .tutorial-card,
+.tutorial-overlay.interactive .tutorial-bubble {
+  pointer-events: all;
+}
+
+.tutorial-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+}
+
+.tutorial-bubble {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1002;
+  background: #16213e;
+  border: 2px solid #f4d35e;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  max-width: 480px;
+  width: calc(100% - 2rem);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  animation: bubble-in 0.3s ease-out;
+}
+
+@keyframes bubble-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.bubble-content {
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-bottom: 0.75rem;
+}
+
+.bubble-content p { margin-bottom: 0.3rem; }
+
+.bubble-action {
+  text-align: center;
+  margin-bottom: 0.75rem;
+}
+
+.action-hint {
+  color: #f4d35e;
+  font-size: 0.85rem;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.bubble-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.phase-dots {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.phase-dots .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #333;
+  transition: all 0.2s;
+}
+
+.phase-dots .dot.active { background: #f4d35e; transform: scale(1.4); }
+.phase-dots .dot.done { background: #2ec4b6; }
