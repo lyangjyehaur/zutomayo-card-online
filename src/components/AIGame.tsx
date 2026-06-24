@@ -21,7 +21,6 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
 }
 
 export function AIGame({ difficulty, onBack }: AIGameProps) {
-  // Fresh client on each mount — unmounting (going back to lobby) destroys it
   const [AIClient] = useState(() => Client({
     game: ZutomayoCard,
     board: (props: BoardProps<GameState>) => <AIBoard {...props} difficulty={difficulty} />,
@@ -37,7 +36,12 @@ export function AIGame({ difficulty, onBack }: AIGameProps) {
         <span className="ai-label">🤖 Practice Mode — AI: {difficulty.toUpperCase()}</span>
       </div>
       <div className="game-container single">
+        {/* Human plays as player 0 */}
         <AIClient playerID="0" />
+        {/* AI plays as player 1 — hidden but active */}
+        <div style={{ display: 'none' }}>
+          <AIClient playerID="1" />
+        </div>
       </div>
     </div>
   );

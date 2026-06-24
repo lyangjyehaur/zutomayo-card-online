@@ -53,6 +53,11 @@ export const ZutomayoCard: Game<GameState> = {
       const idx = parseInt(playerID) as 0 | 1;
       if (G.mulliganUsed?.[idx]) return INVALID_MOVE;
       mulligan(G, idx, indicesToRedraw);
+      // If both done, move to game
+      if (G.mulliganUsed?.[0] && G.mulliganUsed?.[1]) {
+        G.setupPhase = 'done';
+        G.log.push('Both players ready. Game begins!');
+      }
     },
 
     // Skip mulligan
@@ -60,6 +65,10 @@ export const ZutomayoCard: Game<GameState> = {
       const idx = parseInt(playerID) as 0 | 1;
       if (G.mulliganUsed?.[idx]) return INVALID_MOVE;
       mulligan(G, idx, []);
+      if (G.mulliganUsed?.[0] && G.mulliganUsed?.[1]) {
+        G.setupPhase = 'done';
+        G.log.push('Both players ready. Game begins!');
+      }
     },
 
     // Select card during gameplay
