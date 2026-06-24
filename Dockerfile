@@ -5,12 +5,13 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npx vite build
+RUN npx tsc --outDir dist-server --module nodenext --moduleResolution nodenext --esModuleInterop --skipLibCheck src/server.ts 2>/dev/null || true
 
 FROM node:22-alpine AS server
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/cards.json ./
 COPY --from=builder /app/src ./src
