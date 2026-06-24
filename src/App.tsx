@@ -7,6 +7,7 @@ import { Board } from './components/Board';
 import { DeckEditor } from './components/DeckEditor';
 import { MatchHistory } from './components/MatchHistory';
 import { AIGame } from './components/AIGame';
+import { Tutorial } from './components/Tutorial';
 import type { AIDifficulty } from './game/ai';
 import { PRESET_DECKS } from './game/cards/presetDecks';
 import './App.css';
@@ -33,12 +34,13 @@ function createOnlineClient() {
   });
 }
 
-function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory, onStartAI }: {
+function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory, onStartAI, onTutorial }: {
   onStart: (d0: string, d1: string) => void;
   onOnline: (mode: 'create' | 'join', matchID: string) => void;
   onDeckEditor: () => void;
   onMatchHistory: () => void;
   onStartAI: (difficulty: AIDifficulty) => void;
+  onTutorial: () => void;
 }) {
   const [deck0, setDeck0] = useState(deckNames[0]);
   const [deck1, setDeck1] = useState(deckNames[1]);
@@ -138,6 +140,7 @@ function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory, onStartAI }: {
       <p className="lobby-hint">
         422 cards • 4 packs • Chronos day/night system
       </p>
+      <button className="how-to-play-btn" onClick={onTutorial}>❓ How to Play</button>
     </div>
   );
 }
@@ -145,6 +148,14 @@ function Lobby({ onStart, onOnline, onDeckEditor, onMatchHistory, onStartAI }: {
 export default function App() {
   const [mode, setMode] = useState<'menu' | 'local' | 'online-create' | 'online-join' | 'deck-editor' | 'match-history' | 'ai-game'>('menu');
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>('normal');
+  const [showTutorial, setShowTutorial] = useState(() => {
+    return !localStorage.getItem('zutomayo_tutorial_seen');
+  });
+
+  const closeTutorial = () => {
+    localStorage.setItem('zutomayo_tutorial_seen', '1');
+    setShowTutorial(false);
+  };
   const [matchID, setMatchID] = useState('');
 
   const handleLocalStart = (_d0: string, _d1: string) => {
@@ -183,7 +194,12 @@ export default function App() {
   }
 
   if (mode === 'menu') {
-    return <Lobby onStart={handleLocalStart} onOnline={handleOnline} onDeckEditor={() => setMode('deck-editor')} onMatchHistory={() => setMode('match-history')} onStartAI={(d) => { setAiDifficulty(d); setMode('ai-game'); }} />;
+    return (
+      <>
+        {showTutorial && <Tutorial onClose={closeTutorial} />}
+        <Lobby onStart={handleLocalStart} onOnline={handleOnline} onDeckEditor={() => setMode('deck-editor')} onMatchHistory={() => setMode('match-history')} onStartAI={(d) => { setAiDifficulty(d); setMode('ai-game'); }} onTutorial={() => setShowTutorial(true)} />
+      </>
+    );
   }
 
   if (mode === 'local') {
