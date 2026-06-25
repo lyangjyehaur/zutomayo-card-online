@@ -208,8 +208,22 @@ function parseAction(text: string): EffectAction | null {
   const directDamageMatch = text.match(/([0-9０-９]+)ダメージ/);
   if (directDamageMatch) return { type: 'directDamage', params: { value: parseNum(directDamageMatch[1]) } };
 
+  // "手札をX枚選んでデッキの底に置き、カードをY枚引く"
+  const handBottomDrawMatch = text.match(/手札を([0-9０-９]+)枚選んでデッキの底に置き、カードを([0-9０-９]+)枚引く/);
+  if (handBottomDrawMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'handToDeckBottomThenDraw',
+        discardCount: parseNum(handBottomDrawMatch[1]),
+        drawCount: parseNum(handBottomDrawMatch[2]),
+      },
+    };
+  }
+
   // "カードをX枚引く"
-  const drawMatch = text.match(/カード[をが]([0-9０-９]+)枚/);
+  if (text.includes('選')) return null;
+  const drawMatch = text.match(/カード[をが]([0-9０-９]+)枚(?:引|ドロー)/);
   if (drawMatch) return { type: 'drawCards', params: { value: parseNum(drawMatch[1]) } };
 
   // "昼夜逆転"
@@ -243,20 +257,63 @@ function parseAction(text: string): EffectAction | null {
 // ===== Trigger Detection =====
 
 function detectTrigger(text: string): 'onBattle' | 'onUse' | 'onTurnStart' | 'onTurnEnd' | 'onDamageReceived' {
-  if (text.includes('ターンの開始時') || text.includes('ターン開始時')) {
+  const timingText = text.match(/^(ターンの開始時|ターン開始時|ターンの終了時|ターン終了時|自分がダメージを受けた|バトル)/)
+    ? text
+    : text.split(/[。.]/)[0];
+  if (timingText.includes('ターンの開始時') || timingText.includes('ターン開始時')) {
     return 'onTurnStart';
   }
-  if (text.includes('ターンの終了時') || text.includes('ターン終了時')) {
+  if (timingText.includes('ターンの終了時') || timingText.includes('ターン終了時')) {
     return 'onTurnEnd';
   }
-  if (text.includes('ダメージを受けたとき') || text.includes('ダメージを受けた時')) {
+  if (timingText.includes('ダメージを受けたとき') || timingText.includes('ダメージを受けた時')) {
     return 'onDamageReceived';
   }
-  if (text.includes('バトル')) return 'onBattle';
+  if (timingText.includes('バトル')) return 'onBattle';
   return 'onUse';
 }
 
 // ===== Batch Parse =====
+
+function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
+  const text = rawText.replace(/※.*$/gm, '').trim();
+  if (!/(アビス|パワーチャージャー)に置く/.test(text)) return null;
+
+  const destination = text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss';
+  if (text.includes('昼と夜が入れ替わったターンの終了時')) {
+    return {
+      trigger: 'onTurnEnd',
+      conditions: [{ type: 'chronosTimeChanged', value: true }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  if (text.includes('ターンの終了時')) {
+    return {
+      trigger: 'onTurnEnd',
+      conditions: [],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  if (text.includes('夜じゃなくなったら')) {
+    return {
+      trigger: 'onChronosChanged',
+      conditions: [{ type: 'chronos', value: 'day' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  if (text.includes('昼じゃなくなったら')) {
+    return {
+      trigger: 'onChronosChanged',
+      conditions: [{ type: 'chronos', value: 'night' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  return null;
+}
 
 export function parseAllEffects(cards: { id: string; effect: string }[]): Map<string, ParsedEffect[]> {
   const result = new Map<string, ParsedEffect[]>();
@@ -270,6 +327,8 @@ export function parseAllEffects(cards: { id: string; effect: string }[]): Map<st
     for (const line of lines) {
       const parsed = parseEffect(line);
       if (parsed) effects.push(parsed);
+      const expiry = parseAreaEnchantExpiry(line);
+      if (expiry) effects.push(expiry);
     }
 
     if (effects.length > 0) {

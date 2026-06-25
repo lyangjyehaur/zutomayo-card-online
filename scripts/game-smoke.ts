@@ -15,9 +15,10 @@ import {
   setInitialCard,
   setTurnCard,
   setupGame,
+  submitPendingChoice,
 } from '../src/game/GameLogic';
 import { executeEffect, processTurnEffects } from '../src/game/effects/executor';
-import { parseEffect } from '../src/game/effects/parser';
+import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
 import type { GameState } from '../src/game/types';
 import type { ParsedEffect } from '../src/game/effects';
 import { ZutomayoCard } from '../src/game/Game';
@@ -47,6 +48,10 @@ const turnStartHeal10: ParsedEffect = {
   trigger: 'onTurnStart', conditions: [], rawText: 'turn start heal',
   action: { type: 'heal', params: { value: 10 } },
 };
+const turnStartBoost20: ParsedEffect = {
+  trigger: 'onTurnStart', conditions: [], rawText: 'turn start boost',
+  action: { type: 'boostAttack', params: { value: 20 } },
+};
 const turnEndDamage5: ParsedEffect = {
   trigger: 'onTurnEnd', conditions: [], rawText: 'turn end damage',
   action: { type: 'directDamage', params: { value: 5 } },
@@ -54,6 +59,18 @@ const turnEndDamage5: ParsedEffect = {
 const damageReceivedHeal10: ParsedEffect = {
   trigger: 'onDamageReceived', conditions: [], rawText: 'damage received heal',
   action: { type: 'heal', params: { value: 10 } },
+};
+const damageReceivedReduce40: ParsedEffect = {
+  trigger: 'onDamageReceived', conditions: [], rawText: 'damage received reduce',
+  action: { type: 'damageReduce', params: { value: 40 } },
+};
+const lethalTurnEndDamage: ParsedEffect = {
+  trigger: 'onTurnEnd', conditions: [], rawText: 'lethal turn end',
+  action: { type: 'directDamage', params: { value: 120 } },
+};
+const lethalPendingDamage: ParsedEffect = {
+  trigger: 'onUse', conditions: [], rawText: 'lethal pending',
+  action: { type: 'directDamage', params: { value: 120 } },
 };
 
 function preparedState(): GameState {
@@ -215,6 +232,79 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   const G = preparedState();
   G.step = 'turnSet';
   G.turnNumber = 2;
+  G.players[0].battleZone = createInstance('1st_1', true);
+  G.players[0].powerCharger = [
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+  ];
+  G.players[1].battleZone = createInstance('1st_17', true);
+  G.players[1].setZoneC = createInstance('2nd_5', true);
+  G.players[1].powerCharger = [
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+  ];
+  resolveTurn(G, new Map([['2nd_5', [damageReceivedReduce40]]]));
+  assert.equal(G.lastBattleResult.damage, 80);
+  assert.equal(G.players[1].hp, 20);
+  assert.equal(G.step, 'turnSet');
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.players[0].setZoneC = createInstance('2nd_5', true);
+  G.players[0].powerCharger = [
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+  ];
+  G.players[0].battleZone = createInstance('1st_9', true);
+  G.players[1].battleZone = createInstance('1st_9', true);
+  resolveTurn(G, new Map([['2nd_5', [lethalTurnEndDamage]]]));
+  assert.equal(G.players[1].hp, 0);
+  assert.equal(G.step, 'gameOver');
+  assert.equal(G.winner, 0);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.players[0].setZoneC = createInstance('2nd_5', true);
+  G.players[0].powerCharger = [
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+  ];
+  G.players[0].battleZone = createInstance('1st_9', true);
+  G.players[1].battleZone = createInstance('1st_9', true);
+  resolveTurn(G, new Map([['2nd_5', [turnStartBoost20]]]));
+  assert.equal(G.step, 'turnSet');
+  assert.equal(G.turnNumber, 3);
+  G.players[0].hand = [createInstance('1st_9', true)];
+  G.players[1].hand = [createInstance('1st_9', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  resolveTurn(G, new Map([['2nd_5', [turnStartBoost20]]]));
+  assert.equal(G.lastBattleResult.damage, 20);
+  assert.equal(G.players[1].hp, 80);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
   G.chronos.position = 10;
   G.players[0].hand = [createInstance('1st_9', true)];
   G.players[1].hand = [createInstance('1st_17', true)];
@@ -257,6 +347,24 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   assert.equal(G.turnNumber, 3);
   assert.equal((G as any).pendingEffectPlayer, null);
   assert.deepEqual((G as any).pendingEffects, [[], []]);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.chronos.position = 10;
+  G.players[0].hand = [createInstance('1st_9', true)];
+  G.players[1].hand = [createInstance('1st_17', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  resolveTurn(G, new Map([['1st_9', [lethalPendingDamage]]]));
+  assert.equal(G.step, 'effectOrder');
+  const resolvePendingEffect = (ZutomayoCard.moves as any).resolvePendingEffect;
+  assert.equal(resolvePendingEffect({ G, playerID: '0' }, 0), undefined);
+  assert.equal(G.players[1].hp, 0);
+  assert.equal(G.step, 'gameOver');
+  assert.equal(G.winner, 0);
 }
 
 {
@@ -315,6 +423,20 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   assert.equal(setTurnCard(G, 1, 0, 'B'), true);
   resolveTurn(G, noEffects);
   assert.equal(G.players[1].battleZone?.defId, '1st_1');
+  assert.ok(G.timingEvents.some(event => event.type === 'zoneEntered' && event.player === 1 && event.zone === 'battleZone' && event.cardDefId === '1st_1'));
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.players[0].battleZone = createInstance('1st_17', true);
+  G.players[0].hand = [createInstance('1st_9', true)];
+  G.players[1].hand = [createInstance('1st_9', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  resolveTurn(G, noEffects);
+  assert.ok(G.timingEvents.some(event => event.type === 'characterReplaced' && event.player === 0 && event.cardDefId === '1st_9' && event.replacedCardDefId === '1st_17'));
 }
 
 {
@@ -342,6 +464,30 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
 {
   assert.equal(parseEffect('ターンの終了時に相手のHP-10')?.trigger, 'onTurnEnd');
   assert.equal(parseEffect('ターンの開始時にHPを10回復')?.trigger, 'onTurnStart');
+  assert.equal(parseEffect('パワーチャージャーの電気属性のカード１枚につき、攻撃力+20。相手のHPが30以下になったターンの終了時にアビスに置く')?.trigger, 'onUse');
+  assert.equal(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.trigger, 'onUse');
+  const areaExpiryEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('2nd_5') ?? [];
+  assert.ok(areaExpiryEffects.some(effect => effect.trigger === 'onTurnEnd' && effect.action.type === 'moveSelfAreaEnchant'));
+  const chronosExpiryEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('2nd_86') ?? [];
+  assert.ok(chronosExpiryEffects.some(effect => effect.trigger === 'onChronosChanged' && effect.action.type === 'moveSelfAreaEnchant'));
+  assert.notEqual(parseEffect('相手のアビスのカードを1枚選んでデッキの底に戻させる')?.action.type, 'drawCards');
+  assert.notEqual(parseEffect('手札を１枚選んでデッキの底に置き、カードを１枚引く')?.action.type, 'drawCards');
+  assert.notEqual(parseEffect('アビスに炎属性のカードが２枚以上あるなら、時計が真夜中になる')?.action.type, 'drawCards');
+  assert.notEqual(parseEffect('パワーチャージャーにカードが５枚以上置かれているなら、すぐにアビスに置く')?.action.type, 'drawCards');
+  const handBottomDraw = parseEffect('手札を１枚選んでデッキの底に置き、カードを１枚引く');
+  assert.deepEqual(handBottomDraw?.action, { type: 'requestChoice', params: { choiceType: 'handToDeckBottomThenDraw', discardCount: 1, drawCount: 1 } });
+
+  const choiceState = preparedState();
+  choiceState.players[0].hand = [createInstance('1st_9', true), createInstance('1st_17', true)];
+  const chosen = choiceState.players[0].hand[0].instanceId;
+  assert.ok(handBottomDraw);
+  assert.equal(executeEffect(handBottomDraw, choiceState, 0).success, true);
+  assert.equal(choiceState.pendingChoice?.player, 0);
+  assert.equal(choiceState.pendingChoice?.options.length, 2);
+  assert.equal(submitPendingChoice(choiceState, 0, [chosen], noEffects), true);
+  assert.equal(choiceState.pendingChoice, null);
+  assert.equal(choiceState.players[0].hand.length, 2);
+  assert.equal(choiceState.players[0].deck.at(-1)?.instanceId, chosen);
 
   const millTop = parseEffect('相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く');
   assert.ok(millTop);
@@ -375,6 +521,46 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   const realAreaTop = parsedCardEffect('2nd_55');
   assert.deepEqual(realAreaTop.conditions, [{ type: 'selfElement', value: '炎' }]);
   assert.deepEqual(realAreaTop.action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'top' } });
+}
+
+{
+  const parsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.chronos.position = 5;
+  G.players[0].setZoneC = createInstance('2nd_5', true);
+  G.players[0].powerCharger = [
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+  ];
+  G.players[0].hand = [createInstance('1st_9', true)];
+  G.players[1].hand = [createInstance('1st_9', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  resolveTurn(G, parsedEffects);
+  assert.equal(G.players[0].setZoneC, null);
+  assert.equal(G.players[0].abyss.at(-1)?.defId, '2nd_5');
+}
+
+{
+  const parsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.chronos.position = 5;
+  G.players[0].setZoneC = createInstance('2nd_86', true);
+  G.players[0].powerCharger = [createInstance('1st_9', true)];
+  G.players[0].hand = [createInstance('1st_9', true)];
+  G.players[1].hand = [createInstance('1st_9', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  resolveTurn(G, parsedEffects);
+  assert.equal(G.players[0].setZoneC, null);
+  assert.equal(G.players[0].powerCharger.at(-1)?.defId, '2nd_86');
 }
 
 {

@@ -22,6 +22,11 @@ Implemented and covered by smoke tests:
 - Per-effect Power Cost checks and Power Cost attack checks.
 - Player-selected normal effect-processing order: after reveal/place/Chronos advancement, eligible effects are queued by Chronos-side priority player first, each player chooses their own effect order, and the existing post-effect battle/finish pipeline resumes after the queue empties.
 - Timing events for turn start, turn end, and damage received; timing effects resolve from public field cards without inspecting hidden hands/decks.
+- Damage-received reduction is applied before battle damage, and damage-causing effects now end the game immediately when HP reaches 0.
+- Turn-start transient modifiers are preserved into the turn they affect.
+- Chronos transition, zone-entry, and Character replacement events are recorded; Chronos transition can drive simple Area Enchant self-move effects.
+- Basic hand-selection pending choice flow exists for hand-to-deck-bottom-then-draw effects.
+- Area Enchant self-move parser now emits secondary timing effects for several turn-end and day/night-loss clauses.
 - Battle damage, HP loss, HP-zero game end, and exact overdraw loss with no partial draw.
 - Online `playerView` redacts hidden hands, decks, face-down cards, and unpaired janken choices.
 - Server-side room setup accepts validated deck ID payloads for browser custom decks.
@@ -37,20 +42,20 @@ Implemented and covered by smoke tests:
 
 Rule gap: several effects still depend on zone-entry, Chronos transition, or card-specific expiry timing.
 
-Current implementation: the normal effect-processing pass has pending-effect infrastructure and player-selected order. The timing event framework now resolves turn-start, turn-end, and damage-received effects from public field cards. The engine still does not emit every rule event needed for full card coverage.
+Current implementation: the normal effect-processing pass has pending-effect infrastructure and player-selected order. The timing event framework now resolves turn-start, turn-end, damage-received, and Chronos-changed effects from public field cards. The engine records field zone-entry and Character replacement events, but does not yet resolve every card effect off every zone movement.
 
 Still-missing timing windows include:
 
 - card enters Abyss;
 - card enters Power Charger;
-- Area Enchant enters field;
-- Character replacement;
-- Chronos becoming day/night or no longer satisfying a condition.
+- non-Chronos zone-entry triggered effects;
+- replacement effects triggered by Character replacement.
 
 Needed work:
 
-- Emit events from zone movement, Character replacement, Chronos advancement, and Area Enchant entry.
-- Implement Area Enchant expiry/self-movement as event-driven effects, not a broad cleanup rule.
+- Emit events from Abyss and Power Charger movement.
+- Resolve card-specific zone-entry/replacement effects from the recorded event stream.
+- Expand Area Enchant expiry/self-movement coverage beyond the currently parsed clauses.
 - Resolve immediate triggers without leaking hidden information.
 - Add smoke tests for each timing window before adding card-specific behavior.
 
@@ -58,13 +63,10 @@ Needed work:
 
 Rule gap: many Area Enchant cards specify when they leave Set Zone C and whether they go to Abyss or Power Charger.
 
-Current implementation: Area Enchant cards persist, and static `boostAttack` effects can apply across turns. Expiry/self-move timing is not yet automated.
+Current implementation: Area Enchant cards persist, static `boostAttack` effects can apply across turns, and several self-move clauses now become secondary timing effects. Full expiry/self-move timing is still not complete.
 
 Examples not fully implemented:
 
-- `夜じゃなくなったらパワーチャージャーに置く`
-- `昼じゃなくなったらパワーチャージャーに置く`
-- `ターンの終了時に...アビスに置く`
 - `30ダメージ以上を受けたなら、すぐにアビスに置く`
 - `相手のアビスにカードが置かれたとき、すぐにこのカードをアビスに置く`
 
@@ -78,7 +80,7 @@ Needed work:
 
 Rule gap: many cards require the player to choose cards, positions, counts, or order.
 
-Current implementation: deterministic no-choice effects are automated, and normal-phase ordering can pause for player selection. Optional effects, targets, counts, and other card-specific choices are still skipped or use a documented fallback.
+Current implementation: deterministic no-choice effects are automated, normal-phase ordering can pause for player selection, and basic hand-to-deck-bottom-then-draw choices use a server-validated `pendingChoice`. Optional effects, targets, counts, and other card-specific choices are still skipped or use a documented fallback.
 
 Missing choice categories include:
 
@@ -91,10 +93,9 @@ Missing choice categories include:
 
 Needed work:
 
-- Add a `pendingChoice` model with choice type, legal options, owner, and resolver payload.
-- Ensure hidden zones are only revealed to eligible players.
-- Add UI for choice selection and boardgame.io moves to submit choices.
-- Add smoke tests for resolver validation and invalid choices.
+- Expand `pendingChoice` beyond hand choices to Abyss, Power Charger, battle-zone targets, Clock choices, optional effects, and deck ordering.
+- Add UI for each choice type.
+- Add smoke tests for each resolver and invalid choices.
 
 ### 4. Replacement, prevention, and continuous modifiers
 
@@ -124,10 +125,18 @@ Current parser snapshot from the latest audit:
 - total cards: 422;
 - cards with effect text: 250;
 - effect text lines: 267;
-- parsed lines: 227;
-- unparsed lines: 40.
+- parsed lines: 213;
+- unparsed lines: 54;
+- parsed-but-partial heuristic: 32;
+- false `drawCards` positives: 0.
 
 Important caveat: parsed does not always mean fully correct execution. Some parsed effects only cover the first deterministic part of a longer effect, or intentionally skip a timing/choice clause.
+
+Current high-risk parsed-but-wrong categories:
+
+- Timing suffixes such as `...ターンの終了時にアビスに置く` can make the whole card parse as `onTurnEnd`, so a main continuous effect may no longer run during the normal effect window.
+- Broad `カードをX枚` false positives for selection/deck-return text have been tightened; `npm run rule:audit` reports current parsed/unparsed/partial samples.
+- Area Enchant expiry clauses are parsed as the main action instead of a second self-move effect, so cards such as expiry-to-Abyss/Power Charger remain incomplete even when a parsed action exists.
 
 Needed work:
 
@@ -162,9 +171,9 @@ These are not core rule-engine mismatches, but they affect real online play:
 
 ## Suggested implementation order
 
-1. Extend timing events to zone movement, Character replacement, Chronos transitions, and Area Enchant entry/expiry.
-2. Implement Area Enchant expiry/self-move timing using that framework.
-3. Add generic `pendingChoice` infrastructure for interactive effects and targets, building on the normal-phase pending resolver.
-4. Audit parsed-but-partial effects and the 40 unparsed lines card-by-card.
+1. Expand `pendingChoice` to target, Clock amount, optional-effect, and deck-ordering choices.
+2. Resolve card-specific effects from Abyss/Power Charger zone-entry and Character replacement events.
+3. Expand Area Enchant expiry/self-move timing for damage-threshold and opponent-zone movement clauses.
+4. Audit parsed-but-partial effects and the 54 unparsed lines card-by-card using `npm run rule:audit`.
 5. Confirm Chronos board exactness from official materials and lock it with tests.
 6. Add reconnect/resume and account-backed match ownership if the product direction needs it.

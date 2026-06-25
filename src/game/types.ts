@@ -6,7 +6,7 @@ export type JankenChoice = 'rock' | 'paper' | 'scissors';
 export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'effectOrder' | 'gameOver';
 export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B';
-export type TimingEventType = 'turnStart' | 'turnEnd' | 'damageReceived' | 'chronosChanged';
+export type TimingEventType = 'turnStart' | 'turnEnd' | 'damageReceived' | 'chronosChanged' | 'zoneEntered' | 'characterReplaced';
 
 export interface TimingEvent {
   type: TimingEventType;
@@ -14,6 +14,11 @@ export interface TimingEvent {
   amount?: number;
   fromChronos?: number;
   toChronos?: number;
+  fromChronosTime?: ChronosTime;
+  toChronosTime?: ChronosTime;
+  zone?: 'battleZone' | 'setZoneC' | 'abyss' | 'powerCharger';
+  cardDefId?: string;
+  replacedCardDefId?: string;
 }
 
 export interface ZutomayoSetupData {
@@ -55,6 +60,23 @@ export interface PendingEffect {
   rawText: string;
   effect: import('./effects').ParsedEffect;
   source: PendingEffectSource;
+}
+
+export interface PendingChoiceOption {
+  id: string;
+  label: string;
+  cardInstanceId?: string;
+  cardDefId?: string;
+}
+
+export interface PendingChoice {
+  id: string;
+  player: PlayerIndex;
+  type: 'handToDeckBottomThenDraw';
+  options: PendingChoiceOption[];
+  min: number;
+  max: number;
+  payload: Record<string, number | string | boolean>;
 }
 
 export interface PlayerState {
@@ -103,6 +125,7 @@ export interface GameState {
   setCardsThisTurn: [CardInstance[], CardInstance[]];
   pendingEffects: [PendingEffect[], PendingEffect[]];
   pendingEffectPlayer: PlayerIndex | null;
+  pendingChoice: PendingChoice | null;
   timingEvents: TimingEvent[];
   swappedCardsThisTurn: [CardInstance[], CardInstance[]];
   previousTurnCharacterElements: [Element | null, Element | null];

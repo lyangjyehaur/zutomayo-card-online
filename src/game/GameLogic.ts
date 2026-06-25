@@ -105,10 +105,14 @@ export function getPlayerPower(player: PlayerState): number {
   );
 }
 
+function chronosTimeAt(position: number, midnightRange: number): ChronosTime {
+  const normalized = ((position % 12) + 12) % 12;
+  const distanceFromMidnight = Math.min(normalized, 12 - normalized);
+  return normalized < 6 || distanceFromMidnight <= midnightRange ? 'night' : 'day';
+}
+
 export function getChronosTime(G: GameState): ChronosTime {
-  const position = ((G.chronos.position % 12) + 12) % 12;
-  const distanceFromMidnight = Math.min(position, 12 - position);
-  return position < 6 || distanceFromMidnight <= G.midnightRange ? 'night' : 'day';
+  return chronosTimeAt(G.chronos.position, G.midnightRange);
 }
 
 export function getPriorityPlayer(G: GameState): PlayerIndex {
@@ -159,6 +163,7 @@ export function setupGame(
     setCardsThisTurn: [[], []],
     pendingEffects: [[], []],
     pendingEffectPlayer: null,
+    pendingChoice: null,
     timingEvents: [],
     swappedCardsThisTurn: [[], []],
     previousTurnCharacterElements: [null, null],
@@ -304,14 +309,25 @@ export function revealCards(G: GameState): void {
   }
 }
 
-export function advanceChronos(G: GameState): void {
+export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
   const total = G.setCardsThisTurn.flat().reduce(
     (sum, card) => sum + (getCardDef(card.defId)?.clock ?? 0),
     0,
   );
   const before = G.chronos.position;
+  const beforeTime = chronosTimeAt(before, G.midnightRange);
   G.chronos.position = (before + total) % 12;
   G.log.push(`Chronos +${total} (${before}→${G.chronos.position}).`);
+  const afterTime = getChronosTime(G);
+  if (before !== G.chronos.position) {
+    resolveTimingEvent(G, parsedEffects, {
+      type: 'chronosChanged',
+      fromChronos: before,
+      toChronos: G.chronos.position,
+      fromChronosTime: beforeTime,
+      toChronosTime: afterTime,
+    });
+  }
 }
 
 function hasOptionalSwapEffect(
@@ -345,7 +361,11 @@ function replaceDestination(
   const selected = cards[0];
   const old = player[destination];
   player[destination] = selected;
-  if (destination === 'battleZone' && old) G.swappedCardsThisTurn[playerIndex].push(selected);
+  G.timingEvents.push({ type: 'zoneEntered', player: playerIndex, zone: destination, cardDefId: selected.defId });
+  if (destination === 'battleZone' && old) {
+    G.swappedCardsThisTurn[playerIndex].push(selected);
+    G.timingEvents.push({ type: 'characterReplaced', player: playerIndex, zone: destination, cardDefId: selected.defId, replacedCardDefId: old.defId });
+  }
   if (old) sendToOwnerZone(old, player);
   for (const extra of cards.slice(1)) sendToOwnerZone(extra, player);
 }
@@ -397,6 +417,7 @@ function timingTrigger(event: TimingEvent): ParsedEffect['trigger'] | null {
   if (event.type === 'turnStart') return 'onTurnStart';
   if (event.type === 'turnEnd') return 'onTurnEnd';
   if (event.type === 'damageReceived') return 'onDamageReceived';
+  if (event.type === 'chronosChanged') return 'onChronosChanged';
   return null;
 }
 
@@ -410,10 +431,16 @@ export function resolveTimingEvent(
   G: GameState,
   parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
   event: TimingEvent,
+  options: {
+    effectFilter?: (effect: ParsedEffect) => boolean;
+    recordEvent?: boolean;
+  } = {},
 ): void {
   const trigger = timingTrigger(event);
-  G.timingEvents.push(event);
-  G.log.push(`Timing ${event.type}.`);
+  if (options.recordEvent ?? true) {
+    G.timingEvents.push(event);
+    G.log.push(`Timing ${event.type}.`);
+  }
   if (!trigger || G.step === 'gameOver') return;
 
   const players: PlayerIndex[] = event.type === 'damageReceived'
@@ -427,6 +454,7 @@ export function resolveTimingEvent(
       if (!definition || getPlayerPower(G.players[player]) < definition.powerCost) continue;
       for (const effect of parsedEffects.get(card.defId) ?? []) {
         if (effect.trigger !== trigger) continue;
+        if (options.effectFilter && !options.effectFilter(effect)) continue;
         const result = executeEffect(effect, G, player);
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
         if ((G.step as GameState['step']) === 'gameOver') return;
@@ -450,14 +478,26 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   const winner: PlayerIndex = attacks[0] > attacks[1] ? 0 : 1;
   const loser = (1 - winner) as PlayerIndex;
   const rawDamage = attacks[winner] - attacks[loser];
+  const damageReceivedEvent: TimingEvent = { type: 'damageReceived', player: loser, amount: rawDamage };
+  resolveTimingEvent(G, parsedEffects, damageReceivedEvent, {
+    effectFilter: effect => effect.action.type === 'damageReduce',
+  });
+  if (G.step === 'gameOver') return;
   const damage = G.modifiers.unreduceableDamage[winner]
     ? rawDamage
     : Math.max(0, rawDamage - G.modifiers.damageReduction[loser]);
   G.players[loser].hp = Math.max(0, G.players[loser].hp - damage);
   G.lastBattleResult = { winner, damage, winnerAttack: attacks[winner], loserAttack: attacks[loser] };
   G.log.push(`Battle ${attacks[0]}–${attacks[1]}: Player ${winner} deals ${damage}.`);
+  if (G.players[loser].hp <= 0) {
+    endGame(G, winner, `Player ${loser} loses at 0 HP.`);
+    return;
+  }
   if (damage > 0) {
-    resolveTimingEvent(G, parsedEffects, { type: 'damageReceived', player: loser, amount: damage });
+    resolveTimingEvent(G, parsedEffects, { ...damageReceivedEvent, amount: damage }, {
+      effectFilter: effect => effect.action.type !== 'damageReduce',
+      recordEvent: false,
+    });
   }
 }
 
@@ -467,6 +507,7 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
   G.gameoverReason = reason;
   G.ready = [true, true];
   clearPendingEffects(G);
+  clearPendingChoice(G);
   G.log.push(reason);
 }
 
@@ -494,6 +535,10 @@ function clearPendingEffects(G: GameState): void {
   G.pendingEffectPlayer = null;
 }
 
+function clearPendingChoice(G: GameState): void {
+  G.pendingChoice = null;
+}
+
 function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
   resolveTimingEvent(G, parsedEffects, { type: 'turnEnd' });
   if (G.step === 'gameOver') return;
@@ -516,6 +561,7 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
   }
   G.setCardsThisTurn = [[], []];
   clearPendingEffects(G);
+  clearPendingChoice(G);
   G.swappedCardsThisTurn = [[], []];
   G.modifiers = emptyModifiers();
   G.turnNumber++;
@@ -606,14 +652,48 @@ export function resolvePendingEffect(
     clearPendingEffects(G);
     return true;
   }
+  if (G.pendingChoice) return true;
 
+  advancePendingEffectWindow(G, parsedEffects);
+  return true;
+}
+
+export function submitPendingChoice(
+  G: GameState,
+  player: PlayerIndex,
+  optionIds: string[],
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
+): boolean {
+  const choice = G.pendingChoice;
+  if (!choice || choice.player !== player) return false;
+  if (!Array.isArray(optionIds) || optionIds.length < choice.min || optionIds.length > choice.max) return false;
+  if (new Set(optionIds).size !== optionIds.length) return false;
+  const legal = new Set(choice.options.map(option => option.id));
+  if (!optionIds.every(id => legal.has(id))) return false;
+
+  const playerState = G.players[player];
+  if (choice.type === 'handToDeckBottomThenDraw') {
+    for (const optionId of optionIds) {
+      const handIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
+      if (handIndex < 0) return false;
+      const [card] = playerState.hand.splice(handIndex, 1);
+      card.faceUp = true;
+      playerState.deck.push(card);
+    }
+    const drawCount = Number(choice.payload.drawCount ?? 0);
+    if (playerState.deck.length < drawCount) {
+      endGame(G, (1 - player) as PlayerIndex, `Player ${player} loses: choice attempted to draw ${drawCount} with only ${playerState.deck.length} cards.`);
+      return true;
+    }
+    drawUnchecked(playerState, drawCount);
+  }
+  clearPendingChoice(G);
   advancePendingEffectWindow(G, parsedEffects);
   return true;
 }
 
 export function resolveTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]>): void {
   const initial = G.step === 'initialSet' || G.turnNumber === 1;
-  G.modifiers = emptyModifiers();
   clearPendingEffects(G);
   G.chronosAtTurnStart = G.chronos.position;
   revealCards(G);
@@ -621,9 +701,9 @@ export function resolveTurn(G: GameState, parsedEffects: Map<string, ParsedEffec
     // Initial non-Characters leave immediately after reveal, but their entries
     // remain in setCardsThisTurn and therefore still advance Chronos.
     placeRevealedCards(G, true, parsedEffects);
-    advanceChronos(G);
+    advanceChronos(G, parsedEffects);
   } else {
-    advanceChronos(G);
+    advanceChronos(G, parsedEffects);
     placeRevealedCards(G, false, parsedEffects);
   }
   const pendingEffects = collectTurnEffects(G, parsedEffects, G.setCardsThisTurn);

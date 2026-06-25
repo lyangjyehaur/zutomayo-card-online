@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "smoke": "node --import tsx scripts/game-smoke.ts",
     "smoke:online": "node --import tsx scripts/online-smoke.ts",
+    "rule:audit": "node --import tsx scripts/rule-audit.ts",
     "preview": "vite preview",
     "server": "node --import tsx src/server.ts"
   },

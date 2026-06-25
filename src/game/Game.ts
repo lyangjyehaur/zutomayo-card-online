@@ -10,6 +10,7 @@ import {
   setInitialCard,
   setTurnCard,
   setupGame,
+  submitPendingChoice,
   undoSetCard,
   validateZutomayoSetupData,
 } from './GameLogic';
@@ -66,12 +67,16 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
     if (bothChose || viewer === index) return choice;
     return null;
   }) as GameState['jankenChoices'];
+  const pendingChoice = !G.pendingChoice || G.pendingChoice.player === viewer
+    ? G.pendingChoice
+    : { ...G.pendingChoice, options: [] };
 
   return {
     ...G,
     players: [redactPlayerForViewer(G, 0, viewer), redactPlayerForViewer(G, 1, viewer)],
     setCardsThisTurn: [redactPlayedCardsForViewer(G, 0, viewer), redactPlayedCardsForViewer(G, 1, viewer)],
     jankenChoices,
+    pendingChoice,
   };
 }
 
@@ -107,6 +112,10 @@ const moves: Record<string, Move<GameState>> = {
   resolvePendingEffect: ({ G, playerID }, index: number) => {
     const player = playerIndex(playerID);
     if (player === null || !resolvePendingEffectChoice(G, player, index, parsedEffects)) return INVALID_MOVE;
+  },
+  submitPendingChoice: ({ G, playerID }, optionIds: string[]) => {
+    const player = playerIndex(playerID);
+    if (player === null || !submitPendingChoice(G, player, optionIds, parsedEffects)) return INVALID_MOVE;
   },
 };
 

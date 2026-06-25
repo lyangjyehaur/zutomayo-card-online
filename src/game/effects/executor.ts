@@ -14,6 +14,12 @@ function isNight(G: GameState): boolean {
   return position < 6 || distanceFromMidnight <= G.midnightRange;
 }
 
+function chronosTimeAt(position: number, midnightRange: number): 'night' | 'day' {
+  const normalized = ((position % 12) + 12) % 12;
+  const distanceFromMidnight = Math.min(normalized, 12 - normalized);
+  return normalized < 6 || distanceFromMidnight <= midnightRange ? 'night' : 'day';
+}
+
 function isNamedCharacter(card: CardInstance | null, song: string): boolean {
   if (!card) return false;
   const def = getCardDef(card.defId);
@@ -36,6 +42,7 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     case 'handCount': return me.hand.length >= Number(cond.value);
     case 'hpLessOrEqual': return me.hp <= Number(cond.value);
     case 'chronosChanged': return G.chronos.position !== G.chronosAtTurnStart;
+    case 'chronosTimeChanged': return chronosTimeAt(G.chronosAtTurnStart, G.midnightRange) !== chronosTimeAt(G.chronos.position, G.midnightRange);
     case 'namedCardCondition': {
       const song = String(cond.value);
       if (cond.target === 'battleZone') return isNamedCharacter(me.battleZone, song);
@@ -59,6 +66,14 @@ function loseOnEffectOverdraw(G: GameState, player: PlayerIndex, count: number):
   G.gameoverReason = `Player ${player} loses: effect attempted to draw ${count} with only ${G.players[player].deck.length} cards.`;
   G.log.push(G.gameoverReason);
   return true;
+}
+
+function loseByHp(G: GameState, player: PlayerIndex, reason: string): void {
+  G.step = 'gameOver';
+  G.winner = (1 - player) as PlayerIndex;
+  G.gameoverReason = reason;
+  G.ready = [true, true];
+  G.log.push(reason);
 }
 
 function isPersistentAreaEnchantEffect(card: CardInstance, effect: ParsedEffect): boolean {
@@ -142,7 +157,10 @@ export function executeEffect(
       return { success: true, message: `Heal ${value}` };
     case 'directDamage':
       if (value === -1) G.modifiers.unreduceableDamage[player] = true;
-      else opponent.hp = Math.max(0, opponent.hp - value);
+      else {
+        opponent.hp = Math.max(0, opponent.hp - value);
+        if (opponent.hp <= 0) loseByHp(G, opponentIndex, `Player ${opponentIndex} loses at 0 HP.`);
+      }
       return { success: true, message: value === -1 ? 'Battle damage cannot be reduced' : `Deal ${value}` };
     case 'damageReduce':
       G.modifiers.damageReduction[player] += value;
@@ -218,6 +236,37 @@ export function executeEffect(
       if (effect.action.params.position === 'top') opponent.deck.unshift(card);
       else opponent.deck.push(card);
       return { success: true, message: 'Return opposing Area Enchant to deck' };
+    }
+    case 'moveSelfAreaEnchant': {
+      const card = me.setZoneC;
+      if (!card) return { success: false, message: 'No own Area Enchant' };
+      me.setZoneC = null;
+      card.faceUp = true;
+      if (effect.action.params.destination === 'powerCharger') me.powerCharger.push(card);
+      else me.abyss.push(card);
+      return { success: true, message: `Move own Area Enchant to ${effect.action.params.destination === 'powerCharger' ? 'Power Charger' : 'Abyss'}` };
+    }
+    case 'requestChoice': {
+      if (effect.action.params.choiceType !== 'handToDeckBottomThenDraw') {
+        return { success: false, message: 'Unsupported choice type' };
+      }
+      const discardCount = Number(effect.action.params.discardCount ?? 1);
+      const drawCount = Number(effect.action.params.drawCount ?? discardCount);
+      G.pendingChoice = {
+        id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+        player,
+        type: 'handToDeckBottomThenDraw',
+        min: discardCount,
+        max: discardCount,
+        payload: { drawCount },
+        options: me.hand.map(card => ({
+          id: card.instanceId,
+          label: getCardDef(card.defId)?.name ?? card.defId,
+          cardInstanceId: card.instanceId,
+          cardDefId: card.defId,
+        })),
+      };
+      return { success: true, message: 'Pending hand selection' };
     }
     case 'noEffect':
       G.modifiers.effectsDisabled[opponentIndex] = true;

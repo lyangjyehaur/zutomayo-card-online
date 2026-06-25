@@ -18,7 +18,8 @@ export type EffectTrigger =
   | 'onLeave'       // When leaving field
   | 'onTurnStart'   // Start of turn
   | 'onTurnEnd'     // End of turn
-  | 'onDamageReceived'; // When taking damage
+  | 'onDamageReceived' // When taking damage
+  | 'onChronosChanged'; // When Chronos crosses a timing boundary
 
 export type Condition =
   | {
@@ -42,6 +43,7 @@ export type ConditionType =
   | 'handCount'         // Hand has N cards
   | 'hpLessOrEqual'     // Player HP <= N
   | 'chronosChanged'    // Chronos changed this turn
+  | 'chronosTimeChanged' // Chronos changed between night/day this turn
   | 'namedCardCondition' // Named-song Character in a relevant zone
   | 'simultaneousCharacter' // Character was played with this effect
   | 'previousCharElement' // Previous turn's character element
@@ -69,5 +71,7 @@ export type ActionType =
   | 'sendToAbyss'       // Send card to abyss
   | 'millDeckToAbyss'   // Move cards from deck top to abyss
   | 'returnAreaEnchantToDeck' // Return Area Enchant to deck
+  | 'moveSelfAreaEnchant' // Move own Area Enchant to a zone
+  | 'requestChoice'      // Ask the owner to submit a validated choice
   | 'noEffect'          // Disable opponent effects
   | 'addSettableCard';  // Can set extra card
