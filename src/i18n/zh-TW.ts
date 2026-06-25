@@ -77,6 +77,7 @@ export const zhTW = {
   'board.night': '夜',
   'board.day': '晝',
   'board.timer': '倒數',
+  'board.secondsUnit': '秒',
   'board.initialSet': '初始戰鬥設置',
   'board.setCards': '放置卡牌',
   'board.opponentReady': '對手已準備',

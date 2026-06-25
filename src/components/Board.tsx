@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import type { CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { Card } from './Card';
-import { Chronos } from './Chronos';
 import { getChronosTime, getRequiredSetCount } from '../game/GameLogic';
 import { saveMatchRecord } from '../game/matchHistory';
 import { t } from '../i18n';
@@ -148,44 +147,6 @@ function hpClass(hp: number): string {
   return 'healthy';
 }
 
-function StatusPill({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
-  return (
-    <div className={`status-pill ${tone ?? ''}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function PlayerStats({ G, player, side }: { G: GameState; player: PlayerIndex; side: 'self' | 'opponent' }) {
-  const state = G.players[player];
-  const hp = Math.max(0, Math.min(100, state.hp));
-  const hpTone = hpClass(hp);
-
-  return (
-    <div className={`player-stats player-info-bar ${side}`}>
-      <div className="player-identity">
-        <span>{side === 'self' ? t('player.me') : t('player.opponent')}</span>
-        <strong>{playerName(player)}</strong>
-      </div>
-      <div className={`hp-meter ${hpTone}`}>
-        <div className="hp-copy">
-          <span>{t('board.hp')}</span>
-          <strong>{state.hp}</strong>
-        </div>
-        <div className="hp-track">
-          <div className="hp-fill" style={{ width: `${hp}%` }} />
-        </div>
-      </div>
-      <div className="resource-row">
-        <StatusPill label={t('board.energy')} value={powerTotal(G, player)} tone="energy" />
-        <StatusPill label={t('board.deck')} value={state.deck.length} />
-        <StatusPill label={t('board.abyss')} value={state.abyss.length} tone="abyss" />
-      </div>
-    </div>
-  );
-}
-
 function Zone({ label, className, card, onClick, large, activeTime }: {
   label: string;
   className: string;
@@ -216,44 +177,141 @@ function Zone({ label, className, card, onClick, large, activeTime }: {
   return <div className={`zone ${className}`}>{content}</div>;
 }
 
-function HandRow({ cards, hidden, onCardClick }: {
-  cards: CardInstance[];
-  hidden?: boolean;
-  onCardClick?: (index: number) => void;
-}) {
+function cardDisplayName(card: CardInstance | null): string {
+  if (!card) return t('common.empty');
+  return getCardDef(card.defId)?.name ?? t('card.unknown');
+}
+
+function ResourceStat({ className, label, value }: { className: string; label: string; value: string | number }) {
   return (
-    <div className={hidden ? 'opponent-hand hand-row' : 'hand hand-row'}>
-      {cards.map((card, index) => (
-        <Card
-          key={card.instanceId}
-          card={hidden ? { ...card, faceUp: false } : card}
-          size={hidden ? 'micro' : 'normal'}
-          onClick={onCardClick ? () => onCardClick(index) : undefined}
-        />
-      ))}
-    </div>
+    <span className={className}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </span>
   );
 }
 
-function BattleSummary({ G }: { G: GameState }) {
-  const result = G.lastBattleResult;
-  if (G.turnNumber <= 1 || result.damage <= 0) {
-    return (
-      <div className="battle-summary muted">
-        <span className="battle-summary-label">{t('board.lastBattle')}</span>
-        <strong className="battle-summary-result">{t('board.draw')}</strong>
-      </div>
-    );
-  }
+function OpponentSummary({ G, opponentIndex }: { G: GameState; opponentIndex: PlayerIndex }) {
+  const opponent = G.players[opponentIndex];
 
   return (
-    <div className="battle-summary">
-      <span className="battle-summary-label">{t('board.lastBattle')}</span>
-      <strong className="battle-summary-result">{t('board.damage')} {result.damage}</strong>
-      <em className="battle-summary-detail">
-        {t('board.winner')} {result.winner !== null ? playerName(result.winner) : t('board.draw')}
-      </em>
-    </div>
+    <section className="opponent-summary" aria-label={t('player.opponent')}>
+      <strong className="opponent-name">{t('player.opponent')}：{playerName(opponentIndex)}</strong>
+      <ResourceStat className="hp" label={t('board.hp')} value={opponent.hp} />
+      <ResourceStat className="deck-count" label={t('board.deck')} value={opponent.deck.length} />
+      <ResourceStat className="power" label={t('board.energy')} value={powerTotal(G, opponentIndex)} />
+      <div className="battle-char">
+        <span>{t('card.type.character')}</span>
+        <strong>{cardDisplayName(opponent.battleZone)}</strong>
+      </div>
+    </section>
+  );
+}
+
+function PlayerStatus({ G, meIndex, timeLeft, timerTone }: {
+  G: GameState;
+  meIndex: PlayerIndex;
+  timeLeft: number;
+  timerTone: string;
+}) {
+  const me = G.players[meIndex];
+
+  return (
+    <section className="player-status" aria-label={t('player.me')}>
+      <ResourceStat className={`hp ${hpClass(me.hp)}`} label={t('board.hp')} value={me.hp} />
+      <ResourceStat className="deck-count" label={t('board.deck')} value={me.deck.length} />
+      <ResourceStat className="power" label={t('board.energy')} value={powerTotal(G, meIndex)} />
+      <ResourceStat className="abyss" label={t('board.abyss')} value={me.abyss.length} />
+      {G.step === 'turnSet' && (
+        <ResourceStat className={`timer ${timerTone}`} label={t('board.timer')} value={`${timeLeft}${t('board.secondsUnit')}`} />
+      )}
+    </section>
+  );
+}
+
+function PlayerField({ G, meIndex, timeLeft, timerTone, time, moves }: {
+  G: GameState;
+  meIndex: PlayerIndex;
+  timeLeft: number;
+  timerTone: string;
+  time: ChronosTime;
+  moves: Props['moves'];
+}) {
+  const me = G.players[meIndex];
+
+  return (
+    <section className="player-field" aria-label={t('player.me')}>
+      <div className="zones-row">
+        <Zone
+          label={t('board.setZoneA')}
+          className="set-zone"
+          card={me.setZoneA && { ...me.setZoneA, faceUp: true }}
+          onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
+        />
+        <Zone label={t('board.battleZone')} className="battle-zone" card={me.battleZone} large activeTime={time} />
+        <Zone
+          label={t('board.setZoneB')}
+          className="set-zone"
+          card={me.setZoneB && { ...me.setZoneB, faceUp: true }}
+          onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
+        />
+        <Zone label={t('board.areaEnchant')} className="area-zone" card={me.setZoneC} />
+      </div>
+      <PlayerStatus G={G} meIndex={meIndex} timeLeft={timeLeft} timerTone={timerTone} />
+    </section>
+  );
+}
+
+function HandArea({ cards, onCardClick }: {
+  cards: CardInstance[];
+  onCardClick?: (index: number) => void;
+}) {
+  return (
+    <section className="hand-area" aria-label={t('board.hand')}>
+      {cards.map((card, index) => (
+        <Card
+          key={card.instanceId}
+          card={card}
+          size="normal"
+          onClick={onCardClick ? () => onCardClick(index) : undefined}
+        />
+      ))}
+    </section>
+  );
+}
+
+function ActionsBar({ ready, canConfirm, cardsSet, required, onConfirm }: {
+  ready: boolean;
+  canConfirm: boolean;
+  cardsSet: number;
+  required: number;
+  onConfirm: () => void;
+}) {
+  return (
+    <section className="actions-bar">
+      <button className="confirm-button" disabled={!canConfirm} type="button" onClick={onConfirm}>
+        {ready
+          ? t('board.readyWaiting')
+          : `${t('board.confirmSet')} (${cardsSet}/${required})`}
+      </button>
+    </section>
+  );
+}
+
+function InfoBar({ G, opponentIndex, time, phaseText }: {
+  G: GameState;
+  opponentIndex: PlayerIndex;
+  time: ChronosTime;
+  phaseText: string;
+}) {
+  return (
+    <section className="info-bar" aria-label={phaseText}>
+      <span>{t('board.turn')} {G.turnNumber}</span>
+      <span className={`time-badge ${time}`}>{time === 'night' ? t('board.night') : t('board.day')}</span>
+      <span>{t('chronos.title')}：{G.chronos.position}/12</span>
+      <span>{phaseText}</span>
+      <span>{G.ready[opponentIndex] ? t('board.opponentReady') : t('board.opponentChoosing')}</span>
+    </section>
   );
 }
 
@@ -261,7 +319,6 @@ function BattleBoard({ G, moves, playerID }: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
-  const opponent = G.players[opponentIndex];
   const required = getRequiredSetCount(G, meIndex);
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -295,61 +352,25 @@ function BattleBoard({ G, moves, playerID }: Props) {
 
   return (
     <div className={`board chrono-${time}`}>
-      <section className="player-area opponent-area">
-        <PlayerStats G={G} player={opponentIndex} side="opponent" />
-        <div className="zones opponent-zones">
-          <Zone label={t('board.setZoneA')} className="set-zone" card={opponent.setZoneA} />
-          <Zone label={t('board.battleZone')} className="battle-zone" card={opponent.battleZone} large activeTime={time} />
-          <Zone label={t('board.setZoneB')} className="set-zone" card={opponent.setZoneB} />
-          <Zone label={t('board.areaEnchant')} className="area-zone" card={opponent.setZoneC} />
-        </div>
-        <div className="hand-label">{t('board.opponentHand')}</div>
-        <HandRow cards={opponent.hand} hidden />
-      </section>
-
-      <section className="center-area">
-        <Chronos chronos={G.chronos} currentTime={time} />
-        <div className="turn-panel">
-          <div className="turn-number">{t('board.turn')} {G.turnNumber}</div>
-          <div className={`time-badge ${time}`}>{time === 'night' ? t('board.night') : t('board.day')}</div>
-          {G.step === 'turnSet' && (
-            <div className={`turn-timer ${timerTone}`}>{t('board.timer')} {timeLeft}s</div>
-          )}
-          <div className="phase-text">{phaseText}</div>
-          <div className="opponent-state">
-            {G.ready[opponentIndex] ? t('board.opponentReady') : t('board.opponentChoosing')}
-          </div>
-        </div>
-        <BattleSummary G={G} />
-      </section>
-
-      <section className="player-area self-area">
-        <div className="hand-label">{t('board.hand')}</div>
-        <HandRow cards={me.hand} onCardClick={!G.ready[meIndex] ? setFromHand : undefined} />
-        <div className="zones my-zones">
-          <Zone
-            label={t('board.setZoneA')}
-            className="set-zone"
-            card={me.setZoneA && { ...me.setZoneA, faceUp: true }}
-            onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
-          />
-          <Zone label={t('board.battleZone')} className="battle-zone" card={me.battleZone} large activeTime={time} />
-          <Zone
-            label={t('board.setZoneB')}
-            className="set-zone"
-            card={me.setZoneB && { ...me.setZoneB, faceUp: true }}
-            onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
-          />
-          <Zone label={t('board.areaEnchant')} className="area-zone" card={me.setZoneC} />
-        </div>
-        <PlayerStats G={G} player={meIndex} side="self" />
-        <div className="actions">
-          <button className="confirm-button" disabled={!canConfirm} type="button" onClick={() => moves.confirmReady()}>
-            {G.ready[meIndex]
-              ? t('board.readyWaiting')
-              : `${t('board.confirmSet')} (${me.cardsSetThisTurn}/${required})`}
-          </button>
-        </div>
+      <OpponentSummary G={G} opponentIndex={opponentIndex} />
+      <PlayerField
+        G={G}
+        meIndex={meIndex}
+        timeLeft={timeLeft}
+        timerTone={timerTone}
+        time={time}
+        moves={moves}
+      />
+      <section className="bottom-panel">
+        <HandArea cards={me.hand} onCardClick={!G.ready[meIndex] ? setFromHand : undefined} />
+        <ActionsBar
+          ready={G.ready[meIndex]}
+          canConfirm={canConfirm}
+          cardsSet={me.cardsSetThisTurn}
+          required={required}
+          onConfirm={() => moves.confirmReady()}
+        />
+        <InfoBar G={G} opponentIndex={opponentIndex} time={time} phaseText={phaseText} />
       </section>
     </div>
   );
