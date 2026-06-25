@@ -521,7 +521,7 @@ input:focus {
   --card-micro-h: calc(var(--card-micro-w) * 1.5);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: clamp(0.3rem, 0.75vh, 0.55rem);
+  gap: 0;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -541,20 +541,45 @@ input:focus {
   overflow: hidden;
 }
 
-.opponent-summary {
+.opponent-field {
   display: flex;
-  align-items: center;
-  gap: 1rem;
-  min-height: 2.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: calc(var(--radius) - 0.15rem) calc(var(--radius) - 0.15rem) 0 0;
-  padding: 0.4rem 0.8rem;
-  background: rgba(0, 0, 0, 0.3);
-  font-size: 0.85rem;
+  background: rgba(0, 0, 0, 0.2);
   overflow: hidden;
 }
 
-.opponent-summary > *,
+.opponent-stats {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 1.2rem;
+  overflow: hidden;
+  font-size: 0.8rem;
+}
+
+.opponent-zones,
+.player-zones {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  max-width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.opponent-zones {
+  gap: 0.5rem;
+}
+
+.player-zones {
+  gap: 0.8rem;
+}
+
+.opponent-stats > *,
 .player-status > *,
 .info-bar > * {
   min-width: 0;
@@ -569,9 +594,9 @@ input:focus {
   white-space: nowrap;
 }
 
-.opponent-summary .hp,
-.opponent-summary .deck-count,
-.opponent-summary .power,
+.opponent-stats .hp,
+.opponent-stats .deck-count,
+.opponent-stats .power,
 .player-status > span {
   display: inline-flex;
   flex: 0 0 auto;
@@ -580,26 +605,25 @@ input:focus {
   white-space: nowrap;
 }
 
-.opponent-summary span span,
-.player-status span span,
-.battle-char span {
+.opponent-stats span span,
+.player-status span span {
   color: var(--muted);
   font-size: 0.78em;
   font-weight: 700;
 }
 
-.opponent-summary .hp,
+.opponent-stats .hp,
 .player-status .hp {
   color: var(--danger);
   font-weight: 800;
 }
 
-.opponent-summary .deck-count,
+.opponent-stats .deck-count,
 .player-status .deck-count {
   color: var(--muted);
 }
 
-.opponent-summary .power,
+.opponent-stats .power,
 .player-status .power,
 .player-status .timer {
   color: var(--gold);
@@ -609,52 +633,31 @@ input:focus {
   color: var(--abyss);
 }
 
-.battle-char {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.battle-char strong {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .player-field {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.8rem;
+  gap: 0.6rem;
   padding: 0.5rem;
   overflow: hidden;
 }
 
 .zones-row {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 0.8rem;
   max-width: 100%;
-  min-height: 0;
-  overflow: hidden;
 }
 
 .zone {
+  --zone-card-w: var(--card-small-w);
+  --zone-card-h: var(--card-small-h);
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.3rem;
-  width: var(--card-small-w);
-  min-height: calc(var(--card-small-h) + 1.7rem);
+  width: var(--zone-card-w);
+  min-height: calc(var(--zone-card-h) + 1.7rem);
   height: auto;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: var(--radius);
@@ -666,9 +669,30 @@ input:focus {
   overflow: hidden;
 }
 
-.zone.battle-zone {
-  width: var(--card-normal-w);
-  min-height: calc(var(--card-normal-h) + 1.7rem);
+.zone-normal {
+  --zone-card-w: var(--card-normal-w);
+  --zone-card-h: var(--card-normal-h);
+}
+
+.zone-small {
+  --zone-card-w: var(--card-small-w);
+  --zone-card-h: var(--card-small-h);
+}
+
+.zone-tiny {
+  --zone-card-w: var(--card-tiny-w);
+  --zone-card-h: var(--card-tiny-h);
+}
+
+.zone-micro {
+  --zone-card-w: var(--card-micro-w);
+  --zone-card-h: var(--card-micro-h);
+}
+
+.opponent-zones .zone {
+  gap: 0.24rem;
+  min-height: calc(var(--zone-card-h) + 1.35rem);
+  padding: 0.32rem;
 }
 
 .zone-clickable {
@@ -693,8 +717,8 @@ input:focus {
 }
 
 .battle-zone .game-card {
-  --card-w: var(--card-normal-w);
-  width: var(--card-normal-w);
+  --card-w: var(--zone-card-w);
+  width: var(--zone-card-w);
 }
 
 @keyframes battle-zone-glow {
@@ -719,7 +743,7 @@ input:focus {
 .zone-empty {
   display: grid;
   place-items: center;
-  width: min(var(--card-small-w), 100%);
+  width: min(var(--zone-card-w), 100%);
   aspect-ratio: 2 / 3;
   overflow: hidden;
   padding: 0.25rem;
@@ -728,10 +752,6 @@ input:focus {
   line-height: 1.2;
   text-align: center;
   overflow-wrap: anywhere;
-}
-
-.battle-zone .zone-empty {
-  width: min(var(--card-normal-w), 100%);
 }
 
 .player-status {
@@ -1684,18 +1704,22 @@ input:focus {
   }
 
   .board {
-    gap: 0.25rem;
+    gap: 0;
     padding: 0.35rem;
   }
 
-  .opponent-summary {
-    gap: 0.45rem;
-    min-height: 2.25rem;
-    padding: 0.32rem 0.5rem;
+  .opponent-field {
+    gap: 0.22rem;
+    padding: 0.28rem 0.3rem;
+  }
+
+  .opponent-stats {
+    justify-content: center;
+    gap: 0.55rem;
     font-size: 0.72rem;
   }
 
-  .battle-char span {
+  .opponent-stats .opponent-name {
     display: none;
   }
 
@@ -1704,18 +1728,27 @@ input:focus {
     padding: 0.35rem 0.2rem;
   }
 
-  .zones-row {
-    gap: 0.25rem;
+  .opponent-zones,
+  .player-zones {
     width: 100%;
   }
 
+  .opponent-zones {
+    gap: 0.25rem;
+  }
+
+  .player-zones {
+    gap: 0.25rem;
+  }
+
   .zone {
-    min-height: calc(var(--card-small-h) + 1.3rem);
+    min-height: calc(var(--zone-card-h) + 1.3rem);
     padding: 0.35rem 0.2rem;
   }
 
-  .zone.battle-zone {
-    min-height: calc(var(--card-normal-h) + 1.3rem);
+  .opponent-zones .zone {
+    min-height: calc(var(--zone-card-h) + 1.15rem);
+    padding: 0.24rem 0.16rem;
   }
 
   .zone-label {

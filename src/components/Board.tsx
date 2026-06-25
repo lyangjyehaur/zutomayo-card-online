@@ -2,7 +2,7 @@ import type { BoardProps } from 'boardgame.io/react';
 import { useEffect, useRef, useState } from 'react';
 import type { CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
-import { Card } from './Card';
+import { Card, type CardSize } from './Card';
 import { getChronosTime, getRequiredSetCount } from '../game/GameLogic';
 import { saveMatchRecord } from '../game/matchHistory';
 import { t } from '../i18n';
@@ -147,19 +147,19 @@ function hpClass(hp: number): string {
   return 'healthy';
 }
 
-function Zone({ label, className, card, onClick, large, activeTime }: {
+function Zone({ label, className, card, onClick, size = 'small', activeTime }: {
   label: string;
   className: string;
   card: CardInstance | null;
   onClick?: () => void;
-  large?: boolean;
+  size?: CardSize;
   activeTime?: ChronosTime;
 }) {
   const content = (
     <>
       <span className="zone-label">{label}</span>
       {card ? (
-        <Card card={card} size={large ? 'normal' : 'small'} activeTime={activeTime} />
+        <Card card={card} size={size} activeTime={activeTime} />
       ) : (
         <span className="zone-empty">{label}</span>
       )}
@@ -168,18 +168,13 @@ function Zone({ label, className, card, onClick, large, activeTime }: {
 
   if (onClick) {
     return (
-      <button className={`zone ${className} zone-clickable`} type="button" onClick={onClick}>
+      <button className={`zone zone-${size} ${className} zone-clickable`} type="button" onClick={onClick}>
         {content}
       </button>
     );
   }
 
-  return <div className={`zone ${className}`}>{content}</div>;
-}
-
-function cardDisplayName(card: CardInstance | null): string {
-  if (!card) return t('common.empty');
-  return getCardDef(card.defId)?.name ?? t('card.unknown');
+  return <div className={`zone zone-${size} ${className}`}>{content}</div>;
 }
 
 function ResourceStat({ className, label, value }: { className: string; label: string; value: string | number }) {
@@ -191,18 +186,34 @@ function ResourceStat({ className, label, value }: { className: string; label: s
   );
 }
 
-function OpponentSummary({ G, opponentIndex }: { G: GameState; opponentIndex: PlayerIndex }) {
+function OpponentStats({ G, opponentIndex }: { G: GameState; opponentIndex: PlayerIndex }) {
   const opponent = G.players[opponentIndex];
 
   return (
-    <section className="opponent-summary" aria-label={t('player.opponent')}>
+    <div className="opponent-stats">
       <strong className="opponent-name">{t('player.opponent')}：{playerName(opponentIndex)}</strong>
       <ResourceStat className="hp" label={t('board.hp')} value={opponent.hp} />
       <ResourceStat className="deck-count" label={t('board.deck')} value={opponent.deck.length} />
       <ResourceStat className="power" label={t('board.energy')} value={powerTotal(G, opponentIndex)} />
-      <div className="battle-char">
-        <span>{t('card.type.character')}</span>
-        <strong>{cardDisplayName(opponent.battleZone)}</strong>
+    </div>
+  );
+}
+
+function OpponentField({ G, opponentIndex, time }: {
+  G: GameState;
+  opponentIndex: PlayerIndex;
+  time: ChronosTime;
+}) {
+  const opponent = G.players[opponentIndex];
+
+  return (
+    <section className="opponent-field" aria-label={t('player.opponent')}>
+      <OpponentStats G={G} opponentIndex={opponentIndex} />
+      <div className="opponent-zones">
+        <Zone label={t('board.setZoneA')} className="set-zone" card={opponent.setZoneA} size="small" />
+        <Zone label={t('board.battleZone')} className="battle-zone" card={opponent.battleZone} size="small" activeTime={time} />
+        <Zone label={t('board.setZoneB')} className="set-zone" card={opponent.setZoneB} size="small" />
+        <Zone label={t('board.areaEnchant')} className="area-zone" card={opponent.setZoneC} size="small" />
       </div>
     </section>
   );
@@ -241,21 +252,23 @@ function PlayerField({ G, meIndex, timeLeft, timerTone, time, moves }: {
 
   return (
     <section className="player-field" aria-label={t('player.me')}>
-      <div className="zones-row">
+      <div className="player-zones zones-row">
         <Zone
           label={t('board.setZoneA')}
           className="set-zone"
           card={me.setZoneA && { ...me.setZoneA, faceUp: true }}
           onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
+          size="normal"
         />
-        <Zone label={t('board.battleZone')} className="battle-zone" card={me.battleZone} large activeTime={time} />
+        <Zone label={t('board.battleZone')} className="battle-zone" card={me.battleZone} size="normal" activeTime={time} />
         <Zone
           label={t('board.setZoneB')}
           className="set-zone"
           card={me.setZoneB && { ...me.setZoneB, faceUp: true }}
           onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
+          size="normal"
         />
-        <Zone label={t('board.areaEnchant')} className="area-zone" card={me.setZoneC} />
+        <Zone label={t('board.areaEnchant')} className="area-zone" card={me.setZoneC} size="normal" />
       </div>
       <PlayerStatus G={G} meIndex={meIndex} timeLeft={timeLeft} timerTone={timerTone} />
     </section>
@@ -352,7 +365,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
 
   return (
     <div className={`board chrono-${time}`}>
-      <OpponentSummary G={G} opponentIndex={opponentIndex} />
+      <OpponentField G={G} opponentIndex={opponentIndex} time={time} />
       <PlayerField
         G={G}
         meIndex={meIndex}
