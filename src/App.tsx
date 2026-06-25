@@ -24,11 +24,19 @@ function selectedDeckName(deckName: string, customDeckAvailable: boolean): strin
   return deckName || undefined;
 }
 
-async function createMatch(): Promise<string> {
+function onlineDeckName(deckName: string): string | undefined {
+  // Custom decks live in browser localStorage, so the Node server cannot build
+  // them from setupData. Use the default preset online until deck payloads are
+  // server-validated and transmitted explicitly.
+  if (deckName === CUSTOM_DECK_NAME) return DEFAULT_DECK_NAME;
+  return deckName || undefined;
+}
+
+async function createMatch(deck0Name?: string, deck1Name?: string): Promise<string> {
   const response = await fetch('/games/zutomayo-card/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ numPlayers: 2 }),
+    body: JSON.stringify({ numPlayers: 2, setupData: { deck0Name, deck1Name } }),
   });
   if (!response.ok) throw new Error('Could not create match');
   const data = await response.json();
@@ -180,7 +188,7 @@ export default function App() {
     setTutorial(false);
   };
   const startOnline = async (existingID?: string) => {
-    const matchID = existingID || await createMatch();
+    const matchID = existingID || await createMatch(onlineDeckName(deck0Name), onlineDeckName(deck1Name));
     const playerID = existingID ? '1' : '0';
     const { playerCredentials } = await joinMatch(matchID, playerID);
     setOnline({ matchID, playerID, playerCredentials });

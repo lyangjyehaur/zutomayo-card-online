@@ -7,6 +7,11 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { Server } = require('boardgame.io/server') as typeof import('boardgame.io/server');
 
+const configuredOrigins = process.env.ALLOWED_ORIGINS
+  ?.split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean) ?? [];
+
 const server = Server({
   games: [ZutomayoCard],
   origins: [
@@ -14,7 +19,7 @@ const server = Server({
     /localhost:\d+/,
     /127\.0\.0\.1:\d+/,
     /\d+\.\d+\.\d+\.\d+:\d+/,
-    ...(process.env.ALLOWED_ORIGINS?.split(',').map(origin => new RegExp(origin.trim())) || []),
+    ...configuredOrigins,
   ],
 });
 
