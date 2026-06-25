@@ -1,6 +1,6 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { useEffect, useRef, useState } from 'react';
-import type { CardInstance, GameState, JankenChoice, PlayerIndex } from '../game/types';
+import type { CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { Card } from './Card';
 import { Chronos } from './Chronos';
@@ -186,18 +186,19 @@ function PlayerStats({ G, player, side }: { G: GameState; player: PlayerIndex; s
   );
 }
 
-function Zone({ label, className, card, onClick, large }: {
+function Zone({ label, className, card, onClick, large, activeTime }: {
   label: string;
   className: string;
   card: CardInstance | null;
   onClick?: () => void;
   large?: boolean;
+  activeTime?: ChronosTime;
 }) {
   const content = (
     <>
       <span className="zone-label">{label}</span>
       {card ? (
-        <Card card={card} size={large ? 'normal' : 'small'} />
+        <Card card={card} size={large ? 'normal' : 'small'} activeTime={activeTime} />
       ) : (
         <span className="zone-empty">{label}</span>
       )}
@@ -226,7 +227,7 @@ function HandRow({ cards, hidden, onCardClick }: {
         <Card
           key={card.instanceId}
           card={hidden ? { ...card, faceUp: false } : card}
-          size={hidden ? 'micro' : 'small'}
+          size={hidden ? 'micro' : 'normal'}
           onClick={onCardClick ? () => onCardClick(index) : undefined}
         />
       ))}
@@ -291,12 +292,12 @@ function BattleBoard({ G, moves, playerID }: Props) {
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn === required;
 
   return (
-    <div className="board">
+    <div className={`board chrono-${time}`}>
       <section className="player-area opponent-area">
         <PlayerStats G={G} player={opponentIndex} side="opponent" />
         <div className="zones opponent-zones">
           <Zone label={t('board.setZoneA')} className="set-zone" card={opponent.setZoneA} />
-          <Zone label={t('board.battleZone')} className="battle-zone" card={opponent.battleZone} large />
+          <Zone label={t('board.battleZone')} className="battle-zone" card={opponent.battleZone} large activeTime={time} />
           <Zone label={t('board.setZoneB')} className="set-zone" card={opponent.setZoneB} />
           <Zone label={t('board.areaEnchant')} className="area-zone" card={opponent.setZoneC} />
         </div>
@@ -330,7 +331,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
             card={me.setZoneA && { ...me.setZoneA, faceUp: true }}
             onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
           />
-          <Zone label={t('board.battleZone')} className="battle-zone" card={me.battleZone} large />
+          <Zone label={t('board.battleZone')} className="battle-zone" card={me.battleZone} large activeTime={time} />
           <Zone
             label={t('board.setZoneB')}
             className="set-zone"

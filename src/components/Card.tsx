@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CardDef, CardInstance, CardType, Element } from '../game/types';
+import type { CardDef, CardInstance, CardType, ChronosTime, Element } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { t } from '../i18n';
 
@@ -39,6 +39,7 @@ interface CardProps {
   selected?: boolean;
   small?: boolean;
   size?: CardSize;
+  activeTime?: ChronosTime;
   className?: string;
 }
 
@@ -46,6 +47,7 @@ function cardClassName(def: CardDef | undefined, size: CardSize, options: {
   selected?: boolean;
   clickable?: boolean;
   faceDown?: boolean;
+  activeTime?: ChronosTime;
   className?: string;
 }): string {
   return [
@@ -56,11 +58,12 @@ function cardClassName(def: CardDef | undefined, size: CardSize, options: {
     options.selected ? 'card-selected' : '',
     options.clickable ? 'card-clickable' : '',
     options.faceDown ? 'card-back' : '',
+    options.activeTime ? `card-active-${options.activeTime}` : '',
     options.className ?? '',
   ].filter(Boolean).join(' ');
 }
 
-export function Card({ card, onClick, selected, small, size, className }: CardProps) {
+export function Card({ card, onClick, selected, small, size, activeTime, className }: CardProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const resolvedSize = size ?? (small ? 'small' : 'normal');
 
@@ -97,7 +100,7 @@ export function Card({ card, onClick, selected, small, size, className }: CardPr
 
   return (
     <div
-      className={cardClassName(def, resolvedSize, { selected, clickable: !!onClick, className })}
+      className={cardClassName(def, resolvedSize, { selected, clickable: !!onClick, activeTime, className })}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -127,21 +130,20 @@ export function Card({ card, onClick, selected, small, size, className }: CardPr
         <div className="card-meta-row">
           <span>{TYPE_LABEL[def.type]}</span>
           <span>{t('card.clock')} {def.clock}</span>
+          {def.sendToPower > 0 && (
+            <span className="card-charge">+{def.sendToPower}</span>
+          )}
         </div>
 
         {def.type === 'Character' && def.attack && (
           <div className="card-attack-row">
-            <span className="attack-night">{t('card.night')} {def.attack.night}</span>
-            <span className="attack-day">{t('card.day')} {def.attack.day}</span>
+            <span className={`attack-night ${activeTime === 'night' ? 'attack-active' : ''}`}>
+              {t('card.night')} {def.attack.night}
+            </span>
+            <span className={`attack-day ${activeTime === 'day' ? 'attack-active' : ''}`}>
+              {t('card.day')} {def.attack.day}
+            </span>
           </div>
-        )}
-
-        {def.sendToPower > 0 && (
-          <div className="card-charge">{t('card.charge')} +{def.sendToPower}</div>
-        )}
-
-        {def.effect && resolvedSize !== 'micro' && (
-          <div className="card-effect">{def.effect}</div>
         )}
       </div>
     </div>
