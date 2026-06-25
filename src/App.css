@@ -81,6 +81,70 @@ button:disabled {
   overflow: hidden;
 }
 
+.app-shell {
+  display: grid;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell.has-nav {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.app-shell.play-shell {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.route-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell.has-nav .route-content > .app-screen,
+.app-shell.has-nav .route-content > .lobby {
+  height: 100%;
+}
+
+.nav-bar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 3.25rem;
+  padding: 0.45rem clamp(0.8rem, 2vw, 1.4rem);
+  border-bottom: 1px solid rgba(245, 211, 104, 0.2);
+  background: rgba(6, 9, 23, 0.94);
+  box-shadow: 0 0.6rem 1.4rem rgba(0, 0, 0, 0.22);
+}
+
+.nav-link {
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  min-height: 2.25rem;
+  padding: 0.45rem 0.8rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 800;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  border-color: rgba(245, 211, 104, 0.34);
+  background: rgba(245, 211, 104, 0.09);
+  color: var(--text);
+}
+
+.nav-link.tutorial {
+  margin-left: auto;
+  color: var(--gold);
+}
+
 .primary-action,
 .secondary-action,
 .danger-action,
@@ -507,6 +571,78 @@ input:focus {
 
 .hidden-client {
   display: none;
+}
+
+.loading-game {
+  place-items: center;
+  color: var(--gold);
+  font-weight: 900;
+}
+
+.ai-setup,
+.admin-page,
+.not-found-page,
+.online-session-missing {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(0.7rem, 1.6vh, 1rem);
+  padding: clamp(0.8rem, 2vw, 1.4rem);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(245, 211, 104, 0.11), transparent 28%),
+    linear-gradient(135deg, #050712, #10183a 54%, #160d2c);
+}
+
+.ai-setup-panel {
+  display: grid;
+  align-self: start;
+  gap: 0.8rem;
+  width: min(100%, 44rem);
+  padding: 0.9rem;
+}
+
+.difficulty-card.selected {
+  border-color: var(--gold);
+  background: rgba(245, 211, 104, 0.12);
+  box-shadow: 0 0 1rem rgba(245, 211, 104, 0.18);
+}
+
+.admin-frame {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: #050712;
+}
+
+.empty-route-panel {
+  display: grid;
+  place-self: center;
+  gap: 0.75rem;
+  width: min(100%, 32rem);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: clamp(1rem, 3vw, 1.35rem);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.empty-route-panel span {
+  color: var(--gold);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.empty-route-panel h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.4rem, 4vw, 2rem);
+}
+
+.empty-route-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 /* Board */
@@ -5763,6 +5899,27 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 768px) {
+  .nav-bar {
+    gap: 0.35rem;
+    overflow-x: auto;
+    padding: 0.4rem 0.65rem;
+  }
+
+  .nav-link {
+    padding: 0.42rem 0.65rem;
+  }
+
+  .nav-link.tutorial {
+    margin-left: 0;
+  }
+
+  .ai-setup,
+  .admin-page,
+  .not-found-page,
+  .online-session-missing {
+    padding: 0.75rem;
+  }
+
   .phase-message-panel {
     width: min(94%, 22rem);
     padding: 0.9rem;

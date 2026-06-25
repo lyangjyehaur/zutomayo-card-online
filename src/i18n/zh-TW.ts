@@ -20,6 +20,13 @@ export const zhTW = {
   'common.ready': '已準備',
   'common.page': '頁',
 
+  'nav.primary': '主要導覽',
+  'nav.lobby': '大廳',
+  'nav.deckBuilder': '牌組',
+  'nav.history': '紀錄',
+  'nav.admin': '管理',
+  'nav.tutorial': '教學',
+
   'lobby.localBattle': '雙人本機對戰',
   'lobby.aiBattle': '與電腦對戰',
   'lobby.createRoom': '創建房間',
@@ -158,6 +165,19 @@ export const zhTW = {
   'game.onlineMode': '線上對戰',
   'game.localMode': '本機對戰',
   'game.matchCode': '房間代碼',
+  'game.loading': '載入對戰中...',
+
+  'aiSetup.title': '電腦練習',
+  'aiSetup.chooseDifficulty': '選擇練習難度',
+
+  'onlineSession.missingTitle': '尚未加入房間',
+  'onlineSession.missingBody': '請先從大廳創建或加入線上房間，再進入對戰。',
+
+  'admin.title': '卡牌資料管理',
+
+  'notFound.kicker': '路由不存在',
+  'notFound.title': '找不到這個頁面',
+  'notFound.body': '這個網址沒有對應的遊戲畫面。',
 
   'deckEditor.title': '牌組編輯器',
   'deckEditor.search': '搜尋卡名、歌曲或效果',

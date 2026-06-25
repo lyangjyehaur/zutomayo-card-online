@@ -30,10 +30,10 @@ const root = path.join(here, '..');
 // Serve dist (frontend)
 server.app.use(serve(path.join(root, 'dist')));
 
-// Serve admin panel at /admin/
+// Serve admin panel assets for the React /admin iframe.
 server.app.use(async (ctx: any, next: () => any) => {
-  if (ctx.path.startsWith('/admin')) {
-    const filePath = path.join(root, ctx.path === '/admin' ? '/admin/index.html' : ctx.path);
+  if (ctx.path === '/admin/index.html' || ctx.path.startsWith('/admin/')) {
+    const filePath = path.join(root, ctx.path);
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const ext = path.extname(filePath);
       const types: Record<string, string> = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json' };
@@ -66,6 +66,14 @@ server.app.use(async (ctx: any, next: () => any) => {
     return;
   }
   await next();
+});
+
+// Serve the Vite app for client-side routes.
+server.app.use(async (ctx: any) => {
+  if (ctx.status === 404 && !ctx.path.startsWith('/games/') && !ctx.path.startsWith('/api/')) {
+    ctx.type = 'html';
+    ctx.body = fs.readFileSync(path.join(root, 'dist', 'index.html'));
+  }
 });
 
 const PORT = Number(process.env.PORT) || 3000;
