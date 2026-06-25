@@ -1,9 +1,11 @@
-import type { ChronosState, ChronosTime } from '../game/types';
+import type { ChronosState, ChronosTime, PlayerIndex } from '../game/types';
 import { t } from '../i18n';
 
 interface ChronosProps {
   chronos: ChronosState;
   currentTime: ChronosTime;
+  nightSidePlayer: PlayerIndex;
+  currentPlayer: PlayerIndex;
 }
 
 const CHRONOS_LABELS = [
@@ -21,7 +23,7 @@ const CHRONOS_LABELS = [
   '深夜',
 ];
 
-export function Chronos({ chronos, currentTime }: ChronosProps) {
+export function Chronos({ chronos, currentTime, nightSidePlayer, currentPlayer }: ChronosProps) {
   const size = 420;
   const center = size / 2;
   const radius = 160;
@@ -29,6 +31,7 @@ export function Chronos({ chronos, currentTime }: ChronosProps) {
   const faceRadius = 182;
   const arcRadius = 190;
   const position = ((chronos.position % 12) + 12) % 12;
+  const rotation = nightSidePlayer === currentPlayer ? 0 : 180;
   const ticks = Array.from({ length: 12 }, (_, index) => {
     const angle = (index * 30 - 90) * (Math.PI / 180);
     return {
@@ -68,29 +71,35 @@ export function Chronos({ chronos, currentTime }: ChronosProps) {
 
         <circle className="chronos-outer" cx={center} cy={center} r={outerRadius} />
         <circle className="chronos-face" cx={center} cy={center} r={faceRadius} />
-        <path className="chronos-night-arc" d={describeArc(center, center, arcRadius, -105, 75)} />
-        <path className="chronos-day-arc" d={describeArc(center, center, arcRadius, 75, 255)} />
-        <line className="chronos-divider" x1={center} y1="26" x2={center} y2="66" />
-        <line className="chronos-divider" x1={center} y1={size - 26} x2={center} y2={size - 66} />
 
-        {ticks.map(({ index, x, y }) => (
-          <g key={index} className={position === index ? 'chronos-tick active' : 'chronos-tick'}>
-            <circle className={index < 6 ? 'tick-night' : 'tick-day'} cx={x} cy={y} r={index % 3 === 0 ? 12 : 8} />
-            <text x={x} y={y + 4} textAnchor="middle">
-              {index}
-            </text>
-          </g>
-        ))}
-
-        <line className="chronos-hand" x1={center} y1={center} x2={medalX} y2={medalY} />
         <g
-          className="chronos-medal-group"
-          style={{ transform: `translate(${medalX}px, ${medalY}px)` }}
-          filter="url(#chronos-glow)"
+          className="chronos-face-group"
+          style={{ transform: `rotate(${rotation}deg)`, transformOrigin: `${center}px ${center}px` }}
         >
-          <circle className="chronos-medal-shadow" r="19" />
-          <circle className="chronos-medal" r="16" />
-          <circle className="chronos-medal-core" r="7" />
+          <path className="chronos-night-arc" d={topSemiCircle(center, arcRadius)} />
+          <path className="chronos-day-arc" d={bottomSemiCircle(center, arcRadius)} />
+          <line className="chronos-divider" x1={center} y1="26" x2={center} y2="66" />
+          <line className="chronos-divider" x1={center} y1={size - 26} x2={center} y2={size - 66} />
+
+          {ticks.map(({ index, x, y }) => (
+            <g key={index} className={position === index ? 'chronos-tick active' : 'chronos-tick'}>
+              <circle className={index < 6 ? 'tick-night' : 'tick-day'} cx={x} cy={y} r={index % 3 === 0 ? 12 : 8} />
+              <text x={x} y={y + 4} textAnchor="middle">
+                {index}
+              </text>
+            </g>
+          ))}
+
+          <line className="chronos-hand" x1={center} y1={center} x2={medalX} y2={medalY} />
+          <g
+            className="chronos-medal-group"
+            style={{ transform: `translate(${medalX}px, ${medalY}px)` }}
+            filter="url(#chronos-glow)"
+          >
+            <circle className="chronos-medal-shadow" r="19" />
+            <circle className="chronos-medal" r="16" />
+            <circle className="chronos-medal-core" r="7" />
+          </g>
         </g>
 
         <text className="chronos-title" x={center} y={center - 22} textAnchor="middle">
@@ -107,14 +116,10 @@ export function Chronos({ chronos, currentTime }: ChronosProps) {
   );
 }
 
-function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number): string {
-  const start = polarToCartesian(cx, cy, r, endAngle);
-  const end = polarToCartesian(cx, cy, r, startAngle);
-  const largeArc = endAngle - startAngle <= 180 ? '0' : '1';
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 0 ${end.x} ${end.y}`;
+function topSemiCircle(center: number, radius: number): string {
+  return `M ${center - radius} ${center} A ${radius} ${radius} 0 0 1 ${center + radius} ${center}`;
 }
 
-function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
-  const rad = (angleDeg * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+function bottomSemiCircle(center: number, radius: number): string {
+  return `M ${center - radius} ${center} A ${radius} ${radius} 0 0 0 ${center + radius} ${center}`;
 }

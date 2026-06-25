@@ -11,8 +11,24 @@ import { t } from '../i18n';
 const TURN_TIMER_SECONDS = 60;
 type Props = BoardProps<GameState>;
 
+type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
+type FeedbackMessage = {
+  title: string;
+  kicker?: string;
+  lines?: string[];
+  tone?: FeedbackTone;
+  actionLabel?: string;
+};
+
 function playerName(index: PlayerIndex): string {
   return index === 0 ? t('player.zero') : t('player.one');
+}
+
+function jankenMark(choice: JankenChoice | null): string {
+  if (choice === 'rock') return '✊';
+  if (choice === 'paper') return '✋';
+  if (choice === 'scissors') return '✌️';
+  return '?';
 }
 
 function jankenLabel(choice: JankenChoice): string {
@@ -24,13 +40,35 @@ function jankenLabel(choice: JankenChoice): string {
   return labels[choice];
 }
 
+function FeedbackOverlay({ message, onAction }: {
+  message: FeedbackMessage | null;
+  onAction?: () => void;
+}) {
+  if (!message) return null;
+
+  return (
+    <div className={`phase-message-overlay phase-message-${message.tone ?? 'neutral'}`} role="status" aria-live="polite">
+      <div className="phase-message-panel">
+        {message.kicker && <div className="phase-message-kicker">{message.kicker}</div>}
+        <strong className="phase-message-title">{message.title}</strong>
+        {message.lines?.map(line => <p key={line}>{line}</p>)}
+        {message.actionLabel && onAction && (
+          <button className="primary-action phase-message-action" type="button" onClick={onAction}>
+            {message.actionLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function JankenScreen({ G, moves, playerID }: Props) {
   const me = Number(playerID ?? '0') as PlayerIndex;
   const choice = G.jankenChoices[me];
   const choices: { value: JankenChoice; mark: string }[] = [
     { value: 'rock', mark: '✊' },
     { value: 'paper', mark: '✋' },
-    { value: 'scissors', mark: '✌' },
+    { value: 'scissors', mark: '✌️' },
   ];
 
   return (
@@ -57,7 +95,9 @@ function JankenScreen({ G, moves, playerID }: Props) {
   );
 }
 
-function MulliganScreen({ G, moves, playerID }: Props) {
+function MulliganScreen({ G, moves, playerID, onMulliganFeedback }: Props & {
+  onMulliganFeedback: (redrawCount: number) => void;
+}) {
   const me = Number(playerID ?? '0') as PlayerIndex;
   const [selected, setSelected] = useState<number[]>([]);
   const done = G.mulliganUsed[me];
@@ -79,18 +119,32 @@ function MulliganScreen({ G, moves, playerID }: Props) {
               disabled={done}
               onClick={() => toggle(index)}
             >
-              <Card card={card} size="small" selected={selected.includes(index)} />
+              <Card card={card} size="small" selected={selected.includes(index)} showPopover />
             </button>
           ))}
         </div>
         {done ? (
-          <p className="setup-status">{t('board.waitingOpponent')}</p>
+          <p className="setup-status">{t('board.handConfirmed')}。{t('board.waitingOpponent')}</p>
         ) : (
           <div className="setup-actions">
-            <button className="primary-action" type="button" onClick={() => moves.mulligan(selected)}>
+            <button
+              className="primary-action"
+              type="button"
+              onClick={() => {
+                onMulliganFeedback(selected.length);
+                moves.mulligan(selected);
+              }}
+            >
               {t('board.redraw')} {selected.length} {t('board.cardsUnit')}
             </button>
-            <button className="secondary-action" type="button" onClick={() => moves.keepHand()}>
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={() => {
+                onMulliganFeedback(0);
+                moves.keepHand();
+              }}
+            >
               {t('board.keepHand')}
             </button>
           </div>
@@ -185,11 +239,19 @@ function ResourceStat({ className, icon, label, value }: {
   label: string;
   value: string | number;
 }) {
+  const isHp = className.split(' ').includes('hp') && typeof value === 'number';
+  const hpPercent = isHp ? Math.max(0, Math.min(100, value)) : 0;
+
   return (
     <span className={`resource-stat ${className}`} title={label}>
       <span className="resource-icon" aria-hidden="true">{icon}</span>
       <strong>{value}</strong>
       <span className="resource-label">{label}</span>
+      {isHp && (
+        <span className="hp-meter" aria-hidden="true">
+          <span className="hp-fill" style={{ width: `${hpPercent}%` }} />
+        </span>
+      )}
     </span>
   );
 }
@@ -250,14 +312,16 @@ function FieldStats({ G, playerIndex, showAbyss, timeLeft, timerTone }: {
   );
 }
 
-function OpponentStatsBar({ G, opponentIndex }: {
+function OpponentStatsBar({ G, opponentIndex, damageAmount }: {
   G: GameState;
   opponentIndex: PlayerIndex;
+  damageAmount?: number;
 }) {
   return (
-    <section className="opponent-stats-bar" aria-label={t('player.opponent')}>
+    <section className={`opponent-stats-bar ${damageAmount ? 'damaged' : ''}`} aria-label={t('player.opponent')}>
       <strong>{t('player.opponent')}：{playerName(opponentIndex)}</strong>
       <FieldStats G={G} playerIndex={opponentIndex} showAbyss />
+      {damageAmount ? <span className="damage-float" key={`opp-${damageAmount}`}>-{damageAmount}</span> : null}
     </section>
   );
 }
@@ -312,7 +376,12 @@ function CentralArena({ G, meIndex, opponentIndex, time }: {
   return (
     <section className="central-arena" aria-label={t('chronos.title')}>
       <div className="chronos-container">
-        <Chronos chronos={G.chronos} currentTime={time} />
+        <Chronos
+          chronos={G.chronos}
+          currentTime={time}
+          nightSidePlayer={G.chronos.nightSidePlayer}
+          currentPlayer={meIndex}
+        />
         <div className="opp-battle-slot">
           <FieldZone
             label={`${t('player.opponent')} ${t('board.battleZone')}`}
@@ -389,18 +458,19 @@ function ActionsBar({ ready, canConfirm, cardsSet, required, onConfirm }: {
   );
 }
 
-function StatusBar({ G, meIndex, timeLeft, timerTone, time, phaseText }: {
+function StatusBar({ G, meIndex, timeLeft, timerTone, time, phaseText, damageAmount }: {
   G: GameState;
   meIndex: PlayerIndex;
   timeLeft: number;
   timerTone: string;
   time: ChronosTime;
   phaseText: string;
+  damageAmount?: number;
 }) {
   const me = G.players[meIndex];
 
   return (
-    <section className="status-bar" aria-label={phaseText}>
+    <section className={`status-bar ${damageAmount ? 'damaged' : ''}`} aria-label={phaseText}>
       <ResourceStat className={`hp ${hpClass(me.hp)}`} icon="❤️" label={t('board.hp')} value={me.hp} />
       <ResourceStat
         className={`timer ${timerTone}`}
@@ -413,8 +483,40 @@ function StatusBar({ G, meIndex, timeLeft, timerTone, time, phaseText }: {
         {time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}
       </span>
       <span className="status-pill phase-pill">{phaseText}</span>
+      {damageAmount ? <span className="damage-float" key={`me-${damageAmount}`}>-{damageAmount}</span> : null}
     </section>
   );
+}
+
+function battleFeedback(G: GameState, meIndex: PlayerIndex, opponentIndex: PlayerIndex): FeedbackMessage {
+  const result = G.lastBattleResult;
+  if (result.winner === null) {
+    return {
+      title: t('board.battleDrawTitle'),
+      lines: [t('board.noBattleDamage')],
+      tone: 'neutral',
+    };
+  }
+
+  if (result.winner === meIndex) {
+    return {
+      title: t('board.youWinBattle'),
+      lines: [
+        `${t('board.dealtDamage')} ${result.damage} ${t('board.damagePointSuffix')}`,
+        `${t('board.opponentHp')}: ${G.players[opponentIndex].hp}`,
+      ],
+      tone: 'success',
+    };
+  }
+
+  return {
+    title: t('board.youLoseBattle'),
+    lines: [
+      `${t('board.receivedDamage')} ${result.damage} ${t('board.damagePointSuffix')}`,
+      `${t('board.yourHp')}: ${G.players[meIndex].hp}`,
+    ],
+    tone: 'danger',
+  };
 }
 
 function BattleBoard({ G, moves, playerID }: Props) {
@@ -424,7 +526,41 @@ function BattleBoard({ G, moves, playerID }: Props) {
   const required = getRequiredSetCount(G, meIndex);
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
   const [handExpanded, setHandExpanded] = useState(true);
+  const [phaseMessage, setPhaseMessage] = useState<FeedbackMessage | null>(null);
+  const [damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const previousTurnNumber = useRef(G.turnNumber);
+
+  const clearPhaseTimers = () => {
+    for (const phaseTimer of phaseTimers.current) clearTimeout(phaseTimer);
+    phaseTimers.current = [];
+  };
+
+  const showTransientPhaseMessage = (message: FeedbackMessage, duration = 1500) => {
+    clearPhaseTimers();
+    setPhaseMessage(message);
+    phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), duration));
+  };
+
+  const playBattleFeedbackSequence = (resultMessage: FeedbackMessage) => {
+    clearPhaseTimers();
+    const sequence: { message: FeedbackMessage; duration: number }[] = [
+      { message: { title: t('board.phaseReveal'), tone: 'phase' }, duration: 700 },
+      { message: { title: t('board.phaseTimeAdvance'), tone: 'phase' }, duration: 700 },
+      { message: { title: t('board.phaseBattleStart'), tone: 'phase' }, duration: 700 },
+      { message: resultMessage, duration: 2600 },
+    ];
+
+    let offset = 0;
+    for (const item of sequence) {
+      phaseTimers.current.push(setTimeout(() => setPhaseMessage(item.message), offset));
+      offset += item.duration;
+    }
+    phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), offset));
+  };
+
+  useEffect(() => () => clearPhaseTimers(), []);
 
   useEffect(() => {
     setTimeLeft(TURN_TIMER_SECONDS);
@@ -448,6 +584,20 @@ function BattleBoard({ G, moves, playerID }: Props) {
     if (G.ready[meIndex]) setHandExpanded(false);
   }, [G.ready, meIndex]);
 
+  useEffect(() => {
+    if (G.turnNumber > previousTurnNumber.current) {
+      playBattleFeedbackSequence(battleFeedback(G, meIndex, opponentIndex));
+      const result = G.lastBattleResult;
+      if (result.winner !== null && result.damage > 0) {
+        const target = (1 - result.winner) as PlayerIndex;
+        setDamageFlash({ target, amount: result.damage, id: Date.now() });
+        const flashTimer = setTimeout(() => setDamageFlash(null), 900);
+        phaseTimers.current.push(flashTimer);
+      }
+    }
+    previousTurnNumber.current = G.turnNumber;
+  }, [G.turnNumber, G.lastBattleResult, G.players, meIndex, opponentIndex]);
+
   const setFromHand = (handIndex: number) => {
     if (G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
     if (G.step === 'initialSet') moves.setInitialCard(handIndex);
@@ -460,11 +610,13 @@ function BattleBoard({ G, moves, playerID }: Props) {
     ? t('board.initialSet')
     : `${t('board.setCards')} ${required} ${t('board.cardsUnit')}`;
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn === required;
+  const myDamage = damageFlash?.target === meIndex ? damageFlash.amount : undefined;
+  const opponentDamage = damageFlash?.target === opponentIndex ? damageFlash.amount : undefined;
 
   return (
-    <div className={`board chrono-${time}`}>
+    <div className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'}`}>
       <main className="field-layout">
-        <OpponentStatsBar G={G} opponentIndex={opponentIndex} />
+        <OpponentStatsBar G={G} opponentIndex={opponentIndex} damageAmount={opponentDamage} />
         <CentralArena G={G} meIndex={meIndex} opponentIndex={opponentIndex} time={time} />
         <BottomZones G={G} meIndex={meIndex} moves={moves} />
         <StatusBar
@@ -474,6 +626,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
           timerTone={timerTone}
           time={time}
           phaseText={phaseText}
+          damageAmount={myDamage}
         />
       </main>
       <HandDrawer
@@ -488,20 +641,69 @@ function BattleBoard({ G, moves, playerID }: Props) {
           cardsSet={me.cardsSetThisTurn}
           required={required}
           onConfirm={() => {
+            showTransientPhaseMessage({ title: t('board.setConfirmed'), tone: 'neutral' });
             moves.confirmReady();
             setHandExpanded(false);
           }}
         />
       </HandDrawer>
+      <FeedbackOverlay message={phaseMessage} />
     </div>
   );
 }
 
 export function Board(props: Props) {
   const matchStartedAt = useRef(Date.now());
+  const me = Number(props.playerID ?? '0') as PlayerIndex;
+  const previousStep = useRef(props.G.step);
+  const setupFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [setupFeedback, setSetupFeedback] = useState<FeedbackMessage | null>(null);
 
-  if (props.G.step === 'janken') return <JankenScreen {...props} />;
-  if (props.G.step === 'mulligan') return <MulliganScreen {...props} />;
+  useEffect(() => () => {
+    if (setupFeedbackTimer.current) clearTimeout(setupFeedbackTimer.current);
+  }, []);
+
+  useEffect(() => {
+    if (
+      previousStep.current === 'janken'
+      && props.G.step === 'mulligan'
+      && props.G.jankenChoices[0]
+      && props.G.jankenChoices[1]
+    ) {
+      const opponent = (1 - me) as PlayerIndex;
+      const nightSidePlayer = props.G.chronos.nightSidePlayer;
+      setSetupFeedback({
+        kicker: `${jankenMark(props.G.jankenChoices[me])} vs ${jankenMark(props.G.jankenChoices[opponent])}`,
+        title: nightSidePlayer === me ? t('board.youWinNightSide') : t('board.youLoseNightSide'),
+        tone: nightSidePlayer === me ? 'success' : 'danger',
+        actionLabel: t('common.continue'),
+      });
+    }
+    previousStep.current = props.G.step;
+  }, [props.G.step, props.G.jankenChoices, props.G.chronos.nightSidePlayer, me]);
+
+  const showMulliganFeedback = (redrawCount: number) => {
+    if (setupFeedbackTimer.current) clearTimeout(setupFeedbackTimer.current);
+    setSetupFeedback({
+      title: redrawCount > 0
+        ? `${t('board.redrewCards')} ${redrawCount} ${t('board.cardsUnit')}卡`
+        : t('board.handConfirmed'),
+      tone: 'success',
+    });
+    setupFeedbackTimer.current = setTimeout(() => setSetupFeedback(null), 1600);
+  };
+
+  const renderWithSetupFeedback = (node: ReactNode) => (
+    <div className="board-feedback-root">
+      {node}
+      <FeedbackOverlay message={setupFeedback} onAction={() => setSetupFeedback(null)} />
+    </div>
+  );
+
+  if (props.G.step === 'janken') return renderWithSetupFeedback(<JankenScreen {...props} />);
+  if (props.G.step === 'mulligan') {
+    return renderWithSetupFeedback(<MulliganScreen {...props} onMulliganFeedback={showMulliganFeedback} />);
+  }
   if (props.G.step === 'gameOver') return <GameOverScreen {...props} matchStartedAt={matchStartedAt.current} />;
-  return <BattleBoard {...props} />;
+  return renderWithSetupFeedback(<BattleBoard {...props} />);
 }

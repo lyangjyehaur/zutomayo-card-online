@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { CardDef, CardInstance, CardType, ChronosTime, Element } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { t } from '../i18n';
@@ -39,6 +40,14 @@ interface CardProps {
   showPopover?: boolean;
 }
 
+type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
+
+type PopoverPosition = {
+  top: number;
+  left: number;
+  placement: PopoverPlacement;
+};
+
 function cardClassName(def: CardDef | undefined, size: CardSize, options: {
   selected?: boolean;
   clickable?: boolean;
@@ -59,9 +68,22 @@ function cardClassName(def: CardDef | undefined, size: CardSize, options: {
   ].filter(Boolean).join(' ');
 }
 
-function CardPopover({ def, activeTime }: { def: CardDef; activeTime?: ChronosTime }) {
-  return (
-    <aside className="card-popover" aria-hidden="true">
+function CardPopover({
+  def,
+  activeTime,
+  position,
+}: {
+  def: CardDef;
+  activeTime?: ChronosTime;
+  position: PopoverPosition;
+}) {
+  const style: CSSProperties = {
+    top: `${position.top}px`,
+    left: `${position.left}px`,
+  };
+
+  return createPortal(
+    <aside className={`card-popover popover-${position.placement}`} style={style} aria-hidden="true">
       <strong>{def.name}</strong>
       <span className="popover-meta">{ELEMENT_LABEL[def.element]} • {TYPE_LABEL[def.type]}</span>
       <div className="popover-rule" />
@@ -80,7 +102,8 @@ function CardPopover({ def, activeTime }: { def: CardDef; activeTime?: ChronosTi
           <p>{def.effect}</p>
         </>
       )}
-    </aside>
+    </aside>,
+    document.body,
   );
 }
 
@@ -96,12 +119,97 @@ export function Card({
   showPopover = false,
 }: CardProps) {
   const [imageFailed, setImageFailed] = useState(false);
+  const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const resolvedSize = size ?? (small ? 'small' : 'normal');
   const focusable = !!onClick || showPopover;
 
   useEffect(() => {
     setImageFailed(false);
   }, [card.defId]);
+
+  const calculatePopoverPosition = (): PopoverPosition | null => {
+    const element = cardRef.current;
+    if (!element) return null;
+    const rect = element.getBoundingClientRect();
+    const popoverWidth = Math.min(Math.max(window.innerWidth * 0.16, 184), 248);
+    const popoverHeight = Math.min(Math.max(window.innerHeight * 0.2, 220), 288);
+    const gap = 12;
+    const margin = 8;
+    const centerY = rect.top + rect.height / 2;
+    const centerX = rect.left + rect.width / 2;
+
+    let placement: PopoverPlacement = 'right';
+    let top = centerY;
+    let left = rect.right + gap;
+
+    if (left + popoverWidth > window.innerWidth - margin) {
+      placement = 'left';
+      left = rect.left - gap;
+    }
+
+    if (placement === 'right' || placement === 'left') {
+      top = Math.min(
+        Math.max(centerY, margin + popoverHeight / 2),
+        window.innerHeight - margin - popoverHeight / 2,
+      );
+    }
+
+    if (placement === 'left' && left - popoverWidth < margin) {
+      placement = 'bottom';
+      left = Math.min(
+        Math.max(centerX, margin + popoverWidth / 2),
+        window.innerWidth - margin - popoverWidth / 2,
+      );
+      top = rect.bottom + gap;
+      if (top + popoverHeight > window.innerHeight - margin) {
+        placement = 'top';
+        top = rect.top - gap;
+        if (top - popoverHeight < margin) {
+          placement = 'bottom';
+          top = rect.bottom + gap;
+        }
+      }
+    }
+
+    return { top, left, placement };
+  };
+
+  const updateCardPopoverPosition = () => {
+    const next = calculatePopoverPosition();
+    if (!next) return;
+    setPopoverPosition(current => {
+      if (
+        current
+        && Math.abs(current.top - next.top) < 0.5
+        && Math.abs(current.left - next.left) < 0.5
+        && current.placement === next.placement
+      ) {
+        return current;
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!showPopover || !popoverPosition) return;
+    updateCardPopoverPosition();
+    window.addEventListener('resize', updateCardPopoverPosition);
+    window.addEventListener('scroll', updateCardPopoverPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateCardPopoverPosition);
+      window.removeEventListener('scroll', updateCardPopoverPosition, true);
+    };
+  }, [showPopover, Boolean(popoverPosition), card.instanceId, activeTime]);
+
+  const showCardPopover = () => {
+    if (!showPopover) return;
+    updateCardPopoverPosition();
+  };
+
+  const hideCardPopover = () => {
+    setPopoverPosition(null);
+  };
 
   if (!card.faceUp) {
     return (
@@ -142,6 +250,7 @@ export function Card({
 
   return (
     <div
+      ref={cardRef}
       className={cardClassName(def, resolvedSize, { selected, clickable: !!onClick, activeTime, className })}
       onClick={onClick}
       onKeyDown={onClick ? event => {
@@ -153,6 +262,10 @@ export function Card({
       role={onClick ? 'button' : undefined}
       tabIndex={focusable ? 0 : undefined}
       aria-label={def.name}
+      onMouseEnter={showCardPopover}
+      onMouseLeave={hideCardPopover}
+      onFocus={showCardPopover}
+      onBlur={hideCardPopover}
     >
       <div className="card-frame">
         <div className="card-art">
@@ -176,7 +289,7 @@ export function Card({
         </div>
       </div>
 
-      {showPopover && <CardPopover def={def} activeTime={activeTime} />}
+      {showPopover && popoverPosition && <CardPopover def={def} activeTime={activeTime} position={popoverPosition} />}
     </div>
   );
 }

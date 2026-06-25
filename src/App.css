@@ -5347,3 +5347,280 @@ button.zone:focus-visible {
     --card-w: 85px;
   }
 }
+
+/* Game feedback, fixed card popovers, and motion polish */
+.board-feedback-root {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.board-feedback-root > .board,
+.board-feedback-root > .setup-screen {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.phase-message-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 3vw, 2rem);
+  background: rgba(3, 6, 14, 0.5);
+  backdrop-filter: blur(0.18rem);
+  animation: phase-fade-in 180ms ease-out;
+}
+
+.phase-message-panel {
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  width: min(92%, 28rem);
+  border: 1px solid rgba(226, 189, 93, 0.36);
+  border-radius: 0.5rem;
+  padding: clamp(1rem, 3vw, 1.55rem);
+  background: rgba(9, 14, 26, 0.94);
+  color: #f8f2df;
+  text-align: center;
+  box-shadow: 0 1rem 2.6rem rgba(0, 0, 0, 0.45);
+  animation: phase-panel-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.phase-message-kicker {
+  color: #f6df87;
+  font-size: clamp(1.7rem, 6vw, 3.2rem);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.phase-message-title {
+  display: block;
+  color: #fff8e7;
+  font-size: clamp(1.18rem, 3vw, 2rem);
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.phase-message-panel p {
+  margin: 0;
+  color: #dce3e8;
+  font-size: clamp(0.92rem, 1.6vw, 1.1rem);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.phase-message-action {
+  margin-top: 0.25rem;
+  min-width: 7rem;
+}
+
+.phase-message-success .phase-message-panel {
+  border-color: rgba(93, 215, 200, 0.56);
+  box-shadow: 0 1rem 2.6rem rgba(0, 0, 0, 0.45), 0 0 1.4rem rgba(93, 215, 200, 0.16);
+}
+
+.phase-message-danger .phase-message-panel {
+  border-color: rgba(255, 92, 122, 0.58);
+  box-shadow: 0 1rem 2.6rem rgba(0, 0, 0, 0.45), 0 0 1.4rem rgba(255, 92, 122, 0.14);
+}
+
+.phase-message-phase .phase-message-panel {
+  width: min(86%, 20rem);
+  padding-block: clamp(0.9rem, 2.5vw, 1.25rem);
+  border-color: rgba(226, 189, 93, 0.58);
+}
+
+@keyframes phase-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes phase-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.4rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.card-popover {
+  position: fixed;
+  z-index: 9999;
+  display: grid;
+  gap: 0.22rem;
+  width: min(15.5rem, calc(100vw - 1.5rem));
+  max-width: calc(100vw - 1.5rem);
+  max-height: min(18rem, calc(100vh - 1.5rem));
+  overflow: hidden;
+  opacity: 1;
+  pointer-events: none;
+  transform: translate(0, -50%);
+  animation: card-popover-in 120ms ease-out;
+}
+
+.card-popover.popover-left {
+  transform: translate(-100%, -50%);
+}
+
+.card-popover.popover-top {
+  transform: translate(-50%, -100%);
+}
+
+.card-popover.popover-bottom {
+  transform: translate(-50%, 0);
+}
+
+@keyframes card-popover-in {
+  from {
+    opacity: 0;
+    filter: blur(0.12rem);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.mulligan-hand {
+  overflow: visible;
+}
+
+@keyframes card-place {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes card-reveal {
+  from {
+    opacity: 0.7;
+    transform: rotateY(180deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotateY(0deg);
+  }
+}
+
+.zone .game-card {
+  animation: card-place 300ms ease-out;
+}
+
+.zone .game-card:not(.card-back) .card-frame {
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  animation: card-reveal 360ms ease-out;
+}
+
+@keyframes damage-flash {
+  0% { background: rgba(230, 57, 70, 0.36); }
+  100% { background: rgba(4, 7, 9, 0.36); }
+}
+
+@keyframes damage-float {
+  0% {
+    opacity: 0;
+    transform: translateY(0.35rem) scale(0.9);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-1.35rem) scale(1.08);
+  }
+}
+
+.opponent-stats-bar,
+.status-bar {
+  position: relative;
+}
+
+.opponent-stats-bar.damaged,
+.status-bar.damaged {
+  animation: damage-flash 500ms ease-out;
+}
+
+.damage-float {
+  position: absolute;
+  top: 50%;
+  right: clamp(0.6rem, 2vw, 1.2rem);
+  z-index: 5;
+  color: #ff5c7a;
+  font-size: clamp(1rem, 2vw, 1.45rem);
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 0 0.7rem rgba(255, 92, 122, 0.45);
+  pointer-events: none;
+  animation: damage-float 850ms ease-out forwards;
+}
+
+.resource-stat.hp {
+  position: relative;
+}
+
+.hp-meter {
+  display: inline-block;
+  width: clamp(1.8rem, 4vw, 3rem);
+  height: 0.28rem;
+  overflow: hidden;
+  border-radius: 999rem;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.hp-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ff4e66, #ffc95f);
+  transition: width 500ms ease;
+}
+
+.chronos-face-group {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 500ms ease;
+}
+
+.chronos-night-arc,
+.chronos-day-arc {
+  stroke-linecap: butt;
+}
+
+.chronos-medal-group {
+  transition: transform 500ms ease;
+}
+
+@media (max-width: 768px) {
+  .phase-message-panel {
+    width: min(94%, 22rem);
+    padding: 0.9rem;
+  }
+
+  .phase-message-title {
+    font-size: clamp(1rem, 6vw, 1.35rem);
+  }
+
+  .phase-message-panel p {
+    font-size: 0.82rem;
+  }
+
+  .hp-meter {
+    width: 1.7rem;
+  }
+}
