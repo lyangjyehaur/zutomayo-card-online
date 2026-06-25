@@ -25,7 +25,12 @@ const server = Server({
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const staticPath = path.join(here, '..', 'dist');
+const adminPath = path.join(here, '..', 'admin');
+const dataPath = path.join(here, '..', 'data');
+
 server.app.use(serve(staticPath));
+server.app.use(serve(adminPath));
+server.app.use(serve(dataPath));
 
 const PORT = Number(process.env.PORT) || 3000;
 
