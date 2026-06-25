@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
-import type { CardDef, Element, CardType } from '../game/types';
+import { useEffect, useMemo, useState } from 'react';
+import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs } from '../game/cards/loader';
 import { Card } from './Card';
-import { createInstance } from '../game/cards/loader';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/deckBuilder';
+import { t } from '../i18n';
 
 interface DeckEditorProps {
   onSave: (deckIds: string[]) => void;
@@ -15,6 +15,35 @@ const ELEMENTS: (Element | 'all')[] = ['all', '闇', '炎', '電気', '風', '�
 const TYPES: (CardType | 'all')[] = ['all', 'Character', 'Enchant', 'Area Enchant'];
 const DECK_SIZE = 20;
 const MAX_COPIES = 2;
+const PAGE_SIZE = 12;
+
+function elementLabel(element: Element | 'all'): string {
+  if (element === 'all') return t('deckEditor.all');
+  const labels: Record<Element, string> = {
+    '闇': t('card.element.dark'),
+    '炎': t('card.element.flame'),
+    '電気': t('card.element.electric'),
+    '風': t('card.element.wind'),
+    'カオス': t('card.element.chaos'),
+  };
+  return labels[element];
+}
+
+function typeLabel(type: CardType | 'all'): string {
+  if (type === 'all') return t('deckEditor.all');
+  const labels: Record<CardType, string> = {
+    Character: t('card.type.character'),
+    Enchant: t('card.type.enchant'),
+    'Area Enchant': t('card.type.areaEnchant'),
+  };
+  return labels[type];
+}
+
+function typeShort(type: CardType): string {
+  if (type === 'Character') return '角';
+  if (type === 'Enchant') return '附';
+  return '域';
+}
 
 export function DeckEditor({ onSave, onCancel, initialDeck = [] }: DeckEditorProps) {
   const allCards = useMemo(() => getAllCardDefs(), []);
@@ -23,184 +52,211 @@ export function DeckEditor({ onSave, onCancel, initialDeck = [] }: DeckEditorPro
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
   const [searchText, setSearchText] = useState('');
   const [sortBy, setSortBy] = useState<'cost' | 'attack' | 'name'>('cost');
+  const [page, setPage] = useState(0);
 
-  // Filter and sort available cards
   const filteredCards = useMemo(() => {
     let cards = allCards;
 
-    if (filterElement !== 'all') {
-      cards = cards.filter(c => c.element === filterElement);
-    }
-    if (filterType !== 'all') {
-      cards = cards.filter(c => c.type === filterType);
-    }
+    if (filterElement !== 'all') cards = cards.filter(card => card.element === filterElement);
+    if (filterType !== 'all') cards = cards.filter(card => card.type === filterType);
     if (searchText) {
-      const q = searchText.toLowerCase();
-      cards = cards.filter(c =>
-        c.name.toLowerCase().includes(q) ||
-        c.effect.toLowerCase().includes(q) ||
-        c.song.toLowerCase().includes(q)
+      const query = searchText.toLowerCase();
+      cards = cards.filter(card =>
+        card.name.toLowerCase().includes(query) ||
+        card.effect.toLowerCase().includes(query) ||
+        card.song.toLowerCase().includes(query),
       );
     }
 
-    // Sort
-    cards = [...cards].sort((a, b) => {
+    return [...cards].sort((a, b) => {
       if (sortBy === 'cost') return a.powerCost - b.powerCost;
       if (sortBy === 'attack') {
-        const aAtk = a.attack ? Math.max(a.attack.night, a.attack.day) : 0;
-        const bAtk = b.attack ? Math.max(b.attack.night, b.attack.day) : 0;
-        return bAtk - aAtk;
+        const aAttack = a.attack ? Math.max(a.attack.night, a.attack.day) : 0;
+        const bAttack = b.attack ? Math.max(b.attack.night, b.attack.day) : 0;
+        return bAttack - aAttack;
       }
       return a.name.localeCompare(b.name);
     });
-
-    return cards;
   }, [allCards, filterElement, filterType, searchText, sortBy]);
 
-  // Count copies of each card in deck
+  useEffect(() => {
+    setPage(0);
+  }, [filterElement, filterType, searchText, sortBy]);
+
   const deckCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const id of deck) {
-      counts.set(id, (counts.get(id) || 0) + 1);
-    }
+    for (const id of deck) counts.set(id, (counts.get(id) ?? 0) + 1);
     return counts;
   }, [deck]);
 
-  const addCard = (cardId: string) => {
-    const count = deckCounts.get(cardId) || 0;
-    if (count >= MAX_COPIES) return;
-    if (deck.length >= DECK_SIZE) return;
-    setDeck([...deck, cardId]);
-  };
+  const deckCards = useMemo(() => (
+    deck.map(id => allCards.find(card => card.id === id)).filter(Boolean) as CardDef[]
+  ), [deck, allCards]);
 
-  const removeCard = (index: number) => {
-    setDeck(deck.filter((_, i) => i !== index));
-  };
-
-  const deckCards = useMemo(() => {
-    return deck.map(id => allCards.find(c => c.id === id)).filter(Boolean) as CardDef[];
-  }, [deck, allCards]);
-
-  const characterCount = deckCards.filter(c => c.type === 'Character').length;
+  const characterCount = deckCards.filter(card => card.type === 'Character').length;
   const copyLimitValid = [...deckCounts.values()].every(count => count <= MAX_COPIES);
   const isValid = deck.length === DECK_SIZE
     && deckCards.length === deck.length
     && characterCount >= Math.ceil(DECK_SIZE * 0.5)
     && copyLimitValid;
+
+  const totalPages = Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const visibleCards = filteredCards.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
+
+  const addCard = (cardId: string) => {
+    const count = deckCounts.get(cardId) ?? 0;
+    if (count >= MAX_COPIES || deck.length >= DECK_SIZE) return;
+    setDeck(current => [...current, cardId]);
+  };
+
+  const removeCard = (index: number) => {
+    setDeck(current => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
   const saveDeck = () => {
     localStorage.setItem(CUSTOM_DECK_STORAGE_KEY, JSON.stringify(deck));
     onSave(deck);
   };
 
   return (
-    <div className="deck-editor">
-      <div className="deck-editor-header">
-        <h2>🃏 Deck Editor</h2>
-        <div className="deck-stats">
-          <span className={deck.length === DECK_SIZE ? 'valid' : 'invalid'}>
-            {deck.length}/{DECK_SIZE}
-          </span>
-          <span className={characterCount >= 10 ? 'valid' : 'invalid'}>
-            Characters: {characterCount}
-          </span>
-          <button className="save-btn" disabled={!isValid} onClick={saveDeck}>
-            Save Deck
+    <main className="deck-editor app-screen">
+      <header className="screen-header">
+        <div>
+          <span>{t('lobby.menu')}</span>
+          <h1>{t('deckEditor.title')}</h1>
+        </div>
+        <div className="screen-actions">
+          <button className="secondary-action" type="button" onClick={onCancel}>{t('common.backToLobby')}</button>
+          <button className="primary-action" type="button" disabled={!isValid} onClick={saveDeck}>
+            {t('deckEditor.saveDeck')}
           </button>
-          <button className="cancel-btn" onClick={onCancel}>Cancel</button>
         </div>
-      </div>
+      </header>
 
-      <div className="deck-editor-body">
-        {/* Filters */}
-        <div className="filters">
-          <input
-            type="text"
-            placeholder="Search card name/effect..."
-            value={searchText}
-            onChange={e => setSearchText(e.target.value)}
-            className="search-input"
-          />
-
-          <div className="filter-row">
-            <label>Element:</label>
-            {ELEMENTS.map(el => (
-              <button
-                key={el}
-                className={`filter-btn ${filterElement === el ? 'active' : ''}`}
-                onClick={() => setFilterElement(el)}
-              >
-                {el === 'all' ? 'All' : el}
-              </button>
-            ))}
-          </div>
-
-          <div className="filter-row">
-            <label>Type:</label>
-            {TYPES.map(t => (
-              <button
-                key={t}
-                className={`filter-btn ${filterType === t ? 'active' : ''}`}
-                onClick={() => setFilterType(t)}
-              >
-                {t === 'all' ? 'All' : t === 'Character' ? 'C' : t === 'Enchant' ? 'E' : 'AE'}
-              </button>
-            ))}
-          </div>
-
-          <div className="filter-row">
-            <label>Sort:</label>
-            <button className={`filter-btn ${sortBy === 'cost' ? 'active' : ''}`} onClick={() => setSortBy('cost')}>Cost</button>
-            <button className={`filter-btn ${sortBy === 'attack' ? 'active' : ''}`} onClick={() => setSortBy('attack')}>Attack</button>
-            <button className={`filter-btn ${sortBy === 'name' ? 'active' : ''}`} onClick={() => setSortBy('name')}>Name</button>
-          </div>
+      <section className="deck-rules">
+        <div className={deck.length === DECK_SIZE ? 'rule valid' : 'rule invalid'}>
+          <strong>{deck.length}/{DECK_SIZE}</strong>
+          <span>{t('deckEditor.ruleSize')}</span>
         </div>
+        <div className={characterCount >= 10 ? 'rule valid' : 'rule invalid'}>
+          <strong>{characterCount}</strong>
+          <span>{t('deckEditor.ruleCharacters')}</span>
+        </div>
+        <div className={copyLimitValid ? 'rule valid' : 'rule invalid'}>
+          <strong>{MAX_COPIES}</strong>
+          <span>{t('deckEditor.ruleCopies')}</span>
+        </div>
+        <div className={isValid ? 'rule valid strong' : 'rule invalid strong'}>
+          <strong>{isValid ? t('deckEditor.valid') : t('deckEditor.invalid')}</strong>
+        </div>
+      </section>
 
-        <div className="deck-editor-columns">
-          {/* Card pool */}
-          <div className="card-pool">
-            <h3>Available Cards ({filteredCards.length})</h3>
-            <div className="card-grid">
-              {filteredCards.map(card => {
-                const count = deckCounts.get(card.id) || 0;
-                const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
-                return (
-                  <div
-                    key={card.id}
-                    className={`pool-card ${!canAdd ? 'disabled' : ''} ${count > 0 ? 'in-deck' : ''}`}
-                    onClick={() => canAdd && addCard(card.id)}
-                  >
-                    <Card card={createInstance(card.id, true)} small />
-                    {count > 0 && <div className="copy-badge">×{count}</div>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Current deck */}
-          <div className="current-deck">
-            <h3>Deck ({deck.length}/{DECK_SIZE})</h3>
-            <div className="deck-list">
-              {deckCards.map((card, i) => (
-                <div key={i} className="deck-list-item" onClick={() => removeCard(i)}>
-                  <span className="deck-card-element">{card.element}</span>
-                  <span className="deck-card-name">{card.name}</span>
-                  <span className="deck-card-cost">⚡{card.powerCost}</span>
-                  {card.type === 'Character' && card.attack && (
-                    <span className="deck-card-atk">
-                      🌙{card.attack.night} ☀️{card.attack.day}
-                    </span>
-                  )}
-                  <span className="deck-card-type">
-                    {card.type === 'Character' ? 'C' : card.type === 'Enchant' ? 'E' : 'AE'}
-                  </span>
-                  <span className="remove-btn">✕</span>
-                </div>
+      <section className="deck-workspace">
+        <div className="collection-panel">
+          <div className="editor-filters">
+            <input
+              type="search"
+              placeholder={t('deckEditor.search')}
+              value={searchText}
+              onChange={event => setSearchText(event.target.value)}
+            />
+            <div className="filter-group">
+              <span>{t('deckEditor.filterElement')}</span>
+              {ELEMENTS.map(element => (
+                <button
+                  key={element}
+                  className={filterElement === element ? 'active' : ''}
+                  type="button"
+                  onClick={() => setFilterElement(element)}
+                >
+                  {elementLabel(element)}
+                </button>
               ))}
             </div>
+            <div className="filter-group">
+              <span>{t('deckEditor.filterType')}</span>
+              {TYPES.map(type => (
+                <button
+                  key={type}
+                  className={filterType === type ? 'active' : ''}
+                  type="button"
+                  onClick={() => setFilterType(type)}
+                >
+                  {typeLabel(type)}
+                </button>
+              ))}
+            </div>
+            <div className="filter-group">
+              <span>{t('deckEditor.sort')}</span>
+              <button className={sortBy === 'cost' ? 'active' : ''} type="button" onClick={() => setSortBy('cost')}>
+                {t('deckEditor.sortCost')}
+              </button>
+              <button className={sortBy === 'attack' ? 'active' : ''} type="button" onClick={() => setSortBy('attack')}>
+                {t('deckEditor.sortAttack')}
+              </button>
+              <button className={sortBy === 'name' ? 'active' : ''} type="button" onClick={() => setSortBy('name')}>
+                {t('deckEditor.sortName')}
+              </button>
+            </div>
+          </div>
+
+          <div className="panel-title-row">
+            <h2>{t('deckEditor.cardPool')} ({filteredCards.length})</h2>
+            <div className="pager">
+              <button type="button" disabled={currentPage === 0} onClick={() => setPage(value => Math.max(0, value - 1))}>
+                {t('common.prev')}
+              </button>
+              <span>{currentPage + 1}/{totalPages} {t('common.page')}</span>
+              <button type="button" disabled={currentPage >= totalPages - 1} onClick={() => setPage(value => Math.min(totalPages - 1, value + 1))}>
+                {t('common.next')}
+              </button>
+            </div>
+          </div>
+
+          <div className="card-pool-grid">
+            {visibleCards.map(card => {
+              const count = deckCounts.get(card.id) ?? 0;
+              const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
+              return (
+                <button
+                  key={card.id}
+                  className={`pool-card ${count > 0 ? 'in-deck' : ''}`}
+                  type="button"
+                  disabled={!canAdd}
+                  onClick={() => addCard(card.id)}
+                >
+                  <Card card={{ instanceId: `pool-${card.id}`, defId: card.id, faceUp: true }} size="tiny" />
+                  {count > 0 && <span className="copy-badge">{t('deckEditor.copyCount')} {count}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
-    </div>
+
+        <aside className="current-deck-panel">
+          <div className="panel-title-row">
+            <h2>{t('deckEditor.currentDeck')}</h2>
+            <span>{deck.length}/{DECK_SIZE}</span>
+          </div>
+          <div className="deck-slot-grid">
+            {Array.from({ length: DECK_SIZE }, (_, index) => {
+              const card = deckCards[index];
+              if (!card) {
+                return <div key={`empty-${index}`} className="deck-slot empty">{t('deckEditor.emptySlot')}</div>;
+              }
+              return (
+                <button key={`${card.id}-${index}`} className="deck-slot" type="button" onClick={() => removeCard(index)}>
+                  <span className="deck-card-type">{typeShort(card.type)}</span>
+                  <strong>{card.name}</strong>
+                  <span>{t('card.energy')} {card.powerCost}</span>
+                  <em>{t('deckEditor.removeCard')}</em>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+      </section>
+    </main>
   );
 }

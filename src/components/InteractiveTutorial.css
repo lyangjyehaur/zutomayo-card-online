@@ -1,87 +1,139 @@
-/* Interactive Tutorial */
 .tutorial-overlay.interactive {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  pointer-events: none;
-}
-
-.tutorial-overlay.interactive .tutorial-card,
-.tutorial-overlay.interactive .tutorial-bubble {
-  pointer-events: all;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 2rem);
+  overflow: hidden;
 }
 
 .tutorial-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.6);
-  z-index: 1000;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(245, 211, 104, 0.18), transparent 28%),
+    rgba(2, 4, 12, 0.88);
+  backdrop-filter: blur(0.45rem);
 }
 
-.tutorial-bubble {
-  position: fixed;
-  bottom: 2rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1002;
-  background: #16213e;
-  border: 2px solid #f4d35e;
-  border-radius: 12px;
-  padding: 1.25rem 1.5rem;
-  max-width: 480px;
-  width: calc(100% - 2rem);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  animation: bubble-in 0.3s ease-out;
+.tutorial-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: clamp(0.75rem, 2vh, 1.1rem);
+  width: min(100%, 34rem);
+  border: 1px solid rgba(245, 211, 104, 0.34);
+  border-radius: 0.5rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 38%),
+    rgba(14, 20, 46, 0.96);
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.44);
+  overflow: hidden;
 }
 
-@keyframes bubble-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+.tutorial-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-top: 0.25rem solid var(--gold);
+  pointer-events: none;
 }
 
-.bubble-content {
-  color: #e0e0e0;
-  font-size: 0.9rem;
-  line-height: 1.6;
-  margin-bottom: 0.75rem;
+.tutorial-card.accent-night::before { border-color: var(--night); }
+.tutorial-card.accent-day::before { border-color: var(--day); }
+.tutorial-card.accent-energy::before { border-color: var(--teal); }
+.tutorial-card.accent-danger::before { border-color: var(--danger); }
+
+.tutorial-progress {
+  display: flex;
+  gap: 0.35rem;
 }
 
-.bubble-content p { margin-bottom: 0.3rem; }
-
-.bubble-action {
-  text-align: center;
-  margin-bottom: 0.75rem;
+.tutorial-progress span {
+  flex: 1;
+  height: 0.35rem;
+  border-radius: 999rem;
+  background: rgba(255, 255, 255, 0.13);
 }
 
-.action-hint {
-  color: #f4d35e;
-  font-size: 0.85rem;
-  animation: pulse 1.5s ease-in-out infinite;
+.tutorial-progress span.active,
+.tutorial-progress span.done {
+  background: var(--gold);
+  box-shadow: 0 0 0.8rem rgba(245, 211, 104, 0.24);
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.tutorial-symbol {
+  display: grid;
+  place-items: center;
+  width: clamp(3.25rem, 10vw, 4.4rem);
+  aspect-ratio: 1;
+  border: 1px solid rgba(245, 211, 104, 0.45);
+  border-radius: 999rem;
+  background: rgba(245, 211, 104, 0.08);
 }
 
-.bubble-footer {
+.tutorial-symbol span {
+  color: var(--gold);
+  font-size: clamp(1.4rem, 4vw, 2rem);
+  font-weight: 900;
+}
+
+.tutorial-card h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.35rem, 4vw, 2.2rem);
+}
+
+.tutorial-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(0.92rem, 2vw, 1.05rem);
+  line-height: 1.65;
+}
+
+.tutorial-nav {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  gap: 0.7rem;
 }
 
-.phase-dots {
-  display: flex;
-  gap: 0.3rem;
+.tutorial-btn {
+  min-height: 2.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.95rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
-.phase-dots .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #333;
-  transition: all 0.2s;
+.tutorial-btn.next,
+.tutorial-btn.start {
+  border-color: rgba(245, 211, 104, 0.7);
+  background: linear-gradient(135deg, #f5d368, #c98c2e);
+  color: #130d21;
 }
 
-.phase-dots .dot.active { background: #f4d35e; transform: scale(1.4); }
-.phase-dots .dot.done { background: #2ec4b6; }
+.tutorial-btn:hover {
+  transform: translateY(-0.08rem);
+  border-color: var(--gold);
+  box-shadow: 0 0 1rem rgba(245, 211, 104, 0.2);
+}
+
+@media (max-width: 767px) {
+  .tutorial-overlay.interactive {
+    padding: 0.75rem;
+  }
+
+  .tutorial-nav {
+    flex-direction: column-reverse;
+  }
+
+  .tutorial-btn {
+    width: 100%;
+  }
+}

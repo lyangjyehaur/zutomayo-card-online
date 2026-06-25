@@ -28,6 +28,6 @@ For the production server, run `npm run build` before `npm run server`, or use `
 
 ## Known limitations
 
-Card text is not fully implemented. Effects needing a target/position choice, previous-card history, optional extra setting, or detailed timing windows may be skipped or use a documented deterministic fallback. Preset deck selection is used for local, AI, and newly created online rooms; custom decks remain browser-local until full deck payload validation is added. There are no deployed accounts, server leaderboard, or cross-device match history.
+Card text is not fully implemented. Effects needing a target/position choice, previous-card history, optional extra setting, or detailed timing windows may be skipped or use a documented deterministic fallback. Online rooms can use browser-saved custom decks by sending validated deck ID payloads when the room is created. There are no deployed accounts, server deck storage, cross-device deck sync, server leaderboard, or cross-device match history.
 
 Card data remains in `cards.json`; its shape is defined by the existing loader and schema. See [rules.md](rules.md) for the rules represented by the engine and [PLAN.md](PLAN.md) for remaining work.

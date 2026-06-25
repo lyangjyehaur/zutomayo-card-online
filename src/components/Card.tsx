@@ -1,32 +1,68 @@
 import { useEffect, useState } from 'react';
-import type { CardDef, CardInstance, Element } from '../game/types';
+import type { CardDef, CardInstance, CardType, Element } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
+import { t } from '../i18n';
 
-const ELEMENT_COLORS: Record<Element, string> = {
-  '闇': '#4a4a6a',
-  '炎': '#e63946',
-  '電気': '#f4d35e',
-  '風': '#2ec4b6',
-  'カオス': '#9b5de5',
+const ELEMENT_CLASS: Record<Element, string> = {
+  '闇': 'dark',
+  '炎': 'flame',
+  '電気': 'electric',
+  '風': 'wind',
+  'カオス': 'chaos',
 };
 
-const ELEMENT_EMOJI: Record<Element, string> = {
-  '闇': '🌑',
-  '炎': '🔥',
-  '電気': '⚡',
-  '風': '🌪️',
-  'カオス': '🌀',
+const ELEMENT_LABEL: Record<Element, string> = {
+  '闇': t('card.element.dark'),
+  '炎': t('card.element.flame'),
+  '電気': t('card.element.electric'),
+  '風': t('card.element.wind'),
+  'カオス': t('card.element.chaos'),
 };
+
+const TYPE_LABEL: Record<CardType, string> = {
+  Character: t('card.type.character'),
+  Enchant: t('card.type.enchant'),
+  'Area Enchant': t('card.type.areaEnchant'),
+};
+
+const TYPE_SHORT: Record<CardType, string> = {
+  Character: '角',
+  Enchant: '附',
+  'Area Enchant': '域',
+};
+
+export type CardSize = 'normal' | 'small' | 'tiny' | 'micro';
 
 interface CardProps {
   card: CardInstance;
   onClick?: () => void;
   selected?: boolean;
   small?: boolean;
+  size?: CardSize;
+  className?: string;
 }
 
-export function Card({ card, onClick, selected, small }: CardProps) {
+function cardClassName(def: CardDef | undefined, size: CardSize, options: {
+  selected?: boolean;
+  clickable?: boolean;
+  faceDown?: boolean;
+  className?: string;
+}): string {
+  return [
+    'card',
+    'game-card',
+    `card-${size}`,
+    def ? `element-${ELEMENT_CLASS[def.element]}` : '',
+    options.selected ? 'card-selected' : '',
+    options.clickable ? 'card-clickable' : '',
+    options.faceDown ? 'card-back' : '',
+    options.className ?? '',
+  ].filter(Boolean).join(' ');
+}
+
+export function Card({ card, onClick, selected, small, size, className }: CardProps) {
   const [imageFailed, setImageFailed] = useState(false);
+  const resolvedSize = size ?? (small ? 'small' : 'normal');
 
   useEffect(() => {
     setImageFailed(false);
@@ -34,35 +70,42 @@ export function Card({ card, onClick, selected, small }: CardProps) {
 
   if (!card.faceUp) {
     return (
-      <div className="card card-back" onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
-        <div className="card-back-pattern">ZC</div>
+      <div
+        className={cardClassName(undefined, resolvedSize, { clickable: !!onClick, faceDown: true, className })}
+        onClick={onClick}
+        role={onClick ? 'button' : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        aria-label={t('card.back')}
+      >
+        <div className="card-back-frame">
+          <div className="card-back-sigil">ZC</div>
+          <div className="card-back-ring" />
+        </div>
       </div>
     );
   }
 
   const def = getCardDef(card.defId);
-  if (!def) return <div className="card card-unknown">?</div>;
 
-  const size = small ? { width: 120, height: 170 } : { width: 160, height: 225 };
+  if (!def) {
+    return (
+      <div className={cardClassName(undefined, resolvedSize, { className })}>
+        <div className="card-unknown">{t('card.unknown')}</div>
+      </div>
+    );
+  }
 
   return (
     <div
-      className={`card ${selected ? 'card-selected' : ''}`}
+      className={cardClassName(def, resolvedSize, { selected, clickable: !!onClick, className })}
       onClick={onClick}
-      style={{
-        ...size,
-        borderColor: ELEMENT_COLORS[def.element],
-        cursor: onClick ? 'pointer' : 'default',
-      }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={def.name}
     >
-      <div className="card-header">
-        <span className="card-type">{def.type === 'Character' ? 'C' : def.type === 'Enchant' ? 'E' : 'AE'}</span>
-        <span className="card-name">{def.name}</span>
-      </div>
-
-      <div className="card-image">
+      <div className="card-art">
         {imageFailed ? (
-          <div className="card-image-fallback">{def.name}</div>
+          <div className="card-art-fallback">{def.name}</div>
         ) : (
           <img
             src={def.image}
@@ -72,29 +115,35 @@ export function Card({ card, onClick, selected, small }: CardProps) {
             onError={() => setImageFailed(true)}
           />
         )}
+        <div className="card-cost-badge">{def.powerCost}</div>
+        <div className="card-type-badge">{TYPE_SHORT[def.type]}</div>
       </div>
 
-      <div className="card-info">
-        <span className="card-element">
-          {ELEMENT_EMOJI[def.element]} {def.element}
-        </span>
+      <div className="card-body">
+        <div className="card-title-row">
+          <span className="card-name">{def.name}</span>
+          <span className="card-element">{ELEMENT_LABEL[def.element]}</span>
+        </div>
+        <div className="card-meta-row">
+          <span>{TYPE_LABEL[def.type]}</span>
+          <span>{t('card.clock')} {def.clock}</span>
+        </div>
+
         {def.type === 'Character' && def.attack && (
-          <div className="card-attack">
-            <span className="night">🌙 {def.attack.night}</span>
-            <span className="day">☀️ {def.attack.day}</span>
+          <div className="card-attack-row">
+            <span className="attack-night">{t('card.night')} {def.attack.night}</span>
+            <span className="attack-day">{t('card.day')} {def.attack.day}</span>
           </div>
         )}
-      </div>
 
-      <div className="card-footer">
-        <span className="card-clock">⏱ {def.clock}</span>
-        <span className="card-cost">⚡{def.powerCost}</span>
-        {def.sendToPower > 0 && <span className="card-stp">STP:{def.sendToPower}</span>}
-      </div>
+        {def.sendToPower > 0 && (
+          <div className="card-charge">{t('card.charge')} +{def.sendToPower}</div>
+        )}
 
-      {def.effect && (
-        <div className="card-effect">{def.effect.substring(0, 60)}{def.effect.length > 60 ? '...' : ''}</div>
-      )}
+        {def.effect && resolvedSize !== 'micro' && (
+          <div className="card-effect">{def.effect}</div>
+        )}
+      </div>
     </div>
   );
 }

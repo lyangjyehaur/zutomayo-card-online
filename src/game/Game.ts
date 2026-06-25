@@ -1,5 +1,5 @@
 import type { Game, Move } from 'boardgame.io';
-import type { CardInstance, GameState, JankenChoice, PlayerIndex, SetSlot } from './types';
+import type { CardInstance, GameState, JankenChoice, PlayerIndex, SetSlot, ZutomayoSetupData } from './types';
 import { getAllCardDefs } from './cards/loader';
 import { parseAllEffects } from './effects';
 import {
@@ -10,12 +10,10 @@ import {
   setTurnCard,
   setupGame,
   undoSetCard,
+  validateZutomayoSetupData,
 } from './GameLogic';
 
-export interface ZutomayoSetupData {
-  deck0Name?: string;
-  deck1Name?: string;
-}
+export type { ZutomayoSetupData } from './types';
 
 // boardgame.io 0.50 publishes core as a CommonJS directory that Node ESM cannot
 // import directly. The documented sentinel is the stable string consumed by
@@ -109,7 +107,8 @@ const moves: Record<string, Move<GameState>> = {
 
 export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetupData> = {
   name: 'zutomayo-card',
-  setup: (_context, setupData) => setupGame(setupData?.deck0Name, setupData?.deck1Name),
+  validateSetupData: setupData => validateZutomayoSetupData(setupData),
+  setup: (_context, setupData) => setupGame(setupData),
   playerView,
   moves,
   turn: {
@@ -127,9 +126,17 @@ export function createZutomayoCard(
 ): Game<GameState, Record<string, unknown>, ZutomayoSetupData> {
   return {
     ...ZutomayoCard,
-    setup: (_context, setupData) => setupGame(
-      setupData?.deck0Name ?? defaultSetupData.deck0Name,
-      setupData?.deck1Name ?? defaultSetupData.deck1Name,
-    ),
+    validateSetupData: setupData => validateZutomayoSetupData({
+      deck0Name: setupData?.deck0Name ?? defaultSetupData.deck0Name,
+      deck1Name: setupData?.deck1Name ?? defaultSetupData.deck1Name,
+      deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
+      deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
+    }, { allowBrowserCustomDeckName: true }),
+    setup: (_context, setupData) => setupGame({
+      deck0Name: setupData?.deck0Name ?? defaultSetupData.deck0Name,
+      deck1Name: setupData?.deck1Name ?? defaultSetupData.deck1Name,
+      deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
+      deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
+    }, { allowBrowserCustomDeckName: true }),
   };
 }

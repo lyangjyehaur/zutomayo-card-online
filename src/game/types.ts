@@ -7,6 +7,13 @@ export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'gameO
 export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B';
 
+export interface ZutomayoSetupData {
+  deck0Name?: string;
+  deck1Name?: string;
+  deck0Ids?: string[];
+  deck1Ids?: string[];
+}
+
 export interface CardDef {
   id: string;
   name: string;

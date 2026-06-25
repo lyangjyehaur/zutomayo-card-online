@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createInstance, getAllCardDefs } from '../src/game/cards/loader';
+import { PRESET_DECKS } from '../src/game/cards/presetDecks';
+import { isValidConstructedDeck, validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
 import {
   confirmReady,
   finishMulligan,
@@ -44,6 +46,36 @@ function parsedCardEffect(defId: string): ParsedEffect {
   const parsed = parseEffect(card.effect.split('\n')[0]);
   assert.ok(parsed, `effect did not parse for ${defId}`);
   return parsed;
+}
+
+{
+  const customIds = PRESET_DECKS.dark.ids;
+  assert.equal(validateConstructedDeckIds(customIds), null);
+  assert.equal(isValidConstructedDeck(customIds), true);
+
+  assert.match(validateConstructedDeckIds(customIds.slice(0, 19)) ?? '', /exactly 20/);
+
+  const unknown = [...customIds];
+  unknown[0] = 'missing_card';
+  assert.match(validateConstructedDeckIds(unknown) ?? '', /Unknown card/);
+
+  const tooManyCopies = [...customIds];
+  tooManyCopies[2] = tooManyCopies[0];
+  assert.match(validateConstructedDeckIds(tooManyCopies) ?? '', /more than 2 copies/);
+
+  const noCharacters = getAllCardDefs()
+    .filter(card => card.type !== 'Character')
+    .slice(0, 10)
+    .flatMap(card => [card.id, card.id]);
+  assert.equal(noCharacters.length, 20);
+  assert.match(validateConstructedDeckIds(noCharacters) ?? '', /at least 10 Character/);
+
+  const G = setupGame({ deck0Ids: customIds, deck1Ids: PRESET_DECKS.flame.ids });
+  assert.deepEqual(
+    [...G.players[0].hand, ...G.players[0].deck].map(card => card.defId).sort(),
+    [...customIds].sort(),
+  );
+  assert.throws(() => setupGame({ deck0Name: 'custom' }), /requires deck IDs/);
 }
 
 {

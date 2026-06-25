@@ -3,6 +3,7 @@ import { Client } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { ZutomayoCard } from '../game/Game';
 import { Board } from './Board';
+import { t } from '../i18n';
 
 interface OnlineGameProps {
   matchID: string;
@@ -21,11 +22,14 @@ export function OnlineGame({ matchID, playerID, playerCredentials, onBack }: Onl
   }));
 
   return (
-    <div className="app">
-      <div className="ai-header">
-        <button className="back-btn" onClick={onBack}>← Back to Lobby</button>
-        <span className="ai-label">⚔️ Online Match: {matchID}</span>
-      </div>
+    <div className="app game-app">
+      <header className="game-header">
+        <button className="back-btn" type="button" onClick={onBack}>{t('common.backToLobby')}</button>
+        <div>
+          <strong>{t('game.onlineMode')}</strong>
+          <span>{t('game.matchCode')} {matchID}</span>
+        </div>
+      </header>
       <div className="game-container single">
         <OnlineClient playerID={playerID} matchID={matchID} credentials={playerCredentials} />
       </div>

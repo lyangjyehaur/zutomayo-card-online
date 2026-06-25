@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
-import { BoardProps } from 'boardgame.io/react';
+import type { BoardProps } from 'boardgame.io/react';
 import { createZutomayoCard } from '../game/Game';
 import { Board } from './Board';
 import { useAIMoves, type ZutomayoMoveDispatchers } from '../game/useAIMoves';
 import type { AIDifficulty } from '../game/ai';
 import type { GameState } from '../game/types';
+import { t } from '../i18n';
 
 interface AIGameProps {
   difficulty: AIDifficulty;
@@ -15,7 +16,12 @@ interface AIGameProps {
   deck1Name?: string;
 }
 
-// Board wrapper that runs AI for player 1
+const DIFFICULTY_LABEL: Record<AIDifficulty, string> = {
+  easy: t('difficulty.easy'),
+  normal: t('difficulty.normal'),
+  hard: t('difficulty.hard'),
+};
+
 function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
   const { difficulty, ...boardProps } = props;
   const aiMoves = useMemo<ZutomayoMoveDispatchers>(() => ({
@@ -25,6 +31,7 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
     setTurnCard: boardProps.moves.setTurnCard,
     confirmReady: boardProps.moves.confirmReady,
   }), [boardProps.moves]);
+
   useAIMoves(boardProps.G, boardProps.ctx, aiMoves, boardProps.playerID || '0', difficulty);
   return <Board {...boardProps} />;
 }
@@ -39,16 +46,17 @@ export function AIGame({ difficulty, onBack, deck0Name, deck1Name }: AIGameProps
   }));
 
   return (
-    <div className="app">
-      <div className="ai-header">
-        <button className="back-btn" onClick={onBack}>← Back to Lobby</button>
-        <span className="ai-label">🤖 Practice Mode — AI: {difficulty.toUpperCase()}</span>
-      </div>
+    <div className="app game-app">
+      <header className="game-header">
+        <button className="back-btn" type="button" onClick={onBack}>{t('common.backToLobby')}</button>
+        <div>
+          <strong>{t('game.aiMode')}</strong>
+          <span>{DIFFICULTY_LABEL[difficulty]}</span>
+        </div>
+      </header>
       <div className="game-container single">
-        {/* Human plays as player 0 */}
         <AIClient playerID="0" />
-        {/* AI plays as player 1 — hidden but active */}
-        <div style={{ display: 'none' }}>
+        <div className="hidden-client">
           <AIClient playerID="1" />
         </div>
       </div>

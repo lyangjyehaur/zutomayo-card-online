@@ -38,20 +38,27 @@ export function loadCustomDeckIds(): string[] | null {
   }
 }
 
-function isValidConstructedDeck(defIds: string[]): boolean {
-  if (defIds.length !== 20) return false;
+export function validateConstructedDeckIds(defIds: unknown): string | null {
+  if (!Array.isArray(defIds)) return 'Deck must be an array of card IDs';
+  if (defIds.some(id => typeof id !== 'string')) return 'Deck card IDs must be strings';
+  if (defIds.length !== 20) return `Deck must have exactly 20 cards, got ${defIds.length}`;
 
   const counts = new Map<string, number>();
   let characterCount = 0;
   for (const id of defIds) {
     const card = getCardDef(id);
-    if (!card) return false;
+    if (!card) return `Unknown card in deck: ${id}`;
     const count = (counts.get(id) ?? 0) + 1;
-    if (count > 2) return false;
+    if (count > 2) return `Deck cannot contain more than 2 copies of ${id}`;
     counts.set(id, count);
     if (card.type === 'Character') characterCount++;
   }
-  return characterCount >= 10;
+  if (characterCount < 10) return `Deck must include at least 10 Character cards, got ${characterCount}`;
+  return null;
+}
+
+export function isValidConstructedDeck(defIds: unknown): defIds is string[] {
+  return validateConstructedDeckIds(defIds) === null;
 }
 
 export function hasCustomDeck(): boolean {
@@ -64,7 +71,8 @@ export function getPresetDeck(name: string): CardInstance[] {
   if (name === CUSTOM_DECK_NAME) {
     const ids = loadCustomDeckIds();
     if (!ids) throw new Error('No custom deck saved');
-    if (!isValidConstructedDeck(ids)) throw new Error('Custom deck is invalid');
+    const validationError = validateConstructedDeckIds(ids);
+    if (validationError) throw new Error(`Custom deck is invalid: ${validationError}`);
     return buildDeck(ids);
   }
   const preset = PRESET_DECKS[name];

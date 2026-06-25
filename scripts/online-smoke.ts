@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { ZutomayoCard } from '../src/game/Game';
+import { validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
+import { PRESET_DECKS } from '../src/game/cards/presetDecks';
+import type { ZutomayoSetupData } from '../src/game/types';
 
 const require = createRequire(import.meta.url);
 const { Server } = require('boardgame.io/server') as any;
@@ -17,15 +20,19 @@ function delay(ms: number): Promise<void> {
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const response = await postJsonResponse(path, body);
   if (!response.ok) {
     throw new Error(`${path} failed ${response.status}: ${await response.text()}`);
   }
   return response.json() as Promise<T>;
+}
+
+async function postJsonResponse(path: string, body: unknown): Promise<Response> {
+  return fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 async function waitForStates(
@@ -72,28 +79,30 @@ async function performOnlineMove(
   ));
 }
 
-const server = Server({
-  games: [ZutomayoCard],
-  origins: [/localhost:\d+/, /127\.0\.0\.1:\d+/],
-});
-let runResult: any;
-const clients: any[] = [];
-
-try {
-  runResult = await server.run(port);
-
+async function createOnlineMatch(setupData: ZutomayoSetupData): Promise<string> {
   const { matchID } = await postJson<{ matchID: string }>('/games/zutomayo-card/create', {
     numPlayers: 2,
-    setupData: { deck0Name: 'dark', deck1Name: 'flame' },
+    setupData,
   });
-  const player0 = await postJson<{ playerCredentials: string }>(`/games/zutomayo-card/${matchID}/join`, {
-    playerID: '0',
-    playerName: 'Player 0',
+  return matchID;
+}
+
+async function joinOnlineMatch(matchID: string, playerID: '0' | '1'): Promise<{ playerCredentials: string }> {
+  return postJson<{ playerCredentials: string }>(`/games/zutomayo-card/${matchID}/join`, {
+    playerID,
+    playerName: `Player ${playerID}`,
   });
-  const player1 = await postJson<{ playerCredentials: string }>(`/games/zutomayo-card/${matchID}/join`, {
-    playerID: '1',
-    playerName: 'Player 1',
-  });
+}
+
+async function startJoinedClients(setupData: ZutomayoSetupData): Promise<{
+  client0: any;
+  client1: any;
+  state0: NonNullable<ClientState>;
+  state1: NonNullable<ClientState>;
+}> {
+  const matchID = await createOnlineMatch(setupData);
+  const player0 = await joinOnlineMatch(matchID, '0');
+  const player1 = await joinOnlineMatch(matchID, '1');
 
   const client0 = Client({
     game: ZutomayoCard,
@@ -115,10 +124,13 @@ try {
 
   client0.start();
   client1.start();
-  await waitForStates('janken', client0, client1, (state0, state1) => (
-    state0?.G?.step === 'janken' && state1?.G?.step === 'janken'
+  const [state0, state1] = await waitForStates('janken', client0, client1, (next0, next1) => (
+    next0?.G?.step === 'janken' && next1?.G?.step === 'janken'
   ));
+  return { client0, client1, state0, state1 };
+}
 
+async function playToTurnSet(client0: any, client1: any): Promise<NonNullable<ClientState>> {
   await performOnlineMove('player0 janken', client0, client1, () => client0.moves.janken('rock'));
   await performOnlineMove('player1 janken', client0, client1, () => client1.moves.janken('scissors'));
   await waitForStates('mulligan', client0, client1, (state0, state1) => (
@@ -138,21 +150,71 @@ try {
   const [state0] = await waitForStates('turnSet', client0, client1, (next0, next1) => (
     next0?.G?.step === 'turnSet' && next1?.G?.step === 'turnSet'
   ));
+  return state0;
+}
 
-  assert.ok(state0.G.players[1].hand.length > 0, 'player1 hand should have cards');
-  assert.ok(state0.G.players[1].deck.length > 0, 'player1 deck should have cards');
+function assertHiddenOpponentInfo(viewerState: NonNullable<ClientState>, opponent: 0 | 1): void {
+  assert.ok(viewerState.G.players[opponent].hand.length > 0, `player${opponent} hand should have cards`);
+  assert.ok(viewerState.G.players[opponent].deck.length > 0, `player${opponent} deck should have cards`);
   assert.ok(
-    state0.G.players[1].hand.every((card: any) => card.defId === '__hidden__'),
-    'player0 view should hide player1 hand',
+    viewerState.G.players[opponent].hand.every((card: any) => card.defId === '__hidden__'),
+    `opponent player${opponent} hand should be hidden`,
   );
   assert.ok(
-    state0.G.players[1].deck.every((card: any) => card.defId === '__hidden__'),
-    'player0 view should hide player1 deck',
+    viewerState.G.players[opponent].deck.every((card: any) => card.defId === '__hidden__'),
+    `opponent player${opponent} deck should be hidden`,
   );
+}
+
+function assertVisibleDeckMatchesIds(
+  viewerState: NonNullable<ClientState>,
+  player: 0 | 1,
+  expectedIds: string[],
+): void {
+  const actualIds = [
+    ...viewerState.G.players[player].hand,
+    ...viewerState.G.players[player].deck,
+  ].map((card: any) => card.defId).sort();
+  assert.deepEqual(actualIds, [...expectedIds].sort());
+}
+
+const server = Server({
+  games: [ZutomayoCard],
+  origins: [/localhost:\d+/, /127\.0\.0\.1:\d+/],
+});
+let runResult: any;
+const clients: any[] = [];
+
+try {
+  runResult = await server.run(port);
+
+  const presetMatch = await startJoinedClients({ deck0Name: 'dark', deck1Name: 'flame' });
+  const presetTurnSet = await playToTurnSet(presetMatch.client0, presetMatch.client1);
+  assertHiddenOpponentInfo(presetTurnSet, 1);
   assert.ok(
-    state0.G.players[0].hand.some((card: any) => card.defId !== '__hidden__'),
+    presetTurnSet.G.players[0].hand.some((card: any) => card.defId !== '__hidden__'),
     'player0 hand should be visible to player0',
   );
+
+  const customDeck0Ids = [...PRESET_DECKS.electric.ids];
+  const customDeck1Ids = [...PRESET_DECKS.wind.ids];
+  assert.equal(validateConstructedDeckIds(customDeck0Ids), null);
+  assert.equal(validateConstructedDeckIds(customDeck1Ids), null);
+  const customMatch = await startJoinedClients({ deck0Ids: customDeck0Ids, deck1Ids: customDeck1Ids });
+  assertVisibleDeckMatchesIds(customMatch.state0, 0, customDeck0Ids);
+  assertVisibleDeckMatchesIds(customMatch.state1, 1, customDeck1Ids);
+  assertHiddenOpponentInfo(customMatch.state0, 1);
+  assertHiddenOpponentInfo(customMatch.state1, 0);
+  const customTurnSet = await playToTurnSet(customMatch.client0, customMatch.client1);
+  assertHiddenOpponentInfo(customTurnSet, 1);
+
+  const invalidDeckIds = [...customDeck0Ids];
+  invalidDeckIds[0] = 'missing_card';
+  const invalidResponse = await postJsonResponse('/games/zutomayo-card/create', {
+    numPlayers: 2,
+    setupData: { deck0Ids: invalidDeckIds, deck1Ids: customDeck1Ids },
+  });
+  assert.equal(invalidResponse.ok, false, 'invalid custom deck payload should be rejected');
 
   console.log('online smoke: all assertions passed');
 } finally {

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
 import { createZutomayoCard } from './game/Game';
 import { Board } from './components/Board';
+import { Card } from './components/Card';
 import { DeckEditor } from './components/DeckEditor';
 import { MatchHistory } from './components/MatchHistory';
 import { AIGame } from './components/AIGame';
@@ -10,14 +11,28 @@ import { OnlineGame } from './components/OnlineGame';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
 import type { AIDifficulty } from './game/ai';
 import { PRESET_DECKS } from './game/cards/presetDecks';
-import { CUSTOM_DECK_NAME, hasCustomDeck } from './game/cards/deckBuilder';
+import { CUSTOM_DECK_NAME, hasCustomDeck, loadCustomDeckIds } from './game/cards/deckBuilder';
+import { t } from './i18n';
 import './App.css';
 import './components/InteractiveTutorial.css';
 
 type Mode = 'menu' | 'local' | 'ai' | 'online' | 'deck-editor' | 'match-history';
-type DeckOption = { id: string; name: string; disabled?: boolean };
+type DeckOption = {
+  id: string;
+  name: string;
+  description: string;
+  previewIds: string[];
+  disabled?: boolean;
+};
 
 const DEFAULT_DECK_NAME = Object.keys(PRESET_DECKS)[0] ?? '';
+
+const DECK_COPY: Record<string, { nameKey: Parameters<typeof t>[0]; descKey: Parameters<typeof t>[0] }> = {
+  dark: { nameKey: 'deck.dark', descKey: 'deck.darkDesc' },
+  flame: { nameKey: 'deck.flame', descKey: 'deck.flameDesc' },
+  electric: { nameKey: 'deck.electric', descKey: 'deck.electricDesc' },
+  wind: { nameKey: 'deck.wind', descKey: 'deck.windDesc' },
+};
 
 function selectedDeckName(deckName: string, customDeckAvailable: boolean): string | undefined {
   if (deckName === CUSTOM_DECK_NAME && !customDeckAvailable) return DEFAULT_DECK_NAME;
@@ -25,9 +40,6 @@ function selectedDeckName(deckName: string, customDeckAvailable: boolean): strin
 }
 
 function onlineDeckName(deckName: string): string | undefined {
-  // Custom decks live in browser localStorage, so the Node server cannot build
-  // them from setupData. Use the default preset online until deck payloads are
-  // server-validated and transmitted explicitly.
   if (deckName === CUSTOM_DECK_NAME) return DEFAULT_DECK_NAME;
   return deckName || undefined;
 }
@@ -38,7 +50,7 @@ async function createMatch(deck0Name?: string, deck1Name?: string): Promise<stri
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ numPlayers: 2, setupData: { deck0Name, deck1Name } }),
   });
-  if (!response.ok) throw new Error('Could not create match');
+  if (!response.ok) throw new Error(t('lobby.onlineError'));
   const data = await response.json();
   return data.matchID;
 }
@@ -47,13 +59,40 @@ async function joinMatch(matchID: string, playerID: '0' | '1'): Promise<{ player
   const response = await fetch(`/games/zutomayo-card/${matchID}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ playerID, playerName: `Player ${playerID}` }),
+    body: JSON.stringify({ playerID, playerName: playerID === '0' ? t('player.zero') : t('player.one') }),
   });
-  if (!response.ok) throw new Error('Could not join match');
+  if (!response.ok) throw new Error(t('lobby.onlineError'));
   return response.json();
 }
 
-function LocalBattle({ deck0Name, deck1Name }: { deck0Name?: string; deck1Name?: string }) {
+function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
+  const presetOptions = Object.entries(PRESET_DECKS).map(([id, deck]) => {
+    const copy = DECK_COPY[id];
+    return {
+      id,
+      name: copy ? t(copy.nameKey) : deck.name,
+      description: copy ? t(copy.descKey) : deck.name,
+      previewIds: deck.ids.slice(0, 3),
+    };
+  });
+
+  return [
+    ...presetOptions,
+    {
+      id: CUSTOM_DECK_NAME,
+      name: t('deck.custom'),
+      description: customDeckAvailable ? t('deck.customDesc') : t('lobby.customDeckLocked'),
+      previewIds: loadCustomDeckIds()?.slice(0, 3) ?? presetOptions[0]?.previewIds ?? [],
+      disabled: !customDeckAvailable,
+    },
+  ];
+}
+
+function LocalBattle({ deck0Name, deck1Name, onBack }: {
+  deck0Name?: string;
+  deck1Name?: string;
+  onBack: () => void;
+}) {
   const [LocalClient] = useState(() => Client({
     game: createZutomayoCard({ deck0Name, deck1Name }),
     board: Board,
@@ -61,38 +100,140 @@ function LocalBattle({ deck0Name, deck1Name }: { deck0Name?: string; deck1Name?:
     multiplayer: Local(),
     debug: false,
   }));
+
   return (
-    <div className="app"><div className="game-container">
-      <div className="player-view"><h3>Player 0</h3><LocalClient playerID="0" /></div>
-      <div className="player-view"><h3>Player 1</h3><LocalClient playerID="1" /></div>
-    </div></div>
+    <div className="app game-app">
+      <GameHeader title={t('game.localMode')} subtitle={`${t('player.zero')} / ${t('player.one')}`} onBack={onBack} />
+      <div className="game-container local-duel">
+        <section className="player-view">
+          <div className="view-label">{t('player.zeroView')}</div>
+          <LocalClient playerID="0" />
+        </section>
+        <section className="player-view">
+          <div className="view-label">{t('player.oneView')}</div>
+          <LocalClient playerID="1" />
+        </section>
+      </div>
+    </div>
   );
 }
 
-function DeckSelector({ label, name, value, options, onChange }: {
+function GameHeader({ title, subtitle, onBack }: { title: string; subtitle?: string; onBack: () => void }) {
+  return (
+    <header className="game-header">
+      <button className="back-btn" type="button" onClick={onBack}>{t('common.backToLobby')}</button>
+      <div>
+        <strong>{title}</strong>
+        {subtitle && <span>{subtitle}</span>}
+      </div>
+    </header>
+  );
+}
+
+function DeckSelector({ label, value, options, onChange }: {
   label: string;
-  name: string;
   value: string;
   options: DeckOption[];
   onChange: (deckName: string) => void;
 }) {
   return (
-    <div className="player-select">
-      <h3>{label}</h3>
-      {options.map(option => (
-        <label key={option.id} className={`deck-option ${value === option.id ? 'selected' : ''}`}>
-          <input
-            type="radio"
-            name={name}
-            value={option.id}
-            checked={value === option.id}
+    <section className="deck-selector">
+      <div className="section-heading">
+        <h3>{label}</h3>
+        <span>{t('lobby.deckSelectHint')}</span>
+      </div>
+      <div className="deck-option-grid">
+        {options.map(option => (
+          <button
+            key={option.id}
+            className={`deck-option-card ${value === option.id ? 'selected' : ''}`}
+            type="button"
             disabled={option.disabled}
-            onChange={() => onChange(option.id)}
+            onClick={() => onChange(option.id)}
+          >
+            <div className="deck-preview-stack" aria-hidden="true">
+              {option.previewIds.map((id, index) => (
+                <Card
+                  key={`${option.id}-${id}-${index}`}
+                  card={{ instanceId: `${option.id}-${id}-${index}`, defId: id, faceUp: true }}
+                  size="micro"
+                />
+              ))}
+            </div>
+            <div className="deck-option-copy">
+              <strong>{option.name}</strong>
+              <span>{option.description}</span>
+            </div>
+            {value === option.id && <em>{t('common.selected')}</em>}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DifficultyButtons({ onStart }: { onStart: (difficulty: AIDifficulty) => void }) {
+  const levels: { id: AIDifficulty; label: string; detail: string }[] = [
+    { id: 'easy', label: t('difficulty.easy'), detail: t('difficulty.easyDesc') },
+    { id: 'normal', label: t('difficulty.normal'), detail: t('difficulty.normalDesc') },
+    { id: 'hard', label: t('difficulty.hard'), detail: t('difficulty.hardDesc') },
+  ];
+
+  return (
+    <section className="lobby-panel ai-panel">
+      <div className="section-heading">
+        <h3>{t('lobby.aiBattle')}</h3>
+        <span>{t('lobby.difficulty')}</span>
+      </div>
+      <div className="difficulty-grid">
+        {levels.map(level => (
+          <button key={level.id} className={`difficulty-card ${level.id}`} type="button" onClick={() => onStart(level.id)}>
+            <strong>{level.label}</strong>
+            <span>{level.detail}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) => Promise<void> }) {
+  const [matchID, setMatchID] = useState('');
+  const [error, setError] = useState('');
+
+  const runOnline = async (id?: string) => {
+    setError('');
+    try {
+      await startOnline(id);
+    } catch {
+      setError(t('lobby.onlineError'));
+    }
+  };
+
+  return (
+    <section className="lobby-panel online-panel">
+      <div className="section-heading">
+        <h3>{t('lobby.onlineTitle')}</h3>
+        <span>{t('game.onlineMode')}</span>
+      </div>
+      <div className="online-actions">
+        <button className="primary-action" type="button" onClick={() => runOnline()}>
+          {t('lobby.createRoom')}
+        </button>
+        <div className="join-row">
+          <input
+            value={matchID}
+            onChange={event => setMatchID(event.target.value.trim())}
+            placeholder={t('lobby.roomCodePlaceholder')}
+            aria-label={t('lobby.roomCode')}
           />
-          {option.name}
-        </label>
-      ))}
-    </div>
+          <button className="secondary-action" type="button" disabled={!matchID} onClick={() => runOnline(matchID)}>
+            {t('lobby.joinRoom')}
+          </button>
+        </div>
+      </div>
+      {error && <p className="error-copy">{error}</p>}
+    </section>
   );
 }
 
@@ -117,57 +258,44 @@ function Lobby({
   setDeck0Name: (deckName: string) => void;
   setDeck1Name: (deckName: string) => void;
 }) {
-  const [matchID, setMatchID] = useState('');
-  const [error, setError] = useState('');
-  const deckOptions: DeckOption[] = [
-    ...Object.entries(PRESET_DECKS).map(([id, deck]) => ({ id, name: deck.name })),
-    { id: CUSTOM_DECK_NAME, name: 'Custom Deck', disabled: !customDeckAvailable },
-  ];
-  const runOnline = async (id?: string) => {
-    setError('');
-    try { await startOnline(id); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Online match failed'); }
-  };
+  const deckOptions = useMemo(() => buildDeckOptions(customDeckAvailable), [customDeckAvailable]);
+
   return (
-    <div className="lobby">
-      <h1>🎵 ZUTOMAYO CARD</h1><h2>THE BATTLE BEGINS</h2>
-      <div className="deck-select">
-        <DeckSelector
-          label="Player 0 Deck"
-          name="player-0-deck"
-          value={deck0Name}
-          options={deckOptions}
-          onChange={setDeck0Name}
-        />
-        <div className="vs">VS</div>
-        <DeckSelector
-          label="Player 1 Deck"
-          name="player-1-deck"
-          value={deck1Name}
-          options={deckOptions}
-          onChange={setDeck1Name}
-        />
-      </div>
-      <button className="start-btn" onClick={() => navigate('local')}>⚔️ Two-player local game</button>
-      <div className="online-section">
-        <button className="start-btn" onClick={() => runOnline()}>Create online room</button>
-        <div className="join-section">
-          <input value={matchID} onChange={event => setMatchID(event.target.value.trim())} placeholder="Match ID" />
-          <button className="start-btn" disabled={!matchID} onClick={() => runOnline(matchID)}>Join room</button>
+    <main className="lobby">
+      <div className="lobby-backdrop" />
+      <section className="lobby-hero">
+        <div className="title-lockup">
+          <span>{t('lobby.menu')}</span>
+          <h1>{t('app.title')}</h1>
+          <p>{t('app.subtitle')}</p>
         </div>
-        {error && <p>{error}</p>}
-      </div>
-      <div className="ai-section"><h3>Practice vs AI</h3><div className="ai-buttons">
-        {(['easy', 'normal', 'hard'] as AIDifficulty[]).map(level => (
-          <button key={level} className={`ai-btn ${level}`} onClick={() => startAI(level)}>{level}</button>
-        ))}
-      </div></div>
-      <div className="lobby-actions">
-        <button className="nav-btn" onClick={() => navigate('deck-editor')}>🃏 Deck editor</button>
-        <button className="nav-btn" onClick={() => navigate('match-history')}>📊 Local match history</button>
-        <button className="how-to-play-btn" onClick={showTutorial}>How to play</button>
-      </div>
-    </div>
+        <div className="primary-menu">
+          <button className="menu-action featured" type="button" onClick={() => navigate('local')}>
+            {t('lobby.localBattle')}
+          </button>
+          <button className="menu-action" type="button" onClick={() => navigate('deck-editor')}>
+            {t('lobby.deckEditor')}
+          </button>
+          <button className="menu-action" type="button" onClick={() => navigate('match-history')}>
+            {t('lobby.matchHistory')}
+          </button>
+          <button className="menu-action" type="button" onClick={showTutorial}>
+            {t('lobby.tutorial')}
+          </button>
+        </div>
+      </section>
+
+      <section className="lobby-grid">
+        <div className="lobby-panel deck-panel">
+          <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={deckOptions} onChange={setDeck0Name} />
+          <DeckSelector label={t('lobby.opponentDeck')} value={deck1Name} options={deckOptions} onChange={setDeck1Name} />
+        </div>
+        <div className="lobby-side">
+          <DifficultyButtons onStart={startAI} />
+          <OnlinePanel startOnline={startOnline} />
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -183,10 +311,12 @@ export default function App() {
     playerID: '0' | '1';
     playerCredentials: string;
   } | null>(null);
+
   const closeTutorial = () => {
     localStorage.setItem('zutomayo_tutorial_seen', '1');
     setTutorial(false);
   };
+
   const startOnline = async (existingID?: string) => {
     const matchID = existingID || await createMatch(onlineDeckName(deck0Name), onlineDeckName(deck1Name));
     const playerID = existingID ? '1' : '0';
@@ -194,25 +324,78 @@ export default function App() {
     setOnline({ matchID, playerID, playerCredentials });
     setMode('online');
   };
+
   const deck0 = selectedDeckName(deck0Name, customDeckAvailable);
   const deck1 = selectedDeckName(deck1Name, customDeckAvailable);
+
   if (tutorial && mode === 'menu') {
-    return <InteractiveTutorial onComplete={closeTutorial} onStartPractice={() => { closeTutorial(); setDifficulty('easy'); setMode('ai'); }} />;
+    return (
+      <InteractiveTutorial
+        onComplete={closeTutorial}
+        onStartPractice={() => {
+          closeTutorial();
+          setDifficulty('easy');
+          setMode('ai');
+        }}
+      />
+    );
   }
-  if (mode === 'local') return <><LocalBattle deck0Name={deck0} deck1Name={deck1} /><button className="back-btn" onClick={() => setMode('menu')}>← Lobby</button></>;
-  if (mode === 'ai') return <AIGame difficulty={difficulty} deck0Name={deck0} deck1Name={deck1} onBack={() => setMode('menu')} />;
-  if (mode === 'online' && online) return <OnlineGame {...online} onBack={() => { setOnline(null); setMode('menu'); }} />;
-  if (mode === 'deck-editor') return <DeckEditor onSave={() => { setCustomDeckAvailable(hasCustomDeck()); setMode('menu'); }} onCancel={() => setMode('menu')} />;
+
+  if (mode === 'local') {
+    return <LocalBattle deck0Name={deck0} deck1Name={deck1} onBack={() => setMode('menu')} />;
+  }
+
+  if (mode === 'ai') {
+    return (
+      <AIGame
+        difficulty={difficulty}
+        deck0Name={deck0}
+        deck1Name={deck1}
+        onBack={() => setMode('menu')}
+      />
+    );
+  }
+
+  if (mode === 'online' && online) {
+    return (
+      <OnlineGame
+        {...online}
+        onBack={() => {
+          setOnline(null);
+          setMode('menu');
+        }}
+      />
+    );
+  }
+
+  if (mode === 'deck-editor') {
+    return (
+      <DeckEditor
+        onSave={() => {
+          setCustomDeckAvailable(hasCustomDeck());
+          setMode('menu');
+        }}
+        onCancel={() => setMode('menu')}
+      />
+    );
+  }
+
   if (mode === 'match-history') return <MatchHistory onBack={() => setMode('menu')} />;
-  return <Lobby
-    navigate={setMode}
-    startAI={level => { setDifficulty(level); setMode('ai'); }}
-    startOnline={startOnline}
-    showTutorial={() => setTutorial(true)}
-    deck0Name={deck0Name}
-    deck1Name={deck1Name}
-    customDeckAvailable={customDeckAvailable}
-    setDeck0Name={setDeck0Name}
-    setDeck1Name={setDeck1Name}
-  />;
+
+  return (
+    <Lobby
+      navigate={setMode}
+      startAI={level => {
+        setDifficulty(level);
+        setMode('ai');
+      }}
+      startOnline={startOnline}
+      showTutorial={() => setTutorial(true)}
+      deck0Name={deck0Name}
+      deck1Name={deck1Name}
+      customDeckAvailable={customDeckAvailable}
+      setDeck0Name={setDeck0Name}
+      setDeck1Name={setDeck1Name}
+    />
+  );
 }

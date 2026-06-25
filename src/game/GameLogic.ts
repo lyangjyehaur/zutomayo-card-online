@@ -9,11 +9,66 @@ import type {
   PlayerIndex,
   PlayerState,
   SetSlot,
+  ZutomayoSetupData,
 } from './types';
 import { getCardDef } from './cards/loader';
-import { getPresetDeck, randomDeck, shuffleDeck } from './cards/deckBuilder';
+import {
+  buildDeck,
+  CUSTOM_DECK_NAME,
+  getPresetDeck,
+  randomDeck,
+  shuffleDeck,
+  validateConstructedDeckIds,
+} from './cards/deckBuilder';
 
 const playerIndexes: PlayerIndex[] = [0, 1];
+
+interface SetupGameOptions {
+  allowBrowserCustomDeckName?: boolean;
+}
+
+function validateSetupDeck(
+  player: PlayerIndex,
+  ids: unknown,
+  name: string | undefined,
+  options: SetupGameOptions,
+): string | undefined {
+  if (ids !== undefined) {
+    const validationError = validateConstructedDeckIds(ids);
+    return validationError ? `Player ${player} custom deck invalid: ${validationError}` : undefined;
+  }
+  if (name === CUSTOM_DECK_NAME && !options.allowBrowserCustomDeckName) {
+    return `Player ${player} custom deck requires deck IDs in setupData`;
+  }
+  return undefined;
+}
+
+export function validateZutomayoSetupData(
+  setupData: ZutomayoSetupData | undefined,
+  options: SetupGameOptions = {},
+): string | undefined {
+  const data = setupData || {};
+  return validateSetupDeck(0, data.deck0Ids, data.deck0Name, options)
+    ?? validateSetupDeck(1, data.deck1Ids, data.deck1Name, options);
+}
+
+function setupDeck(
+  player: PlayerIndex,
+  ids: unknown,
+  name: string | undefined,
+  allowBrowserCustomDeckName: boolean,
+): CardInstance[] {
+  const validationError = validateSetupDeck(player, ids, name, { allowBrowserCustomDeckName });
+  if (validationError) throw new Error(validationError);
+
+  if (ids !== undefined) {
+    return buildDeck(ids as string[]);
+  }
+  if (name) {
+    return getPresetDeck(name);
+  }
+  return randomDeck();
+}
 
 export function emptyModifiers(): CombatModifiers {
   return {
@@ -59,7 +114,23 @@ export function getPriorityPlayer(G: GameState): PlayerIndex {
     : ((1 - G.chronos.nightSidePlayer) as PlayerIndex);
 }
 
-export function setupGame(deck0Name?: string, deck1Name?: string): GameState {
+export function setupGame(deck0Name?: string, deck1Name?: string): GameState;
+export function setupGame(setupData?: ZutomayoSetupData, options?: SetupGameOptions): GameState;
+export function setupGame(
+  setupDataOrDeck0Name: ZutomayoSetupData | string = {},
+  deck1NameOrOptions: string | SetupGameOptions = {},
+): GameState {
+  const legacyNames = typeof setupDataOrDeck0Name === 'string' || typeof deck1NameOrOptions === 'string';
+  const setupData: ZutomayoSetupData = legacyNames
+    ? {
+      deck0Name: typeof setupDataOrDeck0Name === 'string' ? setupDataOrDeck0Name : undefined,
+      deck1Name: typeof deck1NameOrOptions === 'string' ? deck1NameOrOptions : undefined,
+    }
+    : setupDataOrDeck0Name || {};
+  const options: SetupGameOptions = legacyNames || typeof deck1NameOrOptions === 'string'
+    ? {}
+    : deck1NameOrOptions;
+  const allowBrowserCustomDeckName = options.allowBrowserCustomDeckName ?? false;
   const makePlayer = (): PlayerState => ({
     hp: 100,
     deck: [],
@@ -91,8 +162,18 @@ export function setupGame(deck0Name?: string, deck1Name?: string): GameState {
     gameoverReason: null,
     log: ['Game initialized. Janken determines the night-side player.'],
   };
-  G.players[0].deck = shuffleDeck(deck0Name ? getPresetDeck(deck0Name) : randomDeck());
-  G.players[1].deck = shuffleDeck(deck1Name ? getPresetDeck(deck1Name) : randomDeck());
+  G.players[0].deck = shuffleDeck(setupDeck(
+    0,
+    setupData.deck0Ids,
+    setupData.deck0Name,
+    allowBrowserCustomDeckName,
+  ));
+  G.players[1].deck = shuffleDeck(setupDeck(
+    1,
+    setupData.deck1Ids,
+    setupData.deck1Name,
+    allowBrowserCustomDeckName,
+  ));
   drawUnchecked(G.players[0], 5);
   drawUnchecked(G.players[1], 5);
   return G;
