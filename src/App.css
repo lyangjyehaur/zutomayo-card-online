@@ -492,8 +492,11 @@ input:focus {
 
 .player-view .board {
   --card-normal-w: clamp(3.45rem, 4.5vw, 5rem);
+  --card-normal-h: clamp(5.175rem, 6.75vw, 7.5rem);
   --card-small-w: clamp(2.75rem, 3.8vw, 4rem);
+  --card-small-h: clamp(4.125rem, 5.7vw, 6rem);
   --card-micro-w: clamp(1.55rem, 2.4vw, 2.1rem);
+  --card-micro-h: clamp(2.325rem, 3.6vw, 3.15rem);
 }
 
 .hidden-client {
@@ -502,6 +505,14 @@ input:focus {
 
 /* Board */
 .board {
+  --card-normal-w: clamp(3.9rem, min(6.2vw, 8.2vh), 5.9rem);
+  --card-normal-h: clamp(5.85rem, min(9.3vw, 12.3vh), 8.85rem);
+  --card-small-w: clamp(3rem, min(4.8vw, 6.4vh), 4.5rem);
+  --card-small-h: clamp(4.5rem, min(7.2vw, 9.6vh), 6.75rem);
+  --card-tiny-w: clamp(2.5rem, min(4vw, 5.3vh), 3.8rem);
+  --card-tiny-h: clamp(3.75rem, min(6vw, 7.95vh), 5.7rem);
+  --card-micro-w: clamp(1.75rem, min(3vw, 4vh), 2.7rem);
+  --card-micro-h: clamp(2.625rem, min(4.5vw, 6vh), 4.05rem);
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto minmax(0, 1.06fr);
   gap: clamp(0.35rem, 0.9vh, 0.65rem);
@@ -516,6 +527,12 @@ input:focus {
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 20%, rgba(255, 255, 255, 0.03)),
     rgba(8, 13, 31, 0.9);
   box-shadow: inset 0 0 3rem rgba(127, 140, 255, 0.1), var(--shadow);
+}
+
+.board > * {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .player-area {
@@ -630,9 +647,11 @@ input:focus {
 .zones {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   gap: clamp(0.3rem, 0.8vw, 0.55rem);
   align-items: stretch;
   min-height: 0;
+  overflow: hidden;
 }
 
 .zone {
@@ -640,6 +659,8 @@ input:focus {
   display: grid;
   place-items: center;
   min-height: 0;
+  width: 100%;
+  height: 100%;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: var(--radius);
   padding: 1.25rem 0.25rem 0.25rem;
@@ -647,6 +668,10 @@ input:focus {
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
     rgba(5, 7, 18, 0.45);
   overflow: hidden;
+}
+
+.zone .game-card {
+  max-width: 100%;
 }
 
 .zone-clickable {
@@ -689,9 +714,21 @@ input:focus {
 }
 
 .zone-empty {
+  display: grid;
+  place-items: center;
+  width: min(var(--card-small-w), 100%);
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  padding: 0.25rem;
   color: rgba(244, 240, 222, 0.22);
   font-size: clamp(0.72rem, 1.2vw, 0.85rem);
+  line-height: 1.2;
   text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.battle-zone .zone-empty {
+  width: min(var(--card-normal-w), 100%);
 }
 
 .hand-label {
@@ -701,16 +738,21 @@ input:focus {
 .hand-row {
   display: flex;
   align-items: flex-end;
-  justify-content: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
   gap: 0.3rem;
-  min-height: var(--card-normal-w);
-  padding: 0.25rem 0.5rem;
+  min-height: calc(var(--card-normal-h) + 0.85rem);
+  padding: 0.55rem 0.5rem 0.3rem;
+  overflow: hidden;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
 }
 
 .opponent-hand {
-  justify-content: center;
+  justify-content: flex-start;
+  min-height: calc(var(--card-micro-h) + 0.55rem);
+  padding-top: 0.3rem;
 }
 
 .hand .card-clickable {
@@ -718,7 +760,8 @@ input:focus {
 }
 
 .hand .card-clickable:hover {
-  transform: translateY(-0.45rem) scale(1.02);
+  z-index: 2;
+  transform: translate3d(0, -0.45rem, 0) scale(1.02);
 }
 
 .center-area {
@@ -923,6 +966,8 @@ input:focus {
     linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
     #10162e;
   box-shadow: 0 0.45rem 1rem rgba(0, 0, 0, 0.34);
+  will-change: transform;
+  transform-origin: center bottom;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
 
@@ -931,7 +976,7 @@ input:focus {
 .card-micro { --card-w: var(--card-micro-w); }
 
 .game-card:hover {
-  transform: translateY(-0.18rem);
+  transform: translate3d(0, -0.18rem, 0);
   box-shadow: 0 0.7rem 1.25rem rgba(0, 0, 0, 0.42), 0 0 1rem rgba(245, 211, 104, 0.14);
 }
 
@@ -1648,6 +1693,8 @@ input:focus {
   }
 
   .hand-row {
+    width: 100%;
+    max-width: 26rem;
     justify-content: flex-start;
     overflow-x: auto;
     overscroll-behavior-x: contain;
