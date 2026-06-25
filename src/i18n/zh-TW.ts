@@ -86,7 +86,7 @@ export const zhTW = {
   'board.readyWaiting': '已確認，等待對手',
   'board.needCards': '需要出牌',
   'board.battleZone': '戰鬥區',
-  'board.battleZoneShort': 'Battle',
+  'board.battleZoneShort': '戰鬥',
   'board.setZoneA': '設置區 A',
   'board.setZoneB': '設置區 B',
   'board.areaEnchant': '區域附魔',

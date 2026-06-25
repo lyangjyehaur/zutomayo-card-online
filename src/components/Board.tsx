@@ -1,5 +1,5 @@
 import type { BoardProps } from 'boardgame.io/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { Card, type CardSize } from './Card';
@@ -200,14 +200,26 @@ function StackZone({ kind, label, icon, value }: {
   icon: string;
   value: number;
 }) {
+  if (kind === 'deck') {
+    return (
+      <div className="stack-zone deck-zone deck-stack" aria-label={`${label}: ${value}`}>
+        <div className="deck-card-back" aria-hidden="true">
+          <div className="card-back-design">ZC</div>
+        </div>
+        <span className="deck-count" aria-hidden="true">{icon} {value}</span>
+      </div>
+    );
+  }
+
   return (
     <div className={`stack-zone ${kind}-stack`} aria-label={`${label}: ${value}`}>
-      <div className="stack-visual" aria-hidden="true">
-        <span />
-        <span />
-        <span />
+      <div className="power-charger-visual" aria-hidden="true">
+        <span>{icon}</span>
       </div>
-      <strong>{icon} {label}: {value}</strong>
+      <strong>
+        <span>{label}</span>
+        {value}
+      </strong>
     </div>
   );
 }
@@ -238,100 +250,140 @@ function FieldStats({ G, playerIndex, showAbyss, timeLeft, timerTone }: {
   );
 }
 
-function OpponentField({ G, opponentIndex, time }: {
+function OpponentField({ G, opponentIndex }: {
   G: GameState;
   opponentIndex: PlayerIndex;
-  time: ChronosTime;
 }) {
   const opponent = G.players[opponentIndex];
 
   return (
-    <section className="field-panel opponent-field" aria-label={t('player.opponent')}>
-      <div className="field-heading">
-        <strong>{t('player.opponent')}：{playerName(opponentIndex)}</strong>
-        <FieldStats G={G} playerIndex={opponentIndex} showAbyss={false} />
-      </div>
-      <div className="field-zones opponent-zones">
-        <FieldZone label={t('board.setZoneA')} shortLabel="A" className="set-zone" card={opponent.setZoneA} size="small" />
-        <FieldZone label={t('board.battleZone')} shortLabel={t('board.battleZoneShort')} className="battle-zone" card={opponent.battleZone} size="small" activeTime={time} />
-        <FieldZone label={t('board.setZoneB')} shortLabel="B" className="set-zone" card={opponent.setZoneB} size="small" />
-        <FieldZone label={t('board.areaEnchant')} shortLabel="C" className="area-zone" card={opponent.setZoneC} size="small" />
-        <div className="field-stacks">
-          <StackZone kind="deck" label={t('board.deckZone')} icon="🃏" value={opponent.deck.length} />
+    <>
+      <section className="field-panel opponent-field opponent-side-zones" aria-label={t('player.opponent')}>
+        <div className="field-heading">
+          <strong>{t('player.opponent')}：{playerName(opponentIndex)}</strong>
+          <FieldStats G={G} playerIndex={opponentIndex} showAbyss={false} />
+        </div>
+        <div className="field-zones side-zone-grid opponent-zones">
+          <FieldZone label={t('board.setZoneA')} shortLabel="A" className="set-zone set-zone-a" card={opponent.setZoneA} size="small" />
+          <FieldZone label={t('board.setZoneB')} shortLabel="B" className="set-zone set-zone-b" card={opponent.setZoneB} size="small" />
           <StackZone kind="power" label={t('board.powerCharger')} icon="⚡" value={powerTotal(G, opponentIndex)} />
         </div>
-      </div>
-    </section>
+      </section>
+      <section className="field-panel opponent-field opponent-area-panel" aria-label={t('board.areaEnchant')}>
+        <FieldZone label={t('board.areaEnchant')} shortLabel="C" className="area-zone area-zone-c" card={opponent.setZoneC} size="small" />
+      </section>
+    </>
   );
 }
 
-function PlayerField({ G, meIndex, timeLeft, timerTone, time, moves }: {
+function PlayerField({ G, meIndex, timeLeft, timerTone, moves }: {
   G: GameState;
   meIndex: PlayerIndex;
   timeLeft: number;
   timerTone: string;
-  time: ChronosTime;
   moves: Props['moves'];
 }) {
   const me = G.players[meIndex];
 
   return (
-    <section className="field-panel player-field" aria-label={t('player.me')}>
-      <div className="field-heading">
-        <strong>{t('player.me')}：{playerName(meIndex)}</strong>
-        <FieldStats G={G} playerIndex={meIndex} showAbyss timeLeft={timeLeft} timerTone={timerTone} />
-      </div>
-      <div className="field-zones player-zones">
-        <FieldZone
-          label={t('board.setZoneA')}
-          shortLabel="A"
-          className="set-zone"
-          card={me.setZoneA}
-          onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
-          size="normal"
-        />
-        <FieldZone label={t('board.battleZone')} shortLabel={t('board.battleZoneShort')} className="battle-zone" card={me.battleZone} size="normal" activeTime={time} />
-        <FieldZone
-          label={t('board.setZoneB')}
-          shortLabel="B"
-          className="set-zone"
-          card={me.setZoneB}
-          onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
-          size="normal"
-        />
-        <FieldZone label={t('board.areaEnchant')} shortLabel="C" className="area-zone" card={me.setZoneC} size="normal" />
-        <div className="field-stacks">
-          <StackZone kind="deck" label={t('board.deckZone')} icon="🃏" value={me.deck.length} />
-          <StackZone kind="power" label={t('board.powerCharger')} icon="⚡" value={powerTotal(G, meIndex)} />
+    <>
+      <section className="field-panel player-field player-side-zones" aria-label={t('player.me')}>
+        <div className="field-heading">
+          <strong>{t('player.me')}：{playerName(meIndex)}</strong>
+          <FieldStats G={G} playerIndex={meIndex} showAbyss timeLeft={timeLeft} timerTone={timerTone} />
         </div>
+        <div className="field-zones side-zone-grid player-zones">
+          <FieldZone
+            label={t('board.setZoneA')}
+            shortLabel="A"
+            className="set-zone set-zone-a"
+            card={me.setZoneA}
+            onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
+            size="normal"
+          />
+          <FieldZone
+            label={t('board.setZoneB')}
+            shortLabel="B"
+            className="set-zone set-zone-b"
+            card={me.setZoneB}
+            onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
+            size="normal"
+          />
+          <div className="player-resource-row">
+            <StackZone kind="power" label={t('board.powerCharger')} icon="⚡" value={powerTotal(G, meIndex)} />
+            <StackZone kind="deck" label={t('board.deckZone')} icon="🃏" value={me.deck.length} />
+          </div>
+        </div>
+      </section>
+      <section className="field-panel player-field player-area-panel" aria-label={t('board.areaEnchant')}>
+        <FieldZone label={t('board.areaEnchant')} shortLabel="C" className="area-zone area-zone-c" card={me.setZoneC} size="normal" />
+      </section>
+    </>
+  );
+}
+
+function CentralArena({ G, meIndex, opponentIndex, time }: {
+  G: GameState;
+  meIndex: PlayerIndex;
+  opponentIndex: PlayerIndex;
+  time: ChronosTime;
+}) {
+  const me = G.players[meIndex];
+  const opponent = G.players[opponentIndex];
+
+  return (
+    <section className="central-arena" aria-label={t('chronos.title')}>
+      <FieldZone
+        label={`${t('player.opponent')} ${t('board.battleZone')}`}
+        shortLabel={t('board.battleZoneShort')}
+        className="battle-zone central-battle-zone opponent-battle-zone"
+        card={opponent.battleZone}
+        size="small"
+        activeTime={time}
+      />
+      <div className="chronos-wrap">
+        <Chronos chronos={G.chronos} currentTime={time} />
       </div>
+      <FieldZone
+        label={`${t('player.me')} ${t('board.battleZone')}`}
+        shortLabel={t('board.battleZoneShort')}
+        className="battle-zone central-battle-zone player-battle-zone"
+        card={me.battleZone}
+        size="normal"
+        activeTime={time}
+      />
     </section>
   );
 }
 
-function HandDrawer({ cards, expanded, onToggle, onCardClick }: {
+function HandDrawer({ cards, expanded, onToggle, onCardClick, children }: {
   cards: CardInstance[];
   expanded: boolean;
   onToggle: () => void;
   onCardClick?: (index: number) => void;
+  children?: ReactNode;
 }) {
   return (
     <section className={`hand-drawer ${expanded ? 'expanded' : 'collapsed'}`} aria-label={t('board.hand')}>
-      <button className="hand-drawer-toggle" type="button" onClick={onToggle} aria-expanded={expanded}>
-        <span>{expanded ? `▲ ${t('board.handDrawer')}` : `${t('board.hand')} (${cards.length}) ▲`}</span>
+      <button className="hand-drawer-handle" type="button" onClick={onToggle} aria-expanded={expanded}>
+        <span className="hand-drawer-grip" aria-hidden="true" />
+        <span>{`${t('board.hand')} (${cards.length}) ${expanded ? '▼' : '▲'}`}</span>
       </button>
-      <div className="hand-area" hidden={!expanded}>
-        {cards.map((card, index) => (
-          <Card
-            key={card.instanceId}
-            card={card}
-            size="normal"
-            className={`hand-card hand-card-${Math.min(index, 9)}`}
-            showBadges={false}
-            showPopover
-            onClick={onCardClick ? () => onCardClick(index) : undefined}
-          />
-        ))}
+      <div className="hand-drawer-content" aria-hidden={!expanded}>
+        <div className="hand-area">
+          {cards.map((card, index) => (
+            <Card
+              key={card.instanceId}
+              card={card}
+              size="normal"
+              className={`hand-card hand-card-${Math.min(index, 9)}`}
+              showBadges={false}
+              showPopover
+              onClick={onCardClick ? () => onCardClick(index) : undefined}
+            />
+          ))}
+        </div>
+        {children && <div className="hand-drawer-footer">{children}</div>}
       </div>
     </section>
   );
@@ -416,26 +468,24 @@ function BattleBoard({ G, moves, playerID }: Props) {
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn === required;
 
   return (
-    <div className={`board chrono-${time}`}>
-      <OpponentField G={G} opponentIndex={opponentIndex} time={time} />
-      <section className="chronos-band" aria-label={t('chronos.title')}>
-        <Chronos chronos={G.chronos} currentTime={time} />
-      </section>
-      <PlayerField
-        G={G}
-        meIndex={meIndex}
-        timeLeft={timeLeft}
-        timerTone={timerTone}
-        time={time}
-        moves={moves}
-      />
-      <section className="bottom-panel">
-        <HandDrawer
-          cards={me.hand}
-          expanded={handExpanded}
-          onToggle={() => setHandExpanded(value => !value)}
-          onCardClick={!G.ready[meIndex] ? setFromHand : undefined}
+    <div className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'}`}>
+      <main className="field-layout">
+        <OpponentField G={G} opponentIndex={opponentIndex} />
+        <CentralArena G={G} meIndex={meIndex} opponentIndex={opponentIndex} time={time} />
+        <PlayerField
+          G={G}
+          meIndex={meIndex}
+          timeLeft={timeLeft}
+          timerTone={timerTone}
+          moves={moves}
         />
+      </main>
+      <HandDrawer
+        cards={me.hand}
+        expanded={handExpanded}
+        onToggle={() => setHandExpanded(value => !value)}
+        onCardClick={!G.ready[meIndex] ? setFromHand : undefined}
+      >
         <ActionsBar
           ready={G.ready[meIndex]}
           canConfirm={canConfirm}
@@ -447,7 +497,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
           }}
         />
         <InfoBar G={G} opponentIndex={opponentIndex} time={time} phaseText={phaseText} />
-      </section>
+      </HandDrawer>
     </div>
   );
 }

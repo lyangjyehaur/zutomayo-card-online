@@ -22,9 +22,12 @@ const CHRONOS_LABELS = [
 ];
 
 export function Chronos({ chronos, currentTime }: ChronosProps) {
-  const size = 280;
+  const size = 300;
   const center = size / 2;
-  const radius = 104;
+  const radius = 112;
+  const outerRadius = 136;
+  const faceRadius = 124;
+  const arcRadius = 130;
   const position = ((chronos.position % 12) + 12) % 12;
   const ticks = Array.from({ length: 12 }, (_, index) => {
     const angle = (index * 30 - 90) * (Math.PI / 180);
@@ -63,12 +66,12 @@ export function Chronos({ chronos, currentTime }: ChronosProps) {
           </filter>
         </defs>
 
-        <circle className="chronos-outer" cx={center} cy={center} r="128" />
-        <circle className="chronos-face" cx={center} cy={center} r="116" />
-        <path className="chronos-night-arc" d={describeArc(center, center, 122, -105, 75)} />
-        <path className="chronos-day-arc" d={describeArc(center, center, 122, 75, 255)} />
-        <line className="chronos-divider" x1={center} y1="18" x2={center} y2="44" />
-        <line className="chronos-divider" x1={center} y1={size - 18} x2={center} y2={size - 44} />
+        <circle className="chronos-outer" cx={center} cy={center} r={outerRadius} />
+        <circle className="chronos-face" cx={center} cy={center} r={faceRadius} />
+        <path className="chronos-night-arc" d={describeArc(center, center, arcRadius, -105, 75)} />
+        <path className="chronos-day-arc" d={describeArc(center, center, arcRadius, 75, 255)} />
+        <line className="chronos-divider" x1={center} y1="18" x2={center} y2="48" />
+        <line className="chronos-divider" x1={center} y1={size - 18} x2={center} y2={size - 48} />
 
         {ticks.map(({ index, x, y }) => (
           <g key={index} className={position === index ? 'chronos-tick active' : 'chronos-tick'}>
