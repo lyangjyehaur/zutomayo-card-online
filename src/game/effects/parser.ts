@@ -242,7 +242,13 @@ function parseAction(text: string): EffectAction | null {
 
 // ===== Trigger Detection =====
 
-function detectTrigger(text: string): 'onBattle' | 'onUse' | 'onDamageReceived' {
+function detectTrigger(text: string): 'onBattle' | 'onUse' | 'onTurnStart' | 'onTurnEnd' | 'onDamageReceived' {
+  if (text.includes('ターンの開始時') || text.includes('ターン開始時')) {
+    return 'onTurnStart';
+  }
+  if (text.includes('ターンの終了時') || text.includes('ターン終了時')) {
+    return 'onTurnEnd';
+  }
   if (text.includes('ダメージを受けたとき') || text.includes('ダメージを受けた時')) {
     return 'onDamageReceived';
   }

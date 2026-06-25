@@ -256,11 +256,12 @@ function ResourceStat({ className, icon, label, value }: {
   );
 }
 
-function StackZone({ kind, label, icon, value }: {
+function StackZone({ kind, label, icon, value, cards }: {
   kind: 'deck' | 'power';
   label: string;
   icon: string;
   value: number;
+  cards?: CardInstance[];
 }) {
   if (kind === 'deck') {
     return (
@@ -269,6 +270,34 @@ function StackZone({ kind, label, icon, value }: {
           <div className="card-back-design">ZC</div>
         </div>
         <span className="deck-count" aria-hidden="true">{icon} {value}</span>
+      </div>
+    );
+  }
+
+  if (cards && cards.length > 0) {
+    return (
+      <div className="stack-zone power-stack" aria-label={`${label}: ${value}`}>
+        <div className="power-charger-cards" aria-hidden="true">
+          {cards.map((card, i) => {
+            const def = getCardDef(card.defId);
+            return (
+              <div
+                key={card.instanceId}
+                className="power-card"
+                style={{ transform: `translateX(${i * 12}px)` }}
+              >
+                <img
+                  src={def?.image ?? ''}
+                  alt={def?.name ?? label}
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+                <span className="power-value">{def?.sendToPower ?? 0}</span>
+              </div>
+            );
+          })}
+        </div>
+        <strong className="power-total">{icon} {value}</strong>
       </div>
     );
   }
@@ -286,10 +315,11 @@ function StackZone({ kind, label, icon, value }: {
   );
 }
 
-function FieldStats({ G, playerIndex, showAbyss, timeLeft, timerTone }: {
+function FieldStats({ G, playerIndex, showAbyss, showPower = true, timeLeft, timerTone }: {
   G: GameState;
   playerIndex: PlayerIndex;
   showAbyss: boolean;
+  showPower?: boolean;
   timeLeft?: number;
   timerTone?: string;
 }) {
@@ -298,7 +328,7 @@ function FieldStats({ G, playerIndex, showAbyss, timeLeft, timerTone }: {
     <div className="field-stats">
       <ResourceStat className={`hp ${hpClass(player.hp)}`} icon="❤️" label={t('board.hp')} value={player.hp} />
       <ResourceStat className="deck-count" icon="🃏" label={t('board.deck')} value={player.deck.length} />
-      <ResourceStat className="power" icon="⚡" label={t('board.powerCharger')} value={powerTotal(G, playerIndex)} />
+      {showPower && <ResourceStat className="power" icon="⚡" label={t('board.powerCharger')} value={powerTotal(G, playerIndex)} />}
       {showAbyss && <ResourceStat className="abyss" icon="🕳️" label={t('board.abyss')} value={player.abyss.length} />}
       {timeLeft !== undefined && timerTone && G.step === 'turnSet' && (
         <ResourceStat
@@ -317,10 +347,19 @@ function OpponentStatsBar({ G, opponentIndex, damageAmount }: {
   opponentIndex: PlayerIndex;
   damageAmount?: number;
 }) {
+  const opponent = G.players[opponentIndex];
+
   return (
     <section className={`opponent-stats-bar ${damageAmount ? 'damaged' : ''}`} aria-label={t('player.opponent')}>
       <strong>{t('player.opponent')}：{playerName(opponentIndex)}</strong>
-      <FieldStats G={G} playerIndex={opponentIndex} showAbyss />
+      <FieldStats G={G} playerIndex={opponentIndex} showAbyss showPower={false} />
+      <StackZone
+        kind="power"
+        label={t('board.powerCharger')}
+        icon="⚡"
+        value={powerTotal(G, opponentIndex)}
+        cards={opponent.powerCharger}
+      />
       {damageAmount ? <span className="damage-float" key={`opp-${damageAmount}`}>-{damageAmount}</span> : null}
     </section>
   );
@@ -335,7 +374,13 @@ function BottomZones({ G, meIndex, moves }: {
 
   return (
     <section className="bottom-zones" aria-label={t('player.me')}>
-      <StackZone kind="power" label={t('board.powerCharger')} icon="⚡" value={powerTotal(G, meIndex)} />
+      <StackZone
+        kind="power"
+        label={t('board.powerCharger')}
+        icon="⚡"
+        value={powerTotal(G, meIndex)}
+        cards={me.powerCharger}
+      />
       <FieldZone
         label={t('board.setZoneA')}
         shortLabel="A"

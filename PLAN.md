@@ -26,12 +26,13 @@ Both players are active in boardgame.io at once. `ready` gates simultaneous reve
 - Deterministic opponent deck-to-Abyss and Area Enchant-to-deck target effects.
 - Deterministic persistent Area Enchant attack boosts while the Area Enchant remains in Set Zone C.
 - Player-selected normal effect order using a server-validated pending-effect queue, with AI auto-resolution for AI-controlled pending effects.
+- Timing event infrastructure for turn start, turn end, and damage-received effects.
 
 ## Remaining work
 
 The detailed implementation gap list lives in [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md). Keep this file as the short roadmap and status summary.
 
-1. Add timing event windows for turn start, turn end, damage received, zone-entry events, Chronos changes, and Area Enchant expiry/self-move effects.
+1. Extend timing event windows for zone-entry events, Chronos transitions, and full Area Enchant expiry/self-move effects.
 2. Add interactive choice infrastructure for target selection, optional effects, counts, Clock choices, and deck ordering, building on the pending resolver where useful.
 3. Expand replacement/continuous modifiers such as Power Cost changes, always-day/night attacks, Clock overrides, and dynamic attack formulas.
 4. Audit parser/executor coverage card-by-card: the latest snapshot is 267 effect lines, 227 parsed lines, and 40 unparsed lines; parsed-but-partial lines still need separate review.

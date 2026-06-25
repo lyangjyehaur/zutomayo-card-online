@@ -11,6 +11,7 @@ import type {
   PlayerIndex,
   PlayerState,
   SetSlot,
+  TimingEvent,
   ZutomayoSetupData,
 } from './types';
 import { getCardDef } from './cards/loader';
@@ -158,6 +159,7 @@ export function setupGame(
     setCardsThisTurn: [[], []],
     pendingEffects: [[], []],
     pendingEffectPlayer: null,
+    timingEvents: [],
     swappedCardsThisTurn: [[], []],
     previousTurnCharacterElements: [null, null],
     jankenChoices: [null, null],
@@ -387,7 +389,53 @@ export function getEffectiveAttack(card: CardInstance, G: GameState, player: num
   return Math.max(0, def.attack[attackTime] + G.modifiers.attack[index]);
 }
 
-export function resolveBattle(G: GameState): void {
+function emptyParsedEffects(): Map<string, ParsedEffect[]> {
+  return new Map<string, ParsedEffect[]>();
+}
+
+function timingTrigger(event: TimingEvent): ParsedEffect['trigger'] | null {
+  if (event.type === 'turnStart') return 'onTurnStart';
+  if (event.type === 'turnEnd') return 'onTurnEnd';
+  if (event.type === 'damageReceived') return 'onDamageReceived';
+  return null;
+}
+
+function timingCandidateCards(G: GameState, player: PlayerIndex): CardInstance[] {
+  return [G.players[player].battleZone, G.players[player].setZoneC]
+    .filter((card): card is CardInstance => card !== null)
+    .filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
+}
+
+export function resolveTimingEvent(
+  G: GameState,
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
+  event: TimingEvent,
+): void {
+  const trigger = timingTrigger(event);
+  G.timingEvents.push(event);
+  G.log.push(`Timing ${event.type}.`);
+  if (!trigger || G.step === 'gameOver') return;
+
+  const players: PlayerIndex[] = event.type === 'damageReceived'
+    ? (event.player === 0 || event.player === 1 ? [event.player] : [])
+    : getTurnEffectPlayerOrder(G);
+
+  for (const player of players) {
+    if (G.modifiers.effectsDisabled[player]) continue;
+    for (const card of timingCandidateCards(G, player)) {
+      const definition = getCardDef(card.defId);
+      if (!definition || getPlayerPower(G.players[player]) < definition.powerCost) continue;
+      for (const effect of parsedEffects.get(card.defId) ?? []) {
+        if (effect.trigger !== trigger) continue;
+        const result = executeEffect(effect, G, player);
+        if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
+        if ((G.step as GameState['step']) === 'gameOver') return;
+      }
+    }
+  }
+}
+
+export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
   const attacks = playerIndexes.map(index => {
     const card = G.players[index].battleZone;
     return card ? getEffectiveAttack(card, G, index) : 0;
@@ -408,6 +456,9 @@ export function resolveBattle(G: GameState): void {
   G.players[loser].hp = Math.max(0, G.players[loser].hp - damage);
   G.lastBattleResult = { winner, damage, winnerAttack: attacks[winner], loserAttack: attacks[loser] };
   G.log.push(`Battle ${attacks[0]}–${attacks[1]}: Player ${winner} deals ${damage}.`);
+  if (damage > 0) {
+    resolveTimingEvent(G, parsedEffects, { type: 'damageReceived', player: loser, amount: damage });
+  }
 }
 
 export function endGame(G: GameState, winner: PlayerIndex | null, reason: string): void {
@@ -443,7 +494,9 @@ function clearPendingEffects(G: GameState): void {
   G.pendingEffectPlayer = null;
 }
 
-function finishTurn(G: GameState): void {
+function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
+  resolveTimingEvent(G, parsedEffects, { type: 'turnEnd' });
+  if (G.step === 'gameOver') return;
   for (const player of G.players) {
     for (const zone of ['setZoneA', 'setZoneB'] as const) {
       if (player[zone]) sendToOwnerZone(player[zone]!, player);
@@ -469,9 +522,10 @@ function finishTurn(G: GameState): void {
   G.step = 'turnSet';
   G.ready = [false, false];
   G.log.push(`Turn ${G.turnNumber}: set cards.`);
+  resolveTimingEvent(G, parsedEffects, { type: 'turnStart' });
 }
 
-function continueAfterTurnEffects(G: GameState): void {
+function continueAfterTurnEffects(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
   const initial = G.turnNumber === 1;
   if (G.step === 'gameOver') return;
   if (G.players[0].hp <= 0 || G.players[1].hp <= 0) {
@@ -479,14 +533,14 @@ function continueAfterTurnEffects(G: GameState): void {
     endGame(G, winner, 'A player reached 0 HP during effect resolution.');
     return;
   }
-  resolveBattle(G);
+  resolveBattle(G, parsedEffects);
   if (G.players[0].hp <= 0 || G.players[1].hp <= 0) {
     const winner = G.players[0].hp <= 0 ? 1 : 0;
     endGame(G, winner, `Player ${1 - winner} loses at 0 HP.`);
     return;
   }
   if (!initial) recordPreviousTurnCharacterElements(G);
-  finishTurn(G);
+  finishTurn(G, parsedEffects);
 }
 
 function pendingEffectCount(pendingEffects: [PendingEffect[], PendingEffect[]]): number {
@@ -521,7 +575,7 @@ function nextPendingEffectPlayer(G: GameState): PlayerIndex | null {
   return null;
 }
 
-function advancePendingEffectWindow(G: GameState): boolean {
+function advancePendingEffectWindow(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): boolean {
   const nextPlayer = nextPendingEffectPlayer(G);
   if (nextPlayer !== null) {
     G.pendingEffectPlayer = nextPlayer;
@@ -530,11 +584,16 @@ function advancePendingEffectWindow(G: GameState): boolean {
     return true;
   }
   clearPendingEffects(G);
-  continueAfterTurnEffects(G);
+  continueAfterTurnEffects(G, parsedEffects);
   return false;
 }
 
-export function resolvePendingEffect(G: GameState, player: PlayerIndex, index: number): boolean {
+export function resolvePendingEffect(
+  G: GameState,
+  player: PlayerIndex,
+  index: number,
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
+): boolean {
   if (G.step !== 'effectOrder' || G.pendingEffectPlayer !== player) return false;
   if (!Number.isInteger(index) || index < 0 || index >= G.pendingEffects[player].length) return false;
   const pendingEffect = G.pendingEffects[player][index];
@@ -548,7 +607,7 @@ export function resolvePendingEffect(G: GameState, player: PlayerIndex, index: n
     return true;
   }
 
-  advancePendingEffectWindow(G);
+  advancePendingEffectWindow(G, parsedEffects);
   return true;
 }
 
@@ -570,8 +629,8 @@ export function resolveTurn(G: GameState, parsedEffects: Map<string, ParsedEffec
   const pendingEffects = collectTurnEffects(G, parsedEffects, G.setCardsThisTurn);
   if (pendingEffectCount(pendingEffects) > 0) {
     G.pendingEffects = pendingEffects;
-    advancePendingEffectWindow(G);
+    advancePendingEffectWindow(G, parsedEffects);
     return;
   }
-  continueAfterTurnEffects(G);
+  continueAfterTurnEffects(G, parsedEffects);
 }

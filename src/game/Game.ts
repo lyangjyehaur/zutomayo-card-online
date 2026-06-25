@@ -106,7 +106,7 @@ const moves: Record<string, Move<GameState>> = {
   },
   resolvePendingEffect: ({ G, playerID }, index: number) => {
     const player = playerIndex(playerID);
-    if (player === null || !resolvePendingEffectChoice(G, player, index)) return INVALID_MOVE;
+    if (player === null || !resolvePendingEffectChoice(G, player, index, parsedEffects)) return INVALID_MOVE;
   },
 };
 

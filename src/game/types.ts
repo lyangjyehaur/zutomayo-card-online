@@ -6,6 +6,15 @@ export type JankenChoice = 'rock' | 'paper' | 'scissors';
 export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'effectOrder' | 'gameOver';
 export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B';
+export type TimingEventType = 'turnStart' | 'turnEnd' | 'damageReceived' | 'chronosChanged';
+
+export interface TimingEvent {
+  type: TimingEventType;
+  player?: PlayerIndex;
+  amount?: number;
+  fromChronos?: number;
+  toChronos?: number;
+}
 
 export interface ZutomayoSetupData {
   deck0Name?: string;
@@ -94,6 +103,7 @@ export interface GameState {
   setCardsThisTurn: [CardInstance[], CardInstance[]];
   pendingEffects: [PendingEffect[], PendingEffect[]];
   pendingEffectPlayer: PlayerIndex | null;
+  timingEvents: TimingEvent[];
   swappedCardsThisTurn: [CardInstance[], CardInstance[]];
   previousTurnCharacterElements: [Element | null, Element | null];
   jankenChoices: [JankenChoice | null, JankenChoice | null];

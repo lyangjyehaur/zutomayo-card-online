@@ -21,6 +21,7 @@ Implemented and covered by smoke tests:
 - Enchant cards remain until effect resolution; Area Enchant cards persist in Set Zone C.
 - Per-effect Power Cost checks and Power Cost attack checks.
 - Player-selected normal effect-processing order: after reveal/place/Chronos advancement, eligible effects are queued by Chronos-side priority player first, each player chooses their own effect order, and the existing post-effect battle/finish pipeline resumes after the queue empties.
+- Timing events for turn start, turn end, and damage received; timing effects resolve from public field cards without inspecting hidden hands/decks.
 - Battle damage, HP loss, HP-zero game end, and exact overdraw loss with no partial draw.
 - Online `playerView` redacts hidden hands, decks, face-down cards, and unpaired janken choices.
 - Server-side room setup accepts validated deck ID payloads for browser custom decks.
@@ -32,17 +33,14 @@ Implemented and covered by smoke tests:
 
 ## Remaining rules gaps
 
-### 1. Trigger timing framework
+### 1. Remaining timing windows and Area Enchant expiry
 
-Rule gap: effects outside the normal effect-processing phase should resolve immediately at their specified timing.
+Rule gap: several effects still depend on zone-entry, Chronos transition, or card-specific expiry timing.
 
-Current implementation: the normal effect-processing pass now has pending-effect infrastructure and player-selected order. Some trigger labels exist in the DSL, but the engine does not yet run full timing windows outside that normal phase.
+Current implementation: the normal effect-processing pass has pending-effect infrastructure and player-selected order. The timing event framework now resolves turn-start, turn-end, and damage-received effects from public field cards. The engine still does not emit every rule event needed for full card coverage.
 
-Missing timing windows include:
+Still-missing timing windows include:
 
-- turn start;
-- turn end;
-- damage received;
 - card enters Abyss;
 - card enters Power Charger;
 - Area Enchant enters field;
@@ -51,8 +49,8 @@ Missing timing windows include:
 
 Needed work:
 
-- Represent timing events explicitly in `GameState` / effect resolver.
-- Emit events from zone movement, battle damage, Chronos advancement, and turn cleanup.
+- Emit events from zone movement, Character replacement, Chronos advancement, and Area Enchant entry.
+- Implement Area Enchant expiry/self-movement as event-driven effects, not a broad cleanup rule.
 - Resolve immediate triggers without leaking hidden information.
 - Add smoke tests for each timing window before adding card-specific behavior.
 
@@ -164,7 +162,7 @@ These are not core rule-engine mismatches, but they affect real online play:
 
 ## Suggested implementation order
 
-1. Add the timing event framework with turn start, turn end, and damage received windows.
+1. Extend timing events to zone movement, Character replacement, Chronos transitions, and Area Enchant entry/expiry.
 2. Implement Area Enchant expiry/self-move timing using that framework.
 3. Add generic `pendingChoice` infrastructure for interactive effects and targets, building on the normal-phase pending resolver.
 4. Audit parsed-but-partial effects and the 40 unparsed lines card-by-card.

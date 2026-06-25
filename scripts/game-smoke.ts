@@ -43,6 +43,18 @@ const damage13: ParsedEffect = {
   trigger: 'onUse', conditions: [], rawText: 'deal 13 response',
   action: { type: 'directDamage', params: { value: 13 } },
 };
+const turnStartHeal10: ParsedEffect = {
+  trigger: 'onTurnStart', conditions: [], rawText: 'turn start heal',
+  action: { type: 'heal', params: { value: 10 } },
+};
+const turnEndDamage5: ParsedEffect = {
+  trigger: 'onTurnEnd', conditions: [], rawText: 'turn end damage',
+  action: { type: 'directDamage', params: { value: 5 } },
+};
+const damageReceivedHeal10: ParsedEffect = {
+  trigger: 'onDamageReceived', conditions: [], rawText: 'damage received heal',
+  action: { type: 'heal', params: { value: 10 } },
+};
 
 function preparedState(): GameState {
   const G = setupGame();
@@ -146,6 +158,57 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   resolveBattle(G);
   assert.equal(G.lastBattleResult.damage, 20);
   assert.equal(G.players[1].hp, 80);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.players[0].hp = 80;
+  G.players[0].setZoneC = createInstance('2nd_5', true);
+  G.players[0].powerCharger = [
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+  ];
+  G.players[0].battleZone = createInstance('1st_9', true);
+  G.players[1].battleZone = createInstance('1st_9', true);
+  const parsedEffects = new Map<string, ParsedEffect[]>([
+    ['2nd_5', [turnEndDamage5, turnStartHeal10]],
+  ]);
+  resolveTurn(G, parsedEffects);
+  assert.equal(G.step, 'turnSet');
+  assert.equal(G.turnNumber, 3);
+  assert.equal(G.players[1].hp, 95);
+  assert.equal(G.players[0].hp, 90);
+  assert.ok((G as any).timingEvents);
+  assert.ok((G as any).timingEvents.some((event: any) => event.type === 'turnEnd'));
+  assert.ok((G as any).timingEvents.some((event: any) => event.type === 'turnStart'));
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.players[0].battleZone = createInstance('1st_9', true);
+  G.players[1].battleZone = createInstance('1st_17', true);
+  G.players[1].setZoneC = createInstance('2nd_5', true);
+  G.players[1].powerCharger = [
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+  ];
+  const parsedEffects = new Map<string, ParsedEffect[]>([
+    ['2nd_5', [damageReceivedHeal10]],
+  ]);
+  resolveTurn(G, parsedEffects);
+  assert.equal(G.players[1].hp, 100 - G.lastBattleResult.damage + 10);
+  assert.ok((G as any).timingEvents);
+  assert.ok((G as any).timingEvents.some((event: any) => event.type === 'damageReceived'));
 }
 
 {
@@ -277,6 +340,9 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
 }
 
 {
+  assert.equal(parseEffect('ターンの終了時に相手のHP-10')?.trigger, 'onTurnEnd');
+  assert.equal(parseEffect('ターンの開始時にHPを10回復')?.trigger, 'onTurnStart');
+
   const millTop = parseEffect('相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く');
   assert.ok(millTop);
   assert.deepEqual(millTop.action, { type: 'millDeckToAbyss', params: { target: 'opponent', count: 1 } });

@@ -5657,6 +5657,79 @@ button.zone:focus-visible {
   position: relative;
 }
 
+.power-charger-cards {
+  position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  height: 60px;
+  min-width: 0;
+  margin-bottom: 0.3rem;
+  overflow: hidden;
+}
+
+.power-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40px;
+  height: 56px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  background: rgba(12, 15, 20, 0.88);
+}
+
+.power-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.power-value {
+  position: absolute;
+  right: -2px;
+  bottom: 2px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--gold);
+  color: #130d21;
+  font-size: 0.65rem;
+  font-weight: bold;
+  line-height: 1.4;
+}
+
+.power-total {
+  color: #f2c956;
+}
+
+.opponent-stats-bar .power-stack {
+  flex: 0 1 8.6rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: min(8.6rem, 24vw);
+  min-height: 2.2rem;
+  padding: 0.18rem 0.34rem;
+}
+
+.opponent-stats-bar .power-charger-cards {
+  height: 2.25rem;
+  margin-bottom: 0;
+}
+
+.opponent-stats-bar .power-card {
+  width: 1.55rem;
+  height: 2.12rem;
+}
+
+.opponent-stats-bar .power-value {
+  font-size: 0.5rem;
+}
+
+.opponent-stats-bar .power-total {
+  font-size: 0.68rem;
+}
+
 .hp-meter {
   display: inline-block;
   width: clamp(1.8rem, 4vw, 3rem);
