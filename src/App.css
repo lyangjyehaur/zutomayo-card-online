@@ -700,11 +700,13 @@ input:focus {
 
 .hand-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  gap: clamp(0.25rem, 0.6vw, 0.45rem);
-  min-height: 0;
-  overflow: hidden;
+  gap: 0.3rem;
+  min-height: var(--card-normal-w);
+  padding: 0.25rem 0.5rem;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .opponent-hand {
@@ -938,16 +940,15 @@ input:focus {
   box-shadow: 0 0 1.2rem rgba(245, 211, 104, 0.55);
 }
 
-.element-dark { border-color: #7771a8; }
-.element-flame { border-color: #ff6a6f; }
-.element-electric { border-color: #f5d368; }
-.element-wind { border-color: #42d7c6; }
-.element-chaos { border-color: #c889ff; }
+.element-dark { border-color: #7771a8; --element-color: #aaa4e8; }
+.element-flame { border-color: #ff6a6f; --element-color: #ff8a8e; }
+.element-electric { border-color: #f5d368; --element-color: #f5d368; }
+.element-wind { border-color: #42d7c6; --element-color: #42d7c6; }
+.element-chaos { border-color: #c889ff; --element-color: #d8a5ff; }
 
 .card-art {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   background: #090d20;
 }
@@ -955,17 +956,8 @@ input:focus {
 .card-art img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   display: block;
-}
-
-.card-art::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  height: 44%;
-  background: transparent;
-  pointer-events: none;
 }
 
 .card-art-fallback,
@@ -982,35 +974,48 @@ input:focus {
 .card-cost-badge,
 .card-type-badge {
   position: absolute;
-  z-index: 1;
+  z-index: 3;
   display: grid;
   place-items: center;
-  min-width: 1.35rem;
-  height: 1.35rem;
-  border-radius: 999rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  line-height: 1;
   font-size: 0.72rem;
   font-weight: 900;
+  box-shadow: 0 0.25rem 0.7rem rgba(0, 0, 0, 0.34);
 }
 
 .card-cost-badge {
   top: 0.25rem;
-  right: 0.25rem;
-  background: var(--gold);
+  left: 0.25rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999rem;
+  background: radial-gradient(circle at 35% 30%, #fff2a2, var(--gold) 42%, #b78522);
   color: #130d21;
 }
 
 .card-type-badge {
-  top: 0.25rem;
-  left: 0.25rem;
+  top: 0.3rem;
+  right: 0.3rem;
+  min-width: 1.45rem;
+  height: 1.1rem;
+  border-radius: 0.25rem;
+  padding: 0 0.35rem;
   background: rgba(5, 7, 18, 0.74);
   color: var(--text);
 }
 
 .card-body {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
   display: grid;
   gap: 0.12rem;
-  padding: 0.28rem 0.35rem 0.32rem;
-  background: rgba(5, 7, 18, 0.92);
+  padding: 0.3rem 0.4rem;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.85));
+  pointer-events: none;
 }
 
 .card-title-row,
@@ -1039,6 +1044,24 @@ input:focus {
   font-size: clamp(0.48rem, 0.72vw, 0.62rem);
 }
 
+.card-element {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.16rem;
+  color: var(--element-color, var(--muted));
+  font-weight: 900;
+}
+
+.card-element::before {
+  content: "";
+  width: 0.38rem;
+  aspect-ratio: 1;
+  border-radius: 999rem;
+  background: currentColor;
+  box-shadow: 0 0 0.45rem currentColor;
+}
+
 .card-attack-row {
   font-size: clamp(0.52rem, 0.82vw, 0.68rem);
   font-weight: 900;
@@ -1046,6 +1069,10 @@ input:focus {
 
 .attack-night { color: #dce1ff; }
 .attack-day { color: #ffe0a8; }
+.attack-active {
+  color: var(--gold);
+  text-shadow: 0 0 0.45rem rgba(245, 211, 104, 0.6);
+}
 .card-charge { color: var(--teal); }
 
 .card-effect {
@@ -1060,10 +1087,6 @@ input:focus {
 .card-tiny .card-charge,
 .card-micro .card-body {
   display: none;
-}
-
-.card-micro .card-art {
-  flex-basis: 100%;
 }
 
 .card-back {
