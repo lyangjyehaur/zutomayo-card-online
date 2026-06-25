@@ -163,7 +163,7 @@ function PlayerStats({ G, player, side }: { G: GameState; player: PlayerIndex; s
   const hpTone = hpClass(hp);
 
   return (
-    <div className={`player-stats ${side}`}>
+    <div className={`player-stats player-info-bar ${side}`}>
       <div className="player-identity">
         <span>{side === 'self' ? t('player.me') : t('player.opponent')}</span>
         <strong>{playerName(player)}</strong>
@@ -240,17 +240,19 @@ function BattleSummary({ G }: { G: GameState }) {
   if (G.turnNumber <= 1 || result.damage <= 0) {
     return (
       <div className="battle-summary muted">
-        <span>{t('board.lastBattle')}</span>
-        <strong>{t('board.draw')}</strong>
+        <span className="battle-summary-label">{t('board.lastBattle')}</span>
+        <strong className="battle-summary-result">{t('board.draw')}</strong>
       </div>
     );
   }
 
   return (
     <div className="battle-summary">
-      <span>{t('board.lastBattle')}</span>
-      <strong>{t('board.damage')} {result.damage}</strong>
-      <em>{t('board.winner')} {result.winner !== null ? playerName(result.winner) : t('board.draw')}</em>
+      <span className="battle-summary-label">{t('board.lastBattle')}</span>
+      <strong className="battle-summary-result">{t('board.damage')} {result.damage}</strong>
+      <em className="battle-summary-detail">
+        {t('board.winner')} {result.winner !== null ? playerName(result.winner) : t('board.draw')}
+      </em>
     </div>
   );
 }
