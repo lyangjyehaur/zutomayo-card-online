@@ -4,9 +4,9 @@ This document tracks the remaining gap between the current implementation and th
 
 ## Current alignment
 
-The core phase model is implemented as an explicit simultaneous state machine:
+The core phase model is implemented as an explicit simultaneous state machine with a pending normal-effect window when needed:
 
-`janken → mulligan → initialSet → turnSet → gameOver`
+`janken → mulligan → initialSet → turnSet → effectOrder → turnSet/gameOver`
 
 Implemented and covered by smoke tests:
 
@@ -20,8 +20,8 @@ Implemented and covered by smoke tests:
 - Character and Area Enchant replacement, including A-before-B precedence and B-only destination cases.
 - Enchant cards remain until effect resolution; Area Enchant cards persist in Set Zone C.
 - Per-effect Power Cost checks and Power Cost attack checks.
+- Player-selected normal effect-processing order: after reveal/place/Chronos advancement, eligible effects are queued by Chronos-side priority player first, each player chooses their own effect order, and the existing post-effect battle/finish pipeline resumes after the queue empties.
 - Battle damage, HP loss, HP-zero game end, and exact overdraw loss with no partial draw.
-- Chronos-side priority player order for automatic effect resolution.
 - Online `playerView` redacts hidden hands, decks, face-down cards, and unpaired janken choices.
 - Server-side room setup accepts validated deck ID payloads for browser custom decks.
 - Deterministic effect slices:
@@ -32,24 +32,11 @@ Implemented and covered by smoke tests:
 
 ## Remaining rules gaps
 
-### 1. Player-selected effect order
-
-Rule gap: during effect processing, the priority player may process their own effects in any order, then the other player does the same.
-
-Current implementation: effects resolve automatically in a fixed engine order based on played cards, battle zone, and Set Zone C. This is deterministic and testable, but it does not let the player choose the order.
-
-Needed work:
-
-- Add a pending-effect queue grouped by priority player.
-- Add legal moves for choosing which pending effect to resolve next.
-- Preserve server authority: clients propose choices, engine validates and resolves.
-- Keep deterministic fallback only for effects whose order cannot change the outcome.
-
-### 2. Trigger timing framework
+### 1. Trigger timing framework
 
 Rule gap: effects outside the normal effect-processing phase should resolve immediately at their specified timing.
 
-Current implementation: only the normal effect-processing pass is meaningfully automated. Some trigger labels exist in the DSL, but the engine does not yet run full timing windows.
+Current implementation: the normal effect-processing pass now has pending-effect infrastructure and player-selected order. Some trigger labels exist in the DSL, but the engine does not yet run full timing windows outside that normal phase.
 
 Missing timing windows include:
 
@@ -69,7 +56,7 @@ Needed work:
 - Resolve immediate triggers without leaking hidden information.
 - Add smoke tests for each timing window before adding card-specific behavior.
 
-### 3. Area Enchant expiry and self-movement
+### 2. Area Enchant expiry and self-movement
 
 Rule gap: many Area Enchant cards specify when they leave Set Zone C and whether they go to Abyss or Power Charger.
 
@@ -89,11 +76,11 @@ Needed work:
 - Route the card to the correct owner zone according to the specific text.
 - Cover at least one Power Charger expiry and one Abyss expiry smoke test first.
 
-### 4. Interactive choices and targets
+### 3. Interactive choices and targets
 
 Rule gap: many cards require the player to choose cards, positions, counts, or order.
 
-Current implementation: deterministic no-choice effects are automated; optional or target-selection effects are skipped or use a documented fallback.
+Current implementation: deterministic no-choice effects are automated, and normal-phase ordering can pause for player selection. Optional effects, targets, counts, and other card-specific choices are still skipped or use a documented fallback.
 
 Missing choice categories include:
 
@@ -111,7 +98,7 @@ Needed work:
 - Add UI for choice selection and boardgame.io moves to submit choices.
 - Add smoke tests for resolver validation and invalid choices.
 
-### 5. Replacement, prevention, and continuous modifiers
+### 4. Replacement, prevention, and continuous modifiers
 
 Rule gap: some cards change rules or static values instead of performing a one-shot action.
 
@@ -132,7 +119,7 @@ Needed work:
 - Recompute continuous modifiers at the correct timing rather than baking them into a one-time mutation.
 - Add a compatibility layer so current deterministic effects remain stable.
 
-### 6. Parser and executor coverage
+### 5. Parser and executor coverage
 
 Current parser snapshot from the latest audit:
 
@@ -153,7 +140,7 @@ Needed work:
 - Add card IDs and smoke assertions as each line moves from partial/unparsed to implemented.
 - Prefer small deterministic slices before broad regex expansion.
 
-### 7. Chronos board exactness
+### 6. Chronos board exactness
 
 Rule gap: the implementation uses a twelve-position Chronos model and the current day/night calculation.
 
@@ -165,7 +152,7 @@ Needed work:
 - Encode the mapping as data with tests for every position.
 - Keep `midnightRange` effects tested against that mapping.
 
-### 8. Online product gaps
+### 7. Online product gaps
 
 These are not core rule-engine mismatches, but they affect real online play:
 
@@ -177,10 +164,9 @@ These are not core rule-engine mismatches, but they affect real online play:
 
 ## Suggested implementation order
 
-1. Add pending-effect order selection for the priority-player rule.
-2. Add the timing event framework with turn start, turn end, and damage received windows.
-3. Implement Area Enchant expiry/self-move timing using that framework.
-4. Add generic `pendingChoice` infrastructure for interactive effects.
-5. Audit parsed-but-partial effects and the 40 unparsed lines card-by-card.
-6. Confirm Chronos board exactness from official materials and lock it with tests.
-7. Add reconnect/resume and account-backed match ownership if the product direction needs it.
+1. Add the timing event framework with turn start, turn end, and damage received windows.
+2. Implement Area Enchant expiry/self-move timing using that framework.
+3. Add generic `pendingChoice` infrastructure for interactive effects and targets, building on the normal-phase pending resolver.
+4. Audit parsed-but-partial effects and the 40 unparsed lines card-by-card.
+5. Confirm Chronos board exactness from official materials and lock it with tests.
+6. Add reconnect/resume and account-backed match ownership if the product direction needs it.

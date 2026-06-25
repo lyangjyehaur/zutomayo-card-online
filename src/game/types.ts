@@ -3,7 +3,7 @@ export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
 export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
 export type ChronosTime = 'night' | 'day';
 export type JankenChoice = 'rock' | 'paper' | 'scissors';
-export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'gameOver';
+export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'effectOrder' | 'gameOver';
 export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B';
 
@@ -34,6 +34,18 @@ export interface CardInstance {
   instanceId: string;
   defId: string;
   faceUp: boolean;
+}
+
+export type PendingEffectSource = 'played' | 'battleZone' | 'setZoneC';
+
+export interface PendingEffect {
+  id: string;
+  player: PlayerIndex;
+  cardInstanceId: string;
+  cardDefId: string;
+  rawText: string;
+  effect: import('./effects').ParsedEffect;
+  source: PendingEffectSource;
 }
 
 export interface PlayerState {
@@ -80,6 +92,8 @@ export interface GameState {
   turnNumber: number;
   lastBattleResult: LastBattleResult;
   setCardsThisTurn: [CardInstance[], CardInstance[]];
+  pendingEffects: [PendingEffect[], PendingEffect[]];
+  pendingEffectPlayer: PlayerIndex | null;
   swappedCardsThisTurn: [CardInstance[], CardInstance[]];
   previousTurnCharacterElements: [Element | null, Element | null];
   jankenChoices: [JankenChoice | null, JankenChoice | null];

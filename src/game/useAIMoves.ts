@@ -10,6 +10,7 @@ export interface ZutomayoMoveDispatchers {
   setInitialCard: (handIndex: number) => void;
   setTurnCard: (handIndex: number, slot: SetSlot) => void;
   confirmReady: () => void;
+  resolvePendingEffect: (index: number) => void;
 }
 
 export function useAIMoves(
@@ -33,6 +34,12 @@ export function useAIMoves(
       }
       if (G.step === 'mulligan') {
         if (!G.mulliganUsed[1]) moves.keepHand();
+        return;
+      }
+      if (G.step === 'effectOrder') {
+        if (G.pendingEffectPlayer === 1 && G.pendingEffects[1].length > 0) {
+          moves.resolvePendingEffect(0);
+        }
         return;
       }
       if (G.step !== 'initialSet' && G.step !== 'turnSet') return;

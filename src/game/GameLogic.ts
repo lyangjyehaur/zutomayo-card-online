@@ -1,5 +1,5 @@
 import type { ParsedEffect } from './effects';
-import { processTurnEffects } from './effects/executor';
+import { collectTurnEffects, executeEffect, getTurnEffectPlayerOrder } from './effects/executor';
 import type {
   CardInstance,
   ChronosTime,
@@ -7,6 +7,7 @@ import type {
   Element,
   GameState,
   JankenChoice,
+  PendingEffect,
   PlayerIndex,
   PlayerState,
   SetSlot,
@@ -155,6 +156,8 @@ export function setupGame(
     turnNumber: 1,
     lastBattleResult: { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 },
     setCardsThisTurn: [[], []],
+    pendingEffects: [[], []],
+    pendingEffectPlayer: null,
     swappedCardsThisTurn: [[], []],
     previousTurnCharacterElements: [null, null],
     jankenChoices: [null, null],
@@ -412,6 +415,7 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
   G.winner = winner;
   G.gameoverReason = reason;
   G.ready = [true, true];
+  clearPendingEffects(G);
   G.log.push(reason);
 }
 
@@ -428,6 +432,15 @@ function recordPreviousTurnCharacterElements(G: GameState): void {
     characterElementPlayedThisTurn(G, 0),
     characterElementPlayedThisTurn(G, 1),
   ];
+}
+
+function emptyPendingEffects(): [PendingEffect[], PendingEffect[]] {
+  return [[], []];
+}
+
+function clearPendingEffects(G: GameState): void {
+  G.pendingEffects = emptyPendingEffects();
+  G.pendingEffectPlayer = null;
 }
 
 function finishTurn(G: GameState): void {
@@ -449,6 +462,7 @@ function finishTurn(G: GameState): void {
     player.rawAttack = 0;
   }
   G.setCardsThisTurn = [[], []];
+  clearPendingEffects(G);
   G.swappedCardsThisTurn = [[], []];
   G.modifiers = emptyModifiers();
   G.turnNumber++;
@@ -457,21 +471,8 @@ function finishTurn(G: GameState): void {
   G.log.push(`Turn ${G.turnNumber}: set cards.`);
 }
 
-export function resolveTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]>): void {
-  const initial = G.step === 'initialSet' || G.turnNumber === 1;
-  G.modifiers = emptyModifiers();
-  G.chronosAtTurnStart = G.chronos.position;
-  revealCards(G);
-  if (initial) {
-    // Initial non-Characters leave immediately after reveal, but their entries
-    // remain in setCardsThisTurn and therefore still advance Chronos.
-    placeRevealedCards(G, true, parsedEffects);
-    advanceChronos(G);
-  } else {
-    advanceChronos(G);
-    placeRevealedCards(G, false, parsedEffects);
-  }
-  processTurnEffects(G, parsedEffects, G.setCardsThisTurn);
+function continueAfterTurnEffects(G: GameState): void {
+  const initial = G.turnNumber === 1;
   if (G.step === 'gameOver') return;
   if (G.players[0].hp <= 0 || G.players[1].hp <= 0) {
     const winner = G.players[0].hp <= 0 && G.players[1].hp <= 0 ? null : (G.players[0].hp <= 0 ? 1 : 0);
@@ -486,4 +487,91 @@ export function resolveTurn(G: GameState, parsedEffects: Map<string, ParsedEffec
   }
   if (!initial) recordPreviousTurnCharacterElements(G);
   finishTurn(G);
+}
+
+function pendingEffectCount(pendingEffects: [PendingEffect[], PendingEffect[]]): number {
+  return pendingEffects[0].length + pendingEffects[1].length;
+}
+
+function nextPendingEffectPlayer(G: GameState): PlayerIndex | null {
+  if (G.pendingEffectPlayer !== null) {
+    const current = G.pendingEffectPlayer;
+    if (G.modifiers.effectsDisabled[current]) {
+      G.pendingEffects[current] = [];
+    } else if (G.pendingEffects[current].length > 0) {
+      return current;
+    }
+
+    const other = (1 - current) as PlayerIndex;
+    if (G.modifiers.effectsDisabled[other]) {
+      G.pendingEffects[other] = [];
+    } else if (G.pendingEffects[other].length > 0) {
+      return other;
+    }
+    return null;
+  }
+
+  for (const player of getTurnEffectPlayerOrder(G)) {
+    if (G.modifiers.effectsDisabled[player]) {
+      G.pendingEffects[player] = [];
+      continue;
+    }
+    if (G.pendingEffects[player].length > 0) return player;
+  }
+  return null;
+}
+
+function advancePendingEffectWindow(G: GameState): boolean {
+  const nextPlayer = nextPendingEffectPlayer(G);
+  if (nextPlayer !== null) {
+    G.pendingEffectPlayer = nextPlayer;
+    G.step = 'effectOrder';
+    G.ready = [true, true];
+    return true;
+  }
+  clearPendingEffects(G);
+  continueAfterTurnEffects(G);
+  return false;
+}
+
+export function resolvePendingEffect(G: GameState, player: PlayerIndex, index: number): boolean {
+  if (G.step !== 'effectOrder' || G.pendingEffectPlayer !== player) return false;
+  if (!Number.isInteger(index) || index < 0 || index >= G.pendingEffects[player].length) return false;
+  const pendingEffect = G.pendingEffects[player][index];
+  if (!pendingEffect || pendingEffect.player !== player) return false;
+  G.pendingEffects[player].splice(index, 1);
+
+  const result = executeEffect(pendingEffect.effect, G, player);
+  if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
+  if ((G.step as GameState['step']) === 'gameOver') {
+    clearPendingEffects(G);
+    return true;
+  }
+
+  advancePendingEffectWindow(G);
+  return true;
+}
+
+export function resolveTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]>): void {
+  const initial = G.step === 'initialSet' || G.turnNumber === 1;
+  G.modifiers = emptyModifiers();
+  clearPendingEffects(G);
+  G.chronosAtTurnStart = G.chronos.position;
+  revealCards(G);
+  if (initial) {
+    // Initial non-Characters leave immediately after reveal, but their entries
+    // remain in setCardsThisTurn and therefore still advance Chronos.
+    placeRevealedCards(G, true, parsedEffects);
+    advanceChronos(G);
+  } else {
+    advanceChronos(G);
+    placeRevealedCards(G, false, parsedEffects);
+  }
+  const pendingEffects = collectTurnEffects(G, parsedEffects, G.setCardsThisTurn);
+  if (pendingEffectCount(pendingEffects) > 0) {
+    G.pendingEffects = pendingEffects;
+    advancePendingEffectWindow(G);
+    return;
+  }
+  continueAfterTurnEffects(G);
 }

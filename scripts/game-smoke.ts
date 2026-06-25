@@ -31,6 +31,18 @@ const boost: ParsedEffect = {
   trigger: 'onUse', conditions: [], rawText: 'test',
   action: { type: 'boostAttack', params: { value: 20 } },
 };
+const damage7: ParsedEffect = {
+  trigger: 'onUse', conditions: [], rawText: 'deal 7 first',
+  action: { type: 'directDamage', params: { value: 7 } },
+};
+const damage11: ParsedEffect = {
+  trigger: 'onUse', conditions: [], rawText: 'deal 11 second',
+  action: { type: 'directDamage', params: { value: 11 } },
+};
+const damage13: ParsedEffect = {
+  trigger: 'onUse', conditions: [], rawText: 'deal 13 response',
+  action: { type: 'directDamage', params: { value: 13 } },
+};
 
 function preparedState(): GameState {
   const G = setupGame();
@@ -114,6 +126,11 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   player1.moves.setInitialCard(0);
   player0.moves.confirmReady();
   player1.moves.confirmReady();
+  for (let i = 0; i < 10 && player0.getState()?.G.step === 'effectOrder'; i++) {
+    const pendingPlayer = player0.getState()?.G.pendingEffectPlayer;
+    assert.notEqual(pendingPlayer, null);
+    (pendingPlayer === 0 ? player0 : player1).moves.resolvePendingEffect(0);
+  }
   assert.equal(player0.getState()?.G.step, 'turnSet');
   player0.stop();
   player1.stop();
@@ -129,6 +146,69 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   resolveBattle(G);
   assert.equal(G.lastBattleResult.damage, 20);
   assert.equal(G.players[1].hp, 80);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.chronos.position = 10;
+  G.players[0].hand = [createInstance('1st_9', true)];
+  G.players[1].hand = [createInstance('1st_17', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+
+  const parsedEffects = new Map<string, ParsedEffect[]>([
+    ['1st_9', [damage7, damage11]],
+    ['1st_17', [damage13]],
+  ]);
+  resolveTurn(G, parsedEffects);
+  assert.equal(G.step, 'effectOrder');
+  assert.equal(G.turnNumber, 2);
+  assert.equal(G.lastBattleResult.damage, 0);
+  assert.equal((G as any).pendingEffectPlayer, 0);
+  assert.equal((G as any).pendingEffects[0].length, 2);
+  assert.equal((G as any).pendingEffects[1].length, 1);
+
+  const resolvePendingEffect = (ZutomayoCard.moves as any).resolvePendingEffect;
+  assert.equal(resolvePendingEffect({ G, playerID: '0' }, 1), undefined);
+  assert.equal(G.players[1].hp, 89);
+  assert.match(G.log.at(-1) ?? '', /Deal 11/);
+  assert.equal((G as any).pendingEffects[0][0].rawText, 'deal 7 first');
+
+  assert.equal(resolvePendingEffect({ G, playerID: '0' }, 0), undefined);
+  assert.equal(G.players[1].hp, 82);
+  assert.equal((G as any).pendingEffectPlayer, 1);
+  assert.equal((G as any).pendingEffects[0].length, 0);
+  assert.equal((G as any).pendingEffects[1].length, 1);
+  assert.equal(G.step, 'effectOrder');
+
+  assert.equal(resolvePendingEffect({ G, playerID: '0' }, 0), 'INVALID_MOVE');
+  assert.equal(G.players[0].hp, 100);
+
+  assert.equal(resolvePendingEffect({ G, playerID: '1' }, 0), undefined);
+  assert.equal(G.players[0].hp, 87);
+  assert.equal(G.players[1].hp, 42);
+  assert.equal(G.lastBattleResult.damage, 40);
+  assert.equal(G.step, 'turnSet');
+  assert.equal(G.turnNumber, 3);
+  assert.equal((G as any).pendingEffectPlayer, null);
+  assert.deepEqual((G as any).pendingEffects, [[], []]);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.players[0].hand = [createInstance('1st_9', true)];
+  G.players[1].hand = [createInstance('1st_17', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  resolveTurn(G, noEffects);
+  assert.equal(G.step, 'turnSet');
+  assert.equal(G.turnNumber, 3);
+  assert.equal((G as any).pendingEffectPlayer, null);
+  assert.deepEqual((G as any).pendingEffects, [[], []]);
 }
 
 {

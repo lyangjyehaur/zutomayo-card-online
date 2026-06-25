@@ -30,6 +30,7 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
     setInitialCard: boardProps.moves.setInitialCard,
     setTurnCard: boardProps.moves.setTurnCard,
     confirmReady: boardProps.moves.confirmReady,
+    resolvePendingEffect: boardProps.moves.resolvePendingEffect,
   }), [boardProps.moves]);
 
   useAIMoves(boardProps.G, boardProps.ctx, aiMoves, boardProps.playerID || '0', difficulty);

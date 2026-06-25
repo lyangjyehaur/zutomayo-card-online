@@ -5570,6 +5570,89 @@ button.zone:focus-visible {
   animation: damage-float 850ms ease-out forwards;
 }
 
+.effect-order-panel {
+  position: absolute;
+  right: clamp(0.7rem, 2vw, 1.2rem);
+  bottom: calc(var(--drawer-handle-h) + 0.8rem + env(safe-area-inset-bottom, 0px));
+  z-index: 64;
+  display: grid;
+  gap: 0.55rem;
+  width: min(24rem, calc(100vw - 1.4rem));
+  max-height: min(42vh, 20rem);
+  overflow: auto;
+  border: 1px solid rgba(226, 189, 93, 0.34);
+  border-radius: 0.45rem;
+  padding: 0.75rem;
+  background: rgba(8, 11, 19, 0.92);
+  box-shadow: 0 0.8rem 1.8rem rgba(0, 0, 0, 0.38);
+}
+
+.effect-order-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  color: #f7f1df;
+  font-size: clamp(0.82rem, 1.2vw, 1rem);
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.effect-order-heading span {
+  flex: 0 0 auto;
+  color: #e8bd4f;
+  font-size: 0.82em;
+}
+
+.effect-order-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.effect-order-item {
+  display: grid;
+  gap: 0.18rem;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.36rem;
+  padding: 0.52rem 0.6rem;
+  background: rgba(255, 255, 255, 0.055);
+  color: #f4f0de;
+  text-align: left;
+  cursor: pointer;
+}
+
+.effect-order-item:hover,
+.effect-order-item:focus-visible {
+  border-color: rgba(226, 189, 93, 0.82);
+  outline: none;
+  background: rgba(226, 189, 93, 0.1);
+}
+
+.effect-order-card {
+  overflow: hidden;
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.effect-order-text,
+.effect-order-action,
+.effect-order-panel p {
+  margin: 0;
+  color: #d7d4c8;
+  font-size: 0.76rem;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+}
+
+.effect-order-action {
+  color: #8fd8ce;
+  font-weight: 800;
+}
+
 .resource-stat.hp {
   position: relative;
 }
@@ -5622,5 +5705,13 @@ button.zone:focus-visible {
 
   .hp-meter {
     width: 1.7rem;
+  }
+
+  .effect-order-panel {
+    right: 0.7rem;
+    left: 0.7rem;
+    bottom: calc(var(--drawer-handle-h) + 0.6rem + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-height: 36vh;
   }
 }

@@ -519,6 +519,55 @@ function battleFeedback(G: GameState, meIndex: PlayerIndex, opponentIndex: Playe
   };
 }
 
+function effectSummary(effect: GameState['pendingEffects'][number][number]): string {
+  const action = effect.effect.action;
+  const value = action.params.value ?? action.params.count ?? action.params.max;
+  return value === undefined ? action.type : `${action.type} ${value}`;
+}
+
+function EffectOrderPanel({ G, moves, playerID }: {
+  G: GameState;
+  moves: Props['moves'];
+  playerID: Props['playerID'];
+}) {
+  const meIndex = Number(playerID ?? '0') as PlayerIndex;
+  const currentPlayer = G.pendingEffectPlayer;
+  if (currentPlayer === null) return null;
+
+  const isCurrentPlayer = currentPlayer === meIndex;
+  const pending = G.pendingEffects[currentPlayer];
+
+  return (
+    <section className="effect-order-panel" aria-label={t('board.effectOrder')}>
+      <div className="effect-order-heading">
+        <strong>{isCurrentPlayer ? t('board.chooseEffect') : t('board.waitingEffectPlayer')}</strong>
+        <span>{playerName(currentPlayer)}</span>
+      </div>
+      {isCurrentPlayer ? (
+        <div className="effect-order-list">
+          {pending.map((effect, index) => {
+            const card = getCardDef(effect.cardDefId);
+            return (
+              <button
+                key={effect.id}
+                className="effect-order-item"
+                type="button"
+                onClick={() => moves.resolvePendingEffect(index)}
+              >
+                <span className="effect-order-card">{card?.name ?? effect.cardDefId}</span>
+                <span className="effect-order-text">{effect.rawText || effectSummary(effect)}</span>
+                <span className="effect-order-action">{effectSummary(effect)}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p>{t('board.waitingOpponent')}</p>
+      )}
+    </section>
+  );
+}
+
 function BattleBoard({ G, moves, playerID }: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
@@ -606,7 +655,9 @@ function BattleBoard({ G, moves, playerID }: Props) {
 
   const time = getChronosTime(G);
   const timerTone = timeLeft > 30 ? 'timer-safe' : timeLeft > 10 ? 'timer-warning' : 'timer-danger';
-  const phaseText = G.step === 'initialSet'
+  const phaseText = G.step === 'effectOrder'
+    ? t('board.effectOrder')
+    : G.step === 'initialSet'
     ? t('board.initialSet')
     : `${t('board.setCards')} ${required} ${t('board.cardsUnit')}`;
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn === required;
@@ -629,6 +680,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
           damageAmount={myDamage}
         />
       </main>
+      {G.step === 'effectOrder' && <EffectOrderPanel G={G} moves={moves} playerID={playerID} />}
       <HandDrawer
         cards={me.hand}
         expanded={handExpanded}

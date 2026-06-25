@@ -6,6 +6,7 @@ import {
   chooseJanken,
   confirmReady,
   finishMulligan,
+  resolvePendingEffect as resolvePendingEffectChoice,
   setInitialCard,
   setTurnCard,
   setupGame,
@@ -102,6 +103,10 @@ const moves: Record<string, Move<GameState>> = {
   confirmReady: ({ G, playerID }) => {
     const player = playerIndex(playerID);
     if (player === null || !confirmReady(G, player, parsedEffects)) return INVALID_MOVE;
+  },
+  resolvePendingEffect: ({ G, playerID }, index: number) => {
+    const player = playerIndex(playerID);
+    if (player === null || !resolvePendingEffectChoice(G, player, index)) return INVALID_MOVE;
   },
 };
 

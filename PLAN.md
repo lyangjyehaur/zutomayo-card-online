@@ -4,7 +4,7 @@
 
 The rules engine is an explicit `GameState.step` machine:
 
-`janken → mulligan → initialSet → turnSet → gameOver`
+`janken → mulligan → initialSet → turnSet → effectOrder → turnSet/gameOver`
 
 Both players are active in boardgame.io at once. `ready` gates simultaneous reveal and the complete deterministic resolution pipeline. boardgame.io remains responsible for synchronized moves, match storage, socket transport, and `endIf`.
 
@@ -25,15 +25,15 @@ Both players are active in boardgame.io at once. `ready` gates simultaneous reve
 - Real boardgame.io client/server smoke coverage.
 - Deterministic opponent deck-to-Abyss and Area Enchant-to-deck target effects.
 - Deterministic persistent Area Enchant attack boosts while the Area Enchant remains in Set Zone C.
+- Player-selected normal effect order using a server-validated pending-effect queue, with AI auto-resolution for AI-controlled pending effects.
 
 ## Remaining work
 
 The detailed implementation gap list lives in [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md). Keep this file as the short roadmap and status summary.
 
-1. Add a pending-effect resolver so the Chronos-side priority player can choose their own effect order before the other player resolves theirs.
-2. Add timing event windows for turn start, turn end, damage received, zone-entry events, Chronos changes, and Area Enchant expiry/self-move effects.
-3. Add interactive choice infrastructure for target selection, optional effects, counts, Clock choices, and deck ordering.
-4. Expand replacement/continuous modifiers such as Power Cost changes, always-day/night attacks, Clock overrides, and dynamic attack formulas.
-5. Audit parser/executor coverage card-by-card: the latest snapshot is 267 effect lines, 227 parsed lines, and 40 unparsed lines; parsed-but-partial lines still need separate review.
-6. Confirm the exact Chronos board position mapping from official materials and lock it with tests.
-7. Add reconnect/resume UX and authenticated match ownership if accounts are reintroduced.
+1. Add timing event windows for turn start, turn end, damage received, zone-entry events, Chronos changes, and Area Enchant expiry/self-move effects.
+2. Add interactive choice infrastructure for target selection, optional effects, counts, Clock choices, and deck ordering, building on the pending resolver where useful.
+3. Expand replacement/continuous modifiers such as Power Cost changes, always-day/night attacks, Clock overrides, and dynamic attack formulas.
+4. Audit parser/executor coverage card-by-card: the latest snapshot is 267 effect lines, 227 parsed lines, and 40 unparsed lines; parsed-but-partial lines still need separate review.
+5. Confirm the exact Chronos board position mapping from official materials and lock it with tests.
+6. Add reconnect/resume UX and authenticated match ownership if accounts are reintroduced.

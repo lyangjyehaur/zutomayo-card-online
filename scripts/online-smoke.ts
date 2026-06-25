@@ -79,6 +79,28 @@ async function performOnlineMove(
   ));
 }
 
+async function drainPendingEffects(client0: any, client1: any): Promise<void> {
+  for (let i = 0; i < 20; i++) {
+    const [state0, state1] = await waitForStates('post-confirm step', client0, client1, (next0, next1) => {
+      const id0 = stateID(next0);
+      const id1 = stateID(next1);
+      const step0 = next0?.G?.step;
+      const step1 = next1?.G?.step;
+      return id0 >= 0 && id0 === id1 && step0 === step1 && (step0 === 'effectOrder' || step0 === 'turnSet');
+    });
+
+    if (state0.G.step !== 'effectOrder' || state1.G.step !== 'effectOrder') return;
+
+    const pendingPlayer = state0.G.pendingEffectPlayer;
+    assert.ok(pendingPlayer === 0 || pendingPlayer === 1, 'pending effect should have an owning player');
+    await performOnlineMove(`player${pendingPlayer} resolvePendingEffect`, client0, client1, () => (
+      pendingPlayer === 0 ? client0 : client1
+    ).moves.resolvePendingEffect(0));
+  }
+
+  throw new Error('Timed out resolving pending effects');
+}
+
 async function createOnlineMatch(setupData: ZutomayoSetupData): Promise<string> {
   const { matchID } = await postJson<{ matchID: string }>('/games/zutomayo-card/create', {
     numPlayers: 2,
@@ -147,6 +169,7 @@ async function playToTurnSet(client0: any, client1: any): Promise<NonNullable<Cl
   await performOnlineMove('player1 setInitialCard', client0, client1, () => client1.moves.setInitialCard(0));
   await performOnlineMove('player0 confirmReady', client0, client1, () => client0.moves.confirmReady());
   await performOnlineMove('player1 confirmReady', client0, client1, () => client1.moves.confirmReady());
+  await drainPendingEffects(client0, client1);
   const [state0] = await waitForStates('turnSet', client0, client1, (next0, next1) => (
     next0?.G?.step === 'turnSet' && next1?.G?.step === 'turnSet'
   ));

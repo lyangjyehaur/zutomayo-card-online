@@ -1,4 +1,4 @@
-import type { CardInstance, GameState, PlayerIndex } from '../types';
+import type { CardInstance, GameState, PendingEffect, PendingEffectSource, PlayerIndex } from '../types';
 import type { ParsedEffect, Condition } from './types';
 import { getCardDef } from '../cards/loader';
 
@@ -63,6 +63,59 @@ function loseOnEffectOverdraw(G: GameState, player: PlayerIndex, count: number):
 
 function isPersistentAreaEnchantEffect(card: CardInstance, effect: ParsedEffect): boolean {
   return getCardDef(card.defId)?.type === 'Area Enchant' && effect.action.type === 'boostAttack';
+}
+
+export function getTurnEffectPlayerOrder(G: GameState): [PlayerIndex, PlayerIndex] {
+  const priority: PlayerIndex = isNight(G)
+    ? G.chronos.nightSidePlayer
+    : ((1 - G.chronos.nightSidePlayer) as PlayerIndex);
+  return [priority, (1 - priority) as PlayerIndex];
+}
+
+function effectSource(G: GameState, player: PlayerIndex, card: CardInstance): PendingEffectSource {
+  if (G.players[player].battleZone?.instanceId === card.instanceId) return 'battleZone';
+  if (G.players[player].setZoneC?.instanceId === card.instanceId) return 'setZoneC';
+  return 'played';
+}
+
+export function collectTurnEffects(
+  G: GameState,
+  parsedEffects: Map<string, ParsedEffect[]>,
+  playedCards: [CardInstance[], CardInstance[]] = [[], []],
+): [PendingEffect[], PendingEffect[]] {
+  const pending: [PendingEffect[], PendingEffect[]] = [[], []];
+  for (const player of getTurnEffectPlayerOrder(G)) {
+    if (G.step === 'gameOver' || G.modifiers.effectsDisabled[player]) continue;
+    const playedIds = new Set(playedCards[player].map(card => card.instanceId));
+    const candidates = [...playedCards[player], G.players[player].battleZone, G.players[player].setZoneC]
+      .filter((card): card is CardInstance => card !== null)
+      .filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
+    for (const card of candidates) {
+      const definition = getCardDef(card.defId);
+      const effects = parsedEffects.get(card.defId) ?? [];
+      for (const [effectIndex, effect] of effects.entries()) {
+        const isNew = playedIds.has(card.instanceId);
+        if (!['onUse', 'onEnter', 'onBattle'].includes(effect.trigger)) continue;
+        const isPersistedSetZoneC = G.players[player].setZoneC?.instanceId === card.instanceId;
+        const canRunPersisted = isPersistedSetZoneC && isPersistentAreaEnchantEffect(card, effect);
+        if ((effect.trigger === 'onUse' || effect.trigger === 'onEnter') && !isNew && !canRunPersisted) continue;
+        if (!definition || power(G, player) < definition.powerCost) {
+          G.log.push(`Player ${player}: ${definition?.name ?? card.defId} effect skipped (power cost).`);
+          continue;
+        }
+        pending[player].push({
+          id: `${card.instanceId}:${effectIndex}:${pending[player].length}`,
+          player,
+          cardInstanceId: card.instanceId,
+          cardDefId: card.defId,
+          rawText: effect.rawText,
+          effect,
+          source: effectSource(G, player, card),
+        });
+      }
+    }
+  }
+  return pending;
 }
 
 export function executeEffect(
@@ -179,33 +232,13 @@ export function processTurnEffects(
   parsedEffects: Map<string, ParsedEffect[]>,
   playedCards: [CardInstance[], CardInstance[]] = [[], []],
 ): void {
-  const priority: PlayerIndex = isNight(G)
-    ? G.chronos.nightSidePlayer
-    : ((1 - G.chronos.nightSidePlayer) as PlayerIndex);
-  const order: PlayerIndex[] = [priority, (1 - priority) as PlayerIndex];
-  for (const player of order) {
+  const pending = collectTurnEffects(G, parsedEffects, playedCards);
+  for (const player of getTurnEffectPlayerOrder(G)) {
     if (G.step === 'gameOver' || G.modifiers.effectsDisabled[player]) continue;
-    const playedIds = new Set(playedCards[player].map(card => card.instanceId));
-    const candidates = [...playedCards[player], G.players[player].battleZone, G.players[player].setZoneC]
-      .filter((card): card is CardInstance => card !== null)
-      .filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
-    for (const card of candidates) {
-      const definition = getCardDef(card.defId);
-      const effects = parsedEffects.get(card.defId) ?? [];
-      for (const effect of effects) {
-        const isNew = playedIds.has(card.instanceId);
-        if (!['onUse', 'onEnter', 'onBattle'].includes(effect.trigger)) continue;
-        const isPersistedSetZoneC = G.players[player].setZoneC?.instanceId === card.instanceId;
-        const canRunPersisted = isPersistedSetZoneC && isPersistentAreaEnchantEffect(card, effect);
-        if ((effect.trigger === 'onUse' || effect.trigger === 'onEnter') && !isNew && !canRunPersisted) continue;
-        if (!definition || power(G, player) < definition.powerCost) {
-          G.log.push(`Player ${player}: ${definition?.name ?? card.defId} effect skipped (power cost).`);
-          continue;
-        }
-        const result = executeEffect(effect, G, player);
-        if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
-        if ((G.step as GameState['step']) === 'gameOver') return;
-      }
+    for (const pendingEffect of pending[player]) {
+      const result = executeEffect(pendingEffect.effect, G, player);
+      if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
+      if ((G.step as GameState['step']) === 'gameOver') return;
     }
   }
 }
