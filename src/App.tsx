@@ -86,9 +86,6 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
       <button className={buttonClass('/history')} type="button" onClick={() => navigate('/history')}>
         {t('nav.history')}
       </button>
-      <button className={buttonClass('/admin')} type="button" onClick={() => navigate('/admin')}>
-        {t('nav.admin')}
-      </button>
       <button className="nav-link tutorial" type="button" onClick={onShowTutorial}>
         {t('nav.tutorial')}
       </button>

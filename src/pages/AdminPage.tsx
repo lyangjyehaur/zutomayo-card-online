@@ -1,21 +1,69 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 
 export function AdminPage() {
   const navigate = useNavigate();
+  const [authenticated, setAuthenticated] = useState(() => {
+    return sessionStorage.getItem('admin_auth') === 'true';
+  });
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  if (!authenticated) {
+    return (
+      <main className="admin-page app-screen">
+        <header className="screen-header">
+          <button className="back-btn" type="button" onClick={() => navigate('/')}>
+            {t('common.backToLobby')}
+          </button>
+          <h1>{t('admin.title')}</h1>
+        </header>
+        <section className="admin-login">
+          <h2>管理員驗證</h2>
+          <input
+            type="password"
+            placeholder="輸入管理密碼"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                const adminPwd = import.meta.env.VITE_ADMIN_PASSWORD || 'zutomayo2026';
+                if (password === adminPwd) {
+                  sessionStorage.setItem('admin_auth', 'true');
+                  setAuthenticated(true);
+                } else {
+                  setError('密碼錯誤');
+                }
+              }
+            }}
+          />
+          <button onClick={() => {
+            const adminPwd = import.meta.env.VITE_ADMIN_PASSWORD || 'zutomayo2026';
+            if (password === adminPwd) {
+              sessionStorage.setItem('admin_auth', 'true');
+              setAuthenticated(true);
+            } else {
+              setError('密碼錯誤');
+            }
+          }}>登入</button>
+          {error && <p className="admin-error">{error}</p>}
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="admin-page app-screen">
       <header className="screen-header">
-        <div>
-          <span>{t('lobby.menu')}</span>
-          <h1>{t('admin.title')}</h1>
-        </div>
-        <div className="screen-actions">
-          <button className="secondary-action" type="button" onClick={() => navigate('/')}>
-            {t('common.backToLobby')}
-          </button>
-        </div>
+        <button className="back-btn" type="button" onClick={() => navigate('/')}>
+          {t('common.backToLobby')}
+        </button>
+        <h1>{t('admin.title')}</h1>
+        <button className="logout-btn" onClick={() => {
+          sessionStorage.removeItem('admin_auth');
+          setAuthenticated(false);
+        }}>登出</button>
       </header>
       <iframe className="admin-frame" src="/admin/index.html" title={t('admin.title')} />
     </main>
