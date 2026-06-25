@@ -122,4 +122,5 @@ Chronos medal 所在時段對應側為優先玩家，先處理效果。
 - Set Zone A/B 同目的地衝突時 A 優先；只有 B 有 Character 或 Area Enchant 時仍會正常進場。
 - Enchant 保留到效果處理後離場；Area Enchant 進 Set Zone C 並持續存在。
 - 每個效果處理前各自檢查當下 Power Cost。攻擊加減、傷害減免、HP、抽牌與部分 Chronos 效果會實際改變狀態。
-- 尚未完整支援全部 422 張卡。需要玩家選目標/時間位置、前回合卡牌記錄、追加出牌或特殊 timing 的效果仍有限制，詳見 README。
+- 已支援前一回合 Character 屬性條件、部分確定性目標移動，以及持續型 Area Enchant 攻擊加成。
+- 尚未完整支援全部 422 張卡。需要玩家自行選擇效果處理順序、選目標/時間位置、追加出牌、replacement/continuous modifier 或特殊 timing 的效果仍有限制，詳見 [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md)。

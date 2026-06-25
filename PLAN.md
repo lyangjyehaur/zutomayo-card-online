@@ -28,5 +28,12 @@ Both players are active in boardgame.io at once. `ready` gates simultaneous reve
 
 ## Remaining work
 
-1. Expand the parser/executor card-by-card, especially choices, interactive targets, replacement effects, and detailed timing-specific triggers such as Area Enchant expiry/move timing.
-2. Add reconnect/resume UX and authenticated match ownership if accounts are reintroduced.
+The detailed implementation gap list lives in [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md). Keep this file as the short roadmap and status summary.
+
+1. Add a pending-effect resolver so the Chronos-side priority player can choose their own effect order before the other player resolves theirs.
+2. Add timing event windows for turn start, turn end, damage received, zone-entry events, Chronos changes, and Area Enchant expiry/self-move effects.
+3. Add interactive choice infrastructure for target selection, optional effects, counts, Clock choices, and deck ordering.
+4. Expand replacement/continuous modifiers such as Power Cost changes, always-day/night attacks, Clock overrides, and dynamic attack formulas.
+5. Audit parser/executor coverage card-by-card: the latest snapshot is 267 effect lines, 227 parsed lines, and 40 unparsed lines; parsed-but-partial lines still need separate review.
+6. Confirm the exact Chronos board position mapping from official materials and lock it with tests.
+7. Add reconnect/resume UX and authenticated match ownership if accounts are reintroduced.

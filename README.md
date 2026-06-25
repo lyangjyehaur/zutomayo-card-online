@@ -28,6 +28,6 @@ For the production server, run `npm run build` before `npm run server`, or use `
 
 ## Known limitations
 
-Card text is not fully implemented. Effects needing a target/position choice, previous-card history, optional extra setting, or detailed timing windows may be skipped or use a documented deterministic fallback. Online rooms can use browser-saved custom decks by sending validated deck ID payloads when the room is created. There are no deployed accounts, server deck storage, cross-device deck sync, server leaderboard, or cross-device match history.
+Card text is not fully implemented. Previous-turn Character element conditions and several deterministic target/Area Enchant effects are automated, but player-selected effect order, target/position choices, optional effects, replacement effects, and detailed timing windows may still be skipped or use a documented deterministic fallback. Online rooms can use browser-saved custom decks by sending validated deck ID payloads when the room is created. There are no deployed accounts, server deck storage, cross-device deck sync, server leaderboard, or cross-device match history.
 
-Card data remains in `cards.json`; its shape is defined by the existing loader and schema. See [rules.md](rules.md) for the rules represented by the engine and [PLAN.md](PLAN.md) for remaining work.
+Card data remains in `cards.json`; its shape is defined by the existing loader and schema. See [rules.md](rules.md) for the rules represented by the engine, [PLAN.md](PLAN.md) for the roadmap, and [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md) for the detailed rule-gap audit.
