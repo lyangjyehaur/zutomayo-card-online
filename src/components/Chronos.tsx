@@ -22,12 +22,12 @@ const CHRONOS_LABELS = [
 ];
 
 export function Chronos({ chronos, currentTime }: ChronosProps) {
-  const size = 300;
+  const size = 420;
   const center = size / 2;
-  const radius = 112;
-  const outerRadius = 136;
-  const faceRadius = 124;
-  const arcRadius = 130;
+  const radius = 160;
+  const outerRadius = 196;
+  const faceRadius = 182;
+  const arcRadius = 190;
   const position = ((chronos.position % 12) + 12) % 12;
   const ticks = Array.from({ length: 12 }, (_, index) => {
     const angle = (index * 30 - 90) * (Math.PI / 180);
@@ -70,8 +70,8 @@ export function Chronos({ chronos, currentTime }: ChronosProps) {
         <circle className="chronos-face" cx={center} cy={center} r={faceRadius} />
         <path className="chronos-night-arc" d={describeArc(center, center, arcRadius, -105, 75)} />
         <path className="chronos-day-arc" d={describeArc(center, center, arcRadius, 75, 255)} />
-        <line className="chronos-divider" x1={center} y1="18" x2={center} y2="48" />
-        <line className="chronos-divider" x1={center} y1={size - 18} x2={center} y2={size - 48} />
+        <line className="chronos-divider" x1={center} y1="26" x2={center} y2="66" />
+        <line className="chronos-divider" x1={center} y1={size - 26} x2={center} y2={size - 66} />
 
         {ticks.map(({ index, x, y }) => (
           <g key={index} className={position === index ? 'chronos-tick active' : 'chronos-tick'}>
@@ -93,13 +93,13 @@ export function Chronos({ chronos, currentTime }: ChronosProps) {
           <circle className="chronos-medal-core" r="7" />
         </g>
 
-        <text className="chronos-title" x={center} y={center - 18} textAnchor="middle">
+        <text className="chronos-title" x={center} y={center - 22} textAnchor="middle">
           CHRONOS
         </text>
-        <text className="chronos-time-label" x={center} y={center + 7} textAnchor="middle">
+        <text className="chronos-time-label" x={center} y={center + 8} textAnchor="middle">
           {timeLabel}
         </text>
-        <text className="chronos-subtitle" x={center} y={center + 29} textAnchor="middle">
+        <text className="chronos-subtitle" x={center} y={center + 36} textAnchor="middle">
           {sideLabel} • {position}/12
         </text>
       </svg>

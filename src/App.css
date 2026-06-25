@@ -2901,6 +2901,970 @@ button.zone:focus-visible {
   }
 }
 
+/* Final active field layout overrides */
+.board {
+  --card-normal-w: clamp(4.7rem, min(6.6vw, 10vh), 6.4rem);
+  --card-small-w: clamp(3.5rem, min(5.2vw, 7.8vh), 4.8rem);
+  --card-tiny-w: clamp(2.6rem, min(4vw, 6.2vh), 3.5rem);
+  --card-micro-w: clamp(1.8rem, min(2.8vw, 4.4vh), 2.5rem);
+  --card-battle-w: clamp(4.8rem, min(6.8vw, 10.2vh), 6.15rem);
+  --drawer-handle-h: 3rem;
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(226, 189, 93, 0.28);
+  border-radius: 0.5rem;
+  padding: clamp(0.45rem, 1vw, 0.75rem);
+  padding-bottom: calc(var(--drawer-handle-h) + env(safe-area-inset-bottom, 0px));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+    #0b1014;
+  box-shadow: inset 0 0 2.2rem rgba(0, 0, 0, 0.28), 0 1rem 2.4rem rgba(0, 0, 0, 0.34);
+}
+
+.field-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "opponent"
+    "arena"
+    "bottom"
+    "status";
+  gap: clamp(0.34rem, 0.8vh, 0.65rem);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0;
+  transition: none;
+}
+
+.board.drawer-expanded .field-layout,
+.board.drawer-collapsed .field-layout {
+  padding-bottom: 0;
+}
+
+.opponent-stats-bar {
+  grid-area: opponent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.55rem, 1.4vw, 1rem);
+  min-height: clamp(2rem, 4vh, 2.5rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.45rem;
+  padding: 0.28rem 0.7rem;
+  background: rgba(4, 7, 9, 0.34);
+}
+
+.opponent-stats-bar > strong {
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: #f7f1df;
+  font-size: clamp(0.78rem, 1.1vw, 0.94rem);
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opponent-stats-bar .field-stats {
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+.central-arena {
+  grid-area: arena;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
+.chronos-container {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(86vw, min(35.5rem, 64vh));
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1;
+}
+
+.chronos-container .chronos,
+.chronos-container .chronos svg {
+  width: 100%;
+  height: 100%;
+}
+
+.chronos-container .chronos svg {
+  overflow: visible;
+}
+
+.opp-battle-slot,
+.my-battle-slot {
+  position: absolute;
+  left: 50%;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  transform: translateX(-50%);
+}
+
+.opp-battle-slot { top: 9.5%; }
+.my-battle-slot { bottom: 9.5%; }
+
+.central-battle-zone,
+.opponent-battle-zone,
+.player-battle-zone {
+  --zone-card-w: var(--card-battle-w);
+  margin: 0;
+}
+
+.central-battle-zone {
+  width: calc(var(--zone-card-w) + 0.72rem);
+  min-height: calc(var(--zone-card-h) + 0.92rem);
+  padding: 0.25rem;
+  border-color: rgba(226, 189, 93, 0.62);
+  background: rgba(8, 11, 19, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.central-battle-zone .zone-label {
+  max-width: 100%;
+  font-size: clamp(0.48rem, 0.72vw, 0.62rem);
+}
+
+.bottom-zones {
+  grid-area: bottom;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.3rem 0.5rem;
+}
+
+.bottom-zones .zone {
+  --zone-card-w: var(--card-normal-w);
+  width: calc(var(--zone-card-w) + 0.66rem);
+  min-height: calc(var(--zone-card-h) + 1rem);
+  padding: 0.26rem;
+}
+
+.bottom-zones .power-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  justify-items: center;
+  width: clamp(4.2rem, 7vw, 5.5rem);
+  min-height: calc(var(--card-normal-w) * 1.4 + 1rem);
+  gap: 0.24rem;
+  padding: 0.28rem;
+  text-align: center;
+}
+
+.bottom-zones .power-charger-visual {
+  width: clamp(1.65rem, 2.5vw, 2.15rem);
+}
+
+.bottom-zones .power-stack strong {
+  justify-items: center;
+  font-size: clamp(0.78rem, 1vw, 0.95rem);
+}
+
+.bottom-zones .power-stack strong span {
+  max-width: 100%;
+  font-size: 0.66em;
+}
+
+.bottom-zones .deck-zone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  width: calc(var(--card-normal-w) + 0.66rem);
+  min-height: calc(var(--card-normal-w) * 1.4 + 1rem);
+  gap: 0.22rem;
+  padding: 0.26rem;
+}
+
+.bottom-zones .deck-card-back {
+  width: var(--card-normal-w);
+}
+
+.bottom-zones .deck-zone .deck-count {
+  font-size: clamp(0.78rem, 1vw, 0.95rem);
+}
+
+.status-bar {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.3rem, 0.8vw, 0.58rem);
+  min-width: 0;
+  min-height: clamp(2rem, 4vh, 2.4rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.45rem;
+  padding: 0.24rem 0.5rem;
+  background: rgba(4, 7, 9, 0.36);
+}
+
+.status-bar .resource-stat,
+.status-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.18rem;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999rem;
+  padding: 0.22rem 0.62rem;
+  background: rgba(255, 255, 255, 0.045);
+  color: #ece7d8;
+  font-size: clamp(0.66rem, 0.94vw, 0.82rem);
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-bar .phase-pill {
+  flex: 1 1 auto;
+  max-width: 12rem;
+}
+
+.hand-drawer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+  display: grid;
+  grid-template-rows: var(--drawer-handle-h, 3rem) minmax(0, 1fr);
+  height: min(44vh, 28rem);
+  min-height: 18rem;
+  max-height: calc(100vh - 3rem);
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 -1rem 2.2rem rgba(0, 0, 0, 0.42);
+  transform: translateY(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hand-drawer.collapsed {
+  transform: translateY(calc(100% - var(--drawer-handle-h, 3rem)));
+}
+
+.hand-drawer.expanded {
+  transform: translateY(0);
+}
+
+.hand-drawer-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  height: var(--drawer-handle-h, 3rem);
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(10, 15, 40, 0.95);
+  color: #efe6cf;
+  font-size: clamp(0.82rem, 1.1vw, 0.98rem);
+  font-weight: 900;
+  cursor: pointer;
+  user-select: none;
+}
+
+.hand-drawer-content {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.8rem 0.8rem 0;
+  background: rgba(10, 15, 40, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.hand-area {
+  display: flex;
+  align-items: center;
+  justify-content: safe center;
+  gap: 0.8rem;
+  min-height: 0;
+  padding: 0.2rem 0.2rem 0.6rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
+.hand-drawer .game-card {
+  --card-w: 120px;
+  width: var(--card-w);
+  aspect-ratio: 5 / 7;
+  margin-left: 0;
+  cursor: pointer;
+}
+
+.hand-drawer-footer {
+  padding: 0.45rem 1rem 0.8rem;
+  background: transparent;
+}
+
+.player-view .field-layout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "opponent"
+    "arena"
+    "bottom"
+    "status";
+  gap: 0.22rem;
+}
+
+.player-view .chronos-container {
+  width: min(96%, min(22rem, 48vh));
+}
+
+.player-view .hand-drawer {
+  position: absolute;
+  height: min(42%, 18rem);
+  min-height: 12rem;
+}
+
+@media (max-width: 768px) {
+  .board {
+    --card-normal-w: clamp(3.35rem, 15vw, 4.35rem);
+    --card-small-w: clamp(2.75rem, 12vw, 3.55rem);
+    --card-tiny-w: clamp(2.2rem, 9.5vw, 2.8rem);
+    --card-micro-w: clamp(1.65rem, 7vw, 2.1rem);
+    --card-battle-w: clamp(3.75rem, 16vw, 4.65rem);
+    padding: 0.28rem;
+    padding-bottom: calc(var(--drawer-handle-h) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .field-layout {
+    gap: 0.22rem;
+  }
+
+  .opponent-stats-bar {
+    min-height: 2rem;
+    gap: 0.35rem;
+    padding: 0.22rem 0.38rem;
+  }
+
+  .opponent-stats-bar > strong {
+    font-size: 0.66rem;
+  }
+
+  .opponent-stats-bar .field-stats {
+    gap: 0.22rem;
+    font-size: 0.58rem;
+  }
+
+  .chronos-container {
+    width: min(94vw, min(22rem, 50vh));
+  }
+
+  .opp-battle-slot { top: 8%; }
+  .my-battle-slot { bottom: 8%; }
+
+  .central-battle-zone {
+    width: calc(var(--zone-card-w) + 0.5rem);
+    min-height: calc(var(--zone-card-h) + 0.76rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones {
+    gap: 0.28rem;
+    padding: 0.18rem 0.12rem;
+  }
+
+  .bottom-zones .zone {
+    width: calc(var(--zone-card-w) + 0.42rem);
+    min-height: calc(var(--zone-card-h) + 0.78rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones .power-stack {
+    width: clamp(3.2rem, 15vw, 4.1rem);
+    min-height: calc(var(--card-normal-w) * 1.4 + 0.78rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones .deck-zone {
+    width: calc(var(--card-normal-w) + 0.42rem);
+    min-height: calc(var(--card-normal-w) * 1.4 + 0.78rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones .power-charger-visual {
+    width: 1.3rem;
+    font-size: 0.82rem;
+  }
+
+  .bottom-zones .power-stack strong,
+  .bottom-zones .deck-zone .deck-count {
+    font-size: 0.6rem;
+  }
+
+  .zone-label,
+  .central-battle-zone .zone-label {
+    font-size: 0.45rem;
+  }
+
+  .zone-empty {
+    font-size: 0.54rem;
+  }
+
+  .status-bar {
+    min-height: 1.95rem;
+    gap: 0.18rem;
+    padding: 0.16rem 0.18rem;
+  }
+
+  .status-bar .resource-stat,
+  .status-pill {
+    gap: 0.12rem;
+    padding: 0.16rem 0.34rem;
+    font-size: 0.56rem;
+  }
+
+  .status-bar .phase-pill {
+    max-width: 6.8rem;
+  }
+
+  .hand-drawer {
+    height: min(46vh, 24rem);
+    min-height: 16rem;
+  }
+
+  .hand-area {
+    justify-content: flex-start;
+    gap: 0.55rem;
+    padding: 0.1rem 0.1rem 0.5rem;
+  }
+
+  .hand-drawer .game-card {
+    --card-w: 85px;
+  }
+
+  .hand-drawer-footer {
+    padding: 0.35rem 0.5rem 0.6rem;
+  }
+}
+
+/* Active field layout: Chronos arena with a floating hand drawer */
+.board {
+  --card-normal-w: clamp(4.7rem, min(6.6vw, 10vh), 6.4rem);
+  --card-small-w: clamp(3.5rem, min(5.2vw, 7.8vh), 4.8rem);
+  --card-tiny-w: clamp(2.6rem, min(4vw, 6.2vh), 3.5rem);
+  --card-micro-w: clamp(1.8rem, min(2.8vw, 4.4vh), 2.5rem);
+  --card-battle-w: clamp(4.8rem, min(6.8vw, 10.2vh), 6.15rem);
+  --drawer-handle-h: 3rem;
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(226, 189, 93, 0.28);
+  border-radius: 0.5rem;
+  padding: clamp(0.45rem, 1vw, 0.75rem);
+  padding-bottom: calc(var(--drawer-handle-h) + env(safe-area-inset-bottom, 0px));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012)),
+    #0b1014;
+  box-shadow: inset 0 0 2.2rem rgba(0, 0, 0, 0.28), 0 1rem 2.4rem rgba(0, 0, 0, 0.34);
+}
+
+.board > * {
+  min-width: 0;
+  min-height: 0;
+}
+
+.board.drawer-expanded .field-layout,
+.board.drawer-collapsed .field-layout {
+  padding-bottom: 0;
+}
+
+.field-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "opponent"
+    "arena"
+    "bottom"
+    "status";
+  gap: clamp(0.34rem, 0.8vh, 0.65rem);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0;
+  transition: none;
+}
+
+.opponent-stats-bar {
+  grid-area: opponent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.55rem, 1.4vw, 1rem);
+  min-height: clamp(2rem, 4vh, 2.5rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.45rem;
+  padding: 0.28rem 0.7rem;
+  background: rgba(4, 7, 9, 0.34);
+}
+
+.opponent-stats-bar > strong {
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: #f7f1df;
+  font-size: clamp(0.78rem, 1.1vw, 0.94rem);
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opponent-stats-bar .field-stats {
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+.central-arena {
+  grid-area: arena;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
+.chronos-container {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(86vw, min(35.5rem, 64vh));
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1;
+}
+
+.chronos-container .chronos {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 0.95rem rgba(226, 189, 93, 0.26));
+}
+
+.chronos-container .chronos svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.opp-battle-slot,
+.my-battle-slot {
+  position: absolute;
+  left: 50%;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  transform: translateX(-50%);
+}
+
+.opp-battle-slot {
+  top: 9.5%;
+}
+
+.my-battle-slot {
+  bottom: 9.5%;
+}
+
+.central-battle-zone {
+  --zone-card-w: var(--card-battle-w);
+  width: calc(var(--zone-card-w) + 0.72rem);
+  min-height: calc(var(--zone-card-h) + 0.92rem);
+  margin: 0;
+  padding: 0.25rem;
+  border-color: rgba(226, 189, 93, 0.62);
+  background: rgba(8, 11, 19, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.opponent-battle-zone,
+.player-battle-zone {
+  --zone-card-w: var(--card-battle-w);
+  margin: 0;
+}
+
+.central-battle-zone .zone-label {
+  max-width: 100%;
+  font-size: clamp(0.48rem, 0.72vw, 0.62rem);
+}
+
+.bottom-zones {
+  grid-area: bottom;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.3rem 0.5rem;
+}
+
+.bottom-zones .zone {
+  --zone-card-w: var(--card-normal-w);
+  width: calc(var(--zone-card-w) + 0.66rem);
+  min-height: calc(var(--zone-card-h) + 1rem);
+  padding: 0.26rem;
+}
+
+.bottom-zones .stack-zone {
+  flex: 0 0 auto;
+}
+
+.bottom-zones .power-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  justify-items: center;
+  width: clamp(4.2rem, 7vw, 5.5rem);
+  min-height: calc(var(--card-normal-w) * 1.4 + 1rem);
+  gap: 0.24rem;
+  padding: 0.28rem;
+  text-align: center;
+}
+
+.bottom-zones .power-charger-visual {
+  width: clamp(1.65rem, 2.5vw, 2.15rem);
+}
+
+.bottom-zones .power-stack strong {
+  justify-items: center;
+  font-size: clamp(0.78rem, 1vw, 0.95rem);
+}
+
+.bottom-zones .power-stack strong span {
+  max-width: 100%;
+  font-size: 0.66em;
+}
+
+.bottom-zones .deck-zone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  width: calc(var(--card-normal-w) + 0.66rem);
+  min-height: calc(var(--card-normal-w) * 1.4 + 1rem);
+  gap: 0.22rem;
+  padding: 0.26rem;
+}
+
+.bottom-zones .deck-card-back {
+  width: var(--card-normal-w);
+}
+
+.bottom-zones .deck-zone .deck-count {
+  font-size: clamp(0.78rem, 1vw, 0.95rem);
+}
+
+.status-bar {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.3rem, 0.8vw, 0.58rem);
+  min-width: 0;
+  min-height: clamp(2rem, 4vh, 2.4rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.45rem;
+  padding: 0.24rem 0.5rem;
+  background: rgba(4, 7, 9, 0.36);
+}
+
+.status-bar .resource-stat,
+.status-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.18rem;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999rem;
+  padding: 0.22rem 0.62rem;
+  background: rgba(255, 255, 255, 0.045);
+  color: #ece7d8;
+  font-size: clamp(0.66rem, 0.94vw, 0.82rem);
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-bar .phase-pill {
+  flex: 1 1 auto;
+  max-width: 12rem;
+}
+
+.status-bar .time-badge.night {
+  color: #dce6ff;
+  border-color: rgba(83, 125, 223, 0.44);
+}
+
+.status-bar .time-badge.day {
+  color: #ffd5cf;
+  border-color: rgba(207, 86, 74, 0.44);
+}
+
+.hand-drawer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+  display: grid;
+  grid-template-rows: var(--drawer-handle-h, 3rem) minmax(0, 1fr);
+  height: min(44vh, 28rem);
+  min-height: 18rem;
+  max-height: calc(100vh - 3rem);
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 -1rem 2.2rem rgba(0, 0, 0, 0.42);
+  transform: translateY(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hand-drawer.collapsed {
+  transform: translateY(calc(100% - var(--drawer-handle-h, 3rem)));
+}
+
+.hand-drawer.expanded {
+  transform: translateY(0);
+}
+
+.hand-drawer-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  height: var(--drawer-handle-h, 3rem);
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(10, 15, 40, 0.95);
+  color: #efe6cf;
+  font-size: clamp(0.82rem, 1.1vw, 0.98rem);
+  font-weight: 900;
+  cursor: pointer;
+  user-select: none;
+}
+
+.hand-drawer-content {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.8rem 0.8rem 0;
+  background: rgba(10, 15, 40, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.hand-area {
+  display: flex;
+  align-items: center;
+  justify-content: safe center;
+  gap: 0.8rem;
+  min-height: 0;
+  padding: 0.2rem 0.2rem 0.6rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
+.hand-drawer .game-card {
+  --card-w: 120px;
+  width: var(--card-w);
+  aspect-ratio: 5 / 7;
+  margin-left: 0;
+  cursor: pointer;
+}
+
+.hand-drawer-footer {
+  padding: 0.45rem 1rem 0.8rem;
+  background: transparent;
+}
+
+.player-view .field-layout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "opponent"
+    "arena"
+    "bottom"
+    "status";
+  gap: 0.22rem;
+}
+
+.player-view .chronos-container {
+  width: min(96%, min(22rem, 48vh));
+}
+
+.player-view .hand-drawer {
+  position: absolute;
+  height: min(42%, 18rem);
+  min-height: 12rem;
+}
+
+@media (max-width: 768px) {
+  .board {
+    --card-normal-w: clamp(3.35rem, 15vw, 4.35rem);
+    --card-small-w: clamp(2.75rem, 12vw, 3.55rem);
+    --card-tiny-w: clamp(2.2rem, 9.5vw, 2.8rem);
+    --card-micro-w: clamp(1.65rem, 7vw, 2.1rem);
+    --card-battle-w: clamp(3.75rem, 16vw, 4.65rem);
+    padding: 0.28rem;
+    padding-bottom: calc(var(--drawer-handle-h) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .field-layout {
+    gap: 0.22rem;
+  }
+
+  .opponent-stats-bar {
+    min-height: 2rem;
+    gap: 0.35rem;
+    padding: 0.22rem 0.38rem;
+  }
+
+  .opponent-stats-bar > strong {
+    font-size: 0.66rem;
+  }
+
+  .opponent-stats-bar .field-stats {
+    gap: 0.22rem;
+    font-size: 0.58rem;
+  }
+
+  .chronos-container {
+    width: min(94vw, min(22rem, 50vh));
+  }
+
+  .opp-battle-slot {
+    top: 8%;
+  }
+
+  .my-battle-slot {
+    bottom: 8%;
+  }
+
+  .central-battle-zone {
+    width: calc(var(--zone-card-w) + 0.5rem);
+    min-height: calc(var(--zone-card-h) + 0.76rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones {
+    gap: 0.28rem;
+    padding: 0.18rem 0.12rem;
+  }
+
+  .bottom-zones .zone {
+    width: calc(var(--zone-card-w) + 0.42rem);
+    min-height: calc(var(--zone-card-h) + 0.78rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones .power-stack {
+    width: clamp(3.2rem, 15vw, 4.1rem);
+    min-height: calc(var(--card-normal-w) * 1.4 + 0.78rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones .deck-zone {
+    width: calc(var(--card-normal-w) + 0.42rem);
+    min-height: calc(var(--card-normal-w) * 1.4 + 0.78rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones .power-charger-visual {
+    width: 1.3rem;
+    font-size: 0.82rem;
+  }
+
+  .bottom-zones .power-stack strong,
+  .bottom-zones .deck-zone .deck-count {
+    font-size: 0.6rem;
+  }
+
+  .zone-label,
+  .central-battle-zone .zone-label {
+    font-size: 0.45rem;
+  }
+
+  .zone-empty {
+    font-size: 0.54rem;
+  }
+
+  .status-bar {
+    min-height: 1.95rem;
+    gap: 0.18rem;
+    padding: 0.16rem 0.18rem;
+  }
+
+  .status-bar .resource-stat,
+  .status-pill {
+    gap: 0.12rem;
+    padding: 0.16rem 0.34rem;
+    font-size: 0.56rem;
+  }
+
+  .status-bar .phase-pill {
+    max-width: 6.8rem;
+  }
+
+  .hand-drawer {
+    height: min(46vh, 24rem);
+    min-height: 16rem;
+  }
+
+  .hand-area {
+    justify-content: flex-start;
+    gap: 0.55rem;
+    padding: 0.1rem 0.1rem 0.5rem;
+  }
+
+  .hand-drawer .game-card {
+    --card-w: 85px;
+  }
+
+  .hand-drawer-footer {
+    padding: 0.35rem 0.5rem 0.6rem;
+  }
+}
+
 /* Field layout fixes */
 .game-app {
   padding: clamp(0.35rem, 1vw, 0.65rem);
@@ -4006,5 +4970,380 @@ button.zone:focus-visible {
     width: min(12rem, 74vw);
     max-height: 46vh;
     padding: 0.5rem;
+  }
+}
+
+/* Field layout final cascade lock */
+.board {
+  --card-normal-w: clamp(4.7rem, min(6.6vw, 10vh), 6.4rem);
+  --card-battle-w: clamp(4.8rem, min(6.8vw, 10.2vh), 6.15rem);
+  --drawer-handle-h: 3rem;
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  padding-bottom: calc(var(--drawer-handle-h) + env(safe-area-inset-bottom, 0px));
+}
+
+.field-layout,
+.player-view .field-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "opponent"
+    "arena"
+    "bottom"
+    "status";
+  gap: clamp(0.34rem, 0.8vh, 0.65rem);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0;
+  transition: none;
+}
+
+.board.drawer-expanded .field-layout,
+.board.drawer-collapsed .field-layout {
+  padding-bottom: 0;
+}
+
+.opponent-stats-bar {
+  grid-area: opponent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.55rem, 1.4vw, 1rem);
+  min-height: clamp(2rem, 4vh, 2.5rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.45rem;
+  padding: 0.28rem 0.7rem;
+  background: rgba(4, 7, 9, 0.34);
+}
+
+.opponent-stats-bar > strong {
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: #f7f1df;
+  font-size: clamp(0.78rem, 1.1vw, 0.94rem);
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opponent-stats-bar .field-stats {
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+.central-arena {
+  grid-area: arena;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
+.chronos-container {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(86vw, min(35.5rem, 64vh));
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1;
+}
+
+.chronos-container .chronos,
+.chronos-container .chronos svg {
+  width: 100%;
+  height: 100%;
+}
+
+.chronos-container .chronos svg {
+  overflow: visible;
+}
+
+.opp-battle-slot,
+.my-battle-slot {
+  position: absolute;
+  left: 50%;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  transform: translateX(-50%);
+}
+
+.opp-battle-slot { top: 9.5%; }
+.my-battle-slot { bottom: 9.5%; }
+
+.central-battle-zone,
+.opponent-battle-zone,
+.player-battle-zone {
+  --zone-card-w: var(--card-battle-w);
+  margin: 0;
+}
+
+.central-battle-zone {
+  width: calc(var(--zone-card-w) + 0.72rem);
+  min-height: calc(var(--zone-card-h) + 0.92rem);
+  padding: 0.25rem;
+  border-color: rgba(226, 189, 93, 0.62);
+  background: rgba(8, 11, 19, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.bottom-zones {
+  grid-area: bottom;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.3rem 0.5rem;
+}
+
+.bottom-zones .zone {
+  --zone-card-w: var(--card-normal-w);
+  width: calc(var(--zone-card-w) + 0.66rem);
+  min-height: calc(var(--zone-card-h) + 1rem);
+  padding: 0.26rem;
+}
+
+.bottom-zones .power-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+  justify-items: center;
+  width: clamp(4.2rem, 7vw, 5.5rem);
+  min-height: calc(var(--card-normal-w) * 1.4 + 1rem);
+  gap: 0.24rem;
+  padding: 0.28rem;
+  text-align: center;
+}
+
+.bottom-zones .deck-zone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  width: calc(var(--card-normal-w) + 0.66rem);
+  min-height: calc(var(--card-normal-w) * 1.4 + 1rem);
+  gap: 0.22rem;
+  padding: 0.26rem;
+}
+
+.bottom-zones .deck-card-back {
+  width: var(--card-normal-w);
+}
+
+.status-bar {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.3rem, 0.8vw, 0.58rem);
+  min-width: 0;
+  min-height: clamp(2rem, 4vh, 2.4rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.45rem;
+  padding: 0.24rem 0.5rem;
+  background: rgba(4, 7, 9, 0.36);
+}
+
+.status-bar .resource-stat,
+.status-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.18rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999rem;
+  padding: 0.22rem 0.62rem;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: clamp(0.66rem, 0.94vw, 0.82rem);
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-bar .phase-pill {
+  flex: 1 1 auto;
+  max-width: 12rem;
+}
+
+.hand-drawer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+  display: grid;
+  grid-template-rows: var(--drawer-handle-h, 3rem) minmax(0, 1fr);
+  height: min(44vh, 28rem);
+  min-height: 18rem;
+  max-height: calc(100vh - 3rem);
+  overflow: hidden;
+  transform: translateY(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hand-drawer.collapsed {
+  transform: translateY(calc(100% - var(--drawer-handle-h, 3rem)));
+}
+
+.hand-drawer.expanded {
+  transform: translateY(0);
+}
+
+.hand-drawer-handle {
+  height: var(--drawer-handle-h, 3rem);
+  background: rgba(10, 15, 40, 0.95);
+  user-select: none;
+}
+
+.hand-drawer-content {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.8rem 0.8rem 0;
+  background: rgba(10, 15, 40, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.hand-area {
+  display: flex;
+  align-items: center;
+  justify-content: safe center;
+  gap: 0.8rem;
+  min-height: 0;
+  padding: 0.2rem 0.2rem 0.6rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.hand-drawer .game-card {
+  --card-w: 120px;
+  width: var(--card-w);
+  aspect-ratio: 5 / 7;
+  margin-left: 0;
+}
+
+.player-view .chronos-container {
+  width: min(96%, min(22rem, 48vh));
+}
+
+.player-view .hand-drawer {
+  position: absolute;
+  height: min(42%, 18rem);
+  min-height: 12rem;
+}
+
+@media (max-width: 768px) {
+  .board {
+    --card-normal-w: clamp(3.35rem, 15vw, 4.35rem);
+    --card-battle-w: clamp(3.75rem, 16vw, 4.65rem);
+    padding: 0.28rem;
+    padding-bottom: calc(var(--drawer-handle-h) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .field-layout,
+  .player-view .field-layout {
+    gap: 0.22rem;
+  }
+
+  .opponent-stats-bar {
+    min-height: 2rem;
+    gap: 0.35rem;
+    padding: 0.22rem 0.38rem;
+  }
+
+  .opponent-stats-bar > strong {
+    font-size: 0.66rem;
+  }
+
+  .opponent-stats-bar .field-stats {
+    gap: 0.22rem;
+    font-size: 0.58rem;
+  }
+
+  .chronos-container {
+    width: min(94vw, min(22rem, 50vh));
+  }
+
+  .opp-battle-slot { top: 8%; }
+  .my-battle-slot { bottom: 8%; }
+
+  .central-battle-zone {
+    width: calc(var(--zone-card-w) + 0.5rem);
+    min-height: calc(var(--zone-card-h) + 0.76rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones {
+    gap: 0.28rem;
+    padding: 0.18rem 0.12rem;
+  }
+
+  .bottom-zones .zone {
+    width: calc(var(--zone-card-w) + 0.42rem);
+    min-height: calc(var(--zone-card-h) + 0.78rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones .power-stack {
+    width: clamp(3.2rem, 15vw, 4.1rem);
+    min-height: calc(var(--card-normal-w) * 1.4 + 0.78rem);
+    padding: 0.18rem;
+  }
+
+  .bottom-zones .deck-zone {
+    width: calc(var(--card-normal-w) + 0.42rem);
+    min-height: calc(var(--card-normal-w) * 1.4 + 0.78rem);
+    padding: 0.18rem;
+  }
+
+  .status-bar {
+    min-height: 1.95rem;
+    gap: 0.18rem;
+    padding: 0.16rem 0.18rem;
+  }
+
+  .status-bar .resource-stat,
+  .status-pill {
+    gap: 0.12rem;
+    padding: 0.16rem 0.34rem;
+    font-size: 0.56rem;
+  }
+
+  .status-bar .phase-pill {
+    max-width: 6.8rem;
+  }
+
+  .hand-drawer {
+    height: min(46vh, 24rem);
+    min-height: 16rem;
+  }
+
+  .hand-area {
+    justify-content: flex-start;
+    gap: 0.55rem;
+    padding: 0.1rem 0.1rem 0.5rem;
+  }
+
+  .hand-drawer .game-card {
+    --card-w: 85px;
   }
 }
