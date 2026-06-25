@@ -46,7 +46,7 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     case 'simultaneousCharacter':
       return G.setCardsThisTurn[player].some(card => getCardDef(card.defId)?.type === 'Character');
     case 'hasAreaEnchant': return !!me.setZoneC && me.setZoneC.defId === cond.value;
-    case 'previousCharElement': return false;
+    case 'previousCharElement': return G.previousTurnCharacterElements?.[player] === cond.value;
     case 'and': return (cond.value as Condition[]).every(item => evaluateCondition(item, G, player));
     case 'or': return (cond.value as Condition[]).some(item => evaluateCondition(item, G, player));
   }
@@ -59,6 +59,10 @@ function loseOnEffectOverdraw(G: GameState, player: PlayerIndex, count: number):
   G.gameoverReason = `Player ${player} loses: effect attempted to draw ${count} with only ${G.players[player].deck.length} cards.`;
   G.log.push(G.gameoverReason);
   return true;
+}
+
+function isPersistentAreaEnchantEffect(card: CardInstance, effect: ParsedEffect): boolean {
+  return getCardDef(card.defId)?.type === 'Area Enchant' && effect.action.type === 'boostAttack';
 }
 
 export function executeEffect(
@@ -142,6 +146,26 @@ export function executeEffect(
       opponent.abyss.push(card);
       return { success: true, message: 'Send opposing character to Abyss' };
     }
+    case 'millDeckToAbyss': {
+      const count = Number(effect.action.params.count ?? 0);
+      let moved = 0;
+      for (let i = 0; i < count && opponent.deck.length > 0; i++) {
+        const card = opponent.deck.shift()!;
+        card.faceUp = true;
+        opponent.abyss.push(card);
+        moved++;
+      }
+      return { success: true, message: `Mill ${moved} opposing card${moved === 1 ? '' : 's'} to Abyss` };
+    }
+    case 'returnAreaEnchantToDeck': {
+      const card = opponent.setZoneC;
+      if (!card) return { success: false, message: 'No opposing Area Enchant' };
+      opponent.setZoneC = null;
+      card.faceUp = true;
+      if (effect.action.params.position === 'top') opponent.deck.unshift(card);
+      else opponent.deck.push(card);
+      return { success: true, message: 'Return opposing Area Enchant to deck' };
+    }
     case 'noEffect':
       G.modifiers.effectsDisabled[opponentIndex] = true;
       return { success: true, message: 'Disable opponent effects this turn' };
@@ -170,8 +194,10 @@ export function processTurnEffects(
       const effects = parsedEffects.get(card.defId) ?? [];
       for (const effect of effects) {
         const isNew = playedIds.has(card.instanceId);
-        if ((effect.trigger === 'onUse' || effect.trigger === 'onEnter') && !isNew) continue;
         if (!['onUse', 'onEnter', 'onBattle'].includes(effect.trigger)) continue;
+        const isPersistedSetZoneC = G.players[player].setZoneC?.instanceId === card.instanceId;
+        const canRunPersisted = isPersistedSetZoneC && isPersistentAreaEnchantEffect(card, effect);
+        if ((effect.trigger === 'onUse' || effect.trigger === 'onEnter') && !isNew && !canRunPersisted) continue;
         if (!definition || power(G, player) < definition.powerCost) {
           G.log.push(`Player ${player}: ${definition?.name ?? card.defId} effect skipped (power cost).`);
           continue;

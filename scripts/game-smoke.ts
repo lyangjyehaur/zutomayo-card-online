@@ -48,6 +48,14 @@ function parsedCardEffect(defId: string): ParsedEffect {
   return parsed;
 }
 
+function preparedAreaEnchantState(defId: string, chronosPosition: number): GameState {
+  const G = preparedState();
+  G.players[0].setZoneC = createInstance(defId, true);
+  G.players[0].powerCharger = [createInstance('1st_9', true)];
+  G.chronos.position = chronosPosition;
+  return G;
+}
+
 {
   const customIds = PRESET_DECKS.dark.ids;
   assert.equal(validateConstructedDeckIds(customIds), null);
@@ -151,6 +159,7 @@ function parsedCardEffect(defId: string): ParsedEffect {
   assert.equal(G.players[1].abyss.length, 1);
   assert.equal(G.step, 'turnSet');
   assert.equal(G.turnNumber, 2);
+  assert.deepEqual(G.previousTurnCharacterElements, [null, null]);
 }
 
 {
@@ -185,6 +194,118 @@ function parsedCardEffect(defId: string): ParsedEffect {
   const taidadaEffect = parsedCardEffect('4th_55');
   assert.deepEqual(taidadaEffect.conditions, [{ type: 'namedCardCondition', value: 'TAIDADA', target: 'battleZone' }]);
   assert.deepEqual(taidadaEffect.action, { type: 'heal', params: { value: 20 } });
+}
+
+{
+  const millTop = parseEffect('相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く');
+  assert.ok(millTop);
+  assert.deepEqual(millTop.action, { type: 'millDeckToAbyss', params: { target: 'opponent', count: 1 } });
+
+  const millTwo = parseEffect('相手のデッキの上から２枚を相手のアビスに置く');
+  assert.ok(millTwo);
+  assert.deepEqual(millTwo.action, { type: 'millDeckToAbyss', params: { target: 'opponent', count: 2 } });
+
+  const areaBottom = parseEffect('相手のエリアエンチャントを相手のデッキの底に置く');
+  assert.ok(areaBottom);
+  assert.deepEqual(areaBottom.action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'bottom' } });
+
+  const areaTop = parseEffect('相手のエリアエンチャントを相手のデッキの上に置く');
+  assert.ok(areaTop);
+  assert.deepEqual(areaTop.action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'top' } });
+
+  const areaCardTop = parseEffect('相手のエリアエンチャントカードを相手のデッキの上に置く');
+  assert.ok(areaCardTop);
+  assert.deepEqual(areaCardTop.action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'top' } });
+
+  assert.deepEqual(parsedCardEffect('1st_104').action, { type: 'millDeckToAbyss', params: { target: 'opponent', count: 1 } });
+
+  const realMillTwo = parsedCardEffect('4th_57');
+  assert.deepEqual(realMillTwo.conditions, [{ type: 'abyssCount', value: 3 }]);
+  assert.deepEqual(realMillTwo.action, { type: 'millDeckToAbyss', params: { target: 'opponent', count: 2 } });
+
+  assert.deepEqual(parsedCardEffect('3rd_14').action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'bottom' } });
+  assert.deepEqual(parsedCardEffect('3rd_21').action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'top' } });
+
+  const realAreaTop = parsedCardEffect('2nd_55');
+  assert.deepEqual(realAreaTop.conditions, [{ type: 'selfElement', value: '炎' }]);
+  assert.deepEqual(realAreaTop.action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'top' } });
+}
+
+{
+  const previousDark = parseEffect('前のターンで使用したキャラクターカードの属性が闇なら、攻撃力+20');
+  assert.ok(previousDark);
+  assert.deepEqual(previousDark.conditions, [{ type: 'previousCharElement', value: '闇' }]);
+  assert.deepEqual(previousDark.action, { type: 'boostAttack', params: { value: 20 } });
+
+  const G = preparedState();
+  assert.equal(executeEffect(previousDark, G, 0).success, false);
+  assert.equal(G.modifiers.attack[0], 0);
+}
+
+{
+  const seal = parsedCardEffect('2nd_86');
+  assert.deepEqual(seal.conditions, [{ type: 'chronos', value: 'night' }]);
+  assert.deepEqual(seal.action, { type: 'boostAttack', params: { value: 20 } });
+
+  const review = parsedCardEffect('2nd_98');
+  assert.deepEqual(review.conditions, [{ type: 'chronos', value: 'day' }]);
+  assert.deepEqual(review.action, { type: 'boostAttack', params: { value: 20 } });
+}
+
+{
+  const effect = parsedCardEffect('2nd_86');
+  const G = preparedAreaEnchantState('2nd_86', 0);
+  processTurnEffects(G, new Map([['2nd_86', [effect]]]));
+  assert.equal(G.modifiers.attack[0], 20);
+}
+
+{
+  const effect = parsedCardEffect('2nd_86');
+  const G = preparedAreaEnchantState('2nd_86', 6);
+  processTurnEffects(G, new Map([['2nd_86', [effect]]]));
+  assert.equal(G.modifiers.attack[0], 0);
+}
+
+{
+  const effect = parsedCardEffect('2nd_98');
+  const G = preparedAreaEnchantState('2nd_98', 6);
+  processTurnEffects(G, new Map([['2nd_98', [effect]]]));
+  assert.equal(G.modifiers.attack[0], 20);
+}
+
+{
+  const effect = parsedCardEffect('2nd_98');
+  const G = preparedAreaEnchantState('2nd_98', 0);
+  processTurnEffects(G, new Map([['2nd_98', [effect]]]));
+  assert.equal(G.modifiers.attack[0], 0);
+}
+
+{
+  const effect = parsedCardEffect('2nd_86');
+  const G = preparedAreaEnchantState('2nd_86', 0);
+  const area = G.players[0].setZoneC!;
+  processTurnEffects(G, new Map([['2nd_86', [effect]]]), [[area], []]);
+  assert.equal(G.modifiers.attack[0], 20);
+}
+
+{
+  const previousDark = parseEffect('前のターンで使用したキャラクターカードの属性が闇なら、攻撃力+20');
+  const previousFlame = parseEffect('前のターンで使用したキャラクターカードの属性が炎なら、攻撃力+20');
+  assert.ok(previousDark);
+  assert.ok(previousFlame);
+
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.players[0].hand = [createInstance('1st_9', true)];
+  G.players[1].hand = [createInstance('1st_5', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  resolveTurn(G, noEffects);
+  assert.deepEqual(G.previousTurnCharacterElements, ['闇', null]);
+  assert.equal(executeEffect(previousDark, G, 0).success, true);
+  assert.equal(G.modifiers.attack[0], 20);
+  assert.equal(executeEffect(previousFlame, G, 0).success, false);
 }
 
 {
@@ -292,6 +413,97 @@ function parsedCardEffect(defId: string): ParsedEffect {
   assert.equal(executeEffect(drawTwo, G, 0).success, false);
   assert.equal(G.step, 'gameOver');
   assert.equal(G.winner, 1);
+}
+
+{
+  const top = createInstance('1st_1', false);
+  const next = createInstance('1st_5', false);
+  const G = preparedState();
+  G.players[1].deck = [top, next];
+  G.players[1].abyss = [];
+  const millOne: ParsedEffect = {
+    trigger: 'onUse', conditions: [], rawText: 'mill one',
+    action: { type: 'millDeckToAbyss', params: { target: 'opponent', count: 1 } },
+  };
+  assert.equal(executeEffect(millOne, G, 0).success, true);
+  assert.deepEqual(G.players[1].abyss.map(card => card.instanceId), [top.instanceId]);
+  assert.deepEqual(G.players[1].deck.map(card => card.instanceId), [next.instanceId]);
+  assert.equal(top.faceUp, true);
+}
+
+{
+  const top = createInstance('1st_1', false);
+  const second = createInstance('1st_5', false);
+  const third = createInstance('1st_9', false);
+  const G = preparedState();
+  G.players[1].deck = [top, second, third];
+  G.players[1].abyss = [];
+  const millTwo: ParsedEffect = {
+    trigger: 'onUse', conditions: [], rawText: 'mill two',
+    action: { type: 'millDeckToAbyss', params: { target: 'opponent', count: 2 } },
+  };
+  assert.equal(executeEffect(millTwo, G, 0).success, true);
+  assert.deepEqual(G.players[1].abyss.map(card => card.instanceId), [top.instanceId, second.instanceId]);
+  assert.deepEqual(G.players[1].deck.map(card => card.instanceId), [third.instanceId]);
+  assert.equal(top.faceUp, true);
+  assert.equal(second.faceUp, true);
+}
+
+{
+  const top = createInstance('1st_1', false);
+  const G = preparedState();
+  G.players[1].deck = [top];
+  G.players[1].abyss = [];
+  const millTwo: ParsedEffect = {
+    trigger: 'onUse', conditions: [], rawText: 'partial mill',
+    action: { type: 'millDeckToAbyss', params: { target: 'opponent', count: 2 } },
+  };
+  assert.equal(executeEffect(millTwo, G, 0).success, true);
+  assert.equal(G.step, 'initialSet');
+  assert.deepEqual(G.players[1].abyss.map(card => card.instanceId), [top.instanceId]);
+  assert.deepEqual(G.players[1].deck, []);
+}
+
+{
+  const area = createInstance('2nd_5', false);
+  const deckCard = createInstance('1st_1', false);
+  const G = preparedState();
+  G.players[1].setZoneC = area;
+  G.players[1].deck = [deckCard];
+  const returnTop: ParsedEffect = {
+    trigger: 'onUse', conditions: [], rawText: 'return top',
+    action: { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'top' } },
+  };
+  assert.equal(executeEffect(returnTop, G, 0).success, true);
+  assert.equal(G.players[1].setZoneC, null);
+  assert.deepEqual(G.players[1].deck.map(card => card.instanceId), [area.instanceId, deckCard.instanceId]);
+  assert.equal(area.faceUp, true);
+}
+
+{
+  const area = createInstance('2nd_5', false);
+  const deckCard = createInstance('1st_1', false);
+  const G = preparedState();
+  G.players[1].setZoneC = area;
+  G.players[1].deck = [deckCard];
+  const returnBottom: ParsedEffect = {
+    trigger: 'onUse', conditions: [], rawText: 'return bottom',
+    action: { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'bottom' } },
+  };
+  assert.equal(executeEffect(returnBottom, G, 0).success, true);
+  assert.equal(G.players[1].setZoneC, null);
+  assert.deepEqual(G.players[1].deck.map(card => card.instanceId), [deckCard.instanceId, area.instanceId]);
+  assert.equal(area.faceUp, true);
+}
+
+{
+  const G = preparedState();
+  G.players[1].setZoneC = null;
+  const returnTop: ParsedEffect = {
+    trigger: 'onUse', conditions: [], rawText: 'return missing',
+    action: { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'top' } },
+  };
+  assert.deepEqual(executeEffect(returnTop, G, 0), { success: false, message: 'No opposing Area Enchant' });
 }
 
 console.log('game smoke: all assertions passed');

@@ -81,6 +81,7 @@ export interface GameState {
   lastBattleResult: LastBattleResult;
   setCardsThisTurn: [CardInstance[], CardInstance[]];
   swappedCardsThisTurn: [CardInstance[], CardInstance[]];
+  previousTurnCharacterElements: [Element | null, Element | null];
   jankenChoices: [JankenChoice | null, JankenChoice | null];
   mulliganUsed: [boolean, boolean];
   modifiers: CombatModifiers;

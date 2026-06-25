@@ -67,5 +67,7 @@ export type ActionType =
   | 'clockAdvance'      // Advance chronos by N
   | 'recoverFromAbyss'  // Pick card from abyss
   | 'sendToAbyss'       // Send card to abyss
+  | 'millDeckToAbyss'   // Move cards from deck top to abyss
+  | 'returnAreaEnchantToDeck' // Return Area Enchant to deck
   | 'noEffect'          // Disable opponent effects
   | 'addSettableCard';  // Can set extra card

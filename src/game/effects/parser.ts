@@ -79,15 +79,22 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     conditions.push({ type: 'simultaneousCharacter', value: true });
   }
 
+  // "前のターンで使用したキャラクターカードの属性がXなら..."
+  const previousCharElementMatch = actionText.match(/前のターンで使用したキャラクターカードの属性が(闇|炎|電気|風|カオス)なら[、,]?(.+)$/);
+  if (previousCharElementMatch) {
+    conditions.push({ type: 'previousCharElement', value: previousCharElementMatch[1] });
+    actionText = previousCharElementMatch[2];
+  }
+
   // "相手の属性がXなら..."
-  const oppElementMatch = text.match(/相手の(?:キャラクターカードの)?属性が(闇|炎|電気|風|カオス)なら(.+)$/);
+  const oppElementMatch = text.match(/相手の(?:キャラクターカードの)?属性が(闇|炎|電気|風|カオス)なら[、,]?(.+)$/);
   if (oppElementMatch) {
     conditions.push({ type: 'opponentElement', value: oppElementMatch[1] });
     actionText = oppElementMatch[2];
   }
 
   // "自分の属性がXなら..."
-  const selfElementMatch = text.match(/自分の(?:キャラクターカードの)?属性が(闇|炎|電気|風|カオス)なら(.+)$/);
+  const selfElementMatch = text.match(/自分の(?:キャラクターカードの)?属性が(闇|炎|電気|風|カオス)なら[、,]?(.+)$/);
   if (selfElementMatch) {
     conditions.push({ type: 'selfElement', value: selfElementMatch[1] });
     actionText = selfElementMatch[2];
@@ -108,7 +115,7 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   // "アビスにX枚以上カードがあるなら..."
-  const abyssCountMatch = text.match(/アビスに(\d+)枚以上カードがあるなら(.+)$/);
+  const abyssCountMatch = text.match(/アビスに([0-9０-９]+)枚以上の?カードがあるなら[、,]?(.+)$/);
   if (abyssCountMatch) {
     conditions.push({ type: 'abyssCount', value: parseNum(abyssCountMatch[1]) });
     actionText = abyssCountMatch[2];
@@ -153,6 +160,26 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 // ===== Action Parser =====
 
 function parseAction(text: string): EffectAction | null {
+  // "相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く"
+  if (/^相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く[。.]?$/.test(text)) {
+    return { type: 'millDeckToAbyss', params: { target: 'opponent', count: 1 } };
+  }
+
+  // "相手のデッキの上からX枚を相手のアビスに置く"
+  const millDeckMatch = text.match(/^相手のデッキの上から([0-9０-９]+)枚を相手のアビスに置く[。.]?$/);
+  if (millDeckMatch) {
+    return { type: 'millDeckToAbyss', params: { target: 'opponent', count: parseNum(millDeckMatch[1]) } };
+  }
+
+  // "相手のエリアエンチャント(カード)を相手のデッキの上/底に置く"
+  const returnAreaEnchantMatch = text.match(/^相手のエリアエンチャント(?:カード)?を相手のデッキの(上|底)に置く[。.]?$/);
+  if (returnAreaEnchantMatch) {
+    return {
+      type: 'returnAreaEnchantToDeck',
+      params: { target: 'opponent', position: returnAreaEnchantMatch[1] === '上' ? 'top' : 'bottom' },
+    };
+  }
+
   // "攻撃力+50"
   const boostMatch = text.match(/攻撃力(?:を)?[＋+]([0-9０-９]+)/);
   if (boostMatch) return { type: 'boostAttack', params: { value: parseNum(boostMatch[1]) } };

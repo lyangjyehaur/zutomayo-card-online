@@ -4,6 +4,7 @@ import type {
   CardInstance,
   ChronosTime,
   CombatModifiers,
+  Element,
   GameState,
   JankenChoice,
   PlayerIndex,
@@ -155,6 +156,7 @@ export function setupGame(
     lastBattleResult: { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 },
     setCardsThisTurn: [[], []],
     swappedCardsThisTurn: [[], []],
+    previousTurnCharacterElements: [null, null],
     jankenChoices: [null, null],
     mulliganUsed: [false, false],
     modifiers: emptyModifiers(),
@@ -413,6 +415,21 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
   G.log.push(reason);
 }
 
+function characterElementPlayedThisTurn(G: GameState, player: PlayerIndex): Element | null {
+  for (const card of G.setCardsThisTurn[player]) {
+    const def = getCardDef(card.defId);
+    if (def?.type === 'Character') return def.element;
+  }
+  return null;
+}
+
+function recordPreviousTurnCharacterElements(G: GameState): void {
+  G.previousTurnCharacterElements = [
+    characterElementPlayedThisTurn(G, 0),
+    characterElementPlayedThisTurn(G, 1),
+  ];
+}
+
 function finishTurn(G: GameState): void {
   for (const player of G.players) {
     for (const zone of ['setZoneA', 'setZoneB'] as const) {
@@ -467,5 +484,6 @@ export function resolveTurn(G: GameState, parsedEffects: Map<string, ParsedEffec
     endGame(G, winner, `Player ${1 - winner} loses at 0 HP.`);
     return;
   }
+  if (!initial) recordPreviousTurnCharacterElements(G);
   finishTurn(G);
 }
