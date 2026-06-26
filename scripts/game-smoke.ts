@@ -1990,4 +1990,143 @@ function fivePowerCards() {
   assert.deepEqual(executeEffect(returnTop, G, 0), { success: false, message: 'No opposing Area Enchant' });
 }
 
+{
+  const parsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  for (const id of ['1st_6', '1st_92', '2nd_6', '2nd_58', '4th_41', '4th_65', '4th_89', '4th_100']) {
+    assert.ok(parsedEffects.get(id)?.length, `${id} should parse`);
+  }
+
+  assert.deepEqual(parsedCardEffect('1st_6').action, {
+    type: 'useFromAbyss',
+    params: { source: 'abyss', cardType: 'Enchant', count: 1 },
+  });
+  assert.deepEqual(parseEffect('※このカードを使用後、手札の数はバトル終了まで１枚増える')?.action, {
+    type: 'handSizeModifier',
+    params: { value: 1, duration: 'battle' },
+  });
+  assert.deepEqual(parsedCardEffect('2nd_6').action, { type: 'setPowerCost', params: { reduction: 2 } });
+  assert.deepEqual(parsedCardEffect('2nd_58').action, {
+    type: 'boostAttack',
+    params: { value: 1, per: 'zoneElementCount', zone: 'abyss', element: '闇' },
+  });
+  assert.equal(parsedEffects.get('4th_41')?.length, 1);
+  assert.deepEqual(parsedEffects.get('4th_41')?.[0].conditions, [
+    { type: 'namedCardCondition', value: 'シェードの埃は延長', target: 'swappedThisTurn' },
+  ]);
+  assert.deepEqual(parsedCardEffect('4th_65').conditions, [
+    { type: 'namedCardCondition', value: 'お勉強しといてよ', target: 'battleZone' },
+  ]);
+  assert.deepEqual(parseEffect('このカードの効果でカードを引いたなら、手札の数はゲーム終了まで１枚増える')?.action, {
+    type: 'handSizeModifier',
+    params: { value: 1, duration: 'game' },
+  });
+  assert.deepEqual(parsedEffects.get('4th_100')?.[0].action, {
+    type: 'directDamage',
+    params: { value: 'reducedThisTurn', timing: 'turnEnd' },
+  });
+
+  const useFromAbyssState = preparedState();
+  const copiedEnchant = createInstance('1st_92', true);
+  useFromAbyssState.players[0].abyss = [copiedEnchant, createInstance('1st_1', true)];
+  assert.equal(executeEffect(parsedCardEffect('1st_6'), useFromAbyssState, 0).success, true);
+  assert.equal(useFromAbyssState.pendingChoice?.type, 'useFromAbyss');
+  assert.deepEqual(useFromAbyssState.pendingChoice?.options.map(option => option.cardDefId), ['1st_92']);
+  assert.equal(submitPendingChoice(useFromAbyssState, 0, [copiedEnchant.instanceId], parsedEffects), true);
+  assert.ok(useFromAbyssState.pendingEffects[0].some(effect => effect.cardDefId === '1st_92'));
+
+  const battleHandSizeState = preparedState();
+  const battleHandSize = parseEffect('※このカードを使用後、手札の数はバトル終了まで１枚増える');
+  assert.ok(battleHandSize);
+  assert.equal(executeEffect(battleHandSize, battleHandSizeState, 0).success, true);
+  assert.equal(battleHandSizeState.modifiers.handSize[0], 1);
+  const gameHandSizeState = preparedState();
+  const gameHandSize = parseEffect('このカードの効果でカードを引いたなら、手札の数はゲーム終了まで１枚増える');
+  assert.ok(gameHandSize);
+  assert.equal(executeEffect(gameHandSize, gameHandSizeState, 0).success, true);
+  assert.equal(gameHandSizeState.handSizeModifier[0], 1);
+
+  const reducedCostState = preparedState();
+  const costlyCharacter = createInstance('1st_22', true);
+  reducedCostState.players[0].battleZone = costlyCharacter;
+  reducedCostState.setCardsThisTurn[0] = [costlyCharacter];
+  assert.equal(getEffectiveAttack(costlyCharacter, reducedCostState, 0), 0);
+  assert.equal(executeEffect(parsedCardEffect('2nd_6'), reducedCostState, 0).success, true);
+  assert.equal(getEffectiveAttack(costlyCharacter, reducedCostState, 0), 50);
+
+  const namedReducedCostState = preparedState();
+  namedReducedCostState.chronos.position = 0;
+  namedReducedCostState.players[0].battleZone = createInstance('1st_1', true);
+  namedReducedCostState.players[0].powerCharger = [createInstance('1st_9', true), createInstance('1st_10', true), createInstance('1st_17', true)];
+  assert.equal(getEffectiveAttack(namedReducedCostState.players[0].battleZone, namedReducedCostState, 0), 0);
+  assert.equal(executeEffect(parsedCardEffect('4th_65'), namedReducedCostState, 0).success, true);
+  assert.equal(getEffectiveAttack(namedReducedCostState.players[0].battleZone, namedReducedCostState, 0), 130);
+
+  const abyssBoostState = preparedState();
+  abyssBoostState.players[0].abyss = [createInstance('1st_9', true), createInstance('1st_10', true), createInstance('1st_13', true)];
+  assert.equal(executeEffect(parsedCardEffect('2nd_58'), abyssBoostState, 0).success, true);
+  assert.equal(abyssBoostState.modifiers.attack[0], 2);
+
+  const revealBoostState = preparedState();
+  const taidadaA = createInstance('4th_67', false);
+  const taidadaB = createInstance('4th_68', false);
+  revealBoostState.players[0].hand = [taidadaA, taidadaB, createInstance('1st_1', false)];
+  revealBoostState.step = 'effectOrder';
+  revealBoostState.pendingEffectPlayer = 0;
+  revealBoostState.pendingEffects = [[{
+    id: 'hold-reveal',
+    player: 0,
+    cardInstanceId: 'hold-reveal',
+    cardDefId: 'hold-reveal',
+    rawText: 'hold',
+    effect: boost,
+    source: 'played',
+  }], []];
+  assert.equal(executeEffect(parsedCardEffect('4th_1'), revealBoostState, 0).success, true);
+  assert.equal(revealBoostState.pendingChoice?.type, 'revealHandAttackBoost');
+  assert.equal(submitPendingChoice(revealBoostState, 0, [taidadaA.instanceId, taidadaB.instanceId], noEffects), true);
+  assert.equal(revealBoostState.modifiers.attack[0], 60);
+  assert.deepEqual(new Set(revealBoostState.revealedHandCardIds[0]), new Set([taidadaA.instanceId, taidadaB.instanceId]));
+
+  const nameGuessState = preparedState();
+  const guessedCard = createInstance('1st_4', false);
+  nameGuessState.players[1].hand = [guessedCard];
+  nameGuessState.step = 'effectOrder';
+  nameGuessState.pendingEffectPlayer = 0;
+  nameGuessState.pendingEffects = [[{
+    id: 'hold-guess',
+    player: 0,
+    cardInstanceId: 'hold-guess',
+    cardDefId: 'hold-guess',
+    rawText: 'hold',
+    effect: boost,
+    source: 'played',
+  }], []];
+  assert.equal(executeEffect(parsedCardEffect('3rd_47'), nameGuessState, 0).success, true);
+  const guessOption = nameGuessState.pendingChoice?.options.find(option => option.id === `hand:0:guess:${guessedCard.defId}`);
+  assert.ok(guessOption);
+  assert.equal(submitPendingChoice(nameGuessState, 0, [guessOption.id], noEffects), true);
+  assert.equal(nameGuessState.modifiers.attack[0], 50);
+  assert.deepEqual(nameGuessState.revealedHandCardIds[1], [guessedCard.instanceId]);
+
+  const delayedDamageState = preparedState();
+  delayedDamageState.players[0].battleZone = createInstance('1st_12', true);
+  const delayedDamage = parsedEffects.get('4th_100')?.[0];
+  assert.ok(delayedDamage);
+  assert.equal(executeEffect(delayedDamage, delayedDamageState, 0).success, true);
+  assert.equal(delayedDamageState.delayedEffects.length, 1);
+  delayedDamageState.damageReducedThisTurn[0] = 35;
+  resolveTimingEvent(delayedDamageState, noEffects, { type: 'turnEnd' });
+  assert.equal(delayedDamageState.players[1].hp, 65);
+
+  const characterPowerExpiryState = preparedAreaEnchantState('2nd_58', 0);
+  characterPowerExpiryState.players[0].powerCharger = [createInstance('1st_9', true), createInstance('1st_10', true), createInstance('1st_17', true)];
+  characterPowerExpiryState.timingEvents.push({ type: 'zoneEntered', player: 0, zone: 'powerCharger', cardDefId: '1st_9' });
+  resolveTimingEvent(characterPowerExpiryState, parsedEffects, { type: 'turnEnd' });
+  assert.equal(characterPowerExpiryState.players[0].setZoneC, null);
+  assert.equal(characterPowerExpiryState.players[0].abyss.at(-1)?.defId, '2nd_58');
+
+  const abyssCountExpiry = parsedEffects.get('3rd_86')?.find(effect => effect.action.type === 'moveSelfAreaEnchant');
+  assert.deepEqual(abyssCountExpiry?.conditions, [{ type: 'zoneCountAtLeast', value: 4, target: 'abyss' }]);
+}
+
 console.log('game smoke: all assertions passed');

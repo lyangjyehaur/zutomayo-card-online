@@ -129,6 +129,21 @@ export interface PendingOpponentPowerCharacterSwapPayload {
   opponentPlayer: PlayerIndex;
 }
 
+export interface PendingUseFromAbyssPayload {
+  sourcePlayer: PlayerIndex;
+}
+
+export interface PendingRevealHandAttackBoostPayload {
+  sourcePlayer: PlayerIndex;
+  boostPerCard: number;
+  filter: PendingCardFilter;
+}
+
+export interface PendingNameGuessOpponentHandRevealPayload {
+  opponentPlayer: PlayerIndex;
+  attackBoost: number;
+}
+
 export interface PendingChoiceBase {
   id: string;
   player: PlayerIndex;
@@ -158,6 +173,18 @@ export type PendingChoice =
   | (PendingChoiceBase & {
       type: 'opponentPowerCharacterSwap';
       payload: PendingOpponentPowerCharacterSwapPayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'useFromAbyss';
+      payload: PendingUseFromAbyssPayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'revealHandAttackBoost';
+      payload: PendingRevealHandAttackBoostPayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'nameGuessOpponentHandReveal';
+      payload: PendingNameGuessOpponentHandRevealPayload;
     })
   | (PendingChoiceBase & {
       type: 'handAbyssSwap';
@@ -204,6 +231,8 @@ export interface CombatModifiers {
   attackTimeOverride: [ChronosTime | null, ChronosTime | null];
   cardClockSetTo: number | null;
   damageReduction: [number, number];
+  handSize: [number, number];
+  powerCostReduction: [number, number];
   swapAttack: [boolean, boolean];
   effectsDisabled: [boolean, boolean];
   unreduceableDamage: [boolean, boolean];
@@ -221,6 +250,7 @@ export interface GameState {
   setCardsThisTurn: [CardInstance[], CardInstance[]];
   pendingEffects: [PendingEffect[], PendingEffect[]];
   pendingEffectPlayer: PlayerIndex | null;
+  delayedEffects: PendingEffect[];
   pendingChoice: PendingChoice | null;
   lastChoiceSelectionCount: [number | null, number | null];
   timingEvents: TimingEvent[];
@@ -228,6 +258,8 @@ export interface GameState {
   swappedCardsThisTurn: [CardInstance[], CardInstance[]];
   suppressedEffectCardIdsThisTurn: string[];
   previousTurnCharacterElements: [Element | null, Element | null];
+  handSizeModifier: [number, number];
+  damageReducedThisTurn: [number, number];
   jankenChoices: [JankenChoice | null, JankenChoice | null];
   mulliganUsed: [boolean, boolean];
   modifiers: CombatModifiers;

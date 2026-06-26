@@ -10,14 +10,17 @@ import type {
   PendingChoiceDeckPosition,
   PendingChoiceDestinationZone,
   PendingEffect,
+  PendingNameGuessOpponentHandRevealPayload,
   PendingEffectSource,
   PendingOptionalHandMoveThenDrawPayload,
   PendingOpponentPowerCharacterSwapPayload,
+  PendingRevealHandAttackBoostPayload,
+  PendingUseFromAbyssPayload,
   PlayerIndex,
 } from '../types';
 import { CHRONOS_MAPPING } from '../types';
 import type { ParsedEffect, Condition } from './types';
-import { getCardDef } from '../cards/loader';
+import { getAllCardDefs, getCardDef } from '../cards/loader';
 import { getChronosTimeForPosition, normalizeChronosPosition } from '../chronos';
 import {
   isCharacterCard,
@@ -32,6 +35,11 @@ function power(G: GameState, player: PlayerIndex): number {
   return G.players[player].powerCharger.reduce(
     (sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0), 0,
   );
+}
+
+function zoneElementCount(G: GameState, player: PlayerIndex, zone: string, element: string): number {
+  const cards = zone === 'powerCharger' ? G.players[player].powerCharger : G.players[player].abyss;
+  return cards.filter(card => getCardDef(card.defId)?.element === element).length;
 }
 
 function isNight(G: GameState): boolean {
@@ -64,9 +72,18 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
       const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
       return cards.some(card => getCardDef(card.defId)?.element === cond.value);
     }
+    case 'zoneEnteredCardType': {
+      const targetPlayer = cond.target === 'opponent' ? (1 - player) as PlayerIndex : player;
+      return G.timingEvents.some(event => (
+        event.type === 'zoneEntered'
+        && event.player === targetPlayer
+        && event.zone === 'powerCharger'
+        && getCardDef(event.cardDefId ?? '')?.type === cond.value
+      ));
+    }
     case 'abyssCount': return me.abyss.length >= Number(cond.value);
     case 'handCount': return me.hand.length >= Number(cond.value);
-    case 'hpLessOrEqual': return me.hp <= Number(cond.value);
+    case 'hpLessOrEqual': return (cond.target === 'opponent' ? opponent : me).hp <= Number(cond.value);
     case 'hpLessThanOpponent': return me.hp < opponent.hp;
     case 'damageAtLeast': {
       const event = [...G.timingEvents].reverse().find(item => item.type === 'damageReceived' && item.player === player);
@@ -89,6 +106,7 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     case 'namedCardCondition': {
       const song = String(cond.value);
       if (cond.target === 'battleZone') return isNamedCharacter(me.battleZone, song);
+      if (cond.target === 'battleZoneNot') return !!me.battleZone && !isNamedCharacter(me.battleZone, song);
       if (cond.target === 'playedThisTurn') return G.setCardsThisTurn[player].some(card => isNamedCharacter(card, song));
       if (cond.target === 'swappedThisTurn') return G.swappedCardsThisTurn[player].some(card => isNamedCharacter(card, song));
       return isNamedCharacter(me.battleZone, song) || G.setCardsThisTurn[player].some(card => isNamedCharacter(card, song));
@@ -140,6 +158,7 @@ function isPersistentAreaEnchantEffect(card: CardInstance, effect: ParsedEffect)
   return getCardDef(card.defId)?.type === 'Area Enchant' && [
     'boostAttack',
     'forceOwnAttackTime',
+    'setPowerCost',
     'setAllCardClocks',
   ].includes(effect.action.type);
 }
@@ -209,11 +228,21 @@ export function executeEffect(
   const me = G.players[player];
   const opponentIndex = (1 - player) as PlayerIndex;
   const opponent = G.players[opponentIndex];
+  const valueParam = effect.action.params.value;
   const value = Number(effect.action.params.value ?? 0);
   switch (effect.action.type) {
-    case 'boostAttack':
-      G.modifiers.attack[player] += value;
-      return { success: true, message: `Attack +${value}` };
+    case 'boostAttack': {
+      const boost = effect.action.params.per === 'zoneElementCount'
+        ? value * zoneElementCount(
+          G,
+          player,
+          String(effect.action.params.zone ?? 'abyss'),
+          String(effect.action.params.element ?? ''),
+        )
+        : value;
+      G.modifiers.attack[player] += boost;
+      return { success: true, message: `Attack +${boost}` };
+    }
     case 'boostBothAttackByOwnHp':
       G.modifiers.attack[player] += me.hp;
       G.modifiers.attack[opponentIndex] += opponent.hp;
@@ -228,13 +257,36 @@ export function executeEffect(
     case 'heal':
       me.hp = Math.min(100, me.hp + value);
       return { success: true, message: `Heal ${value}` };
-    case 'directDamage':
-      if (value === -1) G.modifiers.unreduceableDamage[player] = true;
+    case 'directDamage': {
+      if (effect.action.params.timing === 'turnEnd') {
+        const { timing: _timing, ...params } = effect.action.params;
+        if (!G.delayedEffects) G.delayedEffects = [];
+        G.delayedEffects.push({
+          id: `delayed-${player}-${G.turnNumber}-${G.log.length}-${G.delayedEffects.length}`,
+          player,
+          cardInstanceId: `delayed-${player}`,
+          cardDefId: 'delayed-effect',
+          rawText: effect.rawText,
+          effect: {
+            ...effect,
+            trigger: 'onTurnEnd',
+            conditions: [],
+            action: { type: 'directDamage', params },
+          },
+          source: 'played',
+        });
+        return { success: true, message: 'Scheduled turn-end damage' };
+      }
+      const damage = valueParam === 'reducedThisTurn'
+        ? (G.damageReducedThisTurn?.[player] ?? 0)
+        : value;
+      if (damage === -1) G.modifiers.unreduceableDamage[player] = true;
       else {
-        opponent.hp = Math.max(0, opponent.hp - value);
+        opponent.hp = Math.max(0, opponent.hp - damage);
         if (opponent.hp <= 0) loseByHp(G, opponentIndex, `Player ${opponentIndex} loses at 0 HP.`);
       }
-      return { success: true, message: value === -1 ? 'Battle damage cannot be reduced' : `Deal ${value}` };
+      return { success: true, message: damage === -1 ? 'Battle damage cannot be reduced' : `Deal ${damage}` };
+    }
     case 'damageReduce':
       G.modifiers.damageReduction[player] += value;
       return { success: true, message: `Damage reduction +${value}` };
@@ -398,7 +450,123 @@ export function executeEffect(
       else me.abyss.push(card);
       return { success: true, message: `Move own Area Enchant to ${effect.action.params.destination === 'powerCharger' ? 'Power Charger' : 'Abyss'}` };
     }
+    case 'useFromAbyss': {
+      const options = me.abyss
+        .filter(card => getCardDef(card.defId)?.type === 'Enchant')
+        .map(card => ({
+          id: card.instanceId,
+          label: getCardDef(card.defId)?.name ?? card.defId,
+          cardInstanceId: card.instanceId,
+          cardDefId: card.defId,
+        }));
+      if (options.length === 0) return { success: false, message: 'No Abyss Enchant to use' };
+      const payload: PendingUseFromAbyssPayload = { sourcePlayer: player };
+      G.pendingChoice = {
+        id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+        player,
+        type: 'useFromAbyss',
+        min: 1,
+        max: 1,
+        prompt: effect.rawText,
+        payload,
+        options,
+      };
+      return { success: true, message: 'Pending Abyss Enchant effect selection' };
+    }
+    case 'handSizeModifier': {
+      const amount = Number(effect.action.params.value ?? 0);
+      if (effect.action.params.duration === 'game') {
+        if (!G.handSizeModifier) G.handSizeModifier = [0, 0];
+        G.handSizeModifier[player] += amount;
+        return { success: true, message: `Game hand size +${amount}` };
+      }
+      if (!G.modifiers.handSize) G.modifiers.handSize = [0, 0];
+      G.modifiers.handSize[player] += amount;
+      return { success: true, message: `Battle hand size +${amount}` };
+    }
+    case 'setPowerCost': {
+      const reduction = Number(effect.action.params.reduction ?? effect.action.params.value ?? 0);
+      if (!G.modifiers.powerCostReduction) G.modifiers.powerCostReduction = [0, 0];
+      G.modifiers.powerCostReduction[player] += reduction;
+      return { success: true, message: `Character power cost -${reduction}` };
+    }
     case 'requestChoice': {
+      if (effect.action.params.choiceType === 'revealHandAttackBoost') {
+        const boostPerCard = Number(effect.action.params.boostPerCard ?? 0);
+        const filter: PendingCardFilter = {};
+        if (effect.action.params.filterCardType !== undefined) {
+          const cardType = String(effect.action.params.filterCardType);
+          if (!['Character', 'Enchant', 'Area Enchant'].includes(cardType)) {
+            return { success: false, message: 'Unsupported reveal card type filter' };
+          }
+          filter.cardType = cardType as CardType;
+        }
+        if (effect.action.params.filterSong !== undefined) {
+          const song = String(effect.action.params.filterSong).trim();
+          if (song.length === 0) return { success: false, message: 'Unsupported reveal song filter' };
+          filter.song = song;
+        }
+
+        const payload: PendingRevealHandAttackBoostPayload = {
+          sourcePlayer: player,
+          boostPerCard,
+          filter,
+        };
+        const options = me.hand
+          .filter(card => {
+            const def = getCardDef(card.defId);
+            if (!def) return false;
+            if (filter.cardType !== undefined && def.type !== filter.cardType) return false;
+            if (filter.song !== undefined && def.song !== filter.song) return false;
+            if (filter.element !== undefined && def.element !== filter.element) return false;
+            return true;
+          })
+          .map(card => ({
+            id: card.instanceId,
+            label: getCardDef(card.defId)?.name ?? card.defId,
+            cardInstanceId: card.instanceId,
+            cardDefId: card.defId,
+          }));
+        if (options.length === 0) return { success: true, message: 'No legal hand cards to reveal' };
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'revealHandAttackBoost',
+          min: 0,
+          max: options.length,
+          prompt: effect.rawText,
+          payload,
+          options,
+        };
+        return { success: true, message: 'Pending hand reveal selection' };
+      }
+
+      if (effect.action.params.choiceType === 'nameGuessOpponentHandReveal') {
+        const attackBoost = Number(effect.action.params.attackBoost ?? 0);
+        if (opponent.hand.length === 0) return { success: false, message: 'No opposing hand card to reveal' };
+        const payload: PendingNameGuessOpponentHandRevealPayload = {
+          opponentPlayer: opponentIndex,
+          attackBoost,
+        };
+        const cardDefs = getAllCardDefs();
+        const options = opponent.hand.flatMap((_card, handIndex) => cardDefs.map(def => ({
+          id: `hand:${handIndex}:guess:${def.id}`,
+          label: `${def.name} / Opponent hand ${handIndex + 1}`,
+          value: def.id,
+        })));
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'nameGuessOpponentHandReveal',
+          min: 1,
+          max: 1,
+          prompt: effect.rawText,
+          payload,
+          options,
+        };
+        return { success: true, message: 'Pending name guess and hand reveal' };
+      }
+
       if (effect.action.params.choiceType === 'optionalHandMoveThenDraw') {
         const sourceOwner = String(effect.action.params.sourceOwner);
         const sourceZone = String(effect.action.params.sourceZone);

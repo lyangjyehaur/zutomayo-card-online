@@ -107,6 +107,8 @@ export function emptyModifiers(): CombatModifiers {
     attackTimeOverride: [null, null],
     cardClockSetTo: null,
     damageReduction: [0, 0],
+    handSize: [0, 0],
+    powerCostReduction: [0, 0],
     swapAttack: [false, false],
     effectsDisabled: [false, false],
     unreduceableDamage: [false, false],
@@ -142,6 +144,13 @@ export function getPlayerPower(player: PlayerState): number {
     (sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0),
     0,
   );
+}
+
+function getEffectivePowerCost(card: CardInstance, G: GameState, player: PlayerIndex): number {
+  const def = getCardDef(card.defId);
+  if (!def) return Number.POSITIVE_INFINITY;
+  const reduction = def.type === 'Character' ? (G.modifiers.powerCostReduction?.[player] ?? 0) : 0;
+  return Math.max(0, def.powerCost - reduction);
 }
 
 function chronosTimeAt(position: number, midnightRange: number): ChronosTime {
@@ -222,6 +231,7 @@ export function setupGame(
     setCardsThisTurn: [[], []],
     pendingEffects: [[], []],
     pendingEffectPlayer: null,
+    delayedEffects: [],
     pendingChoice: null,
     lastChoiceSelectionCount: [null, null],
     timingEvents: [],
@@ -229,6 +239,8 @@ export function setupGame(
     swappedCardsThisTurn: [[], []],
     suppressedEffectCardIdsThisTurn: [],
     previousTurnCharacterElements: [null, null],
+    handSizeModifier: [0, 0],
+    damageReducedThisTurn: [0, 0],
     jankenChoices: [null, null],
     mulliganUsed: [false, false],
     modifiers: emptyModifiers(),
@@ -466,7 +478,7 @@ export function placeRevealedCards(
 export function getEffectiveAttack(card: CardInstance, G: GameState, player: number): number {
   const index = player as PlayerIndex;
   const def = getCardDef(card.defId);
-  if (!def?.attack || getPlayerPower(G.players[index]) < def.powerCost) return 0;
+  if (!def?.attack || getPlayerPower(G.players[index]) < getEffectivePowerCost(card, G, index)) return 0;
   const time = getChronosTime(G);
   const effectiveTime = G.modifiers.attackTimeOverride?.[index] ?? time;
   const attackTime = G.modifiers.swapAttack[index] ? (effectiveTime === 'night' ? 'day' : 'night') : effectiveTime;
@@ -509,6 +521,17 @@ export function resolveTimingEvent(
     G.log.push(`Timing ${event.type}.`);
   }
   if (!trigger || G.step === 'gameOver') return;
+
+  if (event.type === 'turnEnd' && G.delayedEffects?.length) {
+    const delayed = G.delayedEffects;
+    G.delayedEffects = [];
+    for (const pendingEffect of delayed) {
+      if (G.modifiers.effectsDisabled[pendingEffect.player]) continue;
+      const result = executeEffect(pendingEffect.effect, G, pendingEffect.player);
+      if (result.success) G.log.push(`Player ${pendingEffect.player}: ${result.message}.`);
+      if ((G.step as GameState['step']) === 'gameOver') return;
+    }
+  }
 
   const players: PlayerIndex[] = event.type === 'damageReceived'
     ? (event.player === 0 || event.player === 1 ? [event.player] : [])
@@ -553,6 +576,10 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   const damage = G.modifiers.unreduceableDamage[winner]
     ? rawDamage
     : Math.max(0, rawDamage - G.modifiers.damageReduction[loser]);
+  if (!G.modifiers.unreduceableDamage[winner]) {
+    if (!G.damageReducedThisTurn) G.damageReducedThisTurn = [0, 0];
+    G.damageReducedThisTurn[loser] += Math.min(rawDamage, G.modifiers.damageReduction[loser]);
+  }
   G.players[loser].hp = Math.max(0, G.players[loser].hp - damage);
   G.lastBattleResult = { winner, damage, winnerAttack: attacks[winner], loserAttack: attacks[loser] };
   G.log.push(`Battle ${attacks[0]}–${attacks[1]}: Player ${winner} deals ${damage}.`);
@@ -573,6 +600,7 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
   G.gameoverReason = reason;
   G.ready = [true, true];
   clearPendingEffects(G);
+  G.delayedEffects = [];
   clearPendingChoice(G);
   G.log.push(reason);
 }
@@ -641,6 +669,8 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
   clearPendingChoice(G);
   G.swappedCardsThisTurn = [[], []];
   G.suppressedEffectCardIdsThisTurn = [];
+  G.damageReducedThisTurn = [0, 0];
+  G.delayedEffects = [];
   G.modifiers = emptyModifiers();
   G.turnNumber++;
   G.step = 'turnSet';
@@ -824,6 +854,49 @@ export function submitPendingChoice(
     })) return false;
     for (const optionId of optionIds) {
       if (!moveCardForChoice(G, choice.payload, optionId)) return false;
+    }
+  }
+  if (choice.type === 'useFromAbyss') {
+    if (choice.payload.sourcePlayer !== player) return false;
+    const selected = playerState.abyss.find(card => card.instanceId === optionIds[0]);
+    if (!selected || getCardDef(selected.defId)?.type !== 'Enchant') return false;
+    selected.faceUp = true;
+    const copiedEffects = (parsedEffects.get(selected.defId) ?? [])
+      .filter(effect => effect.trigger === 'onUse' || effect.trigger === 'onBattle');
+    if (copiedEffects.length === 0) return false;
+    G.pendingEffects[player].unshift(...copiedEffects.map((effect, index) => ({
+      id: `${selected.instanceId}:copied:${G.turnNumber}:${G.log.length}:${index}`,
+      player,
+      cardInstanceId: selected.instanceId,
+      cardDefId: selected.defId,
+      rawText: effect.rawText,
+      effect,
+      source: 'played' as const,
+    })));
+  }
+  if (choice.type === 'revealHandAttackBoost') {
+    if (choice.payload.sourcePlayer !== player) return false;
+    for (const optionId of optionIds) {
+      const card = playerState.hand.find(item => item.instanceId === optionId);
+      if (!card || !matchesPendingCardFilter(card, choice.payload.filter)) return false;
+    }
+    const revealed = new Set(G.revealedHandCardIds[player] ?? []);
+    for (const optionId of optionIds) revealed.add(optionId);
+    G.revealedHandCardIds[player] = [...revealed];
+    G.modifiers.attack[player] += optionIds.length * choice.payload.boostPerCard;
+  }
+  if (choice.type === 'nameGuessOpponentHandReveal') {
+    const match = optionIds[0]?.match(/^hand:([0-9]+):guess:([^:]+)$/);
+    if (!match || choice.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) return false;
+    const [, handIndexText, guessedDefId] = match;
+    const opponent = G.players[choice.payload.opponentPlayer];
+    const selected = opponent.hand[Number(handIndexText)];
+    if (!selected) return false;
+    const revealed = new Set(G.revealedHandCardIds[choice.payload.opponentPlayer] ?? []);
+    revealed.add(selected.instanceId);
+    G.revealedHandCardIds[choice.payload.opponentPlayer] = [...revealed];
+    if (selected.defId === guessedDefId) {
+      G.modifiers.attack[player] += choice.payload.attackBoost;
     }
   }
   if (choice.type === 'handAbyssSwap') {

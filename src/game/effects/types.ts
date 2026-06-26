@@ -42,6 +42,7 @@ export type ConditionType =
   | 'abyssCount'        // Abyss has N+ cards
   | 'abyssElements'     // Abyss has N distinct elements
   | 'zoneHasElement'    // A zone has at least one card of an element
+  | 'zoneEnteredCardType' // A card of this type entered a zone this turn
   | 'handCount'         // Hand has N cards
   | 'hpLessOrEqual'     // Player HP <= N
   | 'hpLessThanOpponent' // Player HP < opponent HP
@@ -87,6 +88,9 @@ export type ActionType =
   | 'revealOpponentHand' // Reveal opponent's current hand
   | 'returnAreaEnchantToDeck' // Return Area Enchant to deck
   | 'moveSelfAreaEnchant' // Move own Area Enchant to a zone
+  | 'useFromAbyss'      // Choose an Enchant in Abyss and use its parsed effect
+  | 'handSizeModifier'  // Track battle/game duration hand-size increases
+  | 'setPowerCost'      // Reduce own Character power cost
   | 'requestChoice'      // Ask the owner to submit a validated choice
   | 'suppressEffectActivation' // Narrow no-op marker for a card-specific suppression clause
   | 'noEffect'          // Disable opponent effects

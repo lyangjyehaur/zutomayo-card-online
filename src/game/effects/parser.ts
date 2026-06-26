@@ -18,18 +18,71 @@ function parseSendToPower(stars: string, digitText?: string): number {
   return stars.split('').filter(char => char === '★').length;
 }
 
+function parseStarReduction(stars: string, digitText?: string): number {
+  if (digitText) return parseNum(digitText);
+  return stars.split('').filter(char => char === '★').length;
+}
+
 // ===== Main Parser =====
 
 export function parseEffect(rawText: string): ParsedEffect | null {
   if (!rawText || rawText.trim().length === 0) return null;
 
-  const text = rawText
+  const normalizedText = rawText
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<a[^>]*>.*?<\/a>/gi, '')
+    .trim();
+
+  const handSizeMatch = normalizedText.match(/^※?(?:このカードを使用後|このカードの効果でカードを引いたなら)、?手札の数は(バトル終了|ゲーム終了)まで([0-9０-９]+)枚増える[。.]?$/);
+  if (handSizeMatch) {
+    return {
+      trigger: 'onUse',
+      conditions: [],
+      action: {
+        type: 'handSizeModifier',
+        params: {
+          value: parseNum(handSizeMatch[2]),
+          duration: handSizeMatch[1] === 'ゲーム終了' ? 'game' : 'battle',
+        },
+      },
+      rawText,
+    };
+  }
+
+  const text = normalizedText
     .replace(/※.*$/gm, '')
     .trim();
 
   if (text.length === 0) return null;
+
+  const namedReducedDamageTurnEndMatch = text.match(/^バトルゾーンのカードが[（(]([^）)]+)[）)]のキャラクターなら、?ターン終了時に、?$/);
+  if (namedReducedDamageTurnEndMatch) {
+    return {
+      trigger: 'onUse',
+      conditions: [{ type: 'namedCardCondition', value: namedReducedDamageTurnEndMatch[1].trim(), target: 'battleZone' }],
+      action: { type: 'directDamage', params: { value: 'reducedThisTurn', timing: 'turnEnd' } },
+      rawText,
+    };
+  }
+
+  if (/^このターンに軽減した数値分のダメージを相手に与える[。.]?$/.test(text)) {
+    return {
+      trigger: 'onTurnEnd',
+      conditions: [],
+      action: { type: 'directDamage', params: { value: 'reducedThisTurn' } },
+      rawText,
+    };
+  }
+
+  const swappedDanglingMatch = text.match(/^このターンに[（(]([^）)]+)[）)]のキャラクターと入れ替えていたなら[、,]?$/);
+  if (swappedDanglingMatch) {
+    return {
+      trigger: 'onUse',
+      conditions: [{ type: 'namedCardCondition', value: swappedDanglingMatch[1].trim(), target: 'swappedThisTurn' }],
+      action: { type: 'noEffect', params: {} },
+      rawText,
+    };
+  }
 
   const opponentTurnStartDeckTopPowerCostMatch = text.match(/^相手はターンの開始時にデッキの一番上を公開する。パワーコストが([0-9０-９]+)以上のカードが山札から公開されたらパワーチャージャーに置く[。.]?$/);
   if (opponentTurnStartDeckTopPowerCostMatch) {
@@ -82,6 +135,7 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 
   const conditions: Condition[] = [];
   let actionText = text;
+  let triggerOverride: ParsedEffect['trigger'] | null = null;
 
   // "真夜中の前後Xマスも真夜中として扱う"
   const midnightRangeMatch = text.match(/真夜中の前後([0-9０-９]+)マスも真夜中として扱う/);
@@ -127,6 +181,13 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   if (chronosMatch) {
     conditions.push({ type: 'chronos', value: chronosMatch[1] === '夜' ? 'night' : 'day' });
     actionText = chronosMatch[2];
+  }
+
+  const turnEndChronosMatch = actionText.match(/^ターンの終了時に、?(夜|昼)なら[、,]?(.+?)(?:[。.].*)?$/);
+  if (turnEndChronosMatch) {
+    conditions.push({ type: 'chronos', value: turnEndChronosMatch[1] === '夜' ? 'night' : 'day' });
+    actionText = turnEndChronosMatch[2];
+    triggerOverride = 'onTurnEnd';
   }
 
   if (actionText.includes('同時に出した自分のキャラクターカード') || actionText.includes('同時にセットした自分のキャラクターカード')) {
@@ -223,7 +284,7 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   // "バトルゾーンのカードが（X）のキャラクターなら..."
-  const battleZoneNamedCharacterMatch = actionText.match(/バトルゾーンの(?:カード|キャラクター)が[（(]([^）)]+)[）)]のキャラクターなら[、,]?(.+)$/);
+  const battleZoneNamedCharacterMatch = actionText.match(/バトルゾーンの(?:カード|キャラクター)が[（(]([^）)]+)[）)](?:のキャラクター)?なら[、,]?(.+)$/);
   if (battleZoneNamedCharacterMatch) {
     conditions.push({ type: 'namedCardCondition', value: battleZoneNamedCharacterMatch[1].trim(), target: 'battleZone' });
     actionText = battleZoneNamedCharacterMatch[2];
@@ -232,14 +293,22 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     if (song) conditions.push({ type: 'namedCardCondition', value: song, target: 'battleZone' });
   }
 
+  const battleZoneChangedAwayMatch = actionText.match(/^バトルゾーンのキャラクターを[（(]([^）)]+)[）)]以外のキャラクターに入れ替えたら[、,]?(.+)$/);
+  if (battleZoneChangedAwayMatch) {
+    conditions.push({ type: 'namedCardCondition', value: battleZoneChangedAwayMatch[1].trim(), target: 'battleZoneNot' });
+    actionText = battleZoneChangedAwayMatch[2];
+    triggerOverride = 'onZoneEntered';
+  }
+
   actionText = actionText.replace(/^[、,]/, '').trim();
 
   // Parse action from the remaining text
   const action = parseAction(actionText);
   if (!action) return null;
+  const trigger = action.params.timing === 'turnEnd' ? 'onUse' : (triggerOverride ?? detectTrigger(text));
 
   return {
-    trigger: detectTrigger(text),
+    trigger,
     conditions,
     action,
     rawText,
@@ -249,6 +318,10 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 // ===== Action Parser =====
 
 function parseAction(text: string): EffectAction | null {
+  if (/^アビスにあるエンチャントカードの中から自由に[1１]枚選び、このカードの効果として使う[。.]?$/.test(text)) {
+    return { type: 'useFromAbyss', params: { source: 'abyss', cardType: 'Enchant', count: 1 } };
+  }
+
   if (text.includes('自分の攻撃力は常に昼の攻撃力')) {
     return { type: 'forceOwnAttackTime', params: { value: 'day' } };
   }
@@ -284,6 +357,51 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
+  const revealHandAttackBoostMatch = text.match(/^手札から[（(]([^）)]+)[）)]\s*のキャラクターを好きな枚数公開し、その数だけ攻撃力[＋+]([0-9０-９]+)[。.]?$/);
+  if (revealHandAttackBoostMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'revealHandAttackBoost',
+        filterSong: revealHandAttackBoostMatch[1].trim(),
+        filterCardType: 'Character',
+        boostPerCard: parseNum(revealHandAttackBoostMatch[2]),
+      },
+    };
+  }
+
+  const nameGuessRevealMatch = text.match(/^カード名を[1１]つ指定する[。.]相手の手札から[1１]枚を選んで公開し、そのカード名のカードなら攻撃力[＋+]([0-9０-９]+)[。.]?$/);
+  if (nameGuessRevealMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'nameGuessOpponentHandReveal',
+        attackBoost: parseNum(nameGuessRevealMatch[1]),
+      },
+    };
+  }
+
+  const zoneElementBoostMatch = text.match(/^(アビス|パワーチャージャー)の(闇|炎|電気|風|カオス)属性のカード[1１]枚につき、?(?:攻撃力|★)?[＋+]([0-9０-９]+)[。.]?/);
+  if (zoneElementBoostMatch) {
+    return {
+      type: 'boostAttack',
+      params: {
+        value: parseNum(zoneElementBoostMatch[3]),
+        per: 'zoneElementCount',
+        zone: zoneElementBoostMatch[1] === 'パワーチャージャー' ? 'powerCharger' : 'abyss',
+        element: zoneElementBoostMatch[2],
+      },
+    };
+  }
+
+  const powerCostReductionMatch = text.match(/パワーコストを(★+)([0-9０-９]+)?減らす[。.]?$/);
+  if (powerCostReductionMatch) {
+    return {
+      type: 'setPowerCost',
+      params: { reduction: parseStarReduction(powerCostReductionMatch[1], powerCostReductionMatch[2]) },
+    };
+  }
+
   // "攻撃力+50"
   const boostMatch = text.match(/攻撃力(?:を)?[＋+]([0-9０-９]+)/);
   if (boostMatch) return { type: 'boostAttack', params: { value: parseNum(boostMatch[1]) } };
@@ -316,6 +434,17 @@ function parseAction(text: string): EffectAction | null {
   if (damageReduceMatch) return { type: 'damageReduce', params: { value: parseNum(damageReduceMatch[1]) } };
 
   // "Xダメージ" (direct damage)
+  const reducedDamageMatch = text.match(/^(ターン終了時に、?)?このターンに軽減した数値分のダメージを相手に与える[。.]?$/);
+  if (reducedDamageMatch) {
+    return {
+      type: 'directDamage',
+      params: {
+        value: 'reducedThisTurn',
+        ...(reducedDamageMatch[1] ? { timing: 'turnEnd' } : {}),
+      },
+    };
+  }
+
   const directDamageMatch = text.match(/([0-9０-９]+)ダメージ/);
   if (directDamageMatch) return { type: 'directDamage', params: { value: parseNum(directDamageMatch[1]) } };
 
@@ -602,7 +731,7 @@ function detectTrigger(text: string): 'onBattle' | 'onUse' | 'onTurnStart' | 'on
   if (timingText.includes('ダメージを受けたとき') || timingText.includes('ダメージを受けた時')) {
     return 'onDamageReceived';
   }
-  if (timingText.includes('バトル')) return 'onBattle';
+  if (timingText.includes('バトル') && !timingText.includes('バトルゾーン')) return 'onBattle';
   return 'onUse';
 }
 
@@ -634,6 +763,48 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
     return {
       trigger: 'onTurnEnd',
       conditions: [{ type: 'zoneEntered', value: 'abyss', target: 'opponent' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  if (text.includes('相手がエリアエンチャントを出したターンの終了時')) {
+    return {
+      trigger: 'onTurnEnd',
+      conditions: [{ type: 'zoneEntered', value: 'setZoneC', target: 'opponent' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  if (text.includes('キャラクターカードを自分のパワーチャージャーに置いたターンの終了時')) {
+    return {
+      trigger: 'onTurnEnd',
+      conditions: [{ type: 'zoneEnteredCardType', value: 'Character' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  const abyssCountTurnEndMatch = text.match(/アビスのカードが([0-9０-９]+)枚以上になったターンの終了時/);
+  if (abyssCountTurnEndMatch) {
+    return {
+      trigger: 'onTurnEnd',
+      conditions: [{ type: 'zoneCountAtLeast', value: parseNum(abyssCountTurnEndMatch[1]), target: 'abyss' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  const opponentHpTurnEndMatch = text.match(/相手のHPが([0-9０-９]+)以下になったターンの終了時/);
+  if (opponentHpTurnEndMatch) {
+    return {
+      trigger: 'onTurnEnd',
+      conditions: [{ type: 'hpLessOrEqual', value: parseNum(opponentHpTurnEndMatch[1]), target: 'opponent' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  if (text.includes('ターンの終了時に、相手のフィールドにエリアエンチャントがあるなら')) {
+    return {
+      trigger: 'onTurnEnd',
+      conditions: [{ type: 'hasAreaEnchant', value: true, target: 'opponent' }],
       action: { type: 'moveSelfAreaEnchant', params: { destination } },
       rawText,
     };
@@ -691,11 +862,17 @@ export function parseAllEffects(cards: { id: string; effect: string }[]): Map<st
     const lines = card.effect.split('\n').filter(l => l.trim().length > 0);
     const effects: ParsedEffect[] = [];
 
-    for (const line of lines) {
-      const parsed = parseEffect(line);
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
+      const nextLine = lines[index + 1];
+      const combinedLine = nextLine && /[、,]$/.test(line) ? `${line}${nextLine}` : null;
+      const combined = combinedLine ? parseEffect(combinedLine) : null;
+      const sourceLine = combined ? combinedLine! : line;
+      const parsed = combined ?? parseEffect(line);
       if (parsed) effects.push(parsed);
-      const expiry = parseAreaEnchantExpiry(line);
+      const expiry = parseAreaEnchantExpiry(sourceLine);
       if (expiry && !effects.some(effect => parsedEffectKey(effect) === parsedEffectKey(expiry))) effects.push(expiry);
+      if (combined) index++;
     }
 
     if (effects.length > 0) {
