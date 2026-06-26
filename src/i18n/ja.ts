@@ -58,7 +58,7 @@ export const ja = {
 
   'deck.dark': '闇のデッキ',
   'deck.flame': '炎のデッキ',
-  'deck.electric': '雷のデッキ',
+  'deck.electric': '電気のデッキ',
   'deck.wind': '風のデッキ',
   'deck.custom': 'カスタムデッキ',
   'deck.darkDesc': '夜側の高圧展開と安定した交換',

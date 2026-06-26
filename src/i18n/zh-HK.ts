@@ -101,7 +101,7 @@ export const zhHK = {
   'board.confirmSet': '確認出牌',
   'board.setConfirmed': '已出牌，等緊對手...',
   'board.readyWaiting': '已確認，等緊對手',
-  'board.needCards': '需要出牌',
+  'board.needCards': '要出牌',
   'board.effectOrder': '效果次序',
   'board.chooseEffect': '揀要結算嘅效果',
   'board.waitingEffectPlayer': '等緊效果選擇',
@@ -202,7 +202,7 @@ export const zhHK = {
   'deckEditor.copyCount': '已放入',
   'deckEditor.removeCard': '移除',
   'deckEditor.emptySlot': '空位',
-  'deckEditor.ruleSize': '需要 20 張',
+  'deckEditor.ruleSize': '要 20 張',
   'deckEditor.ruleCharacters': '至少 10 張角色',
   'deckEditor.ruleCopies': '同名最多 2 張',
 
