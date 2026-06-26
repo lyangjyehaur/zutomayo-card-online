@@ -44,16 +44,23 @@ export function validateConstructedDeckIds(defIds: unknown): string | null {
   if (defIds.length !== 20) return `Deck must have exactly 20 cards, got ${defIds.length}`;
 
   const counts = new Map<string, number>();
-  let characterCount = 0;
   for (const id of defIds) {
     const card = getCardDef(id);
     if (!card) return `Unknown card in deck: ${id}`;
     const count = (counts.get(id) ?? 0) + 1;
     if (count > 2) return `Deck cannot contain more than 2 copies of ${id}`;
     counts.set(id, count);
-    if (card.type === 'Character') characterCount++;
   }
-  if (characterCount < 10) return `Deck must include at least 10 Character cards, got ${characterCount}`;
+  // 官方 start-guide：「キャラクターカードはデッキの50%以上にすることを推奨」——非強制，故不作為驗證錯誤。
+  return null;
+}
+
+// 官方推薦 Character >= 50%，非強制；供 UI 顯示警告用。
+export function getCharacterCountWarning(defIds: string[]): string | null {
+  const characterCount = defIds.filter(id => getCardDef(id)?.type === 'Character').length;
+  if (characterCount < 10) {
+    return `Recommended: at least 10 Character cards, got ${characterCount}`;
+  }
   return null;
 }
 

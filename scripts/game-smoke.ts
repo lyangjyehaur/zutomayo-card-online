@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createInstance, getAllCardDefs } from '../src/game/cards/loader';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
-import { isValidConstructedDeck, validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
+import { getCharacterCountWarning, isValidConstructedDeck, validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
 import {
   advanceChronos,
   confirmReady,
@@ -11,6 +11,7 @@ import {
   getEffectiveAttack,
   getEffectiveElement,
   getRequiredSetCount,
+  endOfTurnDrawCount,
   placeRevealedCards,
   resolveJanken,
   resolveBattle,
@@ -139,7 +140,9 @@ function fivePowerCards() {
     .slice(0, 10)
     .flatMap(card => [card.id, card.id]);
   assert.equal(noCharacters.length, 20);
-  assert.match(validateConstructedDeckIds(noCharacters) ?? '', /at least 10 Character/);
+  // 官方「キャラクター50%推薦」非強制：無角色牌組應為合法（驗證通過），僅回傳警告。
+  assert.equal(validateConstructedDeckIds(noCharacters), null);
+  assert.match(getCharacterCountWarning(noCharacters) ?? '', /at least 10 Character/);
 
   const G = setupGame({ deck0Ids: customIds, deck1Ids: PRESET_DECKS.flame.ids });
   assert.deepEqual(
@@ -560,7 +563,10 @@ function fivePowerCards() {
   G.turnNumber = 2;
   G.lastBattleResult = { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 };
   G.handSizeModifier[0] = 1;
-  assert.equal(getRequiredSetCount(G, 0), 2);
+  // handSizeModifier 計入回合抽牌數（保證手札淨 +N），不計入セット上限。
+  assert.equal(getRequiredSetCount(G, 0), 1);
+  G.players[0].cardsSetThisTurn = 1;
+  assert.equal(endOfTurnDrawCount(G, 0), 2);
 }
 
 {

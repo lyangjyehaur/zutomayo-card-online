@@ -355,9 +355,7 @@ export function getMinimumSetCount(G: GameState, player: PlayerIndex): number {
 
 export function getRequiredSetCount(G: GameState, player: PlayerIndex): number {
   const required = getMinimumSetCount(G, player);
-  return required
-    + (G.modifiers.extraSettableCards?.[player] ?? 0)
-    + (G.handSizeModifier?.[player] ?? 0);
+  return required + (G.modifiers.extraSettableCards?.[player] ?? 0);
 }
 
 function setCard(G: GameState, player: PlayerIndex, handIndex: number, slot: SetSlot): boolean {
@@ -720,8 +718,15 @@ function clearPendingChoice(G: GameState): void {
   G.pendingChoice = null;
 }
 
-function endOfTurnDrawCount(G: GameState, player: PlayerIndex): number {
-  return Math.max(0, G.players[player].cardsSetThisTurn + (G.modifiers.handSize?.[player] ?? 0));
+export function endOfTurnDrawCount(G: GameState, player: PlayerIndex): number {
+  // battle duration（G.modifiers.handSize）+ game duration（G.handSizeModifier）皆計入抽牌數。
+  // 「手札の数は…増える」語義為保證手札淨 +N，透過額外抽牌實現而非增加セット上限。
+  return Math.max(
+    0,
+    G.players[player].cardsSetThisTurn
+      + (G.modifiers.handSize?.[player] ?? 0)
+      + (G.handSizeModifier?.[player] ?? 0),
+  );
 }
 
 function suppressEffectCardForTurn(G: GameState, cardInstanceId: string): void {
@@ -811,9 +816,18 @@ function playerHasPendingEffectInPhase(G: GameState, player: PlayerIndex, phase:
 }
 
 function pruneDisabledPendingEffects(G: GameState, player: PlayerIndex): void {
-  G.pendingEffects[player] = G.pendingEffects[player].filter(
-    pendingEffect => !areEffectsDisabledForCard(G, player, pendingEffect.cardDefId),
-  );
+  G.pendingEffects[player] = G.pendingEffects[player].filter(pendingEffect => {
+    if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) return false;
+    // 官方規則指南 B：效果在「処理する時点」のパワー総数 >= パワーコスト 時才發動。
+    // 執行前重新檢查パワーコスト，避免效果處理途中パワー下降後仍發動。
+    // 合成效果（如 follow-up-draw）無對應 cardDef，不套用パワーコスト檢查。
+    const def = getCardDef(pendingEffect.cardDefId);
+    if (!def) return true;
+    const reduction = def.type === 'Character' ? (G.modifiers.powerCostReduction?.[player] ?? 0) : 0;
+    const cost = Math.max(0, def.powerCost - reduction);
+    if (getPlayerPower(G.players[player], G, player) < cost) return false;
+    return true;
+  });
 }
 
 function nextPendingEffectPlayer(G: GameState): PlayerIndex | null {
