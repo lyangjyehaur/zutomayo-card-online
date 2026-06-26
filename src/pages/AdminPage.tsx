@@ -134,6 +134,7 @@ export function AdminPage() {
         <button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
         <h1>卡牌資料管理</h1>
         <span className="admin-count">{filtered.length} / {allCards.length} 張</span>
+        <button className="nav-link" onClick={() => navigate('/admin/i18n')}>🌐 i18n</button>
         <button className="logout-btn" onClick={() => {
           sessionStorage.removeItem('admin_auth');
           setAuthenticated(false);

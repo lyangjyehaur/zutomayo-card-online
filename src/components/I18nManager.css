@@ -1,0 +1,124 @@
+/* i18n Manager */
+.i18n-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+}
+
+.i18n-locale-tabs {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.locale-tab {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.15s;
+}
+
+.locale-tab.active { border-color: #f4d35e; color: #f4d35e; background: #1a1a3e; }
+
+.i18n-stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8rem;
+}
+
+.stat-warn { color: #e63946; }
+.stat-ok { color: #2ec4b6; }
+
+.i18n-filters {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.i18n-search {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+  width: 300px;
+}
+
+.i18n-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.i18n-table-wrapper {
+  overflow: auto;
+  max-height: calc(100vh - 280px);
+}
+
+.i18n-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.i18n-table th {
+  position: sticky;
+  top: 0;
+  background: #0d0d1a;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  color: #888;
+  border-bottom: 1px solid #333;
+  z-index: 1;
+}
+
+.i18n-table td {
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid #1a1a2e;
+  vertical-align: top;
+}
+
+.i18n-table tr:hover { background: rgba(255,255,255,0.03); }
+
+.row-missing { background: rgba(230, 57, 70, 0.08); }
+.row-same { background: rgba(244, 211, 94, 0.05); }
+
+.i18n-key { color: #666; font-family: monospace; font-size: 0.75rem; white-space: nowrap; }
+.i18n-base { color: #ccc; max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+.i18n-translated { cursor: pointer; max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+.i18n-translated:hover { background: rgba(255,255,255,0.05); }
+.text-missing { color: #e63946; font-style: italic; }
+.i18n-status { text-align: center; }
+
+.i18n-edit {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.i18n-edit input {
+  flex: 1;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #f4d35e;
+  border-radius: 4px;
+  background: #1a1a3e;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+}
+
+.i18n-edit button {
+  padding: 0.2rem 0.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}

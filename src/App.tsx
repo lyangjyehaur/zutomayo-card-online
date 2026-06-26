@@ -4,6 +4,7 @@ import { InteractiveTutorial } from './components/InteractiveTutorial';
 import { hasCustomDeck } from './game/cards/deckBuilder';
 import type { AIDifficulty } from './game/ai';
 import { AdminPage } from './pages/AdminPage';
+import { I18nManager } from './pages/I18nManager';
 import { AIGamePage } from './pages/AIGamePage';
 import { DeckEditorPage } from './pages/DeckEditorPage';
 import { LobbyPage, DEFAULT_DECK_NAME, onlineDeckName, selectedDeckName } from './pages/LobbyPage';
@@ -184,6 +185,7 @@ function RouterShell() {
           />
           <Route path="/history" element={<MatchHistoryPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/i18n" element={<I18nManager />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </div>
