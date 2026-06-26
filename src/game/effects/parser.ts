@@ -31,6 +31,33 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 
   if (text.length === 0) return null;
 
+  if (text.includes('相手のアビスにカードが置かれたとき') && /(アビス|パワーチャージャー)に置く/.test(text)) {
+    return {
+      trigger: 'onZoneEntered',
+      conditions: [{ type: 'zoneEntered', value: 'abyss', target: 'opponent' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination: text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss' } },
+      rawText,
+    };
+  }
+
+  if (text.includes('パワーチャージャーにカードを置いたとき') && /(アビス|パワーチャージャー)に置く/.test(text)) {
+    return {
+      trigger: 'onZoneEntered',
+      conditions: [{ type: 'zoneEntered', value: 'powerCharger', target: 'any' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination: text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss' } },
+      rawText,
+    };
+  }
+
+  if (text.includes('バトルに負けたとき') && /(アビス|パワーチャージャー)に置く/.test(text)) {
+    return {
+      trigger: 'onBattle',
+      conditions: [{ type: 'battleLost', value: true }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination: text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss' } },
+      rawText,
+    };
+  }
+
   const conditions: Condition[] = [];
   let actionText = text;
 
@@ -142,10 +169,22 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   // "HPがX以下なら..."
-  const hpMatch = text.match(/HPが(\d+)以下(なら|の場合)(.+)$/);
+  const hpMatch = text.match(/HPが([0-9０-９]+)以下(?:になった)?(なら|の場合)(.+)$/);
   if (hpMatch) {
     conditions.push({ type: 'hpLessOrEqual', value: parseNum(hpMatch[1]) });
     actionText = hpMatch[3];
+  }
+
+  const powerChargerCountMatch = text.match(/パワーチャージャーにカードが([0-9０-９]+)枚以上置かれているなら[、,]?(.+)$/);
+  if (powerChargerCountMatch) {
+    conditions.push({ type: 'zoneCountAtLeast', value: parseNum(powerChargerCountMatch[1]), target: 'powerCharger' });
+    actionText = powerChargerCountMatch[2];
+  }
+
+  const opponentAreaEnchantPlacedMatch = text.match(/相手のエリアエンチャントが置かれているなら[、,]?(.+)$/);
+  if (opponentAreaEnchantPlacedMatch) {
+    conditions.push({ type: 'hasAreaEnchant', value: true, target: 'opponent' });
+    actionText = opponentAreaEnchantPlacedMatch[1];
   }
 
   const hpLessThanOpponentMatch = text.match(/HPが相手のHPより少ないなら[、,]?(.+)$/);
@@ -170,6 +209,8 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     const song = namedSong(actionText);
     if (song) conditions.push({ type: 'namedCardCondition', value: song, target: 'battleZone' });
   }
+
+  actionText = actionText.replace(/^[、,]/, '').trim();
 
   // Parse action from the remaining text
   const action = parseAction(actionText);
@@ -488,6 +529,14 @@ function parseAction(text: string): EffectAction | null {
     return { type: 'directDamage', params: { value: -1, unreduceable: true } };
   }
 
+  if (/^(?:すぐに)?アビスに置く[。.]?$/.test(text)) {
+    return { type: 'moveSelfAreaEnchant', params: { destination: 'abyss' } };
+  }
+
+  if (/^(?:すぐに)?パワーチャージャーに置く[。.]?$/.test(text)) {
+    return { type: 'moveSelfAreaEnchant', params: { destination: 'powerCharger' } };
+  }
+
   return null;
 }
 
@@ -577,6 +626,15 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
   return null;
 }
 
+function parsedEffectKey(effect: ParsedEffect): string {
+  return JSON.stringify({
+    trigger: effect.trigger,
+    conditions: effect.conditions,
+    action: effect.action,
+    rawText: effect.rawText,
+  });
+}
+
 export function parseAllEffects(cards: { id: string; effect: string }[]): Map<string, ParsedEffect[]> {
   const result = new Map<string, ParsedEffect[]>();
 
@@ -590,7 +648,7 @@ export function parseAllEffects(cards: { id: string; effect: string }[]): Map<st
       const parsed = parseEffect(line);
       if (parsed) effects.push(parsed);
       const expiry = parseAreaEnchantExpiry(line);
-      if (expiry) effects.push(expiry);
+      if (expiry && !effects.some(effect => parsedEffectKey(effect) === parsedEffectKey(expiry))) effects.push(expiry);
     }
 
     if (effects.length > 0) {

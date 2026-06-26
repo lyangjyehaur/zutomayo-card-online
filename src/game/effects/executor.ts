@@ -76,9 +76,13 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
       const targetPlayer = cond.target === 'opponent' ? (1 - player) as PlayerIndex : player;
       return G.timingEvents.some(event => (
         event.type === 'zoneEntered'
-        && event.player === targetPlayer
+        && (cond.target === 'any' || event.player === targetPlayer)
         && event.zone === cond.value
       ));
+    }
+    case 'zoneCountAtLeast': {
+      const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
+      return cards.length >= Number(cond.value);
     }
     case 'chronosChanged': return G.chronos.position !== G.chronosAtTurnStart;
     case 'chronosTimeChanged': return chronosTimeAt(G.chronosAtTurnStart, G.midnightRange) !== chronosTimeAt(G.chronos.position, G.midnightRange);
@@ -91,7 +95,12 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     }
     case 'simultaneousCharacter':
       return G.setCardsThisTurn[player].some(card => getCardDef(card.defId)?.type === 'Character');
-    case 'hasAreaEnchant': return !!me.setZoneC && me.setZoneC.defId === cond.value;
+    case 'hasAreaEnchant': {
+      const owner = cond.target === 'opponent' ? opponent : me;
+      if (cond.value === true) return !!owner.setZoneC;
+      return !!owner.setZoneC && owner.setZoneC.defId === cond.value;
+    }
+    case 'battleLost': return G.lastBattleResult.winner !== null && G.lastBattleResult.winner !== player;
     case 'previousCharElement': return G.previousTurnCharacterElements?.[player] === cond.value;
     case 'and': return (cond.value as Condition[]).every(item => evaluateCondition(item, G, player));
     case 'or': return (cond.value as Condition[]).some(item => evaluateCondition(item, G, player));

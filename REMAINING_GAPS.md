@@ -9,8 +9,8 @@ Verification baseline:
   - total cards: 422
   - effect cards: 250
   - effect lines: 267
-  - parsed lines: 238
-  - unparsed lines: 29
+  - parsed lines: 247
+  - unparsed lines: 20
   - parsed-but-partial heuristic: 49
   - false draw positives: 0
 
@@ -127,26 +127,17 @@ These 29 effect lines currently return `null` from `parseEffect()`:
 1st_92  ※このカードを使用後、手札の数はバトル終了まで１枚増える
 2nd_6   このターン、同時にセットした自分のキャラクターカードのパワーコストを★２減らす
 2nd_7   このカードを使用中、自分の攻撃力は常に昼の攻撃力となる。相手がエリアエンチャントを出したターンの終了時にアビスに置く
-2nd_41  前のターンで使用したキャラクターカードの属性が闇なら、デッキの一番上のカードをパワーがあればパワーチャージャーに、なければアビスに置く
-2nd_50  アビスに電気属性のカードがあるなら、相手のHPを20減らす
 2nd_58  アビスの闇属性のカード１枚につき、★+１。キャラクターカードを自分のパワーチャージャーに置いたターンの終了時にアビスに置く
 3rd_45  相手の手札を公開する
 3rd_55  相手のエリアエンチャントをデッキの底に戻し、以後相手はエリアエンチャントをセットできない。相手がアビスにカードを置いたターンの終了時にパワーチャージャーに置く
 3rd_61  すべてのカードの時計を１にする。ターンの終了時に、相手のフィールドにエリアエンチャントがあるならパワーチャージャーに置く
 3rd_64  お互いの自分のHPの分だけ攻撃力+。相手のHPが40以下になったターンの終了時にアビスに置く
 3rd_97  相手はターンの開始時にデッキの一番上を公開する。パワーコストが６以上のカードが山札から公開されたらパワーチャージャーに置く
-4th_30  相手のアビスにカードが置かれたとき、すぐにこのカードをアビスに置く
-4th_32  相手のエリアエンチャントが置かれているなら、すぐにアビスに置く
-4th_33  パワーチャージャーにカードを置いたとき、すぐにこのカードをアビスに置く
 4th_41  このターンに（シェードの埃は延長）のキャラクターと入れ替えていたなら、
 4th_65  バトルゾーンのカードが（お勉強しといてよ）なら、そのキャラクターのパワーコストを★★減らす。
 4th_65  バトルゾーンのキャラクターを（お勉強しといてよ）以外のキャラクターに入れ替えたら、すぐにアビスに置く
 4th_89  このカードの効果でカードを引いたなら、手札の数はゲーム終了まで１枚増える
-4th_90  相手のアビスにあるカード１枚を、相手のデッキの底に戻す
-4th_91  HPが50以下になったなら、パワーチャージャーに置く
 4th_94  パワーチャージャーにある（シェードの埃は延長）のキャラクターを１枚選び、このカードの効果として使用する。
-4th_94  パワーチャージャーにカードが５枚以上置かれているなら、すぐにアビスに置く
-4th_95  バトルに負けたとき、すぐにアビスに置く
 4th_99  バトルゾーンのカードが（猫リセット）のキャラクターなら、相手の攻撃力を100にする
 4th_100 バトルゾーンのカードが（猫リセット）のキャラクターなら、ターン終了時に、
 4th_100 このターンに軽減した数値分のダメージを相手に与える
@@ -156,18 +147,12 @@ These 29 effect lines currently return `null` from `parseEffect()`:
 
 Recommended order:
 
-1. Simple deterministic / reusable choice effects
-   - `2nd_50`: Abyss contains 電気 → opponent HP -20.
-   - `2nd_41`: previous-turn Character element 闇 → move deck top to Power Charger or Abyss based on power/send-to-power condition.
-   - `4th_90`: choose opponent Abyss card and return it to opponent deck bottom using the existing `cardMove` pending-choice path.
-   - Goal: reduce unparsed count with low architecture risk.
-
-2. Reveal / hand information / name guess
+1. Reveal / hand information / name guess
    - `3rd_45`: reveal opponent hand.
    - `3rd_47`, `3rd_59`, `3rd_94`, `3rd_105`: name a card, reveal one opponent hand card, boost if name matches.
    - Needs a safe hidden-information model and UI that reveals only what the effect allows.
 
-3. Continuous / replacement modifiers
+2. Continuous / replacement modifiers
    - `2nd_6`: reduce same-turn Character Power Cost.
    - `2nd_7`: force own attack to use day attack while active.
    - `3rd_61`: set all card clocks to 1.
@@ -175,15 +160,11 @@ Recommended order:
    - `4th_99`: set opponent attack to 100 under condition.
    - Needs modifier recomputation rather than one-time mutation.
 
-4. Area Enchant expiry / zone-entry timing
-   - `4th_30`, `4th_32`, `4th_33`, `4th_91`, `4th_94`, `4th_95`.
-   - Needs broader event emission for Abyss / Power Charger / battle loss / HP thresholds.
-
-5. Deck reveal / deck order / effect copy
+3. Deck reveal / deck order / effect copy
    - `1st_6`, `3rd_97`, `4th_94`, `4th_88` partial deck reorder.
    - Needs UI and hidden-information handling for viewed deck cards.
 
-6. Hand-size and delayed damage memory
+4. Hand-size and delayed damage memory
    - `1st_92`, `4th_89`: hand size changes for battle/game duration.
    - `4th_100`: remember reduced damage amount and deal it later.
 

@@ -47,12 +47,14 @@ export type ConditionType =
   | 'hpLessThanOpponent' // Player HP < opponent HP
   | 'damageAtLeast'     // Current damage event amount >= N
   | 'zoneEntered'       // A card entered a zone this turn
+  | 'zoneCountAtLeast'  // A zone has at least N cards
   | 'chronosChanged'    // Chronos changed this turn
   | 'chronosTimeChanged' // Chronos changed between night/day this turn
   | 'namedCardCondition' // Named-song Character in a relevant zone
   | 'simultaneousCharacter' // Character was played with this effect
   | 'previousCharElement' // Previous turn's character element
   | 'hasAreaEnchant'    // Set zone C has specific card
+  | 'battleLost'        // This player lost the current battle
   | 'and'               // Compound AND
   | 'or';               // Compound OR
 

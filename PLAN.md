@@ -25,7 +25,7 @@ Current status for the ZUTOMAYO CARD Online implementation. This file tracks pro
 - Game server: [src/server.ts](src/server.ts), boardgame.io, port `3000`.
 - API server: [api/server.cjs](api/server.cjs), Node HTTP + SQLite via `better-sqlite3`, port `3001`.
 - Deployment target: Docker Compose on Debian 12 host `149.104.6.238`.
-- Card audit from `npm run rule:audit`: 422 total cards, 250 effect cards, 267 effect lines, 238 parsed lines, 29 unparsed lines, 49 parsed-but-partial lines.
+- Card audit from `npm run rule:audit`: 422 total cards, 250 effect cards, 267 effect lines, 247 parsed lines, 20 unparsed lines, 49 parsed-but-partial lines.
 
 ## Remaining Work / 待辦
 

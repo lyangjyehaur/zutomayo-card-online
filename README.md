@@ -20,10 +20,10 @@ janken -> mulligan -> initialSet -> turnSet -> effectOrder -> turnSet/gameOver
 ## Features / 功能
 
 - 422 cards in [cards.json](cards.json), with images served from `https://r2.dan.tw/cards/...`.
-- 250 cards with effect text. Current parser audit: 238 parsed lines out of 267 effect lines, with 49 parsed-but-partial lines still needing executor review.
+- 250 cards with effect text. Current parser audit: 247 parsed lines out of 267 effect lines, with 49 parsed-but-partial lines still needing executor review.
 - Six UI languages: `zh-TW`, `zh-HK`, `zh-CN`, `ja`, `en`, `ko`.
 - Local two-player mode, online multiplayer rooms, and AI practice.
-- Easy, Normal, and Hard AI levels; Hard is heuristic-based and does not yet perform full lookahead.
+- Easy, Normal, and Hard AI levels; Hard uses a lookahead simulation over legal set combinations plus heuristic scoring.
 - Deck editor over the full 422-card pool, stored in browser localStorage today.
 - Four preset decks: Dark, Flame, Electric, Wind.
 - Interactive tutorial and browser-local match history.

@@ -508,12 +508,50 @@ function fivePowerCards() {
 {
   assert.equal(parseEffect('ターンの終了時に相手のHP-10')?.trigger, 'onTurnEnd');
   assert.equal(parseEffect('ターンの開始時にHPを10回復')?.trigger, 'onTurnStart');
+  assert.deepEqual(parseEffect('相手のエリアエンチャントが置かれているなら、すぐにアビスに置く')?.conditions, [{ type: 'hasAreaEnchant', value: true, target: 'opponent' }]);
+  assert.deepEqual(parseEffect('HPが50以下になったなら、パワーチャージャーに置く')?.action, { type: 'moveSelfAreaEnchant', params: { destination: 'powerCharger' } });
+  assert.deepEqual(parseEffect('パワーチャージャーにカードが５枚以上置かれているなら、すぐにアビスに置く')?.conditions, [{ type: 'zoneCountAtLeast', value: 5, target: 'powerCharger' }]);
+  assert.equal(parseEffect('相手のアビスにカードが置かれたとき、すぐにこのカードをアビスに置く')?.trigger, 'onZoneEntered');
+  assert.equal(parseEffect('パワーチャージャーにカードを置いたとき、すぐにこのカードをアビスに置く')?.trigger, 'onZoneEntered');
+  assert.deepEqual(parseEffect('バトルに負けたとき、すぐにアビスに置く')?.conditions, [{ type: 'battleLost', value: true }]);
   assert.equal(parseEffect('パワーチャージャーの電気属性のカード１枚につき、攻撃力+20。相手のHPが30以下になったターンの終了時にアビスに置く')?.trigger, 'onUse');
   assert.equal(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.trigger, 'onUse');
   const areaExpiryEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('2nd_5') ?? [];
   assert.ok(areaExpiryEffects.some(effect => effect.trigger === 'onTurnEnd' && effect.action.type === 'moveSelfAreaEnchant'));
   const chronosExpiryEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('2nd_86') ?? [];
   assert.ok(chronosExpiryEffects.some(effect => effect.trigger === 'onChronosChanged' && effect.action.type === 'moveSelfAreaEnchant'));
+  const zoneEntryExpiryEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('4th_30') ?? [];
+  assert.equal(zoneEntryExpiryEffects.filter(effect => effect.rawText.includes('相手のアビスにカードが置かれたとき')).length, 1);
+
+  const hpSelfMoveState = preparedState();
+  hpSelfMoveState.players[0].hp = 50;
+  const hpSelfMoveCard = createInstance('4th_91', true);
+  hpSelfMoveState.players[0].setZoneC = hpSelfMoveCard;
+  const hpSelfMove = parseEffect('HPが50以下になったなら、パワーチャージャーに置く');
+  assert.ok(hpSelfMove);
+  assert.equal(executeEffect(hpSelfMove, hpSelfMoveState, 0).success, true);
+  assert.equal(hpSelfMoveState.players[0].setZoneC, null);
+  assert.equal(hpSelfMoveState.players[0].powerCharger.at(-1)?.instanceId, hpSelfMoveCard.instanceId);
+
+  const opponentAreaSelfMoveState = preparedState();
+  const opponentAreaSelfMoveCard = createInstance('4th_32', true);
+  opponentAreaSelfMoveState.players[0].setZoneC = opponentAreaSelfMoveCard;
+  opponentAreaSelfMoveState.players[1].setZoneC = createInstance('2nd_5', true);
+  const opponentAreaSelfMove = parseEffect('相手のエリアエンチャントが置かれているなら、すぐにアビスに置く');
+  assert.ok(opponentAreaSelfMove);
+  assert.equal(executeEffect(opponentAreaSelfMove, opponentAreaSelfMoveState, 0).success, true);
+  assert.equal(opponentAreaSelfMoveState.players[0].setZoneC, null);
+  assert.equal(opponentAreaSelfMoveState.players[0].abyss.at(-1)?.instanceId, opponentAreaSelfMoveCard.instanceId);
+
+  const battleLostSelfMoveState = preparedState();
+  const battleLostSelfMoveCard = createInstance('4th_95', true);
+  battleLostSelfMoveState.players[0].setZoneC = battleLostSelfMoveCard;
+  battleLostSelfMoveState.lastBattleResult = { winner: 1, damage: 20, winnerAttack: 50, loserAttack: 30 };
+  const battleLostSelfMove = parseEffect('バトルに負けたとき、すぐにアビスに置く');
+  assert.ok(battleLostSelfMove);
+  assert.equal(executeEffect(battleLostSelfMove, battleLostSelfMoveState, 0).success, true);
+  assert.equal(battleLostSelfMoveState.players[0].setZoneC, null);
+  assert.equal(battleLostSelfMoveState.players[0].abyss.at(-1)?.instanceId, battleLostSelfMoveCard.instanceId);
   assert.notEqual(parseEffect('相手のアビスのカードを1枚選んでデッキの底に戻させる')?.action.type, 'drawCards');
   assert.notEqual(parseEffect('手札を１枚選んでデッキの底に置き、カードを１枚引く')?.action.type, 'drawCards');
   assert.notEqual(parseEffect('アビスに炎属性のカードが２枚以上あるなら、時計が真夜中になる')?.action.type, 'drawCards');
