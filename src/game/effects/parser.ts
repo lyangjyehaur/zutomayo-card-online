@@ -60,9 +60,10 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 
   const handSizeMatch = normalizedText.match(/^※?(?:このカードを使用後|このカードの効果でカードを引いたなら)、?手札の数は(バトル終了|ゲーム終了)まで([0-9０-９]+)枚増える[。.]?$/);
   if (handSizeMatch) {
+    const drawLinked = normalizedText.includes('このカードの効果でカードを引いたなら');
     return {
       trigger: 'onUse',
-      conditions: [],
+      conditions: drawLinked ? [{ type: 'drawOccurredThisEffect', value: true }] : [],
       action: {
         type: 'handSizeModifier',
         params: {
@@ -104,7 +105,7 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     return {
       trigger: 'onUse',
       conditions: [],
-      action: { type: 'heal', params: { value: parseNum(opponentHealThenDamageMatch[1]), target: 'opponent' } },
+      action: { type: 'healOpponent', params: { value: parseNum(opponentHealThenDamageMatch[1]) } },
       rawText,
       expiry: {
         trigger: 'onTurnEnd',
@@ -402,6 +403,17 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = abyssElementMatch[2];
   }
 
+  const specificElementsMatch = actionText.match(new RegExp(`^(アビス|パワーチャージャー)に((?:闇|炎|電気|風|カオス)(?:[・か](?:闇|炎|電気|風|カオス))*)の([0-9０-９]+)属性のカードがあるなら[、,]?(.+)$`));
+  if (specificElementsMatch) {
+    const elements = parseElementList(specificElementsMatch[2]);
+    conditions.push({
+      type: 'specificElements',
+      value: elements,
+      target: specificElementsMatch[1] === 'パワーチャージャー' ? 'powerCharger' : 'abyss',
+    });
+    actionText = specificElementsMatch[4];
+  }
+
   const abyssDistinctElementMatch = actionText.match(/アビスに(?:.*?の)?([0-9０-９]+)属性のカードがあるなら[、,]?(.+)$/);
   if (abyssDistinctElementMatch) {
     conditions.push({ type: 'abyssElements', value: parseNum(abyssDistinctElementMatch[1]) });
@@ -647,7 +659,7 @@ function parseAction(text: string): EffectAction | null {
   const zoneElementBoostMatch = text.match(/^(アビス|パワーチャージャー)の(闇|炎|電気|風|カオス)属性のカード[1１]枚につき、?(?:攻撃力|★)?[＋+]([0-9０-９]+)[。.]?/);
   if (zoneElementBoostMatch) {
     return {
-      type: 'boostAttack',
+      type: text.includes('★') ? 'boostPower' : 'boostAttack',
       params: {
         value: parseNum(zoneElementBoostMatch[3]),
         perCount: true,
@@ -661,7 +673,7 @@ function parseAction(text: string): EffectAction | null {
   const zoneElementCountBoostMatch = text.match(/^(アビス|パワーチャージャー)にある(闇|炎|電気|風|カオス)属性のカードの数だけ、?(?:攻撃力|★)?[＋+]([0-9０-９]+)[。.]?/);
   if (zoneElementCountBoostMatch) {
     return {
-      type: 'boostAttack',
+      type: text.includes('★') ? 'boostPower' : 'boostAttack',
       params: {
         value: parseNum(zoneElementCountBoostMatch[3]),
         perCount: true,
@@ -711,6 +723,9 @@ function parseAction(text: string): EffectAction | null {
   // "お互いのHPをX回復"
   const healBothMatch = text.match(/お互いのHP[をが]?([0-9０-９]+)回復/);
   if (healBothMatch) return { type: 'healBoth', params: { value: parseNum(healBothMatch[1]) } };
+
+  const healOpponentMatch = text.match(/相手のHP[をが]([0-9０-９]+)回復/);
+  if (healOpponentMatch) return { type: 'healOpponent', params: { value: parseNum(healOpponentMatch[1]) } };
 
   // "HPをX回復"
   const healMatch = text.match(/HP[をが]([0-9０-９]+)回復/);
@@ -982,7 +997,7 @@ function parseAction(text: string): EffectAction | null {
 
   // "時計を無効"
   if (text.includes('相手のキャラクターカードの時計を無効')) {
-    return { type: 'clockRewindOpponentCharacter', params: {} };
+    return { type: 'nullifyOpponentClock', params: {} };
   }
   if (text.includes('時計を無効') || text.includes('時間に戻る')) {
     return { type: 'clockReset', params: {} };
@@ -1022,7 +1037,7 @@ function parseAction(text: string): EffectAction | null {
 
   // "効果を無効"
   if (text.includes('効果') && text.includes('無効')) {
-    return { type: 'noEffect', params: {} };
+    return { type: 'noEffect', params: text.includes('エンチャント') ? { scope: 'enchantOnly' } : {} };
   }
 
   // "ダメージは軽減されない"

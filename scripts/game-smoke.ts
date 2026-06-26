@@ -552,7 +552,7 @@ function fivePowerCards() {
   assert.equal(parseEffect('相手のアビスにカードが置かれたとき、すぐにこのカードをアビスに置く')?.trigger, 'onZoneEntered');
   assert.equal(parseEffect('パワーチャージャーにカードを置いたとき、すぐにこのカードをアビスに置く')?.trigger, 'onZoneEntered');
   assert.deepEqual(parseEffect('バトルに負けたとき、すぐにアビスに置く')?.conditions, [{ type: 'battleLost', value: true }]);
-  assert.deepEqual(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.action, { type: 'clockRewindOpponentCharacter', params: {} });
+  assert.deepEqual(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.action, { type: 'nullifyOpponentClock', params: {} });
   assert.equal(parseEffect('パワーチャージャーの電気属性のカード１枚につき、攻撃力+20。相手のHPが30以下になったターンの終了時にアビスに置く')?.trigger, 'onUse');
   assert.equal(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.trigger, 'onUse');
   const allParsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
@@ -592,7 +592,7 @@ function fivePowerCards() {
   assert.equal(healBothState.players[1].hp, 100);
 
   const opponentHealThenDamage = parseEffect(cardEffectText('3rd_27'));
-  assert.deepEqual(opponentHealThenDamage?.action, { type: 'heal', params: { value: 50, target: 'opponent' } });
+  assert.deepEqual(opponentHealThenDamage?.action, { type: 'healOpponent', params: { value: 50 } });
   assert.deepEqual(opponentHealThenDamage?.expiry?.action, { type: 'directDamage', params: { value: 50 } });
   const opponentHealThenDamageEffects = allParsedEffects.get('3rd_27') ?? [];
   assert.equal(opponentHealThenDamageEffects.length, 2);
@@ -681,14 +681,14 @@ function fivePowerCards() {
   assert.equal(executeEffect(rewindByOpponentClock!, rewindByOpponentClockState, 0).success, true);
   assert.equal(rewindByOpponentClockState.chronos.position, 10);
 
-  const rewindOpponentCharacterClock = parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く');
-  assert.ok(rewindOpponentCharacterClock);
+  const nullifyOpponentClock = parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く');
+  assert.deepEqual(nullifyOpponentClock?.action, { type: 'nullifyOpponentClock', params: {} });
   const rewindOpponentCharacterClockState = preparedState();
   const opponentPlayedCharacter = createInstance('1st_9', true);
   rewindOpponentCharacterClockState.chronos.position = 7;
   rewindOpponentCharacterClockState.setCardsThisTurn[1] = [opponentPlayedCharacter];
   assert.equal(getAllCardDefs().find(card => card.id === opponentPlayedCharacter.defId)?.clock, 1);
-  assert.equal(executeEffect(rewindOpponentCharacterClock, rewindOpponentCharacterClockState, 0).success, true);
+  assert.equal(executeEffect(nullifyOpponentClock!, rewindOpponentCharacterClockState, 0).success, true);
   assert.equal(rewindOpponentCharacterClockState.chronos.position, 6);
 
   const boostBothByHp = parseEffect('お互いの自分のHPの分だけ攻撃力+。相手のHPが40以下になったターンの終了時にアビスに置く');
@@ -1953,6 +1953,23 @@ function fivePowerCards() {
 
 {
   const parsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  const G = preparedAreaEnchantState('4th_32', 0);
+  G.players[0].powerCharger = fivePowerCards();
+  G.players[1].setZoneC = createInstance('2nd_5', true);
+  processTurnEffects(G, parsedEffects);
+  assert.equal(G.players[0].setZoneC, null);
+  assert.equal(G.players[0].abyss.at(-1)?.defId, '4th_32');
+
+  const hpBoostG = preparedAreaEnchantState('3rd_64', 0);
+  hpBoostG.players[0].powerCharger = fivePowerCards();
+  hpBoostG.players[0].hp = 65;
+  hpBoostG.players[1].hp = 35;
+  processTurnEffects(hpBoostG, parsedEffects);
+  assert.deepEqual(hpBoostG.modifiers.attack, [65, 35]);
+}
+
+{
+  const parsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
   const effects = parsedEffects.get('3rd_58') ?? [];
   assert.ok(effects.some(effect => (
     effect.trigger === 'onDamageReceived'
@@ -2268,13 +2285,17 @@ function fivePowerCards() {
   });
   assert.deepEqual(parsedCardEffect('2nd_6').action, { type: 'setPowerCost', params: { reduction: 2 } });
   assert.deepEqual(parsedCardEffect('2nd_58').action, {
-    type: 'boostAttack',
+    type: 'boostPower',
     params: { value: 1, perCount: true, per: 'zoneElementCount', zone: 'abyss', element: '闇' },
   });
   assert.equal(parsedEffects.get('4th_41')?.length, 1);
   assert.deepEqual(parsedEffects.get('4th_41')?.[0].conditions, [
     { type: 'namedCardCondition', value: 'シェードの埃は延長', target: 'swappedThisTurn' },
   ]);
+  assert.deepEqual(parsedEffects.get('4th_41')?.[0].action, {
+    type: 'noEffect',
+    params: { scope: 'enchantOnly' },
+  });
   assert.deepEqual(parsedCardEffect('4th_65').conditions, [
     { type: 'namedCardInBattleZone', value: 'お勉強しといてよ' },
   ]);
@@ -2305,12 +2326,21 @@ function fivePowerCards() {
     type: 'handSizeModifier',
     params: { value: 1, duration: 'game' },
   });
+  assert.deepEqual(parseEffect('このカードの効果でカードを引いたなら、手札の数はゲーム終了まで１枚増える')?.conditions, [
+    { type: 'drawOccurredThisEffect', value: true },
+  ]);
   assert.deepEqual(parsedEffects.get('4th_100')?.[0].action, {
     type: 'directDamage',
     params: { value: 'reducedThisTurn', timing: 'turnEnd' },
   });
   assert.deepEqual(parsedCardEffect('4th_8').conditions, [
     { type: 'handElements', value: 4 },
+  ]);
+  assert.deepEqual(parsedCardEffect('3rd_8').conditions, [
+    { type: 'specificElements', value: ['闇', '炎', '電気', '風'], target: 'abyss' },
+  ]);
+  assert.deepEqual(parsedCardEffect('3rd_22').conditions, [
+    { type: 'specificElements', value: ['闇', '炎', '電気', '風'], target: 'abyss' },
   ]);
   assert.deepEqual(parsedCardEffect('4th_34').conditions, [
     { type: 'opponentAttack', value: 0, operator: 'eq' },
@@ -2347,7 +2377,9 @@ function fivePowerCards() {
   const gameHandSizeState = preparedState();
   const gameHandSize = parseEffect('このカードの効果でカードを引いたなら、手札の数はゲーム終了まで１枚増える');
   assert.ok(gameHandSize);
-  assert.equal(executeEffect(gameHandSize, gameHandSizeState, 0).success, true);
+  assert.deepEqual(executeEffect(gameHandSize, gameHandSizeState, 0), { success: false, message: 'Condition not met' });
+  gameHandSizeState.drawEffectCardIdsThisTurn.push('draw-source');
+  assert.equal(executeEffect(gameHandSize, gameHandSizeState, 0, { cardInstanceId: 'draw-source' }).success, true);
   assert.equal(gameHandSizeState.handSizeModifier[0], 1);
 
   const reducedCostState = preparedState();
@@ -2363,6 +2395,14 @@ function fivePowerCards() {
   assert.equal(executeEffect(parsedCardEffect('4th_8'), handElementsState, 0).success, true);
   assert.equal(handElementsState.modifiers.attack[0], 80);
   assert.deepEqual(handElementsState.revealedHandCardIds[0], handElementsState.players[0].hand.map(card => card.instanceId));
+
+  const specificElementsState = preparedState();
+  specificElementsState.players[0].abyss = ['1st_1', '1st_2', '1st_3', '1st_4'].map(id => createInstance(id, true));
+  assert.equal(executeEffect(parsedCardEffect('3rd_8'), specificElementsState, 0).success, true);
+  assert.equal(specificElementsState.modifiers.attack[0], 100);
+  const extraChaosElementsState = preparedState();
+  extraChaosElementsState.players[0].abyss = ['1st_1', '1st_2', '1st_3', '1st_4', '4th_6'].map(id => createInstance(id, true));
+  assert.deepEqual(executeEffect(parsedCardEffect('3rd_8'), extraChaosElementsState, 0), { success: false, message: 'Condition not met' });
 
   const opponentAttackZeroState = preparedState();
   opponentAttackZeroState.players[1].battleZone = createInstance('1st_1', true);
@@ -2402,6 +2442,26 @@ function fivePowerCards() {
   assert.equal(deckTopSendToPowerMoveState.players[0].setZoneC, null);
   assert.equal(deckTopSendToPowerMoveState.players[0].powerCharger.at(-1)?.instanceId, sendToPowerArea.instanceId);
 
+  const enchantOnlyDisableState = preparedState();
+  const enchantOnlyDisable = parsedEffects.get('4th_41')?.[0];
+  assert.ok(enchantOnlyDisable);
+  enchantOnlyDisableState.swappedCardsThisTurn[0] = [createInstance('4th_41', true)];
+  assert.equal(executeEffect(enchantOnlyDisable, enchantOnlyDisableState, 0).success, true);
+  assert.equal(enchantOnlyDisableState.modifiers.enchantEffectsDisabled[1], true);
+  assert.equal(enchantOnlyDisableState.modifiers.effectsDisabled[1], false);
+  enchantOnlyDisableState.players[1].powerCharger = fivePowerCards();
+  const disabledEnchant = createInstance('1st_5', true);
+  const enabledCharacter = createInstance('1st_1', true);
+  const enchantOnlyPending = collectTurnEffects(
+    enchantOnlyDisableState,
+    new Map<string, ParsedEffect[]>([
+      ['1st_5', [boost]],
+      ['1st_1', [damage7]],
+    ]),
+    [[], [disabledEnchant, enabledCharacter]],
+  );
+  assert.deepEqual(enchantOnlyPending[1].map(effect => effect.cardDefId), ['1st_1']);
+
   const namedReducedCostState = preparedState();
   namedReducedCostState.chronos.position = 0;
   namedReducedCostState.players[0].battleZone = createInstance('1st_1', true);
@@ -2413,7 +2473,7 @@ function fivePowerCards() {
   const abyssBoostState = preparedState();
   abyssBoostState.players[0].abyss = [createInstance('1st_9', true), createInstance('1st_10', true), createInstance('1st_13', true)];
   assert.equal(executeEffect(parsedCardEffect('2nd_58'), abyssBoostState, 0).success, true);
-  assert.equal(abyssBoostState.modifiers.attack[0], 2);
+  assert.equal(abyssBoostState.modifiers.sendToPower[0], 2);
 
   const opponentPowerCostState = preparedState();
   opponentPowerCostState.players[1].battleZone = createInstance('1st_10', true);

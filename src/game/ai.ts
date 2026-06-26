@@ -21,7 +21,7 @@ function scoreCard(card: CardInstance, G: GameState, playerIdx: number): number 
 
   let score = 0;
   const currentTime = getChronosTime(G);
-  const power = getPlayerPower(G.players[playerIdx]);
+  const power = getPlayerPower(G.players[playerIdx], G, playerIdx as PlayerIndex);
 
   if (def.type === 'Character' && def.attack) {
     // Prefer characters with high attack for current time

@@ -49,6 +49,7 @@ export type ConditionType =
   | 'powerAtLeast'      // Player power >= N
   | 'abyssCount'        // Abyss has N+ cards
   | 'abyssElements'     // Abyss has N distinct elements
+  | 'specificElements'  // Zone has exactly the named element set
   | 'abyssElementCount' // Abyss has N cards of an element
   | 'abyssAllSameElement' // All cards in Abyss share an element
   | 'powerChargerElementCount' // Power Charger has N cards of an element
@@ -77,6 +78,7 @@ export type ConditionType =
   | 'previousCharElement' // Previous turn's character element
   | 'hasAreaEnchant'    // Set zone C has specific card
   | 'battleLost'        // This player lost the current battle
+  | 'drawOccurredThisEffect' // This card's effect drew cards earlier this turn
   | 'and'               // Compound AND
   | 'or';               // Compound OR
 
@@ -88,17 +90,20 @@ export interface EffectAction {
 export type ActionType =
   | 'boostAttack'       // Attack +N
   | 'boostBothAttackByOwnHp' // Both players gain attack equal to own HP
+  | 'boostPower'        // Power Charger value +N
   | 'reduceAttack'      // Attack -N
   | 'setOpponentAttack' // Set opposing attack to N
   | 'setOpponentElement' // Temporarily set opposing Character element
   | 'directDamage'      // Deal N damage to player
   | 'heal'              // Restore N HP
+  | 'healOpponent'      // Restore N HP to opponent
   | 'healBoth'          // Restore N HP to both players
   | 'damageReduce'      // Reduce incoming damage by N
   | 'drawCards'         // Draw N cards
   | 'swapAttack'        // Swap night/day attack values
   | 'forceOwnAttackTime' // Force own attack to day/night value
   | 'clockReset'        // Reset chronos to start-of-turn
+  | 'nullifyOpponentClock' // Subtract opponent Character clock contribution
   | 'clockRewindOpponentCharacter' // Rewind Chronos by opponent Character clocks played this turn
   | 'clockSet'          // Set chronos to specific position
   | 'expandMidnightRange' // Treat positions around midnight as midnight

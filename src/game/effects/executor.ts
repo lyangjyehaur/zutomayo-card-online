@@ -34,10 +34,21 @@ import {
   type RelativeChoicePlayer,
 } from './choices';
 
+export interface EffectExecutionContext {
+  cardInstanceId?: string;
+}
+
+export function areEffectsDisabledForCard(G: GameState, player: PlayerIndex, cardDefId?: string): boolean {
+  if (G.modifiers.effectsDisabled?.[player]) return true;
+  if (!G.modifiers.enchantEffectsDisabled?.[player]) return false;
+  return getCardDef(cardDefId ?? '')?.type === 'Enchant';
+}
+
 function power(G: GameState, player: PlayerIndex): number {
-  return G.players[player].powerCharger.reduce(
+  const base = G.players[player].powerCharger.reduce(
     (sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0), 0,
   );
+  return Math.max(0, base + (G.modifiers.sendToPower?.[player] ?? 0));
 }
 
 function zoneElementCount(G: GameState, player: PlayerIndex, zone: string, element: string): number {
@@ -120,7 +131,12 @@ function latestChronosChangedEvent(G: GameState) {
   return [...G.timingEvents].reverse().find(item => item.type === 'chronosChanged');
 }
 
-function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): boolean {
+function evaluateCondition(
+  cond: Condition,
+  G: GameState,
+  player: PlayerIndex,
+  context: EffectExecutionContext = {},
+): boolean {
   const me = G.players[player];
   const opponent = G.players[(1 - player) as PlayerIndex];
   switch (cond.type) {
@@ -135,6 +151,14 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     case 'abyssElements': {
       const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
       return new Set(cards.map(card => getCardDef(card.defId)?.element).filter(Boolean)).size >= Number(cond.value);
+    }
+    case 'specificElements': {
+      if (!Array.isArray(cond.value)) return false;
+      const required = new Set(cond.value.map(String));
+      const actual = new Set(conditionZoneCards(G, player, cond)
+        .map(card => getCardDef(card.defId)?.element)
+        .filter((element): element is Element => !!element));
+      return actual.size === required.size && [...required].every(element => actual.has(element as Element));
     }
     case 'abyssElementCount': {
       const owner = conditionPlayer(cond, player);
@@ -244,8 +268,11 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     }
     case 'battleLost': return G.lastBattleResult.winner !== null && G.lastBattleResult.winner !== player;
     case 'previousCharElement': return G.previousTurnCharacterElements?.[player] === cond.value;
-    case 'and': return (cond.value as Condition[]).every(item => evaluateCondition(item, G, player));
-    case 'or': return (cond.value as Condition[]).some(item => evaluateCondition(item, G, player));
+    case 'drawOccurredThisEffect':
+      if (context.cardInstanceId) return (G.drawEffectCardIdsThisTurn ?? []).includes(context.cardInstanceId);
+      return Boolean(G.drawOccurredThisEffect?.[player]);
+    case 'and': return (cond.value as Condition[]).every(item => evaluateCondition(item, G, player, context));
+    case 'or': return (cond.value as Condition[]).some(item => evaluateCondition(item, G, player, context));
   }
 }
 
@@ -281,7 +308,10 @@ function loseByAbyssPaymentFailure(G: GameState, player: PlayerIndex, min: numbe
 function isPersistentAreaEnchantEffect(card: CardInstance, effect: ParsedEffect): boolean {
   return getCardDef(card.defId)?.type === 'Area Enchant' && [
     'boostAttack',
+    'boostBothAttackByOwnHp',
+    'boostPower',
     'forceOwnAttackTime',
+    'moveSelfAreaEnchant',
     'setPowerCost',
     'setAllCardClocks',
   ].includes(effect.action.type);
@@ -348,13 +378,14 @@ export function collectTurnEffects(
 ): [PendingEffect[], PendingEffect[]] {
   const pending: [PendingEffect[], PendingEffect[]] = [[], []];
   for (const player of getTurnEffectPlayerOrder(G)) {
-    if (G.step === 'gameOver' || G.modifiers.effectsDisabled[player]) continue;
+    if (G.step === 'gameOver') continue;
     const playedIds = new Set(playedCards[player].map(card => card.instanceId));
     const candidates = [...playedCards[player], G.players[player].battleZone, G.players[player].setZoneC]
       .filter((card): card is CardInstance => card !== null)
       .filter(card => !(G.suppressedEffectCardIdsThisTurn ?? []).includes(card.instanceId))
       .filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
     for (const card of candidates) {
+      if (areEffectsDisabledForCard(G, player, card.defId)) continue;
       const definition = getCardDef(card.defId);
       const effects = parsedEffects.get(card.defId) ?? [];
       for (const [effectIndex, effect] of effects.entries()) {
@@ -386,8 +417,9 @@ export function executeEffect(
   effect: ParsedEffect,
   G: GameState,
   player: PlayerIndex,
+  context: EffectExecutionContext = {},
 ): { success: boolean; message: string } {
-  if (!effect.conditions.every(condition => evaluateCondition(condition, G, player))) {
+  if (!effect.conditions.every(condition => evaluateCondition(condition, G, player, context))) {
     return { success: false, message: 'Condition not met' };
   }
   const me = G.players[player];
@@ -428,6 +460,21 @@ export function executeEffect(
       G.modifiers.attack[player] += me.hp;
       G.modifiers.attack[opponentIndex] += opponent.hp;
       return { success: true, message: 'Both players gain attack equal to own HP' };
+    case 'boostPower': {
+      let multiplier = 1;
+      if (effect.action.params.per === 'zoneElementCount') {
+        multiplier = zoneElementCount(
+          G,
+          player,
+          String(effect.action.params.zone ?? 'abyss'),
+          String(effect.action.params.element ?? ''),
+        );
+      }
+      const boost = effect.action.params.per || effect.action.params.perCount ? value * multiplier : value;
+      if (!G.modifiers.sendToPower) G.modifiers.sendToPower = [0, 0];
+      G.modifiers.sendToPower[player] += boost;
+      return { success: true, message: `Power +${boost}` };
+    }
     case 'reduceAttack':
       G.modifiers.attack[opponentIndex] -= value;
       return { success: true, message: `Opponent attack -${value}` };
@@ -451,6 +498,9 @@ export function executeEffect(
       }
       me.hp = Math.min(100, me.hp + value);
       return { success: true, message: `Heal ${value}` };
+    case 'healOpponent':
+      opponent.hp = Math.min(100, opponent.hp + value);
+      return { success: true, message: `Heal opponent ${value}` };
     case 'healBoth':
       me.hp = Math.min(100, me.hp + value);
       opponent.hp = Math.min(100, opponent.hp + value);
@@ -495,6 +545,14 @@ export function executeEffect(
         card.faceUp = true;
         me.hand.push(card);
       }
+      if (!G.drawOccurredThisEffect) G.drawOccurredThisEffect = [false, false];
+      G.drawOccurredThisEffect[player] = true;
+      if (context.cardInstanceId) {
+        if (!G.drawEffectCardIdsThisTurn) G.drawEffectCardIdsThisTurn = [];
+        if (!G.drawEffectCardIdsThisTurn.includes(context.cardInstanceId)) {
+          G.drawEffectCardIdsThisTurn.push(context.cardInstanceId);
+        }
+      }
       return { success: true, message: `Draw ${value}` };
     }
     case 'swapAttack':
@@ -513,6 +571,7 @@ export function executeEffect(
     case 'clockReset':
       G.chronos.position = G.chronosAtTurnStart;
       return { success: true, message: 'Reset Chronos' };
+    case 'nullifyOpponentClock':
     case 'clockRewindOpponentCharacter': {
       const rewind = (G.setCardsThisTurn?.[opponentIndex] ?? [])
         .filter(card => getCardDef(card.defId)?.type === 'Character')
@@ -1188,6 +1247,11 @@ export function executeEffect(
       return { success: true, message: 'Pending hand selection' };
     }
     case 'noEffect':
+      if (effect.action.params.scope === 'enchantOnly') {
+        if (!G.modifiers.enchantEffectsDisabled) G.modifiers.enchantEffectsDisabled = [false, false];
+        G.modifiers.enchantEffectsDisabled[opponentIndex] = true;
+        return { success: true, message: 'Disable opponent Enchant effects this turn' };
+      }
       G.modifiers.effectsDisabled[opponentIndex] = true;
       return { success: true, message: 'Disable opponent effects this turn' };
     case 'suppressEffectActivation':
@@ -1209,9 +1273,12 @@ export function processTurnEffects(
 ): void {
   const pending = collectTurnEffects(G, parsedEffects, playedCards);
   for (const player of getTurnEffectPlayerOrder(G)) {
-    if (G.step === 'gameOver' || G.modifiers.effectsDisabled[player]) continue;
+    if (G.step === 'gameOver') continue;
     for (const pendingEffect of pending[player]) {
-      const result = executeEffect(pendingEffect.effect, G, player);
+      if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) continue;
+      const result = executeEffect(pendingEffect.effect, G, player, {
+        cardInstanceId: pendingEffect.cardInstanceId,
+      });
       if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
       if ((G.step as GameState['step']) === 'gameOver') return;
     }

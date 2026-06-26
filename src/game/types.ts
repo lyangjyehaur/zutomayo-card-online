@@ -259,8 +259,10 @@ export interface CombatModifiers {
   handSize: [number, number];
   powerCostReduction: [number, number];
   extraSettableCards: [number, number];
+  sendToPower: [number, number];
   swapAttack: [boolean, boolean];
   effectsDisabled: [boolean, boolean];
+  enchantEffectsDisabled: [boolean, boolean];
   unreduceableDamage: [boolean, boolean];
 }
 
@@ -283,6 +285,8 @@ export interface GameState {
   revealedHandCardIds: [string[], string[]];
   swappedCardsThisTurn: [CardInstance[], CardInstance[]];
   suppressedEffectCardIdsThisTurn: string[];
+  drawEffectCardIdsThisTurn: string[];
+  drawOccurredThisEffect: [boolean, boolean];
   previousTurnCharacterElements: [Element | null, Element | null];
   handSizeModifier: [number, number];
   areaEnchantSetLocked: [boolean, boolean];

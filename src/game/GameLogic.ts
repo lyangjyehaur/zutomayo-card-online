@@ -1,5 +1,11 @@
 import type { ParsedEffect } from './effects';
-import { buildReorderOpponentDeckTopChoice, collectTurnEffects, executeEffect, getTurnEffectPlayerOrder } from './effects/executor';
+import {
+  areEffectsDisabledForCard,
+  buildReorderOpponentDeckTopChoice,
+  collectTurnEffects,
+  executeEffect,
+  getTurnEffectPlayerOrder,
+} from './effects/executor';
 import {
   isCharacterCard,
   matchesCardMoveFilter,
@@ -112,8 +118,10 @@ export function emptyModifiers(): CombatModifiers {
     handSize: [0, 0],
     powerCostReduction: [0, 0],
     extraSettableCards: [0, 0],
+    sendToPower: [0, 0],
     swapAttack: [false, false],
     effectsDisabled: [false, false],
+    enchantEffectsDisabled: [false, false],
     unreduceableDamage: [false, false],
   };
 }
@@ -152,11 +160,13 @@ export function sendToOwnerZone(
   }
 }
 
-export function getPlayerPower(player: PlayerState): number {
-  return player.powerCharger.reduce(
+export function getPlayerPower(player: PlayerState, G?: GameState, playerIndex?: PlayerIndex): number {
+  const base = player.powerCharger.reduce(
     (sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0),
     0,
   );
+  const modifier = G && playerIndex !== undefined ? (G.modifiers.sendToPower?.[playerIndex] ?? 0) : 0;
+  return Math.max(0, base + modifier);
 }
 
 function getEffectivePowerCost(card: CardInstance, G: GameState, player: PlayerIndex): number {
@@ -251,6 +261,8 @@ export function setupGame(
     revealedHandCardIds: [[], []],
     swappedCardsThisTurn: [[], []],
     suppressedEffectCardIdsThisTurn: [],
+    drawEffectCardIdsThisTurn: [],
+    drawOccurredThisEffect: [false, false],
     previousTurnCharacterElements: [null, null],
     handSizeModifier: [0, 0],
     areaEnchantSetLocked: [false, false],
@@ -437,7 +449,7 @@ function hasOptionalSwapEffect(
   if (!parsedEffects || !G.players[player].battleZone) return false;
   return G.setCardsThisTurn[player].some(card => {
     const def = getCardDef(card.defId);
-    if (!def || getPlayerPower(G.players[player]) < def.powerCost) return false;
+    if (!def || getPlayerPower(G.players[player], G, player) < def.powerCost) return false;
     return (parsedEffects.get(card.defId) ?? []).some(effect => (
       effect.action.type === 'addSettableCard' && effect.action.params.optional
     ));
@@ -504,7 +516,7 @@ export function placeRevealedCards(
 export function getEffectiveAttack(card: CardInstance, G: GameState, player: number): number {
   const index = player as PlayerIndex;
   const def = getCardDef(card.defId);
-  if (!def?.attack || getPlayerPower(G.players[index]) < getEffectivePowerCost(card, G, index)) return 0;
+  if (!def?.attack || getPlayerPower(G.players[index], G, index) < getEffectivePowerCost(card, G, index)) return 0;
   const time = getChronosTime(G);
   const effectiveTime = G.modifiers.attackTimeOverride?.[index] ?? time;
   const attackTime = G.modifiers.swapAttack[index] ? (effectiveTime === 'night' ? 'day' : 'night') : effectiveTime;
@@ -558,8 +570,10 @@ export function resolveTimingEvent(
     const delayed = G.delayedEffects;
     G.delayedEffects = [];
     for (const pendingEffect of delayed) {
-      if (G.modifiers.effectsDisabled[pendingEffect.player]) continue;
-      const result = executeEffect(pendingEffect.effect, G, pendingEffect.player);
+      if (areEffectsDisabledForCard(G, pendingEffect.player, pendingEffect.cardDefId)) continue;
+      const result = executeEffect(pendingEffect.effect, G, pendingEffect.player, {
+        cardInstanceId: pendingEffect.cardInstanceId,
+      });
       if (result.success) G.log.push(`Player ${pendingEffect.player}: ${result.message}.`);
       if ((G.step as GameState['step']) === 'gameOver') return;
     }
@@ -570,14 +584,14 @@ export function resolveTimingEvent(
     : getTurnEffectPlayerOrder(G);
 
   for (const player of players) {
-    if (G.modifiers.effectsDisabled[player]) continue;
     for (const card of timingCandidateCards(G, player)) {
+      if (areEffectsDisabledForCard(G, player, card.defId)) continue;
       const definition = getCardDef(card.defId);
-      if (!definition || getPlayerPower(G.players[player]) < definition.powerCost) continue;
+      if (!definition || getPlayerPower(G.players[player], G, player) < definition.powerCost) continue;
       for (const effect of parsedEffects.get(card.defId) ?? []) {
         if (effect.trigger !== trigger) continue;
         if (options.effectFilter && !options.effectFilter(effect)) continue;
-        const result = executeEffect(effect, G, player);
+        const result = executeEffect(effect, G, player, { cardInstanceId: card.instanceId });
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
         if ((G.step as GameState['step']) === 'gameOver') return;
       }
@@ -704,6 +718,8 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
   clearPendingChoice(G);
   G.swappedCardsThisTurn = [[], []];
   G.suppressedEffectCardIdsThisTurn = [];
+  G.drawEffectCardIdsThisTurn = [];
+  G.drawOccurredThisEffect = [false, false];
   G.damageReducedThisTurn = [0, 0];
   G.delayedEffects = [];
   G.modifiers = emptyModifiers();
@@ -736,29 +752,30 @@ function pendingEffectCount(pendingEffects: [PendingEffect[], PendingEffect[]]):
   return pendingEffects[0].length + pendingEffects[1].length;
 }
 
+function pruneDisabledPendingEffects(G: GameState, player: PlayerIndex): void {
+  G.pendingEffects[player] = G.pendingEffects[player].filter(
+    pendingEffect => !areEffectsDisabledForCard(G, player, pendingEffect.cardDefId),
+  );
+}
+
 function nextPendingEffectPlayer(G: GameState): PlayerIndex | null {
   if (G.pendingEffectPlayer !== null) {
     const current = G.pendingEffectPlayer;
-    if (G.modifiers.effectsDisabled[current]) {
-      G.pendingEffects[current] = [];
-    } else if (G.pendingEffects[current].length > 0) {
+    pruneDisabledPendingEffects(G, current);
+    if (G.pendingEffects[current].length > 0) {
       return current;
     }
 
     const other = (1 - current) as PlayerIndex;
-    if (G.modifiers.effectsDisabled[other]) {
-      G.pendingEffects[other] = [];
-    } else if (G.pendingEffects[other].length > 0) {
+    pruneDisabledPendingEffects(G, other);
+    if (G.pendingEffects[other].length > 0) {
       return other;
     }
     return null;
   }
 
   for (const player of getTurnEffectPlayerOrder(G)) {
-    if (G.modifiers.effectsDisabled[player]) {
-      G.pendingEffects[player] = [];
-      continue;
-    }
+    pruneDisabledPendingEffects(G, player);
     if (G.pendingEffects[player].length > 0) return player;
   }
   return null;
@@ -796,7 +813,9 @@ export function resolvePendingEffect(
   G.pendingEffects[player].splice(index, 1);
 
   const beforeChronos = G.chronos.position;
-  const result = executeEffect(pendingEffect.effect, G, player);
+  const result = executeEffect(pendingEffect.effect, G, player, {
+    cardInstanceId: pendingEffect.cardInstanceId,
+  });
   if (G.chronos.position !== beforeChronos) {
     const afterChronos = G.chronos.position;
     G.chronos.position = beforeChronos;
@@ -943,7 +962,7 @@ export function submitPendingChoice(
       if (selectedIndex < 0) return false;
       const selected = playerState.hand[selectedIndex];
       const def = getCardDef(selected.defId);
-      if (!def || getPlayerPower(playerState) < def.powerCost || !matchesPendingCardFilter(selected, choice.payload.filter)) return false;
+      if (!def || getPlayerPower(playerState, G, player) < def.powerCost || !matchesPendingCardFilter(selected, choice.payload.filter)) return false;
     }
 
     for (const optionId of optionIds) {
