@@ -1,34 +1,102 @@
 # ZUTOMAYO CARD Online
 
-A React + TypeScript implementation of the two-player ZUTOMAYO CARD flow. boardgame.io provides local/online synchronization and match lifecycle; the rules use an explicit simultaneous state machine in `GameState` rather than boardgame.io's alternating-turn model.
+Digital implementation of ZUTOMAYO CARD for local play, AI practice, and online two-player matches. The rules engine is deterministic and runs on boardgame.io, while user/deck/ranking persistence is handled by a separate SQLite-backed API service.
 
-## Run
+## Overview / 專案概覽
+
+- Frontend: Vite, React, TypeScript, React Router.
+- Game engine: boardgame.io with an explicit step-based `GameState` machine.
+- Game server: boardgame.io server in [src/server.ts](/private/tmp/zc-docs/src/server.ts) on port `3000`.
+- API server: REST API in [api/server.cjs](/private/tmp/zc-docs/api/server.cjs) with SQLite via `better-sqlite3` on port `3001`.
+- Deployment: Docker Compose with `game` and `api` services.
+- Production host target: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
+
+Main game flow:
+
+```text
+janken -> mulligan -> initialSet -> turnSet -> effectOrder -> turnSet/gameOver
+```
+
+## Features / 功能
+
+- 422 cards in [cards.json](/private/tmp/zc-docs/cards.json), with images served from `https://r2.dan.tw/cards/...`.
+- 250 cards with effect text. Current parser audit: 238 parsed lines out of 267 effect lines, with 49 parsed-but-partial lines still needing executor review.
+- Six UI languages: `zh-TW`, `zh-HK`, `zh-CN`, `ja`, `en`, `ko`.
+- Local two-player mode, online multiplayer rooms, and AI practice.
+- Easy, Normal, and Hard AI levels; Hard is heuristic-based and does not yet perform full lookahead.
+- Deck editor over the full 422-card pool, stored in browser localStorage today.
+- Four preset decks: Dark, Flame, Electric, Wind.
+- Interactive tutorial and browser-local match history.
+- Online reconnect/resume UX using stored boardgame.io match credentials.
+- 60-second client-side turn timer during turn setup.
+- Admin card data viewer and i18n management pages behind `VITE_ADMIN_PASSWORD`.
+- REST API for register/login/profile, authenticated deck CRUD, match result submission, and ELO leaderboard.
+
+## Tech Stack / 技術棧
+
+- React 19 + React Router 7 + TypeScript + Vite 7.
+- boardgame.io 0.50 for synchronized state, WebSocket transport, match lifecycle, and `playerView` hidden-information filtering.
+- Node 22 containers.
+- SQLite through `better-sqlite3`.
+- Docker Compose for production-style deployment.
+
+## Run Locally / 本機執行
+
+Install root dependencies:
 
 ```bash
 npm install
-npm run dev       # frontend development
-npm run server    # boardgame.io + built static frontend on PORT (default 3000)
-npm run smoke     # deterministic rules smoke tests
-npm run smoke:online # online two-client smoke
-npm run build
 ```
 
-For the production server, run `npm run build` before `npm run server`, or use `docker compose up --build`.
+Run frontend-only development:
 
-## Implemented rules
+```bash
+npm run dev
+```
 
-- Two 20-card decks, 100 HP, janken for night side, five-card hands, one mulligan.
-- Simultaneous initial face-down card setup and simultaneous per-turn confirmation.
-- Winner sets one card; loser sets two; a draw means one each.
-- Twelve-position Chronos, type-aware zone replacement, A-before-B conflict precedence, Power Cost attack checks, battle damage, and exact overdraw loss.
-- Chronos-side effect priority and a partial parsed-effect engine with real HP, draw, Chronos, attack, and damage-reduction mutations.
-- Server-validated choice flows cover hand-to-deck-bottom draw, optional hand payment then draw for fixed-1 `4th_53` / `4th_54` / `4th_58` and selected-count `4th_61` / `4th_62` / `4th_63`, focused card moves, Clock choices, own Abyss-to-deck-bottom payments that lose if unpaid, the `4th_27` selected-count mill follow-up, and the `4th_6` opponent Power Charger Character <-> Battle Zone Character swap with swapped-in effect suppression.
-- Local two-player, basic AI, and boardgame.io online rooms.
-- Online `playerView` hides opponent hands, decks, face-down set cards, and unpaired janken choices from clients.
-- Match history is stored only in the current browser.
+Vite serves on `http://localhost:3000` and proxies `/api` to `http://localhost:3001`. This is best for UI work. Online boardgame.io routes are served by `npm run server`, not Vite.
 
-## Known limitations
+Run the API service:
 
-Card text is not fully implemented. Previous-turn Character element conditions, player-selected normal effect order, turn start/end/damage-received/zone-entry timing events, damage-received reduction, Chronos transition events, basic hand-selection, optional hand payment then draw for fixed-1 `4th_53` / `4th_54` / `4th_58` and selected-count `4th_61` / `4th_62` / `4th_63`, Clock-position/Clock-advance choices, focused card-move choice flows, own Abyss-to-deck-bottom payment choices, `4th_27`'s selected-count mill follow-up, `4th_6`'s opponent Character swap/suppression slice, and several deterministic target/Area Enchant effects are automated. Some Area Enchant self-move clauses are split into timing effects, including day/night-loss, damage-threshold, and opponent-Abyss-entry clauses, but broader optional effects, other variable-count choices, broad replacement effects, deck-ordering choices, broader selected-count follow-ups, and parsed-but-partial card text still need work. Online rooms can use browser-saved custom decks by sending validated deck ID payloads when the room is created. There are no deployed accounts, server deck storage, cross-device deck sync, server leaderboard, or cross-device match history.
+```bash
+cd api
+npm install
+npm start
+```
 
-Card data remains in `cards.json`; its shape is defined by the existing loader and schema. See [rules.md](rules.md) for the rules represented by the engine, [PLAN.md](PLAN.md) for the roadmap, and [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md) for the detailed rule-gap audit.
+Run the game server:
+
+```bash
+npm run build
+API_URL=http://localhost:3001 npm run server
+```
+
+The game server serves the built frontend, boardgame.io endpoints, Socket.IO transport, card data assets, and `/api/*` proxy from `http://localhost:3000`.
+
+Run with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Then open `http://localhost:3000`. The API is also exposed directly at `http://localhost:3001/api`.
+
+## Scripts / 指令
+
+```bash
+npm run dev           # Vite frontend dev server
+npm run build         # typecheck + production frontend build
+npm run server        # boardgame.io/static server from dist
+npm run smoke         # deterministic game smoke tests
+npm run smoke:online  # boardgame.io two-client smoke test
+npm run rule:audit    # card effect parser coverage audit
+```
+
+## References / 參考
+
+- [Rules](rules.md)
+- [Official Q&A data](qa.json)
+- [Implementation plan](PLAN.md)
+- [REST API](docs/API.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Card effect gap audit](RULE_GAP_AUDIT.md)
