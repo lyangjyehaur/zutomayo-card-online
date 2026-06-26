@@ -197,6 +197,7 @@ export const ko: Record<TranslationKey, string> = {
   'onlineSession.rejoined': '다시 참가했습니다',
 
   'admin.title': '카드 데이터 관리',
+  'leaderboard.title': '리더보드',
 
   'notFound.kicker': '라우트 없음',
   'notFound.title': '페이지를 찾을 수 없음',

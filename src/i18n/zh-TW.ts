@@ -195,6 +195,7 @@ export const zhTW = {
   'onlineSession.rejoined': '已成功重新加入',
 
   'admin.title': '卡牌資料管理',
+  'leaderboard.title': '排行榜',
 
   'notFound.kicker': '路由不存在',
   'notFound.title': '找不到這個頁面',

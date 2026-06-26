@@ -197,6 +197,7 @@ export const ja: Record<TranslationKey, string> = {
   'onlineSession.rejoined': '再参加しました',
 
   'admin.title': 'カードデータ管理',
+  'leaderboard.title': 'リーダーボード',
 
   'notFound.kicker': 'ルートが存在しません',
   'notFound.title': 'ページが見つかりません',

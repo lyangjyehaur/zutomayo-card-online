@@ -11,6 +11,7 @@ import { LobbyPage, DEFAULT_DECK_NAME, onlineDeckName, selectedDeckName } from '
 import { LocalGamePage } from './pages/LocalGamePage';
 import { MatchHistoryPage } from './pages/MatchHistoryPage';
 import { OnlineGamePage } from './pages/OnlineGamePage';
+import { LeaderboardPage } from './pages/LeaderboardPage';
 import { t, useLocale, type TranslationKey } from './i18n';
 import {
   clearStoredOnlineSession,
@@ -62,6 +63,9 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
       </button>
       <button className={buttonClass('/history')} type="button" onClick={() => navigate('/history')}>
         {t('nav.history')}
+      </button>
+      <button className={buttonClass('/leaderboard')} type="button" onClick={() => navigate('/leaderboard')}>
+        🏆 排行
       </button>
       <button className="nav-link tutorial" type="button" onClick={onShowTutorial}>
         {t('nav.tutorial')}
@@ -253,6 +257,7 @@ function RouterShell() {
             )}
           />
           <Route path="/history" element={<MatchHistoryPage />} />
+          <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/i18n" element={<I18nManager />} />
           <Route path="*" element={<NotFoundPage />} />

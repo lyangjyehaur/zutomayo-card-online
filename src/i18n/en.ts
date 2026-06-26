@@ -197,6 +197,7 @@ export const en: Record<TranslationKey, string> = {
   'onlineSession.rejoined': 'Rejoined successfully',
 
   'admin.title': 'Card Data Manager',
+  'leaderboard.title': 'Leaderboard',
 
   'notFound.kicker': 'Route not found',
   'notFound.title': 'Page not found',
