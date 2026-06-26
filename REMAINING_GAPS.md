@@ -90,7 +90,7 @@ Status: DONE for the current Section 1 pass.
 
 Card effects are the main remaining implementation area.
 
-### 2.1 Completely unparsed effect lines
+### 2.1 Completely unparsed effect lines ✅ DONE (0 remaining)
 
 These 29 effect lines currently return `null` from `parseEffect()`:
 
