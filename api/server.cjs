@@ -47,6 +47,7 @@ db.exec(`
     loser_elo_change INTEGER DEFAULT 0,
     turns INTEGER,
     duration_seconds INTEGER,
+    action_log TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (player0_id) REFERENCES users(id),
     FOREIGN KEY (player1_id) REFERENCES users(id)
@@ -56,6 +57,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_matches_player0 ON matches(player0_id);
   CREATE INDEX IF NOT EXISTS idx_matches_player1 ON matches(player1_id);
 `);
+
+const matchColumns = db.prepare('PRAGMA table_info(matches)').all().map(column => column.name);
+if (!matchColumns.includes('action_log')) {
+  db.prepare('ALTER TABLE matches ADD COLUMN action_log TEXT').run();
+}
 
 // ===== Auth =====
 function hashPassword(password, salt) {
@@ -86,6 +92,68 @@ function calculateElo(ratingA, ratingB, scoreA) {
   const K = 32;
   const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
   return Math.round(ratingA + K * (scoreA - expectedA));
+}
+
+// ===== Action Log Sanitization =====
+function finiteNumber(value, fallback = 0) {
+  return Number.isFinite(Number(value)) ? Number(value) : fallback;
+}
+
+function optionalString(value) {
+  return typeof value === 'string' ? value.slice(0, 120) : undefined;
+}
+
+function sanitizePayload(action, payload) {
+  const data = payload && typeof payload === 'object' ? payload : {};
+  if (action === 'janken') {
+    return ['rock', 'paper', 'scissors'].includes(data.choice) ? { choice: data.choice } : {};
+  }
+  if (action === 'mulligan') {
+    const count = Math.max(0, Math.trunc(finiteNumber(data.redrawnCount, 0)));
+    return { redrawnCount: count };
+  }
+  if (action === 'setInitialCard') {
+    return { slot: 'A', faceDown: true };
+  }
+  if (action === 'setTurnCard') {
+    return { slot: data.slot === 'B' ? 'B' : 'A', faceDown: true };
+  }
+  if (action === 'confirmReady') {
+    return { confirmed: true };
+  }
+  if (action === 'chooseEffectOrder' || action === 'resolvePendingEffect') {
+    const clean = {
+      index: Math.max(0, Math.trunc(finiteNumber(data.index, 0))),
+    };
+    const effectId = optionalString(data.effectId);
+    const cardDefId = optionalString(data.cardDefId);
+    const source = optionalString(data.source);
+    if (effectId) clean.effectId = effectId;
+    if (cardDefId) clean.cardDefId = cardDefId;
+    if (source) clean.source = source;
+    return clean;
+  }
+  return {};
+}
+
+function sanitizeActionLog(actionLog) {
+  if (!Array.isArray(actionLog)) return [];
+  return actionLog
+    .filter(entry => entry && typeof entry === 'object')
+    .map(entry => {
+      const action = optionalString(entry.action) || 'unknown';
+      const player = Number(entry.player) === 1 ? 1 : 0;
+      const clean = {
+        turn: Math.max(0, Math.trunc(finiteNumber(entry.turn, 0))),
+        step: optionalString(entry.step) || 'unknown',
+        player,
+        action,
+        timestamp: Math.max(0, Math.trunc(finiteNumber(entry.timestamp, Date.now()))),
+      };
+      const payload = sanitizePayload(action, entry.payload);
+      if (Object.keys(payload).length > 0) clean.payload = payload;
+      return clean;
+    });
 }
 
 // ===== HTTP Handler =====
@@ -215,9 +283,25 @@ function handleRequest(req, res) {
 
   // ===== Match Routes =====
 
+  // Get match action log
+  const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
+  if (matchLogRoute && method === 'GET') {
+    const matchId = matchLogRoute[1];
+    const match = db.prepare('SELECT id, action_log FROM matches WHERE id = ?').get(matchId);
+    if (!match) return json({ error: 'Match not found' }, 404);
+    let actionLog = [];
+    try {
+      actionLog = match.action_log ? JSON.parse(match.action_log) : [];
+    } catch {
+      actionLog = [];
+    }
+    json({ matchId: match.id, actionLog: sanitizeActionLog(actionLog) });
+    return;
+  }
+
   // Submit match result
   if (pathname === '/api/matches' && method === 'POST') {
-    readBody().then(({ winnerId, loserId, turns, duration }) => {
+    readBody().then(({ winnerId, loserId, turns, duration, actionLog, action_log }) => {
       if (!winnerId || !loserId) return json({ error: 'Winner and loser IDs required' }, 400);
 
       const winner = db.prepare('SELECT * FROM users WHERE id = ?').get(winnerId);
@@ -239,8 +323,20 @@ function handleRequest(req, res) {
       }
 
       const matchId = 'm_' + crypto.randomBytes(8).toString('hex');
-      db.prepare('INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(matchId, winnerId, loserId, winnerId, loserId, winnerEloChange, loserEloChange, turns || 0, duration || 0);
+      const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
+      db.prepare('INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(
+          matchId,
+          winnerId,
+          loserId,
+          winnerId,
+          loserId,
+          winnerEloChange,
+          loserEloChange,
+          turns || 0,
+          duration || 0,
+          JSON.stringify(sanitizedActionLog),
+        );
 
       json({
         matchId, winnerEloChange, loserEloChange,

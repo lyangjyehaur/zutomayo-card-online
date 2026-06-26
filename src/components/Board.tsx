@@ -215,7 +215,13 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID }: Props & { matchSta
       .then((profile: AccountProfile) => {
         const winnerId = accountIdForPlayer(winner, accountPlayer, profile);
         const loserId = accountIdForPlayer(loser, accountPlayer, profile);
-        return submitMatch(winnerId, loserId, G.turnNumber) as Promise<MatchSubmitResponse>;
+        return submitMatch(
+          winnerId,
+          loserId,
+          G.turnNumber,
+          durationSeconds,
+          G.actionLog,
+        ) as Promise<MatchSubmitResponse>;
       })
       .then(result => {
         const change = winner === accountPlayer

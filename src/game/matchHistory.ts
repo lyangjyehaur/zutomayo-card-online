@@ -1,4 +1,4 @@
-import type { GameState } from '../game/types';
+import type { ActionLogEntry, GameState } from '../game/types';
 
 export interface MatchRecord {
   id: string;
@@ -16,6 +16,7 @@ export interface MatchRecord {
   };
   turns: number;
   log: string[];
+  actionLog: ActionLogEntry[];
 }
 
 type MatchWinnerInput = string | number | null | undefined;
@@ -49,6 +50,7 @@ export function saveMatchRecord(G: GameState, winner: MatchWinnerInput, duration
     },
     turns: G.turnNumber,
     log: G.log.slice(-20), // Last 20 log entries
+    actionLog: G.actionLog ?? [],
   };
 
   const records = getMatchRecords();
@@ -73,6 +75,25 @@ export function getMatchRecords(): MatchRecord[] {
 // Clear all records
 export function clearMatchRecords(): void {
   localStorage.removeItem('zutomayo_match_records');
+}
+
+export function downloadActionLogJson(
+  actionLog: ActionLogEntry[],
+  filename = `zutomayo-action-log-${Date.now()}.json`,
+): void {
+  const blob = new Blob([JSON.stringify(actionLog, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadMatchActionLog(record: MatchRecord): void {
+  downloadActionLogJson(record.actionLog ?? [], `${record.id}-action-log.json`);
 }
 
 // Get stats summary

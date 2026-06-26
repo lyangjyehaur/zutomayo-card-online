@@ -146,13 +146,25 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   player0.start();
   player1.start();
   player0.moves.janken('rock');
+  assert.equal(
+    (player1.getState()?.G.actionLog ?? []).some(entry => entry.action === 'janken' && entry.player === 0),
+    false,
+  );
   player1.moves.janken('scissors');
   assert.equal(player0.getState()?.G.step, 'mulligan');
   assert.equal(player1.getState()?.G.step, 'mulligan');
+  assert.deepEqual(
+    (player0.getState()?.G.actionLog ?? []).filter(entry => entry.action === 'janken').map(entry => entry.payload),
+    [{ choice: 'rock' }, { choice: 'scissors' }],
+  );
   player0.moves.keepHand();
   player1.moves.keepHand();
   assert.equal(player0.getState()?.G.step, 'initialSet');
   player0.moves.setInitialCard(0);
+  const opponentSetLog = (player1.getState()?.G.actionLog ?? [])
+    .find(entry => entry.action === 'setInitialCard' && entry.player === 0);
+  assert.deepEqual(opponentSetLog?.payload, { slot: 'A', faceDown: true });
+  assert.equal(JSON.stringify(opponentSetLog).includes('defId'), false);
   player1.moves.setInitialCard(0);
   player0.moves.confirmReady();
   player1.moves.confirmReady();
@@ -171,6 +183,11 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
     (pendingPlayer === 0 ? player0 : player1).moves.resolvePendingEffect(0);
   }
   assert.equal(player0.getState()?.G.step, 'turnSet');
+  const actionLog = player0.getState()?.G.actionLog ?? [];
+  assert.ok(actionLog.length >= 8);
+  assert.ok(actionLog.some(entry => entry.action === 'mulligan' && entry.payload?.redrawnCount === 0));
+  assert.ok(actionLog.some(entry => entry.action === 'confirmReady' && entry.player === 0));
+  assert.ok(actionLog.every(entry => typeof entry.timestamp === 'number'));
   player0.stop();
   player1.stop();
 }
@@ -335,6 +352,12 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
 
   const resolvePendingEffect = (ZutomayoCard.moves as any).resolvePendingEffect;
   assert.equal(resolvePendingEffect({ G, playerID: '0' }, 1), undefined);
+  const orderLog = G.actionLog.at(-1);
+  assert.equal(orderLog?.action, 'chooseEffectOrder');
+  assert.equal(orderLog?.payload?.index, 1);
+  assert.ok(orderLog?.payload?.effectId);
+  assert.equal(orderLog?.payload?.cardDefId, '1st_9');
+  assert.equal(orderLog?.payload?.source, 'battleZone');
   assert.equal(G.players[1].hp, 89);
   assert.match(G.log.at(-1) ?? '', /Deal 11/);
   assert.equal((G as any).pendingEffects[0][0].rawText, 'deal 7 first');

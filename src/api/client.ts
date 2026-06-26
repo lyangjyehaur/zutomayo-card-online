@@ -1,3 +1,5 @@
+import type { ActionLogEntry } from '../game/types';
+
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export interface DeckResponse {
@@ -78,11 +80,22 @@ export async function deleteDeck(deckId: string): Promise<{ deleted: boolean }> 
 }
 
 // ===== Matches =====
-export async function submitMatch(winnerId: string, loserId: string, turns: number, duration?: number) {
+export async function submitMatch(
+  winnerId: string,
+  loserId: string,
+  turns: number,
+  duration?: number,
+  actionLog?: ActionLogEntry[],
+) {
   return request('/matches', {
     method: 'POST',
-    body: JSON.stringify({ winnerId, loserId, turns, duration }),
+    body: JSON.stringify({ winnerId, loserId, turns, duration, actionLog }),
   });
+}
+
+export async function getMatchLog(matchId: string): Promise<ActionLogEntry[]> {
+  const data = await request<{ matchId: string; actionLog: ActionLogEntry[] }>(`/matches/${matchId}/log`);
+  return data.actionLog;
 }
 
 // ===== Leaderboard =====

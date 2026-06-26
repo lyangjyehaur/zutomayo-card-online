@@ -1,5 +1,5 @@
 import type { Game, Move } from 'boardgame.io';
-import type { CardInstance, GameState, JankenChoice, PlayerIndex, SetSlot, ZutomayoSetupData } from './types';
+import type { ActionLogEntry, CardInstance, GameState, JankenChoice, PlayerIndex, SetSlot, ZutomayoSetupData } from './types';
 import { getAllCardDefs } from './cards/loader';
 import { parseAllEffects } from './effects';
 import {
@@ -60,6 +60,19 @@ function redactPlayedCardsForViewer(G: GameState, owner: PlayerIndex, viewer: Pl
   ));
 }
 
+function redactActionLogForViewer(
+  G: GameState,
+  viewer: PlayerIndex | null,
+  bothChose: boolean,
+): ActionLogEntry[] {
+  return (G.actionLog ?? [])
+    .filter(entry => entry.action !== 'janken' || bothChose || entry.player === viewer)
+    .map(entry => ({
+      ...entry,
+      payload: entry.payload && typeof entry.payload === 'object' ? { ...entry.payload } : entry.payload,
+    }));
+}
+
 function playerView({ G, playerID }: { G: GameState; playerID: string | null }): GameState {
   const viewer = playerIndex(playerID);
   const bothChose = G.jankenChoices[0] !== null && G.jankenChoices[1] !== null;
@@ -77,6 +90,7 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
     setCardsThisTurn: [redactPlayedCardsForViewer(G, 0, viewer), redactPlayedCardsForViewer(G, 1, viewer)],
     jankenChoices,
     pendingChoice,
+    actionLog: redactActionLogForViewer(G, viewer, bothChose),
   };
 }
 

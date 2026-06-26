@@ -8,6 +8,7 @@ import {
   sourceCards,
 } from './effects/choices';
 import type {
+  ActionLogEntry,
   CardInstance,
   ChronosTime,
   CombatModifiers,
@@ -79,6 +80,24 @@ function setupDeck(
     return getPresetDeck(name);
   }
   return randomDeck();
+}
+
+function recordAction(
+  G: GameState,
+  player: PlayerIndex,
+  action: string,
+  payload?: ActionLogEntry['payload'],
+): void {
+  if (!Array.isArray(G.actionLog)) G.actionLog = [];
+  const entry: ActionLogEntry = {
+    turn: G.turnNumber,
+    step: G.step,
+    player,
+    action,
+    timestamp: Date.now(),
+  };
+  if (payload !== undefined) entry.payload = payload;
+  G.actionLog.push(entry);
 }
 
 export function emptyModifiers(): CombatModifiers {
@@ -212,6 +231,7 @@ export function setupGame(
     winner: null,
     gameoverReason: null,
     log: ['Game initialized. Janken determines the night-side player.'],
+    actionLog: [],
   };
   G.players[0].deck = shuffleDeck(setupDeck(
     0,
@@ -254,6 +274,7 @@ export function resolveJanken(
 export function chooseJanken(G: GameState, player: PlayerIndex, choice: JankenChoice): boolean {
   if (G.step !== 'janken' || G.jankenChoices[player] !== null) return false;
   G.jankenChoices[player] = choice;
+  recordAction(G, player, 'janken', { choice });
   if (G.jankenChoices[0] && G.jankenChoices[1]) {
     resolveJanken(G, G.jankenChoices[0], G.jankenChoices[1]);
   }
@@ -271,6 +292,7 @@ export function finishMulligan(G: GameState, player: PlayerIndex, indices: numbe
   state.deck = shuffleDeck([...state.deck, ...aside]);
   G.mulliganUsed[player] = true;
   G.ready[player] = true;
+  recordAction(G, player, 'mulligan', { redrawnCount: aside.length });
   G.log.push(`Player ${player} ${aside.length ? `redraws ${aside.length}` : 'keeps their hand'}.`);
   if (G.ready[0] && G.ready[1]) {
     G.step = 'initialSet';
@@ -302,7 +324,9 @@ function setCard(G: GameState, player: PlayerIndex, handIndex: number, slot: Set
 }
 
 export function setInitialCard(G: GameState, player: PlayerIndex, handIndex: number): boolean {
-  return G.step === 'initialSet' && setCard(G, player, handIndex, 'A');
+  const placed = G.step === 'initialSet' && setCard(G, player, handIndex, 'A');
+  if (placed) recordAction(G, player, 'setInitialCard', { slot: 'A', faceDown: true });
+  return placed;
 }
 
 export function setTurnCard(
@@ -311,7 +335,9 @@ export function setTurnCard(
   handIndex: number,
   slot: SetSlot,
 ): boolean {
-  return G.step === 'turnSet' && setCard(G, player, handIndex, slot);
+  const placed = G.step === 'turnSet' && setCard(G, player, handIndex, slot);
+  if (placed) recordAction(G, player, 'setTurnCard', { slot, faceDown: true });
+  return placed;
 }
 
 export function undoSetCard(G: GameState, player: PlayerIndex, slot: SetSlot): boolean {
@@ -336,6 +362,7 @@ export function confirmReady(
   if (!['initialSet', 'turnSet'].includes(G.step) || G.ready[player]) return false;
   if (G.players[player].cardsSetThisTurn !== getRequiredSetCount(G, player)) return false;
   G.ready[player] = true;
+  recordAction(G, player, 'confirmReady', { confirmed: true });
   if (G.ready[0] && G.ready[1]) resolveTurn(G, parsedEffects);
   return true;
 }
@@ -689,6 +716,12 @@ export function resolvePendingEffect(
   if (!Number.isInteger(index) || index < 0 || index >= G.pendingEffects[player].length) return false;
   const pendingEffect = G.pendingEffects[player][index];
   if (!pendingEffect || pendingEffect.player !== player) return false;
+  recordAction(G, player, 'chooseEffectOrder', {
+    index,
+    effectId: pendingEffect.id,
+    cardDefId: pendingEffect.cardDefId,
+    source: pendingEffect.source,
+  });
   G.pendingEffects[player].splice(index, 1);
 
   const beforeChronos = G.chronos.position;

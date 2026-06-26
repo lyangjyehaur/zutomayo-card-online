@@ -18,6 +18,15 @@ export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B';
 export type TimingEventType = 'turnStart' | 'turnEnd' | 'damageReceived' | 'chronosChanged' | 'zoneEntered' | 'characterReplaced';
 
+export interface ActionLogEntry {
+  turn: number;
+  step: string;
+  player: PlayerIndex;
+  action: string;
+  payload?: any;
+  timestamp: number;
+}
+
 export interface TimingEvent {
   type: TimingEventType;
   player?: PlayerIndex;
@@ -217,4 +226,5 @@ export interface GameState {
   winner: PlayerIndex | null;
   gameoverReason: string | null;
   log: string[];
+  actionLog: ActionLogEntry[];
 }
