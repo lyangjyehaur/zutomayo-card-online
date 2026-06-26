@@ -2,7 +2,9 @@ import type {
   CardInstance,
   GameState,
   PendingCardMovePayload,
+  PendingCardFilter,
   PendingChoiceCardZone,
+  PendingOptionalHandMoveThenDrawPayload,
   PendingOpponentPowerCharacterSwapPayload,
   PlayerIndex,
   PlayerState,
@@ -30,6 +32,22 @@ export function matchesCardMoveFilter(card: CardInstance, payload: PendingCardMo
 
 export function legalCardMoveCards(G: GameState, payload: PendingCardMovePayload): CardInstance[] {
   return sourceCards(G, payload).filter(card => matchesCardMoveFilter(card, payload));
+}
+
+export function matchesPendingCardFilter(card: CardInstance, filter: PendingCardFilter): boolean {
+  const def = getCardDef(card.defId);
+  if (!def) return false;
+  if (filter.cardType !== undefined && def.type !== filter.cardType) return false;
+  if (filter.song !== undefined && def.song !== filter.song) return false;
+  if (filter.element !== undefined && def.element !== filter.element) return false;
+  return true;
+}
+
+export function legalOptionalHandMoveThenDrawCards(
+  G: GameState,
+  payload: PendingOptionalHandMoveThenDrawPayload,
+): CardInstance[] {
+  return G.players[payload.sourcePlayer].hand.filter(card => matchesPendingCardFilter(card, payload.filter));
 }
 
 export function isCharacterCard(card: CardInstance | null): card is CardInstance {

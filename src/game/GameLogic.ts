@@ -3,6 +3,7 @@ import { collectTurnEffects, executeEffect, getTurnEffectPlayerOrder } from './e
 import {
   isCharacterCard,
   matchesCardMoveFilter,
+  matchesPendingCardFilter,
   moveCardForChoice,
   sourceCards,
 } from './effects/choices';
@@ -732,6 +733,45 @@ export function submitPendingChoice(
       return true;
     }
     drawUnchecked(playerState, drawCount);
+  }
+  if (choice.type === 'optionalHandMoveThenDraw') {
+    if (
+      choice.payload.sourcePlayer !== player
+      || choice.payload.sourceZone !== 'hand'
+      || choice.payload.destinationPlayer !== player
+      || !['abyss', 'powerCharger', 'deck'].includes(choice.payload.destinationZone)
+      || (choice.payload.destinationZone === 'deck' && choice.payload.destinationPosition !== 'bottom')
+      || (choice.payload.destinationZone !== 'deck' && choice.payload.destinationPosition !== undefined)
+    ) {
+      return false;
+    }
+    const drawCount = choice.payload.drawCount === 'selected'
+      ? optionIds.length
+      : Number(choice.payload.drawCount ?? 0);
+    if (!Number.isInteger(drawCount) || drawCount < 0) return false;
+
+    if (optionIds.length > 0) {
+      for (const optionId of optionIds) {
+        const card = playerState.hand.find(item => item.instanceId === optionId);
+        if (!card || !matchesPendingCardFilter(card, choice.payload.filter)) return false;
+      }
+
+      for (const optionId of optionIds) {
+        const handIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
+        if (handIndex < 0) return false;
+        const [card] = playerState.hand.splice(handIndex, 1);
+        card.faceUp = true;
+        if (choice.payload.destinationZone === 'abyss') playerState.abyss.push(card);
+        else if (choice.payload.destinationZone === 'powerCharger') playerState.powerCharger.push(card);
+        else playerState.deck.push(card);
+      }
+
+      if (playerState.deck.length < drawCount) {
+        endGame(G, (1 - player) as PlayerIndex, `Player ${player} loses: choice attempted to draw ${drawCount} with only ${playerState.deck.length} cards.`);
+        return true;
+      }
+      drawUnchecked(playerState, drawCount);
+    }
   }
   if (choice.type === 'cardMove') {
     const source = sourceCards(G, choice.payload);

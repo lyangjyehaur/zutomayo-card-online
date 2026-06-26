@@ -1,13 +1,17 @@
 import type {
+  CardType,
   CardInstance,
+  Element,
   GameState,
   PendingAbyssToDeckBottomPayload,
+  PendingCardFilter,
   PendingCardMovePayload,
   PendingChoiceCardZone,
   PendingChoiceDeckPosition,
   PendingChoiceDestinationZone,
   PendingEffect,
   PendingEffectSource,
+  PendingOptionalHandMoveThenDrawPayload,
   PendingOpponentPowerCharacterSwapPayload,
   PlayerIndex,
 } from '../types';
@@ -16,6 +20,7 @@ import { getCardDef } from '../cards/loader';
 import {
   isCharacterCard,
   legalCardMoveCards,
+  legalOptionalHandMoveThenDrawCards,
   legalOpponentPowerCharacterSwapCards,
   relativePlayer,
   type RelativeChoicePlayer,
@@ -320,6 +325,81 @@ export function executeEffect(
       return { success: true, message: `Move own Area Enchant to ${effect.action.params.destination === 'powerCharger' ? 'Power Charger' : 'Abyss'}` };
     }
     case 'requestChoice': {
+      if (effect.action.params.choiceType === 'optionalHandMoveThenDraw') {
+        const sourceOwner = String(effect.action.params.sourceOwner);
+        const sourceZone = String(effect.action.params.sourceZone);
+        const destinationOwner = String(effect.action.params.destinationOwner);
+        const destinationZone = String(effect.action.params.destinationZone);
+        const destinationPosition = effect.action.params.destinationPosition === undefined
+          ? undefined
+          : String(effect.action.params.destinationPosition);
+        const drawCountParam = effect.action.params.drawCount ?? 0;
+        const drawCount = drawCountParam === 'selected' ? 'selected' : Number(drawCountParam);
+        if (
+          sourceOwner !== 'self'
+          || sourceZone !== 'hand'
+          || destinationOwner !== 'self'
+          || !['abyss', 'powerCharger', 'deck'].includes(destinationZone)
+          || (destinationZone === 'deck' && destinationPosition !== 'bottom')
+          || (destinationZone !== 'deck' && destinationPosition !== undefined)
+          || (drawCount !== 'selected' && drawCount !== 1)
+        ) {
+          return { success: false, message: 'Unsupported optional hand payment choice' };
+        }
+
+        const filter: PendingCardFilter = {};
+        if (effect.action.params.filterCardType !== undefined) {
+          const cardType = String(effect.action.params.filterCardType);
+          if (!['Character', 'Enchant', 'Area Enchant'].includes(cardType)) {
+            return { success: false, message: 'Unsupported optional hand payment card type filter' };
+          }
+          filter.cardType = cardType as CardType;
+        }
+        if (effect.action.params.filterSong !== undefined) {
+          const song = String(effect.action.params.filterSong).trim();
+          if (song.length === 0) return { success: false, message: 'Unsupported optional hand payment song filter' };
+          filter.song = song;
+        }
+        if (effect.action.params.filterElement !== undefined) {
+          const element = String(effect.action.params.filterElement);
+          if (!['闇', '炎', '電気', '風', 'カオス'].includes(element)) {
+            return { success: false, message: 'Unsupported optional hand payment element filter' };
+          }
+          filter.element = element as Element;
+        }
+
+        const payload: PendingOptionalHandMoveThenDrawPayload = {
+          sourcePlayer: relativePlayer(player, sourceOwner as RelativeChoicePlayer),
+          sourceZone: 'hand',
+          destinationPlayer: relativePlayer(player, destinationOwner as RelativeChoicePlayer),
+          destinationZone: destinationZone as PendingOptionalHandMoveThenDrawPayload['destinationZone'],
+          destinationPosition: destinationPosition as PendingChoiceDeckPosition | undefined,
+          drawCount,
+          filter,
+        };
+        const options = legalOptionalHandMoveThenDrawCards(G, payload).map(card => ({
+          id: card.instanceId,
+          label: getCardDef(card.defId)?.name ?? card.defId,
+          cardInstanceId: card.instanceId,
+          cardDefId: card.defId,
+        }));
+        if (options.length === 0) {
+          return { success: true, message: 'No legal optional hand payment cards' };
+        }
+        const max = drawCount === 'selected' ? options.length : 1;
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'optionalHandMoveThenDraw',
+          min: 0,
+          max,
+          prompt: effect.rawText,
+          payload,
+          options,
+        };
+        return { success: true, message: 'Pending optional hand payment selection' };
+      }
+
       if (effect.action.params.choiceType === 'cardMove') {
         const count = Number(effect.action.params.count ?? 1);
         const sourceOwner = String(effect.action.params.sourceOwner);

@@ -539,6 +539,317 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   assert.equal(handToAbyssState.players[0].abyss.at(-1)?.instanceId, handToAbyssChosen);
   assert.equal(handToAbyssState.players[0].hand.length, 1);
 
+  const optionalStudyDraw = parsedCardEffect('4th_53');
+  assert.deepEqual(optionalStudyDraw.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'optionalHandMoveThenDraw',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'powerCharger',
+      drawCount: 1,
+      filterCardType: 'Character',
+      filterSong: 'お勉強しといてよ',
+    },
+  });
+
+  const optionalElectricDraw = parsedCardEffect('4th_54');
+  assert.deepEqual(optionalElectricDraw.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'optionalHandMoveThenDraw',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'abyss',
+      drawCount: 1,
+      filterElement: '電気',
+    },
+  });
+
+  const optionalWindDraw = parsedCardEffect('4th_58');
+  assert.deepEqual(optionalWindDraw.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'optionalHandMoveThenDraw',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'abyss',
+      drawCount: 1,
+      filterElement: '風',
+    },
+  });
+
+  const optionalDeckSelectedDraw = parsedCardEffect('4th_61');
+  assert.deepEqual(optionalDeckSelectedDraw.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'optionalHandMoveThenDraw',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'deck',
+      destinationPosition: 'bottom',
+      drawCount: 'selected',
+    },
+  });
+
+  const optionalDarkSelectedDraw = parsedCardEffect('4th_62');
+  assert.deepEqual(optionalDarkSelectedDraw.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'optionalHandMoveThenDraw',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'abyss',
+      drawCount: 'selected',
+      filterElement: '闇',
+    },
+  });
+
+  const optionalFireSelectedDraw = parsedCardEffect('4th_63');
+  assert.deepEqual(optionalFireSelectedDraw.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'optionalHandMoveThenDraw',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'abyss',
+      drawCount: 'selected',
+      filterElement: '炎',
+    },
+  });
+
+  const optionalStudyState = preparedState();
+  const matchingStudy = createInstance('1st_1', false);
+  const nonmatchingStudy = createInstance('1st_17', true);
+  const studyDrawCard = createInstance('2nd_1', false);
+  optionalStudyState.players[0].hand = [matchingStudy, nonmatchingStudy];
+  optionalStudyState.players[0].deck = [studyDrawCard];
+  optionalStudyState.players[0].powerCharger = [];
+  assert.equal(executeEffect(optionalStudyDraw, optionalStudyState, 0).success, true);
+  assert.equal(optionalStudyState.pendingChoice?.type, 'optionalHandMoveThenDraw');
+  assert.equal(optionalStudyState.pendingChoice?.min, 0);
+  assert.equal(optionalStudyState.pendingChoice?.max, 1);
+  assert.deepEqual(optionalStudyState.pendingChoice?.options.map(option => option.cardInstanceId), [matchingStudy.instanceId]);
+  const hiddenOptionalChoiceView = ZutomayoCard.playerView!({ G: optionalStudyState, ctx: {} as any, playerID: '1' }) as GameState;
+  assert.equal(hiddenOptionalChoiceView.pendingChoice?.options.length, 0);
+  const studyHandBeforeDecline = optionalStudyState.players[0].hand.map(card => card.instanceId);
+  const studyDeckBeforeDecline = optionalStudyState.players[0].deck.map(card => card.instanceId);
+  assert.equal(submitPendingChoice(optionalStudyState, 0, [], noEffects), true);
+  assert.equal(optionalStudyState.pendingChoice, null);
+  assert.deepEqual(optionalStudyState.players[0].hand.map(card => card.instanceId), studyHandBeforeDecline);
+  assert.deepEqual(optionalStudyState.players[0].deck.map(card => card.instanceId), studyDeckBeforeDecline);
+  assert.deepEqual(optionalStudyState.players[0].powerCharger, []);
+  assert.equal(executeEffect(optionalStudyDraw, optionalStudyState, 0).success, true);
+  assert.equal(submitPendingChoice(optionalStudyState, 0, [matchingStudy.instanceId], noEffects), true);
+  assert.deepEqual(
+    optionalStudyState.players[0].hand.map(card => card.instanceId),
+    [nonmatchingStudy.instanceId, studyDrawCard.instanceId],
+  );
+  assert.equal(optionalStudyState.players[0].deck.length, 0);
+  assert.equal(optionalStudyState.players[0].powerCharger.at(-1)?.instanceId, matchingStudy.instanceId);
+  assert.equal(matchingStudy.faceUp, true);
+  assert.equal(studyDrawCard.faceUp, true);
+
+  const optionalElementState = preparedState();
+  const electricPayment = createInstance('1st_3', false);
+  const windNonpayment = createInstance('1st_4', true);
+  const elementDrawCard = createInstance('2nd_2', false);
+  optionalElementState.players[0].hand = [electricPayment, windNonpayment];
+  optionalElementState.players[0].deck = [elementDrawCard];
+  optionalElementState.players[0].abyss = [];
+  assert.equal(executeEffect(optionalElectricDraw, optionalElementState, 0).success, true);
+  assert.deepEqual(optionalElementState.pendingChoice?.options.map(option => option.cardInstanceId), [electricPayment.instanceId]);
+  assert.equal(submitPendingChoice(optionalElementState, 0, [electricPayment.instanceId], noEffects), true);
+  assert.deepEqual(
+    optionalElementState.players[0].hand.map(card => card.instanceId),
+    [windNonpayment.instanceId, elementDrawCard.instanceId],
+  );
+  assert.equal(optionalElementState.players[0].abyss.at(-1)?.instanceId, electricPayment.instanceId);
+  assert.equal(electricPayment.faceUp, true);
+  assert.equal(elementDrawCard.faceUp, true);
+
+  const optionalInvalidState = preparedState();
+  const invalidMatching = createInstance('1st_3', true);
+  const invalidNonmatching = createInstance('1st_4', true);
+  const invalidDrawCard = createInstance('2nd_3', false);
+  optionalInvalidState.players[0].hand = [invalidMatching, invalidNonmatching];
+  optionalInvalidState.players[0].deck = [invalidDrawCard];
+  optionalInvalidState.players[0].abyss = [];
+  assert.equal(executeEffect(optionalElectricDraw, optionalInvalidState, 0).success, true);
+  const invalidHandBefore = optionalInvalidState.players[0].hand.map(card => card.instanceId);
+  const invalidDeckBefore = optionalInvalidState.players[0].deck.map(card => card.instanceId);
+  assert.equal(submitPendingChoice(optionalInvalidState, 0, [invalidNonmatching.instanceId], noEffects), false);
+  assert.deepEqual(optionalInvalidState.players[0].hand.map(card => card.instanceId), invalidHandBefore);
+  assert.deepEqual(optionalInvalidState.players[0].deck.map(card => card.instanceId), invalidDeckBefore);
+  assert.deepEqual(optionalInvalidState.players[0].abyss, []);
+  assert.equal(optionalInvalidState.pendingChoice?.type, 'optionalHandMoveThenDraw');
+
+  const optionalNoLegalState = preparedState();
+  optionalNoLegalState.players[0].hand = [createInstance('1st_17', true)];
+  optionalNoLegalState.players[0].deck = [createInstance('2nd_4', false)];
+  optionalNoLegalState.players[0].powerCharger = [];
+  const noLegalHandBefore = optionalNoLegalState.players[0].hand.map(card => card.instanceId);
+  const noLegalDeckBefore = optionalNoLegalState.players[0].deck.map(card => card.instanceId);
+  assert.deepEqual(executeEffect(optionalStudyDraw, optionalNoLegalState, 0), {
+    success: true,
+    message: 'No legal optional hand payment cards',
+  });
+  assert.equal(optionalNoLegalState.pendingChoice, null);
+  assert.deepEqual(optionalNoLegalState.players[0].hand.map(card => card.instanceId), noLegalHandBefore);
+  assert.deepEqual(optionalNoLegalState.players[0].deck.map(card => card.instanceId), noLegalDeckBefore);
+  assert.deepEqual(optionalNoLegalState.players[0].powerCharger, []);
+
+  const optionalOverdrawState = preparedState();
+  const overdrawPayment = createInstance('1st_1', false);
+  optionalOverdrawState.players[0].hand = [overdrawPayment];
+  optionalOverdrawState.players[0].deck = [];
+  optionalOverdrawState.players[0].powerCharger = [];
+  assert.equal(executeEffect(optionalStudyDraw, optionalOverdrawState, 0).success, true);
+  assert.equal(submitPendingChoice(optionalOverdrawState, 0, [overdrawPayment.instanceId], noEffects), true);
+  assert.equal(optionalOverdrawState.step, 'gameOver');
+  assert.equal(optionalOverdrawState.winner, 1);
+  assert.equal(optionalOverdrawState.pendingChoice, null);
+  assert.deepEqual(optionalOverdrawState.players[0].hand, []);
+  assert.equal(optionalOverdrawState.players[0].powerCharger.at(-1)?.instanceId, overdrawPayment.instanceId);
+  assert.match(optionalOverdrawState.gameoverReason ?? '', /choice attempted to draw 1 with only 0 cards/);
+
+  const optionalDeckState = preparedState();
+  const deckPaymentA = createInstance('1st_1', false);
+  const deckPaymentB = createInstance('1st_2', false);
+  const deckKeep = createInstance('1st_3', true);
+  const deckDrawA = createInstance('2nd_1', false);
+  const deckDrawB = createInstance('2nd_2', false);
+  optionalDeckState.players[0].hand = [deckPaymentA, deckPaymentB, deckKeep];
+  optionalDeckState.players[0].deck = [deckDrawA, deckDrawB];
+  assert.equal(executeEffect(optionalDeckSelectedDraw, optionalDeckState, 0).success, true);
+  assert.equal(optionalDeckState.pendingChoice?.type, 'optionalHandMoveThenDraw');
+  assert.equal(optionalDeckState.pendingChoice?.min, 0);
+  assert.equal(optionalDeckState.pendingChoice?.max, 3);
+  assert.deepEqual(
+    optionalDeckState.pendingChoice?.options.map(option => option.cardInstanceId),
+    [deckPaymentA.instanceId, deckPaymentB.instanceId, deckKeep.instanceId],
+  );
+  assert.equal(submitPendingChoice(optionalDeckState, 0, [deckPaymentB.instanceId, deckPaymentA.instanceId], noEffects), true);
+  assert.deepEqual(
+    optionalDeckState.players[0].hand.map(card => card.instanceId),
+    [deckKeep.instanceId, deckDrawA.instanceId, deckDrawB.instanceId],
+  );
+  assert.equal(optionalDeckState.players[0].deck.length, 2);
+  assert.deepEqual(
+    new Set(optionalDeckState.players[0].deck.map(card => card.instanceId)),
+    new Set([deckPaymentA.instanceId, deckPaymentB.instanceId]),
+  );
+  assert.equal(deckPaymentA.faceUp, true);
+  assert.equal(deckPaymentB.faceUp, true);
+  assert.equal(deckDrawA.faceUp, true);
+  assert.equal(deckDrawB.faceUp, true);
+  assert.equal(optionalDeckState.winner, null);
+
+  const optionalDeckDeclineState = preparedState();
+  const deckDeclinePayment = createInstance('1st_1', false);
+  const deckDeclineKeep = createInstance('1st_2', true);
+  const deckDeclineDraw = createInstance('2nd_1', false);
+  optionalDeckDeclineState.players[0].hand = [deckDeclinePayment, deckDeclineKeep];
+  optionalDeckDeclineState.players[0].deck = [deckDeclineDraw];
+  assert.equal(executeEffect(optionalDeckSelectedDraw, optionalDeckDeclineState, 0).success, true);
+  assert.equal(optionalDeckDeclineState.pendingChoice?.max, 2);
+  const deckDeclineHandBefore = optionalDeckDeclineState.players[0].hand.map(card => card.instanceId);
+  const deckDeclineDeckBefore = optionalDeckDeclineState.players[0].deck.map(card => card.instanceId);
+  assert.equal(submitPendingChoice(optionalDeckDeclineState, 0, [], noEffects), true);
+  assert.equal(optionalDeckDeclineState.pendingChoice, null);
+  assert.deepEqual(optionalDeckDeclineState.players[0].hand.map(card => card.instanceId), deckDeclineHandBefore);
+  assert.deepEqual(optionalDeckDeclineState.players[0].deck.map(card => card.instanceId), deckDeclineDeckBefore);
+
+  const optionalDarkState = preparedState();
+  const darkPaymentA = createInstance('1st_1', false);
+  const darkNonpayment = createInstance('1st_2', true);
+  const darkPaymentB = createInstance('1st_5', false);
+  const darkDrawA = createInstance('2nd_3', false);
+  const darkDrawB = createInstance('2nd_4', false);
+  optionalDarkState.players[0].hand = [darkPaymentA, darkNonpayment, darkPaymentB];
+  optionalDarkState.players[0].deck = [darkDrawA, darkDrawB];
+  optionalDarkState.players[0].abyss = [];
+  assert.equal(executeEffect(optionalDarkSelectedDraw, optionalDarkState, 0).success, true);
+  assert.equal(optionalDarkState.pendingChoice?.min, 0);
+  assert.equal(optionalDarkState.pendingChoice?.max, 2);
+  assert.deepEqual(
+    optionalDarkState.pendingChoice?.options.map(option => option.cardInstanceId),
+    [darkPaymentA.instanceId, darkPaymentB.instanceId],
+  );
+  assert.equal(submitPendingChoice(optionalDarkState, 0, [darkPaymentA.instanceId, darkPaymentB.instanceId], noEffects), true);
+  assert.deepEqual(
+    optionalDarkState.players[0].hand.map(card => card.instanceId),
+    [darkNonpayment.instanceId, darkDrawA.instanceId, darkDrawB.instanceId],
+  );
+  assert.deepEqual(
+    optionalDarkState.players[0].abyss.map(card => card.instanceId),
+    [darkPaymentA.instanceId, darkPaymentB.instanceId],
+  );
+  assert.equal(optionalDarkState.players[0].deck.length, 0);
+  assert.equal(darkPaymentA.faceUp, true);
+  assert.equal(darkPaymentB.faceUp, true);
+  assert.equal(darkDrawA.faceUp, true);
+  assert.equal(darkDrawB.faceUp, true);
+  assert.equal(optionalDarkState.winner, null);
+
+  const optionalDarkInvalidState = preparedState();
+  const invalidDarkPayment = createInstance('1st_1', true);
+  const invalidFirePayment = createInstance('1st_2', true);
+  const invalidSelectedDraw = createInstance('2nd_1', false);
+  optionalDarkInvalidState.players[0].hand = [invalidDarkPayment, invalidFirePayment];
+  optionalDarkInvalidState.players[0].deck = [invalidSelectedDraw];
+  optionalDarkInvalidState.players[0].abyss = [];
+  assert.equal(executeEffect(optionalDarkSelectedDraw, optionalDarkInvalidState, 0).success, true);
+  const invalidSelectedHandBefore = optionalDarkInvalidState.players[0].hand.map(card => card.instanceId);
+  const invalidSelectedDeckBefore = optionalDarkInvalidState.players[0].deck.map(card => card.instanceId);
+  assert.equal(submitPendingChoice(optionalDarkInvalidState, 0, [invalidFirePayment.instanceId], noEffects), false);
+  assert.deepEqual(optionalDarkInvalidState.players[0].hand.map(card => card.instanceId), invalidSelectedHandBefore);
+  assert.deepEqual(optionalDarkInvalidState.players[0].deck.map(card => card.instanceId), invalidSelectedDeckBefore);
+  assert.deepEqual(optionalDarkInvalidState.players[0].abyss, []);
+  assert.equal(optionalDarkInvalidState.pendingChoice?.type, 'optionalHandMoveThenDraw');
+
+  const optionalDarkNoLegalState = preparedState();
+  optionalDarkNoLegalState.players[0].hand = [createInstance('1st_2', true), createInstance('2nd_2', true)];
+  optionalDarkNoLegalState.players[0].deck = [createInstance('2nd_4', false)];
+  optionalDarkNoLegalState.players[0].abyss = [];
+  const darkNoLegalHandBefore = optionalDarkNoLegalState.players[0].hand.map(card => card.instanceId);
+  const darkNoLegalDeckBefore = optionalDarkNoLegalState.players[0].deck.map(card => card.instanceId);
+  assert.deepEqual(executeEffect(optionalDarkSelectedDraw, optionalDarkNoLegalState, 0), {
+    success: true,
+    message: 'No legal optional hand payment cards',
+  });
+  assert.equal(optionalDarkNoLegalState.pendingChoice, null);
+  assert.deepEqual(optionalDarkNoLegalState.players[0].hand.map(card => card.instanceId), darkNoLegalHandBefore);
+  assert.deepEqual(optionalDarkNoLegalState.players[0].deck.map(card => card.instanceId), darkNoLegalDeckBefore);
+  assert.deepEqual(optionalDarkNoLegalState.players[0].abyss, []);
+
+  const optionalSelectedOverdrawState = preparedState();
+  const overdrawFireA = createInstance('1st_2', false);
+  const overdrawFireB = createInstance('2nd_2', false);
+  const overdrawRemainingDeck = createInstance('1st_3', false);
+  optionalSelectedOverdrawState.players[0].hand = [overdrawFireA, overdrawFireB];
+  optionalSelectedOverdrawState.players[0].deck = [overdrawRemainingDeck];
+  optionalSelectedOverdrawState.players[0].abyss = [];
+  assert.equal(executeEffect(optionalFireSelectedDraw, optionalSelectedOverdrawState, 0).success, true);
+  assert.equal(optionalSelectedOverdrawState.pendingChoice?.max, 2);
+  assert.equal(submitPendingChoice(optionalSelectedOverdrawState, 0, [overdrawFireA.instanceId, overdrawFireB.instanceId], noEffects), true);
+  assert.equal(optionalSelectedOverdrawState.step, 'gameOver');
+  assert.equal(optionalSelectedOverdrawState.winner, 1);
+  assert.equal(optionalSelectedOverdrawState.pendingChoice, null);
+  assert.deepEqual(optionalSelectedOverdrawState.players[0].hand, []);
+  assert.deepEqual(optionalSelectedOverdrawState.players[0].deck.map(card => card.instanceId), [overdrawRemainingDeck.instanceId]);
+  assert.deepEqual(
+    optionalSelectedOverdrawState.players[0].abyss.map(card => card.instanceId),
+    [overdrawFireA.instanceId, overdrawFireB.instanceId],
+  );
+  assert.match(optionalSelectedOverdrawState.gameoverReason ?? '', /choice attempted to draw 2 with only 1 cards/);
+
   const abyssFourPayment = parseEffect('アビスのカードを４枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。');
   assert.ok(abyssFourPayment);
   assert.deepEqual(abyssFourPayment.action, {

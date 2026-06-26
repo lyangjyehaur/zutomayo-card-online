@@ -76,6 +76,12 @@ export type PendingChoiceCardZone = 'hand' | 'abyss' | 'powerCharger';
 export type PendingChoiceDestinationZone = 'abyss' | 'deck';
 export type PendingChoiceDeckPosition = 'bottom';
 
+export interface PendingCardFilter {
+  cardType?: CardType;
+  song?: string;
+  element?: Element;
+}
+
 export interface PendingCardMovePayload {
   sourcePlayer: PlayerIndex;
   sourceZone: PendingChoiceCardZone;
@@ -83,6 +89,16 @@ export interface PendingCardMovePayload {
   destinationZone: PendingChoiceDestinationZone;
   destinationPosition?: PendingChoiceDeckPosition;
   filterSendToPower?: number;
+}
+
+export interface PendingOptionalHandMoveThenDrawPayload {
+  sourcePlayer: PlayerIndex;
+  sourceZone: 'hand';
+  destinationPlayer: PlayerIndex;
+  destinationZone: 'abyss' | 'powerCharger' | 'deck';
+  destinationPosition?: PendingChoiceDeckPosition;
+  drawCount: number | 'selected';
+  filter: PendingCardFilter;
 }
 
 export interface PendingAbyssToDeckBottomPayload {
@@ -111,6 +127,10 @@ export type PendingChoice =
   | (PendingChoiceBase & {
       type: 'cardMove';
       payload: PendingCardMovePayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'optionalHandMoveThenDraw';
+      payload: PendingOptionalHandMoveThenDrawPayload;
     })
   | (PendingChoiceBase & {
       type: 'abyssToDeckBottomOrLose';

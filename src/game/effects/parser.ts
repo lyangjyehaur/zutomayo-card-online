@@ -232,6 +232,75 @@ function parseAction(text: string): EffectAction | null {
   const directDamageMatch = text.match(/([0-9０-９]+)ダメージ/);
   if (directDamageMatch) return { type: 'directDamage', params: { value: parseNum(directDamageMatch[1]) } };
 
+  // "手札にある（Song）のキャラクターを1枚選び、パワーチャージャーに置いてもよい。そうしたなら、カードを1枚引く"
+  const optionalNamedCharacterToPowerDrawMatch = text.match(/^手札にある[（(]([^）)]+)[）)]のキャラクターを[1１]枚選び、パワーチャージャーに置いてもよい[。.]そうしたなら、?カードを[1１]枚引く[。.]?$/);
+  if (optionalNamedCharacterToPowerDrawMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'optionalHandMoveThenDraw',
+        sourceOwner: 'self',
+        sourceZone: 'hand',
+        destinationOwner: 'self',
+        destinationZone: 'powerCharger',
+        drawCount: 1,
+        filterCardType: 'Character',
+        filterSong: optionalNamedCharacterToPowerDrawMatch[1].trim(),
+      },
+    };
+  }
+
+  // "手札からX属性のカードを1枚選び、アビスに置く。そうしたならカードを1枚引く"
+  const optionalElementToAbyssDrawMatch = text.match(/^手札から(闇|炎|電気|風|カオス)属性のカードを[1１]枚選び、アビスに置く[。.]そうしたなら、?カードを[1１]枚引く[。.]?$/);
+  if (optionalElementToAbyssDrawMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'optionalHandMoveThenDraw',
+        sourceOwner: 'self',
+        sourceZone: 'hand',
+        destinationOwner: 'self',
+        destinationZone: 'abyss',
+        drawCount: 1,
+        filterElement: optionalElementToAbyssDrawMatch[1],
+      },
+    };
+  }
+
+  // "手札からカードを好きな枚数選び、デッキの底に置く。そうしたなら、同じ数だけデッキからカードを引く"
+  const optionalAnyToDeckBottomSelectedDrawMatch = text.match(/^手札からカードを好きな枚数選び、デッキの底に置く[。.]そうしたなら、?同じ数だけデッキからカードを引く[。.]?$/);
+  if (optionalAnyToDeckBottomSelectedDrawMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'optionalHandMoveThenDraw',
+        sourceOwner: 'self',
+        sourceZone: 'hand',
+        destinationOwner: 'self',
+        destinationZone: 'deck',
+        destinationPosition: 'bottom',
+        drawCount: 'selected',
+      },
+    };
+  }
+
+  // "手札からX属性のカードを好きな枚数選び、アビスに置く。そうしたなら、同じ数だけカードを引く"
+  const optionalElementToAbyssSelectedDrawMatch = text.match(/^手札から(闇|炎|電気|風|カオス)属性のカードを好きな枚数選び、アビスに置く[。.]そうしたなら、?同じ数だけカードを引く[。.]?$/);
+  if (optionalElementToAbyssSelectedDrawMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'optionalHandMoveThenDraw',
+        sourceOwner: 'self',
+        sourceZone: 'hand',
+        destinationOwner: 'self',
+        destinationZone: 'abyss',
+        drawCount: 'selected',
+        filterElement: optionalElementToAbyssSelectedDrawMatch[1],
+      },
+    };
+  }
+
   // "手札からパワーの有無に関わらずカードX枚を選び、アビスに置く"
   const handToAbyssMatch = text.match(/手札からパワーの有無に関わらずカード([0-9０-９]+)枚を選び、アビスに置く[。.]?$/);
   if (handToAbyssMatch) {

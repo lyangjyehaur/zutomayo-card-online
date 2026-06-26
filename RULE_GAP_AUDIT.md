@@ -25,7 +25,7 @@ Implemented and covered by smoke tests:
 - Damage-received reduction is applied before battle damage, and damage-causing effects now end the game immediately when HP reaches 0.
 - Turn-start transient modifiers are preserved into the turn they affect.
 - Chronos transition, zone-entry, and Character replacement events are recorded; Chronos transition can drive simple Area Enchant self-move effects.
-- Server-validated pending choice flows exist for hand-to-deck-bottom-then-draw, focused card-move choices, own Abyss-to-deck-bottom payment choices with failure branches, Clock position choices, and optional 0-5 Clock advance choices.
+- Server-validated pending choice flows exist for hand-to-deck-bottom-then-draw, optional hand payment then draw for fixed-1 `4th_53` / `4th_54` / `4th_58` and selected-count `4th_61` / `4th_62` / `4th_63`, focused card-move choices, own Abyss-to-deck-bottom payment choices with failure branches, Clock position choices, and optional 0-5 Clock advance choices.
 - `4th_6` can swap one opponent Power Charger Character with the opponent Battle Zone Character, records the swapped-in Character for same-turn named-card conditions, and suppresses the swapped-in card's own collected effects for the turn.
 - Area Enchant self-move parser now emits secondary timing effects for several turn-end, day/night-loss, damage-threshold, and opponent-Abyss-entry clauses.
 - Battle damage, HP loss, HP-zero game end, and exact overdraw loss with no partial draw.
@@ -33,6 +33,8 @@ Implemented and covered by smoke tests:
 - Server-side room setup accepts validated deck ID payloads for browser custom decks.
 - Deterministic effect slices:
   - previous-turn Character element condition;
+  - optional fixed-1 hand payment then draw for `4th_53` / `4th_54` / `4th_58`;
+  - optional selected-count hand payment then draw for `4th_61` / `4th_62` / `4th_63`;
   - opponent deck top-to-Abyss movement;
   - opponent Area Enchant return to deck top/bottom;
   - own hand-to-Abyss choice movement;
@@ -92,13 +94,13 @@ Needed work:
 
 Rule gap: many cards require the player to choose cards, positions, counts, or order.
 
-Current implementation: deterministic no-choice effects are automated, normal-phase ordering can pause for player selection, hand-to-deck-bottom-then-draw choices use a server-validated `pendingChoice`, a small card-move choice slice supports own hand to own Abyss, opponent Abyss to opponent deck bottom, and opponent Power Charger to opponent deck bottom with `sendToPower` filtering, own Abyss payment choices can return fixed or 1+ selected cards to deck bottom with the required loss branch, the `4th_27` follow-up mills the selected payment count from the opponent deck, `4th_6` can swap an opponent Power Charger Character into the opponent Battle Zone while suppressing that swapped-in card's collected effects, and Clock choices can choose a position or 0-5 advance amount. Optional effects, many targets, most variable counts, broader selected-count follow-ups, and other card-specific choices are still skipped or use a documented fallback.
+Current implementation: deterministic no-choice effects are automated, normal-phase ordering can pause for player selection, hand-to-deck-bottom-then-draw choices use a server-validated `pendingChoice`, optional hand payment then draw is supported for fixed-1 `4th_53` / `4th_54` / `4th_58` and selected-count `4th_61` / `4th_62` / `4th_63`, a small card-move choice slice supports own hand to own Abyss, opponent Abyss to opponent deck bottom, and opponent Power Charger to opponent deck bottom with `sendToPower` filtering, own Abyss payment choices can return fixed or 1+ selected cards to deck bottom with the required loss branch, the `4th_27` follow-up mills the selected payment count from the opponent deck, `4th_6` can swap an opponent Power Charger Character into the opponent Battle Zone while suppressing that swapped-in card's collected effects, and Clock choices can choose a position or 0-5 advance amount. Broader optional effects, many targets, many remaining variable counts, broader selected-count follow-ups, and other card-specific choices are still skipped or use a documented fallback.
 
 Missing choice categories include:
 
 - choose cards from unsupported zones such as battle zone or viewed deck cards;
 - choose top/bottom deck placement or reorder viewed deck cards;
-- choose whether to use optional effects;
+- choose whether to use optional effects beyond the implemented `4th_53` / `4th_54` / `4th_58` and `4th_61` / `4th_62` / `4th_63` hand-payment slices;
 - choose how many cards to reveal/discard/recover beyond the current own-Abyss 1+ payment slice;
 - apply broader follow-up effects that depend on a selected count;
 - choose replacement targets beyond the focused `4th_6` opponent Character swap.
@@ -137,9 +139,9 @@ Current parser snapshot from the latest audit:
 - total cards: 422;
 - cards with effect text: 250;
 - effect text lines: 267;
-- parsed lines: 232;
-- unparsed lines: 35;
-- parsed-but-partial heuristic: 43;
+- parsed lines: 238;
+- unparsed lines: 29;
+- parsed-but-partial heuristic: 49;
 - false `drawCards` positives: 0.
 
 Important caveat: parsed does not always mean fully correct execution. Some parsed effects only cover the first deterministic part of a longer effect, or intentionally skip a timing/choice clause.
@@ -149,7 +151,7 @@ Current high-risk parsed-but-wrong categories:
 - Timing suffixes such as `...ターンの終了時にアビスに置く` can make the whole card parse as `onTurnEnd`, so a main continuous effect may no longer run during the normal effect window.
 - Broad `カードをX枚` false positives for selection/deck-return text have been tightened; `npm run rule:audit` reports current parsed/unparsed/partial samples.
 - Area Enchant expiry clauses are parsed as the main action instead of a second self-move effect, so cards such as expiry-to-Abyss/Power Charger remain incomplete even when a parsed action exists.
-- Own Abyss payment clauses on `4th_6`, `4th_27`, `4th_28`, and `4th_88` now parse and execute the payment/loss branch, `4th_6` also parses and executes its opponent Character swap plus swapped-in effect suppression, and `4th_27` consumes that selected count to mill the opponent deck. Deck reordering and broader selected-count follow-ups remain partial or unparsed.
+- Own Abyss payment clauses on `4th_6`, `4th_27`, `4th_28`, and `4th_88` now parse and execute the payment/loss branch, `4th_6` also parses and executes its opponent Character swap plus swapped-in effect suppression, and `4th_27` consumes that selected count to mill the opponent deck. Optional hand payment then draw effects on fixed-1 `4th_53`, `4th_54`, and `4th_58` plus selected-count `4th_61`, `4th_62`, and `4th_63` now parse and execute. Deck reordering and broader selected-count follow-ups remain partial or unparsed.
 
 Needed work:
 
@@ -184,9 +186,9 @@ These are not core rule-engine mismatches, but they affect real online play:
 
 ## Suggested implementation order
 
-1. Expand `pendingChoice` to remaining target, optional-effect, variable-count, selected-count follow-up, and deck-ordering choices.
+1. Expand `pendingChoice` to remaining target, broader optional-effect, variable-count, selected-count follow-up, and deck-ordering choices.
 2. Resolve card-specific effects from Abyss/Power Charger zone-entry and Character replacement events.
 3. Expand Area Enchant expiry/self-move timing for damage-threshold and opponent-zone movement clauses.
-4. Audit parsed-but-partial effects and the 37 unparsed lines card-by-card using `npm run rule:audit`.
+4. Audit parsed-but-partial effects and the 32 unparsed lines card-by-card using `npm run rule:audit`.
 5. Confirm Chronos board exactness from official materials and lock it with tests.
 6. Add reconnect/resume and account-backed match ownership if the product direction needs it.
