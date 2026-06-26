@@ -29,7 +29,7 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 ### 卡牌系統
 - 422 張完整卡牌數據（4 個卡包）
 - 267 行效果文字全部解析（100% 覆蓋率）
-- 效果支援條件判斷（屬性、晝夜、HP、能量消耗、區域卡數等）
+- 效果規則引擎支援 30+ 種動作類型和 15+ 種條件類型
 - 250 張效果卡 × 6 種語言翻譯（LLM 生成）
 
 ### UI/UX
@@ -54,7 +54,7 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 ┌─────────────────────────────────────────────┐
 │              前端 (Vite + React)             │
 │  React 19 · TypeScript · React Router 7     │
-│  boardgame.io Client · Tailwind CSS         │
+│  boardgame.io Client · 純 CSS 變數          │
 └──────────────────┬──────────────────────────┘
                    │ HTTP / WebSocket
 ┌──────────────────┴──────────────────────────┐
@@ -77,7 +77,7 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 ```
 
 - **確定性狀態機** — `GameState.step` 驅動，不依賴 boardgame.io 的回合制
-- **效果規則引擎** — 將日文效果文字映射為結構化遊戲動作，覆蓋 267 行效果（100%），經多輪 LLM 審查驗證
+- **效果規則引擎** — 將日文效果文字映射為結構化遊戲動作，覆蓋 267 行效果（100%），經多輪獨立審查驗證
 - **playerView** — 線上對戰時隱藏對手手牌、牌組、蓋牌
 
 ### 數據存儲
@@ -165,7 +165,12 @@ zutomayo-card-online/
 │   │   ├── types.ts           # 類型定義
 │   │   ├── ai.ts              # AI 對手邏輯
 │   │   ├── chronos.ts         # Chronos 晝夜系統
+│   │   ├── matchHistory.ts    # 對戰紀錄
+│   │   ├── onlineSession.ts   # 線上房間 session 管理
 │   │   ├── cards/             # 卡牌數據加載與牌組構建
+│   │   │   ├── loader.ts      # 卡牌數據加載
+│   │   │   ├── deckBuilder.ts # 牌組構建驗證
+│   │   │   └── presetDecks.ts # 預設牌組
 │   │   └── effects/           # 效果引擎
 │   │       ├── parser.ts      # 日文效果文字 → 結構化數據
 │   │       ├── executor.ts    # 結構化數據 → 遊戲狀態變更
@@ -175,13 +180,21 @@ zutomayo-card-online/
 │   │   ├── Board.tsx          # 遊戲主畫面
 │   │   ├── Card.tsx           # 卡牌渲染 + Popover
 │   │   ├── Chronos.tsx        # Chronos 時鐘 SVG
+│   │   ├── DeckEditor.tsx     # 牌組編輯器
+│   │   ├── InteractiveTutorial.tsx # 互動式教學
+│   │   ├── LanguageSwitcher.tsx # 語言切換器
+│   │   ├── MatchHistory.tsx   # 對戰紀錄
 │   │   └── ...
 │   ├── pages/                 # 頁面路由
 │   │   ├── LobbyPage.tsx      # 大廳
 │   │   ├── LocalGamePage.tsx  # 本機對戰
 │   │   ├── AIGamePage.tsx     # AI 練習
 │   │   ├── OnlineGamePage.tsx # 線上對戰
-│   │   └── ...
+│   │   ├── DeckEditorPage.tsx # 牌組編輯器
+│   │   ├── MatchHistoryPage.tsx # 對戰紀錄
+│   │   ├── LeaderboardPage.tsx # 排行榜
+│   │   ├── AdminPage.tsx      # 管理後台
+│   │   └── I18nManager.tsx    # i18n 管理
 │   ├── i18n/                  # 國際化
 │   │   ├── zh-TW.ts           # 繁體中文（台灣）
 │   │   ├── zh-HK.ts           # 粵語（香港）
@@ -189,7 +202,10 @@ zutomayo-card-online/
 │   │   ├── ja.ts              # 日本語
 │   │   ├── en.ts              # English
 │   │   └── ko.ts              # 한국어
-│   └── api/                   # API 客戶端
+│   ├── api/                   # API 客戶端
+│   │   └── client.ts
+│   ├── server.ts              # boardgame.io 遊戲伺服器
+│   └── App.tsx                # 應用入口
 ├── api/                       # API 伺服器
 │   └── server.cjs             # Express + SQLite
 ├── scripts/                   # 測試腳本
@@ -224,22 +240,59 @@ zutomayo-card-online/
 ```text
 日文效果文字 → parseEffect() → { trigger, conditions[], action }
                                     ↓
-                              執行器 → 遊戲狀態變更
+                              executeEffect() → 遊戲狀態變更
 ```
 
-### 支援的效果類型
+### 支援的效果類型（按數量排序）
 
 | 類型 | 說明 | 數量 |
 |------|------|------|
-| boostAttack | 攻擊力增加 | 163 |
-| elementCondition | 屬性條件 | 52 |
-| handManip | 手牌操作 | 28 |
-| abyssManip | 深淵操作 | 18 |
+| boostAttack | 攻擊力增加 | 150 |
+| requestChoice | 玩家選擇（深淵/手牌/排序等） | 30 |
+| heal | HP 回復 | 13 |
 | damageReduce | 傷害減免 | 7 |
-| heal | HP 回復 | 14 |
-| clockEffect | 時鐘操作 | 4 |
-| swapAttack | 晝夜逆轉 | 2 |
-| 其他 | 特殊效果 | ~30 |
+| moveSelfAreaEnchant | 區域附魔自動移動 | 5 |
+| clockSet | 時鐘設定 | 4 |
+| returnAreaEnchantToDeck | 區域附魔回牌組 | 4 |
+| useFromAbyss | 從深淵使用卡牌 | 3 |
+| reduceAttack | 攻擊力減少 | 3 |
+| swapAttack | 晝夜攻擊力逆轉 | 2 |
+| drawCards | 抽牌 | 2 |
+| millDeckToAbyss | 磨牌進深淵 | 2 |
+| directDamage | 直接傷害 | 2 |
+| clockAdvance | 時鐘推進 | 2 |
+| 其他（17 種） | 特殊效果 | 各 1 |
+
+### 支援的條件類型
+
+| 條件 | 說明 |
+|------|------|
+| chronos | 晝夜判定（夜/晝） |
+| opponentElement / selfElement | 屬性檢查 |
+| hpLessOrEqual / hpComparison | HP 條件 |
+| opponentPowerCost / selfPowerCost | 能量消耗條件 |
+| zoneCountComparison | 區域卡數比較 |
+| previousCharElement | 上回合角色屬性 |
+| namedCardInBattleZone | 命名卡在戰鬥區 |
+| specificElements | 特定屬性集合 |
+| drawOccurredThisEffect | 本效果曾抽牌 |
+| battleLost | 戰鬥失敗 |
+
+---
+
+## 路由結構
+
+| 路徑 | 頁面 | 說明 |
+|------|------|------|
+| `/` | LobbyPage | 大廳（牌組選擇、模式切換） |
+| `/play/local` | LocalGamePage | 本機雙人對戰 |
+| `/play/ai` | AIGamePage | AI 練習 |
+| `/play/online/:matchID` | OnlineGamePage | 線上對戰 |
+| `/deck-builder` | DeckEditorPage | 牌組編輯器 |
+| `/history` | MatchHistoryPage | 對戰紀錄 |
+| `/leaderboard` | LeaderboardPage | 排行榜 |
+| `/admin` | AdminPage | 管理後台（需密碼） |
+| `/admin/i18n` | I18nManager | i18n 翻譯管理 |
 
 ---
 
