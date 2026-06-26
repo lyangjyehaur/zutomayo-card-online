@@ -65,7 +65,12 @@ export function AdminPage() {
           setAuthenticated(false);
         }}>登出</button>
       </header>
-      <iframe className="admin-frame" src="/admin/index.html" title={t('admin.title')} />
+      <section className="admin-launcher">
+        <p>卡牌數據管理後台以獨立頁面運行，避免與遊戲主應用衝突。</p>
+        <button className="primary-action" onClick={() => window.open('/admin/index.html', '_blank')}>
+          🔗 開啟管理後台
+        </button>
+      </section>
     </main>
   );
 }

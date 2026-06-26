@@ -615,6 +615,18 @@ input:focus {
   background: #050712;
 }
 
+.admin-launcher {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 3rem;
+  text-align: center;
+}
+
+.admin-launcher p { color: var(--muted); font-size: 0.9rem; }
+
 .admin-login {
   display: flex;
   flex-direction: column;
