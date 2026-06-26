@@ -109,6 +109,7 @@ export function emptyModifiers(): CombatModifiers {
     damageReduction: [0, 0],
     handSize: [0, 0],
     powerCostReduction: [0, 0],
+    extraSettableCards: [0, 0],
     swapAttack: [false, false],
     effectsDisabled: [false, false],
     unreduceableDamage: [false, false],
@@ -318,10 +319,17 @@ export function finishMulligan(G: GameState, player: PlayerIndex, indices: numbe
   return true;
 }
 
+export function getMinimumSetCount(G: GameState, player: PlayerIndex): number {
+  let required = 1;
+  if (G.step !== 'initialSet' && G.turnNumber !== 1 && G.lastBattleResult.winner !== null) {
+    required = G.lastBattleResult.winner === player ? 1 : 2;
+  }
+  return required;
+}
+
 export function getRequiredSetCount(G: GameState, player: PlayerIndex): number {
-  if (G.step === 'initialSet' || G.turnNumber === 1) return 1;
-  if (G.lastBattleResult.winner === null) return 1;
-  return G.lastBattleResult.winner === player ? 1 : 2;
+  const required = getMinimumSetCount(G, player);
+  return required + (G.modifiers.extraSettableCards?.[player] ?? 0);
 }
 
 function setCard(G: GameState, player: PlayerIndex, handIndex: number, slot: SetSlot): boolean {
@@ -376,7 +384,8 @@ export function confirmReady(
   parsedEffects: Map<string, ParsedEffect[]>,
 ): boolean {
   if (!['initialSet', 'turnSet'].includes(G.step) || G.ready[player]) return false;
-  if (G.players[player].cardsSetThisTurn !== getRequiredSetCount(G, player)) return false;
+  const cardsSet = G.players[player].cardsSetThisTurn;
+  if (cardsSet < getMinimumSetCount(G, player) || cardsSet > getRequiredSetCount(G, player)) return false;
   G.ready[player] = true;
   recordAction(G, player, 'confirmReady', { confirmed: true });
   if (G.ready[0] && G.ready[1]) resolveTurn(G, parsedEffects);

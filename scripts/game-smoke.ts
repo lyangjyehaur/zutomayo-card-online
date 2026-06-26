@@ -508,9 +508,35 @@ function fivePowerCards() {
 {
   const ids = ['2nd_26', '2nd_62', '3rd_26', '4th_2', '4th_55', '4th_59', '4th_73', '4th_75', '4th_93'];
   for (const id of ids) assert.ok(parsedCardEffect(id), `${id} should parse`);
+  assert.deepEqual(parsedCardEffect('2nd_62').action, { type: 'addSettableCard', params: { count: 1, optional: true } });
   const taidadaEffect = parsedCardEffect('4th_55');
   assert.deepEqual(taidadaEffect.conditions, [{ type: 'namedCardInBattleZone', value: 'TAIDADA' }]);
   assert.deepEqual(taidadaEffect.action, { type: 'heal', params: { value: 20 } });
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.lastBattleResult = { winner: 0, damage: 0, winnerAttack: 0, loserAttack: 0 };
+  G.players[0].hand = [createInstance('1st_1', true), createInstance('1st_9', true)];
+  assert.equal(getRequiredSetCount(G, 0), 1);
+  assert.equal(executeEffect(parsedCardEffect('2nd_62'), G, 0).success, true);
+  assert.equal(getRequiredSetCount(G, 0), 2);
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 0, 0, 'B'), true);
+  assert.equal(confirmReady(G, 0, noEffects), true);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.lastBattleResult = { winner: 0, damage: 0, winnerAttack: 0, loserAttack: 0 };
+  G.players[0].hand = [createInstance('1st_1', true), createInstance('1st_9', true)];
+  assert.equal(executeEffect(parsedCardEffect('2nd_62'), G, 0).success, true);
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(confirmReady(G, 0, noEffects), true);
 }
 
 {

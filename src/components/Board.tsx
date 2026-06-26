@@ -5,7 +5,7 @@ import type { CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } 
 import { getCardDef } from '../game/cards/loader';
 import { Card, type CardSize } from './Card';
 import { Chronos } from './Chronos';
-import { getChronosTime, getRequiredSetCount } from '../game/GameLogic';
+import { getChronosTime, getMinimumSetCount, getRequiredSetCount } from '../game/GameLogic';
 import { saveMatchRecord } from '../game/matchHistory';
 import { t } from '../i18n';
 
@@ -744,6 +744,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
+  const minimum = getMinimumSetCount(G, meIndex);
   const required = getRequiredSetCount(G, meIndex);
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
   const [handExpanded, setHandExpanded] = useState(true);
@@ -792,10 +793,16 @@ function BattleBoard({ G, moves, playerID }: Props) {
   }, [G.turnNumber, G.step]);
 
   useEffect(() => {
-    if (G.step === 'turnSet' && timeLeft === 0 && !G.ready[meIndex] && me.cardsSetThisTurn === required) {
+    if (
+      G.step === 'turnSet'
+      && timeLeft === 0
+      && !G.ready[meIndex]
+      && me.cardsSetThisTurn >= minimum
+      && me.cardsSetThisTurn <= required
+    ) {
       moves.confirmReady();
     }
-  }, [G.step, timeLeft, G.ready, me.cardsSetThisTurn, required, meIndex, moves]);
+  }, [G.step, timeLeft, G.ready, me.cardsSetThisTurn, minimum, required, meIndex, moves]);
 
   useEffect(() => {
     if ((G.step === 'initialSet' || G.step === 'turnSet') && !G.ready[meIndex]) setHandExpanded(true);
@@ -832,7 +839,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
     : G.step === 'initialSet'
     ? t('board.initialSet')
     : `${t('board.setCards')} ${required} ${t('board.cardsUnit')}`;
-  const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn === required;
+  const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required;
   const myDamage = damageFlash?.target === meIndex ? damageFlash.amount : undefined;
   const opponentDamage = damageFlash?.target === opponentIndex ? damageFlash.amount : undefined;
 

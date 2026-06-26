@@ -175,7 +175,7 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 
   // "同時に出したキャラクターカードを、変えなくてもよい"
   if (text.includes('変えなくてもよい')) {
-    return { trigger: 'onUse', conditions: [], action: { type: 'addSettableCard', params: { optional: true } }, rawText };
+    return { trigger: 'onUse', conditions: [], action: { type: 'addSettableCard', params: { count: 1, optional: true } }, rawText };
   }
 
   // "パワーチャージャーからX枚まで選び、このカードの効果として使用する"

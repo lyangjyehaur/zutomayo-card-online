@@ -236,6 +236,7 @@ export interface CombatModifiers {
   damageReduction: [number, number];
   handSize: [number, number];
   powerCostReduction: [number, number];
+  extraSettableCards: [number, number];
   swapAttack: [boolean, boolean];
   effectsDisabled: [boolean, boolean];
   unreduceableDamage: [boolean, boolean];

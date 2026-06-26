@@ -33,6 +33,7 @@ const executorSupportedActions = new Set([
   'requestChoice',
   'suppressEffectActivation',
   'noEffect',
+  'addSettableCard',
 ]);
 
 const executorSupportedChoiceTypes = new Set([

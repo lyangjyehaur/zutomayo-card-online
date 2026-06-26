@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { Ctx } from 'boardgame.io';
 import type { GameState, JankenChoice, SetSlot } from './types';
 import { aiSelectCards, type AIDifficulty } from './ai';
-import { getRequiredSetCount } from './GameLogic';
+import { getMinimumSetCount, getRequiredSetCount } from './GameLogic';
 
 export interface ZutomayoMoveDispatchers {
   janken: (choice: JankenChoice) => void;
@@ -43,9 +43,10 @@ export function useAIMoves(
         return;
       }
       if (G.step !== 'initialSet' && G.step !== 'turnSet') return;
+      const minimum = getMinimumSetCount(G, 1);
       const required = getRequiredSetCount(G, 1);
       if (G.ready[1]) return;
-      if (player.cardsSetThisTurn === required) {
+      if (player.cardsSetThisTurn >= minimum && player.cardsSetThisTurn <= required) {
         moves.confirmReady();
         return;
       }

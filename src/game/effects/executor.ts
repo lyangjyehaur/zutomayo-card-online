@@ -951,8 +951,13 @@ export function executeEffect(
       return { success: true, message: 'Disable opponent effects this turn' };
     case 'suppressEffectActivation':
       return { success: true, message: 'Swapped-in Character effect suppression clause' };
-    case 'addSettableCard':
-      return { success: false, message: 'Optional extra-set effects require a card-specific choice flow' };
+    case 'addSettableCard': {
+      const count = Number(effect.action.params.count ?? 1);
+      if (!Number.isInteger(count) || count < 0) return { success: false, message: 'Unsupported settable-card count' };
+      if (!G.modifiers.extraSettableCards) G.modifiers.extraSettableCards = [0, 0];
+      G.modifiers.extraSettableCards[player] += count;
+      return { success: true, message: `Settable card allowance +${count}` };
+    }
   }
 }
 
