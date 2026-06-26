@@ -14,6 +14,7 @@ import {
   placeRevealedCards,
   resolveJanken,
   resolveBattle,
+  resolvePendingEffect,
   resolveTimingEvent,
   resolveTurn,
   setInitialCard,
@@ -239,6 +240,7 @@ function fivePowerCards() {
   ];
   G.players[0].battleZone = createInstance('1st_9', true);
   G.players[1].battleZone = createInstance('1st_9', true);
+  G.timingEvents.push({ type: 'zoneEntered', player: 1, zone: 'abyss', cardDefId: '1st_1' });
   const parsedEffects = new Map<string, ParsedEffect[]>([
     ['2nd_5', [turnEndDamage5, turnStartHeal10]],
   ]);
@@ -248,8 +250,9 @@ function fivePowerCards() {
   assert.equal(G.players[1].hp, 95);
   assert.equal(G.players[0].hp, 90);
   assert.ok((G as any).timingEvents);
-  assert.ok((G as any).timingEvents.some((event: any) => event.type === 'turnEnd'));
   assert.ok((G as any).timingEvents.some((event: any) => event.type === 'turnStart'));
+  assert.equal((G as any).timingEvents.some((event: any) => event.type === 'turnEnd'), false);
+  assert.equal((G as any).timingEvents.some((event: any) => event.type === 'zoneEntered' && event.zone === 'abyss'), false);
 }
 
 {
@@ -272,7 +275,7 @@ function fivePowerCards() {
   resolveTurn(G, parsedEffects);
   assert.equal(G.players[1].hp, 100 - G.lastBattleResult.damage + 10);
   assert.ok((G as any).timingEvents);
-  assert.ok((G as any).timingEvents.some((event: any) => event.type === 'damageReceived'));
+  assert.equal((G as any).timingEvents.some((event: any) => event.type === 'damageReceived'), false);
 }
 
 {
@@ -497,7 +500,7 @@ function fivePowerCards() {
   assert.equal(setTurnCard(G, 1, 0, 'B'), true);
   resolveTurn(G, noEffects);
   assert.equal(G.players[1].battleZone?.defId, '1st_1');
-  assert.ok(G.timingEvents.some(event => event.type === 'zoneEntered' && event.player === 1 && event.zone === 'battleZone' && event.cardDefId === '1st_1'));
+  assert.equal(G.timingEvents.some(event => event.type === 'zoneEntered' && event.player === 1 && event.zone === 'battleZone' && event.cardDefId === '1st_1'), false);
 }
 
 {
@@ -510,7 +513,8 @@ function fivePowerCards() {
   assert.equal(setTurnCard(G, 0, 0, 'A'), true);
   assert.equal(setTurnCard(G, 1, 0, 'A'), true);
   resolveTurn(G, noEffects);
-  assert.ok(G.timingEvents.some(event => event.type === 'characterReplaced' && event.player === 0 && event.cardDefId === '1st_9' && event.replacedCardDefId === '1st_17'));
+  assert.equal(G.players[0].battleZone?.defId, '1st_9');
+  assert.equal(G.timingEvents.some(event => event.type === 'characterReplaced' && event.player === 0 && event.cardDefId === '1st_9' && event.replacedCardDefId === '1st_17'), false);
 }
 
 {
@@ -1027,6 +1031,23 @@ function fivePowerCards() {
   }).success, true);
   assert.equal(powerEntryAreaState.players[0].setZoneC, null);
   assert.equal(powerEntryAreaState.players[0].abyss.at(-1)?.defId, '4th_33');
+
+  const opponentDeckTopPowerEntryState = preparedAreaEnchantState('4th_33', 0);
+  opponentDeckTopPowerEntryState.players[0].powerCharger = fivePowerCards();
+  const costlyOpponentTop = createInstance('2nd_20', false);
+  opponentDeckTopPowerEntryState.players[1].deck = [costlyOpponentTop];
+  const opponentDeckTopPowerToPowerEffect: ParsedEffect = {
+    trigger: 'onUse',
+    conditions: [],
+    rawText: 'move opposing deck top by power cost',
+    action: { type: 'moveOpponentDeckTopByPowerCost', params: { minPowerCost: 6 } },
+  };
+  assert.equal(executeEffect(opponentDeckTopPowerToPowerEffect, opponentDeckTopPowerEntryState, 0, {
+    onTimingEvent: event => resolveTimingEvent(opponentDeckTopPowerEntryState, powerEntryParsedEffects, event),
+  }).success, true);
+  assert.equal(opponentDeckTopPowerEntryState.players[1].powerCharger.at(-1)?.instanceId, costlyOpponentTop.instanceId);
+  assert.equal(opponentDeckTopPowerEntryState.players[0].setZoneC, null);
+  assert.equal(opponentDeckTopPowerEntryState.players[0].abyss.at(-1)?.defId, '4th_33');
   const deckTopAbyssState = preparedState();
   deckTopAbyssState.previousTurnCharacterElements[0] = '闇';
   const noPowerTop = createInstance('1st_1', false);
@@ -2120,6 +2141,21 @@ function fivePowerCards() {
   resolveTimingEvent(G, parsedEffects, { type: 'turnEnd' });
   assert.equal(G.players[0].setZoneC, null);
   assert.equal(G.players[0].powerCharger.at(-1)?.defId, '3rd_91');
+
+  const scopedEventState = preparedAreaEnchantState('3rd_91', 0);
+  scopedEventState.step = 'turnSet';
+  scopedEventState.turnNumber = 2;
+  scopedEventState.players[0].battleZone = createInstance('1st_9', true);
+  scopedEventState.players[1].battleZone = createInstance('1st_9', true);
+  scopedEventState.players[0].powerCharger = [createInstance('1st_13', true)];
+  scopedEventState.timingEvents.push({ type: 'zoneEntered', player: 1, zone: 'abyss', cardDefId: '1st_1' });
+  resolveTurn(scopedEventState, parsedEffects);
+  assert.equal(resolvePendingEffect(scopedEventState, 0, 0, parsedEffects), true);
+  assert.equal(scopedEventState.players[0].powerCharger.at(-1)?.defId, '3rd_91');
+  const nextTurnArea = createInstance('3rd_91', true);
+  scopedEventState.players[0].setZoneC = nextTurnArea;
+  resolveTimingEvent(scopedEventState, parsedEffects, { type: 'turnEnd' });
+  assert.equal(scopedEventState.players[0].setZoneC?.instanceId, nextTurnArea.instanceId);
 }
 
 {
@@ -2456,6 +2492,17 @@ function fivePowerCards() {
     type: 'revealOpponentDeckTopBySendToPower',
     params: { minSendToPower: 1, boostIfMissing: 30 },
   });
+  const revealPowerEntryState = preparedState();
+  revealPowerEntryState.players[0].setZoneC = createInstance('2nd_5', true);
+  revealPowerEntryState.players[1].setZoneC = createInstance('4th_33', true);
+  revealPowerEntryState.players[1].powerCharger = fivePowerCards();
+  revealPowerEntryState.players[1].deck = [createInstance('1st_17', false)];
+  assert.equal(executeEffect(parsedCardEffect('3rd_103'), revealPowerEntryState, 0, {
+    onTimingEvent: event => resolveTimingEvent(revealPowerEntryState, parsedEffects, event),
+  }).success, true);
+  assert.equal(revealPowerEntryState.players[0].powerCharger.at(-1)?.defId, '2nd_5');
+  assert.equal(revealPowerEntryState.players[1].setZoneC, null);
+  assert.equal(revealPowerEntryState.players[1].abyss.at(-1)?.defId, '4th_33');
   assert.ok(parsedEffects.get('2nd_84')?.some(effect => (
     effect.action.type === 'setOpponentElement'
     && effect.action.params.value === '電気'

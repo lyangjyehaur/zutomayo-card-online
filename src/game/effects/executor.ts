@@ -727,6 +727,7 @@ export function executeEffect(
       if (powerCost >= minPowerCost) {
         opponent.deck.shift();
         opponent.powerCharger.push(card);
+        emitZoneEntered(G, context, opponentIndex, 'powerCharger', card);
         return { success: true, message: 'Move opposing deck top to Power Charger' };
       }
       return { success: true, message: 'Reveal opposing deck top' };
@@ -743,6 +744,7 @@ export function executeEffect(
         me.setZoneC = null;
         areaEnchant.faceUp = true;
         me.powerCharger.push(areaEnchant);
+        emitZoneEntered(G, context, player, 'powerCharger', areaEnchant);
         return { success: true, message: 'Move own Area Enchant to Power Charger' };
       }
       const boost = Number(effect.action.params.boostIfMissing ?? 0);

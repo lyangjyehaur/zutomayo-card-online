@@ -766,6 +766,7 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
   G.damageReducedThisTurn = [0, 0];
   G.delayedEffects = [];
   G.modifiers = emptyModifiers();
+  G.timingEvents = [];
   G.turnNumber++;
   G.step = 'turnSet';
   G.ready = [false, false];
