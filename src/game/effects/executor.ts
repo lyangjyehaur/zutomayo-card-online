@@ -55,10 +55,41 @@ function chronosTimeAt(position: number, midnightRange: number): 'night' | 'day'
   return getChronosTimeForPosition(position, midnightRange);
 }
 
+function isMidnightPosition(position: number, midnightRange: number): boolean {
+  const normalized = normalizeChronosPosition(position);
+  const distance = Math.min(normalized, CHRONOS_MAPPING.positions - normalized);
+  return distance <= midnightRange;
+}
+
 function isNamedCharacter(card: CardInstance | null, song: string): boolean {
   if (!card) return false;
   const def = getCardDef(card.defId);
   return def?.type === 'Character' && def.song === song;
+}
+
+function effectiveElement(card: CardInstance | null, G: GameState, player: PlayerIndex): Element | null {
+  if (!card) return null;
+  return G.modifiers.elementOverride?.[player] ?? getCardDef(card.defId)?.element ?? null;
+}
+
+function effectivePowerCost(card: CardInstance | null, G: GameState, player: PlayerIndex): number | null {
+  if (!card) return null;
+  const def = getCardDef(card.defId);
+  if (!def) return null;
+  const reduction = def.type === 'Character' ? (G.modifiers.powerCostReduction?.[player] ?? 0) : 0;
+  return Math.max(0, def.powerCost - reduction);
+}
+
+function effectiveAttack(card: CardInstance | null, G: GameState, player: PlayerIndex): number | null {
+  const def = card ? getCardDef(card.defId) : null;
+  if (!card || !def?.attack) return null;
+  const cost = effectivePowerCost(card, G, player);
+  if (cost === null || power(G, player) < cost) return 0;
+  const time = isNight(G) ? 'night' : 'day';
+  const effectiveTime = G.modifiers.attackTimeOverride?.[player] ?? time;
+  const attackTime = G.modifiers.swapAttack[player] ? (effectiveTime === 'night' ? 'day' : 'night') : effectiveTime;
+  const baseAttack = G.modifiers.attackSetTo?.[player] ?? def.attack[attackTime];
+  return Math.max(0, baseAttack + G.modifiers.attack[player]);
 }
 
 function compareNumber(actual: number, cond: Condition): boolean {
@@ -91,8 +122,12 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
   const opponent = G.players[(1 - player) as PlayerIndex];
   switch (cond.type) {
     case 'chronos': return (isNight(G) ? 'night' : 'day') === cond.value;
-    case 'opponentElement': return !!opponent.battleZone && getCardDef(opponent.battleZone.defId)?.element === cond.value;
-    case 'selfElement': return !!me.battleZone && getCardDef(me.battleZone.defId)?.element === cond.value;
+    case 'chronosPosition':
+      if (cond.value === 'midnight') return isMidnightPosition(G.chronos.position, G.midnightRange);
+      if (cond.value === 'noon') return normalizeChronosPosition(G.chronos.position) === CHRONOS_MAPPING.noon;
+      return normalizeChronosPosition(G.chronos.position) === Number(cond.value);
+    case 'opponentElement': return effectiveElement(opponent.battleZone, G, (1 - player) as PlayerIndex) === cond.value;
+    case 'selfElement': return effectiveElement(me.battleZone, G, player) === cond.value;
     case 'powerAtLeast': return power(G, player) >= Number(cond.value);
     case 'abyssElements': {
       const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
@@ -135,22 +170,31 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     }
     case 'abyssCount': return me.abyss.length >= Number(cond.value);
     case 'handCount': return me.hand.length >= Number(cond.value);
+    case 'handElements':
+      return new Set(me.hand.map(card => getCardDef(card.defId)?.element).filter(Boolean)).size >= Number(cond.value);
     case 'hpLessOrEqual': return (cond.target === 'opponent' ? opponent : me).hp <= Number(cond.value);
     case 'hpComparison': return compareNumber((cond.target === 'opponent' ? opponent : me).hp, cond);
     case 'hpLessThanOpponent': return me.hp < opponent.hp;
     case 'opponentPowerCost': {
-      if (!opponent.battleZone) return false;
-      const powerCost = getCardDef(opponent.battleZone.defId)?.powerCost;
-      return powerCost !== undefined && compareNumber(powerCost, cond);
+      const powerCost = effectivePowerCost(opponent.battleZone, G, (1 - player) as PlayerIndex);
+      return powerCost !== null && compareNumber(powerCost, cond);
     }
     case 'selfPowerCost': {
       if (cond.value === 'sameAsOpponent') {
         if (!me.battleZone || !opponent.battleZone) return false;
-        return getCardDef(me.battleZone.defId)?.powerCost === getCardDef(opponent.battleZone.defId)?.powerCost;
+        return effectivePowerCost(me.battleZone, G, player) === effectivePowerCost(opponent.battleZone, G, (1 - player) as PlayerIndex);
       }
-      if (!me.battleZone) return false;
-      const powerCost = getCardDef(me.battleZone.defId)?.powerCost;
-      return powerCost !== undefined && compareNumber(powerCost, cond);
+      const powerCost = effectivePowerCost(me.battleZone, G, player);
+      return powerCost !== null && compareNumber(powerCost, cond);
+    }
+    case 'opponentAttack': {
+      const attack = effectiveAttack(opponent.battleZone, G, (1 - player) as PlayerIndex);
+      return attack !== null && compareNumber(attack, cond);
+    }
+    case 'opponentSendToPower': {
+      if (!opponent.battleZone) return false;
+      const sendToPower = getCardDef(opponent.battleZone.defId)?.sendToPower;
+      return sendToPower !== undefined && compareNumber(sendToPower, cond);
     }
     case 'damageAtLeast': {
       const event = [...G.timingEvents].reverse().find(item => item.type === 'damageReceived' && item.player === player);
@@ -305,6 +349,12 @@ export function executeEffect(
   const me = G.players[player];
   const opponentIndex = (1 - player) as PlayerIndex;
   const opponent = G.players[opponentIndex];
+  if (effect.conditions.some(condition => condition.type === 'handElements')) {
+    if (!G.revealedHandCardIds) G.revealedHandCardIds = [[], []];
+    const revealed = new Set(G.revealedHandCardIds[player]);
+    for (const card of me.hand) revealed.add(card.instanceId);
+    G.revealedHandCardIds[player] = [...revealed];
+  }
   const valueParam = effect.action.params.value;
   const value = Number(effect.action.params.value ?? 0);
   switch (effect.action.type) {
@@ -341,6 +391,15 @@ export function executeEffect(
       if (!G.modifiers.attackSetTo) G.modifiers.attackSetTo = [null, null];
       G.modifiers.attackSetTo[opponentIndex] = value;
       return { success: true, message: `Opponent attack set to ${value}` };
+    case 'setOpponentElement': {
+      const element = effect.action.params.value;
+      if (!['闇', '炎', '電気', '風', 'カオス'].includes(String(element))) {
+        return { success: false, message: 'Unsupported element override' };
+      }
+      if (!G.modifiers.elementOverride) G.modifiers.elementOverride = [null, null];
+      G.modifiers.elementOverride[opponentIndex] = element as Element;
+      return { success: true, message: `Opponent element set to ${element}` };
+    }
     case 'heal':
       me.hp = Math.min(100, me.hp + value);
       return { success: true, message: `Heal ${value}` };
@@ -511,6 +570,24 @@ export function executeEffect(
       }
       return { success: true, message: 'Reveal opposing deck top' };
     }
+    case 'revealOpponentDeckTopBySendToPower': {
+      if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
+      const card = opponent.deck[0];
+      card.faceUp = true;
+      const sendToPower = getCardDef(card.defId)?.sendToPower ?? 0;
+      const minSendToPower = Number(effect.action.params.minSendToPower ?? 1);
+      if (sendToPower >= minSendToPower) {
+        const areaEnchant = me.setZoneC;
+        if (!areaEnchant) return { success: false, message: 'No own Area Enchant to move' };
+        me.setZoneC = null;
+        areaEnchant.faceUp = true;
+        me.powerCharger.push(areaEnchant);
+        return { success: true, message: 'Move own Area Enchant to Power Charger' };
+      }
+      const boost = Number(effect.action.params.boostIfMissing ?? 0);
+      G.modifiers.attack[player] += boost;
+      return { success: true, message: `Attack +${boost}` };
+    }
     case 'revealOpponentHand': {
       if (!G.revealedHandCardIds) G.revealedHandCardIds = [[], []];
       const revealed = new Set(G.revealedHandCardIds[opponentIndex]);
@@ -525,6 +602,10 @@ export function executeEffect(
       card.faceUp = true;
       if (effect.action.params.position === 'top') opponent.deck.unshift(card);
       else opponent.deck.push(card);
+      if (effect.action.params.lockAreaEnchant) {
+        if (!G.areaEnchantSetLocked) G.areaEnchantSetLocked = [false, false];
+        G.areaEnchantSetLocked[opponentIndex] = true;
+      }
       return { success: true, message: 'Return opposing Area Enchant to deck' };
     }
     case 'moveSelfAreaEnchant': {

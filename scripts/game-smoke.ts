@@ -9,6 +9,7 @@ import {
   finishMulligan,
   getChronosTime,
   getEffectiveAttack,
+  getEffectiveElement,
   getRequiredSetCount,
   placeRevealedCards,
   resolveJanken,
@@ -583,10 +584,15 @@ function fivePowerCards() {
   returnAreaState.players[1].setZoneC = opponentArea;
   const returnAreaEffect = parseEffect('相手のエリアエンチャントをデッキの底に戻し、以後相手はエリアエンチャントをセットできない。相手がアビスにカードを置いたターンの終了時にパワーチャージャーに置く');
   assert.ok(returnAreaEffect);
-  assert.deepEqual(returnAreaEffect.action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'bottom' } });
+  assert.deepEqual(returnAreaEffect.action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'bottom', lockAreaEnchant: true } });
   assert.equal(executeEffect(returnAreaEffect, returnAreaState, 0).success, true);
   assert.equal(returnAreaState.players[1].setZoneC, null);
   assert.equal(returnAreaState.players[1].deck.at(-1)?.instanceId, opponentArea.instanceId);
+  assert.equal(returnAreaState.areaEnchantSetLocked[1], true);
+  returnAreaState.step = 'turnSet';
+  returnAreaState.ready[1] = false;
+  returnAreaState.players[1].hand = [createInstance('2nd_5', true)];
+  assert.equal(setTurnCard(returnAreaState, 1, 0, 'A'), false);
 
   const revealOpponentHand = parseEffect('相手の手札を公開する');
   assert.deepEqual(revealOpponentHand?.action, { type: 'revealOpponentHand', params: {} });
@@ -2151,6 +2157,26 @@ function fivePowerCards() {
     type: 'directDamage',
     params: { value: 'reducedThisTurn', timing: 'turnEnd' },
   });
+  assert.deepEqual(parsedCardEffect('4th_8').conditions, [
+    { type: 'handElements', value: 4 },
+  ]);
+  assert.deepEqual(parsedCardEffect('4th_34').conditions, [
+    { type: 'opponentAttack', value: 0, operator: 'eq' },
+  ]);
+  assert.deepEqual(parsedCardEffect('4th_60').conditions, [
+    { type: 'opponentSendToPower', value: 2, operator: 'eq' },
+  ]);
+  assert.deepEqual(parsedCardEffect('3rd_1').conditions, [
+    { type: 'chronosPosition', value: 'midnight' },
+  ]);
+  assert.deepEqual(parsedCardEffect('3rd_103').action, {
+    type: 'revealOpponentDeckTopBySendToPower',
+    params: { minSendToPower: 1, boostIfMissing: 30 },
+  });
+  assert.ok(parsedEffects.get('2nd_84')?.some(effect => (
+    effect.action.type === 'setOpponentElement'
+    && effect.action.params.value === '電気'
+  )));
 
   const useFromAbyssState = preparedState();
   const copiedEnchant = createInstance('1st_92', true);
@@ -2179,6 +2205,50 @@ function fivePowerCards() {
   assert.equal(getEffectiveAttack(costlyCharacter, reducedCostState, 0), 0);
   assert.equal(executeEffect(parsedCardEffect('2nd_6'), reducedCostState, 0).success, true);
   assert.equal(getEffectiveAttack(costlyCharacter, reducedCostState, 0), 50);
+
+  const handElementsState = preparedState();
+  handElementsState.players[0].hand = ['1st_1', '1st_2', '1st_3', '1st_4'].map(id => createInstance(id, true));
+  assert.equal(executeEffect(parsedCardEffect('4th_8'), handElementsState, 0).success, true);
+  assert.equal(handElementsState.modifiers.attack[0], 80);
+  assert.deepEqual(handElementsState.revealedHandCardIds[0], handElementsState.players[0].hand.map(card => card.instanceId));
+
+  const opponentAttackZeroState = preparedState();
+  opponentAttackZeroState.players[1].battleZone = createInstance('1st_1', true);
+  assert.equal(executeEffect(parsedCardEffect('4th_34'), opponentAttackZeroState, 0).success, true);
+  assert.equal(opponentAttackZeroState.modifiers.attack[0], 30);
+
+  const opponentSendToPowerState = preparedState();
+  opponentSendToPowerState.players[1].battleZone = createInstance('1st_13', true);
+  assert.equal(executeEffect(parsedCardEffect('4th_60'), opponentSendToPowerState, 0).success, true);
+  assert.equal(opponentSendToPowerState.modifiers.attack[0], 20);
+
+  const midnightConditionState = preparedState();
+  midnightConditionState.chronos.position = 1;
+  assert.equal(executeEffect(parsedCardEffect('3rd_1'), midnightConditionState, 0).success, false);
+  midnightConditionState.midnightRange = 1;
+  assert.equal(executeEffect(parsedCardEffect('3rd_1'), midnightConditionState, 0).success, true);
+  assert.equal(midnightConditionState.modifiers.attack[0], 100);
+
+  const elementOverrideState = preparedState();
+  elementOverrideState.players[1].battleZone = createInstance('1st_1', true);
+  const elementOverrideEffect = parsedEffects.get('2nd_84')?.find(effect => effect.action.type === 'setOpponentElement');
+  assert.ok(elementOverrideEffect);
+  assert.equal(executeEffect(elementOverrideEffect, elementOverrideState, 0).success, true);
+  assert.equal(getEffectiveElement(elementOverrideState.players[1].battleZone!, elementOverrideState, 1), '電気');
+
+  const deckTopSendToPowerBoostState = preparedState();
+  deckTopSendToPowerBoostState.players[1].deck = [createInstance('1st_1', false)];
+  assert.equal(executeEffect(parsedCardEffect('3rd_103'), deckTopSendToPowerBoostState, 0).success, true);
+  assert.equal(deckTopSendToPowerBoostState.modifiers.attack[0], 30);
+  assert.equal(deckTopSendToPowerBoostState.players[1].deck[0].faceUp, true);
+
+  const deckTopSendToPowerMoveState = preparedState();
+  const sendToPowerArea = createInstance('3rd_103', true);
+  deckTopSendToPowerMoveState.players[0].setZoneC = sendToPowerArea;
+  deckTopSendToPowerMoveState.players[1].deck = [createInstance('1st_9', false)];
+  assert.equal(executeEffect(parsedCardEffect('3rd_103'), deckTopSendToPowerMoveState, 0).success, true);
+  assert.equal(deckTopSendToPowerMoveState.players[0].setZoneC, null);
+  assert.equal(deckTopSendToPowerMoveState.players[0].powerCharger.at(-1)?.instanceId, sendToPowerArea.instanceId);
 
   const namedReducedCostState = preparedState();
   namedReducedCostState.chronos.position = 0;

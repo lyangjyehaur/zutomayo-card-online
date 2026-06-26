@@ -122,6 +122,22 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     };
   }
 
+  const opponentTurnStartDeckTopSendToPowerMatch = text.match(/^ターンの開始時に相手のデッキの一番上を公開する。相手のカードにSEND TO POWER(★+)([0-9０-９]+)?が無ければ自分の攻撃力[＋+]([0-9０-９]+)。SEND TO POWER\1\2?があったなら、?すぐにこのカードをパワーチャージャーに置く[。.]?$/);
+  if (opponentTurnStartDeckTopSendToPowerMatch) {
+    return {
+      trigger: 'onTurnStart',
+      conditions: [],
+      action: {
+        type: 'revealOpponentDeckTopBySendToPower',
+        params: {
+          minSendToPower: parseSendToPower(opponentTurnStartDeckTopSendToPowerMatch[1], opponentTurnStartDeckTopSendToPowerMatch[2]),
+          boostIfMissing: parseNum(opponentTurnStartDeckTopSendToPowerMatch[3]),
+        },
+      },
+      rawText,
+    };
+  }
+
   if (text.includes('お互いの自分のHPの分だけ攻撃力+')) {
     return withExpiry({
       trigger: detectTrigger(text),
@@ -211,6 +227,12 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     triggerOverride = 'onChronosChanged';
   }
 
+  const chronosPositionMatch = text.match(/^(真夜中|正午)なら[、,]?(.+)$/);
+  if (chronosPositionMatch) {
+    conditions.push({ type: 'chronosPosition', value: chronosPositionMatch[1] === '真夜中' ? 'midnight' : 'noon' });
+    actionText = chronosPositionMatch[2];
+  }
+
   // "夜なら..."
   const chronosMatch = text.match(/^(夜|昼)なら[、,]?(.+)$/);
   if (chronosMatch) {
@@ -275,6 +297,22 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   if (samePowerCostMatch) {
     conditions.push({ type: 'selfPowerCost', value: 'sameAsOpponent' });
     actionText = samePowerCostMatch[1];
+  }
+
+  const opponentAttackMatch = actionText.match(/^相手のキャラクターの攻撃力が([0-9０-９]+)なら[、,]?(.+)$/);
+  if (opponentAttackMatch) {
+    conditions.push({ type: 'opponentAttack', value: parseNum(opponentAttackMatch[1]), operator: 'eq' });
+    actionText = opponentAttackMatch[2];
+  }
+
+  const opponentSendToPowerMatch = actionText.match(/^相手のキャラクターのSEND TO POWERが?(★+)([0-9０-９]+)?なら[、,]?(.+)$/);
+  if (opponentSendToPowerMatch) {
+    conditions.push({
+      type: 'opponentSendToPower',
+      value: parseSendToPower(opponentSendToPowerMatch[1], opponentSendToPowerMatch[2]),
+      operator: 'eq',
+    });
+    actionText = opponentSendToPowerMatch[3];
   }
 
   const powerCostRangePatterns: Array<{
@@ -346,6 +384,12 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   if (pcElementMatch) {
     conditions.push({ type: 'abyssElements', value: parseNum(pcElementMatch[1]), target: 'powerCharger' });
     actionText = pcElementMatch[2];
+  }
+
+  const handElementDiversityMatch = actionText.match(/^手札を公開し、?([0-9０-９]+)属性以上あるなら[、,]?(.+)$/);
+  if (handElementDiversityMatch) {
+    conditions.push({ type: 'handElements', value: parseNum(handElementDiversityMatch[1]) });
+    actionText = handElementDiversityMatch[2];
   }
 
   const zoneElementCountMatch = actionText.match(new RegExp(`^(相手の)?(アビス|パワーチャージャー)に(?:ある)?${ELEMENT_PATTERN}属性のカードが([0-9０-９]+)枚(以上|以下)あるなら[、,]?(.+)$`));
@@ -523,7 +567,11 @@ function parseAction(text: string): EffectAction | null {
   if (returnAreaEnchantMatch) {
     return {
       type: 'returnAreaEnchantToDeck',
-      params: { target: 'opponent', position: returnAreaEnchantMatch[1] === '上' ? 'top' : 'bottom' },
+      params: {
+        target: 'opponent',
+        position: returnAreaEnchantMatch[1] === '上' ? 'top' : 'bottom',
+        ...(text.includes('以後相手はエリアエンチャントをセットできない') ? { lockAreaEnchant: true } : {}),
+      },
     };
   }
 
@@ -607,6 +655,9 @@ function parseAction(text: string): EffectAction | null {
 
   const setOpponentAttackMatch = text.match(/^相手の攻撃力を([0-9０-９]+)にする[。.]?$/);
   if (setOpponentAttackMatch) return { type: 'setOpponentAttack', params: { value: parseNum(setOpponentAttackMatch[1]) } };
+
+  const setOpponentElementMatch = text.match(/^相手のキャラクターカードの属性をバトルフィールドにいる間(闇|炎|電気|風|カオス)にする[。.]?$/);
+  if (setOpponentElementMatch) return { type: 'setOpponentElement', params: { value: setOpponentElementMatch[1] } };
 
   // "攻撃力-30"
   const reduceMatch = text.match(/攻撃力(?:を)?[ー\-]([0-9０-９]+)/);
@@ -1003,6 +1054,23 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
       rawText,
     };
   }
+  const powerCostSelfMoveMatch = text.match(/(?:^|[。.])\s*(相手の)?キャラクターカードが([0-9０-９]+)コスト(以上|以下)なら(?:すぐに)?(アビス|パワーチャージャー)に置く/);
+  if (powerCostSelfMoveMatch) {
+    const owner = cardOwner(powerCostSelfMoveMatch[1]);
+    return {
+      trigger: 'onUse',
+      conditions: [{
+        type: owner === 'opponent' ? 'opponentPowerCost' : 'selfPowerCost',
+        value: parseNum(powerCostSelfMoveMatch[2]),
+        operator: comparisonOperator(powerCostSelfMoveMatch[3]),
+      }],
+      action: {
+        type: 'moveSelfAreaEnchant',
+        params: { destination: powerCostSelfMoveMatch[4] === 'パワーチャージャー' ? 'powerCharger' : 'abyss' },
+      },
+      rawText,
+    };
+  }
   if (text.includes('ターンの終了時に、相手のフィールドにエリアエンチャントがあるなら')) {
     return {
       trigger: 'onTurnEnd',
@@ -1061,6 +1129,27 @@ function parsedEffectKey(effect: ParsedEffect): string {
   });
 }
 
+function parseSecondaryEffects(rawText: string): ParsedEffect[] {
+  const effects: ParsedEffect[] = [];
+  const normalizedText = rawText
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<a[^>]*>.*?<\/a>/gi, '')
+    .replace(/※.*$/gm, '')
+    .trim();
+
+  const opponentElementOverrideMatch = normalizedText.match(/相手のキャラクターカードの属性をバトルフィールドにいる間(闇|炎|電気|風|カオス)にする/);
+  if (opponentElementOverrideMatch) {
+    effects.push({
+      trigger: detectTrigger(normalizedText),
+      conditions: [],
+      action: { type: 'setOpponentElement', params: { value: opponentElementOverrideMatch[1] } },
+      rawText,
+    });
+  }
+
+  return effects;
+}
+
 export function parseAllEffects(cards: { id: string; effect: string }[]): Map<string, ParsedEffect[]> {
   const result = new Map<string, ParsedEffect[]>();
 
@@ -1080,6 +1169,9 @@ export function parseAllEffects(cards: { id: string; effect: string }[]): Map<st
       if (parsed) effects.push(parsed);
       const expiry = parsed?.expiry ?? parseAreaEnchantExpiry(sourceLine);
       if (expiry && !effects.some(effect => parsedEffectKey(effect) === parsedEffectKey(expiry))) effects.push(expiry);
+      for (const secondary of parseSecondaryEffects(sourceLine)) {
+        if (!effects.some(effect => parsedEffectKey(effect) === parsedEffectKey(secondary))) effects.push(secondary);
+      }
       if (combined) index++;
     }
 

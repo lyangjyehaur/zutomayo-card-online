@@ -107,6 +107,7 @@ export function emptyModifiers(): CombatModifiers {
     attackTimeOverride: [null, null],
     cardClockSetTo: null,
     damageReduction: [0, 0],
+    elementOverride: [null, null],
     handSize: [0, 0],
     powerCostReduction: [0, 0],
     extraSettableCards: [0, 0],
@@ -241,6 +242,7 @@ export function setupGame(
     suppressedEffectCardIdsThisTurn: [],
     previousTurnCharacterElements: [null, null],
     handSizeModifier: [0, 0],
+    areaEnchantSetLocked: [false, false],
     damageReducedThisTurn: [0, 0],
     jankenChoices: [null, null],
     mulliganUsed: [false, false],
@@ -339,6 +341,8 @@ function setCard(G: GameState, player: PlayerIndex, handIndex: number, slot: Set
   if (state.cardsSetThisTurn >= getRequiredSetCount(G, player)) return false;
   const zone = slot === 'A' ? 'setZoneA' : 'setZoneB';
   if (state[zone]) return false;
+  const def = getCardDef(state.hand[handIndex].defId);
+  if (def?.type === 'Area Enchant' && G.areaEnchantSetLocked?.[player]) return false;
   const card = state.hand.splice(handIndex, 1)[0];
   card.faceUp = false;
   state[zone] = card;
@@ -495,6 +499,11 @@ export function getEffectiveAttack(card: CardInstance, G: GameState, player: num
   return Math.max(0, baseAttack + G.modifiers.attack[index]);
 }
 
+export function getEffectiveElement(card: CardInstance, G: GameState, player: number): Element | null {
+  const index = player as PlayerIndex;
+  return G.modifiers.elementOverride?.[index] ?? getCardDef(card.defId)?.element ?? null;
+}
+
 function emptyParsedEffects(): Map<string, ParsedEffect[]> {
   return new Map<string, ParsedEffect[]>();
 }
@@ -617,7 +626,7 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
 function characterElementPlayedThisTurn(G: GameState, player: PlayerIndex): Element | null {
   for (const card of G.setCardsThisTurn[player]) {
     const def = getCardDef(card.defId);
-    if (def?.type === 'Character') return def.element;
+    if (def?.type === 'Character') return getEffectiveElement(card, G, player);
   }
   return null;
 }

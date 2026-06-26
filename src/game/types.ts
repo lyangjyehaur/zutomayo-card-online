@@ -234,6 +234,7 @@ export interface CombatModifiers {
   attackTimeOverride: [ChronosTime | null, ChronosTime | null];
   cardClockSetTo: number | null;
   damageReduction: [number, number];
+  elementOverride: [Element | null, Element | null];
   handSize: [number, number];
   powerCostReduction: [number, number];
   extraSettableCards: [number, number];
@@ -263,6 +264,7 @@ export interface GameState {
   suppressedEffectCardIdsThisTurn: string[];
   previousTurnCharacterElements: [Element | null, Element | null];
   handSizeModifier: [number, number];
+  areaEnchantSetLocked: [boolean, boolean];
   damageReducedThisTurn: [number, number];
   jankenChoices: [JankenChoice | null, JankenChoice | null];
   mulliganUsed: [boolean, boolean];

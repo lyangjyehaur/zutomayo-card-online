@@ -43,6 +43,7 @@ export type Condition =
 
 export type ConditionType =
   | 'chronos'           // Night or day
+  | 'chronosPosition'   // Specific Chronos position such as midnight
   | 'opponentElement'   // Opponent character's element
   | 'selfElement'       // Own character's element
   | 'powerAtLeast'      // Player power >= N
@@ -60,6 +61,9 @@ export type ConditionType =
   | 'hpLessThanOpponent' // Player HP < opponent HP
   | 'opponentPowerCost' // Opponent Character power-cost comparison
   | 'selfPowerCost'     // Own Character power-cost comparison
+  | 'opponentAttack'    // Opponent Character effective attack comparison
+  | 'opponentSendToPower' // Opponent Character SEND TO POWER comparison
+  | 'handElements'      // Hand has N distinct elements
   | 'damageAtLeast'     // Current damage event amount >= N
   | 'zoneEntered'       // A card entered a zone this turn
   | 'zoneCountAtLeast'  // A zone has at least N cards
@@ -86,6 +90,7 @@ export type ActionType =
   | 'boostBothAttackByOwnHp' // Both players gain attack equal to own HP
   | 'reduceAttack'      // Attack -N
   | 'setOpponentAttack' // Set opposing attack to N
+  | 'setOpponentElement' // Temporarily set opposing Character element
   | 'directDamage'      // Deal N damage to player
   | 'heal'              // Restore N HP
   | 'damageReduce'      // Reduce incoming damage by N
@@ -103,6 +108,7 @@ export type ActionType =
   | 'millDeckToAbyss'   // Move cards from deck top to abyss
   | 'moveOwnDeckTopByPower' // Move own deck top to power/abyss by SEND TO POWER
   | 'moveOpponentDeckTopByPowerCost' // Move opponent deck top by revealed power cost
+  | 'revealOpponentDeckTopBySendToPower' // Branch on opponent deck top SEND TO POWER
   | 'revealOpponentHand' // Reveal opponent's current hand
   | 'returnAreaEnchantToDeck' // Return Area Enchant to deck
   | 'moveSelfAreaEnchant' // Move own Area Enchant to a zone
