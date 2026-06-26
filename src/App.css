@@ -5881,6 +5881,30 @@ button.zone:focus-visible {
   font-weight: 800;
 }
 
+.pending-choice-option.selected {
+  border-color: rgba(143, 216, 206, 0.9);
+  background: rgba(143, 216, 206, 0.14);
+}
+
+.pending-choice-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.pending-choice-footer span {
+  color: #d7d4c8;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.pending-choice-footer .primary-action {
+  min-height: 2rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.78rem;
+}
+
 .resource-stat.hp {
   position: relative;
 }

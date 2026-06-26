@@ -613,6 +613,72 @@ function EffectOrderPanel({ G, moves, playerID }: {
   );
 }
 
+function PendingChoicePanel({ G, moves, playerID }: {
+  G: GameState;
+  moves: Props['moves'];
+  playerID: Props['playerID'];
+}) {
+  const choice = G.pendingChoice;
+  const meIndex = Number(playerID ?? '0') as PlayerIndex;
+  const [selected, setSelected] = useState<string[]>([]);
+
+  useEffect(() => {
+    setSelected([]);
+  }, [choice?.id]);
+
+  if (!choice) return null;
+
+  const isCurrentPlayer = choice.player === meIndex;
+  const canSubmit = selected.length >= choice.min && selected.length <= choice.max;
+  const toggle = (optionId: string) => {
+    setSelected(current => {
+      if (current.includes(optionId)) return current.filter(item => item !== optionId);
+      if (current.length >= choice.max) return current;
+      return [...current, optionId];
+    });
+  };
+
+  return (
+    <section className="effect-order-panel pending-choice-panel" aria-label={t('board.pendingChoice')}>
+      <div className="effect-order-heading">
+        <strong>{isCurrentPlayer ? t('board.chooseCards') : t('board.waitingChoicePlayer')}</strong>
+        <span>{playerName(choice.player)}</span>
+      </div>
+      {isCurrentPlayer ? (
+        <>
+          <p>{choice.prompt || choice.type}</p>
+          <div className="effect-order-list">
+            {choice.options.map(option => {
+              const isSelected = selected.includes(option.id);
+              return (
+                <button
+                  key={option.id}
+                  className={`effect-order-item pending-choice-option ${isSelected ? 'selected' : ''}`}
+                  type="button"
+                  onClick={() => toggle(option.id)}
+                >
+                  <span className="effect-order-card">{option.label}</span>
+                  <span className="effect-order-action">
+                    {isSelected ? t('common.selected') : t('common.select')}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="pending-choice-footer">
+            <span>{t('board.choiceCount')} {selected.length}/{choice.max}</span>
+            <button className="primary-action" type="button" disabled={!canSubmit} onClick={() => moves.submitPendingChoice(selected)}>
+              {t('board.submitChoice')}
+            </button>
+          </div>
+        </>
+      ) : (
+        <p>{t('board.waitingOpponent')}</p>
+      )}
+    </section>
+  );
+}
+
 function BattleBoard({ G, moves, playerID }: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
@@ -726,6 +792,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
         />
       </main>
       {G.step === 'effectOrder' && <EffectOrderPanel G={G} moves={moves} playerID={playerID} />}
+      {G.pendingChoice && <PendingChoicePanel G={G} moves={moves} playerID={playerID} />}
       <HandDrawer
         cards={me.hand}
         expanded={handExpanded}

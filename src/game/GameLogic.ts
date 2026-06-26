@@ -1,5 +1,6 @@
 import type { ParsedEffect } from './effects';
 import { collectTurnEffects, executeEffect, getTurnEffectPlayerOrder } from './effects/executor';
+import { matchesCardMoveFilter, moveCardForChoice, sourceCards } from './effects/choices';
 import type {
   CardInstance,
   ChronosTime,
@@ -686,6 +687,16 @@ export function submitPendingChoice(
       return true;
     }
     drawUnchecked(playerState, drawCount);
+  }
+  if (choice.type === 'cardMove') {
+    const source = sourceCards(G, choice.payload);
+    if (!optionIds.every(optionId => {
+      const card = source.find(item => item.instanceId === optionId);
+      return !!card && matchesCardMoveFilter(card, choice.payload);
+    })) return false;
+    for (const optionId of optionIds) {
+      if (!moveCardForChoice(G, choice.payload, optionId)) return false;
+    }
   }
   clearPendingChoice(G);
   advancePendingEffectWindow(G, parsedEffects);

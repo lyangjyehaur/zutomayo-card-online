@@ -1,6 +1,17 @@
-import type { CardInstance, GameState, PendingEffect, PendingEffectSource, PlayerIndex } from '../types';
+import type {
+  CardInstance,
+  GameState,
+  PendingCardMovePayload,
+  PendingChoiceCardZone,
+  PendingChoiceDeckPosition,
+  PendingChoiceDestinationZone,
+  PendingEffect,
+  PendingEffectSource,
+  PlayerIndex,
+} from '../types';
 import type { ParsedEffect, Condition } from './types';
 import { getCardDef } from '../cards/loader';
+import { legalCardMoveCards, relativePlayer, type RelativeChoicePlayer } from './choices';
 
 function power(G: GameState, player: PlayerIndex): number {
   return G.players[player].powerCharger.reduce(
@@ -247,6 +258,57 @@ export function executeEffect(
       return { success: true, message: `Move own Area Enchant to ${effect.action.params.destination === 'powerCharger' ? 'Power Charger' : 'Abyss'}` };
     }
     case 'requestChoice': {
+      if (effect.action.params.choiceType === 'cardMove') {
+        const count = Number(effect.action.params.count ?? 1);
+        const sourceOwner = String(effect.action.params.sourceOwner);
+        const destinationOwner = String(effect.action.params.destinationOwner);
+        const sourceZone = String(effect.action.params.sourceZone);
+        const destinationZone = String(effect.action.params.destinationZone);
+        const destinationPosition = effect.action.params.destinationPosition === undefined
+          ? undefined
+          : String(effect.action.params.destinationPosition);
+        if (
+          !['self', 'opponent'].includes(sourceOwner)
+          || !['self', 'opponent'].includes(destinationOwner)
+          || !Number.isInteger(count)
+          || count < 1
+          || !['hand', 'abyss', 'powerCharger'].includes(sourceZone)
+          || !['abyss', 'deck'].includes(destinationZone)
+          || (destinationZone === 'deck' && destinationPosition !== 'bottom')
+        ) {
+          return { success: false, message: 'Unsupported card choice move' };
+        }
+        const payload: PendingCardMovePayload = {
+          sourcePlayer: relativePlayer(player, sourceOwner as RelativeChoicePlayer),
+          sourceZone: sourceZone as PendingChoiceCardZone,
+          destinationPlayer: relativePlayer(player, destinationOwner as RelativeChoicePlayer),
+          destinationZone: destinationZone as PendingChoiceDestinationZone,
+          destinationPosition: destinationPosition as PendingChoiceDeckPosition | undefined,
+          filterSendToPower: effect.action.params.filterSendToPower === undefined
+            ? undefined
+            : Number(effect.action.params.filterSendToPower),
+        };
+        const options = legalCardMoveCards(G, payload).map(card => ({
+          id: card.instanceId,
+          label: getCardDef(card.defId)?.name ?? card.defId,
+          cardInstanceId: card.instanceId,
+          cardDefId: card.defId,
+        }));
+        if (options.length === 0) return { success: false, message: 'No legal cards for choice' };
+        if (options.length < count) return { success: false, message: 'Not enough legal cards for choice' };
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'cardMove',
+          min: count,
+          max: count,
+          prompt: effect.rawText,
+          payload,
+          options,
+        };
+        return { success: true, message: 'Pending card selection' };
+      }
+
       if (effect.action.params.choiceType !== 'handToDeckBottomThenDraw') {
         return { success: false, message: 'Unsupported choice type' };
       }
@@ -258,6 +320,7 @@ export function executeEffect(
         type: 'handToDeckBottomThenDraw',
         min: discardCount,
         max: discardCount,
+        prompt: effect.rawText,
         payload: { drawCount },
         options: me.hand.map(card => ({
           id: card.instanceId,

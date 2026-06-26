@@ -489,6 +489,118 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   assert.equal(choiceState.players[0].hand.length, 2);
   assert.equal(choiceState.players[0].deck.at(-1)?.instanceId, chosen);
 
+  const duplicateChoiceState = preparedState();
+  duplicateChoiceState.players[0].hand = [createInstance('1st_9', true), createInstance('1st_17', true)];
+  const handBottomDrawTwo = parseEffect('手札を２枚選んでデッキの底に置き、カードを２枚引く');
+  assert.ok(handBottomDrawTwo);
+  assert.equal(executeEffect(handBottomDrawTwo, duplicateChoiceState, 0).success, true);
+  assert.equal(submitPendingChoice(
+    duplicateChoiceState,
+    0,
+    [duplicateChoiceState.players[0].hand[0].instanceId, duplicateChoiceState.players[0].hand[0].instanceId],
+    noEffects,
+  ), false);
+
+  const drawFromDeck = parseEffect('デッキから１枚カードを引き、手札に加える');
+  assert.deepEqual(drawFromDeck?.action, { type: 'drawCards', params: { value: 1 } });
+  assert.deepEqual(parsedCardEffect('1st_92').action, { type: 'drawCards', params: { value: 1 } });
+
+  const handToAbyss = parseEffect('手札からパワーの有無に関わらずカード１枚を選び、アビスに置く。');
+  assert.deepEqual(handToAbyss?.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'cardMove',
+      count: 1,
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'abyss',
+    },
+  });
+  assert.deepEqual(parsedCardEffect('3rd_31').action, handToAbyss?.action);
+  const handToAbyssState = preparedState();
+  handToAbyssState.players[0].hand = [createInstance('1st_9', true), createInstance('1st_17', true)];
+  const handToAbyssChosen = handToAbyssState.players[0].hand[0].instanceId;
+  assert.ok(handToAbyss);
+  assert.equal(executeEffect(handToAbyss, handToAbyssState, 0).success, true);
+  assert.equal(handToAbyssState.pendingChoice?.type, 'cardMove');
+  assert.equal(handToAbyssState.pendingChoice?.options.length, 2);
+  assert.equal(submitPendingChoice(handToAbyssState, 0, [handToAbyssChosen], noEffects), true);
+  assert.equal(handToAbyssState.players[0].abyss.at(-1)?.instanceId, handToAbyssChosen);
+  assert.equal(handToAbyssState.players[0].hand.length, 1);
+
+  const opponentAbyssToDeck = parseEffect('相手のアビスのカードを1枚選んでデッキの底に戻させる');
+  assert.deepEqual(opponentAbyssToDeck?.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'cardMove',
+      count: 1,
+      sourceOwner: 'opponent',
+      sourceZone: 'abyss',
+      destinationOwner: 'opponent',
+      destinationZone: 'deck',
+      destinationPosition: 'bottom',
+    },
+  });
+  assert.deepEqual(parsedCardEffect('1st_103').action, opponentAbyssToDeck?.action);
+  const abyssMoveState = preparedState();
+  const abyssCard = createInstance('1st_9', true);
+  const abyssOther = createInstance('1st_17', true);
+  const bottomBefore = createInstance('1st_1', false);
+  abyssMoveState.players[1].abyss = [abyssCard, abyssOther];
+  abyssMoveState.players[1].deck = [bottomBefore];
+  assert.ok(opponentAbyssToDeck);
+  assert.equal(executeEffect(opponentAbyssToDeck, abyssMoveState, 0).success, true);
+  assert.equal(abyssMoveState.pendingChoice?.options.length, 2);
+  assert.equal(submitPendingChoice(abyssMoveState, 1, [abyssCard.instanceId], noEffects), false);
+  assert.equal(submitPendingChoice(abyssMoveState, 0, [abyssCard.instanceId, abyssCard.instanceId], noEffects), false);
+  assert.equal(submitPendingChoice(abyssMoveState, 0, [abyssCard.instanceId], noEffects), true);
+  assert.deepEqual(abyssMoveState.players[1].abyss.map(card => card.instanceId), [abyssOther.instanceId]);
+  assert.deepEqual(abyssMoveState.players[1].deck.map(card => card.instanceId), [bottomBefore.instanceId, abyssCard.instanceId]);
+
+  const powerTwoToDeck = parseEffect('相手のパワーチャージャーからSEND TO POWER★★のカードを１枚選び、相手のデッキの底に置く');
+  assert.deepEqual(powerTwoToDeck?.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'cardMove',
+      count: 1,
+      sourceOwner: 'opponent',
+      sourceZone: 'powerCharger',
+      destinationOwner: 'opponent',
+      destinationZone: 'deck',
+      destinationPosition: 'bottom',
+      filterSendToPower: 2,
+    },
+  });
+  assert.deepEqual(parsedCardEffect('2nd_8').action, powerTwoToDeck?.action);
+  const powerOneToDeck = parseEffect('相手のパワーチャージャーからSEND TO POWER★１のカードを１枚選び、相手のデッキの底に置く');
+  assert.equal(powerOneToDeck?.action.params.filterSendToPower, 1);
+  assert.deepEqual(parsedCardEffect('2nd_19').action, powerOneToDeck?.action);
+  assert.deepEqual(parsedCardEffect('2nd_24').conditions, [
+    { type: 'previousCharElement', value: '電気' },
+    { type: 'chronos', value: 'night' },
+  ]);
+  assert.equal(parsedCardEffect('2nd_24').action.params.filterSendToPower, 1);
+
+  const powerMoveState = preparedState();
+  const illegalPower = createInstance('1st_9', true);
+  const legalPower = createInstance('1st_13', true);
+  const powerBottomBefore = createInstance('1st_1', false);
+  powerMoveState.players[1].powerCharger = [illegalPower, legalPower];
+  powerMoveState.players[1].deck = [powerBottomBefore];
+  assert.ok(powerTwoToDeck);
+  assert.equal(executeEffect(powerTwoToDeck, powerMoveState, 0).success, true);
+  assert.deepEqual(powerMoveState.pendingChoice?.options.map(option => option.cardInstanceId), [legalPower.instanceId]);
+  assert.equal(submitPendingChoice(powerMoveState, 0, [illegalPower.instanceId], noEffects), false);
+  assert.equal(submitPendingChoice(powerMoveState, 0, [legalPower.instanceId], noEffects), true);
+  assert.deepEqual(powerMoveState.players[1].powerCharger.map(card => card.instanceId), [illegalPower.instanceId]);
+  assert.deepEqual(powerMoveState.players[1].deck.map(card => card.instanceId), [powerBottomBefore.instanceId, legalPower.instanceId]);
+
+  const noLegalPowerState = preparedState();
+  noLegalPowerState.players[1].powerCharger = [createInstance('1st_9', true)];
+  assert.deepEqual(executeEffect(powerTwoToDeck, noLegalPowerState, 0), { success: false, message: 'No legal cards for choice' });
+  assert.equal(noLegalPowerState.pendingChoice, null);
+
   const millTop = parseEffect('相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く');
   assert.ok(millTop);
   assert.deepEqual(millTop.action, { type: 'millDeckToAbyss', params: { target: 'opponent', count: 1 } });

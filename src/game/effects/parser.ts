@@ -13,6 +13,11 @@ function namedSong(text: string): string | null {
   return text.match(/[（(]([^（）()]+)[）)]/)?.[1].trim() ?? null;
 }
 
+function parseSendToPower(stars: string, digitText?: string): number {
+  if (digitText) return parseNum(digitText);
+  return stars.split('').filter(char => char === '★').length;
+}
+
 // ===== Main Parser =====
 
 export function parseEffect(rawText: string): ParsedEffect | null {
@@ -77,6 +82,14 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 
   if (actionText.includes('同時に出した自分のキャラクターカード') || actionText.includes('同時にセットした自分のキャラクターカード')) {
     conditions.push({ type: 'simultaneousCharacter', value: true });
+  }
+
+  // "前のターンで使用したキャラクターカードの属性がXで、今が夜/昼なら..."
+  const previousCharElementChronosMatch = actionText.match(/前のターンで使用したキャラクターカードの属性が(闇|炎|電気|風|カオス)で、今が(夜|昼)なら[、,]?(.+)$/);
+  if (previousCharElementChronosMatch) {
+    conditions.push({ type: 'previousCharElement', value: previousCharElementChronosMatch[1] });
+    conditions.push({ type: 'chronos', value: previousCharElementChronosMatch[2] === '夜' ? 'night' : 'day' });
+    actionText = previousCharElementChronosMatch[3];
   }
 
   // "前のターンで使用したキャラクターカードの属性がXなら..."
@@ -208,6 +221,57 @@ function parseAction(text: string): EffectAction | null {
   const directDamageMatch = text.match(/([0-9０-９]+)ダメージ/);
   if (directDamageMatch) return { type: 'directDamage', params: { value: parseNum(directDamageMatch[1]) } };
 
+  // "手札からパワーの有無に関わらずカードX枚を選び、アビスに置く"
+  const handToAbyssMatch = text.match(/手札からパワーの有無に関わらずカード([0-9０-９]+)枚を選び、アビスに置く[。.]?$/);
+  if (handToAbyssMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'cardMove',
+        count: parseNum(handToAbyssMatch[1]),
+        sourceOwner: 'self',
+        sourceZone: 'hand',
+        destinationOwner: 'self',
+        destinationZone: 'abyss',
+      },
+    };
+  }
+
+  // "相手のアビスのカードをX枚選んでデッキの底に戻させる"
+  const opponentAbyssToDeckBottomMatch = text.match(/相手のアビスのカードを([0-9０-９]+)枚選んでデッキの底に戻させる[。.]?$/);
+  if (opponentAbyssToDeckBottomMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'cardMove',
+        count: parseNum(opponentAbyssToDeckBottomMatch[1]),
+        sourceOwner: 'opponent',
+        sourceZone: 'abyss',
+        destinationOwner: 'opponent',
+        destinationZone: 'deck',
+        destinationPosition: 'bottom',
+      },
+    };
+  }
+
+  // "相手のパワーチャージャーからSEND TO POWER★★/★１のカードをX枚選び、相手のデッキの底に置く"
+  const opponentPowerToDeckBottomMatch = text.match(/相手のパワーチャージャーからSEND TO POWER(★+)([0-9０-９]+)?のカードを([0-9０-９]+)枚選び、相手のデッキの底に置く[。.]?$/);
+  if (opponentPowerToDeckBottomMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'cardMove',
+        count: parseNum(opponentPowerToDeckBottomMatch[3]),
+        sourceOwner: 'opponent',
+        sourceZone: 'powerCharger',
+        destinationOwner: 'opponent',
+        destinationZone: 'deck',
+        destinationPosition: 'bottom',
+        filterSendToPower: parseSendToPower(opponentPowerToDeckBottomMatch[1], opponentPowerToDeckBottomMatch[2]),
+      },
+    };
+  }
+
   // "手札をX枚選んでデッキの底に置き、カードをY枚引く"
   const handBottomDrawMatch = text.match(/手札を([0-9０-９]+)枚選んでデッキの底に置き、カードを([0-9０-９]+)枚引く/);
   if (handBottomDrawMatch) {
@@ -223,6 +287,8 @@ function parseAction(text: string): EffectAction | null {
 
   // "カードをX枚引く"
   if (text.includes('選')) return null;
+  const drawFromDeckMatch = text.match(/デッキから([0-9０-９]+)枚カードを引き、?手札に加える/);
+  if (drawFromDeckMatch) return { type: 'drawCards', params: { value: parseNum(drawFromDeckMatch[1]) } };
   const drawMatch = text.match(/カード[をが]([0-9０-９]+)枚(?:引|ドロー)/);
   if (drawMatch) return { type: 'drawCards', params: { value: parseNum(drawMatch[1]) } };
 

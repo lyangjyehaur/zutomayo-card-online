@@ -71,15 +71,37 @@ export interface PendingChoiceOption {
   cardDefId?: string;
 }
 
-export interface PendingChoice {
+export type PendingChoiceCardZone = 'hand' | 'abyss' | 'powerCharger';
+export type PendingChoiceDestinationZone = 'abyss' | 'deck';
+export type PendingChoiceDeckPosition = 'bottom';
+
+export interface PendingCardMovePayload {
+  sourcePlayer: PlayerIndex;
+  sourceZone: PendingChoiceCardZone;
+  destinationPlayer: PlayerIndex;
+  destinationZone: PendingChoiceDestinationZone;
+  destinationPosition?: PendingChoiceDeckPosition;
+  filterSendToPower?: number;
+}
+
+export interface PendingChoiceBase {
   id: string;
   player: PlayerIndex;
-  type: 'handToDeckBottomThenDraw';
   options: PendingChoiceOption[];
   min: number;
   max: number;
-  payload: Record<string, number | string | boolean>;
+  prompt?: string;
 }
+
+export type PendingChoice =
+  | (PendingChoiceBase & {
+      type: 'handToDeckBottomThenDraw';
+      payload: { drawCount: number };
+    })
+  | (PendingChoiceBase & {
+      type: 'cardMove';
+      payload: PendingCardMovePayload;
+    });
 
 export interface PlayerState {
   hp: number;
