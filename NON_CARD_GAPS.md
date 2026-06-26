@@ -2,14 +2,47 @@
 
 This document intentionally excludes card text parser/executor work. Do not use it as a card-effect backlog. Card effects are tracked separately in `RULE_GAP_AUDIT.md` and `npm run rule:audit`.
 
-Current verified baseline:
+## Current verified baseline
 
-- Core simultaneous state machine exists: `janken → mulligan → initialSet → turnSet → effectOrder → turnSet/gameOver`.
-- Local two-player, AI, and boardgame.io online rooms work.
-- `playerView` already hides opponent hands, decks, face-down set cards, and unpaired janken choices.
-- Online rooms can receive validated browser-saved custom deck payloads through boardgame.io `setupData`.
-- Match history is browser-local only.
-- The working tree may contain uncommitted card-effect work. Avoid mixing unrelated non-card changes into that diff unless explicitly asked.
+As of 2026-06-26:
+
+- Core simultaneous state machine: `janken → mulligan → initialSet → turnSet → effectOrder → turnSet/gameOver`.
+- Local two-player, AI (Easy/Normal/Hard), and boardgame.io online rooms work.
+- `playerView` hides opponent hands, decks, face-down set cards, and unpaired janken choices.
+- Online rooms receive validated browser-saved custom deck payloads through boardgame.io `setupData`.
+- 422 cards loaded, 250 with effect text (97% parser coverage).
+- 6 UI languages: zh-TW, zh-HK, zh-CN, ja, en, ko.
+- Docker Compose deploys two services: `game` (port 3000) and `api` (port 3001).
+- API server (Express + SQLite) provides accounts, deck CRUD, match results, and leaderboard.
+- Chronos mapping verified against official rules (12 positions, midnight=0, noon=6).
+- Online reconnect/resume UX implemented.
+- Leaderboard page integrated.
+- Admin panel with card data viewer and i18n management.
+
+## Architecture
+
+```
+Frontend (Vite + React + TypeScript + React Router)
+├── /             → Lobby
+├── /play/local   → Local 2-player
+├── /play/ai      → AI practice
+├── /play/online  → Online multiplayer
+├── /deck-builder → Deck editor
+├── /history      → Match history
+├── /leaderboard  → Leaderboard
+└── /admin        → Admin panel (password protected)
+
+Game server (boardgame.io, port 3000)
+├── /games/*      → boardgame.io API
+├── /api/*        → Proxy to API server
+└── Static files  → dist/, admin/, data/
+
+API server (Express + SQLite, port 3001)
+├── /api/register, /api/login, /api/profile
+├── /api/decks (CRUD)
+├── /api/matches
+└── /api/leaderboard
+```
 
 ## Scope definition
 
@@ -28,291 +61,138 @@ Out of scope for this document:
 - Area Enchant expiry or timing windows when the purpose is to execute a card effect;
 - continuous/replacement modifiers that only exist because of specific card effects.
 
+---
+
 ## Priority 1 — Confirm exact Chronos board mapping ✅ DONE
 
-Problem:
+**Status**: Completed 2026-06-26.
 
-The implementation uses a 12-position Chronos model and current day/night calculation. The Obsidian notes still say the official guide/PDF should be checked for exact Chronos board structure and day/night coverage. If the official board has different boundaries, core combat and effect priority can be wrong even when card effects are ignored.
+`CHRONOS_MAPPING` constant in `src/game/types.ts`:
+- 12 positions, midnight=0, noon=6
+- Night: [0,1,2,3,10,11], Day: [4,5,6,7,8,9]
+- Clockwise direction, wraps at position 12
 
-Relevant sources:
+Verified against official Start Guide at zutomayocard.net/start-guide/.
 
-- `/Users/danersaka/Documents/Obsidian Vault/Zutomayo Card/Zutomayo Card 遊戲規則.md`
-- `/Users/danersaka/Documents/Obsidian Vault/Zutomayo Card/ZUTOMAYO CARD 規則整理與線上對戰可行性.md`
-- Official Start Guide: `https://zutomayocard.net/start-guide/`
-- Official Rule Guide PDF listed in the Obsidian notes.
+Code paths: `src/game/types.ts`, `src/game/chronos.ts`, `src/game/GameLogic.ts`, `src/components/Chronos.tsx`
 
-Likely code paths:
-
-- `src/game/GameLogic.ts`
-- `src/components/Chronos.tsx`
-- `src/game/types.ts`
-- smoke tests in `scripts/game-smoke.ts`
-
-Required work:
-
-1. Extract the exact official Chronos positions, including:
-   - total number of discrete positions;
-   - midnight/noon positions;
-   - which positions are night vs day;
-   - direction of movement;
-   - behavior when advancing past the end of the track.
-2. Encode this mapping as data instead of scattering assumptions.
-3. Update `getChronosTime` / display logic only if the official mapping differs.
-4. Add deterministic tests for every Chronos position.
-5. Keep existing `midnightRange` behavior tested against the new mapping.
-
-Acceptance checks:
-
-- `npm run smoke`
-- `npm run build`
-- Existing online smoke still passes: `npm run smoke:online`
-- Tests prove every position maps to the expected official day/night side.
-- Documentation states the official source used and the confirmed mapping.
-
-Do not:
-
-- change card-effect logic while doing this;
-- guess the board from current implementation;
-- rely only on visual appearance without recording the source.
+---
 
 ## Priority 2 — Reconnect / resume UX for online rooms ✅ DONE
 
-Problem:
+**Status**: Completed 2026-06-26.
 
-Online boardgame.io rooms work, but the product still lacks a robust reconnect/resume UX. If a browser reloads, loses connection, or the tab sleeps, the player experience can become unclear even if the server still has the match.
+`src/onlineSession.ts` stores matchID, playerID, playerCredentials in localStorage.
+`src/pages/OnlineGamePage.tsx` checks for stored session on mount and offers rejoin.
+`src/server.ts` has `/games/:name/:id/resume` endpoint for credential verification.
 
-Relevant code paths:
+UI states: reconnecting, disconnected retrying, room gone, seat taken, resumed successfully.
 
-- `src/App.tsx`
-- `src/server.ts`
-- boardgame.io client setup code
-- any lobby / room creation UI
-- `scripts/online-smoke.ts`
-
-Required work:
-
-1. Identify how match ID, player ID, and player credentials are currently stored and restored.
-2. Preserve enough local session data to rejoin the same room after refresh.
-3. Add a clear UI state for:
-   - reconnecting;
-   - disconnected but retrying;
-   - reconnect failed / room no longer exists;
-   - rejoined successfully.
-4. Prevent users from accidentally joining as the wrong seat after refresh.
-5. Add an online smoke or integration test for refresh/rejoin if feasible.
-
-Acceptance checks:
-
-- Create online room, make progress, refresh one client, resume same seat.
-- Refresh does not expose opponent hidden information.
-- Losing credentials or invalid credentials produces a clear user-facing error.
-- `npm run smoke`
-- `npm run build`
-- `npm run smoke:online`
-
-Do not:
-
-- reintroduce full accounts unless separately requested;
-- store secrets beyond boardgame.io player credentials needed for the room;
-- bypass `playerView` filtering.
+---
 
 ## Priority 3 — Server-side deck storage and cross-device deck sync ⚠️ API DONE, FRONTEND PENDING
 
-Problem:
+**Status**: API endpoints exist (`/api/decks` CRUD). Frontend deck editor still uses localStorage. Not wired together.
 
-Deck editor/deck selection currently depends on browser-local state. Online rooms can receive custom deck payloads, but there is no server-backed deck library. This means custom decks do not sync across devices and cannot be reliably reused from another browser.
+**What exists**:
+- `api/server.cjs`: POST/GET/DELETE `/api/decks` with validation (20 cards, max 2 copies)
+- `src/api/client.ts`: `getDecks()`, `createDeck()`, `deleteDeck()` functions
+- Deck validation logic in `src/game/cards/deckBuilder.ts`
 
-Relevant code paths:
+**What's missing**:
+- Deck editor UI does not call API when logged in
+- No login check before deck save/load
+- No migration flow for existing localStorage decks
+- Online room setup does not use server-stored deck IDs
 
-- deck editor components under `src/components/`
-- deck validation / setupData code under `src/game/`
-- `src/server.ts`
-- local storage helpers, if any
+**Required work**:
+1. In deck editor, check if logged in → save to server via `createDeck()`
+2. Load decks from server when logged in, localStorage as fallback
+3. Show server-saved decks in deck selector
+4. Validate deck card IDs server-side on every save
+5. Add import flow for existing localStorage decks
 
-Required work:
+---
 
-1. Decide persistence shape for saved decks:
-   - anonymous local server storage;
-   - account-bound storage if accounts return later;
-   - import/export-only fallback.
-2. Add server API for deck CRUD only if the project direction wants server persistence.
-3. Reuse existing constructed-deck validation on every server write and every match setup.
-4. Keep browser localStorage decks working as offline/local fallback.
-5. Add migration/import flow if existing local decks should be uploaded.
+## Priority 4 — Authenticated match ownership ⚠️ API DONE, FRONTEND PENDING
 
-Acceptance checks:
+**Status**: API endpoints exist. No login/register UI in the frontend.
 
-- A deck saved in browser A can be loaded from browser B when using the same persistence identity.
-- Invalid decks are rejected server-side.
-- Online room setup can use a server-stored deck ID without trusting the client blindly.
-- `npm run smoke`
-- `npm run build`
-- `npm run smoke:online`
+**What exists**:
+- `api/server.cjs`: POST `/api/register`, POST `/api/login`, GET `/api/profile`
+- JWT token creation and verification
+- `src/api/client.ts`: `register()`, `login()`, `logout()`, `isLoggedIn()`, `getProfile()`
 
-Do not:
+**What's missing**:
+- No login/register form in the lobby
+- No user badge (nickname + ELO) display
+- No logout button
+- Token lifecycle not integrated into app state
+- Match results not submitted to server on game over
 
-- trust client-only validation;
-- make card-effect changes;
-- add a database dependency without confirming the persistence direction.
+**Required work**:
+1. Add login/register section in lobby (inline form or modal)
+2. Show user badge when logged in, "Guest" when not
+3. Add logout button
+4. On game over, if logged in → submit to `/api/matches`
+5. Display ELO changes after match
+6. Keep localStorage history as fallback for guests
 
-## Priority 4 — Authenticated match ownership, if accounts return ⚠️ API DONE, FRONTEND PENDING
-
-Problem:
-
-The current project intentionally does not have deployed accounts. If accounts are reintroduced, matches and decks need ownership semantics so users can resume or manage their own resources across devices.
-
-Relevant code paths:
-
-- `src/server.ts`
-- lobby / room creation UI
-- any future auth module
-- deck persistence from Priority 3
-
-Required work:
-
-1. Decide whether accounts are actually in scope. Do not implement auth speculatively.
-2. If in scope, define minimal ownership model:
-   - user owns saved decks;
-   - user can list own active/recent matches;
-   - user can resume only seats they own;
-   - spectators, if any, get redacted state.
-3. Store match ownership metadata outside transient browser state.
-4. Ensure boardgame.io `playerCredentials` are not discarded.
-
-Acceptance checks:
-
-- User A cannot resume User B's player seat.
-- User can list and resume own active match.
-- Hidden information remains filtered for all non-owning viewers.
-- `npm run smoke`
-- `npm run build`
-- `npm run smoke:online`
-
-Do not:
-
-- add login/account UI unless explicitly requested;
-- weaken room credentials;
-- conflate this with card-effect automation.
+---
 
 ## Priority 5 — Server leaderboard and cross-device match history ✅ DONE
 
-Problem:
+**Status**: Completed 2026-06-26.
 
-Match history is stored only in the current browser. There is no server-side match archive, leaderboard, or cross-device history.
+- `LeaderboardPage.tsx` fetches from `/api/leaderboard`
+- Route `/leaderboard` registered
+- Lobby nav has "🏆 排行" button
+- API server stores match results with ELO calculation
 
-Relevant code paths:
+**Remaining**: Match submission on game over is not yet wired (depends on P4 frontend).
 
-- `src/game/matchHistory.ts`
-- `src/components/MatchHistory.tsx`
-- `src/server.ts`
-- boardgame.io end-of-game flow
+---
 
-Required work:
+## Priority 6 — Action log / replay for disputes and debugging ❌ NOT STARTED
 
-1. Decide whether server history is desired for anonymous rooms or account-owned rooms only.
-2. Define a small match result record:
-   - match ID;
-   - players / display names if available;
-   - winner;
-   - reason;
-   - turn count;
-   - timestamps;
-   - deck IDs if available, not full hidden deck contents unless needed.
-3. Write result server-side at game end.
-4. Add API/UI for recent results and optional leaderboard.
-5. Keep current browser-local history as fallback if server history is not configured.
+**Problem**: The current `G.log` is not a full authoritative replay. Online disputes need server-side action traces.
 
-Acceptance checks:
+**Required work**:
+1. Define recorded fields: move name, acting player, sanitized payload, turn/step before/after, game-over result
+2. Do NOT record hidden information (opponent hand, deck order)
+3. Store action trace server-side per match
+4. Provide developer export for debugging
+5. Add smoke test that replays a short deterministic match
 
-- Completing an online match writes one server-side result record.
-- Refreshing or using another browser can read server history when configured.
-- Local-only mode still works.
-- `npm run smoke`
-- `npm run build`
-- `npm run smoke:online`
+**Code paths**: `src/game/GameLogic.ts`, boardgame.io move definitions, `src/server.ts`
 
-Do not:
-
-- expose hidden card order or private hands in public match history;
-- build rankings before deciding identity/account model.
-
-## Priority 6 — Action log / replay for disputes and debugging
-
-Problem:
-
-The current UI/game log is not a full authoritative replay. For online play, disputes and debugging need a server-side action trace or replay artifact.
-
-Relevant code paths:
-
-- `src/game/GameLogic.ts`
-- boardgame.io move definitions
-- `src/server.ts`
-- `scripts/online-smoke.ts`
-
-Required work:
-
-1. Define what must be recorded:
-   - move name;
-   - acting player;
-   - sanitized payload;
-   - turn/step before and after;
-   - deterministic random/shuffle context if needed;
-   - game-over result.
-2. Avoid recording hidden information in any public-facing log.
-3. Provide developer export for a match replay/debug package.
-4. Add a test or smoke helper that can replay a short deterministic match, if feasible.
-
-Acceptance checks:
-
-- A completed online smoke match produces a usable server-side or exported action trace.
-- Trace is enough to diagnose move order and state transitions.
-- Trace does not leak opponent hidden hand/deck information to the wrong client.
-- `npm run smoke`
-- `npm run build`
-- `npm run smoke:online`
-
-Do not:
-
-- rely on human-readable `G.log` alone as authoritative replay;
-- include raw hidden state in client-visible logs.
+---
 
 ## Priority 7 — Product polish around online room lifecycle ⚠️ PARTIAL
 
-Problem:
+**Done**:
+- Reconnect/resume UX (P2)
+- Clear error for room gone / seat taken
 
-The core online path works, but the product lacks robust lifecycle UX around real play sessions.
+**Not done**:
+- Room invite/share link clarity
+- Waiting-for-opponent state UI
+- Stale-room cleanup policy
+- Browser-tab close/abandon handling
+- Reconnect timer and retry affordance
+- Full room error handling
 
-Potential work:
+---
 
-- room invite/share link clarity;
-- seat selection and seat lock feedback;
-- clear errors for full room / missing match / invalid credentials;
-- explicit waiting-for-opponent state;
-- stale-room cleanup policy;
-- browser-tab close / abandon handling;
-- reconnect timer and retry affordance.
+## Suggested order for remaining work
 
-Acceptance checks:
-
-- User can create room, share link, join from second browser, play, refresh, and understand every state.
-- Full/invalid/expired rooms produce clear messages.
-- Existing local play and AI play are unaffected.
-- `npm run smoke`
-- `npm run build`
-- `npm run smoke:online`
-
-## Suggested order for another agent
-
-1. Chronos exactness verification first. It is the only remaining non-card core-rule uncertainty.
-2. Reconnect/resume UX next. It improves real online usability without requiring accounts.
-3. Server deck storage only after deciding persistence scope.
-4. Match ownership/accounts only if explicitly requested.
-5. Server match history/leaderboard after identity and storage decisions.
-6. Action log/replay can be done independently for debugging, but must avoid hidden-info leaks.
+1. **P4 frontend** — Login/register UI in lobby. Unblocks P3 and P5 integration.
+2. **P3 frontend** — Wire deck editor to API when logged in.
+3. **P5 completion** — Submit match results on game over (depends on P4).
+4. **P6** — Action log/replay. Can be done independently.
+5. **P7** — Online room UX polish. Can be done independently.
 
 ## Standard verification commands
-
-Run these after any non-card change:
 
 ```bash
 npm run smoke
@@ -320,4 +200,4 @@ npm run build
 npm run smoke:online
 ```
 
-If a change touches hidden information, also manually inspect or add tests for `playerView` redaction. If a change touches persistence or server APIs, add a targeted smoke/integration test rather than relying only on the build.
+If a change touches hidden information, also inspect `playerView` redaction. If a change touches persistence or server APIs, add a targeted smoke/integration test.
