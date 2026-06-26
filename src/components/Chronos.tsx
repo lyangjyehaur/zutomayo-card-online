@@ -1,4 +1,5 @@
-import type { ChronosState, ChronosTime, PlayerIndex } from '../game/types';
+import { CHRONOS_MAPPING, type ChronosState, type ChronosTime, type PlayerIndex } from '../game/types';
+import { normalizeChronosPosition } from '../game/chronos';
 import { t } from '../i18n';
 
 interface ChronosProps {
@@ -30,17 +31,20 @@ export function Chronos({ chronos, currentTime, nightSidePlayer, currentPlayer }
   const outerRadius = 196;
   const faceRadius = 182;
   const arcRadius = 190;
-  const position = ((chronos.position % 12) + 12) % 12;
+  const position = normalizeChronosPosition(chronos.position);
   const rotation = nightSidePlayer === currentPlayer ? 0 : 180;
-  const ticks = Array.from({ length: 12 }, (_, index) => {
-    const angle = (index * 30 - 90) * (Math.PI / 180);
+  const stepAngle = 360 / CHRONOS_MAPPING.positions;
+  const nightPositions: readonly number[] = CHRONOS_MAPPING.nightPositions;
+  const ticks = Array.from({ length: CHRONOS_MAPPING.positions }, (_, index) => {
+    const angle = (index * stepAngle - 90) * (Math.PI / 180);
     return {
       index,
       x: center + radius * Math.cos(angle),
       y: center + radius * Math.sin(angle),
+      time: nightPositions.includes(index) ? 'night' : 'day',
     };
   });
-  const medalAngle = (position * 30 - 90) * (Math.PI / 180);
+  const medalAngle = (position * stepAngle - 90) * (Math.PI / 180);
   const medalX = center + radius * Math.cos(medalAngle);
   const medalY = center + radius * Math.sin(medalAngle);
   const timeLabel = CHRONOS_LABELS[position] ?? CHRONOS_LABELS[0];
@@ -81,9 +85,9 @@ export function Chronos({ chronos, currentTime, nightSidePlayer, currentPlayer }
           <line className="chronos-divider" x1={center} y1="26" x2={center} y2="66" />
           <line className="chronos-divider" x1={center} y1={size - 26} x2={center} y2={size - 66} />
 
-          {ticks.map(({ index, x, y }) => (
+          {ticks.map(({ index, x, y, time }) => (
             <g key={index} className={position === index ? 'chronos-tick active' : 'chronos-tick'}>
-              <circle className={index < 6 ? 'tick-night' : 'tick-day'} cx={x} cy={y} r={index % 3 === 0 ? 12 : 8} />
+              <circle className={`tick-${time}`} cx={x} cy={y} r={index % 3 === 0 ? 12 : 8} />
               <text x={x} y={y + 4} textAnchor="middle">
                 {index}
               </text>
@@ -109,7 +113,7 @@ export function Chronos({ chronos, currentTime, nightSidePlayer, currentPlayer }
           {timeLabel}
         </text>
         <text className="chronos-subtitle" x={center} y={center + 36} textAnchor="middle">
-          {sideLabel} • {position}/12
+          {sideLabel} • {position}/{CHRONOS_MAPPING.positions}
         </text>
       </svg>
     </div>

@@ -524,6 +524,58 @@ input:focus {
   font-size: 0.8rem;
 }
 
+.online-resume-prompt {
+  position: fixed;
+  right: clamp(0.75rem, 2vw, 1.25rem);
+  bottom: clamp(0.75rem, 2vw, 1.25rem);
+  z-index: 60;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  width: min(calc(100vw - 1.5rem), 38rem);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 0.8rem;
+  background: rgba(10, 13, 28, 0.94);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
+.online-resume-prompt > div:first-child {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.online-resume-prompt span {
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.online-resume-prompt strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.online-resume-prompt p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.online-resume-prompt.error {
+  border-color: rgba(255, 92, 122, 0.45);
+}
+
+.online-resume-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 /* Game shell */
 .game-app {
   display: grid;
@@ -562,6 +614,33 @@ input:focus {
 .game-header span {
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.online-connection-status {
+  min-width: 11rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  background: rgba(255, 255, 255, 0.06);
+  text-align: center;
+}
+
+.online-connection-status.disconnected {
+  border-color: rgba(255, 92, 122, 0.45);
+  color: #ffd7df;
+}
+
+.online-connection-status.rejoined {
+  border-color: rgba(66, 215, 198, 0.45);
+  color: #b9fff4;
+}
+
+.online-connection-panel {
+  display: grid;
+  place-items: center;
+  min-height: 16rem;
+  color: var(--gold);
+  font-weight: 900;
 }
 
 .back-btn {
@@ -727,6 +806,25 @@ input:focus {
   margin: 0;
   color: var(--muted);
   line-height: 1.6;
+}
+
+@media (max-width: 680px) {
+  .online-resume-prompt {
+    grid-template-columns: 1fr;
+  }
+
+  .online-resume-actions {
+    justify-content: stretch;
+  }
+
+  .online-resume-actions > * {
+    flex: 1;
+  }
+
+  .online-connection-status {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 /* Board */

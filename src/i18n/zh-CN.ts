@@ -181,6 +181,20 @@ export const zhCN: Record<TranslationKey, string> = {
 
   'onlineSession.missingTitle': '尚未加入房间',
   'onlineSession.missingBody': '请先从大厅创建或加入在线房间，再进入对战。',
+  'onlineSession.resumeTitle': '可恢复在线房间',
+  'onlineSession.resumeBody': '找到了上次保存的对战座位。',
+  'onlineSession.resumeAction': '重新加入',
+  'onlineSession.dismissAction': '取消恢复',
+  'onlineSession.reconnecting': '重新连接中...',
+  'onlineSession.resumeCheckingBody': '正在验证房间与座位。',
+  'onlineSession.disconnectedRetrying': '已断线，正在重试...',
+  'onlineSession.roomGoneTitle': '房间已不存在',
+  'onlineSession.roomGoneBody': '这个房间已结束或服务器已重置，请回到大厅重新创建或加入房间。',
+  'onlineSession.seatTakenTitle': '座位无法恢复',
+  'onlineSession.seatTakenBody': '保存的玩家座位已被占用或凭证不匹配，请回到大厅重新加入。',
+  'onlineSession.resumeErrorTitle': '无法恢复房间',
+  'onlineSession.resumeErrorBody': '暂时无法验证保存的房间，请稍后再试。',
+  'onlineSession.rejoined': '已成功重新加入',
 
   'admin.title': '卡牌数据管理',
 

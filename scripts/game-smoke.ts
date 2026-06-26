@@ -20,7 +20,7 @@ import {
 } from '../src/game/GameLogic';
 import { collectTurnEffects, executeEffect, processTurnEffects } from '../src/game/effects/executor';
 import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
-import type { GameState } from '../src/game/types';
+import { CHRONOS_MAPPING, type GameState } from '../src/game/types';
 import type { ParsedEffect } from '../src/game/effects';
 import { ZutomayoCard } from '../src/game/Game';
 
@@ -315,7 +315,7 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   const G = preparedState();
   G.step = 'turnSet';
   G.turnNumber = 2;
-  G.chronos.position = 10;
+  G.chronos.position = 8;
   G.players[0].hand = [createInstance('1st_9', true)];
   G.players[1].hand = [createInstance('1st_17', true)];
   assert.equal(setTurnCard(G, 0, 0, 'A'), true);
@@ -363,7 +363,7 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   const G = preparedState();
   G.step = 'turnSet';
   G.turnNumber = 2;
-  G.chronos.position = 10;
+  G.chronos.position = 8;
   G.players[0].hand = [createInstance('1st_9', true)];
   G.players[1].hand = [createInstance('1st_17', true)];
   assert.equal(setTurnCard(G, 0, 0, 'A'), true);
@@ -1306,7 +1306,7 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   const G = preparedState();
   G.step = 'turnSet';
   G.turnNumber = 2;
-  G.chronos.position = 5;
+  G.chronos.position = 2;
   G.players[0].setZoneC = createInstance('2nd_5', true);
   G.players[0].powerCharger = [
     createInstance('1st_9', true),
@@ -1329,7 +1329,7 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   const G = preparedState();
   G.step = 'turnSet';
   G.turnNumber = 2;
-  G.chronos.position = 5;
+  G.chronos.position = 2;
   G.players[0].setZoneC = createInstance('2nd_86', true);
   G.players[0].powerCharger = [createInstance('1st_9', true)];
   G.players[0].hand = [createInstance('1st_9', true)];
@@ -1469,6 +1469,30 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   assert.equal(executeEffect(previousDark, G, 0).success, true);
   assert.equal(G.modifiers.attack[0], 20);
   assert.equal(executeEffect(previousFlame, G, 0).success, false);
+}
+
+{
+  const G = preparedState();
+  const nightPositions: readonly number[] = CHRONOS_MAPPING.nightPositions;
+  const dayPositions: readonly number[] = CHRONOS_MAPPING.dayPositions;
+
+  for (let position = 0; position < CHRONOS_MAPPING.positions; position++) {
+    G.chronos.position = position;
+    const expected = nightPositions.includes(position) ? 'night' : 'day';
+    assert.equal(getChronosTime(G), expected, `Chronos position ${position} should be ${expected}`);
+  }
+
+  assert.equal(nightPositions.length + dayPositions.length, CHRONOS_MAPPING.positions);
+  assert.equal(new Set([...nightPositions, ...dayPositions]).size, CHRONOS_MAPPING.positions);
+
+  G.chronos.position = CHRONOS_MAPPING.midnight;
+  assert.equal(getChronosTime(G), 'night', 'Midnight should be night');
+
+  G.chronos.position = CHRONOS_MAPPING.noon;
+  assert.equal(getChronosTime(G), 'day', 'Noon should be day');
+
+  G.chronos.position = CHRONOS_MAPPING.positions + CHRONOS_MAPPING.midnight;
+  assert.equal(getChronosTime(G), 'night', 'Chronos should wrap past the final position');
 }
 
 {

@@ -181,6 +181,20 @@ export const ja: Record<TranslationKey, string> = {
 
   'onlineSession.missingTitle': 'まだルームに参加していません',
   'onlineSession.missingBody': '先にロビーでオンラインルームを作成または参加してから対戦に進んでください。',
+  'onlineSession.resumeTitle': '復帰できるオンラインルームがあります',
+  'onlineSession.resumeBody': '保存された座席が見つかりました。',
+  'onlineSession.resumeAction': '再参加',
+  'onlineSession.dismissAction': '復帰しない',
+  'onlineSession.reconnecting': '再接続中...',
+  'onlineSession.resumeCheckingBody': 'ルームと座席を確認しています。',
+  'onlineSession.disconnectedRetrying': '切断されました。再試行中...',
+  'onlineSession.roomGoneTitle': 'ルームが存在しません',
+  'onlineSession.roomGoneBody': 'このルームは終了したか、サーバーがリセットされました。ロビーに戻って作成または参加してください。',
+  'onlineSession.seatTakenTitle': '座席を復帰できません',
+  'onlineSession.seatTakenBody': '保存されたプレイヤー座席は使用中、または認証情報が一致しません。ロビーから再参加してください。',
+  'onlineSession.resumeErrorTitle': 'ルームに復帰できません',
+  'onlineSession.resumeErrorBody': '保存されたルームをまだ確認できません。少し待ってから再試行してください。',
+  'onlineSession.rejoined': '再参加しました',
 
   'admin.title': 'カードデータ管理',
 

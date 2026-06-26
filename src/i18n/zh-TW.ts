@@ -179,6 +179,20 @@ export const zhTW = {
 
   'onlineSession.missingTitle': '尚未加入房間',
   'onlineSession.missingBody': '請先從大廳創建或加入線上房間，再進入對戰。',
+  'onlineSession.resumeTitle': '可恢復線上房間',
+  'onlineSession.resumeBody': '找到上次保存的對戰座位。',
+  'onlineSession.resumeAction': '重新加入',
+  'onlineSession.dismissAction': '取消恢復',
+  'onlineSession.reconnecting': '重新連線中...',
+  'onlineSession.resumeCheckingBody': '正在驗證房間與座位。',
+  'onlineSession.disconnectedRetrying': '已斷線，正在重試...',
+  'onlineSession.roomGoneTitle': '房間已不存在',
+  'onlineSession.roomGoneBody': '這個房間已結束或伺服器已重置，請回到大廳重新建立或加入房間。',
+  'onlineSession.seatTakenTitle': '座位無法恢復',
+  'onlineSession.seatTakenBody': '保存的玩家座位已被占用或憑證不相符，請回到大廳重新加入。',
+  'onlineSession.resumeErrorTitle': '無法恢復房間',
+  'onlineSession.resumeErrorBody': '暫時無法驗證保存的房間，請稍後再試。',
+  'onlineSession.rejoined': '已成功重新加入',
 
   'admin.title': '卡牌資料管理',
 

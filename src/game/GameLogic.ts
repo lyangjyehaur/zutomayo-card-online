@@ -21,6 +21,7 @@ import type {
   TimingEvent,
   ZutomayoSetupData,
 } from './types';
+import { getChronosTimeForPosition, normalizeChronosPosition } from './chronos';
 import { getCardDef } from './cards/loader';
 import {
   buildDeck,
@@ -122,9 +123,7 @@ export function getPlayerPower(player: PlayerState): number {
 }
 
 function chronosTimeAt(position: number, midnightRange: number): ChronosTime {
-  const normalized = ((position % 12) + 12) % 12;
-  const distanceFromMidnight = Math.min(normalized, 12 - normalized);
-  return normalized < 6 || distanceFromMidnight <= midnightRange ? 'night' : 'day';
+  return getChronosTimeForPosition(position, midnightRange);
 }
 
 export function getChronosTime(G: GameState): ChronosTime {
@@ -145,7 +144,7 @@ function setChronosPosition(
 ): void {
   const before = G.chronos.position;
   const beforeTime = chronosTimeAt(before, G.midnightRange);
-  G.chronos.position = ((position % 12) + 12) % 12;
+  G.chronos.position = normalizeChronosPosition(position);
   if (logMessage) G.log.push(logMessage);
   const afterTime = getChronosTime(G);
   if (before !== G.chronos.position) {
@@ -355,7 +354,12 @@ export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEf
     0,
   );
   const before = G.chronos.position;
-  setChronosPosition(G, before + total, parsedEffects, `Chronos +${total} (${before}→${(before + total) % 12}).`);
+  setChronosPosition(
+    G,
+    before + total,
+    parsedEffects,
+    `Chronos +${total} (${before}→${normalizeChronosPosition(before + total)}).`,
+  );
 }
 
 function hasOptionalSwapEffect(
@@ -828,7 +832,12 @@ export function submitPendingChoice(
       setChronosPosition(G, value, parsedEffects, `Chronos set to ${value}.`);
     } else {
       const before = G.chronos.position;
-      setChronosPosition(G, before + value, parsedEffects, `Chronos +${value} (${before}→${(before + value) % 12}).`);
+      setChronosPosition(
+        G,
+        before + value,
+        parsedEffects,
+        `Chronos +${value} (${before}→${normalizeChronosPosition(before + value)}).`,
+      );
     }
   }
   if (choice.type !== 'abyssToDeckBottomOrLose') G.lastChoiceSelectionCount[player] = null;

@@ -181,6 +181,20 @@ export const zhHK: Record<TranslationKey, string> = {
 
   'onlineSession.missingTitle': '未加入房間',
   'onlineSession.missingBody': '請先由大廳開房或者加入綫上房間，再進入遊戲。',
+  'onlineSession.resumeTitle': '可以恢復綫上房間',
+  'onlineSession.resumeBody': '搵到上次保存嘅座位。',
+  'onlineSession.resumeAction': '重新加入',
+  'onlineSession.dismissAction': '取消恢復',
+  'onlineSession.reconnecting': '重新連線中...',
+  'onlineSession.resumeCheckingBody': '正在驗證房間同座位。',
+  'onlineSession.disconnectedRetrying': '已斷線，正在重試...',
+  'onlineSession.roomGoneTitle': '房間已不存在',
+  'onlineSession.roomGoneBody': '呢個房間已結束或者伺服器已重置，請返大廳重新開房或者加入。',
+  'onlineSession.seatTakenTitle': '座位無法恢復',
+  'onlineSession.seatTakenBody': '保存嘅玩家座位已被佔用或者憑證唔相符，請返大廳重新加入。',
+  'onlineSession.resumeErrorTitle': '無法恢復房間',
+  'onlineSession.resumeErrorBody': '暫時無法驗證保存嘅房間，請稍後再試。',
+  'onlineSession.rejoined': '已成功重新加入',
 
   'admin.title': '卡牌資料管理',
 

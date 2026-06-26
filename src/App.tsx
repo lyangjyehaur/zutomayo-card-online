@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
 import { hasCustomDeck } from './game/cards/deckBuilder';
@@ -10,12 +10,18 @@ import { DeckEditorPage } from './pages/DeckEditorPage';
 import { LobbyPage, DEFAULT_DECK_NAME, onlineDeckName, selectedDeckName } from './pages/LobbyPage';
 import { LocalGamePage } from './pages/LocalGamePage';
 import { MatchHistoryPage } from './pages/MatchHistoryPage';
-import { OnlineGamePage, type OnlineSession } from './pages/OnlineGamePage';
-import { t, useLocale } from './i18n';
+import { OnlineGamePage } from './pages/OnlineGamePage';
+import { t, useLocale, type TranslationKey } from './i18n';
+import {
+  clearStoredOnlineSession,
+  loadOnlineSession,
+  saveOnlineSession,
+  validateOnlineSession,
+  type OnlineSession,
+  type OnlineSessionValidationReason,
+} from './onlineSession';
 import './App.css';
 import './components/InteractiveTutorial.css';
-
-const ONLINE_SESSION_STORAGE_KEY = 'zutomayo_online_session';
 
 async function createMatch(deck0Name?: string, deck1Name?: string): Promise<string> {
   const response = await fetch('/games/zutomayo-card/create', {
@@ -36,36 +42,6 @@ async function joinMatch(matchID: string, playerID: '0' | '1'): Promise<{ player
   });
   if (!response.ok) throw new Error(t('lobby.onlineError'));
   return response.json();
-}
-
-function loadOnlineSession(): OnlineSession | null {
-  try {
-    const raw = sessionStorage.getItem(ONLINE_SESSION_STORAGE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as Partial<OnlineSession>;
-    if (
-      typeof data.matchID === 'string' &&
-      (data.playerID === '0' || data.playerID === '1') &&
-      typeof data.playerCredentials === 'string'
-    ) {
-      return {
-        matchID: data.matchID,
-        playerID: data.playerID,
-        playerCredentials: data.playerCredentials,
-      };
-    }
-  } catch {
-    sessionStorage.removeItem(ONLINE_SESSION_STORAGE_KEY);
-  }
-  return null;
-}
-
-function saveOnlineSession(session: OnlineSession): void {
-  sessionStorage.setItem(ONLINE_SESSION_STORAGE_KEY, JSON.stringify(session));
-}
-
-function clearStoredOnlineSession(): void {
-  sessionStorage.removeItem(ONLINE_SESSION_STORAGE_KEY);
 }
 
 function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
@@ -91,6 +67,63 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
         {t('nav.tutorial')}
       </button>
     </nav>
+  );
+}
+
+function resumeErrorTitle(reason: OnlineSessionValidationReason): TranslationKey {
+  if (reason === 'roomGone') return 'onlineSession.roomGoneTitle';
+  if (reason === 'seatTaken') return 'onlineSession.seatTakenTitle';
+  return 'onlineSession.resumeErrorTitle';
+}
+
+function resumeErrorBody(reason: OnlineSessionValidationReason): TranslationKey {
+  if (reason === 'roomGone') return 'onlineSession.roomGoneBody';
+  if (reason === 'seatTaken') return 'onlineSession.seatTakenBody';
+  return 'onlineSession.resumeErrorBody';
+}
+
+function OnlineResumePrompt({
+  session,
+  status,
+  errorReason,
+  onResume,
+  onDismiss,
+}: {
+  session: OnlineSession;
+  status: 'idle' | 'reconnecting' | 'error';
+  errorReason: OnlineSessionValidationReason | null;
+  onResume: () => void;
+  onDismiss: () => void;
+}) {
+  const playerKey = session.playerID === '0' ? 'player.zero' : 'player.one';
+  const isError = status === 'error' && errorReason;
+
+  return (
+    <aside className={`online-resume-prompt ${status}`} role="status" aria-live="polite">
+      <div>
+        <span>{t('game.onlineMode')}</span>
+        <strong>{isError ? t(resumeErrorTitle(errorReason)) : t('onlineSession.resumeTitle')}</strong>
+        <p>
+          {isError ? t(resumeErrorBody(errorReason)) : t('onlineSession.resumeBody')}
+          {!isError && (
+            <>
+              {' '}
+              {t('game.matchCode')} {session.matchID} / {t(playerKey)}
+            </>
+          )}
+        </p>
+      </div>
+      <div className="online-resume-actions">
+        {!isError && (
+          <button className="primary-action" type="button" disabled={status === 'reconnecting'} onClick={onResume}>
+            {status === 'reconnecting' ? t('onlineSession.reconnecting') : t('onlineSession.resumeAction')}
+          </button>
+        )}
+        <button className="secondary-action" type="button" onClick={onDismiss}>
+          {t('onlineSession.dismissAction')}
+        </button>
+      </div>
+    </aside>
   );
 }
 
@@ -120,6 +153,11 @@ function RouterShell() {
   const [deck0Name, setDeck0Name] = useState(DEFAULT_DECK_NAME);
   const [deck1Name, setDeck1Name] = useState(DEFAULT_DECK_NAME);
   const [onlineSession, setOnlineSession] = useState<OnlineSession | null>(loadOnlineSession);
+  const [resumePromptSession, setResumePromptSession] = useState<OnlineSession | null>(() => (
+    location.pathname.startsWith('/play/online/') ? null : loadOnlineSession()
+  ));
+  const [resumePromptStatus, setResumePromptStatus] = useState<'idle' | 'reconnecting' | 'error'>('idle');
+  const [resumeErrorReason, setResumeErrorReason] = useState<OnlineSessionValidationReason | null>(null);
 
   const closeTutorial = () => {
     localStorage.setItem('zutomayo_tutorial_seen', '1');
@@ -136,13 +174,44 @@ function RouterShell() {
     const { playerCredentials } = await joinMatch(matchID, playerID);
     const session = { matchID, playerID, playerCredentials };
     setOnlineSession(session);
+    setResumePromptSession(null);
     saveOnlineSession(session);
-    navigate(`/play/online/${encodeURIComponent(matchID)}`);
+    navigate(`/play/online/${encodeURIComponent(matchID)}`, { state: { freshOnlineSession: true } });
   };
 
-  const clearOnlineSession = () => {
+  const clearOnlineSession = useCallback(() => {
     setOnlineSession(null);
     clearStoredOnlineSession();
+  }, []);
+
+  const resumeStoredSession = async () => {
+    if (!resumePromptSession) return;
+    setResumePromptStatus('reconnecting');
+    setResumeErrorReason(null);
+    const validation = await validateOnlineSession(resumePromptSession);
+    if (validation.ok) {
+      setOnlineSession(resumePromptSession);
+      setResumePromptSession(null);
+      setResumePromptStatus('idle');
+      navigate(`/play/online/${encodeURIComponent(resumePromptSession.matchID)}`, {
+        state: { resumeOnlineSession: true },
+      });
+      return;
+    }
+
+    if (validation.reason !== 'network') {
+      setOnlineSession(null);
+      clearStoredOnlineSession();
+    }
+    setResumeErrorReason(validation.reason);
+    setResumePromptStatus('error');
+  };
+
+  const dismissResumePrompt = () => {
+    setResumePromptSession(null);
+    setResumePromptStatus('idle');
+    setResumeErrorReason(null);
+    clearOnlineSession();
   };
 
   const deck0 = selectedDeckName(deck0Name, customDeckAvailable);
@@ -189,6 +258,15 @@ function RouterShell() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </div>
+      {resumePromptSession && !hideNav && (
+        <OnlineResumePrompt
+          session={resumePromptSession}
+          status={resumePromptStatus}
+          errorReason={resumeErrorReason}
+          onResume={resumeStoredSession}
+          onDismiss={dismissResumePrompt}
+        />
+      )}
       {tutorial && (
         <InteractiveTutorial
           onComplete={closeTutorial}

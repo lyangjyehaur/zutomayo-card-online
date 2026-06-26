@@ -7,6 +7,7 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const { Server } = require('boardgame.io/server') as typeof import('boardgame.io/server');
+const koaBody = require('koa-body') as typeof import('koa-body');
 
 const configuredOrigins = process.env.ALLOWED_ORIGINS
   ?.split(',')
@@ -22,6 +23,31 @@ const server = Server({
     /\d+\.\d+\.\d+\.\d+:\d+/,
     ...configuredOrigins,
   ],
+});
+
+server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: any) => {
+  const matchID = ctx.params.id;
+  const playerID = ctx.request.body?.playerID;
+  const credentials = ctx.request.body?.credentials;
+
+  if (playerID !== '0' && playerID !== '1') ctx.throw(403, 'playerID is required');
+  if (typeof credentials !== 'string') ctx.throw(403, 'credentials are required');
+
+  const { metadata } = await server.db.fetch(matchID, { metadata: true });
+  if (!metadata) ctx.throw(404, 'Match ' + matchID + ' not found');
+
+  const player = metadata.players[playerID];
+  if (!player) ctx.throw(404, 'Player ' + playerID + ' not found');
+  if (!player.name || !player.credentials) ctx.throw(409, 'Player ' + playerID + ' not reserved');
+
+  const isAuthorized = await server.auth.authenticateCredentials({
+    playerID,
+    credentials,
+    metadata,
+  });
+  if (!isAuthorized) ctx.throw(409, 'Player ' + playerID + ' not available');
+
+  ctx.body = { matchID, playerID };
 });
 
 const here = path.dirname(fileURLToPath(import.meta.url));

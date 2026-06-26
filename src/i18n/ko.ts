@@ -181,6 +181,20 @@ export const ko: Record<TranslationKey, string> = {
 
   'onlineSession.missingTitle': '방에 참가하지 않음',
   'onlineSession.missingBody': '먼저 로비에서 온라인 방을 만들거나 참가하세요.',
+  'onlineSession.resumeTitle': '복귀할 온라인 방이 있습니다',
+  'onlineSession.resumeBody': '저장된 좌석을 찾았습니다.',
+  'onlineSession.resumeAction': '다시 참가',
+  'onlineSession.dismissAction': '복귀 취소',
+  'onlineSession.reconnecting': '재연결 중...',
+  'onlineSession.resumeCheckingBody': '방과 좌석을 확인하는 중입니다.',
+  'onlineSession.disconnectedRetrying': '연결이 끊어져 재시도 중...',
+  'onlineSession.roomGoneTitle': '방이 더 이상 없습니다',
+  'onlineSession.roomGoneBody': '이 방은 종료되었거나 서버가 재설정되었습니다. 로비로 돌아가 방을 만들거나 참가하세요.',
+  'onlineSession.seatTakenTitle': '좌석을 복구할 수 없음',
+  'onlineSession.seatTakenBody': '저장된 플레이어 좌석이 사용 중이거나 인증 정보가 일치하지 않습니다. 로비에서 다시 참가하세요.',
+  'onlineSession.resumeErrorTitle': '방에 복귀할 수 없음',
+  'onlineSession.resumeErrorBody': '저장된 방을 아직 확인할 수 없습니다. 잠시 후 다시 시도하세요.',
+  'onlineSession.rejoined': '다시 참가했습니다',
 
   'admin.title': '카드 데이터 관리',
 

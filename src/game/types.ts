@@ -2,6 +2,16 @@ export type Element = '闇' | '炎' | '電気' | '風' | 'カオス';
 export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
 export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
 export type ChronosTime = 'night' | 'day';
+
+export const CHRONOS_MAPPING = {
+  positions: 12,
+  midnight: 0,
+  noon: 6,
+  nightPositions: [0, 1, 2, 3, 10, 11],
+  dayPositions: [4, 5, 6, 7, 8, 9],
+  direction: 'clockwise' as const,
+} as const;
+
 export type JankenChoice = 'rock' | 'paper' | 'scissors';
 export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'effectOrder' | 'gameOver';
 export type PlayerIndex = 0 | 1;

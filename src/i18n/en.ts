@@ -181,6 +181,20 @@ export const en: Record<TranslationKey, string> = {
 
   'onlineSession.missingTitle': 'Not in a room',
   'onlineSession.missingBody': 'Create or join an online room from the lobby first.',
+  'onlineSession.resumeTitle': 'Online room available',
+  'onlineSession.resumeBody': 'A saved seat was found.',
+  'onlineSession.resumeAction': 'Rejoin',
+  'onlineSession.dismissAction': 'Dismiss',
+  'onlineSession.reconnecting': 'Reconnecting...',
+  'onlineSession.resumeCheckingBody': 'Checking the room and seat.',
+  'onlineSession.disconnectedRetrying': 'Disconnected, retrying...',
+  'onlineSession.roomGoneTitle': 'Room no longer exists',
+  'onlineSession.roomGoneBody': 'This room ended or the server was reset. Return to the lobby to create or join a room.',
+  'onlineSession.seatTakenTitle': 'Seat cannot be resumed',
+  'onlineSession.seatTakenBody': 'The saved player seat is occupied or the credentials do not match. Rejoin from the lobby.',
+  'onlineSession.resumeErrorTitle': 'Could not resume room',
+  'onlineSession.resumeErrorBody': 'The saved room could not be verified yet. Try again shortly.',
+  'onlineSession.rejoined': 'Rejoined successfully',
 
   'admin.title': 'Card Data Manager',
 

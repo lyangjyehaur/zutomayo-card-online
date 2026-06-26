@@ -15,8 +15,10 @@ import type {
   PendingOpponentPowerCharacterSwapPayload,
   PlayerIndex,
 } from '../types';
+import { CHRONOS_MAPPING } from '../types';
 import type { ParsedEffect, Condition } from './types';
 import { getCardDef } from '../cards/loader';
+import { getChronosTimeForPosition, normalizeChronosPosition } from '../chronos';
 import {
   isCharacterCard,
   legalCardMoveCards,
@@ -33,15 +35,11 @@ function power(G: GameState, player: PlayerIndex): number {
 }
 
 function isNight(G: GameState): boolean {
-  const position = ((G.chronos.position % 12) + 12) % 12;
-  const distanceFromMidnight = Math.min(position, 12 - position);
-  return position < 6 || distanceFromMidnight <= G.midnightRange;
+  return getChronosTimeForPosition(G.chronos.position, G.midnightRange) === 'night';
 }
 
 function chronosTimeAt(position: number, midnightRange: number): 'night' | 'day' {
-  const normalized = ((position % 12) + 12) % 12;
-  const distanceFromMidnight = Math.min(normalized, 12 - normalized);
-  return normalized < 6 || distanceFromMidnight <= midnightRange ? 'night' : 'day';
+  return getChronosTimeForPosition(position, midnightRange);
 }
 
 function isNamedCharacter(card: CardInstance | null, song: string): boolean {
@@ -240,7 +238,7 @@ export function executeEffect(
           max: 1,
           prompt: effect.rawText,
           payload: {},
-          options: Array.from({ length: 12 }, (_, position) => ({
+          options: Array.from({ length: CHRONOS_MAPPING.positions }, (_, position) => ({
             id: `chronos-${position}`,
             label: `${position}`,
             value: position,
@@ -253,13 +251,13 @@ export function executeEffect(
         return { success: true, message: `Midnight range +${G.midnightRange}` };
       }
       if (Number.isInteger(Number(effect.action.params.value))) {
-        const next = ((Number(effect.action.params.value) % 12) + 12) % 12;
+        const next = normalizeChronosPosition(Number(effect.action.params.value));
         G.chronos.position = next;
         return { success: true, message: `Set Chronos to ${next}` };
       }
       return { success: false, message: 'Unsupported clock range effect' };
     case 'clockAdvance':
-      G.chronos.position = (G.chronos.position + value) % 12;
+      G.chronos.position = normalizeChronosPosition(G.chronos.position + value);
       return { success: true, message: `Chronos +${value}` };
     case 'recoverFromAbyss': {
       const source = effect.action.params.source === 'powerCharger' ? me.powerCharger : me.abyss;
@@ -522,7 +520,7 @@ export function executeEffect(
           max: 1,
           prompt: effect.rawText,
           payload: {},
-          options: Array.from({ length: 12 }, (_, position) => ({
+          options: Array.from({ length: CHRONOS_MAPPING.positions }, (_, position) => ({
             id: `chronos-${position}`,
             label: `${position}`,
             value: position,
