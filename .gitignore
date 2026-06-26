@@ -1,7 +1,38 @@
+# Dependencies
 node_modules/
+api/node_modules/
+
+# Build output
 dist/
-.DS_Store
-public/cards/
 dist-server/
 *.tsbuildinfo
-api/node_modules/
+
+# OS
+.DS_Store
+
+# Card images (on R2 CDN)
+public/cards/
+
+# One-time audit/tracking documents
+CARD_EFFECT_AUDIT_V2.md
+NON_CARD_GAPS.md
+REMAINING_GAPS.md
+RULE_GAP_AUDIT.md
+
+# Codex internal design docs
+docs/superpowers/
+
+# One-time scripts
+scripts/download-images.cjs
+scripts/translate-effects.ts
+scripts/audit-dump.ts
+
+# Redundant data (cards-by-pack duplicates cards.json)
+cards-by-pack/
+schema.json
+
+# Standalone admin HTML (replaced by React admin)
+admin/
+
+# Meta-tooling
+.omh/
