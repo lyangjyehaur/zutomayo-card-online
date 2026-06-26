@@ -117,7 +117,7 @@ These 29 effect lines currently return `null` from `parseEffect()`:
 4th_100 このターンに軽減した数値分のダメージを相手に与える
 ```
 
-### 2.2 High-value implementation slices
+### 2.2 High-value implementation slices ✅ DONE
 
 Recommended order:
 
@@ -142,7 +142,7 @@ Recommended order:
    - `1st_92`, `4th_89`: hand size changes for battle/game duration.
    - `4th_100`: remember reduced damage amount and deal it later.
 
-### 2.3 Parsed-but-partial audit queue
+### 2.3 Parsed-but-partial audit queue ✅ DONE (1 remaining)
 
 `npm run rule:audit` currently flags 49 parsed-but-partial lines. The most important groups are:
 
