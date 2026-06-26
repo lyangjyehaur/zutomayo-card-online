@@ -7,6 +7,7 @@ import '../components/AdminPanel.css';
 
 const ELEMENTS: (Element | 'all')[] = ['all', '闇', '炎', '電気', '風', 'カオス'];
 const TYPES: (CardType | 'all')[] = ['all', 'Character', 'Enchant', 'Area Enchant'];
+const PACKS = ['all', 'THE WORLD IS CHANGING', 'ALL ALONG THE WATCHTOWER', 'Off Minor', 'Fantasy Is Reality'];
 
 export function AdminPage() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ export function AdminPage() {
   const [error, setError] = useState('');
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
+  const [filterPack, setFilterPack] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [sortBy, setSortBy] = useState<'id' | 'name' | 'cost' | 'attack'>('id');
   const [selectedCard, setSelectedCard] = useState<CardDef | null>(null);
@@ -25,6 +27,7 @@ export function AdminPage() {
     let cards = allCards;
     if (filterElement !== 'all') cards = cards.filter(c => c.element === filterElement);
     if (filterType !== 'all') cards = cards.filter(c => c.type === filterType);
+    if (filterPack !== 'all') cards = cards.filter(c => c.pack === filterPack);
     if (searchText) {
       const q = searchText.toLowerCase();
       cards = cards.filter(c =>
@@ -157,6 +160,13 @@ export function AdminPage() {
           {TYPES.map(t => (
             <button key={t} className={`filter-chip ${filterType === t ? 'active' : ''}`}
               onClick={() => setFilterType(t)}>{t === 'all' ? '全部' : t === 'Character' ? '角色' : t === 'Enchant' ? '附魔' : '區域'}</button>
+          ))}
+        </div>
+        <div className="admin-filter-row">
+          <label>卡包</label>
+          {PACKS.map(p => (
+            <button key={p} className={`filter-chip ${filterPack === p ? 'active' : ''}`}
+              onClick={() => setFilterPack(p)}>{p === 'all' ? '全部' : p}</button>
           ))}
         </div>
         <div className="admin-filter-row">
