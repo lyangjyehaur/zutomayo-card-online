@@ -278,6 +278,23 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
+  // "アビスのカードをX枚/1枚以上選び、(裏向きにして混ぜ、)デッキの底に置く。そうしない場合、ゲームに敗北する。"
+  const abyssToDeckBottomOrLoseMatch = text.match(/^アビスのカードを([0-9０-９]+)枚(以上)?選び、(?:(裏向きにして)(混ぜ、)?)?デッキの底に置く[。.]そうしない場合、ゲームに敗北する[。.]?/);
+  if (abyssToDeckBottomOrLoseMatch) {
+    const count = parseNum(abyssToDeckBottomOrLoseMatch[1]);
+    const variable = Boolean(abyssToDeckBottomOrLoseMatch[2]);
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'abyssToDeckBottomOrLose',
+        min: count,
+        max: variable ? 'available' : count,
+        faceDown: Boolean(abyssToDeckBottomOrLoseMatch[3]),
+        shuffle: Boolean(abyssToDeckBottomOrLoseMatch[4]),
+      },
+    };
+  }
+
   // "手札をX枚選んでデッキの底に置き、カードをY枚引く"
   const handBottomDrawMatch = text.match(/手札を([0-9０-９]+)枚選んでデッキの底に置き、カードを([0-9０-９]+)枚引く/);
   if (handBottomDrawMatch) {

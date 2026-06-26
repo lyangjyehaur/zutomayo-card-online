@@ -1,6 +1,7 @@
 import type {
   CardInstance,
   GameState,
+  PendingAbyssToDeckBottomPayload,
   PendingCardMovePayload,
   PendingChoiceCardZone,
   PendingChoiceDeckPosition,
@@ -97,6 +98,18 @@ function loseByHp(G: GameState, player: PlayerIndex, reason: string): void {
   G.winner = (1 - player) as PlayerIndex;
   G.gameoverReason = reason;
   G.ready = [true, true];
+  G.log.push(reason);
+}
+
+function loseByAbyssPaymentFailure(G: GameState, player: PlayerIndex, min: number, available: number): void {
+  const reason = `Player ${player} loses: cannot pay Abyss-to-deck-bottom requirement (needs ${min}, has ${available}).`;
+  G.step = 'gameOver';
+  G.winner = (1 - player) as PlayerIndex;
+  G.gameoverReason = reason;
+  G.ready = [true, true];
+  G.pendingEffects = [[], []];
+  G.pendingEffectPlayer = null;
+  G.pendingChoice = null;
   G.log.push(reason);
 }
 
@@ -338,6 +351,43 @@ export function executeEffect(
           options,
         };
         return { success: true, message: 'Pending card selection' };
+      }
+
+      if (effect.action.params.choiceType === 'abyssToDeckBottomOrLose') {
+        const min = Number(effect.action.params.min ?? 1);
+        const maxParam = effect.action.params.max ?? min;
+        const dynamicMax = maxParam === 'available';
+        const max = dynamicMax ? me.abyss.length : Number(maxParam);
+        if (!Number.isInteger(min) || min < 1 || (!dynamicMax && (!Number.isInteger(max) || max < min))) {
+          return { success: false, message: 'Unsupported Abyss payment choice' };
+        }
+
+        const available = me.abyss.length;
+        if (available < min) {
+          loseByAbyssPaymentFailure(G, player, min, available);
+          return { success: false, message: 'Not enough Abyss cards for payment' };
+        }
+
+        const payload: PendingAbyssToDeckBottomPayload = {
+          faceDown: Boolean(effect.action.params.faceDown),
+          shuffle: Boolean(effect.action.params.shuffle),
+        };
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'abyssToDeckBottomOrLose',
+          min,
+          max,
+          prompt: effect.rawText,
+          payload,
+          options: me.abyss.map(card => ({
+            id: card.instanceId,
+            label: getCardDef(card.defId)?.name ?? card.defId,
+            cardInstanceId: card.instanceId,
+            cardDefId: card.defId,
+          })),
+        };
+        return { success: true, message: 'Pending Abyss payment selection' };
       }
 
       if (effect.action.params.choiceType === 'clockPosition') {

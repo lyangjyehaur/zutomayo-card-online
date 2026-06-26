@@ -92,6 +92,15 @@ function drawUnchecked(player: PlayerState, count: number): void {
   }
 }
 
+function shuffleSelectedCards<T>(cards: T[]): T[] {
+  const result = [...cards];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 export function sendToOwnerZone(card: CardInstance, player: PlayerState): void {
   card.faceUp = true;
   const def = getCardDef(card.defId);
@@ -713,6 +722,24 @@ export function submitPendingChoice(
     for (const optionId of optionIds) {
       if (!moveCardForChoice(G, choice.payload, optionId)) return false;
     }
+  }
+  if (choice.type === 'abyssToDeckBottomOrLose') {
+    const abyssIds = new Set(playerState.abyss.map(card => card.instanceId));
+    if (!optionIds.every(optionId => abyssIds.has(optionId))) return false;
+
+    const selectedCards: CardInstance[] = [];
+    for (const optionId of optionIds) {
+      const abyssIndex = playerState.abyss.findIndex(card => card.instanceId === optionId);
+      if (abyssIndex < 0) return false;
+      const [card] = playerState.abyss.splice(abyssIndex, 1);
+      card.faceUp = !choice.payload.faceDown;
+      selectedCards.push(card);
+    }
+
+    const ordered = choice.payload.shuffle && selectedCards.length > 1
+      ? shuffleSelectedCards(selectedCards)
+      : selectedCards;
+    playerState.deck.push(...ordered);
   }
   if (choice.type === 'clockPosition' || choice.type === 'clockAdvance') {
     const option = choice.options.find(item => item.id === optionIds[0]);

@@ -25,7 +25,7 @@ Implemented and covered by smoke tests:
 - Damage-received reduction is applied before battle damage, and damage-causing effects now end the game immediately when HP reaches 0.
 - Turn-start transient modifiers are preserved into the turn they affect.
 - Chronos transition, zone-entry, and Character replacement events are recorded; Chronos transition can drive simple Area Enchant self-move effects.
-- Server-validated pending choice flows exist for hand-to-deck-bottom-then-draw, focused card-move choices, Clock position choices, and optional 0-5 Clock advance choices.
+- Server-validated pending choice flows exist for hand-to-deck-bottom-then-draw, focused card-move choices, own Abyss-to-deck-bottom payment choices with failure branches, Clock position choices, and optional 0-5 Clock advance choices.
 - Area Enchant self-move parser now emits secondary timing effects for several turn-end, day/night-loss, damage-threshold, and opponent-Abyss-entry clauses.
 - Battle damage, HP loss, HP-zero game end, and exact overdraw loss with no partial draw.
 - Online `playerView` redacts hidden hands, decks, face-down cards, and unpaired janken choices.
@@ -35,6 +35,7 @@ Implemented and covered by smoke tests:
   - opponent deck top-to-Abyss movement;
   - opponent Area Enchant return to deck top/bottom;
   - own hand-to-Abyss choice movement;
+  - own Abyss-to-deck-bottom payment choices, including fixed counts, 1+ variable count, face-down selected packet movement, and loss when the payment cannot be made;
   - opponent Abyss-to-deck-bottom choice movement;
   - opponent Power Charger-to-deck-bottom choice movement filtered by `sendToPower`;
   - fixed Clock advance and fixed Clock set-to-midnight/noon effects;
@@ -89,19 +90,20 @@ Needed work:
 
 Rule gap: many cards require the player to choose cards, positions, counts, or order.
 
-Current implementation: deterministic no-choice effects are automated, normal-phase ordering can pause for player selection, hand-to-deck-bottom-then-draw choices use a server-validated `pendingChoice`, a small card-move choice slice supports own hand to own Abyss, opponent Abyss to opponent deck bottom, and opponent Power Charger to opponent deck bottom with `sendToPower` filtering, and Clock choices can choose a position or 0-5 advance amount. Optional effects, many targets, variable counts, and other card-specific choices are still skipped or use a documented fallback.
+Current implementation: deterministic no-choice effects are automated, normal-phase ordering can pause for player selection, hand-to-deck-bottom-then-draw choices use a server-validated `pendingChoice`, a small card-move choice slice supports own hand to own Abyss, opponent Abyss to opponent deck bottom, and opponent Power Charger to opponent deck bottom with `sendToPower` filtering, own Abyss payment choices can return fixed or 1+ selected cards to deck bottom with the required loss branch, and Clock choices can choose a position or 0-5 advance amount. Optional effects, many targets, most variable counts, selected-count follow-ups, and other card-specific choices are still skipped or use a documented fallback.
 
 Missing choice categories include:
 
 - choose cards from unsupported zones such as battle zone or viewed deck cards;
 - choose top/bottom deck placement or reorder viewed deck cards;
 - choose whether to use optional effects;
-- choose how many cards to reveal/discard/recover;
+- choose how many cards to reveal/discard/recover beyond the current own-Abyss 1+ payment slice;
+- apply follow-up effects that depend on the selected count, such as `4th_27` milling the same number from the opponent deck;
 - choose replacement targets.
 
 Needed work:
 
-- Expand `pendingChoice` beyond the current fixed card-move/Clock slices to battle-zone targets, optional effects, variable counts, and deck ordering.
+- Expand `pendingChoice` beyond the current card-move/Abyss-payment/Clock slices to battle-zone targets, optional effects, more variable counts, selected-count follow-ups, and deck ordering.
 - Add UI for each choice type.
 - Add smoke tests for each resolver and invalid choices.
 
@@ -133,9 +135,9 @@ Current parser snapshot from the latest audit:
 - total cards: 422;
 - cards with effect text: 250;
 - effect text lines: 267;
-- parsed lines: 225;
-- unparsed lines: 42;
-- parsed-but-partial heuristic: 38;
+- parsed lines: 229;
+- unparsed lines: 38;
+- parsed-but-partial heuristic: 42;
 - false `drawCards` positives: 0.
 
 Important caveat: parsed does not always mean fully correct execution. Some parsed effects only cover the first deterministic part of a longer effect, or intentionally skip a timing/choice clause.
@@ -145,6 +147,7 @@ Current high-risk parsed-but-wrong categories:
 - Timing suffixes such as `...ターンの終了時にアビスに置く` can make the whole card parse as `onTurnEnd`, so a main continuous effect may no longer run during the normal effect window.
 - Broad `カードをX枚` false positives for selection/deck-return text have been tightened; `npm run rule:audit` reports current parsed/unparsed/partial samples.
 - Area Enchant expiry clauses are parsed as the main action instead of a second self-move effect, so cards such as expiry-to-Abyss/Power Charger remain incomplete even when a parsed action exists.
+- Own Abyss payment clauses on `4th_6`, `4th_27`, `4th_28`, and `4th_88` now parse and execute the payment/loss branch, but selected-count follow-ups and deck reordering remain partial or unparsed.
 
 Needed work:
 
@@ -179,9 +182,9 @@ These are not core rule-engine mismatches, but they affect real online play:
 
 ## Suggested implementation order
 
-1. Expand `pendingChoice` to target, optional-effect, variable-count, and deck-ordering choices.
+1. Expand `pendingChoice` to remaining target, optional-effect, variable-count, selected-count follow-up, and deck-ordering choices.
 2. Resolve card-specific effects from Abyss/Power Charger zone-entry and Character replacement events.
 3. Expand Area Enchant expiry/self-move timing for damage-threshold and opponent-zone movement clauses.
-4. Audit parsed-but-partial effects and the 42 unparsed lines card-by-card using `npm run rule:audit`.
+4. Audit parsed-but-partial effects and the 38 unparsed lines card-by-card using `npm run rule:audit`.
 5. Confirm Chronos board exactness from official materials and lock it with tests.
 6. Add reconnect/resume and account-backed match ownership if the product direction needs it.

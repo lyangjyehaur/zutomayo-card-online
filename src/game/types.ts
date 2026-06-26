@@ -85,6 +85,11 @@ export interface PendingCardMovePayload {
   filterSendToPower?: number;
 }
 
+export interface PendingAbyssToDeckBottomPayload {
+  faceDown: boolean;
+  shuffle: boolean;
+}
+
 export interface PendingChoiceBase {
   id: string;
   player: PlayerIndex;
@@ -102,6 +107,10 @@ export type PendingChoice =
   | (PendingChoiceBase & {
       type: 'cardMove';
       payload: PendingCardMovePayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'abyssToDeckBottomOrLose';
+      payload: PendingAbyssToDeckBottomPayload;
     })
   | (PendingChoiceBase & {
       type: 'clockPosition';

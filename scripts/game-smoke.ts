@@ -539,6 +539,140 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   assert.equal(handToAbyssState.players[0].abyss.at(-1)?.instanceId, handToAbyssChosen);
   assert.equal(handToAbyssState.players[0].hand.length, 1);
 
+  const abyssFourPayment = parseEffect('アビスのカードを４枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。');
+  assert.ok(abyssFourPayment);
+  assert.deepEqual(abyssFourPayment.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'abyssToDeckBottomOrLose',
+      min: 4,
+      max: 4,
+      faceDown: true,
+      shuffle: true,
+    },
+  });
+  assert.deepEqual(parsedCardEffect('4th_6').action, abyssFourPayment.action);
+
+  const abyssVariablePayment = parseEffect('アビスのカードを１枚以上選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。');
+  assert.ok(abyssVariablePayment);
+  assert.deepEqual(abyssVariablePayment.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'abyssToDeckBottomOrLose',
+      min: 1,
+      max: 'available',
+      faceDown: true,
+      shuffle: true,
+    },
+  });
+  assert.deepEqual(parsedCardEffect('4th_27').action, abyssVariablePayment.action);
+
+  const abyssSixPayment = parseEffect('アビスのカードを６枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。');
+  assert.ok(abyssSixPayment);
+  assert.deepEqual(abyssSixPayment.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'abyssToDeckBottomOrLose',
+      min: 6,
+      max: 6,
+      faceDown: true,
+      shuffle: true,
+    },
+  });
+  assert.deepEqual(parsedCardEffect('4th_28').action, abyssSixPayment.action);
+
+  const abyssOneFaceUpPayment = parseEffect('アビスのカードを１枚選び、デッキの底に置く。そうしない場合、ゲームに敗北する。相手のデッキの上から３枚を見て、好きな順番に入れ替えて戻す');
+  assert.ok(abyssOneFaceUpPayment);
+  assert.deepEqual(abyssOneFaceUpPayment.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'abyssToDeckBottomOrLose',
+      min: 1,
+      max: 1,
+      faceDown: false,
+      shuffle: false,
+    },
+  });
+  assert.deepEqual(parsedCardEffect('4th_88').action, abyssOneFaceUpPayment.action);
+
+  const fixedAbyssPaymentState = preparedState();
+  const fixedAbyssCards = [
+    createInstance('1st_9', true),
+    createInstance('1st_17', true),
+    createInstance('1st_1', true),
+    createInstance('1st_5', true),
+  ];
+  const fixedDeckBefore = createInstance('2nd_1', false);
+  fixedAbyssPaymentState.players[0].abyss = fixedAbyssCards;
+  fixedAbyssPaymentState.players[0].deck = [fixedDeckBefore];
+  const fixedSelectedIds = fixedAbyssCards.map(card => card.instanceId);
+  assert.equal(executeEffect(abyssFourPayment, fixedAbyssPaymentState, 0).success, true);
+  assert.equal(fixedAbyssPaymentState.pendingChoice?.type, 'abyssToDeckBottomOrLose');
+  assert.equal(fixedAbyssPaymentState.pendingChoice?.min, 4);
+  assert.equal(fixedAbyssPaymentState.pendingChoice?.max, 4);
+  const hiddenChoiceView = ZutomayoCard.playerView!({ G: fixedAbyssPaymentState, ctx: {} as any, playerID: '1' }) as GameState;
+  assert.equal(hiddenChoiceView.pendingChoice?.options.length, 0);
+  assert.equal(submitPendingChoice(
+    fixedAbyssPaymentState,
+    0,
+    [fixedSelectedIds[0], fixedSelectedIds[0], fixedSelectedIds[1], fixedSelectedIds[2]],
+    noEffects,
+  ), false);
+  assert.equal(fixedAbyssPaymentState.players[0].abyss.length, 4);
+  assert.equal(submitPendingChoice(fixedAbyssPaymentState, 0, fixedSelectedIds, noEffects), true);
+  assert.equal(fixedAbyssPaymentState.pendingChoice, null);
+  assert.deepEqual(fixedAbyssPaymentState.players[0].abyss, []);
+  assert.equal(fixedAbyssPaymentState.players[0].deck[0].instanceId, fixedDeckBefore.instanceId);
+  const fixedMovedCards = fixedAbyssPaymentState.players[0].deck.slice(-4);
+  assert.deepEqual(new Set(fixedMovedCards.map(card => card.instanceId)), new Set(fixedSelectedIds));
+  for (const card of fixedMovedCards) assert.equal(card.faceUp, false);
+
+  const fixedInsufficientAbyssState = preparedState();
+  fixedInsufficientAbyssState.players[0].abyss = [
+    createInstance('1st_9', true),
+    createInstance('1st_17', true),
+    createInstance('1st_1', true),
+  ];
+  assert.equal(executeEffect(abyssFourPayment, fixedInsufficientAbyssState, 0).success, false);
+  assert.equal(fixedInsufficientAbyssState.step, 'gameOver');
+  assert.equal(fixedInsufficientAbyssState.winner, 1);
+  assert.match(fixedInsufficientAbyssState.gameoverReason ?? '', /cannot pay Abyss-to-deck-bottom requirement/);
+
+  const variableAbyssPaymentState = preparedState();
+  const variableAbyssCards = [
+    createInstance('1st_9', true),
+    createInstance('1st_17', true),
+    createInstance('1st_1', true),
+  ];
+  const variableDeckBefore = createInstance('2nd_1', false);
+  variableAbyssPaymentState.players[0].abyss = variableAbyssCards;
+  variableAbyssPaymentState.players[0].deck = [variableDeckBefore];
+  const variableSelectedIds = [variableAbyssCards[0].instanceId, variableAbyssCards[2].instanceId];
+  const variableRemainingId = variableAbyssCards[1].instanceId;
+  assert.equal(executeEffect(abyssVariablePayment, variableAbyssPaymentState, 0).success, true);
+  assert.equal(variableAbyssPaymentState.pendingChoice?.type, 'abyssToDeckBottomOrLose');
+  assert.equal(variableAbyssPaymentState.pendingChoice?.min, 1);
+  assert.equal(variableAbyssPaymentState.pendingChoice?.max, 3);
+  assert.equal(submitPendingChoice(variableAbyssPaymentState, 0, [], noEffects), false);
+  assert.equal(submitPendingChoice(
+    variableAbyssPaymentState,
+    0,
+    [...variableAbyssCards.map(card => card.instanceId), 'missing-card'],
+    noEffects,
+  ), false);
+  assert.equal(submitPendingChoice(variableAbyssPaymentState, 0, variableSelectedIds, noEffects), true);
+  assert.deepEqual(variableAbyssPaymentState.players[0].abyss.map(card => card.instanceId), [variableRemainingId]);
+  assert.equal(variableAbyssPaymentState.players[0].deck[0].instanceId, variableDeckBefore.instanceId);
+  const variableMovedCards = variableAbyssPaymentState.players[0].deck.slice(-2);
+  assert.deepEqual(new Set(variableMovedCards.map(card => card.instanceId)), new Set(variableSelectedIds));
+  for (const card of variableMovedCards) assert.equal(card.faceUp, false);
+
+  const variableEmptyAbyssState = preparedState();
+  variableEmptyAbyssState.players[0].abyss = [];
+  assert.equal(executeEffect(abyssVariablePayment, variableEmptyAbyssState, 0).success, false);
+  assert.equal(variableEmptyAbyssState.step, 'gameOver');
+  assert.equal(variableEmptyAbyssState.winner, 1);
+
   const opponentAbyssToDeck = parseEffect('相手のアビスのカードを1枚選んでデッキの底に戻させる');
   assert.deepEqual(opponentAbyssToDeck?.action, {
     type: 'requestChoice',
