@@ -41,6 +41,7 @@ export type ConditionType =
   | 'powerAtLeast'      // Player power >= N
   | 'abyssCount'        // Abyss has N+ cards
   | 'abyssElements'     // Abyss has N distinct elements
+  | 'zoneHasElement'    // A zone has at least one card of an element
   | 'handCount'         // Hand has N cards
   | 'hpLessOrEqual'     // Player HP <= N
   | 'hpLessThanOpponent' // Player HP < opponent HP
@@ -74,6 +75,7 @@ export type ActionType =
   | 'recoverFromAbyss'  // Pick card from abyss
   | 'sendToAbyss'       // Send card to abyss
   | 'millDeckToAbyss'   // Move cards from deck top to abyss
+  | 'moveOwnDeckTopByPower' // Move own deck top to power/abyss by SEND TO POWER
   | 'returnAreaEnchantToDeck' // Return Area Enchant to deck
   | 'moveSelfAreaEnchant' // Move own Area Enchant to a zone
   | 'requestChoice'      // Ask the owner to submit a validated choice

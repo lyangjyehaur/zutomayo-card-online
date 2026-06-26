@@ -127,6 +127,13 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = pcElementMatch[2];
   }
 
+  // "アビスにX属性のカードがあるなら..."
+  const abyssHasElementMatch = text.match(/アビスに(闇|炎|電気|風|カオス)属性のカードがあるなら[、,]?(.+)$/);
+  if (abyssHasElementMatch) {
+    conditions.push({ type: 'zoneHasElement', value: abyssHasElementMatch[1], target: 'abyss' });
+    actionText = abyssHasElementMatch[2];
+  }
+
   // "アビスにX枚以上カードがあるなら..."
   const abyssCountMatch = text.match(/アビスに([0-9０-９]+)枚以上の?カードがあるなら[、,]?(.+)$/);
   if (abyssCountMatch) {
@@ -223,6 +230,10 @@ function parseAction(text: string): EffectAction | null {
   // "相手のHP-20"
   const hpReduceMatch = text.match(/相手のHP[ー\-]([0-9０-９]+)/);
   if (hpReduceMatch) return { type: 'directDamage', params: { value: parseNum(hpReduceMatch[1]) } };
+
+  // "相手のHPを20減らす"
+  const hpDecreaseMatch = text.match(/相手のHPを([0-9０-９]+)減らす/);
+  if (hpDecreaseMatch) return { type: 'directDamage', params: { value: parseNum(hpDecreaseMatch[1]) } };
 
   // "Xダメージを軽減"
   const damageReduceMatch = text.match(/([0-9０-９]+)ダメージ[を]?軽減/);
@@ -334,6 +345,23 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
+  // "相手のアビスにあるカードX枚を、相手のデッキの底に戻す"
+  const opponentAbyssCardToDeckBottomMatch = text.match(/^相手のアビスにあるカード([0-9０-９]+)枚を、?相手のデッキの底に戻す[。.]?$/);
+  if (opponentAbyssCardToDeckBottomMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'cardMove',
+        count: parseNum(opponentAbyssCardToDeckBottomMatch[1]),
+        sourceOwner: 'opponent',
+        sourceZone: 'abyss',
+        destinationOwner: 'opponent',
+        destinationZone: 'deck',
+        destinationPosition: 'bottom',
+      },
+    };
+  }
+
   // "相手のパワーチャージャーからSEND TO POWER★★/★１のカードをX枚選び、相手のデッキの底に置く"
   const opponentPowerToDeckBottomMatch = text.match(/相手のパワーチャージャーからSEND TO POWER(★+)([0-9０-９]+)?のカードを([0-9０-９]+)枚選び、相手のデッキの底に置く[。.]?$/);
   if (opponentPowerToDeckBottomMatch) {
@@ -398,6 +426,11 @@ function parseAction(text: string): EffectAction | null {
         drawCount: parseNum(handBottomDrawMatch[2]),
       },
     };
+  }
+
+  // "デッキの一番上のカードをパワーがあればパワーチャージャーに、なければアビスに置く"
+  if (/^デッキの一番上のカードをパワーがあればパワーチャージャーに、?なければアビスに置く[。.]?$/.test(text)) {
+    return { type: 'moveOwnDeckTopByPower', params: {} };
   }
 
   // "カードをX枚引く"

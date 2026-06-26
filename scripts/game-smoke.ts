@@ -573,6 +573,79 @@ function fivePowerCards() {
   assert.equal(handToAbyssState.players[0].abyss.at(-1)?.instanceId, handToAbyssChosen);
   assert.equal(handToAbyssState.players[0].hand.length, 1);
 
+  const abyssElectricDamage = parsedCardEffect('2nd_50');
+  assert.deepEqual(abyssElectricDamage.conditions, [{ type: 'zoneHasElement', value: '電気', target: 'abyss' }]);
+  assert.deepEqual(abyssElectricDamage.action, { type: 'directDamage', params: { value: 20 } });
+  const abyssElectricNoopState = preparedState();
+  abyssElectricNoopState.players[0].abyss = [createInstance('1st_4', true)];
+  assert.deepEqual(executeEffect(abyssElectricDamage, abyssElectricNoopState, 0), { success: false, message: 'Condition not met' });
+  assert.equal(abyssElectricNoopState.players[1].hp, 100);
+  const abyssElectricState = preparedState();
+  abyssElectricState.players[0].abyss = [createInstance('1st_3', true)];
+  assert.equal(executeEffect(abyssElectricDamage, abyssElectricState, 0).success, true);
+  assert.equal(abyssElectricState.players[1].hp, 80);
+
+  const deckTopByPower = parsedCardEffect('2nd_41');
+  assert.deepEqual(deckTopByPower.conditions, [{ type: 'previousCharElement', value: '闇' }]);
+  assert.deepEqual(deckTopByPower.action, { type: 'moveOwnDeckTopByPower', params: {} });
+  const deckTopNoopState = preparedState();
+  deckTopNoopState.previousTurnCharacterElements[0] = '炎';
+  deckTopNoopState.players[0].deck = [createInstance('1st_17', false)];
+  assert.deepEqual(executeEffect(deckTopByPower, deckTopNoopState, 0), { success: false, message: 'Condition not met' });
+  assert.equal(deckTopNoopState.players[0].deck.length, 1);
+  const deckTopPowerState = preparedState();
+  deckTopPowerState.previousTurnCharacterElements[0] = '闇';
+  const powerTop = createInstance('1st_17', false);
+  deckTopPowerState.players[0].deck = [powerTop];
+  assert.equal(executeEffect(deckTopByPower, deckTopPowerState, 0).success, true);
+  assert.equal(deckTopPowerState.players[0].deck.length, 0);
+  assert.equal(deckTopPowerState.players[0].powerCharger.at(-1)?.instanceId, powerTop.instanceId);
+  assert.equal(powerTop.faceUp, true);
+  const deckTopAbyssState = preparedState();
+  deckTopAbyssState.previousTurnCharacterElements[0] = '闇';
+  const noPowerTop = createInstance('1st_1', false);
+  deckTopAbyssState.players[0].deck = [noPowerTop];
+  assert.equal(executeEffect(deckTopByPower, deckTopAbyssState, 0).success, true);
+  assert.equal(deckTopAbyssState.players[0].abyss.at(-1)?.instanceId, noPowerTop.instanceId);
+  assert.equal(noPowerTop.faceUp, true);
+  const deckTopEmptyState = preparedState();
+  deckTopEmptyState.previousTurnCharacterElements[0] = '闇';
+  deckTopEmptyState.players[0].deck = [];
+  assert.equal(executeEffect(deckTopByPower, deckTopEmptyState, 0).success, false);
+  assert.equal(deckTopEmptyState.step, 'gameOver');
+  assert.equal(deckTopEmptyState.winner, 1);
+
+  const opponentAbyssReturn = parsedCardEffect('4th_90');
+  assert.deepEqual(opponentAbyssReturn.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'cardMove',
+      count: 1,
+      sourceOwner: 'opponent',
+      sourceZone: 'abyss',
+      destinationOwner: 'opponent',
+      destinationZone: 'deck',
+      destinationPosition: 'bottom',
+    },
+  });
+  const opponentAbyssReturnState = preparedState();
+  const returnedAbyssCard = createInstance('1st_4', true);
+  const untouchedAbyssCard = createInstance('1st_3', true);
+  opponentAbyssReturnState.players[1].abyss = [returnedAbyssCard, untouchedAbyssCard];
+  opponentAbyssReturnState.players[1].deck = [createInstance('1st_9', false)];
+  assert.equal(executeEffect(opponentAbyssReturn, opponentAbyssReturnState, 0).success, true);
+  assert.equal(opponentAbyssReturnState.pendingChoice?.type, 'cardMove');
+  assert.deepEqual(opponentAbyssReturnState.pendingChoice?.options.map(option => option.cardInstanceId), [returnedAbyssCard.instanceId, untouchedAbyssCard.instanceId]);
+  const beforeInvalidOpponentAbyss = opponentAbyssReturnState.players[1].abyss.map(card => card.instanceId);
+  const beforeInvalidOpponentDeck = opponentAbyssReturnState.players[1].deck.map(card => card.instanceId);
+  assert.equal(submitPendingChoice(opponentAbyssReturnState, 0, ['missing-card'], noEffects), false);
+  assert.deepEqual(opponentAbyssReturnState.players[1].abyss.map(card => card.instanceId), beforeInvalidOpponentAbyss);
+  assert.deepEqual(opponentAbyssReturnState.players[1].deck.map(card => card.instanceId), beforeInvalidOpponentDeck);
+  assert.equal(submitPendingChoice(opponentAbyssReturnState, 0, [returnedAbyssCard.instanceId], noEffects), true);
+  assert.equal(opponentAbyssReturnState.players[1].abyss.length, 1);
+  assert.equal(opponentAbyssReturnState.players[1].deck.at(-1)?.instanceId, returnedAbyssCard.instanceId);
+  assert.equal(returnedAbyssCard.faceUp, true);
+
   const optionalStudyDraw = parsedCardEffect('4th_53');
   assert.deepEqual(optionalStudyDraw.action, {
     type: 'requestChoice',

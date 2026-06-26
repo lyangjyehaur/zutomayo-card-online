@@ -60,6 +60,10 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
       const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
       return new Set(cards.map(card => getCardDef(card.defId)?.element).filter(Boolean)).size >= Number(cond.value);
     }
+    case 'zoneHasElement': {
+      const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
+      return cards.some(card => getCardDef(card.defId)?.element === cond.value);
+    }
     case 'abyssCount': return me.abyss.length >= Number(cond.value);
     case 'handCount': return me.hand.length >= Number(cond.value);
     case 'hpLessOrEqual': return me.hp <= Number(cond.value);
@@ -303,6 +307,21 @@ export function executeEffect(
       }
       if (effect.action.params.countFromLastChoice) G.lastChoiceSelectionCount[player] = null;
       return { success: true, message: `Mill ${moved} opposing card${moved === 1 ? '' : 's'} to Abyss` };
+    }
+    case 'moveOwnDeckTopByPower': {
+      if (me.deck.length === 0) {
+        loseOnEffectOverdraw(G, player, 1);
+        return { success: false, message: 'No deck top card to move' };
+      }
+      const card = me.deck.shift()!;
+      const sendToPower = getCardDef(card.defId)?.sendToPower ?? 0;
+      card.faceUp = true;
+      if (sendToPower > 0) {
+        me.powerCharger.push(card);
+        return { success: true, message: 'Move deck top to Power Charger' };
+      }
+      me.abyss.push(card);
+      return { success: true, message: 'Move deck top to Abyss' };
     }
     case 'returnAreaEnchantToDeck': {
       const card = opponent.setZoneC;
