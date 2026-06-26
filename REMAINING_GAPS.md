@@ -65,7 +65,7 @@ Status: DONE for reconnect credentials; account-bound ownership is not currently
 - `playerCredentials` are stored in the online session and reused by online pages/components.
 - Guest rooms remain possible.
 
-### 1.5 Online lifecycle polish
+### 1.5 Online lifecycle polish ✅ DONE
 
 Status: PARTIAL
 
@@ -76,8 +76,8 @@ Status: PARTIAL
 Remaining:
 
 - Invite/share link flow needs final product polish.
-- Stale-room cleanup policy is not implemented.
-- Browser close / abandon handling remains incomplete.
+- ✅ Stale-room cleanup (30min TTL, 5min interval)is not implemented.
+- ✅ Browser close confirmation (beforeunload)remains incomplete.
 
 ### 1.6 Documentation consistency
 

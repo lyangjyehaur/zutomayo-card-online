@@ -142,6 +142,36 @@ server.app.use(async (ctx: any) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
+const STALE_MATCH_TTL_MS = Number(process.env.STALE_MATCH_TTL_MS) || 30 * 60 * 1000; // 30 minutes
+const CLEANUP_INTERVAL_MS = Number(process.env.CLEANUP_INTERVAL_MS) || 5 * 60 * 1000; // every 5 min
+
+// Stale room cleanup
+async function cleanupStaleMatches() {
+  try {
+    const matchIDs = await server.db.listMatches({});
+    if (!matchIDs || !Array.isArray(matchIDs)) return;
+    let cleaned = 0;
+    for (const matchID of matchIDs) {
+      try {
+        const { metadata } = await server.db.fetch(matchID, { metadata: true });
+        if (!metadata) continue;
+        const updatedAt = metadata.updatedAt ? new Date(metadata.updatedAt).getTime() : 0;
+        const createdAt = metadata.createdAt ? new Date(metadata.createdAt).getTime() : 0;
+        const age = Date.now() - Math.max(createdAt, updatedAt);
+        if (age > STALE_MATCH_TTL_MS) {
+          await server.db.wipe(matchID);
+          cleaned++;
+        }
+      } catch { /* skip */ }
+    }
+    if (cleaned > 0) console.log(`[cleanup] Removed ${cleaned} stale matches`);
+  } catch (err) {
+    console.error('[cleanup] Error:', err);
+  }
+}
+
+setInterval(cleanupStaleMatches, CLEANUP_INTERVAL_MS);
+console.log(`Stale match cleanup: TTL=${STALE_MATCH_TTL_MS / 60000}min, interval=${CLEANUP_INTERVAL_MS / 60000}min`);
 
 server.run(PORT, () => {
   console.log(`Zutomayo Card server running on port ${PORT}`);
