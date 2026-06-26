@@ -31,6 +31,19 @@ export const ja: Record<TranslationKey, string> = {
 
   'settings.language': '言語',
 
+  'auth.login': 'ログイン',
+  'auth.register': '登録',
+  'auth.email': 'メールアドレス',
+  'auth.password': 'パスワード',
+  'auth.nickname': 'ニックネーム',
+  'auth.logout': 'ログアウト',
+  'auth.guest': 'ゲスト',
+  'auth.loginSuccess': 'ログインしました',
+  'auth.registerSuccess': '登録しました',
+  'auth.invalidCredentials': 'メールアドレスまたはパスワードが違います',
+  'auth.emailExists': 'このメールアドレスは登録済みです',
+  'auth.eloChange': 'ELO 変動',
+
   'lobby.localBattle': 'ローカル対戦',
   'lobby.aiBattle': 'コンピュータ対戦',
   'lobby.createRoom': 'ルーム作成',

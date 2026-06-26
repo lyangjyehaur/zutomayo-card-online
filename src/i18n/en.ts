@@ -31,6 +31,19 @@ export const en: Record<TranslationKey, string> = {
 
   'settings.language': 'Language',
 
+  'auth.login': 'Login',
+  'auth.register': 'Register',
+  'auth.email': 'Email',
+  'auth.password': 'Password',
+  'auth.nickname': 'Nickname',
+  'auth.logout': 'Log out',
+  'auth.guest': 'Guest',
+  'auth.loginSuccess': 'Logged in',
+  'auth.registerSuccess': 'Registered',
+  'auth.invalidCredentials': 'Invalid email or password',
+  'auth.emailExists': 'This email is already registered',
+  'auth.eloChange': 'ELO change',
+
   'lobby.localBattle': 'Local 2-Player Battle',
   'lobby.aiBattle': 'Practice vs AI',
   'lobby.createRoom': 'Create Room',

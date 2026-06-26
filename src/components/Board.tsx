@@ -1,5 +1,6 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { getProfile, isLoggedIn, submitMatch } from '../api/client';
 import type { CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { Card, type CardSize } from './Card';
@@ -18,6 +19,14 @@ type FeedbackMessage = {
   lines?: string[];
   tone?: FeedbackTone;
   actionLabel?: string;
+};
+type AccountProfile = {
+  id: string;
+  elo: number;
+};
+type MatchSubmitResponse = {
+  winnerEloChange?: number;
+  loserEloChange?: number;
 };
 
 function playerName(index: PlayerIndex): string {
@@ -163,16 +172,61 @@ function translateGameOverReason(reason: string | null): string {
   return t('board.reason');
 }
 
-function GameOverScreen({ G, ctx, matchStartedAt }: Props & { matchStartedAt: number }) {
+function normalizeWinner(G: GameState, gameover?: { winner?: string | number; draw?: boolean }): PlayerIndex | null {
+  if (gameover?.draw) return null;
+  const winner = gameover?.winner ?? G.winner;
+  if (winner === 0 || winner === '0') return 0;
+  if (winner === 1 || winner === '1') return 1;
+  return G.winner;
+}
+
+function activeAccountPlayer(playerID: Props['playerID']): PlayerIndex | null {
+  if (playerID !== '0' && playerID !== '1') return 0;
+  const player = Number(playerID) as PlayerIndex;
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/play/online/')) return player;
+  return player === 0 ? 0 : null;
+}
+
+function accountIdForPlayer(player: PlayerIndex, accountPlayer: PlayerIndex, profile: AccountProfile): string {
+  return player === accountPlayer ? profile.id : `guest-player-${player}`;
+}
+
+function signedChange(value: number): string {
+  return value > 0 ? `+${value}` : `${value}`;
+}
+
+function GameOverScreen({ G, ctx, matchStartedAt, playerID }: Props & { matchStartedAt: number }) {
   const saved = useRef(false);
+  const [eloNotice, setEloNotice] = useState('');
 
   useEffect(() => {
     if (saved.current) return;
     saved.current = true;
     const gameover = ctx.gameover as { winner?: string | number; draw?: boolean } | undefined;
     const durationSeconds = (Date.now() - matchStartedAt) / 1000;
-    saveMatchRecord(G, gameover?.winner ?? (G.winner === null ? null : G.winner), durationSeconds);
-  }, [G, ctx.gameover, matchStartedAt]);
+    const winner = normalizeWinner(G, gameover);
+    saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds);
+
+    const accountPlayer = activeAccountPlayer(playerID);
+    if (!isLoggedIn() || winner === null || accountPlayer === null) return;
+
+    const loser = (1 - winner) as PlayerIndex;
+    getProfile()
+      .then((profile: AccountProfile) => {
+        const winnerId = accountIdForPlayer(winner, accountPlayer, profile);
+        const loserId = accountIdForPlayer(loser, accountPlayer, profile);
+        return submitMatch(winnerId, loserId, G.turnNumber) as Promise<MatchSubmitResponse>;
+      })
+      .then(result => {
+        const change = winner === accountPlayer
+          ? result.winnerEloChange ?? 0
+          : result.loserEloChange ?? 0;
+        setEloNotice(`${t('auth.eloChange')} ${signedChange(change)}`);
+      })
+      .catch(() => {
+        // Local history above remains the fallback when the API is unavailable.
+      });
+  }, [G, ctx.gameover, matchStartedAt, playerID]);
 
   return (
     <div className="game-over">
@@ -180,6 +234,7 @@ function GameOverScreen({ G, ctx, matchStartedAt }: Props & { matchStartedAt: nu
         <div className="setup-kicker">{t('board.gameOver')}</div>
         <h1>{G.winner === null ? t('board.draw') : `${playerName(G.winner)} ${t('board.playerWins')}`}</h1>
         <p>{translateGameOverReason(G.gameoverReason)}</p>
+        {eloNotice && <p className="elo-notice">{eloNotice}</p>}
         {ctx.gameover && (
           <button className="primary-action" type="button" onClick={() => window.location.reload()}>
             {t('board.playAgain')}

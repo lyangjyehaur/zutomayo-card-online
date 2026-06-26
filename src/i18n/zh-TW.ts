@@ -29,6 +29,19 @@ export const zhTW = {
 
   'settings.language': '語言',
 
+  'auth.login': '登入',
+  'auth.register': '註冊',
+  'auth.email': '電子郵件',
+  'auth.password': '密碼',
+  'auth.nickname': '暱稱',
+  'auth.logout': '登出',
+  'auth.guest': '訪客',
+  'auth.loginSuccess': '登入成功',
+  'auth.registerSuccess': '註冊成功',
+  'auth.invalidCredentials': '帳號或密碼錯誤',
+  'auth.emailExists': '此電子郵件已註冊',
+  'auth.eloChange': 'ELO 變動',
+
   'lobby.localBattle': '雙人本機對戰',
   'lobby.aiBattle': '與電腦對戰',
   'lobby.createRoom': '創建房間',

@@ -31,6 +31,19 @@ export const ko: Record<TranslationKey, string> = {
 
   'settings.language': '언어',
 
+  'auth.login': '로그인',
+  'auth.register': '가입',
+  'auth.email': '이메일',
+  'auth.password': '비밀번호',
+  'auth.nickname': '닉네임',
+  'auth.logout': '로그아웃',
+  'auth.guest': '게스트',
+  'auth.loginSuccess': '로그인 성공',
+  'auth.registerSuccess': '가입 성공',
+  'auth.invalidCredentials': '계정 또는 비밀번호 오류',
+  'auth.emailExists': '이미 등록된 이메일입니다',
+  'auth.eloChange': 'ELO 변동',
+
   'lobby.localBattle': '로컬 2인 대전',
   'lobby.aiBattle': 'AI 연습',
   'lobby.createRoom': '방 만들기',

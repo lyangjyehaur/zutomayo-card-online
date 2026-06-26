@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getProfile, isLoggedIn, login, logout as logoutAccount, register } from '../api/client';
 import { Card } from '../components/Card';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import type { AIDifficulty } from '../game/ai';
@@ -13,6 +14,14 @@ type DeckOption = {
   description: string;
   previewIds: string[];
   disabled?: boolean;
+};
+
+type AuthMode = 'login' | 'register';
+type AuthUser = {
+  id: string;
+  email: string;
+  nickname: string;
+  elo: number;
 };
 
 const DECK_COPY: Record<string, { nameKey: Parameters<typeof t>[0]; descKey: Parameters<typeof t>[0] }> = {
@@ -124,6 +133,170 @@ function DifficultyButtons({ onStart }: { onStart: (difficulty: AIDifficulty) =>
   );
 }
 
+function authErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  if (message.includes('exists') || message.includes('registered')) return t('auth.emailExists');
+  return t('auth.invalidCredentials');
+}
+
+function AuthSection() {
+  const [expanded, setExpanded] = useState(false);
+  const [mode, setMode] = useState<AuthMode>('login');
+  const [email, setEmail] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [password, setPassword] = useState('');
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [error, setError] = useState('');
+  const [status, setStatus] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isLoggedIn()) return;
+    let cancelled = false;
+    getProfile()
+      .then(profile => {
+        if (!cancelled) setUser(profile);
+      })
+      .catch(() => {
+        if (!cancelled) logoutAccount();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const resetForm = () => {
+    setEmail('');
+    setNickname('');
+    setPassword('');
+    setError('');
+  };
+
+  const switchMode = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setError('');
+    setStatus('');
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError('');
+    setStatus('');
+
+    try {
+      const nextUser = mode === 'login'
+        ? await login(email, password)
+        : await register(email, password, nickname);
+      setUser(nextUser);
+      setStatus(mode === 'login' ? t('auth.loginSuccess') : t('auth.registerSuccess'));
+      setExpanded(false);
+      resetForm();
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logoutAccount();
+    setUser(null);
+    setStatus('');
+    setExpanded(false);
+    resetForm();
+  };
+
+  if (user) {
+    return (
+      <section className="auth-section logged-in" aria-label={user.nickname || t('auth.guest')}>
+        <div className="auth-user-badge">
+          <strong>{user.nickname || t('auth.guest')}</strong>
+          <span>ELO {user.elo}</span>
+        </div>
+        <button className="secondary-action auth-logout" type="button" onClick={handleLogout}>
+          {t('auth.logout')}
+        </button>
+        {status && <span className="auth-status">{status}</span>}
+      </section>
+    );
+  }
+
+  return (
+    <section className={`auth-section ${expanded ? 'expanded' : ''}`}>
+      <button
+        className="secondary-action auth-toggle"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(value => !value)}
+      >
+        {t('auth.login')} / {t('auth.register')}
+      </button>
+
+      {expanded && (
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <div className="auth-mode-switch" role="tablist" aria-label={`${t('auth.login')} / ${t('auth.register')}`}>
+            <button
+              className={mode === 'login' ? 'active' : ''}
+              type="button"
+              role="tab"
+              aria-selected={mode === 'login'}
+              onClick={() => switchMode('login')}
+            >
+              {t('auth.login')}
+            </button>
+            <button
+              className={mode === 'register' ? 'active' : ''}
+              type="button"
+              role="tab"
+              aria-selected={mode === 'register'}
+              onClick={() => switchMode('register')}
+            >
+              {t('auth.register')}
+            </button>
+          </div>
+          <label>
+            <span>{t('auth.email')}</span>
+            <input
+              type="email"
+              value={email}
+              autoComplete="email"
+              required
+              onChange={event => setEmail(event.target.value)}
+            />
+          </label>
+          {mode === 'register' && (
+            <label>
+              <span>{t('auth.nickname')}</span>
+              <input
+                type="text"
+                value={nickname}
+                autoComplete="nickname"
+                required
+                onChange={event => setNickname(event.target.value)}
+              />
+            </label>
+          )}
+          <label>
+            <span>{t('auth.password')}</span>
+            <input
+              type="password"
+              value={password}
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              required
+              onChange={event => setPassword(event.target.value)}
+            />
+          </label>
+          {error && <p className="error-copy auth-error">{error}</p>}
+          <button className="primary-action auth-submit" type="submit" disabled={submitting}>
+            {mode === 'login' ? t('auth.login') : t('auth.register')}
+          </button>
+        </form>
+      )}
+    </section>
+  );
+}
+
 function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) => Promise<void> }) {
   const [matchID, setMatchID] = useState('');
   const [error, setError] = useState('');
@@ -199,6 +372,7 @@ export function LobbyPage({
           <p>{t('app.subtitle')}</p>
         </div>
         <div className="lobby-actions">
+          <AuthSection />
           <LanguageSwitcher />
           <div className="primary-menu">
             <button className="menu-action featured" type="button" onClick={() => navigate('/play/local')}>

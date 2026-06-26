@@ -31,6 +31,19 @@ export const zhHK: Record<TranslationKey, string> = {
 
   'settings.language': '語言',
 
+  'auth.login': '登入',
+  'auth.register': '註冊',
+  'auth.email': '電郵',
+  'auth.password': '密碼',
+  'auth.nickname': '暱稱',
+  'auth.logout': '登出',
+  'auth.guest': '訪客',
+  'auth.loginSuccess': '登入成功',
+  'auth.registerSuccess': '註冊成功',
+  'auth.invalidCredentials': '帳號或密碼錯誤',
+  'auth.emailExists': '此電郵已註冊',
+  'auth.eloChange': 'ELO 變動',
+
   'lobby.localBattle': '本機雙人遊戲',
   'lobby.aiBattle': '同電腦打',
   'lobby.createRoom': '開房',

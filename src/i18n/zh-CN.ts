@@ -31,6 +31,19 @@ export const zhCN: Record<TranslationKey, string> = {
 
   'settings.language': '语言',
 
+  'auth.login': '登录',
+  'auth.register': '注册',
+  'auth.email': '电子邮件',
+  'auth.password': '密码',
+  'auth.nickname': '昵称',
+  'auth.logout': '登出',
+  'auth.guest': '访客',
+  'auth.loginSuccess': '登录成功',
+  'auth.registerSuccess': '注册成功',
+  'auth.invalidCredentials': '账号或密码错误',
+  'auth.emailExists': '此电子邮件已注册',
+  'auth.eloChange': 'ELO 变动',
+
   'lobby.localBattle': '双人本机对战',
   'lobby.aiBattle': '与电脑对战',
   'lobby.createRoom': '创建房间',
