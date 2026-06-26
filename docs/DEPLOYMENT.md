@@ -60,7 +60,7 @@ Frontend build-time variables:
 | --- | --- | --- |
 | `API_PORT` | `3001` | API service port inside the container. |
 | `DB_PATH` | `/data/zutomayo.db` | SQLite database path. |
-| `JWT_SECRET` | random per process | Present in config, but the current token helper does not yet sign tokens with it. |
+| `JWT_SECRET` | random per process | HMAC key for signed auth tokens. Set a stable secret in production or all tokens become invalid when the API process restarts. |
 
 ## Volumes / 資料卷
 
@@ -69,14 +69,46 @@ Frontend build-time variables:
 | `game-data` | `game:/data` | Reserved for game service data; current game server does not write persistent data there. |
 | `api-data` | `api:/data` | Stores SQLite database at `/data/zutomayo.db`. |
 
-Back up the API database:
+## SQLite Backup / Restore
+
+The API stores all registered users, saved decks, submitted matches, and leaderboard state in the `api-data` Docker volume at `/data/zutomayo.db` inside the `api` container. The database uses WAL mode, so prefer SQLite's online backup command over copying only the main `.db` file from a running container.
+
+Create a consistent backup while the service is running:
 
 ```bash
-docker compose exec api cp /data/zutomayo.db /data/zutomayo.db.backup
-docker cp zc-docs-api-1:/data/zutomayo.db.backup ./zutomayo.db.backup
+docker compose exec api sqlite3 /data/zutomayo.db ".backup '/data/zutomayo-$(date +%Y%m%d-%H%M%S).db'"
+docker compose cp api:/data/zutomayo-YYYYMMDD-HHMMSS.db ./backups/
 ```
 
-Container names may differ by Compose project name; confirm with `docker compose ps`.
+If the API image does not include the `sqlite3` CLI, stop the API briefly and copy the full SQLite file set:
+
+```bash
+docker compose stop api
+docker compose cp api:/data/zutomayo.db ./backups/zutomayo.db
+docker compose cp api:/data/zutomayo.db-wal ./backups/zutomayo.db-wal
+docker compose cp api:/data/zutomayo.db-shm ./backups/zutomayo.db-shm
+docker compose start api
+```
+
+Restore from a `.backup` database file:
+
+```bash
+docker compose stop api
+docker compose cp ./backups/zutomayo-YYYYMMDD-HHMMSS.db api:/data/zutomayo.db
+docker compose run --rm --no-deps api rm -f /data/zutomayo.db-wal /data/zutomayo.db-shm
+docker compose start api
+```
+
+For a full file-set restore, copy `zutomayo.db`, `zutomayo.db-wal`, and `zutomayo.db-shm` back into `/data` while the API is stopped, then start the service.
+
+Volume inspection and manual export:
+
+```bash
+docker volume inspect zc-remaining_api-data
+docker run --rm -v zc-remaining_api-data:/data -v "$PWD/backups:/backup" alpine sh -c 'cp /data/zutomayo.db* /backup/'
+```
+
+The actual volume name is prefixed by the Compose project directory. Confirm it with `docker compose ps` and `docker volume ls`.
 
 ## Update / 更新
 
@@ -100,6 +132,7 @@ For application-level verification, run before building the image when possible:
 
 ```bash
 npm run smoke
+npm run smoke:api
 npm run build
 npm run smoke:online
 ```

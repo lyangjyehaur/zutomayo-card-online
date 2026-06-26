@@ -68,16 +68,51 @@ function hashPassword(password, salt) {
   return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
 }
 
+function base64urlJson(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function signTokenInput(input) {
+  return crypto.createHmac('sha256', JWT_SECRET).update(input).digest('base64url');
+}
+
 function createToken(userId) {
-  const payload = JSON.stringify({ userId, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 });
-  return Buffer.from(payload).toString('base64');
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({
+    sub: userId,
+    userId,
+    iat: now,
+    exp: now + 7 * 24 * 60 * 60,
+  });
+  const input = `${header}.${payload}`;
+  return `${input}.${signTokenInput(input)}`;
 }
 
 function verifyToken(token) {
   try {
-    const payload = JSON.parse(Buffer.from(token, 'base64').toString());
-    if (payload.exp < Date.now()) return null;
-    return payload.userId;
+    if (typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [header, payloadPart, signature] = parts;
+    const input = `${header}.${payloadPart}`;
+    const expected = signTokenInput(input);
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (
+      signatureBuffer.length !== expectedBuffer.length
+      || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+    ) {
+      return null;
+    }
+
+    const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
+    if (parsedHeader.alg !== 'HS256' || parsedHeader.typ !== 'JWT') return null;
+
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
+    return typeof userId === 'string' ? userId : null;
   } catch { return null; }
 }
 

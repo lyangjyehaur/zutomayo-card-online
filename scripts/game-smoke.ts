@@ -23,6 +23,7 @@ import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
 import { CHRONOS_MAPPING, type GameState } from '../src/game/types';
 import type { ParsedEffect } from '../src/game/effects';
 import { ZutomayoCard } from '../src/game/Game';
+import { aiSelectCards } from '../src/game/ai';
 
 const require = createRequire(import.meta.url);
 const { Client } = require('boardgame.io/client') as typeof import('boardgame.io/client');
@@ -96,6 +97,16 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   G.players[0].powerCharger = [createInstance('1st_9', true)];
   G.chronos.position = chronosPosition;
   return G;
+}
+
+function fivePowerCards() {
+  return [
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+    createInstance('1st_9', true),
+  ];
 }
 
 {
@@ -1322,6 +1333,49 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   const realAreaTop = parsedCardEffect('2nd_55');
   assert.deepEqual(realAreaTop.conditions, [{ type: 'selfElement', value: '炎' }]);
   assert.deepEqual(realAreaTop.action, { type: 'returnAreaEnchantToDeck', params: { target: 'opponent', position: 'top' } });
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.chronos.position = 3;
+  G.players[0].battleZone = createInstance('1st_9', true);
+  G.players[1].hand = [createInstance('1st_1', true), createInstance('1st_3', true)];
+  G.players[1].powerCharger = fivePowerCards();
+
+  const choices = aiSelectCards(G, 1, 'hard');
+  assert.equal(choices[0]?.handIndex, 1);
+  assert.equal(choices[0]?.slot, 'A');
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.chronos.position = 3;
+  G.players[0].battleZone = createInstance('1st_9', true);
+  G.players[1].hand = [createInstance('1st_3', true), createInstance('1st_9', true)];
+
+  const choices = aiSelectCards(G, 1, 'hard');
+  assert.equal(choices[0]?.handIndex, 1);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.chronos.position = 3;
+  G.lastBattleResult = { winner: 0, damage: 20, winnerAttack: 30, loserAttack: 10 };
+  G.players[0].battleZone = createInstance('1st_9', true);
+  G.players[1].hand = [createInstance('1st_9', true), createInstance('1st_3', true)];
+  G.players[1].powerCharger = fivePowerCards();
+
+  const choices = aiSelectCards(G, 1, 'hard');
+  assert.deepEqual(choices, [
+    { handIndex: 1, slot: 'A' },
+    { handIndex: 0, slot: 'B' },
+  ]);
 }
 
 {
