@@ -6,8 +6,8 @@ Digital implementation of ZUTOMAYO CARD for local play, AI practice, and online 
 
 - Frontend: Vite, React, TypeScript, React Router.
 - Game engine: boardgame.io with an explicit step-based `GameState` machine.
-- Game server: boardgame.io server in [src/server.ts](/private/tmp/zc-docs/src/server.ts) on port `3000`.
-- API server: REST API in [api/server.cjs](/private/tmp/zc-docs/api/server.cjs) with SQLite via `better-sqlite3` on port `3001`.
+- Game server: boardgame.io server in [src/server.ts](src/server.ts) on port `3000`.
+- API server: REST API in [api/server.cjs](api/server.cjs) with SQLite via `better-sqlite3` on port `3001`.
 - Deployment: Docker Compose with `game` and `api` services.
 - Production host target: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
 
@@ -19,7 +19,7 @@ janken -> mulligan -> initialSet -> turnSet -> effectOrder -> turnSet/gameOver
 
 ## Features / 功能
 
-- 422 cards in [cards.json](/private/tmp/zc-docs/cards.json), with images served from `https://r2.dan.tw/cards/...`.
+- 422 cards in [cards.json](cards.json), with images served from `https://r2.dan.tw/cards/...`.
 - 250 cards with effect text. Current parser audit: 238 parsed lines out of 267 effect lines, with 49 parsed-but-partial lines still needing executor review.
 - Six UI languages: `zh-TW`, `zh-HK`, `zh-CN`, `ja`, `en`, `ko`.
 - Local two-player mode, online multiplayer rooms, and AI practice.

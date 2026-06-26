@@ -28,7 +28,7 @@ Out of scope for this document:
 - Area Enchant expiry or timing windows when the purpose is to execute a card effect;
 - continuous/replacement modifiers that only exist because of specific card effects.
 
-## Priority 1 — Confirm exact Chronos board mapping
+## Priority 1 — Confirm exact Chronos board mapping ✅ DONE
 
 Problem:
 
@@ -75,7 +75,7 @@ Do not:
 - guess the board from current implementation;
 - rely only on visual appearance without recording the source.
 
-## Priority 2 — Reconnect / resume UX for online rooms
+## Priority 2 — Reconnect / resume UX for online rooms ✅ DONE
 
 Problem:
 
@@ -116,7 +116,7 @@ Do not:
 - store secrets beyond boardgame.io player credentials needed for the room;
 - bypass `playerView` filtering.
 
-## Priority 3 — Server-side deck storage and cross-device deck sync
+## Priority 3 — Server-side deck storage and cross-device deck sync ⚠️ API DONE, FRONTEND PENDING
 
 Problem:
 
@@ -155,7 +155,7 @@ Do not:
 - make card-effect changes;
 - add a database dependency without confirming the persistence direction.
 
-## Priority 4 — Authenticated match ownership, if accounts return
+## Priority 4 — Authenticated match ownership, if accounts return ⚠️ API DONE, FRONTEND PENDING
 
 Problem:
 
@@ -194,7 +194,7 @@ Do not:
 - weaken room credentials;
 - conflate this with card-effect automation.
 
-## Priority 5 — Server leaderboard and cross-device match history
+## Priority 5 — Server leaderboard and cross-device match history ✅ DONE
 
 Problem:
 
@@ -276,7 +276,7 @@ Do not:
 - rely on human-readable `G.log` alone as authoritative replay;
 - include raw hidden state in client-visible logs.
 
-## Priority 7 — Product polish around online room lifecycle
+## Priority 7 — Product polish around online room lifecycle ⚠️ PARTIAL
 
 Problem:
 

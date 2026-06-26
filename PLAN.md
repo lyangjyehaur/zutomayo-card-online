@@ -22,8 +22,8 @@ Current status for the ZUTOMAYO CARD Online implementation. This file tracks pro
 ## Current Baseline / 目前基準
 
 - Frontend: Vite + React + TypeScript + React Router.
-- Game server: [src/server.ts](/private/tmp/zc-docs/src/server.ts), boardgame.io, port `3000`.
-- API server: [api/server.cjs](/private/tmp/zc-docs/api/server.cjs), Node HTTP + SQLite via `better-sqlite3`, port `3001`.
+- Game server: [src/server.ts](src/server.ts), boardgame.io, port `3000`.
+- API server: [api/server.cjs](api/server.cjs), Node HTTP + SQLite via `better-sqlite3`, port `3001`.
 - Deployment target: Docker Compose on Debian 12 host `149.104.6.238`.
 - Card audit from `npm run rule:audit`: 422 total cards, 250 effect cards, 267 effect lines, 238 parsed lines, 29 unparsed lines, 49 parsed-but-partial lines.
 
