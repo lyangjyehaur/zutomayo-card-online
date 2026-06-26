@@ -26,13 +26,19 @@ import {
 import './App.css';
 import './components/InteractiveTutorial.css';
 
+type OnlineRoomErrorKey = 'online.roomFull' | 'online.roomNotFound' | 'online.connectionFailed';
+
+function onlineRoomError(key: OnlineRoomErrorKey): Error {
+  return new Error(key);
+}
+
 async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
   const response = await fetch('/games/zutomayo-card/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ numPlayers: 2, setupData }),
   });
-  if (!response.ok) throw new Error(t('lobby.onlineError'));
+  if (!response.ok) throw onlineRoomError('online.connectionFailed');
   const data = await response.json();
   return data.matchID;
 }
@@ -43,7 +49,11 @@ async function joinMatch(matchID: string, playerID: '0' | '1'): Promise<{ player
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ playerID, playerName: playerID === '0' ? t('player.zero') : t('player.one') }),
   });
-  if (!response.ok) throw new Error(t('lobby.onlineError'));
+  if (!response.ok) {
+    if (response.status === 404) throw onlineRoomError('online.roomNotFound');
+    if (response.status === 409) throw onlineRoomError('online.roomFull');
+    throw onlineRoomError('online.connectionFailed');
+  }
   return response.json();
 }
 
@@ -193,7 +203,16 @@ function RouterShell() {
     navigate('/play/ai', { state: { difficulty, autoStart: true } });
   };
 
-  const startOnline = async (existingID?: string) => {
+  const joinSharedOnlineRoom = useCallback(async (matchID: string): Promise<OnlineSession> => {
+    const { playerCredentials } = await joinMatch(matchID, '1');
+    const session = { matchID, playerID: '1' as const, playerCredentials };
+    setOnlineSession(session);
+    setResumePromptSession(null);
+    saveOnlineSession(session);
+    return session;
+  }, []);
+
+  const startOnline = async (existingID?: string): Promise<OnlineSession> => {
     const setupData = {
       ...onlineDeckName(0, deck0Name, serverDecks),
       ...onlineDeckName(1, deck1Name, serverDecks),
@@ -206,6 +225,7 @@ function RouterShell() {
     setResumePromptSession(null);
     saveOnlineSession(session);
     navigate(`/play/online/${encodeURIComponent(matchID)}`, { state: { freshOnlineSession: true } });
+    return session;
   };
 
   const clearOnlineSession = useCallback(() => {
@@ -273,7 +293,13 @@ function RouterShell() {
           <Route path="/play/ai" element={<AIGamePage deck0Name={deck0} deck1Name={deck1} />} />
           <Route
             path="/play/online/:matchID"
-            element={<OnlineGamePage session={onlineSession} onClearSession={clearOnlineSession} />}
+            element={(
+              <OnlineGamePage
+                session={onlineSession}
+                onClearSession={clearOnlineSession}
+                onJoinSharedRoom={joinSharedOnlineRoom}
+              />
+            )}
           />
           <Route
             path="/deck-builder"
