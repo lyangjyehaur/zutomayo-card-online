@@ -1,8 +1,30 @@
 services:
-  zutomayo-card:
-    build: .
+  game:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
+      - NODE_ENV=production
+    volumes:
+      - game-data:/data
     restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - API_PORT=3001
+      - DB_PATH=/data/zutomayo.db
+    volumes:
+      - api-data:/data
+    restart: unless-stopped
+
+volumes:
+  game-data:
+  api-data:

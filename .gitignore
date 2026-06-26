@@ -4,3 +4,4 @@ dist/
 public/cards/
 dist-server/
 *.tsbuildinfo
+api/node_modules/
