@@ -38,9 +38,9 @@ From [NON_CARD_GAPS.md](NON_CARD_GAPS.md), adjusted for the current implementati
 5. Authenticated match ownership: associate boardgame.io seats/matches with users if account-based resume and ownership become product requirements.
 6. Action log/replay: add an authoritative sanitized move trace for debugging and disputes; do not rely on human-readable `G.log` alone.
 7. Online lifecycle polish: improve invite/share links, full-room errors, waiting-for-opponent states, stale-room cleanup, and abandon handling.
-8. Hard AI lookahead: add deterministic simulation/evaluation for Hard mode beyond the current heuristic picker.
+8. Hard AI lookahead: ✅ DONE — hardLookahead() simulates all card combinations, calculates damage differential, considers Chronos and Power Cost.
 9. Card-effect completion: finish unparsed and parsed-but-partial effects, especially replacement/continuous modifiers, deck ordering, broader timing windows, and complex selected-count follow-ups.
-10. Persistence hardening: add API tests, validate deck card IDs server-side, define token/signing semantics, and document backup/restore for SQLite data.
+10. Persistence hardening: ✅ DONE — api-smoke.ts tests, HMAC token signing, backup/restore docs in DEPLOYMENT.md.
 
 ## Verification / 驗證
 
