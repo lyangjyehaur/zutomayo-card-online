@@ -90,6 +90,10 @@ export interface PendingAbyssToDeckBottomPayload {
   shuffle: boolean;
 }
 
+export interface PendingOpponentPowerCharacterSwapPayload {
+  opponentPlayer: PlayerIndex;
+}
+
 export interface PendingChoiceBase {
   id: string;
   player: PlayerIndex;
@@ -111,6 +115,10 @@ export type PendingChoice =
   | (PendingChoiceBase & {
       type: 'abyssToDeckBottomOrLose';
       payload: PendingAbyssToDeckBottomPayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'opponentPowerCharacterSwap';
+      payload: PendingOpponentPowerCharacterSwapPayload;
     })
   | (PendingChoiceBase & {
       type: 'clockPosition';
@@ -171,6 +179,7 @@ export interface GameState {
   lastChoiceSelectionCount: [number | null, number | null];
   timingEvents: TimingEvent[];
   swappedCardsThisTurn: [CardInstance[], CardInstance[]];
+  suppressedEffectCardIdsThisTurn: string[];
   previousTurnCharacterElements: [Element | null, Element | null];
   jankenChoices: [JankenChoice | null, JankenChoice | null];
   mulliganUsed: [boolean, boolean];

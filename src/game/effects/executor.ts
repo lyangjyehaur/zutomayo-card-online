@@ -8,11 +8,18 @@ import type {
   PendingChoiceDestinationZone,
   PendingEffect,
   PendingEffectSource,
+  PendingOpponentPowerCharacterSwapPayload,
   PlayerIndex,
 } from '../types';
 import type { ParsedEffect, Condition } from './types';
 import { getCardDef } from '../cards/loader';
-import { legalCardMoveCards, relativePlayer, type RelativeChoicePlayer } from './choices';
+import {
+  isCharacterCard,
+  legalCardMoveCards,
+  legalOpponentPowerCharacterSwapCards,
+  relativePlayer,
+  type RelativeChoicePlayer,
+} from './choices';
 
 function power(G: GameState, player: PlayerIndex): number {
   return G.players[player].powerCharger.reduce(
@@ -141,6 +148,7 @@ export function collectTurnEffects(
     const playedIds = new Set(playedCards[player].map(card => card.instanceId));
     const candidates = [...playedCards[player], G.players[player].battleZone, G.players[player].setZoneC]
       .filter((card): card is CardInstance => card !== null)
+      .filter(card => !(G.suppressedEffectCardIdsThisTurn ?? []).includes(card.instanceId))
       .filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
     for (const card of candidates) {
       const definition = getCardDef(card.defId);
@@ -400,6 +408,31 @@ export function executeEffect(
         return { success: true, message: 'Pending Abyss payment selection' };
       }
 
+      if (effect.action.params.choiceType === 'opponentPowerCharacterSwap') {
+        if (!isCharacterCard(opponent.battleZone)) {
+          return { success: false, message: 'No opposing Battle Zone Character' };
+        }
+        const payload: PendingOpponentPowerCharacterSwapPayload = { opponentPlayer: opponentIndex };
+        const options = legalOpponentPowerCharacterSwapCards(G, payload).map(card => ({
+          id: card.instanceId,
+          label: getCardDef(card.defId)?.name ?? card.defId,
+          cardInstanceId: card.instanceId,
+          cardDefId: card.defId,
+        }));
+        if (options.length === 0) return { success: false, message: 'No legal cards for choice' };
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'opponentPowerCharacterSwap',
+          min: 1,
+          max: 1,
+          prompt: effect.rawText,
+          payload,
+          options,
+        };
+        return { success: true, message: 'Pending opponent Power Charger Character swap' };
+      }
+
       if (effect.action.params.choiceType === 'clockPosition') {
         G.pendingChoice = {
           id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
@@ -465,6 +498,8 @@ export function executeEffect(
     case 'noEffect':
       G.modifiers.effectsDisabled[opponentIndex] = true;
       return { success: true, message: 'Disable opponent effects this turn' };
+    case 'suppressEffectActivation':
+      return { success: true, message: 'Swapped-in Character effect suppression clause' };
     case 'addSettableCard':
       return { success: false, message: 'Optional extra-set effects require a card-specific choice flow' };
   }

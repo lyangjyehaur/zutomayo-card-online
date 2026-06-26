@@ -18,7 +18,7 @@ import {
   setupGame,
   submitPendingChoice,
 } from '../src/game/GameLogic';
-import { executeEffect, processTurnEffects } from '../src/game/effects/executor';
+import { collectTurnEffects, executeEffect, processTurnEffects } from '../src/game/effects/executor';
 import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
 import type { GameState } from '../src/game/types';
 import type { ParsedEffect } from '../src/game/effects';
@@ -553,6 +553,24 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   });
   assert.deepEqual(parsedCardEffect('4th_6').action, abyssFourPayment.action);
 
+  const opponentPowerCharacterSwap = parseEffect('相手のパワーチャージャーのキャラクターを１枚選び、バトルゾーンのキャラクターと入れ替える。');
+  assert.ok(opponentPowerCharacterSwap);
+  assert.deepEqual(opponentPowerCharacterSwap.action, {
+    type: 'requestChoice',
+    params: { choiceType: 'opponentPowerCharacterSwap' },
+  });
+
+  const swappedInSuppression = parseEffect('この効果で出したキャラクターの効果は発動しない');
+  assert.ok(swappedInSuppression);
+  assert.deepEqual(swappedInSuppression.action, {
+    type: 'suppressEffectActivation',
+    params: { scope: 'thisEffectSwappedInCharacter' },
+  });
+
+  const fourthSixEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('4th_6') ?? [];
+  assert.deepEqual(fourthSixEffects[1]?.action, opponentPowerCharacterSwap.action);
+  assert.deepEqual(fourthSixEffects[2]?.action, swappedInSuppression.action);
+
   const abyssVariablePayment = parseEffect('アビスのカードを１枚以上選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。');
   assert.ok(abyssVariablePayment);
   assert.deepEqual(abyssVariablePayment.action, {
@@ -814,6 +832,84 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   noLegalPowerState.players[1].powerCharger = [createInstance('1st_9', true)];
   assert.deepEqual(executeEffect(powerTwoToDeck, noLegalPowerState, 0), { success: false, message: 'No legal cards for choice' });
   assert.equal(noLegalPowerState.pendingChoice, null);
+
+  const opponentSwapState = preparedState();
+  const battleCharacter = createInstance('1st_9', false);
+  const powerCharacter = createInstance('1st_13', false);
+  const powerNonCharacter = createInstance('1st_5', true);
+  opponentSwapState.players[1].battleZone = battleCharacter;
+  opponentSwapState.players[1].powerCharger = [powerNonCharacter, powerCharacter];
+  opponentSwapState.pendingEffects[0] = [{
+    id: 'keep-window',
+    player: 0,
+    cardInstanceId: 'keep-window-card',
+    cardDefId: '1st_9',
+    rawText: boost.rawText,
+    effect: boost,
+    source: 'played',
+  }];
+  opponentSwapState.pendingEffects[1] = [{
+    id: 'stale-swapped-in',
+    player: 1,
+    cardInstanceId: powerCharacter.instanceId,
+    cardDefId: powerCharacter.defId,
+    rawText: boost.rawText,
+    effect: boost,
+    source: 'battleZone',
+  }];
+  assert.equal(executeEffect(opponentPowerCharacterSwap, opponentSwapState, 0).success, true);
+  assert.equal(opponentSwapState.pendingChoice?.type, 'opponentPowerCharacterSwap');
+  assert.deepEqual(opponentSwapState.pendingChoice?.options.map(option => option.cardInstanceId), [powerCharacter.instanceId]);
+  assert.equal(submitPendingChoice(opponentSwapState, 1, [powerCharacter.instanceId], noEffects), false);
+  assert.equal(submitPendingChoice(opponentSwapState, 0, [], noEffects), false);
+  assert.equal(submitPendingChoice(opponentSwapState, 0, [powerCharacter.instanceId, powerCharacter.instanceId], noEffects), false);
+  assert.equal(submitPendingChoice(opponentSwapState, 0, [powerNonCharacter.instanceId], noEffects), false);
+  assert.equal(submitPendingChoice(opponentSwapState, 0, [powerCharacter.instanceId], noEffects), true);
+  assert.equal(opponentSwapState.players[1].battleZone?.instanceId, powerCharacter.instanceId);
+  assert.deepEqual(
+    opponentSwapState.players[1].powerCharger.map(card => card.instanceId),
+    [powerNonCharacter.instanceId, battleCharacter.instanceId],
+  );
+  assert.equal(powerCharacter.faceUp, true);
+  assert.equal(battleCharacter.faceUp, true);
+  assert.deepEqual(opponentSwapState.swappedCardsThisTurn[1].map(card => card.instanceId), [powerCharacter.instanceId]);
+  assert.ok(opponentSwapState.suppressedEffectCardIdsThisTurn.includes(powerCharacter.instanceId));
+  assert.equal(opponentSwapState.pendingEffects[1].some(effect => effect.cardInstanceId === powerCharacter.instanceId), false);
+
+  const missingBattleSwapState = preparedState();
+  const missingBattlePower = createInstance('1st_13', true);
+  missingBattleSwapState.players[1].battleZone = null;
+  missingBattleSwapState.players[1].powerCharger = [missingBattlePower];
+  assert.equal(executeEffect(opponentPowerCharacterSwap, missingBattleSwapState, 0).success, false);
+  assert.equal(missingBattleSwapState.pendingChoice, null);
+  assert.deepEqual(missingBattleSwapState.players[1].powerCharger.map(card => card.instanceId), [missingBattlePower.instanceId]);
+
+  const noLegalSwapState = preparedState();
+  const noLegalBattle = createInstance('1st_9', true);
+  const noLegalPower = createInstance('1st_5', true);
+  noLegalSwapState.players[1].battleZone = noLegalBattle;
+  noLegalSwapState.players[1].powerCharger = [noLegalPower];
+  assert.equal(executeEffect(opponentPowerCharacterSwap, noLegalSwapState, 0).success, false);
+  assert.equal(noLegalSwapState.pendingChoice, null);
+  assert.equal(noLegalSwapState.players[1].battleZone?.instanceId, noLegalBattle.instanceId);
+  assert.deepEqual(noLegalSwapState.players[1].powerCharger.map(card => card.instanceId), [noLegalPower.instanceId]);
+
+  const suppressionCollectState = preparedState();
+  const suppressedBattle = createInstance('4th_73', true);
+  const unsuppressedPlayed = createInstance('4th_55', true);
+  suppressionCollectState.players[0].battleZone = suppressedBattle;
+  suppressionCollectState.players[0].powerCharger = [createInstance('1st_13', true)];
+  suppressionCollectState.suppressedEffectCardIdsThisTurn = [suppressedBattle.instanceId];
+  const collectedSuppressionEffects = collectTurnEffects(
+    suppressionCollectState,
+    new Map([
+      ['4th_73', [parsedCardEffect('4th_73')]],
+      ['4th_55', [parsedCardEffect('4th_55')]],
+    ]),
+    [[unsuppressedPlayed], []],
+  );
+  assert.equal(collectedSuppressionEffects[0].some(effect => effect.cardInstanceId === suppressedBattle.instanceId), false);
+  assert.equal(collectedSuppressionEffects[0].some(effect => effect.cardInstanceId === unsuppressedPlayed.instanceId), true);
 
   const fixedAdvance = parseEffect('昼なら、時計を２つ進める');
   assert.deepEqual(fixedAdvance?.conditions, [{ type: 'chronos', value: 'day' }]);

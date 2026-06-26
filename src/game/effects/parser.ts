@@ -283,6 +283,24 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
+  if (text === '相手のパワーチャージャーのキャラクターを１枚選び、バトルゾーンのキャラクターと入れ替える。') {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'opponentPowerCharacterSwap',
+      },
+    };
+  }
+
+  if (text === 'この効果で出したキャラクターの効果は発動しない') {
+    return {
+      type: 'suppressEffectActivation',
+      params: {
+        scope: 'thisEffectSwappedInCharacter',
+      },
+    };
+  }
+
   // "アビスのカードをX枚/1枚以上選び、(裏向きにして混ぜ、)デッキの底に置く。そうしない場合、ゲームに敗北する。"
   const abyssToDeckBottomOrLoseMatch = text.match(/^アビスのカードを([0-9０-９]+)枚(以上)?選び、(?:(裏向きにして)(混ぜ、)?)?デッキの底に置く[。.]そうしない場合、ゲームに敗北する[。.]?/);
   if (abyssToDeckBottomOrLoseMatch) {

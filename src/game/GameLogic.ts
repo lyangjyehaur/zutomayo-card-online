@@ -1,6 +1,11 @@
 import type { ParsedEffect } from './effects';
 import { collectTurnEffects, executeEffect, getTurnEffectPlayerOrder } from './effects/executor';
-import { matchesCardMoveFilter, moveCardForChoice, sourceCards } from './effects/choices';
+import {
+  isCharacterCard,
+  matchesCardMoveFilter,
+  moveCardForChoice,
+  sourceCards,
+} from './effects/choices';
 import type {
   CardInstance,
   ChronosTime,
@@ -199,6 +204,7 @@ export function setupGame(
     lastChoiceSelectionCount: [null, null],
     timingEvents: [],
     swappedCardsThisTurn: [[], []],
+    suppressedEffectCardIdsThisTurn: [],
     previousTurnCharacterElements: [null, null],
     jankenChoices: [null, null],
     mulliganUsed: [false, false],
@@ -446,6 +452,7 @@ function timingTrigger(event: TimingEvent): ParsedEffect['trigger'] | null {
 function timingCandidateCards(G: GameState, player: PlayerIndex): CardInstance[] {
   return [G.players[player].battleZone, G.players[player].setZoneC]
     .filter((card): card is CardInstance => card !== null)
+    .filter(card => !(G.suppressedEffectCardIdsThisTurn ?? []).includes(card.instanceId))
     .filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
 }
 
@@ -561,6 +568,16 @@ function clearPendingChoice(G: GameState): void {
   G.pendingChoice = null;
 }
 
+function suppressEffectCardForTurn(G: GameState, cardInstanceId: string): void {
+  if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
+  if (!G.suppressedEffectCardIdsThisTurn.includes(cardInstanceId)) {
+    G.suppressedEffectCardIdsThisTurn.push(cardInstanceId);
+  }
+  for (const index of playerIndexes) {
+    G.pendingEffects[index] = G.pendingEffects[index].filter(effect => effect.cardInstanceId !== cardInstanceId);
+  }
+}
+
 function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
   resolveTimingEvent(G, parsedEffects, { type: 'turnEnd' });
   if (G.step === 'gameOver') return;
@@ -585,6 +602,7 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
   clearPendingEffects(G);
   clearPendingChoice(G);
   G.swappedCardsThisTurn = [[], []];
+  G.suppressedEffectCardIdsThisTurn = [];
   G.modifiers = emptyModifiers();
   G.turnNumber++;
   G.step = 'turnSet';
@@ -724,6 +742,24 @@ export function submitPendingChoice(
     for (const optionId of optionIds) {
       if (!moveCardForChoice(G, choice.payload, optionId)) return false;
     }
+  }
+  if (choice.type === 'opponentPowerCharacterSwap') {
+    if (choice.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) return false;
+    const opponent = G.players[choice.payload.opponentPlayer];
+    const battleZoneCard = opponent.battleZone;
+    if (!isCharacterCard(battleZoneCard)) return false;
+    const selectedIndex = opponent.powerCharger.findIndex(card => card.instanceId === optionIds[0]);
+    if (selectedIndex < 0) return false;
+    const selected = opponent.powerCharger[selectedIndex];
+    if (!isCharacterCard(selected)) return false;
+
+    opponent.powerCharger.splice(selectedIndex, 1);
+    selected.faceUp = true;
+    battleZoneCard.faceUp = true;
+    opponent.battleZone = selected;
+    opponent.powerCharger.push(battleZoneCard);
+    G.swappedCardsThisTurn[choice.payload.opponentPlayer].push(selected);
+    suppressEffectCardForTurn(G, selected.instanceId);
   }
   if (choice.type === 'abyssToDeckBottomOrLose') {
     const abyssIds = new Set(playerState.abyss.map(card => card.instanceId));

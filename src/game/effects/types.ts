@@ -77,5 +77,6 @@ export type ActionType =
   | 'returnAreaEnchantToDeck' // Return Area Enchant to deck
   | 'moveSelfAreaEnchant' // Move own Area Enchant to a zone
   | 'requestChoice'      // Ask the owner to submit a validated choice
+  | 'suppressEffectActivation' // Narrow no-op marker for a card-specific suppression clause
   | 'noEffect'          // Disable opponent effects
   | 'addSettableCard';  // Can set extra card

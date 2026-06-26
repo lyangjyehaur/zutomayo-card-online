@@ -3,6 +3,7 @@ import type {
   GameState,
   PendingCardMovePayload,
   PendingChoiceCardZone,
+  PendingOpponentPowerCharacterSwapPayload,
   PlayerIndex,
   PlayerState,
 } from '../types';
@@ -29,6 +30,17 @@ export function matchesCardMoveFilter(card: CardInstance, payload: PendingCardMo
 
 export function legalCardMoveCards(G: GameState, payload: PendingCardMovePayload): CardInstance[] {
   return sourceCards(G, payload).filter(card => matchesCardMoveFilter(card, payload));
+}
+
+export function isCharacterCard(card: CardInstance | null): card is CardInstance {
+  return !!card && getCardDef(card.defId)?.type === 'Character';
+}
+
+export function legalOpponentPowerCharacterSwapCards(
+  G: GameState,
+  payload: PendingOpponentPowerCharacterSwapPayload,
+): CardInstance[] {
+  return G.players[payload.opponentPlayer].powerCharger.filter(isCharacterCard);
 }
 
 export function moveCardForChoice(G: GameState, payload: PendingCardMovePayload, instanceId: string): boolean {
