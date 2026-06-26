@@ -18,6 +18,7 @@ CARD_EFFECT_AUDIT_V2.md
 NON_CARD_GAPS.md
 REMAINING_GAPS.md
 RULE_GAP_AUDIT.md
+RULE_ENGINE_AUDIT*.md
 
 # Codex internal design docs
 docs/superpowers/
