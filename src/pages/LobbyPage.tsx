@@ -31,6 +31,9 @@ type AuthUser = {
   email: string;
   nickname: string;
   elo: number;
+  matchCount?: number;
+  wins?: number;
+  winRate?: number;
 };
 
 const DECK_COPY: Record<string, { nameKey: Parameters<typeof t>[0]; descKey: Parameters<typeof t>[0] }> = {
@@ -194,6 +197,13 @@ function onlineErrorMessage(error: unknown): string {
   return t('online.connectionFailed');
 }
 
+function profileStats(user: AuthUser): { matchCount: number; wins: number; winRate: number } {
+  const matchCount = user.matchCount ?? 0;
+  const wins = user.wins ?? 0;
+  const winRate = user.winRate ?? (matchCount > 0 ? Math.round((wins / matchCount) * 100) : 0);
+  return { matchCount, wins, winRate };
+}
+
 function buildOnlineRoomUrl(matchID: string): string {
   const path = `/play/online/${encodeURIComponent(matchID)}`;
   if (typeof window === 'undefined') return path;
@@ -246,9 +256,15 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
     setStatus('');
 
     try {
-      const nextUser = mode === 'login'
+      const authUser = mode === 'login'
         ? await login(email, password)
         : await register(email, password, nickname);
+      let nextUser = authUser as AuthUser;
+      try {
+        nextUser = await getProfile();
+      } catch {
+        // Login/register responses are enough to keep guest fallback and auth state usable.
+      }
       setUser(nextUser);
       setStatus(mode === 'login' ? t('auth.loginSuccess') : t('auth.registerSuccess'));
       setExpanded(false);
@@ -262,6 +278,7 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
   };
 
   const handleLogout = () => {
+    if (typeof window !== 'undefined' && !window.confirm(t('auth.logoutConfirm'))) return;
     logoutAccount();
     setUser(null);
     setStatus('');
@@ -271,11 +288,16 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
   };
 
   if (user) {
+    const stats = profileStats(user);
     return (
       <section className="auth-section logged-in" aria-label={user.nickname || t('auth.guest')}>
         <div className="auth-user-badge">
           <strong>{user.nickname || t('auth.guest')}</strong>
-          <span>ELO {user.elo}</span>
+          <div className="auth-profile-stats">
+            <span>ELO {user.elo}</span>
+            <span>{t('auth.winRate')} {stats.winRate}%</span>
+            <span>{t('auth.wins')} {stats.wins}/{stats.matchCount}</span>
+          </div>
         </div>
         <button className="secondary-action auth-logout" type="button" onClick={handleLogout}>
           {t('auth.logout')}

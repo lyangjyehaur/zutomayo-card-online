@@ -139,9 +139,9 @@ Current parser snapshot from the latest audit:
 - total cards: 422;
 - cards with effect text: 250;
 - effect text lines: 267;
-- parsed lines: 247;
-- unparsed lines: 20;
-- parsed-but-partial heuristic: 49;
+- parsed lines: 257;
+- unparsed lines: 10;
+- parsed-but-partial heuristic: 55;
 - false `drawCards` positives: 0.
 
 Important caveat: parsed does not always mean fully correct execution. Some parsed effects only cover the first deterministic part of a longer effect, or intentionally skip a timing/choice clause.

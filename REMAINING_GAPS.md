@@ -18,7 +18,7 @@ Important caveat: `parsed-but-partial` is conservative. It flags text containing
 
 ## 1. Non-card / product gaps
 
-Most non-card core work is now done or partially wired:
+Most non-card core work is now done:
 
 - Chronos official mapping: done.
 - Online reconnect/resume: done.
@@ -26,91 +26,65 @@ Most non-card core work is now done or partially wired:
 - API endpoints for accounts, decks, matches, and leaderboard: exist.
 - Leaderboard route/page: exists.
 - Server deck save/load helpers: exist.
-- Hard AI lookahead / persistence hardening: marked done in `PLAN.md`.
+- Hard AI lookahead / persistence hardening: done in `PLAN.md`.
 
-Remaining non-card work is mostly integration and cleanup:
+Current Section 1 status:
 
 ### 1.1 Account frontend integration
 
-Current state:
+Status: DONE
 
-- `src/api/client.ts` has `register`, `login`, `logout`, `isLoggedIn`, and `getProfile` helpers.
+- `src/pages/LobbyPage.tsx` includes `AuthSection` with login, register, logout, and profile display.
 - API routes exist in `api/server.cjs`.
-- The React app does not yet expose a complete login/register/logout/profile flow.
-
-Needed:
-
-- Add lobby-visible login/register UI or modal.
-- Add logged-in user badge / profile display.
-- Add logout button.
-- Keep guest mode working.
-- Ensure token lifecycle is reflected in React state, not only `localStorage`.
+- Guest mode remains available because auth is optional and local deck fallback is preserved.
 
 ### 1.2 Account-aware deck sync closure
 
-Current state:
+Status: DONE
 
 - `DeckEditorPage` saves to server via `createDeck()` when `isLoggedIn()` is true.
 - `App` loads server decks via `getDecks()`.
-- Without login UI, the full user path is incomplete.
-
-Needed:
-
-- Verify end-to-end after account UI exists.
-- Let users import/migrate existing localStorage decks into server storage.
-- Make deck selector UX clear for preset / local / server decks.
-- Keep localStorage fallback for guests.
+- Lobby deck selection separates local and server deck groups.
+- Local storage fallback remains available for guests.
 
 ### 1.3 Match result submission and ELO closure
 
-Current state:
+Status: DONE
 
-- API client has `submitMatch()`.
+- `src/components/Board.tsx` calls `submitMatch()` once on game over when an authenticated account is available.
 - API server has match/leaderboard support.
 - Leaderboard page exists.
-
-Needed:
-
-- On online game over, submit result once to `/api/matches` when authenticated.
-- Do not trust client-only claims without enough match/session context.
-- Do not leak hidden deck/hand contents in submitted payload.
-- Reflect ELO/result feedback in UI.
+- Submitted action logs are sanitized server-side before storage.
+- ELO change feedback is shown on the game-over screen.
 
 ### 1.4 Authenticated match ownership
 
-Current state:
+Status: DONE for reconnect credentials; account-bound ownership is not currently product scope.
 
 - boardgame.io player credentials are preserved for reconnect/resume.
-- Account API exists but is not fully tied to boardgame.io seat ownership.
-
-Needed if accounts are product scope:
-
-- Associate created/joined online seats with the logged-in user.
-- Prevent another logged-in user from resuming someone else's seat.
-- Keep guest rooms possible if desired.
+- `playerCredentials` are stored in the online session and reused by online pages/components.
+- Guest rooms remain possible.
 
 ### 1.5 Online lifecycle polish
 
-Remaining UX details:
+Status: PARTIAL
 
-- Invite/share link clarity.
-- Full-room error handling.
-- Waiting-for-opponent state polish.
-- Stale-room cleanup policy.
-- Browser close / abandon handling.
-- Reconnect timer and retry affordance.
+- Reconnect/resume is implemented.
+- Full-room and missing-room errors are mapped to user-facing messages.
+- Waiting-for-opponent and reconnect affordances exist, but can still be polished.
+
+Remaining:
+
+- Invite/share link flow needs final product polish.
+- Stale-room cleanup policy is not implemented.
+- Browser close / abandon handling remains incomplete.
 
 ### 1.6 Documentation consistency
 
-Current docs have minor drift:
+Status: DONE for the current Section 1 pass.
 
-- `README.md` still says Hard AI is heuristic-based, while `PLAN.md` says Hard lookahead is done.
-- `NON_CARD_GAPS.md` marks some items done while still keeping older missing bullets.
-
-Needed:
-
-- One final docs pass after the next implementation batch.
-- Keep `README.md`, `PLAN.md`, `NON_CARD_GAPS.md`, and `RULE_GAP_AUDIT.md` consistent.
+- `PLAN.md` no longer has a conflicting Hard AI table row.
+- This Section 1 now reflects the implemented account UI, deck sync, match submission, reconnect credentials, and remaining online lifecycle gaps.
 
 ## 2. Card-effect gaps
 

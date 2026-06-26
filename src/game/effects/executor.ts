@@ -137,7 +137,11 @@ function loseByAbyssPaymentFailure(G: GameState, player: PlayerIndex, min: numbe
 }
 
 function isPersistentAreaEnchantEffect(card: CardInstance, effect: ParsedEffect): boolean {
-  return getCardDef(card.defId)?.type === 'Area Enchant' && effect.action.type === 'boostAttack';
+  return getCardDef(card.defId)?.type === 'Area Enchant' && [
+    'boostAttack',
+    'forceOwnAttackTime',
+    'setAllCardClocks',
+  ].includes(effect.action.type);
 }
 
 export function getTurnEffectPlayerOrder(G: GameState): [PlayerIndex, PlayerIndex] {
@@ -210,9 +214,17 @@ export function executeEffect(
     case 'boostAttack':
       G.modifiers.attack[player] += value;
       return { success: true, message: `Attack +${value}` };
+    case 'boostBothAttackByOwnHp':
+      G.modifiers.attack[player] += me.hp;
+      G.modifiers.attack[opponentIndex] += opponent.hp;
+      return { success: true, message: 'Both players gain attack equal to own HP' };
     case 'reduceAttack':
       G.modifiers.attack[opponentIndex] -= value;
       return { success: true, message: `Opponent attack -${value}` };
+    case 'setOpponentAttack':
+      if (!G.modifiers.attackSetTo) G.modifiers.attackSetTo = [null, null];
+      G.modifiers.attackSetTo[opponentIndex] = value;
+      return { success: true, message: `Opponent attack set to ${value}` };
     case 'heal':
       me.hp = Math.min(100, me.hp + value);
       return { success: true, message: `Heal ${value}` };
@@ -238,9 +250,25 @@ export function executeEffect(
     case 'swapAttack':
       G.modifiers.swapAttack[opponentIndex] = !G.modifiers.swapAttack[opponentIndex];
       return { success: true, message: 'Swap opponent day/night attack' };
+    case 'forceOwnAttackTime': {
+      const time = effect.action.params.value;
+      if (time !== 'day' && time !== 'night') return { success: false, message: 'Unsupported attack time override' };
+      if (!G.modifiers.attackTimeOverride) G.modifiers.attackTimeOverride = [null, null];
+      G.modifiers.attackTimeOverride[player] = time;
+      return { success: true, message: `Own attack uses ${time}` };
+    }
     case 'clockReset':
       G.chronos.position = G.chronosAtTurnStart;
       return { success: true, message: 'Reset Chronos' };
+    case 'clockSetFromTurnStartMinusOpponentClock': {
+      const clock = opponent.battleZone ? getCardDef(opponent.battleZone.defId)?.clock : undefined;
+      if (!Number.isInteger(clock)) return { success: false, message: 'No opposing character clock' };
+      G.chronos.position = normalizeChronosPosition(G.chronosAtTurnStart - Number(clock));
+      return { success: true, message: `Chronos set to turn start -${clock}` };
+    }
+    case 'setAllCardClocks':
+      G.modifiers.cardClockSetTo = value;
+      return { success: true, message: `All card clocks set to ${value}` };
     case 'clockSet':
       if (effect.action.params.value === 'any') {
         G.pendingChoice = {
@@ -331,6 +359,26 @@ export function executeEffect(
       }
       me.abyss.push(card);
       return { success: true, message: 'Move deck top to Abyss' };
+    }
+    case 'moveOpponentDeckTopByPowerCost': {
+      const minPowerCost = Number(effect.action.params.minPowerCost ?? 0);
+      if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
+      const card = opponent.deck[0];
+      card.faceUp = true;
+      const powerCost = getCardDef(card.defId)?.powerCost ?? 0;
+      if (powerCost >= minPowerCost) {
+        opponent.deck.shift();
+        opponent.powerCharger.push(card);
+        return { success: true, message: 'Move opposing deck top to Power Charger' };
+      }
+      return { success: true, message: 'Reveal opposing deck top' };
+    }
+    case 'revealOpponentHand': {
+      if (!G.revealedHandCardIds) G.revealedHandCardIds = [[], []];
+      const revealed = new Set(G.revealedHandCardIds[opponentIndex]);
+      for (const card of opponent.hand) revealed.add(card.instanceId);
+      G.revealedHandCardIds[opponentIndex] = [...revealed];
+      return { success: true, message: 'Reveal opposing hand' };
     }
     case 'returnAreaEnchantToDeck': {
       const card = opponent.setZoneC;
@@ -537,6 +585,34 @@ export function executeEffect(
           options,
         };
         return { success: true, message: 'Pending opponent Power Charger Character swap' };
+      }
+
+      if (effect.action.params.choiceType === 'handAbyssSwap') {
+        if (me.hand.length === 0 || me.abyss.length === 0) return { success: false, message: 'No legal cards for hand/Abyss swap' };
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'handAbyssSwap',
+          min: 2,
+          max: 2,
+          prompt: effect.rawText,
+          payload: {},
+          options: [
+            ...me.hand.map(card => ({
+              id: `hand:${card.instanceId}`,
+              label: `Hand: ${getCardDef(card.defId)?.name ?? card.defId}`,
+              cardInstanceId: card.instanceId,
+              cardDefId: card.defId,
+            })),
+            ...me.abyss.map(card => ({
+              id: `abyss:${card.instanceId}`,
+              label: `Abyss: ${getCardDef(card.defId)?.name ?? card.defId}`,
+              cardInstanceId: card.instanceId,
+              cardDefId: card.defId,
+            })),
+          ],
+        };
+        return { success: true, message: 'Pending hand/Abyss swap' };
       }
 
       if (effect.action.params.choiceType === 'clockPosition') {

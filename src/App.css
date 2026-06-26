@@ -356,11 +356,21 @@ button:disabled {
   white-space: nowrap;
 }
 
-.auth-user-badge span,
+.auth-profile-stats,
 .auth-status {
   color: var(--gold);
   font-size: 0.74rem;
   font-weight: 800;
+}
+
+.auth-profile-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.12rem 0.55rem;
+}
+
+.auth-profile-stats span {
+  white-space: nowrap;
 }
 
 .auth-status {

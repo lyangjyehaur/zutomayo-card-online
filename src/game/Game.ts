@@ -43,10 +43,11 @@ function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerI
   const player = G.players[owner];
   const isOwner = viewer === owner;
   if (isOwner) return { ...player, hand: [...player.hand], deck: [...player.deck] };
+  const revealedHandIds = new Set(G.revealedHandCardIds?.[owner] ?? []);
 
   return {
     ...player,
-    hand: player.hand.map((_, index) => hiddenCard(`hidden-p${owner}-hand-${index}`)),
+    hand: player.hand.map((card, index) => (revealedHandIds.has(card.instanceId) ? { ...card } : hiddenCard(`hidden-p${owner}-hand-${index}`))),
     deck: player.deck.map((_, index) => hiddenCard(`hidden-p${owner}-deck-${index}`)),
     setZoneA: redactHiddenCard(player.setZoneA, `hidden-p${owner}-set-a`),
     setZoneB: redactHiddenCard(player.setZoneB, `hidden-p${owner}-set-b`),

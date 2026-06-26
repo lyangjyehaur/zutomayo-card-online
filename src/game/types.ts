@@ -160,6 +160,10 @@ export type PendingChoice =
       payload: PendingOpponentPowerCharacterSwapPayload;
     })
   | (PendingChoiceBase & {
+      type: 'handAbyssSwap';
+      payload: Record<string, never>;
+    })
+  | (PendingChoiceBase & {
       type: 'clockPosition';
       payload: Record<string, never>;
     })
@@ -196,6 +200,9 @@ export interface LastBattleResult {
 
 export interface CombatModifiers {
   attack: [number, number];
+  attackSetTo: [number | null, number | null];
+  attackTimeOverride: [ChronosTime | null, ChronosTime | null];
+  cardClockSetTo: number | null;
   damageReduction: [number, number];
   swapAttack: [boolean, boolean];
   effectsDisabled: [boolean, boolean];
@@ -217,6 +224,7 @@ export interface GameState {
   pendingChoice: PendingChoice | null;
   lastChoiceSelectionCount: [number | null, number | null];
   timingEvents: TimingEvent[];
+  revealedHandCardIds: [string[], string[]];
   swappedCardsThisTurn: [CardInstance[], CardInstance[]];
   suppressedEffectCardIdsThisTurn: string[];
   previousTurnCharacterElements: [Element | null, Element | null];

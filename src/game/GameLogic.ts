@@ -103,6 +103,9 @@ function recordAction(
 export function emptyModifiers(): CombatModifiers {
   return {
     attack: [0, 0],
+    attackSetTo: [null, null],
+    attackTimeOverride: [null, null],
+    cardClockSetTo: null,
     damageReduction: [0, 0],
     swapAttack: [false, false],
     effectsDisabled: [false, false],
@@ -222,6 +225,7 @@ export function setupGame(
     pendingChoice: null,
     lastChoiceSelectionCount: [null, null],
     timingEvents: [],
+    revealedHandCardIds: [[], []],
     swappedCardsThisTurn: [[], []],
     suppressedEffectCardIdsThisTurn: [],
     previousTurnCharacterElements: [null, null],
@@ -377,7 +381,7 @@ export function revealCards(G: GameState): void {
 
 export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
   const total = G.setCardsThisTurn.flat().reduce(
-    (sum, card) => sum + (getCardDef(card.defId)?.clock ?? 0),
+    (sum, card) => sum + (G.modifiers.cardClockSetTo ?? getCardDef(card.defId)?.clock ?? 0),
     0,
   );
   const before = G.chronos.position;
@@ -464,8 +468,10 @@ export function getEffectiveAttack(card: CardInstance, G: GameState, player: num
   const def = getCardDef(card.defId);
   if (!def?.attack || getPlayerPower(G.players[index]) < def.powerCost) return 0;
   const time = getChronosTime(G);
-  const attackTime = G.modifiers.swapAttack[index] ? (time === 'night' ? 'day' : 'night') : time;
-  return Math.max(0, def.attack[attackTime] + G.modifiers.attack[index]);
+  const effectiveTime = G.modifiers.attackTimeOverride?.[index] ?? time;
+  const attackTime = G.modifiers.swapAttack[index] ? (effectiveTime === 'night' ? 'day' : 'night') : effectiveTime;
+  const baseAttack = G.modifiers.attackSetTo?.[index] ?? def.attack[attackTime];
+  return Math.max(0, baseAttack + G.modifiers.attack[index]);
 }
 
 function emptyParsedEffects(): Map<string, ParsedEffect[]> {
@@ -819,6 +825,22 @@ export function submitPendingChoice(
     for (const optionId of optionIds) {
       if (!moveCardForChoice(G, choice.payload, optionId)) return false;
     }
+  }
+  if (choice.type === 'handAbyssSwap') {
+    const handOption = optionIds.find(id => id.startsWith('hand:'));
+    const abyssOption = optionIds.find(id => id.startsWith('abyss:'));
+    if (!handOption || !abyssOption) return false;
+    const handId = handOption.slice('hand:'.length);
+    const abyssId = abyssOption.slice('abyss:'.length);
+    const handIndex = playerState.hand.findIndex(card => card.instanceId === handId);
+    const abyssIndex = playerState.abyss.findIndex(card => card.instanceId === abyssId);
+    if (handIndex < 0 || abyssIndex < 0) return false;
+    const [handCard] = playerState.hand.splice(handIndex, 1);
+    const [abyssCard] = playerState.abyss.splice(abyssIndex, 1);
+    handCard.faceUp = true;
+    abyssCard.faceUp = true;
+    playerState.hand.push(abyssCard);
+    playerState.abyss.push(handCard);
   }
   if (choice.type === 'opponentPowerCharacterSwap') {
     if (choice.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) return false;

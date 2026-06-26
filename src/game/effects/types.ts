@@ -65,19 +65,26 @@ export interface EffectAction {
 
 export type ActionType =
   | 'boostAttack'       // Attack +N
+  | 'boostBothAttackByOwnHp' // Both players gain attack equal to own HP
   | 'reduceAttack'      // Attack -N
+  | 'setOpponentAttack' // Set opposing attack to N
   | 'directDamage'      // Deal N damage to player
   | 'heal'              // Restore N HP
   | 'damageReduce'      // Reduce incoming damage by N
   | 'drawCards'         // Draw N cards
   | 'swapAttack'        // Swap night/day attack values
+  | 'forceOwnAttackTime' // Force own attack to day/night value
   | 'clockReset'        // Reset chronos to start-of-turn
   | 'clockSet'          // Set chronos to specific position
+  | 'clockSetFromTurnStartMinusOpponentClock' // Set Chronos to turn start minus opponent character clock
+  | 'setAllCardClocks'  // Set all card clock values to N
   | 'clockAdvance'      // Advance chronos by N
   | 'recoverFromAbyss'  // Pick card from abyss
   | 'sendToAbyss'       // Send card to abyss
   | 'millDeckToAbyss'   // Move cards from deck top to abyss
   | 'moveOwnDeckTopByPower' // Move own deck top to power/abyss by SEND TO POWER
+  | 'moveOpponentDeckTopByPowerCost' // Move opponent deck top by revealed power cost
+  | 'revealOpponentHand' // Reveal opponent's current hand
   | 'returnAreaEnchantToDeck' // Return Area Enchant to deck
   | 'moveSelfAreaEnchant' // Move own Area Enchant to a zone
   | 'requestChoice'      // Ask the owner to submit a validated choice

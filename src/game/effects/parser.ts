@@ -31,6 +31,28 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 
   if (text.length === 0) return null;
 
+  const opponentTurnStartDeckTopPowerCostMatch = text.match(/^相手はターンの開始時にデッキの一番上を公開する。パワーコストが([0-9０-９]+)以上のカードが山札から公開されたらパワーチャージャーに置く[。.]?$/);
+  if (opponentTurnStartDeckTopPowerCostMatch) {
+    return {
+      trigger: 'onTurnStart',
+      conditions: [],
+      action: {
+        type: 'moveOpponentDeckTopByPowerCost',
+        params: { minPowerCost: parseNum(opponentTurnStartDeckTopPowerCostMatch[1]), destination: 'powerCharger' },
+      },
+      rawText,
+    };
+  }
+
+  if (text.includes('お互いの自分のHPの分だけ攻撃力+')) {
+    return {
+      trigger: detectTrigger(text),
+      conditions: [],
+      action: { type: 'boostBothAttackByOwnHp', params: {} },
+      rawText,
+    };
+  }
+
   if (text.includes('相手のアビスにカードが置かれたとき') && /(アビス|パワーチャージャー)に置く/.test(text)) {
     return {
       trigger: 'onZoneEntered',
@@ -78,7 +100,7 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   // "パワーチャージャーからX枚まで選び、このカードの効果として使用する"
-  const powerChargerRecoverMatch = text.match(/パワーチャージャーから[（(]([^）)]+)[）)]のキャラクターを([0-9０-９]+)枚まで選び、このカードの効果として使用する/);
+  const powerChargerRecoverMatch = text.match(/パワーチャージャー(?:から|にある)[（(]([^）)]+)[）)]のキャラクターを([0-9０-９]+)枚(?:まで)?選び、このカードの効果として使用する/);
   if (powerChargerRecoverMatch) {
     return {
       trigger: 'onUse',
@@ -227,6 +249,16 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 // ===== Action Parser =====
 
 function parseAction(text: string): EffectAction | null {
+  if (text.includes('自分の攻撃力は常に昼の攻撃力')) {
+    return { type: 'forceOwnAttackTime', params: { value: 'day' } };
+  }
+  if (text.includes('自分の攻撃力は常に夜の攻撃力')) {
+    return { type: 'forceOwnAttackTime', params: { value: 'night' } };
+  }
+
+  const setAllCardClocksMatch = text.match(/^すべてのカードの時計を([0-9０-９]+)にする/);
+  if (setAllCardClocksMatch) return { type: 'setAllCardClocks', params: { value: parseNum(setAllCardClocksMatch[1]) } };
+
   // "相手のデッキの上から、それと同じ枚数をアビスに置く"
   if (text === '相手のデッキの上から、それと同じ枚数をアビスに置く') {
     return { type: 'millDeckToAbyss', params: { target: 'opponent', countFromLastChoice: true } };
@@ -244,7 +276,7 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "相手のエリアエンチャント(カード)を相手のデッキの上/底に置く"
-  const returnAreaEnchantMatch = text.match(/^相手のエリアエンチャント(?:カード)?を相手のデッキの(上|底)に置く[。.]?$/);
+  const returnAreaEnchantMatch = text.match(/^相手のエリアエンチャント(?:カード)?を(?:相手の)?デッキの(上|底)に(?:置く|戻し|戻す)/);
   if (returnAreaEnchantMatch) {
     return {
       type: 'returnAreaEnchantToDeck',
@@ -255,6 +287,9 @@ function parseAction(text: string): EffectAction | null {
   // "攻撃力+50"
   const boostMatch = text.match(/攻撃力(?:を)?[＋+]([0-9０-９]+)/);
   if (boostMatch) return { type: 'boostAttack', params: { value: parseNum(boostMatch[1]) } };
+
+  const setOpponentAttackMatch = text.match(/^相手の攻撃力を([0-9０-９]+)にする[。.]?$/);
+  if (setOpponentAttackMatch) return { type: 'setOpponentAttack', params: { value: parseNum(setOpponentAttackMatch[1]) } };
 
   // "攻撃力-30"
   const reduceMatch = text.match(/攻撃力(?:を)?[ー\-]([0-9０-９]+)/);
@@ -469,6 +504,14 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
+  if (/^相手の手札を公開する[。.]?$/.test(text)) {
+    return { type: 'revealOpponentHand', params: {} };
+  }
+
+  if (/^手札[1１]枚とアビスの好きなカード[1１]枚を入れ替える[。.]?$/.test(text)) {
+    return { type: 'requestChoice', params: { choiceType: 'handAbyssSwap' } };
+  }
+
   // "デッキの一番上のカードをパワーがあればパワーチャージャーに、なければアビスに置く"
   if (/^デッキの一番上のカードをパワーがあればパワーチャージャーに、?なければアビスに置く[。.]?$/.test(text)) {
     return { type: 'moveOwnDeckTopByPower', params: {} };
@@ -494,6 +537,10 @@ function parseAction(text: string): EffectAction | null {
   // "クロノスを好きな時間にする"
   if (text.includes('クロノスを好きな時間')) {
     return { type: 'requestChoice', params: { choiceType: 'clockPosition' } };
+  }
+
+  if (/^このターンのはじまりの時間から相手の時計分、?時間が戻る[。.]?$/.test(text)) {
+    return { type: 'clockSetFromTurnStartMinusOpponentClock', params: {} };
   }
 
   const clockAdvanceRangeMatch = text.match(/時計を([0-9０-９]+)～([0-9０-９]+)つまで進めてもよい/);
