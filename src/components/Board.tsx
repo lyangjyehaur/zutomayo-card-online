@@ -711,6 +711,7 @@ function PendingChoicePanel({ G, moves, playerID }: {
           <div className="effect-order-list">
             {choice.options.map(option => {
               const isSelected = selected.includes(option.id);
+              const order = selected.indexOf(option.id) + 1;
               return (
                 <button
                   key={option.id}
@@ -720,7 +721,7 @@ function PendingChoicePanel({ G, moves, playerID }: {
                 >
                   <span className="effect-order-card">{option.label}</span>
                   <span className="effect-order-action">
-                    {isSelected ? t('common.selected') : t('common.select')}
+                    {isSelected && choice.type === 'reorderOpponentDeckTop' ? `#${order}` : isSelected ? t('common.selected') : t('common.select')}
                   </span>
                 </button>
               );

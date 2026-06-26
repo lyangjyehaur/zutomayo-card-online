@@ -663,6 +663,10 @@ function parseAction(text: string): EffectAction | null {
   const reduceMatch = text.match(/攻撃力(?:を)?[ー\-]([0-9０-９]+)/);
   if (reduceMatch) return { type: 'reduceAttack', params: { value: parseNum(reduceMatch[1]) } };
 
+  // "お互いのHPをX回復"
+  const healBothMatch = text.match(/お互いのHP[をが]?([0-9０-９]+)回復/);
+  if (healBothMatch) return { type: 'healBoth', params: { value: parseNum(healBothMatch[1]) } };
+
   // "HPをX回復"
   const healMatch = text.match(/HP[をが]([0-9０-９]+)回復/);
   if (healMatch) return { type: 'heal', params: { value: parseNum(healMatch[1]) } };
@@ -844,6 +848,18 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
+  // "相手のデッキの上からX枚を見て、好きな順番に入れ替えて戻す"
+  const reorderOpponentDeckTopMatch = text.match(/^相手のデッキの上から([0-9０-９]+)枚を見て、好きな順番に入れ替えて戻す[。.]?$/);
+  if (reorderOpponentDeckTopMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'reorderOpponentDeckTop',
+        count: parseNum(reorderOpponentDeckTopMatch[1]),
+      },
+    };
+  }
+
   if (text === 'この効果で出したキャラクターの効果は発動しない') {
     return {
       type: 'suppressEffectActivation',
@@ -858,6 +874,7 @@ function parseAction(text: string): EffectAction | null {
   if (abyssToDeckBottomOrLoseMatch) {
     const count = parseNum(abyssToDeckBottomOrLoseMatch[1]);
     const variable = Boolean(abyssToDeckBottomOrLoseMatch[2]);
+    const reorderFollowUpMatch = text.match(/そうしない場合、ゲームに敗北する[。.]相手のデッキの上から([0-9０-９]+)枚を見て、好きな順番に入れ替えて戻す[。.]?$/);
     return {
       type: 'requestChoice',
       params: {
@@ -866,6 +883,10 @@ function parseAction(text: string): EffectAction | null {
         max: variable ? 'available' : count,
         faceDown: Boolean(abyssToDeckBottomOrLoseMatch[3]),
         shuffle: Boolean(abyssToDeckBottomOrLoseMatch[4]),
+        ...(reorderFollowUpMatch ? {
+          followUpChoiceType: 'reorderOpponentDeckTop',
+          followUpCount: parseNum(reorderFollowUpMatch[1]),
+        } : {}),
       },
     };
   }

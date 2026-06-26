@@ -14,6 +14,8 @@ import type {
   PendingEffectSource,
   PendingOptionalHandMoveThenDrawPayload,
   PendingOpponentPowerCharacterSwapPayload,
+  PendingChoice,
+  PendingReorderDeckTopPayload,
   PendingRevealHandAttackBoostPayload,
   PendingUseFromAbyssPayload,
   PlayerIndex,
@@ -284,6 +286,47 @@ function isPersistentAreaEnchantEffect(card: CardInstance, effect: ParsedEffect)
   ].includes(effect.action.type);
 }
 
+export function buildReorderOpponentDeckTopChoice(
+  G: GameState,
+  player: PlayerIndex,
+  count: number,
+  prompt?: string,
+): { success: boolean; message: string; choice?: PendingChoice } {
+  if (!Number.isInteger(count) || count < 1) {
+    return { success: false, message: 'Unsupported opponent deck reorder count' };
+  }
+
+  const targetPlayer = (1 - player) as PlayerIndex;
+  const topCards = G.players[targetPlayer].deck.slice(0, count);
+  if (topCards.length === 0) {
+    return { success: true, message: 'No opposing deck cards to reorder' };
+  }
+
+  const payload: PendingReorderDeckTopPayload = {
+    targetPlayer,
+    count: topCards.length,
+  };
+  return {
+    success: true,
+    message: 'Pending opponent deck top reorder',
+    choice: {
+      id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+      player,
+      type: 'reorderOpponentDeckTop',
+      min: topCards.length,
+      max: topCards.length,
+      prompt,
+      payload,
+      options: topCards.map(card => ({
+        id: card.instanceId,
+        label: getCardDef(card.defId)?.name ?? card.defId,
+        cardInstanceId: card.instanceId,
+        cardDefId: card.defId,
+      })),
+    },
+  };
+}
+
 export function getTurnEffectPlayerOrder(G: GameState): [PlayerIndex, PlayerIndex] {
   const priority: PlayerIndex = isNight(G)
     ? G.chronos.nightSidePlayer
@@ -403,6 +446,10 @@ export function executeEffect(
     case 'heal':
       me.hp = Math.min(100, me.hp + value);
       return { success: true, message: `Heal ${value}` };
+    case 'healBoth':
+      me.hp = Math.min(100, me.hp + value);
+      opponent.hp = Math.min(100, opponent.hp + value);
+      return { success: true, message: `Heal both ${value}` };
     case 'directDamage': {
       if (effect.action.params.timing === 'turnEnd') {
         const { timing: _timing, ...params } = effect.action.params;
@@ -893,6 +940,12 @@ export function executeEffect(
         const payload: PendingAbyssToDeckBottomPayload = {
           faceDown: Boolean(effect.action.params.faceDown),
           shuffle: Boolean(effect.action.params.shuffle),
+          followUpChoiceType: effect.action.params.followUpChoiceType === 'reorderOpponentDeckTop'
+            ? 'reorderOpponentDeckTop'
+            : undefined,
+          followUpCount: effect.action.params.followUpCount === undefined
+            ? undefined
+            : Number(effect.action.params.followUpCount),
         };
         G.pendingChoice = {
           id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
@@ -910,6 +963,13 @@ export function executeEffect(
           })),
         };
         return { success: true, message: 'Pending Abyss payment selection' };
+      }
+
+      if (effect.action.params.choiceType === 'reorderOpponentDeckTop') {
+        const count = Number(effect.action.params.count ?? 3);
+        const result = buildReorderOpponentDeckTopChoice(G, player, count, effect.rawText);
+        if (result.choice) G.pendingChoice = result.choice;
+        return { success: result.success, message: result.message };
       }
 
       if (effect.action.params.choiceType === 'opponentPowerCharacterSwap') {

@@ -93,6 +93,7 @@ export type ActionType =
   | 'setOpponentElement' // Temporarily set opposing Character element
   | 'directDamage'      // Deal N damage to player
   | 'heal'              // Restore N HP
+  | 'healBoth'          // Restore N HP to both players
   | 'damageReduce'      // Reduce incoming damage by N
   | 'drawCards'         // Draw N cards
   | 'swapAttack'        // Swap night/day attack values

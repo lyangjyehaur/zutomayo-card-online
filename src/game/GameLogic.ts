@@ -1,5 +1,5 @@
 import type { ParsedEffect } from './effects';
-import { collectTurnEffects, executeEffect, getTurnEffectPlayerOrder } from './effects/executor';
+import { buildReorderOpponentDeckTopChoice, collectTurnEffects, executeEffect, getTurnEffectPlayerOrder } from './effects/executor';
 import {
   isCharacterCard,
   matchesCardMoveFilter,
@@ -15,6 +15,7 @@ import type {
   Element,
   GameState,
   JankenChoice,
+  PendingChoice,
   PendingEffect,
   PlayerIndex,
   PlayerState,
@@ -808,6 +809,7 @@ export function submitPendingChoice(
   if (new Set(optionIds).size !== optionIds.length) return false;
   const legal = new Set(choice.options.map(option => option.id));
   if (!optionIds.every(id => legal.has(id))) return false;
+  let nextChoice: PendingChoice | null = null;
 
   const playerState = G.players[player];
   if (choice.type === 'handToDeckBottomThenDraw') {
@@ -979,6 +981,28 @@ export function submitPendingChoice(
       : selectedCards;
     playerState.deck.push(...ordered);
     G.lastChoiceSelectionCount[player] = optionIds.length;
+
+    if (choice.payload.followUpChoiceType === 'reorderOpponentDeckTop') {
+      const result = buildReorderOpponentDeckTopChoice(
+        G,
+        player,
+        Number(choice.payload.followUpCount ?? 0),
+        choice.prompt,
+      );
+      if (!result.success) return false;
+      nextChoice = result.choice ?? null;
+    }
+  }
+  if (choice.type === 'reorderOpponentDeckTop') {
+    const target = G.players[choice.payload.targetPlayer];
+    const count = choice.payload.count;
+    if (!Number.isInteger(count) || count < 1 || optionIds.length !== count) return false;
+    const topCards = target.deck.slice(0, count);
+    if (topCards.length !== count) return false;
+    const topCardIds = new Set(topCards.map(card => card.instanceId));
+    if (!optionIds.every(optionId => topCardIds.has(optionId))) return false;
+    const ordered = optionIds.map(optionId => topCards.find(card => card.instanceId === optionId)!);
+    target.deck.splice(0, count, ...ordered);
   }
   if (choice.type === 'clockPosition' || choice.type === 'clockAdvance') {
     const option = choice.options.find(item => item.id === optionIds[0]);
@@ -998,6 +1022,10 @@ export function submitPendingChoice(
   }
   if (choice.type !== 'abyssToDeckBottomOrLose') G.lastChoiceSelectionCount[player] = null;
   clearPendingChoice(G);
+  if (nextChoice) {
+    G.pendingChoice = nextChoice;
+    return true;
+  }
   advancePendingEffectWindow(G, parsedEffects);
   return true;
 }

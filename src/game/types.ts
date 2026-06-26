@@ -123,10 +123,17 @@ export interface PendingOptionalHandMoveThenDrawPayload {
 export interface PendingAbyssToDeckBottomPayload {
   faceDown: boolean;
   shuffle: boolean;
+  followUpChoiceType?: 'reorderOpponentDeckTop';
+  followUpCount?: number;
 }
 
 export interface PendingOpponentPowerCharacterSwapPayload {
   opponentPlayer: PlayerIndex;
+}
+
+export interface PendingReorderDeckTopPayload {
+  targetPlayer: PlayerIndex;
+  count: number;
 }
 
 export interface PendingUseFromAbyssPayload {
@@ -172,6 +179,10 @@ export type PendingChoice =
   | (PendingChoiceBase & {
       type: 'abyssToDeckBottomOrLose';
       payload: PendingAbyssToDeckBottomPayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'reorderOpponentDeckTop';
+      payload: PendingReorderDeckTopPayload;
     })
   | (PendingChoiceBase & {
       type: 'opponentPowerCharacterSwap';

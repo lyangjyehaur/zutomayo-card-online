@@ -577,7 +577,17 @@ function fivePowerCards() {
   assert.deepEqual(parseEffect(cardEffectText('2nd_86'))?.expiry?.conditions, [{ type: 'chronos', value: 'day' }]);
   assert.deepEqual(parseEffect(cardEffectText('2nd_98'))?.expiry?.conditions, [{ type: 'chronos', value: 'night' }]);
   assert.deepEqual(parseEffect(cardEffectText('3rd_58'))?.expiry?.conditions, [{ type: 'damageAtLeast', value: 30 }]);
+  assert.deepEqual(parseEffect(cardEffectText('3rd_58'))?.action, { type: 'healBoth', params: { value: 10 } });
   assert.deepEqual(parseEffect(cardEffectText('3rd_91'))?.expiry?.conditions, [{ type: 'zoneEntered', value: 'abyss', target: 'opponent' }]);
+
+  const healBothState = preparedState();
+  healBothState.players[0].hp = 80;
+  healBothState.players[1].hp = 95;
+  const healBothEffect = parseEffect(cardEffectText('3rd_58'));
+  assert.ok(healBothEffect);
+  assert.equal(executeEffect(healBothEffect, healBothState, 0).success, true);
+  assert.equal(healBothState.players[0].hp, 90);
+  assert.equal(healBothState.players[1].hp, 100);
 
   const returnAreaState = preparedState();
   const opponentArea = createInstance('2nd_5', true);
@@ -1287,9 +1297,57 @@ function fivePowerCards() {
       max: 1,
       faceDown: false,
       shuffle: false,
+      followUpChoiceType: 'reorderOpponentDeckTop',
+      followUpCount: 3,
     },
   });
   assert.deepEqual(parsedCardEffect('4th_88').action, abyssOneFaceUpPayment.action);
+
+  const reorderOpponentDeckTop = parseEffect('相手のデッキの上から３枚を見て、好きな順番に入れ替えて戻す');
+  assert.ok(reorderOpponentDeckTop);
+  assert.deepEqual(reorderOpponentDeckTop.action, {
+    type: 'requestChoice',
+    params: { choiceType: 'reorderOpponentDeckTop', count: 3 },
+  });
+
+  const reorderFollowUpState = preparedState();
+  const reorderPayment = createInstance('1st_9', true);
+  const reorderTopA = createInstance('1st_1', false);
+  const reorderTopB = createInstance('1st_2', false);
+  const reorderTopC = createInstance('1st_3', false);
+  const reorderRest = createInstance('1st_4', false);
+  reorderFollowUpState.players[0].abyss = [reorderPayment];
+  reorderFollowUpState.players[0].deck = [];
+  reorderFollowUpState.players[1].deck = [reorderTopA, reorderTopB, reorderTopC, reorderRest];
+  assert.equal(executeEffect(abyssOneFaceUpPayment, reorderFollowUpState, 0).success, true);
+  assert.equal(reorderFollowUpState.pendingChoice?.type, 'abyssToDeckBottomOrLose');
+  assert.equal(submitPendingChoice(reorderFollowUpState, 0, [reorderPayment.instanceId], noEffects), true);
+  assert.equal(reorderFollowUpState.pendingChoice?.type, 'reorderOpponentDeckTop');
+  assert.equal(reorderFollowUpState.pendingChoice?.min, 3);
+  assert.equal(reorderFollowUpState.pendingChoice?.max, 3);
+  assert.deepEqual(
+    reorderFollowUpState.pendingChoice?.options.map(option => option.cardInstanceId),
+    [reorderTopA.instanceId, reorderTopB.instanceId, reorderTopC.instanceId],
+  );
+  const hiddenReorderView = ZutomayoCard.playerView!({ G: reorderFollowUpState, ctx: {} as any, playerID: '1' }) as GameState;
+  assert.equal(hiddenReorderView.pendingChoice?.options.length, 0);
+  assert.equal(submitPendingChoice(
+    reorderFollowUpState,
+    0,
+    [reorderTopC.instanceId, reorderTopC.instanceId, reorderTopA.instanceId],
+    noEffects,
+  ), false);
+  assert.equal(submitPendingChoice(
+    reorderFollowUpState,
+    0,
+    [reorderTopC.instanceId, reorderTopA.instanceId, reorderTopB.instanceId],
+    noEffects,
+  ), true);
+  assert.equal(reorderFollowUpState.pendingChoice, null);
+  assert.deepEqual(
+    reorderFollowUpState.players[1].deck.map(card => card.instanceId),
+    [reorderTopC.instanceId, reorderTopA.instanceId, reorderTopB.instanceId, reorderRest.instanceId],
+  );
 
   const fixedAbyssPaymentState = preparedState();
   const fixedAbyssCards = [
