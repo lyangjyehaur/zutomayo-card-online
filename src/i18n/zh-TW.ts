@@ -77,6 +77,10 @@ export const zhTW = {
   'deck.electricDesc': '晝側節奏與高速推進',
   'deck.windDesc': '低費靈活與場面調度',
   'deck.customDesc': '使用你保存的構築',
+  'deck.synced': '已同步',
+  'deck.saveToServer': '儲存到伺服器',
+  'deck.serverDecks': '伺服器牌組',
+  'deck.localDecks': '本地牌組',
 
   'player.zero': '玩家一',
   'player.one': '玩家二',

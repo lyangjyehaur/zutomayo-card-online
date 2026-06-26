@@ -79,6 +79,10 @@ export const zhCN: Record<TranslationKey, string> = {
   'deck.electricDesc': '昼侧节奏与高速推进',
   'deck.windDesc': '低费灵活与场面调度',
   'deck.customDesc': '使用你保存的构筑',
+  'deck.synced': '已同步',
+  'deck.saveToServer': '保存到服务器',
+  'deck.serverDecks': '服务器牌组',
+  'deck.localDecks': '本地牌组',
 
   'player.zero': '玩家一',
   'player.one': '玩家二',

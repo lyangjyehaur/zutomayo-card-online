@@ -1,6 +1,16 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-async function request(path: string, options: RequestInit = {}) {
+export interface DeckResponse {
+  id: string;
+  name: string;
+  cardIds: string[];
+}
+
+interface DeckListResponse {
+  decks: DeckResponse[];
+}
+
+async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('zutomayo_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -47,19 +57,24 @@ export async function getProfile() {
 }
 
 // ===== Decks =====
-export async function getDecks() {
-  return request('/decks');
+export async function getDecks(): Promise<DeckResponse[]> {
+  const data = await request<DeckListResponse>('/decks');
+  return data.decks.map(deck => ({
+    id: deck.id,
+    name: deck.name,
+    cardIds: deck.cardIds,
+  }));
 }
 
-export async function createDeck(name: string, cardIds: string[]) {
-  return request('/decks', {
+export async function createDeck(name: string, cardIds: string[]): Promise<DeckResponse> {
+  return request<DeckResponse>('/decks', {
     method: 'POST',
     body: JSON.stringify({ name, cardIds }),
   });
 }
 
-export async function deleteDeck(deckId: string) {
-  return request(`/decks/${deckId}`, { method: 'DELETE' });
+export async function deleteDeck(deckId: string): Promise<{ deleted: boolean }> {
+  return request<{ deleted: boolean }>(`/decks/${deckId}`, { method: 'DELETE' });
 }
 
 // ===== Matches =====

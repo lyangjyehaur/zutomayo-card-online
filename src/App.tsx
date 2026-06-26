@@ -1,7 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { getDecks, isLoggedIn, type DeckResponse } from './api/client';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
 import { hasCustomDeck } from './game/cards/deckBuilder';
+import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
 import { AdminPage } from './pages/AdminPage';
 import { I18nManager } from './pages/I18nManager';
@@ -24,11 +26,11 @@ import {
 import './App.css';
 import './components/InteractiveTutorial.css';
 
-async function createMatch(deck0Name?: string, deck1Name?: string): Promise<string> {
+async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
   const response = await fetch('/games/zutomayo-card/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ numPlayers: 2, setupData: { deck0Name, deck1Name } }),
+    body: JSON.stringify({ numPlayers: 2, setupData }),
   });
   if (!response.ok) throw new Error(t('lobby.onlineError'));
   const data = await response.json();
@@ -154,6 +156,7 @@ function RouterShell() {
   const locale = useLocale();
   const [tutorial, setTutorial] = useState(() => !localStorage.getItem('zutomayo_tutorial_seen'));
   const [customDeckAvailable, setCustomDeckAvailable] = useState(hasCustomDeck);
+  const [serverDecks, setServerDecks] = useState<DeckResponse[]>([]);
   const [deck0Name, setDeck0Name] = useState(DEFAULT_DECK_NAME);
   const [deck1Name, setDeck1Name] = useState(DEFAULT_DECK_NAME);
   const [onlineSession, setOnlineSession] = useState<OnlineSession | null>(loadOnlineSession);
@@ -168,12 +171,34 @@ function RouterShell() {
     setTutorial(false);
   };
 
+  const refreshServerDecks = useCallback(async () => {
+    if (!isLoggedIn()) {
+      setServerDecks([]);
+      setDeck0Name(current => current.startsWith('server:') ? DEFAULT_DECK_NAME : current);
+      setDeck1Name(current => current.startsWith('server:') ? DEFAULT_DECK_NAME : current);
+      return;
+    }
+    try {
+      setServerDecks(await getDecks());
+    } catch {
+      setServerDecks([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshServerDecks();
+  }, [refreshServerDecks]);
+
   const startAI = (difficulty: AIDifficulty) => {
     navigate('/play/ai', { state: { difficulty, autoStart: true } });
   };
 
   const startOnline = async (existingID?: string) => {
-    const matchID = existingID || await createMatch(onlineDeckName(deck0Name), onlineDeckName(deck1Name));
+    const setupData = {
+      ...onlineDeckName(0, deck0Name, serverDecks),
+      ...onlineDeckName(1, deck1Name, serverDecks),
+    };
+    const matchID = existingID || await createMatch(setupData);
     const playerID: '0' | '1' = existingID ? '1' : '0';
     const { playerCredentials } = await joinMatch(matchID, playerID);
     const session = { matchID, playerID, playerCredentials };
@@ -234,10 +259,12 @@ function RouterShell() {
                 deck0Name={deck0Name}
                 deck1Name={deck1Name}
                 customDeckAvailable={customDeckAvailable}
+                serverDecks={serverDecks}
                 setDeck0Name={setDeck0Name}
                 setDeck1Name={setDeck1Name}
                 onStartAI={startAI}
                 onStartOnline={startOnline}
+                onAuthChanged={refreshServerDecks}
                 onShowTutorial={() => setTutorial(true)}
               />
             )}
@@ -252,7 +279,12 @@ function RouterShell() {
             path="/deck-builder"
             element={(
               <DeckEditorPage
-                onDeckSaved={() => setCustomDeckAvailable(hasCustomDeck())}
+                serverDecks={serverDecks}
+                onServerDecksLoaded={setServerDecks}
+                onDeckSaved={deck => {
+                  setCustomDeckAvailable(hasCustomDeck());
+                  if (deck) setServerDecks(current => [deck, ...current]);
+                }}
               />
             )}
           />

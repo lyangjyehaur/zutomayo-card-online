@@ -6,9 +6,16 @@ import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/deckBu
 import { t } from '../i18n';
 
 interface DeckEditorProps {
-  onSave: (deckIds: string[]) => void;
+  onSave: (deckIds: string[]) => void | Promise<void>;
   onCancel: () => void;
   initialDeck?: string[];
+  deckName?: string;
+  onDeckNameChange?: (name: string) => void;
+  saveLabel?: string;
+  saving?: boolean;
+  synced?: boolean;
+  syncLabel?: string;
+  saveLocalDeck?: boolean;
 }
 
 const ELEMENTS: (Element | 'all')[] = ['all', '闇', '炎', '電気', '風', 'カオス'];
@@ -45,7 +52,18 @@ function typeShort(type: CardType): string {
   return '域';
 }
 
-export function DeckEditor({ onSave, onCancel, initialDeck = [] }: DeckEditorProps) {
+export function DeckEditor({
+  onSave,
+  onCancel,
+  initialDeck = [],
+  deckName,
+  onDeckNameChange,
+  saveLabel,
+  saving = false,
+  synced = false,
+  syncLabel,
+  saveLocalDeck = true,
+}: DeckEditorProps) {
   const allCards = useMemo(() => getAllCardDefs(), []);
   const [deck, setDeck] = useState<string[]>(() => initialDeck.length > 0 ? initialDeck : loadCustomDeckIds() ?? []);
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
@@ -83,6 +101,10 @@ export function DeckEditor({ onSave, onCancel, initialDeck = [] }: DeckEditorPro
     setPage(0);
   }, [filterElement, filterType, searchText, sortBy]);
 
+  useEffect(() => {
+    if (initialDeck.length > 0) setDeck(initialDeck);
+  }, [initialDeck]);
+
   const deckCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const id of deck) counts.set(id, (counts.get(id) ?? 0) + 1);
@@ -114,9 +136,9 @@ export function DeckEditor({ onSave, onCancel, initialDeck = [] }: DeckEditorPro
     setDeck(current => current.filter((_, itemIndex) => itemIndex !== index));
   };
 
-  const saveDeck = () => {
-    localStorage.setItem(CUSTOM_DECK_STORAGE_KEY, JSON.stringify(deck));
-    onSave(deck);
+  const saveDeck = async () => {
+    if (saveLocalDeck) localStorage.setItem(CUSTOM_DECK_STORAGE_KEY, JSON.stringify(deck));
+    await onSave(deck);
   };
 
   return (
@@ -127,9 +149,20 @@ export function DeckEditor({ onSave, onCancel, initialDeck = [] }: DeckEditorPro
           <h1>{t('deckEditor.title')}</h1>
         </div>
         <div className="screen-actions">
+          {onDeckNameChange && (
+            <label className="deck-name-field">
+              <span>{t('deck.custom')}</span>
+              <input
+                value={deckName ?? ''}
+                aria-label={t('deck.custom')}
+                onChange={event => onDeckNameChange(event.target.value)}
+              />
+            </label>
+          )}
+          {syncLabel && <span className={`sync-indicator ${synced ? 'synced' : ''}`}>{syncLabel}</span>}
           <button className="secondary-action" type="button" onClick={onCancel}>{t('common.backToLobby')}</button>
-          <button className="primary-action" type="button" disabled={!isValid} onClick={saveDeck}>
-            {t('deckEditor.saveDeck')}
+          <button className="primary-action" type="button" disabled={!isValid || saving} onClick={saveDeck}>
+            {saveLabel ?? t('deckEditor.saveDeck')}
           </button>
         </div>
       </header>

@@ -79,6 +79,10 @@ export const ja: Record<TranslationKey, string> = {
   'deck.electricDesc': '昼側テンポと高速展開',
   'deck.windDesc': '低コストの柔軟性と盤面調整',
   'deck.customDesc': '保存した構築を使用',
+  'deck.synced': '同期済み',
+  'deck.saveToServer': 'サーバーに保存',
+  'deck.serverDecks': 'サーバーデッキ',
+  'deck.localDecks': 'ローカルデッキ',
 
   'player.zero': 'プレイヤー1',
   'player.one': 'プレイヤー2',

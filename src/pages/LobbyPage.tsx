@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getProfile, isLoggedIn, login, logout as logoutAccount, register } from '../api/client';
+import { getProfile, isLoggedIn, login, logout as logoutAccount, register, type DeckResponse } from '../api/client';
 import { Card } from '../components/Card';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import type { AIDifficulty } from '../game/ai';
+import type { PlayerIndex, ZutomayoSetupData } from '../game/types';
 import { CUSTOM_DECK_NAME, loadCustomDeckIds } from '../game/cards/deckBuilder';
 import { PRESET_DECKS } from '../game/cards/presetDecks';
 import { t, useLocale } from '../i18n';
@@ -13,7 +14,13 @@ type DeckOption = {
   name: string;
   description: string;
   previewIds: string[];
+  synced?: boolean;
   disabled?: boolean;
+};
+
+type DeckOptionGroup = {
+  label: string;
+  options: DeckOption[];
 };
 
 type AuthMode = 'login' | 'register';
@@ -32,15 +39,36 @@ const DECK_COPY: Record<string, { nameKey: Parameters<typeof t>[0]; descKey: Par
 };
 
 export const DEFAULT_DECK_NAME = Object.keys(PRESET_DECKS)[0] ?? '';
+const SERVER_DECK_PREFIX = 'server:';
+
+function serverDeckOptionId(deckId: string): string {
+  return `${SERVER_DECK_PREFIX}${deckId}`;
+}
+
+function serverDeckIdFromOption(optionId: string): string | null {
+  return optionId.startsWith(SERVER_DECK_PREFIX) ? optionId.slice(SERVER_DECK_PREFIX.length) : null;
+}
 
 export function selectedDeckName(deckName: string, customDeckAvailable: boolean): string | undefined {
+  if (serverDeckIdFromOption(deckName)) return DEFAULT_DECK_NAME;
   if (deckName === CUSTOM_DECK_NAME && !customDeckAvailable) return DEFAULT_DECK_NAME;
   return deckName || undefined;
 }
 
-export function onlineDeckName(deckName: string): string | undefined {
-  if (deckName === CUSTOM_DECK_NAME) return DEFAULT_DECK_NAME;
-  return deckName || undefined;
+export function onlineDeckName(
+  player: PlayerIndex,
+  deckName: string,
+  serverDecks: DeckResponse[],
+): ZutomayoSetupData {
+  const serverDeckId = serverDeckIdFromOption(deckName);
+  if (serverDeckId) {
+    const serverDeck = serverDecks.find(deck => deck.id === serverDeckId);
+    if (serverDeck) return player === 0 ? { deck0Ids: serverDeck.cardIds } : { deck1Ids: serverDeck.cardIds };
+    return player === 0 ? { deck0Name: DEFAULT_DECK_NAME } : { deck1Name: DEFAULT_DECK_NAME };
+  }
+  const selectedName = deckName === CUSTOM_DECK_NAME ? DEFAULT_DECK_NAME : deckName;
+  if (!selectedName) return {};
+  return player === 0 ? { deck0Name: selectedName } : { deck1Name: selectedName };
 }
 
 function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
@@ -66,10 +94,20 @@ function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
   ];
 }
 
+function buildServerDeckOptions(serverDecks: DeckResponse[]): DeckOption[] {
+  return serverDecks.map(deck => ({
+    id: serverDeckOptionId(deck.id),
+    name: deck.name,
+    description: t('deck.synced'),
+    previewIds: deck.cardIds.slice(0, 3),
+    synced: true,
+  }));
+}
+
 function DeckSelector({ label, value, options, onChange }: {
   label: string;
   value: string;
-  options: DeckOption[];
+  options: DeckOptionGroup[];
   onChange: (deckName: string) => void;
 }) {
   return (
@@ -79,29 +117,35 @@ function DeckSelector({ label, value, options, onChange }: {
         <span>{t('lobby.deckSelectHint')}</span>
       </div>
       <div className="deck-option-grid">
-        {options.map(option => (
-          <button
-            key={option.id}
-            className={`deck-option-card ${value === option.id ? 'selected' : ''}`}
-            type="button"
-            disabled={option.disabled}
-            onClick={() => onChange(option.id)}
-          >
-            <div className="deck-preview-stack" aria-hidden="true">
-              {option.previewIds.map((id, index) => (
-                <Card
-                  key={`${option.id}-${id}-${index}`}
-                  card={{ instanceId: `${option.id}-${id}-${index}`, defId: id, faceUp: true }}
-                  size="micro"
-                />
-              ))}
-            </div>
-            <div className="deck-option-copy">
-              <strong>{option.name}</strong>
-              <span>{option.description}</span>
-            </div>
-            {value === option.id && <em>{t('common.selected')}</em>}
-          </button>
+        {options.map(group => (
+          <div className="deck-option-group" key={group.label}>
+            <span className="deck-option-group-label">{group.label}</span>
+            {group.options.map(option => (
+              <button
+                key={option.id}
+                className={`deck-option-card ${value === option.id ? 'selected' : ''}`}
+                type="button"
+                disabled={option.disabled}
+                onClick={() => onChange(option.id)}
+              >
+                <div className="deck-preview-stack" aria-hidden="true">
+                  {option.previewIds.map((id, index) => (
+                    <Card
+                      key={`${option.id}-${id}-${index}`}
+                      card={{ instanceId: `${option.id}-${id}-${index}`, defId: id, faceUp: true }}
+                      size="micro"
+                    />
+                  ))}
+                </div>
+                <div className="deck-option-copy">
+                  <strong>{option.name}</strong>
+                  <span>{option.description}</span>
+                </div>
+                {option.synced && <small>{t('deck.synced')}</small>}
+                {value === option.id && <em>{t('common.selected')}</em>}
+              </button>
+            ))}
+          </div>
         ))}
       </div>
     </section>
@@ -139,7 +183,7 @@ function authErrorMessage(error: unknown): string {
   return t('auth.invalidCredentials');
 }
 
-function AuthSection() {
+function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<void> }) {
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
@@ -192,6 +236,7 @@ function AuthSection() {
       setStatus(mode === 'login' ? t('auth.loginSuccess') : t('auth.registerSuccess'));
       setExpanded(false);
       resetForm();
+      void onAuthChanged();
     } catch (err) {
       setError(authErrorMessage(err));
     } finally {
@@ -205,6 +250,7 @@ function AuthSection() {
     setStatus('');
     setExpanded(false);
     resetForm();
+    void onAuthChanged();
   };
 
   if (user) {
@@ -341,10 +387,12 @@ interface LobbyPageProps {
   deck0Name: string;
   deck1Name: string;
   customDeckAvailable: boolean;
+  serverDecks: DeckResponse[];
   setDeck0Name: (deckName: string) => void;
   setDeck1Name: (deckName: string) => void;
   onStartAI: (difficulty: AIDifficulty) => void;
   onStartOnline: (matchID?: string) => Promise<void>;
+  onAuthChanged: () => void | Promise<void>;
   onShowTutorial: () => void;
 }
 
@@ -352,15 +400,24 @@ export function LobbyPage({
   deck0Name,
   deck1Name,
   customDeckAvailable,
+  serverDecks,
   setDeck0Name,
   setDeck1Name,
   onStartAI,
   onStartOnline,
+  onAuthChanged,
   onShowTutorial,
 }: LobbyPageProps) {
   const navigate = useNavigate();
   const locale = useLocale();
-  const deckOptions = useMemo(() => buildDeckOptions(customDeckAvailable), [customDeckAvailable, locale]);
+  const deckOptions = useMemo<DeckOptionGroup[]>(() => {
+    const localOptions = buildDeckOptions(customDeckAvailable);
+    const serverOptions = buildServerDeckOptions(serverDecks);
+    return [
+      { label: t('deck.localDecks'), options: localOptions },
+      ...(serverOptions.length > 0 ? [{ label: t('deck.serverDecks'), options: serverOptions }] : []),
+    ];
+  }, [customDeckAvailable, locale, serverDecks]);
 
   return (
     <main className="lobby">
@@ -372,7 +429,7 @@ export function LobbyPage({
           <p>{t('app.subtitle')}</p>
         </div>
         <div className="lobby-actions">
-          <AuthSection />
+          <AuthSection onAuthChanged={onAuthChanged} />
           <LanguageSwitcher />
           <div className="primary-menu">
             <button className="menu-action featured" type="button" onClick={() => navigate('/play/local')}>

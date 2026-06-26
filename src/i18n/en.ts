@@ -79,6 +79,10 @@ export const en: Record<TranslationKey, string> = {
   'deck.electricDesc': 'Day-side tempo and fast push',
   'deck.windDesc': 'Low-cost flexibility and field control',
   'deck.customDesc': 'Use your saved build',
+  'deck.synced': 'Synced',
+  'deck.saveToServer': 'Save to Server',
+  'deck.serverDecks': 'Server Decks',
+  'deck.localDecks': 'Local Decks',
 
   'player.zero': 'Player 1',
   'player.one': 'Player 2',

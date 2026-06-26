@@ -79,6 +79,10 @@ export const ko: Record<TranslationKey, string> = {
   'deck.electricDesc': '주간 템포와 고속 추진',
   'deck.windDesc': '저비용 유연성과 장면 조절',
   'deck.customDesc': '저장한 덱 사용',
+  'deck.synced': '동기화됨',
+  'deck.saveToServer': '서버에 저장',
+  'deck.serverDecks': '서버 덱',
+  'deck.localDecks': '로컬 덱',
 
   'player.zero': '플레이어 1',
   'player.one': '플레이어 2',
