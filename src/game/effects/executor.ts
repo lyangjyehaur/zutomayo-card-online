@@ -42,6 +42,11 @@ function zoneElementCount(G: GameState, player: PlayerIndex, zone: string, eleme
   return cards.filter(card => getCardDef(card.defId)?.element === element).length;
 }
 
+function zoneSongCount(G: GameState, player: PlayerIndex, zone: string, song: string): number {
+  const cards = zone === 'powerCharger' ? G.players[player].powerCharger : G.players[player].abyss;
+  return cards.filter(card => getCardDef(card.defId)?.song === song).length;
+}
+
 function isNight(G: GameState): boolean {
   return getChronosTimeForPosition(G.chronos.position, G.midnightRange) === 'night';
 }
@@ -56,6 +61,31 @@ function isNamedCharacter(card: CardInstance | null, song: string): boolean {
   return def?.type === 'Character' && def.song === song;
 }
 
+function compareNumber(actual: number, cond: Condition): boolean {
+  const operator = cond.operator ?? 'gte';
+  if (operator === 'in') {
+    return Array.isArray(cond.value) && cond.value.map(Number).includes(actual);
+  }
+  const expected = Number(cond.value);
+  if (operator === 'eq') return actual === expected;
+  if (operator === 'lte') return actual <= expected;
+  return actual >= expected;
+}
+
+function conditionPlayer(cond: Condition, player: PlayerIndex): PlayerIndex {
+  if (cond.owner === 'opponent' || cond.target === 'opponent') return (1 - player) as PlayerIndex;
+  return player;
+}
+
+function conditionZoneCards(G: GameState, player: PlayerIndex, cond: Condition): CardInstance[] {
+  const owner = conditionPlayer(cond, player);
+  return cond.target === 'powerCharger' ? G.players[owner].powerCharger : G.players[owner].abyss;
+}
+
+function latestChronosChangedEvent(G: GameState) {
+  return [...G.timingEvents].reverse().find(item => item.type === 'chronosChanged');
+}
+
 function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): boolean {
   const me = G.players[player];
   const opponent = G.players[(1 - player) as PlayerIndex];
@@ -67,6 +97,28 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     case 'abyssElements': {
       const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
       return new Set(cards.map(card => getCardDef(card.defId)?.element).filter(Boolean)).size >= Number(cond.value);
+    }
+    case 'abyssElementCount': {
+      const owner = conditionPlayer(cond, player);
+      const element = cond.element ?? String(cond.value);
+      const count = G.players[owner].abyss.filter(card => getCardDef(card.defId)?.element === element).length;
+      return compareNumber(count, cond);
+    }
+    case 'powerChargerElementCount': {
+      const owner = conditionPlayer(cond, player);
+      const element = cond.element ?? String(cond.value);
+      const count = G.players[owner].powerCharger.filter(card => getCardDef(card.defId)?.element === element).length;
+      return compareNumber(count, cond);
+    }
+    case 'abyssAllSameElement': {
+      const owner = conditionPlayer(cond, player);
+      const cards = G.players[owner].abyss;
+      return cards.length > 0 && cards.every(card => getCardDef(card.defId)?.element === cond.value);
+    }
+    case 'powerChargerAllSameElement': {
+      const owner = conditionPlayer(cond, player);
+      const cards = G.players[owner].powerCharger;
+      return cards.length > 0 && cards.every(card => getCardDef(card.defId)?.element === cond.value);
     }
     case 'zoneHasElement': {
       const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
@@ -84,7 +136,22 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     case 'abyssCount': return me.abyss.length >= Number(cond.value);
     case 'handCount': return me.hand.length >= Number(cond.value);
     case 'hpLessOrEqual': return (cond.target === 'opponent' ? opponent : me).hp <= Number(cond.value);
+    case 'hpComparison': return compareNumber((cond.target === 'opponent' ? opponent : me).hp, cond);
     case 'hpLessThanOpponent': return me.hp < opponent.hp;
+    case 'opponentPowerCost': {
+      if (!opponent.battleZone) return false;
+      const powerCost = getCardDef(opponent.battleZone.defId)?.powerCost;
+      return powerCost !== undefined && compareNumber(powerCost, cond);
+    }
+    case 'selfPowerCost': {
+      if (cond.value === 'sameAsOpponent') {
+        if (!me.battleZone || !opponent.battleZone) return false;
+        return getCardDef(me.battleZone.defId)?.powerCost === getCardDef(opponent.battleZone.defId)?.powerCost;
+      }
+      if (!me.battleZone) return false;
+      const powerCost = getCardDef(me.battleZone.defId)?.powerCost;
+      return powerCost !== undefined && compareNumber(powerCost, cond);
+    }
     case 'damageAtLeast': {
       const event = [...G.timingEvents].reverse().find(item => item.type === 'damageReceived' && item.player === player);
       return Number(event?.amount ?? 0) >= Number(cond.value);
@@ -101,8 +168,16 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
       const cards = cond.target === 'powerCharger' ? me.powerCharger : me.abyss;
       return cards.length >= Number(cond.value);
     }
+    case 'zoneCountComparison': return compareNumber(conditionZoneCards(G, player, cond).length, cond);
     case 'chronosChanged': return G.chronos.position !== G.chronosAtTurnStart;
-    case 'chronosTimeChanged': return chronosTimeAt(G.chronosAtTurnStart, G.midnightRange) !== chronosTimeAt(G.chronos.position, G.midnightRange);
+    case 'chronosTimeChanged': {
+      if (cond.value === true) return chronosTimeAt(G.chronosAtTurnStart, G.midnightRange) !== chronosTimeAt(G.chronos.position, G.midnightRange);
+      const event = latestChronosChangedEvent(G);
+      if (!event) return false;
+      if (cond.value === 'dayToNight') return event.fromChronosTime === 'day' && event.toChronosTime === 'night';
+      if (cond.value === 'nightToDay') return event.fromChronosTime === 'night' && event.toChronosTime === 'day';
+      return event.fromChronosTime !== event.toChronosTime;
+    }
     case 'namedCardCondition': {
       const song = String(cond.value);
       if (cond.target === 'battleZone') return isNamedCharacter(me.battleZone, song);
@@ -111,6 +186,8 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
       if (cond.target === 'swappedThisTurn') return G.swappedCardsThisTurn[player].some(card => isNamedCharacter(card, song));
       return isNamedCharacter(me.battleZone, song) || G.setCardsThisTurn[player].some(card => isNamedCharacter(card, song));
     }
+    case 'namedCardInBattleZone': return isNamedCharacter(G.players[conditionPlayer(cond, player)].battleZone, String(cond.value));
+    case 'noCardInAbyss': return G.players[conditionPlayer(cond, player)].abyss.length === 0;
     case 'simultaneousCharacter':
       return G.setCardsThisTurn[player].some(card => getCardDef(card.defId)?.type === 'Character');
     case 'hasAreaEnchant': {
@@ -232,14 +309,24 @@ export function executeEffect(
   const value = Number(effect.action.params.value ?? 0);
   switch (effect.action.type) {
     case 'boostAttack': {
-      const boost = effect.action.params.per === 'zoneElementCount'
-        ? value * zoneElementCount(
+      let multiplier = 1;
+      if (effect.action.params.per === 'zoneElementCount') {
+        multiplier = zoneElementCount(
           G,
           player,
           String(effect.action.params.zone ?? 'abyss'),
           String(effect.action.params.element ?? ''),
-        )
-        : value;
+        );
+      }
+      if (effect.action.params.per === 'zoneSongCount') {
+        multiplier = zoneSongCount(
+          G,
+          player,
+          String(effect.action.params.zone ?? 'abyss'),
+          String(effect.action.params.song ?? ''),
+        );
+      }
+      const boost = effect.action.params.per || effect.action.params.perCount ? value * multiplier : value;
       G.modifiers.attack[player] += boost;
       return { success: true, message: `Attack +${boost}` };
     }
@@ -321,6 +408,9 @@ export function executeEffect(
     case 'setAllCardClocks':
       G.modifiers.cardClockSetTo = value;
       return { success: true, message: `All card clocks set to ${value}` };
+    case 'expandMidnightRange':
+      G.midnightRange = Math.max(G.midnightRange, Number(effect.action.params.range ?? 0));
+      return { success: true, message: `Midnight range +${G.midnightRange}` };
     case 'clockSet':
       if (effect.action.params.value === 'any') {
         G.pendingChoice = {
@@ -338,10 +428,6 @@ export function executeEffect(
           })),
         };
         return { success: true, message: 'Pending Chronos position selection' };
-      }
-      if (effect.action.params.value === 'expand_midnight') {
-        G.midnightRange = Math.max(G.midnightRange, Number(effect.action.params.range ?? 0));
-        return { success: true, message: `Midnight range +${G.midnightRange}` };
       }
       if (Number.isInteger(Number(effect.action.params.value))) {
         const next = normalizeChronosPosition(Number(effect.action.params.value));
@@ -451,27 +537,42 @@ export function executeEffect(
       return { success: true, message: `Move own Area Enchant to ${effect.action.params.destination === 'powerCharger' ? 'Power Charger' : 'Abyss'}` };
     }
     case 'useFromAbyss': {
-      const options = me.abyss
-        .filter(card => getCardDef(card.defId)?.type === 'Enchant')
+      const sourceZone = effect.action.params.source === 'powerCharger' ? 'powerCharger' : 'abyss';
+      const source = sourceZone === 'powerCharger' ? me.powerCharger : me.abyss;
+      const max = Number(effect.action.params.count ?? effect.action.params.max ?? 1);
+      const options = source
+        .filter(card => {
+          const def = getCardDef(card.defId);
+          if (!def) return false;
+          if (effect.action.params.cardType !== undefined && def.type !== effect.action.params.cardType) return false;
+          if (effect.action.params.song !== undefined && def.song !== effect.action.params.song) return false;
+          if (sourceZone === 'abyss' && effect.action.params.cardType === undefined && def.type !== 'Enchant') return false;
+          return true;
+        })
         .map(card => ({
           id: card.instanceId,
           label: getCardDef(card.defId)?.name ?? card.defId,
           cardInstanceId: card.instanceId,
           cardDefId: card.defId,
         }));
-      if (options.length === 0) return { success: false, message: 'No Abyss Enchant to use' };
-      const payload: PendingUseFromAbyssPayload = { sourcePlayer: player };
+      if (options.length === 0) return { success: false, message: 'No card effect to use' };
+      const payload: PendingUseFromAbyssPayload = {
+        sourcePlayer: player,
+        sourceZone,
+        cardType: typeof effect.action.params.cardType === 'string' ? effect.action.params.cardType as CardType : undefined,
+        song: typeof effect.action.params.song === 'string' ? effect.action.params.song : undefined,
+      };
       G.pendingChoice = {
         id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
         player,
         type: 'useFromAbyss',
         min: 1,
-        max: 1,
+        max: Math.max(1, Math.min(max, options.length)),
         prompt: effect.rawText,
         payload,
         options,
       };
-      return { success: true, message: 'Pending Abyss Enchant effect selection' };
+      return { success: true, message: 'Pending copied effect selection' };
     }
     case 'handSizeModifier': {
       const amount = Number(effect.action.params.value ?? 0);

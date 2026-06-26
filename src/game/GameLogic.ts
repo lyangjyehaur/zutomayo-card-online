@@ -500,7 +500,7 @@ function timingTrigger(event: TimingEvent): ParsedEffect['trigger'] | null {
 }
 
 function timingCandidateCards(G: GameState, player: PlayerIndex): CardInstance[] {
-  return [G.players[player].battleZone, G.players[player].setZoneC]
+  return [G.players[player].battleZone, G.players[player].setZoneC, G.players[player].setZoneA, G.players[player].setZoneB]
     .filter((card): card is CardInstance => card !== null)
     .filter(card => !(G.suppressedEffectCardIdsThisTurn ?? []).includes(card.instanceId))
     .filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
@@ -858,21 +858,31 @@ export function submitPendingChoice(
   }
   if (choice.type === 'useFromAbyss') {
     if (choice.payload.sourcePlayer !== player) return false;
-    const selected = playerState.abyss.find(card => card.instanceId === optionIds[0]);
-    if (!selected || getCardDef(selected.defId)?.type !== 'Enchant') return false;
-    selected.faceUp = true;
-    const copiedEffects = (parsedEffects.get(selected.defId) ?? [])
-      .filter(effect => effect.trigger === 'onUse' || effect.trigger === 'onBattle');
-    if (copiedEffects.length === 0) return false;
-    G.pendingEffects[player].unshift(...copiedEffects.map((effect, index) => ({
-      id: `${selected.instanceId}:copied:${G.turnNumber}:${G.log.length}:${index}`,
-      player,
-      cardInstanceId: selected.instanceId,
-      cardDefId: selected.defId,
-      rawText: effect.rawText,
-      effect,
-      source: 'played' as const,
-    })));
+    const source = choice.payload.sourceZone === 'powerCharger' ? playerState.powerCharger : playerState.abyss;
+    const copied: PendingEffect[] = [];
+    for (const optionId of optionIds) {
+      const selected = source.find(card => card.instanceId === optionId);
+      if (!selected) return false;
+      const def = getCardDef(selected.defId);
+      if (!def) return false;
+      if (choice.payload.cardType !== undefined && def.type !== choice.payload.cardType) return false;
+      if (choice.payload.song !== undefined && def.song !== choice.payload.song) return false;
+      if (choice.payload.sourceZone !== 'powerCharger' && choice.payload.cardType === undefined && def.type !== 'Enchant') return false;
+      selected.faceUp = true;
+      const copiedEffects = (parsedEffects.get(selected.defId) ?? [])
+        .filter(effect => effect.trigger === 'onUse' || effect.trigger === 'onBattle');
+      if (copiedEffects.length === 0) continue;
+      copied.push(...copiedEffects.map((effect, index) => ({
+        id: `${selected.instanceId}:copied:${G.turnNumber}:${G.log.length}:${index}`,
+        player,
+        cardInstanceId: selected.instanceId,
+        cardDefId: selected.defId,
+        rawText: effect.rawText,
+        effect,
+        source: 'played' as const,
+      })));
+    }
+    G.pendingEffects[player].unshift(...copied);
   }
   if (choice.type === 'revealHandAttackBoost') {
     if (choice.payload.sourcePlayer !== player) return false;

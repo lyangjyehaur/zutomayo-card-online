@@ -15,6 +15,7 @@ const executorSupportedActions = new Set([
   'forceOwnAttackTime',
   'clockReset',
   'clockSet',
+  'expandMidnightRange',
   'clockSetFromTurnStartMinusOpponentClock',
   'setAllCardClocks',
   'clockAdvance',

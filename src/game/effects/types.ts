@@ -2,7 +2,7 @@ import type { ChronosTime, Element } from '../types';
 
 // ===== Effect DSL Types =====
 
-export type EffectValue = string | number | boolean | string[];
+export type EffectValue = string | number | boolean | string[] | number[];
 
 export interface ParsedEffect {
   trigger: EffectTrigger;
@@ -28,11 +28,17 @@ export type Condition =
       type: Exclude<ConditionType, 'and' | 'or'>;
       value: EffectValue;
       target?: string; // e.g. 'powerCharger' vs 'abyss'
+      operator?: 'eq' | 'gte' | 'lte' | 'in';
+      element?: Element;
+      owner?: 'self' | 'opponent' | 'any';
     }
   | {
       type: 'and' | 'or';
       value: Condition[];
       target?: string;
+      operator?: 'eq' | 'gte' | 'lte' | 'in';
+      element?: Element;
+      owner?: 'self' | 'opponent' | 'any';
     };
 
 export type ConditionType =
@@ -42,17 +48,27 @@ export type ConditionType =
   | 'powerAtLeast'      // Player power >= N
   | 'abyssCount'        // Abyss has N+ cards
   | 'abyssElements'     // Abyss has N distinct elements
+  | 'abyssElementCount' // Abyss has N cards of an element
+  | 'abyssAllSameElement' // All cards in Abyss share an element
+  | 'powerChargerElementCount' // Power Charger has N cards of an element
+  | 'powerChargerAllSameElement' // All cards in Power Charger share an element
   | 'zoneHasElement'    // A zone has at least one card of an element
   | 'zoneEnteredCardType' // A card of this type entered a zone this turn
   | 'handCount'         // Hand has N cards
   | 'hpLessOrEqual'     // Player HP <= N
+  | 'hpComparison'      // Player HP comparison
   | 'hpLessThanOpponent' // Player HP < opponent HP
+  | 'opponentPowerCost' // Opponent Character power-cost comparison
+  | 'selfPowerCost'     // Own Character power-cost comparison
   | 'damageAtLeast'     // Current damage event amount >= N
   | 'zoneEntered'       // A card entered a zone this turn
   | 'zoneCountAtLeast'  // A zone has at least N cards
+  | 'zoneCountComparison' // A zone card-count comparison
   | 'chronosChanged'    // Chronos changed this turn
   | 'chronosTimeChanged' // Chronos changed between night/day this turn
   | 'namedCardCondition' // Named-song Character in a relevant zone
+  | 'namedCardInBattleZone' // Named-song Character in Battle Zone
+  | 'noCardInAbyss'     // Abyss is empty
   | 'simultaneousCharacter' // Character was played with this effect
   | 'previousCharElement' // Previous turn's character element
   | 'hasAreaEnchant'    // Set zone C has specific card
@@ -78,6 +94,7 @@ export type ActionType =
   | 'forceOwnAttackTime' // Force own attack to day/night value
   | 'clockReset'        // Reset chronos to start-of-turn
   | 'clockSet'          // Set chronos to specific position
+  | 'expandMidnightRange' // Treat positions around midnight as midnight
   | 'clockSetFromTurnStartMinusOpponentClock' // Set Chronos to turn start minus opponent character clock
   | 'setAllCardClocks'  // Set all card clock values to N
   | 'clockAdvance'      // Advance chronos by N

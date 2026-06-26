@@ -131,6 +131,9 @@ export interface PendingOpponentPowerCharacterSwapPayload {
 
 export interface PendingUseFromAbyssPayload {
   sourcePlayer: PlayerIndex;
+  sourceZone?: 'abyss' | 'powerCharger';
+  cardType?: CardType;
+  song?: string;
 }
 
 export interface PendingRevealHandAttackBoostPayload {

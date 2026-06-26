@@ -23,6 +23,31 @@ function parseStarReduction(stars: string, digitText?: string): number {
   return stars.split('').filter(char => char === '★').length;
 }
 
+const ELEMENTS = ['闇', '炎', '電気', '風', 'カオス'] as const;
+const ELEMENT_PATTERN = '(闇|炎|電気|風|カオス)';
+
+function comparisonOperator(text: string): 'eq' | 'gte' | 'lte' {
+  if (text === '以上') return 'gte';
+  if (text === '以下') return 'lte';
+  return 'eq';
+}
+
+function cardOwner(prefix?: string): 'self' | 'opponent' {
+  return prefix?.includes('相手') ? 'opponent' : 'self';
+}
+
+function parseElementList(text: string): string[] {
+  return ELEMENTS.filter(element => text.includes(element));
+}
+
+function elementCondition(type: 'opponentElement' | 'selfElement', elements: string[]): Condition {
+  if (elements.length === 1) return { type, value: elements[0] };
+  return {
+    type: 'or',
+    value: elements.map(element => ({ type, value: element })),
+  };
+}
+
 // ===== Main Parser =====
 
 export function parseEffect(rawText: string): ParsedEffect | null {
@@ -143,7 +168,7 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     return {
       trigger: 'onUse',
       conditions: [],
-      action: { type: 'clockSet', params: { value: 'expand_midnight', range: parseNum(midnightRangeMatch[1]) } },
+      action: { type: 'expandMidnightRange', params: { range: parseNum(midnightRangeMatch[1]) } },
       rawText,
     };
   }
@@ -160,12 +185,12 @@ export function parseEffect(rawText: string): ParsedEffect | null {
       trigger: 'onUse',
       conditions: [],
       action: {
-        type: 'recoverFromAbyss',
+        type: 'useFromAbyss',
         params: {
           source: 'powerCharger',
           song: powerChargerRecoverMatch[1].trim(),
           cardType: 'Character',
-          max: parseNum(powerChargerRecoverMatch[2]),
+          count: parseNum(powerChargerRecoverMatch[2]),
         },
       },
       rawText,
@@ -173,7 +198,17 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   if (text.includes('パワーチャージャーから') && text.includes('効果として使用')) {
-    return { trigger: 'onUse', conditions: [], action: { type: 'recoverFromAbyss', params: { source: 'powerCharger', max: 1 } }, rawText };
+    return { trigger: 'onUse', conditions: [], action: { type: 'useFromAbyss', params: { source: 'powerCharger', count: 1 } }, rawText };
+  }
+
+  const chronosTransitionMatch = actionText.match(/^(昼から夜|夜から昼)に変わると[、,]?(.+)$/);
+  if (chronosTransitionMatch) {
+    conditions.push({
+      type: 'chronosTimeChanged',
+      value: chronosTransitionMatch[1] === '昼から夜' ? 'dayToNight' : 'nightToDay',
+    });
+    actionText = chronosTransitionMatch[2];
+    triggerOverride = 'onChronosChanged';
   }
 
   // "夜なら..."
@@ -209,6 +244,19 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = previousCharElementMatch[2];
   }
 
+  const previousCharElementAndOpponentElementMatch = actionText.match(new RegExp(`^前のターンで使用したキャラクターカードの属性が${ELEMENT_PATTERN}かつ、?相手のキャラクターカードが((?:闇|炎|電気|風|カオス)(?:[・か](?:闇|炎|電気|風|カオス))*)なら[、,]?(.+)$`));
+  if (previousCharElementAndOpponentElementMatch) {
+    conditions.push({ type: 'previousCharElement', value: previousCharElementAndOpponentElementMatch[1] });
+    conditions.push(elementCondition('opponentElement', parseElementList(previousCharElementAndOpponentElementMatch[2])));
+    actionText = previousCharElementAndOpponentElementMatch[3];
+  }
+
+  const opponentElementListMatch = actionText.match(new RegExp(`^相手の(?:キャラクターカードの)?属性が((?:闇|炎|電気|風|カオス)(?:[・か](?:闇|炎|電気|風|カオス))+)なら[、,]?(.+)$`));
+  if (opponentElementListMatch) {
+    conditions.push(elementCondition('opponentElement', parseElementList(opponentElementListMatch[1])));
+    actionText = opponentElementListMatch[2];
+  }
+
   // "相手の属性がXなら..."
   const oppElementMatch = text.match(/相手の(?:キャラクターカードの)?属性が(闇|炎|電気|風|カオス)なら[、,]?(.+)$/);
   if (oppElementMatch) {
@@ -223,11 +271,74 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = selfElementMatch[2];
   }
 
+  const samePowerCostMatch = actionText.match(/^自分のキャラクターカードと相手のキャラクターカードが同じパワーコストなら[、,]?(.+)$/);
+  if (samePowerCostMatch) {
+    conditions.push({ type: 'selfPowerCost', value: 'sameAsOpponent' });
+    actionText = samePowerCostMatch[1];
+  }
+
+  const powerCostRangePatterns: Array<{
+    match: RegExpMatchArray | null;
+    ownerIndex: number;
+    valueIndex: number;
+    opIndex: number;
+    actionIndex: number;
+  }> = [
+    {
+      match: actionText.match(/^(相手の|自分の)?キャラクターカードのパワーコストが★?([0-9０-９]+)(以上|以下)なら[、,]?(.+)$/),
+      ownerIndex: 1,
+      valueIndex: 2,
+      opIndex: 3,
+      actionIndex: 4,
+    },
+    {
+      match: actionText.match(/^(相手の|自分の)?キャラクターカードがパワーコスト★?([0-9０-９]+)(以上|以下)なら[、,]?(.+)$/),
+      ownerIndex: 1,
+      valueIndex: 2,
+      opIndex: 3,
+      actionIndex: 4,
+    },
+    {
+      match: actionText.match(/^(相手の|自分の)?キャラクターカードが★?([0-9０-９]+)コスト(以上|以下)なら[、,]?(.+)$/),
+      ownerIndex: 1,
+      valueIndex: 2,
+      opIndex: 3,
+      actionIndex: 4,
+    },
+  ];
+  const powerCostRangeMatch = powerCostRangePatterns.find(item => item.match);
+  if (powerCostRangeMatch?.match) {
+    const owner = cardOwner(powerCostRangeMatch.match[powerCostRangeMatch.ownerIndex]);
+    conditions.push({
+      type: owner === 'opponent' ? 'opponentPowerCost' : 'selfPowerCost',
+      value: parseNum(powerCostRangeMatch.match[powerCostRangeMatch.valueIndex]),
+      operator: comparisonOperator(powerCostRangeMatch.match[powerCostRangeMatch.opIndex]),
+    });
+    actionText = powerCostRangeMatch.match[powerCostRangeMatch.actionIndex];
+  }
+
+  const powerCostInMatch = actionText.match(/^(相手の|自分の)?キャラクターカードのパワーコストが★?([0-9０-９]+)か★?([0-9０-９]+)なら[、,]?(.+)$/);
+  if (powerCostInMatch) {
+    const owner = cardOwner(powerCostInMatch[1]);
+    conditions.push({
+      type: owner === 'opponent' ? 'opponentPowerCost' : 'selfPowerCost',
+      value: [parseNum(powerCostInMatch[2]), parseNum(powerCostInMatch[3])],
+      operator: 'in',
+    });
+    actionText = powerCostInMatch[4];
+  }
+
   // "アビスにX種類の属性があると..."
   const abyssElementMatch = text.match(/アビスに([0-9０-９]+)種類の属性があると(.+)$/);
   if (abyssElementMatch) {
     conditions.push({ type: 'abyssElements', value: parseNum(abyssElementMatch[1]) });
     actionText = abyssElementMatch[2];
+  }
+
+  const abyssDistinctElementMatch = actionText.match(/アビスに(?:.*?の)?([0-9０-９]+)属性のカードがあるなら[、,]?(.+)$/);
+  if (abyssDistinctElementMatch) {
+    conditions.push({ type: 'abyssElements', value: parseNum(abyssDistinctElementMatch[1]) });
+    actionText = abyssDistinctElementMatch[2];
   }
 
   // "パワーチャージャーにX属性以上あるなら..."
@@ -237,11 +348,30 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = pcElementMatch[2];
   }
 
+  const zoneElementCountMatch = actionText.match(new RegExp(`^(相手の)?(アビス|パワーチャージャー)に(?:ある)?${ELEMENT_PATTERN}属性のカードが([0-9０-９]+)枚(以上|以下)あるなら[、,]?(.+)$`));
+  if (zoneElementCountMatch) {
+    const zone = zoneElementCountMatch[2] === 'パワーチャージャー' ? 'powerCharger' : 'abyss';
+    conditions.push({
+      type: zone === 'powerCharger' ? 'powerChargerElementCount' : 'abyssElementCount',
+      value: parseNum(zoneElementCountMatch[4]),
+      operator: comparisonOperator(zoneElementCountMatch[5]),
+      element: zoneElementCountMatch[3] as typeof ELEMENTS[number],
+      owner: cardOwner(zoneElementCountMatch[1]),
+    });
+    actionText = zoneElementCountMatch[6];
+  }
+
   // "アビスにX属性のカードがあるなら..."
   const abyssHasElementMatch = text.match(/アビスに(闇|炎|電気|風|カオス)属性のカードがあるなら[、,]?(.+)$/);
   if (abyssHasElementMatch) {
     conditions.push({ type: 'zoneHasElement', value: abyssHasElementMatch[1], target: 'abyss' });
     actionText = abyssHasElementMatch[2];
+  }
+
+  const powerChargerHasElementMatch = actionText.match(/パワーチャージャーに(闇|炎|電気|風|カオス)属性のカードがあるなら[、,]?(.+)$/);
+  if (powerChargerHasElementMatch) {
+    conditions.push({ type: 'zoneHasElement', value: powerChargerHasElementMatch[1], target: 'powerCharger' });
+    actionText = powerChargerHasElementMatch[2];
   }
 
   // "アビスにX枚以上カードがあるなら..."
@@ -251,6 +381,35 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = abyssCountMatch[2];
   }
 
+  const noCardInAbyssMatch = actionText.match(/^(相手の)?アビスにカードがないなら[、,]?(.+)$/);
+  if (noCardInAbyssMatch) {
+    conditions.push({ type: 'noCardInAbyss', value: true, owner: cardOwner(noCardInAbyssMatch[1]) });
+    actionText = noCardInAbyssMatch[2];
+  }
+
+  const zoneCountComparisonMatch = actionText.match(/^(相手の)?(アビス|パワーチャージャー)(?:にカード|のカード)?が([0-9０-９]+)枚(以上|以下)(?:置かれている)?(?:ある)?なら[、,]?(.+)$/);
+  if (zoneCountComparisonMatch) {
+    conditions.push({
+      type: 'zoneCountComparison',
+      value: parseNum(zoneCountComparisonMatch[3]),
+      operator: comparisonOperator(zoneCountComparisonMatch[4]),
+      target: zoneCountComparisonMatch[2] === 'パワーチャージャー' ? 'powerCharger' : 'abyss',
+      owner: cardOwner(zoneCountComparisonMatch[1]),
+    });
+    actionText = zoneCountComparisonMatch[5];
+  }
+
+  const zoneAllSameElementMatch = actionText.match(new RegExp(`^(相手の)?(アビス|パワーチャージャー)(?:(?:にある|の)カード|が)?が?${ELEMENT_PATTERN}属性だけ(?:だった)?なら[、,]?(.+)$`));
+  if (zoneAllSameElementMatch) {
+    const zone = zoneAllSameElementMatch[2] === 'パワーチャージャー' ? 'powerCharger' : 'abyss';
+    conditions.push({
+      type: zone === 'powerCharger' ? 'powerChargerAllSameElement' : 'abyssAllSameElement',
+      value: zoneAllSameElementMatch[3],
+      owner: cardOwner(zoneAllSameElementMatch[1]),
+    });
+    actionText = zoneAllSameElementMatch[4];
+  }
+
   // "HPがX以下なら..."
   const hpMatch = text.match(/HPが([0-9０-９]+)以下(?:になった)?(なら|の場合)(.+)$/);
   if (hpMatch) {
@@ -258,8 +417,19 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = hpMatch[3];
   }
 
+  const hpComparisonMatch = actionText.match(/^(相手の)?HPが([0-9０-９]+)なら[、,]?(.+)$/);
+  if (hpComparisonMatch) {
+    conditions.push({
+      type: 'hpComparison',
+      value: parseNum(hpComparisonMatch[2]),
+      operator: 'eq',
+      target: hpComparisonMatch[1] ? 'opponent' : 'self',
+    });
+    actionText = hpComparisonMatch[3];
+  }
+
   const powerChargerCountMatch = text.match(/パワーチャージャーにカードが([0-9０-９]+)枚以上置かれているなら[、,]?(.+)$/);
-  if (powerChargerCountMatch) {
+  if (powerChargerCountMatch && !conditions.some(condition => condition.type === 'zoneCountComparison' && condition.target === 'powerCharger')) {
     conditions.push({ type: 'zoneCountAtLeast', value: parseNum(powerChargerCountMatch[1]), target: 'powerCharger' });
     actionText = powerChargerCountMatch[2];
   }
@@ -286,11 +456,11 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   // "バトルゾーンのカードが（X）のキャラクターなら..."
   const battleZoneNamedCharacterMatch = actionText.match(/バトルゾーンの(?:カード|キャラクター)が[（(]([^）)]+)[）)](?:のキャラクター)?なら[、,]?(.+)$/);
   if (battleZoneNamedCharacterMatch) {
-    conditions.push({ type: 'namedCardCondition', value: battleZoneNamedCharacterMatch[1].trim(), target: 'battleZone' });
+    conditions.push({ type: 'namedCardInBattleZone', value: battleZoneNamedCharacterMatch[1].trim() });
     actionText = battleZoneNamedCharacterMatch[2];
   } else if (actionText.includes('バトルゾーン') && actionText.includes('キャラクターなら')) {
     const song = namedSong(actionText);
-    if (song) conditions.push({ type: 'namedCardCondition', value: song, target: 'battleZone' });
+    if (song) conditions.push({ type: 'namedCardInBattleZone', value: song });
   }
 
   const battleZoneChangedAwayMatch = actionText.match(/^バトルゾーンのキャラクターを[（(]([^）)]+)[）)]以外のキャラクターに入れ替えたら[、,]?(.+)$/);
@@ -387,9 +557,38 @@ function parseAction(text: string): EffectAction | null {
       type: 'boostAttack',
       params: {
         value: parseNum(zoneElementBoostMatch[3]),
+        perCount: true,
         per: 'zoneElementCount',
         zone: zoneElementBoostMatch[1] === 'パワーチャージャー' ? 'powerCharger' : 'abyss',
         element: zoneElementBoostMatch[2],
+      },
+    };
+  }
+
+  const zoneElementCountBoostMatch = text.match(/^(アビス|パワーチャージャー)にある(闇|炎|電気|風|カオス)属性のカードの数だけ、?(?:攻撃力|★)?[＋+]([0-9０-９]+)[。.]?/);
+  if (zoneElementCountBoostMatch) {
+    return {
+      type: 'boostAttack',
+      params: {
+        value: parseNum(zoneElementCountBoostMatch[3]),
+        perCount: true,
+        per: 'zoneElementCount',
+        zone: zoneElementCountBoostMatch[1] === 'パワーチャージャー' ? 'powerCharger' : 'abyss',
+        element: zoneElementCountBoostMatch[2],
+      },
+    };
+  }
+
+  const zoneNamedCountBoostMatch = text.match(/^(アビス|パワーチャージャー)にある[（(]([^）)]+)[）)]のカードの数だけ、?攻撃力[＋+]([0-9０-９]+)[。.]?/);
+  if (zoneNamedCountBoostMatch) {
+    return {
+      type: 'boostAttack',
+      params: {
+        value: parseNum(zoneNamedCountBoostMatch[3]),
+        perCount: true,
+        per: 'zoneSongCount',
+        zone: zoneNamedCountBoostMatch[1] === 'パワーチャージャー' ? 'powerCharger' : 'abyss',
+        song: zoneNamedCountBoostMatch[2].trim(),
       },
     };
   }
@@ -718,10 +917,13 @@ function parseAction(text: string): EffectAction | null {
 
 // ===== Trigger Detection =====
 
-function detectTrigger(text: string): 'onBattle' | 'onUse' | 'onTurnStart' | 'onTurnEnd' | 'onDamageReceived' {
+function detectTrigger(text: string): 'onBattle' | 'onUse' | 'onTurnStart' | 'onTurnEnd' | 'onDamageReceived' | 'onChronosChanged' {
   const timingText = text.match(/^(ターンの開始時|ターン開始時|ターンの終了時|ターン終了時|自分がダメージを受けた|バトル)/)
     ? text
     : text.split(/[。.]/)[0];
+  if (timingText.includes('昼から夜に変わる') || timingText.includes('夜から昼に変わる')) {
+    return 'onChronosChanged';
+  }
   if (timingText.includes('ターンの開始時') || timingText.includes('ターン開始時')) {
     return 'onTurnStart';
   }
