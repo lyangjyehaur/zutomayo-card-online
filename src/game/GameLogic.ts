@@ -122,6 +122,28 @@ export function getPriorityPlayer(G: GameState): PlayerIndex {
     : ((1 - G.chronos.nightSidePlayer) as PlayerIndex);
 }
 
+function setChronosPosition(
+  G: GameState,
+  position: number,
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
+  logMessage?: string,
+): void {
+  const before = G.chronos.position;
+  const beforeTime = chronosTimeAt(before, G.midnightRange);
+  G.chronos.position = ((position % 12) + 12) % 12;
+  if (logMessage) G.log.push(logMessage);
+  const afterTime = getChronosTime(G);
+  if (before !== G.chronos.position) {
+    resolveTimingEvent(G, parsedEffects, {
+      type: 'chronosChanged',
+      fromChronos: before,
+      toChronos: G.chronos.position,
+      fromChronosTime: beforeTime,
+      toChronosTime: afterTime,
+    });
+  }
+}
+
 export function setupGame(deck0Name?: string, deck1Name?: string): GameState;
 export function setupGame(setupData?: ZutomayoSetupData, options?: SetupGameOptions): GameState;
 export function setupGame(
@@ -316,19 +338,7 @@ export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEf
     0,
   );
   const before = G.chronos.position;
-  const beforeTime = chronosTimeAt(before, G.midnightRange);
-  G.chronos.position = (before + total) % 12;
-  G.log.push(`Chronos +${total} (${before}→${G.chronos.position}).`);
-  const afterTime = getChronosTime(G);
-  if (before !== G.chronos.position) {
-    resolveTimingEvent(G, parsedEffects, {
-      type: 'chronosChanged',
-      fromChronos: before,
-      toChronos: G.chronos.position,
-      fromChronosTime: beforeTime,
-      toChronosTime: afterTime,
-    });
-  }
+  setChronosPosition(G, before + total, parsedEffects, `Chronos +${total} (${before}→${(before + total) % 12}).`);
 }
 
 function hasOptionalSwapEffect(
@@ -647,7 +657,13 @@ export function resolvePendingEffect(
   if (!pendingEffect || pendingEffect.player !== player) return false;
   G.pendingEffects[player].splice(index, 1);
 
+  const beforeChronos = G.chronos.position;
   const result = executeEffect(pendingEffect.effect, G, player);
+  if (G.chronos.position !== beforeChronos) {
+    const afterChronos = G.chronos.position;
+    G.chronos.position = beforeChronos;
+    setChronosPosition(G, afterChronos, parsedEffects);
+  }
   if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
   if ((G.step as GameState['step']) === 'gameOver') {
     clearPendingEffects(G);
@@ -696,6 +712,17 @@ export function submitPendingChoice(
     })) return false;
     for (const optionId of optionIds) {
       if (!moveCardForChoice(G, choice.payload, optionId)) return false;
+    }
+  }
+  if (choice.type === 'clockPosition' || choice.type === 'clockAdvance') {
+    const option = choice.options.find(item => item.id === optionIds[0]);
+    if (!option || !Number.isInteger(Number(option.value))) return false;
+    const value = Number(option.value);
+    if (choice.type === 'clockPosition') {
+      setChronosPosition(G, value, parsedEffects, `Chronos set to ${value}.`);
+    } else {
+      const before = G.chronos.position;
+      setChronosPosition(G, before + value, parsedEffects, `Chronos +${value} (${before}→${(before + value) % 12}).`);
     }
   }
   clearPendingChoice(G);

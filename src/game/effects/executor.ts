@@ -52,6 +52,7 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     case 'abyssCount': return me.abyss.length >= Number(cond.value);
     case 'handCount': return me.hand.length >= Number(cond.value);
     case 'hpLessOrEqual': return me.hp <= Number(cond.value);
+    case 'hpLessThanOpponent': return me.hp < opponent.hp;
     case 'chronosChanged': return G.chronos.position !== G.chronosAtTurnStart;
     case 'chronosTimeChanged': return chronosTimeAt(G.chronosAtTurnStart, G.midnightRange) !== chronosTimeAt(G.chronos.position, G.midnightRange);
     case 'namedCardCondition': {
@@ -193,12 +194,30 @@ export function executeEffect(
       return { success: true, message: 'Reset Chronos' };
     case 'clockSet':
       if (effect.action.params.value === 'any') {
-        G.chronos.position = 0;
-        return { success: true, message: 'Set Chronos to position 0 (choice UI not implemented)' };
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'clockPosition',
+          min: 1,
+          max: 1,
+          prompt: effect.rawText,
+          payload: {},
+          options: Array.from({ length: 12 }, (_, position) => ({
+            id: `chronos-${position}`,
+            label: `${position}`,
+            value: position,
+          })),
+        };
+        return { success: true, message: 'Pending Chronos position selection' };
       }
       if (effect.action.params.value === 'expand_midnight') {
         G.midnightRange = Math.max(G.midnightRange, Number(effect.action.params.range ?? 0));
         return { success: true, message: `Midnight range +${G.midnightRange}` };
+      }
+      if (Number.isInteger(Number(effect.action.params.value))) {
+        const next = ((Number(effect.action.params.value) % 12) + 12) % 12;
+        G.chronos.position = next;
+        return { success: true, message: `Set Chronos to ${next}` };
       }
       return { success: false, message: 'Unsupported clock range effect' };
     case 'clockAdvance':
@@ -307,6 +326,46 @@ export function executeEffect(
           options,
         };
         return { success: true, message: 'Pending card selection' };
+      }
+
+      if (effect.action.params.choiceType === 'clockPosition') {
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'clockPosition',
+          min: 1,
+          max: 1,
+          prompt: effect.rawText,
+          payload: {},
+          options: Array.from({ length: 12 }, (_, position) => ({
+            id: `chronos-${position}`,
+            label: `${position}`,
+            value: position,
+          })),
+        };
+        return { success: true, message: 'Pending Chronos position selection' };
+      }
+
+      if (effect.action.params.choiceType === 'clockAdvance') {
+        const min = Number(effect.action.params.min ?? 0);
+        const max = Number(effect.action.params.max ?? min);
+        if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min) {
+          return { success: false, message: 'Unsupported Chronos advance choice' };
+        }
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'clockAdvance',
+          min: 1,
+          max: 1,
+          prompt: effect.rawText,
+          payload: {},
+          options: Array.from({ length: max - min + 1 }, (_, index) => {
+            const amount = min + index;
+            return { id: `advance-${amount}`, label: `+${amount}`, value: amount };
+          }),
+        };
+        return { success: true, message: 'Pending Chronos advance selection' };
       }
 
       if (effect.action.params.choiceType !== 'handToDeckBottomThenDraw') {

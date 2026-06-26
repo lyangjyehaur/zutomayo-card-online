@@ -69,6 +69,7 @@ export interface PendingChoiceOption {
   label: string;
   cardInstanceId?: string;
   cardDefId?: string;
+  value?: number | string;
 }
 
 export type PendingChoiceCardZone = 'hand' | 'abyss' | 'powerCharger';
@@ -101,6 +102,14 @@ export type PendingChoice =
   | (PendingChoiceBase & {
       type: 'cardMove';
       payload: PendingCardMovePayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'clockPosition';
+      payload: Record<string, never>;
+    })
+  | (PendingChoiceBase & {
+      type: 'clockAdvance';
+      payload: Record<string, never>;
     });
 
 export interface PlayerState {

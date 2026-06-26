@@ -141,6 +141,12 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = hpMatch[3];
   }
 
+  const hpLessThanOpponentMatch = text.match(/HPが相手のHPより少ないなら[、,]?(.+)$/);
+  if (hpLessThanOpponentMatch) {
+    conditions.push({ type: 'hpLessThanOpponent', value: true });
+    actionText = hpLessThanOpponentMatch[1];
+  }
+
   // "このターンにXのキャラクターと入れ替えていたなら..."
   const swappedMatch = text.match(/このターンに[（(]([^）)]+)[）)]のキャラクターと入れ替えていたなら[、,]?(.+)$/);
   if (swappedMatch) {
@@ -304,7 +310,30 @@ function parseAction(text: string): EffectAction | null {
 
   // "クロノスを好きな時間にする"
   if (text.includes('クロノスを好きな時間')) {
-    return { type: 'clockSet', params: { value: 'any' } };
+    return { type: 'requestChoice', params: { choiceType: 'clockPosition' } };
+  }
+
+  const clockAdvanceRangeMatch = text.match(/時計を([0-9０-９]+)～([0-9０-９]+)つまで進めてもよい/);
+  if (clockAdvanceRangeMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'clockAdvance',
+        min: parseNum(clockAdvanceRangeMatch[1]),
+        max: parseNum(clockAdvanceRangeMatch[2]),
+      },
+    };
+  }
+
+  const clockAdvanceMatch = text.match(/時計を([0-9０-９]+)つ進める/);
+  if (clockAdvanceMatch) return { type: 'clockAdvance', params: { value: parseNum(clockAdvanceMatch[1]) } };
+
+  if (text.includes('時計が真夜中になる') || text.includes('時計を真夜中にする')) {
+    return { type: 'clockSet', params: { value: 0 } };
+  }
+
+  if (text.includes('時計が正午になる') || text.includes('時計を真昼にする')) {
+    return { type: 'clockSet', params: { value: 6 } };
   }
 
   // "効果を無効"

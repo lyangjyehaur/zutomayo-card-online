@@ -42,6 +42,7 @@ export type ConditionType =
   | 'abyssElements'     // Abyss has N distinct elements
   | 'handCount'         // Hand has N cards
   | 'hpLessOrEqual'     // Player HP <= N
+  | 'hpLessThanOpponent' // Player HP < opponent HP
   | 'chronosChanged'    // Chronos changed this turn
   | 'chronosTimeChanged' // Chronos changed between night/day this turn
   | 'namedCardCondition' // Named-song Character in a relevant zone

@@ -155,8 +155,17 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   player1.moves.setInitialCard(0);
   player0.moves.confirmReady();
   player1.moves.confirmReady();
-  for (let i = 0; i < 10 && player0.getState()?.G.step === 'effectOrder'; i++) {
-    const pendingPlayer = player0.getState()?.G.pendingEffectPlayer;
+  for (let i = 0; i < 20 && player0.getState()?.G.step === 'effectOrder'; i++) {
+    const globalState = player0.getState()?.G;
+    const pendingChoicePlayer = globalState?.pendingChoice?.player;
+    if (pendingChoicePlayer === 0 || pendingChoicePlayer === 1) {
+      const client = pendingChoicePlayer === 0 ? player0 : player1;
+      const choice = client.getState()?.G.pendingChoice;
+      assert.ok(choice);
+      client.moves.submitPendingChoice(choice.options.slice(0, choice.min).map(option => option.id));
+      continue;
+    }
+    const pendingPlayer = globalState?.pendingEffectPlayer;
     assert.notEqual(pendingPlayer, null);
     (pendingPlayer === 0 ? player0 : player1).moves.resolvePendingEffect(0);
   }
@@ -600,6 +609,51 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   noLegalPowerState.players[1].powerCharger = [createInstance('1st_9', true)];
   assert.deepEqual(executeEffect(powerTwoToDeck, noLegalPowerState, 0), { success: false, message: 'No legal cards for choice' });
   assert.equal(noLegalPowerState.pendingChoice, null);
+
+  const fixedAdvance = parseEffect('昼なら、時計を２つ進める');
+  assert.deepEqual(fixedAdvance?.conditions, [{ type: 'chronos', value: 'day' }]);
+  assert.deepEqual(fixedAdvance?.action, { type: 'clockAdvance', params: { value: 2 } });
+  const advanceState = preparedState();
+  advanceState.chronos.position = 6;
+  assert.ok(fixedAdvance);
+  assert.equal(executeEffect(fixedAdvance, advanceState, 0).success, true);
+  assert.equal(advanceState.chronos.position, 8);
+
+  assert.deepEqual(parseEffect('アビスに炎属性のカードが２枚以上あるなら、時計が真夜中になる')?.action, { type: 'clockSet', params: { value: 0 } });
+  assert.deepEqual(parseEffect('アビスに風属性のカードが２枚以上あるなら、時計が正午になる')?.action, { type: 'clockSet', params: { value: 6 } });
+  assert.deepEqual(parseEffect('HPが相手のHPより少ないなら、時計を真夜中にする')?.conditions, [{ type: 'hpLessThanOpponent', value: true }]);
+  assert.deepEqual(parseEffect('HPが相手のHPより少ないなら、時計を真昼にする')?.action, { type: 'clockSet', params: { value: 6 } });
+  const midnightState = preparedState();
+  midnightState.chronos.position = 4;
+  midnightState.players[0].abyss = [createInstance('1st_11', true), createInstance('1st_11', true)];
+  const midnight = parsedCardEffect('2nd_36');
+  assert.equal(executeEffect(midnight, midnightState, 0).success, true);
+  assert.equal(midnightState.chronos.position, 0);
+
+  const anyChronos = parseEffect('クロノスを好きな時間にする');
+  assert.deepEqual(anyChronos?.action, { type: 'requestChoice', params: { choiceType: 'clockPosition' } });
+  const anyChronosState = preparedState();
+  anyChronosState.chronos.position = 2;
+  assert.ok(anyChronos);
+  assert.equal(executeEffect(anyChronos, anyChronosState, 0).success, true);
+  assert.equal(anyChronosState.pendingChoice?.type, 'clockPosition');
+  assert.equal(anyChronosState.pendingChoice?.options.length, 12);
+  assert.equal(submitPendingChoice(anyChronosState, 0, ['chronos-9'], noEffects), true);
+  assert.equal(anyChronosState.chronos.position, 9);
+
+  const clockRange = parsedCardEffect('2nd_11');
+  assert.deepEqual(clockRange.conditions, [{ type: 'previousCharElement', value: '炎' }]);
+  assert.deepEqual(clockRange.action, { type: 'requestChoice', params: { choiceType: 'clockAdvance', min: 0, max: 5 } });
+  const clockRangeState = preparedState();
+  clockRangeState.chronos.position = 10;
+  assert.equal(executeEffect(clockRange, clockRangeState, 0).success, false);
+  clockRangeState.previousTurnCharacterElements[0] = '炎';
+  assert.equal(executeEffect(clockRange, clockRangeState, 0).success, true);
+  assert.equal(clockRangeState.pendingChoice?.type, 'clockAdvance');
+  assert.deepEqual(clockRangeState.pendingChoice?.options.map(option => option.id), ['advance-0', 'advance-1', 'advance-2', 'advance-3', 'advance-4', 'advance-5']);
+  assert.equal(submitPendingChoice(clockRangeState, 0, ['advance-6'], noEffects), false);
+  assert.equal(submitPendingChoice(clockRangeState, 0, ['advance-5'], noEffects), true);
+  assert.equal(clockRangeState.chronos.position, 3);
 
   const millTop = parseEffect('相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く');
   assert.ok(millTop);
