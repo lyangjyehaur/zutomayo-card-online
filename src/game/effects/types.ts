@@ -9,6 +9,7 @@ export interface ParsedEffect {
   conditions: Condition[];
   action: EffectAction;
   rawText: string; // Original Japanese text
+  priority?: 'late';
   expiry?: ParsedEffect;
 }
 
@@ -103,7 +104,7 @@ export type ActionType =
   | 'swapAttack'        // Swap night/day attack values
   | 'forceOwnAttackTime' // Force own attack to day/night value
   | 'clockReset'        // Reset chronos to start-of-turn
-  | 'nullifyOpponentClock' // Subtract opponent Character clock contribution
+  | 'nullifyOpponentClock' // Disable opponent Character clock contribution
   | 'clockRewindOpponentCharacter' // Rewind Chronos by opponent Character clocks played this turn
   | 'clockSet'          // Set chronos to specific position
   | 'expandMidnightRange' // Treat positions around midnight as midnight

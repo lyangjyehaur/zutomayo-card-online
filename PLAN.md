@@ -25,7 +25,7 @@ Current status for the ZUTOMAYO CARD Online implementation. This file tracks pro
 - Game server: [src/server.ts](src/server.ts), boardgame.io, port `3000`.
 - API server: [api/server.cjs](api/server.cjs), Node HTTP + SQLite via `better-sqlite3`, port `3001`.
 - Deployment target: Docker Compose on Debian 12 host `149.104.6.238`.
-- Card audit from `npm run rule:audit`: 422 total cards, 250 effect cards, 267 effect lines, 247 parsed lines, 20 unparsed lines, 49 parsed-but-partial lines.
+- Card audit from `npm run rule:audit`: 422 total cards, 250 effect cards, 267 effect lines, 267 parsed lines, 288 runtime parsed effects, 0 unparsed lines, 0 parsed-but-partial lines.
 
 ## Current State and Remaining Work / 目前狀態與待辦
 
@@ -39,7 +39,7 @@ From [NON_CARD_GAPS.md](NON_CARD_GAPS.md), adjusted for the current implementati
 6. Action log/replay: add an authoritative sanitized move trace for debugging and disputes; do not rely on human-readable `G.log` alone.
 7. Online lifecycle polish: PARTIAL — reconnect, full-room/missing-room errors, and waiting states exist; invite/share-link polish, stale-room cleanup, and abandon handling remain.
 8. Hard AI lookahead: ✅ DONE — hardLookahead() simulates all card combinations, calculates damage differential, considers Chronos and Power Cost.
-9. Card-effect completion: finish unparsed and parsed-but-partial effects, especially replacement/continuous modifiers, deck ordering, broader timing windows, and complex selected-count follow-ups.
+9. Card-effect completion: ✅ DONE by current parser/executor audit — 267/267 effect lines parse, runtime AST coverage is checked, and parsed-but-partial is 0. Future work is semantic refinement with card-specific regressions.
 10. Persistence hardening: ✅ DONE — api-smoke.ts tests, HMAC token signing, backup/restore docs in DEPLOYMENT.md.
 
 ## Verification / 驗證

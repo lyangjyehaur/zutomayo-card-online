@@ -257,6 +257,7 @@ export interface CombatModifiers {
   damageReduction: [number, number];
   elementOverride: [Element | null, Element | null];
   handSize: [number, number];
+  clockContributionDisabled: [boolean, boolean];
   powerCostReduction: [number, number];
   extraSettableCards: [number, number];
   sendToPower: [number, number];

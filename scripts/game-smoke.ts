@@ -406,6 +406,27 @@ function fivePowerCards() {
   const G = preparedState();
   G.step = 'turnSet';
   G.turnNumber = 2;
+  G.chronos.position = 0;
+  G.chronos.nightSidePlayer = 0;
+  G.lastBattleResult = { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 };
+  G.players[0].powerCharger = fivePowerCards();
+  G.players[0].hand = [createInstance('1st_5', true)];
+  G.players[1].hand = [createInstance('1st_92', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  resolveTurn(G, new Map([
+    ['1st_5', [parsedCardEffect('1st_5')]],
+    ['1st_92', [parsedCardEffect('1st_92')]],
+  ]));
+  assert.equal(G.step, 'effectOrder');
+  assert.equal((G as any).pendingEffects[0][0].effect.priority, 'late');
+  assert.equal((G as any).pendingEffectPlayer, 1);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
   G.chronos.position = 8;
   G.players[0].hand = [createInstance('1st_9', true)];
   G.players[1].hand = [createInstance('1st_17', true)];
@@ -533,6 +554,32 @@ function fivePowerCards() {
   const G = preparedState();
   G.step = 'turnSet';
   G.turnNumber = 2;
+  G.lastBattleResult = { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 };
+  G.handSizeModifier[0] = 1;
+  assert.equal(getRequiredSetCount(G, 0), 2);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.lastBattleResult = { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 };
+  G.players[0].hand = [createInstance('1st_9', true)];
+  G.players[1].hand = [createInstance('1st_9', true)];
+  G.players[0].deck = [createInstance('1st_1', false), createInstance('1st_5', false)];
+  G.players[1].deck = [createInstance('1st_1', false)];
+  G.modifiers.handSize[0] = 1;
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  resolveTurn(G, noEffects);
+  assert.equal(G.players[0].hand.length, 2);
+  assert.equal(G.players[1].hand.length, 1);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
   G.lastBattleResult = { winner: 0, damage: 0, winnerAttack: 0, loserAttack: 0 };
   G.players[0].hand = [createInstance('1st_1', true), createInstance('1st_9', true)];
   assert.equal(executeEffect(parsedCardEffect('2nd_62'), G, 0).success, true);
@@ -555,6 +602,7 @@ function fivePowerCards() {
   assert.deepEqual(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.action, { type: 'nullifyOpponentClock', params: {} });
   assert.equal(parseEffect('パワーチャージャーの電気属性のカード１枚につき、攻撃力+20。相手のHPが30以下になったターンの終了時にアビスに置く')?.trigger, 'onUse');
   assert.equal(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.trigger, 'onUse');
+  assert.equal(parsedCardEffect('1st_5').priority, 'late');
   const allParsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
   const areaExpiryEffects = allParsedEffects.get('2nd_5') ?? [];
   assert.ok(areaExpiryEffects.some(effect => effect.trigger === 'onTurnEnd' && effect.action.type === 'moveSelfAreaEnchant'));
@@ -690,6 +738,14 @@ function fivePowerCards() {
   assert.equal(getAllCardDefs().find(card => card.id === opponentPlayedCharacter.defId)?.clock, 1);
   assert.equal(executeEffect(nullifyOpponentClock!, rewindOpponentCharacterClockState, 0).success, true);
   assert.equal(rewindOpponentCharacterClockState.chronos.position, 6);
+  assert.equal(rewindOpponentCharacterClockState.modifiers.clockContributionDisabled[1], true);
+
+  const disabledClockAdvanceState = preparedState();
+  disabledClockAdvanceState.chronos.position = 4;
+  disabledClockAdvanceState.modifiers.clockContributionDisabled[1] = true;
+  disabledClockAdvanceState.setCardsThisTurn[1] = [createInstance('1st_9', true)];
+  advanceChronos(disabledClockAdvanceState, noEffects);
+  assert.equal(disabledClockAdvanceState.chronos.position, 4);
 
   const boostBothByHp = parseEffect('お互いの自分のHPの分だけ攻撃力+。相手のHPが40以下になったターンの終了時にアビスに置く');
   assert.deepEqual(boostBothByHp?.action, { type: 'boostBothAttackByOwnHp', params: {} });
@@ -956,6 +1012,21 @@ function fivePowerCards() {
   assert.equal(deckTopPowerState.players[0].deck.length, 0);
   assert.equal(deckTopPowerState.players[0].powerCharger.at(-1)?.instanceId, powerTop.instanceId);
   assert.equal(powerTop.faceUp, true);
+  assert.ok(deckTopPowerState.timingEvents.some(event => (
+    event.type === 'zoneEntered'
+    && event.player === 0
+    && event.zone === 'powerCharger'
+    && event.cardDefId === powerTop.defId
+  )));
+  const powerEntryParsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  const powerEntryAreaState = preparedAreaEnchantState('4th_33', 0);
+  powerEntryAreaState.previousTurnCharacterElements[0] = '闇';
+  powerEntryAreaState.players[0].deck = [createInstance('1st_9', false)];
+  assert.equal(executeEffect(deckTopByPower, powerEntryAreaState, 0, {
+    onTimingEvent: event => resolveTimingEvent(powerEntryAreaState, powerEntryParsedEffects, event),
+  }).success, true);
+  assert.equal(powerEntryAreaState.players[0].setZoneC, null);
+  assert.equal(powerEntryAreaState.players[0].abyss.at(-1)?.defId, '4th_33');
   const deckTopAbyssState = preparedState();
   deckTopAbyssState.previousTurnCharacterElements[0] = '闇';
   const noPowerTop = createInstance('1st_1', false);
@@ -1873,8 +1944,8 @@ function fivePowerCards() {
   assert.equal(setTurnCard(G, 0, 0, 'A'), true);
   assert.equal(setTurnCard(G, 1, 0, 'A'), true);
   resolveTurn(G, parsedEffects);
-  assert.equal(G.players[0].setZoneC, null);
-  assert.equal(G.players[0].abyss.at(-1)?.defId, '2nd_5');
+  assert.equal(G.chronos.position, 3);
+  assert.equal(G.players[0].setZoneC?.defId, '2nd_5');
 }
 
 {
@@ -2003,6 +2074,36 @@ function fivePowerCards() {
   resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player: 1, zone: 'abyss', cardDefId: '1st_1' });
   assert.equal(G.players[0].setZoneC, null);
   assert.equal(G.players[0].abyss.at(-1)?.defId, '4th_30');
+
+  const sendState = preparedAreaEnchantState('4th_30', 0);
+  sendState.players[0].powerCharger = fivePowerCards();
+  sendState.players[1].battleZone = createInstance('1st_9', true);
+  const sendToAbyss: ParsedEffect = {
+    trigger: 'onUse',
+    conditions: [],
+    rawText: 'send opposing character',
+    action: { type: 'sendToAbyss', params: {} },
+  };
+  assert.equal(executeEffect(sendToAbyss, sendState, 0, {
+    onTimingEvent: event => resolveTimingEvent(sendState, parsedEffects, event),
+  }).success, true);
+  assert.equal(sendState.players[0].setZoneC, null);
+  assert.equal(sendState.players[0].abyss.at(-1)?.defId, '4th_30');
+
+  const millState = preparedAreaEnchantState('4th_30', 0);
+  millState.players[0].powerCharger = fivePowerCards();
+  millState.players[1].deck = [createInstance('1st_9', false)];
+  const millToAbyss: ParsedEffect = {
+    trigger: 'onUse',
+    conditions: [],
+    rawText: 'mill opposing deck',
+    action: { type: 'millDeckToAbyss', params: { count: 1 } },
+  };
+  assert.equal(executeEffect(millToAbyss, millState, 0, {
+    onTimingEvent: event => resolveTimingEvent(millState, parsedEffects, event),
+  }).success, true);
+  assert.equal(millState.players[0].setZoneC, null);
+  assert.equal(millState.players[0].abyss.at(-1)?.defId, '4th_30');
 }
 
 {

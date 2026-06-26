@@ -1,5 +1,5 @@
 import { getAllCardDefs } from '../src/game/cards/loader';
-import { parseEffect } from '../src/game/effects/parser';
+import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
 import type { ParsedEffect } from '../src/game/effects/types';
 
 const executorSupportedActions = new Set([
@@ -74,8 +74,10 @@ function unsupportedExecutorReason(effect: ParsedEffect): string | null {
 }
 
 const cards = getAllCardDefs();
+const runtimeEffects = parseAllEffects(cards.map(card => ({ id: card.id, effect: card.effect || '' })));
 let effectLines = 0;
 let parsedLines = 0;
+let runtimeParsedEffects = 0;
 const unparsed: { id: string; text: string }[] = [];
 const parsedButPartial: { id: string; action: string; reason: string; text: string }[] = [];
 const falseDraw: { id: string; text: string }[] = [];
@@ -89,10 +91,6 @@ for (const card of cards) {
       continue;
     }
     parsedLines++;
-    const unsupportedReason = unsupportedExecutorReason(parsed);
-    if (unsupportedReason) {
-      parsedButPartial.push({ id: card.id, action: parsed.action.type, reason: unsupportedReason, text });
-    }
     if (
       parsed.action.type === 'drawCards'
       && !/(カード[をが][0-9０-９]+枚(?:引|ドロー)|デッキから[0-9０-９]+枚カードを引|カードを引)/.test(text)
@@ -102,11 +100,22 @@ for (const card of cards) {
   }
 }
 
+for (const [id, effects] of runtimeEffects.entries()) {
+  for (const effect of effects) {
+    runtimeParsedEffects++;
+    const unsupportedReason = unsupportedExecutorReason(effect);
+    if (unsupportedReason) {
+      parsedButPartial.push({ id, action: effect.action.type, reason: unsupportedReason, text: effect.rawText });
+    }
+  }
+}
+
 console.log(JSON.stringify({
   totalCards: cards.length,
   effectCards: cards.filter(card => card.effect?.trim()).length,
   effectLines,
   parsedLines,
+  runtimeParsedEffects,
   unparsedLines: unparsed.length,
   parsedButPartial: parsedButPartial.length,
   falseDraw: falseDraw.length,

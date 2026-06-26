@@ -57,6 +57,7 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<a[^>]*>.*?<\/a>/gi, '')
     .trim();
+  const priority: ParsedEffect['priority'] = /※.*相手のエンチャント発動のち有効/.test(normalizedText) ? 'late' : undefined;
 
   const handSizeMatch = normalizedText.match(/^※?(?:このカードを使用後|このカードの効果でカードを引いたなら)、?手札の数は(バトル終了|ゲーム終了)まで([0-9０-９]+)枚増える[。.]?$/);
   if (handSizeMatch) {
@@ -562,12 +563,13 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   if (!action) return null;
   const trigger = action.params.timing === 'turnEnd' ? 'onUse' : (triggerOverride ?? detectTrigger(text));
 
-  return withExpiry({
+  const parsed = withExpiry({
     trigger,
     conditions,
     action,
     rawText,
   });
+  return priority ? { ...parsed, priority } : parsed;
 }
 
 // ===== Action Parser =====
@@ -1227,6 +1229,7 @@ function parsedEffectKey(effect: ParsedEffect): string {
     trigger: effect.trigger,
     conditions: effect.conditions,
     action: effect.action,
+    priority: effect.priority,
     rawText: effect.rawText,
   });
 }

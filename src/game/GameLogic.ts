@@ -116,6 +116,7 @@ export function emptyModifiers(): CombatModifiers {
     damageReduction: [0, 0],
     elementOverride: [null, null],
     handSize: [0, 0],
+    clockContributionDisabled: [false, false],
     powerCostReduction: [0, 0],
     extraSettableCards: [0, 0],
     sendToPower: [0, 0],
@@ -354,7 +355,9 @@ export function getMinimumSetCount(G: GameState, player: PlayerIndex): number {
 
 export function getRequiredSetCount(G: GameState, player: PlayerIndex): number {
   const required = getMinimumSetCount(G, player);
-  return required + (G.modifiers.extraSettableCards?.[player] ?? 0);
+  return required
+    + (G.modifiers.extraSettableCards?.[player] ?? 0)
+    + (G.handSizeModifier?.[player] ?? 0);
 }
 
 function setCard(G: GameState, player: PlayerIndex, handIndex: number, slot: SetSlot): boolean {
@@ -428,10 +431,15 @@ export function revealCards(G: GameState): void {
 }
 
 export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
-  const total = G.setCardsThisTurn.flat().reduce(
-    (sum, card) => sum + (G.modifiers.cardClockSetTo ?? getCardDef(card.defId)?.clock ?? 0),
-    0,
-  );
+  const total = playerIndexes.reduce<number>((sum, player) => (
+    sum + G.setCardsThisTurn[player].reduce((playerSum, card) => {
+      const def = getCardDef(card.defId);
+      if (def?.type === 'Character' && G.modifiers.clockContributionDisabled?.[player]) {
+        return playerSum;
+      }
+      return playerSum + (G.modifiers.cardClockSetTo ?? def?.clock ?? 0);
+    }, 0)
+  ), 0);
   const before = G.chronos.position;
   setChronosPosition(
     G,
@@ -439,6 +447,32 @@ export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEf
     parsedEffects,
     `Chronos +${total} (${before}→${normalizeChronosPosition(before + total)}).`,
   );
+}
+
+function uniqueCards(cards: CardInstance[]): CardInstance[] {
+  return cards.filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
+}
+
+function applyPreChronosModifiers(G: GameState, parsedEffects: Map<string, ParsedEffect[]>): void {
+  for (const player of getTurnEffectPlayerOrder(G)) {
+    for (const card of uniqueCards([
+      ...G.setCardsThisTurn[player],
+      G.players[player].setZoneC,
+    ].filter((item): item is CardInstance => item !== null))) {
+      if (areEffectsDisabledForCard(G, player, card.defId)) continue;
+      const definition = getCardDef(card.defId);
+      if (!definition || getPlayerPower(G.players[player], G, player) < definition.powerCost) continue;
+      if (!(parsedEffects.get(card.defId) ?? []).some(effect => (
+        (effect.trigger === 'onUse' || effect.trigger === 'onEnter')
+        && effect.conditions.length === 0
+        && effect.action.type === 'nullifyOpponentClock'
+      ))) {
+        continue;
+      }
+      if (!G.modifiers.clockContributionDisabled) G.modifiers.clockContributionDisabled = [false, false];
+      G.modifiers.clockContributionDisabled[(1 - player) as PlayerIndex] = true;
+    }
+  }
 }
 
 function hasOptionalSwapEffect(
@@ -573,6 +607,7 @@ export function resolveTimingEvent(
       if (areEffectsDisabledForCard(G, pendingEffect.player, pendingEffect.cardDefId)) continue;
       const result = executeEffect(pendingEffect.effect, G, pendingEffect.player, {
         cardInstanceId: pendingEffect.cardInstanceId,
+        onTimingEvent: nestedEvent => resolveTimingEvent(G, parsedEffects, nestedEvent),
       });
       if (result.success) G.log.push(`Player ${pendingEffect.player}: ${result.message}.`);
       if ((G.step as GameState['step']) === 'gameOver') return;
@@ -591,7 +626,10 @@ export function resolveTimingEvent(
       for (const effect of parsedEffects.get(card.defId) ?? []) {
         if (effect.trigger !== trigger) continue;
         if (options.effectFilter && !options.effectFilter(effect)) continue;
-        const result = executeEffect(effect, G, player, { cardInstanceId: card.instanceId });
+        const result = executeEffect(effect, G, player, {
+          cardInstanceId: card.instanceId,
+          onTimingEvent: nestedEvent => resolveTimingEvent(G, parsedEffects, nestedEvent),
+        });
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
         if ((G.step as GameState['step']) === 'gameOver') return;
       }
@@ -682,6 +720,10 @@ function clearPendingChoice(G: GameState): void {
   G.pendingChoice = null;
 }
 
+function endOfTurnDrawCount(G: GameState, player: PlayerIndex): number {
+  return Math.max(0, G.players[player].cardsSetThisTurn + (G.modifiers.handSize?.[player] ?? 0));
+}
+
 function suppressEffectCardForTurn(G: GameState, cardInstanceId: string): void {
   if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
   if (!G.suppressedEffectCardIdsThisTurn.includes(cardInstanceId)) {
@@ -702,13 +744,14 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
       player[zone] = null;
     }
   }
-  const cannotDraw = playerIndexes.filter(index => G.players[index].deck.length < G.players[index].cardsSetThisTurn);
+  const drawCounts: [number, number] = [endOfTurnDrawCount(G, 0), endOfTurnDrawCount(G, 1)];
+  const cannotDraw = playerIndexes.filter(index => G.players[index].deck.length < drawCounts[index]);
   if (cannotDraw.length > 0) {
     const winner = cannotDraw.length === 2 ? null : ((1 - cannotDraw[0]) as PlayerIndex);
     endGame(G, winner, cannotDraw.length === 2 ? 'Both players lose by simultaneous overdraw.' : `Player ${cannotDraw[0]} loses: not enough cards to draw.`);
     return;
   }
-  for (const index of playerIndexes) drawUnchecked(G.players[index], G.players[index].cardsSetThisTurn);
+  for (const index of playerIndexes) drawUnchecked(G.players[index], drawCounts[index]);
   for (const player of G.players) {
     player.cardsSetThisTurn = 0;
     player.rawAttack = 0;
@@ -752,6 +795,20 @@ function pendingEffectCount(pendingEffects: [PendingEffect[], PendingEffect[]]):
   return pendingEffects[0].length + pendingEffects[1].length;
 }
 
+function pendingEffectPriority(effect: PendingEffect): 'normal' | 'late' {
+  return effect.effect.priority === 'late' ? 'late' : 'normal';
+}
+
+function pendingEffectPhase(G: GameState): 'normal' | 'late' {
+  return G.pendingEffects.some(effects => effects.some(effect => pendingEffectPriority(effect) === 'normal'))
+    ? 'normal'
+    : 'late';
+}
+
+function playerHasPendingEffectInPhase(G: GameState, player: PlayerIndex, phase: 'normal' | 'late'): boolean {
+  return G.pendingEffects[player].some(effect => pendingEffectPriority(effect) === phase);
+}
+
 function pruneDisabledPendingEffects(G: GameState, player: PlayerIndex): void {
   G.pendingEffects[player] = G.pendingEffects[player].filter(
     pendingEffect => !areEffectsDisabledForCard(G, player, pendingEffect.cardDefId),
@@ -759,24 +816,23 @@ function pruneDisabledPendingEffects(G: GameState, player: PlayerIndex): void {
 }
 
 function nextPendingEffectPlayer(G: GameState): PlayerIndex | null {
+  for (const player of playerIndexes) pruneDisabledPendingEffects(G, player);
+  const phase = pendingEffectPhase(G);
   if (G.pendingEffectPlayer !== null) {
     const current = G.pendingEffectPlayer;
-    pruneDisabledPendingEffects(G, current);
-    if (G.pendingEffects[current].length > 0) {
+    if (playerHasPendingEffectInPhase(G, current, phase)) {
       return current;
     }
 
     const other = (1 - current) as PlayerIndex;
-    pruneDisabledPendingEffects(G, other);
-    if (G.pendingEffects[other].length > 0) {
+    if (playerHasPendingEffectInPhase(G, other, phase)) {
       return other;
     }
     return null;
   }
 
   for (const player of getTurnEffectPlayerOrder(G)) {
-    pruneDisabledPendingEffects(G, player);
-    if (G.pendingEffects[player].length > 0) return player;
+    if (playerHasPendingEffectInPhase(G, player, phase)) return player;
   }
   return null;
 }
@@ -804,6 +860,7 @@ export function resolvePendingEffect(
   if (!Number.isInteger(index) || index < 0 || index >= G.pendingEffects[player].length) return false;
   const pendingEffect = G.pendingEffects[player][index];
   if (!pendingEffect || pendingEffect.player !== player) return false;
+  if (pendingEffectPhase(G) === 'normal' && pendingEffectPriority(pendingEffect) === 'late') return false;
   recordAction(G, player, 'chooseEffectOrder', {
     index,
     effectId: pendingEffect.id,
@@ -815,6 +872,7 @@ export function resolvePendingEffect(
   const beforeChronos = G.chronos.position;
   const result = executeEffect(pendingEffect.effect, G, player, {
     cardInstanceId: pendingEffect.cardInstanceId,
+    onTimingEvent: event => resolveTimingEvent(G, parsedEffects, event),
   });
   if (G.chronos.position !== beforeChronos) {
     const afterChronos = G.chronos.position;
@@ -1141,6 +1199,7 @@ export function resolveTurn(G: GameState, parsedEffects: Map<string, ParsedEffec
     placeRevealedCards(G, true, parsedEffects);
     advanceChronos(G, parsedEffects);
   } else {
+    applyPreChronosModifiers(G, parsedEffects);
     advanceChronos(G, parsedEffects);
     placeRevealedCards(G, false, parsedEffects);
   }

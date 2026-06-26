@@ -139,27 +139,24 @@ Current parser snapshot from the latest audit:
 - total cards: 422;
 - cards with effect text: 250;
 - effect text lines: 267;
-- parsed lines: 257;
-- unparsed lines: 10;
-- parsed-but-partial heuristic: 55;
+- parsed lines: 267;
+- runtime parsed effects: 288;
+- unparsed lines: 0;
+- parsed-but-partial heuristic: 0;
 - false `drawCards` positives: 0.
 
-Important caveat: parsed does not always mean fully correct execution. Some parsed effects only cover the first deterministic part of a longer effect, or intentionally skip a timing/choice clause.
+Important caveat: parsed does not always mean perfect physical-card semantic equivalence. `rule:audit` now checks the runtime `parseAllEffects()` AST, including combined dangling lines, expiry effects, and secondary effects, but card-specific behavior still needs smoke regressions when refined.
 
-Current high-risk parsed-but-wrong categories:
+Current high-risk semantic categories:
 
-- Timing suffixes such as `...ターンの終了時にアビスに置く` can make the whole card parse as `onTurnEnd`, so a main continuous effect may no longer run during the normal effect window.
-- Broad `カードをX枚` false positives for selection/deck-return text have been tightened; `npm run rule:audit` reports current parsed/unparsed/partial samples.
-- Area Enchant expiry clauses are parsed as the main action instead of a second self-move effect, so cards such as expiry-to-Abyss/Power Charger remain incomplete even when a parsed action exists.
-- Own Abyss payment clauses on `4th_6`, `4th_27`, `4th_28`, and `4th_88` now parse and execute the payment/loss branch, `4th_6` also parses and executes its opponent Character swap plus swapped-in effect suppression, and `4th_27` consumes that selected count to mill the opponent deck. Optional hand payment then draw effects on fixed-1 `4th_53`, `4th_54`, and `4th_58` plus selected-count `4th_61`, `4th_62`, and `4th_63` now parse and execute. Deck reordering and broader selected-count follow-ups remain partial or unparsed.
+- Effects that depend on prior clauses from the same card must preserve intra-card order while still allowing different cards to be ordered by the active player.
+- Zone visibility and hidden-information effects need explicit reveal permissions rather than relying on generic face-up state.
+- Parser/executor coverage should remain tied to runtime `parseAllEffects()`, not only per-line `parseEffect()` diagnostics.
 
 Needed work:
 
-- Track three states per card effect line:
-  - parsed and executed;
-  - parsed but partial;
-  - unparsed.
-- Add card IDs and smoke assertions as each line moves from partial/unparsed to implemented.
+- Keep `npm run rule:audit` at 0 unparsed / 0 parsed-but-partial.
+- Add card IDs and smoke assertions for every semantic refinement.
 - Prefer small deterministic slices before broad regex expansion.
 
 ### 6. Chronos board exactness
@@ -189,6 +186,6 @@ These are not core rule-engine mismatches, but they affect real online play:
 1. Expand `pendingChoice` to remaining target, broader optional-effect, variable-count, selected-count follow-up, and deck-ordering choices.
 2. Resolve card-specific effects from Abyss/Power Charger zone-entry and Character replacement events.
 3. Expand Area Enchant expiry/self-move timing for damage-threshold and opponent-zone movement clauses.
-4. Audit parsed-but-partial effects and the 32 unparsed lines card-by-card using `npm run rule:audit`.
+4. Keep `npm run rule:audit` in the verification loop to prevent parser/executor regressions.
 5. Confirm Chronos board exactness from official materials and lock it with tests.
 6. Add reconnect/resume and account-backed match ownership if the product direction needs it.

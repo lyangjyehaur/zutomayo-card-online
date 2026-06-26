@@ -20,6 +20,7 @@ import type {
   PendingUseFromAbyssPayload,
   PendingUseFromHandPayload,
   PlayerIndex,
+  TimingEvent,
 } from '../types';
 import { CHRONOS_MAPPING } from '../types';
 import type { ParsedEffect, Condition } from './types';
@@ -36,6 +37,26 @@ import {
 
 export interface EffectExecutionContext {
   cardInstanceId?: string;
+  onTimingEvent?: (event: TimingEvent) => void;
+}
+
+function emitTimingEvent(G: GameState, context: EffectExecutionContext, event: TimingEvent): void {
+  if (context.onTimingEvent) {
+    context.onTimingEvent(event);
+    return;
+  }
+  G.timingEvents.push(event);
+  G.log.push(`Timing ${event.type}.`);
+}
+
+function emitZoneEntered(
+  G: GameState,
+  context: EffectExecutionContext,
+  player: PlayerIndex,
+  zone: NonNullable<TimingEvent['zone']>,
+  card: CardInstance,
+): void {
+  emitTimingEvent(G, context, { type: 'zoneEntered', player, zone, cardDefId: card.defId });
 }
 
 export function areEffectsDisabledForCard(G: GameState, player: PlayerIndex, cardDefId?: string): boolean {
@@ -377,7 +398,8 @@ export function collectTurnEffects(
   playedCards: [CardInstance[], CardInstance[]] = [[], []],
 ): [PendingEffect[], PendingEffect[]] {
   const pending: [PendingEffect[], PendingEffect[]] = [[], []];
-  for (const player of getTurnEffectPlayerOrder(G)) {
+  const playerOrder = getTurnEffectPlayerOrder(G);
+  for (const player of playerOrder) {
     if (G.step === 'gameOver') continue;
     const playedIds = new Set(playedCards[player].map(card => card.instanceId));
     const candidates = [...playedCards[player], G.players[player].battleZone, G.players[player].setZoneC]
@@ -409,6 +431,11 @@ export function collectTurnEffects(
         });
       }
     }
+  }
+  for (const player of playerOrder) {
+    pending[player].sort((a, b) => (
+      (a.effect.priority === 'late' ? 1 : 0) - (b.effect.priority === 'late' ? 1 : 0)
+    ));
   }
   return pending;
 }
@@ -571,7 +598,16 @@ export function executeEffect(
     case 'clockReset':
       G.chronos.position = G.chronosAtTurnStart;
       return { success: true, message: 'Reset Chronos' };
-    case 'nullifyOpponentClock':
+    case 'nullifyOpponentClock': {
+      if (!G.modifiers.clockContributionDisabled) G.modifiers.clockContributionDisabled = [false, false];
+      const wasDisabled = G.modifiers.clockContributionDisabled[opponentIndex];
+      G.modifiers.clockContributionDisabled[opponentIndex] = true;
+      const rewind = wasDisabled ? 0 : (G.setCardsThisTurn?.[opponentIndex] ?? [])
+        .filter(card => getCardDef(card.defId)?.type === 'Character')
+        .reduce((sum, card) => sum + (G.modifiers.cardClockSetTo ?? getCardDef(card.defId)?.clock ?? 0), 0);
+      if (rewind > 0) G.chronos.position = normalizeChronosPosition(G.chronos.position - rewind);
+      return { success: true, message: `Disable opponent Character clock${rewind > 0 ? ` and rewind ${rewind}` : ''}` };
+    }
     case 'clockRewindOpponentCharacter': {
       const rewind = (G.setCardsThisTurn?.[opponentIndex] ?? [])
         .filter(card => getCardDef(card.defId)?.type === 'Character')
@@ -640,6 +676,7 @@ export function executeEffect(
       if (!card) return { success: false, message: 'No opposing character' };
       opponent.battleZone = null;
       opponent.abyss.push(card);
+      emitZoneEntered(G, context, opponentIndex, 'abyss', card);
       return { success: true, message: 'Send opposing character to Abyss' };
     }
     case 'millDeckToAbyss': {
@@ -658,6 +695,7 @@ export function executeEffect(
         const card = opponent.deck.shift()!;
         card.faceUp = true;
         opponent.abyss.push(card);
+        emitZoneEntered(G, context, opponentIndex, 'abyss', card);
         moved++;
       }
       if (effect.action.params.countFromLastChoice) G.lastChoiceSelectionCount[player] = null;
@@ -673,9 +711,11 @@ export function executeEffect(
       card.faceUp = true;
       if (sendToPower > 0) {
         me.powerCharger.push(card);
+        emitZoneEntered(G, context, player, 'powerCharger', card);
         return { success: true, message: 'Move deck top to Power Charger' };
       }
       me.abyss.push(card);
+      emitZoneEntered(G, context, player, 'abyss', card);
       return { success: true, message: 'Move deck top to Abyss' };
     }
     case 'moveOpponentDeckTopByPowerCost': {
@@ -1272,15 +1312,19 @@ export function processTurnEffects(
   playedCards: [CardInstance[], CardInstance[]] = [[], []],
 ): void {
   const pending = collectTurnEffects(G, parsedEffects, playedCards);
-  for (const player of getTurnEffectPlayerOrder(G)) {
-    if (G.step === 'gameOver') continue;
-    for (const pendingEffect of pending[player]) {
-      if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) continue;
-      const result = executeEffect(pendingEffect.effect, G, player, {
-        cardInstanceId: pendingEffect.cardInstanceId,
-      });
-      if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
-      if ((G.step as GameState['step']) === 'gameOver') return;
+  for (const phase of ['normal', 'late'] as const) {
+    for (const player of getTurnEffectPlayerOrder(G)) {
+      if (G.step === 'gameOver') continue;
+      for (const pendingEffect of pending[player]) {
+        const priority = pendingEffect.effect.priority === 'late' ? 'late' : 'normal';
+        if (priority !== phase) continue;
+        if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) continue;
+        const result = executeEffect(pendingEffect.effect, G, player, {
+          cardInstanceId: pendingEffect.cardInstanceId,
+        });
+        if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
+        if ((G.step as GameState['step']) === 'gameOver') return;
+      }
     }
   }
 }
