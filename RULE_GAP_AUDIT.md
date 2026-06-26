@@ -90,7 +90,7 @@ Needed work:
 
 Rule gap: many cards require the player to choose cards, positions, counts, or order.
 
-Current implementation: deterministic no-choice effects are automated, normal-phase ordering can pause for player selection, hand-to-deck-bottom-then-draw choices use a server-validated `pendingChoice`, a small card-move choice slice supports own hand to own Abyss, opponent Abyss to opponent deck bottom, and opponent Power Charger to opponent deck bottom with `sendToPower` filtering, own Abyss payment choices can return fixed or 1+ selected cards to deck bottom with the required loss branch, and Clock choices can choose a position or 0-5 advance amount. Optional effects, many targets, most variable counts, selected-count follow-ups, and other card-specific choices are still skipped or use a documented fallback.
+Current implementation: deterministic no-choice effects are automated, normal-phase ordering can pause for player selection, hand-to-deck-bottom-then-draw choices use a server-validated `pendingChoice`, a small card-move choice slice supports own hand to own Abyss, opponent Abyss to opponent deck bottom, and opponent Power Charger to opponent deck bottom with `sendToPower` filtering, own Abyss payment choices can return fixed or 1+ selected cards to deck bottom with the required loss branch, the `4th_27` follow-up mills the selected payment count from the opponent deck, and Clock choices can choose a position or 0-5 advance amount. Optional effects, many targets, most variable counts, broader selected-count follow-ups, and other card-specific choices are still skipped or use a documented fallback.
 
 Missing choice categories include:
 
@@ -98,7 +98,7 @@ Missing choice categories include:
 - choose top/bottom deck placement or reorder viewed deck cards;
 - choose whether to use optional effects;
 - choose how many cards to reveal/discard/recover beyond the current own-Abyss 1+ payment slice;
-- apply follow-up effects that depend on the selected count, such as `4th_27` milling the same number from the opponent deck;
+- apply broader follow-up effects that depend on a selected count;
 - choose replacement targets.
 
 Needed work:
@@ -135,8 +135,8 @@ Current parser snapshot from the latest audit:
 - total cards: 422;
 - cards with effect text: 250;
 - effect text lines: 267;
-- parsed lines: 229;
-- unparsed lines: 38;
+- parsed lines: 230;
+- unparsed lines: 37;
 - parsed-but-partial heuristic: 42;
 - false `drawCards` positives: 0.
 
@@ -147,7 +147,7 @@ Current high-risk parsed-but-wrong categories:
 - Timing suffixes such as `...ターンの終了時にアビスに置く` can make the whole card parse as `onTurnEnd`, so a main continuous effect may no longer run during the normal effect window.
 - Broad `カードをX枚` false positives for selection/deck-return text have been tightened; `npm run rule:audit` reports current parsed/unparsed/partial samples.
 - Area Enchant expiry clauses are parsed as the main action instead of a second self-move effect, so cards such as expiry-to-Abyss/Power Charger remain incomplete even when a parsed action exists.
-- Own Abyss payment clauses on `4th_6`, `4th_27`, `4th_28`, and `4th_88` now parse and execute the payment/loss branch, but selected-count follow-ups and deck reordering remain partial or unparsed.
+- Own Abyss payment clauses on `4th_6`, `4th_27`, `4th_28`, and `4th_88` now parse and execute the payment/loss branch, and `4th_27` consumes that selected count to mill the opponent deck. Deck reordering and broader selected-count follow-ups remain partial or unparsed.
 
 Needed work:
 
@@ -185,6 +185,6 @@ These are not core rule-engine mismatches, but they affect real online play:
 1. Expand `pendingChoice` to remaining target, optional-effect, variable-count, selected-count follow-up, and deck-ordering choices.
 2. Resolve card-specific effects from Abyss/Power Charger zone-entry and Character replacement events.
 3. Expand Area Enchant expiry/self-move timing for damage-threshold and opponent-zone movement clauses.
-4. Audit parsed-but-partial effects and the 38 unparsed lines card-by-card using `npm run rule:audit`.
+4. Audit parsed-but-partial effects and the 37 unparsed lines card-by-card using `npm run rule:audit`.
 5. Confirm Chronos board exactness from official materials and lock it with tests.
 6. Add reconnect/resume and account-backed match ownership if the product direction needs it.

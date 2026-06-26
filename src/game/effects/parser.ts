@@ -179,6 +179,11 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 // ===== Action Parser =====
 
 function parseAction(text: string): EffectAction | null {
+  // "相手のデッキの上から、それと同じ枚数をアビスに置く"
+  if (text === '相手のデッキの上から、それと同じ枚数をアビスに置く') {
+    return { type: 'millDeckToAbyss', params: { target: 'opponent', countFromLastChoice: true } };
+  }
+
   // "相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く"
   if (/^相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く[。.]?$/.test(text)) {
     return { type: 'millDeckToAbyss', params: { target: 'opponent', count: 1 } };

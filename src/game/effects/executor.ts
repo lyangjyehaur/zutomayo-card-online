@@ -273,7 +273,16 @@ export function executeEffect(
       return { success: true, message: 'Send opposing character to Abyss' };
     }
     case 'millDeckToAbyss': {
-      const count = Number(effect.action.params.count ?? 0);
+      let count: number;
+      if (effect.action.params.countFromLastChoice) {
+        const selectedCount = G.lastChoiceSelectionCount[player];
+        if (selectedCount === null || selectedCount <= 0) {
+          return { success: false, message: 'Missing selected count for mill effect' };
+        }
+        count = selectedCount;
+      } else {
+        count = Number(effect.action.params.count ?? 0);
+      }
       let moved = 0;
       for (let i = 0; i < count && opponent.deck.length > 0; i++) {
         const card = opponent.deck.shift()!;
@@ -281,6 +290,7 @@ export function executeEffect(
         opponent.abyss.push(card);
         moved++;
       }
+      if (effect.action.params.countFromLastChoice) G.lastChoiceSelectionCount[player] = null;
       return { success: true, message: `Mill ${moved} opposing card${moved === 1 ? '' : 's'} to Abyss` };
     }
     case 'returnAreaEnchantToDeck': {

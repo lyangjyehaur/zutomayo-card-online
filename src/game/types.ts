@@ -168,6 +168,7 @@ export interface GameState {
   pendingEffects: [PendingEffect[], PendingEffect[]];
   pendingEffectPlayer: PlayerIndex | null;
   pendingChoice: PendingChoice | null;
+  lastChoiceSelectionCount: [number | null, number | null];
   timingEvents: TimingEvent[];
   swappedCardsThisTurn: [CardInstance[], CardInstance[]];
   previousTurnCharacterElements: [Element | null, Element | null];

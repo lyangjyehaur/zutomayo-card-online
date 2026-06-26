@@ -122,5 +122,5 @@ Chronos medal 所在時段對應側為優先玩家，先處理效果。
 - Set Zone A/B 同目的地衝突時 A 優先；只有 B 有 Character 或 Area Enchant 時仍會正常進場。
 - Enchant 保留到效果處理後離場；Area Enchant 進 Set Zone C 並持續存在。
 - 每個效果處理前各自檢查當下 Power Cost。攻擊加減、傷害減免、HP、抽牌與部分 Chronos 效果會實際改變狀態。
-- 已支援前一回合 Character 屬性條件、部分確定性目標移動、自己的 Abyss 支付選牌到底牌並在無法支付時敗北，以及持續型 Area Enchant 攻擊加成。
-- 尚未完整支援全部 422 張卡。玩家選擇普通效果順序、傷害減免時機、Chronos transition / zone-entry 事件、部分 Area Enchant 離場、基本手牌/移動選牌、Abyss 支付選牌與 Clock 選擇流程已支援，但追加出牌、依已選張數延伸的後續效果、deck ordering、replacement/continuous modifier 與更複雜 timing 仍有限制，詳見 [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md)。
+- 已支援前一回合 Character 屬性條件、部分確定性目標移動、自己的 Abyss 支付選牌到底牌並在無法支付時敗北、`4th_27` 依 Abyss 支付張數延伸磨對手牌庫，以及持續型 Area Enchant 攻擊加成。
+- 尚未完整支援全部 422 張卡。玩家選擇普通效果順序、傷害減免時機、Chronos transition / zone-entry 事件、部分 Area Enchant 離場、基本手牌/移動選牌、Abyss 支付選牌與 Clock 選擇流程已支援，但追加出牌、更多依已選張數延伸的後續效果、deck ordering、replacement/continuous modifier 與更複雜 timing 仍有限制，詳見 [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md)。

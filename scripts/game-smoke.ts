@@ -567,6 +567,15 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   });
   assert.deepEqual(parsedCardEffect('4th_27').action, abyssVariablePayment.action);
 
+  const selectedCountMill = parseEffect('相手のデッキの上から、それと同じ枚数をアビスに置く');
+  assert.ok(selectedCountMill);
+  assert.deepEqual(selectedCountMill.action, {
+    type: 'millDeckToAbyss',
+    params: { target: 'opponent', countFromLastChoice: true },
+  });
+  const fourth27Effects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('4th_27') ?? [];
+  assert.deepEqual(fourth27Effects[1]?.action, selectedCountMill.action);
+
   const abyssSixPayment = parseEffect('アビスのカードを６枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。');
   assert.ok(abyssSixPayment);
   assert.deepEqual(abyssSixPayment.action, {
@@ -666,6 +675,67 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   const variableMovedCards = variableAbyssPaymentState.players[0].deck.slice(-2);
   assert.deepEqual(new Set(variableMovedCards.map(card => card.instanceId)), new Set(variableSelectedIds));
   for (const card of variableMovedCards) assert.equal(card.faceUp, false);
+
+  const selectedCountSequenceState = preparedState();
+  const selectedCountAbyssCards = [
+    createInstance('1st_9', true),
+    createInstance('1st_17', true),
+    createInstance('1st_1', true),
+  ];
+  const selectedCountOpponentDeck = [
+    createInstance('2nd_1', false),
+    createInstance('2nd_2', false),
+    createInstance('2nd_3', false),
+    createInstance('2nd_4', false),
+    createInstance('2nd_5', false),
+  ];
+  const selectedCountMilledIds = selectedCountOpponentDeck.slice(0, 2).map(card => card.instanceId);
+  const selectedCountRemainingDeckIds = selectedCountOpponentDeck.slice(2).map(card => card.instanceId);
+  selectedCountSequenceState.players[0].abyss = selectedCountAbyssCards;
+  selectedCountSequenceState.players[1].deck = selectedCountOpponentDeck;
+  selectedCountSequenceState.step = 'effectOrder';
+  selectedCountSequenceState.pendingEffectPlayer = 0;
+  selectedCountSequenceState.pendingEffects[0] = [{
+    id: '4th_27-follow-up',
+    player: 0,
+    cardInstanceId: '4th_27-instance',
+    cardDefId: '4th_27',
+    rawText: selectedCountMill.rawText,
+    effect: selectedCountMill,
+    source: 'played',
+  }];
+  const selectedCountIds = [
+    selectedCountAbyssCards[0].instanceId,
+    selectedCountAbyssCards[2].instanceId,
+  ];
+  assert.equal(executeEffect(abyssVariablePayment, selectedCountSequenceState, 0).success, true);
+  assert.equal(submitPendingChoice(selectedCountSequenceState, 0, selectedCountIds, noEffects), true);
+  assert.equal(selectedCountSequenceState.lastChoiceSelectionCount[0], 2);
+  assert.equal(executeEffect(selectedCountMill, selectedCountSequenceState, 0).success, true);
+  assert.deepEqual(
+    selectedCountSequenceState.players[1].abyss.map(card => card.instanceId),
+    selectedCountMilledIds,
+  );
+  assert.deepEqual(
+    selectedCountSequenceState.players[1].deck.map(card => card.instanceId),
+    selectedCountRemainingDeckIds,
+  );
+  assert.equal(selectedCountSequenceState.lastChoiceSelectionCount[0], null);
+
+  const missingSelectedCountState = preparedState();
+  const missingSelectedCountDeck = [
+    createInstance('2nd_1', false),
+    createInstance('2nd_2', false),
+  ];
+  missingSelectedCountState.players[1].deck = missingSelectedCountDeck;
+  const missingSelectedCountResult = executeEffect(selectedCountMill, missingSelectedCountState, 0);
+  assert.equal(missingSelectedCountResult.success, false);
+  assert.match(missingSelectedCountResult.message, /Missing selected count/);
+  assert.deepEqual(
+    missingSelectedCountState.players[1].deck.map(card => card.instanceId),
+    missingSelectedCountDeck.map(card => card.instanceId),
+  );
+  assert.deepEqual(missingSelectedCountState.players[1].abyss, []);
 
   const variableEmptyAbyssState = preparedState();
   variableEmptyAbyssState.players[0].abyss = [];

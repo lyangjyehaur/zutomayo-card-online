@@ -196,6 +196,7 @@ export function setupGame(
     pendingEffects: [[], []],
     pendingEffectPlayer: null,
     pendingChoice: null,
+    lastChoiceSelectionCount: [null, null],
     timingEvents: [],
     swappedCardsThisTurn: [[], []],
     previousTurnCharacterElements: [null, null],
@@ -553,6 +554,7 @@ function emptyPendingEffects(): [PendingEffect[], PendingEffect[]] {
 function clearPendingEffects(G: GameState): void {
   G.pendingEffects = emptyPendingEffects();
   G.pendingEffectPlayer = null;
+  G.lastChoiceSelectionCount = [null, null];
 }
 
 function clearPendingChoice(G: GameState): void {
@@ -740,6 +742,7 @@ export function submitPendingChoice(
       ? shuffleSelectedCards(selectedCards)
       : selectedCards;
     playerState.deck.push(...ordered);
+    G.lastChoiceSelectionCount[player] = optionIds.length;
   }
   if (choice.type === 'clockPosition' || choice.type === 'clockAdvance') {
     const option = choice.options.find(item => item.id === optionIds[0]);
@@ -752,6 +755,7 @@ export function submitPendingChoice(
       setChronosPosition(G, before + value, parsedEffects, `Chronos +${value} (${before}→${(before + value) % 12}).`);
     }
   }
+  if (choice.type !== 'abyssToDeckBottomOrLose') G.lastChoiceSelectionCount[player] = null;
   clearPendingChoice(G);
   advancePendingEffectWindow(G, parsedEffects);
   return true;
