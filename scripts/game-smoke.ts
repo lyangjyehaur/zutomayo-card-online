@@ -809,6 +809,7 @@ function fivePowerCards() {
 
   const setAllClocksToOne = parseEffect('すべてのカードの時計を１にする。ターンの終了時に、相手のフィールドにエリアエンチャントがあるならパワーチャージャーに置く');
   assert.deepEqual(setAllClocksToOne?.action, { type: 'setAllCardClocks', params: { value: 1 } });
+  // executor 單元測試：驗證 executor 本身正確設置 cardClockSetTo。
   const setAllClocksState = preparedState();
   setAllClocksState.players[0].setZoneA = createInstance('1st_1', true);
   setAllClocksState.players[1].setZoneA = createInstance('1st_43', true);
@@ -816,6 +817,25 @@ function fivePowerCards() {
   assert.equal(executeEffect(setAllClocksToOne!, setAllClocksState, 0).success, true);
   advanceChronos(setAllClocksState, noEffects);
   assert.equal(setAllClocksState.chronos.position, 2);
+
+  // 整合測試：真實 resolveTurn 流程中，setAllCardClocks 應在 advanceChronos 前預處理。
+  // 3rd_61（setAllCardClocks AE）在 setZoneC，1st_1 clock=5 + 1st_43 clock=3 = 8；
+  // 預處理生效後 cardClockSetTo=1，推進應為 1+1=2 而非 5+3=8。
+  {
+    const G = preparedState();
+    G.step = 'turnSet';
+    G.turnNumber = 2;
+    G.lastBattleResult = { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 };
+    G.players[0].setZoneC = createInstance('3rd_61', true);
+    G.players[0].powerCharger = [createInstance('1st_43', true)]; // sendToPower=1，供 3rd_61 powerCost=1
+    G.setCardsThisTurn = [[createInstance('1st_1', true)], [createInstance('1st_43', true)]];
+    const parsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+    resolveTurn(G, parsedEffects);
+    // 預處理生效：cardClockSetTo 被設為 1
+    assert.equal(G.modifiers.cardClockSetTo, 1);
+    // advanceChronos 用 cardClockSetTo=1 計算，推進 1+1=2 而非 5+3=8
+    assert.equal(G.chronos.position, 2);
+  }
 
   const forceDayAttack = parseEffect('このカードを使用中、自分の攻撃力は常に昼の攻撃力となる。相手がエリアエンチャントを出したターンの終了時にアビスに置く');
   assert.deepEqual(forceDayAttack?.action, { type: 'forceOwnAttackTime', params: { value: 'day' } });

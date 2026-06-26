@@ -454,6 +454,21 @@ function uniqueCards(cards: CardInstance[]): CardInstance[] {
 }
 
 function applyPreChronosModifiers(G: GameState, parsedEffects: Map<string, ParsedEffect[]>): void {
+  // 預處理影響クロノス推進計算的無條件 onUse/onEnter 效果。
+  //
+  // 官方規則指南 E 要求效果在「効果の処理」階段發動，但以下兩類效果若延後到
+  // advanceChronos 之後才處理，會導致クロノス推進計算錯誤：
+  //
+  // 1. nullifyOpponentClock（#4 必要例外）：
+  //    若不預處理，對手 Character 時計會先被計入推進 → 觸發 chronosChanged event →
+  //    連鎖觸發 onChronosChanged 效果（如 2nd_86「封」錯誤移動）→ rewind 無法
+  //    復原已觸發的 event 連鎖。故提前在 advanceChronos 前設 clockContributionDisabled。
+  //    executor 透過 wasDisabled 機制避免重複 rewind。功能結果正確，時序為技術例外。
+  //
+  // 2. setAllCardClocks（#5 修復）：
+  //    cardClockSetTo 必須在 advanceChronos 讀取前設置，否則 3rd_61「すべてのカードの
+  //    時計を１にする」對當回合クロノス推進完全失效（原 bug：效果處理階段才寫入，
+  //    但 advanceChronos 已執行完畢，且每回合 finishTurn 重置為 null）。
   for (const player of getTurnEffectPlayerOrder(G)) {
     for (const card of uniqueCards([
       ...G.setCardsThisTurn[player],
@@ -462,15 +477,17 @@ function applyPreChronosModifiers(G: GameState, parsedEffects: Map<string, Parse
       if (areEffectsDisabledForCard(G, player, card.defId)) continue;
       const definition = getCardDef(card.defId);
       if (!definition || getPlayerPower(G.players[player], G, player) < definition.powerCost) continue;
-      if (!(parsedEffects.get(card.defId) ?? []).some(effect => (
-        (effect.trigger === 'onUse' || effect.trigger === 'onEnter')
-        && effect.conditions.length === 0
-        && effect.action.type === 'nullifyOpponentClock'
-      ))) {
-        continue;
+      const effects = parsedEffects.get(card.defId) ?? [];
+      for (const effect of effects) {
+        if (effect.trigger !== 'onUse' && effect.trigger !== 'onEnter') continue;
+        if (effect.conditions.length !== 0) continue;
+        if (effect.action.type === 'nullifyOpponentClock') {
+          if (!G.modifiers.clockContributionDisabled) G.modifiers.clockContributionDisabled = [false, false];
+          G.modifiers.clockContributionDisabled[(1 - player) as PlayerIndex] = true;
+        } else if (effect.action.type === 'setAllCardClocks') {
+          G.modifiers.cardClockSetTo = Number(effect.action.params.value ?? 0);
+        }
       }
-      if (!G.modifiers.clockContributionDisabled) G.modifiers.clockContributionDisabled = [false, false];
-      G.modifiers.clockContributionDisabled[(1 - player) as PlayerIndex] = true;
     }
   }
 }
