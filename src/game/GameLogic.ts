@@ -429,6 +429,7 @@ function timingTrigger(event: TimingEvent): ParsedEffect['trigger'] | null {
   if (event.type === 'turnEnd') return 'onTurnEnd';
   if (event.type === 'damageReceived') return 'onDamageReceived';
   if (event.type === 'chronosChanged') return 'onChronosChanged';
+  if (event.type === 'zoneEntered') return 'onZoneEntered';
   return null;
 }
 
@@ -507,7 +508,6 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   if (damage > 0) {
     resolveTimingEvent(G, parsedEffects, { ...damageReceivedEvent, amount: damage }, {
       effectFilter: effect => effect.action.type !== 'damageReduce',
-      recordEvent: false,
     });
   }
 }

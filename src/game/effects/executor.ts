@@ -53,6 +53,18 @@ function evaluateCondition(cond: Condition, G: GameState, player: PlayerIndex): 
     case 'handCount': return me.hand.length >= Number(cond.value);
     case 'hpLessOrEqual': return me.hp <= Number(cond.value);
     case 'hpLessThanOpponent': return me.hp < opponent.hp;
+    case 'damageAtLeast': {
+      const event = [...G.timingEvents].reverse().find(item => item.type === 'damageReceived' && item.player === player);
+      return Number(event?.amount ?? 0) >= Number(cond.value);
+    }
+    case 'zoneEntered': {
+      const targetPlayer = cond.target === 'opponent' ? (1 - player) as PlayerIndex : player;
+      return G.timingEvents.some(event => (
+        event.type === 'zoneEntered'
+        && event.player === targetPlayer
+        && event.zone === cond.value
+      ));
+    }
     case 'chronosChanged': return G.chronos.position !== G.chronosAtTurnStart;
     case 'chronosTimeChanged': return chronosTimeAt(G.chronosAtTurnStart, G.midnightRange) !== chronosTimeAt(G.chronos.position, G.midnightRange);
     case 'namedCardCondition': {

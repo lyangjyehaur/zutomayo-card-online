@@ -375,6 +375,31 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
   if (!/(アビス|パワーチャージャー)に置く/.test(text)) return null;
 
   const destination = text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss';
+  const damageThresholdMatch = text.match(/([0-9０-９]+)ダメージ以上を受けたなら、?すぐに(?:このカードを)?(?:アビス|パワーチャージャー)に置く/);
+  if (damageThresholdMatch) {
+    return {
+      trigger: 'onDamageReceived',
+      conditions: [{ type: 'damageAtLeast', value: parseNum(damageThresholdMatch[1]) }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  if (text.includes('相手のアビスにカードが置かれたとき')) {
+    return {
+      trigger: 'onZoneEntered',
+      conditions: [{ type: 'zoneEntered', value: 'abyss', target: 'opponent' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  if (text.includes('相手がアビスにカードを置いたターンの終了時')) {
+    return {
+      trigger: 'onTurnEnd',
+      conditions: [{ type: 'zoneEntered', value: 'abyss', target: 'opponent' }],
+      action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
   if (text.includes('昼と夜が入れ替わったターンの終了時')) {
     return {
       trigger: 'onTurnEnd',

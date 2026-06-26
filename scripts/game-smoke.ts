@@ -11,6 +11,7 @@ import {
   placeRevealedCards,
   resolveJanken,
   resolveBattle,
+  resolveTimingEvent,
   resolveTurn,
   setInitialCard,
   setTurnCard,
@@ -784,6 +785,59 @@ function preparedAreaEnchantState(defId: string, chronosPosition: number): GameS
   const area = G.players[0].setZoneC!;
   processTurnEffects(G, new Map([['2nd_86', [effect]]]), [[area], []]);
   assert.equal(G.modifiers.attack[0], 20);
+}
+
+{
+  const parsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  const effects = parsedEffects.get('3rd_58') ?? [];
+  assert.ok(effects.some(effect => (
+    effect.trigger === 'onDamageReceived'
+    && effect.action.type === 'moveSelfAreaEnchant'
+    && effect.conditions.some(condition => condition.type === 'damageAtLeast' && condition.value === 30)
+  )));
+  const G = preparedAreaEnchantState('3rd_58', 0);
+  G.players[0].powerCharger = [createInstance('1st_13', true)];
+  resolveTimingEvent(G, parsedEffects, { type: 'damageReceived', player: 0, amount: 29 });
+  assert.equal(G.players[0].setZoneC?.defId, '3rd_58');
+  resolveTimingEvent(G, parsedEffects, { type: 'damageReceived', player: 0, amount: 30 });
+  assert.equal(G.players[0].setZoneC, null);
+  assert.equal(G.players[0].abyss.at(-1)?.defId, '3rd_58');
+}
+
+{
+  const parsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  const effects = parsedEffects.get('4th_30') ?? [];
+  assert.ok(effects.some(effect => (
+    effect.trigger === 'onZoneEntered'
+    && effect.action.type === 'moveSelfAreaEnchant'
+    && effect.conditions.some(condition => condition.type === 'zoneEntered' && condition.value === 'abyss' && condition.target === 'opponent')
+  )));
+  const G = preparedAreaEnchantState('4th_30', 0);
+  G.players[0].powerCharger = [
+    createInstance('1st_13', true),
+    createInstance('1st_13', true),
+  ];
+  resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player: 0, zone: 'abyss', cardDefId: '1st_1' });
+  assert.equal(G.players[0].setZoneC?.defId, '4th_30');
+  resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player: 1, zone: 'abyss', cardDefId: '1st_1' });
+  assert.equal(G.players[0].setZoneC, null);
+  assert.equal(G.players[0].abyss.at(-1)?.defId, '4th_30');
+}
+
+{
+  const parsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  const effects = parsedEffects.get('3rd_91') ?? [];
+  assert.ok(effects.some(effect => (
+    effect.trigger === 'onTurnEnd'
+    && effect.action.type === 'moveSelfAreaEnchant'
+    && effect.conditions.some(condition => condition.type === 'zoneEntered' && condition.value === 'abyss' && condition.target === 'opponent')
+  )));
+  const G = preparedAreaEnchantState('3rd_91', 0);
+  G.players[0].powerCharger = [createInstance('1st_13', true)];
+  G.timingEvents.push({ type: 'zoneEntered', player: 1, zone: 'abyss', cardDefId: '1st_1' });
+  resolveTimingEvent(G, parsedEffects, { type: 'turnEnd' });
+  assert.equal(G.players[0].setZoneC, null);
+  assert.equal(G.players[0].powerCharger.at(-1)?.defId, '3rd_91');
 }
 
 {

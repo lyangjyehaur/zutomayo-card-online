@@ -19,7 +19,8 @@ export type EffectTrigger =
   | 'onTurnStart'   // Start of turn
   | 'onTurnEnd'     // End of turn
   | 'onDamageReceived' // When taking damage
-  | 'onChronosChanged'; // When Chronos crosses a timing boundary
+  | 'onChronosChanged' // When Chronos crosses a timing boundary
+  | 'onZoneEntered'; // When a card enters a public zone
 
 export type Condition =
   | {
@@ -43,6 +44,8 @@ export type ConditionType =
   | 'handCount'         // Hand has N cards
   | 'hpLessOrEqual'     // Player HP <= N
   | 'hpLessThanOpponent' // Player HP < opponent HP
+  | 'damageAtLeast'     // Current damage event amount >= N
+  | 'zoneEntered'       // A card entered a zone this turn
   | 'chronosChanged'    // Chronos changed this turn
   | 'chronosTimeChanged' // Chronos changed between night/day this turn
   | 'namedCardCondition' // Named-song Character in a relevant zone

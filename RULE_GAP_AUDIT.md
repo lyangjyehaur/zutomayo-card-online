@@ -21,12 +21,12 @@ Implemented and covered by smoke tests:
 - Enchant cards remain until effect resolution; Area Enchant cards persist in Set Zone C.
 - Per-effect Power Cost checks and Power Cost attack checks.
 - Player-selected normal effect-processing order: after reveal/place/Chronos advancement, eligible effects are queued by Chronos-side priority player first, each player chooses their own effect order, and the existing post-effect battle/finish pipeline resumes after the queue empties.
-- Timing events for turn start, turn end, and damage received; timing effects resolve from public field cards without inspecting hidden hands/decks.
+- Timing events for turn start, turn end, damage received, and zone entry; timing effects resolve from public field cards without inspecting hidden hands/decks.
 - Damage-received reduction is applied before battle damage, and damage-causing effects now end the game immediately when HP reaches 0.
 - Turn-start transient modifiers are preserved into the turn they affect.
 - Chronos transition, zone-entry, and Character replacement events are recorded; Chronos transition can drive simple Area Enchant self-move effects.
 - Server-validated pending choice flows exist for hand-to-deck-bottom-then-draw, focused card-move choices, Clock position choices, and optional 0-5 Clock advance choices.
-- Area Enchant self-move parser now emits secondary timing effects for several turn-end and day/night-loss clauses.
+- Area Enchant self-move parser now emits secondary timing effects for several turn-end, day/night-loss, damage-threshold, and opponent-Abyss-entry clauses.
 - Battle damage, HP loss, HP-zero game end, and exact overdraw loss with no partial draw.
 - Online `playerView` redacts hidden hands, decks, face-down cards, and unpaired janken choices.
 - Server-side room setup accepts validated deck ID payloads for browser custom decks.
@@ -51,9 +51,8 @@ Current implementation: the normal effect-processing pass has pending-effect inf
 
 Still-missing timing windows include:
 
-- card enters Abyss;
-- card enters Power Charger;
-- non-Chronos zone-entry triggered effects;
+- exhaustive card enters Abyss / Power Charger handling for all movement paths;
+- broader non-Chronos zone-entry triggered effects;
 - replacement effects triggered by Character replacement.
 
 Needed work:
@@ -70,16 +69,21 @@ Rule gap: many Area Enchant cards specify when they leave Set Zone C and whether
 
 Current implementation: Area Enchant cards persist, static `boostAttack` effects can apply across turns, and several self-move clauses now become secondary timing effects. Full expiry/self-move timing is still not complete.
 
-Examples not fully implemented:
+Examples now covered in the focused slice:
 
 - `30ダメージ以上を受けたなら、すぐにアビスに置く`
 - `相手のアビスにカードが置かれたとき、すぐにこのカードをアビスに置く`
+
+Examples still not fully implemented:
+
+- movement paths that do not yet emit zone-entry resolution immediately;
+- `相手のフィールドにエリアエンチャントがあるならパワーチャージャーに置く`.
 
 Needed work:
 
 - Implement Area Enchant expiry as event-driven effects, not as a broad cleanup rule.
 - Route the card to the correct owner zone according to the specific text.
-- Cover at least one Power Charger expiry and one Abyss expiry smoke test first.
+- Continue adding smoke tests as each expiry condition is promoted from parsed-but-partial to executed.
 
 ### 3. Interactive choices and targets
 
