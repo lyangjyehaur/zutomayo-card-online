@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createInstance, getAllCardDefs } from '../src/game/cards/loader';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
-import { getCharacterCountWarning, isValidConstructedDeck, validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
+import { getCharacterCountWarning, isValidConstructedDeck, validateConstructedDeckIds, randomDeck, getPresetDeck } from '../src/game/cards/deckBuilder';
 import {
   advanceChronos,
   confirmReady,
@@ -567,6 +567,37 @@ function fivePowerCards() {
   assert.equal(getRequiredSetCount(G, 0), 1);
   G.players[0].cardsSetThisTurn = 1;
   assert.equal(endOfTurnDrawCount(G, 0), 2);
+}
+
+{
+  // #7 mulligan：伏示牌回牌庫前應重設 faceUp=false（牌庫狀態衛生）。
+  const G = setupGame();
+  resolveJanken(G, 'rock', 'scissors');
+  assert.equal(G.step, 'mulligan');
+  G.players[0].hand.forEach(card => { card.faceUp = true; });
+  const discardedIds = [G.players[0].hand[0].defId, G.players[0].hand[1].defId];
+  assert.equal(finishMulligan(G, 0, [0, 1]), true);
+  // 被抽掉的 2 張已回牌庫，牌庫內所有卡應為 faceUp=false。
+  for (const card of G.players[0].deck) assert.equal(card.faceUp, false);
+  // 重抽後手牌仍為 faceUp=true（drawUnchecked 設定）。
+  for (const card of G.players[0].hand) assert.equal(card.faceUp, true);
+  // 確認回牌庫的確實是被丟棄的原手牌（不驗證順序，因 shuffleDeck 會打亂）。
+  const deckIdSet = new Set(G.players[0].deck.map(c => c.defId));
+  for (const id of discardedIds) assert.ok(deckIdSet.has(id));
+}
+
+{
+  // #6 預設牌組與 randomDeck 應通過 validateConstructedDeckIds（buildDeck 內驗證）。
+  for (const key of Object.keys(PRESET_DECKS)) {
+    const preset = PRESET_DECKS[key];
+    assert.equal(validateConstructedDeckIds(preset.ids), null, `preset ${key} should be valid`);
+    // 透過 getPresetDeck 走 buildDeck，應不拋錯。
+    const deck = getPresetDeck(key);
+    assert.equal(deck.length, 20);
+  }
+  // randomDeck 走 buildDeck 也應不拋錯。
+  const random = randomDeck();
+  assert.equal(random.length, 20);
 }
 
 {

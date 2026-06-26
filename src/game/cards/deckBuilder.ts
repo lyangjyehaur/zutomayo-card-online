@@ -17,11 +17,9 @@ function shuffle<T>(arr: T[]): T[] {
 
 // Build a deck from a list of card def IDs (must be 20 cards)
 export function buildDeck(defIds: string[]): CardInstance[] {
-  if (defIds.length !== 20) {
-    throw new Error(`Deck must have exactly 20 cards, got ${defIds.length}`);
-  }
-  const unknown = defIds.find(id => !getCardDef(id));
-  if (unknown) throw new Error(`Unknown card in deck: ${unknown}`);
+  // 所有牌組建構路徑（custom / preset / randomDeck）統一走驗證，確保不合規牌組無法進入遊戲。
+  const validationError = validateConstructedDeckIds(defIds);
+  if (validationError) throw new Error(validationError);
   return defIds.map(id => createInstance(id));
 }
 

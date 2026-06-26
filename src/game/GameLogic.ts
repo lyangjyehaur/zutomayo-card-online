@@ -332,6 +332,8 @@ export function finishMulligan(G: GameState, player: PlayerIndex, indices: numbe
   const aside = unique.map(index => state.hand.splice(index, 1)[0]);
   if (state.deck.length < aside.length) return false;
   drawUnchecked(state, aside.length);
+  // mulligan 伏示牌回牌庫前重設 faceUp，保持牌庫狀態衛生（官方牌庫為裡向）。
+  for (const card of aside) card.faceUp = false;
   state.deck = shuffleDeck([...state.deck, ...aside]);
   G.mulliganUsed[player] = true;
   G.ready[player] = true;
