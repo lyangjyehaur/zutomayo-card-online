@@ -135,11 +135,21 @@ function shuffleSelectedCards<T>(cards: T[]): T[] {
   return result;
 }
 
-export function sendToOwnerZone(card: CardInstance, player: PlayerState): void {
+export function sendToOwnerZone(
+  card: CardInstance,
+  player: PlayerState,
+  G?: GameState,
+  playerIndex?: PlayerIndex,
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
+): void {
   card.faceUp = true;
   const def = getCardDef(card.defId);
-  if (def && def.sendToPower > 0) player.powerCharger.push(card);
+  const zone = def && def.sendToPower > 0 ? 'powerCharger' : 'abyss';
+  if (zone === 'powerCharger') player.powerCharger.push(card);
   else player.abyss.push(card);
+  if (G && playerIndex !== undefined) {
+    resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player: playerIndex, zone, cardDefId: card.defId });
+  }
 }
 
 export function getPlayerPower(player: PlayerState): number {
@@ -440,23 +450,24 @@ function replaceDestination(
   cards: CardInstance[],
   destination: 'battleZone' | 'setZoneC',
   skipBattleSwap = false,
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
 ): void {
   if (cards.length === 0) return;
   const player = G.players[playerIndex];
   if (destination === 'battleZone' && skipBattleSwap && player.battleZone) {
-    for (const card of cards) sendToOwnerZone(card, player);
+    for (const card of cards) sendToOwnerZone(card, player, G, playerIndex, parsedEffects);
     return;
   }
   const selected = cards[0];
   const old = player[destination];
   player[destination] = selected;
-  G.timingEvents.push({ type: 'zoneEntered', player: playerIndex, zone: destination, cardDefId: selected.defId });
+  resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player: playerIndex, zone: destination, cardDefId: selected.defId });
   if (destination === 'battleZone' && old) {
     G.swappedCardsThisTurn[playerIndex].push(selected);
     G.timingEvents.push({ type: 'characterReplaced', player: playerIndex, zone: destination, cardDefId: selected.defId, replacedCardDefId: old.defId });
   }
-  if (old) sendToOwnerZone(old, player);
-  for (const extra of cards.slice(1)) sendToOwnerZone(extra, player);
+  if (old) sendToOwnerZone(old, player, G, playerIndex, parsedEffects);
+  for (const extra of cards.slice(1)) sendToOwnerZone(extra, player, G, playerIndex, parsedEffects);
 }
 
 export function placeRevealedCards(
@@ -464,14 +475,15 @@ export function placeRevealedCards(
   initial: boolean,
   parsedEffects: Map<string, ParsedEffect[]> | null = null,
 ): void {
+  const timingEffects = initial ? emptyParsedEffects() : (parsedEffects ?? emptyParsedEffects());
   for (const index of playerIndexes) {
     const player = G.players[index];
     const slots = [player.setZoneA, player.setZoneB].filter((card): card is CardInstance => card !== null);
     if (initial) {
       const characters = slots.filter(card => getCardDef(card.defId)?.type === 'Character');
-      replaceDestination(G, index, characters, 'battleZone');
+      replaceDestination(G, index, characters, 'battleZone', false, timingEffects);
       for (const card of slots.filter(card => getCardDef(card.defId)?.type !== 'Character')) {
-        sendToOwnerZone(card, player);
+        sendToOwnerZone(card, player, G, index, timingEffects);
       }
       player.setZoneA = null;
       player.setZoneB = null;
@@ -479,8 +491,8 @@ export function placeRevealedCards(
     }
     const characters = slots.filter(card => getCardDef(card.defId)?.type === 'Character');
     const areas = slots.filter(card => getCardDef(card.defId)?.type === 'Area Enchant');
-    replaceDestination(G, index, characters, 'battleZone', hasOptionalSwapEffect(G, index, parsedEffects));
-    replaceDestination(G, index, areas, 'setZoneC');
+    replaceDestination(G, index, characters, 'battleZone', hasOptionalSwapEffect(G, index, parsedEffects), timingEffects);
+    replaceDestination(G, index, areas, 'setZoneC', false, timingEffects);
     for (const zone of ['setZoneA', 'setZoneB'] as const) {
       const card = player[zone];
       const type = card && getCardDef(card.defId)?.type;
@@ -515,6 +527,7 @@ function timingTrigger(event: TimingEvent): ParsedEffect['trigger'] | null {
   if (event.type === 'damageReceived') return 'onDamageReceived';
   if (event.type === 'chronosChanged') return 'onChronosChanged';
   if (event.type === 'zoneEntered') return 'onZoneEntered';
+  if (event.type === 'battle') return 'onBattle';
   return null;
 }
 
@@ -602,6 +615,8 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   G.players[loser].hp = Math.max(0, G.players[loser].hp - damage);
   G.lastBattleResult = { winner, damage, winnerAttack: attacks[winner], loserAttack: attacks[loser] };
   G.log.push(`Battle ${attacks[0]}–${attacks[1]}: Player ${winner} deals ${damage}.`);
+  resolveTimingEvent(G, parsedEffects, { type: 'battle' });
+  if ((G.step as GameState['step']) === 'gameOver') return;
   if (G.players[loser].hp <= 0) {
     endGame(G, winner, `Player ${loser} loses at 0 HP.`);
     return;
@@ -666,9 +681,10 @@ function suppressEffectCardForTurn(G: GameState, cardInstanceId: string): void {
 function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
   resolveTimingEvent(G, parsedEffects, { type: 'turnEnd' });
   if (G.step === 'gameOver') return;
-  for (const player of G.players) {
+  for (const index of playerIndexes) {
+    const player = G.players[index];
     for (const zone of ['setZoneA', 'setZoneB'] as const) {
-      if (player[zone]) sendToOwnerZone(player[zone]!, player);
+      if (player[zone]) sendToOwnerZone(player[zone]!, player, G, index, parsedEffects);
       player[zone] = null;
     }
   }
@@ -854,9 +870,15 @@ export function submitPendingChoice(
         if (handIndex < 0) return false;
         const [card] = playerState.hand.splice(handIndex, 1);
         card.faceUp = true;
-        if (choice.payload.destinationZone === 'abyss') playerState.abyss.push(card);
-        else if (choice.payload.destinationZone === 'powerCharger') playerState.powerCharger.push(card);
-        else playerState.deck.push(card);
+        if (choice.payload.destinationZone === 'abyss') {
+          playerState.abyss.push(card);
+          resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player, zone: 'abyss', cardDefId: card.defId });
+        } else if (choice.payload.destinationZone === 'powerCharger') {
+          playerState.powerCharger.push(card);
+          resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player, zone: 'powerCharger', cardDefId: card.defId });
+        } else {
+          playerState.deck.push(card);
+        }
       }
 
       if (playerState.deck.length < drawCount) {
@@ -873,7 +895,16 @@ export function submitPendingChoice(
       return !!card && matchesCardMoveFilter(card, choice.payload);
     })) return false;
     for (const optionId of optionIds) {
+      const movedCard = source.find(item => item.instanceId === optionId);
       if (!moveCardForChoice(G, choice.payload, optionId)) return false;
+      if (movedCard && choice.payload.destinationZone === 'abyss') {
+        resolveTimingEvent(G, parsedEffects, {
+          type: 'zoneEntered',
+          player: choice.payload.destinationPlayer,
+          zone: 'abyss',
+          cardDefId: movedCard.defId,
+        });
+      }
     }
   }
   if (choice.type === 'useFromAbyss') {
@@ -902,6 +933,56 @@ export function submitPendingChoice(
         source: 'played' as const,
       })));
     }
+    G.pendingEffects[player].unshift(...copied);
+  }
+  if (choice.type === 'useFromHand') {
+    if (choice.payload.sourcePlayer !== player) return false;
+    const copied: PendingEffect[] = [];
+    for (const optionId of optionIds) {
+      const selectedIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
+      if (selectedIndex < 0) return false;
+      const selected = playerState.hand[selectedIndex];
+      const def = getCardDef(selected.defId);
+      if (!def || getPlayerPower(playerState) < def.powerCost || !matchesPendingCardFilter(selected, choice.payload.filter)) return false;
+    }
+
+    for (const optionId of optionIds) {
+      const selectedIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
+      if (selectedIndex < 0) return false;
+      const [selected] = playerState.hand.splice(selectedIndex, 1);
+      selected.faceUp = true;
+      const copiedEffects = (parsedEffects.get(selected.defId) ?? [])
+        .filter(effect => effect.trigger === 'onUse' || effect.trigger === 'onBattle');
+      copied.push(...copiedEffects.map((effect, index) => ({
+        id: `${selected.instanceId}:hand:${G.turnNumber}:${G.log.length}:${index}`,
+        player,
+        cardInstanceId: selected.instanceId,
+        cardDefId: selected.defId,
+        rawText: effect.rawText,
+        effect,
+        source: 'played' as const,
+      })));
+      sendToOwnerZone(selected, playerState, G, player, parsedEffects);
+    }
+
+    const followUpDrawCount = Number(choice.payload.followUpDrawCount ?? 0);
+    if (followUpDrawCount > 0) {
+      copied.push({
+        id: `follow-up-draw:${player}:${G.turnNumber}:${G.log.length}`,
+        player,
+        cardInstanceId: `follow-up-draw:${player}`,
+        cardDefId: 'follow-up-draw',
+        rawText: choice.prompt ?? 'follow-up draw',
+        effect: {
+          trigger: 'onUse',
+          conditions: [],
+          action: { type: 'drawCards', params: { value: followUpDrawCount } },
+          rawText: choice.prompt ?? 'follow-up draw',
+        },
+        source: 'played',
+      });
+    }
+
     G.pendingEffects[player].unshift(...copied);
   }
   if (choice.type === 'revealHandAttackBoost') {

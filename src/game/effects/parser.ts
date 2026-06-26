@@ -99,6 +99,22 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     };
   }
 
+  const opponentHealThenDamageMatch = text.match(/^相手のHPを([0-9０-９]+)回復させ、?ターン終了時に([0-9０-９]+)ダメージを与える[。.]?$/);
+  if (opponentHealThenDamageMatch) {
+    return {
+      trigger: 'onUse',
+      conditions: [],
+      action: { type: 'heal', params: { value: parseNum(opponentHealThenDamageMatch[1]), target: 'opponent' } },
+      rawText,
+      expiry: {
+        trigger: 'onTurnEnd',
+        conditions: [],
+        action: { type: 'directDamage', params: { value: parseNum(opponentHealThenDamageMatch[2]) } },
+        rawText,
+      },
+    };
+  }
+
   const swappedDanglingMatch = text.match(/^このターンに[（(]([^）)]+)[）)]のキャラクターと入れ替えていたなら[、,]?$/);
   if (swappedDanglingMatch) {
     return {
@@ -177,6 +193,19 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   const conditions: Condition[] = [];
   let actionText = text;
   let triggerOverride: ParsedEffect['trigger'] | null = null;
+
+  const hpThresholdSelfMoveMatch = text.match(/^HPが([0-9０-９]+)以下になったなら、?(?:すぐに)?(アビス|パワーチャージャー)に置く[。.]?$/);
+  if (hpThresholdSelfMoveMatch) {
+    return {
+      trigger: 'onDamageReceived',
+      conditions: [{ type: 'hpLessOrEqual', value: parseNum(hpThresholdSelfMoveMatch[1]) }],
+      action: {
+        type: 'moveSelfAreaEnchant',
+        params: { destination: hpThresholdSelfMoveMatch[2] === 'パワーチャージャー' ? 'powerCharger' : 'abyss' },
+      },
+      rawText,
+    };
+  }
 
   // "真夜中の前後Xマスも真夜中として扱う"
   const midnightRangeMatch = text.match(/真夜中の前後([0-9０-９]+)マスも真夜中として扱う/);
@@ -534,6 +563,22 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 function parseAction(text: string): EffectAction | null {
   if (/^アビスにあるエンチャントカードの中から自由に[1１]枚選び、このカードの効果として使う[。.]?$/.test(text)) {
     return { type: 'useFromAbyss', params: { source: 'abyss', cardType: 'Enchant', count: 1 } };
+  }
+
+  const extraEnchantUseThenDrawMatch = text.match(/^手札からエンチャントを追加で([0-9０-９]+)枚使っても[良よ]い[。.]その後、?カードを([0-9０-９]+)枚引く[。.]?$/);
+  if (extraEnchantUseThenDrawMatch) {
+    return {
+      type: 'requestChoice',
+      params: {
+        choiceType: 'useFromHand',
+        sourceOwner: 'self',
+        sourceZone: 'hand',
+        filterCardType: 'Enchant',
+        max: parseNum(extraEnchantUseThenDrawMatch[1]),
+        optional: true,
+        followUpDrawCount: parseNum(extraEnchantUseThenDrawMatch[2]),
+      },
+    };
   }
 
   if (text.includes('自分の攻撃力は常に昼の攻撃力')) {
@@ -926,10 +971,19 @@ function parseAction(text: string): EffectAction | null {
 
   // "昼夜逆転"
   if (text.includes('昼夜逆転') || text.includes('昼夜を入れ替え')) {
-    return { type: 'swapAttack', params: {} };
+    return {
+      type: 'swapAttack',
+      params: {
+        ...(text.includes('自分') ? { target: 'self' } : {}),
+        ...(text.includes('相手') ? { target: 'opponent' } : {}),
+      },
+    };
   }
 
   // "時計を無効"
+  if (text.includes('相手のキャラクターカードの時計を無効')) {
+    return { type: 'clockRewindOpponentCharacter', params: {} };
+  }
   if (text.includes('時計を無効') || text.includes('時間に戻る')) {
     return { type: 'clockReset', params: {} };
   }
@@ -1072,6 +1126,18 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
       trigger: 'onTurnEnd',
       conditions: [{ type: 'hpLessOrEqual', value: parseNum(opponentHpTurnEndMatch[1]), target: 'opponent' }],
       action: { type: 'moveSelfAreaEnchant', params: { destination } },
+      rawText,
+    };
+  }
+  const ownHpThresholdMoveMatch = text.match(/HPが([0-9０-９]+)以下になったなら、?(?:すぐに)?(アビス|パワーチャージャー)に置く/);
+  if (ownHpThresholdMoveMatch) {
+    return {
+      trigger: 'onDamageReceived',
+      conditions: [{ type: 'hpLessOrEqual', value: parseNum(ownHpThresholdMoveMatch[1]) }],
+      action: {
+        type: 'moveSelfAreaEnchant',
+        params: { destination: ownHpThresholdMoveMatch[2] === 'パワーチャージャー' ? 'powerCharger' : 'abyss' },
+      },
       rawText,
     };
   }

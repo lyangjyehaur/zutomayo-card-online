@@ -18,6 +18,7 @@ import type {
   PendingReorderDeckTopPayload,
   PendingRevealHandAttackBoostPayload,
   PendingUseFromAbyssPayload,
+  PendingUseFromHandPayload,
   PlayerIndex,
 } from '../types';
 import { CHRONOS_MAPPING } from '../types';
@@ -358,7 +359,7 @@ export function collectTurnEffects(
       const effects = parsedEffects.get(card.defId) ?? [];
       for (const [effectIndex, effect] of effects.entries()) {
         const isNew = playedIds.has(card.instanceId);
-        if (!['onUse', 'onEnter', 'onBattle'].includes(effect.trigger)) continue;
+        if (!['onUse', 'onEnter'].includes(effect.trigger)) continue;
         const isPersistedSetZoneC = G.players[player].setZoneC?.instanceId === card.instanceId;
         const canRunPersisted = isPersistedSetZoneC && isPersistentAreaEnchantEffect(card, effect);
         if ((effect.trigger === 'onUse' || effect.trigger === 'onEnter') && !isNew && !canRunPersisted) continue;
@@ -444,6 +445,10 @@ export function executeEffect(
       return { success: true, message: `Opponent element set to ${element}` };
     }
     case 'heal':
+      if (effect.action.params.target === 'opponent') {
+        opponent.hp = Math.min(100, opponent.hp + value);
+        return { success: true, message: `Heal opponent ${value}` };
+      }
       me.hp = Math.min(100, me.hp + value);
       return { success: true, message: `Heal ${value}` };
     case 'healBoth':
@@ -493,8 +498,11 @@ export function executeEffect(
       return { success: true, message: `Draw ${value}` };
     }
     case 'swapAttack':
-      G.modifiers.swapAttack[opponentIndex] = !G.modifiers.swapAttack[opponentIndex];
-      return { success: true, message: 'Swap opponent day/night attack' };
+    {
+      const targetPlayer = effect.action.params.target === 'self' ? player : opponentIndex;
+      G.modifiers.swapAttack[targetPlayer] = !G.modifiers.swapAttack[targetPlayer];
+      return { success: true, message: `Swap ${targetPlayer === player ? 'own' : 'opponent'} day/night attack` };
+    }
     case 'forceOwnAttackTime': {
       const time = effect.action.params.value;
       if (time !== 'day' && time !== 'night') return { success: false, message: 'Unsupported attack time override' };
@@ -505,6 +513,13 @@ export function executeEffect(
     case 'clockReset':
       G.chronos.position = G.chronosAtTurnStart;
       return { success: true, message: 'Reset Chronos' };
+    case 'clockRewindOpponentCharacter': {
+      const rewind = (G.setCardsThisTurn?.[opponentIndex] ?? [])
+        .filter(card => getCardDef(card.defId)?.type === 'Character')
+        .reduce((sum, card) => sum + (getCardDef(card.defId)?.clock ?? 0), 0);
+      G.chronos.position = normalizeChronosPosition(G.chronos.position - rewind);
+      return { success: true, message: `Rewind opponent Character clock ${rewind}` };
+    }
     case 'clockSetFromTurnStartMinusOpponentClock': {
       const clock = opponent.battleZone ? getCardDef(opponent.battleZone.defId)?.clock : undefined;
       if (!Number.isInteger(clock)) return { success: false, message: 'No opposing character clock' };
@@ -869,6 +884,91 @@ export function executeEffect(
           options,
         };
         return { success: true, message: 'Pending optional hand payment selection' };
+      }
+
+      if (effect.action.params.choiceType === 'useFromHand') {
+        const sourceOwner = String(effect.action.params.sourceOwner);
+        const sourceZone = String(effect.action.params.sourceZone);
+        const max = Number(effect.action.params.max ?? 1);
+        const optional = Boolean(effect.action.params.optional);
+        const followUpDrawCount = Number(effect.action.params.followUpDrawCount ?? 0);
+        if (
+          sourceOwner !== 'self'
+          || sourceZone !== 'hand'
+          || !Number.isInteger(max)
+          || max < 1
+          || !Number.isInteger(followUpDrawCount)
+          || followUpDrawCount < 0
+        ) {
+          return { success: false, message: 'Unsupported hand-use choice' };
+        }
+
+        const filter: PendingCardFilter = {};
+        if (effect.action.params.filterCardType !== undefined) {
+          const cardType = String(effect.action.params.filterCardType);
+          if (!['Character', 'Enchant', 'Area Enchant'].includes(cardType)) {
+            return { success: false, message: 'Unsupported hand-use card type filter' };
+          }
+          filter.cardType = cardType as CardType;
+        }
+        if (effect.action.params.filterSong !== undefined) {
+          const song = String(effect.action.params.filterSong).trim();
+          if (song.length === 0) return { success: false, message: 'Unsupported hand-use song filter' };
+          filter.song = song;
+        }
+        if (effect.action.params.filterElement !== undefined) {
+          const element = String(effect.action.params.filterElement);
+          if (!['闇', '炎', '電気', '風', 'カオス'].includes(element)) {
+            return { success: false, message: 'Unsupported hand-use element filter' };
+          }
+          filter.element = element as Element;
+        }
+
+        const options = me.hand
+          .filter(card => {
+            const def = getCardDef(card.defId);
+            if (!def || power(G, player) < def.powerCost) return false;
+            if (filter.cardType !== undefined && def.type !== filter.cardType) return false;
+            if (filter.song !== undefined && def.song !== filter.song) return false;
+            if (filter.element !== undefined && def.element !== filter.element) return false;
+            return true;
+          })
+          .map(card => ({
+            id: card.instanceId,
+            label: getCardDef(card.defId)?.name ?? card.defId,
+            cardInstanceId: card.instanceId,
+            cardDefId: card.defId,
+          }));
+
+        if (options.length === 0 && optional) {
+          if (followUpDrawCount > 0) {
+            if (loseOnEffectOverdraw(G, player, followUpDrawCount)) return { success: false, message: 'Not enough cards to draw' };
+            for (let i = 0; i < followUpDrawCount; i++) {
+              const card = me.deck.shift()!;
+              card.faceUp = true;
+              me.hand.push(card);
+            }
+          }
+          return { success: true, message: followUpDrawCount > 0 ? `Draw ${followUpDrawCount}` : 'No legal hand cards to use' };
+        }
+        if (options.length === 0) return { success: false, message: 'No legal hand cards to use' };
+
+        const payload: PendingUseFromHandPayload = {
+          sourcePlayer: player,
+          filter,
+          followUpDrawCount,
+        };
+        G.pendingChoice = {
+          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+          player,
+          type: 'useFromHand',
+          min: optional ? 0 : 1,
+          max: Math.min(max, options.length),
+          prompt: effect.rawText,
+          payload,
+          options,
+        };
+        return { success: true, message: 'Pending hand card use selection' };
       }
 
       if (effect.action.params.choiceType === 'cardMove') {

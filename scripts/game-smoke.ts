@@ -545,12 +545,14 @@ function fivePowerCards() {
   assert.equal(parseEffect('ターンの開始時にHPを10回復')?.trigger, 'onTurnStart');
   assert.deepEqual(parseEffect('相手のエリアエンチャントが置かれているなら、すぐにアビスに置く')?.conditions, [{ type: 'hasAreaEnchant', value: true, target: 'opponent' }]);
   assert.deepEqual(parseEffect('HPが50以下になったなら、パワーチャージャーに置く')?.action, { type: 'moveSelfAreaEnchant', params: { destination: 'powerCharger' } });
+  assert.equal(parseEffect('HPが50以下になったなら、パワーチャージャーに置く')?.trigger, 'onDamageReceived');
   assert.deepEqual(parseEffect('パワーチャージャーにカードが５枚以上置かれているなら、すぐにアビスに置く')?.conditions, [
     { type: 'zoneCountComparison', value: 5, operator: 'gte', target: 'powerCharger', owner: 'self' },
   ]);
   assert.equal(parseEffect('相手のアビスにカードが置かれたとき、すぐにこのカードをアビスに置く')?.trigger, 'onZoneEntered');
   assert.equal(parseEffect('パワーチャージャーにカードを置いたとき、すぐにこのカードをアビスに置く')?.trigger, 'onZoneEntered');
   assert.deepEqual(parseEffect('バトルに負けたとき、すぐにアビスに置く')?.conditions, [{ type: 'battleLost', value: true }]);
+  assert.deepEqual(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.action, { type: 'clockRewindOpponentCharacter', params: {} });
   assert.equal(parseEffect('パワーチャージャーの電気属性のカード１枚につき、攻撃力+20。相手のHPが30以下になったターンの終了時にアビスに置く')?.trigger, 'onUse');
   assert.equal(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.trigger, 'onUse');
   const allParsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
@@ -588,6 +590,17 @@ function fivePowerCards() {
   assert.equal(executeEffect(healBothEffect, healBothState, 0).success, true);
   assert.equal(healBothState.players[0].hp, 90);
   assert.equal(healBothState.players[1].hp, 100);
+
+  const opponentHealThenDamage = parseEffect(cardEffectText('3rd_27'));
+  assert.deepEqual(opponentHealThenDamage?.action, { type: 'heal', params: { value: 50, target: 'opponent' } });
+  assert.deepEqual(opponentHealThenDamage?.expiry?.action, { type: 'directDamage', params: { value: 50 } });
+  const opponentHealThenDamageEffects = allParsedEffects.get('3rd_27') ?? [];
+  assert.equal(opponentHealThenDamageEffects.length, 2);
+  assert.ok(opponentHealThenDamageEffects.some(effect => effect.trigger === 'onTurnEnd' && effect.action.type === 'directDamage'));
+  const opponentHealState = preparedState();
+  opponentHealState.players[1].hp = 40;
+  assert.equal(executeEffect(opponentHealThenDamage!, opponentHealState, 0).success, true);
+  assert.equal(opponentHealState.players[1].hp, 90);
 
   const returnAreaState = preparedState();
   const opponentArea = createInstance('2nd_5', true);
@@ -631,6 +644,34 @@ function fivePowerCards() {
   assert.equal(swapHandCard.faceUp, true);
   assert.equal(swapAbyssCard.faceUp, true);
 
+  const extraEnchantThenDraw = parseEffect(cardEffectText('2nd_15'));
+  assert.deepEqual(extraEnchantThenDraw?.action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'useFromHand',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      filterCardType: 'Enchant',
+      max: 1,
+      optional: true,
+      followUpDrawCount: 1,
+    },
+  });
+  const extraEnchantThenDrawState = preparedState();
+  const extraHandEnchant = createInstance('1st_30', true);
+  extraEnchantThenDrawState.players[0].hand = [extraHandEnchant];
+  extraEnchantThenDrawState.players[0].powerCharger = fivePowerCards();
+  extraEnchantThenDrawState.previousTurnCharacterElements[0] = '闇';
+  extraEnchantThenDrawState.chronos.position = CHRONOS_MAPPING.noon;
+  assert.equal(executeEffect(extraEnchantThenDraw!, extraEnchantThenDrawState, 0).success, true);
+  assert.equal(extraEnchantThenDrawState.pendingChoice?.type, 'useFromHand');
+  const extraEnchantParsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  assert.equal(submitPendingChoice(extraEnchantThenDrawState, 0, [extraHandEnchant.instanceId], extraEnchantParsedEffects), true);
+  assert.equal(extraEnchantThenDrawState.players[0].hand.length, 0);
+  assert.equal(extraEnchantThenDrawState.players[0].abyss.at(-1)?.instanceId, extraHandEnchant.instanceId);
+  assert.equal(extraEnchantThenDrawState.pendingEffects[0][0]?.effect.action.type, 'boostAttack');
+  assert.deepEqual(extraEnchantThenDrawState.pendingEffects[0][1]?.effect.action, { type: 'drawCards', params: { value: 1 } });
+
   const rewindByOpponentClock = parseEffect('このターンのはじまりの時間から相手の時計分、時間が戻る');
   assert.deepEqual(rewindByOpponentClock?.action, { type: 'clockSetFromTurnStartMinusOpponentClock', params: {} });
   const rewindByOpponentClockState = preparedState();
@@ -639,6 +680,16 @@ function fivePowerCards() {
   rewindByOpponentClockState.players[1].battleZone = createInstance('1st_1', true);
   assert.equal(executeEffect(rewindByOpponentClock!, rewindByOpponentClockState, 0).success, true);
   assert.equal(rewindByOpponentClockState.chronos.position, 10);
+
+  const rewindOpponentCharacterClock = parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く');
+  assert.ok(rewindOpponentCharacterClock);
+  const rewindOpponentCharacterClockState = preparedState();
+  const opponentPlayedCharacter = createInstance('1st_9', true);
+  rewindOpponentCharacterClockState.chronos.position = 7;
+  rewindOpponentCharacterClockState.setCardsThisTurn[1] = [opponentPlayedCharacter];
+  assert.equal(getAllCardDefs().find(card => card.id === opponentPlayedCharacter.defId)?.clock, 1);
+  assert.equal(executeEffect(rewindOpponentCharacterClock, rewindOpponentCharacterClockState, 0).success, true);
+  assert.equal(rewindOpponentCharacterClockState.chronos.position, 6);
 
   const boostBothByHp = parseEffect('お互いの自分のHPの分だけ攻撃力+。相手のHPが40以下になったターンの終了時にアビスに置く');
   assert.deepEqual(boostBothByHp?.action, { type: 'boostBothAttackByOwnHp', params: {} });
@@ -679,6 +730,23 @@ function fivePowerCards() {
   assert.equal(getEffectiveAttack(forceDayAttackState.players[0].battleZone, forceDayAttackState, 0), 100);
   assert.equal(executeEffect(forceDayAttack!, forceDayAttackState, 0).success, true);
   assert.equal(getEffectiveAttack(forceDayAttackState.players[0].battleZone, forceDayAttackState, 0), 60);
+
+  const selfSwapAttack = parseEffect('自分の基礎攻撃力を昼夜逆転する');
+  const opponentSwapAttack = parseEffect('相手の攻撃力を昼夜逆転する');
+  assert.deepEqual(selfSwapAttack?.action, { type: 'swapAttack', params: { target: 'self' } });
+  assert.deepEqual(opponentSwapAttack?.action, { type: 'swapAttack', params: { target: 'opponent' } });
+  const swapAttackState = preparedState();
+  swapAttackState.chronos.position = 0;
+  swapAttackState.players[0].battleZone = createInstance('1st_12', true);
+  swapAttackState.players[1].battleZone = createInstance('1st_12', true);
+  swapAttackState.players[0].powerCharger = fivePowerCards();
+  swapAttackState.players[1].powerCharger = fivePowerCards();
+  assert.equal(getEffectiveAttack(swapAttackState.players[0].battleZone, swapAttackState, 0), 100);
+  assert.equal(executeEffect(selfSwapAttack!, swapAttackState, 0).success, true);
+  assert.equal(getEffectiveAttack(swapAttackState.players[0].battleZone, swapAttackState, 0), 60);
+  assert.equal(getEffectiveAttack(swapAttackState.players[1].battleZone, swapAttackState, 1), 100);
+  assert.equal(executeEffect(opponentSwapAttack!, swapAttackState, 0).success, true);
+  assert.equal(getEffectiveAttack(swapAttackState.players[1].battleZone, swapAttackState, 1), 60);
 
   const opponentDeckTopPowerToPower = parseEffect('相手はターンの開始時にデッキの一番上を公開する。パワーコストが６以上のカードが山札から公開されたらパワーチャージャーに置く');
   assert.equal(opponentDeckTopPowerToPower?.trigger, 'onTurnStart');
@@ -726,6 +794,32 @@ function fivePowerCards() {
   assert.equal(executeEffect(battleLostSelfMove, battleLostSelfMoveState, 0).success, true);
   assert.equal(battleLostSelfMoveState.players[0].setZoneC, null);
   assert.equal(battleLostSelfMoveState.players[0].abyss.at(-1)?.instanceId, battleLostSelfMoveCard.instanceId);
+
+  const battleLostTimingState = preparedState();
+  const battleLostTimingCard = createInstance('4th_95', true);
+  battleLostTimingState.chronos.position = 0;
+  battleLostTimingState.players[0].battleZone = createInstance('1st_9', true);
+  battleLostTimingState.players[1].battleZone = createInstance('1st_12', true);
+  battleLostTimingState.players[0].setZoneC = battleLostTimingCard;
+  battleLostTimingState.players[0].powerCharger = fivePowerCards();
+  battleLostTimingState.players[1].powerCharger = fivePowerCards();
+  resolveBattle(battleLostTimingState, allParsedEffects);
+  assert.equal(battleLostTimingState.lastBattleResult.winner, 1);
+  assert.equal(battleLostTimingState.players[0].setZoneC, null);
+  assert.equal(battleLostTimingState.players[0].abyss.at(-1)?.instanceId, battleLostTimingCard.instanceId);
+
+  const changedAwayState = preparedState();
+  const changedAwayArea = createInstance('4th_65', true);
+  const changedAwayCharacter = createInstance('1st_12', true);
+  changedAwayState.players[0].battleZone = createInstance('2nd_9', true);
+  changedAwayState.players[0].setZoneA = changedAwayCharacter;
+  changedAwayState.players[0].setZoneC = changedAwayArea;
+  changedAwayState.players[0].powerCharger = fivePowerCards();
+  changedAwayState.setCardsThisTurn[0] = [changedAwayCharacter];
+  placeRevealedCards(changedAwayState, false, allParsedEffects);
+  assert.equal(changedAwayState.players[0].setZoneC, null);
+  assert.equal(changedAwayState.players[0].abyss.at(-1)?.instanceId, changedAwayArea.instanceId);
+
   assert.notEqual(parseEffect('相手のアビスのカードを1枚選んでデッキの底に戻させる')?.action.type, 'drawCards');
   assert.notEqual(parseEffect('手札を１枚選んでデッキの底に置き、カードを１枚引く')?.action.type, 'drawCards');
   assert.notEqual(parseEffect('アビスに炎属性のカードが２枚以上あるなら、時計が真夜中になる')?.action.type, 'drawCards');

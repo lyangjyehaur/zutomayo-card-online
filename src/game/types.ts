@@ -16,7 +16,7 @@ export type JankenChoice = 'rock' | 'paper' | 'scissors';
 export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'effectOrder' | 'gameOver';
 export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B';
-export type TimingEventType = 'turnStart' | 'turnEnd' | 'damageReceived' | 'chronosChanged' | 'zoneEntered' | 'characterReplaced';
+export type TimingEventType = 'turnStart' | 'turnEnd' | 'damageReceived' | 'chronosChanged' | 'zoneEntered' | 'characterReplaced' | 'battle';
 
 export interface ActionLogEntry {
   turn: number;
@@ -143,6 +143,12 @@ export interface PendingUseFromAbyssPayload {
   song?: string;
 }
 
+export interface PendingUseFromHandPayload {
+  sourcePlayer: PlayerIndex;
+  filter: PendingCardFilter;
+  followUpDrawCount?: number;
+}
+
 export interface PendingRevealHandAttackBoostPayload {
   sourcePlayer: PlayerIndex;
   boostPerCard: number;
@@ -191,6 +197,10 @@ export type PendingChoice =
   | (PendingChoiceBase & {
       type: 'useFromAbyss';
       payload: PendingUseFromAbyssPayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'useFromHand';
+      payload: PendingUseFromHandPayload;
     })
   | (PendingChoiceBase & {
       type: 'revealHandAttackBoost';

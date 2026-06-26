@@ -99,6 +99,7 @@ export type ActionType =
   | 'swapAttack'        // Swap night/day attack values
   | 'forceOwnAttackTime' // Force own attack to day/night value
   | 'clockReset'        // Reset chronos to start-of-turn
+  | 'clockRewindOpponentCharacter' // Rewind Chronos by opponent Character clocks played this turn
   | 'clockSet'          // Set chronos to specific position
   | 'expandMidnightRange' // Treat positions around midnight as midnight
   | 'clockSetFromTurnStartMinusOpponentClock' // Set Chronos to turn start minus opponent character clock
