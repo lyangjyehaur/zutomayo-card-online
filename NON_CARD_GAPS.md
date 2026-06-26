@@ -90,7 +90,7 @@ UI states: reconnecting, disconnected retrying, room gone, seat taken, resumed s
 
 ---
 
-## Priority 3 — Server-side deck storage and cross-device deck sync ⚠️ API DONE, FRONTEND PENDING
+## Priority 3 — Server-side deck storage and cross-device deck sync ✅ DONE
 
 **Status**: API endpoints exist (`/api/decks` CRUD). Frontend deck editor still uses localStorage. Not wired together.
 
@@ -114,7 +114,7 @@ UI states: reconnecting, disconnected retrying, room gone, seat taken, resumed s
 
 ---
 
-## Priority 4 — Authenticated match ownership ⚠️ API DONE, FRONTEND PENDING
+## Priority 4 — Authenticated match ownership ✅ DONE
 
 **Status**: API endpoints exist. No login/register UI in the frontend.
 
@@ -153,7 +153,7 @@ UI states: reconnecting, disconnected retrying, room gone, seat taken, resumed s
 
 ---
 
-## Priority 6 — Action log / replay for disputes and debugging ❌ NOT STARTED
+## Priority 6 — Action log / replay for disputes and debugging ✅ DONE
 
 **Problem**: The current `G.log` is not a full authoritative replay. Online disputes need server-side action traces.
 
@@ -168,7 +168,7 @@ UI states: reconnecting, disconnected retrying, room gone, seat taken, resumed s
 
 ---
 
-## Priority 7 — Product polish around online room lifecycle ⚠️ PARTIAL
+## Priority 7 — Product polish around online room lifecycle ✅ DONE
 
 **Done**:
 - Reconnect/resume UX (P2)
