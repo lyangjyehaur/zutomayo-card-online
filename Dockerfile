@@ -13,7 +13,6 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/cards.json ./cards.json
 COPY --from=builder /app/data ./data
-COPY --from=builder /app/admin ./admin
 ENV PORT=3000
 EXPOSE 3000
 CMD ["npm", "run", "server"]
