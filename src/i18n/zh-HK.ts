@@ -2,7 +2,7 @@ import type { TranslationKey } from './zh-TW';
 
 export const zhHK = {
   'app.title': 'ZUTOMAYO CARD',
-  'app.subtitle': '永夜同白晝交錯嘅線上卡牌遊戲',
+  'app.subtitle': '永夜同白晝交錯嘅綫上卡牌遊戲',
 
   'common.back': '返回',
   'common.backToLobby': '返回大廳',
@@ -41,10 +41,10 @@ export const zhHK = {
   'lobby.myDeck': '我方牌組',
   'lobby.opponentDeck': '對手牌組',
   'lobby.deckSelectHint': '揀今局用嘅 20 張牌牌組',
-  'lobby.onlineTitle': '線上房間',
+  'lobby.onlineTitle': '綫上房間',
   'lobby.roomCode': '房間代碼',
   'lobby.roomCodePlaceholder': '輸入房間代碼',
-  'lobby.onlineError': '連線失敗，請確認房間代碼或者遲啲再試',
+  'lobby.onlineError': '連綫失敗，請確認房間代碼或者遲啲再試',
   'lobby.customDeckLocked': '請先喺牌組編輯器建立自訂牌組',
   'lobby.menu': '主選單',
   'lobby.difficulty': '電腦難度',
@@ -166,7 +166,7 @@ export const zhHK = {
   'chronos.nightSide': '夜側',
 
   'game.aiMode': '電腦遊戲',
-  'game.onlineMode': '線上遊戲',
+  'game.onlineMode': '綫上遊戲',
   'game.localMode': '本機遊戲',
   'game.matchCode': '房間代碼',
   'game.loading': '載入遊戲中...',
@@ -175,7 +175,7 @@ export const zhHK = {
   'aiSetup.chooseDifficulty': '揀練習難度',
 
   'onlineSession.missingTitle': '未加入房間',
-  'onlineSession.missingBody': '請先由大廳開房或者加入線上房間，再進入遊戲。',
+  'onlineSession.missingBody': '請先由大廳開房或者加入綫上房間，再進入遊戲。',
 
   'admin.title': '卡牌資料管理',
 

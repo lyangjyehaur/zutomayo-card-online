@@ -81,6 +81,11 @@ function detectBrowserLocale(): Locale {
 
 let currentLocale: Locale = readStoredLocale() ?? detectBrowserLocale();
 
+// Set initial HTML lang attribute
+if (typeof document !== 'undefined') {
+  document.documentElement.lang = currentLocale;
+}
+
 function emitLocaleChange(): void {
   for (const listener of listeners) listener();
 }
@@ -106,6 +111,7 @@ export function setLocale(locale: Locale): void {
   if (locale === currentLocale) return;
   currentLocale = locale;
   writeStoredLocale(locale);
+  document.documentElement.lang = locale;
   emitLocaleChange();
 }
 
