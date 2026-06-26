@@ -94,9 +94,48 @@ server.app.use(async (ctx: any, next: () => any) => {
   await next();
 });
 
+// API proxy — forward /api/* to the API server
+const API_SERVER = process.env.API_URL || 'http://api:3001';
+
+server.app.use(async (ctx: any, next: () => any) => {
+  if (!ctx.path.startsWith('/api/')) return next();
+
+  const http = await import('http');
+  const url = new URL(ctx.path, API_SERVER);
+  url.search = ctx.search;
+
+  return new Promise<void>((resolve) => {
+    const proxyReq = http.request(url, {
+      method: ctx.method,
+      headers: { ...ctx.request.headers, host: url.host },
+    }, (proxyRes) => {
+      ctx.status = proxyRes.statusCode || 200;
+      ctx.set('Content-Type', proxyRes.headers['content-type'] || 'application/json');
+      const chunks: Buffer[] = [];
+      proxyRes.on('data', (chunk: Buffer) => chunks.push(chunk));
+      proxyRes.on('end', () => {
+        ctx.body = Buffer.concat(chunks);
+        resolve();
+      });
+    });
+
+    proxyReq.on('error', () => {
+      ctx.status = 502;
+      ctx.body = JSON.stringify({ error: 'API server unavailable' });
+      resolve();
+    });
+
+    if (ctx.method !== 'GET' && ctx.method !== 'HEAD') {
+      const body = typeof ctx.request.body === 'string' ? ctx.request.body : JSON.stringify(ctx.request.body || {});
+      proxyReq.write(body);
+    }
+    proxyReq.end();
+  });
+});
+
 // Serve the Vite app for client-side routes.
 server.app.use(async (ctx: any) => {
-  if (ctx.status === 404 && !ctx.path.startsWith('/games/') && !ctx.path.startsWith('/api/')) {
+  if (ctx.status === 404 && !ctx.path.startsWith('/games/')) {
     ctx.type = 'html';
     ctx.body = fs.readFileSync(path.join(root, 'dist', 'index.html'));
   }
