@@ -1,6 +1,6 @@
 import type { TranslationKey } from './zh-TW';
 
-export const zhHK = {
+export const zhHK: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜同白晝交錯嘅綫上卡牌遊戲',
 

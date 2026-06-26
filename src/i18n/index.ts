@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from 'react';
+import { en } from './en';
 import { ja } from './ja';
 import { zhCN } from './zh-CN';
 import { zhHK } from './zh-HK';
 import { zhTW, type TranslationKey } from './zh-TW';
 
-export const availableLocales = ['zh-TW', 'zh-HK', 'zh-CN', 'ja'] as const;
+export const availableLocales = ['zh-TW', 'zh-HK', 'zh-CN', 'ja', 'en'] as const;
 export type Locale = typeof availableLocales[number];
 
 const DEFAULT_LOCALE: Locale = 'zh-TW';
@@ -15,6 +16,7 @@ const dictionaries: Record<Locale, Record<TranslationKey, string>> = {
   'zh-HK': zhHK,
   'zh-CN': zhCN,
   ja,
+  en,
 };
 
 const localeLabels: Record<Locale, string> = {
@@ -22,6 +24,7 @@ const localeLabels: Record<Locale, string> = {
   'zh-HK': '粵語',
   'zh-CN': '简体中文',
   ja: '日本語',
+  en: 'English',
 };
 
 const localeFlags: Record<Locale, string> = {
@@ -29,6 +32,7 @@ const localeFlags: Record<Locale, string> = {
   'zh-HK': '🇭🇰',
   'zh-CN': '🇨🇳',
   ja: '🇯🇵',
+  en: '🇬🇧',
 };
 
 const listeners = new Set<() => void>();

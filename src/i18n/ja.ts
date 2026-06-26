@@ -1,6 +1,6 @@
 import type { TranslationKey } from './zh-TW';
 
-export const ja = {
+export const ja: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜と白昼が交差するオンライン対戦カードゲーム',
 
