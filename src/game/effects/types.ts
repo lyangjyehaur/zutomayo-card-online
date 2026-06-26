@@ -9,6 +9,7 @@ export interface ParsedEffect {
   conditions: Condition[];
   action: EffectAction;
   rawText: string; // Original Japanese text
+  expiry?: ParsedEffect;
 }
 
 export type EffectTrigger =

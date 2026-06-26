@@ -98,12 +98,12 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   if (text.includes('お互いの自分のHPの分だけ攻撃力+')) {
-    return {
+    return withExpiry({
       trigger: detectTrigger(text),
       conditions: [],
       action: { type: 'boostBothAttackByOwnHp', params: {} },
       rawText,
-    };
+    });
   }
 
   if (text.includes('相手のアビスにカードが置かれたとき') && /(アビス|パワーチャージャー)に置く/.test(text)) {
@@ -307,12 +307,12 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   if (!action) return null;
   const trigger = action.params.timing === 'turnEnd' ? 'onUse' : (triggerOverride ?? detectTrigger(text));
 
-  return {
+  return withExpiry({
     trigger,
     conditions,
     action,
     rawText,
-  };
+  });
 }
 
 // ===== Action Parser =====
@@ -844,6 +844,12 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
   return null;
 }
 
+function withExpiry(effect: ParsedEffect): ParsedEffect {
+  const expiry = parseAreaEnchantExpiry(effect.rawText);
+  if (!expiry || parsedEffectKey(expiry) === parsedEffectKey(effect)) return effect;
+  return { ...effect, expiry };
+}
+
 function parsedEffectKey(effect: ParsedEffect): string {
   return JSON.stringify({
     trigger: effect.trigger,
@@ -870,7 +876,7 @@ export function parseAllEffects(cards: { id: string; effect: string }[]): Map<st
       const sourceLine = combined ? combinedLine! : line;
       const parsed = combined ?? parseEffect(line);
       if (parsed) effects.push(parsed);
-      const expiry = parseAreaEnchantExpiry(sourceLine);
+      const expiry = parsed?.expiry ?? parseAreaEnchantExpiry(sourceLine);
       if (expiry && !effects.some(effect => parsedEffectKey(effect) === parsedEffectKey(expiry))) effects.push(expiry);
       if (combined) index++;
     }

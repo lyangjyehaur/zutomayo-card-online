@@ -93,6 +93,12 @@ function parsedCardEffect(defId: string): ParsedEffect {
   return parsed;
 }
 
+function cardEffectText(defId: string): string {
+  const card = getAllCardDefs().find(item => item.id === defId);
+  assert.ok(card, `missing card ${defId}`);
+  return card.effect.split('\n')[0];
+}
+
 function preparedAreaEnchantState(defId: string, chronosPosition: number): GameState {
   const G = preparedState();
   G.players[0].setZoneC = createInstance(defId, true);
@@ -518,15 +524,31 @@ function fivePowerCards() {
   assert.deepEqual(parseEffect('バトルに負けたとき、すぐにアビスに置く')?.conditions, [{ type: 'battleLost', value: true }]);
   assert.equal(parseEffect('パワーチャージャーの電気属性のカード１枚につき、攻撃力+20。相手のHPが30以下になったターンの終了時にアビスに置く')?.trigger, 'onUse');
   assert.equal(parseEffect('相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く')?.trigger, 'onUse');
-  const areaExpiryEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('2nd_5') ?? [];
+  const allParsedEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect })));
+  const areaExpiryEffects = allParsedEffects.get('2nd_5') ?? [];
   assert.ok(areaExpiryEffects.some(effect => effect.trigger === 'onTurnEnd' && effect.action.type === 'moveSelfAreaEnchant'));
-  const chronosExpiryEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('2nd_86') ?? [];
+  const chronosExpiryEffects = allParsedEffects.get('2nd_86') ?? [];
   assert.ok(chronosExpiryEffects.some(effect => effect.trigger === 'onChronosChanged' && effect.action.type === 'moveSelfAreaEnchant'));
-  const zoneEntryExpiryEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('4th_30') ?? [];
+  const zoneEntryExpiryEffects = allParsedEffects.get('4th_30') ?? [];
   assert.equal(zoneEntryExpiryEffects.filter(effect => effect.rawText.includes('相手のアビスにカードが置かれたとき')).length, 1);
-  const returnAreaAndExpireEffects = parseAllEffects(getAllCardDefs().map(({ id, effect }) => ({ id, effect }))).get('3rd_55') ?? [];
+  const returnAreaAndExpireEffects = allParsedEffects.get('3rd_55') ?? [];
   assert.ok(returnAreaAndExpireEffects.some(effect => effect.action.type === 'returnAreaEnchantToDeck'));
   assert.ok(returnAreaAndExpireEffects.some(effect => effect.action.type === 'moveSelfAreaEnchant' && effect.trigger === 'onTurnEnd'));
+
+  const priorityAreaExpiryIds = ['2nd_5', '2nd_86', '2nd_98', '3rd_58', '3rd_85', '3rd_86', '3rd_91', '3rd_92', '3rd_98', '3rd_104'];
+  for (const id of priorityAreaExpiryIds) {
+    const parsed = parseEffect(cardEffectText(id));
+    assert.ok(parsed?.expiry, `${id} should expose secondary expiry metadata`);
+    assert.equal(parsed.expiry.action.type, 'moveSelfAreaEnchant', `${id} expiry should move its Area Enchant`);
+    assert.ok(allParsedEffects.get(id)?.some(effect => (
+      effect.action.type === 'moveSelfAreaEnchant'
+      && effect.trigger === parsed.expiry?.trigger
+    )), `${id} expiry should be emitted by parseAllEffects`);
+  }
+  assert.deepEqual(parseEffect(cardEffectText('2nd_86'))?.expiry?.conditions, [{ type: 'chronos', value: 'day' }]);
+  assert.deepEqual(parseEffect(cardEffectText('2nd_98'))?.expiry?.conditions, [{ type: 'chronos', value: 'night' }]);
+  assert.deepEqual(parseEffect(cardEffectText('3rd_58'))?.expiry?.conditions, [{ type: 'damageAtLeast', value: 30 }]);
+  assert.deepEqual(parseEffect(cardEffectText('3rd_91'))?.expiry?.conditions, [{ type: 'zoneEntered', value: 'abyss', target: 'opponent' }]);
 
   const returnAreaState = preparedState();
   const opponentArea = createInstance('2nd_5', true);
@@ -690,6 +712,55 @@ function fivePowerCards() {
     [duplicateChoiceState.players[0].hand[0].instanceId, duplicateChoiceState.players[0].hand[0].instanceId],
     noEffects,
   ), false);
+
+  for (const [id, discardCount, drawCount] of [
+    ['2nd_27', 2, 2],
+    ['2nd_31', 2, 2],
+    ['2nd_82', 1, 1],
+    ['2nd_94', 1, 1],
+  ] as const) {
+    assert.deepEqual(parsedCardEffect(id).action, {
+      type: 'requestChoice',
+      params: { choiceType: 'handToDeckBottomThenDraw', discardCount, drawCount },
+    }, `${id} should use the hand-to-deck-bottom pending choice`);
+  }
+
+  assert.deepEqual(parsedCardEffect('4th_61').action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'optionalHandMoveThenDraw',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'deck',
+      destinationPosition: 'bottom',
+      drawCount: 'selected',
+    },
+  });
+  assert.deepEqual(parsedCardEffect('4th_62').action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'optionalHandMoveThenDraw',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'abyss',
+      drawCount: 'selected',
+      filterElement: '闇',
+    },
+  });
+  assert.deepEqual(parsedCardEffect('4th_63').action, {
+    type: 'requestChoice',
+    params: {
+      choiceType: 'optionalHandMoveThenDraw',
+      sourceOwner: 'self',
+      sourceZone: 'hand',
+      destinationOwner: 'self',
+      destinationZone: 'abyss',
+      drawCount: 'selected',
+      filterElement: '炎',
+    },
+  });
 
   const drawFromDeck = parseEffect('デッキから１枚カードを引き、手札に加える');
   assert.deepEqual(drawFromDeck?.action, { type: 'drawCards', params: { value: 1 } });
@@ -2086,6 +2157,18 @@ function fivePowerCards() {
   assert.equal(submitPendingChoice(revealBoostState, 0, [taidadaA.instanceId, taidadaB.instanceId], noEffects), true);
   assert.equal(revealBoostState.modifiers.attack[0], 60);
   assert.deepEqual(new Set(revealBoostState.revealedHandCardIds[0]), new Set([taidadaA.instanceId, taidadaB.instanceId]));
+
+  for (const [id, attackBoost] of [
+    ['3rd_47', 50],
+    ['3rd_59', 100],
+    ['3rd_94', 40],
+    ['3rd_105', 100],
+  ] as const) {
+    assert.deepEqual(parsedCardEffect(id).action, {
+      type: 'requestChoice',
+      params: { choiceType: 'nameGuessOpponentHandReveal', attackBoost },
+    }, `${id} should use the name-guess pending choice`);
+  }
 
   const nameGuessState = preparedState();
   const guessedCard = createInstance('1st_4', false);

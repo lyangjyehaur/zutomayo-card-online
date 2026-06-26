@@ -1,22 +1,72 @@
 import { getAllCardDefs } from '../src/game/cards/loader';
 import { parseEffect } from '../src/game/effects/parser';
+import type { ParsedEffect } from '../src/game/effects/types';
 
-const parsedButPartialPatterns = [
-  /選/,
-  /好きな/,
-  /まで/,
-  /入れ替え/,
-  /そうしない場合/,
-  /見て.*順番/,
-  /ターンの終了時.*(?:アビス|パワーチャージャー)に置く/,
-  /じゃなくなったら.*(?:アビス|パワーチャージャー)に置く/,
-];
+const executorSupportedActions = new Set([
+  'boostAttack',
+  'boostBothAttackByOwnHp',
+  'reduceAttack',
+  'setOpponentAttack',
+  'directDamage',
+  'heal',
+  'damageReduce',
+  'drawCards',
+  'swapAttack',
+  'forceOwnAttackTime',
+  'clockReset',
+  'clockSet',
+  'clockSetFromTurnStartMinusOpponentClock',
+  'setAllCardClocks',
+  'clockAdvance',
+  'recoverFromAbyss',
+  'sendToAbyss',
+  'millDeckToAbyss',
+  'moveOwnDeckTopByPower',
+  'moveOpponentDeckTopByPowerCost',
+  'revealOpponentHand',
+  'returnAreaEnchantToDeck',
+  'moveSelfAreaEnchant',
+  'useFromAbyss',
+  'handSizeModifier',
+  'setPowerCost',
+  'requestChoice',
+  'suppressEffectActivation',
+  'noEffect',
+]);
+
+const executorSupportedChoiceTypes = new Set([
+  'revealHandAttackBoost',
+  'nameGuessOpponentHandReveal',
+  'optionalHandMoveThenDraw',
+  'cardMove',
+  'abyssToDeckBottomOrLose',
+  'opponentPowerCharacterSwap',
+  'handAbyssSwap',
+  'clockPosition',
+  'clockAdvance',
+  'handToDeckBottomThenDraw',
+]);
+
+function unsupportedExecutorReason(effect: ParsedEffect): string | null {
+  if (!executorSupportedActions.has(effect.action.type)) {
+    return `unsupported action ${effect.action.type}`;
+  }
+
+  if (effect.action.type !== 'requestChoice') return null;
+
+  const choiceType = effect.action.params.choiceType;
+  if (typeof choiceType !== 'string') return 'requestChoice missing choiceType';
+  if (!executorSupportedChoiceTypes.has(choiceType)) {
+    return `unsupported choiceType ${choiceType}`;
+  }
+  return null;
+}
 
 const cards = getAllCardDefs();
 let effectLines = 0;
 let parsedLines = 0;
 const unparsed: { id: string; text: string }[] = [];
-const parsedButPartial: { id: string; action: string; text: string }[] = [];
+const parsedButPartial: { id: string; action: string; reason: string; text: string }[] = [];
 const falseDraw: { id: string; text: string }[] = [];
 
 for (const card of cards) {
@@ -28,8 +78,9 @@ for (const card of cards) {
       continue;
     }
     parsedLines++;
-    if (parsedButPartialPatterns.some(pattern => pattern.test(text))) {
-      parsedButPartial.push({ id: card.id, action: parsed.action.type, text });
+    const unsupportedReason = unsupportedExecutorReason(parsed);
+    if (unsupportedReason) {
+      parsedButPartial.push({ id: card.id, action: parsed.action.type, reason: unsupportedReason, text });
     }
     if (
       parsed.action.type === 'drawCards'
