@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { CardDef, CardInstance, CardType, ChronosTime, Element } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
-import { t } from '../i18n';
+import { t, type TranslationKey } from '../i18n';
 
 const ELEMENT_CLASS: Record<Element, string> = {
   '闇': 'dark',
@@ -12,18 +12,18 @@ const ELEMENT_CLASS: Record<Element, string> = {
   'カオス': 'chaos',
 };
 
-const ELEMENT_LABEL: Record<Element, string> = {
-  '闇': t('card.element.dark'),
-  '炎': t('card.element.flame'),
-  '電気': t('card.element.electric'),
-  '風': t('card.element.wind'),
-  'カオス': t('card.element.chaos'),
+const ELEMENT_LABEL_KEY: Record<Element, TranslationKey> = {
+  '闇': 'card.element.dark',
+  '炎': 'card.element.flame',
+  '電気': 'card.element.electric',
+  '風': 'card.element.wind',
+  'カオス': 'card.element.chaos',
 };
 
-const TYPE_LABEL: Record<CardType, string> = {
-  Character: t('card.type.character'),
-  Enchant: t('card.type.enchant'),
-  'Area Enchant': t('card.type.areaEnchant'),
+const TYPE_LABEL_KEY: Record<CardType, TranslationKey> = {
+  Character: 'card.type.character',
+  Enchant: 'card.type.enchant',
+  'Area Enchant': 'card.type.areaEnchant',
 };
 
 export type CardSize = 'normal' | 'small' | 'tiny' | 'micro';
@@ -68,6 +68,14 @@ function cardClassName(def: CardDef | undefined, size: CardSize, options: {
   ].filter(Boolean).join(' ');
 }
 
+function elementLabel(element: Element): string {
+  return t(ELEMENT_LABEL_KEY[element]);
+}
+
+function typeLabel(type: CardType): string {
+  return t(TYPE_LABEL_KEY[type]);
+}
+
 function CardPopover({
   def,
   activeTime,
@@ -85,7 +93,7 @@ function CardPopover({
   return createPortal(
     <aside className={`card-popover popover-${position.placement}`} style={style} aria-hidden="true">
       <strong>{def.name}</strong>
-      <span className="popover-meta">{ELEMENT_LABEL[def.element]} • {TYPE_LABEL[def.type]}</span>
+      <span className="popover-meta">{elementLabel(def.element)} • {typeLabel(def.type)}</span>
       <div className="popover-rule" />
       {def.attack && (
         <>
@@ -283,7 +291,7 @@ export function Card({
           {showBadges && (
             <>
               <div className="card-cost-badge">{def.powerCost}</div>
-              <div className="card-element-dot" aria-label={ELEMENT_LABEL[def.element]} />
+              <div className="card-element-dot" aria-label={elementLabel(def.element)} />
             </>
           )}
         </div>

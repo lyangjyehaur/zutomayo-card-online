@@ -10,7 +10,7 @@ import { LobbyPage, DEFAULT_DECK_NAME, onlineDeckName, selectedDeckName } from '
 import { LocalGamePage } from './pages/LocalGamePage';
 import { MatchHistoryPage } from './pages/MatchHistoryPage';
 import { OnlineGamePage, type OnlineSession } from './pages/OnlineGamePage';
-import { t } from './i18n';
+import { t, useLocale } from './i18n';
 import './App.css';
 import './components/InteractiveTutorial.css';
 
@@ -113,6 +113,7 @@ function NotFoundPage() {
 function RouterShell() {
   const navigate = useNavigate();
   const location = useLocation();
+  const locale = useLocale();
   const [tutorial, setTutorial] = useState(() => !localStorage.getItem('zutomayo_tutorial_seen'));
   const [customDeckAvailable, setCustomDeckAvailable] = useState(hasCustomDeck);
   const [deck0Name, setDeck0Name] = useState(DEFAULT_DECK_NAME);
@@ -148,7 +149,7 @@ function RouterShell() {
   const hideNav = location.pathname.startsWith('/play/');
 
   return (
-    <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`}>
+    <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
       {!hideNav && <NavBar onShowTutorial={() => setTutorial(true)} />}
       <div className="route-content">
         <Routes>

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/Card';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import type { AIDifficulty } from '../game/ai';
 import { CUSTOM_DECK_NAME, loadCustomDeckIds } from '../game/cards/deckBuilder';
 import { PRESET_DECKS } from '../game/cards/presetDecks';
-import { t } from '../i18n';
+import { t, useLocale } from '../i18n';
 
 type DeckOption = {
   id: string;
@@ -185,7 +186,8 @@ export function LobbyPage({
   onShowTutorial,
 }: LobbyPageProps) {
   const navigate = useNavigate();
-  const deckOptions = useMemo(() => buildDeckOptions(customDeckAvailable), [customDeckAvailable]);
+  const locale = useLocale();
+  const deckOptions = useMemo(() => buildDeckOptions(customDeckAvailable), [customDeckAvailable, locale]);
 
   return (
     <main className="lobby">
@@ -196,19 +198,22 @@ export function LobbyPage({
           <h1>{t('app.title')}</h1>
           <p>{t('app.subtitle')}</p>
         </div>
-        <div className="primary-menu">
-          <button className="menu-action featured" type="button" onClick={() => navigate('/play/local')}>
-            {t('lobby.localBattle')}
-          </button>
-          <button className="menu-action" type="button" onClick={() => navigate('/deck-builder')}>
-            {t('lobby.deckEditor')}
-          </button>
-          <button className="menu-action" type="button" onClick={() => navigate('/history')}>
-            {t('lobby.matchHistory')}
-          </button>
-          <button className="menu-action" type="button" onClick={onShowTutorial}>
-            {t('lobby.tutorial')}
-          </button>
+        <div className="lobby-actions">
+          <LanguageSwitcher />
+          <div className="primary-menu">
+            <button className="menu-action featured" type="button" onClick={() => navigate('/play/local')}>
+              {t('lobby.localBattle')}
+            </button>
+            <button className="menu-action" type="button" onClick={() => navigate('/deck-builder')}>
+              {t('lobby.deckEditor')}
+            </button>
+            <button className="menu-action" type="button" onClick={() => navigate('/history')}>
+              {t('lobby.matchHistory')}
+            </button>
+            <button className="menu-action" type="button" onClick={onShowTutorial}>
+              {t('lobby.tutorial')}
+            </button>
+          </div>
         </div>
       </section>
 

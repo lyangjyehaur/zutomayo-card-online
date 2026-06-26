@@ -9,12 +9,6 @@ interface AIGamePageProps {
   deck1Name?: string;
 }
 
-const LEVELS: { id: AIDifficulty; label: string; detail: string }[] = [
-  { id: 'easy', label: t('difficulty.easy'), detail: t('difficulty.easyDesc') },
-  { id: 'normal', label: t('difficulty.normal'), detail: t('difficulty.normalDesc') },
-  { id: 'hard', label: t('difficulty.hard'), detail: t('difficulty.hardDesc') },
-];
-
 function isAIDifficulty(value: unknown): value is AIDifficulty {
   return value === 'easy' || value === 'normal' || value === 'hard';
 }
@@ -33,6 +27,11 @@ function shouldAutoStart(state: unknown): boolean {
 export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const levels: { id: AIDifficulty; label: string; detail: string }[] = [
+    { id: 'easy', label: t('difficulty.easy'), detail: t('difficulty.easyDesc') },
+    { id: 'normal', label: t('difficulty.normal'), detail: t('difficulty.normalDesc') },
+    { id: 'hard', label: t('difficulty.hard'), detail: t('difficulty.hardDesc') },
+  ];
   const [difficulty, setDifficulty] = useState<AIDifficulty>(() => getRouteDifficulty(location.state));
   const [activeDifficulty, setActiveDifficulty] = useState<AIDifficulty | null>(() => (
     shouldAutoStart(location.state) ? getRouteDifficulty(location.state) : null
@@ -77,7 +76,7 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
           <span>{t('lobby.difficulty')}</span>
         </div>
         <div className="difficulty-grid">
-          {LEVELS.map(level => (
+          {levels.map(level => (
             <button
               key={level.id}
               className={`difficulty-card ${level.id} ${difficulty === level.id ? 'selected' : ''}`}

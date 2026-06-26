@@ -16,11 +16,11 @@ interface AIGameProps {
   deck1Name?: string;
 }
 
-const DIFFICULTY_LABEL: Record<AIDifficulty, string> = {
-  easy: t('difficulty.easy'),
-  normal: t('difficulty.normal'),
-  hard: t('difficulty.hard'),
-};
+function difficultyLabel(difficulty: AIDifficulty): string {
+  if (difficulty === 'easy') return t('difficulty.easy');
+  if (difficulty === 'hard') return t('difficulty.hard');
+  return t('difficulty.normal');
+}
 
 function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
   const { difficulty, ...boardProps } = props;
@@ -52,7 +52,7 @@ export function AIGame({ difficulty, onBack, deck0Name, deck1Name }: AIGameProps
         <button className="back-btn" type="button" onClick={onBack}>{t('common.backToLobby')}</button>
         <div>
           <strong>{t('game.aiMode')}</strong>
-          <span>{DIFFICULTY_LABEL[difficulty]}</span>
+          <span>{difficultyLabel(difficulty)}</span>
         </div>
       </header>
       <div className="game-container single">
