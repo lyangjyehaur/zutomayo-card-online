@@ -1,0 +1,210 @@
+/* Admin Panel (React component) */
+.admin-page { overflow-y: auto; }
+
+.admin-login {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+}
+
+.admin-login input {
+  padding: 0.6rem 1rem;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background: #1a1a3e;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  width: 250px;
+}
+
+.admin-login button {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--gold);
+  color: #130d21;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.admin-error { color: #e63946; font-size: 0.85rem; }
+
+.admin-count { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+
+.admin-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.admin-search {
+  padding: 0.5rem;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+  width: 100%;
+  max-width: 400px;
+}
+
+.admin-filter-row {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.admin-filter-row label { font-size: 0.75rem; color: #888; margin-right: 0.3rem; }
+
+.filter-chip {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+.filter-chip.active { border-color: #f4d35e; color: #f4d35e; background: #1a1a3e; }
+
+/* Card Grid */
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.admin-card {
+  position: relative;
+  cursor: pointer;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #222;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.admin-card:hover { transform: translateY(-3px); border-color: #f4d35e; }
+
+.admin-card img {
+  width: 100%;
+  aspect-ratio: 5/7;
+  object-fit: cover;
+  display: block;
+}
+
+.admin-card-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.3rem;
+  background: linear-gradient(transparent, rgba(0,0,0,0.85));
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.admin-card-name { font-size: 0.7rem; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-card-id { font-size: 0.6rem; color: #888; }
+.admin-card-meta { font-size: 0.55rem; color: #aaa; }
+
+.admin-card-effect-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--gold);
+  color: #130d21;
+  font-size: 0.6rem;
+  font-weight: bold;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+/* Card Detail Modal */
+.admin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: grid;
+  place-items: center;
+  z-index: 200;
+  padding: 1rem;
+}
+
+.admin-modal {
+  background: #16213e;
+  border: 1px solid #333;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.admin-modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(0,0,0,0.5);
+  border: none;
+  color: #888;
+  font-size: 1.2rem;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+}
+
+.admin-modal-content {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.admin-modal-content > img {
+  width: 160px;
+  aspect-ratio: 5/7;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.admin-modal-info { flex: 1; min-width: 0; }
+.admin-modal-info h3 { color: var(--gold); font-size: 1rem; margin-bottom: 0.25rem; }
+.admin-modal-info .admin-card-id { color: #888; font-size: 0.75rem; }
+
+.admin-detail-table {
+  width: 100%;
+  margin-top: 0.5rem;
+  border-collapse: collapse;
+}
+
+.admin-detail-table td {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
+  border-bottom: 1px solid #222;
+  vertical-align: top;
+}
+
+.admin-detail-table td:first-child {
+  color: #888;
+  white-space: nowrap;
+  width: 100px;
+}
+
+.admin-effect-text { color: #f4d35e; }
+.admin-errata { color: #e63946; }

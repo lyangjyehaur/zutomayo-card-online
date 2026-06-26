@@ -33,6 +33,8 @@ export interface CardDef {
   name: string;
   pack: string;
   song: string;
+  illustrator: string;
+  rarity: string;
   element: Element;
   type: CardType;
   clock: number;
