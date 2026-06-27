@@ -7,7 +7,7 @@ import { zhHK } from './zh-HK';
 import { zhTW, type TranslationKey } from './zh-TW';
 
 export const availableLocales = ['zh-TW', 'zh-HK', 'zh-CN', 'ja', 'en', 'ko'] as const;
-export type Locale = typeof availableLocales[number];
+export type Locale = (typeof availableLocales)[number];
 
 const DEFAULT_LOCALE: Locale = 'zh-TW';
 const LOCALE_STORAGE_KEY = 'zutomayo_locale';

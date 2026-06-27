@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ApiError, getProfile, isLoggedIn, login, logout as logoutAccount, matchmakingLeave, matchmakingQueue, matchmakingReportMatch, matchmakingStatus, register, type DeckResponse } from '../api/client';
+import {
+  ApiError,
+  getProfile,
+  isLoggedIn,
+  login,
+  logout as logoutAccount,
+  matchmakingLeave,
+  matchmakingQueue,
+  matchmakingReportMatch,
+  matchmakingStatus,
+  register,
+  type DeckResponse,
+} from '../api/client';
 import { Card } from '../components/Card';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
@@ -61,14 +73,10 @@ export function selectedDeckName(deckName: string, customDeckAvailable: boolean)
   return deckName || undefined;
 }
 
-export function onlineDeckName(
-  player: PlayerIndex,
-  deckName: string,
-  serverDecks: DeckResponse[],
-): ZutomayoSetupData {
+export function onlineDeckName(player: PlayerIndex, deckName: string, serverDecks: DeckResponse[]): ZutomayoSetupData {
   const serverDeckId = serverDeckIdFromOption(deckName);
   if (serverDeckId) {
-    const serverDeck = serverDecks.find(deck => deck.id === serverDeckId);
+    const serverDeck = serverDecks.find((deck) => deck.id === serverDeckId);
     if (serverDeck) return player === 0 ? { deck0Ids: serverDeck.cardIds } : { deck1Ids: serverDeck.cardIds };
     return player === 0 ? { deck0Name: DEFAULT_DECK_NAME } : { deck1Name: DEFAULT_DECK_NAME };
   }
@@ -101,7 +109,7 @@ function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
 }
 
 function buildServerDeckOptions(serverDecks: DeckResponse[]): DeckOption[] {
-  return serverDecks.map(deck => ({
+  return serverDecks.map((deck) => ({
     id: serverDeckOptionId(deck.id),
     name: deck.name,
     description: t('deck.synced'),
@@ -110,7 +118,12 @@ function buildServerDeckOptions(serverDecks: DeckResponse[]): DeckOption[] {
   }));
 }
 
-function DeckSelector({ label, value, options, onChange }: {
+function DeckSelector({
+  label,
+  value,
+  options,
+  onChange,
+}: {
   label: string;
   value: string;
   options: DeckOptionGroup[];
@@ -123,10 +136,10 @@ function DeckSelector({ label, value, options, onChange }: {
         <span>{t('lobby.deckSelectHint')}</span>
       </div>
       <div className="deck-option-grid">
-        {options.map(group => (
+        {options.map((group) => (
           <div className="deck-option-group" key={group.label}>
             <span className="deck-option-group-label">{group.label}</span>
-            {group.options.map(option => (
+            {group.options.map((option) => (
               <button
                 key={option.id}
                 className={`deck-option-card ${value === option.id ? 'selected' : ''}`}
@@ -172,8 +185,13 @@ function DifficultyButtons({ onStart }: { onStart: (difficulty: AIDifficulty) =>
         <span>{t('lobby.difficulty')}</span>
       </div>
       <div className="difficulty-grid">
-        {levels.map(level => (
-          <button key={level.id} className={`difficulty-card ${level.id}`} type="button" onClick={() => onStart(level.id)}>
+        {levels.map((level) => (
+          <button
+            key={level.id}
+            className={`difficulty-card ${level.id}`}
+            type="button"
+            onClick={() => onStart(level.id)}
+          >
             <strong>{level.label}</strong>
             <span>{level.detail}</span>
           </button>
@@ -186,10 +204,10 @@ function DifficultyButtons({ onStart }: { onStart: (difficulty: AIDifficulty) =>
 function authErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   if (
-    error instanceof TypeError
-    || (error instanceof ApiError && error.status !== undefined && error.status >= 500)
-    || message.includes('fetch')
-    || message.includes('network')
+    error instanceof TypeError ||
+    (error instanceof ApiError && error.status !== undefined && error.status >= 500) ||
+    message.includes('fetch') ||
+    message.includes('network')
   ) {
     return t('auth.serviceUnavailable');
   }
@@ -224,10 +242,10 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
     if (!isLoggedIn()) return;
     let cancelled = false;
     getProfile()
-      .then(profile => {
+      .then((profile) => {
         if (!cancelled) setUser(profile);
       })
-      .catch(err => {
+      .catch((err) => {
         if (err instanceof ApiError && (err.status === 401 || err.status === 404)) logoutAccount();
         if (!cancelled) setError(t('auth.profileUnavailable'));
       });
@@ -256,9 +274,7 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
     setStatus('');
 
     try {
-      const authUser = mode === 'login'
-        ? await login(email, password)
-        : await register(email, password, nickname);
+      const authUser = mode === 'login' ? await login(email, password) : await register(email, password, nickname);
       let nextUser = authUser as AuthUser;
       try {
         nextUser = await getProfile();
@@ -295,8 +311,12 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
           <strong>{user.nickname || t('auth.guest')}</strong>
           <div className="auth-profile-stats">
             <span>ELO {user.elo}</span>
-            <span>{t('auth.winRate')} {stats.winRate}%</span>
-            <span>{t('auth.wins')} {stats.wins}/{stats.matchCount}</span>
+            <span>
+              {t('auth.winRate')} {stats.winRate}%
+            </span>
+            <span>
+              {t('auth.wins')} {stats.wins}/{stats.matchCount}
+            </span>
           </div>
         </div>
         <button className="secondary-action auth-logout" type="button" onClick={handleLogout}>
@@ -313,7 +333,7 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
         className="secondary-action auth-toggle"
         type="button"
         aria-expanded={expanded}
-        onClick={() => setExpanded(value => !value)}
+        onClick={() => setExpanded((value) => !value)}
       >
         {t('auth.login')} / {t('auth.register')}
       </button>
@@ -348,7 +368,7 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
               value={email}
               autoComplete="email"
               required
-              onChange={event => setEmail(event.target.value)}
+              onChange={(event) => setEmail(event.target.value)}
             />
           </label>
           {mode === 'register' && (
@@ -359,7 +379,7 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
                 value={nickname}
                 autoComplete="nickname"
                 required
-                onChange={event => setNickname(event.target.value)}
+                onChange={(event) => setNickname(event.target.value)}
               />
             </label>
           )}
@@ -370,7 +390,7 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
               value={password}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               required
-              onChange={event => setPassword(event.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
             />
           </label>
           {error && <p className="error-copy auth-error">{error}</p>}
@@ -408,10 +428,13 @@ function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) => Promi
     setMatchmakingActive(false);
   }, [stopPolling]);
 
-  useEffect(() => () => {
-    cancelRef.current = true;
-    stopPolling();
-  }, [stopPolling]);
+  useEffect(
+    () => () => {
+      cancelRef.current = true;
+      stopPolling();
+    },
+    [stopPolling],
+  );
 
   const runOnline = async (id?: string) => {
     setError('');
@@ -513,26 +536,16 @@ function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) => Promi
         <span>{t('game.onlineMode')}</span>
       </div>
       <div className="online-actions">
-        <button
-          className="primary-action"
-          type="button"
-          onClick={handleQuickMatch}
-          disabled={matchmakingActive}
-        >
+        <button className="primary-action" type="button" onClick={handleQuickMatch} disabled={matchmakingActive}>
           {t('lobby.quickMatch')}
         </button>
-        <button
-          className="secondary-action"
-          type="button"
-          onClick={() => runOnline()}
-          disabled={matchmakingActive}
-        >
+        <button className="secondary-action" type="button" onClick={() => runOnline()} disabled={matchmakingActive}>
           {t('lobby.createRoom')}
         </button>
         <div className="join-row">
           <input
             value={matchID}
-            onChange={event => setMatchID(event.target.value.trim())}
+            onChange={(event) => setMatchID(event.target.value.trim())}
             placeholder={t('lobby.roomCodePlaceholder')}
             aria-label={t('lobby.roomCode')}
             disabled={matchmakingActive}
@@ -638,7 +651,12 @@ export function LobbyPage({
         <div className="lobby-panel deck-panel">
           {serverDeckError && <p className="error-copy">{serverDeckError}</p>}
           <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={deckOptions} onChange={setDeck0Name} />
-          <DeckSelector label={t('lobby.opponentDeck')} value={deck1Name} options={deckOptions} onChange={setDeck1Name} />
+          <DeckSelector
+            label={t('lobby.opponentDeck')}
+            value={deck1Name}
+            options={deckOptions}
+            onChange={setDeck1Name}
+          />
         </div>
         <div className="lobby-side">
           <DifficultyButtons onStart={onStartAI} />

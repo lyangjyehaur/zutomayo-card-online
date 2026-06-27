@@ -50,7 +50,7 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
   const token = localStorage.getItem('zutomayo_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
+    ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -108,7 +108,7 @@ export async function getProfile(): Promise<ProfileResponse> {
 // ===== Decks =====
 export async function getDecks(): Promise<DeckResponse[]> {
   const data = await request<DeckListResponse>('/decks');
-  return data.decks.map(deck => ({
+  return data.decks.map((deck) => ({
     id: deck.id,
     name: deck.name,
     cardIds: deck.cardIds,

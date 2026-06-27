@@ -6,9 +6,7 @@ export interface OnlineSession {
 
 export type OnlineSessionValidationReason = 'network' | 'roomGone' | 'seatTaken';
 
-export type OnlineSessionValidationResult =
-  | { ok: true }
-  | { ok: false; reason: OnlineSessionValidationReason };
+export type OnlineSessionValidationResult = { ok: true } | { ok: false; reason: OnlineSessionValidationReason };
 
 export const ONLINE_SESSION_STORAGE_KEY = 'zutomayo_online_session';
 
@@ -19,9 +17,9 @@ function getStorage(): Storage | null {
 
 function isOnlineSession(data: Partial<OnlineSession>): data is OnlineSession {
   return (
-    typeof data.matchID === 'string'
-    && (data.playerID === '0' || data.playerID === '1')
-    && typeof data.playerCredentials === 'string'
+    typeof data.matchID === 'string' &&
+    (data.playerID === '0' || data.playerID === '1') &&
+    typeof data.playerCredentials === 'string'
   );
 }
 
@@ -62,9 +60,7 @@ export async function leaveOnlineSession(session: OnlineSession): Promise<void> 
   }
 }
 
-export async function validateOnlineSession(
-  session: OnlineSession,
-): Promise<OnlineSessionValidationResult> {
+export async function validateOnlineSession(session: OnlineSession): Promise<OnlineSessionValidationResult> {
   try {
     const response = await fetch(`/games/zutomayo-card/${encodeURIComponent(session.matchID)}/resume`, {
       method: 'POST',

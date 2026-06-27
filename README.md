@@ -10,6 +10,7 @@
 ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本樂團「ずっと真夜中でいいのに」為主題。
 
 **核心機制：**
+
 - 每人 20 張牌組，初始 HP 100
 - **Chronos 晝夜系統** — 圓形時鐘決定當前是夜(NIGHT)還是晝(DAY)，影響角色攻擊力
 - **三種卡牌類型** — Character（角色）、Enchant（附魔）、Area Enchant（區域附魔）
@@ -22,17 +23,20 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 ## 功能清單
 
 ### 遊戲模式
+
 - **本機對戰** — 同螢幕兩人對戰
 - **AI 練習** — 簡單/普通/困難三種難度，困難模式使用 lookahead 模擬
-- **線上對戰** — boardgame.io WebSocket 即時同步，支援重連
+- **線上對戰** — boardgame.io WebSocket 即時同步，配對佇列，支援重連
 
 ### 卡牌系統
+
 - 422 張完整卡牌數據（4 個卡包）
 - 267 行效果文字全部解析（100% 覆蓋率）
 - 效果規則引擎支援 30+ 種動作類型和 15+ 種條件類型
 - 250 張效果卡 × 6 種語言翻譯（LLM 生成）
 
 ### UI/UX
+
 - **全屏無滾動** — 100vh/100vw 遊戲介面
 - **響應式設計** — 桌面/平板/手機自適應
 - **六語言** — 繁體中文（台灣）、粵語（香港）、簡體中文、日本語、English、한국어
@@ -42,9 +46,11 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 - **排行榜** — ELO 評分系統
 
 ### 管理後台
+
 - 卡牌數據瀏覽器（篩選/搜尋/詳情）
 - i18n 翻譯管理
-- 密碼保護（`/admin` 路由）
+- 使用者列表與 ELO 重設
+- Admin token 登入（`/api/admin/login`，密碼由 `ADMIN_PASSWORD` 環境變數提供）
 
 ---
 
@@ -70,6 +76,22 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 └─────────────────────────────────────────────┘
 ```
 
+### 技術棧
+
+| 領域         | 技術                                               | 版本      |
+| ------------ | -------------------------------------------------- | --------- |
+| UI 框架      | React                                              | 19        |
+| 路由         | React Router                                       | 7         |
+| 多人遊戲框架 | boardgame.io                                       | 0.50.2    |
+| 建構工具     | Vite                                               | 7         |
+| 語言         | TypeScript（strict 模式）                          | 5.8       |
+| 測試         | vitest（含 `@vitest/coverage-v8`）                 | 4         |
+| 屬性測試     | fast-check                                         | 4         |
+| 程式碼風格   | ESLint（typescript-eslint）                        | 9         |
+| 格式化       | Prettier                                           | 3         |
+| PWA          | vite-plugin-pwa                                    | 1         |
+| 後端         | Node HTTP + SQLite（better-sqlite3 / node:sqlite） | Node >=20 |
+
 ### 核心遊戲引擎
 
 ```text
@@ -82,21 +104,22 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 
 ### 數據存儲
 
-| 數據 | 存儲位置 | 說明 |
-|------|----------|------|
-| 卡牌數據 | `cards.json` (git) | 422 張卡，靜態數據 |
-| 卡圖 | Cloudflare R2 (`r2.dan.tw`) | 422 張卡圖 CDN |
-| 用戶帳號 | SQLite (`api/server.cjs`) | 註冊/登入/ELO |
-| 牌組 | SQLite + localStorage | 伺服器同步 + 本地備份 |
-| 對戰紀錄 | SQLite + localStorage | ELO 變動 + 歷史 + 已清理 action log |
-| 語言偏好 | localStorage | 瀏覽器本地 |
+| 數據     | 存儲位置                    | 說明                                |
+| -------- | --------------------------- | ----------------------------------- |
+| 卡牌數據 | `cards.json` (git)          | 422 張卡，靜態數據                  |
+| 卡圖     | Cloudflare R2 (`r2.dan.tw`) | 422 張卡圖 CDN                      |
+| 用戶帳號 | SQLite (`api/server.cjs`)   | 註冊/登入/ELO                       |
+| 牌組     | SQLite + localStorage       | 伺服器同步 + 本地備份               |
+| 對戰紀錄 | SQLite + localStorage       | ELO 變動 + 歷史 + 已清理 action log |
+| 語言偏好 | localStorage                | 瀏覽器本地                          |
 
 ---
 
 ## 本機開發
 
 ### 環境需求
-- Node.js 22+
+
+- Node.js `>=20`（見 `package.json` `engines`；CI 與 Docker 使用 Node 22）
 - npm 10+
 
 ### 安裝與運行
@@ -118,6 +141,27 @@ npm run build
 npm run server
 # → http://localhost:3000（含遊戲 + API 代理）
 ```
+
+### 開發指令清單
+
+| 指令                        | 說明                                                                     |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `npm run dev`               | 啟動 Vite dev server                                                     |
+| `npm run build`             | TypeScript 檢查（`typecheck` + `typecheck:scripts`）後執行 Vite 生產構建 |
+| `npm run typecheck`         | `tsc --noEmit` 檢查 app 程式碼                                           |
+| `npm run typecheck:scripts` | `tsc --noEmit -p tsconfig.scripts.json` 檢查 scripts 程式碼              |
+| `npm run lint`              | ESLint 檢查                                                              |
+| `npm run lint:fix`          | ESLint 自動修復                                                          |
+| `npm run format`            | Prettier 格式化寫入                                                      |
+| `npm run format:check`      | Prettier 格式檢查（CI 使用）                                             |
+| `npm test`                  | vitest 單元測試（單次執行）                                              |
+| `npm run test:coverage`     | vitest 單元測試含覆蓋率報告                                              |
+| `npm run smoke`             | 遊戲邏輯 smoke 測試                                                      |
+| `npm run smoke:api`         | 帳號/牌組/對戰/排行榜 API loop                                           |
+| `npm run smoke:online`      | 線上對戰 smoke 測試                                                      |
+| `npm run rule:audit`        | 效果解析覆蓋率審計                                                       |
+| `npm run server`            | 啟動 boardgame.io 遊戲伺服器                                             |
+| `npm run preview`           | 預覽 Vite 生產構建結果                                                   |
 
 ### 測試
 
@@ -148,6 +192,7 @@ docker compose logs -f
 ```
 
 服務端口：
+
 - `3000` — 遊戲前端 + boardgame.io 多人
 - `3001` — API 伺服器（帳號/牌組/戰績）
 
@@ -246,70 +291,82 @@ zutomayo-card-online/
 
 ### 支援的效果類型（按數量排序）
 
-| 類型 | 說明 | 數量 |
-|------|------|------|
-| boostAttack | 攻擊力增加 | 150 |
-| requestChoice | 玩家選擇（深淵/手牌/排序等） | 30 |
-| heal | HP 回復 | 13 |
-| damageReduce | 傷害減免 | 7 |
-| moveSelfAreaEnchant | 區域附魔自動移動 | 5 |
-| clockSet | 時鐘設定 | 4 |
-| returnAreaEnchantToDeck | 區域附魔回牌組 | 4 |
-| useFromAbyss | 從深淵使用卡牌 | 3 |
-| reduceAttack | 攻擊力減少 | 3 |
-| swapAttack | 晝夜攻擊力逆轉 | 2 |
-| drawCards | 抽牌 | 2 |
-| millDeckToAbyss | 磨牌進深淵 | 2 |
-| directDamage | 直接傷害 | 2 |
-| clockAdvance | 時鐘推進 | 2 |
-| 其他（17 種） | 特殊效果 | 各 1 |
+| 類型                    | 說明                         | 數量 |
+| ----------------------- | ---------------------------- | ---- |
+| boostAttack             | 攻擊力增加                   | 150  |
+| requestChoice           | 玩家選擇（深淵/手牌/排序等） | 30   |
+| heal                    | HP 回復                      | 13   |
+| damageReduce            | 傷害減免                     | 7    |
+| moveSelfAreaEnchant     | 區域附魔自動移動             | 5    |
+| clockSet                | 時鐘設定                     | 4    |
+| returnAreaEnchantToDeck | 區域附魔回牌組               | 4    |
+| useFromAbyss            | 從深淵使用卡牌               | 3    |
+| reduceAttack            | 攻擊力減少                   | 3    |
+| swapAttack              | 晝夜攻擊力逆轉               | 2    |
+| drawCards               | 抽牌                         | 2    |
+| millDeckToAbyss         | 磨牌進深淵                   | 2    |
+| directDamage            | 直接傷害                     | 2    |
+| clockAdvance            | 時鐘推進                     | 2    |
+| 其他（17 種）           | 特殊效果                     | 各 1 |
 
 ### 支援的條件類型
 
-| 條件 | 說明 |
-|------|------|
-| chronos | 晝夜判定（夜/晝） |
-| opponentElement / selfElement | 屬性檢查 |
-| hpLessOrEqual / hpComparison | HP 條件 |
-| opponentPowerCost / selfPowerCost | 能量消耗條件 |
-| zoneCountComparison | 區域卡數比較 |
-| previousCharElement | 上回合角色屬性 |
-| namedCardInBattleZone | 命名卡在戰鬥區 |
-| specificElements | 特定屬性集合 |
-| drawOccurredThisEffect | 本效果曾抽牌 |
-| battleLost | 戰鬥失敗 |
+| 條件                              | 說明              |
+| --------------------------------- | ----------------- |
+| chronos                           | 晝夜判定（夜/晝） |
+| opponentElement / selfElement     | 屬性檢查          |
+| hpLessOrEqual / hpComparison      | HP 條件           |
+| opponentPowerCost / selfPowerCost | 能量消耗條件      |
+| zoneCountComparison               | 區域卡數比較      |
+| previousCharElement               | 上回合角色屬性    |
+| namedCardInBattleZone             | 命名卡在戰鬥區    |
+| specificElements                  | 特定屬性集合      |
+| drawOccurredThisEffect            | 本效果曾抽牌      |
+| battleLost                        | 戰鬥失敗          |
 
 ---
 
 ## 路由結構
 
-| 路徑 | 頁面 | 說明 |
-|------|------|------|
-| `/` | LobbyPage | 大廳（牌組選擇、模式切換） |
-| `/play/local` | LocalGamePage | 本機雙人對戰 |
-| `/play/ai` | AIGamePage | AI 練習 |
-| `/play/online/:matchID` | OnlineGamePage | 線上對戰 |
-| `/deck-builder` | DeckEditorPage | 牌組編輯器 |
-| `/history` | MatchHistoryPage | 對戰紀錄 |
-| `/leaderboard` | LeaderboardPage | 排行榜 |
-| `/admin` | AdminPage | 管理後台（需密碼） |
-| `/admin/i18n` | I18nManager | i18n 翻譯管理 |
+| 路徑                    | 頁面             | 說明                       |
+| ----------------------- | ---------------- | -------------------------- |
+| `/`                     | LobbyPage        | 大廳（牌組選擇、模式切換） |
+| `/play/local`           | LocalGamePage    | 本機雙人對戰               |
+| `/play/ai`              | AIGamePage       | AI 練習                    |
+| `/play/online/:matchID` | OnlineGamePage   | 線上對戰                   |
+| `/deck-builder`         | DeckEditorPage   | 牌組編輯器                 |
+| `/history`              | MatchHistoryPage | 對戰紀錄                   |
+| `/leaderboard`          | LeaderboardPage  | 排行榜                     |
+| `/admin`                | AdminPage        | 管理後台（需 admin token） |
+| `/admin/i18n`           | I18nManager      | i18n 翻譯管理              |
 
 ---
 
 ## API 端點
 
-| 方法 | 路徑 | 說明 |
-|------|------|------|
-| POST | `/api/register` | 註冊帳號 |
-| POST | `/api/login` | 登入 |
-| GET | `/api/profile` | 取得用戶資料 |
-| GET | `/api/decks` | 列出牌組 |
-| POST | `/api/decks` | 建立牌組 |
-| DELETE | `/api/decks/:id` | 刪除牌組 |
-| POST | `/api/matches` | 上報對戰結果 |
-| GET | `/api/matches/:id/log` | 取得已清理 action log |
-| GET | `/api/leaderboard` | 排行榜 |
+| 方法   | 路徑                       | 認證  | 說明                           |
+| ------ | -------------------------- | ----- | ------------------------------ |
+| POST   | `/api/register`            | 無    | 註冊帳號                       |
+| POST   | `/api/login`               | 無    | 登入                           |
+| GET    | `/api/profile`             | JWT   | 取得用戶資料                   |
+| PUT    | `/api/profile`             | JWT   | 修改暱稱                       |
+| GET    | `/api/decks`               | JWT   | 列出牌組                       |
+| POST   | `/api/decks`               | JWT   | 建立牌組                       |
+| DELETE | `/api/decks/:id`           | JWT   | 刪除牌組                       |
+| POST   | `/api/matches`             | JWT   | 上報對戰結果（認證者須為贏家） |
+| GET    | `/api/matches`             | JWT   | 取得認證使用者的對戰歷史       |
+| GET    | `/api/matches/:id/log`     | 無    | 取得已清理 action log          |
+| GET    | `/api/leaderboard`         | 無    | 排行榜                         |
+| POST   | `/api/admin/login`         | 無    | Admin 登入，回傳 admin token   |
+| GET    | `/api/admin/users`         | Admin | 取得使用者列表                 |
+| GET    | `/api/admin/matches`       | Admin | 取得所有對戰列表               |
+| PUT    | `/api/admin/users/:id/elo` | Admin | 重設使用者 ELO                 |
+| POST   | `/api/matchmaking/queue`   | JWT   | 加入配對佇列                   |
+| GET    | `/api/matchmaking/status`  | JWT   | 查詢配對狀態                   |
+| DELETE | `/api/matchmaking/queue`   | JWT   | 離開佇列                       |
+| PUT    | `/api/matchmaking/match`   | JWT   | host 回報 boardgame.io matchID |
+
+速率限制：`/api/login`、`/api/register`、`/api/admin/login` 為 10/min，其餘 120/min。
 
 詳見 [docs/API.md](docs/API.md)
 
@@ -319,14 +376,14 @@ zutomayo-card-online/
 
 支援 6 種語言，所有 UI 文字和 250 張效果卡都有對應翻譯：
 
-| 語言 | 代碼 | 旗標 |
-|------|------|------|
-| 繁體中文（台灣） | zh-TW | 🇹🇼 |
-| 粵語（香港） | zh-HK | 🇭🇰 |
-| 簡體中文 | zh-CN | 🇨🇳 |
-| 日本語 | ja | 🇯🇵 |
-| English | en | 🇬🇧 |
-| 한국어 | ko | 🇰🇷 |
+| 語言             | 代碼  | 旗標 |
+| ---------------- | ----- | ---- |
+| 繁體中文（台灣） | zh-TW | 🇹🇼   |
+| 粵語（香港）     | zh-HK | 🇭🇰   |
+| 簡體中文         | zh-CN | 🇨🇳   |
+| 日本語           | ja    | 🇯🇵   |
+| English          | en    | 🇬🇧   |
+| 한국어           | ko    | 🇰🇷   |
 
 翻譯管理：`/admin` → i18n 管理頁面
 

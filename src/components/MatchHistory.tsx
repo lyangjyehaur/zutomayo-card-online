@@ -1,5 +1,11 @@
 import { useState } from 'react';
-import { clearMatchRecords, downloadMatchActionLog, getMatchRecords, getMatchStats, type MatchRecord } from '../game/matchHistory';
+import {
+  clearMatchRecords,
+  downloadMatchActionLog,
+  getMatchRecords,
+  getMatchStats,
+  type MatchRecord,
+} from '../game/matchHistory';
 import type { ActionLogEntry } from '../game/types';
 import { t, useLocale } from '../i18n';
 
@@ -44,7 +50,9 @@ function TraceEntry({ entry }: { entry: ActionLogEntry }) {
   return (
     <li className="trace-entry">
       <div className="trace-entry-main">
-        <strong>#{entry.id ?? '-'} T{entry.turn} · P{entry.player + 1} · {entry.action}</strong>
+        <strong>
+          #{entry.id ?? '-'} T{entry.turn} · P{entry.player + 1} · {entry.action}
+        </strong>
         <span>{entry.step}</span>
       </div>
       {payload && <p>{payload}</p>}
@@ -65,13 +73,29 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
             <span>{new Date(record.date).toLocaleString(locale)}</span>
             <h2 id="match-detail-title">{winnerLabel(record)}</h2>
           </div>
-          <button className="secondary-action" type="button" onClick={onClose}>{t('common.close')}</button>
+          <button className="secondary-action" type="button" onClick={onClose}>
+            {t('common.close')}
+          </button>
         </header>
         <div className="match-detail-grid">
-          <div><span>{t('history.turns')}</span><strong>{record.turns}</strong></div>
-          <div><span>{t('history.duration')}</span><strong>{formatDuration(record.duration)}</strong></div>
-          <div><span>{t('history.finalHp')}</span><strong>{record.players[0].hp}/{record.players[1].hp}</strong></div>
-          <div><span>{t('history.finalChronos')}</span><strong>{record.chronos.finalPosition}/12</strong></div>
+          <div>
+            <span>{t('history.turns')}</span>
+            <strong>{record.turns}</strong>
+          </div>
+          <div>
+            <span>{t('history.duration')}</span>
+            <strong>{formatDuration(record.duration)}</strong>
+          </div>
+          <div>
+            <span>{t('history.finalHp')}</span>
+            <strong>
+              {record.players[0].hp}/{record.players[1].hp}
+            </strong>
+          </div>
+          <div>
+            <span>{t('history.finalChronos')}</span>
+            <strong>{record.chronos.finalPosition}/12</strong>
+          </div>
         </div>
         <div className="match-detail-actions">
           <button className="secondary-action" type="button" onClick={() => downloadMatchActionLog(record)}>
@@ -84,7 +108,9 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
             <p className="empty-state">{t('history.traceEmpty')}</p>
           ) : (
             <ol className="trace-list">
-              {trace.map((entry, index) => <TraceEntry key={`${entry.id ?? index}-${entry.timestamp}`} entry={entry} />)}
+              {trace.map((entry, index) => (
+                <TraceEntry key={`${entry.id ?? index}-${entry.timestamp}`} entry={entry} />
+              ))}
             </ol>
           )}
         </section>
@@ -118,7 +144,9 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
           <h1>{t('history.title')}</h1>
         </div>
         <div className="screen-actions">
-          <button className="secondary-action" type="button" onClick={onBack}>{t('common.backToLobby')}</button>
+          <button className="secondary-action" type="button" onClick={onBack}>
+            {t('common.backToLobby')}
+          </button>
           <button className="danger-action" type="button" disabled={records.length === 0} onClick={clearHistory}>
             {t('history.clear')}
           </button>
@@ -126,19 +154,45 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
       </header>
 
       <section className="history-stats">
-        <div className="stat"><span>{t('history.total')}</span><strong>{stats.totalMatches}</strong></div>
-        <div className="stat"><span>{t('history.p0Wins')}</span><strong>{stats.wins[0]}</strong></div>
-        <div className="stat"><span>{t('history.p1Wins')}</span><strong>{stats.wins[1]}</strong></div>
-        <div className="stat"><span>{t('history.avgTurns')}</span><strong>{stats.avgTurns}</strong></div>
+        <div className="stat">
+          <span>{t('history.total')}</span>
+          <strong>{stats.totalMatches}</strong>
+        </div>
+        <div className="stat">
+          <span>{t('history.p0Wins')}</span>
+          <strong>{stats.wins[0]}</strong>
+        </div>
+        <div className="stat">
+          <span>{t('history.p1Wins')}</span>
+          <strong>{stats.wins[1]}</strong>
+        </div>
+        <div className="stat">
+          <span>{t('history.avgTurns')}</span>
+          <strong>{stats.avgTurns}</strong>
+        </div>
       </section>
 
       <section className="records-panel">
         <div className="panel-title-row">
           <h2>{t('history.title')}</h2>
           <div className="pager">
-            <button type="button" disabled={currentPage === 0} onClick={() => setPage(value => Math.max(0, value - 1))}>{t('common.prev')}</button>
-            <span>{currentPage + 1}/{totalPages} {t('common.page')}</span>
-            <button type="button" disabled={currentPage >= totalPages - 1} onClick={() => setPage(value => Math.min(totalPages - 1, value + 1))}>{t('common.next')}</button>
+            <button
+              type="button"
+              disabled={currentPage === 0}
+              onClick={() => setPage((value) => Math.max(0, value - 1))}
+            >
+              {t('common.prev')}
+            </button>
+            <span>
+              {currentPage + 1}/{totalPages} {t('common.page')}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages - 1}
+              onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+            >
+              {t('common.next')}
+            </button>
           </div>
         </div>
 
@@ -146,22 +200,43 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
           <div className="empty-state">{t('history.noRecords')}</div>
         ) : (
           <div className="records-list">
-            {visibleRecords.map(record => (
+            {visibleRecords.map((record) => (
               <article key={record.id} className="record-item">
                 <div className="record-result">
                   <strong>{winnerLabel(record)}</strong>
-                  <span>{new Date(record.date).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>
+                    {new Date(record.date).toLocaleString(locale, {
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
                 </div>
                 <div className="record-details">
-                  <span>{t('history.turns')} {record.turns}</span>
-                  <span>{t('history.duration')} {formatDuration(record.duration)}</span>
-                  <span>{t('history.finalHp')} {record.players[0].hp}/{record.players[1].hp}</span>
-                  <span>{t('history.finalChronos')} {record.chronos.finalPosition}/12</span>
-                  <span>{t('history.traceCount')} {(record.actionLog ?? []).length}</span>
+                  <span>
+                    {t('history.turns')} {record.turns}
+                  </span>
+                  <span>
+                    {t('history.duration')} {formatDuration(record.duration)}
+                  </span>
+                  <span>
+                    {t('history.finalHp')} {record.players[0].hp}/{record.players[1].hp}
+                  </span>
+                  <span>
+                    {t('history.finalChronos')} {record.chronos.finalPosition}/12
+                  </span>
+                  <span>
+                    {t('history.traceCount')} {(record.actionLog ?? []).length}
+                  </span>
                 </div>
                 <div className="record-actions">
-                  <button className="secondary-action" type="button" onClick={() => setSelectedRecord(record)}>{t('history.viewTrace')}</button>
-                  <button className="secondary-action" type="button" onClick={() => downloadMatchActionLog(record)}>{t('history.downloadTrace')}</button>
+                  <button className="secondary-action" type="button" onClick={() => setSelectedRecord(record)}>
+                    {t('history.viewTrace')}
+                  </button>
+                  <button className="secondary-action" type="button" onClick={() => downloadMatchActionLog(record)}>
+                    {t('history.downloadTrace')}
+                  </button>
                 </div>
               </article>
             ))}

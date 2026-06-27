@@ -12,9 +12,11 @@ import { t } from '../i18n';
 const TURN_TIMER_SECONDS = 60;
 
 function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
 export type BoardGameOverAction = {
@@ -72,18 +74,21 @@ function jankenLabel(choice: JankenChoice): string {
   return labels[choice];
 }
 
-function FeedbackOverlay({ message, onAction }: {
-  message: FeedbackMessage | null;
-  onAction?: () => void;
-}) {
+function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | null; onAction?: () => void }) {
   if (!message) return null;
 
   return (
-    <div className={`phase-message-overlay phase-message-${message.tone ?? 'neutral'}`} role="status" aria-live="polite">
+    <div
+      className={`phase-message-overlay phase-message-${message.tone ?? 'neutral'}`}
+      role="status"
+      aria-live="polite"
+    >
       <div className="phase-message-panel">
         {message.kicker && <div className="phase-message-kicker">{message.kicker}</div>}
         <strong className="phase-message-title">{message.title}</strong>
-        {message.lines?.map(line => <p key={line}>{line}</p>)}
+        {message.lines?.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
         {message.actionLabel && onAction && (
           <button className="primary-action phase-message-action" type="button" onClick={onAction}>
             {message.actionLabel}
@@ -127,15 +132,21 @@ function JankenScreen({ G, moves, playerID }: Props) {
   );
 }
 
-function MulliganScreen({ G, moves, playerID, onMulliganFeedback }: Props & {
+function MulliganScreen({
+  G,
+  moves,
+  playerID,
+  onMulliganFeedback,
+}: Props & {
   onMulliganFeedback: (redrawCount: number) => void;
 }) {
   const me = Number(playerID ?? '0') as PlayerIndex;
   const [selected, setSelected] = useState<number[]>([]);
   const done = G.mulliganUsed[me];
-  const toggle = (index: number) => setSelected(current =>
-    current.includes(index) ? current.filter(item => item !== index) : [...current, index],
-  );
+  const toggle = (index: number) =>
+    setSelected((current) =>
+      current.includes(index) ? current.filter((item) => item !== index) : [...current, index],
+    );
 
   return (
     <div className="setup-screen mulligan-screen">
@@ -156,7 +167,9 @@ function MulliganScreen({ G, moves, playerID, onMulliganFeedback }: Props & {
           ))}
         </div>
         {done ? (
-          <p className="setup-status">{t('board.handConfirmed')}。{t('board.waitingOpponent')}</p>
+          <p className="setup-status">
+            {t('board.handConfirmed')}。{t('board.waitingOpponent')}
+          </p>
         ) : (
           <div className="setup-actions">
             <button
@@ -288,14 +301,12 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID, gameOverActions }: P
           G.actionLog,
         ) as Promise<MatchSubmitResponse>;
       })
-      .then(result => {
+      .then((result) => {
         if ((result.winnerEloChange ?? 0) === 0 && (result.loserEloChange ?? 0) === 0) {
           setEloNotice(t('auth.matchSubmittedNoElo'));
           return;
         }
-        const change = winner === accountPlayer
-          ? result.winnerEloChange ?? 0
-          : result.loserEloChange ?? 0;
+        const change = winner === accountPlayer ? (result.winnerEloChange ?? 0) : (result.loserEloChange ?? 0);
         setEloNotice(`${t('auth.eloChange')} ${signedChange(change)}`);
       })
       .catch(() => {
@@ -311,15 +322,23 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID, gameOverActions }: P
         <h1>{G.winner === null ? t('board.draw') : `${playerName(G.winner)} ${t('board.playerWins')}`}</h1>
         <p>{translateGameOverReason(G.gameoverReason)}</p>
         {eloNotice && <p className="elo-notice">{eloNotice}</p>}
-        {ctx.gameover && (
-          gameOverActions ? (
+        {ctx.gameover &&
+          (gameOverActions ? (
             <div className="game-over-actions">
               {gameOverActions.helperText && <p className="game-over-helper">{gameOverActions.helperText}</p>}
-              <button className={gameOverActionClass(gameOverActions.primary)} type="button" onClick={gameOverActions.primary.onClick}>
+              <button
+                className={gameOverActionClass(gameOverActions.primary)}
+                type="button"
+                onClick={gameOverActions.primary.onClick}
+              >
                 {gameOverActions.primary.label}
               </button>
               {gameOverActions.secondary && (
-                <button className={gameOverActionClass(gameOverActions.secondary)} type="button" onClick={gameOverActions.secondary.onClick}>
+                <button
+                  className={gameOverActionClass(gameOverActions.secondary)}
+                  type="button"
+                  onClick={gameOverActions.secondary.onClick}
+                >
                   {gameOverActions.secondary.label}
                 </button>
               )}
@@ -328,17 +347,14 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID, gameOverActions }: P
             <button className="primary-action" type="button" onClick={() => window.location.reload()}>
               {t('board.playAgain')}
             </button>
-          )
-        )}
+          ))}
       </div>
     </div>
   );
 }
 
 function powerTotal(G: GameState, player: PlayerIndex): number {
-  return G.players[player].powerCharger.reduce(
-    (sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0), 0,
-  );
+  return G.players[player].powerCharger.reduce((sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0), 0);
 }
 
 function hpClass(hp: number): string {
@@ -347,7 +363,15 @@ function hpClass(hp: number): string {
   return 'healthy';
 }
 
-function FieldZone({ label, shortLabel, className, card, onClick, size = 'small', activeTime }: {
+function FieldZone({
+  label,
+  shortLabel,
+  className,
+  card,
+  onClick,
+  size = 'small',
+  activeTime,
+}: {
   label: string;
   shortLabel?: string;
   className: string;
@@ -378,7 +402,12 @@ function FieldZone({ label, shortLabel, className, card, onClick, size = 'small'
   return <div className={`zone zone-${size} ${className}`}>{content}</div>;
 }
 
-function ResourceStat({ className, icon, label, value }: {
+function ResourceStat({
+  className,
+  icon,
+  label,
+  value,
+}: {
   className: string;
   icon: string;
   label: string;
@@ -389,7 +418,9 @@ function ResourceStat({ className, icon, label, value }: {
 
   return (
     <span className={`resource-stat ${className}`} title={label}>
-      <span className="resource-icon" aria-hidden="true">{icon}</span>
+      <span className="resource-icon" aria-hidden="true">
+        {icon}
+      </span>
       <strong>{value}</strong>
       <span className="resource-label">{label}</span>
       {isHp && (
@@ -401,7 +432,13 @@ function ResourceStat({ className, icon, label, value }: {
   );
 }
 
-function StackZone({ kind, label, icon, value, cards }: {
+function StackZone({
+  kind,
+  label,
+  icon,
+  value,
+  cards,
+}: {
   kind: 'deck' | 'power';
   label: string;
   icon: string;
@@ -414,7 +451,9 @@ function StackZone({ kind, label, icon, value, cards }: {
         <div className="deck-card-back" aria-hidden="true">
           <div className="card-back-design">ZC</div>
         </div>
-        <span className="deck-count" aria-hidden="true">{icon} {value}</span>
+        <span className="deck-count" aria-hidden="true">
+          {icon} {value}
+        </span>
       </div>
     );
   }
@@ -426,23 +465,16 @@ function StackZone({ kind, label, icon, value, cards }: {
           {cards.map((card, i) => {
             const def = getCardDef(card.defId);
             return (
-              <div
-                key={card.instanceId}
-                className="power-card"
-                style={{ transform: `translateX(${i * 12}px)` }}
-              >
-                <img
-                  src={def?.image ?? ''}
-                  alt={def?.name ?? label}
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                />
+              <div key={card.instanceId} className="power-card" style={{ transform: `translateX(${i * 12}px)` }}>
+                <img src={def?.image ?? ''} alt={def?.name ?? label} loading="lazy" referrerPolicy="no-referrer" />
                 <span className="power-value">{def?.sendToPower ?? 0}</span>
               </div>
             );
           })}
         </div>
-        <strong className="power-total">{icon} {value}</strong>
+        <strong className="power-total">
+          {icon} {value}
+        </strong>
       </div>
     );
   }
@@ -460,7 +492,14 @@ function StackZone({ kind, label, icon, value, cards }: {
   );
 }
 
-function FieldStats({ G, playerIndex, showAbyss, showPower = true, timeLeft, timerTone }: {
+function FieldStats({
+  G,
+  playerIndex,
+  showAbyss,
+  showPower = true,
+  timeLeft,
+  timerTone,
+}: {
   G: GameState;
   playerIndex: PlayerIndex;
   showAbyss: boolean;
@@ -473,7 +512,9 @@ function FieldStats({ G, playerIndex, showAbyss, showPower = true, timeLeft, tim
     <div className="field-stats">
       <ResourceStat className={`hp ${hpClass(player.hp)}`} icon="❤️" label={t('board.hp')} value={player.hp} />
       <ResourceStat className="deck-count" icon="🃏" label={t('board.deck')} value={player.deck.length} />
-      {showPower && <ResourceStat className="power" icon="⚡" label={t('board.powerCharger')} value={powerTotal(G, playerIndex)} />}
+      {showPower && (
+        <ResourceStat className="power" icon="⚡" label={t('board.powerCharger')} value={powerTotal(G, playerIndex)} />
+      )}
       {showAbyss && <ResourceStat className="abyss" icon="🕳️" label={t('board.abyss')} value={player.abyss.length} />}
       {timeLeft !== undefined && timerTone && G.step === 'turnSet' && (
         <ResourceStat
@@ -487,7 +528,11 @@ function FieldStats({ G, playerIndex, showAbyss, showPower = true, timeLeft, tim
   );
 }
 
-function OpponentStatsBar({ G, opponentIndex, damageAmount }: {
+function OpponentStatsBar({
+  G,
+  opponentIndex,
+  damageAmount,
+}: {
   G: GameState;
   opponentIndex: PlayerIndex;
   damageAmount?: number;
@@ -496,7 +541,9 @@ function OpponentStatsBar({ G, opponentIndex, damageAmount }: {
 
   return (
     <section className={`opponent-stats-bar ${damageAmount ? 'damaged' : ''}`} aria-label={t('player.opponent')}>
-      <strong>{t('player.opponent')}：{playerName(opponentIndex)}</strong>
+      <strong>
+        {t('player.opponent')}：{playerName(opponentIndex)}
+      </strong>
       <FieldStats G={G} playerIndex={opponentIndex} showAbyss showPower={false} />
       <StackZone
         kind="power"
@@ -505,16 +552,16 @@ function OpponentStatsBar({ G, opponentIndex, damageAmount }: {
         value={powerTotal(G, opponentIndex)}
         cards={opponent.powerCharger}
       />
-      {damageAmount ? <span className="damage-float" key={`opp-${damageAmount}`}>-{damageAmount}</span> : null}
+      {damageAmount ? (
+        <span className="damage-float" key={`opp-${damageAmount}`}>
+          -{damageAmount}
+        </span>
+      ) : null}
     </section>
   );
 }
 
-function BottomZones({ G, meIndex, moves }: {
-  G: GameState;
-  meIndex: PlayerIndex;
-  moves: Props['moves'];
-}) {
+function BottomZones({ G, meIndex, moves }: { G: GameState; meIndex: PlayerIndex; moves: Props['moves'] }) {
   const me = G.players[meIndex];
 
   return (
@@ -554,7 +601,12 @@ function BottomZones({ G, meIndex, moves }: {
   );
 }
 
-function CentralArena({ G, meIndex, opponentIndex, time }: {
+function CentralArena({
+  G,
+  meIndex,
+  opponentIndex,
+  time,
+}: {
   G: GameState;
   meIndex: PlayerIndex;
   opponentIndex: PlayerIndex;
@@ -597,7 +649,13 @@ function CentralArena({ G, meIndex, opponentIndex, time }: {
   );
 }
 
-function HandDrawer({ cards, expanded, onToggle, onCardClick, children }: {
+function HandDrawer({
+  cards,
+  expanded,
+  onToggle,
+  onCardClick,
+  children,
+}: {
   cards: CardInstance[];
   expanded: boolean;
   onToggle: () => void;
@@ -630,7 +688,13 @@ function HandDrawer({ cards, expanded, onToggle, onCardClick, children }: {
   );
 }
 
-function ActionsBar({ ready, canConfirm, cardsSet, required, onConfirm }: {
+function ActionsBar({
+  ready,
+  canConfirm,
+  cardsSet,
+  required,
+  onConfirm,
+}: {
   ready: boolean;
   canConfirm: boolean;
   cardsSet: number;
@@ -640,15 +704,21 @@ function ActionsBar({ ready, canConfirm, cardsSet, required, onConfirm }: {
   return (
     <section className="actions-bar">
       <button className="confirm-button" disabled={!canConfirm} type="button" onClick={onConfirm}>
-        {ready
-          ? t('board.readyWaiting')
-          : `${t('board.confirmSet')} (${cardsSet}/${required})`}
+        {ready ? t('board.readyWaiting') : `${t('board.confirmSet')} (${cardsSet}/${required})`}
       </button>
     </section>
   );
 }
 
-function StatusBar({ G, meIndex, timeLeft, timerTone, time, phaseText, damageAmount }: {
+function StatusBar({
+  G,
+  meIndex,
+  timeLeft,
+  timerTone,
+  time,
+  phaseText,
+  damageAmount,
+}: {
   G: GameState;
   meIndex: PlayerIndex;
   timeLeft: number;
@@ -668,12 +738,18 @@ function StatusBar({ G, meIndex, timeLeft, timerTone, time, phaseText, damageAmo
         label={t('board.timer')}
         value={`${timeLeft}${t('board.secondsUnit')}`}
       />
-      <span className="status-pill">{t('board.turn')} {G.turnNumber}</span>
+      <span className="status-pill">
+        {t('board.turn')} {G.turnNumber}
+      </span>
       <span className={`status-pill time-badge ${time}`}>
         {time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}
       </span>
       <span className="status-pill phase-pill">{phaseText}</span>
-      {damageAmount ? <span className="damage-float" key={`me-${damageAmount}`}>-{damageAmount}</span> : null}
+      {damageAmount ? (
+        <span className="damage-float" key={`me-${damageAmount}`}>
+          -{damageAmount}
+        </span>
+      ) : null}
     </section>
   );
 }
@@ -716,11 +792,12 @@ function effectSummary(effect: GameState['pendingEffects'][number][number]): str
 }
 
 function latestTraceMessage(G: GameState): string | null {
-  const latest = [...(G.actionLog ?? [])].reverse().find(entry => entry.result?.message || entry.action);
+  const latest = [...(G.actionLog ?? [])].reverse().find((entry) => entry.result?.message || entry.action);
   if (!latest) return null;
   const message = latest.result?.message;
   const hp = latest.hp ? `${t('board.phaseHp')} ${latest.hp[0]}/${latest.hp[1]}` : null;
-  const chronos = typeof latest.chronosPosition === 'number' ? `${t('board.phaseChronos')} ${latest.chronosPosition}/12` : null;
+  const chronos =
+    typeof latest.chronosPosition === 'number' ? `${t('board.phaseChronos')} ${latest.chronosPosition}/12` : null;
   return [message ?? latest.action, hp, chronos].filter(Boolean).join(' · ');
 }
 
@@ -733,13 +810,20 @@ function choiceInstruction(type: string): string {
   return t('board.choiceHintDefault');
 }
 
-function phaseInstruction(G: GameState, meIndex: PlayerIndex, required: number, minimum: number): { title: string; body: string; meta: string[] } {
+function phaseInstruction(
+  G: GameState,
+  meIndex: PlayerIndex,
+  required: number,
+  minimum: number,
+): { title: string; body: string; meta: string[] } {
   const me = G.players[meIndex];
   if (G.pendingChoice) {
     const mine = G.pendingChoice.player === meIndex;
     return {
       title: mine ? t('board.phaseChoiceTitle') : t('board.phaseChoiceWaitingTitle'),
-      body: mine ? choiceInstruction(G.pendingChoice.type) : `${playerName(G.pendingChoice.player)} ${t('board.phaseChoosing')}`,
+      body: mine
+        ? choiceInstruction(G.pendingChoice.type)
+        : `${playerName(G.pendingChoice.player)} ${t('board.phaseChoosing')}`,
       meta: [`${t('board.choiceCount')} ${G.pendingChoice.min}-${G.pendingChoice.max}`],
     };
   }
@@ -748,7 +832,12 @@ function phaseInstruction(G: GameState, meIndex: PlayerIndex, required: number, 
     const pendingCount = player === null ? 0 : G.pendingEffects[player].length;
     return {
       title: player === meIndex ? t('board.phaseEffectTitle') : t('board.phaseEffectWaitingTitle'),
-      body: player === meIndex ? t('board.phaseEffectBody') : player === null ? t('board.phaseEffectResolving') : `${playerName(player)} ${t('board.phaseResolvingEffects')}`,
+      body:
+        player === meIndex
+          ? t('board.phaseEffectBody')
+          : player === null
+            ? t('board.phaseEffectResolving')
+            : `${playerName(player)} ${t('board.phaseResolvingEffects')}`,
       meta: [`${t('board.phasePendingEffects')} ${pendingCount}`],
     };
   }
@@ -769,25 +858,43 @@ function phaseInstruction(G: GameState, meIndex: PlayerIndex, required: number, 
   return { title: t('board.gameOver'), body: t('online.gameOverHelper'), meta: [] };
 }
 
-function PhaseInstructionBar({ G, meIndex, required, minimum }: { G: GameState; meIndex: PlayerIndex; required: number; minimum: number }) {
+function PhaseInstructionBar({
+  G,
+  meIndex,
+  required,
+  minimum,
+}: {
+  G: GameState;
+  meIndex: PlayerIndex;
+  required: number;
+  minimum: number;
+}) {
   const instruction = phaseInstruction(G, meIndex, required, minimum);
   const trace = latestTraceMessage(G);
   return (
     <section className="phase-instruction-bar" aria-live="polite">
       <div>
-        <span>{t('board.turn')} {G.turnNumber}</span>
+        <span>
+          {t('board.turn')} {G.turnNumber}
+        </span>
         <strong>{instruction.title}</strong>
         <p>{instruction.body}</p>
       </div>
       <div className="phase-instruction-meta">
-        {instruction.meta.map(item => <span key={item}>{item}</span>)}
+        {instruction.meta.map((item) => (
+          <span key={item}>{item}</span>
+        ))}
         {trace && <span className="phase-last-action">{trace}</span>}
       </div>
     </section>
   );
 }
 
-function EffectOrderPanel({ G, moves, playerID }: {
+function EffectOrderPanel({
+  G,
+  moves,
+  playerID,
+}: {
   G: GameState;
   moves: Props['moves'];
   playerID: Props['playerID'];
@@ -830,7 +937,11 @@ function EffectOrderPanel({ G, moves, playerID }: {
   );
 }
 
-function PendingChoicePanel({ G, moves, playerID }: {
+function PendingChoicePanel({
+  G,
+  moves,
+  playerID,
+}: {
   G: GameState;
   moves: Props['moves'];
   playerID: Props['playerID'];
@@ -848,8 +959,8 @@ function PendingChoicePanel({ G, moves, playerID }: {
   const isCurrentPlayer = choice.player === meIndex;
   const canSubmit = selected.length >= choice.min && selected.length <= choice.max;
   const toggle = (optionId: string) => {
-    setSelected(current => {
-      if (current.includes(optionId)) return current.filter(item => item !== optionId);
+    setSelected((current) => {
+      if (current.includes(optionId)) return current.filter((item) => item !== optionId);
       if (current.length >= choice.max) return current;
       return [...current, optionId];
     });
@@ -864,9 +975,11 @@ function PendingChoicePanel({ G, moves, playerID }: {
       {isCurrentPlayer ? (
         <>
           <p>{choice.prompt || choiceInstruction(choice.type)}</p>
-          <p className="pending-choice-range">{t('board.choiceCount')} {selected.length}/{choice.max} · {t('board.phaseMinimum')} {choice.min}</p>
+          <p className="pending-choice-range">
+            {t('board.choiceCount')} {selected.length}/{choice.max} · {t('board.phaseMinimum')} {choice.min}
+          </p>
           <div className="effect-order-list">
-            {choice.options.map(option => {
+            {choice.options.map((option) => {
               const isSelected = selected.includes(option.id);
               const order = selected.indexOf(option.id) + 1;
               return (
@@ -878,15 +991,26 @@ function PendingChoicePanel({ G, moves, playerID }: {
                 >
                   <span className="effect-order-card">{option.label}</span>
                   <span className="effect-order-action">
-                    {isSelected && choice.type === 'reorderOpponentDeckTop' ? `#${order}` : isSelected ? t('common.selected') : t('common.select')}
+                    {isSelected && choice.type === 'reorderOpponentDeckTop'
+                      ? `#${order}`
+                      : isSelected
+                        ? t('common.selected')
+                        : t('common.select')}
                   </span>
                 </button>
               );
             })}
           </div>
           <div className="pending-choice-footer">
-            <span>{t('board.choiceCount')} {selected.length}/{choice.max}</span>
-            <button className="primary-action" type="button" disabled={!canSubmit} onClick={() => moves.submitPendingChoice(selected)}>
+            <span>
+              {t('board.choiceCount')} {selected.length}/{choice.max}
+            </span>
+            <button
+              className="primary-action"
+              type="button"
+              disabled={!canSubmit}
+              onClick={() => moves.submitPendingChoice(selected)}
+            >
               {t('board.submitChoice')}
             </button>
           </div>
@@ -962,16 +1086,20 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
         const next = compute();
         setTimeLeft(next);
         // 超時後持續 tick，讓超時 effect 重試 timeoutSkip 直到伺服器確認。
-        if (next === 0) setRetryTick(tick => tick + 1);
+        if (next === 0) setRetryTick((tick) => tick + 1);
       }, 1000);
-      return () => { if (timer.current) clearInterval(timer.current); };
+      return () => {
+        if (timer.current) clearInterval(timer.current);
+      };
     }
     // 本機/AI：維持原客戶端 setInterval 倒數行為。
     setTimeLeft(TURN_TIMER_SECONDS);
     if (timer.current) clearInterval(timer.current);
     if (G.step !== 'turnSet') return;
-    timer.current = setInterval(() => setTimeLeft(value => Math.max(0, value - 1)), 1000);
-    return () => { if (timer.current) clearInterval(timer.current); };
+    timer.current = setInterval(() => setTimeLeft((value) => Math.max(0, value - 1)), 1000);
+    return () => {
+      if (timer.current) clearInterval(timer.current);
+    };
   }, [G.turnNumber, G.step, G.turnStartTime, useServerTimer]);
 
   useEffect(() => {
@@ -1017,11 +1145,12 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
   const time = getChronosTime(G);
   const timerTone = timeLeft > 30 ? 'timer-safe' : timeLeft > 10 ? 'timer-warning' : 'timer-danger';
-  const phaseText = G.step === 'effectOrder'
-    ? t('board.effectOrder')
-    : G.step === 'initialSet'
-    ? t('board.initialSet')
-    : `${t('board.setCards')} ${required} ${t('board.cardsUnit')}`;
+  const phaseText =
+    G.step === 'effectOrder'
+      ? t('board.effectOrder')
+      : G.step === 'initialSet'
+        ? t('board.initialSet')
+        : `${t('board.setCards')} ${required} ${t('board.cardsUnit')}`;
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required;
   const myDamage = damageFlash?.target === meIndex ? damageFlash.amount : undefined;
   const opponentDamage = damageFlash?.target === opponentIndex ? damageFlash.amount : undefined;
@@ -1048,7 +1177,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       <HandDrawer
         cards={me.hand}
         expanded={handExpanded}
-        onToggle={() => setHandExpanded(value => !value)}
+        onToggle={() => setHandExpanded((value) => !value)}
         onCardClick={!G.ready[meIndex] ? setFromHand : undefined}
       >
         <ActionsBar
@@ -1075,16 +1204,19 @@ export function Board(props: Props) {
   const setupFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [setupFeedback, setSetupFeedback] = useState<FeedbackMessage | null>(null);
 
-  useEffect(() => () => {
-    if (setupFeedbackTimer.current) clearTimeout(setupFeedbackTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (setupFeedbackTimer.current) clearTimeout(setupFeedbackTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (
-      previousStep.current === 'janken'
-      && props.G.step === 'mulligan'
-      && props.G.jankenChoices[0]
-      && props.G.jankenChoices[1]
+      previousStep.current === 'janken' &&
+      props.G.step === 'mulligan' &&
+      props.G.jankenChoices[0] &&
+      props.G.jankenChoices[1]
     ) {
       const opponent = (1 - me) as PlayerIndex;
       const nightSidePlayer = props.G.chronos.nightSidePlayer;
@@ -1101,9 +1233,10 @@ export function Board(props: Props) {
   const showMulliganFeedback = (redrawCount: number) => {
     if (setupFeedbackTimer.current) clearTimeout(setupFeedbackTimer.current);
     setSetupFeedback({
-      title: redrawCount > 0
-        ? `${t('board.redrewCards')} ${redrawCount} ${t('board.cardsUnit')}卡`
-        : t('board.handConfirmed'),
+      title:
+        redrawCount > 0
+          ? `${t('board.redrewCards')} ${redrawCount} ${t('board.cardsUnit')}卡`
+          : t('board.handConfirmed'),
       tone: 'success',
     });
     setupFeedbackTimer.current = setTimeout(() => setSetupFeedback(null), prefersReducedMotion() ? 1000 : 1600);

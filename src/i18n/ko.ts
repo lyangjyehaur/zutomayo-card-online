@@ -248,7 +248,8 @@ export const ko: Record<TranslationKey, string> = {
   'onlineSession.roomGoneTitle': '방이 더 이상 없습니다',
   'onlineSession.roomGoneBody': '이 방은 종료되었거나 서버가 재설정되었습니다. 로비로 돌아가 방을 만들거나 참가하세요.',
   'onlineSession.seatTakenTitle': '좌석을 복구할 수 없음',
-  'onlineSession.seatTakenBody': '저장된 플레이어 좌석이 사용 중이거나 인증 정보가 일치하지 않습니다. 로비에서 다시 참가하세요.',
+  'onlineSession.seatTakenBody':
+    '저장된 플레이어 좌석이 사용 중이거나 인증 정보가 일치하지 않습니다. 로비에서 다시 참가하세요.',
   'onlineSession.resumeErrorTitle': '방에 복귀할 수 없음',
   'onlineSession.resumeErrorBody': '저장된 방을 아직 확인할 수 없습니다. 잠시 후 다시 시도하세요.',
   'onlineSession.rejoined': '다시 참가했습니다',
@@ -308,7 +309,8 @@ export const ko: Record<TranslationKey, string> = {
   'admin.i18nMissingBadge': '(누락)',
   'admin.i18nSaved': '저장됨',
   'admin.i18nNewValue': '새 값',
-  'admin.i18nSaveNotice': '주의: 이 변경은 현재 세션에만 적용되며, 다시 불러오면 복원됩니다. 영구적으로 저장하려면 수동으로 ',
+  'admin.i18nSaveNotice':
+    '주의: 이 변경은 현재 세션에만 적용되며, 다시 불러오면 복원됩니다. 영구적으로 저장하려면 수동으로 ',
   'leaderboard.title': '리더보드',
   'leaderboard.loading': '리더보드 불러오는 중...',
   'leaderboard.empty': '아직 랭킹 대전 기록이 없습니다',
@@ -376,21 +378,27 @@ export const ko: Record<TranslationKey, string> = {
   'tutorial.finishTitle': '튜토리얼 완료',
   'tutorial.finishBody': '기본을 이해했습니다. 쉬운 AI 연습을 시작해 보세요.',
   'tutorial.stepWelcomeTitle': '대전장에 오신 것을 환영합니다',
-  'tutorial.stepWelcomeBody': '매 턴 핸드에서 카드를 선택하여 세트 존에 놓고, 양쪽 확정 후 동시에 공개하여 배틀을 해결합니다.',
+  'tutorial.stepWelcomeBody':
+    '매 턴 핸드에서 카드를 선택하여 세트 존에 놓고, 양쪽 확정 후 동시에 공개하여 배틀을 해결합니다.',
   'tutorial.stepZonesTitle': '필드 존',
-  'tutorial.stepZonesBody': '배틀 존에는 현재 캐릭터, 세트 존에는 이번 턴 카드를 놓습니다. 에리어 인챈트는 지속 효과로 남습니다.',
+  'tutorial.stepZonesBody':
+    '배틀 존에는 현재 캐릭터, 세트 존에는 이번 턴 카드를 놓습니다. 에리어 인챈트는 지속 효과로 남습니다.',
   'tutorial.stepChronosTitle': '크로노스 시계',
   'tutorial.stepChronosBody': '카드의 시계로 크로노스가 진행되며, 현재 밤인지 낮인지에 따라 캐릭터 공격값이 바뀝니다.',
   'tutorial.stepResourcesTitle': '파워와 어비스',
-  'tutorial.stepResourcesBody': '일부 카드는 필드에서 벗어나면 파워 차저로 이동하고, 에너지를 생산하지 않는 카드는 어비스로 갑니다.',
+  'tutorial.stepResourcesBody':
+    '일부 카드는 필드에서 벗어나면 파워 차저로 이동하고, 에너지를 생산하지 않는 카드는 어비스로 갑니다.',
   'tutorial.stepCatchupTitle': '추격 메커니즘',
-  'tutorial.stepCatchupBody': '지난 턴 패배자는 다음 턴에 2장을 낼 수 있고, 승자는 1장만 냅니다. 이로써 게임이 긴장감을 유지합니다.',
+  'tutorial.stepCatchupBody':
+    '지난 턴 패배자는 다음 턴에 2장을 낼 수 있고, 승자는 1장만 냅니다. 이로써 게임이 긴장감을 유지합니다.',
   'tutorial.stepJankenTitle': '가위바위보로 야간 결정',
   'tutorial.stepJankenBody': '가위바위보로 야간 플레이어를 정합니다. 야간 측은 첫 턴에 주도권을 가집니다.',
   'tutorial.stepMulliganTitle': '핸드 리드로우',
   'tutorial.stepMulliganBody': '시작 시 원하는 핸드를 한 번 다시 뽑을 수 있습니다. 전투 전에 시작 핸드를 다듬으세요.',
   'tutorial.stepEffectOrderTitle': '효과 순서 선택',
-  'tutorial.stepEffectOrderBody': '같은 턴에 여러 효과 카드가 발동하면 해결 순서를 선택할 수 있습니다. 전략으로 전황을 바꿀 수 있습니다.',
+  'tutorial.stepEffectOrderBody':
+    '같은 턴에 여러 효과 카드가 발동하면 해결 순서를 선택할 수 있습니다. 전략으로 전황을 바꿀 수 있습니다.',
   'tutorial.stepPendingChoiceTitle': '카드 선택 제출',
-  'tutorial.stepPendingChoiceBody': '일부 효과는 핸드, 어비스, 덱에서 카드를 지정합니다. 선택 후 제출하면 효과가 해결됩니다.',
+  'tutorial.stepPendingChoiceBody':
+    '일부 효과는 핸드, 어비스, 덱에서 카드를 지정합니다. 선택 후 제출하면 효과가 해결됩니다.',
 };

@@ -74,7 +74,7 @@ function unsupportedExecutorReason(effect: ParsedEffect): string | null {
 }
 
 const cards = getAllCardDefs();
-const runtimeEffects = parseAllEffects(cards.map(card => ({ id: card.id, effect: card.effect || '' })));
+const runtimeEffects = parseAllEffects(cards.map((card) => ({ id: card.id, effect: card.effect || '' })));
 let effectLines = 0;
 let parsedLines = 0;
 let runtimeParsedEffects = 0;
@@ -83,7 +83,10 @@ const parsedButPartial: { id: string; action: string; reason: string; text: stri
 const falseDraw: { id: string; text: string }[] = [];
 
 for (const card of cards) {
-  for (const text of (card.effect || '').split('\n').map(line => line.trim()).filter(Boolean)) {
+  for (const text of (card.effect || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)) {
     effectLines++;
     const parsed = parseEffect(text);
     if (!parsed) {
@@ -92,8 +95,8 @@ for (const card of cards) {
     }
     parsedLines++;
     if (
-      parsed.action.type === 'drawCards'
-      && !/(カード[をが][0-9０-９]+枚(?:引|ドロー)|デッキから[0-9０-９]+枚カードを引|カードを引)/.test(text)
+      parsed.action.type === 'drawCards' &&
+      !/(カード[をが][0-9０-９]+枚(?:引|ドロー)|デッキから[0-9０-９]+枚カードを引|カードを引)/.test(text)
     ) {
       falseDraw.push({ id: card.id, text });
     }
@@ -110,18 +113,24 @@ for (const [id, effects] of runtimeEffects.entries()) {
   }
 }
 
-console.log(JSON.stringify({
-  totalCards: cards.length,
-  effectCards: cards.filter(card => card.effect?.trim()).length,
-  effectLines,
-  parsedLines,
-  runtimeParsedEffects,
-  unparsedLines: unparsed.length,
-  parsedButPartial: parsedButPartial.length,
-  falseDraw: falseDraw.length,
-  samples: {
-    unparsed: unparsed.slice(0, 20),
-    parsedButPartial: parsedButPartial.slice(0, 20),
-    falseDraw,
-  },
-}, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      totalCards: cards.length,
+      effectCards: cards.filter((card) => card.effect?.trim()).length,
+      effectLines,
+      parsedLines,
+      runtimeParsedEffects,
+      unparsedLines: unparsed.length,
+      parsedButPartial: parsedButPartial.length,
+      falseDraw: falseDraw.length,
+      samples: {
+        unparsed: unparsed.slice(0, 20),
+        parsedButPartial: parsedButPartial.slice(0, 20),
+        falseDraw,
+      },
+    },
+    null,
+    2,
+  ),
+);

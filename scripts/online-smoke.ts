@@ -23,7 +23,7 @@ interface BoardgameClient {
 }
 
 function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -64,7 +64,11 @@ function stateID(state: ClientState): number {
   return typeof state?._stateID === 'number' ? state._stateID : -1;
 }
 
-async function waitForSyncedStateID(label: string, client0: BoardgameClient, client1: BoardgameClient): Promise<number> {
+async function waitForSyncedStateID(
+  label: string,
+  client0: BoardgameClient,
+  client1: BoardgameClient,
+): Promise<number> {
   const [state0] = await waitForStates(label, client0, client1, (next0, next1) => {
     const id0 = stateID(next0);
     const id1 = stateID(next1);
@@ -81,9 +85,12 @@ async function performOnlineMove(
 ): Promise<void> {
   const previousStateID = await waitForSyncedStateID(`${label} ready`, client0, client1);
   move();
-  await waitForStates(`${label} update`, client0, client1, (next0, next1) => (
-    stateID(next0) > previousStateID && stateID(next1) > previousStateID
-  ));
+  await waitForStates(
+    `${label} update`,
+    client0,
+    client1,
+    (next0, next1) => stateID(next0) > previousStateID && stateID(next1) > previousStateID,
+  );
 }
 
 async function drainPendingEffects(client0: BoardgameClient, client1: BoardgameClient): Promise<void> {
@@ -100,9 +107,9 @@ async function drainPendingEffects(client0: BoardgameClient, client1: BoardgameC
 
     const pendingPlayer = state0.G.pendingEffectPlayer;
     assert.ok(pendingPlayer === 0 || pendingPlayer === 1, 'pending effect should have an owning player');
-    await performOnlineMove(`player${pendingPlayer} resolvePendingEffect`, client0, client1, () => (
-      pendingPlayer === 0 ? client0 : client1
-    ).moves.resolvePendingEffect(0));
+    await performOnlineMove(`player${pendingPlayer} resolvePendingEffect`, client0, client1, () =>
+      (pendingPlayer === 0 ? client0 : client1).moves.resolvePendingEffect(0),
+    );
   }
 
   throw new Error('Timed out resolving pending effects');
@@ -153,33 +160,45 @@ async function startJoinedClients(setupData: ZutomayoSetupData): Promise<{
 
   client0.start();
   client1.start();
-  const [state0, state1] = await waitForStates('janken', client0, client1, (next0, next1) => (
-    next0?.G?.step === 'janken' && next1?.G?.step === 'janken'
-  ));
+  const [state0, state1] = await waitForStates(
+    'janken',
+    client0,
+    client1,
+    (next0, next1) => next0?.G?.step === 'janken' && next1?.G?.step === 'janken',
+  );
   return { client0, client1, state0, state1 };
 }
 
 async function playToTurnSet(client0: BoardgameClient, client1: BoardgameClient): Promise<NonNullable<ClientState>> {
   await performOnlineMove('player0 janken', client0, client1, () => client0.moves.janken('rock'));
   await performOnlineMove('player1 janken', client0, client1, () => client1.moves.janken('scissors'));
-  await waitForStates('mulligan', client0, client1, (state0, state1) => (
-    state0?.G?.step === 'mulligan' && state1?.G?.step === 'mulligan'
-  ));
+  await waitForStates(
+    'mulligan',
+    client0,
+    client1,
+    (state0, state1) => state0?.G?.step === 'mulligan' && state1?.G?.step === 'mulligan',
+  );
 
   await performOnlineMove('player0 keepHand', client0, client1, () => client0.moves.keepHand());
   await performOnlineMove('player1 keepHand', client0, client1, () => client1.moves.keepHand());
-  await waitForStates('initialSet', client0, client1, (state0, state1) => (
-    state0?.G?.step === 'initialSet' && state1?.G?.step === 'initialSet'
-  ));
+  await waitForStates(
+    'initialSet',
+    client0,
+    client1,
+    (state0, state1) => state0?.G?.step === 'initialSet' && state1?.G?.step === 'initialSet',
+  );
 
   await performOnlineMove('player0 setInitialCard', client0, client1, () => client0.moves.setInitialCard(0));
   await performOnlineMove('player1 setInitialCard', client0, client1, () => client1.moves.setInitialCard(0));
   await performOnlineMove('player0 confirmReady', client0, client1, () => client0.moves.confirmReady());
   await performOnlineMove('player1 confirmReady', client0, client1, () => client1.moves.confirmReady());
   await drainPendingEffects(client0, client1);
-  const [state0] = await waitForStates('turnSet', client0, client1, (next0, next1) => (
-    next0?.G?.step === 'turnSet' && next1?.G?.step === 'turnSet'
-  ));
+  const [state0] = await waitForStates(
+    'turnSet',
+    client0,
+    client1,
+    (next0, next1) => next0?.G?.step === 'turnSet' && next1?.G?.step === 'turnSet',
+  );
   return state0;
 }
 
@@ -201,10 +220,9 @@ function assertVisibleDeckMatchesIds(
   player: 0 | 1,
   expectedIds: string[],
 ): void {
-  const actualIds = [
-    ...viewerState.G.players[player].hand,
-    ...viewerState.G.players[player].deck,
-  ].map((card: CardInstance) => card.defId).sort();
+  const actualIds = [...viewerState.G.players[player].hand, ...viewerState.G.players[player].deck]
+    .map((card: CardInstance) => card.defId)
+    .sort();
   assert.deepEqual(actualIds, [...expectedIds].sort());
 }
 

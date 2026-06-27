@@ -16,10 +16,10 @@ interface KoaContext extends DefaultContext {
   request: DefaultContext['request'] & { body?: unknown };
 }
 
-const configuredOrigins = process.env.ALLOWED_ORIGINS
-  ?.split(',')
-  .map(origin => origin.trim())
-  .filter(Boolean) ?? [];
+const configuredOrigins =
+  process.env.ALLOWED_ORIGINS?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean) ?? [];
 
 // 官方 QA P0-1：boardgame.io 配置 FlatFile DB adapter，解決線上房間重啟即滅。
 // 生產環境（Docker）使用 DB_DIR=/data（掛載 game-data volume）；
@@ -35,12 +35,7 @@ const server = Server({
     dir: dbDir,
     logging: process.env.NODE_ENV !== 'production',
   }),
-  origins: [
-    'http://localhost:3000',
-    /localhost:\d+/,
-    /127\.0\.0\.1:\d+/,
-    ...configuredOrigins,
-  ],
+  origins: ['http://localhost:3000', /localhost:\d+/, /127\.0\.0\.1:\d+/, ...configuredOrigins],
 });
 
 server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: KoaContext) => {
@@ -82,7 +77,12 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
     const filePath = path.join(root, ctx.path);
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const ext = path.extname(filePath);
-      const types: Record<string, string> = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json' };
+      const types: Record<string, string> = {
+        '.html': 'text/html',
+        '.js': 'application/javascript',
+        '.css': 'text/css',
+        '.json': 'application/json',
+      };
       ctx.type = types[ext] || 'application/octet-stream';
       ctx.body = fs.readFileSync(filePath);
       return;
@@ -125,19 +125,23 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   url.search = ctx.search;
 
   return new Promise<void>((resolve) => {
-    const proxyReq = http.request(url, {
-      method: ctx.method,
-      headers: { ...ctx.request.headers, host: url.host },
-    }, (proxyRes) => {
-      ctx.status = proxyRes.statusCode || 200;
-      ctx.set('Content-Type', proxyRes.headers['content-type'] || 'application/json');
-      const chunks: Buffer[] = [];
-      proxyRes.on('data', (chunk: Buffer) => chunks.push(chunk));
-      proxyRes.on('end', () => {
-        ctx.body = Buffer.concat(chunks);
-        resolve();
-      });
-    });
+    const proxyReq = http.request(
+      url,
+      {
+        method: ctx.method,
+        headers: { ...ctx.request.headers, host: url.host },
+      },
+      (proxyRes) => {
+        ctx.status = proxyRes.statusCode || 200;
+        ctx.set('Content-Type', proxyRes.headers['content-type'] || 'application/json');
+        const chunks: Buffer[] = [];
+        proxyRes.on('data', (chunk: Buffer) => chunks.push(chunk));
+        proxyRes.on('end', () => {
+          ctx.body = Buffer.concat(chunks);
+          resolve();
+        });
+      },
+    );
 
     proxyReq.on('error', () => {
       ctx.status = 502;
@@ -182,7 +186,9 @@ async function cleanupStaleMatches() {
           await server.db.wipe(matchID);
           cleaned++;
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
     if (cleaned > 0) console.log(`[cleanup] Removed ${cleaned} stale matches`);
   } catch (err) {

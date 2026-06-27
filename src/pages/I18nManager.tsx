@@ -16,9 +16,9 @@ const allDictionaries: Record<string, Record<string, string>> = {
   'zh-TW': zhTW as unknown as Record<string, string>,
   'zh-HK': zhHK as unknown as Record<string, string>,
   'zh-CN': zhCN as unknown as Record<string, string>,
-  'ja': ja as unknown as Record<string, string>,
-  'en': en as unknown as Record<string, string>,
-  'ko': ko as unknown as Record<string, string>,
+  ja: ja as unknown as Record<string, string>,
+  en: en as unknown as Record<string, string>,
+  ko: ko as unknown as Record<string, string>,
 };
 
 const allKeys = Object.keys(zhTW as Record<string, string>);
@@ -39,14 +39,15 @@ export function I18nManager() {
     const dict = allDictionaries[selectedLocale] || {};
     let keys = allKeys;
     if (filterMissing) {
-      keys = keys.filter(k => !dict[k] || dict[k].trim() === '');
+      keys = keys.filter((k) => !dict[k] || dict[k].trim() === '');
     }
     if (searchText) {
       const q = searchText.toLowerCase();
-      keys = keys.filter(k =>
-        k.toLowerCase().includes(q) ||
-        (dict[k] || '').toLowerCase().includes(q) ||
-        ((zhTW as Record<string, string>)[k] || '').toLowerCase().includes(q)
+      keys = keys.filter(
+        (k) =>
+          k.toLowerCase().includes(q) ||
+          (dict[k] || '').toLowerCase().includes(q) ||
+          ((zhTW as Record<string, string>)[k] || '').toLowerCase().includes(q),
       );
     }
     return keys;
@@ -77,7 +78,9 @@ export function I18nManager() {
     return (
       <main className="admin-page app-screen">
         <header className="screen-header">
-          <button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
+          <button className="back-btn" onClick={() => navigate('/')}>
+            {t('common.backToLobby')}
+          </button>
           <h1>{t('admin.i18nTitle')}</h1>
         </header>
         <section className="admin-login">
@@ -86,8 +89,10 @@ export function I18nManager() {
             type="password"
             placeholder={t('admin.passwordPlaceholder')}
             value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !loggingIn) void handleLogin(); }}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !loggingIn) void handleLogin();
+            }}
             disabled={loggingIn}
           />
           <button onClick={() => void handleLogin()} disabled={loggingIn || !password}>
@@ -101,11 +106,13 @@ export function I18nManager() {
 
   const dict = allDictionaries[selectedLocale] || {};
 
-  const missingCount = allKeys.filter(k => !dict[k] || dict[k].trim() === '').length;
+  const missingCount = allKeys.filter((k) => !dict[k] || dict[k].trim() === '').length;
 
   const handleSaveEdit = () => {
     if (editKey && editValue.trim()) {
-      alert(`${t('admin.i18nSaved')}: ${editKey}\n${t('admin.i18nNewValue')}: ${editValue}\n\n${t('admin.i18nSaveNotice')}src/i18n/${selectedLocale}.ts`);
+      alert(
+        `${t('admin.i18nSaved')}: ${editKey}\n${t('admin.i18nNewValue')}: ${editValue}\n\n${t('admin.i18nSaveNotice')}src/i18n/${selectedLocale}.ts`,
+      );
       setEditKey(null);
       setEditValue('');
     }
@@ -114,14 +121,18 @@ export function I18nManager() {
   return (
     <main className="admin-page app-screen">
       <header className="screen-header">
-        <button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
+        <button className="back-btn" onClick={() => navigate('/')}>
+          {t('common.backToLobby')}
+        </button>
         <h1>{t('admin.i18nTitle')}</h1>
-        <button className="logout-btn" onClick={handleLogout}>{t('admin.logout')}</button>
+        <button className="logout-btn" onClick={handleLogout}>
+          {t('admin.logout')}
+        </button>
       </header>
 
       <div className="i18n-controls">
         <div className="i18n-locale-tabs">
-          {availableLocales.map(locale => (
+          {availableLocales.map((locale) => (
             <button
               key={locale}
               className={`locale-tab ${selectedLocale === locale ? 'active' : ''}`}
@@ -133,11 +144,15 @@ export function I18nManager() {
         </div>
 
         <div className="i18n-stats">
-          <span>{t('admin.i18nTotalKeys')}: {allKeys.length}</span>
+          <span>
+            {t('admin.i18nTotalKeys')}: {allKeys.length}
+          </span>
           <span className={missingCount > 0 ? 'stat-warn' : 'stat-ok'}>
             {t('admin.i18nMissing')}: {missingCount}
           </span>
-          <span>{t('admin.i18nTranslated')}: {allKeys.length - missingCount}</span>
+          <span>
+            {t('admin.i18nTranslated')}: {allKeys.length - missingCount}
+          </span>
         </div>
 
         <div className="i18n-filters">
@@ -145,15 +160,11 @@ export function I18nManager() {
             type="text"
             placeholder={t('admin.i18nSearchPlaceholder')}
             value={searchText}
-            onChange={e => setSearchText(e.target.value)}
+            onChange={(e) => setSearchText(e.target.value)}
             className="i18n-search"
           />
           <label className="i18n-checkbox">
-            <input
-              type="checkbox"
-              checked={filterMissing}
-              onChange={e => setFilterMissing(e.target.checked)}
-            />
+            <input type="checkbox" checked={filterMissing} onChange={(e) => setFilterMissing(e.target.checked)} />
             {t('admin.i18nFilterMissing')}
           </label>
         </div>
@@ -165,12 +176,14 @@ export function I18nManager() {
             <tr>
               <th>{t('admin.i18nColKey')}</th>
               <th>{t('admin.i18nColBase')}</th>
-              <th>{getLocaleFlag(selectedLocale)} {getLocaleLabel(selectedLocale)}</th>
+              <th>
+                {getLocaleFlag(selectedLocale)} {getLocaleLabel(selectedLocale)}
+              </th>
               <th>{t('admin.i18nColStatus')}</th>
             </tr>
           </thead>
           <tbody>
-            {filteredKeys.map(key => {
+            {filteredKeys.map((key) => {
               const baseValue = (zhTW as Record<string, string>)[key] || '';
               const translated = dict[key] || '';
               const isMissing = !translated || translated.trim() === '';
@@ -180,18 +193,23 @@ export function I18nManager() {
                 <tr key={key} className={isMissing ? 'row-missing' : isSame ? 'row-same' : ''}>
                   <td className="i18n-key">{key}</td>
                   <td className="i18n-base">{baseValue}</td>
-                  <td className="i18n-translated" onClick={() => {
-                    if (!isMissing) {
-                      setEditKey(key);
-                      setEditValue(translated);
-                    }
-                  }}>
+                  <td
+                    className="i18n-translated"
+                    onClick={() => {
+                      if (!isMissing) {
+                        setEditKey(key);
+                        setEditValue(translated);
+                      }
+                    }}
+                  >
                     {editKey === key ? (
                       <div className="i18n-edit">
                         <input
                           value={editValue}
-                          onChange={e => setEditValue(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(); }}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEdit();
+                          }}
                           autoFocus
                         />
                         <button onClick={handleSaveEdit}>✓</button>
@@ -203,9 +221,7 @@ export function I18nManager() {
                       </span>
                     )}
                   </td>
-                  <td className="i18n-status">
-                    {isMissing ? '❌' : isSame ? '⚠️' : '✅'}
-                  </td>
+                  <td className="i18n-status">{isMissing ? '❌' : isSame ? '⚠️' : '✅'}</td>
                 </tr>
               );
             })}

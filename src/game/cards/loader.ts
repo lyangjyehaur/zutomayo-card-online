@@ -17,7 +17,7 @@ export function getAllCardDefs(): CardDef[] {
 }
 
 export function getCardsByPack(pack: string): CardDef[] {
-  return (cardsData as CardDef[]).filter(c => c.pack === pack);
+  return (cardsData as CardDef[]).filter((c) => c.pack === pack);
 }
 
 // Create a CardInstance from a CardDef

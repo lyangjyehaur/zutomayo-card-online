@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 import { getLeaderboard, getProfile, isLoggedIn, type LeaderboardEntry } from '../api/client';
 
-
 export function LeaderboardPage() {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
@@ -16,7 +15,7 @@ export function LeaderboardPage() {
     setLoading(true);
     setError('');
     getLeaderboard(100)
-      .then(data => {
+      .then((data) => {
         if (!cancelled) setEntries(data);
       })
       .catch(() => {
@@ -28,7 +27,7 @@ export function LeaderboardPage() {
 
     if (isLoggedIn()) {
       getProfile()
-        .then(profile => {
+        .then((profile) => {
           if (!cancelled) setCurrentUserId(profile.id);
         })
         .catch(() => {
@@ -44,16 +43,20 @@ export function LeaderboardPage() {
   return (
     <main className="leaderboard-page app-screen">
       <header className="screen-header">
-        <button className="back-btn" type="button" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
+        <button className="back-btn" type="button" onClick={() => navigate('/')}>
+          {t('common.backToLobby')}
+        </button>
         <h1>{t('leaderboard.title')}</h1>
       </header>
 
       {loading && <p className="loading-text">{t('leaderboard.loading')}</p>}
-      {error && <p className="error-copy error-text" role="alert">{error}</p>}
-
-      {!loading && !error && entries.length === 0 && (
-        <p className="empty-text">{t('leaderboard.empty')}</p>
+      {error && (
+        <p className="error-copy error-text" role="alert">
+          {error}
+        </p>
       )}
+
+      {!loading && !error && entries.length === 0 && <p className="empty-text">{t('leaderboard.empty')}</p>}
 
       {!loading && !error && entries.length > 0 && (
         <table className="leaderboard-table">
@@ -73,9 +76,7 @@ export function LeaderboardPage() {
                 key={entry.id}
                 className={`${i < 3 ? `top-${i + 1}` : ''} ${entry.id === currentUserId ? 'current-user' : ''}`.trim()}
               >
-                <td className="rank">
-                  {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
-                </td>
+                <td className="rank">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
                 <td className="player-name">
                   {entry.nickname}
                   {entry.id === currentUserId && <span>{t('leaderboard.currentUser')}</span>}

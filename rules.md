@@ -12,11 +12,11 @@
 
 ## 卡牌種類
 
-| 種類 | 說明 |
-|------|------|
-| Character | 有攻擊力，用於戰鬥 |
-| Enchant | 一次性效果，附在角色或玩家上 |
-| Area Enchant | 跨回合持續效果 |
+| 種類         | 說明                         |
+| ------------ | ---------------------------- |
+| Character    | 有攻擊力，用於戰鬥           |
+| Enchant      | 一次性效果，附在角色或玩家上 |
+| Area Enchant | 跨回合持續效果               |
 
 ## 卡牌屬性
 
@@ -24,12 +24,12 @@
 
 ## 卡牌欄位
 
-| 欄位 | 說明 |
-|------|------|
-| 時計 (clock) | 推進 Chronos 的數值 |
-| 攻擊力 | NIGHT(夜) / DAY(晝) 兩種 |
-| Power Cost | 發動效果所需 Power |
-| SEND TO POWER | 離場時產出的 Power 值 |
+| 欄位          | 說明                     |
+| ------------- | ------------------------ |
+| 時計 (clock)  | 推進 Chronos 的數值      |
+| 攻擊力        | NIGHT(夜) / DAY(晝) 兩種 |
+| Power Cost    | 發動效果所需 Power       |
+| SEND TO POWER | 離場時產出的 Power 值    |
 
 ## 牌組構築
 
@@ -39,16 +39,16 @@
 
 ## 場地
 
-| 區域 | 功能 |
-|------|------|
-| Battle Zone | 戰鬥中的角色 (各1張) |
-| Set Zone A/B | 從手牌打出的卡 |
-| Set Zone C | 生效中的 Area Enchant |
-| Power Charger | SEND TO POWER 的卡離場後放這裡 |
-| Deck Zone | 牌組 |
-| Abyss | 沒有 SEND TO POWER 的卡離場後放這裡 |
-| HP Meter | HP (100→0) |
-| Chronos | 晝夜時鐘 |
+| 區域          | 功能                                |
+| ------------- | ----------------------------------- |
+| Battle Zone   | 戰鬥中的角色 (各1張)                |
+| Set Zone A/B  | 從手牌打出的卡                      |
+| Set Zone C    | 生效中的 Area Enchant               |
+| Power Charger | SEND TO POWER 的卡離場後放這裡      |
+| Deck Zone     | 牌組                                |
+| Abyss         | 沒有 SEND TO POWER 的卡離場後放這裡 |
+| HP Meter      | HP (100→0)                          |
+| Chronos       | 晝夜時鐘                            |
 
 ## Chronos 系統
 

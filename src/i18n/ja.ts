@@ -246,9 +246,11 @@ export const ja: Record<TranslationKey, string> = {
   'onlineSession.resumeCheckingBody': 'ルームと座席を確認しています。',
   'onlineSession.disconnectedRetrying': '切断されました。再試行中...',
   'onlineSession.roomGoneTitle': 'ルームが存在しません',
-  'onlineSession.roomGoneBody': 'このルームは終了したか、サーバーがリセットされました。ロビーに戻って作成または参加してください。',
+  'onlineSession.roomGoneBody':
+    'このルームは終了したか、サーバーがリセットされました。ロビーに戻って作成または参加してください。',
   'onlineSession.seatTakenTitle': '座席を復帰できません',
-  'onlineSession.seatTakenBody': '保存されたプレイヤー座席は使用中、または認証情報が一致しません。ロビーから再参加してください。',
+  'onlineSession.seatTakenBody':
+    '保存されたプレイヤー座席は使用中、または認証情報が一致しません。ロビーから再参加してください。',
   'onlineSession.resumeErrorTitle': 'ルームに復帰できません',
   'onlineSession.resumeErrorBody': '保存されたルームをまだ確認できません。少し待ってから再試行してください。',
   'onlineSession.rejoined': '再参加しました',
@@ -308,7 +310,8 @@ export const ja: Record<TranslationKey, string> = {
   'admin.i18nMissingBadge': '(欠落)',
   'admin.i18nSaved': '保存しました',
   'admin.i18nNewValue': '新しい値',
-  'admin.i18nSaveNotice': '注意：この変更は現在のセッションのみ有効です。再読み込みすると元に戻ります。永続化するには手動で ',
+  'admin.i18nSaveNotice':
+    '注意：この変更は現在のセッションのみ有効です。再読み込みすると元に戻ります。永続化するには手動で ',
   'leaderboard.title': 'リーダーボード',
   'leaderboard.loading': 'リーダーボードを読み込み中...',
   'leaderboard.empty': 'ランキング対象の対戦はまだありません',
@@ -376,21 +379,27 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.finishTitle': 'チュートリアル完了',
   'tutorial.finishBody': '基本の流れを理解しました。やさしい難易度で1戦練習できます。',
   'tutorial.stepWelcomeTitle': '対戦場へようこそ',
-  'tutorial.stepWelcomeBody': '各ターンに手札からカードをセットゾーンへ置き、双方が確定したら同時に公開してバトルを解決します。',
+  'tutorial.stepWelcomeBody':
+    '各ターンに手札からカードをセットゾーンへ置き、双方が確定したら同時に公開してバトルを解決します。',
   'tutorial.stepZonesTitle': 'フィールドゾーン',
-  'tutorial.stepZonesBody': 'バトルゾーンには現在のキャラクター、セットゾーンにはこのターンのカードを置きます。エリアエンチャントは継続効果として残ります。',
+  'tutorial.stepZonesBody':
+    'バトルゾーンには現在のキャラクター、セットゾーンにはこのターンのカードを置きます。エリアエンチャントは継続効果として残ります。',
   'tutorial.stepChronosTitle': 'Chronos 時計',
   'tutorial.stepChronosBody': 'カードの時計でChronosが進み、現在が夜か昼かによってキャラクターの攻撃値が変わります。',
   'tutorial.stepResourcesTitle': 'エネルギーとアビス',
-  'tutorial.stepResourcesBody': '一部のカードは場を離れるとエネルギーゾーンに置かれ、エネルギーを生まないカードはアビスに置かれます。',
+  'tutorial.stepResourcesBody':
+    '一部のカードは場を離れるとエネルギーゾーンに置かれ、エネルギーを生まないカードはアビスに置かれます。',
   'tutorial.stepCatchupTitle': '追いつきルール',
-  'tutorial.stepCatchupBody': '前ターンの敗者は2枚、勝者は通常1枚だけカードを出せます。これによりゲーム展開が拮抗します。',
+  'tutorial.stepCatchupBody':
+    '前ターンの敗者は2枚、勝者は通常1枚だけカードを出せます。これによりゲーム展開が拮抗します。',
   'tutorial.stepJankenTitle': 'じゃんけんで夜側決定',
   'tutorial.stepJankenBody': 'じゃんけんで夜側プレイヤーを決めます。夜側は最初のターンに主導権を持ちます。',
   'tutorial.stepMulliganTitle': '手札引き直し',
   'tutorial.stepMulliganBody': '序盤に任意の手札を1回引き直せます。戦闘前に初期手札を整えましょう。',
   'tutorial.stepEffectOrderTitle': '効果順序の選択',
-  'tutorial.stepEffectOrderBody': '同じターンに複数の効果が発動する場合、解決順序を選べます。工夫次第で戦況を変えられます。',
+  'tutorial.stepEffectOrderBody':
+    '同じターンに複数の効果が発動する場合、解決順序を選べます。工夫次第で戦況を変えられます。',
   'tutorial.stepPendingChoiceTitle': 'カード選択の送信',
-  'tutorial.stepPendingChoiceBody': '一部の効果は手札、アビス、デッキからカードを指定します。選んで送信すると効果が解決します。',
+  'tutorial.stepPendingChoiceBody':
+    '一部の効果は手札、アビス、デッキからカードを指定します。選んで送信すると効果が解決します。',
 } as const satisfies Record<TranslationKey, string>;

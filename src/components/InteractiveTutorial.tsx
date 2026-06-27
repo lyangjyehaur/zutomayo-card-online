@@ -21,15 +21,69 @@ interface TutorialStep {
 }
 
 const STEPS: TutorialStep[] = [
-  { titleKey: 'tutorial.stepWelcomeTitle', bodyKey: 'tutorial.stepWelcomeBody', accent: 'gold', target: 'welcome', icon: '🎉' },
-  { titleKey: 'tutorial.stepZonesTitle', bodyKey: 'tutorial.stepZonesBody', accent: 'night', target: 'zones', icon: '🏟️' },
-  { titleKey: 'tutorial.stepChronosTitle', bodyKey: 'tutorial.stepChronosBody', accent: 'day', target: 'chronos', icon: '🕐' },
-  { titleKey: 'tutorial.stepResourcesTitle', bodyKey: 'tutorial.stepResourcesBody', accent: 'energy', target: 'resources', icon: '⚡' },
-  { titleKey: 'tutorial.stepCatchupTitle', bodyKey: 'tutorial.stepCatchupBody', accent: 'danger', target: 'catchup', icon: '⚖️' },
-  { titleKey: 'tutorial.stepJankenTitle', bodyKey: 'tutorial.stepJankenBody', accent: 'gold', target: 'janken', icon: '✊' },
-  { titleKey: 'tutorial.stepMulliganTitle', bodyKey: 'tutorial.stepMulliganBody', accent: 'night', target: 'mulligan', icon: '🔄' },
-  { titleKey: 'tutorial.stepEffectOrderTitle', bodyKey: 'tutorial.stepEffectOrderBody', accent: 'day', target: 'effectOrder', icon: '🔢' },
-  { titleKey: 'tutorial.stepPendingChoiceTitle', bodyKey: 'tutorial.stepPendingChoiceBody', accent: 'energy', target: 'pendingChoice', icon: '📋' },
+  {
+    titleKey: 'tutorial.stepWelcomeTitle',
+    bodyKey: 'tutorial.stepWelcomeBody',
+    accent: 'gold',
+    target: 'welcome',
+    icon: '🎉',
+  },
+  {
+    titleKey: 'tutorial.stepZonesTitle',
+    bodyKey: 'tutorial.stepZonesBody',
+    accent: 'night',
+    target: 'zones',
+    icon: '🏟️',
+  },
+  {
+    titleKey: 'tutorial.stepChronosTitle',
+    bodyKey: 'tutorial.stepChronosBody',
+    accent: 'day',
+    target: 'chronos',
+    icon: '🕐',
+  },
+  {
+    titleKey: 'tutorial.stepResourcesTitle',
+    bodyKey: 'tutorial.stepResourcesBody',
+    accent: 'energy',
+    target: 'resources',
+    icon: '⚡',
+  },
+  {
+    titleKey: 'tutorial.stepCatchupTitle',
+    bodyKey: 'tutorial.stepCatchupBody',
+    accent: 'danger',
+    target: 'catchup',
+    icon: '⚖️',
+  },
+  {
+    titleKey: 'tutorial.stepJankenTitle',
+    bodyKey: 'tutorial.stepJankenBody',
+    accent: 'gold',
+    target: 'janken',
+    icon: '✊',
+  },
+  {
+    titleKey: 'tutorial.stepMulliganTitle',
+    bodyKey: 'tutorial.stepMulliganBody',
+    accent: 'night',
+    target: 'mulligan',
+    icon: '🔄',
+  },
+  {
+    titleKey: 'tutorial.stepEffectOrderTitle',
+    bodyKey: 'tutorial.stepEffectOrderBody',
+    accent: 'day',
+    target: 'effectOrder',
+    icon: '🔢',
+  },
+  {
+    titleKey: 'tutorial.stepPendingChoiceTitle',
+    bodyKey: 'tutorial.stepPendingChoiceBody',
+    accent: 'energy',
+    target: 'pendingChoice',
+    icon: '📋',
+  },
 ];
 
 interface InteractiveTutorialProps {
@@ -52,8 +106,8 @@ export function InteractiveTutorial({ onComplete, onStartPractice }: Interactive
     }
   }, [index]);
 
-  const goPrev = () => setIndex(value => Math.max(0, value - 1));
-  const goNext = () => setIndex(value => Math.min(STEPS.length - 1, value + 1));
+  const goPrev = () => setIndex((value) => Math.max(0, value - 1));
+  const goNext = () => setIndex((value) => Math.min(STEPS.length - 1, value + 1));
 
   return (
     <div className="tutorial-overlay interactive">
@@ -65,10 +119,7 @@ export function InteractiveTutorial({ onComplete, onStartPractice }: Interactive
       <section className={`tutorial-card accent-${current.accent} tutorial-target-${current.target}`}>
         <div className="tutorial-progress" aria-hidden="true">
           {STEPS.map((step, stepIndex) => (
-            <span
-              key={step.titleKey}
-              className={stepIndex === index ? 'active' : stepIndex < index ? 'done' : ''}
-            />
+            <span key={step.titleKey} className={stepIndex === index ? 'active' : stepIndex < index ? 'done' : ''} />
           ))}
         </div>
 
@@ -90,12 +141,7 @@ export function InteractiveTutorial({ onComplete, onStartPractice }: Interactive
             {t('tutorial.skip')}
           </button>
           <div className="tutorial-nav-step">
-            <button
-              className="tutorial-btn prev"
-              type="button"
-              onClick={goPrev}
-              disabled={isFirst}
-            >
+            <button className="tutorial-btn prev" type="button" onClick={goPrev} disabled={isFirst}>
               {t('tutorial.prev')}
             </button>
             {isLast ? (

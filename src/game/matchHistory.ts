@@ -39,7 +39,7 @@ export function saveMatchRecord(G: GameState, winner: MatchWinnerInput, duration
     date: new Date().toISOString(),
     duration: Math.max(0, Math.round(durationSeconds)),
     winner: normalizeWinner(winner),
-    players: G.players.map(p => ({
+    players: G.players.map((p) => ({
       hp: p.hp,
       deckSize: p.deck.length,
       cardsPlayed: p.abyss.length + p.powerCharger.length,

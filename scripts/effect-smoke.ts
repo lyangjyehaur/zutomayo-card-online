@@ -3,7 +3,8 @@ import { createRequire } from 'node:module';
 import { parseEffect } from '../src/game/effects/parser';
 import { executeEffect } from '../src/game/effects/executor';
 import { setupGame, getChronosTime, setInitialCard, resolveJanken, finishMulligan } from '../src/game/GameLogic';
-import type { GameState, ParsedEffect } from '../src/game/types';
+import type { GameState } from '../src/game/types';
+import type { ParsedEffect } from '../src/game/effects';
 
 const require = createRequire(import.meta.url);
 interface CardData {
@@ -20,18 +21,20 @@ let parsed = 0;
 const failed: string[] = [];
 
 for (const card of effectCards) {
-  const result = parseEffect(card.effect);
+  const effectText = card.effect;
+  if (!effectText) continue;
+  const result = parseEffect(effectText);
   if (result) {
     parsed++;
   } else {
-    failed.push(`[${card.id}] ${card.effect.substring(0, 60)}`);
+    failed.push(`[${card.id}] ${effectText.substring(0, 60)}`);
   }
 }
 
-console.log(`  Parsed: ${parsed}/${effectCards.length} (${Math.round(parsed / effectCards.length * 100)}%)`);
+console.log(`  Parsed: ${parsed}/${effectCards.length} (${Math.round((parsed / effectCards.length) * 100)}%)`);
 if (failed.length > 0) {
   console.log(`  Failed (${failed.length}):`);
-  failed.forEach(f => console.log(`    ${f}`));
+  failed.forEach((f) => console.log(`    ${f}`));
 }
 assert.ok(parsed >= effectCards.length * 0.9, `Parser coverage too low: ${parsed}/${effectCards.length}`);
 
@@ -98,7 +101,8 @@ function makeTestState(): GameState {
   const G = makeTestState();
   G.players[0].hp = 80;
   const effect: ParsedEffect = {
-    trigger: 'onUse', conditions: [],
+    trigger: 'onUse',
+    conditions: [],
     action: { type: 'heal', params: { value: 20 } },
     rawText: 'HPを20回復',
   };
@@ -113,7 +117,8 @@ function makeTestState(): GameState {
   const G = makeTestState();
   G.players[0].hp = 95;
   const effect: ParsedEffect = {
-    trigger: 'onUse', conditions: [],
+    trigger: 'onUse',
+    conditions: [],
     action: { type: 'heal', params: { value: 20 } },
     rawText: 'HPを20回復',
   };
@@ -127,7 +132,8 @@ function makeTestState(): GameState {
   const G = makeTestState();
   G.players[1].hp = 100;
   const effect: ParsedEffect = {
-    trigger: 'onUse', conditions: [],
+    trigger: 'onUse',
+    conditions: [],
     action: { type: 'directDamage', params: { value: 25 } },
     rawText: '25ダメージ',
   };
@@ -141,7 +147,8 @@ function makeTestState(): GameState {
   const G = makeTestState();
   G.chronos.position = 8;
   const effect: ParsedEffect = {
-    trigger: 'onUse', conditions: [],
+    trigger: 'onUse',
+    conditions: [],
     action: { type: 'clockReset', params: {} },
     rawText: '時計を無効',
   };
@@ -155,7 +162,8 @@ function makeTestState(): GameState {
   const G = makeTestState();
   G.chronos.position = 8; // day
   const effect: ParsedEffect = {
-    trigger: 'onBattle', conditions: [{ type: 'chronos', value: 'night' }],
+    trigger: 'onBattle',
+    conditions: [{ type: 'chronos', value: 'night' }],
     action: { type: 'boostAttack', params: { value: 30 } },
     rawText: '夜なら攻撃力+30',
   };
@@ -188,7 +196,7 @@ console.log('\n=== Test 4: Full Flow ===');
 
 // ===== Summary =====
 console.log('\n=== Summary ===');
-console.log(`Parser coverage: ${parsed}/${effectCards.length} (${Math.round(parsed / effectCards.length * 100)}%)`);
+console.log(`Parser coverage: ${parsed}/${effectCards.length} (${Math.round((parsed / effectCards.length) * 100)}%)`);
 console.log(`Parser structure: all passed`);
 console.log(`Executor tests: all passed`);
 console.log(`Full flow: passed`);

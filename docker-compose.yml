@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       - PORT=3000
       - NODE_ENV=production
@@ -20,7 +20,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     ports:
-      - "3001:3001"
+      - '3001:3001'
     environment:
       - API_PORT=3001
       - DB_PATH=/data/zutomayo.db

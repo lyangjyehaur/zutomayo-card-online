@@ -97,7 +97,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_matches_player1 ON matches(player1_id);
 `);
 
-const matchColumns = db.prepare('PRAGMA table_info(matches)').all().map(column => column.name);
+const matchColumns = db
+  .prepare('PRAGMA table_info(matches)')
+  .all()
+  .map((column) => column.name);
 if (!matchColumns.includes('action_log')) {
   db.prepare('ALTER TABLE matches ADD COLUMN action_log TEXT').run();
 }
@@ -143,10 +146,7 @@ function verifyToken(token) {
     const expected = signTokenInput(input);
     const signatureBuffer = Buffer.from(signature);
     const expectedBuffer = Buffer.from(expected);
-    if (
-      signatureBuffer.length !== expectedBuffer.length
-      || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
-    ) {
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
       return null;
     }
 
@@ -157,7 +157,9 @@ function verifyToken(token) {
     if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
     const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
     return typeof userId === 'string' ? userId : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 function getAuthUserId(req) {
@@ -196,7 +198,9 @@ function verifyAdminToken(req) {
     if (!payload.admin) return false;
     if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return false;
     return true;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 // 輸入 sanitization（P0-4：防範 XSS）。
@@ -253,7 +257,14 @@ function sanitizePayload(action, payload) {
       min: Math.max(0, Math.trunc(finiteNumber(data.min, 0))),
       max: Math.max(0, Math.trunc(finiteNumber(data.max, 0))),
     };
-    for (const key of ['choiceId', 'choiceType', 'sourceZone', 'destinationZone', 'destinationPosition', 'effectLabel']) {
+    for (const key of [
+      'choiceId',
+      'choiceType',
+      'sourceZone',
+      'destinationZone',
+      'destinationPosition',
+      'effectLabel',
+    ]) {
       const value = optionalString(data[key]);
       if (value) clean[key] = value;
     }
@@ -290,8 +301,8 @@ function sanitizeHp(value) {
 function sanitizeActionLog(actionLog) {
   if (!Array.isArray(actionLog)) return [];
   return actionLog
-    .filter(entry => entry && typeof entry === 'object')
-    .map(entry => {
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => {
       const action = optionalString(entry.action) || 'unknown';
       const player = Number(entry.player) === 1 ? 1 : 0;
       const clean = {
@@ -302,7 +313,8 @@ function sanitizeActionLog(actionLog) {
         timestamp: Math.max(0, Math.trunc(finiteNumber(entry.timestamp, Date.now()))),
       };
       if (entry.id !== undefined) clean.id = Math.max(0, Math.trunc(finiteNumber(entry.id, 0)));
-      if (entry.chronosPosition !== undefined) clean.chronosPosition = Math.max(0, Math.trunc(finiteNumber(entry.chronosPosition, 0)));
+      if (entry.chronosPosition !== undefined)
+        clean.chronosPosition = Math.max(0, Math.trunc(finiteNumber(entry.chronosPosition, 0)));
       const hp = sanitizeHp(entry.hp);
       if (hp) clean.hp = hp;
       const pendingEffectCardDefId = optionalString(entry.pendingEffectCardDefId);
@@ -341,7 +353,7 @@ function checkRateLimit(ip, limit) {
 // ===== CORS (P0-4 收緊為白名單) =====
 const corsAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
-  .map(o => o.trim())
+  .map((o) => o.trim())
   .filter(Boolean);
 // 開發環境 fallback：允許 localhost
 const devOrigins = ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000'];
@@ -421,7 +433,11 @@ function handleRequest(req, res) {
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+  if (method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
 
   // Rate limiting (P0-4)
   const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
@@ -437,11 +453,18 @@ function handleRequest(req, res) {
     res.end(JSON.stringify(data));
   };
 
-  const readBody = () => new Promise((resolve) => {
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve({}); } });
-  });
+  const readBody = () =>
+    new Promise((resolve) => {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          resolve({});
+        }
+      });
+    });
 
   // ===== Auth Routes =====
 
@@ -461,8 +484,13 @@ function handleRequest(req, res) {
       const salt = crypto.randomBytes(16).toString('hex');
       const hash = hashPassword(password, salt);
 
-      db.prepare('INSERT INTO users (id, email, password_hash, salt, nickname) VALUES (?, ?, ?, ?, ?)')
-        .run(id, cleanEmail, hash, salt, cleanNickname);
+      db.prepare('INSERT INTO users (id, email, password_hash, salt, nickname) VALUES (?, ?, ?, ?, ?)').run(
+        id,
+        cleanEmail,
+        hash,
+        salt,
+        cleanNickname,
+      );
 
       const token = createToken(id);
       json({ token, user: { id, email: cleanEmail, nickname: cleanNickname, elo: 1000 } });
@@ -504,8 +532,12 @@ function handleRequest(req, res) {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     if (!user) return json({ error: 'User not found' }, 404);
     json({
-      id: user.id, email: user.email, nickname: user.nickname, elo: user.elo,
-      matchCount: user.match_count, wins: user.wins,
+      id: user.id,
+      email: user.email,
+      nickname: user.nickname,
+      elo: user.elo,
+      matchCount: user.match_count,
+      wins: user.wins,
       winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
       createdAt: user.created_at,
     });
@@ -519,7 +551,7 @@ function handleRequest(req, res) {
     const userId = getAuthUserId(req);
     if (!userId) return json({ error: 'Unauthorized' }, 401);
     const decks = db.prepare('SELECT * FROM decks WHERE user_id = ? ORDER BY updated_at DESC').all(userId);
-    json({ decks: decks.map(d => ({ ...d, cardIds: JSON.parse(d.card_ids) })) });
+    json({ decks: decks.map((d) => ({ ...d, cardIds: JSON.parse(d.card_ids) })) });
     return;
   }
 
@@ -539,8 +571,12 @@ function handleRequest(req, res) {
       }
 
       const id = 'd_' + crypto.randomBytes(8).toString('hex');
-      db.prepare('INSERT INTO decks (id, user_id, name, card_ids) VALUES (?, ?, ?, ?)')
-        .run(id, userId, name, JSON.stringify(cardIds));
+      db.prepare('INSERT INTO decks (id, user_id, name, card_ids) VALUES (?, ?, ?, ?)').run(
+        id,
+        userId,
+        name,
+        JSON.stringify(cardIds),
+      );
       json({ id, name, cardIds });
     });
     return;
@@ -598,32 +634,36 @@ function handleRequest(req, res) {
         winnerEloChange = newWinnerElo - winner.elo;
         loserEloChange = newLoserElo - loser.elo;
 
-        db.prepare('UPDATE users SET elo = ?, match_count = match_count + 1, wins = wins + 1 WHERE id = ?')
-          .run(newWinnerElo, winnerId);
-        db.prepare('UPDATE users SET elo = ?, match_count = match_count + 1 WHERE id = ?')
-          .run(newLoserElo, loserId);
+        db.prepare('UPDATE users SET elo = ?, match_count = match_count + 1, wins = wins + 1 WHERE id = ?').run(
+          newWinnerElo,
+          winnerId,
+        );
+        db.prepare('UPDATE users SET elo = ?, match_count = match_count + 1 WHERE id = ?').run(newLoserElo, loserId);
       }
 
       const matchId = 'm_' + crypto.randomBytes(8).toString('hex');
       const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
       const player0Id = winner ? winnerId : null;
       const player1Id = loser ? loserId : null;
-      db.prepare('INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(
-          matchId,
-          player0Id,
-          player1Id,
-          winnerId,
-          loserId,
-          winnerEloChange,
-          loserEloChange,
-          turns || 0,
-          duration || 0,
-          JSON.stringify(sanitizedActionLog),
-        );
+      db.prepare(
+        'INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ).run(
+        matchId,
+        player0Id,
+        player1Id,
+        winnerId,
+        loserId,
+        winnerEloChange,
+        loserEloChange,
+        turns || 0,
+        duration || 0,
+        JSON.stringify(sanitizedActionLog),
+      );
 
       json({
-        matchId, winnerEloChange, loserEloChange,
+        matchId,
+        winnerEloChange,
+        loserEloChange,
         winnerNewElo: (winner?.elo || 1000) + winnerEloChange,
         loserNewElo: (loser?.elo || 1000) + loserEloChange,
       });
@@ -634,11 +674,16 @@ function handleRequest(req, res) {
   // Leaderboard
   if (pathname === '/api/leaderboard' && method === 'GET') {
     const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
-    const entries = db.prepare('SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT ?').all(limit);
+    const entries = db
+      .prepare('SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT ?')
+      .all(limit);
     json({
-      leaderboard: entries.map(e => ({
-        id: e.id, nickname: sanitizeText(e.nickname, 60), elo: e.elo,
-        matchCount: e.match_count, wins: e.wins,
+      leaderboard: entries.map((e) => ({
+        id: e.id,
+        nickname: sanitizeText(e.nickname, 60),
+        elo: e.elo,
+        matchCount: e.match_count,
+        wins: e.wins,
         winRate: e.match_count > 0 ? Math.round((e.wins / e.match_count) * 100) : 0,
       })),
     });
@@ -651,16 +696,18 @@ function handleRequest(req, res) {
     if (!userId) return json({ error: 'Unauthorized' }, 401);
     const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
     const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
-    const matches = db.prepare(
-      `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
+    const matches = db
+      .prepare(
+        `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
        FROM matches m
        LEFT JOIN users w ON m.winner_id = w.id
        LEFT JOIN users l ON m.loser_id = l.id
        WHERE m.player0_id = ? OR m.player1_id = ?
-       ORDER BY m.created_at DESC LIMIT ? OFFSET ?`
-    ).all(userId, userId, limit, offset);
+       ORDER BY m.created_at DESC LIMIT ? OFFSET ?`,
+      )
+      .all(userId, userId, limit, offset);
     json({
-      matches: matches.map(m => ({
+      matches: matches.map((m) => ({
         id: m.id,
         winnerId: m.winner_id,
         loserId: m.loser_id,
@@ -686,8 +733,12 @@ function handleRequest(req, res) {
       db.prepare('UPDATE users SET nickname = ? WHERE id = ?').run(clean, userId);
       const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
       json({
-        id: user.id, email: user.email, nickname: user.nickname, elo: user.elo,
-        matchCount: user.match_count, wins: user.wins,
+        id: user.id,
+        email: user.email,
+        nickname: user.nickname,
+        elo: user.elo,
+        matchCount: user.match_count,
+        wins: user.wins,
         winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
       });
     });
@@ -710,11 +761,20 @@ function handleRequest(req, res) {
   if (pathname === '/api/admin/users' && method === 'GET') {
     if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
     const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
-    const users = db.prepare('SELECT id, email, nickname, elo, match_count, wins, created_at FROM users ORDER BY created_at DESC LIMIT ?').all(limit);
+    const users = db
+      .prepare(
+        'SELECT id, email, nickname, elo, match_count, wins, created_at FROM users ORDER BY created_at DESC LIMIT ?',
+      )
+      .all(limit);
     json({
-      users: users.map(u => ({
-        id: u.id, email: u.email, nickname: u.nickname, elo: u.elo,
-        matchCount: u.match_count, wins: u.wins, createdAt: u.created_at,
+      users: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        nickname: u.nickname,
+        elo: u.elo,
+        matchCount: u.match_count,
+        wins: u.wins,
+        createdAt: u.created_at,
         winRate: u.match_count > 0 ? Math.round((u.wins / u.match_count) * 100) : 0,
       })),
     });
@@ -725,19 +785,27 @@ function handleRequest(req, res) {
   if (pathname === '/api/admin/matches' && method === 'GET') {
     if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
     const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
-    const matches = db.prepare(
-      `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
+    const matches = db
+      .prepare(
+        `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
        FROM matches m
        LEFT JOIN users w ON m.winner_id = w.id
        LEFT JOIN users l ON m.loser_id = l.id
-       ORDER BY m.created_at DESC LIMIT ?`
-    ).all(limit);
+       ORDER BY m.created_at DESC LIMIT ?`,
+      )
+      .all(limit);
     json({
-      matches: matches.map(m => ({
-        id: m.id, winnerId: m.winner_id, loserId: m.loser_id,
-        winnerNickname: m.winner_nickname, loserNickname: m.loser_nickname,
-        winnerEloChange: m.winner_elo_change, loserEloChange: m.loser_elo_change,
-        turns: m.turns, duration: m.duration_seconds, createdAt: m.created_at,
+      matches: matches.map((m) => ({
+        id: m.id,
+        winnerId: m.winner_id,
+        loserId: m.loser_id,
+        winnerNickname: m.winner_nickname,
+        loserNickname: m.loser_nickname,
+        winnerEloChange: m.winner_elo_change,
+        loserEloChange: m.loser_elo_change,
+        turns: m.turns,
+        duration: m.duration_seconds,
+        createdAt: m.created_at,
       })),
     });
     return;
@@ -768,12 +836,12 @@ function handleRequest(req, res) {
       if (existing && existing.status === 'matched') {
         return json({ queueId: existing.queueId, status: 'matched' });
       }
-      const queueId = (existing && existing.queueId) || ('q_' + crypto.randomBytes(8).toString('hex'));
+      const queueId = (existing && existing.queueId) || 'q_' + crypto.randomBytes(8).toString('hex');
       const entry = {
         queueId,
         joinedAt: Date.now(),
         deckName: typeof deckName === 'string' ? sanitizeText(deckName, 60) : undefined,
-        deckIds: Array.isArray(deckIds) ? deckIds.filter(id => typeof id === 'string').slice(0, 20) : undefined,
+        deckIds: Array.isArray(deckIds) ? deckIds.filter((id) => typeof id === 'string').slice(0, 20) : undefined,
         status: 'queued',
         matchId: undefined,
         opponentId: undefined,

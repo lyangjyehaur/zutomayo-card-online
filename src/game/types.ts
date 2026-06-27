@@ -16,7 +16,14 @@ export type JankenChoice = 'rock' | 'paper' | 'scissors';
 export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'effectOrder' | 'gameOver';
 export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B';
-export type TimingEventType = 'turnStart' | 'turnEnd' | 'damageReceived' | 'chronosChanged' | 'zoneEntered' | 'characterReplaced' | 'battle';
+export type TimingEventType =
+  | 'turnStart'
+  | 'turnEnd'
+  | 'damageReceived'
+  | 'chronosChanged'
+  | 'zoneEntered'
+  | 'characterReplaced'
+  | 'battle';
 
 export interface ActionLogResult {
   ok: boolean;

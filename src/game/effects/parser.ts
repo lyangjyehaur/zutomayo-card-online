@@ -3,9 +3,7 @@ import type { ParsedEffect, Condition, EffectAction } from './types';
 // ===== Number parsing (handles both ASCII and fullwidth) =====
 
 function parseNum(text: string): number {
-  const normalized = text.replace(/[０-９]/g, c =>
-    String.fromCharCode(c.charCodeAt(0) - 0xFEE0)
-  );
+  const normalized = text.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
   return parseInt(normalized, 10) || 0;
 }
 
@@ -15,12 +13,12 @@ function namedSong(text: string): string | null {
 
 function parseSendToPower(stars: string, digitText?: string): number {
   if (digitText) return parseNum(digitText);
-  return stars.split('').filter(char => char === '★').length;
+  return stars.split('').filter((char) => char === '★').length;
 }
 
 function parseStarReduction(stars: string, digitText?: string): number {
   if (digitText) return parseNum(digitText);
-  return stars.split('').filter(char => char === '★').length;
+  return stars.split('').filter((char) => char === '★').length;
 }
 
 const ELEMENTS = ['闇', '炎', '電気', '風', 'カオス'] as const;
@@ -37,14 +35,14 @@ function cardOwner(prefix?: string): 'self' | 'opponent' {
 }
 
 function parseElementList(text: string): string[] {
-  return ELEMENTS.filter(element => text.includes(element));
+  return ELEMENTS.filter((element) => text.includes(element));
 }
 
 function elementCondition(type: 'opponentElement' | 'selfElement', elements: string[]): Condition {
   if (elements.length === 1) return { type, value: elements[0] };
   return {
     type: 'or',
-    value: elements.map(element => ({ type, value: element })),
+    value: elements.map((element) => ({ type, value: element })),
   };
 }
 
@@ -57,9 +55,13 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<a[^>]*>.*?<\/a>/gi, '')
     .trim();
-  const priority: ParsedEffect['priority'] = /※.*相手のエンチャント発動のち有効/.test(normalizedText) ? 'late' : undefined;
+  const priority: ParsedEffect['priority'] = /※.*相手のエンチャント発動のち有効/.test(normalizedText)
+    ? 'late'
+    : undefined;
 
-  const handSizeMatch = normalizedText.match(/^※?(?:このカードを使用後|このカードの効果でカードを引いたなら)、?手札の数は(バトル終了|ゲーム終了)まで([0-9０-９]+)枚増える[。.]?$/);
+  const handSizeMatch = normalizedText.match(
+    /^※?(?:このカードを使用後|このカードの効果でカードを引いたなら)、?手札の数は(バトル終了|ゲーム終了)まで([0-9０-９]+)枚増える[。.]?$/,
+  );
   if (handSizeMatch) {
     const drawLinked = normalizedText.includes('このカードの効果でカードを引いたなら');
     return {
@@ -76,17 +78,19 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     };
   }
 
-  const text = normalizedText
-    .replace(/※.*$/gm, '')
-    .trim();
+  const text = normalizedText.replace(/※.*$/gm, '').trim();
 
   if (text.length === 0) return null;
 
-  const namedReducedDamageTurnEndMatch = text.match(/^バトルゾーンのカードが[（(]([^）)]+)[）)]のキャラクターなら、?ターン終了時に、?$/);
+  const namedReducedDamageTurnEndMatch = text.match(
+    /^バトルゾーンのカードが[（(]([^）)]+)[）)]のキャラクターなら、?ターン終了時に、?$/,
+  );
   if (namedReducedDamageTurnEndMatch) {
     return {
       trigger: 'onUse',
-      conditions: [{ type: 'namedCardCondition', value: namedReducedDamageTurnEndMatch[1].trim(), target: 'battleZone' }],
+      conditions: [
+        { type: 'namedCardCondition', value: namedReducedDamageTurnEndMatch[1].trim(), target: 'battleZone' },
+      ],
       action: { type: 'directDamage', params: { value: 'reducedThisTurn', timing: 'turnEnd' } },
       rawText,
     };
@@ -101,7 +105,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     };
   }
 
-  const opponentHealThenDamageMatch = text.match(/^相手のHPを([0-9０-９]+)回復させ、?ターン終了時に([0-9０-９]+)ダメージを与える[。.]?$/);
+  const opponentHealThenDamageMatch = text.match(
+    /^相手のHPを([0-9０-９]+)回復させ、?ターン終了時に([0-9０-９]+)ダメージを与える[。.]?$/,
+  );
   if (opponentHealThenDamageMatch) {
     return {
       trigger: 'onUse',
@@ -127,7 +133,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     };
   }
 
-  const opponentTurnStartDeckTopPowerCostMatch = text.match(/^相手はターンの開始時にデッキの一番上を公開する。パワーコストが([0-9０-９]+)以上のカードが山札から公開されたらパワーチャージャーに置く[。.]?$/);
+  const opponentTurnStartDeckTopPowerCostMatch = text.match(
+    /^相手はターンの開始時にデッキの一番上を公開する。パワーコストが([0-9０-９]+)以上のカードが山札から公開されたらパワーチャージャーに置く[。.]?$/,
+  );
   if (opponentTurnStartDeckTopPowerCostMatch) {
     return {
       trigger: 'onTurnStart',
@@ -140,7 +148,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     };
   }
 
-  const opponentTurnStartDeckTopSendToPowerMatch = text.match(/^ターンの開始時に相手のデッキの一番上を公開する。相手のカードにSEND TO POWER(★+)([0-9０-９]+)?が無ければ自分の攻撃力[＋+]([0-9０-９]+)。SEND TO POWER\1\2?があったなら、?すぐにこのカードをパワーチャージャーに置く[。.]?$/);
+  const opponentTurnStartDeckTopSendToPowerMatch = text.match(
+    /^ターンの開始時に相手のデッキの一番上を公開する。相手のカードにSEND TO POWER(★+)([0-9０-９]+)?が無ければ自分の攻撃力[＋+]([0-9０-９]+)。SEND TO POWER\1\2?があったなら、?すぐにこのカードをパワーチャージャーに置く[。.]?$/,
+  );
   if (opponentTurnStartDeckTopSendToPowerMatch) {
     return {
       trigger: 'onTurnStart',
@@ -148,7 +158,10 @@ export function parseEffect(rawText: string): ParsedEffect | null {
       action: {
         type: 'revealOpponentDeckTopBySendToPower',
         params: {
-          minSendToPower: parseSendToPower(opponentTurnStartDeckTopSendToPowerMatch[1], opponentTurnStartDeckTopSendToPowerMatch[2]),
+          minSendToPower: parseSendToPower(
+            opponentTurnStartDeckTopSendToPowerMatch[1],
+            opponentTurnStartDeckTopSendToPowerMatch[2],
+          ),
           boostIfMissing: parseNum(opponentTurnStartDeckTopSendToPowerMatch[3]),
         },
       },
@@ -169,7 +182,10 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     return {
       trigger: 'onZoneEntered',
       conditions: [{ type: 'zoneEntered', value: 'abyss', target: 'opponent' }],
-      action: { type: 'moveSelfAreaEnchant', params: { destination: text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss' } },
+      action: {
+        type: 'moveSelfAreaEnchant',
+        params: { destination: text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss' },
+      },
       rawText,
     };
   }
@@ -178,7 +194,10 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     return {
       trigger: 'onZoneEntered',
       conditions: [{ type: 'zoneEntered', value: 'powerCharger', target: 'any' }],
-      action: { type: 'moveSelfAreaEnchant', params: { destination: text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss' } },
+      action: {
+        type: 'moveSelfAreaEnchant',
+        params: { destination: text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss' },
+      },
       rawText,
     };
   }
@@ -187,7 +206,10 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     return {
       trigger: 'onBattle',
       conditions: [{ type: 'battleLost', value: true }],
-      action: { type: 'moveSelfAreaEnchant', params: { destination: text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss' } },
+      action: {
+        type: 'moveSelfAreaEnchant',
+        params: { destination: text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss' },
+      },
       rawText,
     };
   }
@@ -196,7 +218,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   let actionText = text;
   let triggerOverride: ParsedEffect['trigger'] | null = null;
 
-  const hpThresholdSelfMoveMatch = text.match(/^HPが([0-9０-９]+)以下になったなら、?(?:すぐに)?(アビス|パワーチャージャー)に置く[。.]?$/);
+  const hpThresholdSelfMoveMatch = text.match(
+    /^HPが([0-9０-９]+)以下になったなら、?(?:すぐに)?(アビス|パワーチャージャー)に置く[。.]?$/,
+  );
   if (hpThresholdSelfMoveMatch) {
     return {
       trigger: 'onDamageReceived',
@@ -222,11 +246,18 @@ export function parseEffect(rawText: string): ParsedEffect | null {
 
   // "同時に出したキャラクターカードを、変えなくてもよい"
   if (text.includes('変えなくてもよい')) {
-    return { trigger: 'onUse', conditions: [], action: { type: 'addSettableCard', params: { count: 1, optional: true } }, rawText };
+    return {
+      trigger: 'onUse',
+      conditions: [],
+      action: { type: 'addSettableCard', params: { count: 1, optional: true } },
+      rawText,
+    };
   }
 
   // "パワーチャージャーからX枚まで選び、このカードの効果として使用する"
-  const powerChargerRecoverMatch = text.match(/パワーチャージャー(?:から|にある)[（(]([^）)]+)[）)]のキャラクターを([0-9０-９]+)枚(?:まで)?選び、このカードの効果として使用する/);
+  const powerChargerRecoverMatch = text.match(
+    /パワーチャージャー(?:から|にある)[（(]([^）)]+)[）)]のキャラクターを([0-9０-９]+)枚(?:まで)?選び、このカードの効果として使用する/,
+  );
   if (powerChargerRecoverMatch) {
     return {
       trigger: 'onUse',
@@ -245,7 +276,12 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   if (text.includes('パワーチャージャーから') && text.includes('効果として使用')) {
-    return { trigger: 'onUse', conditions: [], action: { type: 'useFromAbyss', params: { source: 'powerCharger', count: 1 } }, rawText };
+    return {
+      trigger: 'onUse',
+      conditions: [],
+      action: { type: 'useFromAbyss', params: { source: 'powerCharger', count: 1 } },
+      rawText,
+    };
   }
 
   const chronosTransitionMatch = actionText.match(/^(昼から夜|夜から昼)に変わると[、,]?(.+)$/);
@@ -278,12 +314,17 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     triggerOverride = 'onTurnEnd';
   }
 
-  if (actionText.includes('同時に出した自分のキャラクターカード') || actionText.includes('同時にセットした自分のキャラクターカード')) {
+  if (
+    actionText.includes('同時に出した自分のキャラクターカード') ||
+    actionText.includes('同時にセットした自分のキャラクターカード')
+  ) {
     conditions.push({ type: 'simultaneousCharacter', value: true });
   }
 
   // "前のターンで使用したキャラクターカードの属性がXで、今が夜/昼なら..."
-  const previousCharElementChronosMatch = actionText.match(/前のターンで使用したキャラクターカードの属性が(闇|炎|電気|風|カオス)で、今が(夜|昼)なら[、,]?(.+)$/);
+  const previousCharElementChronosMatch = actionText.match(
+    /前のターンで使用したキャラクターカードの属性が(闇|炎|電気|風|カオス)で、今が(夜|昼)なら[、,]?(.+)$/,
+  );
   if (previousCharElementChronosMatch) {
     conditions.push({ type: 'previousCharElement', value: previousCharElementChronosMatch[1] });
     conditions.push({ type: 'chronos', value: previousCharElementChronosMatch[2] === '夜' ? 'night' : 'day' });
@@ -291,20 +332,32 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   // "前のターンで使用したキャラクターカードの属性がXなら..."
-  const previousCharElementMatch = actionText.match(/前のターンで使用したキャラクターカードの属性が(闇|炎|電気|風|カオス)なら[、,]?(.+)$/);
+  const previousCharElementMatch = actionText.match(
+    /前のターンで使用したキャラクターカードの属性が(闇|炎|電気|風|カオス)なら[、,]?(.+)$/,
+  );
   if (previousCharElementMatch) {
     conditions.push({ type: 'previousCharElement', value: previousCharElementMatch[1] });
     actionText = previousCharElementMatch[2];
   }
 
-  const previousCharElementAndOpponentElementMatch = actionText.match(new RegExp(`^前のターンで使用したキャラクターカードの属性が${ELEMENT_PATTERN}かつ、?相手のキャラクターカードが((?:闇|炎|電気|風|カオス)(?:[・か](?:闇|炎|電気|風|カオス))*)なら[、,]?(.+)$`));
+  const previousCharElementAndOpponentElementMatch = actionText.match(
+    new RegExp(
+      `^前のターンで使用したキャラクターカードの属性が${ELEMENT_PATTERN}かつ、?相手のキャラクターカードが((?:闇|炎|電気|風|カオス)(?:[・か](?:闇|炎|電気|風|カオス))*)なら[、,]?(.+)$`,
+    ),
+  );
   if (previousCharElementAndOpponentElementMatch) {
     conditions.push({ type: 'previousCharElement', value: previousCharElementAndOpponentElementMatch[1] });
-    conditions.push(elementCondition('opponentElement', parseElementList(previousCharElementAndOpponentElementMatch[2])));
+    conditions.push(
+      elementCondition('opponentElement', parseElementList(previousCharElementAndOpponentElementMatch[2])),
+    );
     actionText = previousCharElementAndOpponentElementMatch[3];
   }
 
-  const opponentElementListMatch = actionText.match(new RegExp(`^相手の(?:キャラクターカードの)?属性が((?:闇|炎|電気|風|カオス)(?:[・か](?:闇|炎|電気|風|カオス))+)なら[、,]?(.+)$`));
+  const opponentElementListMatch = actionText.match(
+    new RegExp(
+      `^相手の(?:キャラクターカードの)?属性が((?:闇|炎|電気|風|カオス)(?:[・か](?:闇|炎|電気|風|カオス))+)なら[、,]?(.+)$`,
+    ),
+  );
   if (opponentElementListMatch) {
     conditions.push(elementCondition('opponentElement', parseElementList(opponentElementListMatch[1])));
     actionText = opponentElementListMatch[2];
@@ -324,7 +377,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = selfElementMatch[2];
   }
 
-  const samePowerCostMatch = actionText.match(/^自分のキャラクターカードと相手のキャラクターカードが同じパワーコストなら[、,]?(.+)$/);
+  const samePowerCostMatch = actionText.match(
+    /^自分のキャラクターカードと相手のキャラクターカードが同じパワーコストなら[、,]?(.+)$/,
+  );
   if (samePowerCostMatch) {
     conditions.push({ type: 'selfPowerCost', value: 'sameAsOpponent' });
     actionText = samePowerCostMatch[1];
@@ -336,7 +391,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = opponentAttackMatch[2];
   }
 
-  const opponentSendToPowerMatch = actionText.match(/^相手のキャラクターのSEND TO POWERが?(★+)([0-9０-９]+)?なら[、,]?(.+)$/);
+  const opponentSendToPowerMatch = actionText.match(
+    /^相手のキャラクターのSEND TO POWERが?(★+)([0-9０-９]+)?なら[、,]?(.+)$/,
+  );
   if (opponentSendToPowerMatch) {
     conditions.push({
       type: 'opponentSendToPower',
@@ -354,14 +411,18 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionIndex: number;
   }> = [
     {
-      match: actionText.match(/^(相手の|自分の)?キャラクターカードのパワーコストが★?([0-9０-９]+)(以上|以下)なら[、,]?(.+)$/),
+      match: actionText.match(
+        /^(相手の|自分の)?キャラクターカードのパワーコストが★?([0-9０-９]+)(以上|以下)なら[、,]?(.+)$/,
+      ),
       ownerIndex: 1,
       valueIndex: 2,
       opIndex: 3,
       actionIndex: 4,
     },
     {
-      match: actionText.match(/^(相手の|自分の)?キャラクターカードがパワーコスト★?([0-9０-９]+)(以上|以下)なら[、,]?(.+)$/),
+      match: actionText.match(
+        /^(相手の|自分の)?キャラクターカードがパワーコスト★?([0-9０-９]+)(以上|以下)なら[、,]?(.+)$/,
+      ),
       ownerIndex: 1,
       valueIndex: 2,
       opIndex: 3,
@@ -375,7 +436,7 @@ export function parseEffect(rawText: string): ParsedEffect | null {
       actionIndex: 4,
     },
   ];
-  const powerCostRangeMatch = powerCostRangePatterns.find(item => item.match);
+  const powerCostRangeMatch = powerCostRangePatterns.find((item) => item.match);
   if (powerCostRangeMatch?.match) {
     const owner = cardOwner(powerCostRangeMatch.match[powerCostRangeMatch.ownerIndex]);
     conditions.push({
@@ -386,7 +447,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = powerCostRangeMatch.match[powerCostRangeMatch.actionIndex];
   }
 
-  const powerCostInMatch = actionText.match(/^(相手の|自分の)?キャラクターカードのパワーコストが★?([0-9０-９]+)か★?([0-9０-９]+)なら[、,]?(.+)$/);
+  const powerCostInMatch = actionText.match(
+    /^(相手の|自分の)?キャラクターカードのパワーコストが★?([0-9０-９]+)か★?([0-9０-９]+)なら[、,]?(.+)$/,
+  );
   if (powerCostInMatch) {
     const owner = cardOwner(powerCostInMatch[1]);
     conditions.push({
@@ -404,7 +467,11 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = abyssElementMatch[2];
   }
 
-  const specificElementsMatch = actionText.match(new RegExp(`^(アビス|パワーチャージャー)に((?:闇|炎|電気|風|カオス)(?:[・か](?:闇|炎|電気|風|カオス))*)の([0-9０-９]+)属性のカードがあるなら[、,]?(.+)$`));
+  const specificElementsMatch = actionText.match(
+    new RegExp(
+      `^(アビス|パワーチャージャー)に((?:闇|炎|電気|風|カオス)(?:[・か](?:闇|炎|電気|風|カオス))*)の([0-9０-９]+)属性のカードがあるなら[、,]?(.+)$`,
+    ),
+  );
   if (specificElementsMatch) {
     const elements = parseElementList(specificElementsMatch[2]);
     conditions.push({
@@ -415,7 +482,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = specificElementsMatch[4];
   }
 
-  const abyssDistinctElementMatch = actionText.match(/アビスに(?:.*?の)?([0-9０-９]+)属性のカードがあるなら[、,]?(.+)$/);
+  const abyssDistinctElementMatch = actionText.match(
+    /アビスに(?:.*?の)?([0-9０-９]+)属性のカードがあるなら[、,]?(.+)$/,
+  );
   if (abyssDistinctElementMatch) {
     conditions.push({ type: 'abyssElements', value: parseNum(abyssDistinctElementMatch[1]) });
     actionText = abyssDistinctElementMatch[2];
@@ -434,14 +503,18 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = handElementDiversityMatch[2];
   }
 
-  const zoneElementCountMatch = actionText.match(new RegExp(`^(相手の)?(アビス|パワーチャージャー)に(?:ある)?${ELEMENT_PATTERN}属性のカードが([0-9０-９]+)枚(以上|以下)あるなら[、,]?(.+)$`));
+  const zoneElementCountMatch = actionText.match(
+    new RegExp(
+      `^(相手の)?(アビス|パワーチャージャー)に(?:ある)?${ELEMENT_PATTERN}属性のカードが([0-9０-９]+)枚(以上|以下)あるなら[、,]?(.+)$`,
+    ),
+  );
   if (zoneElementCountMatch) {
     const zone = zoneElementCountMatch[2] === 'パワーチャージャー' ? 'powerCharger' : 'abyss';
     conditions.push({
       type: zone === 'powerCharger' ? 'powerChargerElementCount' : 'abyssElementCount',
       value: parseNum(zoneElementCountMatch[4]),
       operator: comparisonOperator(zoneElementCountMatch[5]),
-      element: zoneElementCountMatch[3] as typeof ELEMENTS[number],
+      element: zoneElementCountMatch[3] as (typeof ELEMENTS)[number],
       owner: cardOwner(zoneElementCountMatch[1]),
     });
     actionText = zoneElementCountMatch[6];
@@ -454,7 +527,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = abyssHasElementMatch[2];
   }
 
-  const powerChargerHasElementMatch = actionText.match(/パワーチャージャーに(闇|炎|電気|風|カオス)属性のカードがあるなら[、,]?(.+)$/);
+  const powerChargerHasElementMatch = actionText.match(
+    /パワーチャージャーに(闇|炎|電気|風|カオス)属性のカードがあるなら[、,]?(.+)$/,
+  );
   if (powerChargerHasElementMatch) {
     conditions.push({ type: 'zoneHasElement', value: powerChargerHasElementMatch[1], target: 'powerCharger' });
     actionText = powerChargerHasElementMatch[2];
@@ -473,7 +548,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = noCardInAbyssMatch[2];
   }
 
-  const zoneCountComparisonMatch = actionText.match(/^(相手の)?(アビス|パワーチャージャー)(?:にカード|のカード)?が([0-9０-９]+)枚(以上|以下)(?:置かれている)?(?:ある)?なら[、,]?(.+)$/);
+  const zoneCountComparisonMatch = actionText.match(
+    /^(相手の)?(アビス|パワーチャージャー)(?:にカード|のカード)?が([0-9０-９]+)枚(以上|以下)(?:置かれている)?(?:ある)?なら[、,]?(.+)$/,
+  );
   if (zoneCountComparisonMatch) {
     conditions.push({
       type: 'zoneCountComparison',
@@ -485,7 +562,11 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = zoneCountComparisonMatch[5];
   }
 
-  const zoneAllSameElementMatch = actionText.match(new RegExp(`^(相手の)?(アビス|パワーチャージャー)(?:(?:にある|の)カード|が)?が?${ELEMENT_PATTERN}属性だけ(?:だった)?なら[、,]?(.+)$`));
+  const zoneAllSameElementMatch = actionText.match(
+    new RegExp(
+      `^(相手の)?(アビス|パワーチャージャー)(?:(?:にある|の)カード|が)?が?${ELEMENT_PATTERN}属性だけ(?:だった)?なら[、,]?(.+)$`,
+    ),
+  );
   if (zoneAllSameElementMatch) {
     const zone = zoneAllSameElementMatch[2] === 'パワーチャージャー' ? 'powerCharger' : 'abyss';
     conditions.push({
@@ -514,8 +595,13 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     actionText = hpComparisonMatch[3];
   }
 
-  const powerChargerCountMatch = text.match(/パワーチャージャーにカードが([0-9０-９]+)枚以上置かれているなら[、,]?(.+)$/);
-  if (powerChargerCountMatch && !conditions.some(condition => condition.type === 'zoneCountComparison' && condition.target === 'powerCharger')) {
+  const powerChargerCountMatch = text.match(
+    /パワーチャージャーにカードが([0-9０-９]+)枚以上置かれているなら[、,]?(.+)$/,
+  );
+  if (
+    powerChargerCountMatch &&
+    !conditions.some((condition) => condition.type === 'zoneCountComparison' && condition.target === 'powerCharger')
+  ) {
     conditions.push({ type: 'zoneCountAtLeast', value: parseNum(powerChargerCountMatch[1]), target: 'powerCharger' });
     actionText = powerChargerCountMatch[2];
   }
@@ -540,7 +626,9 @@ export function parseEffect(rawText: string): ParsedEffect | null {
   }
 
   // "バトルゾーンのカードが（X）のキャラクターなら..."
-  const battleZoneNamedCharacterMatch = actionText.match(/バトルゾーンの(?:カード|キャラクター)が[（(]([^）)]+)[）)](?:のキャラクター)?なら[、,]?(.+)$/);
+  const battleZoneNamedCharacterMatch = actionText.match(
+    /バトルゾーンの(?:カード|キャラクター)が[（(]([^）)]+)[）)](?:のキャラクター)?なら[、,]?(.+)$/,
+  );
   if (battleZoneNamedCharacterMatch) {
     conditions.push({ type: 'namedCardInBattleZone', value: battleZoneNamedCharacterMatch[1].trim() });
     actionText = battleZoneNamedCharacterMatch[2];
@@ -549,9 +637,15 @@ export function parseEffect(rawText: string): ParsedEffect | null {
     if (song) conditions.push({ type: 'namedCardInBattleZone', value: song });
   }
 
-  const battleZoneChangedAwayMatch = actionText.match(/^バトルゾーンのキャラクターを[（(]([^）)]+)[）)]以外のキャラクターに入れ替えたら[、,]?(.+)$/);
+  const battleZoneChangedAwayMatch = actionText.match(
+    /^バトルゾーンのキャラクターを[（(]([^）)]+)[）)]以外のキャラクターに入れ替えたら[、,]?(.+)$/,
+  );
   if (battleZoneChangedAwayMatch) {
-    conditions.push({ type: 'namedCardCondition', value: battleZoneChangedAwayMatch[1].trim(), target: 'battleZoneNot' });
+    conditions.push({
+      type: 'namedCardCondition',
+      value: battleZoneChangedAwayMatch[1].trim(),
+      target: 'battleZoneNot',
+    });
     actionText = battleZoneChangedAwayMatch[2];
     triggerOverride = 'onZoneEntered';
   }
@@ -579,7 +673,9 @@ function parseAction(text: string): EffectAction | null {
     return { type: 'useFromAbyss', params: { source: 'abyss', cardType: 'Enchant', count: 1 } };
   }
 
-  const extraEnchantUseThenDrawMatch = text.match(/^手札からエンチャントを追加で([0-9０-９]+)枚使っても[良よ]い[。.]その後、?カードを([0-9０-９]+)枚引く[。.]?$/);
+  const extraEnchantUseThenDrawMatch = text.match(
+    /^手札からエンチャントを追加で([0-9０-９]+)枚使っても[良よ]い[。.]その後、?カードを([0-9０-９]+)枚引く[。.]?$/,
+  );
   if (extraEnchantUseThenDrawMatch) {
     return {
       type: 'requestChoice',
@@ -622,7 +718,9 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "相手のエリアエンチャント(カード)を相手のデッキの上/底に置く"
-  const returnAreaEnchantMatch = text.match(/^相手のエリアエンチャント(?:カード)?を(?:相手の)?デッキの(上|底)に(?:置く|戻し|戻す)/);
+  const returnAreaEnchantMatch = text.match(
+    /^相手のエリアエンチャント(?:カード)?を(?:相手の)?デッキの(上|底)に(?:置く|戻し|戻す)/,
+  );
   if (returnAreaEnchantMatch) {
     return {
       type: 'returnAreaEnchantToDeck',
@@ -634,7 +732,9 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
-  const revealHandAttackBoostMatch = text.match(/^手札から[（(]([^）)]+)[）)]\s*のキャラクターを好きな枚数公開し、その数だけ攻撃力[＋+]([0-9０-９]+)[。.]?$/);
+  const revealHandAttackBoostMatch = text.match(
+    /^手札から[（(]([^）)]+)[）)]\s*のキャラクターを好きな枚数公開し、その数だけ攻撃力[＋+]([0-9０-９]+)[。.]?$/,
+  );
   if (revealHandAttackBoostMatch) {
     return {
       type: 'requestChoice',
@@ -647,7 +747,9 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
-  const nameGuessRevealMatch = text.match(/^カード名を[1１]つ指定する[。.]相手の手札から[1１]枚を選んで公開し、そのカード名のカードなら攻撃力[＋+]([0-9０-９]+)[。.]?$/);
+  const nameGuessRevealMatch = text.match(
+    /^カード名を[1１]つ指定する[。.]相手の手札から[1１]枚を選んで公開し、そのカード名のカードなら攻撃力[＋+]([0-9０-９]+)[。.]?$/,
+  );
   if (nameGuessRevealMatch) {
     return {
       type: 'requestChoice',
@@ -658,7 +760,9 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
-  const zoneElementBoostMatch = text.match(/^(アビス|パワーチャージャー)の(闇|炎|電気|風|カオス)属性のカード[1１]枚につき、?(?:攻撃力|★)?[＋+]([0-9０-９]+)[。.]?/);
+  const zoneElementBoostMatch = text.match(
+    /^(アビス|パワーチャージャー)の(闇|炎|電気|風|カオス)属性のカード[1１]枚につき、?(?:攻撃力|★)?[＋+]([0-9０-９]+)[。.]?/,
+  );
   if (zoneElementBoostMatch) {
     return {
       type: text.includes('★') ? 'boostPower' : 'boostAttack',
@@ -672,7 +776,9 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
-  const zoneElementCountBoostMatch = text.match(/^(アビス|パワーチャージャー)にある(闇|炎|電気|風|カオス)属性のカードの数だけ、?(?:攻撃力|★)?[＋+]([0-9０-９]+)[。.]?/);
+  const zoneElementCountBoostMatch = text.match(
+    /^(アビス|パワーチャージャー)にある(闇|炎|電気|風|カオス)属性のカードの数だけ、?(?:攻撃力|★)?[＋+]([0-9０-９]+)[。.]?/,
+  );
   if (zoneElementCountBoostMatch) {
     return {
       type: text.includes('★') ? 'boostPower' : 'boostAttack',
@@ -686,7 +792,9 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
-  const zoneNamedCountBoostMatch = text.match(/^(アビス|パワーチャージャー)にある[（(]([^）)]+)[）)]のカードの数だけ、?攻撃力[＋+]([0-9０-９]+)[。.]?/);
+  const zoneNamedCountBoostMatch = text.match(
+    /^(アビス|パワーチャージャー)にある[（(]([^）)]+)[）)]のカードの数だけ、?攻撃力[＋+]([0-9０-９]+)[。.]?/,
+  );
   if (zoneNamedCountBoostMatch) {
     return {
       type: 'boostAttack',
@@ -713,9 +821,12 @@ function parseAction(text: string): EffectAction | null {
   if (boostMatch) return { type: 'boostAttack', params: { value: parseNum(boostMatch[1]) } };
 
   const setOpponentAttackMatch = text.match(/^相手の攻撃力を([0-9０-９]+)にする[。.]?$/);
-  if (setOpponentAttackMatch) return { type: 'setOpponentAttack', params: { value: parseNum(setOpponentAttackMatch[1]) } };
+  if (setOpponentAttackMatch)
+    return { type: 'setOpponentAttack', params: { value: parseNum(setOpponentAttackMatch[1]) } };
 
-  const setOpponentElementMatch = text.match(/^相手のキャラクターカードの属性をバトルフィールドにいる間(闇|炎|電気|風|カオス)にする[。.]?$/);
+  const setOpponentElementMatch = text.match(
+    /^相手のキャラクターカードの属性をバトルフィールドにいる間(闇|炎|電気|風|カオス)にする[。.]?$/,
+  );
   if (setOpponentElementMatch) return { type: 'setOpponentElement', params: { value: setOpponentElementMatch[1] } };
 
   // "攻撃力-30"
@@ -750,7 +861,9 @@ function parseAction(text: string): EffectAction | null {
   if (damageReduceMatch) return { type: 'damageReduce', params: { value: parseNum(damageReduceMatch[1]) } };
 
   // "Xダメージ" (direct damage)
-  const reducedDamageMatch = text.match(/^(ターン終了時に、?)?このターンに軽減した数値分のダメージを相手に与える[。.]?$/);
+  const reducedDamageMatch = text.match(
+    /^(ターン終了時に、?)?このターンに軽減した数値分のダメージを相手に与える[。.]?$/,
+  );
   if (reducedDamageMatch) {
     return {
       type: 'directDamage',
@@ -765,7 +878,9 @@ function parseAction(text: string): EffectAction | null {
   if (directDamageMatch) return { type: 'directDamage', params: { value: parseNum(directDamageMatch[1]) } };
 
   // "手札にある（Song）のキャラクターを1枚選び、パワーチャージャーに置いてもよい。そうしたなら、カードを1枚引く"
-  const optionalNamedCharacterToPowerDrawMatch = text.match(/^手札にある[（(]([^）)]+)[）)]のキャラクターを[1１]枚選び、パワーチャージャーに置いてもよい[。.]そうしたなら、?カードを[1１]枚引く[。.]?$/);
+  const optionalNamedCharacterToPowerDrawMatch = text.match(
+    /^手札にある[（(]([^）)]+)[）)]のキャラクターを[1１]枚選び、パワーチャージャーに置いてもよい[。.]そうしたなら、?カードを[1１]枚引く[。.]?$/,
+  );
   if (optionalNamedCharacterToPowerDrawMatch) {
     return {
       type: 'requestChoice',
@@ -783,7 +898,9 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "手札からX属性のカードを1枚選び、アビスに置く。そうしたならカードを1枚引く"
-  const optionalElementToAbyssDrawMatch = text.match(/^手札から(闇|炎|電気|風|カオス)属性のカードを[1１]枚選び、アビスに置く[。.]そうしたなら、?カードを[1１]枚引く[。.]?$/);
+  const optionalElementToAbyssDrawMatch = text.match(
+    /^手札から(闇|炎|電気|風|カオス)属性のカードを[1１]枚選び、アビスに置く[。.]そうしたなら、?カードを[1１]枚引く[。.]?$/,
+  );
   if (optionalElementToAbyssDrawMatch) {
     return {
       type: 'requestChoice',
@@ -800,7 +917,9 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "手札からカードを好きな枚数選び、デッキの底に置く。そうしたなら、同じ数だけデッキからカードを引く"
-  const optionalAnyToDeckBottomSelectedDrawMatch = text.match(/^手札からカードを好きな枚数選び、デッキの底に置く[。.]そうしたなら、?同じ数だけデッキからカードを引く[。.]?$/);
+  const optionalAnyToDeckBottomSelectedDrawMatch = text.match(
+    /^手札からカードを好きな枚数選び、デッキの底に置く[。.]そうしたなら、?同じ数だけデッキからカードを引く[。.]?$/,
+  );
   if (optionalAnyToDeckBottomSelectedDrawMatch) {
     return {
       type: 'requestChoice',
@@ -817,7 +936,9 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "手札からX属性のカードを好きな枚数選び、アビスに置く。そうしたなら、同じ数だけカードを引く"
-  const optionalElementToAbyssSelectedDrawMatch = text.match(/^手札から(闇|炎|電気|風|カオス)属性のカードを好きな枚数選び、アビスに置く[。.]そうしたなら、?同じ数だけカードを引く[。.]?$/);
+  const optionalElementToAbyssSelectedDrawMatch = text.match(
+    /^手札から(闇|炎|電気|風|カオス)属性のカードを好きな枚数選び、アビスに置く[。.]そうしたなら、?同じ数だけカードを引く[。.]?$/,
+  );
   if (optionalElementToAbyssSelectedDrawMatch) {
     return {
       type: 'requestChoice',
@@ -850,7 +971,9 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "相手のアビスのカードをX枚選んでデッキの底に戻させる"
-  const opponentAbyssToDeckBottomMatch = text.match(/相手のアビスのカードを([0-9０-９]+)枚選んでデッキの底に戻させる[。.]?$/);
+  const opponentAbyssToDeckBottomMatch = text.match(
+    /相手のアビスのカードを([0-9０-９]+)枚選んでデッキの底に戻させる[。.]?$/,
+  );
   if (opponentAbyssToDeckBottomMatch) {
     return {
       type: 'requestChoice',
@@ -867,7 +990,9 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "相手のアビスにあるカードX枚を、相手のデッキの底に戻す"
-  const opponentAbyssCardToDeckBottomMatch = text.match(/^相手のアビスにあるカード([0-9０-９]+)枚を、?相手のデッキの底に戻す[。.]?$/);
+  const opponentAbyssCardToDeckBottomMatch = text.match(
+    /^相手のアビスにあるカード([0-9０-９]+)枚を、?相手のデッキの底に戻す[。.]?$/,
+  );
   if (opponentAbyssCardToDeckBottomMatch) {
     return {
       type: 'requestChoice',
@@ -884,7 +1009,9 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "相手のパワーチャージャーからSEND TO POWER★★/★１のカードをX枚選び、相手のデッキの底に置く"
-  const opponentPowerToDeckBottomMatch = text.match(/相手のパワーチャージャーからSEND TO POWER(★+)([0-9０-９]+)?のカードを([0-9０-９]+)枚選び、相手のデッキの底に置く[。.]?$/);
+  const opponentPowerToDeckBottomMatch = text.match(
+    /相手のパワーチャージャーからSEND TO POWER(★+)([0-9０-９]+)?のカードを([0-9０-９]+)枚選び、相手のデッキの底に置く[。.]?$/,
+  );
   if (opponentPowerToDeckBottomMatch) {
     return {
       type: 'requestChoice',
@@ -911,7 +1038,9 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "相手のデッキの上からX枚を見て、好きな順番に入れ替えて戻す"
-  const reorderOpponentDeckTopMatch = text.match(/^相手のデッキの上から([0-9０-９]+)枚を見て、好きな順番に入れ替えて戻す[。.]?$/);
+  const reorderOpponentDeckTopMatch = text.match(
+    /^相手のデッキの上から([0-9０-９]+)枚を見て、好きな順番に入れ替えて戻す[。.]?$/,
+  );
   if (reorderOpponentDeckTopMatch) {
     return {
       type: 'requestChoice',
@@ -932,11 +1061,15 @@ function parseAction(text: string): EffectAction | null {
   }
 
   // "アビスのカードをX枚/1枚以上選び、(裏向きにして混ぜ、)デッキの底に置く。そうしない場合、ゲームに敗北する。"
-  const abyssToDeckBottomOrLoseMatch = text.match(/^アビスのカードを([0-9０-９]+)枚(以上)?選び、(?:(裏向きにして)(混ぜ、)?)?デッキの底に置く[。.]そうしない場合、ゲームに敗北する[。.]?/);
+  const abyssToDeckBottomOrLoseMatch = text.match(
+    /^アビスのカードを([0-9０-９]+)枚(以上)?選び、(?:(裏向きにして)(混ぜ、)?)?デッキの底に置く[。.]そうしない場合、ゲームに敗北する[。.]?/,
+  );
   if (abyssToDeckBottomOrLoseMatch) {
     const count = parseNum(abyssToDeckBottomOrLoseMatch[1]);
     const variable = Boolean(abyssToDeckBottomOrLoseMatch[2]);
-    const reorderFollowUpMatch = text.match(/そうしない場合、ゲームに敗北する[。.]相手のデッキの上から([0-9０-９]+)枚を見て、好きな順番に入れ替えて戻す[。.]?$/);
+    const reorderFollowUpMatch = text.match(
+      /そうしない場合、ゲームに敗北する[。.]相手のデッキの上から([0-9０-９]+)枚を見て、好きな順番に入れ替えて戻す[。.]?$/,
+    );
     return {
       type: 'requestChoice',
       params: {
@@ -945,10 +1078,12 @@ function parseAction(text: string): EffectAction | null {
         max: variable ? 'available' : count,
         faceDown: Boolean(abyssToDeckBottomOrLoseMatch[3]),
         shuffle: Boolean(abyssToDeckBottomOrLoseMatch[4]),
-        ...(reorderFollowUpMatch ? {
-          followUpChoiceType: 'reorderOpponentDeckTop',
-          followUpCount: parseNum(reorderFollowUpMatch[1]),
-        } : {}),
+        ...(reorderFollowUpMatch
+          ? {
+              followUpChoiceType: 'reorderOpponentDeckTop',
+              followUpCount: parseNum(reorderFollowUpMatch[1]),
+            }
+          : {}),
       },
     };
   }
@@ -1060,8 +1195,12 @@ function parseAction(text: string): EffectAction | null {
 
 // ===== Trigger Detection =====
 
-function detectTrigger(text: string): 'onBattle' | 'onUse' | 'onTurnStart' | 'onTurnEnd' | 'onDamageReceived' | 'onChronosChanged' {
-  const timingText = text.match(/^(ターンの開始時|ターン開始時|ターンの終了時|ターン終了時|自分がダメージを受けた|バトル)/)
+function detectTrigger(
+  text: string,
+): 'onBattle' | 'onUse' | 'onTurnStart' | 'onTurnEnd' | 'onDamageReceived' | 'onChronosChanged' {
+  const timingText = text.match(
+    /^(ターンの開始時|ターン開始時|ターンの終了時|ターン終了時|自分がダメージを受けた|バトル)/,
+  )
     ? text
     : text.split(/[。.]/)[0];
   if (timingText.includes('昼から夜に変わる') || timingText.includes('夜から昼に変わる')) {
@@ -1087,7 +1226,9 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
   if (!/(アビス|パワーチャージャー)に置く/.test(text)) return null;
 
   const destination = text.includes('パワーチャージャーに置く') ? 'powerCharger' : 'abyss';
-  const damageThresholdMatch = text.match(/([0-9０-９]+)ダメージ以上を受けたなら、?すぐに(?:このカードを)?(?:アビス|パワーチャージャー)に置く/);
+  const damageThresholdMatch = text.match(
+    /([0-9０-９]+)ダメージ以上を受けたなら、?すぐに(?:このカードを)?(?:アビス|パワーチャージャー)に置く/,
+  );
   if (damageThresholdMatch) {
     return {
       trigger: 'onDamageReceived',
@@ -1146,7 +1287,9 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
       rawText,
     };
   }
-  const ownHpThresholdMoveMatch = text.match(/HPが([0-9０-９]+)以下になったなら、?(?:すぐに)?(アビス|パワーチャージャー)に置く/);
+  const ownHpThresholdMoveMatch = text.match(
+    /HPが([0-9０-９]+)以下になったなら、?(?:すぐに)?(アビス|パワーチャージャー)に置く/,
+  );
   if (ownHpThresholdMoveMatch) {
     return {
       trigger: 'onDamageReceived',
@@ -1158,16 +1301,20 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
       rawText,
     };
   }
-  const powerCostSelfMoveMatch = text.match(/(?:^|[。.])\s*(相手の)?キャラクターカードが([0-9０-９]+)コスト(以上|以下)なら(?:すぐに)?(アビス|パワーチャージャー)に置く/);
+  const powerCostSelfMoveMatch = text.match(
+    /(?:^|[。.])\s*(相手の)?キャラクターカードが([0-9０-９]+)コスト(以上|以下)なら(?:すぐに)?(アビス|パワーチャージャー)に置く/,
+  );
   if (powerCostSelfMoveMatch) {
     const owner = cardOwner(powerCostSelfMoveMatch[1]);
     return {
       trigger: 'onUse',
-      conditions: [{
-        type: owner === 'opponent' ? 'opponentPowerCost' : 'selfPowerCost',
-        value: parseNum(powerCostSelfMoveMatch[2]),
-        operator: comparisonOperator(powerCostSelfMoveMatch[3]),
-      }],
+      conditions: [
+        {
+          type: owner === 'opponent' ? 'opponentPowerCost' : 'selfPowerCost',
+          value: parseNum(powerCostSelfMoveMatch[2]),
+          operator: comparisonOperator(powerCostSelfMoveMatch[3]),
+        },
+      ],
       action: {
         type: 'moveSelfAreaEnchant',
         params: { destination: powerCostSelfMoveMatch[4] === 'パワーチャージャー' ? 'powerCharger' : 'abyss' },
@@ -1245,7 +1392,9 @@ function parseSecondaryEffects(rawText: string): ParsedEffect[] {
     .replace(/※.*$/gm, '')
     .trim();
 
-  const opponentElementOverrideMatch = normalizedText.match(/相手のキャラクターカードの属性をバトルフィールドにいる間(闇|炎|電気|風|カオス)にする/);
+  const opponentElementOverrideMatch = normalizedText.match(
+    /相手のキャラクターカードの属性をバトルフィールドにいる間(闇|炎|電気|風|カオス)にする/,
+  );
   if (opponentElementOverrideMatch) {
     effects.push({
       trigger: detectTrigger(normalizedText),
@@ -1264,7 +1413,7 @@ export function parseAllEffects(cards: { id: string; effect: string }[]): Map<st
   for (const card of cards) {
     if (!card.effect || card.effect.trim().length === 0) continue;
 
-    const lines = card.effect.split('\n').filter(l => l.trim().length > 0);
+    const lines = card.effect.split('\n').filter((l) => l.trim().length > 0);
     const effects: ParsedEffect[] = [];
 
     for (let index = 0; index < lines.length; index++) {
@@ -1276,9 +1425,10 @@ export function parseAllEffects(cards: { id: string; effect: string }[]): Map<st
       const parsed = combined ?? parseEffect(line);
       if (parsed) effects.push(parsed);
       const expiry = parsed?.expiry ?? parseAreaEnchantExpiry(sourceLine);
-      if (expiry && !effects.some(effect => parsedEffectKey(effect) === parsedEffectKey(expiry))) effects.push(expiry);
+      if (expiry && !effects.some((effect) => parsedEffectKey(effect) === parsedEffectKey(expiry)))
+        effects.push(expiry);
       for (const secondary of parseSecondaryEffects(sourceLine)) {
-        if (!effects.some(effect => parsedEffectKey(effect) === parsedEffectKey(secondary))) effects.push(secondary);
+        if (!effects.some((effect) => parsedEffectKey(effect) === parsedEffectKey(secondary))) effects.push(secondary);
       }
       if (combined) index++;
     }

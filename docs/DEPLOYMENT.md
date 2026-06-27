@@ -1,18 +1,24 @@
 # Deployment
 
-Production deployment uses [docker-compose.yml](/private/tmp/zc-docs/docker-compose.yml) with two services:
+Production deployment uses [docker-compose.yml](../docker-compose.yml) with two services:
 
 - `game`: boardgame.io server, built React app, static card/admin assets, and `/api/*` proxy.
 - `api`: REST API service with SQLite persistence.
 
 Target host: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
 
+## Runtime Requirements / 執行需求
+
+- Node.js `>=20` (see `engines` in [package.json](../package.json)); the Docker images use Node 22.
+- Docker with Compose v2.
+- A persistent volume for the API's SQLite database (see [Volumes](#volumes--資料卷)).
+
 ## Ports / 連接埠
 
-| Port | Service | Purpose |
-| --- | --- | --- |
-| `3000` | `game` | Browser app, boardgame.io HTTP routes, Socket.IO, `/api/*` proxy |
-| `3001` | `api` | Direct REST API access |
+| Port   | Service | Purpose                                                          |
+| ------ | ------- | ---------------------------------------------------------------- |
+| `3000` | `game`  | Browser app, boardgame.io HTTP routes, Socket.IO, `/api/*` proxy |
+| `3001` | `api`   | Direct REST API access                                           |
 
 Users should normally open `http://<host>:3000`.
 
@@ -38,36 +44,42 @@ docker compose down
 
 ## Environment / 環境變數
 
+Variables are passed through `docker-compose.yml` from the host environment (e.g. via a `.env` file or shell export). The Compose file reads `${VAR:-}` for secrets, so unset values become empty strings rather than failing.
+
 ### `game`
 
-| Variable | Default | Notes |
-| --- | --- | --- |
-| `PORT` | `3000` | boardgame.io/static server port inside the container. |
-| `NODE_ENV` | `production` in Compose | Runtime mode. |
-| `API_URL` | `http://api:3001` | Upstream API target for the `/api/*` proxy. |
-| `ALLOWED_ORIGINS` | empty | Optional comma-separated extra origins for boardgame.io. |
+| Variable          | Default                 | Notes                                                                                                                           |
+| ----------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`            | `3000`                  | boardgame.io/static server port inside the container.                                                                           |
+| `NODE_ENV`        | `production` in Compose | Runtime mode.                                                                                                                   |
+| `DB_DIR`          | `/data`                 | Directory for game service persistent data (mounted from the `game-data` volume).                                               |
+| `ALLOWED_ORIGINS` | empty                   | Comma-separated extra origins allowed by boardgame.io CORS.                                                                     |
+| `JWT_SECRET`      | empty                   | Shared HMAC secret. The `game` service forwards it so the same key signs/verifies across services; set the same value as `api`. |
 
-Frontend build-time variables:
+Frontend build-time variables (baked into the bundle at `vite build`):
 
-| Variable | Default | Notes |
-| --- | --- | --- |
-| `VITE_API_URL` | `/api` | API base used by [src/api/client.ts](/private/tmp/zc-docs/src/api/client.ts). |
-| `VITE_ADMIN_PASSWORD` | `zutomayo2026` | Admin/i18n UI password fallback. Because Vite embeds this at build time, pass it during image build if changing it. |
+| Variable       | Default | Notes                                                       |
+| -------------- | ------- | ----------------------------------------------------------- |
+| `VITE_API_URL` | `/api`  | API base used by [src/api/client.ts](../src/api/client.ts). |
+
+> Admin authentication is no longer handled in the frontend. The `VITE_ADMIN_PASSWORD` build-time variable has been removed; admin login now goes through `POST /api/admin/login` backed by the `ADMIN_PASSWORD` environment variable on the `api` service.
 
 ### `api`
 
-| Variable | Default | Notes |
-| --- | --- | --- |
-| `API_PORT` | `3001` | API service port inside the container. |
-| `DB_PATH` | `/data/zutomayo.db` | SQLite database path. |
-| `JWT_SECRET` | random per process | HMAC key for signed auth tokens. Set a stable secret in production or all tokens become invalid when the API process restarts. |
+| Variable          | Default             | Notes                                                                                                                                |
+| ----------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `API_PORT`        | `3001`              | API service port inside the container.                                                                                               |
+| `DB_PATH`         | `/data/zutomayo.db` | SQLite database path. Parent directory is created if missing.                                                                        |
+| `JWT_SECRET`      | random per process  | HMAC key for signed user/admin tokens. Set a stable secret in production or all tokens become invalid when the API process restarts. |
+| `ADMIN_PASSWORD`  | empty               | Password checked by `POST /api/admin/login`. When empty, admin login returns `503` and admin endpoints are effectively disabled.     |
+| `ALLOWED_ORIGINS` | empty               | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                     |
 
 ## Volumes / 資料卷
 
-| Volume | Mount | Purpose |
-| --- | --- | --- |
-| `game-data` | `game:/data` | Reserved for game service data; current game server does not write persistent data there. |
-| `api-data` | `api:/data` | Stores SQLite database at `/data/zutomayo.db`. |
+| Volume      | Mount        | Purpose                                                                                                                                                                                                                             |
+| ----------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `game-data` | `game:/data` | Game service persistent data directory (`DB_DIR=/data`). The current boardgame.io server keeps match state in memory, so this volume is reserved for any future file-based persistence; match state is not durable across restarts. |
+| `api-data`  | `api:/data`  | Stores the SQLite database at `/data/zutomayo.db` (path configured via `DB_PATH`). This is the source of truth for users, decks, matches, and leaderboard.                                                                          |
 
 ## SQLite Backup / Restore
 
@@ -135,4 +147,35 @@ npm run smoke
 npm run smoke:api
 npm run build
 npm run smoke:online
+```
+
+## CI / 持續整合
+
+GitHub Actions workflow: [.github/workflows/ci.yml](../.github/workflows/ci.yml). It runs on every push and pull request targeting `master`.
+
+Runner: `ubuntu-latest`, Node 22, with `npm` caching.
+
+Pipeline steps, in order:
+
+1. `actions/checkout@v4`
+2. `actions/setup-node@v4` (Node 22, npm cache)
+3. `npm ci` — install dependencies from the lockfile.
+4. `npm run format:check` — Prettier formatting check.
+5. `npm run lint` — ESLint.
+6. `npm run typecheck` — `tsc --noEmit` for the app.
+7. `npm test` — vitest unit tests.
+8. `npm run build` — full production build (includes `typecheck:scripts` and `vite build`).
+
+A failing step blocks the merge. The `smoke:*` scripts are intentionally not part of CI because they require a running API/boardgame.io server.
+
+### Local pre-push checklist / 本機推送前檢查
+
+To mirror CI locally before pushing:
+
+```bash
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```

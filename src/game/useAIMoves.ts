@@ -56,7 +56,9 @@ export function useAIMoves(
       if (G.step === 'initialSet') moves.setInitialCard(handIndex);
       else moves.setTurnCard(handIndex, player.setZoneA ? 'B' : 'A');
     }, delay);
-    return () => { if (timeout.current) clearTimeout(timeout.current); };
+    return () => {
+      if (timeout.current) clearTimeout(timeout.current);
+    };
   }, [G, ctx, moves, active, difficulty]);
 
   return active;

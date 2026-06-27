@@ -33,9 +33,9 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
     { id: 'hard', label: t('difficulty.hard'), detail: t('difficulty.hardDesc') },
   ];
   const [difficulty, setDifficulty] = useState<AIDifficulty>(() => getRouteDifficulty(location.state));
-  const [activeDifficulty, setActiveDifficulty] = useState<AIDifficulty | null>(() => (
-    shouldAutoStart(location.state) ? getRouteDifficulty(location.state) : null
-  ));
+  const [activeDifficulty, setActiveDifficulty] = useState<AIDifficulty | null>(() =>
+    shouldAutoStart(location.state) ? getRouteDifficulty(location.state) : null,
+  );
 
   useEffect(() => {
     if (!shouldAutoStart(location.state)) return;
@@ -76,7 +76,7 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
           <span>{t('lobby.difficulty')}</span>
         </div>
         <div className="difficulty-grid">
-          {levels.map(level => (
+          {levels.map((level) => (
             <button
               key={level.id}
               className={`difficulty-card ${level.id} ${difficulty === level.id ? 'selected' : ''}`}

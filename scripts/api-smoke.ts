@@ -4,9 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
-import type { ActionLogEntry, ActionLogResult } from '../src/game/types';
+import type { ActionLogEntry, ActionLogResult, PendingChoice } from '../src/game/types';
 
 // Mock HTTP request：模擬 server.cjs handleRequest 接收的 req 物件。
 interface MockRequest extends EventEmitter {
@@ -14,6 +13,13 @@ interface MockRequest extends EventEmitter {
   url: string;
   headers: Record<string, string | undefined>;
   socket: { remoteAddress: string };
+}
+
+// Mock HTTP response：模擬 server.cjs handleRequest 接收的 res 物件。
+interface MockResponse {
+  setHeader: (name: string, value: string) => void;
+  writeHead: (status: number, headers?: Record<string, string>) => void;
+  end: (chunk?: unknown) => void;
 }
 
 interface ApiResponse<T> {
@@ -78,7 +84,7 @@ interface MatchHistoryEntry {
 }
 
 type ApiServerModule = {
-  handleRequest: (req: IncomingMessage, res: ServerResponse) => void;
+  handleRequest: (req: MockRequest, res: MockResponse) => void;
   closeDatabase: () => void;
 };
 
@@ -114,11 +120,7 @@ function normalizeHeaders(headers: HeadersInit | undefined): Record<string, stri
   return normalized;
 }
 
-async function api<T>(
-  _baseUrl: string,
-  path: string,
-  options: RequestInit = {},
-): Promise<ApiResponse<T>> {
+async function api<T>(_baseUrl: string, path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
   return new Promise((resolve, reject) => {
     const req = new EventEmitter() as MockRequest;
     req.method = options.method ?? 'GET';
@@ -128,8 +130,8 @@ async function api<T>(
     req.socket = { remoteAddress: '127.0.0.1' };
     let status = 200;
 
-    const res = {
-      setHeader: () => undefined,
+    const res: MockResponse = {
+      setHeader: (): void => undefined,
       writeHead: (nextStatus: number) => {
         status = nextStatus;
       },
@@ -245,7 +247,7 @@ try {
     headers: authHeaders(loginA.body.token),
   });
   assert.equal(listedDecks.status, 200);
-  const roundtrippedDeck = listedDecks.body.decks.find(deck => deck.id === createdDeck.body.id);
+  const roundtrippedDeck = listedDecks.body.decks.find((deck) => deck.id === createdDeck.body.id);
   assert.ok(roundtrippedDeck);
   assert.equal(roundtrippedDeck.name, 'Smoke Deck');
   assert.deepEqual(roundtrippedDeck.cardIds, validDeckIds);
@@ -285,10 +287,20 @@ try {
       chronosPosition: 4,
       hp: [100, 93],
       pendingEffectCardDefId: '1st_9',
-      result: { ok: true, message: 'Resolved direct damage', secret: 'strip-me' } as ActionLogResult & { secret: string },
-      payload: { index: 0, effectId: 'effect-1', cardDefId: '1st_9', source: 'played', trigger: 'onUse', actionType: 'directDamage', rawText: 'hidden raw text' },
+      result: { ok: true, message: 'Resolved direct damage', secret: 'strip-me' } as ActionLogResult & {
+        secret: string;
+      },
+      payload: {
+        index: 0,
+        effectId: 'effect-1',
+        cardDefId: '1st_9',
+        source: 'played',
+        trigger: 'onUse',
+        actionType: 'directDamage',
+        rawText: 'hidden raw text',
+      },
       unsafeNested: { deckOrder: ['1st_1'] } as Record<string, unknown>,
-    },
+    } as ActionLogEntry & { unsafeNested: Record<string, unknown> },
     {
       id: 5,
       turn: 2,
@@ -296,8 +308,18 @@ try {
       player: 0,
       action: 'submitPendingChoice',
       timestamp: stamp + 4,
-      pendingChoiceType: 'handToDeckBottomThenDraw' as string,
-      payload: { choiceId: 'choice-1', choiceType: 'handToDeckBottomThenDraw', selectedCount: 2, min: 2, max: 2, destinationZone: 'deck', destinationPosition: 'bottom', drawCount: 2, selectedCardIds: ['hidden'] },
+      pendingChoiceType: 'handToDeckBottomThenDraw' as PendingChoice['type'],
+      payload: {
+        choiceId: 'choice-1',
+        choiceType: 'handToDeckBottomThenDraw',
+        selectedCount: 2,
+        min: 2,
+        max: 2,
+        destinationZone: 'deck',
+        destinationPosition: 'bottom',
+        drawCount: 2,
+        selectedCardIds: ['hidden'],
+      },
     },
   ];
 
@@ -364,13 +386,10 @@ try {
   assert.equal(afterMatchProfileB.body.winRate, 0);
   assert.equal(afterMatchProfileB.body.elo, match.body.loserNewElo);
 
-  const leaderboard = await api<{ leaderboard: LeaderboardEntry[] }>(
-    baseUrl,
-    '/api/leaderboard?limit=10',
-  );
+  const leaderboard = await api<{ leaderboard: LeaderboardEntry[] }>(baseUrl, '/api/leaderboard?limit=10');
   assert.equal(leaderboard.status, 200);
-  const entryA = leaderboard.body.leaderboard.find(entry => entry.id === registeredA.body.user.id);
-  const entryB = leaderboard.body.leaderboard.find(entry => entry.id === registeredB.body.user.id);
+  const entryA = leaderboard.body.leaderboard.find((entry) => entry.id === registeredA.body.user.id);
+  const entryB = leaderboard.body.leaderboard.find((entry) => entry.id === registeredB.body.user.id);
   assert.ok(entryA);
   assert.ok(entryB);
   assert.equal(entryA.matchCount, 1);
@@ -432,7 +451,14 @@ try {
       turns: 1,
       duration: 30,
       actionLog: [
-        { turn: 1, step: 'turnSet', player: 0, action: 'confirmReady', timestamp: stamp + 4, payload: { cardIds: ['1st_9'] } },
+        {
+          turn: 1,
+          step: 'turnSet',
+          player: 0,
+          action: 'confirmReady',
+          timestamp: stamp + 4,
+          payload: { cardIds: ['1st_9'] },
+        },
       ],
     }),
   });
@@ -454,7 +480,7 @@ try {
   });
   assert.equal(historyA.status, 200);
   assert.equal(historyA.body.matches.length, 2);
-  const historyAIds = historyA.body.matches.map(entry => entry.id);
+  const historyAIds = historyA.body.matches.map((entry) => entry.id);
   assert.ok(historyAIds.includes(match.body.matchId));
   assert.ok(historyAIds.includes(guestPlaceholderMatch.body.matchId));
 
@@ -495,7 +521,10 @@ try {
     headers: authHeaders(loginA.body.token),
   });
   assert.equal(decksAfterDelete.status, 200);
-  assert.equal(decksAfterDelete.body.decks.some(deck => deck.id === createdDeck.body.id), false);
+  assert.equal(
+    decksAfterDelete.body.decks.some((deck) => deck.id === createdDeck.body.id),
+    false,
+  );
 
   console.log('api smoke: all assertions passed');
 } finally {

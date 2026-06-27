@@ -20,7 +20,7 @@ coverage/
 public/cards/
 
 # One-time audit/tracking documents
-CARD_EFFECT_AUDIT_V2.md
+CARD_EFFECT_AUDIT*.md
 NON_CARD_GAPS.md
 REMAINING_GAPS.md
 RULE_GAP_AUDIT.md

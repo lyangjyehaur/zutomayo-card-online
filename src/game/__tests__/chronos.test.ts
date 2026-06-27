@@ -29,7 +29,7 @@ describe('normalizeChronosPosition', () => {
 
   it('大正數與大負數仍落在 [0, 12)', () => {
     expect(normalizeChronosPosition(100)).toBe(100 % 12);
-    expect(normalizeChronosPosition(-100)).toBe((((-100 % 12) + 12) % 12));
+    expect(normalizeChronosPosition(-100)).toBe(((-100 % 12) + 12) % 12);
     const large = 123456;
     const result = normalizeChronosPosition(large);
     expect(result).toBeGreaterThanOrEqual(0);
@@ -56,9 +56,9 @@ describe('getChronosTimeForPosition', () => {
 
   it('位置繞回仍正確：12 → 0 (night), 16 → 4 (day)', () => {
     expect(getChronosTimeForPosition(12)).toBe('night'); // 0
-    expect(getChronosTimeForPosition(16)).toBe('day');   // 4
+    expect(getChronosTimeForPosition(16)).toBe('day'); // 4
     expect(getChronosTimeForPosition(-1)).toBe('night'); // 11
-    expect(getChronosTimeForPosition(-3)).toBe('day');   // 9
+    expect(getChronosTimeForPosition(-3)).toBe('day'); // 9
   });
 
   it('midnightRange=0 時邊界位置 4 與 9 為 day', () => {
@@ -68,21 +68,21 @@ describe('getChronosTimeForPosition', () => {
 
   it('midnightRange 擴展使午夜附近的位置變成 night', () => {
     // position 4 距離午夜(0) = min(4, 8) = 4
-    expect(getChronosTimeForPosition(4, 3)).toBe('day');   // 4 > 3
+    expect(getChronosTimeForPosition(4, 3)).toBe('day'); // 4 > 3
     expect(getChronosTimeForPosition(4, 4)).toBe('night'); // 4 <= 4
     expect(getChronosTimeForPosition(4, 5)).toBe('night'); // 4 <= 5
   });
 
   it('midnightRange 對稱擴展（另一側）', () => {
     // position 9 距離午夜 = min(9, 3) = 3
-    expect(getChronosTimeForPosition(9, 2)).toBe('day');   // 3 > 2
+    expect(getChronosTimeForPosition(9, 2)).toBe('day'); // 3 > 2
     expect(getChronosTimeForPosition(9, 3)).toBe('night'); // 3 <= 3
     expect(getChronosTimeForPosition(9, 4)).toBe('night'); // 3 <= 4
   });
 
   it('正午（position 6）不受 midnightRange 影響（除非極大範圍）', () => {
     expect(getChronosTimeForPosition(6, 0)).toBe('day');
-    expect(getChronosTimeForPosition(6, 5)).toBe('day');   // 距離 = min(6, 6) = 6 > 5
+    expect(getChronosTimeForPosition(6, 5)).toBe('day'); // 距離 = min(6, 6) = 6 > 5
     expect(getChronosTimeForPosition(6, 6)).toBe('night'); // 6 <= 6
   });
 

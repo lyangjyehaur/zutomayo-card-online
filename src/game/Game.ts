@@ -1,5 +1,13 @@
 import type { Game, Move } from 'boardgame.io';
-import type { ActionLogEntry, CardInstance, GameState, JankenChoice, PlayerIndex, SetSlot, ZutomayoSetupData } from './types';
+import type {
+  ActionLogEntry,
+  CardInstance,
+  GameState,
+  JankenChoice,
+  PlayerIndex,
+  SetSlot,
+  ZutomayoSetupData,
+} from './types';
 import { getAllCardDefs } from './cards/loader';
 import { parseAllEffects } from './effects';
 import {
@@ -23,12 +31,10 @@ export type { ZutomayoSetupData } from './types';
 // its reducer, so keeping it local works in both Vite and the Node server.
 const INVALID_MOVE = 'INVALID_MOVE';
 
-const parsedEffects = parseAllEffects(
-  getAllCardDefs().map(card => ({ id: card.id, effect: card.effect })),
-);
+const parsedEffects = parseAllEffects(getAllCardDefs().map((card) => ({ id: card.id, effect: card.effect })));
 
 function playerIndex(playerID: string | null): PlayerIndex | null {
-  return playerID === '0' || playerID === '1' ? Number(playerID) as PlayerIndex : null;
+  return playerID === '0' || playerID === '1' ? (Number(playerID) as PlayerIndex) : null;
 }
 
 function hiddenCard(instanceId: string): CardInstance {
@@ -48,7 +54,9 @@ function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerI
 
   return {
     ...player,
-    hand: player.hand.map((card, index) => (revealedHandIds.has(card.instanceId) ? { ...card } : hiddenCard(`hidden-p${owner}-hand-${index}`))),
+    hand: player.hand.map((card, index) =>
+      revealedHandIds.has(card.instanceId) ? { ...card } : hiddenCard(`hidden-p${owner}-hand-${index}`),
+    ),
     deck: player.deck.map((_, index) => hiddenCard(`hidden-p${owner}-deck-${index}`)),
     setZoneA: redactHiddenCard(player.setZoneA, `hidden-p${owner}-set-a`),
     setZoneB: redactHiddenCard(player.setZoneB, `hidden-p${owner}-set-b`),
@@ -56,20 +64,16 @@ function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerI
 }
 
 function redactPlayedCardsForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerIndex | null): CardInstance[] {
-  if (viewer === owner) return G.setCardsThisTurn[owner].map(card => ({ ...card }));
-  return G.setCardsThisTurn[owner].map((card, index) => (
-    card.faceUp ? { ...card } : hiddenCard(`hidden-p${owner}-played-${index}`)
-  ));
+  if (viewer === owner) return G.setCardsThisTurn[owner].map((card) => ({ ...card }));
+  return G.setCardsThisTurn[owner].map((card, index) =>
+    card.faceUp ? { ...card } : hiddenCard(`hidden-p${owner}-played-${index}`),
+  );
 }
 
-function redactActionLogForViewer(
-  G: GameState,
-  viewer: PlayerIndex | null,
-  bothChose: boolean,
-): ActionLogEntry[] {
+function redactActionLogForViewer(G: GameState, viewer: PlayerIndex | null, bothChose: boolean): ActionLogEntry[] {
   return (G.actionLog ?? [])
-    .filter(entry => entry.action !== 'janken' || bothChose || entry.player === viewer)
-    .map(entry => ({
+    .filter((entry) => entry.action !== 'janken' || bothChose || entry.player === viewer)
+    .map((entry) => ({
       ...entry,
       payload: entry.payload && typeof entry.payload === 'object' ? { ...entry.payload } : entry.payload,
     }));
@@ -82,9 +86,8 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
     if (bothChose || viewer === index) return choice;
     return null;
   }) as GameState['jankenChoices'];
-  const pendingChoice = !G.pendingChoice || G.pendingChoice.player === viewer
-    ? G.pendingChoice
-    : { ...G.pendingChoice, options: [] };
+  const pendingChoice =
+    !G.pendingChoice || G.pendingChoice.player === viewer ? G.pendingChoice : { ...G.pendingChoice, options: [] };
 
   return {
     ...G,
@@ -142,7 +145,7 @@ const moves: Record<string, Move<GameState>> = {
 
 export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetupData> = {
   name: 'zutomayo-card',
-  validateSetupData: setupData => validateZutomayoSetupData(setupData),
+  validateSetupData: (setupData) => validateZutomayoSetupData(setupData),
   setup: (_context, setupData) => setupGame(setupData),
   playerView,
   moves,
@@ -167,17 +170,25 @@ export function createZutomayoCard(
 ): Game<GameState, Record<string, unknown>, ZutomayoSetupData> {
   return {
     ...ZutomayoCard,
-    validateSetupData: setupData => validateZutomayoSetupData({
-      deck0Name: setupData?.deck0Name ?? defaultSetupData.deck0Name,
-      deck1Name: setupData?.deck1Name ?? defaultSetupData.deck1Name,
-      deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
-      deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
-    }, { allowBrowserCustomDeckName: true }),
-    setup: (_context, setupData) => setupGame({
-      deck0Name: setupData?.deck0Name ?? defaultSetupData.deck0Name,
-      deck1Name: setupData?.deck1Name ?? defaultSetupData.deck1Name,
-      deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
-      deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
-    }, { allowBrowserCustomDeckName: true }),
+    validateSetupData: (setupData) =>
+      validateZutomayoSetupData(
+        {
+          deck0Name: setupData?.deck0Name ?? defaultSetupData.deck0Name,
+          deck1Name: setupData?.deck1Name ?? defaultSetupData.deck1Name,
+          deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
+          deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
+        },
+        { allowBrowserCustomDeckName: true },
+      ),
+    setup: (_context, setupData) =>
+      setupGame(
+        {
+          deck0Name: setupData?.deck0Name ?? defaultSetupData.deck0Name,
+          deck1Name: setupData?.deck1Name ?? defaultSetupData.deck1Name,
+          deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
+          deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
+        },
+        { allowBrowserCustomDeckName: true },
+      ),
   };
 }

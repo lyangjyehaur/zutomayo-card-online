@@ -17,9 +17,7 @@ import {
 import type { GameState, JankenChoice, PlayerIndex, SetSlot } from '../types';
 
 // 預先解析所有卡牌效果，供遊戲流程使用
-const parsedEffects = parseAllEffects(
-  getAllCardDefs().map(card => ({ id: card.id, effect: card.effect })),
-);
+const parsedEffects = parseAllEffects(getAllCardDefs().map((card) => ({ id: card.id, effect: card.effect })));
 
 const INITIAL_TOTAL_CARDS = 40; // 每位玩家 20 張牌（15 deck + 5 hand）× 2
 
@@ -37,23 +35,56 @@ function totalCards(G: GameState): number {
 }
 
 const VALID_TRIGGERS: EffectTrigger[] = [
-  'onBattle', 'onUse', 'onEnter', 'onLeave',
-  'onTurnStart', 'onTurnEnd', 'onDamageReceived',
-  'onChronosChanged', 'onZoneEntered',
+  'onBattle',
+  'onUse',
+  'onEnter',
+  'onLeave',
+  'onTurnStart',
+  'onTurnEnd',
+  'onDamageReceived',
+  'onChronosChanged',
+  'onZoneEntered',
 ];
 
 const VALID_ACTIONS: ActionType[] = [
-  'boostAttack', 'boostBothAttackByOwnHp', 'boostPower', 'reduceAttack',
-  'setOpponentAttack', 'setOpponentElement', 'directDamage', 'heal',
-  'healOpponent', 'healBoth', 'damageReduce', 'drawCards', 'swapAttack',
-  'forceOwnAttackTime', 'clockReset', 'nullifyOpponentClock',
-  'clockRewindOpponentCharacter', 'clockSet', 'expandMidnightRange',
-  'clockSetFromTurnStartMinusOpponentClock', 'setAllCardClocks', 'clockAdvance',
-  'recoverFromAbyss', 'sendToAbyss', 'millDeckToAbyss', 'moveOwnDeckTopByPower',
-  'moveOpponentDeckTopByPowerCost', 'revealOpponentDeckTopBySendToPower',
-  'revealOpponentHand', 'returnAreaEnchantToDeck', 'moveSelfAreaEnchant',
-  'useFromAbyss', 'handSizeModifier', 'setPowerCost', 'requestChoice',
-  'suppressEffectActivation', 'noEffect', 'addSettableCard',
+  'boostAttack',
+  'boostBothAttackByOwnHp',
+  'boostPower',
+  'reduceAttack',
+  'setOpponentAttack',
+  'setOpponentElement',
+  'directDamage',
+  'heal',
+  'healOpponent',
+  'healBoth',
+  'damageReduce',
+  'drawCards',
+  'swapAttack',
+  'forceOwnAttackTime',
+  'clockReset',
+  'nullifyOpponentClock',
+  'clockRewindOpponentCharacter',
+  'clockSet',
+  'expandMidnightRange',
+  'clockSetFromTurnStartMinusOpponentClock',
+  'setAllCardClocks',
+  'clockAdvance',
+  'recoverFromAbyss',
+  'sendToAbyss',
+  'millDeckToAbyss',
+  'moveOwnDeckTopByPower',
+  'moveOpponentDeckTopByPowerCost',
+  'revealOpponentDeckTopBySendToPower',
+  'revealOpponentHand',
+  'returnAreaEnchantToDeck',
+  'moveSelfAreaEnchant',
+  'useFromAbyss',
+  'handSizeModifier',
+  'setPowerCost',
+  'requestChoice',
+  'suppressEffectActivation',
+  'noEffect',
+  'addSettableCard',
 ];
 
 function isValidParsedEffect(parsed: unknown): parsed is ParsedEffect {
@@ -121,7 +152,12 @@ function applyOperation(G: GameState, op: Operation): void {
       resolvePendingEffect(G, player, op.effectIdx);
       break;
     case 7:
-      submitPendingChoice(G, player, Array.from({ length: op.optionCount }, (_, i) => `opt-${i}`), parsedEffects);
+      submitPendingChoice(
+        G,
+        player,
+        Array.from({ length: op.optionCount }, (_, i) => `opt-${i}`),
+        parsedEffects,
+      );
       break;
   }
 }
@@ -129,7 +165,7 @@ function applyOperation(G: GameState, op: Operation): void {
 describe('rule engine invariants (property-based)', () => {
   it('HP 永遠在 [0, 100] 範圍內（任意合法操作序列後）', () => {
     fc.assert(
-      fc.property(fc.array(operationArb, { maxLength: 40 }), ops => {
+      fc.property(fc.array(operationArb, { maxLength: 40 }), (ops) => {
         const G = setupGame();
         for (const op of ops) {
           applyOperation(G, op);
@@ -145,7 +181,7 @@ describe('rule engine invariants (property-based)', () => {
 
   it('手牌 + 牌組 + 各 zone 卡數 = 總卡數（不丟卡）', () => {
     fc.assert(
-      fc.property(fc.array(operationArb, { maxLength: 40 }), ops => {
+      fc.property(fc.array(operationArb, { maxLength: 40 }), (ops) => {
         const G = setupGame();
         const initial = totalCards(G);
         expect(initial).toBe(INITIAL_TOTAL_CARDS);
@@ -160,7 +196,7 @@ describe('rule engine invariants (property-based)', () => {
 
   it('turnNumber 單調遞增', () => {
     fc.assert(
-      fc.property(fc.array(operationArb, { maxLength: 40 }), ops => {
+      fc.property(fc.array(operationArb, { maxLength: 40 }), (ops) => {
         const G = setupGame();
         let prevTurn = G.turnNumber;
         for (const op of ops) {
@@ -175,7 +211,7 @@ describe('rule engine invariants (property-based)', () => {
 
   it('parseEffect 要麼回 null 要麼回結構合法的 ParsedEffect（不拋例外）', () => {
     fc.assert(
-      fc.property(fc.string({ maxLength: 200 }), text => {
+      fc.property(fc.string({ maxLength: 200 }), (text) => {
         let parsed: unknown;
         expect(() => {
           parsed = parseEffect(text);
@@ -188,7 +224,7 @@ describe('rule engine invariants (property-based)', () => {
 
   it('所有真實卡牌效果都能被 parseEffect 解析為合法結構（或 null）', () => {
     for (const card of getAllCardDefs()) {
-      const lines = card.effect.split('\n').filter(line => line.trim().length > 0);
+      const lines = card.effect.split('\n').filter((line) => line.trim().length > 0);
       for (const line of lines) {
         let parsed: unknown;
         expect(() => {

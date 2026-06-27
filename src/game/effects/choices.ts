@@ -31,7 +31,7 @@ export function matchesCardMoveFilter(card: CardInstance, payload: PendingCardMo
 }
 
 export function legalCardMoveCards(G: GameState, payload: PendingCardMovePayload): CardInstance[] {
-  return sourceCards(G, payload).filter(card => matchesCardMoveFilter(card, payload));
+  return sourceCards(G, payload).filter((card) => matchesCardMoveFilter(card, payload));
 }
 
 export function matchesPendingCardFilter(card: CardInstance, filter: PendingCardFilter): boolean {
@@ -47,7 +47,7 @@ export function legalOptionalHandMoveThenDrawCards(
   G: GameState,
   payload: PendingOptionalHandMoveThenDrawPayload,
 ): CardInstance[] {
-  return G.players[payload.sourcePlayer].hand.filter(card => matchesPendingCardFilter(card, payload.filter));
+  return G.players[payload.sourcePlayer].hand.filter((card) => matchesPendingCardFilter(card, payload.filter));
 }
 
 export function isCharacterCard(card: CardInstance | null): card is CardInstance {
@@ -63,7 +63,7 @@ export function legalOpponentPowerCharacterSwapCards(
 
 export function moveCardForChoice(G: GameState, payload: PendingCardMovePayload, instanceId: string): boolean {
   const source = sourceCards(G, payload);
-  const sourceIndex = source.findIndex(card => card.instanceId === instanceId);
+  const sourceIndex = source.findIndex((card) => card.instanceId === instanceId);
   if (sourceIndex < 0) return false;
 
   const [card] = source.splice(sourceIndex, 1);

@@ -20,7 +20,7 @@ export function buildDeck(defIds: string[]): CardInstance[] {
   // 所有牌組建構路徑（custom / preset / randomDeck）統一走驗證，確保不合規牌組無法進入遊戲。
   const validationError = validateConstructedDeckIds(defIds);
   if (validationError) throw new Error(validationError);
-  return defIds.map(id => createInstance(id));
+  return defIds.map((id) => createInstance(id));
 }
 
 export function loadCustomDeckIds(): string[] | null {
@@ -29,7 +29,7 @@ export function loadCustomDeckIds(): string[] | null {
     const data = localStorage.getItem(CUSTOM_DECK_STORAGE_KEY);
     if (!data) return null;
     const parsed = JSON.parse(data);
-    if (!Array.isArray(parsed) || parsed.some(id => typeof id !== 'string')) return null;
+    if (!Array.isArray(parsed) || parsed.some((id) => typeof id !== 'string')) return null;
     return parsed;
   } catch {
     return null;
@@ -38,7 +38,7 @@ export function loadCustomDeckIds(): string[] | null {
 
 export function validateConstructedDeckIds(defIds: unknown): string | null {
   if (!Array.isArray(defIds)) return 'Deck must be an array of card IDs';
-  if (defIds.some(id => typeof id !== 'string')) return 'Deck card IDs must be strings';
+  if (defIds.some((id) => typeof id !== 'string')) return 'Deck card IDs must be strings';
   if (defIds.length !== 20) return `Deck must have exactly 20 cards, got ${defIds.length}`;
 
   const counts = new Map<string, number>();
@@ -55,7 +55,7 @@ export function validateConstructedDeckIds(defIds: unknown): string | null {
 
 // 官方推薦 Character >= 50%，非強制；供 UI 顯示警告用。
 export function getCharacterCountWarning(defIds: string[]): string | null {
-  const characterCount = defIds.filter(id => getCardDef(id)?.type === 'Character').length;
+  const characterCount = defIds.filter((id) => getCardDef(id)?.type === 'Character').length;
   if (characterCount < 10) {
     return `Recommended: at least 10 Character cards, got ${characterCount}`;
   }
@@ -93,16 +93,16 @@ export function getPresetDeckNames(): string[] {
 // Generate a random deck from all available cards
 export function randomDeck(): CardInstance[] {
   const allCards = getAllCardDefs();
-  const characters = allCards.filter(c => c.type === 'Character');
-  const enchants = allCards.filter(c => c.type === 'Enchant');
-  const areaEnchants = allCards.filter(c => c.type === 'Area Enchant');
+  const characters = allCards.filter((c) => c.type === 'Character');
+  const enchants = allCards.filter((c) => c.type === 'Enchant');
+  const areaEnchants = allCards.filter((c) => c.type === 'Area Enchant');
 
   const deckChars = shuffle(characters).slice(0, 12);
   const deckEnchants = shuffle(enchants).slice(0, 6);
   const deckAE = shuffle(areaEnchants).slice(0, 2);
   const deck = shuffle([...deckChars, ...deckEnchants, ...deckAE]);
 
-  return deck.map(c => createInstance(c.id));
+  return deck.map((c) => createInstance(c.id));
 }
 
 // Shuffle a deck

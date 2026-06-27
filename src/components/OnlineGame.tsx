@@ -22,7 +22,11 @@ type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
 type MatchDataMember = { id: number; name?: string } | undefined;
 
 function OnlineLoading() {
-  return <div className="online-connection-panel" role="status">{t('onlineSession.reconnecting')}</div>;
+  return (
+    <div className="online-connection-panel" role="status">
+      {t('onlineSession.reconnecting')}
+    </div>
+  );
 }
 
 function OnlineBoard(
@@ -43,7 +47,7 @@ function OnlineBoard(
   useEffect(() => {
     const matchData = props.matchData as MatchDataMember[] | undefined;
     if (!matchData) return;
-    const opponentJoined = matchData.some(player => player?.id === 1 && Boolean(player?.name));
+    const opponentJoined = matchData.some((player) => player?.id === 1 && Boolean(player?.name));
     if (opponentJoined) onOpponentDetected();
   }, [props.matchData, onOpponentDetected]);
 
@@ -68,9 +72,12 @@ export function OnlineGame({
   const opponentDetectedRef = useRef<(() => void) | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
 
-  useEffect(() => () => {
-    if (statusTimer.current) clearTimeout(statusTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (statusTimer.current) clearTimeout(statusTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     onReturnToLobbyRef.current = onReturnToLobby;
@@ -88,60 +95,69 @@ export function OnlineGame({
     statusTimer.current = setTimeout(() => setConnectionStatus(null), 2400);
   }, []);
 
-  const handleConnectionStatusChange = useCallback((isConnected: boolean) => {
-    if (isConnected) {
-      const isReconnect = connectedOnce.current;
-      connectedOnce.current = true;
-      if (showRejoinedStatus || isReconnect) flashRejoined();
-      else setConnectionStatus(null);
-      return;
-    }
+  const handleConnectionStatusChange = useCallback(
+    (isConnected: boolean) => {
+      if (isConnected) {
+        const isReconnect = connectedOnce.current;
+        connectedOnce.current = true;
+        if (showRejoinedStatus || isReconnect) flashRejoined();
+        else setConnectionStatus(null);
+        return;
+      }
 
-    setConnectionStatus(connectedOnce.current ? 'disconnected' : 'reconnecting');
-  }, [flashRejoined, showRejoinedStatus]);
+      setConnectionStatus(connectedOnce.current ? 'disconnected' : 'reconnecting');
+    },
+    [flashRejoined, showRejoinedStatus],
+  );
 
-  const [OnlineClient] = useState(() => Client({
-    game: ZutomayoCard,
-    board: (props: BoardProps<GameState>) => (
-      <OnlineBoard
-        {...props}
-        gameOverActions={{
-          helperText: t('online.gameOverHelper'),
-          primary: {
-            label: t('common.backToLobby'),
-            onClick: () => onReturnToLobbyRef.current(),
-          },
-          secondary: {
-            label: t('online.createNewRoom'),
-            onClick: () => onCreateNewRoomRef.current(),
-            variant: 'secondary',
-          },
-        }}
-        onConnectionStatusChange={handleConnectionStatusChange}
-        onOpponentDetected={handleOpponentDetected}
-      />
-    ),
-    loading: OnlineLoading,
-    numPlayers: 2,
-    multiplayer: SocketIO({ server: window.location.origin }),
-    debug: false,
-  }));
+  const [OnlineClient] = useState(() =>
+    Client({
+      game: ZutomayoCard,
+      board: (props: BoardProps<GameState>) => (
+        <OnlineBoard
+          {...props}
+          gameOverActions={{
+            helperText: t('online.gameOverHelper'),
+            primary: {
+              label: t('common.backToLobby'),
+              onClick: () => onReturnToLobbyRef.current(),
+            },
+            secondary: {
+              label: t('online.createNewRoom'),
+              onClick: () => onCreateNewRoomRef.current(),
+              variant: 'secondary',
+            },
+          }}
+          onConnectionStatusChange={handleConnectionStatusChange}
+          onOpponentDetected={handleOpponentDetected}
+        />
+      ),
+      loading: OnlineLoading,
+      numPlayers: 2,
+      multiplayer: SocketIO({ server: window.location.origin }),
+      debug: false,
+    }),
+  );
 
   return (
     <div className="app game-app">
       <header className="game-header">
-        <button className="back-btn" type="button" onClick={onLeaveRequest}>{t('online.leaveRoom')}</button>
+        <button className="back-btn" type="button" onClick={onLeaveRequest}>
+          {t('online.leaveRoom')}
+        </button>
         <div>
           <strong>{t('game.onlineMode')}</strong>
-          <span>{t('game.matchCode')} {matchID}</span>
+          <span>
+            {t('game.matchCode')} {matchID}
+          </span>
         </div>
         {connectionStatus && (
           <span className={`online-connection-status ${connectionStatus}`}>
             {connectionStatus === 'rejoined'
               ? t('onlineSession.rejoined')
               : connectionStatus === 'disconnected'
-              ? t('onlineSession.disconnectedRetrying')
-              : t('onlineSession.reconnecting')}
+                ? t('onlineSession.disconnectedRetrying')
+                : t('onlineSession.reconnecting')}
           </span>
         )}
       </header>

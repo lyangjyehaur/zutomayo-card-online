@@ -140,7 +140,7 @@ function simulateBattle(
     sim.setCardsThisTurn[playerIdx].push(card);
   }
 
-  for (const handIndex of [...selections].map(selection => selection.handIndex).sort((a, b) => b - a)) {
+  for (const handIndex of [...selections].map((selection) => selection.handIndex).sort((a, b) => b - a)) {
     player.hand.splice(handIndex, 1);
   }
 
@@ -212,7 +212,7 @@ function hardLookahead(G: GameState, playerIdx: PlayerIndex): AISelection[] {
 export function aiSelectCards(
   G: GameState,
   playerIdx: number,
-  difficulty: AIDifficulty
+  difficulty: AIDifficulty,
 ): { handIndex: number; slot: 'A' | 'B' }[] {
   const aiPlayerIdx = playerIdx as PlayerIndex;
   const player = G.players[playerIdx];
@@ -235,13 +235,19 @@ export function aiSelectCards(
     // Easy: random with slight preference for characters
     const shuffled = [...scored].sort(() => Math.random() - 0.5);
     const picks = shuffled.slice(0, maxCards);
-    return picks.map((p, i) => ({ handIndex: p.index, slot: pickSlots[i] ?? (i === 0 ? 'A' as const : 'B' as const) }));
+    return picks.map((p, i) => ({
+      handIndex: p.index,
+      slot: pickSlots[i] ?? (i === 0 ? ('A' as const) : ('B' as const)),
+    }));
   }
 
   if (difficulty === 'normal') {
     // Normal: pick highest scored cards
     const picks = scored.slice(0, maxCards);
-    return picks.map((p, i) => ({ handIndex: p.index, slot: pickSlots[i] ?? (i === 0 ? 'A' as const : 'B' as const) }));
+    return picks.map((p, i) => ({
+      handIndex: p.index,
+      slot: pickSlots[i] ?? (i === 0 ? ('A' as const) : ('B' as const)),
+    }));
   }
 
   const lookahead = hardLookahead(G, aiPlayerIdx);
@@ -249,5 +255,8 @@ export function aiSelectCards(
 
   // Fallback: normal strategy
   const picks = scored.slice(0, maxCards);
-  return picks.map((p, i) => ({ handIndex: p.index, slot: pickSlots[i] ?? (i === 0 ? 'A' as const : 'B' as const) }));
+  return picks.map((p, i) => ({
+    handIndex: p.index,
+    slot: pickSlots[i] ?? (i === 0 ? ('A' as const) : ('B' as const)),
+  }));
 }

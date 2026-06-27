@@ -24,7 +24,7 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
     if (!loggedIn) return;
     let cancelled = false;
     getDecks()
-      .then(decks => {
+      .then((decks) => {
         if (!cancelled) {
           setLoadError('');
           onServerDecksLoaded(decks);
@@ -58,7 +58,7 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
       syncLabel={loggedIn && syncedDeckId ? t('deck.synced') : undefined}
       errorMessage={saveError || loadError}
       saveLocalDeck={!loggedIn}
-      onSave={async deckIds => {
+      onSave={async (deckIds) => {
         setSaving(true);
         setSaveError('');
         try {

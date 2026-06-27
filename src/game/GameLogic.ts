@@ -70,8 +70,10 @@ export function validateZutomayoSetupData(
   options: SetupGameOptions = {},
 ): string | undefined {
   const data = setupData || {};
-  return validateSetupDeck(0, data.deck0Ids, data.deck0Name, options)
-    ?? validateSetupDeck(1, data.deck1Ids, data.deck1Name, options);
+  return (
+    validateSetupDeck(0, data.deck0Ids, data.deck0Name, options) ??
+    validateSetupDeck(1, data.deck1Ids, data.deck1Name, options)
+  );
 }
 
 function setupDeck(
@@ -104,12 +106,12 @@ function recordAction(
 ): void {
   if (!Array.isArray(G.actionLog)) G.actionLog = [];
   const pendingEffectPlayer = G.pendingEffectPlayer;
-  const pendingEffectCardDefId = options.context?.pendingEffectCardDefId
-    ?? (pendingEffectPlayer === null ? undefined : G.pendingEffects[pendingEffectPlayer]?.[0]?.cardDefId);
+  const pendingEffectCardDefId =
+    options.context?.pendingEffectCardDefId ??
+    (pendingEffectPlayer === null ? undefined : G.pendingEffects[pendingEffectPlayer]?.[0]?.cardDefId);
   const pendingChoiceType = options.context?.pendingChoiceType ?? G.pendingChoice?.type;
-  const nextId = G.actionLog.reduce((max, entry) => (
-    Number.isInteger(entry.id) ? Math.max(max, Number(entry.id)) : max
-  ), 0) + 1;
+  const nextId =
+    G.actionLog.reduce((max, entry) => (Number.isInteger(entry.id) ? Math.max(max, Number(entry.id)) : max), 0) + 1;
   const entry: ActionLogEntry = {
     id: nextId,
     turn: G.turnNumber,
@@ -170,19 +172,25 @@ function recordPendingChoiceAction(
 }
 
 function hasGameOverTrace(G: GameState): boolean {
-  return (G.actionLog ?? []).some(entry => entry.action === 'gameOver');
+  return (G.actionLog ?? []).some((entry) => entry.action === 'gameOver');
 }
 
 function recordGameOverTrace(G: GameState): void {
   if (G.step !== 'gameOver' || hasGameOverTrace(G)) return;
   const player = G.winner ?? 0;
-  recordAction(G, player, 'gameOver', {
-    winner: G.winner,
-    draw: G.winner === null,
-    reason: G.gameoverReason ?? undefined,
-  }, {
-    result: { ok: true, message: G.gameoverReason ?? undefined },
-  });
+  recordAction(
+    G,
+    player,
+    'gameOver',
+    {
+      winner: G.winner,
+      draw: G.winner === null,
+      reason: G.gameoverReason ?? undefined,
+    },
+    {
+      result: { ok: true, message: G.gameoverReason ?? undefined },
+    },
+  );
 }
 
 export function emptyModifiers(): CombatModifiers {
@@ -240,10 +248,7 @@ export function sendToOwnerZone(
 }
 
 export function getPlayerPower(player: PlayerState, G?: GameState, playerIndex?: PlayerIndex): number {
-  const base = player.powerCharger.reduce(
-    (sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0),
-    0,
-  );
+  const base = player.powerCharger.reduce((sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0), 0);
   const modifier = G && playerIndex !== undefined ? (G.modifiers.sendToPower?.[playerIndex] ?? 0) : 0;
   return Math.max(0, base + modifier);
 }
@@ -264,9 +269,7 @@ export function getChronosTime(G: GameState): ChronosTime {
 }
 
 export function getPriorityPlayer(G: GameState): PlayerIndex {
-  return getChronosTime(G) === 'night'
-    ? G.chronos.nightSidePlayer
-    : ((1 - G.chronos.nightSidePlayer) as PlayerIndex);
+  return getChronosTime(G) === 'night' ? G.chronos.nightSidePlayer : ((1 - G.chronos.nightSidePlayer) as PlayerIndex);
 }
 
 function setChronosPosition(
@@ -337,13 +340,11 @@ export function setupGame(
   const legacyNames = typeof setupDataOrDeck0Name === 'string' || typeof deck1NameOrOptions === 'string';
   const setupData: ZutomayoSetupData = legacyNames
     ? {
-      deck0Name: typeof setupDataOrDeck0Name === 'string' ? setupDataOrDeck0Name : undefined,
-      deck1Name: typeof deck1NameOrOptions === 'string' ? deck1NameOrOptions : undefined,
-    }
+        deck0Name: typeof setupDataOrDeck0Name === 'string' ? setupDataOrDeck0Name : undefined,
+        deck1Name: typeof deck1NameOrOptions === 'string' ? deck1NameOrOptions : undefined,
+      }
     : setupDataOrDeck0Name || {};
-  const options: SetupGameOptions = legacyNames || typeof deck1NameOrOptions === 'string'
-    ? {}
-    : deck1NameOrOptions;
+  const options: SetupGameOptions = legacyNames || typeof deck1NameOrOptions === 'string' ? {} : deck1NameOrOptions;
   const allowBrowserCustomDeckName = options.allowBrowserCustomDeckName ?? false;
   const makePlayer = (): PlayerState => ({
     hp: 100,
@@ -392,18 +393,8 @@ export function setupGame(
     log: ['Game initialized. Janken determines the night-side player.'],
     actionLog: [],
   };
-  G.players[0].deck = shuffleDeck(setupDeck(
-    0,
-    setupData.deck0Ids,
-    setupData.deck0Name,
-    allowBrowserCustomDeckName,
-  ));
-  G.players[1].deck = shuffleDeck(setupDeck(
-    1,
-    setupData.deck1Ids,
-    setupData.deck1Name,
-    allowBrowserCustomDeckName,
-  ));
+  G.players[0].deck = shuffleDeck(setupDeck(0, setupData.deck0Ids, setupData.deck0Name, allowBrowserCustomDeckName));
+  G.players[1].deck = shuffleDeck(setupDeck(1, setupData.deck1Ids, setupData.deck1Name, allowBrowserCustomDeckName));
   drawUnchecked(G.players[0], 5);
   drawUnchecked(G.players[1], 5);
   return G;
@@ -415,7 +406,9 @@ export function resolveJanken(
   choice1: JankenChoice,
 ): { winner: PlayerIndex | null } {
   const beats: Record<JankenChoice, JankenChoice> = {
-    rock: 'scissors', paper: 'rock', scissors: 'paper',
+    rock: 'scissors',
+    paper: 'rock',
+    scissors: 'paper',
   };
   if (choice0 === choice1) {
     G.jankenChoices = [null, null];
@@ -443,9 +436,9 @@ export function chooseJanken(G: GameState, player: PlayerIndex, choice: JankenCh
 export function finishMulligan(G: GameState, player: PlayerIndex, indices: number[]): boolean {
   if (G.step !== 'mulligan' || G.mulliganUsed[player]) return false;
   const state = G.players[player];
-  const unique = [...new Set(indices)].filter(i => Number.isInteger(i) && i >= 0 && i < state.hand.length);
+  const unique = [...new Set(indices)].filter((i) => Number.isInteger(i) && i >= 0 && i < state.hand.length);
   unique.sort((a, b) => b - a);
-  const aside = unique.map(index => state.hand.splice(index, 1)[0]);
+  const aside = unique.map((index) => state.hand.splice(index, 1)[0]);
   if (state.deck.length < aside.length) return false;
   drawUnchecked(state, aside.length);
   // mulligan 伏示牌回牌庫前重設 faceUp，保持牌庫狀態衛生（官方牌庫為裡向）。
@@ -501,12 +494,7 @@ export function setInitialCard(G: GameState, player: PlayerIndex, handIndex: num
   return placed;
 }
 
-export function setTurnCard(
-  G: GameState,
-  player: PlayerIndex,
-  handIndex: number,
-  slot: SetSlot,
-): boolean {
+export function setTurnCard(G: GameState, player: PlayerIndex, handIndex: number, slot: SetSlot): boolean {
   const placed = G.step === 'turnSet' && setCard(G, player, handIndex, slot);
   if (placed) recordAction(G, player, 'setTurnCard', { slot, faceDown: true });
   return placed;
@@ -522,15 +510,11 @@ export function undoSetCard(G: GameState, player: PlayerIndex, slot: SetSlot): b
   state.hand.push(card);
   state[zone] = null;
   state.cardsSetThisTurn--;
-  G.setCardsThisTurn[player] = G.setCardsThisTurn[player].filter(c => c.instanceId !== card.instanceId);
+  G.setCardsThisTurn[player] = G.setCardsThisTurn[player].filter((c) => c.instanceId !== card.instanceId);
   return true;
 }
 
-export function confirmReady(
-  G: GameState,
-  player: PlayerIndex,
-  parsedEffects: Map<string, ParsedEffect[]>,
-): boolean {
+export function confirmReady(G: GameState, player: PlayerIndex, parsedEffects: Map<string, ParsedEffect[]>): boolean {
   if (!['initialSet', 'turnSet'].includes(G.step) || G.ready[player]) return false;
   const cardsSet = G.players[player].cardsSetThisTurn;
   if (cardsSet < getMinimumSetCount(G, player) || cardsSet > getRequiredSetCount(G, player)) return false;
@@ -543,11 +527,7 @@ export function confirmReady(
 // P3-16：線上回合超時處理。當伺服器時間已超過 TURN_TIMER_MS 且該玩家尚未 confirmReady 時，
 // 強制將該玩家設為 ready 並推進回合，避免未達最低出牌數時卡死。
 // 不像 confirmReady 會檢查最低出牌數，timeoutSkip 允許空手跳過。
-export function timeoutSkip(
-  G: GameState,
-  player: PlayerIndex,
-  parsedEffects: Map<string, ParsedEffect[]>,
-): boolean {
+export function timeoutSkip(G: GameState, player: PlayerIndex, parsedEffects: Map<string, ParsedEffect[]>): boolean {
   if (G.step !== 'turnSet' || G.ready[player]) return false;
   // 伺服器權威超時檢查：Date.now() 在 boardgame.io server/master 執行，為權威時間。
   if (typeof G.turnStartTime !== 'number' || Date.now() - G.turnStartTime < TURN_TIMER_MS) return false;
@@ -566,15 +546,18 @@ export function revealCards(G: GameState): void {
 }
 
 export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
-  const total = playerIndexes.reduce<number>((sum, player) => (
-    sum + G.setCardsThisTurn[player].reduce((playerSum, card) => {
-      const def = getCardDef(card.defId);
-      if (def?.type === 'Character' && G.modifiers.clockContributionDisabled?.[player]) {
-        return playerSum;
-      }
-      return playerSum + (G.modifiers.cardClockSetTo ?? def?.clock ?? 0);
-    }, 0)
-  ), 0);
+  const total = playerIndexes.reduce<number>(
+    (sum, player) =>
+      sum +
+      G.setCardsThisTurn[player].reduce((playerSum, card) => {
+        const def = getCardDef(card.defId);
+        if (def?.type === 'Character' && G.modifiers.clockContributionDisabled?.[player]) {
+          return playerSum;
+        }
+        return playerSum + (G.modifiers.cardClockSetTo ?? def?.clock ?? 0);
+      }, 0),
+    0,
+  );
   const before = G.chronos.position;
   setChronosPosition(
     G,
@@ -585,7 +568,7 @@ export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEf
 }
 
 function uniqueCards(cards: CardInstance[]): CardInstance[] {
-  return cards.filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
+  return cards.filter((card, index, all) => all.findIndex((other) => other.instanceId === card.instanceId) === index);
 }
 
 function applyPreChronosModifiers(G: GameState, parsedEffects: Map<string, ParsedEffect[]>): void {
@@ -601,9 +584,9 @@ function applyPreChronosModifiers(G: GameState, parsedEffects: Map<string, Parse
   // - B1 修復（クロノス跨時間事件記錄）後，chronosChanged 事件連鎖問題已解決，
   //   nullifyOpponentClock 不再需要預處理當回合新卡來避免連鎖。
   for (const player of getTurnEffectPlayerOrder(G)) {
-    for (const card of uniqueCards([
-      G.players[player].setZoneC,
-    ].filter((item): item is CardInstance => item !== null))) {
+    for (const card of uniqueCards(
+      [G.players[player].setZoneC].filter((item): item is CardInstance => item !== null),
+    )) {
       if (areEffectsDisabledForCard(G, player, card.defId)) continue;
       const definition = getCardDef(card.defId);
       if (!definition || getPlayerPower(G.players[player], G, player) < definition.powerCost) continue;
@@ -628,12 +611,12 @@ function hasOptionalSwapEffect(
   parsedEffects: Map<string, ParsedEffect[]> | null,
 ): boolean {
   if (!parsedEffects || !G.players[player].battleZone) return false;
-  return G.setCardsThisTurn[player].some(card => {
+  return G.setCardsThisTurn[player].some((card) => {
     const def = getCardDef(card.defId);
     if (!def || getPlayerPower(G.players[player], G, player) < def.powerCost) return false;
-    return (parsedEffects.get(card.defId) ?? []).some(effect => (
-      effect.action.type === 'addSettableCard' && effect.action.params.optional
-    ));
+    return (parsedEffects.get(card.defId) ?? []).some(
+      (effect) => effect.action.type === 'addSettableCard' && effect.action.params.optional,
+    );
   });
 }
 
@@ -654,10 +637,21 @@ function replaceDestination(
   const selected = cards[0];
   const old = player[destination];
   player[destination] = selected;
-  resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player: playerIndex, zone: destination, cardDefId: selected.defId });
+  resolveTimingEvent(G, parsedEffects, {
+    type: 'zoneEntered',
+    player: playerIndex,
+    zone: destination,
+    cardDefId: selected.defId,
+  });
   if (destination === 'battleZone' && old) {
     G.swappedCardsThisTurn[playerIndex].push(selected);
-    G.timingEvents.push({ type: 'characterReplaced', player: playerIndex, zone: destination, cardDefId: selected.defId, replacedCardDefId: old.defId });
+    G.timingEvents.push({
+      type: 'characterReplaced',
+      player: playerIndex,
+      zone: destination,
+      cardDefId: selected.defId,
+      replacedCardDefId: old.defId,
+    });
   }
   if (old) sendToOwnerZone(old, player, G, playerIndex, parsedEffects);
   for (const extra of cards.slice(1)) sendToOwnerZone(extra, player, G, playerIndex, parsedEffects);
@@ -679,7 +673,7 @@ export function placeRevealedCards(
     for (const effect of parsed) {
       if (effect.trigger !== 'onDamageReceived') continue;
       if (effect.action.type !== 'moveSelfAreaEnchant') continue;
-      const hpCond = effect.conditions?.find(c => c.type === 'hpLessOrEqual');
+      const hpCond = effect.conditions?.find((c) => c.type === 'hpLessOrEqual');
       if (!hpCond) continue;
       const threshold = Number(hpCond.value);
       if (!Number.isFinite(threshold)) continue;
@@ -706,12 +700,19 @@ export function placeRevealedCards(
       player.setZoneB = null;
       continue;
     }
-    const characters = slots.filter(card => getCardDef(card.defId)?.type === 'Character');
-    const areas = slots.filter(card => getCardDef(card.defId)?.type === 'Area Enchant');
+    const characters = slots.filter((card) => getCardDef(card.defId)?.type === 'Character');
+    const areas = slots.filter((card) => getCardDef(card.defId)?.type === 'Area Enchant');
     // 官方 QA Q11/Q13：只進第一張卡到 destination，多餘的卡保留在 setZoneB，
     // 由 finishTurn 在回合結束時送 ownerZone（QA 規定「ターンの終了時に」送）。
     if (characters.length > 0) {
-      replaceDestination(G, index, [characters[0]], 'battleZone', hasOptionalSwapEffect(G, index, parsedEffects), timingEffects);
+      replaceDestination(
+        G,
+        index,
+        [characters[0]],
+        'battleZone',
+        hasOptionalSwapEffect(G, index, parsedEffects),
+        timingEffects,
+      );
     }
     if (areas.length > 0) {
       // 官方 QA Q80：AE 有「HPがX以下になったらすぐにYに置く」效果時，
@@ -724,7 +725,9 @@ export function placeRevealedCards(
         if (!G.suppressedEffectCardIdsThisTurn.includes(areas[0].instanceId)) {
           G.suppressedEffectCardIdsThisTurn.push(areas[0].instanceId);
         }
-        G.log.push(`Player ${index}: ${areas[0].defId} HP<=${immediateMove.hpThreshold} at set, immediate move to ${immediateMove.destination}.`);
+        G.log.push(
+          `Player ${index}: ${areas[0].defId} HP<=${immediateMove.hpThreshold} at set, immediate move to ${immediateMove.destination}.`,
+        );
       } else {
         replaceDestination(G, index, [areas[0]], 'setZoneC', false, timingEffects);
       }
@@ -786,10 +789,15 @@ function timingTrigger(event: TimingEvent): ParsedEffect['trigger'] | null {
 }
 
 function timingCandidateCards(G: GameState, player: PlayerIndex): CardInstance[] {
-  return [G.players[player].battleZone, G.players[player].setZoneC, G.players[player].setZoneA, G.players[player].setZoneB]
+  return [
+    G.players[player].battleZone,
+    G.players[player].setZoneC,
+    G.players[player].setZoneA,
+    G.players[player].setZoneB,
+  ]
     .filter((card): card is CardInstance => card !== null)
-    .filter(card => !(G.suppressedEffectCardIdsThisTurn ?? []).includes(card.instanceId))
-    .filter((card, index, all) => all.findIndex(other => other.instanceId === card.instanceId) === index);
+    .filter((card) => !(G.suppressedEffectCardIdsThisTurn ?? []).includes(card.instanceId))
+    .filter((card, index, all) => all.findIndex((other) => other.instanceId === card.instanceId) === index);
 }
 
 export function resolveTimingEvent(
@@ -815,7 +823,7 @@ export function resolveTimingEvent(
       if (areEffectsDisabledForCard(G, pendingEffect.player, pendingEffect.cardDefId)) continue;
       const result = executeEffect(pendingEffect.effect, G, pendingEffect.player, {
         cardInstanceId: pendingEffect.cardInstanceId,
-        onTimingEvent: nestedEvent => resolveTimingEvent(G, parsedEffects, nestedEvent),
+        onTimingEvent: (nestedEvent) => resolveTimingEvent(G, parsedEffects, nestedEvent),
       });
       if (result.success) G.log.push(`Player ${pendingEffect.player}: ${result.message}.`);
       if ((G.step as GameState['step']) === 'gameOver') {
@@ -825,9 +833,12 @@ export function resolveTimingEvent(
     }
   }
 
-  const players: PlayerIndex[] = event.type === 'damageReceived'
-    ? (event.player === 0 || event.player === 1 ? [event.player] : [])
-    : getTurnEffectPlayerOrder(G);
+  const players: PlayerIndex[] =
+    event.type === 'damageReceived'
+      ? event.player === 0 || event.player === 1
+        ? [event.player]
+        : []
+      : getTurnEffectPlayerOrder(G);
 
   for (const player of players) {
     for (const card of timingCandidateCards(G, player)) {
@@ -839,13 +850,15 @@ export function resolveTimingEvent(
         // 官方 QA Q80：「HPがX以下になったらすぐにYに置く」效果（onDamageReceived
         // + hpLessOrEqual + moveSelfAreaEnchant）是條件觸發的自動移動，非效果発動，
         // 無視 power cost 檢查。其他效果仍需檢查 power cost。
-        const isImmediateHpMove = effect.trigger === 'onDamageReceived'
-          && effect.action.type === 'moveSelfAreaEnchant'
-          && effect.conditions?.some(c => c.type === 'hpLessOrEqual');
-        if (!definition || (!isImmediateHpMove && getPlayerPower(G.players[player], G, player) < definition.powerCost)) continue;
+        const isImmediateHpMove =
+          effect.trigger === 'onDamageReceived' &&
+          effect.action.type === 'moveSelfAreaEnchant' &&
+          effect.conditions?.some((c) => c.type === 'hpLessOrEqual');
+        if (!definition || (!isImmediateHpMove && getPlayerPower(G.players[player], G, player) < definition.powerCost))
+          continue;
         const result = executeEffect(effect, G, player, {
           cardInstanceId: card.instanceId,
-          onTimingEvent: nestedEvent => resolveTimingEvent(G, parsedEffects, nestedEvent),
+          onTimingEvent: (nestedEvent) => resolveTimingEvent(G, parsedEffects, nestedEvent),
         });
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
         if ((G.step as GameState['step']) === 'gameOver') {
@@ -858,7 +871,7 @@ export function resolveTimingEvent(
 }
 
 export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
-  const attacks = playerIndexes.map(index => {
+  const attacks = playerIndexes.map((index) => {
     const card = G.players[index].battleZone;
     return card ? getEffectiveAttack(card, G, index) : 0;
   }) as [number, number];
@@ -874,7 +887,7 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   const rawDamage = attacks[winner] - attacks[loser];
   const damageReceivedEvent: TimingEvent = { type: 'damageReceived', player: loser, amount: rawDamage };
   resolveTimingEvent(G, parsedEffects, damageReceivedEvent, {
-    effectFilter: effect => effect.action.type === 'damageReduce',
+    effectFilter: (effect) => effect.action.type === 'damageReduce',
   });
   if (G.step === 'gameOver') return;
   const damage = G.modifiers.unreduceableDamage[winner]
@@ -894,9 +907,14 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
     return;
   }
   if (damage > 0) {
-    resolveTimingEvent(G, parsedEffects, { ...damageReceivedEvent, amount: damage }, {
-      effectFilter: effect => effect.action.type !== 'damageReduce',
-    });
+    resolveTimingEvent(
+      G,
+      parsedEffects,
+      { ...damageReceivedEvent, amount: damage },
+      {
+        effectFilter: (effect) => effect.action.type !== 'damageReduce',
+      },
+    );
   }
 }
 
@@ -922,10 +940,7 @@ function characterElementPlayedThisTurn(G: GameState, player: PlayerIndex): Elem
 }
 
 function recordPreviousTurnCharacterElements(G: GameState): void {
-  G.previousTurnCharacterElements = [
-    characterElementPlayedThisTurn(G, 0),
-    characterElementPlayedThisTurn(G, 1),
-  ];
+  G.previousTurnCharacterElements = [characterElementPlayedThisTurn(G, 0), characterElementPlayedThisTurn(G, 1)];
 }
 
 function emptyPendingEffects(): [PendingEffect[], PendingEffect[]] {
@@ -947,9 +962,7 @@ export function endOfTurnDrawCount(G: GameState, player: PlayerIndex): number {
   // 「手札の数は…増える」語義為保證手札淨 +N，透過額外抽牌實現而非增加セット上限。
   return Math.max(
     0,
-    G.players[player].cardsSetThisTurn
-      + (G.modifiers.handSize?.[player] ?? 0)
-      + (G.handSizeModifier?.[player] ?? 0),
+    G.players[player].cardsSetThisTurn + (G.modifiers.handSize?.[player] ?? 0) + (G.handSizeModifier?.[player] ?? 0),
   );
 }
 
@@ -959,7 +972,7 @@ function suppressEffectCardForTurn(G: GameState, cardInstanceId: string): void {
     G.suppressedEffectCardIdsThisTurn.push(cardInstanceId);
   }
   for (const index of playerIndexes) {
-    G.pendingEffects[index] = G.pendingEffects[index].filter(effect => effect.cardInstanceId !== cardInstanceId);
+    G.pendingEffects[index] = G.pendingEffects[index].filter((effect) => effect.cardInstanceId !== cardInstanceId);
   }
 }
 
@@ -974,10 +987,16 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
     }
   }
   const drawCounts: [number, number] = [endOfTurnDrawCount(G, 0), endOfTurnDrawCount(G, 1)];
-  const cannotDraw = playerIndexes.filter(index => G.players[index].deck.length < drawCounts[index]);
+  const cannotDraw = playerIndexes.filter((index) => G.players[index].deck.length < drawCounts[index]);
   if (cannotDraw.length > 0) {
     const winner = cannotDraw.length === 2 ? null : ((1 - cannotDraw[0]) as PlayerIndex);
-    endGame(G, winner, cannotDraw.length === 2 ? 'Both players lose by simultaneous overdraw.' : `Player ${cannotDraw[0]} loses: not enough cards to draw.`);
+    endGame(
+      G,
+      winner,
+      cannotDraw.length === 2
+        ? 'Both players lose by simultaneous overdraw.'
+        : `Player ${cannotDraw[0]} loses: not enough cards to draw.`,
+    );
     return;
   }
   for (const index of playerIndexes) drawUnchecked(G.players[index], drawCounts[index]);
@@ -1009,11 +1028,14 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
   resolveTimingEvent(G, parsedEffects, { type: 'turnStart' });
 }
 
-function continueAfterTurnEffects(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
+function continueAfterTurnEffects(
+  G: GameState,
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
+): void {
   const initial = G.turnNumber === 1;
   if (G.step === 'gameOver') return;
   if (G.players[0].hp <= 0 || G.players[1].hp <= 0) {
-    const winner = G.players[0].hp <= 0 && G.players[1].hp <= 0 ? null : (G.players[0].hp <= 0 ? 1 : 0);
+    const winner = G.players[0].hp <= 0 && G.players[1].hp <= 0 ? null : G.players[0].hp <= 0 ? 1 : 0;
     endGame(G, winner, 'A player reached 0 HP during effect resolution.');
     return;
   }
@@ -1036,17 +1058,17 @@ function pendingEffectPriority(effect: PendingEffect): 'normal' | 'late' {
 }
 
 function pendingEffectPhase(G: GameState): 'normal' | 'late' {
-  return G.pendingEffects.some(effects => effects.some(effect => pendingEffectPriority(effect) === 'normal'))
+  return G.pendingEffects.some((effects) => effects.some((effect) => pendingEffectPriority(effect) === 'normal'))
     ? 'normal'
     : 'late';
 }
 
 function playerHasPendingEffectInPhase(G: GameState, player: PlayerIndex, phase: 'normal' | 'late'): boolean {
-  return G.pendingEffects[player].some(effect => pendingEffectPriority(effect) === phase);
+  return G.pendingEffects[player].some((effect) => pendingEffectPriority(effect) === phase);
 }
 
 function pruneDisabledPendingEffects(G: GameState, player: PlayerIndex): void {
-  G.pendingEffects[player] = G.pendingEffects[player].filter(pendingEffect => {
+  G.pendingEffects[player] = G.pendingEffects[player].filter((pendingEffect) => {
     if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) return false;
     // 官方規則指南 B：效果在「処理する時点」のパワー総数 >= パワーコスト 時才發動。
     // 執行前重新檢查パワーコスト，避免效果處理途中パワー下降後仍發動。
@@ -1082,7 +1104,10 @@ function nextPendingEffectPlayer(G: GameState): PlayerIndex | null {
   return null;
 }
 
-function advancePendingEffectWindow(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): boolean {
+function advancePendingEffectWindow(
+  G: GameState,
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
+): boolean {
   const nextPlayer = nextPendingEffectPlayer(G);
   if (nextPlayer !== null) {
     G.pendingEffectPlayer = nextPlayer;
@@ -1105,7 +1130,9 @@ export function resolvePendingEffect(
   if (!Number.isInteger(index) || index < 0 || index >= G.pendingEffects[player].length) return false;
   const pendingEffect = G.pendingEffects[player][index];
   if (!pendingEffect || pendingEffect.player !== player) return false;
-  if (G.pendingEffects[player].slice(0, index).some(effect => effect.cardInstanceId === pendingEffect.cardInstanceId)) {
+  if (
+    G.pendingEffects[player].slice(0, index).some((effect) => effect.cardInstanceId === pendingEffect.cardInstanceId)
+  ) {
     return false;
   }
   if (pendingEffectPhase(G) === 'normal' && pendingEffectPriority(pendingEffect) === 'late') return false;
@@ -1120,25 +1147,31 @@ export function resolvePendingEffect(
   const beforeChronos = G.chronos.position;
   const result = executeEffect(pendingEffect.effect, G, player, {
     cardInstanceId: pendingEffect.cardInstanceId,
-    onTimingEvent: event => resolveTimingEvent(G, parsedEffects, event),
+    onTimingEvent: (event) => resolveTimingEvent(G, parsedEffects, event),
   });
   if (G.chronos.position !== beforeChronos) {
     const afterChronos = G.chronos.position;
     G.chronos.position = beforeChronos;
     setChronosPosition(G, afterChronos, parsedEffects);
   }
-  recordAction(G, player, 'resolvePendingEffect', {
-    effectId: pendingEffect.id,
-    cardDefId: pendingEffect.cardDefId,
-    source: pendingEffect.source,
-    ...effectActionSummary(pendingEffect.effect),
-  }, {
-    result: { ok: result.success, message: result.message },
-    context: {
-      pendingEffectCardDefId: pendingEffect.cardDefId,
-      pendingChoiceType: G.pendingChoice?.type,
+  recordAction(
+    G,
+    player,
+    'resolvePendingEffect',
+    {
+      effectId: pendingEffect.id,
+      cardDefId: pendingEffect.cardDefId,
+      source: pendingEffect.source,
+      ...effectActionSummary(pendingEffect.effect),
     },
-  });
+    {
+      result: { ok: result.success, message: result.message },
+      context: {
+        pendingEffectCardDefId: pendingEffect.cardDefId,
+        pendingChoiceType: G.pendingChoice?.type,
+      },
+    },
+  );
   if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
   if ((G.step as GameState['step']) === 'gameOver') {
     recordGameOverTrace(G);
@@ -1184,7 +1217,7 @@ const handToDeckBottomThenDrawHandler: ChoiceHandler = {
   apply({ G, player, choice, optionIds, playerState }) {
     const c = choice as Extract<PendingChoice, { type: 'handToDeckBottomThenDraw' }>;
     for (const optionId of optionIds) {
-      const handIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
+      const handIndex = playerState.hand.findIndex((card) => card.instanceId === optionId);
       if (handIndex < 0) return { status: 'invalid' };
       const [card] = playerState.hand.splice(handIndex, 1);
       card.faceUp = true;
@@ -1217,28 +1250,26 @@ const optionalHandMoveThenDrawHandler: ChoiceHandler = {
   apply({ G, player, choice, optionIds, playerState, parsedEffects }) {
     const c = choice as Extract<PendingChoice, { type: 'optionalHandMoveThenDraw' }>;
     if (
-      c.payload.sourcePlayer !== player
-      || c.payload.sourceZone !== 'hand'
-      || c.payload.destinationPlayer !== player
-      || !['abyss', 'powerCharger', 'deck'].includes(c.payload.destinationZone)
-      || (c.payload.destinationZone === 'deck' && c.payload.destinationPosition !== 'bottom')
-      || (c.payload.destinationZone !== 'deck' && c.payload.destinationPosition !== undefined)
+      c.payload.sourcePlayer !== player ||
+      c.payload.sourceZone !== 'hand' ||
+      c.payload.destinationPlayer !== player ||
+      !['abyss', 'powerCharger', 'deck'].includes(c.payload.destinationZone) ||
+      (c.payload.destinationZone === 'deck' && c.payload.destinationPosition !== 'bottom') ||
+      (c.payload.destinationZone !== 'deck' && c.payload.destinationPosition !== undefined)
     ) {
       return { status: 'invalid' };
     }
-    const drawCount = c.payload.drawCount === 'selected'
-      ? optionIds.length
-      : Number(c.payload.drawCount ?? 0);
+    const drawCount = c.payload.drawCount === 'selected' ? optionIds.length : Number(c.payload.drawCount ?? 0);
     if (!Number.isInteger(drawCount) || drawCount < 0) return { status: 'invalid' };
 
     if (optionIds.length > 0) {
       for (const optionId of optionIds) {
-        const card = playerState.hand.find(item => item.instanceId === optionId);
+        const card = playerState.hand.find((item) => item.instanceId === optionId);
         if (!card || !matchesPendingCardFilter(card, c.payload.filter)) return { status: 'invalid' };
       }
 
       for (const optionId of optionIds) {
-        const handIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
+        const handIndex = playerState.hand.findIndex((card) => card.instanceId === optionId);
         if (handIndex < 0) return { status: 'invalid' };
         const [card] = playerState.hand.splice(handIndex, 1);
         card.faceUp = true;
@@ -1247,7 +1278,12 @@ const optionalHandMoveThenDrawHandler: ChoiceHandler = {
           resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player, zone: 'abyss', cardDefId: card.defId });
         } else if (c.payload.destinationZone === 'powerCharger') {
           playerState.powerCharger.push(card);
-          resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player, zone: 'powerCharger', cardDefId: card.defId });
+          resolveTimingEvent(G, parsedEffects, {
+            type: 'zoneEntered',
+            player,
+            zone: 'powerCharger',
+            cardDefId: card.defId,
+          });
         } else {
           playerState.deck.push(card);
         }
@@ -1279,12 +1315,15 @@ const cardMoveHandler: ChoiceHandler = {
   apply({ G, choice, optionIds, parsedEffects }) {
     const c = choice as Extract<PendingChoice, { type: 'cardMove' }>;
     const source = sourceCards(G, c.payload);
-    if (!optionIds.every(optionId => {
-      const card = source.find(item => item.instanceId === optionId);
-      return !!card && matchesCardMoveFilter(card, c.payload);
-    })) return { status: 'invalid' };
+    if (
+      !optionIds.every((optionId) => {
+        const card = source.find((item) => item.instanceId === optionId);
+        return !!card && matchesCardMoveFilter(card, c.payload);
+      })
+    )
+      return { status: 'invalid' };
     for (const optionId of optionIds) {
-      const movedCard = source.find(item => item.instanceId === optionId);
+      const movedCard = source.find((item) => item.instanceId === optionId);
       if (!moveCardForChoice(G, c.payload, optionId)) return { status: 'invalid' };
       if (movedCard && c.payload.destinationZone === 'abyss') {
         resolveTimingEvent(G, parsedEffects, {
@@ -1314,26 +1353,30 @@ const useFromAbyssHandler: ChoiceHandler = {
     const source = c.payload.sourceZone === 'powerCharger' ? playerState.powerCharger : playerState.abyss;
     const copied: PendingEffect[] = [];
     for (const optionId of optionIds) {
-      const selected = source.find(card => card.instanceId === optionId);
+      const selected = source.find((card) => card.instanceId === optionId);
       if (!selected) return { status: 'invalid' };
       const def = getCardDef(selected.defId);
       if (!def) return { status: 'invalid' };
       if (c.payload.cardType !== undefined && def.type !== c.payload.cardType) return { status: 'invalid' };
       if (c.payload.song !== undefined && def.song !== c.payload.song) return { status: 'invalid' };
-      if (c.payload.sourceZone !== 'powerCharger' && c.payload.cardType === undefined && def.type !== 'Enchant') return { status: 'invalid' };
+      if (c.payload.sourceZone !== 'powerCharger' && c.payload.cardType === undefined && def.type !== 'Enchant')
+        return { status: 'invalid' };
       selected.faceUp = true;
-      const copiedEffects = (parsedEffects.get(selected.defId) ?? [])
-        .filter(effect => effect.trigger === 'onUse' || effect.trigger === 'onBattle');
+      const copiedEffects = (parsedEffects.get(selected.defId) ?? []).filter(
+        (effect) => effect.trigger === 'onUse' || effect.trigger === 'onBattle',
+      );
       if (copiedEffects.length === 0) continue;
-      copied.push(...copiedEffects.map((effect, index) => ({
-        id: `${selected.instanceId}:copied:${G.turnNumber}:${G.log.length}:${index}`,
-        player,
-        cardInstanceId: selected.instanceId,
-        cardDefId: selected.defId,
-        rawText: effect.rawText,
-        effect,
-        source: 'played' as const,
-      })));
+      copied.push(
+        ...copiedEffects.map((effect, index) => ({
+          id: `${selected.instanceId}:copied:${G.turnNumber}:${G.log.length}:${index}`,
+          player,
+          cardInstanceId: selected.instanceId,
+          cardDefId: selected.defId,
+          rawText: effect.rawText,
+          effect,
+          source: 'played' as const,
+        })),
+      );
     }
     G.pendingEffects[player].unshift(...copied);
     return { status: 'ok' };
@@ -1355,29 +1398,37 @@ const useFromHandHandler: ChoiceHandler = {
     if (c.payload.sourcePlayer !== player) return { status: 'invalid' };
     const copied: PendingEffect[] = [];
     for (const optionId of optionIds) {
-      const selectedIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
+      const selectedIndex = playerState.hand.findIndex((card) => card.instanceId === optionId);
       if (selectedIndex < 0) return { status: 'invalid' };
       const selected = playerState.hand[selectedIndex];
       const def = getCardDef(selected.defId);
-      if (!def || getPlayerPower(playerState, G, player) < def.powerCost || !matchesPendingCardFilter(selected, c.payload.filter)) return { status: 'invalid' };
+      if (
+        !def ||
+        getPlayerPower(playerState, G, player) < def.powerCost ||
+        !matchesPendingCardFilter(selected, c.payload.filter)
+      )
+        return { status: 'invalid' };
     }
 
     for (const optionId of optionIds) {
-      const selectedIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
+      const selectedIndex = playerState.hand.findIndex((card) => card.instanceId === optionId);
       if (selectedIndex < 0) return { status: 'invalid' };
       const [selected] = playerState.hand.splice(selectedIndex, 1);
       selected.faceUp = true;
-      const copiedEffects = (parsedEffects.get(selected.defId) ?? [])
-        .filter(effect => effect.trigger === 'onUse' || effect.trigger === 'onBattle');
-      copied.push(...copiedEffects.map((effect, index) => ({
-        id: `${selected.instanceId}:hand:${G.turnNumber}:${G.log.length}:${index}`,
-        player,
-        cardInstanceId: selected.instanceId,
-        cardDefId: selected.defId,
-        rawText: effect.rawText,
-        effect,
-        source: 'played' as const,
-      })));
+      const copiedEffects = (parsedEffects.get(selected.defId) ?? []).filter(
+        (effect) => effect.trigger === 'onUse' || effect.trigger === 'onBattle',
+      );
+      copied.push(
+        ...copiedEffects.map((effect, index) => ({
+          id: `${selected.instanceId}:hand:${G.turnNumber}:${G.log.length}:${index}`,
+          player,
+          cardInstanceId: selected.instanceId,
+          cardDefId: selected.defId,
+          rawText: effect.rawText,
+          effect,
+          source: 'played' as const,
+        })),
+      );
       sendToOwnerZone(selected, playerState, G, player, parsedEffects);
     }
 
@@ -1416,7 +1467,7 @@ const revealHandAttackBoostHandler: ChoiceHandler = {
     const c = choice as Extract<PendingChoice, { type: 'revealHandAttackBoost' }>;
     if (c.payload.sourcePlayer !== player) return { status: 'invalid' };
     for (const optionId of optionIds) {
-      const card = playerState.hand.find(item => item.instanceId === optionId);
+      const card = playerState.hand.find((item) => item.instanceId === optionId);
       if (!card || !matchesPendingCardFilter(card, c.payload.filter)) return { status: 'invalid' };
     }
     const revealed = new Set(G.revealedHandCardIds[player] ?? []);
@@ -1458,13 +1509,13 @@ const handAbyssSwapHandler: ChoiceHandler = {
     return { effectLabel: 'handAbyssSwap' };
   },
   apply({ optionIds, playerState }) {
-    const handOption = optionIds.find(id => id.startsWith('hand:'));
-    const abyssOption = optionIds.find(id => id.startsWith('abyss:'));
+    const handOption = optionIds.find((id) => id.startsWith('hand:'));
+    const abyssOption = optionIds.find((id) => id.startsWith('abyss:'));
     if (!handOption || !abyssOption) return { status: 'invalid' };
     const handId = handOption.slice('hand:'.length);
     const abyssId = abyssOption.slice('abyss:'.length);
-    const handIndex = playerState.hand.findIndex(card => card.instanceId === handId);
-    const abyssIndex = playerState.abyss.findIndex(card => card.instanceId === abyssId);
+    const handIndex = playerState.hand.findIndex((card) => card.instanceId === handId);
+    const abyssIndex = playerState.abyss.findIndex((card) => card.instanceId === abyssId);
     if (handIndex < 0 || abyssIndex < 0) return { status: 'invalid' };
     const [handCard] = playerState.hand.splice(handIndex, 1);
     const [abyssCard] = playerState.abyss.splice(abyssIndex, 1);
@@ -1490,7 +1541,7 @@ const opponentPowerCharacterSwapHandler: ChoiceHandler = {
     const opponent = G.players[c.payload.opponentPlayer];
     const battleZoneCard = opponent.battleZone;
     if (!isCharacterCard(battleZoneCard)) return { status: 'invalid' };
-    const selectedIndex = opponent.powerCharger.findIndex(card => card.instanceId === optionIds[0]);
+    const selectedIndex = opponent.powerCharger.findIndex((card) => card.instanceId === optionIds[0]);
     if (selectedIndex < 0) return { status: 'invalid' };
     const selected = opponent.powerCharger[selectedIndex];
     if (!isCharacterCard(selected)) return { status: 'invalid' };
@@ -1520,31 +1571,24 @@ const abyssToDeckBottomOrLoseHandler: ChoiceHandler = {
   },
   apply({ G, player, choice, optionIds, playerState }) {
     const c = choice as Extract<PendingChoice, { type: 'abyssToDeckBottomOrLose' }>;
-    const abyssIds = new Set(playerState.abyss.map(card => card.instanceId));
-    if (!optionIds.every(optionId => abyssIds.has(optionId))) return { status: 'invalid' };
+    const abyssIds = new Set(playerState.abyss.map((card) => card.instanceId));
+    if (!optionIds.every((optionId) => abyssIds.has(optionId))) return { status: 'invalid' };
 
     const selectedCards: CardInstance[] = [];
     for (const optionId of optionIds) {
-      const abyssIndex = playerState.abyss.findIndex(card => card.instanceId === optionId);
+      const abyssIndex = playerState.abyss.findIndex((card) => card.instanceId === optionId);
       if (abyssIndex < 0) return { status: 'invalid' };
       const [card] = playerState.abyss.splice(abyssIndex, 1);
       card.faceUp = !c.payload.faceDown;
       selectedCards.push(card);
     }
 
-    const ordered = c.payload.shuffle && selectedCards.length > 1
-      ? shuffleSelectedCards(selectedCards)
-      : selectedCards;
+    const ordered = c.payload.shuffle && selectedCards.length > 1 ? shuffleSelectedCards(selectedCards) : selectedCards;
     playerState.deck.push(...ordered);
     G.lastChoiceSelectionCount[player] = optionIds.length;
 
     if (c.payload.followUpChoiceType === 'reorderOpponentDeckTop') {
-      const result = buildReorderOpponentDeckTopChoice(
-        G,
-        player,
-        Number(c.payload.followUpCount ?? 0),
-        choice.prompt,
-      );
+      const result = buildReorderOpponentDeckTopChoice(G, player, Number(c.payload.followUpCount ?? 0), choice.prompt);
       if (!result.success) return { status: 'invalid' };
       return { status: 'ok', nextChoice: result.choice ?? null };
     }
@@ -1568,9 +1612,9 @@ const reorderOpponentDeckTopHandler: ChoiceHandler = {
     if (!Number.isInteger(count) || count < 1 || optionIds.length !== count) return { status: 'invalid' };
     const topCards = target.deck.slice(0, count);
     if (topCards.length !== count) return { status: 'invalid' };
-    const topCardIds = new Set(topCards.map(card => card.instanceId));
-    if (!optionIds.every(optionId => topCardIds.has(optionId))) return { status: 'invalid' };
-    const ordered = optionIds.map(optionId => topCards.find(card => card.instanceId === optionId)!);
+    const topCardIds = new Set(topCards.map((card) => card.instanceId));
+    if (!optionIds.every((optionId) => topCardIds.has(optionId))) return { status: 'invalid' };
+    const ordered = optionIds.map((optionId) => topCards.find((card) => card.instanceId === optionId)!);
     target.deck.splice(0, count, ...ordered);
     return { status: 'ok' };
   },
@@ -1581,7 +1625,7 @@ const clockPositionHandler: ChoiceHandler = {
     return { effectLabel: 'clockPosition' };
   },
   apply({ G, choice, optionIds, parsedEffects }) {
-    const option = choice.options.find(item => item.id === optionIds[0]);
+    const option = choice.options.find((item) => item.id === optionIds[0]);
     if (!option || !Number.isInteger(Number(option.value))) return { status: 'invalid' };
     const value = Number(option.value);
     setChronosPosition(G, value, parsedEffects, `Chronos set to ${value}.`);
@@ -1594,7 +1638,7 @@ const clockAdvanceHandler: ChoiceHandler = {
     return { effectLabel: 'clockAdvance' };
   },
   apply({ G, choice, optionIds, parsedEffects }) {
-    const option = choice.options.find(item => item.id === optionIds[0]);
+    const option = choice.options.find((item) => item.id === optionIds[0]);
     if (!option || !Number.isInteger(Number(option.value))) return { status: 'invalid' };
     const value = Number(option.value);
     const before = G.chronos.position;
@@ -1636,8 +1680,8 @@ export function submitPendingChoice(
   if (!choice || choice.player !== player) return false;
   if (!Array.isArray(optionIds) || optionIds.length < choice.min || optionIds.length > choice.max) return false;
   if (new Set(optionIds).size !== optionIds.length) return false;
-  const legal = new Set(choice.options.map(option => option.id));
-  if (!optionIds.every(id => legal.has(id))) return false;
+  const legal = new Set(choice.options.map((option) => option.id));
+  if (!optionIds.every((id) => legal.has(id))) return false;
 
   const playerState = G.players[player];
   const handler = choiceHandlers[choice.type];

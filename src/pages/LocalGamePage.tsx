@@ -39,10 +39,14 @@ export function LocalGamePage({ deck0Name, deck1Name }: LocalGamePageProps) {
   return (
     <div className="app game-app">
       <header className="game-header">
-        <button className="back-btn" type="button" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
+        <button className="back-btn" type="button" onClick={() => navigate('/')}>
+          {t('common.backToLobby')}
+        </button>
         <div>
           <strong>{t('game.localMode')}</strong>
-          <span>{t('player.zero')} / {t('player.one')}</span>
+          <span>
+            {t('player.zero')} / {t('player.one')}
+          </span>
         </div>
       </header>
       <div className="game-container local-duel">

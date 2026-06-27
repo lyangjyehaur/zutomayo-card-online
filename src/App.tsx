@@ -171,9 +171,9 @@ function RouterShell() {
   const [deck0Name, setDeck0Name] = useState(DEFAULT_DECK_NAME);
   const [deck1Name, setDeck1Name] = useState(DEFAULT_DECK_NAME);
   const [onlineSession, setOnlineSession] = useState<OnlineSession | null>(loadOnlineSession);
-  const [resumePromptSession, setResumePromptSession] = useState<OnlineSession | null>(() => (
-    location.pathname.startsWith('/play/online/') ? null : loadOnlineSession()
-  ));
+  const [resumePromptSession, setResumePromptSession] = useState<OnlineSession | null>(() =>
+    location.pathname.startsWith('/play/online/') ? null : loadOnlineSession(),
+  );
   const [resumePromptStatus, setResumePromptStatus] = useState<'idle' | 'reconnecting' | 'error'>('idle');
   const [resumeErrorReason, setResumeErrorReason] = useState<OnlineSessionValidationReason | null>(null);
 
@@ -186,8 +186,8 @@ function RouterShell() {
     if (!isLoggedIn()) {
       setServerDecks([]);
       setServerDeckError('');
-      setDeck0Name(current => current.startsWith('server:') ? DEFAULT_DECK_NAME : current);
-      setDeck1Name(current => current.startsWith('server:') ? DEFAULT_DECK_NAME : current);
+      setDeck0Name((current) => (current.startsWith('server:') ? DEFAULT_DECK_NAME : current));
+      setDeck1Name((current) => (current.startsWith('server:') ? DEFAULT_DECK_NAME : current));
       return;
     }
     try {
@@ -221,7 +221,7 @@ function RouterShell() {
       ...onlineDeckName(0, deck0Name, serverDecks),
       ...onlineDeckName(1, deck1Name, serverDecks),
     };
-    const matchID = existingID || await createMatch(setupData);
+    const matchID = existingID || (await createMatch(setupData));
     const playerID: '0' | '1' = existingID ? '1' : '0';
     const { playerCredentials } = await joinMatch(matchID, playerID);
     const session = { matchID, playerID, playerCredentials };
@@ -278,7 +278,7 @@ function RouterShell() {
         <Routes>
           <Route
             path="/"
-            element={(
+            element={
               <LobbyPage
                 deck0Name={deck0Name}
                 deck1Name={deck1Name}
@@ -292,36 +292,36 @@ function RouterShell() {
                 onShowTutorial={() => setTutorial(true)}
                 serverDeckError={serverDeckError}
               />
-            )}
+            }
           />
           <Route path="/play/local" element={<LocalGamePage deck0Name={deck0} deck1Name={deck1} />} />
           <Route path="/play/ai" element={<AIGamePage deck0Name={deck0} deck1Name={deck1} />} />
           <Route
             path="/play/online/:matchID"
-            element={(
+            element={
               <OnlineGamePage
                 session={onlineSession}
                 onClearSession={clearOnlineSession}
                 onJoinSharedRoom={joinSharedOnlineRoom}
                 onCreateNewRoom={() => startOnline()}
               />
-            )}
+            }
           />
           <Route
             path="/deck-builder"
-            element={(
+            element={
               <DeckEditorPage
                 serverDecks={serverDecks}
                 onServerDecksLoaded={setServerDecks}
-                onDeckSaved={deck => {
+                onDeckSaved={(deck) => {
                   setCustomDeckAvailable(hasCustomDeck());
                   if (deck) {
                     setServerDeckError('');
-                    setServerDecks(current => [deck, ...current]);
+                    setServerDecks((current) => [deck, ...current]);
                   }
                 }}
               />
-            )}
+            }
           />
           <Route path="/history" element={<MatchHistoryPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />

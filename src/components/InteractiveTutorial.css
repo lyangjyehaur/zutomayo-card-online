@@ -11,9 +11,7 @@
 .tutorial-backdrop {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at 50% 20%, rgba(245, 211, 104, 0.18), transparent 28%),
-    rgba(2, 4, 12, 0.88);
+  background: radial-gradient(circle at 50% 20%, rgba(245, 211, 104, 0.18), transparent 28%), rgba(2, 4, 12, 0.88);
   backdrop-filter: blur(0.45rem);
 }
 
@@ -68,14 +66,38 @@
   }
 }
 
-.tutorial-target-zones .tutorial-spotlight-ring { border-color: rgba(120, 110, 200, 0.7); box-shadow: 0 0 0 0.8rem rgba(120, 110, 200, 0.1); }
-.tutorial-target-chronos .tutorial-spotlight-ring { border-color: rgba(244, 211, 94, 0.7); box-shadow: 0 0 0 0.8rem rgba(244, 211, 94, 0.1); }
-.tutorial-target-resources .tutorial-spotlight-ring { border-color: rgba(46, 196, 182, 0.7); box-shadow: 0 0 0 0.8rem rgba(46, 196, 182, 0.1); }
-.tutorial-target-catchup .tutorial-spotlight-ring { border-color: rgba(230, 57, 70, 0.7); box-shadow: 0 0 0 0.8rem rgba(230, 57, 70, 0.1); }
-.tutorial-target-janken .tutorial-spotlight-ring { border-color: rgba(245, 211, 104, 0.7); box-shadow: 0 0 0 0.8rem rgba(245, 211, 104, 0.1); }
-.tutorial-target-mulligan .tutorial-spotlight-ring { border-color: rgba(120, 110, 200, 0.7); box-shadow: 0 0 0 0.8rem rgba(120, 110, 200, 0.1); }
-.tutorial-target-effectOrder .tutorial-spotlight-ring { border-color: rgba(244, 211, 94, 0.7); box-shadow: 0 0 0 0.8rem rgba(244, 211, 94, 0.1); }
-.tutorial-target-pendingChoice .tutorial-spotlight-ring { border-color: rgba(46, 196, 182, 0.7); box-shadow: 0 0 0 0.8rem rgba(46, 196, 182, 0.1); }
+.tutorial-target-zones .tutorial-spotlight-ring {
+  border-color: rgba(120, 110, 200, 0.7);
+  box-shadow: 0 0 0 0.8rem rgba(120, 110, 200, 0.1);
+}
+.tutorial-target-chronos .tutorial-spotlight-ring {
+  border-color: rgba(244, 211, 94, 0.7);
+  box-shadow: 0 0 0 0.8rem rgba(244, 211, 94, 0.1);
+}
+.tutorial-target-resources .tutorial-spotlight-ring {
+  border-color: rgba(46, 196, 182, 0.7);
+  box-shadow: 0 0 0 0.8rem rgba(46, 196, 182, 0.1);
+}
+.tutorial-target-catchup .tutorial-spotlight-ring {
+  border-color: rgba(230, 57, 70, 0.7);
+  box-shadow: 0 0 0 0.8rem rgba(230, 57, 70, 0.1);
+}
+.tutorial-target-janken .tutorial-spotlight-ring {
+  border-color: rgba(245, 211, 104, 0.7);
+  box-shadow: 0 0 0 0.8rem rgba(245, 211, 104, 0.1);
+}
+.tutorial-target-mulligan .tutorial-spotlight-ring {
+  border-color: rgba(120, 110, 200, 0.7);
+  box-shadow: 0 0 0 0.8rem rgba(120, 110, 200, 0.1);
+}
+.tutorial-target-effectOrder .tutorial-spotlight-ring {
+  border-color: rgba(244, 211, 94, 0.7);
+  box-shadow: 0 0 0 0.8rem rgba(244, 211, 94, 0.1);
+}
+.tutorial-target-pendingChoice .tutorial-spotlight-ring {
+  border-color: rgba(46, 196, 182, 0.7);
+  box-shadow: 0 0 0 0.8rem rgba(46, 196, 182, 0.1);
+}
 
 @media (max-width: 767px) {
   .tutorial-spotlight {
@@ -97,25 +119,31 @@
   border: 1px solid rgba(245, 211, 104, 0.34);
   border-radius: 0.5rem;
   padding: clamp(1rem, 3vw, 1.5rem);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 38%),
-    rgba(14, 20, 46, 0.96);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 38%), rgba(14, 20, 46, 0.96);
   box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.44);
   overflow: hidden;
 }
 
 .tutorial-card::before {
-  content: "";
+  content: '';
   position: absolute;
   inset: 0;
   border-top: 0.25rem solid var(--gold);
   pointer-events: none;
 }
 
-.tutorial-card.accent-night::before { border-color: var(--night); }
-.tutorial-card.accent-day::before { border-color: var(--day); }
-.tutorial-card.accent-energy::before { border-color: var(--teal); }
-.tutorial-card.accent-danger::before { border-color: var(--danger); }
+.tutorial-card.accent-night::before {
+  border-color: var(--night);
+}
+.tutorial-card.accent-day::before {
+  border-color: var(--day);
+}
+.tutorial-card.accent-energy::before {
+  border-color: var(--teal);
+}
+.tutorial-card.accent-danger::before {
+  border-color: var(--danger);
+}
 
 .tutorial-progress {
   display: flex;
@@ -201,7 +229,11 @@
   color: var(--text);
   cursor: pointer;
   font-weight: 800;
-  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
 }
 
 .tutorial-btn.next,

@@ -3,12 +3,15 @@ import { getAllCardDefs } from '../src/game/cards/loader';
 import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
 
 const cards = getAllCardDefs();
-const runtime = parseAllEffects(cards.map(card => ({ id: card.id, effect: card.effect || '' })));
+const runtime = parseAllEffects(cards.map((card) => ({ id: card.id, effect: card.effect || '' })));
 
 const rows = cards
-  .filter(card => card.effect?.trim())
-  .map(card => {
-    const lines = card.effect.split('\n').map(line => line.trim()).filter(Boolean);
+  .filter((card) => card.effect?.trim())
+  .map((card) => {
+    const lines = card.effect
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
     return {
       id: card.id,
       name: card.name,

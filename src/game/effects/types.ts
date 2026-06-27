@@ -14,12 +14,12 @@ export interface ParsedEffect {
 }
 
 export type EffectTrigger =
-  | 'onBattle'      // Battle phase
-  | 'onUse'         // When card is played
-  | 'onEnter'       // When entering battle zone
-  | 'onLeave'       // When leaving field
-  | 'onTurnStart'   // Start of turn
-  | 'onTurnEnd'     // End of turn
+  | 'onBattle' // Battle phase
+  | 'onUse' // When card is played
+  | 'onEnter' // When entering battle zone
+  | 'onLeave' // When leaving field
+  | 'onTurnStart' // Start of turn
+  | 'onTurnEnd' // End of turn
   | 'onDamageReceived' // When taking damage
   | 'onChronosChanged' // When Chronos crosses a timing boundary
   | 'onZoneEntered'; // When a card enters a public zone
@@ -43,45 +43,45 @@ export type Condition =
     };
 
 export type ConditionType =
-  | 'chronos'           // Night or day
-  | 'chronosPosition'   // Specific Chronos position such as midnight
-  | 'opponentElement'   // Opponent character's element
-  | 'selfElement'       // Own character's element
-  | 'powerAtLeast'      // Player power >= N
-  | 'abyssCount'        // Abyss has N+ cards
-  | 'abyssElements'     // Abyss has N distinct elements
-  | 'specificElements'  // Zone has exactly the named element set
+  | 'chronos' // Night or day
+  | 'chronosPosition' // Specific Chronos position such as midnight
+  | 'opponentElement' // Opponent character's element
+  | 'selfElement' // Own character's element
+  | 'powerAtLeast' // Player power >= N
+  | 'abyssCount' // Abyss has N+ cards
+  | 'abyssElements' // Abyss has N distinct elements
+  | 'specificElements' // Zone has exactly the named element set
   | 'abyssElementCount' // Abyss has N cards of an element
   | 'abyssAllSameElement' // All cards in Abyss share an element
   | 'powerChargerElementCount' // Power Charger has N cards of an element
   | 'powerChargerAllSameElement' // All cards in Power Charger share an element
-  | 'zoneHasElement'    // A zone has at least one card of an element
+  | 'zoneHasElement' // A zone has at least one card of an element
   | 'zoneEnteredCardType' // A card of this type entered a zone this turn
-  | 'handCount'         // Hand has N cards
-  | 'hpLessOrEqual'     // Player HP <= N
-  | 'hpComparison'      // Player HP comparison
+  | 'handCount' // Hand has N cards
+  | 'hpLessOrEqual' // Player HP <= N
+  | 'hpComparison' // Player HP comparison
   | 'hpLessThanOpponent' // Player HP < opponent HP
   | 'opponentPowerCost' // Opponent Character power-cost comparison
-  | 'selfPowerCost'     // Own Character power-cost comparison
-  | 'opponentAttack'    // Opponent Character effective attack comparison
+  | 'selfPowerCost' // Own Character power-cost comparison
+  | 'opponentAttack' // Opponent Character effective attack comparison
   | 'opponentSendToPower' // Opponent Character SEND TO POWER comparison
-  | 'handElements'      // Hand has N distinct elements
-  | 'damageAtLeast'     // Current damage event amount >= N
-  | 'zoneEntered'       // A card entered a zone this turn
-  | 'zoneCountAtLeast'  // A zone has at least N cards
+  | 'handElements' // Hand has N distinct elements
+  | 'damageAtLeast' // Current damage event amount >= N
+  | 'zoneEntered' // A card entered a zone this turn
+  | 'zoneCountAtLeast' // A zone has at least N cards
   | 'zoneCountComparison' // A zone card-count comparison
-  | 'chronosChanged'    // Chronos changed this turn
+  | 'chronosChanged' // Chronos changed this turn
   | 'chronosTimeChanged' // Chronos changed between night/day this turn
   | 'namedCardCondition' // Named-song Character in a relevant zone
   | 'namedCardInBattleZone' // Named-song Character in Battle Zone
-  | 'noCardInAbyss'     // Abyss is empty
+  | 'noCardInAbyss' // Abyss is empty
   | 'simultaneousCharacter' // Character was played with this effect
   | 'previousCharElement' // Previous turn's character element
-  | 'hasAreaEnchant'    // Set zone C has specific card
-  | 'battleLost'        // This player lost the current battle
+  | 'hasAreaEnchant' // Set zone C has specific card
+  | 'battleLost' // This player lost the current battle
   | 'drawOccurredThisEffect' // This card's effect drew cards earlier this turn
-  | 'and'               // Compound AND
-  | 'or';               // Compound OR
+  | 'and' // Compound AND
+  | 'or'; // Compound OR
 
 export interface EffectAction {
   type: ActionType;
@@ -89,41 +89,41 @@ export interface EffectAction {
 }
 
 export type ActionType =
-  | 'boostAttack'       // Attack +N
+  | 'boostAttack' // Attack +N
   | 'boostBothAttackByOwnHp' // Both players gain attack equal to own HP
-  | 'boostPower'        // Power Charger value +N
-  | 'reduceAttack'      // Attack -N
+  | 'boostPower' // Power Charger value +N
+  | 'reduceAttack' // Attack -N
   | 'setOpponentAttack' // Set opposing attack to N
   | 'setOpponentElement' // Temporarily set opposing Character element
-  | 'directDamage'      // Deal N damage to player
-  | 'heal'              // Restore N HP
-  | 'healOpponent'      // Restore N HP to opponent
-  | 'healBoth'          // Restore N HP to both players
-  | 'damageReduce'      // Reduce incoming damage by N
-  | 'drawCards'         // Draw N cards
-  | 'swapAttack'        // Swap night/day attack values
+  | 'directDamage' // Deal N damage to player
+  | 'heal' // Restore N HP
+  | 'healOpponent' // Restore N HP to opponent
+  | 'healBoth' // Restore N HP to both players
+  | 'damageReduce' // Reduce incoming damage by N
+  | 'drawCards' // Draw N cards
+  | 'swapAttack' // Swap night/day attack values
   | 'forceOwnAttackTime' // Force own attack to day/night value
-  | 'clockReset'        // Reset chronos to start-of-turn
+  | 'clockReset' // Reset chronos to start-of-turn
   | 'nullifyOpponentClock' // Disable opponent Character clock contribution
   | 'clockRewindOpponentCharacter' // Rewind Chronos by opponent Character clocks played this turn
-  | 'clockSet'          // Set chronos to specific position
+  | 'clockSet' // Set chronos to specific position
   | 'expandMidnightRange' // Treat positions around midnight as midnight
   | 'clockSetFromTurnStartMinusOpponentClock' // Set Chronos to turn start minus opponent character clock
-  | 'setAllCardClocks'  // Set all card clock values to N
-  | 'clockAdvance'      // Advance chronos by N
-  | 'recoverFromAbyss'  // Pick card from abyss
-  | 'sendToAbyss'       // Send card to abyss
-  | 'millDeckToAbyss'   // Move cards from deck top to abyss
+  | 'setAllCardClocks' // Set all card clock values to N
+  | 'clockAdvance' // Advance chronos by N
+  | 'recoverFromAbyss' // Pick card from abyss
+  | 'sendToAbyss' // Send card to abyss
+  | 'millDeckToAbyss' // Move cards from deck top to abyss
   | 'moveOwnDeckTopByPower' // Move own deck top to power/abyss by SEND TO POWER
   | 'moveOpponentDeckTopByPowerCost' // Move opponent deck top by revealed power cost
   | 'revealOpponentDeckTopBySendToPower' // Branch on opponent deck top SEND TO POWER
   | 'revealOpponentHand' // Reveal opponent's current hand
   | 'returnAreaEnchantToDeck' // Return Area Enchant to deck
   | 'moveSelfAreaEnchant' // Move own Area Enchant to a zone
-  | 'useFromAbyss'      // Choose an Enchant in Abyss and use its parsed effect
-  | 'handSizeModifier'  // Track battle/game duration hand-size increases
-  | 'setPowerCost'      // Reduce own Character power cost
-  | 'requestChoice'      // Ask the owner to submit a validated choice
+  | 'useFromAbyss' // Choose an Enchant in Abyss and use its parsed effect
+  | 'handSizeModifier' // Track battle/game duration hand-size increases
+  | 'setPowerCost' // Reduce own Character power cost
+  | 'requestChoice' // Ask the owner to submit a validated choice
   | 'suppressEffectActivation' // Narrow no-op marker for a card-specific suppression clause
-  | 'noEffect'          // Disable opponent effects
-  | 'addSettableCard';  // Can set extra card
+  | 'noEffect' // Disable opponent effects
+  | 'addSettableCard'; // Can set extra card

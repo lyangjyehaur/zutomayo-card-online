@@ -3,7 +3,12 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
 import { t, useLocale } from '../i18n';
-import { clearStoredOnlineSession, leaveOnlineSession, validateOnlineSession, type OnlineSession } from '../onlineSession';
+import {
+  clearStoredOnlineSession,
+  leaveOnlineSession,
+  validateOnlineSession,
+  type OnlineSession,
+} from '../onlineSession';
 import {
   isOnlineFailureStatus,
   onlineErrorStatus,
@@ -27,7 +32,9 @@ interface OnlineGamePageProps {
   onCreateNewRoom: () => Promise<OnlineSession>;
 }
 
-async function fetchRoom(matchID: string): Promise<
+async function fetchRoom(
+  matchID: string,
+): Promise<
   | { ok: true; opponentJoined: boolean }
   | { ok: false; reason: Exclude<OnlineRoomStatus, 'reconnecting' | 'retrying' | 'waiting' | 'ready'> }
 > {
@@ -35,8 +42,8 @@ async function fetchRoom(matchID: string): Promise<
     const response = await fetch(`/games/zutomayo-card/${encodeURIComponent(matchID)}`);
     if (response.status === 404) return { ok: false, reason: 'roomNotFound' };
     if (!response.ok) return { ok: false, reason: 'connectionFailed' };
-    const data = await response.json() as MatchResponse;
-    const opponentJoined = Boolean(data.players?.some(player => player.id === 1 && player.name));
+    const data = (await response.json()) as MatchResponse;
+    const opponentJoined = Boolean(data.players?.some((player) => player.id === 1 && player.name));
     return { ok: true, opponentJoined };
   } catch {
     return { ok: false, reason: 'connectionFailed' };
@@ -60,12 +67,7 @@ function LeaveConfirmDialog({
 }) {
   return (
     <div className="leave-confirm-backdrop" role="presentation">
-      <section
-        className="leave-confirm-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="leave-confirm-title"
-      >
+      <section className="leave-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="leave-confirm-title">
         <span>{t('game.onlineMode')}</span>
         <h2 id="leave-confirm-title">{t('online.leaveTitle')}</h2>
         <p>{t('online.leaveBody')}</p>
@@ -82,12 +84,7 @@ function LeaveConfirmDialog({
   );
 }
 
-export function OnlineGamePage({
-  session,
-  onClearSession,
-  onJoinSharedRoom,
-  onCreateNewRoom,
-}: OnlineGamePageProps) {
+export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCreateNewRoom }: OnlineGamePageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const locale = useLocale();
@@ -120,7 +117,7 @@ export function OnlineGamePage({
       .then(() => {
         if (!cancelled) setReconnectStatus('ready');
       })
-      .catch(error => {
+      .catch((error) => {
         if (!cancelled) setReconnectStatus(onlineErrorStatus(error));
       });
 
@@ -216,7 +213,7 @@ export function OnlineGamePage({
 
   const retryStatusCheck = useCallback(() => {
     setActionError('');
-    setRetryNonce(value => value + 1);
+    setRetryNonce((value) => value + 1);
   }, []);
 
   const returnToLobby = useCallback(() => {
@@ -258,21 +255,33 @@ export function OnlineGamePage({
     if (!leaving) setLeavePromptOpen(false);
   }, [leaving]);
 
-  const backActionForStatus = useCallback((status: OnlineRoomStatus) => {
-    if (activeSession && (status === 'waiting' || status === 'reconnecting' || status === 'retrying' || status === 'connectionFailed')) {
-      requestLeave();
-      return;
-    }
-    returnToLobby();
-  }, [activeSession, requestLeave, returnToLobby]);
+  const backActionForStatus = useCallback(
+    (status: OnlineRoomStatus) => {
+      if (
+        activeSession &&
+        (status === 'waiting' || status === 'reconnecting' || status === 'retrying' || status === 'connectionFailed')
+      ) {
+        requestLeave();
+        return;
+      }
+      returnToLobby();
+    },
+    [activeSession, requestLeave, returnToLobby],
+  );
 
   const renderStatusPanel = (status: OnlineRoomStatus, panelSession: OnlineSession | null) => {
     const copy = onlineStatusPanelCopy(status);
-    const showRoomInfo = panelSession && (status === 'waiting' || status === 'reconnecting' || status === 'retrying' || status === 'ready');
+    const showRoomInfo =
+      panelSession &&
+      (status === 'waiting' || status === 'reconnecting' || status === 'retrying' || status === 'ready');
     const isFailure = isOnlineFailureStatus(status);
     const canLeave = panelSession && !isFailure;
     const canRetry = copy.canRetry || status === 'retrying';
-    const primaryLabel = isFailure ? t('common.backToLobby') : canLeave ? t('online.leaveRoom') : t('common.backToLobby');
+    const primaryLabel = isFailure
+      ? t('common.backToLobby')
+      : canLeave
+        ? t('online.leaveRoom')
+        : t('common.backToLobby');
 
     return (
       <main className="online-session-missing app-screen">
@@ -280,9 +289,7 @@ export function OnlineGamePage({
           <span>{t('game.onlineMode')}</span>
           <h1>{t(copy.titleKey)}</h1>
           <p>{t(copy.bodyKey)}</p>
-          {showRoomInfo && (
-            <OnlineRoomInfo matchID={panelSession.matchID} helperText={roomInfoHelper(status)} />
-          )}
+          {showRoomInfo && <OnlineRoomInfo matchID={panelSession.matchID} helperText={roomInfoHelper(status)} />}
           <div className="online-panel-actions">
             <button
               className={canLeave ? 'danger-action' : 'primary-action'}
@@ -297,7 +304,12 @@ export function OnlineGamePage({
               </button>
             )}
             {copy.canCreateNewRoom && (
-              <button className="secondary-action" type="button" disabled={creatingRoom} onClick={() => void createNewRoom()}>
+              <button
+                className="secondary-action"
+                type="button"
+                disabled={creatingRoom}
+                onClick={() => void createNewRoom()}
+              >
                 {creatingRoom ? t('online.creatingRoom') : t('online.createNewRoom')}
               </button>
             )}
@@ -341,7 +353,12 @@ export function OnlineGamePage({
         onOpponentDetected={handleOpponentDetected}
       />
       {reconnectStatus === 'waiting' && (
-        <div className="online-waiting-overlay" role="dialog" aria-modal="true" aria-label={t('online.waitingForOpponent')}>
+        <div
+          className="online-waiting-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('online.waitingForOpponent')}
+        >
           {renderStatusPanel('waiting', activeSession)}
         </div>
       )}

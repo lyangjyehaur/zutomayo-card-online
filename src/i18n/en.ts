@@ -246,9 +246,11 @@ export const en: Record<TranslationKey, string> = {
   'onlineSession.resumeCheckingBody': 'Checking the room and seat.',
   'onlineSession.disconnectedRetrying': 'Disconnected, retrying...',
   'onlineSession.roomGoneTitle': 'Room no longer exists',
-  'onlineSession.roomGoneBody': 'This room ended or the server was reset. Return to the lobby to create or join a room.',
+  'onlineSession.roomGoneBody':
+    'This room ended or the server was reset. Return to the lobby to create or join a room.',
   'onlineSession.seatTakenTitle': 'Seat cannot be resumed',
-  'onlineSession.seatTakenBody': 'The saved player seat is occupied or the credentials do not match. Rejoin from the lobby.',
+  'onlineSession.seatTakenBody':
+    'The saved player seat is occupied or the credentials do not match. Rejoin from the lobby.',
   'onlineSession.resumeErrorTitle': 'Could not resume room',
   'onlineSession.resumeErrorBody': 'The saved room could not be verified yet. Try again shortly.',
   'onlineSession.rejoined': 'Rejoined successfully',
@@ -308,7 +310,8 @@ export const en: Record<TranslationKey, string> = {
   'admin.i18nMissingBadge': '(missing)',
   'admin.i18nSaved': 'Saved',
   'admin.i18nNewValue': 'New value',
-  'admin.i18nSaveNotice': 'Note: This change only applies to the current session and will be lost on reload. To persist, manually edit ',
+  'admin.i18nSaveNotice':
+    'Note: This change only applies to the current session and will be lost on reload. To persist, manually edit ',
   'leaderboard.title': 'Leaderboard',
   'leaderboard.loading': 'Loading leaderboard...',
   'leaderboard.empty': 'No ranked matches yet',
@@ -376,21 +379,30 @@ export const en: Record<TranslationKey, string> = {
   'tutorial.finishTitle': 'Tutorial Complete',
   'tutorial.finishBody': 'You understand the basics. Try an Easy AI match to practice.',
   'tutorial.stepWelcomeTitle': 'Welcome to the Arena',
-  'tutorial.stepWelcomeBody': 'Each turn, choose cards from your hand to set. Both players reveal simultaneously and battle resolves.',
+  'tutorial.stepWelcomeBody':
+    'Each turn, choose cards from your hand to set. Both players reveal simultaneously and battle resolves.',
   'tutorial.stepZonesTitle': 'Field Zones',
-  'tutorial.stepZonesBody': 'Battle Zone holds your active character. Set Zones hold cards for this turn. Area Enchant persists across turns.',
+  'tutorial.stepZonesBody':
+    'Battle Zone holds your active character. Set Zones hold cards for this turn. Area Enchant persists across turns.',
   'tutorial.stepChronosTitle': 'Chronos Clock',
-  'tutorial.stepChronosBody': 'Card clocks advance Chronos. Whether it is Night or Day changes character attack values.',
+  'tutorial.stepChronosBody':
+    'Card clocks advance Chronos. Whether it is Night or Day changes character attack values.',
   'tutorial.stepResourcesTitle': 'Power and Abyss',
-  'tutorial.stepResourcesBody': 'Some cards enter the Power Charger when leaving the field. Cards without power go to the Abyss.',
+  'tutorial.stepResourcesBody':
+    'Some cards enter the Power Charger when leaving the field. Cards without power go to the Abyss.',
   'tutorial.stepCatchupTitle': 'Catch-Up Mechanic',
-  'tutorial.stepCatchupBody': 'The loser of the last battle can set 2 cards next turn, while the winner sets 1. This keeps the game competitive.',
+  'tutorial.stepCatchupBody':
+    'The loser of the last battle can set 2 cards next turn, while the winner sets 1. This keeps the game competitive.',
   'tutorial.stepJankenTitle': 'Rock-Paper-Scissors for Night Side',
-  'tutorial.stepJankenBody': 'A rock-paper-scissors game decides who becomes the Night-side player, who gets the initiative in the first turn.',
+  'tutorial.stepJankenBody':
+    'A rock-paper-scissors game decides who becomes the Night-side player, who gets the initiative in the first turn.',
   'tutorial.stepMulliganTitle': 'Mulligan',
-  'tutorial.stepMulliganBody': 'At the start, you may redraw any of your hand cards once to shape your opening hand before battle.',
+  'tutorial.stepMulliganBody':
+    'At the start, you may redraw any of your hand cards once to shape your opening hand before battle.',
   'tutorial.stepEffectOrderTitle': 'Effect Order',
-  'tutorial.stepEffectOrderBody': 'When multiple effect cards trigger in the same turn, you can choose the resolution order. Smart ordering can swing the battle.',
+  'tutorial.stepEffectOrderBody':
+    'When multiple effect cards trigger in the same turn, you can choose the resolution order. Smart ordering can swing the battle.',
   'tutorial.stepPendingChoiceTitle': 'Pending Card Choice',
-  'tutorial.stepPendingChoiceBody': 'Some effects require choosing cards from hand, abyss, or deck. Submit your selection to resolve the effect.',
+  'tutorial.stepPendingChoiceBody':
+    'Some effects require choosing cards from hand, abyss, or deck. Submit your selection to resolve the effect.',
 };

@@ -1,5 +1,12 @@
 import { createPortal } from 'react-dom';
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import type { CardDef, CardInstance, CardType, ChronosTime, Element } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { t, useLocale, type TranslationKey } from '../i18n';
@@ -15,19 +22,19 @@ function getTranslatedEffect(cardId: string, locale: string): string | null {
 }
 
 const ELEMENT_CLASS: Record<Element, string> = {
-  '闇': 'dark',
-  '炎': 'flame',
-  '電気': 'electric',
-  '風': 'wind',
-  'カオス': 'chaos',
+  闇: 'dark',
+  炎: 'flame',
+  電気: 'electric',
+  風: 'wind',
+  カオス: 'chaos',
 };
 
 const ELEMENT_LABEL_KEY: Record<Element, TranslationKey> = {
-  '闇': 'card.element.dark',
-  '炎': 'card.element.flame',
-  '電気': 'card.element.electric',
-  '風': 'card.element.wind',
-  'カオス': 'card.element.chaos',
+  闇: 'card.element.dark',
+  炎: 'card.element.flame',
+  電気: 'card.element.electric',
+  風: 'card.element.wind',
+  カオス: 'card.element.chaos',
 };
 
 const TYPE_LABEL_KEY: Record<CardType, TranslationKey> = {
@@ -58,13 +65,17 @@ type PopoverPosition = {
   placement: PopoverPlacement;
 };
 
-function cardClassName(def: CardDef | undefined, size: CardSize, options: {
-  selected?: boolean;
-  clickable?: boolean;
-  faceDown?: boolean;
-  activeTime?: ChronosTime;
-  className?: string;
-}): string {
+function cardClassName(
+  def: CardDef | undefined,
+  size: CardSize,
+  options: {
+    selected?: boolean;
+    clickable?: boolean;
+    faceDown?: boolean;
+    activeTime?: ChronosTime;
+    className?: string;
+  },
+): string {
   return [
     'card',
     'game-card',
@@ -75,7 +86,9 @@ function cardClassName(def: CardDef | undefined, size: CardSize, options: {
     options.faceDown ? 'card-back' : '',
     options.activeTime ? `card-active-${options.activeTime}` : '',
     options.className ?? '',
-  ].filter(Boolean).join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function elementLabel(element: Element): string {
@@ -105,17 +118,31 @@ function CardPopover({
   return createPortal(
     <aside className={`card-popover popover-${position.placement}`} style={style} aria-hidden="true">
       <strong>{def.name}</strong>
-      <span className="popover-meta">{elementLabel(def.element)} • {typeLabel(def.type)}</span>
+      <span className="popover-meta">
+        {elementLabel(def.element)} • {typeLabel(def.type)}
+      </span>
       <div className="popover-rule" />
       {def.attack && (
         <>
-          <span className={activeTime === 'night' ? 'active-stat' : ''}>{t('card.night')}: {def.attack.night}</span>
-          <span className={activeTime === 'day' ? 'active-stat' : ''}>{t('card.day')}: {def.attack.day}</span>
+          <span className={activeTime === 'night' ? 'active-stat' : ''}>
+            {t('card.night')}: {def.attack.night}
+          </span>
+          <span className={activeTime === 'day' ? 'active-stat' : ''}>
+            {t('card.day')}: {def.attack.day}
+          </span>
         </>
       )}
-      <span>{t('card.energy')}: {def.powerCost}</span>
-      <span>{t('card.clock')}: {def.clock}</span>
-      {def.sendToPower > 0 && <span>{t('card.charge')}: {def.sendToPower}</span>}
+      <span>
+        {t('card.energy')}: {def.powerCost}
+      </span>
+      <span>
+        {t('card.clock')}: {def.clock}
+      </span>
+      {def.sendToPower > 0 && (
+        <span>
+          {t('card.charge')}: {def.sendToPower}
+        </span>
+      )}
       {def.effect && (
         <>
           <div className="popover-rule" />
@@ -173,18 +200,12 @@ export function Card({
     }
 
     if (placement === 'right' || placement === 'left') {
-      top = Math.min(
-        Math.max(centerY, margin + popoverHeight / 2),
-        window.innerHeight - margin - popoverHeight / 2,
-      );
+      top = Math.min(Math.max(centerY, margin + popoverHeight / 2), window.innerHeight - margin - popoverHeight / 2);
     }
 
     if (placement === 'left' && left - popoverWidth < margin) {
       placement = 'bottom';
-      left = Math.min(
-        Math.max(centerX, margin + popoverWidth / 2),
-        window.innerWidth - margin - popoverWidth / 2,
-      );
+      left = Math.min(Math.max(centerX, margin + popoverWidth / 2), window.innerWidth - margin - popoverWidth / 2);
       top = rect.bottom + gap;
       if (top + popoverHeight > window.innerHeight - margin) {
         placement = 'top';
@@ -202,12 +223,12 @@ export function Card({
   const updateCardPopoverPosition = () => {
     const next = calculatePopoverPosition();
     if (!next) return;
-    setPopoverPosition(current => {
+    setPopoverPosition((current) => {
       if (
-        current
-        && Math.abs(current.top - next.top) < 0.5
-        && Math.abs(current.left - next.left) < 0.5
-        && current.placement === next.placement
+        current &&
+        Math.abs(current.top - next.top) < 0.5 &&
+        Math.abs(current.left - next.left) < 0.5 &&
+        current.placement === next.placement
       ) {
         return current;
       }
@@ -246,7 +267,7 @@ export function Card({
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (showPopover && event.pointerType === 'touch') {
-      setTappedOpen(prev => !prev);
+      setTappedOpen((prev) => !prev);
     }
   };
 
@@ -254,7 +275,7 @@ export function Card({
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     if (showPopover) {
-      setTappedOpen(prev => !prev);
+      setTappedOpen((prev) => !prev);
     }
     onClick?.();
   };
@@ -264,12 +285,16 @@ export function Card({
       <div
         className={cardClassName(undefined, resolvedSize, { clickable: !!onClick, faceDown: true, className })}
         onClick={onClick}
-        onKeyDown={onClick ? event => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            onClick();
-          }
-        } : undefined}
+        onKeyDown={
+          onClick
+            ? (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onClick();
+                }
+              }
+            : undefined
+        }
         role={onClick ? 'button' : undefined}
         tabIndex={onClick ? 0 : undefined}
         aria-label={t('card.back')}
@@ -302,7 +327,7 @@ export function Card({
       className={cardClassName(def, resolvedSize, { selected, clickable: !!onClick, activeTime, className })}
       onClick={onClick}
       onPointerDown={showPopover ? handlePointerDown : undefined}
-      onKeyDown={(onClick || showPopover) ? handleKeyDown : undefined}
+      onKeyDown={onClick || showPopover ? handleKeyDown : undefined}
       role={onClick ? 'button' : undefined}
       tabIndex={focusable ? 0 : undefined}
       aria-label={def.name}
@@ -333,7 +358,9 @@ export function Card({
         </div>
       </div>
 
-      {popoverVisible && popoverPosition && <CardPopover def={def} activeTime={activeTime} position={popoverPosition} />}
+      {popoverVisible && popoverPosition && (
+        <CardPopover def={def} activeTime={activeTime} position={popoverPosition} />
+      )}
     </div>
   );
 }
