@@ -2465,5 +2465,293 @@
     "en_effect": "Attack +100 if the opponent's HP is 100.",
     "song_title": "Neko Reset",
     "needs_review": false
+  },
+  {
+    "id": "4th_1",
+    "en_name": "NIRA-CHAN (TAIDADA)",
+    "en_effect": "Reveal any number of \"TAIDADA\" characters from your hand. Attack +30 for each.",
+    "song_title": "TAIDADA",
+    "needs_review": false,
+    "vision_status": "ok"
+  },
+  {
+    "id": "4th_2",
+    "en_name": "The last dance at the ball (SHADE)",
+    "en_effect": "Select up to 2 characters from the Power Charger (SHADE) and use this card's effect",
+    "song_title": "The last dance at the ball (SHADE)",
+    "needs_review": false,
+    "vision_status": "ok"
+  },
+  {
+    "id": "4th_3",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "vision_status": "vision_unavailable",
+    "error": "429 rate limit"
+  },
+  {
+    "id": "4th_4",
+    "en_name": "MEGAGURI-KUN (Kira Killer)",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEINNONI.",
+    "song_title": "Kira Killer",
+    "needs_review": true,
+    "vision_status": "ok",
+    "review_reason": "en_effect looks garbled/unclear"
+  },
+  {
+    "id": "4th_5",
+    "en_name": "NIRA-CHAN (Mabushii DNA Dake)",
+    "en_effect": "Attack +20 for each wind card in the Abyss.",
+    "song_title": "Mabushii DNA Dake",
+    "needs_review": false,
+    "vision_status": "ok"
+  },
+  {
+    "id": "4th_6",
+    "en_name": "NIRA-CHAN (Hippocampal Pain)",
+    "en_effect": "Search 4 cards from the Abyss, shuffle them face down and place them at the bottom of your deck. If you do not, lose the game. Then, return a card from your discard pile to your hand and swap it with a character in the Battle Zone. The effects of the character brought into the Battle Zone by this effect are not triggered.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false,
+    "vision_status": "ok"
+  },
+  {
+    "id": "4th_7",
+    "en_name": "Yearn for",
+    "en_effect": "Reveal any number of (TAIDADA) characters from your hand, Attack +20 for each.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false,
+    "vision_status": "ok"
+  },
+  {
+    "id": "4th_8",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "vision_status": "vision_unavailable",
+    "error": "429 rate limit"
+  },
+  {
+    "id": "4th_9",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "vision_status": "vision_unavailable",
+    "error": "429 rate limit"
+  },
+  {
+    "id": "4th_10",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "vision_status": "vision_unavailable",
+    "error": "429 rate limit"
+  },
+  {
+    "id": "4th_11",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "vision_status": "vision_unavailable",
+    "error": "429 rate limit"
+  },
+  {
+    "id": "4th_12",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "vision_status": "vision_unavailable",
+    "error": "429 rate limit"
+  },
+  {
+    "id": "4th_13",
+    "en_name": "NIRA-CHANs gathered at the Kissa",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEIINONI.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "notes": "Effect text appears to be boilerplate/battle intro only; actual game mechanic effect not clearly captured. Card 013/104 SR."
+  },
+  {
+    "id": "4th_14",
+    "en_name": "UNIGREAM-WORLD",
+    "en_effect": "If all cards in your Power Charger are darkness attribute, Attacks +60",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false,
+    "notes": "Card 014/104 SR. Power 120/80, Cost 4."
+  },
+  {
+    "id": "4th_15",
+    "en_name": "NIRA-CHAN (Konnakoto Soudou)",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEIINONI.",
+    "song_title": "Konnakoto Soudou",
+    "needs_review": true,
+    "notes": "Effect text appears boilerplate/battle intro only; actual game mechanic not clearly visible. Card 015/104 SR."
+  },
+  {
+    "id": "4th_16",
+    "en_name": "NIRA-CHAN · SASHIMI (Truth in Lies)",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEIINONI.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "notes": "Effect text appears boilerplate only. 'Truth in Lies' may be part of subtitle. Card 016/104 SR."
+  },
+  {
+    "id": "4th_17",
+    "en_name": "NIRA-CHAN (KUZURI)",
+    "en_effect": "Attack +50 if all cards in your Power Charger are flame attribute.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false,
+    "notes": "Card 017/104 SR. Power 110/70, Cost 4."
+  },
+  {
+    "id": "4th_18",
+    "en_name": "UNIGURI-ENSEITAI",
+    "en_effect": "The Battle Begins. ZUTOMAYONAKAGOEINONI.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "notes": "Effect text appears boilerplate/battle intro; 'ZUTOMAYONAKAGOEINONI' spelling (OEI vs DEII) needs verification. Card 018/104 SR."
+  },
+  {
+    "id": "4th_19",
+    "en_name": "NIRA-CHAN (Hunch, Gray)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "notes": "OCR recovered from rate-limit. Full game effect text may be incomplete; 'SEND TO POWER' is the only English effect line confidently captured. Also visible: 'The Battle Begins', 'ZUTOMAYONAKADEINONI.' Card 019/104 SR. Illustrator: NORA."
+  },
+  {
+    "id": "4th_20",
+    "en_name": "NIRA-CHAN (Hippocampal Pain)",
+    "en_effect": "Attack +20 for each electric card in the Abyss.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false,
+    "notes": "Card 020/104 SR. Illustrator: ugo."
+  },
+  {
+    "id": "4th_21",
+    "en_name": "NIRA-CHAN [Job:Convenience store Clerk] (Neko Reset)",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEJINONI",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "notes": "Effect text appears boilerplate only; actual game mechanic not captured. Name includes job subtitle. Card 021/104 SR."
+  },
+  {
+    "id": "4th_22",
+    "en_name": "NIRA-CHAN (QUILT)",
+    "en_effect": "The Battle Begins",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "notes": "Only 'The Battle Begins' visible as English effect; actual game mechanic text not extracted. Card 022/104 SR. Illustrator: nsbNibitasy."
+  },
+  {
+    "id": "4th_23",
+    "en_name": "NIRA-CHAN(STUDY ME)",
+    "en_effect": "Attack +100 if you swap out with a [STUDY ME] character this turn.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false,
+    "notes": "Card 023/104 SR."
+  },
+  {
+    "id": "4th_24",
+    "en_name": "NIRA-CHAN (STUDY ME)",
+    "en_effect": "Attack + 110 if you swapped with a (STUDY ME) character this turn. Damage dealt by this character cannot be reduced.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false,
+    "notes": "Card 024/104 SR. Night 30 / Day 30."
+  },
+  {
+    "id": "4th_25",
+    "en_name": "NIRA-CHAN (Summer Slack)",
+    "en_effect": "The Battle Begins",
+    "song_title": "ZUTOMAYONAKADEINON",
+    "needs_review": true,
+    "review_reason": "Effect text may be incomplete - only 'The Battle Begins' captured; possible set name rather than effect"
+  },
+  {
+    "id": "4th_26",
+    "en_name": "UNIGRIMAZE",
+    "en_effect": "The Battle Begins",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "review_reason": "Effect text 'The Battle Begins' may be set name rather than card effect; possibly no effect or unreadable"
+  },
+  {
+    "id": "4th_27",
+    "en_name": "TORI-NIRA-CHAN (One's Mind)",
+    "en_effect": "Select 1 or more cards from the Abyss. Shuffle them face down and place them at the bottom of your deck. Otherwise, you lose the game. Then, place the same number of cards from the top of your opponent's deck into the Abyss.",
+    "song_title": "One's Mind",
+    "needs_review": false
+  },
+  {
+    "id": "4th_28",
+    "en_name": "RANI-CHAN [Status : Awakening] (Pain Give Form)",
+    "en_effect": "Select 6 cards from the Abyss. Shuffle them face down and place them at the bottom of your deck. Otherwise, you lose the game. Set Chronos to your preferred time.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_29",
+    "en_name": "Longing for Home",
+    "en_effect": "Attack +100 if there are no cards in your opponent's Abyss.",
+    "song_title": "Longing for Home",
+    "needs_review": false
+  },
+  {
+    "id": "4th_30",
+    "en_name": "Fantasy Is Reality",
+    "en_effect": "Attack, if there are no cards in your opponent's Abyss, When a card is placed in the opponent's Abyss, immediately place this card in the Abyss.",
+    "song_title": "I'm CREAMY!!?",
+    "needs_review": true,
+    "review_reason": "en_name 'Fantasy Is Reality' is also a set tagline - may be misidentified; song_title 'I'm CREAMY!!?' may be the actual card name"
+  },
+  {
+    "id": "4th_31",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Attack Power +100 if there are 4 or more attributes in the Power Charger",
+    "song_title": "Together into the future",
+    "needs_review": true,
+    "review_reason": "en_name 'ZUTOMAYO' is likely the brand logo misread as card name; actual card name not captured"
+  },
+  {
+    "id": "4th_32",
+    "en_name": "Patchwork notes",
+    "en_effect": "Reveal your hand. Attack +50 if it contains 4 or more attributes. If there is an Area Enchantment on your opponent's side, immediately place it into the Abyss.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_33",
+    "en_name": "The beginning from the end",
+    "en_effect": "Attack +20 if all cards in your Abyss are wind attribute. When a card is placed into your Power Charger, immediately place this card into your Abyss.",
+    "song_title": "The beginning from the end",
+    "needs_review": false
+  },
+  {
+    "id": "4th_34",
+    "en_name": "Stardust UNIGURI-KUN",
+    "en_effect": "Attack +30 if the opponent's character's attack is 0.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_35",
+    "en_name": "NIRA-CHAN (TAIDADA)",
+    "en_effect": "Reveal any number of (TAIDADA) characters from your hand, Attack +10 for each.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_36",
+    "en_name": "NIRA-CHAN (CREAM)",
+    "en_effect": "POWER COST ★ NIGHT 60 | DAY 40 Character 036/104",
+    "song_title": "ZUTTOMAYONAKADEIINONI.",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be stats dump, not actual game effect text; actual effect may not have been captured"
   }
 ]
