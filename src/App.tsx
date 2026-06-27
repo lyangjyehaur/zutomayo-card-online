@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { getDecks, isLoggedIn, type DeckResponse } from './api/client';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
+import { loadConfigFromAPI, refreshCards } from './game/cards/loader';
 import { hasCustomDeck } from './game/cards/deckBuilder';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
@@ -202,6 +203,11 @@ function RouterShell() {
   useEffect(() => {
     void refreshServerDecks();
   }, [refreshServerDecks]);
+
+  useEffect(() => {
+    void refreshCards();
+    void loadConfigFromAPI();
+  }, []);
 
   const startAI = (difficulty: AIDifficulty) => {
     navigate('/play/ai', { state: { difficulty, autoStart: true } });

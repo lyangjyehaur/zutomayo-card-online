@@ -1,6 +1,12 @@
-import type { ActionLogEntry } from '../game/types';
+import type { ActionLogEntry, CardDef } from '../game/types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
+const PUBLIC_DATA_CACHE_MS = 5 * 60 * 1000;
+
+let cardsCache: { expiresAt: number; data: CardDef[] } | null = null;
+let configCache: { expiresAt: number; data: Record<string, unknown> } | null = null;
+let presetDecksCache: { expiresAt: number; data: Array<{ id: string; name: string; cardIds: string[] }> } | null = null;
 
 export interface DeckResponse {
   id: string;
@@ -66,6 +72,40 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
   }
   if (!res.ok) throw new ApiError((data.error as string) || 'Request failed', res.status);
   return data as T;
+}
+
+function adminAuthHeaders(): Record<string, string> {
+  const token =
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(ADMIN_TOKEN_KEY)) ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem(ADMIN_TOKEN_KEY)) ||
+    '';
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function isFresh<T>(cache: { expiresAt: number; data: T } | null): cache is { expiresAt: number; data: T } {
+  return Boolean(cache && cache.expiresAt > Date.now());
+}
+
+// ===== Public Data =====
+export async function fetchCards(): Promise<CardDef[]> {
+  if (isFresh(cardsCache)) return cardsCache.data;
+  const data = await request<CardDef[]>('/cards');
+  cardsCache = { data, expiresAt: Date.now() + PUBLIC_DATA_CACHE_MS };
+  return data;
+}
+
+export async function fetchGameConfig(): Promise<Record<string, unknown>> {
+  if (isFresh(configCache)) return configCache.data;
+  const data = await request<Record<string, unknown>>('/config');
+  configCache = { data, expiresAt: Date.now() + PUBLIC_DATA_CACHE_MS };
+  return data;
+}
+
+export async function fetchPresetDecks(): Promise<Array<{ id: string; name: string; cardIds: string[] }>> {
+  if (isFresh(presetDecksCache)) return presetDecksCache.data;
+  const data = await request<Array<{ id: string; name: string; cardIds: string[] }>>('/preset-decks');
+  presetDecksCache = { data, expiresAt: Date.now() + PUBLIC_DATA_CACHE_MS };
+  return data;
 }
 
 // ===== Auth =====
@@ -203,6 +243,24 @@ export async function adminResetElo(token: string, userId: string, elo: number):
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify({ elo }),
   });
+}
+
+export async function adminUpdateCard(id: string, card: Partial<CardDef>): Promise<void> {
+  await request<CardDef>(`/admin/cards/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: adminAuthHeaders(),
+    body: JSON.stringify(card),
+  });
+  cardsCache = null;
+}
+
+export async function adminUpdateConfig(key: string, value: unknown): Promise<void> {
+  await request<{ key: string; value: unknown }>(`/admin/config/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: adminAuthHeaders(),
+    body: JSON.stringify({ value }),
+  });
+  configCache = null;
 }
 
 // ===== Matchmaking =====

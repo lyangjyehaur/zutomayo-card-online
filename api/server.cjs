@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
+const staticCards = require('../cards.json');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 
@@ -44,6 +45,8 @@ const redis = new Redis(REDIS_URL, {
 // 連線層錯誤（如 Redis 暫時斷線）不應變成 unhandled error event；
 // query 層錯誤仍會 reject promise 由各 handler 的 safe() 接住。
 redis.on('error', () => {});
+
+const staticCardMap = new Map(staticCards.map((card) => [card.id, card]));
 
 async function initSchema() {
   // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
@@ -89,6 +92,56 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_matches_winner ON matches(winner_id);
     CREATE INDEX IF NOT EXISTS idx_matches_loser ON matches(loser_id);
     CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS cards (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      pack TEXT NOT NULL,
+      song TEXT DEFAULT '',
+      illustrator TEXT DEFAULT '',
+      rarity TEXT DEFAULT '',
+      element TEXT NOT NULL,
+      type TEXT NOT NULL,
+      clock INTEGER DEFAULT 0,
+      attack_night INTEGER,
+      attack_day INTEGER,
+      power_cost INTEGER DEFAULT 0,
+      send_to_power INTEGER DEFAULT 0,
+      effect TEXT DEFAULT '',
+      image TEXT DEFAULT '',
+      errata TEXT DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS card_effects_i18n (
+      card_id TEXT NOT NULL,
+      lang TEXT NOT NULL,
+      effect_text TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (card_id, lang)
+    );
+
+    CREATE TABLE IF NOT EXISTS game_config (
+      key TEXT PRIMARY KEY,
+      value JSONB NOT NULL,
+      description TEXT DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS preset_decks (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      card_ids JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id BIGSERIAL PRIMARY KEY,
+      action TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT,
+      details JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 }
 
@@ -218,6 +271,114 @@ function finiteNumber(value, fallback = 0) {
 
 function optionalString(value) {
   return typeof value === 'string' ? value.slice(0, 120) : undefined;
+}
+
+function cardRowToDef(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    pack: row.pack,
+    song: row.song || '',
+    illustrator: row.illustrator || '',
+    rarity: row.rarity || '',
+    element: row.element,
+    type: row.type,
+    clock: row.clock ?? 0,
+    attack:
+      row.attack_night === null ||
+      row.attack_night === undefined ||
+      row.attack_day === null ||
+      row.attack_day === undefined
+        ? null
+        : { night: row.attack_night, day: row.attack_day },
+    powerCost: row.power_cost ?? 0,
+    sendToPower: row.send_to_power ?? 0,
+    effect: row.effect || '',
+    image: row.image || '',
+    errata: row.errata || '',
+  };
+}
+
+function cardDefToDbParams(card) {
+  const attack =
+    card.attack && typeof card.attack === 'object'
+      ? {
+          night: Number.isFinite(Number(card.attack.night)) ? Math.trunc(Number(card.attack.night)) : null,
+          day: Number.isFinite(Number(card.attack.day)) ? Math.trunc(Number(card.attack.day)) : null,
+        }
+      : null;
+
+  return [
+    card.id,
+    card.name,
+    card.pack,
+    card.song || '',
+    card.illustrator || '',
+    card.rarity || '',
+    card.element,
+    card.type,
+    Math.trunc(Number(card.clock) || 0),
+    attack?.night ?? null,
+    attack?.day ?? null,
+    Math.trunc(Number(card.powerCost) || 0),
+    Math.trunc(Number(card.sendToPower) || 0),
+    card.effect || '',
+    card.image || '',
+    card.errata || '',
+  ];
+}
+
+function normalizeCardForUpsert(id, body, baseCard) {
+  const bodyCard = body && typeof body === 'object' ? body : {};
+  const candidate = {
+    ...(baseCard || {}),
+    ...bodyCard,
+    id,
+  };
+  if (baseCard?.attack && bodyCard.attack && typeof bodyCard.attack === 'object') {
+    candidate.attack = { ...baseCard.attack, ...bodyCard.attack };
+  }
+
+  for (const field of ['name', 'pack', 'element', 'type']) {
+    if (typeof candidate[field] !== 'string' || candidate[field].length === 0) {
+      return null;
+    }
+  }
+
+  return {
+    id,
+    name: String(candidate.name),
+    pack: String(candidate.pack),
+    song: typeof candidate.song === 'string' ? candidate.song : '',
+    illustrator: typeof candidate.illustrator === 'string' ? candidate.illustrator : '',
+    rarity: typeof candidate.rarity === 'string' ? candidate.rarity : '',
+    element: String(candidate.element),
+    type: String(candidate.type),
+    clock: Math.trunc(Number(candidate.clock) || 0),
+    attack:
+      candidate.attack && typeof candidate.attack === 'object'
+        ? {
+            night: Math.trunc(Number(candidate.attack.night) || 0),
+            day: Math.trunc(Number(candidate.attack.day) || 0),
+          }
+        : null,
+    powerCost: Math.trunc(Number(candidate.powerCost) || 0),
+    sendToPower: Math.trunc(Number(candidate.sendToPower) || 0),
+    effect: typeof candidate.effect === 'string' ? candidate.effect : '',
+    image: typeof candidate.image === 'string' ? candidate.image : '',
+    errata: typeof candidate.errata === 'string' ? candidate.errata : '',
+  };
+}
+
+function filterStaticCards(searchParams) {
+  let cards = staticCards;
+  const pack = searchParams.get('pack');
+  const element = searchParams.get('element');
+  const type = searchParams.get('type');
+  if (pack) cards = cards.filter((card) => card.pack === pack);
+  if (element) cards = cards.filter((card) => card.element === element);
+  if (type) cards = cards.filter((card) => card.type === type);
+  return cards;
 }
 
 function sanitizePayload(action, payload) {
@@ -857,6 +1018,179 @@ function handleRequest(req, res) {
       const newElo = Math.max(0, Math.min(9999, Math.trunc(Number(elo) || 1000)));
       await pool.query('UPDATE users SET elo = $1 WHERE id = $2', [newElo, targetUserId]);
       json({ id: targetUserId, elo: newElo });
+      return;
+    }
+
+    // ===== Card Data Routes =====
+
+    // Public: list card definitions from PG, falling back to static cards.json when cards are not seeded.
+    if (pathname === '/api/cards' && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      try {
+        const conditions = [];
+        const values = [];
+        for (const [param, column] of [
+          ['pack', 'pack'],
+          ['element', 'element'],
+          ['type', 'type'],
+        ]) {
+          const value = url.searchParams.get(param);
+          if (!value) continue;
+          values.push(value);
+          conditions.push(`${column} = $${values.length}`);
+        }
+        const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        const cards = (
+          await pool.query(
+            `SELECT id, name, pack, song, illustrator, rarity, element, type, clock,
+                    attack_night, attack_day, power_cost, send_to_power, effect, image, errata
+             FROM cards ${where}
+             ORDER BY id`,
+            values,
+          )
+        ).rows;
+        if (cards.length > 0) {
+          json(cards.map(cardRowToDef));
+          return;
+        }
+
+        const hasSeededCards = (await pool.query('SELECT 1 FROM cards LIMIT 1')).rows.length > 0;
+        if (hasSeededCards) {
+          json([]);
+          return;
+        }
+      } catch {
+        // Keep the API usable in offline/dev environments where PG card data is not available.
+      }
+      json(filterStaticCards(url.searchParams));
+      return;
+    }
+
+    const publicCardRoute = pathname.match(/^\/api\/cards\/([^/]+)$/);
+    if (publicCardRoute && method === 'GET') {
+      const cardId = decodeURIComponent(publicCardRoute[1]);
+      try {
+        const card = (
+          await pool.query(
+            `SELECT id, name, pack, song, illustrator, rarity, element, type, clock,
+                    attack_night, attack_day, power_cost, send_to_power, effect, image, errata
+             FROM cards
+             WHERE id = $1`,
+            [cardId],
+          )
+        ).rows[0];
+        if (card) {
+          json(cardRowToDef(card));
+          return;
+        }
+      } catch {
+        // Static fallback below.
+      }
+
+      const fallback = staticCardMap.get(cardId);
+      if (!fallback) return json({ error: 'Card not found' }, 404);
+      json(fallback);
+      return;
+    }
+
+    if (pathname === '/api/config' && method === 'GET') {
+      const rows = (await pool.query('SELECT key, value FROM game_config ORDER BY key')).rows;
+      json(Object.fromEntries(rows.map((row) => [row.key, row.value])));
+      return;
+    }
+
+    if (pathname === '/api/preset-decks' && method === 'GET') {
+      const rows = (await pool.query('SELECT id, name, card_ids FROM preset_decks ORDER BY id')).rows;
+      json(
+        rows.map((deck) => ({
+          id: deck.id,
+          name: deck.name,
+          cardIds: Array.isArray(deck.card_ids) ? deck.card_ids : [],
+        })),
+      );
+      return;
+    }
+
+    // Admin: no-op reload signal for clients that refetch card data after edits.
+    if (pathname === '/api/admin/cards/reload' && method === 'POST') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      json({ ok: true });
+      return;
+    }
+
+    const adminCardRoute = pathname.match(/^\/api\/admin\/cards\/([^/]+)$/);
+    if (adminCardRoute && method === 'PUT') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const cardId = decodeURIComponent(adminCardRoute[1]);
+      const body = await readBody();
+      const existing = (
+        await pool.query(
+          `SELECT id, name, pack, song, illustrator, rarity, element, type, clock,
+                  attack_night, attack_day, power_cost, send_to_power, effect, image, errata
+           FROM cards
+           WHERE id = $1`,
+          [cardId],
+        )
+      ).rows[0];
+      const card = normalizeCardForUpsert(cardId, body, existing ? cardRowToDef(existing) : staticCardMap.get(cardId));
+      if (!card) return json({ error: 'Card requires name, pack, element, and type' }, 400);
+
+      await pool.query(
+        `INSERT INTO cards (
+           id, name, pack, song, illustrator, rarity, element, type, clock,
+           attack_night, attack_day, power_cost, send_to_power, effect, image, errata
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           pack = EXCLUDED.pack,
+           song = EXCLUDED.song,
+           illustrator = EXCLUDED.illustrator,
+           rarity = EXCLUDED.rarity,
+           element = EXCLUDED.element,
+           type = EXCLUDED.type,
+           clock = EXCLUDED.clock,
+           attack_night = EXCLUDED.attack_night,
+           attack_day = EXCLUDED.attack_day,
+           power_cost = EXCLUDED.power_cost,
+           send_to_power = EXCLUDED.send_to_power,
+           effect = EXCLUDED.effect,
+           image = EXCLUDED.image,
+           errata = EXCLUDED.errata,
+           updated_at = NOW()`,
+        cardDefToDbParams(card),
+      );
+      await pool.query(
+        'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
+        ['upsert_card', 'card', cardId, JSON.stringify({ card })],
+      );
+      json(card);
+      return;
+    }
+
+    const adminConfigRoute = pathname.match(/^\/api\/admin\/config\/([^/]+)$/);
+    if (adminConfigRoute && method === 'PUT') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const key = decodeURIComponent(adminConfigRoute[1]);
+      const body = await readBody();
+      if (!body || typeof body !== 'object' || !Object.prototype.hasOwnProperty.call(body, 'value')) {
+        return json({ error: 'Config value required' }, 400);
+      }
+      const description = typeof body.description === 'string' ? body.description : '';
+      await pool.query(
+        `INSERT INTO game_config (key, value, description)
+         VALUES ($1, $2::jsonb, $3)
+         ON CONFLICT (key) DO UPDATE SET
+           value = EXCLUDED.value,
+           description = EXCLUDED.description,
+           updated_at = NOW()`,
+        [key, JSON.stringify(body.value), description],
+      );
+      await pool.query(
+        'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
+        ['upsert_config', 'game_config', key, JSON.stringify({ value: body.value, description })],
+      );
+      json({ key, value: body.value, description });
       return;
     }
 

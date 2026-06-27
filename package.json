@@ -16,6 +16,7 @@
     "smoke:online": "node --import tsx scripts/online-smoke.ts",
     "rule:audit": "node --import tsx scripts/rule-audit.ts",
     "migrate:sqlite-to-pg": "node --import tsx scripts/migrate-sqlite-to-pg.ts",
+    "seed:cards": "node --import tsx scripts/seed-cards-pg.ts",
     "preview": "vite preview",
     "server": "node --import tsx src/server.ts",
     "lint": "eslint .",
