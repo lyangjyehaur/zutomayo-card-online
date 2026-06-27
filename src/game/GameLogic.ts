@@ -718,6 +718,27 @@ export function placeRevealedCards(
   initial: boolean,
   parsedEffects: Map<string, ParsedEffect[]> | null = null,
 ): void {
+  // 官方 QA Q80：檢查 AE 是否有「HPがX以下になったらすぐにYに置く」效果。
+  // 此類效果解析為 onDamageReceived + hpLessOrEqual + moveSelfAreaEnchant，
+  // Q80 規定設置時若 HP 已≤X，則不進 setZoneC，直接送 destination 且效果不発動。
+  const getImmediateMoveOnSetHpCondition = (
+    card: CardInstance,
+    effects: Map<string, ParsedEffect[]>,
+  ): { hpThreshold: number; destination: 'abyss' | 'powerCharger' } | null => {
+    const parsed = effects.get(card.defId) ?? [];
+    for (const effect of parsed) {
+      if (effect.trigger !== 'onDamageReceived') continue;
+      if (effect.action.type !== 'moveSelfAreaEnchant') continue;
+      const hpCond = effect.conditions?.find(c => c.type === 'hpLessOrEqual');
+      if (!hpCond) continue;
+      const threshold = Number(hpCond.value);
+      if (!Number.isFinite(threshold)) continue;
+      const destination = effect.action.params.destination === 'powerCharger' ? 'powerCharger' : 'abyss';
+      return { hpThreshold: threshold, destination };
+    }
+    return null;
+  };
+
   const timingEffects = initial ? emptyParsedEffects() : (parsedEffects ?? emptyParsedEffects());
   for (const index of playerIndexes) {
     const player = G.players[index];
@@ -743,7 +764,20 @@ export function placeRevealedCards(
       replaceDestination(G, index, [characters[0]], 'battleZone', hasOptionalSwapEffect(G, index, parsedEffects), timingEffects);
     }
     if (areas.length > 0) {
-      replaceDestination(G, index, [areas[0]], 'setZoneC', false, timingEffects);
+      // 官方 QA Q80：AE 有「HPがX以下になったらすぐにYに置く」效果時，
+      // 若設置時自身 HP 已≤X，則不進 setZoneC，直接送 destination 且 onUse 效果不発動。
+      // QA 規定「ターンの終了時」指定がないため「すぐに」移動，且效果不発動。
+      const immediateMove = getImmediateMoveOnSetHpCondition(areas[0], timingEffects);
+      if (immediateMove && G.players[index].hp <= immediateMove.hpThreshold) {
+        sendToOwnerZone(areas[0], G.players[index], G, index, timingEffects);
+        if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
+        if (!G.suppressedEffectCardIdsThisTurn.includes(areas[0].instanceId)) {
+          G.suppressedEffectCardIdsThisTurn.push(areas[0].instanceId);
+        }
+        G.log.push(`Player ${index}: ${areas[0].defId} HP<=${immediateMove.hpThreshold} at set, immediate move to ${immediateMove.destination}.`);
+      } else {
+        replaceDestination(G, index, [areas[0]], 'setZoneC', false, timingEffects);
+      }
     }
     // 清空已進入 destination 或被送走的卡的來源 zone；多餘卡保留在 setZoneB 並 suppress 效果。
     const enteredIds = new Set<string>();
@@ -849,10 +883,16 @@ export function resolveTimingEvent(
     for (const card of timingCandidateCards(G, player)) {
       if (areEffectsDisabledForCard(G, player, card.defId)) continue;
       const definition = getCardDef(card.defId);
-      if (!definition || getPlayerPower(G.players[player], G, player) < definition.powerCost) continue;
       for (const effect of parsedEffects.get(card.defId) ?? []) {
         if (effect.trigger !== trigger) continue;
         if (options.effectFilter && !options.effectFilter(effect)) continue;
+        // 官方 QA Q80：「HPがX以下になったらすぐにYに置く」效果（onDamageReceived
+        // + hpLessOrEqual + moveSelfAreaEnchant）是條件觸發的自動移動，非效果発動，
+        // 無視 power cost 檢查。其他效果仍需檢查 power cost。
+        const isImmediateHpMove = effect.trigger === 'onDamageReceived'
+          && effect.action.type === 'moveSelfAreaEnchant'
+          && effect.conditions?.some(c => c.type === 'hpLessOrEqual');
+        if (!definition || (!isImmediateHpMove && getPlayerPower(G.players[player], G, player) < definition.powerCost)) continue;
         const result = executeEffect(effect, G, player, {
           cardInstanceId: card.instanceId,
           onTimingEvent: nestedEvent => resolveTimingEvent(G, parsedEffects, nestedEvent),
