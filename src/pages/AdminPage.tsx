@@ -4,16 +4,24 @@ import { t } from '../i18n';
 import { getAllCardDefs } from '../game/cards/loader';
 import { parseEffect } from '../game/effects/parser';
 import type { ParsedEffect } from '../game/effects';
-import type { CardDef, Element, CardType } from '../game/types';
-import { ApiError, adminGetMatches, adminGetUsers, adminLogin, adminResetElo } from '../api/client';
+import type { CardDef, CardType, Element } from '../game/types';
+import {
+  ApiError,
+  adminGetMatches,
+  adminGetUsers,
+  adminLogin,
+  adminResetElo,
+} from '../api/client';
 import type { AdminMatch, AdminUser } from '../api/client';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
 
-const ELEMENTS: (Element | 'all')[] = ['all', '闇', '炎', '電気', '風', 'カオス'];
-const TYPES: (CardType | 'all')[] = ['all', 'Character', 'Enchant', 'Area Enchant'];
-const PACKS = ['all', 'THE WORLD IS CHANGING', 'ALL ALONG THE WATCHTOWER', 'Off Minor', 'Fantasy Is Reality'];
+const ELEMENT_OPTIONS: Element[] = ['闇', '炎', '電気', '風', 'カオス'];
+const TYPE_OPTIONS: CardType[] = ['Character', 'Enchant', 'Area Enchant'];
+const ELEMENTS: (Element | 'all')[] = ['all', ...ELEMENT_OPTIONS];
+const TYPES: (CardType | 'all')[] = ['all', ...TYPE_OPTIONS];
+const FALLBACK_PACKS = ['THE WORLD IS CHANGING', 'ALL ALONG THE WATCHTOWER', 'Off Minor', 'Fantasy Is Reality'];
 const TRIGGERS = [
   'all',
   'onUse',
@@ -24,6 +32,7 @@ const TRIGGERS = [
   'onZoneEntered',
   'onBattle',
 ];
+// // I18N_LANGS will be used in i18n tab refactor
 
 type ParsedCardMeta = {
   card: CardDef;
@@ -36,6 +45,16 @@ type ParsedCardMeta = {
   hasPendingChoice: boolean;
   hasAreaExpiry: boolean;
 };
+
+
+
+
+
+
+
+
+
+
 
 function effectLines(card: CardDef): string[] {
   return card.effect
@@ -588,7 +607,7 @@ export function AdminPage() {
             </div>
             <div className="admin-filter-row">
               <label>卡包</label>
-              {PACKS.map((pack) => (
+              {FALLBACK_PACKS.map((pack: string) => (
                 <button
                   key={pack}
                   className={`filter-chip ${filterPack === pack ? 'active' : ''}`}

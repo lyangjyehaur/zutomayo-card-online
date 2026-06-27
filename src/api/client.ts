@@ -87,11 +87,15 @@ function isFresh<T>(cache: { expiresAt: number; data: T } | null): cache is { ex
 }
 
 // ===== Public Data =====
-export async function fetchCards(): Promise<CardDef[]> {
-  if (isFresh(cardsCache)) return cardsCache.data;
+export async function fetchCards(force = false): Promise<CardDef[]> {
+  if (!force && isFresh(cardsCache)) return cardsCache.data;
   const data = await request<CardDef[]>('/cards');
   cardsCache = { data, expiresAt: Date.now() + PUBLIC_DATA_CACHE_MS };
   return data;
+}
+
+export async function fetchCardI18n(cardId: string): Promise<Record<string, string>> {
+  return request<Record<string, string>>(`/cards/${encodeURIComponent(cardId)}/i18n`);
 }
 
 export async function fetchGameConfig(): Promise<Record<string, unknown>> {
@@ -245,13 +249,14 @@ export async function adminResetElo(token: string, userId: string, elo: number):
   });
 }
 
-export async function adminUpdateCard(id: string, card: Partial<CardDef>): Promise<void> {
-  await request<CardDef>(`/admin/cards/${encodeURIComponent(id)}`, {
+export async function adminUpdateCard(id: string, card: Partial<CardDef>): Promise<CardDef> {
+  const updated = await request<CardDef>(`/admin/cards/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: adminAuthHeaders(),
     body: JSON.stringify(card),
   });
   cardsCache = null;
+  return updated;
 }
 
 export async function adminUpdateConfig(key: string, value: unknown): Promise<void> {
@@ -261,6 +266,14 @@ export async function adminUpdateConfig(key: string, value: unknown): Promise<vo
     body: JSON.stringify({ value }),
   });
   configCache = null;
+}
+
+export async function adminUpdateCardI18n(cardId: string, lang: string, effectText: string): Promise<void> {
+  await request<{ ok: boolean }>(`/admin/cards/${encodeURIComponent(cardId)}/i18n`, {
+    method: 'PUT',
+    headers: adminAuthHeaders(),
+    body: JSON.stringify({ lang, effectText }),
+  });
 }
 
 // ===== Matchmaking =====

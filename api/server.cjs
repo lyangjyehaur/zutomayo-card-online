@@ -5,6 +5,8 @@ const { Pool } = require('pg');
 const Redis = require('ioredis');
 let staticCards = [];
 try { staticCards = require('../cards.json'); } catch (_) { /* API container may not have cards.json */ }
+let staticCardI18n = {};
+try { staticCardI18n = require('../data/card-effects-i18n.json'); } catch (_) { /* API container may not have i18n data */ }
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 
@@ -48,6 +50,12 @@ const redis = new Redis(REDIS_URL, {
 redis.on('error', () => {});
 
 const staticCardMap = new Map(staticCards.map((card) => [card.id, card]));
+const I18N_LANGS = ['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko'];
+const I18N_LANG_ALIASES = new Map([
+  ['zhTW', 'zh-TW'],
+  ['zhCN', 'zh-CN'],
+  ['zhHK', 'zh-HK'],
+]);
 
 async function initSchema() {
   // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
@@ -380,6 +388,19 @@ function filterStaticCards(searchParams) {
   if (element) cards = cards.filter((card) => card.element === element);
   if (type) cards = cards.filter((card) => card.type === type);
   return cards;
+}
+
+function normalizeI18nLang(lang) {
+  if (typeof lang !== 'string') return null;
+  const canonical = I18N_LANG_ALIASES.get(lang) || lang;
+  return I18N_LANGS.includes(canonical) ? canonical : null;
+}
+
+function staticI18nForCard(cardId) {
+  const source = staticCardI18n && typeof staticCardI18n === 'object' ? staticCardI18n[cardId] : null;
+  return Object.fromEntries(
+    I18N_LANGS.map((lang) => [lang, source && typeof source[lang] === 'string' ? source[lang] : '']),
+  );
 }
 
 function sanitizePayload(action, payload) {
@@ -1067,6 +1088,25 @@ function handleRequest(req, res) {
       return;
     }
 
+    const publicCardI18nRoute = pathname.match(/^\/api\/cards\/([^/]+)\/i18n$/);
+    if (publicCardI18nRoute && method === 'GET') {
+      const cardId = decodeURIComponent(publicCardI18nRoute[1]);
+      const translations = staticI18nForCard(cardId);
+      try {
+        const rows = (
+          await pool.query('SELECT lang, effect_text FROM card_effects_i18n WHERE card_id = $1', [cardId])
+        ).rows;
+        for (const row of rows) {
+          const lang = normalizeI18nLang(row.lang);
+          if (lang) translations[lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
+        }
+      } catch {
+        // Static fallback already populated above.
+      }
+      json(translations);
+      return;
+    }
+
     const publicCardRoute = pathname.match(/^\/api\/cards\/([^/]+)$/);
     if (publicCardRoute && method === 'GET') {
       const cardId = decodeURIComponent(publicCardRoute[1]);
@@ -1115,6 +1155,30 @@ function handleRequest(req, res) {
     // Admin: no-op reload signal for clients that refetch card data after edits.
     if (pathname === '/api/admin/cards/reload' && method === 'POST') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      json({ ok: true });
+      return;
+    }
+
+    const adminCardI18nRoute = pathname.match(/^\/api\/admin\/cards\/([^/]+)\/i18n$/);
+    if (adminCardI18nRoute && method === 'PUT') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const cardId = decodeURIComponent(adminCardI18nRoute[1]);
+      const body = await readBody();
+      const lang = normalizeI18nLang(body?.lang);
+      if (!lang) return json({ error: 'Unsupported language' }, 400);
+      if (typeof body?.effectText !== 'string') return json({ error: 'effectText required' }, 400);
+
+      await pool.query(
+        `INSERT INTO card_effects_i18n (card_id, lang, effect_text)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (card_id, lang) DO UPDATE SET
+           effect_text = EXCLUDED.effect_text`,
+        [cardId, lang, body.effectText],
+      );
+      await pool.query(
+        'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
+        ['upsert_card_i18n', 'card_effects_i18n', cardId, JSON.stringify({ lang, effectText: body.effectText })],
+      );
       json({ ok: true });
       return;
     }
