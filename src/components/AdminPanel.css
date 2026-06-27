@@ -302,8 +302,58 @@
   color: #b9f6ca;
 }
 .admin-empty-copy { color: #888; }
+
+.admin-tabs { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+
+.admin-section { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.5rem 0; }
+
+.admin-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.admin-section-heading h2 { margin: 0; color: var(--gold); font-size: 1rem; }
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.admin-table th,
+.admin-table td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #222;
+  white-space: nowrap;
+}
+.admin-table th {
+  color: #888;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.admin-table tbody tr:hover { background: rgba(244, 211, 94, 0.06); }
+.admin-table-muted { color: #888; }
+
+.admin-elo-cell { display: flex; gap: 0.3rem; align-items: center; }
+.admin-elo-cell input {
+  width: 5.5rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 0.78rem;
+}
+.admin-elo-up { color: #b9f6ca; }
+.admin-elo-down { color: #ef9a9a; }
+
 @media (max-width: 900px) {
   .admin-audit-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-modal-inspector-content { grid-template-columns: 1fr; }
   .engine-badge-grid { grid-template-columns: 1fr; }
+  .admin-table { font-size: 0.72rem; }
+  .admin-table th, .admin-table td { padding: 0.3rem 0.35rem; }
 }

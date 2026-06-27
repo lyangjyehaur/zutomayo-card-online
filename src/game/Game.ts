@@ -11,6 +11,7 @@ import {
   setTurnCard,
   setupGame,
   submitPendingChoice,
+  timeoutSkip,
   undoSetCard,
   validateZutomayoSetupData,
 } from './GameLogic';
@@ -124,6 +125,11 @@ const moves: Record<string, Move<GameState>> = {
     const player = playerIndex(playerID);
     if (player === null || !confirmReady(G, player, parsedEffects)) return INVALID_MOVE;
   },
+  // P3-16：線上回合超時由伺服器權威判斷，強制跳過該玩家回合（避免卡死）。
+  timeoutSkip: ({ G, playerID }) => {
+    const player = playerIndex(playerID);
+    if (player === null || !timeoutSkip(G, player, parsedEffects)) return INVALID_MOVE;
+  },
   resolvePendingEffect: ({ G, playerID }, index: number) => {
     const player = playerIndex(playerID);
     if (player === null || !resolvePendingEffectChoice(G, player, index, parsedEffects)) return INVALID_MOVE;
@@ -141,6 +147,12 @@ export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetu
   playerView,
   moves,
   turn: {
+    // P3-16：boardgame.io turn.onBegin 為伺服器端 hook，於 turn 開始時記錄權威時間。
+    // 本遊戲的回合推進由 finishTurn 控制（boardgame.io turn 不隨遊戲內回合切換），
+    // 故每個遊戲內回合的 turnStartTime 主要由 finishTurn 更新；此處確保初始值正確。
+    onBegin: ({ G }) => {
+      G.turnStartTime = Date.now();
+    },
     activePlayers: { all: 'simultaneous' },
     stages: { simultaneous: { moves } },
   },

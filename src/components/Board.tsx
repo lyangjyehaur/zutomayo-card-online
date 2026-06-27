@@ -11,6 +11,12 @@ import { t } from '../i18n';
 
 const TURN_TIMER_SECONDS = 60;
 
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 export type BoardGameOverAction = {
   label: string;
   onClick: () => void;
@@ -25,6 +31,8 @@ export type BoardGameOverActions = {
 
 type Props = BoardProps<GameState> & {
   gameOverActions?: BoardGameOverActions;
+  // P3-16：線上模式用伺服器權威計時器（G.turnStartTime）；本機/AI 維持客戶端 setInterval。
+  useServerTimer?: boolean;
 };
 
 type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
@@ -890,13 +898,15 @@ function PendingChoicePanel({ G, moves, playerID }: {
   );
 }
 
-function BattleBoard({ G, moves, playerID }: Props) {
+function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
   const minimum = getMinimumSetCount(G, meIndex);
   const required = getRequiredSetCount(G, meIndex);
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
+  // P3-16：伺服器權威計時器超時後，每秒遞增 retryTick 以重試 timeoutSkip（處理時鐘漂移）。
+  const [retryTick, setRetryTick] = useState(0);
   const [handExpanded, setHandExpanded] = useState(true);
   const [phaseMessage, setPhaseMessage] = useState<FeedbackMessage | null>(null);
   const [damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
@@ -912,16 +922,20 @@ function BattleBoard({ G, moves, playerID }: Props) {
   const showTransientPhaseMessage = (message: FeedbackMessage, duration = 1500) => {
     clearPhaseTimers();
     setPhaseMessage(message);
-    phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), duration));
+    const effectiveDuration = prefersReducedMotion() ? Math.min(duration, 600) : duration;
+    phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), effectiveDuration));
   };
 
   const playBattleFeedbackSequence = (resultMessage: FeedbackMessage) => {
     clearPhaseTimers();
+    const reduced = prefersReducedMotion();
+    const phaseDuration = reduced ? 250 : 700;
+    const resultDuration = reduced ? 1200 : 2600;
     const sequence: { message: FeedbackMessage; duration: number }[] = [
-      { message: { title: t('board.phaseReveal'), tone: 'phase' }, duration: 700 },
-      { message: { title: t('board.phaseTimeAdvance'), tone: 'phase' }, duration: 700 },
-      { message: { title: t('board.phaseBattleStart'), tone: 'phase' }, duration: 700 },
-      { message: resultMessage, duration: 2600 },
+      { message: { title: t('board.phaseReveal'), tone: 'phase' }, duration: phaseDuration },
+      { message: { title: t('board.phaseTimeAdvance'), tone: 'phase' }, duration: phaseDuration },
+      { message: { title: t('board.phaseBattleStart'), tone: 'phase' }, duration: phaseDuration },
+      { message: resultMessage, duration: resultDuration },
     ];
 
     let offset = 0;
@@ -935,24 +949,43 @@ function BattleBoard({ G, moves, playerID }: Props) {
   useEffect(() => () => clearPhaseTimers(), []);
 
   useEffect(() => {
+    if (useServerTimer) {
+      // P3-16：伺服器權威計時器。根據 G.turnStartTime 計算剩餘秒數，避免兩端 setInterval 漂移。
+      const compute = () => {
+        if (typeof G.turnStartTime !== 'number') return TURN_TIMER_SECONDS;
+        const elapsed = Math.floor((Date.now() - G.turnStartTime) / 1000);
+        return Math.max(0, TURN_TIMER_SECONDS - elapsed);
+      };
+      setTimeLeft(compute());
+      if (G.step !== 'turnSet') return;
+      timer.current = setInterval(() => {
+        const next = compute();
+        setTimeLeft(next);
+        // 超時後持續 tick，讓超時 effect 重試 timeoutSkip 直到伺服器確認。
+        if (next === 0) setRetryTick(tick => tick + 1);
+      }, 1000);
+      return () => { if (timer.current) clearInterval(timer.current); };
+    }
+    // 本機/AI：維持原客戶端 setInterval 倒數行為。
     setTimeLeft(TURN_TIMER_SECONDS);
     if (timer.current) clearInterval(timer.current);
     if (G.step !== 'turnSet') return;
     timer.current = setInterval(() => setTimeLeft(value => Math.max(0, value - 1)), 1000);
     return () => { if (timer.current) clearInterval(timer.current); };
-  }, [G.turnNumber, G.step]);
+  }, [G.turnNumber, G.step, G.turnStartTime, useServerTimer]);
 
   useEffect(() => {
-    if (
-      G.step === 'turnSet'
-      && timeLeft === 0
-      && !G.ready[meIndex]
-      && me.cardsSetThisTurn >= minimum
-      && me.cardsSetThisTurn <= required
-    ) {
+    if (G.step !== 'turnSet' || timeLeft > 0 || G.ready[meIndex]) return;
+    if (useServerTimer) {
+      // P3-16：線上模式超時由伺服器權威 timeoutSkip 處理，允許未達最低出牌數時跳過該玩家回合。
+      moves.timeoutSkip();
+      return;
+    }
+    // 本機/AI：維持原行為，僅達最低出牌數時自動 confirmReady。
+    if (me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required) {
       moves.confirmReady();
     }
-  }, [G.step, timeLeft, G.ready, me.cardsSetThisTurn, minimum, required, meIndex, moves]);
+  }, [G.step, timeLeft, G.ready, me.cardsSetThisTurn, minimum, required, meIndex, moves, useServerTimer, retryTick]);
 
   useEffect(() => {
     if ((G.step === 'initialSet' || G.step === 'turnSet') && !G.ready[meIndex]) setHandExpanded(true);
@@ -1073,7 +1106,7 @@ export function Board(props: Props) {
         : t('board.handConfirmed'),
       tone: 'success',
     });
-    setupFeedbackTimer.current = setTimeout(() => setSetupFeedback(null), 1600);
+    setupFeedbackTimer.current = setTimeout(() => setSetupFeedback(null), prefersReducedMotion() ? 1000 : 1600);
   };
 
   const renderWithSetupFeedback = (node: ReactNode) => (

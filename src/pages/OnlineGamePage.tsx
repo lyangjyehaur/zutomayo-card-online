@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
@@ -99,8 +99,16 @@ export function OnlineGamePage({
   const [leaving, setLeaving] = useState(false);
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [actionError, setActionError] = useState('');
+  // P2-13：Socket.IO 偵測到對手加入時設為 true，用來停止 HTTP fallback 並推進到 ready。
+  const opponentJoinedRef = useRef(false);
   const routeState = location.state as { freshOnlineSession?: boolean; resumeOnlineSession?: boolean } | null;
   const showRejoinedStatus = routeState?.freshOnlineSession !== true;
+
+  const handleOpponentDetected = useCallback(() => {
+    if (opponentJoinedRef.current) return;
+    opponentJoinedRef.current = true;
+    setReconnectStatus('ready');
+  }, []);
 
   useEffect(() => {
     if (activeSession || !matchID) return;
@@ -126,11 +134,14 @@ export function OnlineGamePage({
 
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    // P2-13：Socket.IO 偵測到對手加入後，停止 HTTP fallback 重試。
+    opponentJoinedRef.current = false;
 
     const validate = async (isRetry: boolean) => {
+      if (opponentJoinedRef.current) return;
       setReconnectStatus(isRetry ? 'retrying' : 'reconnecting');
       const result = await validateOnlineSession(activeSession);
-      if (cancelled) return;
+      if (cancelled || opponentJoinedRef.current) return;
 
       if (result.ok) {
         if (activeSession.playerID !== '0') {
@@ -139,7 +150,7 @@ export function OnlineGamePage({
         }
 
         const room = await fetchRoom(activeSession.matchID);
-        if (cancelled) return;
+        if (cancelled || opponentJoinedRef.current) return;
         if (!room.ok) {
           if (room.reason === 'roomNotFound' || room.reason === 'roomFull') {
             clearStoredOnlineSession();
@@ -154,17 +165,20 @@ export function OnlineGamePage({
         }
 
         setReconnectStatus('waiting');
+        // P2-13：HTTP 輪詢降級為 fallback（5 秒），主要靠 Socket.IO 的 matchData 推送偵測對手加入。
         retryTimer = setTimeout(() => {
+          if (cancelled) return;
           void validate(true);
-        }, 2500);
+        }, 5000);
         return;
       }
 
       if (result.reason === 'network') {
         setReconnectStatus('retrying');
         retryTimer = setTimeout(() => {
+          if (cancelled) return;
           void validate(true);
-        }, 2500);
+        }, 5000);
         return;
       }
 
@@ -301,7 +315,12 @@ export function OnlineGamePage({
     return renderStatusPanel(reconnectStatus, null);
   }
 
-  if (reconnectStatus !== 'ready') {
+  const isFailure = isOnlineFailureStatus(reconnectStatus);
+  // P2-13：waiting/ready 時提前渲染 OnlineGame，讓它建立 Socket.IO 連線偵測對手加入。
+  // waiting 時疊上狀態面板覆蓋層，避免房主在對手加入前看到遊戲畫面。
+  const showOnlineGame = reconnectStatus === 'waiting' || reconnectStatus === 'ready';
+
+  if (isFailure || !showOnlineGame) {
     return renderStatusPanel(reconnectStatus, activeSession);
   }
 
@@ -319,7 +338,13 @@ export function OnlineGamePage({
         onCreateNewRoom={() => {
           void createNewRoom();
         }}
+        onOpponentDetected={handleOpponentDetected}
       />
+      {reconnectStatus === 'waiting' && (
+        <div className="online-waiting-overlay" role="dialog" aria-modal="true" aria-label={t('online.waitingForOpponent')}>
+          {renderStatusPanel('waiting', activeSession)}
+        </div>
+      )}
       {leavePromptOpen && (
         <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={() => void leaveAndReturn()} />
       )}

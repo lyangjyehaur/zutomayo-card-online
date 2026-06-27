@@ -649,6 +649,23 @@ button:disabled {
   gap: 0.55rem;
 }
 
+.matchmaking-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 1px solid rgba(245, 211, 104, 0.32);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+  background: rgba(245, 211, 104, 0.1);
+}
+
+.matchmaking-status-text {
+  color: var(--gold);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 .online-share-card,
 .online-room-info {
   display: grid;
@@ -895,6 +912,18 @@ input:focus {
   background:
     radial-gradient(circle at 50% 0%, rgba(245, 211, 104, 0.11), transparent 28%),
     linear-gradient(135deg, #050712, #10183a 54%, #160d2c);
+}
+
+/* P2-13：房主等待對手加入時，覆蓋在線上遊戲元件上層的狀態面板。 */
+.online-waiting-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(245, 211, 104, 0.11), transparent 28%),
+    linear-gradient(135deg, rgba(5, 7, 18, 0.96), rgba(16, 24, 58, 0.96) 54%, rgba(22, 13, 44, 0.96));
+  backdrop-filter: blur(8px);
 }
 
 .ai-setup-panel {
@@ -6664,5 +6693,57 @@ button.zone:focus-visible {
     bottom: calc(var(--drawer-handle-h) + 0.6rem + env(safe-area-inset-bottom, 0px));
     width: auto;
     max-height: 36vh;
+  }
+}
+
+/* ==========================================================================
+   無障礙支援：prefers-reduced-motion
+   為前庭覺敏感者關閉裝飾性動畫、縮短過渡、減弱 transform 位移。
+   一般模式下的動畫效果保持不變，僅在此媒體查詢生效時調整。
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  /* 批量壓制所有動畫與過渡：duration 極短、無限循環動畫只跑一次 */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* 無限循環的裝飾性動畫完全關閉，避免持續閃爍與旋轉 */
+  /* 標題光暈、戰鬥區域光暈、計時器危險脈動、卡片背面環旋轉 */
+  .battle-zone,
+  .timer-danger strong,
+  .card-back-ring {
+    animation: none !important;
+  }
+
+  /* FeedbackOverlay 戰鬥動畫：關閉進場動畫，僅保留柔和 opacity 淡入避免突兀 */
+  .phase-message-overlay,
+  .phase-message-panel {
+    animation: none !important;
+    transition: opacity 120ms ease !important;
+  }
+
+  /* 傷害閃爍與浮動數字：關閉閃爍與飄移效果 */
+  .opponent-stats-bar.damaged,
+  .status-bar.damaged,
+  .damage-float {
+    animation: none !important;
+  }
+
+  /* 卡片放置與翻面：關閉 3D 翻轉與縮放動畫 */
+  .zone .game-card,
+  .zone .game-card:not(.card-back) .card-frame {
+    animation: none !important;
+  }
+
+  /* 卡片 popover 顯示/隱藏：保留 opacity 淡入淡出，避免突兀閃現 */
+  .card-popover {
+    transition: opacity 120ms ease !important;
   }
 }

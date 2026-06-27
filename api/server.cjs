@@ -42,6 +42,8 @@ const Database = loadDatabase();
 const PORT = Number(process.env.API_PORT) || 3001;
 const DB_PATH = process.env.DB_PATH || '/data/zutomayo.db';
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+// P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 
 // ===== Database =====
 if (DB_PATH !== ':memory:') {
@@ -101,8 +103,13 @@ if (!matchColumns.includes('action_log')) {
 }
 
 // ===== Auth =====
-function hashPassword(password, salt) {
-  return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
+// P0-4：PBKDF2 迭代數從 10000 提升至 100000（現代安全標準）。
+const PBKDF2_ITERATIONS = 100000;
+// 向後相容：舊用戶的密碼仍用舊迭代數驗證，登入成功後自動升級。
+const PBKDF2_LEGACY_ITERATIONS = 10000;
+
+function hashPassword(password, salt, iterations = PBKDF2_ITERATIONS) {
+  return crypto.pbkdf2Sync(password, salt, iterations, 64, 'sha512').toString('hex');
 }
 
 function base64urlJson(value) {
@@ -157,6 +164,45 @@ function getAuthUserId(req) {
   const auth = req.headers.authorization;
   if (!auth) return null;
   return verifyToken(auth.replace('Bearer ', ''));
+}
+
+// P0-3：Admin token 機制（payload 含 admin: true）。
+function createAdminToken() {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({
+    admin: true,
+    iat: now,
+    exp: now + 24 * 60 * 60,
+  });
+  const input = `${header}.${payload}`;
+  return `${input}.${signTokenInput(input)}`;
+}
+
+function verifyAdminToken(req) {
+  const auth = req.headers.authorization;
+  if (!auth) return false;
+  try {
+    const token = auth.replace('Bearer ', '');
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const [header, payloadPart, signature] = parts;
+    const input = `${header}.${payloadPart}`;
+    const expected = signTokenInput(input);
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return false;
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
+    if (!payload.admin) return false;
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return false;
+    return true;
+  } catch { return false; }
+}
+
+// 輸入 sanitization（P0-4：防範 XSS）。
+function sanitizeText(value, maxLen = 60) {
+  if (typeof value !== 'string') return '';
+  return value.slice(0, maxLen).replace(/[<>]/g, '');
 }
 
 // ===== ELO =====
@@ -271,17 +317,120 @@ function sanitizeActionLog(actionLog) {
     });
 }
 
+// ===== Rate Limiting (P0-4) =====
+const rateLimitBuckets = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_AUTH = 10;
+const RATE_LIMIT_DEFAULT = 120;
+
+function checkRateLimit(ip, limit) {
+  const now = Date.now();
+  const key = `${ip}:${Math.floor(now / RATE_LIMIT_WINDOW_MS)}`;
+  const count = rateLimitBuckets.get(key) || 0;
+  if (count >= limit) return false;
+  rateLimitBuckets.set(key, count + 1);
+  // 清理過期條目
+  if (rateLimitBuckets.size > 10000) {
+    for (const [k] of rateLimitBuckets) {
+      if (k !== key && rateLimitBuckets.get(k) === undefined) rateLimitBuckets.delete(k);
+    }
+  }
+  return true;
+}
+
+// ===== CORS (P0-4 收緊為白名單) =====
+const corsAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+// 開發環境 fallback：允許 localhost
+const devOrigins = ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000'];
+const effectiveCorsOrigins = corsAllowedOrigins.length > 0 ? corsAllowedOrigins : devOrigins;
+
+function getCorsOrigin(reqOrigin) {
+  if (!reqOrigin) return null;
+  if (effectiveCorsOrigins.includes(reqOrigin)) return reqOrigin;
+  return null;
+}
+
+// ===== Matchmaking Queue (in-memory) =====
+// Map<userId, { queueId, joinedAt, deckName?, deckIds?, status, matchId?, opponentId?, role?, realMatchId?, timeoutAt? }>
+const matchmakingQueue = new Map();
+const MATCHMAKING_TIMEOUT_MS = 60 * 1000;
+const MATCHMAKING_TIMEOUT_GRACE_MS = 10 * 1000;
+
+function generateMatchmakingId() {
+  return 'mm_' + crypto.randomBytes(8).toString('hex');
+}
+
+function cleanExpiredMatchmakingEntries() {
+  const now = Date.now();
+  for (const [uid, entry] of matchmakingQueue) {
+    // 未配對且超過 60 秒未配對成功 -> 標記 timeout
+    if (entry.status === 'queued' && now - entry.joinedAt > MATCHMAKING_TIMEOUT_MS) {
+      entry.status = 'timeout';
+      entry.timeoutAt = now;
+    }
+    // 已標記 timeout 且超過寬限期 -> 刪除
+    if (entry.status === 'timeout' && entry.timeoutAt && now - entry.timeoutAt > MATCHMAKING_TIMEOUT_GRACE_MS) {
+      matchmakingQueue.delete(uid);
+    }
+  }
+}
+
+function tryMatchUser(userId) {
+  const now = Date.now();
+  for (const [otherId, other] of matchmakingQueue) {
+    if (otherId === userId) continue;
+    if (other.status !== 'queued') continue;
+    if (now - other.joinedAt > MATCHMAKING_TIMEOUT_MS) continue;
+
+    const matchId = generateMatchmakingId();
+    // userId 字串較小者為 host（player '0'），確保雙方決定一致
+    const [hostId, guestId] = userId < otherId ? [userId, otherId] : [otherId, userId];
+
+    const userEntry = matchmakingQueue.get(userId);
+    const otherEntry = matchmakingQueue.get(otherId);
+
+    userEntry.status = 'matched';
+    userEntry.matchId = matchId;
+    userEntry.opponentId = otherId;
+    userEntry.role = userId === hostId ? 'host' : 'guest';
+
+    otherEntry.status = 'matched';
+    otherEntry.matchId = matchId;
+    otherEntry.opponentId = userId;
+    otherEntry.role = otherId === hostId ? 'host' : 'guest';
+
+    return matchId;
+  }
+  return null;
+}
+
 // ===== HTTP Handler =====
 function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const method = req.method;
   const pathname = url.pathname;
 
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS (P0-4：白名單制)
+  const corsOrigin = getCorsOrigin(req.headers.origin);
+  if (corsOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', corsOrigin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+
+  // Rate limiting (P0-4)
+  const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
+  const isAuthEndpoint = pathname === '/api/login' || pathname === '/api/register' || pathname === '/api/admin/login';
+  if (!checkRateLimit(clientIp, isAuthEndpoint ? RATE_LIMIT_AUTH : RATE_LIMIT_DEFAULT)) {
+    res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
+    res.end(JSON.stringify({ error: 'Too many requests. Please try again later.' }));
+    return;
+  }
 
   const json = (data, status = 200) => {
     res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -302,7 +451,10 @@ function handleRequest(req, res) {
       if (!email || !password) return json({ error: 'Email and password required' }, 400);
       if (password.length < 6) return json({ error: 'Password must be at least 6 characters' }, 400);
 
-      const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+      const cleanEmail = String(email).slice(0, 120).toLowerCase();
+      const cleanNickname = sanitizeText(nickname || String(cleanEmail).split('@')[0], 30) || 'player';
+
+      const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail);
       if (existing) return json({ error: 'Email already registered' }, 409);
 
       const id = 'u_' + crypto.randomBytes(8).toString('hex');
@@ -310,10 +462,10 @@ function handleRequest(req, res) {
       const hash = hashPassword(password, salt);
 
       db.prepare('INSERT INTO users (id, email, password_hash, salt, nickname) VALUES (?, ?, ?, ?, ?)')
-        .run(id, email, hash, salt, nickname || email.split('@')[0]);
+        .run(id, cleanEmail, hash, salt, cleanNickname);
 
       const token = createToken(id);
-      json({ token, user: { id, email, nickname: nickname || email.split('@')[0], elo: 1000 } });
+      json({ token, user: { id, email: cleanEmail, nickname: cleanNickname, elo: 1000 } });
     });
     return;
   }
@@ -324,8 +476,17 @@ function handleRequest(req, res) {
       const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
       if (!user) return json({ error: 'Invalid credentials' }, 401);
 
-      const hash = hashPassword(password, user.salt);
-      if (hash !== user.password_hash) return json({ error: 'Invalid credentials' }, 401);
+      // P0-4：先用新迭代數驗證，失敗再用舊迭代數驗證（向後相容）。
+      const newHash = hashPassword(password, user.salt, PBKDF2_ITERATIONS);
+      const legacyHash = hashPassword(password, user.salt, PBKDF2_LEGACY_ITERATIONS);
+      if (newHash !== user.password_hash && legacyHash !== user.password_hash) {
+        return json({ error: 'Invalid credentials' }, 401);
+      }
+
+      // 若密碼仍用舊迭代數，登入成功後自動升級到新迭代數。
+      if (newHash !== user.password_hash) {
+        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.id);
+      }
 
       const token = createToken(user.id);
       json({
@@ -416,8 +577,14 @@ function handleRequest(req, res) {
 
   // Submit match result
   if (pathname === '/api/matches' && method === 'POST') {
+    // P0-2：強制 JWT 認證，只有贏家可以提交自己的勝利。
+    const authUserId = getAuthUserId(req);
+    if (!authUserId) return json({ error: 'Unauthorized' }, 401);
+
     readBody().then(({ winnerId, loserId, turns, duration, actionLog, action_log }) => {
       if (!winnerId || !loserId) return json({ error: 'Winner and loser IDs required' }, 400);
+      // P0-2：認證使用者必須是贏家，杜絕偽造勝負。
+      if (winnerId !== authUserId) return json({ error: 'Forbidden: winner must match authenticated user' }, 403);
 
       const winner = db.prepare('SELECT * FROM users WHERE id = ?').get(winnerId);
       const loser = db.prepare('SELECT * FROM users WHERE id = ?').get(loserId);
@@ -470,10 +637,208 @@ function handleRequest(req, res) {
     const entries = db.prepare('SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT ?').all(limit);
     json({
       leaderboard: entries.map(e => ({
-        id: e.id, nickname: e.nickname, elo: e.elo,
+        id: e.id, nickname: sanitizeText(e.nickname, 60), elo: e.elo,
         matchCount: e.match_count, wins: e.wins,
         winRate: e.match_count > 0 ? Math.round((e.wins / e.match_count) * 100) : 0,
       })),
+    });
+    return;
+  }
+
+  // P2-10：使用者對戰歷史（跨裝置同步）。
+  if (pathname === '/api/matches' && method === 'GET') {
+    const userId = getAuthUserId(req);
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
+    const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+    const matches = db.prepare(
+      `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
+       FROM matches m
+       LEFT JOIN users w ON m.winner_id = w.id
+       LEFT JOIN users l ON m.loser_id = l.id
+       WHERE m.player0_id = ? OR m.player1_id = ?
+       ORDER BY m.created_at DESC LIMIT ? OFFSET ?`
+    ).all(userId, userId, limit, offset);
+    json({
+      matches: matches.map(m => ({
+        id: m.id,
+        winnerId: m.winner_id,
+        loserId: m.loser_id,
+        winnerNickname: m.winner_nickname,
+        loserNickname: m.loser_nickname,
+        winnerEloChange: m.winner_elo_change,
+        loserEloChange: m.loser_elo_change,
+        turns: m.turns,
+        duration: m.duration_seconds,
+        createdAt: m.created_at,
+      })),
+    });
+    return;
+  }
+
+  // PUT /api/profile — 修改暱稱（P2 補齊）。
+  if (pathname === '/api/profile' && method === 'PUT') {
+    const userId = getAuthUserId(req);
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+    readBody().then(({ nickname }) => {
+      const clean = sanitizeText(nickname, 30);
+      if (!clean) return json({ error: 'Nickname required' }, 400);
+      db.prepare('UPDATE users SET nickname = ? WHERE id = ?').run(clean, userId);
+      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      json({
+        id: user.id, email: user.email, nickname: user.nickname, elo: user.elo,
+        matchCount: user.match_count, wins: user.wins,
+        winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
+      });
+    });
+    return;
+  }
+
+  // ===== Admin API (P0-3 + P2-12) =====
+
+  // Admin 登入
+  if (pathname === '/api/admin/login' && method === 'POST') {
+    if (!ADMIN_PASSWORD) return json({ error: 'Admin not configured' }, 503);
+    readBody().then(({ password }) => {
+      if (password !== ADMIN_PASSWORD) return json({ error: 'Invalid password' }, 401);
+      json({ token: createAdminToken() });
+    });
+    return;
+  }
+
+  // Admin：使用者列表
+  if (pathname === '/api/admin/users' && method === 'GET') {
+    if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
+    const users = db.prepare('SELECT id, email, nickname, elo, match_count, wins, created_at FROM users ORDER BY created_at DESC LIMIT ?').all(limit);
+    json({
+      users: users.map(u => ({
+        id: u.id, email: u.email, nickname: u.nickname, elo: u.elo,
+        matchCount: u.match_count, wins: u.wins, createdAt: u.created_at,
+        winRate: u.match_count > 0 ? Math.round((u.wins / u.match_count) * 100) : 0,
+      })),
+    });
+    return;
+  }
+
+  // Admin：對戰列表
+  if (pathname === '/api/admin/matches' && method === 'GET') {
+    if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
+    const matches = db.prepare(
+      `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
+       FROM matches m
+       LEFT JOIN users w ON m.winner_id = w.id
+       LEFT JOIN users l ON m.loser_id = l.id
+       ORDER BY m.created_at DESC LIMIT ?`
+    ).all(limit);
+    json({
+      matches: matches.map(m => ({
+        id: m.id, winnerId: m.winner_id, loserId: m.loser_id,
+        winnerNickname: m.winner_nickname, loserNickname: m.loser_nickname,
+        winnerEloChange: m.winner_elo_change, loserEloChange: m.loser_elo_change,
+        turns: m.turns, duration: m.duration_seconds, createdAt: m.created_at,
+      })),
+    });
+    return;
+  }
+
+  // Admin：重置使用者 ELO
+  if (pathname.startsWith('/api/admin/users/') && pathname.endsWith('/elo') && method === 'PUT') {
+    if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+    const targetUserId = pathname.split('/')[4];
+    readBody().then(({ elo }) => {
+      const newElo = Math.max(0, Math.min(9999, Math.trunc(Number(elo) || 1000)));
+      db.prepare('UPDATE users SET elo = ? WHERE id = ?').run(newElo, targetUserId);
+      json({ id: targetUserId, elo: newElo });
+    });
+    return;
+  }
+
+  // ===== Matchmaking Routes =====
+
+  // POST /api/matchmaking/queue — 加入配對佇列
+  if (pathname === '/api/matchmaking/queue' && method === 'POST') {
+    const userId = getAuthUserId(req);
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+    readBody().then(({ deckName, deckIds }) => {
+      cleanExpiredMatchmakingEntries();
+      const existing = matchmakingQueue.get(userId);
+      // 若已在佇列且已配對，不重複加入
+      if (existing && existing.status === 'matched') {
+        return json({ queueId: existing.queueId, status: 'matched' });
+      }
+      const queueId = (existing && existing.queueId) || ('q_' + crypto.randomBytes(8).toString('hex'));
+      const entry = {
+        queueId,
+        joinedAt: Date.now(),
+        deckName: typeof deckName === 'string' ? sanitizeText(deckName, 60) : undefined,
+        deckIds: Array.isArray(deckIds) ? deckIds.filter(id => typeof id === 'string').slice(0, 20) : undefined,
+        status: 'queued',
+        matchId: undefined,
+        opponentId: undefined,
+        role: undefined,
+        realMatchId: undefined,
+        timeoutAt: undefined,
+      };
+      matchmakingQueue.set(userId, entry);
+
+      // 嘗試立即配對
+      tryMatchUser(userId);
+
+      const current = matchmakingQueue.get(userId);
+      json({ queueId: current.queueId, status: current.status });
+    });
+    return;
+  }
+
+  // GET /api/matchmaking/status — 查詢配對狀態
+  if (pathname === '/api/matchmaking/status' && method === 'GET') {
+    const userId = getAuthUserId(req);
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+    cleanExpiredMatchmakingEntries();
+    const entry = matchmakingQueue.get(userId);
+    if (!entry) return json({ status: 'timeout' });
+    json({
+      status: entry.status,
+      matchId: entry.matchId,
+      opponentId: entry.opponentId,
+      role: entry.role,
+      realMatchId: entry.realMatchId,
+    });
+    return;
+  }
+
+  // DELETE /api/matchmaking/queue — 離開佇列
+  if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
+    const userId = getAuthUserId(req);
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+    const entry = matchmakingQueue.get(userId);
+    if (entry && entry.opponentId && matchmakingQueue.has(entry.opponentId)) {
+      // 已配對情況下離開，標記對手為 timeout 讓對手能即時知道
+      const opponent = matchmakingQueue.get(entry.opponentId);
+      opponent.status = 'timeout';
+      opponent.timeoutAt = Date.now();
+    }
+    matchmakingQueue.delete(userId);
+    json({ deleted: true });
+    return;
+  }
+
+  // PUT /api/matchmaking/match — host 回報真實 boardgame.io matchID
+  if (pathname === '/api/matchmaking/match' && method === 'PUT') {
+    const userId = getAuthUserId(req);
+    if (!userId) return json({ error: 'Unauthorized' }, 401);
+    readBody().then(({ matchId }) => {
+      if (typeof matchId !== 'string' || !matchId) {
+        return json({ error: 'matchId required' }, 400);
+      }
+      const entry = matchmakingQueue.get(userId);
+      if (!entry || entry.status !== 'matched') {
+        return json({ error: 'Not in a matched queue' }, 400);
+      }
+      entry.realMatchId = matchId;
+      json({ ok: true });
     });
     return;
   }

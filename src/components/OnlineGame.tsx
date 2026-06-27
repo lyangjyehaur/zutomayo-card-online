@@ -14,9 +14,12 @@ interface OnlineGameProps {
   onLeaveRequest: () => void;
   onReturnToLobby: () => void;
   onCreateNewRoom: () => void;
+  onOpponentDetected?: () => void;
 }
 
 type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
+
+type MatchDataMember = { id: number; name?: string } | undefined;
 
 function OnlineLoading() {
   return <div className="online-connection-panel" role="status">{t('onlineSession.reconnecting')}</div>;
@@ -26,15 +29,26 @@ function OnlineBoard(
   props: BoardProps<GameState> & {
     gameOverActions: BoardGameOverActions;
     onConnectionStatusChange: (isConnected: boolean) => void;
+    onOpponentDetected: () => void;
   },
 ) {
-  const { gameOverActions, onConnectionStatusChange, ...boardProps } = props;
+  const { gameOverActions, onConnectionStatusChange, onOpponentDetected, ...boardProps } = props;
 
   useEffect(() => {
     onConnectionStatusChange(props.isConnected);
   }, [onConnectionStatusChange, props.isConnected]);
 
-  return <Board {...boardProps} gameOverActions={gameOverActions} />;
+  // P2-13：改用 Socket.IO 推送的 matchData 變化偵測對手加入，取代 HTTP 輪詢。
+  // boardgame.io client 連線後，當第二個玩家 join 時 server 會推送 matchData 更新。
+  useEffect(() => {
+    const matchData = props.matchData as MatchDataMember[] | undefined;
+    if (!matchData) return;
+    const opponentJoined = matchData.some(player => player?.id === 1 && Boolean(player?.name));
+    if (opponentJoined) onOpponentDetected();
+  }, [props.matchData, onOpponentDetected]);
+
+  // P3-16：線上模式啟用伺服器權威計時器（G.turnStartTime + timeoutSkip move）。
+  return <Board {...boardProps} gameOverActions={gameOverActions} useServerTimer />;
 }
 
 export function OnlineGame({
@@ -45,11 +59,13 @@ export function OnlineGame({
   onLeaveRequest,
   onReturnToLobby,
   onCreateNewRoom,
+  onOpponentDetected,
 }: OnlineGameProps) {
   const connectedOnce = useRef(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onReturnToLobbyRef = useRef(onReturnToLobby);
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
+  const opponentDetectedRef = useRef<(() => void) | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
 
   useEffect(() => () => {
@@ -59,7 +75,12 @@ export function OnlineGame({
   useEffect(() => {
     onReturnToLobbyRef.current = onReturnToLobby;
     onCreateNewRoomRef.current = onCreateNewRoom;
-  }, [onReturnToLobby, onCreateNewRoom]);
+    opponentDetectedRef.current = onOpponentDetected ?? null;
+  }, [onReturnToLobby, onCreateNewRoom, onOpponentDetected]);
+
+  const handleOpponentDetected = useCallback(() => {
+    opponentDetectedRef.current?.();
+  }, []);
 
   const flashRejoined = useCallback(() => {
     if (statusTimer.current) clearTimeout(statusTimer.current);
@@ -97,6 +118,7 @@ export function OnlineGame({
           },
         }}
         onConnectionStatusChange={handleConnectionStatusChange}
+        onOpponentDetected={handleOpponentDetected}
       />
     ),
     loading: OnlineLoading,

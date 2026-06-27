@@ -77,7 +77,7 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
         {t('nav.history')}
       </button>
       <button className={buttonClass('/leaderboard')} type="button" onClick={() => navigate('/leaderboard')}>
-        🏆 排行
+        🏆 {t('leaderboard.title')}
       </button>
       <button className="nav-link tutorial" type="button" onClick={onShowTutorial}>
         {t('nav.tutorial')}

@@ -719,7 +719,7 @@ function parseAction(text: string): EffectAction | null {
   if (setOpponentElementMatch) return { type: 'setOpponentElement', params: { value: setOpponentElementMatch[1] } };
 
   // "攻撃力-30"
-  const reduceMatch = text.match(/攻撃力(?:を)?[ー\-]([0-9０-９]+)/);
+  const reduceMatch = text.match(/攻撃力(?:を)?[ー-]([0-9０-９]+)/);
   if (reduceMatch) return { type: 'reduceAttack', params: { value: parseNum(reduceMatch[1]) } };
 
   // "お互いのHPをX回復"
@@ -738,7 +738,7 @@ function parseAction(text: string): EffectAction | null {
   if (hpBoostMatch) return { type: 'heal', params: { value: parseNum(hpBoostMatch[1]) } };
 
   // "相手のHP-20"
-  const hpReduceMatch = text.match(/相手のHP[ー\-]([0-9０-９]+)/);
+  const hpReduceMatch = text.match(/相手のHP[ー-]([0-9０-９]+)/);
   if (hpReduceMatch) return { type: 'directDamage', params: { value: parseNum(hpReduceMatch[1]) } };
 
   // "相手のHPを20減らす"

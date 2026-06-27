@@ -42,6 +42,9 @@ import {
 
 const playerIndexes: PlayerIndex[] = [0, 1];
 
+// P3-16：伺服器權威回合時限（毫秒）。與 Board.tsx 的 TURN_TIMER_SECONDS 一致。
+export const TURN_TIMER_MS = 60_000;
+
 interface SetupGameOptions {
   allowBrowserCustomDeckName?: boolean;
 }
@@ -137,80 +140,9 @@ function effectActionSummary(effect: ParsedEffect): { trigger: ParsedEffect['tri
 }
 
 function choiceDestinationSummary(choice: PendingChoice): Record<string, unknown> {
-  if (choice.type === 'handToDeckBottomThenDraw') {
-    return { destinationZone: 'deck', destinationPosition: 'bottom', drawCount: choice.payload.drawCount };
-  }
-  if (choice.type === 'cardMove') {
-    return {
-      sourcePlayer: choice.payload.sourcePlayer,
-      sourceZone: choice.payload.sourceZone,
-      destinationPlayer: choice.payload.destinationPlayer,
-      destinationZone: choice.payload.destinationZone,
-      destinationPosition: choice.payload.destinationPosition,
-    };
-  }
-  if (choice.type === 'optionalHandMoveThenDraw') {
-    return {
-      sourcePlayer: choice.payload.sourcePlayer,
-      sourceZone: choice.payload.sourceZone,
-      destinationPlayer: choice.payload.destinationPlayer,
-      destinationZone: choice.payload.destinationZone,
-      destinationPosition: choice.payload.destinationPosition,
-      drawCount: choice.payload.drawCount,
-    };
-  }
-  if (choice.type === 'abyssToDeckBottomOrLose') {
-    return {
-      sourceZone: 'abyss',
-      destinationZone: 'deck',
-      destinationPosition: 'bottom',
-      faceDown: choice.payload.faceDown,
-      shuffle: choice.payload.shuffle,
-      followUpChoiceType: choice.payload.followUpChoiceType,
-    };
-  }
-  if (choice.type === 'reorderOpponentDeckTop') {
-    return {
-      targetPlayer: choice.payload.targetPlayer,
-      effectLabel: 'reorderOpponentDeckTop',
-    };
-  }
-  if (choice.type === 'opponentPowerCharacterSwap') {
-    return {
-      targetPlayer: choice.payload.opponentPlayer,
-      effectLabel: 'opponentPowerCharacterSwap',
-    };
-  }
-  if (choice.type === 'useFromAbyss') {
-    return {
-      sourcePlayer: choice.payload.sourcePlayer,
-      sourceZone: choice.payload.sourceZone ?? 'abyss',
-      effectLabel: 'useFromAbyss',
-    };
-  }
-  if (choice.type === 'useFromHand') {
-    return {
-      sourcePlayer: choice.payload.sourcePlayer,
-      sourceZone: 'hand',
-      followUpDrawCount: choice.payload.followUpDrawCount,
-      effectLabel: 'useFromHand',
-    };
-  }
-  if (choice.type === 'revealHandAttackBoost') {
-    return {
-      sourcePlayer: choice.payload.sourcePlayer,
-      effectLabel: 'revealHandAttackBoost',
-    };
-  }
-  if (choice.type === 'nameGuessOpponentHandReveal') {
-    return {
-      targetPlayer: choice.payload.opponentPlayer,
-      effectLabel: 'nameGuessOpponentHandReveal',
-    };
-  }
-  if (choice.type === 'handAbyssSwap') return { effectLabel: 'handAbyssSwap' };
-  if (choice.type === 'clockPosition') return { effectLabel: 'clockPosition' };
-  return { effectLabel: 'clockAdvance' };
+  // 共用 choiceHandlers registry：summarize 邏輯與 submitPendingChoice 的 apply 邏輯
+  // 統一集中於同一份 handler 表，避免三處重複分派同一組 choiceType。
+  return choiceHandlers[choice.type].summarize(choice);
 }
 
 function choiceActionPayload(choice: PendingChoice, selectedCount: number): Record<string, unknown> {
@@ -434,6 +366,7 @@ export function setupGame(
     midnightRange: 0,
     chronosAtTurnStart: 0,
     turnNumber: 1,
+    turnStartTime: Date.now(),
     lastBattleResult: { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 },
     setCardsThisTurn: [[], []],
     pendingEffects: [[], []],
@@ -532,7 +465,7 @@ export function finishMulligan(G: GameState, player: PlayerIndex, indices: numbe
 
 // 官方 QA Q5：敗者「最低 1 枚，最多 2 枚，可選 1 枚」。
 // 所有玩家最低都是 1 枚；敗者的「最多 2 枚」由 getRequiredSetCount 處理。
-export function getMinimumSetCount(G: GameState, player: PlayerIndex): number {
+export function getMinimumSetCount(_G: GameState, _player: PlayerIndex): number {
   return 1;
 }
 
@@ -603,6 +536,23 @@ export function confirmReady(
   if (cardsSet < getMinimumSetCount(G, player) || cardsSet > getRequiredSetCount(G, player)) return false;
   G.ready[player] = true;
   recordAction(G, player, 'confirmReady', { confirmed: true });
+  if (G.ready[0] && G.ready[1]) resolveTurn(G, parsedEffects);
+  return true;
+}
+
+// P3-16：線上回合超時處理。當伺服器時間已超過 TURN_TIMER_MS 且該玩家尚未 confirmReady 時，
+// 強制將該玩家設為 ready 並推進回合，避免未達最低出牌數時卡死。
+// 不像 confirmReady 會檢查最低出牌數，timeoutSkip 允許空手跳過。
+export function timeoutSkip(
+  G: GameState,
+  player: PlayerIndex,
+  parsedEffects: Map<string, ParsedEffect[]>,
+): boolean {
+  if (G.step !== 'turnSet' || G.ready[player]) return false;
+  // 伺服器權威超時檢查：Date.now() 在 boardgame.io server/master 執行，為權威時間。
+  if (typeof G.turnStartTime !== 'number' || Date.now() - G.turnStartTime < TURN_TIMER_MS) return false;
+  G.ready[player] = true;
+  recordAction(G, player, 'timeoutSkip', { confirmed: true });
   if (G.ready[0] && G.ready[1]) resolveTurn(G, parsedEffects);
   return true;
 }
@@ -1053,6 +1003,8 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
   G.turnNumber++;
   G.step = 'turnSet';
   G.ready = [false, false];
+  // P3-16：回合開始時記錄伺服器時間，作為客戶端計時與超時判斷的權威基準。
+  G.turnStartTime = Date.now();
   G.log.push(`Turn ${G.turnNumber}: set cards.`);
   resolveTimingEvent(G, parsedEffects, { type: 'turnStart' });
 }
@@ -1199,69 +1151,101 @@ export function resolvePendingEffect(
   return true;
 }
 
-export function submitPendingChoice(
-  G: GameState,
-  player: PlayerIndex,
-  optionIds: string[],
-  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
-): boolean {
-  const choice = G.pendingChoice;
-  if (!choice || choice.player !== player) return false;
-  if (!Array.isArray(optionIds) || optionIds.length < choice.min || optionIds.length > choice.max) return false;
-  if (new Set(optionIds).size !== optionIds.length) return false;
-  const legal = new Set(choice.options.map(option => option.id));
-  if (!optionIds.every(id => legal.has(id))) return false;
-  let nextChoice: PendingChoice | null = null;
+type ChoiceType = PendingChoice['type'];
 
-  const playerState = G.players[player];
-  if (choice.type === 'handToDeckBottomThenDraw') {
+// apply 回傳值：invalid=驗證失敗（回傳 false）；endedGame=已觸發 endGame 並記錄失敗
+// （跳過後續 post-block，直接回傳 true）；ok=正常完成，可附帶 nextChoice 接續選擇。
+type ChoiceApplyResult =
+  | { status: 'invalid' }
+  | { status: 'endedGame' }
+  | { status: 'ok'; nextChoice?: PendingChoice | null };
+
+interface ChoiceHandlerContext {
+  G: GameState;
+  player: PlayerIndex;
+  choice: PendingChoice;
+  optionIds: string[];
+  playerState: PlayerState;
+  parsedEffects: Map<string, ParsedEffect[]>;
+}
+
+interface ChoiceHandler {
+  summarize(choice: PendingChoice): Record<string, unknown>;
+  apply(context: ChoiceHandlerContext): ChoiceApplyResult;
+  // 為 true 時，post-block 不會重設 lastChoiceSelectionCount（僅 abyssToDeckBottomOrLose 需要）。
+  preserveSelectionCount?: boolean;
+}
+
+const handToDeckBottomThenDrawHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'handToDeckBottomThenDraw' }>;
+    return { destinationZone: 'deck', destinationPosition: 'bottom', drawCount: c.payload.drawCount };
+  },
+  apply({ G, player, choice, optionIds, playerState }) {
+    const c = choice as Extract<PendingChoice, { type: 'handToDeckBottomThenDraw' }>;
     for (const optionId of optionIds) {
       const handIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
-      if (handIndex < 0) return false;
+      if (handIndex < 0) return { status: 'invalid' };
       const [card] = playerState.hand.splice(handIndex, 1);
       card.faceUp = true;
       playerState.deck.push(card);
     }
-    const drawCount = Number(choice.payload.drawCount ?? 0);
+    const drawCount = Number(c.payload.drawCount ?? 0);
     if (playerState.deck.length < drawCount) {
       const reason = `Player ${player} loses: choice attempted to draw ${drawCount} with only ${playerState.deck.length} cards.`;
       recordPendingChoiceAction(G, player, choice, optionIds.length, { ok: false, message: reason });
       endGame(G, (1 - player) as PlayerIndex, reason);
-      return true;
+      return { status: 'endedGame' };
     }
     drawUnchecked(playerState, drawCount);
-  }
-  if (choice.type === 'optionalHandMoveThenDraw') {
+    return { status: 'ok' };
+  },
+};
+
+const optionalHandMoveThenDrawHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'optionalHandMoveThenDraw' }>;
+    return {
+      sourcePlayer: c.payload.sourcePlayer,
+      sourceZone: c.payload.sourceZone,
+      destinationPlayer: c.payload.destinationPlayer,
+      destinationZone: c.payload.destinationZone,
+      destinationPosition: c.payload.destinationPosition,
+      drawCount: c.payload.drawCount,
+    };
+  },
+  apply({ G, player, choice, optionIds, playerState, parsedEffects }) {
+    const c = choice as Extract<PendingChoice, { type: 'optionalHandMoveThenDraw' }>;
     if (
-      choice.payload.sourcePlayer !== player
-      || choice.payload.sourceZone !== 'hand'
-      || choice.payload.destinationPlayer !== player
-      || !['abyss', 'powerCharger', 'deck'].includes(choice.payload.destinationZone)
-      || (choice.payload.destinationZone === 'deck' && choice.payload.destinationPosition !== 'bottom')
-      || (choice.payload.destinationZone !== 'deck' && choice.payload.destinationPosition !== undefined)
+      c.payload.sourcePlayer !== player
+      || c.payload.sourceZone !== 'hand'
+      || c.payload.destinationPlayer !== player
+      || !['abyss', 'powerCharger', 'deck'].includes(c.payload.destinationZone)
+      || (c.payload.destinationZone === 'deck' && c.payload.destinationPosition !== 'bottom')
+      || (c.payload.destinationZone !== 'deck' && c.payload.destinationPosition !== undefined)
     ) {
-      return false;
+      return { status: 'invalid' };
     }
-    const drawCount = choice.payload.drawCount === 'selected'
+    const drawCount = c.payload.drawCount === 'selected'
       ? optionIds.length
-      : Number(choice.payload.drawCount ?? 0);
-    if (!Number.isInteger(drawCount) || drawCount < 0) return false;
+      : Number(c.payload.drawCount ?? 0);
+    if (!Number.isInteger(drawCount) || drawCount < 0) return { status: 'invalid' };
 
     if (optionIds.length > 0) {
       for (const optionId of optionIds) {
         const card = playerState.hand.find(item => item.instanceId === optionId);
-        if (!card || !matchesPendingCardFilter(card, choice.payload.filter)) return false;
+        if (!card || !matchesPendingCardFilter(card, c.payload.filter)) return { status: 'invalid' };
       }
 
       for (const optionId of optionIds) {
         const handIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
-        if (handIndex < 0) return false;
+        if (handIndex < 0) return { status: 'invalid' };
         const [card] = playerState.hand.splice(handIndex, 1);
         card.faceUp = true;
-        if (choice.payload.destinationZone === 'abyss') {
+        if (c.payload.destinationZone === 'abyss') {
           playerState.abyss.push(card);
           resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player, zone: 'abyss', cardDefId: card.defId });
-        } else if (choice.payload.destinationZone === 'powerCharger') {
+        } else if (c.payload.destinationZone === 'powerCharger') {
           playerState.powerCharger.push(card);
           resolveTimingEvent(G, parsedEffects, { type: 'zoneEntered', player, zone: 'powerCharger', cardDefId: card.defId });
         } else {
@@ -1273,42 +1257,70 @@ export function submitPendingChoice(
         const reason = `Player ${player} loses: choice attempted to draw ${drawCount} with only ${playerState.deck.length} cards.`;
         recordPendingChoiceAction(G, player, choice, optionIds.length, { ok: false, message: reason });
         endGame(G, (1 - player) as PlayerIndex, reason);
-        return true;
+        return { status: 'endedGame' };
       }
       drawUnchecked(playerState, drawCount);
     }
-  }
-  if (choice.type === 'cardMove') {
-    const source = sourceCards(G, choice.payload);
+    return { status: 'ok' };
+  },
+};
+
+const cardMoveHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'cardMove' }>;
+    return {
+      sourcePlayer: c.payload.sourcePlayer,
+      sourceZone: c.payload.sourceZone,
+      destinationPlayer: c.payload.destinationPlayer,
+      destinationZone: c.payload.destinationZone,
+      destinationPosition: c.payload.destinationPosition,
+    };
+  },
+  apply({ G, choice, optionIds, parsedEffects }) {
+    const c = choice as Extract<PendingChoice, { type: 'cardMove' }>;
+    const source = sourceCards(G, c.payload);
     if (!optionIds.every(optionId => {
       const card = source.find(item => item.instanceId === optionId);
-      return !!card && matchesCardMoveFilter(card, choice.payload);
-    })) return false;
+      return !!card && matchesCardMoveFilter(card, c.payload);
+    })) return { status: 'invalid' };
     for (const optionId of optionIds) {
       const movedCard = source.find(item => item.instanceId === optionId);
-      if (!moveCardForChoice(G, choice.payload, optionId)) return false;
-      if (movedCard && choice.payload.destinationZone === 'abyss') {
+      if (!moveCardForChoice(G, c.payload, optionId)) return { status: 'invalid' };
+      if (movedCard && c.payload.destinationZone === 'abyss') {
         resolveTimingEvent(G, parsedEffects, {
           type: 'zoneEntered',
-          player: choice.payload.destinationPlayer,
+          player: c.payload.destinationPlayer,
           zone: 'abyss',
           cardDefId: movedCard.defId,
         });
       }
     }
-  }
-  if (choice.type === 'useFromAbyss') {
-    if (choice.payload.sourcePlayer !== player) return false;
-    const source = choice.payload.sourceZone === 'powerCharger' ? playerState.powerCharger : playerState.abyss;
+    return { status: 'ok' };
+  },
+};
+
+const useFromAbyssHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'useFromAbyss' }>;
+    return {
+      sourcePlayer: c.payload.sourcePlayer,
+      sourceZone: c.payload.sourceZone ?? 'abyss',
+      effectLabel: 'useFromAbyss',
+    };
+  },
+  apply({ G, player, choice, optionIds, playerState, parsedEffects }) {
+    const c = choice as Extract<PendingChoice, { type: 'useFromAbyss' }>;
+    if (c.payload.sourcePlayer !== player) return { status: 'invalid' };
+    const source = c.payload.sourceZone === 'powerCharger' ? playerState.powerCharger : playerState.abyss;
     const copied: PendingEffect[] = [];
     for (const optionId of optionIds) {
       const selected = source.find(card => card.instanceId === optionId);
-      if (!selected) return false;
+      if (!selected) return { status: 'invalid' };
       const def = getCardDef(selected.defId);
-      if (!def) return false;
-      if (choice.payload.cardType !== undefined && def.type !== choice.payload.cardType) return false;
-      if (choice.payload.song !== undefined && def.song !== choice.payload.song) return false;
-      if (choice.payload.sourceZone !== 'powerCharger' && choice.payload.cardType === undefined && def.type !== 'Enchant') return false;
+      if (!def) return { status: 'invalid' };
+      if (c.payload.cardType !== undefined && def.type !== c.payload.cardType) return { status: 'invalid' };
+      if (c.payload.song !== undefined && def.song !== c.payload.song) return { status: 'invalid' };
+      if (c.payload.sourceZone !== 'powerCharger' && c.payload.cardType === undefined && def.type !== 'Enchant') return { status: 'invalid' };
       selected.faceUp = true;
       const copiedEffects = (parsedEffects.get(selected.defId) ?? [])
         .filter(effect => effect.trigger === 'onUse' || effect.trigger === 'onBattle');
@@ -1324,21 +1336,35 @@ export function submitPendingChoice(
       })));
     }
     G.pendingEffects[player].unshift(...copied);
-  }
-  if (choice.type === 'useFromHand') {
-    if (choice.payload.sourcePlayer !== player) return false;
+    return { status: 'ok' };
+  },
+};
+
+const useFromHandHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'useFromHand' }>;
+    return {
+      sourcePlayer: c.payload.sourcePlayer,
+      sourceZone: 'hand',
+      followUpDrawCount: c.payload.followUpDrawCount,
+      effectLabel: 'useFromHand',
+    };
+  },
+  apply({ G, player, choice, optionIds, playerState, parsedEffects }) {
+    const c = choice as Extract<PendingChoice, { type: 'useFromHand' }>;
+    if (c.payload.sourcePlayer !== player) return { status: 'invalid' };
     const copied: PendingEffect[] = [];
     for (const optionId of optionIds) {
       const selectedIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
-      if (selectedIndex < 0) return false;
+      if (selectedIndex < 0) return { status: 'invalid' };
       const selected = playerState.hand[selectedIndex];
       const def = getCardDef(selected.defId);
-      if (!def || getPlayerPower(playerState, G, player) < def.powerCost || !matchesPendingCardFilter(selected, choice.payload.filter)) return false;
+      if (!def || getPlayerPower(playerState, G, player) < def.powerCost || !matchesPendingCardFilter(selected, c.payload.filter)) return { status: 'invalid' };
     }
 
     for (const optionId of optionIds) {
       const selectedIndex = playerState.hand.findIndex(card => card.instanceId === optionId);
-      if (selectedIndex < 0) return false;
+      if (selectedIndex < 0) return { status: 'invalid' };
       const [selected] = playerState.hand.splice(selectedIndex, 1);
       selected.faceUp = true;
       const copiedEffects = (parsedEffects.get(selected.defId) ?? [])
@@ -1355,7 +1381,7 @@ export function submitPendingChoice(
       sendToOwnerZone(selected, playerState, G, player, parsedEffects);
     }
 
-    const followUpDrawCount = Number(choice.payload.followUpDrawCount ?? 0);
+    const followUpDrawCount = Number(c.payload.followUpDrawCount ?? 0);
     if (followUpDrawCount > 0) {
       copied.push({
         id: `follow-up-draw:${player}:${G.turnNumber}:${G.log.length}`,
@@ -1374,128 +1400,257 @@ export function submitPendingChoice(
     }
 
     G.pendingEffects[player].unshift(...copied);
-  }
-  if (choice.type === 'revealHandAttackBoost') {
-    if (choice.payload.sourcePlayer !== player) return false;
+    return { status: 'ok' };
+  },
+};
+
+const revealHandAttackBoostHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'revealHandAttackBoost' }>;
+    return {
+      sourcePlayer: c.payload.sourcePlayer,
+      effectLabel: 'revealHandAttackBoost',
+    };
+  },
+  apply({ G, player, choice, optionIds, playerState }) {
+    const c = choice as Extract<PendingChoice, { type: 'revealHandAttackBoost' }>;
+    if (c.payload.sourcePlayer !== player) return { status: 'invalid' };
     for (const optionId of optionIds) {
       const card = playerState.hand.find(item => item.instanceId === optionId);
-      if (!card || !matchesPendingCardFilter(card, choice.payload.filter)) return false;
+      if (!card || !matchesPendingCardFilter(card, c.payload.filter)) return { status: 'invalid' };
     }
     const revealed = new Set(G.revealedHandCardIds[player] ?? []);
     for (const optionId of optionIds) revealed.add(optionId);
     G.revealedHandCardIds[player] = [...revealed];
-    G.modifiers.attack[player] += optionIds.length * choice.payload.boostPerCard;
-  }
-  if (choice.type === 'nameGuessOpponentHandReveal') {
+    G.modifiers.attack[player] += optionIds.length * c.payload.boostPerCard;
+    return { status: 'ok' };
+  },
+};
+
+const nameGuessOpponentHandRevealHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'nameGuessOpponentHandReveal' }>;
+    return {
+      targetPlayer: c.payload.opponentPlayer,
+      effectLabel: 'nameGuessOpponentHandReveal',
+    };
+  },
+  apply({ G, player, choice, optionIds }) {
+    const c = choice as Extract<PendingChoice, { type: 'nameGuessOpponentHandReveal' }>;
     const match = optionIds[0]?.match(/^hand:([0-9]+):guess:([^:]+)$/);
-    if (!match || choice.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) return false;
+    if (!match || c.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) return { status: 'invalid' };
     const [, handIndexText, guessedDefId] = match;
-    const opponent = G.players[choice.payload.opponentPlayer];
+    const opponent = G.players[c.payload.opponentPlayer];
     const selected = opponent.hand[Number(handIndexText)];
-    if (!selected) return false;
-    const revealed = new Set(G.revealedHandCardIds[choice.payload.opponentPlayer] ?? []);
+    if (!selected) return { status: 'invalid' };
+    const revealed = new Set(G.revealedHandCardIds[c.payload.opponentPlayer] ?? []);
     revealed.add(selected.instanceId);
-    G.revealedHandCardIds[choice.payload.opponentPlayer] = [...revealed];
+    G.revealedHandCardIds[c.payload.opponentPlayer] = [...revealed];
     if (selected.defId === guessedDefId) {
-      G.modifiers.attack[player] += choice.payload.attackBoost;
+      G.modifiers.attack[player] += c.payload.attackBoost;
     }
-  }
-  if (choice.type === 'handAbyssSwap') {
+    return { status: 'ok' };
+  },
+};
+
+const handAbyssSwapHandler: ChoiceHandler = {
+  summarize() {
+    return { effectLabel: 'handAbyssSwap' };
+  },
+  apply({ optionIds, playerState }) {
     const handOption = optionIds.find(id => id.startsWith('hand:'));
     const abyssOption = optionIds.find(id => id.startsWith('abyss:'));
-    if (!handOption || !abyssOption) return false;
+    if (!handOption || !abyssOption) return { status: 'invalid' };
     const handId = handOption.slice('hand:'.length);
     const abyssId = abyssOption.slice('abyss:'.length);
     const handIndex = playerState.hand.findIndex(card => card.instanceId === handId);
     const abyssIndex = playerState.abyss.findIndex(card => card.instanceId === abyssId);
-    if (handIndex < 0 || abyssIndex < 0) return false;
+    if (handIndex < 0 || abyssIndex < 0) return { status: 'invalid' };
     const [handCard] = playerState.hand.splice(handIndex, 1);
     const [abyssCard] = playerState.abyss.splice(abyssIndex, 1);
     handCard.faceUp = true;
     abyssCard.faceUp = true;
     playerState.hand.push(abyssCard);
     playerState.abyss.push(handCard);
-  }
-  if (choice.type === 'opponentPowerCharacterSwap') {
-    if (choice.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) return false;
-    const opponent = G.players[choice.payload.opponentPlayer];
+    return { status: 'ok' };
+  },
+};
+
+const opponentPowerCharacterSwapHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'opponentPowerCharacterSwap' }>;
+    return {
+      targetPlayer: c.payload.opponentPlayer,
+      effectLabel: 'opponentPowerCharacterSwap',
+    };
+  },
+  apply({ G, player, choice, optionIds }) {
+    const c = choice as Extract<PendingChoice, { type: 'opponentPowerCharacterSwap' }>;
+    if (c.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) return { status: 'invalid' };
+    const opponent = G.players[c.payload.opponentPlayer];
     const battleZoneCard = opponent.battleZone;
-    if (!isCharacterCard(battleZoneCard)) return false;
+    if (!isCharacterCard(battleZoneCard)) return { status: 'invalid' };
     const selectedIndex = opponent.powerCharger.findIndex(card => card.instanceId === optionIds[0]);
-    if (selectedIndex < 0) return false;
+    if (selectedIndex < 0) return { status: 'invalid' };
     const selected = opponent.powerCharger[selectedIndex];
-    if (!isCharacterCard(selected)) return false;
+    if (!isCharacterCard(selected)) return { status: 'invalid' };
 
     opponent.powerCharger.splice(selectedIndex, 1);
     selected.faceUp = true;
     battleZoneCard.faceUp = true;
     opponent.battleZone = selected;
     opponent.powerCharger.push(battleZoneCard);
-    G.swappedCardsThisTurn[choice.payload.opponentPlayer].push(selected);
+    G.swappedCardsThisTurn[c.payload.opponentPlayer].push(selected);
     suppressEffectCardForTurn(G, selected.instanceId);
-  }
-  if (choice.type === 'abyssToDeckBottomOrLose') {
+    return { status: 'ok' };
+  },
+};
+
+const abyssToDeckBottomOrLoseHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'abyssToDeckBottomOrLose' }>;
+    return {
+      sourceZone: 'abyss',
+      destinationZone: 'deck',
+      destinationPosition: 'bottom',
+      faceDown: c.payload.faceDown,
+      shuffle: c.payload.shuffle,
+      followUpChoiceType: c.payload.followUpChoiceType,
+    };
+  },
+  apply({ G, player, choice, optionIds, playerState }) {
+    const c = choice as Extract<PendingChoice, { type: 'abyssToDeckBottomOrLose' }>;
     const abyssIds = new Set(playerState.abyss.map(card => card.instanceId));
-    if (!optionIds.every(optionId => abyssIds.has(optionId))) return false;
+    if (!optionIds.every(optionId => abyssIds.has(optionId))) return { status: 'invalid' };
 
     const selectedCards: CardInstance[] = [];
     for (const optionId of optionIds) {
       const abyssIndex = playerState.abyss.findIndex(card => card.instanceId === optionId);
-      if (abyssIndex < 0) return false;
+      if (abyssIndex < 0) return { status: 'invalid' };
       const [card] = playerState.abyss.splice(abyssIndex, 1);
-      card.faceUp = !choice.payload.faceDown;
+      card.faceUp = !c.payload.faceDown;
       selectedCards.push(card);
     }
 
-    const ordered = choice.payload.shuffle && selectedCards.length > 1
+    const ordered = c.payload.shuffle && selectedCards.length > 1
       ? shuffleSelectedCards(selectedCards)
       : selectedCards;
     playerState.deck.push(...ordered);
     G.lastChoiceSelectionCount[player] = optionIds.length;
 
-    if (choice.payload.followUpChoiceType === 'reorderOpponentDeckTop') {
+    if (c.payload.followUpChoiceType === 'reorderOpponentDeckTop') {
       const result = buildReorderOpponentDeckTopChoice(
         G,
         player,
-        Number(choice.payload.followUpCount ?? 0),
+        Number(c.payload.followUpCount ?? 0),
         choice.prompt,
       );
-      if (!result.success) return false;
-      nextChoice = result.choice ?? null;
+      if (!result.success) return { status: 'invalid' };
+      return { status: 'ok', nextChoice: result.choice ?? null };
     }
-  }
-  if (choice.type === 'reorderOpponentDeckTop') {
-    const target = G.players[choice.payload.targetPlayer];
-    const count = choice.payload.count;
-    if (!Number.isInteger(count) || count < 1 || optionIds.length !== count) return false;
+    return { status: 'ok' };
+  },
+  preserveSelectionCount: true,
+};
+
+const reorderOpponentDeckTopHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'reorderOpponentDeckTop' }>;
+    return {
+      targetPlayer: c.payload.targetPlayer,
+      effectLabel: 'reorderOpponentDeckTop',
+    };
+  },
+  apply({ G, choice, optionIds }) {
+    const c = choice as Extract<PendingChoice, { type: 'reorderOpponentDeckTop' }>;
+    const target = G.players[c.payload.targetPlayer];
+    const count = c.payload.count;
+    if (!Number.isInteger(count) || count < 1 || optionIds.length !== count) return { status: 'invalid' };
     const topCards = target.deck.slice(0, count);
-    if (topCards.length !== count) return false;
+    if (topCards.length !== count) return { status: 'invalid' };
     const topCardIds = new Set(topCards.map(card => card.instanceId));
-    if (!optionIds.every(optionId => topCardIds.has(optionId))) return false;
+    if (!optionIds.every(optionId => topCardIds.has(optionId))) return { status: 'invalid' };
     const ordered = optionIds.map(optionId => topCards.find(card => card.instanceId === optionId)!);
     target.deck.splice(0, count, ...ordered);
-  }
-  if (choice.type === 'clockPosition' || choice.type === 'clockAdvance') {
+    return { status: 'ok' };
+  },
+};
+
+const clockPositionHandler: ChoiceHandler = {
+  summarize() {
+    return { effectLabel: 'clockPosition' };
+  },
+  apply({ G, choice, optionIds, parsedEffects }) {
     const option = choice.options.find(item => item.id === optionIds[0]);
-    if (!option || !Number.isInteger(Number(option.value))) return false;
+    if (!option || !Number.isInteger(Number(option.value))) return { status: 'invalid' };
     const value = Number(option.value);
-    if (choice.type === 'clockPosition') {
-      setChronosPosition(G, value, parsedEffects, `Chronos set to ${value}.`);
-    } else {
-      const before = G.chronos.position;
-      setChronosPosition(
-        G,
-        before + value,
-        parsedEffects,
-        `Chronos +${value} (${before}→${normalizeChronosPosition(before + value)}).`,
-      );
-    }
-  }
-  if (choice.type !== 'abyssToDeckBottomOrLose') G.lastChoiceSelectionCount[player] = null;
+    setChronosPosition(G, value, parsedEffects, `Chronos set to ${value}.`);
+    return { status: 'ok' };
+  },
+};
+
+const clockAdvanceHandler: ChoiceHandler = {
+  summarize() {
+    return { effectLabel: 'clockAdvance' };
+  },
+  apply({ G, choice, optionIds, parsedEffects }) {
+    const option = choice.options.find(item => item.id === optionIds[0]);
+    if (!option || !Number.isInteger(Number(option.value))) return { status: 'invalid' };
+    const value = Number(option.value);
+    const before = G.chronos.position;
+    setChronosPosition(
+      G,
+      before + value,
+      parsedEffects,
+      `Chronos +${value} (${before}→${normalizeChronosPosition(before + value)}).`,
+    );
+    return { status: 'ok' };
+  },
+};
+
+// handler registry：以 Record<ChoiceType, ChoiceHandler> 分派，
+// submitPendingChoice 與 choiceDestinationSummary 共用此表，消除三處重複分派。
+const choiceHandlers: Record<ChoiceType, ChoiceHandler> = {
+  handToDeckBottomThenDraw: handToDeckBottomThenDrawHandler,
+  cardMove: cardMoveHandler,
+  optionalHandMoveThenDraw: optionalHandMoveThenDrawHandler,
+  abyssToDeckBottomOrLose: abyssToDeckBottomOrLoseHandler,
+  reorderOpponentDeckTop: reorderOpponentDeckTopHandler,
+  opponentPowerCharacterSwap: opponentPowerCharacterSwapHandler,
+  useFromAbyss: useFromAbyssHandler,
+  useFromHand: useFromHandHandler,
+  revealHandAttackBoost: revealHandAttackBoostHandler,
+  nameGuessOpponentHandReveal: nameGuessOpponentHandRevealHandler,
+  handAbyssSwap: handAbyssSwapHandler,
+  clockPosition: clockPositionHandler,
+  clockAdvance: clockAdvanceHandler,
+};
+
+export function submitPendingChoice(
+  G: GameState,
+  player: PlayerIndex,
+  optionIds: string[],
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
+): boolean {
+  const choice = G.pendingChoice;
+  if (!choice || choice.player !== player) return false;
+  if (!Array.isArray(optionIds) || optionIds.length < choice.min || optionIds.length > choice.max) return false;
+  if (new Set(optionIds).size !== optionIds.length) return false;
+  const legal = new Set(choice.options.map(option => option.id));
+  if (!optionIds.every(id => legal.has(id))) return false;
+
+  const playerState = G.players[player];
+  const handler = choiceHandlers[choice.type];
+  const result = handler.apply({ G, player, choice, optionIds, playerState, parsedEffects });
+
+  if (result.status === 'invalid') return false;
+  if (result.status === 'endedGame') return true;
+
+  if (!handler.preserveSelectionCount) G.lastChoiceSelectionCount[player] = null;
   recordPendingChoiceAction(G, player, choice, optionIds.length);
   clearPendingChoice(G);
-  if (nextChoice) {
-    G.pendingChoice = nextChoice;
+  if (result.nextChoice) {
+    G.pendingChoice = result.nextChoice;
     return true;
   }
   advancePendingEffectWindow(G, parsedEffects);

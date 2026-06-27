@@ -1,4 +1,4 @@
-import type { ChronosTime, Element } from '../types';
+import type { Element } from '../types';
 
 // ===== Effect DSL Types =====
 

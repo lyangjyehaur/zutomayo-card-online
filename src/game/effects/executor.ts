@@ -20,10 +20,11 @@ import type {
   PendingUseFromAbyssPayload,
   PendingUseFromHandPayload,
   PlayerIndex,
+  PlayerState,
   TimingEvent,
 } from '../types';
 import { CHRONOS_MAPPING } from '../types';
-import type { ParsedEffect, Condition } from './types';
+import type { ParsedEffect, Condition, EffectValue, ActionType } from './types';
 import { getAllCardDefs, getCardDef } from '../cards/loader';
 import { getChronosTimeForPosition, normalizeChronosPosition } from '../chronos';
 import {
@@ -157,10 +158,6 @@ function conditionPlayer(cond: Condition, player: PlayerIndex): PlayerIndex {
 function conditionZoneCards(G: GameState, player: PlayerIndex, cond: Condition): CardInstance[] {
   const owner = conditionPlayer(cond, player);
   return cond.target === 'powerCharger' ? G.players[owner].powerCharger : G.players[owner].abyss;
-}
-
-function latestChronosChangedEvent(G: GameState) {
-  return [...G.timingEvents].reverse().find(item => item.type === 'chronosChanged');
 }
 
 function evaluateCondition(
@@ -461,6 +458,1070 @@ export function collectTurnEffects(
   return pending;
 }
 
+// ===== Effect handler registry =====
+//
+// executeEffect 透過 effectHandlers 分派到對應的 handler 函式。
+// 每個 handler 負責單一 ActionType 的邏輯，保持原本 switch case 的行為。
+// requestChoice handler 內部再透過 choiceHandlers 分派到 choiceType handler。
+
+interface EffectHandlerArgs {
+  effect: ParsedEffect;
+  G: GameState;
+  player: PlayerIndex;
+  context: EffectExecutionContext;
+  me: PlayerState;
+  opponent: PlayerState;
+  opponentIndex: PlayerIndex;
+  valueParam: EffectValue;
+  value: number;
+}
+
+type EffectHandler = (args: EffectHandlerArgs) => { success: boolean; message: string };
+
+function handleBoostAttack({ effect, G, player, me, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  // 官方 QA Q40/Q74：角色 power cost 不足時攻撃力修飾效果不発動，
+  // 不設定修飾器避免殘留導致 power 補足後攻撃力錯誤。
+  // battleZone 為 null 時不跳過（無角色可修飾，修飾器不會造成殘留問題）。
+  if (me.battleZone && power(G, player) < (effectivePowerCost(me.battleZone, G, player) ?? 0)) {
+    return { success: true, message: 'Attack boost skipped (battleZone power cost not met)' };
+  }
+  let multiplier = 1;
+  if (effect.action.params.per === 'zoneElementCount') {
+    multiplier = zoneElementCount(
+      G,
+      player,
+      String(effect.action.params.zone ?? 'abyss'),
+      String(effect.action.params.element ?? ''),
+    );
+  }
+  if (effect.action.params.per === 'zoneSongCount') {
+    multiplier = zoneSongCount(
+      G,
+      player,
+      String(effect.action.params.zone ?? 'abyss'),
+      String(effect.action.params.song ?? ''),
+    );
+  }
+  const boost = effect.action.params.per || effect.action.params.perCount ? value * multiplier : value;
+  // 官方 QA Q54：逐效果套用並鉗制至 0，避免負修正溢出被吸收後不正確地降低後續正修正效果。
+  const currentAttack = effectiveAttack(me.battleZone, G, player) ?? 0;
+  const newAttack = Math.max(0, currentAttack + boost);
+  const baseAttack = computeBaseAttack(me.battleZone, G, player);
+  G.modifiers.attack[player] = newAttack - baseAttack;
+  return { success: true, message: `Attack +${boost}` };
+}
+
+function handleBoostBothAttackByOwnHp({ G, player, me, opponent, opponentIndex }: EffectHandlerArgs): { success: boolean; message: string } {
+  // 官方 QA Q40/Q74/Q54：逐效果套用並鉗制至 0，且角色 power cost 不足時不発動。
+  // 雙方各自檢查 power cost，不足者跳過修飾，避免殘留修飾器。
+  // battleZone 為 null 時仍設定修飾器（無角色可修飾，不會造成殘留問題）。
+  const myPowerOk = !me.battleZone || power(G, player) >= (effectivePowerCost(me.battleZone, G, player) ?? 0);
+  if (myPowerOk) {
+    const myCurrent = effectiveAttack(me.battleZone, G, player) ?? 0;
+    const myNew = Math.max(0, myCurrent + me.hp);
+    const myBase = computeBaseAttack(me.battleZone, G, player);
+    G.modifiers.attack[player] = myNew - myBase;
+  }
+  const oppPowerOk = !opponent.battleZone || power(G, opponentIndex) >= (effectivePowerCost(opponent.battleZone, G, opponentIndex) ?? 0);
+  if (oppPowerOk) {
+    const oppCurrent = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
+    const oppNew = Math.max(0, oppCurrent + opponent.hp);
+    const oppBase = computeBaseAttack(opponent.battleZone, G, opponentIndex);
+    G.modifiers.attack[opponentIndex] = oppNew - oppBase;
+  }
+  return { success: true, message: 'Both players gain attack equal to own HP' };
+}
+
+function handleBoostPower({ effect, G, player, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  let multiplier = 1;
+  if (effect.action.params.per === 'zoneElementCount') {
+    multiplier = zoneElementCount(
+      G,
+      player,
+      String(effect.action.params.zone ?? 'abyss'),
+      String(effect.action.params.element ?? ''),
+    );
+  }
+  const boost = effect.action.params.per || effect.action.params.perCount ? value * multiplier : value;
+  if (!G.modifiers.sendToPower) G.modifiers.sendToPower = [0, 0];
+  G.modifiers.sendToPower[player] += boost;
+  return { success: true, message: `Power +${boost}` };
+}
+
+function handleReduceAttack({ G, opponent, opponentIndex, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  // 官方 QA Q40/Q74：對手角色 power cost 不足時攻撃力修飾效果不発動，
+  // 不設定修飾器避免殘留導致 power 補足後攻撃力錯誤。
+  // battleZone 為 null 時不跳過（無角色可修飾，修飾器不會造成殘留問題）。
+  if (opponent.battleZone && power(G, opponentIndex) < (effectivePowerCost(opponent.battleZone, G, opponentIndex) ?? 0)) {
+    return { success: true, message: 'Attack reduce skipped (opponent battleZone power cost not met)' };
+  }
+  // 官方 QA Q54：逐效果套用並鉗制至 0。
+  const currentAttack = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
+  const newAttack = Math.max(0, currentAttack - value);
+  const baseAttack = computeBaseAttack(opponent.battleZone, G, opponentIndex);
+  G.modifiers.attack[opponentIndex] = newAttack - baseAttack;
+  return { success: true, message: `Opponent attack -${value}` };
+}
+
+function handleSetOpponentAttack({ G, opponentIndex, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  // 官方 QA Q82：ジョブチェンジ設定對手攻撃力時，需重置累積 attack 修飾器，
+  // 否則先前 boost/reduce 的累積值會疊加到新基準上。
+  if (!G.modifiers.attackSetTo) G.modifiers.attackSetTo = [null, null];
+  G.modifiers.attackSetTo[opponentIndex] = value;
+  G.modifiers.attack[opponentIndex] = 0;
+  return { success: true, message: `Opponent attack set to ${value}` };
+}
+
+function handleSetOpponentElement({ effect, G, opponentIndex }: EffectHandlerArgs): { success: boolean; message: string } {
+  const element = effect.action.params.value;
+  if (!['闇', '炎', '電気', '風', 'カオス'].includes(String(element))) {
+    return { success: false, message: 'Unsupported element override' };
+  }
+  if (!G.modifiers.elementOverride) G.modifiers.elementOverride = [null, null];
+  G.modifiers.elementOverride[opponentIndex] = element as Element;
+  return { success: true, message: `Opponent element set to ${element}` };
+}
+
+function handleHeal({ effect, me, opponent, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (effect.action.params.target === 'opponent') {
+    opponent.hp = Math.min(100, opponent.hp + value);
+    return { success: true, message: `Heal opponent ${value}` };
+  }
+  me.hp = Math.min(100, me.hp + value);
+  return { success: true, message: `Heal ${value}` };
+}
+
+function handleHealOpponent({ opponent, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  opponent.hp = Math.min(100, opponent.hp + value);
+  return { success: true, message: `Heal opponent ${value}` };
+}
+
+function handleHealBoth({ me, opponent, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  me.hp = Math.min(100, me.hp + value);
+  opponent.hp = Math.min(100, opponent.hp + value);
+  return { success: true, message: `Heal both ${value}` };
+}
+
+function handleDirectDamage({ effect, G, player, opponent, opponentIndex, valueParam, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (effect.action.params.timing === 'turnEnd') {
+    const { timing: _timing, ...params } = effect.action.params;
+    if (!G.delayedEffects) G.delayedEffects = [];
+    G.delayedEffects.push({
+      id: `delayed-${player}-${G.turnNumber}-${G.log.length}-${G.delayedEffects.length}`,
+      player,
+      cardInstanceId: `delayed-${player}`,
+      cardDefId: 'delayed-effect',
+      rawText: effect.rawText,
+      effect: {
+        ...effect,
+        trigger: 'onTurnEnd',
+        conditions: [],
+        action: { type: 'directDamage', params },
+      },
+      source: 'played',
+    });
+    return { success: true, message: 'Scheduled turn-end damage' };
+  }
+  const damage = valueParam === 'reducedThisTurn'
+    ? (G.damageReducedThisTurn?.[player] ?? 0)
+    : value;
+  if (damage === -1) G.modifiers.unreduceableDamage[player] = true;
+  else {
+    opponent.hp = Math.max(0, opponent.hp - damage);
+    if (opponent.hp <= 0) loseByHp(G, opponentIndex, `Player ${opponentIndex} loses at 0 HP.`);
+  }
+  return { success: true, message: damage === -1 ? 'Battle damage cannot be reduced' : `Deal ${damage}` };
+}
+
+function handleDamageReduce({ G, player, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  G.modifiers.damageReduction[player] += value;
+  return { success: true, message: `Damage reduction +${value}` };
+}
+
+function handleDrawCards({ G, player, me, value, context }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (loseOnEffectOverdraw(G, player, value)) return { success: false, message: 'Not enough cards to draw' };
+  for (let i = 0; i < value; i++) {
+    const card = me.deck.shift()!;
+    card.faceUp = true;
+    me.hand.push(card);
+  }
+  if (!G.drawOccurredThisEffect) G.drawOccurredThisEffect = [false, false];
+  G.drawOccurredThisEffect[player] = true;
+  if (context.cardInstanceId) {
+    if (!G.drawEffectCardIdsThisTurn) G.drawEffectCardIdsThisTurn = [];
+    if (!G.drawEffectCardIdsThisTurn.includes(context.cardInstanceId)) {
+      G.drawEffectCardIdsThisTurn.push(context.cardInstanceId);
+    }
+  }
+  return { success: true, message: `Draw ${value}` };
+}
+
+function handleSwapAttack({ effect, G, player, opponentIndex }: EffectHandlerArgs): { success: boolean; message: string } {
+  const targetPlayer = effect.action.params.target === 'self' ? player : opponentIndex;
+  G.modifiers.swapAttack[targetPlayer] = !G.modifiers.swapAttack[targetPlayer];
+  return { success: true, message: `Swap ${targetPlayer === player ? 'own' : 'opponent'} day/night attack` };
+}
+
+function handleForceOwnAttackTime({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  const time = effect.action.params.value;
+  if (time !== 'day' && time !== 'night') return { success: false, message: 'Unsupported attack time override' };
+  if (!G.modifiers.attackTimeOverride) G.modifiers.attackTimeOverride = [null, null];
+  G.modifiers.attackTimeOverride[player] = time;
+  return { success: true, message: `Own attack uses ${time}` };
+}
+
+function handleClockReset({ G }: EffectHandlerArgs): { success: boolean; message: string } {
+  G.chronos.position = G.chronosAtTurnStart;
+  return { success: true, message: 'Reset Chronos' };
+}
+
+function handleNullifyOpponentClock({ G, player, opponentIndex, context }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (!G.modifiers.clockContributionDisabled) G.modifiers.clockContributionDisabled = [false, false];
+  const wasDisabled = G.modifiers.clockContributionDisabled[opponentIndex];
+  G.modifiers.clockContributionDisabled[opponentIndex] = true;
+  // 官方 QA Q63：當回合新設定的 AE 不 rewind，次回合才発動。
+  // flag 仍設定（讓 applyPreChronosModifiers 次回合預處理），但 chronos 不倒帶。
+  const isNewThisTurn = Boolean(context.cardInstanceId)
+    && (G.setCardsThisTurn?.[player] ?? []).some(c => c.instanceId === context.cardInstanceId);
+  const rewind = (wasDisabled || isNewThisTurn) ? 0 : (G.setCardsThisTurn?.[opponentIndex] ?? [])
+    .filter(card => getCardDef(card.defId)?.type === 'Character')
+    .reduce((sum, card) => sum + (G.modifiers.cardClockSetTo ?? getCardDef(card.defId)?.clock ?? 0), 0);
+  if (rewind > 0) G.chronos.position = normalizeChronosPosition(G.chronos.position - rewind);
+  return { success: true, message: `Disable opponent Character clock${rewind > 0 ? ` and rewind ${rewind}` : ''}` };
+}
+
+function handleClockRewindOpponentCharacter({ G, opponentIndex }: EffectHandlerArgs): { success: boolean; message: string } {
+  const rewind = (G.setCardsThisTurn?.[opponentIndex] ?? [])
+    .filter(card => getCardDef(card.defId)?.type === 'Character')
+    .reduce((sum, card) => sum + (getCardDef(card.defId)?.clock ?? 0), 0);
+  G.chronos.position = normalizeChronosPosition(G.chronos.position - rewind);
+  return { success: true, message: `Rewind opponent Character clock ${rewind}` };
+}
+
+function handleClockSetFromTurnStartMinusOpponentClock({ G, opponent }: EffectHandlerArgs): { success: boolean; message: string } {
+  const clock = opponent.battleZone ? getCardDef(opponent.battleZone.defId)?.clock : undefined;
+  if (!Number.isInteger(clock)) return { success: false, message: 'No opposing character clock' };
+  G.chronos.position = normalizeChronosPosition(G.chronosAtTurnStart - Number(clock));
+  return { success: true, message: `Chronos set to turn start -${clock}` };
+}
+
+function handleSetAllCardClocks({ G, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  G.modifiers.cardClockSetTo = value;
+  return { success: true, message: `All card clocks set to ${value}` };
+}
+
+function handleExpandMidnightRange({ effect, G }: EffectHandlerArgs): { success: boolean; message: string } {
+  G.midnightRange = Math.max(G.midnightRange, Number(effect.action.params.range ?? 0));
+  return { success: true, message: `Midnight range +${G.midnightRange}` };
+}
+
+function handleClockSet({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (effect.action.params.value === 'any') {
+    G.pendingChoice = {
+      id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+      player,
+      type: 'clockPosition',
+      min: 1,
+      max: 1,
+      prompt: effect.rawText,
+      payload: {},
+      options: Array.from({ length: CHRONOS_MAPPING.positions }, (_, position) => ({
+        id: `chronos-${position}`,
+        label: `${position}`,
+        value: position,
+      })),
+    };
+    return { success: true, message: 'Pending Chronos position selection' };
+  }
+  if (Number.isInteger(Number(effect.action.params.value))) {
+    const next = normalizeChronosPosition(Number(effect.action.params.value));
+    G.chronos.position = next;
+    return { success: true, message: `Set Chronos to ${next}` };
+  }
+  return { success: false, message: 'Unsupported clock range effect' };
+}
+
+function handleClockAdvance({ G, value }: EffectHandlerArgs): { success: boolean; message: string } {
+  G.chronos.position = normalizeChronosPosition(G.chronos.position + value);
+  return { success: true, message: `Chronos +${value}` };
+}
+
+function handleRecoverFromAbyss({ effect, me }: EffectHandlerArgs): { success: boolean; message: string } {
+  const source = effect.action.params.source === 'powerCharger' ? me.powerCharger : me.abyss;
+  const max = Number(effect.action.params.max ?? 1);
+  let recovered = 0;
+  for (let i = source.length - 1; i >= 0 && recovered < max; i--) {
+    const card = source[i];
+    const def = getCardDef(card.defId);
+    if (effect.action.params.song && def?.song !== effect.action.params.song) continue;
+    if (effect.action.params.cardType && def?.type !== effect.action.params.cardType) continue;
+    source.splice(i, 1);
+    card.faceUp = true;
+    me.hand.push(card);
+    recovered++;
+  }
+  if (recovered === 0) return { success: false, message: 'No card to recover' };
+  return { success: true, message: `Recover ${recovered} card${recovered === 1 ? '' : 's'}` };
+}
+
+function handleSendToAbyss({ G, opponent, opponentIndex, context }: EffectHandlerArgs): { success: boolean; message: string } {
+  const card = opponent.battleZone;
+  if (!card) return { success: false, message: 'No opposing character' };
+  opponent.battleZone = null;
+  opponent.abyss.push(card);
+  emitZoneEntered(G, context, opponentIndex, 'abyss', card);
+  return { success: true, message: 'Send opposing character to Abyss' };
+}
+
+function handleMillDeckToAbyss({ effect, G, player, opponent, opponentIndex, context }: EffectHandlerArgs): { success: boolean; message: string } {
+  let count: number;
+  if (effect.action.params.countFromLastChoice) {
+    const selectedCount = G.lastChoiceSelectionCount[player];
+    if (selectedCount === null || selectedCount <= 0) {
+      return { success: false, message: 'Missing selected count for mill effect' };
+    }
+    count = selectedCount;
+  } else {
+    count = Number(effect.action.params.count ?? 0);
+  }
+  let moved = 0;
+  for (let i = 0; i < count && opponent.deck.length > 0; i++) {
+    const card = opponent.deck.shift()!;
+    card.faceUp = true;
+    opponent.abyss.push(card);
+    emitZoneEntered(G, context, opponentIndex, 'abyss', card);
+    moved++;
+  }
+  if (effect.action.params.countFromLastChoice) G.lastChoiceSelectionCount[player] = null;
+  return { success: true, message: `Mill ${moved} opposing card${moved === 1 ? '' : 's'} to Abyss` };
+}
+
+function handleMoveOwnDeckTopByPower({ G, player, me, context }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (me.deck.length === 0) {
+    loseOnEffectOverdraw(G, player, 1);
+    return { success: false, message: 'No deck top card to move' };
+  }
+  const card = me.deck.shift()!;
+  const sendToPower = getCardDef(card.defId)?.sendToPower ?? 0;
+  card.faceUp = true;
+  if (sendToPower > 0) {
+    me.powerCharger.push(card);
+    emitZoneEntered(G, context, player, 'powerCharger', card);
+    return { success: true, message: 'Move deck top to Power Charger' };
+  }
+  me.abyss.push(card);
+  emitZoneEntered(G, context, player, 'abyss', card);
+  return { success: true, message: 'Move deck top to Abyss' };
+}
+
+function handleMoveOpponentDeckTopByPowerCost({ effect, G, player, me, opponent, context }: EffectHandlerArgs): { success: boolean; message: string } {
+  // 官方 QA Q35/Q45：公開對手牌庫頂卡後，該卡需放回對手牌庫頂（不消耗）。
+  // 若該卡 powerCost >= minPowerCost，將「此 Area Enchant 自身」移到擁有者的
+  // powerCharger（非アビス），被公開的卡仍留在對手牌庫頂。
+  const minPowerCost = Number(effect.action.params.minPowerCost ?? 0);
+  if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
+  const card = opponent.deck[0];
+  card.faceUp = true;
+  const powerCost = getCardDef(card.defId)?.powerCost ?? 0;
+  if (powerCost >= minPowerCost) {
+    const areaEnchant = me.setZoneC;
+    if (!areaEnchant) return { success: false, message: 'No own Area Enchant to move' };
+    me.setZoneC = null;
+    areaEnchant.faceUp = true;
+    me.powerCharger.push(areaEnchant);
+    emitZoneEntered(G, context, player, 'powerCharger', areaEnchant);
+    return { success: true, message: 'Move own Area Enchant to Power Charger' };
+  }
+  return { success: true, message: 'Reveal opposing deck top' };
+}
+
+function handleRevealOpponentDeckTopBySendToPower({ effect, G, player, me, opponent, context }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
+  const card = opponent.deck[0];
+  card.faceUp = true;
+  const sendToPower = getCardDef(card.defId)?.sendToPower ?? 0;
+  const minSendToPower = Number(effect.action.params.minSendToPower ?? 1);
+  if (sendToPower >= minSendToPower) {
+    const areaEnchant = me.setZoneC;
+    if (!areaEnchant) return { success: false, message: 'No own Area Enchant to move' };
+    me.setZoneC = null;
+    areaEnchant.faceUp = true;
+    me.powerCharger.push(areaEnchant);
+    emitZoneEntered(G, context, player, 'powerCharger', areaEnchant);
+    return { success: true, message: 'Move own Area Enchant to Power Charger' };
+  }
+  const boost = Number(effect.action.params.boostIfMissing ?? 0);
+  G.modifiers.attack[player] += boost;
+  return { success: true, message: `Attack +${boost}` };
+}
+
+function handleRevealOpponentHand({ G, opponent, opponentIndex }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (!G.revealedHandCardIds) G.revealedHandCardIds = [[], []];
+  const revealed = new Set(G.revealedHandCardIds[opponentIndex]);
+  for (const card of opponent.hand) revealed.add(card.instanceId);
+  G.revealedHandCardIds[opponentIndex] = [...revealed];
+  return { success: true, message: 'Reveal opposing hand' };
+}
+
+function handleReturnAreaEnchantToDeck({ effect, G, opponent, opponentIndex }: EffectHandlerArgs): { success: boolean; message: string } {
+  const card = opponent.setZoneC;
+  if (!card) return { success: false, message: 'No opposing Area Enchant' };
+  opponent.setZoneC = null;
+  card.faceUp = true;
+  if (effect.action.params.position === 'top') opponent.deck.unshift(card);
+  else opponent.deck.push(card);
+  if (effect.action.params.lockAreaEnchant) {
+    if (!G.areaEnchantSetLocked) G.areaEnchantSetLocked = [false, false];
+    G.areaEnchantSetLocked[opponentIndex] = true;
+  }
+  return { success: true, message: 'Return opposing Area Enchant to deck' };
+}
+
+function handleMoveSelfAreaEnchant({ effect, G, player, me, context }: EffectHandlerArgs): { success: boolean; message: string } {
+  const card = me.setZoneC;
+  if (!card) return { success: false, message: 'No own Area Enchant' };
+  me.setZoneC = null;
+  card.faceUp = true;
+  if (effect.action.params.destination === 'powerCharger') {
+    me.powerCharger.push(card);
+    emitZoneEntered(G, context, player, 'powerCharger', card);
+  } else {
+    me.abyss.push(card);
+    emitZoneEntered(G, context, player, 'abyss', card);
+  }
+  // 官方 QA Q22：Area Enchant 移動後，同卡同回合後續 pending effects 不再處理
+  // （如晩餐会移動後攻撃力+20效果不可用）。
+  if (context.cardInstanceId) {
+    if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
+    if (!G.suppressedEffectCardIdsThisTurn.includes(context.cardInstanceId)) {
+      G.suppressedEffectCardIdsThisTurn.push(context.cardInstanceId);
+    }
+    G.pendingEffects[0] = G.pendingEffects[0].filter(e => e.cardInstanceId !== context.cardInstanceId);
+    G.pendingEffects[1] = G.pendingEffects[1].filter(e => e.cardInstanceId !== context.cardInstanceId);
+  }
+  return { success: true, message: `Move own Area Enchant to ${effect.action.params.destination === 'powerCharger' ? 'Power Charger' : 'Abyss'}` };
+}
+
+function handleUseFromAbyss({ effect, G, player, me, context }: EffectHandlerArgs): { success: boolean; message: string } {
+  const sourceZone = effect.action.params.source === 'powerCharger' ? 'powerCharger' : 'abyss';
+  const source = sourceZone === 'powerCharger' ? me.powerCharger : me.abyss;
+  const max = Number(effect.action.params.count ?? effect.action.params.max ?? 1);
+  const options = source
+    .filter(card => {
+      // 官方 QA Q83：不允許自我選擇（如舞踏会でラストダンスを從 PC 選擇時排除自身）。
+      if (context.cardInstanceId && card.instanceId === context.cardInstanceId) return false;
+      const def = getCardDef(card.defId);
+      if (!def) return false;
+      if (effect.action.params.cardType !== undefined && def.type !== effect.action.params.cardType) return false;
+      if (effect.action.params.song !== undefined && def.song !== effect.action.params.song) return false;
+      if (sourceZone === 'abyss' && effect.action.params.cardType === undefined && def.type !== 'Enchant') return false;
+      return true;
+    })
+    .map(card => ({
+      id: card.instanceId,
+      label: getCardDef(card.defId)?.name ?? card.defId,
+      cardInstanceId: card.instanceId,
+      cardDefId: card.defId,
+    }));
+  if (options.length === 0) return { success: false, message: 'No card effect to use' };
+  const payload: PendingUseFromAbyssPayload = {
+    sourcePlayer: player,
+    sourceZone,
+    cardType: typeof effect.action.params.cardType === 'string' ? effect.action.params.cardType as CardType : undefined,
+    song: typeof effect.action.params.song === 'string' ? effect.action.params.song : undefined,
+  };
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'useFromAbyss',
+    min: 1,
+    max: Math.max(1, Math.min(max, options.length)),
+    prompt: effect.rawText,
+    payload,
+    options,
+  };
+  return { success: true, message: 'Pending copied effect selection' };
+}
+
+function handleHandSizeModifier({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  const amount = Number(effect.action.params.value ?? 0);
+  if (effect.action.params.duration === 'game') {
+    if (!G.handSizeModifier) G.handSizeModifier = [0, 0];
+    G.handSizeModifier[player] += amount;
+    return { success: true, message: `Game hand size +${amount}` };
+  }
+  if (!G.modifiers.handSize) G.modifiers.handSize = [0, 0];
+  G.modifiers.handSize[player] += amount;
+  return { success: true, message: `Battle hand size +${amount}` };
+}
+
+function handleSetPowerCost({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  const reduction = Number(effect.action.params.reduction ?? effect.action.params.value ?? 0);
+  if (!G.modifiers.powerCostReduction) G.modifiers.powerCostReduction = [0, 0];
+  G.modifiers.powerCostReduction[player] += reduction;
+  return { success: true, message: `Character power cost -${reduction}` };
+}
+
+function handleNoEffect({ effect, G, opponentIndex }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (effect.action.params.scope === 'enchantOnly') {
+    if (!G.modifiers.enchantEffectsDisabled) G.modifiers.enchantEffectsDisabled = [false, false];
+    G.modifiers.enchantEffectsDisabled[opponentIndex] = true;
+    return { success: true, message: 'Disable opponent Enchant effects this turn' };
+  }
+  G.modifiers.effectsDisabled[opponentIndex] = true;
+  return { success: true, message: 'Disable opponent effects this turn' };
+}
+
+function handleSuppressEffectActivation(_args: EffectHandlerArgs): { success: boolean; message: string } {
+  return { success: true, message: 'Swapped-in Character effect suppression clause' };
+}
+
+function handleAddSettableCard({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  const count = Number(effect.action.params.count ?? 1);
+  if (!Number.isInteger(count) || count < 0) return { success: false, message: 'Unsupported settable-card count' };
+  if (!G.modifiers.extraSettableCards) G.modifiers.extraSettableCards = [0, 0];
+  G.modifiers.extraSettableCards[player] += count;
+  return { success: true, message: `Settable card allowance +${count}` };
+}
+
+// ===== Choice handler registry (for requestChoice) =====
+//
+// case 'requestChoice' 透過 choiceHandlers 分派到對應的 choiceType handler。
+// 保留原本 if-else 鏈的行為：未知 choiceType 回傳 'Unsupported choice type'。
+
+type ChoiceHandler = (args: EffectHandlerArgs) => { success: boolean; message: string };
+
+type ChoiceType =
+  | 'revealHandAttackBoost'
+  | 'nameGuessOpponentHandReveal'
+  | 'optionalHandMoveThenDraw'
+  | 'useFromHand'
+  | 'cardMove'
+  | 'abyssToDeckBottomOrLose'
+  | 'reorderOpponentDeckTop'
+  | 'opponentPowerCharacterSwap'
+  | 'handAbyssSwap'
+  | 'clockPosition'
+  | 'clockAdvance'
+  | 'handToDeckBottomThenDraw';
+
+function handleRevealHandAttackBoostChoice({ effect, G, player, me }: EffectHandlerArgs): { success: boolean; message: string } {
+  const boostPerCard = Number(effect.action.params.boostPerCard ?? 0);
+  const filter: PendingCardFilter = {};
+  if (effect.action.params.filterCardType !== undefined) {
+    const cardType = String(effect.action.params.filterCardType);
+    if (!['Character', 'Enchant', 'Area Enchant'].includes(cardType)) {
+      return { success: false, message: 'Unsupported reveal card type filter' };
+    }
+    filter.cardType = cardType as CardType;
+  }
+  if (effect.action.params.filterSong !== undefined) {
+    const song = String(effect.action.params.filterSong).trim();
+    if (song.length === 0) return { success: false, message: 'Unsupported reveal song filter' };
+    filter.song = song;
+  }
+
+  const payload: PendingRevealHandAttackBoostPayload = {
+    sourcePlayer: player,
+    boostPerCard,
+    filter,
+  };
+  const options = me.hand
+    .filter(card => {
+      const def = getCardDef(card.defId);
+      if (!def) return false;
+      if (filter.cardType !== undefined && def.type !== filter.cardType) return false;
+      if (filter.song !== undefined && def.song !== filter.song) return false;
+      if (filter.element !== undefined && def.element !== filter.element) return false;
+      return true;
+    })
+    .map(card => ({
+      id: card.instanceId,
+      label: getCardDef(card.defId)?.name ?? card.defId,
+      cardInstanceId: card.instanceId,
+      cardDefId: card.defId,
+    }));
+  if (options.length === 0) return { success: true, message: 'No legal hand cards to reveal' };
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'revealHandAttackBoost',
+    min: 0,
+    max: options.length,
+    prompt: effect.rawText,
+    payload,
+    options,
+  };
+  return { success: true, message: 'Pending hand reveal selection' };
+}
+
+function handleNameGuessOpponentHandRevealChoice({ effect, G, player, opponent, opponentIndex }: EffectHandlerArgs): { success: boolean; message: string } {
+  const attackBoost = Number(effect.action.params.attackBoost ?? 0);
+  if (opponent.hand.length === 0) return { success: false, message: 'No opposing hand card to reveal' };
+  const payload: PendingNameGuessOpponentHandRevealPayload = {
+    opponentPlayer: opponentIndex,
+    attackBoost,
+  };
+  const cardDefs = getAllCardDefs();
+  const options = opponent.hand.flatMap((_card, handIndex) => cardDefs.map(def => ({
+    id: `hand:${handIndex}:guess:${def.id}`,
+    label: `${def.name} / Opponent hand ${handIndex + 1}`,
+    value: def.id,
+  })));
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'nameGuessOpponentHandReveal',
+    min: 1,
+    max: 1,
+    prompt: effect.rawText,
+    payload,
+    options,
+  };
+  return { success: true, message: 'Pending name guess and hand reveal' };
+}
+
+function handleOptionalHandMoveThenDrawChoice({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  const sourceOwner = String(effect.action.params.sourceOwner);
+  const sourceZone = String(effect.action.params.sourceZone);
+  const destinationOwner = String(effect.action.params.destinationOwner);
+  const destinationZone = String(effect.action.params.destinationZone);
+  const destinationPosition = effect.action.params.destinationPosition === undefined
+    ? undefined
+    : String(effect.action.params.destinationPosition);
+  const drawCountParam = effect.action.params.drawCount ?? 0;
+  const drawCount = drawCountParam === 'selected' ? 'selected' : Number(drawCountParam);
+  if (
+    sourceOwner !== 'self'
+    || sourceZone !== 'hand'
+    || destinationOwner !== 'self'
+    || !['abyss', 'powerCharger', 'deck'].includes(destinationZone)
+    || (destinationZone === 'deck' && destinationPosition !== 'bottom')
+    || (destinationZone !== 'deck' && destinationPosition !== undefined)
+    || (drawCount !== 'selected' && drawCount !== 1)
+  ) {
+    return { success: false, message: 'Unsupported optional hand payment choice' };
+  }
+
+  const filter: PendingCardFilter = {};
+  if (effect.action.params.filterCardType !== undefined) {
+    const cardType = String(effect.action.params.filterCardType);
+    if (!['Character', 'Enchant', 'Area Enchant'].includes(cardType)) {
+      return { success: false, message: 'Unsupported optional hand payment card type filter' };
+    }
+    filter.cardType = cardType as CardType;
+  }
+  if (effect.action.params.filterSong !== undefined) {
+    const song = String(effect.action.params.filterSong).trim();
+    if (song.length === 0) return { success: false, message: 'Unsupported optional hand payment song filter' };
+    filter.song = song;
+  }
+  if (effect.action.params.filterElement !== undefined) {
+    const element = String(effect.action.params.filterElement);
+    if (!['闇', '炎', '電気', '風', 'カオス'].includes(element)) {
+      return { success: false, message: 'Unsupported optional hand payment element filter' };
+    }
+    filter.element = element as Element;
+  }
+
+  const payload: PendingOptionalHandMoveThenDrawPayload = {
+    sourcePlayer: relativePlayer(player, sourceOwner as RelativeChoicePlayer),
+    sourceZone: 'hand',
+    destinationPlayer: relativePlayer(player, destinationOwner as RelativeChoicePlayer),
+    destinationZone: destinationZone as PendingOptionalHandMoveThenDrawPayload['destinationZone'],
+    destinationPosition: destinationPosition as PendingChoiceDeckPosition | undefined,
+    drawCount,
+    filter,
+  };
+  const options = legalOptionalHandMoveThenDrawCards(G, payload).map(card => ({
+    id: card.instanceId,
+    label: getCardDef(card.defId)?.name ?? card.defId,
+    cardInstanceId: card.instanceId,
+    cardDefId: card.defId,
+  }));
+  if (options.length === 0) {
+    return { success: true, message: 'No legal optional hand payment cards' };
+  }
+  const max = drawCount === 'selected' ? options.length : 1;
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'optionalHandMoveThenDraw',
+    min: 0,
+    max,
+    prompt: effect.rawText,
+    payload,
+    options,
+  };
+  return { success: true, message: 'Pending optional hand payment selection' };
+}
+
+function handleUseFromHandChoice({ effect, G, player, me }: EffectHandlerArgs): { success: boolean; message: string } {
+  const sourceOwner = String(effect.action.params.sourceOwner);
+  const sourceZone = String(effect.action.params.sourceZone);
+  const max = Number(effect.action.params.max ?? 1);
+  const optional = Boolean(effect.action.params.optional);
+  const followUpDrawCount = Number(effect.action.params.followUpDrawCount ?? 0);
+  if (
+    sourceOwner !== 'self'
+    || sourceZone !== 'hand'
+    || !Number.isInteger(max)
+    || max < 1
+    || !Number.isInteger(followUpDrawCount)
+    || followUpDrawCount < 0
+  ) {
+    return { success: false, message: 'Unsupported hand-use choice' };
+  }
+
+  const filter: PendingCardFilter = {};
+  if (effect.action.params.filterCardType !== undefined) {
+    const cardType = String(effect.action.params.filterCardType);
+    if (!['Character', 'Enchant', 'Area Enchant'].includes(cardType)) {
+      return { success: false, message: 'Unsupported hand-use card type filter' };
+    }
+    filter.cardType = cardType as CardType;
+  }
+  if (effect.action.params.filterSong !== undefined) {
+    const song = String(effect.action.params.filterSong).trim();
+    if (song.length === 0) return { success: false, message: 'Unsupported hand-use song filter' };
+    filter.song = song;
+  }
+  if (effect.action.params.filterElement !== undefined) {
+    const element = String(effect.action.params.filterElement);
+    if (!['闇', '炎', '電気', '風', 'カオス'].includes(element)) {
+      return { success: false, message: 'Unsupported hand-use element filter' };
+    }
+    filter.element = element as Element;
+  }
+
+  const options = me.hand
+    .filter(card => {
+      const def = getCardDef(card.defId);
+      if (!def || power(G, player) < def.powerCost) return false;
+      if (filter.cardType !== undefined && def.type !== filter.cardType) return false;
+      if (filter.song !== undefined && def.song !== filter.song) return false;
+      if (filter.element !== undefined && def.element !== filter.element) return false;
+      return true;
+    })
+    .map(card => ({
+      id: card.instanceId,
+      label: getCardDef(card.defId)?.name ?? card.defId,
+      cardInstanceId: card.instanceId,
+      cardDefId: card.defId,
+    }));
+
+  if (options.length === 0 && optional) {
+    if (followUpDrawCount > 0) {
+      if (loseOnEffectOverdraw(G, player, followUpDrawCount)) return { success: false, message: 'Not enough cards to draw' };
+      for (let i = 0; i < followUpDrawCount; i++) {
+        const card = me.deck.shift()!;
+        card.faceUp = true;
+        me.hand.push(card);
+      }
+    }
+    return { success: true, message: followUpDrawCount > 0 ? `Draw ${followUpDrawCount}` : 'No legal hand cards to use' };
+  }
+  if (options.length === 0) return { success: false, message: 'No legal hand cards to use' };
+
+  const payload: PendingUseFromHandPayload = {
+    sourcePlayer: player,
+    filter,
+    followUpDrawCount,
+  };
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'useFromHand',
+    min: optional ? 0 : 1,
+    max: Math.min(max, options.length),
+    prompt: effect.rawText,
+    payload,
+    options,
+  };
+  return { success: true, message: 'Pending hand card use selection' };
+}
+
+function handleCardMoveChoice({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  const count = Number(effect.action.params.count ?? 1);
+  const sourceOwner = String(effect.action.params.sourceOwner);
+  const destinationOwner = String(effect.action.params.destinationOwner);
+  const sourceZone = String(effect.action.params.sourceZone);
+  const destinationZone = String(effect.action.params.destinationZone);
+  const destinationPosition = effect.action.params.destinationPosition === undefined
+    ? undefined
+    : String(effect.action.params.destinationPosition);
+  if (
+    !['self', 'opponent'].includes(sourceOwner)
+    || !['self', 'opponent'].includes(destinationOwner)
+    || !Number.isInteger(count)
+    || count < 1
+    || !['hand', 'abyss', 'powerCharger'].includes(sourceZone)
+    || !['abyss', 'deck'].includes(destinationZone)
+    || (destinationZone === 'deck' && destinationPosition !== 'bottom')
+  ) {
+    return { success: false, message: 'Unsupported card choice move' };
+  }
+  const payload: PendingCardMovePayload = {
+    sourcePlayer: relativePlayer(player, sourceOwner as RelativeChoicePlayer),
+    sourceZone: sourceZone as PendingChoiceCardZone,
+    destinationPlayer: relativePlayer(player, destinationOwner as RelativeChoicePlayer),
+    destinationZone: destinationZone as PendingChoiceDestinationZone,
+    destinationPosition: destinationPosition as PendingChoiceDeckPosition | undefined,
+    filterSendToPower: effect.action.params.filterSendToPower === undefined
+      ? undefined
+      : Number(effect.action.params.filterSendToPower),
+  };
+  const options = legalCardMoveCards(G, payload).map(card => ({
+    id: card.instanceId,
+    label: getCardDef(card.defId)?.name ?? card.defId,
+    cardInstanceId: card.instanceId,
+    cardDefId: card.defId,
+  }));
+  if (options.length === 0) return { success: false, message: 'No legal cards for choice' };
+  if (options.length < count) return { success: false, message: 'Not enough legal cards for choice' };
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'cardMove',
+    min: count,
+    max: count,
+    prompt: effect.rawText,
+    payload,
+    options,
+  };
+  return { success: true, message: 'Pending card selection' };
+}
+
+function handleAbyssToDeckBottomOrLoseChoice({ effect, G, player, me }: EffectHandlerArgs): { success: boolean; message: string } {
+  const min = Number(effect.action.params.min ?? 1);
+  const maxParam = effect.action.params.max ?? min;
+  const dynamicMax = maxParam === 'available';
+  const max = dynamicMax ? me.abyss.length : Number(maxParam);
+  if (!Number.isInteger(min) || min < 1 || (!dynamicMax && (!Number.isInteger(max) || max < min))) {
+    return { success: false, message: 'Unsupported Abyss payment choice' };
+  }
+
+  const available = me.abyss.length;
+  if (available < min) {
+    loseByAbyssPaymentFailure(G, player, min, available);
+    return { success: false, message: 'Not enough Abyss cards for payment' };
+  }
+
+  const payload: PendingAbyssToDeckBottomPayload = {
+    faceDown: Boolean(effect.action.params.faceDown),
+    shuffle: Boolean(effect.action.params.shuffle),
+    followUpChoiceType: effect.action.params.followUpChoiceType === 'reorderOpponentDeckTop'
+      ? 'reorderOpponentDeckTop'
+      : undefined,
+    followUpCount: effect.action.params.followUpCount === undefined
+      ? undefined
+      : Number(effect.action.params.followUpCount),
+  };
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'abyssToDeckBottomOrLose',
+    min,
+    max,
+    prompt: effect.rawText,
+    payload,
+    options: me.abyss.map(card => ({
+      id: card.instanceId,
+      label: getCardDef(card.defId)?.name ?? card.defId,
+      cardInstanceId: card.instanceId,
+      cardDefId: card.defId,
+    })),
+  };
+  return { success: true, message: 'Pending Abyss payment selection' };
+}
+
+function handleReorderOpponentDeckTopChoice({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  const count = Number(effect.action.params.count ?? 3);
+  const result = buildReorderOpponentDeckTopChoice(G, player, count, effect.rawText);
+  if (result.choice) G.pendingChoice = result.choice;
+  return { success: result.success, message: result.message };
+}
+
+function handleOpponentPowerCharacterSwapChoice({ effect, G, player, opponent, opponentIndex }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (!isCharacterCard(opponent.battleZone)) {
+    return { success: false, message: 'No opposing Battle Zone Character' };
+  }
+  const payload: PendingOpponentPowerCharacterSwapPayload = { opponentPlayer: opponentIndex };
+  const options = legalOpponentPowerCharacterSwapCards(G, payload).map(card => ({
+    id: card.instanceId,
+    label: getCardDef(card.defId)?.name ?? card.defId,
+    cardInstanceId: card.instanceId,
+    cardDefId: card.defId,
+  }));
+  if (options.length === 0) return { success: false, message: 'No legal cards for choice' };
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'opponentPowerCharacterSwap',
+    min: 1,
+    max: 1,
+    prompt: effect.rawText,
+    payload,
+    options,
+  };
+  return { success: true, message: 'Pending opponent Power Charger Character swap' };
+}
+
+function handleHandAbyssSwapChoice({ effect, G, player, me }: EffectHandlerArgs): { success: boolean; message: string } {
+  if (me.hand.length === 0 || me.abyss.length === 0) return { success: false, message: 'No legal cards for hand/Abyss swap' };
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'handAbyssSwap',
+    min: 2,
+    max: 2,
+    prompt: effect.rawText,
+    payload: {},
+    options: [
+      ...me.hand.map(card => ({
+        id: `hand:${card.instanceId}`,
+        label: `Hand: ${getCardDef(card.defId)?.name ?? card.defId}`,
+        cardInstanceId: card.instanceId,
+        cardDefId: card.defId,
+      })),
+      ...me.abyss.map(card => ({
+        id: `abyss:${card.instanceId}`,
+        label: `Abyss: ${getCardDef(card.defId)?.name ?? card.defId}`,
+        cardInstanceId: card.instanceId,
+        cardDefId: card.defId,
+      })),
+    ],
+  };
+  return { success: true, message: 'Pending hand/Abyss swap' };
+}
+
+function handleClockPositionChoice({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'clockPosition',
+    min: 1,
+    max: 1,
+    prompt: effect.rawText,
+    payload: {},
+    options: Array.from({ length: CHRONOS_MAPPING.positions }, (_, position) => ({
+      id: `chronos-${position}`,
+      label: `${position}`,
+      value: position,
+    })),
+  };
+  return { success: true, message: 'Pending Chronos position selection' };
+}
+
+function handleClockAdvanceChoice({ effect, G, player }: EffectHandlerArgs): { success: boolean; message: string } {
+  const min = Number(effect.action.params.min ?? 0);
+  const max = Number(effect.action.params.max ?? min);
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min) {
+    return { success: false, message: 'Unsupported Chronos advance choice' };
+  }
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'clockAdvance',
+    min: 1,
+    max: 1,
+    prompt: effect.rawText,
+    payload: {},
+    options: Array.from({ length: max - min + 1 }, (_, index) => {
+      const amount = min + index;
+      return { id: `advance-${amount}`, label: `+${amount}`, value: amount };
+    }),
+  };
+  return { success: true, message: 'Pending Chronos advance selection' };
+}
+
+function handleHandToDeckBottomThenDrawChoice({ effect, G, player, me }: EffectHandlerArgs): { success: boolean; message: string } {
+  const discardCount = Number(effect.action.params.discardCount ?? 1);
+  const drawCount = Number(effect.action.params.drawCount ?? discardCount);
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
+    player,
+    type: 'handToDeckBottomThenDraw',
+    min: discardCount,
+    max: discardCount,
+    prompt: effect.rawText,
+    payload: { drawCount },
+    options: me.hand.map(card => ({
+      id: card.instanceId,
+      label: getCardDef(card.defId)?.name ?? card.defId,
+      cardInstanceId: card.instanceId,
+      cardDefId: card.defId,
+    })),
+  };
+  return { success: true, message: 'Pending hand selection' };
+}
+
+const choiceHandlers: Record<ChoiceType, ChoiceHandler> = {
+  revealHandAttackBoost: handleRevealHandAttackBoostChoice,
+  nameGuessOpponentHandReveal: handleNameGuessOpponentHandRevealChoice,
+  optionalHandMoveThenDraw: handleOptionalHandMoveThenDrawChoice,
+  useFromHand: handleUseFromHandChoice,
+  cardMove: handleCardMoveChoice,
+  abyssToDeckBottomOrLose: handleAbyssToDeckBottomOrLoseChoice,
+  reorderOpponentDeckTop: handleReorderOpponentDeckTopChoice,
+  opponentPowerCharacterSwap: handleOpponentPowerCharacterSwapChoice,
+  handAbyssSwap: handleHandAbyssSwapChoice,
+  clockPosition: handleClockPositionChoice,
+  clockAdvance: handleClockAdvanceChoice,
+  handToDeckBottomThenDraw: handleHandToDeckBottomThenDrawChoice,
+};
+
+function handleRequestChoice(args: EffectHandlerArgs): { success: boolean; message: string } {
+  const { effect } = args;
+  const choiceType = String(effect.action.params.choiceType ?? '');
+  const handler = (choiceHandlers as Record<string, ChoiceHandler | undefined>)[choiceType];
+  if (!handler) {
+    return { success: false, message: 'Unsupported choice type' };
+  }
+  return handler(args);
+}
+
+const effectHandlers: Record<ActionType, EffectHandler> = {
+  boostAttack: handleBoostAttack,
+  boostBothAttackByOwnHp: handleBoostBothAttackByOwnHp,
+  boostPower: handleBoostPower,
+  reduceAttack: handleReduceAttack,
+  setOpponentAttack: handleSetOpponentAttack,
+  setOpponentElement: handleSetOpponentElement,
+  directDamage: handleDirectDamage,
+  heal: handleHeal,
+  healOpponent: handleHealOpponent,
+  healBoth: handleHealBoth,
+  damageReduce: handleDamageReduce,
+  drawCards: handleDrawCards,
+  swapAttack: handleSwapAttack,
+  forceOwnAttackTime: handleForceOwnAttackTime,
+  clockReset: handleClockReset,
+  nullifyOpponentClock: handleNullifyOpponentClock,
+  clockRewindOpponentCharacter: handleClockRewindOpponentCharacter,
+  clockSet: handleClockSet,
+  expandMidnightRange: handleExpandMidnightRange,
+  clockSetFromTurnStartMinusOpponentClock: handleClockSetFromTurnStartMinusOpponentClock,
+  setAllCardClocks: handleSetAllCardClocks,
+  clockAdvance: handleClockAdvance,
+  recoverFromAbyss: handleRecoverFromAbyss,
+  sendToAbyss: handleSendToAbyss,
+  millDeckToAbyss: handleMillDeckToAbyss,
+  moveOwnDeckTopByPower: handleMoveOwnDeckTopByPower,
+  moveOpponentDeckTopByPowerCost: handleMoveOpponentDeckTopByPowerCost,
+  revealOpponentDeckTopBySendToPower: handleRevealOpponentDeckTopBySendToPower,
+  revealOpponentHand: handleRevealOpponentHand,
+  returnAreaEnchantToDeck: handleReturnAreaEnchantToDeck,
+  moveSelfAreaEnchant: handleMoveSelfAreaEnchant,
+  useFromAbyss: handleUseFromAbyss,
+  handSizeModifier: handleHandSizeModifier,
+  setPowerCost: handleSetPowerCost,
+  requestChoice: handleRequestChoice,
+  suppressEffectActivation: handleSuppressEffectActivation,
+  noEffect: handleNoEffect,
+  addSettableCard: handleAddSettableCard,
+};
+
 export function executeEffect(
   effect: ParsedEffect,
   G: GameState,
@@ -481,919 +1542,8 @@ export function executeEffect(
   }
   const valueParam = effect.action.params.value;
   const value = Number(effect.action.params.value ?? 0);
-  switch (effect.action.type) {
-    case 'boostAttack': {
-      // 官方 QA Q40/Q74：角色 power cost 不足時攻撃力修飾效果不発動，
-      // 不設定修飾器避免殘留導致 power 補足後攻撃力錯誤。
-      // battleZone 為 null 時不跳過（無角色可修飾，修飾器不會造成殘留問題）。
-      if (me.battleZone && power(G, player) < (effectivePowerCost(me.battleZone, G, player) ?? 0)) {
-        return { success: true, message: 'Attack boost skipped (battleZone power cost not met)' };
-      }
-      let multiplier = 1;
-      if (effect.action.params.per === 'zoneElementCount') {
-        multiplier = zoneElementCount(
-          G,
-          player,
-          String(effect.action.params.zone ?? 'abyss'),
-          String(effect.action.params.element ?? ''),
-        );
-      }
-      if (effect.action.params.per === 'zoneSongCount') {
-        multiplier = zoneSongCount(
-          G,
-          player,
-          String(effect.action.params.zone ?? 'abyss'),
-          String(effect.action.params.song ?? ''),
-        );
-      }
-      const boost = effect.action.params.per || effect.action.params.perCount ? value * multiplier : value;
-      // 官方 QA Q54：逐效果套用並鉗制至 0，避免負修正溢出被吸收後不正確地降低後續正修正效果。
-      const currentAttack = effectiveAttack(me.battleZone, G, player) ?? 0;
-      const newAttack = Math.max(0, currentAttack + boost);
-      const baseAttack = computeBaseAttack(me.battleZone, G, player);
-      G.modifiers.attack[player] = newAttack - baseAttack;
-      return { success: true, message: `Attack +${boost}` };
-    }
-    case 'boostBothAttackByOwnHp': {
-      // 官方 QA Q40/Q74/Q54：逐效果套用並鉗制至 0，且角色 power cost 不足時不発動。
-      // 雙方各自檢查 power cost，不足者跳過修飾，避免殘留修飾器。
-      // battleZone 為 null 時仍設定修飾器（無角色可修飾，不會造成殘留問題）。
-      const myPowerOk = !me.battleZone || power(G, player) >= (effectivePowerCost(me.battleZone, G, player) ?? 0);
-      if (myPowerOk) {
-        const myCurrent = effectiveAttack(me.battleZone, G, player) ?? 0;
-        const myNew = Math.max(0, myCurrent + me.hp);
-        const myBase = computeBaseAttack(me.battleZone, G, player);
-        G.modifiers.attack[player] = myNew - myBase;
-      }
-      const oppPowerOk = !opponent.battleZone || power(G, opponentIndex) >= (effectivePowerCost(opponent.battleZone, G, opponentIndex) ?? 0);
-      if (oppPowerOk) {
-        const oppCurrent = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
-        const oppNew = Math.max(0, oppCurrent + opponent.hp);
-        const oppBase = computeBaseAttack(opponent.battleZone, G, opponentIndex);
-        G.modifiers.attack[opponentIndex] = oppNew - oppBase;
-      }
-      return { success: true, message: 'Both players gain attack equal to own HP' };
-    }
-    case 'boostPower': {
-      let multiplier = 1;
-      if (effect.action.params.per === 'zoneElementCount') {
-        multiplier = zoneElementCount(
-          G,
-          player,
-          String(effect.action.params.zone ?? 'abyss'),
-          String(effect.action.params.element ?? ''),
-        );
-      }
-      const boost = effect.action.params.per || effect.action.params.perCount ? value * multiplier : value;
-      if (!G.modifiers.sendToPower) G.modifiers.sendToPower = [0, 0];
-      G.modifiers.sendToPower[player] += boost;
-      return { success: true, message: `Power +${boost}` };
-    }
-    case 'reduceAttack': {
-      // 官方 QA Q40/Q74：對手角色 power cost 不足時攻撃力修飾效果不発動，
-      // 不設定修飾器避免殘留導致 power 補足後攻撃力錯誤。
-      // battleZone 為 null 時不跳過（無角色可修飾，修飾器不會造成殘留問題）。
-      if (opponent.battleZone && power(G, opponentIndex) < (effectivePowerCost(opponent.battleZone, G, opponentIndex) ?? 0)) {
-        return { success: true, message: 'Attack reduce skipped (opponent battleZone power cost not met)' };
-      }
-      // 官方 QA Q54：逐效果套用並鉗制至 0。
-      const currentAttack = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
-      const newAttack = Math.max(0, currentAttack - value);
-      const baseAttack = computeBaseAttack(opponent.battleZone, G, opponentIndex);
-      G.modifiers.attack[opponentIndex] = newAttack - baseAttack;
-      return { success: true, message: `Opponent attack -${value}` };
-    }
-    case 'setOpponentAttack':
-      // 官方 QA Q82：ジョブチェンジ設定對手攻撃力時，需重置累積 attack 修飾器，
-      // 否則先前 boost/reduce 的累積值會疊加到新基準上。
-      if (!G.modifiers.attackSetTo) G.modifiers.attackSetTo = [null, null];
-      G.modifiers.attackSetTo[opponentIndex] = value;
-      G.modifiers.attack[opponentIndex] = 0;
-      return { success: true, message: `Opponent attack set to ${value}` };
-    case 'setOpponentElement': {
-      const element = effect.action.params.value;
-      if (!['闇', '炎', '電気', '風', 'カオス'].includes(String(element))) {
-        return { success: false, message: 'Unsupported element override' };
-      }
-      if (!G.modifiers.elementOverride) G.modifiers.elementOverride = [null, null];
-      G.modifiers.elementOverride[opponentIndex] = element as Element;
-      return { success: true, message: `Opponent element set to ${element}` };
-    }
-    case 'heal':
-      if (effect.action.params.target === 'opponent') {
-        opponent.hp = Math.min(100, opponent.hp + value);
-        return { success: true, message: `Heal opponent ${value}` };
-      }
-      me.hp = Math.min(100, me.hp + value);
-      return { success: true, message: `Heal ${value}` };
-    case 'healOpponent':
-      opponent.hp = Math.min(100, opponent.hp + value);
-      return { success: true, message: `Heal opponent ${value}` };
-    case 'healBoth':
-      me.hp = Math.min(100, me.hp + value);
-      opponent.hp = Math.min(100, opponent.hp + value);
-      return { success: true, message: `Heal both ${value}` };
-    case 'directDamage': {
-      if (effect.action.params.timing === 'turnEnd') {
-        const { timing: _timing, ...params } = effect.action.params;
-        if (!G.delayedEffects) G.delayedEffects = [];
-        G.delayedEffects.push({
-          id: `delayed-${player}-${G.turnNumber}-${G.log.length}-${G.delayedEffects.length}`,
-          player,
-          cardInstanceId: `delayed-${player}`,
-          cardDefId: 'delayed-effect',
-          rawText: effect.rawText,
-          effect: {
-            ...effect,
-            trigger: 'onTurnEnd',
-            conditions: [],
-            action: { type: 'directDamage', params },
-          },
-          source: 'played',
-        });
-        return { success: true, message: 'Scheduled turn-end damage' };
-      }
-      const damage = valueParam === 'reducedThisTurn'
-        ? (G.damageReducedThisTurn?.[player] ?? 0)
-        : value;
-      if (damage === -1) G.modifiers.unreduceableDamage[player] = true;
-      else {
-        opponent.hp = Math.max(0, opponent.hp - damage);
-        if (opponent.hp <= 0) loseByHp(G, opponentIndex, `Player ${opponentIndex} loses at 0 HP.`);
-      }
-      return { success: true, message: damage === -1 ? 'Battle damage cannot be reduced' : `Deal ${damage}` };
-    }
-    case 'damageReduce':
-      G.modifiers.damageReduction[player] += value;
-      return { success: true, message: `Damage reduction +${value}` };
-    case 'drawCards': {
-      if (loseOnEffectOverdraw(G, player, value)) return { success: false, message: 'Not enough cards to draw' };
-      for (let i = 0; i < value; i++) {
-        const card = me.deck.shift()!;
-        card.faceUp = true;
-        me.hand.push(card);
-      }
-      if (!G.drawOccurredThisEffect) G.drawOccurredThisEffect = [false, false];
-      G.drawOccurredThisEffect[player] = true;
-      if (context.cardInstanceId) {
-        if (!G.drawEffectCardIdsThisTurn) G.drawEffectCardIdsThisTurn = [];
-        if (!G.drawEffectCardIdsThisTurn.includes(context.cardInstanceId)) {
-          G.drawEffectCardIdsThisTurn.push(context.cardInstanceId);
-        }
-      }
-      return { success: true, message: `Draw ${value}` };
-    }
-    case 'swapAttack':
-    {
-      const targetPlayer = effect.action.params.target === 'self' ? player : opponentIndex;
-      G.modifiers.swapAttack[targetPlayer] = !G.modifiers.swapAttack[targetPlayer];
-      return { success: true, message: `Swap ${targetPlayer === player ? 'own' : 'opponent'} day/night attack` };
-    }
-    case 'forceOwnAttackTime': {
-      const time = effect.action.params.value;
-      if (time !== 'day' && time !== 'night') return { success: false, message: 'Unsupported attack time override' };
-      if (!G.modifiers.attackTimeOverride) G.modifiers.attackTimeOverride = [null, null];
-      G.modifiers.attackTimeOverride[player] = time;
-      return { success: true, message: `Own attack uses ${time}` };
-    }
-    case 'clockReset':
-      G.chronos.position = G.chronosAtTurnStart;
-      return { success: true, message: 'Reset Chronos' };
-    case 'nullifyOpponentClock': {
-      if (!G.modifiers.clockContributionDisabled) G.modifiers.clockContributionDisabled = [false, false];
-      const wasDisabled = G.modifiers.clockContributionDisabled[opponentIndex];
-      G.modifiers.clockContributionDisabled[opponentIndex] = true;
-      // 官方 QA Q63：當回合新設定的 AE 不 rewind，次回合才発動。
-      // flag 仍設定（讓 applyPreChronosModifiers 次回合預處理），但 chronos 不倒帶。
-      const isNewThisTurn = Boolean(context.cardInstanceId)
-        && (G.setCardsThisTurn?.[player] ?? []).some(c => c.instanceId === context.cardInstanceId);
-      const rewind = (wasDisabled || isNewThisTurn) ? 0 : (G.setCardsThisTurn?.[opponentIndex] ?? [])
-        .filter(card => getCardDef(card.defId)?.type === 'Character')
-        .reduce((sum, card) => sum + (G.modifiers.cardClockSetTo ?? getCardDef(card.defId)?.clock ?? 0), 0);
-      if (rewind > 0) G.chronos.position = normalizeChronosPosition(G.chronos.position - rewind);
-      return { success: true, message: `Disable opponent Character clock${rewind > 0 ? ` and rewind ${rewind}` : ''}` };
-    }
-    case 'clockRewindOpponentCharacter': {
-      const rewind = (G.setCardsThisTurn?.[opponentIndex] ?? [])
-        .filter(card => getCardDef(card.defId)?.type === 'Character')
-        .reduce((sum, card) => sum + (getCardDef(card.defId)?.clock ?? 0), 0);
-      G.chronos.position = normalizeChronosPosition(G.chronos.position - rewind);
-      return { success: true, message: `Rewind opponent Character clock ${rewind}` };
-    }
-    case 'clockSetFromTurnStartMinusOpponentClock': {
-      const clock = opponent.battleZone ? getCardDef(opponent.battleZone.defId)?.clock : undefined;
-      if (!Number.isInteger(clock)) return { success: false, message: 'No opposing character clock' };
-      G.chronos.position = normalizeChronosPosition(G.chronosAtTurnStart - Number(clock));
-      return { success: true, message: `Chronos set to turn start -${clock}` };
-    }
-    case 'setAllCardClocks':
-      G.modifiers.cardClockSetTo = value;
-      return { success: true, message: `All card clocks set to ${value}` };
-    case 'expandMidnightRange':
-      G.midnightRange = Math.max(G.midnightRange, Number(effect.action.params.range ?? 0));
-      return { success: true, message: `Midnight range +${G.midnightRange}` };
-    case 'clockSet':
-      if (effect.action.params.value === 'any') {
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'clockPosition',
-          min: 1,
-          max: 1,
-          prompt: effect.rawText,
-          payload: {},
-          options: Array.from({ length: CHRONOS_MAPPING.positions }, (_, position) => ({
-            id: `chronos-${position}`,
-            label: `${position}`,
-            value: position,
-          })),
-        };
-        return { success: true, message: 'Pending Chronos position selection' };
-      }
-      if (Number.isInteger(Number(effect.action.params.value))) {
-        const next = normalizeChronosPosition(Number(effect.action.params.value));
-        G.chronos.position = next;
-        return { success: true, message: `Set Chronos to ${next}` };
-      }
-      return { success: false, message: 'Unsupported clock range effect' };
-    case 'clockAdvance':
-      G.chronos.position = normalizeChronosPosition(G.chronos.position + value);
-      return { success: true, message: `Chronos +${value}` };
-    case 'recoverFromAbyss': {
-      const source = effect.action.params.source === 'powerCharger' ? me.powerCharger : me.abyss;
-      const max = Number(effect.action.params.max ?? 1);
-      let recovered = 0;
-      for (let i = source.length - 1; i >= 0 && recovered < max; i--) {
-        const card = source[i];
-        const def = getCardDef(card.defId);
-        if (effect.action.params.song && def?.song !== effect.action.params.song) continue;
-        if (effect.action.params.cardType && def?.type !== effect.action.params.cardType) continue;
-        source.splice(i, 1);
-        card.faceUp = true;
-        me.hand.push(card);
-        recovered++;
-      }
-      if (recovered === 0) return { success: false, message: 'No card to recover' };
-      return { success: true, message: `Recover ${recovered} card${recovered === 1 ? '' : 's'}` };
-    }
-    case 'sendToAbyss': {
-      const card = opponent.battleZone;
-      if (!card) return { success: false, message: 'No opposing character' };
-      opponent.battleZone = null;
-      opponent.abyss.push(card);
-      emitZoneEntered(G, context, opponentIndex, 'abyss', card);
-      return { success: true, message: 'Send opposing character to Abyss' };
-    }
-    case 'millDeckToAbyss': {
-      let count: number;
-      if (effect.action.params.countFromLastChoice) {
-        const selectedCount = G.lastChoiceSelectionCount[player];
-        if (selectedCount === null || selectedCount <= 0) {
-          return { success: false, message: 'Missing selected count for mill effect' };
-        }
-        count = selectedCount;
-      } else {
-        count = Number(effect.action.params.count ?? 0);
-      }
-      let moved = 0;
-      for (let i = 0; i < count && opponent.deck.length > 0; i++) {
-        const card = opponent.deck.shift()!;
-        card.faceUp = true;
-        opponent.abyss.push(card);
-        emitZoneEntered(G, context, opponentIndex, 'abyss', card);
-        moved++;
-      }
-      if (effect.action.params.countFromLastChoice) G.lastChoiceSelectionCount[player] = null;
-      return { success: true, message: `Mill ${moved} opposing card${moved === 1 ? '' : 's'} to Abyss` };
-    }
-    case 'moveOwnDeckTopByPower': {
-      if (me.deck.length === 0) {
-        loseOnEffectOverdraw(G, player, 1);
-        return { success: false, message: 'No deck top card to move' };
-      }
-      const card = me.deck.shift()!;
-      const sendToPower = getCardDef(card.defId)?.sendToPower ?? 0;
-      card.faceUp = true;
-      if (sendToPower > 0) {
-        me.powerCharger.push(card);
-        emitZoneEntered(G, context, player, 'powerCharger', card);
-        return { success: true, message: 'Move deck top to Power Charger' };
-      }
-      me.abyss.push(card);
-      emitZoneEntered(G, context, player, 'abyss', card);
-      return { success: true, message: 'Move deck top to Abyss' };
-    }
-    case 'moveOpponentDeckTopByPowerCost': {
-      // 官方 QA Q35/Q45：公開對手牌庫頂卡後，該卡需放回對手牌庫頂（不消耗）。
-      // 若該卡 powerCost >= minPowerCost，將「此 Area Enchant 自身」移到擁有者的
-      // powerCharger（非アビス），被公開的卡仍留在對手牌庫頂。
-      const minPowerCost = Number(effect.action.params.minPowerCost ?? 0);
-      if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
-      const card = opponent.deck[0];
-      card.faceUp = true;
-      const powerCost = getCardDef(card.defId)?.powerCost ?? 0;
-      if (powerCost >= minPowerCost) {
-        const areaEnchant = me.setZoneC;
-        if (!areaEnchant) return { success: false, message: 'No own Area Enchant to move' };
-        me.setZoneC = null;
-        areaEnchant.faceUp = true;
-        me.powerCharger.push(areaEnchant);
-        emitZoneEntered(G, context, player, 'powerCharger', areaEnchant);
-        return { success: true, message: 'Move own Area Enchant to Power Charger' };
-      }
-      return { success: true, message: 'Reveal opposing deck top' };
-    }
-    case 'revealOpponentDeckTopBySendToPower': {
-      if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
-      const card = opponent.deck[0];
-      card.faceUp = true;
-      const sendToPower = getCardDef(card.defId)?.sendToPower ?? 0;
-      const minSendToPower = Number(effect.action.params.minSendToPower ?? 1);
-      if (sendToPower >= minSendToPower) {
-        const areaEnchant = me.setZoneC;
-        if (!areaEnchant) return { success: false, message: 'No own Area Enchant to move' };
-        me.setZoneC = null;
-        areaEnchant.faceUp = true;
-        me.powerCharger.push(areaEnchant);
-        emitZoneEntered(G, context, player, 'powerCharger', areaEnchant);
-        return { success: true, message: 'Move own Area Enchant to Power Charger' };
-      }
-      const boost = Number(effect.action.params.boostIfMissing ?? 0);
-      G.modifiers.attack[player] += boost;
-      return { success: true, message: `Attack +${boost}` };
-    }
-    case 'revealOpponentHand': {
-      if (!G.revealedHandCardIds) G.revealedHandCardIds = [[], []];
-      const revealed = new Set(G.revealedHandCardIds[opponentIndex]);
-      for (const card of opponent.hand) revealed.add(card.instanceId);
-      G.revealedHandCardIds[opponentIndex] = [...revealed];
-      return { success: true, message: 'Reveal opposing hand' };
-    }
-    case 'returnAreaEnchantToDeck': {
-      const card = opponent.setZoneC;
-      if (!card) return { success: false, message: 'No opposing Area Enchant' };
-      opponent.setZoneC = null;
-      card.faceUp = true;
-      if (effect.action.params.position === 'top') opponent.deck.unshift(card);
-      else opponent.deck.push(card);
-      if (effect.action.params.lockAreaEnchant) {
-        if (!G.areaEnchantSetLocked) G.areaEnchantSetLocked = [false, false];
-        G.areaEnchantSetLocked[opponentIndex] = true;
-      }
-      return { success: true, message: 'Return opposing Area Enchant to deck' };
-    }
-    case 'moveSelfAreaEnchant': {
-      const card = me.setZoneC;
-      if (!card) return { success: false, message: 'No own Area Enchant' };
-      me.setZoneC = null;
-      card.faceUp = true;
-      if (effect.action.params.destination === 'powerCharger') {
-        me.powerCharger.push(card);
-        emitZoneEntered(G, context, player, 'powerCharger', card);
-      } else {
-        me.abyss.push(card);
-        emitZoneEntered(G, context, player, 'abyss', card);
-      }
-      // 官方 QA Q22：Area Enchant 移動後，同卡同回合後續 pending effects 不再處理
-      // （如晩餐会移動後攻撃力+20效果不可用）。
-      if (context.cardInstanceId) {
-        if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
-        if (!G.suppressedEffectCardIdsThisTurn.includes(context.cardInstanceId)) {
-          G.suppressedEffectCardIdsThisTurn.push(context.cardInstanceId);
-        }
-        G.pendingEffects[0] = G.pendingEffects[0].filter(e => e.cardInstanceId !== context.cardInstanceId);
-        G.pendingEffects[1] = G.pendingEffects[1].filter(e => e.cardInstanceId !== context.cardInstanceId);
-      }
-      return { success: true, message: `Move own Area Enchant to ${effect.action.params.destination === 'powerCharger' ? 'Power Charger' : 'Abyss'}` };
-    }
-    case 'useFromAbyss': {
-      const sourceZone = effect.action.params.source === 'powerCharger' ? 'powerCharger' : 'abyss';
-      const source = sourceZone === 'powerCharger' ? me.powerCharger : me.abyss;
-      const max = Number(effect.action.params.count ?? effect.action.params.max ?? 1);
-      const options = source
-        .filter(card => {
-          // 官方 QA Q83：不允許自我選擇（如舞踏会でラストダンスを從 PC 選擇時排除自身）。
-          if (context.cardInstanceId && card.instanceId === context.cardInstanceId) return false;
-          const def = getCardDef(card.defId);
-          if (!def) return false;
-          if (effect.action.params.cardType !== undefined && def.type !== effect.action.params.cardType) return false;
-          if (effect.action.params.song !== undefined && def.song !== effect.action.params.song) return false;
-          if (sourceZone === 'abyss' && effect.action.params.cardType === undefined && def.type !== 'Enchant') return false;
-          return true;
-        })
-        .map(card => ({
-          id: card.instanceId,
-          label: getCardDef(card.defId)?.name ?? card.defId,
-          cardInstanceId: card.instanceId,
-          cardDefId: card.defId,
-        }));
-      if (options.length === 0) return { success: false, message: 'No card effect to use' };
-      const payload: PendingUseFromAbyssPayload = {
-        sourcePlayer: player,
-        sourceZone,
-        cardType: typeof effect.action.params.cardType === 'string' ? effect.action.params.cardType as CardType : undefined,
-        song: typeof effect.action.params.song === 'string' ? effect.action.params.song : undefined,
-      };
-      G.pendingChoice = {
-        id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-        player,
-        type: 'useFromAbyss',
-        min: 1,
-        max: Math.max(1, Math.min(max, options.length)),
-        prompt: effect.rawText,
-        payload,
-        options,
-      };
-      return { success: true, message: 'Pending copied effect selection' };
-    }
-    case 'handSizeModifier': {
-      const amount = Number(effect.action.params.value ?? 0);
-      if (effect.action.params.duration === 'game') {
-        if (!G.handSizeModifier) G.handSizeModifier = [0, 0];
-        G.handSizeModifier[player] += amount;
-        return { success: true, message: `Game hand size +${amount}` };
-      }
-      if (!G.modifiers.handSize) G.modifiers.handSize = [0, 0];
-      G.modifiers.handSize[player] += amount;
-      return { success: true, message: `Battle hand size +${amount}` };
-    }
-    case 'setPowerCost': {
-      const reduction = Number(effect.action.params.reduction ?? effect.action.params.value ?? 0);
-      if (!G.modifiers.powerCostReduction) G.modifiers.powerCostReduction = [0, 0];
-      G.modifiers.powerCostReduction[player] += reduction;
-      return { success: true, message: `Character power cost -${reduction}` };
-    }
-    case 'requestChoice': {
-      if (effect.action.params.choiceType === 'revealHandAttackBoost') {
-        const boostPerCard = Number(effect.action.params.boostPerCard ?? 0);
-        const filter: PendingCardFilter = {};
-        if (effect.action.params.filterCardType !== undefined) {
-          const cardType = String(effect.action.params.filterCardType);
-          if (!['Character', 'Enchant', 'Area Enchant'].includes(cardType)) {
-            return { success: false, message: 'Unsupported reveal card type filter' };
-          }
-          filter.cardType = cardType as CardType;
-        }
-        if (effect.action.params.filterSong !== undefined) {
-          const song = String(effect.action.params.filterSong).trim();
-          if (song.length === 0) return { success: false, message: 'Unsupported reveal song filter' };
-          filter.song = song;
-        }
-
-        const payload: PendingRevealHandAttackBoostPayload = {
-          sourcePlayer: player,
-          boostPerCard,
-          filter,
-        };
-        const options = me.hand
-          .filter(card => {
-            const def = getCardDef(card.defId);
-            if (!def) return false;
-            if (filter.cardType !== undefined && def.type !== filter.cardType) return false;
-            if (filter.song !== undefined && def.song !== filter.song) return false;
-            if (filter.element !== undefined && def.element !== filter.element) return false;
-            return true;
-          })
-          .map(card => ({
-            id: card.instanceId,
-            label: getCardDef(card.defId)?.name ?? card.defId,
-            cardInstanceId: card.instanceId,
-            cardDefId: card.defId,
-          }));
-        if (options.length === 0) return { success: true, message: 'No legal hand cards to reveal' };
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'revealHandAttackBoost',
-          min: 0,
-          max: options.length,
-          prompt: effect.rawText,
-          payload,
-          options,
-        };
-        return { success: true, message: 'Pending hand reveal selection' };
-      }
-
-      if (effect.action.params.choiceType === 'nameGuessOpponentHandReveal') {
-        const attackBoost = Number(effect.action.params.attackBoost ?? 0);
-        if (opponent.hand.length === 0) return { success: false, message: 'No opposing hand card to reveal' };
-        const payload: PendingNameGuessOpponentHandRevealPayload = {
-          opponentPlayer: opponentIndex,
-          attackBoost,
-        };
-        const cardDefs = getAllCardDefs();
-        const options = opponent.hand.flatMap((_card, handIndex) => cardDefs.map(def => ({
-          id: `hand:${handIndex}:guess:${def.id}`,
-          label: `${def.name} / Opponent hand ${handIndex + 1}`,
-          value: def.id,
-        })));
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'nameGuessOpponentHandReveal',
-          min: 1,
-          max: 1,
-          prompt: effect.rawText,
-          payload,
-          options,
-        };
-        return { success: true, message: 'Pending name guess and hand reveal' };
-      }
-
-      if (effect.action.params.choiceType === 'optionalHandMoveThenDraw') {
-        const sourceOwner = String(effect.action.params.sourceOwner);
-        const sourceZone = String(effect.action.params.sourceZone);
-        const destinationOwner = String(effect.action.params.destinationOwner);
-        const destinationZone = String(effect.action.params.destinationZone);
-        const destinationPosition = effect.action.params.destinationPosition === undefined
-          ? undefined
-          : String(effect.action.params.destinationPosition);
-        const drawCountParam = effect.action.params.drawCount ?? 0;
-        const drawCount = drawCountParam === 'selected' ? 'selected' : Number(drawCountParam);
-        if (
-          sourceOwner !== 'self'
-          || sourceZone !== 'hand'
-          || destinationOwner !== 'self'
-          || !['abyss', 'powerCharger', 'deck'].includes(destinationZone)
-          || (destinationZone === 'deck' && destinationPosition !== 'bottom')
-          || (destinationZone !== 'deck' && destinationPosition !== undefined)
-          || (drawCount !== 'selected' && drawCount !== 1)
-        ) {
-          return { success: false, message: 'Unsupported optional hand payment choice' };
-        }
-
-        const filter: PendingCardFilter = {};
-        if (effect.action.params.filterCardType !== undefined) {
-          const cardType = String(effect.action.params.filterCardType);
-          if (!['Character', 'Enchant', 'Area Enchant'].includes(cardType)) {
-            return { success: false, message: 'Unsupported optional hand payment card type filter' };
-          }
-          filter.cardType = cardType as CardType;
-        }
-        if (effect.action.params.filterSong !== undefined) {
-          const song = String(effect.action.params.filterSong).trim();
-          if (song.length === 0) return { success: false, message: 'Unsupported optional hand payment song filter' };
-          filter.song = song;
-        }
-        if (effect.action.params.filterElement !== undefined) {
-          const element = String(effect.action.params.filterElement);
-          if (!['闇', '炎', '電気', '風', 'カオス'].includes(element)) {
-            return { success: false, message: 'Unsupported optional hand payment element filter' };
-          }
-          filter.element = element as Element;
-        }
-
-        const payload: PendingOptionalHandMoveThenDrawPayload = {
-          sourcePlayer: relativePlayer(player, sourceOwner as RelativeChoicePlayer),
-          sourceZone: 'hand',
-          destinationPlayer: relativePlayer(player, destinationOwner as RelativeChoicePlayer),
-          destinationZone: destinationZone as PendingOptionalHandMoveThenDrawPayload['destinationZone'],
-          destinationPosition: destinationPosition as PendingChoiceDeckPosition | undefined,
-          drawCount,
-          filter,
-        };
-        const options = legalOptionalHandMoveThenDrawCards(G, payload).map(card => ({
-          id: card.instanceId,
-          label: getCardDef(card.defId)?.name ?? card.defId,
-          cardInstanceId: card.instanceId,
-          cardDefId: card.defId,
-        }));
-        if (options.length === 0) {
-          return { success: true, message: 'No legal optional hand payment cards' };
-        }
-        const max = drawCount === 'selected' ? options.length : 1;
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'optionalHandMoveThenDraw',
-          min: 0,
-          max,
-          prompt: effect.rawText,
-          payload,
-          options,
-        };
-        return { success: true, message: 'Pending optional hand payment selection' };
-      }
-
-      if (effect.action.params.choiceType === 'useFromHand') {
-        const sourceOwner = String(effect.action.params.sourceOwner);
-        const sourceZone = String(effect.action.params.sourceZone);
-        const max = Number(effect.action.params.max ?? 1);
-        const optional = Boolean(effect.action.params.optional);
-        const followUpDrawCount = Number(effect.action.params.followUpDrawCount ?? 0);
-        if (
-          sourceOwner !== 'self'
-          || sourceZone !== 'hand'
-          || !Number.isInteger(max)
-          || max < 1
-          || !Number.isInteger(followUpDrawCount)
-          || followUpDrawCount < 0
-        ) {
-          return { success: false, message: 'Unsupported hand-use choice' };
-        }
-
-        const filter: PendingCardFilter = {};
-        if (effect.action.params.filterCardType !== undefined) {
-          const cardType = String(effect.action.params.filterCardType);
-          if (!['Character', 'Enchant', 'Area Enchant'].includes(cardType)) {
-            return { success: false, message: 'Unsupported hand-use card type filter' };
-          }
-          filter.cardType = cardType as CardType;
-        }
-        if (effect.action.params.filterSong !== undefined) {
-          const song = String(effect.action.params.filterSong).trim();
-          if (song.length === 0) return { success: false, message: 'Unsupported hand-use song filter' };
-          filter.song = song;
-        }
-        if (effect.action.params.filterElement !== undefined) {
-          const element = String(effect.action.params.filterElement);
-          if (!['闇', '炎', '電気', '風', 'カオス'].includes(element)) {
-            return { success: false, message: 'Unsupported hand-use element filter' };
-          }
-          filter.element = element as Element;
-        }
-
-        const options = me.hand
-          .filter(card => {
-            const def = getCardDef(card.defId);
-            if (!def || power(G, player) < def.powerCost) return false;
-            if (filter.cardType !== undefined && def.type !== filter.cardType) return false;
-            if (filter.song !== undefined && def.song !== filter.song) return false;
-            if (filter.element !== undefined && def.element !== filter.element) return false;
-            return true;
-          })
-          .map(card => ({
-            id: card.instanceId,
-            label: getCardDef(card.defId)?.name ?? card.defId,
-            cardInstanceId: card.instanceId,
-            cardDefId: card.defId,
-          }));
-
-        if (options.length === 0 && optional) {
-          if (followUpDrawCount > 0) {
-            if (loseOnEffectOverdraw(G, player, followUpDrawCount)) return { success: false, message: 'Not enough cards to draw' };
-            for (let i = 0; i < followUpDrawCount; i++) {
-              const card = me.deck.shift()!;
-              card.faceUp = true;
-              me.hand.push(card);
-            }
-          }
-          return { success: true, message: followUpDrawCount > 0 ? `Draw ${followUpDrawCount}` : 'No legal hand cards to use' };
-        }
-        if (options.length === 0) return { success: false, message: 'No legal hand cards to use' };
-
-        const payload: PendingUseFromHandPayload = {
-          sourcePlayer: player,
-          filter,
-          followUpDrawCount,
-        };
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'useFromHand',
-          min: optional ? 0 : 1,
-          max: Math.min(max, options.length),
-          prompt: effect.rawText,
-          payload,
-          options,
-        };
-        return { success: true, message: 'Pending hand card use selection' };
-      }
-
-      if (effect.action.params.choiceType === 'cardMove') {
-        const count = Number(effect.action.params.count ?? 1);
-        const sourceOwner = String(effect.action.params.sourceOwner);
-        const destinationOwner = String(effect.action.params.destinationOwner);
-        const sourceZone = String(effect.action.params.sourceZone);
-        const destinationZone = String(effect.action.params.destinationZone);
-        const destinationPosition = effect.action.params.destinationPosition === undefined
-          ? undefined
-          : String(effect.action.params.destinationPosition);
-        if (
-          !['self', 'opponent'].includes(sourceOwner)
-          || !['self', 'opponent'].includes(destinationOwner)
-          || !Number.isInteger(count)
-          || count < 1
-          || !['hand', 'abyss', 'powerCharger'].includes(sourceZone)
-          || !['abyss', 'deck'].includes(destinationZone)
-          || (destinationZone === 'deck' && destinationPosition !== 'bottom')
-        ) {
-          return { success: false, message: 'Unsupported card choice move' };
-        }
-        const payload: PendingCardMovePayload = {
-          sourcePlayer: relativePlayer(player, sourceOwner as RelativeChoicePlayer),
-          sourceZone: sourceZone as PendingChoiceCardZone,
-          destinationPlayer: relativePlayer(player, destinationOwner as RelativeChoicePlayer),
-          destinationZone: destinationZone as PendingChoiceDestinationZone,
-          destinationPosition: destinationPosition as PendingChoiceDeckPosition | undefined,
-          filterSendToPower: effect.action.params.filterSendToPower === undefined
-            ? undefined
-            : Number(effect.action.params.filterSendToPower),
-        };
-        const options = legalCardMoveCards(G, payload).map(card => ({
-          id: card.instanceId,
-          label: getCardDef(card.defId)?.name ?? card.defId,
-          cardInstanceId: card.instanceId,
-          cardDefId: card.defId,
-        }));
-        if (options.length === 0) return { success: false, message: 'No legal cards for choice' };
-        if (options.length < count) return { success: false, message: 'Not enough legal cards for choice' };
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'cardMove',
-          min: count,
-          max: count,
-          prompt: effect.rawText,
-          payload,
-          options,
-        };
-        return { success: true, message: 'Pending card selection' };
-      }
-
-      if (effect.action.params.choiceType === 'abyssToDeckBottomOrLose') {
-        const min = Number(effect.action.params.min ?? 1);
-        const maxParam = effect.action.params.max ?? min;
-        const dynamicMax = maxParam === 'available';
-        const max = dynamicMax ? me.abyss.length : Number(maxParam);
-        if (!Number.isInteger(min) || min < 1 || (!dynamicMax && (!Number.isInteger(max) || max < min))) {
-          return { success: false, message: 'Unsupported Abyss payment choice' };
-        }
-
-        const available = me.abyss.length;
-        if (available < min) {
-          loseByAbyssPaymentFailure(G, player, min, available);
-          return { success: false, message: 'Not enough Abyss cards for payment' };
-        }
-
-        const payload: PendingAbyssToDeckBottomPayload = {
-          faceDown: Boolean(effect.action.params.faceDown),
-          shuffle: Boolean(effect.action.params.shuffle),
-          followUpChoiceType: effect.action.params.followUpChoiceType === 'reorderOpponentDeckTop'
-            ? 'reorderOpponentDeckTop'
-            : undefined,
-          followUpCount: effect.action.params.followUpCount === undefined
-            ? undefined
-            : Number(effect.action.params.followUpCount),
-        };
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'abyssToDeckBottomOrLose',
-          min,
-          max,
-          prompt: effect.rawText,
-          payload,
-          options: me.abyss.map(card => ({
-            id: card.instanceId,
-            label: getCardDef(card.defId)?.name ?? card.defId,
-            cardInstanceId: card.instanceId,
-            cardDefId: card.defId,
-          })),
-        };
-        return { success: true, message: 'Pending Abyss payment selection' };
-      }
-
-      if (effect.action.params.choiceType === 'reorderOpponentDeckTop') {
-        const count = Number(effect.action.params.count ?? 3);
-        const result = buildReorderOpponentDeckTopChoice(G, player, count, effect.rawText);
-        if (result.choice) G.pendingChoice = result.choice;
-        return { success: result.success, message: result.message };
-      }
-
-      if (effect.action.params.choiceType === 'opponentPowerCharacterSwap') {
-        if (!isCharacterCard(opponent.battleZone)) {
-          return { success: false, message: 'No opposing Battle Zone Character' };
-        }
-        const payload: PendingOpponentPowerCharacterSwapPayload = { opponentPlayer: opponentIndex };
-        const options = legalOpponentPowerCharacterSwapCards(G, payload).map(card => ({
-          id: card.instanceId,
-          label: getCardDef(card.defId)?.name ?? card.defId,
-          cardInstanceId: card.instanceId,
-          cardDefId: card.defId,
-        }));
-        if (options.length === 0) return { success: false, message: 'No legal cards for choice' };
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'opponentPowerCharacterSwap',
-          min: 1,
-          max: 1,
-          prompt: effect.rawText,
-          payload,
-          options,
-        };
-        return { success: true, message: 'Pending opponent Power Charger Character swap' };
-      }
-
-      if (effect.action.params.choiceType === 'handAbyssSwap') {
-        if (me.hand.length === 0 || me.abyss.length === 0) return { success: false, message: 'No legal cards for hand/Abyss swap' };
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'handAbyssSwap',
-          min: 2,
-          max: 2,
-          prompt: effect.rawText,
-          payload: {},
-          options: [
-            ...me.hand.map(card => ({
-              id: `hand:${card.instanceId}`,
-              label: `Hand: ${getCardDef(card.defId)?.name ?? card.defId}`,
-              cardInstanceId: card.instanceId,
-              cardDefId: card.defId,
-            })),
-            ...me.abyss.map(card => ({
-              id: `abyss:${card.instanceId}`,
-              label: `Abyss: ${getCardDef(card.defId)?.name ?? card.defId}`,
-              cardInstanceId: card.instanceId,
-              cardDefId: card.defId,
-            })),
-          ],
-        };
-        return { success: true, message: 'Pending hand/Abyss swap' };
-      }
-
-      if (effect.action.params.choiceType === 'clockPosition') {
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'clockPosition',
-          min: 1,
-          max: 1,
-          prompt: effect.rawText,
-          payload: {},
-          options: Array.from({ length: CHRONOS_MAPPING.positions }, (_, position) => ({
-            id: `chronos-${position}`,
-            label: `${position}`,
-            value: position,
-          })),
-        };
-        return { success: true, message: 'Pending Chronos position selection' };
-      }
-
-      if (effect.action.params.choiceType === 'clockAdvance') {
-        const min = Number(effect.action.params.min ?? 0);
-        const max = Number(effect.action.params.max ?? min);
-        if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min) {
-          return { success: false, message: 'Unsupported Chronos advance choice' };
-        }
-        G.pendingChoice = {
-          id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-          player,
-          type: 'clockAdvance',
-          min: 1,
-          max: 1,
-          prompt: effect.rawText,
-          payload: {},
-          options: Array.from({ length: max - min + 1 }, (_, index) => {
-            const amount = min + index;
-            return { id: `advance-${amount}`, label: `+${amount}`, value: amount };
-          }),
-        };
-        return { success: true, message: 'Pending Chronos advance selection' };
-      }
-
-      if (effect.action.params.choiceType !== 'handToDeckBottomThenDraw') {
-        return { success: false, message: 'Unsupported choice type' };
-      }
-      const discardCount = Number(effect.action.params.discardCount ?? 1);
-      const drawCount = Number(effect.action.params.drawCount ?? discardCount);
-      G.pendingChoice = {
-        id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
-        player,
-        type: 'handToDeckBottomThenDraw',
-        min: discardCount,
-        max: discardCount,
-        prompt: effect.rawText,
-        payload: { drawCount },
-        options: me.hand.map(card => ({
-          id: card.instanceId,
-          label: getCardDef(card.defId)?.name ?? card.defId,
-          cardInstanceId: card.instanceId,
-          cardDefId: card.defId,
-        })),
-      };
-      return { success: true, message: 'Pending hand selection' };
-    }
-    case 'noEffect':
-      if (effect.action.params.scope === 'enchantOnly') {
-        if (!G.modifiers.enchantEffectsDisabled) G.modifiers.enchantEffectsDisabled = [false, false];
-        G.modifiers.enchantEffectsDisabled[opponentIndex] = true;
-        return { success: true, message: 'Disable opponent Enchant effects this turn' };
-      }
-      G.modifiers.effectsDisabled[opponentIndex] = true;
-      return { success: true, message: 'Disable opponent effects this turn' };
-    case 'suppressEffectActivation':
-      return { success: true, message: 'Swapped-in Character effect suppression clause' };
-    case 'addSettableCard': {
-      const count = Number(effect.action.params.count ?? 1);
-      if (!Number.isInteger(count) || count < 0) return { success: false, message: 'Unsupported settable-card count' };
-      if (!G.modifiers.extraSettableCards) G.modifiers.extraSettableCards = [0, 0];
-      G.modifiers.extraSettableCards[player] += count;
-      return { success: true, message: `Settable card allowance +${count}` };
-    }
-  }
+  const handler = effectHandlers[effect.action.type];
+  return handler({ effect, G, player, context, me, opponent, opponentIndex, valueParam, value });
 }
 
 export function processTurnEffects(

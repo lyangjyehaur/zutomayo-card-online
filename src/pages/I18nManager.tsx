@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t, availableLocales, getLocaleLabel, getLocaleFlag } from '../i18n';
 import { zhTW } from '../i18n/zh-TW';
@@ -7,7 +7,10 @@ import { zhCN } from '../i18n/zh-CN';
 import { ja } from '../i18n/ja';
 import { en } from '../i18n/en';
 import { ko } from '../i18n/ko';
+import { ApiError, adminLogin } from '../api/client';
 import '../components/I18nManager.css';
+
+const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
 
 const allDictionaries: Record<string, Record<string, string>> = {
   'zh-TW': zhTW as unknown as Record<string, string>,
@@ -22,59 +25,18 @@ const allKeys = Object.keys(zhTW as Record<string, string>);
 
 export function I18nManager() {
   const navigate = useNavigate();
-  const [authenticated, setAuthenticated] = useState(() => sessionStorage.getItem('admin_auth') === 'true');
+  const [authenticated, setAuthenticated] = useState(() => Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY)));
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
   const [selectedLocale, setSelectedLocale] = useState('zh-TW');
   const [filterMissing, setFilterMissing] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
 
-  if (!authenticated) {
-    return (
-      <main className="admin-page app-screen">
-        <header className="screen-header">
-          <button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
-          <h1>i18n 管理</h1>
-        </header>
-        <section className="admin-login">
-          <h2>管理員驗證</h2>
-          <input
-            type="password"
-            placeholder="輸入管理密碼"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                const adminPwd = import.meta.env.VITE_ADMIN_PASSWORD || 'zutomayo2026';
-                if (password === adminPwd) {
-                  sessionStorage.setItem('admin_auth', 'true');
-                  setAuthenticated(true);
-                } else {
-                  setError('密碼錯誤');
-                }
-              }
-            }}
-          />
-          <button onClick={() => {
-            const adminPwd = import.meta.env.VITE_ADMIN_PASSWORD || 'zutomayo2026';
-            if (password === adminPwd) {
-              sessionStorage.setItem('admin_auth', 'true');
-              setAuthenticated(true);
-            } else {
-              setError('密碼錯誤');
-            }
-          }}>登入</button>
-          {error && <p className="admin-error">{error}</p>}
-        </section>
-      </main>
-    );
-  }
-
-  const dict = allDictionaries[selectedLocale] || {};
-
   const filteredKeys = useMemo(() => {
+    const dict = allDictionaries[selectedLocale] || {};
     let keys = allKeys;
     if (filterMissing) {
       keys = keys.filter(k => !dict[k] || dict[k].trim() === '');
@@ -88,15 +50,62 @@ export function I18nManager() {
       );
     }
     return keys;
-  }, [dict, filterMissing, searchText]);
+  }, [selectedLocale, filterMissing, searchText]);
+
+  const handleLogin = useCallback(async () => {
+    setError('');
+    setLoggingIn(true);
+    try {
+      const { token } = await adminLogin(password);
+      sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+      setAuthenticated(true);
+      setPassword('');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : t('admin.loginFailed');
+      setError(msg === 'Invalid password' ? t('admin.passwordError') : msg);
+    } finally {
+      setLoggingIn(false);
+    }
+  }, [password]);
+
+  const handleLogout = useCallback(() => {
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    setAuthenticated(false);
+  }, []);
+
+  if (!authenticated) {
+    return (
+      <main className="admin-page app-screen">
+        <header className="screen-header">
+          <button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
+          <h1>{t('admin.i18nTitle')}</h1>
+        </header>
+        <section className="admin-login">
+          <h2>{t('admin.adminVerify')}</h2>
+          <input
+            type="password"
+            placeholder={t('admin.passwordPlaceholder')}
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !loggingIn) void handleLogin(); }}
+            disabled={loggingIn}
+          />
+          <button onClick={() => void handleLogin()} disabled={loggingIn || !password}>
+            {loggingIn ? t('admin.verifying') : t('admin.login')}
+          </button>
+          {error && <p className="admin-error">{error}</p>}
+        </section>
+      </main>
+    );
+  }
+
+  const dict = allDictionaries[selectedLocale] || {};
 
   const missingCount = allKeys.filter(k => !dict[k] || dict[k].trim() === '').length;
 
   const handleSaveEdit = () => {
     if (editKey && editValue.trim()) {
-      // In a real app, this would save to the server
-      // For now, just show a notification
-      alert(`已儲存: ${editKey}\n新值: ${editValue}\n\n注意：此變更僅在當前 session 有效，重新載入後會恢復。如需永久保存請手動修改 src/i18n/${selectedLocale}.ts`);
+      alert(`${t('admin.i18nSaved')}: ${editKey}\n${t('admin.i18nNewValue')}: ${editValue}\n\n${t('admin.i18nSaveNotice')}src/i18n/${selectedLocale}.ts`);
       setEditKey(null);
       setEditValue('');
     }
@@ -106,11 +115,8 @@ export function I18nManager() {
     <main className="admin-page app-screen">
       <header className="screen-header">
         <button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
-        <h1>i18n 管理</h1>
-        <button className="logout-btn" onClick={() => {
-          sessionStorage.removeItem('admin_auth');
-          setAuthenticated(false);
-        }}>登出</button>
+        <h1>{t('admin.i18nTitle')}</h1>
+        <button className="logout-btn" onClick={handleLogout}>{t('admin.logout')}</button>
       </header>
 
       <div className="i18n-controls">
@@ -127,17 +133,17 @@ export function I18nManager() {
         </div>
 
         <div className="i18n-stats">
-          <span>總 Keys: {allKeys.length}</span>
+          <span>{t('admin.i18nTotalKeys')}: {allKeys.length}</span>
           <span className={missingCount > 0 ? 'stat-warn' : 'stat-ok'}>
-            缺失: {missingCount}
+            {t('admin.i18nMissing')}: {missingCount}
           </span>
-          <span>已翻譯: {allKeys.length - missingCount}</span>
+          <span>{t('admin.i18nTranslated')}: {allKeys.length - missingCount}</span>
         </div>
 
         <div className="i18n-filters">
           <input
             type="text"
-            placeholder="搜尋 key 或翻譯內容..."
+            placeholder={t('admin.i18nSearchPlaceholder')}
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
             className="i18n-search"
@@ -148,7 +154,7 @@ export function I18nManager() {
               checked={filterMissing}
               onChange={e => setFilterMissing(e.target.checked)}
             />
-            僅顯示缺失
+            {t('admin.i18nFilterMissing')}
           </label>
         </div>
       </div>
@@ -157,10 +163,10 @@ export function I18nManager() {
         <table className="i18n-table">
           <thead>
             <tr>
-              <th>Key</th>
-              <th>zh-TW (基準)</th>
+              <th>{t('admin.i18nColKey')}</th>
+              <th>{t('admin.i18nColBase')}</th>
               <th>{getLocaleFlag(selectedLocale as any)} {getLocaleLabel(selectedLocale as any)}</th>
-              <th>狀態</th>
+              <th>{t('admin.i18nColStatus')}</th>
             </tr>
           </thead>
           <tbody>
@@ -193,7 +199,7 @@ export function I18nManager() {
                       </div>
                     ) : (
                       <span className={isMissing ? 'text-missing' : ''}>
-                        {isMissing ? '(缺失)' : translated}
+                        {isMissing ? t('admin.i18nMissingBadge') : translated}
                       </span>
                     )}
                   </td>

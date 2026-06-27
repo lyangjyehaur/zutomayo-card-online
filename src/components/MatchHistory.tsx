@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { clearMatchRecords, downloadMatchActionLog, getMatchRecords, getMatchStats, type MatchRecord } from '../game/matchHistory';
 import type { ActionLogEntry } from '../game/types';
-import { t } from '../i18n';
+import { t, useLocale } from '../i18n';
 
 interface MatchHistoryProps {
   onBack: () => void;
@@ -55,13 +55,14 @@ function TraceEntry({ entry }: { entry: ActionLogEntry }) {
 }
 
 function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => void }) {
+  const locale = useLocale();
   const trace = record.actionLog ?? [];
   return (
     <div className="match-detail-backdrop" role="presentation">
       <section className="match-detail-panel" role="dialog" aria-modal="true" aria-labelledby="match-detail-title">
         <header className="match-detail-header">
           <div>
-            <span>{new Date(record.date).toLocaleString()}</span>
+            <span>{new Date(record.date).toLocaleString(locale)}</span>
             <h2 id="match-detail-title">{winnerLabel(record)}</h2>
           </div>
           <button className="secondary-action" type="button" onClick={onClose}>{t('common.close')}</button>
@@ -96,6 +97,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
   const [records, setRecords] = useState(() => getMatchRecords());
   const [page, setPage] = useState(0);
   const [selectedRecord, setSelectedRecord] = useState<MatchRecord | null>(null);
+  const locale = useLocale();
   const stats = getMatchStats();
   const totalPages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
@@ -148,7 +150,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
               <article key={record.id} className="record-item">
                 <div className="record-result">
                   <strong>{winnerLabel(record)}</strong>
-                  <span>{new Date(record.date).toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>{new Date(record.date).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <div className="record-details">
                   <span>{t('history.turns')} {record.turns}</span>

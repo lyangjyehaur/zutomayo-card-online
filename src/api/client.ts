@@ -145,3 +145,93 @@ export async function getLeaderboard(limit = 100): Promise<LeaderboardEntry[]> {
   const data = await request<LeaderboardListResponse>(`/leaderboard?limit=${limit}`);
   return data.leaderboard;
 }
+
+// ===== Admin =====
+export interface AdminUser {
+  id: string;
+  email: string;
+  nickname: string;
+  elo: number;
+  matchCount: number;
+  wins: number;
+  winRate: number;
+  createdAt: string;
+}
+
+export interface AdminMatch {
+  id: string;
+  winnerId: string;
+  loserId: string;
+  winnerNickname: string | null;
+  loserNickname: string | null;
+  winnerEloChange: number;
+  loserEloChange: number;
+  turns: number;
+  duration: number;
+  createdAt: string;
+}
+
+export async function adminLogin(password: string): Promise<{ token: string }> {
+  return request<{ token: string }>('/admin/login', {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function adminGetUsers(token: string, limit = 100): Promise<{ users: AdminUser[] }> {
+  const data = await request<{ users: AdminUser[] }>(`/admin/users?limit=${limit}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function adminGetMatches(token: string, limit = 50): Promise<{ matches: AdminMatch[] }> {
+  const data = await request<{ matches: AdminMatch[] }>(`/admin/matches?limit=${limit}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return data;
+}
+
+export async function adminResetElo(token: string, userId: string, elo: number): Promise<{ id: string; elo: number }> {
+  return request<{ id: string; elo: number }>(`/admin/users/${userId}/elo`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ elo }),
+  });
+}
+
+// ===== Matchmaking =====
+export interface MatchmakingQueueResponse {
+  queueId: string;
+  status: 'queued' | 'matched';
+}
+
+export interface MatchmakingStatusResponse {
+  status: 'queued' | 'matched' | 'timeout';
+  matchId?: string;
+  opponentId?: string;
+  role?: 'host' | 'guest';
+  realMatchId?: string;
+}
+
+export async function matchmakingQueue(deckName?: string, deckIds?: string[]): Promise<MatchmakingQueueResponse> {
+  return request<MatchmakingQueueResponse>('/matchmaking/queue', {
+    method: 'POST',
+    body: JSON.stringify({ deckName, deckIds }),
+  });
+}
+
+export async function matchmakingStatus(): Promise<MatchmakingStatusResponse> {
+  return request<MatchmakingStatusResponse>('/matchmaking/status');
+}
+
+export async function matchmakingLeave(): Promise<void> {
+  await request<{ deleted: boolean }>('/matchmaking/queue', { method: 'DELETE' });
+}
+
+export async function matchmakingReportMatch(realMatchId: string): Promise<void> {
+  await request<{ ok: boolean }>('/matchmaking/match', {
+    method: 'PUT',
+    body: JSON.stringify({ matchId: realMatchId }),
+  });
+}

@@ -1,11 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 import { getAllCardDefs } from '../game/cards/loader';
 import { parseEffect } from '../game/effects/parser';
 import type { ParsedEffect } from '../game/effects';
 import type { CardDef, Element, CardType } from '../game/types';
+import { ApiError, adminGetMatches, adminGetUsers, adminLogin, adminResetElo } from '../api/client';
+import type { AdminMatch, AdminUser } from '../api/client';
 import '../components/AdminPanel.css';
+
+const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
 
 const ELEMENTS: (Element | 'all')[] = ['all', '闇', '炎', '電気', '風', 'カオス'];
 const TYPES: (CardType | 'all')[] = ['all', 'Character', 'Enchant', 'Area Enchant'];
@@ -108,9 +112,17 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
 
 export function AdminPage() {
   const navigate = useNavigate();
-  const [authenticated, setAuthenticated] = useState(() => sessionStorage.getItem('admin_auth') === 'true');
+  const [authenticated, setAuthenticated] = useState(() => Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY)));
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [activeTab, setActiveTab] = useState<'cards' | 'users' | 'matches'>('cards');
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [matches, setMatches] = useState<AdminMatch[]>([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [eloEdits, setEloEdits] = useState<Record<string, string>>({});
+  const [eloSavingId, setEloSavingId] = useState<string | null>(null);
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
   const [filterPack, setFilterPack] = useState('all');
@@ -122,6 +134,101 @@ export function AdminPage() {
   const [searchText, setSearchText] = useState('');
   const [sortBy, setSortBy] = useState<'id' | 'name' | 'cost' | 'attack'>('id');
   const [selectedCard, setSelectedCard] = useState<CardDef | null>(null);
+
+  const adminToken = () => sessionStorage.getItem(ADMIN_TOKEN_KEY) || '';
+
+  const handleLogin = useCallback(async () => {
+    setError('');
+    setLoggingIn(true);
+    try {
+      const { token } = await adminLogin(password);
+      sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+      setAuthenticated(true);
+      setPassword('');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '登入失敗';
+      setError(msg === 'Invalid password' ? '密碼錯誤' : msg);
+    } finally {
+      setLoggingIn(false);
+    }
+  }, [password]);
+
+  const handleLogout = useCallback(() => {
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    setAuthenticated(false);
+    setUsers([]);
+    setMatches([]);
+    setAdminError('');
+    setEloEdits({});
+  }, []);
+
+  const refreshUsers = useCallback(async () => {
+    const token = adminToken();
+    if (!token) return;
+    setAdminLoading(true);
+    setAdminError('');
+    try {
+      const data = await adminGetUsers(token);
+      setUsers(data.users);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '無法取得使用者列表';
+      setAdminError(msg === 'Unauthorized' ? '驗證失效，請重新登入' : msg);
+      if (err instanceof ApiError && err.status === 401) handleLogout();
+    } finally {
+      setAdminLoading(false);
+    }
+  }, [handleLogout]);
+
+  const refreshMatches = useCallback(async () => {
+    const token = adminToken();
+    if (!token) return;
+    setAdminLoading(true);
+    setAdminError('');
+    try {
+      const data = await adminGetMatches(token);
+      setMatches(data.matches);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : '無法取得對戰列表';
+      setAdminError(msg === 'Unauthorized' ? '驗證失效，請重新登入' : msg);
+      if (err instanceof ApiError && err.status === 401) handleLogout();
+    } finally {
+      setAdminLoading(false);
+    }
+  }, [handleLogout]);
+
+  const handleResetElo = useCallback(async (userId: string) => {
+    const token = adminToken();
+    if (!token) return;
+    const raw = eloEdits[userId];
+    const newElo = Number(raw);
+    if (raw === '' || Number.isNaN(newElo)) {
+      setAdminError('請輸入有效的 ELO 數值');
+      return;
+    }
+    setEloSavingId(userId);
+    setAdminError('');
+    try {
+      const result = await adminResetElo(token, userId, newElo);
+      setUsers(prev => prev.map(u => (u.id === result.id ? { ...u, elo: result.elo } : u)));
+      setEloEdits(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'ELO 重置失敗';
+      setAdminError(msg === 'Unauthorized' ? '驗證失效，請重新登入' : msg);
+      if (err instanceof ApiError && err.status === 401) handleLogout();
+    } finally {
+      setEloSavingId(null);
+    }
+  }, [eloEdits, handleLogout]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    if (activeTab === 'users' && users.length === 0) void refreshUsers();
+    if (activeTab === 'matches' && matches.length === 0) void refreshMatches();
+  }, [activeTab, authenticated, matches.length, refreshMatches, refreshUsers, users.length]);
 
   const allCards = useMemo(() => getAllCardDefs(), []);
   const metaById = useMemo(() => new Map(allCards.map(card => [card.id, parseCardMeta(card)])), [allCards]);
@@ -165,8 +272,8 @@ export function AdminPage() {
       <main className="admin-page app-screen">
         <header className="screen-header"><button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button><h1>管理員驗證</h1></header>
         <section className="admin-login">
-          <input type="password" placeholder="輸入管理密碼" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { const adminPwd = import.meta.env.VITE_ADMIN_PASSWORD || 'zutomayo2026'; if (password === adminPwd) { sessionStorage.setItem('admin_auth', 'true'); setAuthenticated(true); } else setError('密碼錯誤'); } }} />
-          <button onClick={() => { const adminPwd = import.meta.env.VITE_ADMIN_PASSWORD || 'zutomayo2026'; if (password === adminPwd) { sessionStorage.setItem('admin_auth', 'true'); setAuthenticated(true); } else setError('密碼錯誤'); }}>登入</button>
+          <input type="password" placeholder="輸入管理密碼" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !loggingIn) void handleLogin(); }} disabled={loggingIn} />
+          <button onClick={() => void handleLogin()} disabled={loggingIn || !password}>{loggingIn ? '驗證中…' : '登入'}</button>
           {error && <p className="admin-error">{error}</p>}
         </section>
       </main>
@@ -207,46 +314,137 @@ export function AdminPage() {
     <main className="admin-page app-screen">
       <header className="screen-header">
         <button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
-        <h1>卡牌資料管理</h1>
-        <span className="admin-count">{filtered.length} / {allCards.length} 張</span>
+        <h1>管理員面板</h1>
+        {activeTab === 'cards' && <span className="admin-count">{filtered.length} / {allCards.length} 張</span>}
+        <div className="admin-tabs">
+          <button className={`filter-chip ${activeTab === 'cards' ? 'active' : ''}`} onClick={() => setActiveTab('cards')}>卡牌資料</button>
+          <button className={`filter-chip ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>使用者</button>
+          <button className={`filter-chip ${activeTab === 'matches' ? 'active' : ''}`} onClick={() => setActiveTab('matches')}>對戰</button>
+        </div>
         <button className="nav-link" onClick={() => navigate('/admin/i18n')}>🌐 i18n</button>
-        <button className="logout-btn" onClick={() => { sessionStorage.removeItem('admin_auth'); setAuthenticated(false); }}>登出</button>
+        <button className="logout-btn" onClick={handleLogout}>登出</button>
       </header>
 
-      <section className="admin-audit-summary">
-        <div><span>總卡</span><strong>{audit.totalCards}</strong></div>
-        <div><span>效果卡</span><strong>{audit.effectCards}</strong></div>
-        <div><span>效果行</span><strong>{audit.parsedLines}/{audit.effectLines}</strong></div>
-        <div><span>未解析</span><strong>{audit.unparsedLines}</strong></div>
-        <div><span>Runtime effects</span><strong>{audit.runtimeParsedEffects}</strong></div>
-      </section>
+      {activeTab === 'cards' && (
+        <>
+          <section className="admin-audit-summary">
+            <div><span>總卡</span><strong>{audit.totalCards}</strong></div>
+            <div><span>效果卡</span><strong>{audit.effectCards}</strong></div>
+            <div><span>效果行</span><strong>{audit.parsedLines}/{audit.effectLines}</strong></div>
+            <div><span>未解析</span><strong>{audit.unparsedLines}</strong></div>
+            <div><span>Runtime effects</span><strong>{audit.runtimeParsedEffects}</strong></div>
+          </section>
 
-      <div className="admin-filters">
-        <input type="text" placeholder="搜尋卡名/效果/ID..." value={searchText} onChange={e => setSearchText(e.target.value)} className="admin-search" />
-        <div className="admin-filter-row"><label>屬性</label>{ELEMENTS.map(el => <button key={el} className={`filter-chip ${filterElement === el ? 'active' : ''}`} onClick={() => setFilterElement(el)}>{el === 'all' ? '全部' : el}</button>)}</div>
-        <div className="admin-filter-row"><label>類型</label>{TYPES.map(type => <button key={type} className={`filter-chip ${filterType === type ? 'active' : ''}`} onClick={() => setFilterType(type)}>{type === 'all' ? '全部' : type === 'Character' ? '角色' : type === 'Enchant' ? '附魔' : '區域'}</button>)}</div>
-        <div className="admin-filter-row"><label>Trigger</label>{TRIGGERS.map(trigger => <button key={trigger} className={`filter-chip ${filterTrigger === trigger ? 'active' : ''}`} onClick={() => setFilterTrigger(trigger)}>{trigger === 'all' ? '全部' : trigger}</button>)}</div>
-        <div className="admin-filter-row admin-engine-searches"><label>引擎</label><input placeholder="Action type" value={filterAction} onChange={e => setFilterAction(e.target.value)} /><input placeholder="Condition type" value={filterCondition} onChange={e => setFilterCondition(e.target.value)} /><button className={`filter-chip ${pendingOnly ? 'active' : ''}`} onClick={() => setPendingOnly(v => !v)}>待選卡</button><button className={`filter-chip ${areaExpiryOnly ? 'active' : ''}`} onClick={() => setAreaExpiryOnly(v => !v)}>Area expiry</button></div>
-        <div className="admin-filter-row"><label>卡包</label>{PACKS.map(pack => <button key={pack} className={`filter-chip ${filterPack === pack ? 'active' : ''}`} onClick={() => setFilterPack(pack)}>{pack === 'all' ? '全部' : pack}</button>)}</div>
-        <div className="admin-filter-row"><label>排序</label>{(['id', 'name', 'cost', 'attack'] as const).map(sort => <button key={sort} className={`filter-chip ${sortBy === sort ? 'active' : ''}`} onClick={() => setSortBy(sort)}>{sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '能量' : '攻擊'}</button>)}</div>
-      </div>
+          <div className="admin-filters">
+            <input type="text" placeholder="搜尋卡名/效果/ID..." value={searchText} onChange={e => setSearchText(e.target.value)} className="admin-search" />
+            <div className="admin-filter-row"><label>屬性</label>{ELEMENTS.map(el => <button key={el} className={`filter-chip ${filterElement === el ? 'active' : ''}`} onClick={() => setFilterElement(el)}>{el === 'all' ? '全部' : el}</button>)}</div>
+            <div className="admin-filter-row"><label>類型</label>{TYPES.map(type => <button key={type} className={`filter-chip ${filterType === type ? 'active' : ''}`} onClick={() => setFilterType(type)}>{type === 'all' ? '全部' : type === 'Character' ? '角色' : type === 'Enchant' ? '附魔' : '區域'}</button>)}</div>
+            <div className="admin-filter-row"><label>Trigger</label>{TRIGGERS.map(trigger => <button key={trigger} className={`filter-chip ${filterTrigger === trigger ? 'active' : ''}`} onClick={() => setFilterTrigger(trigger)}>{trigger === 'all' ? '全部' : trigger}</button>)}</div>
+            <div className="admin-filter-row admin-engine-searches"><label>引擎</label><input placeholder="Action type" value={filterAction} onChange={e => setFilterAction(e.target.value)} /><input placeholder="Condition type" value={filterCondition} onChange={e => setFilterCondition(e.target.value)} /><button className={`filter-chip ${pendingOnly ? 'active' : ''}`} onClick={() => setPendingOnly(v => !v)}>待選卡</button><button className={`filter-chip ${areaExpiryOnly ? 'active' : ''}`} onClick={() => setAreaExpiryOnly(v => !v)}>Area expiry</button></div>
+            <div className="admin-filter-row"><label>卡包</label>{PACKS.map(pack => <button key={pack} className={`filter-chip ${filterPack === pack ? 'active' : ''}`} onClick={() => setFilterPack(pack)}>{pack === 'all' ? '全部' : pack}</button>)}</div>
+            <div className="admin-filter-row"><label>排序</label>{(['id', 'name', 'cost', 'attack'] as const).map(sort => <button key={sort} className={`filter-chip ${sortBy === sort ? 'active' : ''}`} onClick={() => setSortBy(sort)}>{sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '能量' : '攻擊'}</button>)}</div>
+          </div>
 
-      <div className="admin-grid">
-        {filtered.map(card => {
-          const meta = metaById.get(card.id);
-          return (
-            <div key={card.id} className="admin-card" onClick={() => setSelectedCard(card)}>
-              <img src={card.image} alt={card.name} loading="lazy" referrerPolicy="no-referrer" />
-              <div className="admin-card-overlay">
-                <span className="admin-card-name">{card.name}</span>
-                <span className="admin-card-id">{card.id}</span>
-                <span className="admin-card-meta">{card.element} • {card.type === 'Character' ? '角' : card.type === 'Enchant' ? '附' : '域'}{card.type === 'Character' && card.attack && ` • 🌙${card.attack.night}/☀️${card.attack.day}`}{card.powerCost > 0 && ` • ⚡${card.powerCost}`}</span>
-              </div>
-              {card.effect && <div className={`admin-card-effect-badge ${meta?.unparsedLines.length ? 'warning' : ''}`}>{meta?.parsed.length ?? 0}</div>}
-            </div>
-          );
-        })}
-      </div>
+          <div className="admin-grid">
+            {filtered.map(card => {
+              const meta = metaById.get(card.id);
+              return (
+                <div key={card.id} className="admin-card" onClick={() => setSelectedCard(card)}>
+                  <img src={card.image} alt={card.name} loading="lazy" referrerPolicy="no-referrer" />
+                  <div className="admin-card-overlay">
+                    <span className="admin-card-name">{card.name}</span>
+                    <span className="admin-card-id">{card.id}</span>
+                    <span className="admin-card-meta">{card.element} • {card.type === 'Character' ? '角' : card.type === 'Enchant' ? '附' : '域'}{card.type === 'Character' && card.attack && ` • 🌙${card.attack.night}/☀️${card.attack.day}`}{card.powerCost > 0 && ` • ⚡${card.powerCost}`}</span>
+                  </div>
+                  {card.effect && <div className={`admin-card-effect-badge ${meta?.unparsedLines.length ? 'warning' : ''}`}>{meta?.parsed.length ?? 0}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'users' && (
+        <section className="admin-section">
+          <div className="admin-section-heading">
+            <h2>使用者列表</h2>
+            <button className="filter-chip" onClick={() => void refreshUsers()} disabled={adminLoading}>{adminLoading ? '載入中…' : '重新載入'}</button>
+          </div>
+          {adminError && <p className="admin-error">{adminError}</p>}
+          {users.length === 0 && !adminLoading && <p className="admin-empty-copy">尚無使用者資料</p>}
+          {users.length > 0 && (
+            <table className="admin-table">
+              <thead>
+                <tr><th>暱稱</th><th>Email</th><th>ELO</th><th>對戰</th><th>勝場</th><th>勝率</th><th>建立時間</th><th>重置 ELO</th></tr>
+              </thead>
+              <tbody>
+                {users.map(user => (
+                  <tr key={user.id}>
+                    <td>{user.nickname || '—'}</td>
+                    <td className="admin-table-muted">{user.email}</td>
+                    <td><strong>{user.elo}</strong></td>
+                    <td>{user.matchCount}</td>
+                    <td>{user.wins}</td>
+                    <td>{user.winRate}%</td>
+                    <td className="admin-table-muted">{new Date(user.createdAt).toLocaleString()}</td>
+                    <td>
+                      <div className="admin-elo-cell">
+                        <input
+                          type="number"
+                          placeholder={String(user.elo)}
+                          value={eloEdits[user.id] ?? ''}
+                          onChange={e => setEloEdits(prev => ({ ...prev, [user.id]: e.target.value }))}
+                          disabled={eloSavingId === user.id}
+                        />
+                        <button
+                          className="filter-chip"
+                          onClick={() => void handleResetElo(user.id)}
+                          disabled={eloSavingId === user.id || !eloEdits[user.id]}
+                        >
+                          {eloSavingId === user.id ? '儲存中…' : '重置'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'matches' && (
+        <section className="admin-section">
+          <div className="admin-section-heading">
+            <h2>對戰列表</h2>
+            <button className="filter-chip" onClick={() => void refreshMatches()} disabled={adminLoading}>{adminLoading ? '載入中…' : '重新載入'}</button>
+          </div>
+          {adminError && <p className="admin-error">{adminError}</p>}
+          {matches.length === 0 && !adminLoading && <p className="admin-empty-copy">尚無對戰紀錄</p>}
+          {matches.length > 0 && (
+            <table className="admin-table">
+              <thead>
+                <tr><th>時間</th><th>勝者</th><th>敗者</th><th>ELO 變動</th><th>回合數</th><th>時長</th><th>對戰 ID</th></tr>
+              </thead>
+              <tbody>
+                {matches.map(match => (
+                  <tr key={match.id}>
+                    <td className="admin-table-muted">{new Date(match.createdAt).toLocaleString()}</td>
+                    <td>{match.winnerNickname || '—'} <span className="admin-table-muted">({match.winnerId.slice(0, 8)})</span></td>
+                    <td>{match.loserNickname || '—'} <span className="admin-table-muted">({match.loserId.slice(0, 8)})</span></td>
+                    <td>
+                      <span className="admin-elo-up">+{match.winnerEloChange}</span> / <span className="admin-elo-down">{match.loserEloChange}</span>
+                    </td>
+                    <td>{match.turns}</td>
+                    <td>{match.duration ? `${Math.floor(match.duration / 60)}:${String(match.duration % 60).padStart(2, '0')}` : '—'}</td>
+                    <td className="admin-table-muted">{match.id.slice(0, 8)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
       {CardModal}
     </main>
   );

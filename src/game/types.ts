@@ -286,6 +286,9 @@ export interface GameState {
   midnightRange: number;
   chronosAtTurnStart: number;
   turnNumber: number;
+  // P3-16：伺服器權威回合計時器，於回合開始時記錄（毫秒，Date.now()）。
+  // 客戶端據此計算剩餘時間，避免兩端 setInterval 漂移；超時由 timeoutSkip move 處理。
+  turnStartTime: number;
   lastBattleResult: LastBattleResult;
   setCardsThisTurn: [CardInstance[], CardInstance[]];
   pendingEffects: [PendingEffect[], PendingEffect[]];

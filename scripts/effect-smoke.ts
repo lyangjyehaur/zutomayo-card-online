@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { parseEffect } from '../src/game/effects/parser';
 import { executeEffect } from '../src/game/effects/executor';
-import { setupGame, getChronosTime, setInitialCard, confirmReady, resolveJanken, finishMulligan, setTurnCard } from '../src/game/GameLogic';
-import { getAllCardDefs } from '../src/game/cards/loader';
-import type { GameState, PlayerIndex, ParsedEffect } from '../src/game/types';
+import { setupGame, getChronosTime, setInitialCard, resolveJanken, finishMulligan } from '../src/game/GameLogic';
+import type { GameState, ParsedEffect } from '../src/game/types';
 
 const require = createRequire(import.meta.url);
 const cardsData: any[] = require('../cards.json');
@@ -13,7 +12,7 @@ const cardsData: any[] = require('../cards.json');
 console.log('=== Test 1: Parser Coverage ===');
 const effectCards = cardsData.filter((c: any) => c.effect && c.effect.trim().length > 0);
 let parsed = 0;
-let failed: string[] = [];
+const failed: string[] = [];
 
 for (const card of effectCards) {
   const result = parseEffect(card.effect);

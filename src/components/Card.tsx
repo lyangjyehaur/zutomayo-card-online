@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { CardDef, CardInstance, CardType, ChronosTime, Element } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { t, useLocale, type TranslationKey } from '../i18n';
@@ -140,9 +140,13 @@ export function Card({
 }: CardProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [popoverPosition, setPopoverPosition] = useState<PopoverPosition | null>(null);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [tappedOpen, setTappedOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const resolvedSize = size ?? (small ? 'small' : 'normal');
   const focusable = !!onClick || showPopover;
+  const popoverVisible = showPopover && (hovered || focused || tappedOpen);
 
   useEffect(() => {
     setImageFailed(false);
@@ -212,7 +216,10 @@ export function Card({
   };
 
   useEffect(() => {
-    if (!showPopover || !popoverPosition) return;
+    if (!popoverVisible) {
+      setPopoverPosition(null);
+      return;
+    }
     updateCardPopoverPosition();
     window.addEventListener('resize', updateCardPopoverPosition);
     window.addEventListener('scroll', updateCardPopoverPosition, true);
@@ -220,15 +227,36 @@ export function Card({
       window.removeEventListener('resize', updateCardPopoverPosition);
       window.removeEventListener('scroll', updateCardPopoverPosition, true);
     };
-  }, [showPopover, Boolean(popoverPosition), card.instanceId, activeTime]);
+  }, [popoverVisible, card.instanceId, activeTime]);
 
-  const showCardPopover = () => {
-    if (!showPopover) return;
-    updateCardPopoverPosition();
+  useEffect(() => {
+    if (!tappedOpen) return;
+    const handleDocumentDown = (event: MouseEvent | TouchEvent) => {
+      if (cardRef.current && !cardRef.current.contains(event.target as Node)) {
+        setTappedOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleDocumentDown);
+    document.addEventListener('touchstart', handleDocumentDown);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentDown);
+      document.removeEventListener('touchstart', handleDocumentDown);
+    };
+  }, [tappedOpen]);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (showPopover && event.pointerType === 'touch') {
+      setTappedOpen(prev => !prev);
+    }
   };
 
-  const hideCardPopover = () => {
-    setPopoverPosition(null);
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    if (showPopover) {
+      setTappedOpen(prev => !prev);
+    }
+    onClick?.();
   };
 
   if (!card.faceUp) {
@@ -273,19 +301,15 @@ export function Card({
       ref={cardRef}
       className={cardClassName(def, resolvedSize, { selected, clickable: !!onClick, activeTime, className })}
       onClick={onClick}
-      onKeyDown={onClick ? event => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onClick();
-        }
-      } : undefined}
+      onPointerDown={showPopover ? handlePointerDown : undefined}
+      onKeyDown={(onClick || showPopover) ? handleKeyDown : undefined}
       role={onClick ? 'button' : undefined}
       tabIndex={focusable ? 0 : undefined}
       aria-label={def.name}
-      onMouseEnter={showCardPopover}
-      onMouseLeave={hideCardPopover}
-      onFocus={showCardPopover}
-      onBlur={hideCardPopover}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
     >
       <div className="card-frame">
         <div className="card-art">
@@ -309,7 +333,7 @@ export function Card({
         </div>
       </div>
 
-      {showPopover && popoverPosition && <CardPopover def={def} activeTime={activeTime} position={popoverPosition} />}
+      {popoverVisible && popoverPosition && <CardPopover def={def} activeTime={activeTime} position={popoverPosition} />}
     </div>
   );
 }

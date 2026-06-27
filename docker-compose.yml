@@ -8,6 +8,9 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - DB_DIR=/data
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - JWT_SECRET=${JWT_SECRET:-}
     volumes:
       - game-data:/data
     restart: unless-stopped
@@ -21,6 +24,9 @@ services:
     environment:
       - API_PORT=3001
       - DB_PATH=/data/zutomayo.db
+      - JWT_SECRET=${JWT_SECRET:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
     volumes:
       - api-data:/data
     restart: unless-stopped

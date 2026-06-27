@@ -1,0 +1,7 @@
+dist/
+node_modules/
+.data/
+public/cards/
+package-lock.json
+api/package-lock.json
+cards.json

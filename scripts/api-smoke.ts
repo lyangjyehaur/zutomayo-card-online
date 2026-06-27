@@ -55,6 +55,19 @@ interface LeaderboardEntry {
   winRate: number;
 }
 
+interface MatchHistoryEntry {
+  id: string;
+  winnerId: string | null;
+  loserId: string | null;
+  winnerNickname: string | null;
+  loserNickname: string | null;
+  winnerEloChange: number;
+  loserEloChange: number;
+  turns: number;
+  duration: number;
+  createdAt: string;
+}
+
 type ApiServerModule = {
   handleRequest: (req: any, res: any) => void;
   closeDatabase: () => void;
@@ -102,6 +115,8 @@ async function api<T>(
     req.method = options.method ?? 'GET';
     req.url = path;
     req.headers = normalizeHeaders(options.headers);
+    // server.cjs rate limiting reads req.socket.remoteAddress; provide a stub.
+    req.socket = { remoteAddress: '127.0.0.1' };
     let status = 200;
 
     const res = {
@@ -277,8 +292,36 @@ try {
     },
   ];
 
+  // P0-2：POST /api/matches 無 token 回 401。
+  const matchNoToken = await api(baseUrl, '/api/matches', {
+    method: 'POST',
+    body: JSON.stringify({
+      winnerId: registeredA.body.user.id,
+      loserId: registeredB.body.user.id,
+      turns: 1,
+      duration: 10,
+      actionLog: [],
+    }),
+  });
+  assert.equal(matchNoToken.status, 401);
+
+  // P0-2：winnerId 不符認證使用者回 403（以 B 的 token 宣稱 A 贏）。
+  const matchForbidden = await api(baseUrl, '/api/matches', {
+    method: 'POST',
+    headers: authHeaders(loginB.body.token),
+    body: JSON.stringify({
+      winnerId: registeredA.body.user.id,
+      loserId: registeredB.body.user.id,
+      turns: 1,
+      duration: 10,
+      actionLog: [],
+    }),
+  });
+  assert.equal(matchForbidden.status, 403);
+
   const match = await api<MatchResponse>(baseUrl, '/api/matches', {
     method: 'POST',
+    headers: authHeaders(loginA.body.token),
     body: JSON.stringify({
       winnerId: registeredA.body.user.id,
       loserId: registeredB.body.user.id,
@@ -373,6 +416,7 @@ try {
 
   const guestPlaceholderMatch = await api<MatchResponse>(baseUrl, '/api/matches', {
     method: 'POST',
+    headers: authHeaders(loginA.body.token),
     body: JSON.stringify({
       winnerId: registeredA.body.user.id,
       loserId: 'guest-player-1',
@@ -395,6 +439,42 @@ try {
   assert.equal(afterGuestProfileA.body.wins, 1);
   assert.equal(afterGuestProfileA.body.elo, match.body.winnerNewElo);
 
+  // P2-10：GET /api/matches 回傳使用者對戰歷史。
+  const historyA = await api<{ matches: MatchHistoryEntry[] }>(baseUrl, '/api/matches', {
+    headers: authHeaders(loginA.body.token),
+  });
+  assert.equal(historyA.status, 200);
+  assert.equal(historyA.body.matches.length, 2);
+  const historyAIds = historyA.body.matches.map(entry => entry.id);
+  assert.ok(historyAIds.includes(match.body.matchId));
+  assert.ok(historyAIds.includes(guestPlaceholderMatch.body.matchId));
+
+  const historyB = await api<{ matches: MatchHistoryEntry[] }>(baseUrl, '/api/matches', {
+    headers: authHeaders(loginB.body.token),
+  });
+  assert.equal(historyB.status, 200);
+  assert.equal(historyB.body.matches.length, 1);
+  assert.equal(historyB.body.matches[0].id, match.body.matchId);
+  assert.equal(historyB.body.matches[0].winnerNickname, 'Smoke One');
+  assert.equal(historyB.body.matches[0].loserNickname, 'Smoke Two');
+
+  // PUT /api/profile 修改暱稱。
+  const updatedProfile = await api<ProfileResponse>(baseUrl, '/api/profile', {
+    method: 'PUT',
+    headers: authHeaders(loginA.body.token),
+    body: JSON.stringify({ nickname: 'Smoke One Updated' }),
+  });
+  assert.equal(updatedProfile.status, 200);
+  assert.equal(updatedProfile.body.id, registeredA.body.user.id);
+  assert.equal(updatedProfile.body.nickname, 'Smoke One Updated');
+
+  // 驗證暱稱已持久化。
+  const refetchedProfileA = await api<ProfileResponse>(baseUrl, '/api/profile', {
+    headers: authHeaders(loginA.body.token),
+  });
+  assert.equal(refetchedProfileA.status, 200);
+  assert.equal(refetchedProfileA.body.nickname, 'Smoke One Updated');
+
   const deletedDeck = await api<{ deleted: boolean }>(baseUrl, `/api/decks/${createdDeck.body.id}`, {
     method: 'DELETE',
     headers: authHeaders(loginA.body.token),
@@ -409,8 +489,6 @@ try {
   assert.equal(decksAfterDelete.body.decks.some(deck => deck.id === createdDeck.body.id), false);
 
   console.log('api smoke: all assertions passed');
-} catch (error) {
-  throw error;
 } finally {
   apiServer.closeDatabase();
   rmSync(tmp, { recursive: true, force: true });

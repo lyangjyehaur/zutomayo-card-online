@@ -7,6 +7,12 @@ dist/
 dist-server/
 *.tsbuildinfo
 
+# Test coverage
+coverage/
+
+# boardgame.io FlatFile local DB (dev)
+.data/
+
 # OS
 .DS_Store
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { Server } = require('boardgame.io/server') as typeof import('boardgame.io/server');
+const { Server, FlatFile } = require('boardgame.io/server') as typeof import('boardgame.io/server');
 const koaBody = require('koa-body') as typeof import('koa-body');
 
 const configuredOrigins = process.env.ALLOWED_ORIGINS
@@ -14,13 +14,24 @@ const configuredOrigins = process.env.ALLOWED_ORIGINS
   .map(origin => origin.trim())
   .filter(Boolean) ?? [];
 
+// 官方 QA P0-1：boardgame.io 配置 FlatFile DB adapter，解決線上房間重啟即滅。
+// 生產環境（Docker）使用 DB_DIR=/data（掛載 game-data volume）；
+// 開發環境 fallback 到項目根目錄下的 .data。
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.join(here, '..');
+const dbDir = process.env.DB_DIR || path.join(root, '.data');
+fs.mkdirSync(dbDir, { recursive: true });
+
 const server = Server({
   games: [ZutomayoCard],
+  db: new FlatFile({
+    dir: dbDir,
+    logging: process.env.NODE_ENV !== 'production',
+  }),
   origins: [
     'http://localhost:3000',
     /localhost:\d+/,
     /127\.0\.0\.1:\d+/,
-    /\d+\.\d+\.\d+\.\d+:\d+/,
     ...configuredOrigins,
   ],
 });
@@ -49,9 +60,6 @@ server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: any
 
   ctx.body = { matchID, playerID };
 });
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.join(here, '..');
 
 // Serve dist (frontend)
 server.app.use(serve(path.join(root, 'dist')));
