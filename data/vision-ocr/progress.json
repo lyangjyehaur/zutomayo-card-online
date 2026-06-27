@@ -2753,5 +2753,295 @@
     "song_title": "ZUTTOMAYONAKADEIINONI.",
     "needs_review": true,
     "review_reason": "Effect text appears to be stats dump, not actual game effect text; actual effect may not have been captured"
+  },
+  {
+    "id": "4th_37",
+    "en_name": "GREINU (One's Mind)",
+    "en_effect": "Attack +20 if all cards in your Power Charger are darkness attribute.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_38",
+    "en_name": "NIRA-CHAN (Byoushinwo Kamu)",
+    "en_effect": "+ The Battle Begins ZUTOMAYONAKADEIINONI.",
+    "song_title": "Byoushinwo Kamu",
+    "needs_review": true,
+    "review_reason": "Effect text may be incomplete; 'The Battle Begins' and song title may be separate from actual effect"
+  },
+  {
+    "id": "4th_39",
+    "en_name": "NIRA-CHAN (KUZURI)",
+    "en_effect": "Attack +40 if the opponent's character's attack is 0.",
+    "song_title": "SEND To POWER",
+    "needs_review": false
+  },
+  {
+    "id": "4th_40",
+    "en_name": "MIMI-KAYUSHI Parfait",
+    "en_effect": "",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "review_reason": "No English effect text found on card; actual character name is MIMI-KAYUSHI Parfait not ZUTOMAYO"
+  },
+  {
+    "id": "4th_41",
+    "en_name": "INC-NEKO (SHADE)",
+    "en_effect": "If you swapped with a (SHADE) character this turn, negate all effects of all enchantments controlled by your opponent. (Effects that have already resolved are unaffected.)",
+    "song_title": "Fantasy Is Reality; SEND To Power",
+    "needs_review": false
+  },
+  {
+    "id": "4th_42",
+    "en_name": "UNICREAM Sundae",
+    "en_effect": "",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "review_reason": "No English effect text found; 'Send To Drawer' keyword visible on sticky note"
+  },
+  {
+    "id": "4th_43",
+    "en_name": "MUSHIGURI-KUN",
+    "en_effect": "",
+    "song_title": "ZUTOMAYONAKADEIIINONI",
+    "needs_review": true,
+    "review_reason": "No distinct effect text extracted; stats/boilerplate only"
+  },
+  {
+    "id": "4th_44",
+    "en_name": "Biker UNIGURI-KUN (Neko Reset)",
+    "en_effect": "",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "review_reason": "No distinct effect text extracted; stats/boilerplate only"
+  },
+  {
+    "id": "4th_45",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit - could not analyze image"
+  },
+  {
+    "id": "4th_46",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit - could not analyze image"
+  },
+  {
+    "id": "4th_47",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit - could not analyze image"
+  },
+  {
+    "id": "4th_48",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit - could not analyze image"
+  },
+  {
+    "id": "4th_49",
+    "en_name": "Baby NANASHI (DARKEN)",
+    "en_effect": "NIGHT 30 | DAY 70",
+    "song_title": "Darken",
+    "needs_review": true,
+    "review_reason": "OCR uncertain - effect text looks like stats not effect wording"
+  },
+  {
+    "id": "4th_50",
+    "en_name": "NIRA-CHAN (Haze Haseru Haterumade)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEINONI",
+    "song_title": "NIRA-CHAN (Haze Haseru Haterumade)",
+    "needs_review": true,
+    "review_reason": "OCR garbled - effect text appears to be mixed with Japanese transliteration"
+  },
+  {
+    "id": "4th_51",
+    "en_name": "NIRA-CHAN (Byoushinwo Kamu)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEIINONI.",
+    "song_title": "Byoushinwo Kamu",
+    "needs_review": true,
+    "review_reason": "OCR garbled - effect text appears to be mixed with Japanese transliteration"
+  },
+  {
+    "id": "4th_52",
+    "en_name": "Fantasy Is Reality",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEIINONI.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "review_reason": "OCR likely misread card name and effect - looks like header text captured as effect"
+  },
+  {
+    "id": "4th_53",
+    "en_name": "NIRA-CHAN (STUDY ME)",
+    "en_effect": "You may place a (STUDY ME) character card from your hand and place it on the Power Charger. If you do, draw 1 card.",
+    "song_title": "SEND TO POWER",
+    "needs_review": true,
+    "review_reason": "OCR partial - effect text plausible but may be incomplete"
+  },
+  {
+    "id": "4th_54",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Place an electric card from your hand into the Abyss. If you do, draw 1 card.",
+    "song_title": "They've switched",
+    "needs_review": true,
+    "review_reason": "OCR likely misread card name as band name; song_title uncertain"
+  },
+  {
+    "id": "4th_55",
+    "en_name": "Deco-Bike'd here",
+    "en_effect": "HP +20 if the card in the Battle Zone is a (TAIDADA) character.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "review_reason": "Card name seems unusual - possible OCR misread"
+  },
+  {
+    "id": "4th_56",
+    "en_name": "Grave Dance",
+    "en_effect": "Attack +50 if the opponent's Abyss has no cards.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_57",
+    "en_name": "The Byoushin that foretells the future",
+    "en_effect": "If there are 3 or more cards in your Abyss, place the top 2 cards from your opponent's deck into their Abyss.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_58",
+    "en_name": "Joint polishing",
+    "en_effect": "Place a wind card from your hand into the Abyss. If you do, draw 1 card.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "review_reason": "Card name 'Joint polishing' seems unusual - possible OCR misread"
+  },
+  {
+    "id": "4th_59",
+    "en_name": "Sinful midnight ramen",
+    "en_effect": "HP +50 if there are 3 or more attributes in the Power Charger.",
+    "song_title": "Sinful midnight ramen",
+    "needs_review": true,
+    "review_reason": "Card name and song_title seem unusual - possible OCR misread"
+  },
+  {
+    "id": "4th_60",
+    "en_name": "Friendship squared",
+    "en_effect": "Attack +20 if the opponent's Character's SEND TO POWER is ◆◆.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_61",
+    "en_name": "The Stage's Recurrence",
+    "en_effect": "Place any number of cards from your hand at the bottom of the deck. If you do, draw the same number of cards from the deck.",
+    "song_title": "Fantasy Is Reality",
+    "status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "4th_62",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Place any number of darkness cards from your hand into the Abyss. If you do, draw the same number of cards.",
+    "song_title": "Fantasy Is Reality",
+    "status": "ok",
+    "needs_review": true,
+    "review_reason": "en_name may be band name rather than card name"
+  },
+  {
+    "id": "4th_63",
+    "en_name": "Gohan is better than the flowers",
+    "en_effect": "Place any number of flame cards from your hand into the Abyss. If you do, draw the same number of cards.",
+    "song_title": "Fantasy Is Reality",
+    "status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "4th_64",
+    "en_name": "Summer UNIGURI and the friends",
+    "en_effect": "Attack +60 if all cards in your Abyss are wind attribute.",
+    "song_title": "Summer UNIGURI and the friends",
+    "status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "4th_65",
+    "en_name": "JK BIOSCOPE",
+    "en_effect": "If the card in the Battle Zone is a (STUDY ME), reduce that character's Power Cost by ++. When the character in the Battle Zone is swapped for a Character other than (STUDY ME), immediately place this card into the Abyss.",
+    "song_title": "Fantasy Is Reality",
+    "status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "4th_66",
+    "en_name": "SHOGAST (Hippocampal Pain)",
+    "en_effect": "Attack +30 if the opponent's Character's SEND TO POWER is ++.",
+    "song_title": "Fantasy Is Reality",
+    "status": "ok",
+    "needs_review": true,
+    "review_reason": "Effect text may be incomplete or partially OCR'd"
+  },
+  {
+    "id": "4th_67",
+    "en_name": "UCHUJIN-STRINGS (TAIDADA)",
+    "en_effect": "The Battle Begins",
+    "song_title": "Fantasy Is Reality",
+    "status": "ok",
+    "needs_review": true,
+    "review_reason": "en_effect appears to be a keyword/set name rather than actual card effect; full effect text may be missing"
+  },
+  {
+    "id": "4th_68",
+    "en_name": "UNIGURI-KUN (TAIDADA)",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEIINONI.",
+    "song_title": "Send to Power",
+    "status": "ok",
+    "needs_review": true,
+    "review_reason": "en_effect appears garbled; may be set name/franchise info rather than actual effect"
+  },
+  {
+    "id": "4th_69",
+    "en_name": "NIRA-CHAN (TAIDADA)",
+    "en_effect": "[No clear effect text detected - card may be a character card with stats only]",
+    "song_title": "Fantasy Is Reality",
+    "status": "ok",
+    "needs_review": true,
+    "review_reason": "OCR returned ZUTOMAYO as name and garbled effect; manually corrected name to NIRA-CHAN (TAIDADA); effect text needs manual verification"
+  },
+  {
+    "id": "4th_70",
+    "en_name": "UNIGURI-KUN · NIRA-CHAN (TAIDADA)",
+    "en_effect": "[No clear effect text detected - character card with stats: NIGHT 100 | DAY 40]",
+    "song_title": "TAIDADA",
+    "status": "ok",
+    "needs_review": true,
+    "review_reason": "en_effect appears to be stats only; no ability text detected"
+  },
+  {
+    "id": "4th_71",
+    "en_name": "STRIPE-SISHO (Haze Haseru Haterumade)",
+    "en_effect": "The Battle Begins",
+    "song_title": "Haze Haseru Haterumade",
+    "status": "ok",
+    "needs_review": true,
+    "review_reason": "en_effect appears to be set name rather than actual card effect; full effect text may be missing"
+  },
+  {
+    "id": "4th_72",
+    "en_name": "UNIGURI-KUN (One's Mind)",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEIINONI.",
+    "song_title": "One's Mind",
+    "status": "ok",
+    "needs_review": true,
+    "review_reason": "en_effect appears garbled; may be set name/franchise info rather than actual effect"
   }
 ]
