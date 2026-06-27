@@ -160,24 +160,46 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   const url = new URL(ctx.path, API_SERVER);
   url.search = ctx.search;
 
+  // Read raw body from stream (koa-body may not be applied globally)
+  let rawBody = '';
+  if (ctx.method !== 'GET' && ctx.method !== 'HEAD') {
+    const chunks: Buffer[] = [];
+    for await (const chunk of ctx.req) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    rawBody = Buffer.concat(chunks).toString('utf-8');
+  }
+
   return new Promise<void>((resolve) => {
     const proxyReq = http.request(
       url,
       {
         method: ctx.method,
-        headers: { ...ctx.request.headers, host: url.host },
+        headers: {
+          'content-type': ctx.request.headers['content-type'] || 'application/json',
+          'content-length': rawBody ? String(Buffer.byteLength(rawBody)) : '0',
+          host: url.host,
+        },
+        timeout: 10000,
       },
       (proxyRes) => {
         ctx.status = proxyRes.statusCode || 200;
         ctx.set('Content-Type', proxyRes.headers['content-type'] || 'application/json');
-        const chunks: Buffer[] = [];
-        proxyRes.on('data', (chunk: Buffer) => chunks.push(chunk));
+        const resChunks: Buffer[] = [];
+        proxyRes.on('data', (chunk: Buffer) => resChunks.push(chunk));
         proxyRes.on('end', () => {
-          ctx.body = Buffer.concat(chunks);
+          ctx.body = Buffer.concat(resChunks);
           resolve();
         });
       },
     );
+
+    proxyReq.on('timeout', () => {
+      proxyReq.destroy();
+      ctx.status = 504;
+      ctx.body = JSON.stringify({ error: 'API server timeout' });
+      resolve();
+    });
 
     proxyReq.on('error', () => {
       ctx.status = 502;
@@ -185,9 +207,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
       resolve();
     });
 
-    if (ctx.method !== 'GET' && ctx.method !== 'HEAD') {
-      const body = typeof ctx.request.body === 'string' ? ctx.request.body : JSON.stringify(ctx.request.body || {});
-      proxyReq.write(body);
+    if (rawBody) {
+      proxyReq.write(rawBody);
     }
     proxyReq.end();
   });
