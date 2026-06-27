@@ -2178,5 +2178,292 @@
     "song_title": "Off Minor",
     "needs_review": true,
     "review_reason": "en_effect captured stats only. Character card - actual ability text may be absent or was not captured by OCR."
+  },
+  {
+    "id": "3rd_72",
+    "en_name": "NIRA-CHAN (MIRROR TUNE)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEIINONI.",
+    "song_title": "MIRROR TUNE",
+    "needs_review": true,
+    "review_reason": "OCR may have missed effect text; only partial English captured"
+  },
+  {
+    "id": "3rd_73",
+    "en_name": "SHOGAST (Blues in the Closet)",
+    "en_effect": "NIGHT 20 | DAY 20",
+    "song_title": "Blues in the Closet",
+    "needs_review": true,
+    "review_reason": "OCR likely missed effect text; only stats captured"
+  },
+  {
+    "id": "3rd_74",
+    "en_name": "UNIGURI-KUN · Condenser unit (Kan Saete Kuyashiiwa)",
+    "en_effect": "The Battle Begins",
+    "song_title": "Kan Saete Kuyashiiwa",
+    "needs_review": true,
+    "review_reason": "OCR likely missed effect text; only partial text captured"
+  },
+  {
+    "id": "3rd_75",
+    "en_name": "MAYONAKA (Hunch Gray)",
+    "en_effect": "NIGHT 20 | DAY 40 POWER COST --- Character 075/104 The Battle Begins ZUTTOMAYONAKADEININONI.",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "review_reason": "OCR mixed stats with effect text; may be incomplete"
+  },
+  {
+    "id": "3rd_76",
+    "en_name": "NIRA-CHAN (Inside Joke)",
+    "en_effect": "NIGHT 40 | DAY 40 POWER COST --- Character The Battle Begins ZUTTOMAYONAKADEIIINONI.",
+    "song_title": "Inside Joke",
+    "needs_review": true,
+    "review_reason": "OCR mixed stats/metadata with effect text; likely incomplete"
+  },
+  {
+    "id": "3rd_77",
+    "en_name": "NIRA-CHAN (Intrusion)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "ZUTOMAYONAkaDEIINONI.",
+    "needs_review": true,
+    "review_reason": "Very short effect text; OCR may have missed longer text block"
+  },
+  {
+    "id": "3rd_78",
+    "en_name": "RANI-CHAN (Intrusion)",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEIINONI. SEND TO POWER",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "review_reason": "OCR may have mixed metadata with actual effect text"
+  },
+  {
+    "id": "3rd_79",
+    "en_name": "NIRA-CHAN (Ham)",
+    "en_effect": "SEND To POPEK\nNIGHT 40 | DAY 20\nPOWER COST ---\nCharacter\n079/104",
+    "song_title": "The Battle Begins, ZUTOMAYONAKADEIINONI.",
+    "needs_review": true,
+    "review_reason": "OCR likely misread 'SEND TO POWER' as 'SEND To POPEK'; effect text may be incomplete"
+  },
+  {
+    "id": "3rd_80",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "vision_unavailable": true,
+    "error": "429 Too Many Requests - rate limited",
+    "needs_review": true,
+    "review_reason": "Vision API returned 429; no OCR data"
+  },
+  {
+    "id": "3rd_81",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "vision_unavailable": true,
+    "error": "429 Too Many Requests - rate limited",
+    "needs_review": true,
+    "review_reason": "Vision API returned 429; no OCR data"
+  },
+  {
+    "id": "3rd_82",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "vision_unavailable": true,
+    "error": "429 Too Many Requests - rate limited",
+    "needs_review": true,
+    "review_reason": "Vision API returned 429; no OCR data"
+  },
+  {
+    "id": "3rd_83",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "vision_unavailable": true,
+    "error": "429 Too Many Requests - rate limited",
+    "needs_review": true,
+    "review_reason": "Vision API returned 429; no OCR data"
+  },
+  {
+    "id": "3rd_84",
+    "en_name": "Ordinary life",
+    "en_effect": "Attack +70 if all the cards in the Abyss are of the flame attribute.",
+    "song_title": "Ordinary life",
+    "needs_review": true,
+    "status": "ok",
+    "note": "Vision returned 'ZUTOMAYO' as en_name; corrected to 'Ordinary life' from name bar. Verify."
+  },
+  {
+    "id": "3rd_85",
+    "en_name": "Break off",
+    "en_effect": "At the end of the turn, if it is daytime, advance the clock by 2. If you take more than 30 damage in this turn, immediately place this card in the Abyss.",
+    "song_title": "Break off",
+    "needs_review": false,
+    "status": "ok"
+  },
+  {
+    "id": "3rd_86",
+    "en_name": "Off Minor",
+    "en_effect": "Attack +10 for each darkness card in the Abyss. If there are 4 or more cards in the Abyss, place this card in the Abyss at the end of the turn.",
+    "song_title": "Don't say goodbye.",
+    "needs_review": true,
+    "status": "ok",
+    "note": "en_name 'Off Minor' may be song/series header, not card name bar. Verify."
+  },
+  {
+    "id": "3rd_87",
+    "en_name": "Meals for banquet",
+    "en_effect": "Attack +40 if the opponent's HP is 100.",
+    "song_title": "Meals for banquet",
+    "needs_review": false,
+    "status": "ok"
+  },
+  {
+    "id": "3rd_88",
+    "en_name": "Incense burner",
+    "en_effect": "Attack +30 if all the cards in the Abyss are of the darkness attribute.",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "status": "ok",
+    "note": "Vision returned 'ZUTOMAYO' as en_name; corrected to 'Incense burner' from 香炉. Verify."
+  },
+  {
+    "id": "3rd_89",
+    "en_name": "Cell division",
+    "en_effect": "Attack +50 if your character card's attribute is darkness.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "status": "ok"
+  },
+  {
+    "id": "3rd_90",
+    "en_name": "Off Minor",
+    "en_effect": "Attack +30 if your character card's attribute is flame.",
+    "song_title": "I can't go back",
+    "needs_review": true,
+    "status": "ok",
+    "note": "en_name 'Off Minor' may be song/series header, not card name bar. Verify."
+  },
+  {
+    "id": "3rd_91",
+    "en_name": "Subject",
+    "en_effect": "Attack +20 if your character card's power cost is 3 or more. When the opponent places a card in the Abyss, place this card on your Power Charger at the end of the turn.",
+    "song_title": "Subject",
+    "needs_review": false,
+    "status": "ok"
+  },
+  {
+    "id": "3rd_92",
+    "en_name": "Bivouac",
+    "en_effect": "Attack +10 for each flame card in the Abyss. If there are 4 or more cards in the Abyss, place this card in the Abyss at the end of the turn.",
+    "song_title": "Bivouac",
+    "needs_review": false,
+    "status": "ok"
+  },
+  {
+    "id": "3rd_93",
+    "en_name": "Switch",
+    "en_effect": "Attack +30 if your character card's attribute is wind.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "status": "ok"
+  },
+  {
+    "id": "3rd_94",
+    "en_name": "Shoot",
+    "en_effect": "Specify the name of a card. Choose and reveal 1 card from the opponent's hand. If it matches the specified name, Attack +40.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "status": "ok"
+  },
+  {
+    "id": "3rd_95",
+    "en_name": "SEND TO POCKET",
+    "en_effect": "Attack +50 if all the cards in the Power Charger are of the electric attribute.",
+    "song_title": "SEND TO POCKET",
+    "needs_review": true,
+    "status": "ok",
+    "note": "Vision returned 'ZUTOMAYO' as en_name; using 'SEND TO POCKET' from card. Verify card name bar."
+  },
+  {
+    "id": "3rd_96",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Attack +50 if your character card's attribute is electric.",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "notes": "en_name may be the franchise name, not the specific card name. Vision output was minimal."
+  },
+  {
+    "id": "3rd_97",
+    "en_name": "Off Minor",
+    "en_effect": "The opponent reveals the top card of his/her deck at the start of his/her turn. If there is a card with a power cost 6 or more, place it on the Power Charger.",
+    "song_title": "High alert",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_98",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Attack +10 for each electric card in the Abyss. If there are 4 or more cards in the Abyss, place this card in the Abyss at the end of the turn.",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "notes": "en_name may be the franchise name, not the specific card name. Card name bar text was not clearly extracted."
+  },
+  {
+    "id": "3rd_99",
+    "en_name": "Off Minor",
+    "en_effect": "Attack +30 if your character card's attribute is wind.",
+    "song_title": "stow away",
+    "needs_review": true,
+    "notes": "en_name 'Off Minor' may actually be the song_title/subtitle; the card's own name may differ."
+  },
+  {
+    "id": "3rd_100",
+    "en_name": "Bats",
+    "en_effect": "Attack +40 if your character card's attribute is electric.",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_101",
+    "en_name": "Research routines",
+    "en_effect": "Attack +40 if there are 2 or more cards in the Abyss.",
+    "song_title": "Research routines",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_102",
+    "en_name": "Off Minor",
+    "en_effect": "Attack +40 if all the cards in the Power Charger are of the wind attribute.",
+    "song_title": "Off Minor / burrowing",
+    "needs_review": true,
+    "notes": "Card name bar shows 'burrowing' (巣穴掘り). en_name 'Off Minor' is likely the song_title; the actual card name may be 'burrowing'."
+  },
+  {
+    "id": "3rd_103",
+    "en_name": "Treatment options",
+    "en_effect": "At the start of your turn, reveal the top card of your opponent's deck. If there is no SEND TO POWER+ on your opponent's card, +30 Attack to you; if there is a SEND TO POWER+, immediately place this card on the Power Charger.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_104",
+    "en_name": "Off Minor",
+    "en_effect": "Attack +10 for each wind card in the Abyss. If there are 4 or more cards in the Abyss, place this card in the Abyss at the end of the turn.",
+    "song_title": "It has to be you.",
+    "needs_review": true,
+    "notes": "en_name 'Off Minor' is likely the song_title/series name, not the specific card name."
+  },
+  {
+    "id": "3rd_105",
+    "en_name": "The shadow (FASTENING)",
+    "en_effect": "Specify the name of a card. Choose and reveal 1 card from the opponent's hand. If it matches the specified name, Attack +100.",
+    "song_title": "The shadow (FASTENING)",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_106",
+    "en_name": "NEKO-RESETTER (Neko Reset)",
+    "en_effect": "Attack +100 if the opponent's HP is 100.",
+    "song_title": "Neko Reset",
+    "needs_review": false
   }
 ]
