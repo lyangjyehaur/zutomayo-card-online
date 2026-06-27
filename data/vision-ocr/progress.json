@@ -1266,5 +1266,346 @@
     "song_title": "vision_unavailable",
     "needs_review": true,
     "review_reason": "API returned 429 Too Many Requests"
+  },
+  {
+    "id": "2nd_61",
+    "en_name": "Umbrella of Seigi",
+    "en_effect": "If the Power charger card was only electric, your attack power +40.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_62",
+    "en_name": "Moon Reflected on the Water",
+    "en_effect": "Character cards played at the same time do not have to be changed.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "en_name extracted from description rather than exact OCR; may be incomplete"
+  },
+  {
+    "id": "2nd_63",
+    "en_name": "Hi Cheese",
+    "en_effect": "Attack +30 if your character card's attribute is electric.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_64",
+    "en_name": "UNIGIRI-KORORIN",
+    "en_effect": "Attack +20 for each electric card in the Power charger. Place on the Abyss at the end of the turn when the opponent's HP falls below 30.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_65",
+    "en_name": "UNIGURI-KUN",
+    "en_effect": "NIGHT 30 | DAY 10",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be stats only; may be missing actual ability text"
+  },
+  {
+    "id": "2nd_66",
+    "en_name": "GRAY (Stay Foolish)",
+    "en_effect": "NIGHT 40 | DAY 40",
+    "song_title": "Stay Foolish",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be stats only; may be missing actual ability text"
+  },
+  {
+    "id": "2nd_67",
+    "en_name": "MURAKUMO-NO-TSURUGI (Time Left)",
+    "en_effect": "NIGHT 50 | DAY 30",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be stats only; may be missing actual ability text"
+  },
+  {
+    "id": "2nd_68",
+    "en_name": "Doppelganger (Time Left)",
+    "en_effect": "If the attribute of the character card used in the previous turn is flame and it's night, attack power +30 only the first time the card is used.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_69",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit"
+  },
+  {
+    "id": "2nd_70",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit"
+  },
+  {
+    "id": "2nd_71",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit"
+  },
+  {
+    "id": "2nd_72",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit"
+  },
+  {
+    "id": "2nd_73",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit"
+  },
+  {
+    "id": "2nd_74",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit"
+  },
+  {
+    "id": "2nd_75",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit"
+  },
+  {
+    "id": "2nd_76",
+    "en_name": "HUMANOID",
+    "en_effect": "Attack +20 if the attribute of the opponent's character card is flame.",
+    "song_title": "SEND To POWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_77",
+    "en_name": "TEIKETSU (FASTENING)",
+    "en_effect": "NIGHT 20 | DAY 20",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Character card - no additional effect text detected beyond stats. May have no effect or OCR missed it."
+  },
+  {
+    "id": "2nd_78",
+    "en_name": "NIRA-CHAN (Summer Slack)",
+    "en_effect": "POWER COST --- | NIGHT 60 | DAY 20 | Character",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Character card - OCR captured stats/metadata rather than distinct effect text."
+  },
+  {
+    "id": "2nd_79",
+    "en_name": "NIRA-CHAN (Humanoid)",
+    "en_effect": "NIGHT 30 | DAY 50",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Character card - no additional effect text detected beyond stats."
+  },
+  {
+    "id": "2nd_80",
+    "en_name": "NIRA-CHAN (MILABO)",
+    "en_effect": "NIGHT 50 | DAY 30",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Character card - OCR captured SEND TO POWER label instead of effect. May have no effect text."
+  },
+  {
+    "id": "2nd_81",
+    "en_name": "OISHII",
+    "en_effect": "If the Abyss card was only darkness, your attack power +20.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_82",
+    "en_name": "Danger Signal",
+    "en_effect": "Select a card from your hand, place it at the bottom of the deck and draw one more card.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_83",
+    "en_name": "Memories of That day",
+    "en_effect": "Attack +30 if it's night.",
+    "song_title": "Memories of That day",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_84",
+    "en_name": "See through the Devil",
+    "en_effect": "+10 to your attack power and the attribute of your opponent's character card changes to electric while they are on the battlefield.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_85",
+    "en_name": "Crossroads",
+    "en_effect": "Recovers 10 HP if your character card's attribute is darkness.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_86",
+    "en_name": "Imprison the Curse",
+    "en_effect": "Attack +20 if it's night, if it's not night, place it on the Power charger.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_87",
+    "en_name": "You live in a different world",
+    "en_effect": "Attack +20 if there is only flame card in the Abyss.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_88",
+    "en_name": "Factory tour",
+    "en_effect": "+10 to your attack power and the attribute of your opponent's character card changes to darkness while they are on the battlefield.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_89",
+    "en_name": "Laundry detergents",
+    "en_effect": "20 damage reduction when you take damage.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_90",
+    "en_name": "Nice shot",
+    "en_effect": "30 damage reduction when you take damage.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_91",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Recovers 10 HP if your character card's attribute is flame.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Vision returned 'ZUTOMAYO' as card name which is the brand name; actual card name not clearly identified"
+  },
+  {
+    "id": "2nd_92",
+    "en_name": "Banquet",
+    "en_effect": "If the character card costs 2 or more, attack +20, if the opponent's character card costs 4 or more, place it on the Power charger.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_93",
+    "en_name": "Cold sleep",
+    "en_effect": "If the Abyss card was only the electric attribute, your attack power +20.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_94",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Select a card from your hand, place it at the bottom of the deck and draw one more card.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Vision returned 'ZUTOMAYO' as card name which is the brand name; actual card name not clearly identified"
+  },
+  {
+    "id": "2nd_95",
+    "en_name": "14.4 light-years away",
+    "en_effect": "+10 to your attack power and the attribute of your opponent's character card changes to wind while they are on the battlefield.",
+    "song_title": "14.4 light-years away",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_96",
+    "en_name": "Stardust Shakehand",
+    "en_effect": "Recovers 10 HP if your character card's attribute is electric.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_97",
+    "en_name": "Evaluation",
+    "en_effect": "Attack +20 if it's daytime, if it's not daytime, place it on the Power charger.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_98",
+    "en_name": "Leap",
+    "en_effect": "Attack +30 if there is only wind card in the Abyss.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_99",
+    "en_name": "Clock tower",
+    "en_effect": "+10 to your attack power and the attribute of your opponent's character card changes to flame while they are on the battlefield.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_100",
+    "en_name": "Message board",
+    "en_effect": "Attack +20",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_101",
+    "en_name": "Post a letter",
+    "en_effect": "If the Power charger card was only wind, your attack power +50.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_102",
+    "en_name": "Surveillance monitor",
+    "en_effect": "Recovers 10 HP if your character card's attribute is wind.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_103",
+    "en_name": "Ruined world",
+    "en_effect": "If character card costs 2 or less, +20 attack, if character card costs 4 or more, place on Power charger.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_104",
+    "en_name": "NIRA-CHAN (KKB)",
+    "en_effect": "NIGHT 100 | DAY 80",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Character card with stats, not an effect text; effect text extraction uncertain"
+  },
+  {
+    "id": "2nd_105",
+    "en_name": "NIRA ver. swimsuit (Kira Killer)",
+    "en_effect": "If the Abyss has two or more cards of the wind attribute, the clock changes to noon.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_106",
+    "en_name": "NIRA-CHAN (KKB)",
+    "en_effect": "NIGHT 100 | DAY 80",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Same card name as 2nd_104; possibly duplicate or vision misread; effect text is stats not ability text"
   }
 ]
