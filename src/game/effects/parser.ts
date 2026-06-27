@@ -1199,10 +1199,13 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
       rawText,
     };
   }
+  // 官方 QA Q21：クロノス夜→昼→夜跨時間時，「夜じゃなくなったら」應觸發。
+  // 故條件改用 chronosTimeChanged:'nightToDay' 檢查事件歷史（含中間轉換），
+  // 非 chronos:'day' 檢查當前狀態（最終為 night 會漏觸發）。
   if (text.includes('夜じゃなくなったら')) {
     return {
       trigger: 'onChronosChanged',
-      conditions: [{ type: 'chronos', value: 'day' }],
+      conditions: [{ type: 'chronosTimeChanged', value: 'nightToDay' }],
       action: { type: 'moveSelfAreaEnchant', params: { destination } },
       rawText,
     };
@@ -1210,7 +1213,7 @@ function parseAreaEnchantExpiry(rawText: string): ParsedEffect | null {
   if (text.includes('昼じゃなくなったら')) {
     return {
       trigger: 'onChronosChanged',
-      conditions: [{ type: 'chronos', value: 'night' }],
+      conditions: [{ type: 'chronosTimeChanged', value: 'dayToNight' }],
       action: { type: 'moveSelfAreaEnchant', params: { destination } },
       rawText,
     };

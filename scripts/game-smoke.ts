@@ -671,8 +671,9 @@ function fivePowerCards() {
       && effect.trigger === parsed.expiry?.trigger
     )), `${id} expiry should be emitted by parseAllEffects`);
   }
-  assert.deepEqual(parseEffect(cardEffectText('2nd_86'))?.expiry?.conditions, [{ type: 'chronos', value: 'day' }]);
-  assert.deepEqual(parseEffect(cardEffectText('2nd_98'))?.expiry?.conditions, [{ type: 'chronos', value: 'night' }]);
+  // 官方 QA Q21：條件改用 chronosTimeChanged 檢查事件歷史（含中間轉換）。
+  assert.deepEqual(parseEffect(cardEffectText('2nd_86'))?.expiry?.conditions, [{ type: 'chronosTimeChanged', value: 'nightToDay' }]);
+  assert.deepEqual(parseEffect(cardEffectText('2nd_98'))?.expiry?.conditions, [{ type: 'chronosTimeChanged', value: 'dayToNight' }]);
   assert.deepEqual(parseEffect(cardEffectText('3rd_58'))?.expiry?.conditions, [{ type: 'damageAtLeast', value: 30 }]);
   assert.deepEqual(parseEffect(cardEffectText('3rd_58'))?.action, { type: 'healBoth', params: { value: 10 } });
   assert.deepEqual(parseEffect(cardEffectText('3rd_91'))?.expiry?.conditions, [{ type: 'zoneEntered', value: 'abyss', target: 'opponent' }]);

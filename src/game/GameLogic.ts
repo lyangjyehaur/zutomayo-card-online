@@ -530,17 +530,19 @@ export function finishMulligan(G: GameState, player: PlayerIndex, indices: numbe
   return true;
 }
 
+// 官方 QA Q5：敗者「最低 1 枚，最多 2 枚，可選 1 枚」。
+// 所有玩家最低都是 1 枚；敗者的「最多 2 枚」由 getRequiredSetCount 處理。
 export function getMinimumSetCount(G: GameState, player: PlayerIndex): number {
-  let required = 1;
-  if (G.step !== 'initialSet' && G.turnNumber !== 1 && G.lastBattleResult.winner !== null) {
-    required = G.lastBattleResult.winner === player ? 1 : 2;
-  }
-  return required;
+  return 1;
 }
 
 export function getRequiredSetCount(G: GameState, player: PlayerIndex): number {
-  const required = getMinimumSetCount(G, player);
-  return required + (G.modifiers.extraSettableCards?.[player] ?? 0);
+  // 敗者最多 2 枚，勝者 1 枚，加上 extraSettableCards 修飾器。
+  let max = 1;
+  if (G.step !== 'initialSet' && G.turnNumber !== 1 && G.lastBattleResult.winner !== null) {
+    max = G.lastBattleResult.winner === player ? 1 : 2;
+  }
+  return max + (G.modifiers.extraSettableCards?.[player] ?? 0);
 }
 
 function setCard(G: GameState, player: PlayerIndex, handIndex: number, slot: SetSlot): boolean {
