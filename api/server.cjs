@@ -283,7 +283,7 @@ function optionalString(value) {
 }
 
 function cardRowToDef(row) {
-  return {
+  const def = {
     id: row.id,
     name: row.name,
     pack: row.pack,
@@ -306,6 +306,10 @@ function cardRowToDef(row) {
     image: row.image || '',
     errata: row.errata || '',
   };
+  if (row.en_name_official) def.enNameOfficial = row.en_name_official;
+  if (row.en_effect_official) def.enEffectOfficial = row.en_effect_official;
+  if (row.en_song_title_official) def.enSongTitleOfficial = row.en_song_title_official;
+  return def;
 }
 
 function cardDefToDbParams(card) {
@@ -320,6 +324,7 @@ function cardDefToDbParams(card) {
   return [
     card.id,
     card.name,
+    card.enNameOfficial || '',
     card.pack,
     card.song || '',
     card.illustrator || '',
@@ -332,6 +337,8 @@ function cardDefToDbParams(card) {
     Math.trunc(Number(card.powerCost) || 0),
     Math.trunc(Number(card.sendToPower) || 0),
     card.effect || '',
+    card.enEffectOfficial || '',
+    card.enSongTitleOfficial || '',
     card.image || '',
     card.errata || '',
   ];
@@ -357,6 +364,7 @@ function normalizeCardForUpsert(id, body, baseCard) {
   return {
     id,
     name: String(candidate.name),
+    enNameOfficial: typeof candidate.enNameOfficial === 'string' ? candidate.enNameOfficial : '',
     pack: String(candidate.pack),
     song: typeof candidate.song === 'string' ? candidate.song : '',
     illustrator: typeof candidate.illustrator === 'string' ? candidate.illustrator : '',
@@ -374,6 +382,8 @@ function normalizeCardForUpsert(id, body, baseCard) {
     powerCost: Math.trunc(Number(candidate.powerCost) || 0),
     sendToPower: Math.trunc(Number(candidate.sendToPower) || 0),
     effect: typeof candidate.effect === 'string' ? candidate.effect : '',
+    enEffectOfficial: typeof candidate.enEffectOfficial === 'string' ? candidate.enEffectOfficial : '',
+    enSongTitleOfficial: typeof candidate.enSongTitleOfficial === 'string' ? candidate.enSongTitleOfficial : '',
     image: typeof candidate.image === 'string' ? candidate.image : '',
     errata: typeof candidate.errata === 'string' ? candidate.errata : '',
   };
@@ -1064,8 +1074,9 @@ function handleRequest(req, res) {
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         const cards = (
           await pool.query(
-            `SELECT id, name, pack, song, illustrator, rarity, element, type, clock,
-                    attack_night, attack_day, power_cost, send_to_power, effect, image, errata
+            `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+                    attack_night, attack_day, power_cost, send_to_power, effect,
+                    en_effect_official, en_song_title_official, image, errata
              FROM cards ${where}
              ORDER BY id`,
             values,
@@ -1113,8 +1124,9 @@ function handleRequest(req, res) {
       try {
         const card = (
           await pool.query(
-            `SELECT id, name, pack, song, illustrator, rarity, element, type, clock,
-                    attack_night, attack_day, power_cost, send_to_power, effect, image, errata
+            `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+                    attack_night, attack_day, power_cost, send_to_power, effect,
+                    en_effect_official, en_song_title_official, image, errata
              FROM cards
              WHERE id = $1`,
             [cardId],
@@ -1190,8 +1202,9 @@ function handleRequest(req, res) {
       const body = await readBody();
       const existing = (
         await pool.query(
-          `SELECT id, name, pack, song, illustrator, rarity, element, type, clock,
-                  attack_night, attack_day, power_cost, send_to_power, effect, image, errata
+          `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+                  attack_night, attack_day, power_cost, send_to_power, effect,
+                  en_effect_official, en_song_title_official, image, errata
            FROM cards
            WHERE id = $1`,
           [cardId],
@@ -1202,12 +1215,14 @@ function handleRequest(req, res) {
 
       await pool.query(
         `INSERT INTO cards (
-           id, name, pack, song, illustrator, rarity, element, type, clock,
-           attack_night, attack_day, power_cost, send_to_power, effect, image, errata
+           id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+           attack_night, attack_day, power_cost, send_to_power, effect,
+           en_effect_official, en_song_title_official, image, errata
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
+           en_name_official = EXCLUDED.en_name_official,
            pack = EXCLUDED.pack,
            song = EXCLUDED.song,
            illustrator = EXCLUDED.illustrator,
@@ -1220,6 +1235,8 @@ function handleRequest(req, res) {
            power_cost = EXCLUDED.power_cost,
            send_to_power = EXCLUDED.send_to_power,
            effect = EXCLUDED.effect,
+           en_effect_official = EXCLUDED.en_effect_official,
+           en_song_title_official = EXCLUDED.en_song_title_official,
            image = EXCLUDED.image,
            errata = EXCLUDED.errata,
            updated_at = NOW()`,

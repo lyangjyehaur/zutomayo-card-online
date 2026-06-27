@@ -24,6 +24,7 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS cards (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    en_name_official TEXT DEFAULT '',
     pack TEXT NOT NULL,
     song TEXT DEFAULT '',
     illustrator TEXT DEFAULT '',
@@ -36,6 +37,8 @@ const SCHEMA_SQL = `
     power_cost INTEGER DEFAULT 0,
     send_to_power INTEGER DEFAULT 0,
     effect TEXT DEFAULT '',
+    en_effect_official TEXT DEFAULT '',
+    en_song_title_official TEXT DEFAULT '',
     image TEXT DEFAULT '',
     errata TEXT DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -97,6 +100,7 @@ function cardParams(card: CardDef): unknown[] {
   return [
     card.id,
     card.name,
+    card.enNameOfficial ?? '',
     card.pack,
     card.song,
     card.illustrator,
@@ -109,6 +113,8 @@ function cardParams(card: CardDef): unknown[] {
     card.powerCost,
     card.sendToPower,
     card.effect,
+    card.enEffectOfficial ?? '',
+    card.enSongTitleOfficial ?? '',
     card.image,
     card.errata,
   ];
@@ -133,12 +139,14 @@ async function main(): Promise<void> {
     for (const card of cards) {
       await client.query(
         `INSERT INTO cards (
-           id, name, pack, song, illustrator, rarity, element, type, clock,
-           attack_night, attack_day, power_cost, send_to_power, effect, image, errata
+           id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+           attack_night, attack_day, power_cost, send_to_power, effect,
+           en_effect_official, en_song_title_official, image, errata
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
+           en_name_official = EXCLUDED.en_name_official,
            pack = EXCLUDED.pack,
            song = EXCLUDED.song,
            illustrator = EXCLUDED.illustrator,
@@ -151,6 +159,8 @@ async function main(): Promise<void> {
            power_cost = EXCLUDED.power_cost,
            send_to_power = EXCLUDED.send_to_power,
            effect = EXCLUDED.effect,
+           en_effect_official = EXCLUDED.en_effect_official,
+           en_song_title_official = EXCLUDED.en_song_title_official,
            image = EXCLUDED.image,
            errata = EXCLUDED.errata,
            updated_at = NOW()`,
