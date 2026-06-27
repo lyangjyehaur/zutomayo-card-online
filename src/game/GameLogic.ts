@@ -349,6 +349,21 @@ function setChronosPosition(
   if (logMessage) G.log.push(logMessage);
   const afterTime = getChronosTime(G);
   if (before !== G.chronos.position) {
+    // 官方 QA Q18/Q21：クロノス推進可能跨夜→晝→夜，需記錄路徑上的所有時間轉換。
+    // 中間轉換事件僅記錄到 timingEvents 供 chronosTimeChanged 條件檢查，
+    // 不觸發 onChronosChanged 效果（避免重複觸發）；效果僅在最終位置觸發一次。
+    const transitions = chronosTransitionsOnPath(before, position, G.midnightRange);
+    for (const t of transitions) {
+      if (t.from === beforeTime && t.to === afterTime) continue;
+      G.timingEvents.push({
+        type: 'chronosChanged',
+        fromChronos: before,
+        toChronos: t.atPosition,
+        fromChronosTime: t.from,
+        toChronosTime: t.to,
+      });
+      G.log.push(`Timing chronosChanged (path: ${t.from}→${t.to}).`);
+    }
     resolveTimingEvent(G, parsedEffects, {
       type: 'chronosChanged',
       fromChronos: before,
@@ -357,6 +372,28 @@ function setChronosPosition(
       toChronosTime: afterTime,
     });
   }
+}
+
+// 計算從 before 到 after 的路徑上的所有時間轉換點。
+function chronosTransitionsOnPath(
+  before: number,
+  after: number,
+  midnightRange: number,
+): { from: ChronosTime; to: ChronosTime; atPosition: number }[] {
+  const transitions: { from: ChronosTime; to: ChronosTime; atPosition: number }[] = [];
+  const normalizedAfter = normalizeChronosPosition(after);
+  let current = normalizeChronosPosition(before);
+  let currentTime = chronosTimeAt(current, midnightRange);
+  while (current !== normalizedAfter) {
+    const next = normalizeChronosPosition(current + 1);
+    const nextTime = chronosTimeAt(next, midnightRange);
+    if (currentTime !== nextTime) {
+      transitions.push({ from: currentTime, to: nextTime, atPosition: next });
+    }
+    current = next;
+    currentTime = nextTime;
+  }
+  return transitions;
 }
 
 export function setupGame(deck0Name?: string, deck1Name?: string): GameState;
@@ -602,22 +639,17 @@ function uniqueCards(cards: CardInstance[]): CardInstance[] {
 function applyPreChronosModifiers(G: GameState, parsedEffects: Map<string, ParsedEffect[]>): void {
   // 預處理影響クロノス推進計算的無條件 onUse/onEnter 效果。
   //
-  // 官方規則指南 E 要求效果在「効果の処理」階段發動，但以下兩類效果若延後到
-  // advanceChronos 之後才處理，會導致クロノス推進計算錯誤：
+  // 官方 QA Q31/Q63 規定此類效果「次のターンから」發動，故只處理 setZoneC
+  // （前回合進入的 Area Enchant），不處理 setCardsThisTurn（當回合新設定的卡）。
   //
-  // 1. nullifyOpponentClock（#4 必要例外）：
-  //    若不預處理，對手 Character 時計會先被計入推進 → 觸發 chronosChanged event →
-  //    連鎖觸發 onChronosChanged 效果（如 2nd_86「封」錯誤移動）→ rewind 無法
-  //    復原已觸發的 event 連鎖。故提前在 advanceChronos 前設 clockContributionDisabled。
-  //    executor 透過 wasDisabled 機制避免重複 rewind。功能結果正確，時序為技術例外。
-  //
-  // 2. setAllCardClocks（#5 修復）：
-  //    cardClockSetTo 必須在 advanceChronos 讀取前設置，否則 3rd_61「すべてのカードの
-  //    時計を１にする」對當回合クロノス推進完全失效（原 bug：效果處理階段才寫入，
-  //    但 advanceChronos 已執行完畢，且每回合 finishTurn 重置為 null）。
+  // 歷史背景：
+  // - 早期版本處理 setCardsThisTurn 導致效果當回合生效，與 QA 衝突。
+  // - commit 567102e 為修復 setAllCardClocks 當回合失效 bug，加入 setCardsThisTurn 掃描，
+  //   但 QA Q31 明確規定「次のターンより発動します」，故該修復方向與 QA 衝突。
+  // - B1 修復（クロノス跨時間事件記錄）後，chronosChanged 事件連鎖問題已解決，
+  //   nullifyOpponentClock 不再需要預處理當回合新卡來避免連鎖。
   for (const player of getTurnEffectPlayerOrder(G)) {
     for (const card of uniqueCards([
-      ...G.setCardsThisTurn[player],
       G.players[player].setZoneC,
     ].filter((item): item is CardInstance => item !== null))) {
       if (areEffectsDisabledForCard(G, player, card.defId)) continue;
@@ -689,10 +721,13 @@ export function placeRevealedCards(
     const player = G.players[index];
     const slots = [player.setZoneA, player.setZoneB].filter((card): card is CardInstance => card !== null);
     if (initial) {
-      const characters = slots.filter(card => getCardDef(card.defId)?.type === 'Character');
-      replaceDestination(G, index, characters, 'battleZone', false, timingEffects);
-      for (const card of slots.filter(card => getCardDef(card.defId)?.type !== 'Character')) {
-        sendToOwnerZone(card, player, G, index, timingEffects);
+      // 官方 QA Q42：1 ターン目所有卡（含非角色卡）都先進 battleZone。
+      // Q1：非角色卡進 battleZone 後立即送 ownerZone（效果不發動，攻撃力0）。
+      replaceDestination(G, index, slots, 'battleZone', false, timingEffects);
+      const battleCard = player.battleZone;
+      if (battleCard && getCardDef(battleCard.defId)?.type !== 'Character') {
+        player.battleZone = null;
+        sendToOwnerZone(battleCard, player, G, index, timingEffects);
       }
       player.setZoneA = null;
       player.setZoneB = null;
@@ -864,7 +899,8 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
 function characterElementPlayedThisTurn(G: GameState, player: PlayerIndex): Element | null {
   for (const card of G.setCardsThisTurn[player]) {
     const def = getCardDef(card.defId);
-    if (def?.type === 'Character') return getEffectiveElement(card, G, player);
+    // 官方 QA Q81：記錄卡牌原始屬性而非 overridden 屬性，避免工場見学等卡參照到被覆蓋的屬性。
+    if (def?.type === 'Character') return def.element;
   }
   return null;
 }
@@ -943,6 +979,10 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
   G.damageReducedThisTurn = [0, 0];
   G.delayedEffects = [];
   G.modifiers = emptyModifiers();
+  // 官方 QA Q28：適当ラリーもう終わり的 areaEnchantSetLocked 效果僅持續到該卡
+  // 從 setZoneC 移除為止（終止條件之一為「相手がアビスにカードを置いたターンの終了時」），
+  // 故回合結束時必須重設，避免對手被永久禁止設定 Area Enchant。
+  G.areaEnchantSetLocked = [false, false];
   G.timingEvents = [];
   G.turnNumber++;
   G.step = 'turnSet';

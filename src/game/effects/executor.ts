@@ -127,6 +127,17 @@ function effectiveAttack(card: CardInstance | null, G: GameState, player: Player
   return Math.max(0, baseAttack + G.modifiers.attack[player]);
 }
 
+// 計算不含 G.modifiers.attack 的基準攻撃力（用於逐效果鉗制時反推修飾器）。
+function computeBaseAttack(card: CardInstance | null, G: GameState, player: PlayerIndex): number {
+  if (!card) return 0;
+  const def = getCardDef(card.defId);
+  if (!def?.attack) return 0;
+  const time = isNight(G) ? 'night' : 'day';
+  const effectiveTime = G.modifiers.attackTimeOverride?.[player] ?? time;
+  const attackTime = G.modifiers.swapAttack[player] ? (effectiveTime === 'night' ? 'day' : 'night') : effectiveTime;
+  return G.modifiers.attackSetTo?.[player] ?? def.attack[attackTime];
+}
+
 function compareNumber(actual: number, cond: Condition): boolean {
   const operator = cond.operator ?? 'gte';
   if (operator === 'in') {
@@ -236,8 +247,9 @@ function evaluateCondition(
       return powerCost !== null && compareNumber(powerCost, cond);
     }
     case 'opponentAttack': {
-      const attack = effectiveAttack(opponent.battleZone, G, (1 - player) as PlayerIndex);
-      return attack !== null && compareNumber(attack, cond);
+      // 官方 QA Q60：對手未セットキャラ時攻撃力視為 0（非條件不成立）。
+      const attack = effectiveAttack(opponent.battleZone, G, (1 - player) as PlayerIndex) ?? 0;
+      return compareNumber(attack, cond);
     }
     case 'opponentSendToPower': {
       if (!opponent.battleZone) return false;
@@ -264,11 +276,11 @@ function evaluateCondition(
     case 'chronosChanged': return G.chronos.position !== G.chronosAtTurnStart;
     case 'chronosTimeChanged': {
       if (cond.value === true) return chronosTimeAt(G.chronosAtTurnStart, G.midnightRange) !== chronosTimeAt(G.chronos.position, G.midnightRange);
-      const event = latestChronosChangedEvent(G);
-      if (!event) return false;
-      if (cond.value === 'dayToNight') return event.fromChronosTime === 'day' && event.toChronosTime === 'night';
-      if (cond.value === 'nightToDay') return event.fromChronosTime === 'night' && event.toChronosTime === 'day';
-      return event.fromChronosTime !== event.toChronosTime;
+      // 官方 QA Q18/Q21：檢查回合內所有 chronosChanged 事件，包含跨時間的中間轉換。
+      const events = G.timingEvents.filter(e => e.type === 'chronosChanged');
+      if (cond.value === 'dayToNight') return events.some(e => e.fromChronosTime === 'day' && e.toChronosTime === 'night');
+      if (cond.value === 'nightToDay') return events.some(e => e.fromChronosTime === 'night' && e.toChronosTime === 'day');
+      return events.some(e => e.fromChronosTime !== e.toChronosTime);
     }
     case 'namedCardCondition': {
       const song = String(cond.value);
@@ -335,6 +347,8 @@ function isPersistentAreaEnchantEffect(card: CardInstance, effect: ParsedEffect)
     'moveSelfAreaEnchant',
     'setPowerCost',
     'setAllCardClocks',
+    // 官方 QA Q65：捜索中！每回合可重新選擇 powerCharger 的角色卡，useFromAbyss 需列入持久化白名單。
+    'useFromAbyss',
   ].includes(effect.action.type);
 }
 
@@ -480,13 +494,25 @@ export function executeEffect(
         );
       }
       const boost = effect.action.params.per || effect.action.params.perCount ? value * multiplier : value;
-      G.modifiers.attack[player] += boost;
+      // 官方 QA Q54：逐效果套用並鉗制至 0，避免負修正溢出被吸收後不正確地降低後續正修正效果。
+      const currentAttack = effectiveAttack(me.battleZone, G, player) ?? 0;
+      const newAttack = Math.max(0, currentAttack + boost);
+      const baseAttack = computeBaseAttack(me.battleZone, G, player);
+      G.modifiers.attack[player] = newAttack - baseAttack;
       return { success: true, message: `Attack +${boost}` };
     }
-    case 'boostBothAttackByOwnHp':
-      G.modifiers.attack[player] += me.hp;
-      G.modifiers.attack[opponentIndex] += opponent.hp;
+    case 'boostBothAttackByOwnHp': {
+      // 官方 QA Q54：逐效果套用並鉗制至 0。
+      const myCurrent = effectiveAttack(me.battleZone, G, player) ?? 0;
+      const myNew = Math.max(0, myCurrent + me.hp);
+      const myBase = computeBaseAttack(me.battleZone, G, player);
+      G.modifiers.attack[player] = myNew - myBase;
+      const oppCurrent = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
+      const oppNew = Math.max(0, oppCurrent + opponent.hp);
+      const oppBase = computeBaseAttack(opponent.battleZone, G, opponentIndex);
+      G.modifiers.attack[opponentIndex] = oppNew - oppBase;
       return { success: true, message: 'Both players gain attack equal to own HP' };
+    }
     case 'boostPower': {
       let multiplier = 1;
       if (effect.action.params.per === 'zoneElementCount') {
@@ -502,12 +528,20 @@ export function executeEffect(
       G.modifiers.sendToPower[player] += boost;
       return { success: true, message: `Power +${boost}` };
     }
-    case 'reduceAttack':
-      G.modifiers.attack[opponentIndex] -= value;
+    case 'reduceAttack': {
+      // 官方 QA Q54：逐效果套用並鉗制至 0。
+      const currentAttack = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
+      const newAttack = Math.max(0, currentAttack - value);
+      const baseAttack = computeBaseAttack(opponent.battleZone, G, opponentIndex);
+      G.modifiers.attack[opponentIndex] = newAttack - baseAttack;
       return { success: true, message: `Opponent attack -${value}` };
+    }
     case 'setOpponentAttack':
+      // 官方 QA Q82：ジョブチェンジ設定對手攻撃力時，需重置累積 attack 修飾器，
+      // 否則先前 boost/reduce 的累積值會疊加到新基準上。
       if (!G.modifiers.attackSetTo) G.modifiers.attackSetTo = [null, null];
       G.modifiers.attackSetTo[opponentIndex] = value;
+      G.modifiers.attack[opponentIndex] = 0;
       return { success: true, message: `Opponent attack set to ${value}` };
     case 'setOpponentElement': {
       const element = effect.action.params.value;
@@ -719,16 +753,22 @@ export function executeEffect(
       return { success: true, message: 'Move deck top to Abyss' };
     }
     case 'moveOpponentDeckTopByPowerCost': {
+      // 官方 QA Q35/Q45：公開對手牌庫頂卡後，該卡需放回對手牌庫頂（不消耗）。
+      // 若該卡 powerCost >= minPowerCost，將「此 Area Enchant 自身」移到擁有者的
+      // powerCharger（非アビス），被公開的卡仍留在對手牌庫頂。
       const minPowerCost = Number(effect.action.params.minPowerCost ?? 0);
       if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
       const card = opponent.deck[0];
       card.faceUp = true;
       const powerCost = getCardDef(card.defId)?.powerCost ?? 0;
       if (powerCost >= minPowerCost) {
-        opponent.deck.shift();
-        opponent.powerCharger.push(card);
-        emitZoneEntered(G, context, opponentIndex, 'powerCharger', card);
-        return { success: true, message: 'Move opposing deck top to Power Charger' };
+        const areaEnchant = me.setZoneC;
+        if (!areaEnchant) return { success: false, message: 'No own Area Enchant to move' };
+        me.setZoneC = null;
+        areaEnchant.faceUp = true;
+        me.powerCharger.push(areaEnchant);
+        emitZoneEntered(G, context, player, 'powerCharger', areaEnchant);
+        return { success: true, message: 'Move own Area Enchant to Power Charger' };
       }
       return { success: true, message: 'Reveal opposing deck top' };
     }
@@ -783,6 +823,16 @@ export function executeEffect(
         me.abyss.push(card);
         emitZoneEntered(G, context, player, 'abyss', card);
       }
+      // 官方 QA Q22：Area Enchant 移動後，同卡同回合後續 pending effects 不再處理
+      // （如晩餐会移動後攻撃力+20效果不可用）。
+      if (context.cardInstanceId) {
+        if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
+        if (!G.suppressedEffectCardIdsThisTurn.includes(context.cardInstanceId)) {
+          G.suppressedEffectCardIdsThisTurn.push(context.cardInstanceId);
+        }
+        G.pendingEffects[0] = G.pendingEffects[0].filter(e => e.cardInstanceId !== context.cardInstanceId);
+        G.pendingEffects[1] = G.pendingEffects[1].filter(e => e.cardInstanceId !== context.cardInstanceId);
+      }
       return { success: true, message: `Move own Area Enchant to ${effect.action.params.destination === 'powerCharger' ? 'Power Charger' : 'Abyss'}` };
     }
     case 'useFromAbyss': {
@@ -791,6 +841,8 @@ export function executeEffect(
       const max = Number(effect.action.params.count ?? effect.action.params.max ?? 1);
       const options = source
         .filter(card => {
+          // 官方 QA Q83：不允許自我選擇（如舞踏会でラストダンスを從 PC 選擇時排除自身）。
+          if (context.cardInstanceId && card.instanceId === context.cardInstanceId) return false;
           const def = getCardDef(card.defId);
           if (!def) return false;
           if (effect.action.params.cardType !== undefined && def.type !== effect.action.params.cardType) return false;

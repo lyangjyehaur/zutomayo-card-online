@@ -877,10 +877,16 @@ function fivePowerCards() {
   const opponentDeckTopPowerState = preparedState();
   const costlyDeckTop = createInstance('2nd_20', false);
   opponentDeckTopPowerState.players[1].deck = [costlyDeckTop, createInstance('1st_12', false)];
+  // 官方 QA Q35/Q45：厳戒態勢移動的是自身 AE，需設定 setZoneC。
+  const areaEnchant = createInstance('3rd_97', true);
+  opponentDeckTopPowerState.players[0].setZoneC = areaEnchant;
   assert.equal(executeEffect(opponentDeckTopPowerToPower!, opponentDeckTopPowerState, 0).success, true);
-  assert.equal(opponentDeckTopPowerState.players[1].deck[0].defId, '1st_12');
-  assert.equal(opponentDeckTopPowerState.players[1].powerCharger.at(-1)?.instanceId, costlyDeckTop.instanceId);
+  // 被公開的卡留在對手牌庫頂（不消耗）
+  assert.equal(opponentDeckTopPowerState.players[1].deck[0].instanceId, costlyDeckTop.instanceId);
   assert.equal(costlyDeckTop.faceUp, true);
+  // 厳戒態勢自身移到擁有者的 powerCharger
+  assert.equal(opponentDeckTopPowerState.players[0].setZoneC, null);
+  assert.equal(opponentDeckTopPowerState.players[0].powerCharger.at(-1)?.instanceId, areaEnchant.instanceId);
 
   const useNamedCharacterFromPowerCharger = parseEffect('パワーチャージャーにある（シェードの埃は延長）のキャラクターを１枚選び、このカードの効果として使用する。');
   assert.deepEqual(useNamedCharacterFromPowerCharger?.action, {
@@ -1126,9 +1132,10 @@ function fivePowerCards() {
   assert.equal(executeEffect(opponentDeckTopPowerToPowerEffect, opponentDeckTopPowerEntryState, 0, {
     onTimingEvent: event => resolveTimingEvent(opponentDeckTopPowerEntryState, powerEntryParsedEffects, event),
   }).success, true);
-  assert.equal(opponentDeckTopPowerEntryState.players[1].powerCharger.at(-1)?.instanceId, costlyOpponentTop.instanceId);
+  // 官方 QA Q35/Q45：被公開的卡留在對手牌庫頂，AE 自身移到擁有者 powerCharger。
+  assert.equal(opponentDeckTopPowerEntryState.players[1].deck[0]?.instanceId, costlyOpponentTop.instanceId);
   assert.equal(opponentDeckTopPowerEntryState.players[0].setZoneC, null);
-  assert.equal(opponentDeckTopPowerEntryState.players[0].abyss.at(-1)?.defId, '4th_33');
+  assert.equal(opponentDeckTopPowerEntryState.players[0].powerCharger.at(-1)?.defId, '4th_33');
   const deckTopAbyssState = preparedState();
   deckTopAbyssState.previousTurnCharacterElements[0] = '闇';
   const noPowerTop = createInstance('1st_1', false);
