@@ -196,10 +196,11 @@
   },
   {
     "id": "1st_25",
-    "en_name": "",
-    "en_effect": "",
-    "status": "vision_unavailable",
-    "review_reason": "Rate limit (429) during OCR"
+    "en_name": "Incarnation of HASAMI",
+    "en_effect": "Attack +50 if the attribute of the opponent's character card is wind.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false,
+    "status": "ok"
   },
   {
     "id": "1st_26",
@@ -1618,27 +1619,30 @@
   },
   {
     "id": "3rd_2",
-    "en_name": null,
-    "en_effect": null,
-    "song_title": null,
-    "status": "vision_unavailable",
-    "needs_review": true
+    "en_name": "TEIKETSU (FASTENING)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEINNONI.",
+    "song_title": "TEIKETSU (FASTENING)",
+    "needs_review": true,
+    "needs_review_reason": "Effect text looks truncated or garbled; may include song/branding text mixed in with actual effect.",
+    "status": "ok"
   },
   {
     "id": "3rd_3",
-    "en_name": null,
-    "en_effect": null,
-    "song_title": null,
-    "status": "vision_unavailable",
-    "needs_review": true
+    "en_name": "NIRA-CHAN (Neko Reset)",
+    "en_effect": "NIGHT 80 DAY 120 The Battle Begins ZUTOMAYONAKADEINONI. SEND TO POWER",
+    "song_title": "Neko Reset, The Battle Begins, ZUTOMAYONAKADEINONI.",
+    "needs_review": true,
+    "needs_review_reason": "Effect text mixes stats with branding text; song_title ambiguous — may contain multiple song references.",
+    "status": "ok"
   },
   {
     "id": "3rd_4",
-    "en_name": null,
-    "en_effect": null,
-    "song_title": null,
-    "status": "vision_unavailable",
-    "needs_review": true
+    "en_name": "NIRA-CHAN (Inside Joke)",
+    "en_effect": "NIGHT 120 | DAY 140",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "needs_review_reason": "Effect text appears to be stats only (NIGHT 120 | DAY 140); actual ability text may not have been captured or may be in Japanese only.",
+    "status": "ok"
   },
   {
     "id": "3rd_5",
@@ -1650,11 +1654,11 @@
   },
   {
     "id": "3rd_6",
-    "en_name": null,
-    "en_effect": null,
-    "song_title": null,
-    "status": "vision_unavailable",
-    "needs_review": true
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Attack +100 if the opponent's HP is 100.",
+    "song_title": "Byoushinwo Kamu",
+    "needs_review": false,
+    "status": "ok"
   },
   {
     "id": "3rd_7",
@@ -1666,43 +1670,45 @@
   },
   {
     "id": "3rd_8",
-    "en_name": null,
-    "en_effect": null,
-    "song_title": null,
-    "status": "vision_unavailable",
-    "needs_review": true
+    "en_name": "NIRA (Maid) & NIRA (Butler)",
+    "en_effect": "Attack +100 if there are cards of 4 different attributes in the Abyss.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "status": "ok"
   },
   {
     "id": "3rd_9",
-    "en_name": null,
-    "en_effect": null,
-    "song_title": null,
-    "status": "vision_unavailable",
-    "needs_review": true
+    "en_name": "NIRA-CHAN (MIRROR TUNE)",
+    "en_effect": "Attack +50 if it's midnight.",
+    "song_title": "MIRROR TUNE",
+    "needs_review": false,
+    "status": "ok"
   },
   {
     "id": "3rd_10",
-    "en_name": null,
-    "en_effect": null,
-    "song_title": null,
-    "status": "vision_unavailable",
-    "needs_review": true
+    "en_name": "NIRA-CHAN (STUDY ME)",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEINONI.",
+    "song_title": "ZUTTOMAYONAKADEINONI.",
+    "needs_review": true,
+    "status": "ok",
+    "review_reason": "Effect text looks garbled/unclear — may not be the actual effect text, possibly OCR confusion between song title and effect"
   },
   {
     "id": "3rd_11",
-    "en_name": null,
-    "en_effect": null,
-    "song_title": null,
-    "status": "vision_unavailable",
-    "needs_review": true
+    "en_name": "NIRA-CHAN (Kira Killer)",
+    "en_effect": "Attack +40 if all the cards in the opponent's Power Charger are of the wind attribute.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "status": "ok"
   },
   {
     "id": "3rd_12",
-    "en_name": null,
-    "en_effect": null,
-    "song_title": null,
-    "status": "vision_unavailable",
-    "needs_review": true
+    "en_name": "NIRA-CHAN (Kettobashita Moufu)",
+    "en_effect": "",
+    "song_title": "ZUTOMAYONAKADEINONI",
+    "needs_review": true,
+    "status": "ok",
+    "review_reason": "No English effect text detected on card — all effect text appears to be in Japanese only"
   },
   {
     "id": "3rd_13",
