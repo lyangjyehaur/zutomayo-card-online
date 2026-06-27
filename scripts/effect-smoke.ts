@@ -6,11 +6,16 @@ import { setupGame, getChronosTime, setInitialCard, resolveJanken, finishMulliga
 import type { GameState, ParsedEffect } from '../src/game/types';
 
 const require = createRequire(import.meta.url);
-const cardsData: any[] = require('../cards.json');
+interface CardData {
+  id: string;
+  effect?: string;
+  [key: string]: unknown;
+}
+const cardsData: CardData[] = require('../cards.json');
 
 // ===== Test 1: Coverage — parse all effect cards =====
 console.log('=== Test 1: Parser Coverage ===');
-const effectCards = cardsData.filter((c: any) => c.effect && c.effect.trim().length > 0);
+const effectCards = cardsData.filter((c: CardData) => c.effect && c.effect.trim().length > 0);
 let parsed = 0;
 const failed: string[] = [];
 

@@ -2,12 +2,19 @@ import { ZutomayoCard } from './game/Game';
 import path from 'path';
 import fs from 'fs';
 import serve from 'koa-static';
+import type { DefaultContext, Next } from 'koa';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const { Server, FlatFile } = require('boardgame.io/server') as typeof import('boardgame.io/server');
 const koaBody = require('koa-body') as typeof import('koa-body');
+
+// 擴充 Koa context 以涵蓋 koa-body（request.body）與 @koa/router（params）注入的屬性。
+interface KoaContext extends DefaultContext {
+  params: Record<string, string>;
+  request: DefaultContext['request'] & { body?: unknown };
+}
 
 const configuredOrigins = process.env.ALLOWED_ORIGINS
   ?.split(',')
@@ -36,36 +43,41 @@ const server = Server({
   ],
 });
 
-server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: any) => {
+server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: KoaContext) => {
   const matchID = ctx.params.id;
-  const playerID = ctx.request.body?.playerID;
-  const credentials = ctx.request.body?.credentials;
+  const body = (ctx.request.body ?? {}) as { playerID?: unknown; credentials?: unknown };
+  const playerID = body.playerID;
+  const credentials = body.credentials;
 
   if (playerID !== '0' && playerID !== '1') ctx.throw(403, 'playerID is required');
   if (typeof credentials !== 'string') ctx.throw(403, 'credentials are required');
 
+  // 通過檢查後收窄型別：playerID 為 '0' | '1'，credentials 為 string。
+  const typedPlayerID = playerID as '0' | '1';
+  const typedCredentials = credentials as string;
+
   const { metadata } = await server.db.fetch(matchID, { metadata: true });
   if (!metadata) ctx.throw(404, 'Match ' + matchID + ' not found');
 
-  const player = metadata.players[playerID];
-  if (!player) ctx.throw(404, 'Player ' + playerID + ' not found');
-  if (!player.name || !player.credentials) ctx.throw(409, 'Player ' + playerID + ' not reserved');
+  const player = metadata.players[typedPlayerID];
+  if (!player) ctx.throw(404, 'Player ' + typedPlayerID + ' not found');
+  if (!player.name || !player.credentials) ctx.throw(409, 'Player ' + typedPlayerID + ' not reserved');
 
   const isAuthorized = await server.auth.authenticateCredentials({
-    playerID,
-    credentials,
+    playerID: typedPlayerID,
+    credentials: typedCredentials,
     metadata,
   });
-  if (!isAuthorized) ctx.throw(409, 'Player ' + playerID + ' not available');
+  if (!isAuthorized) ctx.throw(409, 'Player ' + typedPlayerID + ' not available');
 
-  ctx.body = { matchID, playerID };
+  ctx.body = { matchID, playerID: typedPlayerID };
 });
 
 // Serve dist (frontend)
 server.app.use(serve(path.join(root, 'dist')));
 
 // Serve admin panel assets for the React /admin iframe.
-server.app.use(async (ctx: any, next: () => any) => {
+server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/admin/index.html' || ctx.path.startsWith('/admin/')) {
     const filePath = path.join(root, ctx.path);
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
@@ -80,7 +92,7 @@ server.app.use(async (ctx: any, next: () => any) => {
 });
 
 // Serve data (card JSON)
-server.app.use(async (ctx: any, next: () => any) => {
+server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path.startsWith('/data/')) {
     const filePath = path.join(root, ctx.path);
     if (fs.existsSync(filePath)) {
@@ -93,7 +105,7 @@ server.app.use(async (ctx: any, next: () => any) => {
 });
 
 // Serve cards.json at root
-server.app.use(async (ctx: any, next: () => any) => {
+server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/cards.json') {
     ctx.type = 'application/json';
     ctx.body = fs.readFileSync(path.join(root, 'cards.json'));
@@ -105,7 +117,7 @@ server.app.use(async (ctx: any, next: () => any) => {
 // API proxy — forward /api/* to the API server
 const API_SERVER = process.env.API_URL || 'http://api:3001';
 
-server.app.use(async (ctx: any, next: () => any) => {
+server.app.use(async (ctx: KoaContext, next: Next) => {
   if (!ctx.path.startsWith('/api/')) return next();
 
   const http = await import('http');
@@ -142,7 +154,7 @@ server.app.use(async (ctx: any, next: () => any) => {
 });
 
 // Serve the Vite app for client-side routes.
-server.app.use(async (ctx: any) => {
+server.app.use(async (ctx: KoaContext) => {
   if (ctx.status === 404 && !ctx.path.startsWith('/games/')) {
     ctx.type = 'html';
     ctx.body = fs.readFileSync(path.join(root, 'dist', 'index.html'));

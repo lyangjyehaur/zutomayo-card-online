@@ -25,14 +25,17 @@ import {
 } from '../src/game/GameLogic';
 import { collectTurnEffects, executeEffect, processTurnEffects } from '../src/game/effects/executor';
 import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
-import { CHRONOS_MAPPING, type GameState } from '../src/game/types';
+import { CHRONOS_MAPPING, type GameState, type TimingEvent } from '../src/game/types';
 import type { ParsedEffect } from '../src/game/effects';
 import { ZutomayoCard } from '../src/game/Game';
 import { aiSelectCards } from '../src/game/ai';
+import type { Ctx } from 'boardgame.io';
 
 const require = createRequire(import.meta.url);
 const { Client } = require('boardgame.io/client') as typeof import('boardgame.io/client');
 const { Local } = require('boardgame.io/multiplayer') as typeof import('boardgame.io/multiplayer');
+
+type ResolvePendingEffectMove = (context: { G: GameState; playerID: string | null }, index: number) => unknown;
 
 const noEffects = new Map<string, ParsedEffect[]>();
 const boost: ParsedEffect = {
@@ -255,10 +258,10 @@ function fivePowerCards() {
   assert.equal(G.turnNumber, 3);
   assert.equal(G.players[1].hp, 95);
   assert.equal(G.players[0].hp, 90);
-  assert.ok((G as any).timingEvents);
-  assert.ok((G as any).timingEvents.some((event: any) => event.type === 'turnStart'));
-  assert.equal((G as any).timingEvents.some((event: any) => event.type === 'turnEnd'), false);
-  assert.equal((G as any).timingEvents.some((event: any) => event.type === 'zoneEntered' && event.zone === 'abyss'), false);
+  assert.ok(G.timingEvents);
+  assert.ok(G.timingEvents.some((event: TimingEvent) => event.type === 'turnStart'));
+  assert.equal(G.timingEvents.some((event: TimingEvent) => event.type === 'turnEnd'), false);
+  assert.equal(G.timingEvents.some((event: TimingEvent) => event.type === 'zoneEntered' && event.zone === 'abyss'), false);
 }
 
 {
@@ -280,8 +283,8 @@ function fivePowerCards() {
   ]);
   resolveTurn(G, parsedEffects);
   assert.equal(G.players[1].hp, 100 - G.lastBattleResult.damage + 10);
-  assert.ok((G as any).timingEvents);
-  assert.equal((G as any).timingEvents.some((event: any) => event.type === 'damageReceived'), false);
+  assert.ok(G.timingEvents);
+  assert.equal(G.timingEvents.some((event: TimingEvent) => event.type === 'damageReceived'), false);
 }
 
 {
@@ -375,11 +378,11 @@ function fivePowerCards() {
   assert.equal(G.step, 'effectOrder');
   assert.equal(G.turnNumber, 2);
   assert.equal(G.lastBattleResult.damage, 0);
-  assert.equal((G as any).pendingEffectPlayer, 0);
-  assert.equal((G as any).pendingEffects[0].length, 2);
-  assert.equal((G as any).pendingEffects[1].length, 1);
+  assert.equal(G.pendingEffectPlayer, 0);
+  assert.equal(G.pendingEffects[0].length, 2);
+  assert.equal(G.pendingEffects[1].length, 1);
 
-  const resolvePendingEffect = (ZutomayoCard.moves as any).resolvePendingEffect;
+  const resolvePendingEffect = ZutomayoCard.moves!.resolvePendingEffect as ResolvePendingEffectMove;
   assert.equal(resolvePendingEffect({ G, playerID: '0' }, 1), 'INVALID_MOVE');
   assert.equal(G.players[1].hp, 100);
 
@@ -392,13 +395,13 @@ function fivePowerCards() {
   assert.equal(orderLog?.payload?.source, 'battleZone');
   assert.equal(G.players[1].hp, 93);
   assert.match(G.log.at(-1) ?? '', /Deal 7/);
-  assert.equal((G as any).pendingEffects[0][0].rawText, 'deal 11 second');
+  assert.equal(G.pendingEffects[0][0].rawText, 'deal 11 second');
 
   assert.equal(resolvePendingEffect({ G, playerID: '0' }, 0), undefined);
   assert.equal(G.players[1].hp, 82);
-  assert.equal((G as any).pendingEffectPlayer, 1);
-  assert.equal((G as any).pendingEffects[0].length, 0);
-  assert.equal((G as any).pendingEffects[1].length, 1);
+  assert.equal(G.pendingEffectPlayer, 1);
+  assert.equal(G.pendingEffects[0].length, 0);
+  assert.equal(G.pendingEffects[1].length, 1);
   assert.equal(G.step, 'effectOrder');
 
   assert.equal(resolvePendingEffect({ G, playerID: '0' }, 0), 'INVALID_MOVE');
@@ -410,8 +413,8 @@ function fivePowerCards() {
   assert.equal(G.lastBattleResult.damage, 40);
   assert.equal(G.step, 'turnSet');
   assert.equal(G.turnNumber, 3);
-  assert.equal((G as any).pendingEffectPlayer, null);
-  assert.deepEqual((G as any).pendingEffects, [[], []]);
+  assert.equal(G.pendingEffectPlayer, null);
+  assert.deepEqual(G.pendingEffects, [[], []]);
 }
 
 {
@@ -431,8 +434,8 @@ function fivePowerCards() {
     ['1st_92', [parsedCardEffect('1st_92')]],
   ]));
   assert.equal(G.step, 'effectOrder');
-  assert.equal((G as any).pendingEffects[0][0].effect.priority, 'late');
-  assert.equal((G as any).pendingEffectPlayer, 1);
+  assert.equal(G.pendingEffects[0][0].effect.priority, 'late');
+  assert.equal(G.pendingEffectPlayer, 1);
 }
 
 {
@@ -446,7 +449,7 @@ function fivePowerCards() {
   assert.equal(setTurnCard(G, 1, 0, 'A'), true);
   resolveTurn(G, new Map([['1st_9', [lethalPendingDamage]]]));
   assert.equal(G.step, 'effectOrder');
-  const resolvePendingEffect = (ZutomayoCard.moves as any).resolvePendingEffect;
+  const resolvePendingEffect = ZutomayoCard.moves!.resolvePendingEffect as ResolvePendingEffectMove;
   assert.equal(resolvePendingEffect({ G, playerID: '0' }, 0), undefined);
   assert.equal(G.players[1].hp, 0);
   assert.equal(G.step, 'gameOver');
@@ -464,8 +467,8 @@ function fivePowerCards() {
   resolveTurn(G, noEffects);
   assert.equal(G.step, 'turnSet');
   assert.equal(G.turnNumber, 3);
-  assert.equal((G as any).pendingEffectPlayer, null);
-  assert.deepEqual((G as any).pendingEffects, [[], []]);
+  assert.equal(G.pendingEffectPlayer, null);
+  assert.deepEqual(G.pendingEffects, [[], []]);
 }
 
 {
@@ -720,7 +723,7 @@ function fivePowerCards() {
   revealOpponentHandState.players[1].hand = [hiddenOpponentHandCard];
   assert.equal(executeEffect(revealOpponentHand!, revealOpponentHandState, 0).success, true);
   assert.deepEqual(revealOpponentHandState.revealedHandCardIds[1], [hiddenOpponentHandCard.instanceId]);
-  const revealedHandView = ZutomayoCard.playerView!({ G: revealOpponentHandState, ctx: {} as any, playerID: '0' }) as GameState;
+  const revealedHandView = ZutomayoCard.playerView!({ G: revealOpponentHandState, ctx: {} as Ctx, playerID: '0' }) as GameState;
   assert.equal(revealedHandView.players[1].hand[0].defId, hiddenOpponentHandCard.defId);
 
   const handAbyssSwap = parseEffect('手札１枚とアビスの好きなカード１枚を入れ替える');
@@ -1279,7 +1282,7 @@ function fivePowerCards() {
   assert.equal(optionalStudyState.pendingChoice?.min, 0);
   assert.equal(optionalStudyState.pendingChoice?.max, 1);
   assert.deepEqual(optionalStudyState.pendingChoice?.options.map(option => option.cardInstanceId), [matchingStudy.instanceId]);
-  const hiddenOptionalChoiceView = ZutomayoCard.playerView!({ G: optionalStudyState, ctx: {} as any, playerID: '1' }) as GameState;
+  const hiddenOptionalChoiceView = ZutomayoCard.playerView!({ G: optionalStudyState, ctx: {} as Ctx, playerID: '1' }) as GameState;
   assert.equal(hiddenOptionalChoiceView.pendingChoice?.options.length, 0);
   const studyHandBeforeDecline = optionalStudyState.players[0].hand.map(card => card.instanceId);
   const studyDeckBeforeDecline = optionalStudyState.players[0].deck.map(card => card.instanceId);
@@ -1604,7 +1607,7 @@ function fivePowerCards() {
     reorderFollowUpState.pendingChoice?.options.map(option => option.cardInstanceId),
     [reorderTopA.instanceId, reorderTopB.instanceId, reorderTopC.instanceId],
   );
-  const hiddenReorderView = ZutomayoCard.playerView!({ G: reorderFollowUpState, ctx: {} as any, playerID: '1' }) as GameState;
+  const hiddenReorderView = ZutomayoCard.playerView!({ G: reorderFollowUpState, ctx: {} as Ctx, playerID: '1' }) as GameState;
   assert.equal(hiddenReorderView.pendingChoice?.options.length, 0);
   assert.equal(submitPendingChoice(
     reorderFollowUpState,
@@ -1639,7 +1642,7 @@ function fivePowerCards() {
   assert.equal(fixedAbyssPaymentState.pendingChoice?.type, 'abyssToDeckBottomOrLose');
   assert.equal(fixedAbyssPaymentState.pendingChoice?.min, 4);
   assert.equal(fixedAbyssPaymentState.pendingChoice?.max, 4);
-  const hiddenChoiceView = ZutomayoCard.playerView!({ G: fixedAbyssPaymentState, ctx: {} as any, playerID: '1' }) as GameState;
+  const hiddenChoiceView = ZutomayoCard.playerView!({ G: fixedAbyssPaymentState, ctx: {} as Ctx, playerID: '1' }) as GameState;
   assert.equal(hiddenChoiceView.pendingChoice?.options.length, 0);
   assert.equal(submitPendingChoice(
     fixedAbyssPaymentState,
@@ -2381,7 +2384,7 @@ function fivePowerCards() {
   G.players[0].setZoneB = createInstance('1st_5', true);
   G.setCardsThisTurn[0] = [G.players[0].setZoneA, G.players[0].setZoneB];
   G.jankenChoices = ['rock', null];
-  const viewForP1 = ZutomayoCard.playerView!({ G, ctx: {} as any, playerID: '1' }) as GameState;
+  const viewForP1 = ZutomayoCard.playerView!({ G, ctx: {} as Ctx, playerID: '1' }) as GameState;
   assert.equal(viewForP1.players[0].hand[0].defId, '__hidden__');
   assert.equal(viewForP1.players[0].deck[0].defId, '__hidden__');
   assert.equal(viewForP1.players[0].setZoneA?.defId, '__hidden__');

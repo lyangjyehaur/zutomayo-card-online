@@ -3,17 +3,24 @@ import { createRequire } from 'node:module';
 import { ZutomayoCard } from '../src/game/Game';
 import { validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
-import type { ZutomayoSetupData } from '../src/game/types';
+import type { CardInstance, GameState, ZutomayoSetupData } from '../src/game/types';
 
 const require = createRequire(import.meta.url);
-const { Server } = require('boardgame.io/server') as any;
-const { Client } = require('boardgame.io/client') as any;
-const { SocketIO } = require('boardgame.io/multiplayer') as any;
+const { Server } = require('boardgame.io/server') as typeof import('boardgame.io/server');
+const { Client } = require('boardgame.io/client') as typeof import('boardgame.io/client');
+const { SocketIO } = require('boardgame.io/multiplayer') as typeof import('boardgame.io/multiplayer');
 
 const port = 4199;
 const baseUrl = `http://127.0.0.1:${port}`;
 
-type ClientState = { G: any; _stateID?: number } | null | undefined;
+type ClientState = { G: GameState; _stateID?: number } | null | undefined;
+
+interface BoardgameClient {
+  start: () => void;
+  stop: () => void;
+  getState: () => ClientState;
+  moves: Record<string, (...args: unknown[]) => void>;
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -37,8 +44,8 @@ async function postJsonResponse(path: string, body: unknown): Promise<Response> 
 
 async function waitForStates(
   label: string,
-  client0: any,
-  client1: any,
+  client0: BoardgameClient,
+  client1: BoardgameClient,
   predicate: (state0: ClientState, state1: ClientState) => boolean,
 ): Promise<[NonNullable<ClientState>, NonNullable<ClientState>]> {
   const started = Date.now();
@@ -57,7 +64,7 @@ function stateID(state: ClientState): number {
   return typeof state?._stateID === 'number' ? state._stateID : -1;
 }
 
-async function waitForSyncedStateID(label: string, client0: any, client1: any): Promise<number> {
+async function waitForSyncedStateID(label: string, client0: BoardgameClient, client1: BoardgameClient): Promise<number> {
   const [state0] = await waitForStates(label, client0, client1, (next0, next1) => {
     const id0 = stateID(next0);
     const id1 = stateID(next1);
@@ -68,8 +75,8 @@ async function waitForSyncedStateID(label: string, client0: any, client1: any): 
 
 async function performOnlineMove(
   label: string,
-  client0: any,
-  client1: any,
+  client0: BoardgameClient,
+  client1: BoardgameClient,
   move: () => void,
 ): Promise<void> {
   const previousStateID = await waitForSyncedStateID(`${label} ready`, client0, client1);
@@ -79,7 +86,7 @@ async function performOnlineMove(
   ));
 }
 
-async function drainPendingEffects(client0: any, client1: any): Promise<void> {
+async function drainPendingEffects(client0: BoardgameClient, client1: BoardgameClient): Promise<void> {
   for (let i = 0; i < 20; i++) {
     const [state0, state1] = await waitForStates('post-confirm step', client0, client1, (next0, next1) => {
       const id0 = stateID(next0);
@@ -117,8 +124,8 @@ async function joinOnlineMatch(matchID: string, playerID: '0' | '1'): Promise<{ 
 }
 
 async function startJoinedClients(setupData: ZutomayoSetupData): Promise<{
-  client0: any;
-  client1: any;
+  client0: BoardgameClient;
+  client1: BoardgameClient;
   state0: NonNullable<ClientState>;
   state1: NonNullable<ClientState>;
 }> {
@@ -152,7 +159,7 @@ async function startJoinedClients(setupData: ZutomayoSetupData): Promise<{
   return { client0, client1, state0, state1 };
 }
 
-async function playToTurnSet(client0: any, client1: any): Promise<NonNullable<ClientState>> {
+async function playToTurnSet(client0: BoardgameClient, client1: BoardgameClient): Promise<NonNullable<ClientState>> {
   await performOnlineMove('player0 janken', client0, client1, () => client0.moves.janken('rock'));
   await performOnlineMove('player1 janken', client0, client1, () => client1.moves.janken('scissors'));
   await waitForStates('mulligan', client0, client1, (state0, state1) => (
@@ -180,11 +187,11 @@ function assertHiddenOpponentInfo(viewerState: NonNullable<ClientState>, opponen
   assert.ok(viewerState.G.players[opponent].hand.length > 0, `player${opponent} hand should have cards`);
   assert.ok(viewerState.G.players[opponent].deck.length > 0, `player${opponent} deck should have cards`);
   assert.ok(
-    viewerState.G.players[opponent].hand.every((card: any) => card.defId === '__hidden__'),
+    viewerState.G.players[opponent].hand.every((card: CardInstance) => card.defId === '__hidden__'),
     `opponent player${opponent} hand should be hidden`,
   );
   assert.ok(
-    viewerState.G.players[opponent].deck.every((card: any) => card.defId === '__hidden__'),
+    viewerState.G.players[opponent].deck.every((card: CardInstance) => card.defId === '__hidden__'),
     `opponent player${opponent} deck should be hidden`,
   );
 }
@@ -197,7 +204,7 @@ function assertVisibleDeckMatchesIds(
   const actualIds = [
     ...viewerState.G.players[player].hand,
     ...viewerState.G.players[player].deck,
-  ].map((card: any) => card.defId).sort();
+  ].map((card: CardInstance) => card.defId).sort();
   assert.deepEqual(actualIds, [...expectedIds].sort());
 }
 
@@ -205,8 +212,8 @@ const server = Server({
   games: [ZutomayoCard],
   origins: [/localhost:\d+/, /127\.0\.0\.1:\d+/],
 });
-let runResult: any;
-const clients: any[] = [];
+let runResult: Awaited<ReturnType<typeof server.run>> | undefined;
+const clients: BoardgameClient[] = [];
 
 try {
   runResult = await server.run(port);
@@ -215,7 +222,7 @@ try {
   const presetTurnSet = await playToTurnSet(presetMatch.client0, presetMatch.client1);
   assertHiddenOpponentInfo(presetTurnSet, 1);
   assert.ok(
-    presetTurnSet.G.players[0].hand.some((card: any) => card.defId !== '__hidden__'),
+    presetTurnSet.G.players[0].hand.some((card: CardInstance) => card.defId !== '__hidden__'),
     'player0 hand should be visible to player0',
   );
 

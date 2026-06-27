@@ -29,7 +29,7 @@ export interface ActionLogEntry {
   step: string;
   player: PlayerIndex;
   action: string;
-  payload?: any;
+  payload?: Record<string, unknown>;
   result?: ActionLogResult;
   chronosPosition?: number;
   hp?: [number, number];

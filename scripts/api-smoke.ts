@@ -4,8 +4,17 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
-import type { ActionLogEntry } from '../src/game/types';
+import type { ActionLogEntry, ActionLogResult } from '../src/game/types';
+
+// Mock HTTP request：模擬 server.cjs handleRequest 接收的 req 物件。
+interface MockRequest extends EventEmitter {
+  method: string;
+  url: string;
+  headers: Record<string, string | undefined>;
+  socket: { remoteAddress: string };
+}
 
 interface ApiResponse<T> {
   status: number;
@@ -69,7 +78,7 @@ interface MatchHistoryEntry {
 }
 
 type ApiServerModule = {
-  handleRequest: (req: any, res: any) => void;
+  handleRequest: (req: IncomingMessage, res: ServerResponse) => void;
   closeDatabase: () => void;
 };
 
@@ -111,7 +120,7 @@ async function api<T>(
   options: RequestInit = {},
 ): Promise<ApiResponse<T>> {
   return new Promise((resolve, reject) => {
-    const req = new EventEmitter() as any;
+    const req = new EventEmitter() as MockRequest;
     req.method = options.method ?? 'GET';
     req.url = path;
     req.headers = normalizeHeaders(options.headers);
@@ -276,9 +285,9 @@ try {
       chronosPosition: 4,
       hp: [100, 93],
       pendingEffectCardDefId: '1st_9',
-      result: { ok: true, message: 'Resolved direct damage', secret: 'strip-me' } as any,
+      result: { ok: true, message: 'Resolved direct damage', secret: 'strip-me' } as ActionLogResult & { secret: string },
       payload: { index: 0, effectId: 'effect-1', cardDefId: '1st_9', source: 'played', trigger: 'onUse', actionType: 'directDamage', rawText: 'hidden raw text' },
-      unsafeNested: { deckOrder: ['1st_1'] } as any,
+      unsafeNested: { deckOrder: ['1st_1'] } as Record<string, unknown>,
     },
     {
       id: 5,
@@ -287,7 +296,7 @@ try {
       player: 0,
       action: 'submitPendingChoice',
       timestamp: stamp + 4,
-      pendingChoiceType: 'handToDeckBottomThenDraw' as any,
+      pendingChoiceType: 'handToDeckBottomThenDraw' as string,
       payload: { choiceId: 'choice-1', choiceType: 'handToDeckBottomThenDraw', selectedCount: 2, min: 2, max: 2, destinationZone: 'deck', destinationPosition: 'bottom', drawCount: 2, selectedCardIds: ['hidden'] },
     },
   ];

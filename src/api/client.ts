@@ -46,7 +46,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('zutomayo_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -56,21 +56,26 @@ async function request<T = any>(path: string, options: RequestInit = {}): Promis
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const text = await res.text();
-  let data: any = {};
+  let data: Record<string, unknown> = {};
   if (text) {
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(text) as Record<string, unknown>;
     } catch {
       data = { error: text };
     }
   }
-  if (!res.ok) throw new ApiError(data.error || 'Request failed', res.status);
-  return data;
+  if (!res.ok) throw new ApiError((data.error as string) || 'Request failed', res.status);
+  return data as T;
 }
 
 // ===== Auth =====
+interface AuthResponse {
+  token: string;
+  user: ProfileResponse;
+}
+
 export async function register(email: string, password: string, nickname?: string) {
-  const data = await request('/register', {
+  const data = await request<AuthResponse>('/register', {
     method: 'POST',
     body: JSON.stringify({ email, password, nickname }),
   });
@@ -79,7 +84,7 @@ export async function register(email: string, password: string, nickname?: strin
 }
 
 export async function login(email: string, password: string) {
-  const data = await request('/login', {
+  const data = await request<AuthResponse>('/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });

@@ -1,6 +1,6 @@
 import { useCallback, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { t, availableLocales, getLocaleLabel, getLocaleFlag } from '../i18n';
+import { t, availableLocales, getLocaleLabel, getLocaleFlag, type Locale } from '../i18n';
 import { zhTW } from '../i18n/zh-TW';
 import { zhHK } from '../i18n/zh-HK';
 import { zhCN } from '../i18n/zh-CN';
@@ -29,7 +29,7 @@ export function I18nManager() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
-  const [selectedLocale, setSelectedLocale] = useState('zh-TW');
+  const [selectedLocale, setSelectedLocale] = useState<Locale>('zh-TW');
   const [filterMissing, setFilterMissing] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [editKey, setEditKey] = useState<string | null>(null);
@@ -127,7 +127,7 @@ export function I18nManager() {
               className={`locale-tab ${selectedLocale === locale ? 'active' : ''}`}
               onClick={() => setSelectedLocale(locale)}
             >
-              {getLocaleFlag(locale as any)} {getLocaleLabel(locale as any)}
+              {getLocaleFlag(locale)} {getLocaleLabel(locale)}
             </button>
           ))}
         </div>
@@ -165,7 +165,7 @@ export function I18nManager() {
             <tr>
               <th>{t('admin.i18nColKey')}</th>
               <th>{t('admin.i18nColBase')}</th>
-              <th>{getLocaleFlag(selectedLocale as any)} {getLocaleLabel(selectedLocale as any)}</th>
+              <th>{getLocaleFlag(selectedLocale)} {getLocaleLabel(selectedLocale)}</th>
               <th>{t('admin.i18nColStatus')}</th>
             </tr>
           </thead>
