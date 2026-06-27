@@ -94,7 +94,10 @@
     "sendToPower": 0,
     "effect": "相手の攻撃力を昼夜逆転する ※相手のエンチャント発動のち有効",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_5.jpg",
-    "errata": "修正しました。"
+    "errata": "修正しました。",
+    "enNameOfficial": "SHAKUMA-MEN (Humanoid)",
+    "enEffectOfficial": "Reverses the opponent's attack power day and night.\nEffective after the opponent's enchantment is activated.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING, ZUTOMAYO"
   },
   {
     "id": "1st_6",
@@ -111,7 +114,10 @@
     "sendToPower": 0,
     "effect": "アビスにあるエンチャントカードの中から自由に１枚選び、このカードの効果として使う",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_6.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "KITTE-MEN · INC-NEKO (Seigi)",
+    "enEffectOfficial": "Choose any one of the Abyss cards and use it in this turn.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_7",
@@ -128,7 +134,10 @@
     "sendToPower": 0,
     "effect": "アビスに４種類の属性があると攻撃力+50",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_7.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Laboratory of Ashban Electric Inc. (Ham)",
+    "enEffectOfficial": "Attack +50 if the Abyss's card has four different attributes.",
+    "enSongTitleOfficial": "The World Is Changing"
   },
   {
     "id": "1st_8",
@@ -145,7 +154,10 @@
     "sendToPower": 0,
     "effect": "時計を無効　このターンのはじまりの時間に戻る",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_8.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Compass Clock (Hunch Gray)",
+    "enEffectOfficial": "Clock disabled. Return to the time at the beginning of this turn.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_9",
@@ -482,7 +494,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が風なら攻撃力+50",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_25.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Incarnation of HASAMI",
+    "enEffectOfficial": "Attack +50 if the attribute of the opponent's character card is wind.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_26",
@@ -499,7 +514,10 @@
     "sendToPower": 0,
     "effect": "このターンのはじまりの時間から相手の時計分、時間が戻る",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_26.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Declaration of the Opening",
+    "enEffectOfficial": "Time goes back by the opponent's clock minutes from the beginning of this turn.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING"
   },
   {
     "id": "1st_27",
@@ -516,7 +534,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が電気なら攻撃力+50",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_27.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Mirror Shooter",
+    "enEffectOfficial": "Attack +50 if the attribute of the opponent's character card is electric.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_28",
@@ -533,7 +554,10 @@
     "sendToPower": 1,
     "effect": "自分がダメージを受けたとき40ダメージを軽減する",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_28.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Study Group",
+    "enEffectOfficial": "40 damage reduction when you take damage.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING"
   },
   {
     "id": "1st_29",
@@ -550,7 +574,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が闇なら攻撃力+50",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_29.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Microwave Oven of Lightning",
+    "enEffectOfficial": "Attack +50 if the attribute of the opponent's character card is darkness.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING"
   },
   {
     "id": "1st_30",
@@ -567,7 +594,10 @@
     "sendToPower": 0,
     "effect": "自分の攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_30.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Sphere like a Bomb",
+    "enEffectOfficial": "Your attack power is increased by 30.",
+    "enSongTitleOfficial": "Sphere like a Bomb"
   },
   {
     "id": "1st_31",
@@ -584,7 +614,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が炎なら攻撃力+50",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_31.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Washing a Car",
+    "enEffectOfficial": "Attack +50 if the attribute of the opponent's character card is flame.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_32",
@@ -681,7 +714,10 @@
     "sendToPower": 0,
     "effect": "",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_36.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "SYAKUMA-MEN...?",
+    "enEffectOfficial": "THE WORLD IS CHANGING.",
+    "enSongTitleOfficial": "ZUTOMAYONAKADEINONI."
   },
   {
     "id": "1st_37",
@@ -1018,7 +1054,10 @@
     "sendToPower": 0,
     "effect": "夜なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_53.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Ferris wheel (Nouriueno Cracker)",
+    "enEffectOfficial": "Attack +30 if it's night.",
+    "enSongTitleOfficial": "Ferris wheel"
   },
   {
     "id": "1st_54",
@@ -1035,7 +1074,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が風なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_54.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "CYOKI · CYOKI",
+    "enEffectOfficial": "Attack +30 if the attribute of the opponent's character card is wind.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_55",
@@ -1052,7 +1094,10 @@
     "sendToPower": 0,
     "effect": "自分のHPが50以下なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_55.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Supporting Band",
+    "enEffectOfficial": "Attack +20 if your HP is below 50.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_56",
@@ -1069,7 +1114,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が電気なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_56.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Kazekazami of Sunset",
+    "enEffectOfficial": "Attack +30 if the attribute of the opponent's character card is electric.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_57",
@@ -1086,7 +1134,10 @@
     "sendToPower": 1,
     "effect": "自分がダメージを受けたとき30ダメージを軽減する",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_57.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "UNIGURI Bread",
+    "enEffectOfficial": "30 damage reduction when you take damage.",
+    "enSongTitleOfficial": "SEND TO P0WER"
   },
   {
     "id": "1st_58",
@@ -1103,7 +1154,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードのパワーコストが★２以上なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_58.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Bomb Stripe",
+    "enEffectOfficial": "Attack +20 if the opponent's character card has a power cost of 2 or more +.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_59",
@@ -1120,7 +1174,10 @@
     "sendToPower": 0,
     "effect": "昼なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_59.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Lemon-scented sauteed UNIGURI",
+    "enEffectOfficial": "Attack +30 if it's daytime.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_60",
@@ -1137,7 +1194,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が闇なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_60.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Electric Key",
+    "enEffectOfficial": "Attack +30 if the attribute of the opponent's character card is darkness.",
+    "enSongTitleOfficial": "The World Is Changing / Send To Power"
   },
   {
     "id": "1st_61",
@@ -1154,7 +1214,10 @@
     "sendToPower": 1,
     "effect": "昼から夜に変わると攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_61.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "ZUTOMAYO CITY",
+    "enEffectOfficial": "Attack +30 when day changes to night.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_62",
@@ -1171,7 +1234,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が炎なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_62.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Rice cooked with Bamboo Shoots",
+    "enEffectOfficial": "Attack +30 if the attribute of the opponent's character card is flame.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_63",
@@ -1205,7 +1271,10 @@
     "sendToPower": 0,
     "effect": "相手のキャラクターカードのパワーコストが★２以上なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_64.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "A little luxury breakfast",
+    "enEffectOfficial": "Attack +30 if the opponent's character card has a power cost of 2 or more ★.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_65",
@@ -1542,7 +1611,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が闇ならHPを10回復",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_81.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Strawberry Cake",
+    "enEffectOfficial": "Recovers 10 HP if your character card's attribute is darkness.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_82",
@@ -1559,7 +1631,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が闇なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_82.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Portrait of the deceased",
+    "enEffectOfficial": "Attack +20 if your character card's attribute is darkness.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_83",
@@ -1576,7 +1651,10 @@
     "sendToPower": 1,
     "effect": "夜なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_83.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Corridor",
+    "enEffectOfficial": "Attack +20 if it's night.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_84",
@@ -1610,7 +1688,10 @@
     "sendToPower": 1,
     "effect": "自分がダメージを受けたとき20ダメージを軽減する",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_85.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Cluttered Sofas",
+    "enEffectOfficial": "20 damage reduction when you take damage.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_86",
@@ -1644,7 +1725,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が炎ならHPを10回復",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_87.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Remnants",
+    "enEffectOfficial": "Recovers 10 HP if your character card's attribute is flame.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_88",
@@ -1661,7 +1745,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が炎なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_88.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Illuminate into the Red Darkness",
+    "enEffectOfficial": "Attack +20 if your character card's attribute is flame.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_89",
@@ -1695,7 +1782,10 @@
     "sendToPower": 1,
     "effect": "昼から夜に変わると攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_90.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "DNA NABE",
+    "enEffectOfficial": "Attack +20 when day changes to night.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_91",
@@ -1712,7 +1802,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が炎・風なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_91.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "SHAKKURI's beckoning cat shop",
+    "enEffectOfficial": "Attack +20 if the attribute of the opponent's character card is flame or wind.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_92",
@@ -1729,7 +1822,10 @@
     "sendToPower": 1,
     "effect": "デッキから１枚カードを引き、手札に加える\n※このカードを使用後、手札の数はバトル終了まで１枚増える",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_92.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Compounding of Wonder Drug",
+    "enEffectOfficial": "Draw a card from the deck and add it to your hand. *After using this card, the number of cards in your hand increases by one until the end of the battle.",
+    "enSongTitleOfficial": "THE WORLD IS CHANGING."
   },
   {
     "id": "1st_93",
@@ -1746,7 +1842,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が電気ならHPを10回復",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_93.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "CRT TV \"STRONG\"",
+    "enEffectOfficial": "Recovers 10 HP if your character card's attribute is electric.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_94",
@@ -1763,7 +1862,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が電気なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_94.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Control Room",
+    "enEffectOfficial": "Attack +20 if your character card's attribute is electric.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_95",
@@ -1780,7 +1882,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が闇・電気なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_95.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Parabolic Antenna",
+    "enEffectOfficial": "Attack +20 if the attribute of the opponent's character card is darkness or electric.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_96",
@@ -1797,7 +1902,10 @@
     "sendToPower": 2,
     "effect": "昼から夜に変わると攻撃力+10",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_96.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "FPS",
+    "enEffectOfficial": "Attack +10 when day changes to night.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_97",
@@ -1814,7 +1922,10 @@
     "sendToPower": 1,
     "effect": "夜から昼に変わると攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_97.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Mental Maintenance",
+    "enEffectOfficial": "Attack +20 when night changes to day.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_98",
@@ -1831,7 +1942,9 @@
     "sendToPower": 0,
     "effect": "相手のキャラクターカードのパワーコストが★０か★１なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_98.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Slum Mart",
+    "enEffectOfficial": "Attack +30 if the opponent's character card has a power cost of 0 or 1+."
   },
   {
     "id": "1st_99",
@@ -1848,7 +1961,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が風ならHPを10回復",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_99.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Scribble on the Blackboard",
+    "enEffectOfficial": "Recovers 10 HP if your character card's attribute is wind.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_100",
@@ -1865,7 +1981,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が風なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_100.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Vegetatisation",
+    "enEffectOfficial": "Attack +20 if your character card's attribute is wind.",
+    "enSongTitleOfficial": "SEND TO FLOWER"
   },
   {
     "id": "1st_101",
@@ -1882,7 +2001,9 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードのパワーコストが★０か★１なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_101.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Eggs of Justice",
+    "enEffectOfficial": "Attack +20 if the opponent's character card has a power cost of 0 or 1+."
   },
   {
     "id": "1st_102",
@@ -1899,7 +2020,9 @@
     "sendToPower": 1,
     "effect": "昼なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_102.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "A sense of Thirst",
+    "enEffectOfficial": "Attack +20 if it's daytime."
   },
   {
     "id": "1st_103",
@@ -1916,7 +2039,10 @@
     "sendToPower": 1,
     "effect": "相手のアビスのカードを1枚選んでデッキの底に戻させる",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_103.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Concession",
+    "enEffectOfficial": "Select one of your opponent's Abyss cards and have it returned to the deck.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "1st_104",
@@ -1933,7 +2059,9 @@
     "sendToPower": 0,
     "effect": "相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く",
     "image": "https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_104.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Historical Documents, Summon",
+    "enEffectOfficial": "Put the top card of the opponent's deck, with or without power, on the Abyss."
   },
   {
     "id": "1st_105",
@@ -2181,7 +2309,10 @@
     "sendToPower": 1,
     "effect": "前のターンで使用したキャラクターカードの属性が炎なら、さらに追加で時計を０～５つまで進めてもよい",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_11.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Kan Saete Kuyashiiwa)",
+    "enEffectOfficial": "If the attribute of the character card used in the previous turn was flame, you can move the clock forward from 0 to 5.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_12",
@@ -2241,7 +2372,10 @@
     "sendToPower": 0,
     "effect": "アビスに闇属性のカードが２枚以上あるなら、HPを20回復",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_14.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "ZUTOMARUKI-GO",
+    "enEffectOfficial": "If the Areas has two or more cards of the darkness attribute, recover 20 HP",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_15",
@@ -2261,7 +2395,10 @@
     "sendToPower": 1,
     "effect": "前のターンで使用したキャラクターカードの属性が闇で、今が昼なら手札からエンチャントを追加で１枚使っても良い。その後、カードを１枚引く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_15.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Playground equipment : Sphyma lewini",
+    "enEffectOfficial": "If the attribute of the character card used in the previous turn is darkness and it is now daytime, you may use an additional enchantment from your hand only the first time you use the card. Then draw a card.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_16",
@@ -2321,7 +2458,10 @@
     "sendToPower": 1,
     "effect": "前のターンで使用したキャラクターカードの属性が風なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_18.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "HAKASE (FASTENING)",
+    "enEffectOfficial": "Attack +20 if the attribute of the character card used in the previous turn is wind.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_19",
@@ -2341,7 +2481,10 @@
     "sendToPower": 1,
     "effect": "前のターンで使用したキャラクターカードの属性が風なら相手のパワーチャージャーからSEND TO POWER★１のカードを１枚選び、相手のデッキの底に置く。",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_19.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "GRAY (MIRROR TUNE)",
+    "enEffectOfficial": "If the attribute of the character card used in the previous turn was wind, choose a SEND TO POWER +1 card from your opponent's Power charger and place it at the bottom of your opponent's deck.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_20",
@@ -2381,7 +2524,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が闇なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_21.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN",
+    "enEffectOfficial": "NIGHT 30 DAY 20 Attack +20 if the attribute of the opponent's character card is darkness",
+    "enSongTitleOfficial": "Byoushinwo Kamu"
   },
   {
     "id": "2nd_22",
@@ -2421,7 +2567,10 @@
     "sendToPower": 0,
     "effect": "前のターンで使用したキャラクターカードの属性が電気かつ、相手のキャラクターカードが炎か闇なら攻撃力+40",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_23.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Kira Killer)",
+    "enEffectOfficial": "+Attack +40 if the attribute of character card used in the previous turn is electric and the opponent's character card is flame or darkness.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_24",
@@ -2441,7 +2590,10 @@
     "sendToPower": 1,
     "effect": "前のターンで使用したキャラクターカードの属性が電気で、今が夜なら相手のパワーチャージャーからSEND TO POWER★１のカードを１枚選び、相手のデッキの底に置く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_24.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (MIRROR TUNE)",
+    "enEffectOfficial": "If the attribute of the character card used in the previous turn was electro and it is now night, choose a SEND TO POWER +1 card from your opponent's Power charger and place it at the bottom of your opponent's deck.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_25",
@@ -2492,7 +2644,10 @@
     "sendToPower": 0,
     "effect": "手札を２枚選んでデッキの底に置き、カードを２枚引く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_27.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Neapolitan with UNIGURI-KUN",
+    "enEffectOfficial": "Select two cards from your hand, place them at the bottom of the deck and draw two cards.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_28",
@@ -2526,7 +2681,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードがパワーコスト６以上なら、攻撃力+50",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_29.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Nighthawk",
+    "enEffectOfficial": "If the opponent's character card has a Power cost of 6 or more, attack power +50.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_30",
@@ -2560,7 +2718,10 @@
     "sendToPower": 0,
     "effect": "手札を２枚選んでデッキの底に置き、カードを２枚引く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_31.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "In delivery",
+    "enEffectOfficial": "Select two cards from your hand, place them at the bottom of the deck and draw two cards.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_32",
@@ -2577,7 +2738,10 @@
     "sendToPower": 0,
     "effect": "自分の攻撃力+30",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_32.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Desire",
+    "enEffectOfficial": "Attack +30.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_33",
@@ -2637,7 +2801,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーに炎属性のカードがあるなら、攻撃力+20",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_35.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "KIRA-CHAN (Kira Killer)",
+    "enEffectOfficial": "Attack +20 if there is a flame card in the Power charger.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_36",
@@ -2657,7 +2824,10 @@
     "sendToPower": 0,
     "effect": "アビスに炎属性のカードが２枚以上あるなら、時計が真夜中になる",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_36.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Hunch Gray)",
+    "enEffectOfficial": "The clock changes to midnight if there are two or more flame cards in the Abyss.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_37",
@@ -2757,7 +2927,10 @@
     "sendToPower": 1,
     "effect": "前のターンで使用したキャラクターカードの属性が闇なら、デッキの一番上のカードをパワーがあればパワーチャージャーに、なければアビスに置く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_41.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-MAID (DARKEN)",
+    "enEffectOfficial": "If the attribute of the character card used in the previous turn was wind and it is now daytime, attack power +40 only the first time the card is used.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_42",
@@ -2817,7 +2990,10 @@
     "sendToPower": 1,
     "effect": "",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_44.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Part-timer・Baker (Neko Reset)",
+    "enEffectOfficial": "Attack +20 if the attribute of the character card used in the previous turn is darkness.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_45",
@@ -2837,7 +3013,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーに風属性のカードがあるなら、攻撃力+20",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_45.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN・KIRA-CHAN(Kira Killer)",
+    "enEffectOfficial": "If the Power charger has a wind card, attack +20.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_46",
@@ -2877,7 +3056,10 @@
     "sendToPower": 0,
     "effect": "前のターンで使用したキャラクターカードの属性が風で、今が昼なら攻撃力+40",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_47.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "UNIGURI-GAHAKU",
+    "enEffectOfficial": "If the attribute of the character card used in the previous turn is darkness, place the top card of the deck on the Power charger if it has power, otherwise on the Abyss.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_48",
@@ -2977,7 +3159,10 @@
     "sendToPower": 0,
     "effect": "",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_52.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "FRANKEN (Dear.Mr「F」)",
+    "enEffectOfficial": "NIGHT 90 | DAY 90 + The Battle Begins",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_53",
@@ -3028,7 +3213,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が炎なら、相手のエリアエンチャントカードを相手のデッキの上に置く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_55.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "ZTMY claw-machine",
+    "enEffectOfficial": "If your character card's attribute is flame, place your opponent's area enchantment card on top of your opponent's deck.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_56",
@@ -3079,7 +3267,10 @@
     "sendToPower": 0,
     "effect": "アビスの闇属性のカード１枚につき、★+１。キャラクターカードを自分のパワーチャージャーに置いたターンの終了時にアビスに置く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_58.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Preparing for opening",
+    "enEffectOfficial": "+1+1 for each darkness card in the Abyss. Place this card in the Abyss at the end of the turn when your character card is placed on your Power charger.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_59",
@@ -3130,7 +3321,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーのカードが電気属性だけだったなら攻撃力+40",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_61.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Umbrella of Seigi",
+    "enEffectOfficial": "If the Power charger card was only electric, your attack power +40.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_62",
@@ -3164,7 +3358,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が電気なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_63.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Hi Cheese",
+    "enEffectOfficial": "Attack +30 if your character card's attribute is electric.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_64",
@@ -3181,7 +3378,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーの電気属性のカード１枚につき、攻撃力+20。相手のHPが30以下になったターンの終了時にアビスに置く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_64.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "UNIGIRI-KORORIN",
+    "enEffectOfficial": "Attack +20 for each electric card in the Power charger. Place on the Abyss at the end of the turn when the opponent's HP falls below 30.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_65",
@@ -3261,7 +3461,10 @@
     "sendToPower": 1,
     "effect": "前のターンで使用したキャラクターカードの属性が炎で、今が夜なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_68.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Doppelganger (Time Left)",
+    "enEffectOfficial": "If the attribute of the character card used in the previous turn is flame and it's night, attack power +30 only the first time the card is used.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_69",
@@ -3421,7 +3624,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターカードの属性が炎なら攻撃力+20",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_76.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "HUMANOID",
+    "enEffectOfficial": "Attack +20 if the attribute of the opponent's character card is flame.",
+    "enSongTitleOfficial": "SEND To POWER"
   },
   {
     "id": "2nd_77",
@@ -3518,7 +3724,10 @@
     "sendToPower": 1,
     "effect": "アビスのカードが闇属性だけだったなら攻撃力+20",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_81.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "OISHII",
+    "enEffectOfficial": "If the Abyss card was only darkness, your attack power +20.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_82",
@@ -3535,7 +3744,10 @@
     "sendToPower": 0,
     "effect": "手札を１枚選んでデッキの底に置き、カードを１枚引く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_82.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Danger Signal",
+    "enEffectOfficial": "Select a card from your hand, place it at the bottom of the deck and draw one more card.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_83",
@@ -3552,7 +3764,10 @@
     "sendToPower": 0,
     "effect": "夜なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_83.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Memories of That day",
+    "enEffectOfficial": "Attack +30 if it's night.",
+    "enSongTitleOfficial": "Memories of That day"
   },
   {
     "id": "2nd_84",
@@ -3569,7 +3784,10 @@
     "sendToPower": 0,
     "effect": "自分の攻撃力+10。相手のキャラクターカードの属性をバトルフィールドにいる間電気にする",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_84.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "See through the Devil",
+    "enEffectOfficial": "+10 to your attack power and the attribute of your opponent's character card changes to electric while they are on the battlefield.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_85",
@@ -3586,7 +3804,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が闇ならHPを10回復",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_85.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Crossroads",
+    "enEffectOfficial": "Recovers 10 HP if your character card's attribute is darkness.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_86",
@@ -3603,7 +3824,10 @@
     "sendToPower": 1,
     "effect": "夜なら攻撃力+20。夜じゃなくなったらパワーチャージャーに置く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_86.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Imprison the Curse",
+    "enEffectOfficial": "Attack +20 if it's night, if it's not night, place it on the Power charger.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_87",
@@ -3620,7 +3844,10 @@
     "sendToPower": 1,
     "effect": "アビスのカードが炎属性だけだったなら攻撃力+20",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_87.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "You live in a different world",
+    "enEffectOfficial": "Attack +20 if there is only flame card in the Abyss.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_88",
@@ -3637,7 +3864,10 @@
     "sendToPower": 0,
     "effect": "自分の攻撃力+10。相手のキャラクターカードの属性をバトルフィールドにいる間闇にする",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_88.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Factory tour",
+    "enEffectOfficial": "+10 to your attack power and the attribute of your opponent's character card changes to darkness while they are on the battlefield.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_89",
@@ -3654,7 +3884,10 @@
     "sendToPower": 0,
     "effect": "自分がダメージを受けたとき20ダメージを軽減する",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_89.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Laundry detergents",
+    "enEffectOfficial": "20 damage reduction when you take damage.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_90",
@@ -3671,7 +3904,10 @@
     "sendToPower": 0,
     "effect": "自分がダメージを受けたとき30ダメージを軽減する",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_90.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Nice shot",
+    "enEffectOfficial": "30 damage reduction when you take damage.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_91",
@@ -3705,7 +3941,10 @@
     "sendToPower": 1,
     "effect": "キャラクターカードが２コスト以上なら、攻撃力+20。相手のキャラクターカードが４コスト以上ならパワーチャージャーに置く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_92.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Banquet",
+    "enEffectOfficial": "If the character card costs 2 or more, attack +20, if the opponent's character card costs 4 or more, place it on the Power charger.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_93",
@@ -3722,7 +3961,10 @@
     "sendToPower": 1,
     "effect": "アビスのカードが電気属性だけだったなら攻撃力+20",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_93.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Cold sleep",
+    "enEffectOfficial": "If the Abyss card was only the electric attribute, your attack power +20.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_94",
@@ -3756,7 +3998,10 @@
     "sendToPower": 0,
     "effect": "昼なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_95.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "14.4 light-years away",
+    "enEffectOfficial": "+10 to your attack power and the attribute of your opponent's character card changes to wind while they are on the battlefield.",
+    "enSongTitleOfficial": "14.4 light-years away"
   },
   {
     "id": "2nd_96",
@@ -3773,7 +4018,10 @@
     "sendToPower": 0,
     "effect": "自分の攻撃力+10。相手のキャラクターカードの属性をバトルフィールドにいる間風にする",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_96.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Stardust Shakehand",
+    "enEffectOfficial": "Recovers 10 HP if your character card's attribute is electric.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_97",
@@ -3790,7 +4038,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が電気ならHPを10回復",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_97.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Evaluation",
+    "enEffectOfficial": "Attack +20 if it's daytime, if it's not daytime, place it on the Power charger.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_98",
@@ -3807,7 +4058,10 @@
     "sendToPower": 1,
     "effect": "昼なら攻撃力+20。昼じゃなくなったらパワーチャージャーに置く",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_98.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Leap",
+    "enEffectOfficial": "Attack +30 if there is only wind card in the Abyss.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_99",
@@ -3824,7 +4078,10 @@
     "sendToPower": 1,
     "effect": "アビスのカードが風属性だけだったなら攻撃力+30",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_99.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Clock tower",
+    "enEffectOfficial": "+10 to your attack power and the attribute of your opponent's character card changes to flame while they are on the battlefield.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_100",
@@ -3841,7 +4098,10 @@
     "sendToPower": 0,
     "effect": "自分の攻撃力+10。相手のキャラクターカードの属性をバトルフィールドにいる間炎にする",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_100.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Message board",
+    "enEffectOfficial": "Attack +20",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_101",
@@ -3858,7 +4118,10 @@
     "sendToPower": 0,
     "effect": "自分の攻撃力+20",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_101.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Post a letter",
+    "enEffectOfficial": "If the Power charger card was only wind, your attack power +50.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_102",
@@ -3875,7 +4138,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーのカードが風属性だけだったなら攻撃力+50",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_102.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Surveillance monitor",
+    "enEffectOfficial": "Recovers 10 HP if your character card's attribute is wind.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_103",
@@ -3892,7 +4158,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が風ならHPを10回復",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_103.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Ruined world",
+    "enEffectOfficial": "If character card costs 2 or less, +20 attack, if character card costs 4 or more, place on Power charger.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_104",
@@ -3929,7 +4198,10 @@
     "sendToPower": 0,
     "effect": "",
     "image": "https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_105.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA ver. swimsuit (Kira Killer)",
+    "enEffectOfficial": "If the Abyss has two or more cards of the wind attribute, the clock changes to noon.",
+    "enSongTitleOfficial": "ALL ALONG THE WATCHTOWER"
   },
   {
     "id": "2nd_106",
@@ -3969,7 +4241,10 @@
     "sendToPower": 0,
     "effect": "真夜中なら攻撃力+100",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_1.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Byoushinwo Kamu)",
+    "enEffectOfficial": "Attack +100 if it's midnight.",
+    "enSongTitleOfficial": "Byoushinwo Kamu"
   },
   {
     "id": "3rd_2",
@@ -4046,7 +4321,10 @@
     "sendToPower": 0,
     "effect": "HPが相手のHPより少ないなら、時計を真夜中にする",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_5.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "The egocentric password",
+    "enEffectOfficial": "If your HP is less than opponent's HP, set the Clock to midnight.",
+    "enSongTitleOfficial": "The egocentric password"
   },
   {
     "id": "3rd_6",
@@ -4080,7 +4358,10 @@
     "sendToPower": 0,
     "effect": "HPが相手のHPより少ないなら、時計を真昼にする",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_7.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Them",
+    "enEffectOfficial": "If your HP is less than opponent's HP, set the Clock to noon.",
+    "enSongTitleOfficial": "Them"
   },
   {
     "id": "3rd_8",
@@ -4097,7 +4378,10 @@
     "sendToPower": 0,
     "effect": "アビスに闇・炎・電気・風の４属性のカードがあるなら攻撃力+100",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_8.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA (Maid) & NIRA (Butler)",
+    "enEffectOfficial": "Attack +100 if there are cards of 4 different attributes in the Abyss.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_9",
@@ -4117,7 +4401,10 @@
     "sendToPower": 0,
     "effect": "真夜中なら攻撃力+50",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_9.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (MIRROR TUNE)",
+    "enEffectOfficial": "Attack +50 if it's midnight.",
+    "enSongTitleOfficial": "MIRROR TUNE"
   },
   {
     "id": "3rd_10",
@@ -4157,7 +4444,10 @@
     "sendToPower": 0,
     "effect": "相手のパワーチャージャーのカードが風属性だけだったなら攻撃力+40",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_11.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Kira Killer)",
+    "enEffectOfficial": "Attack +40 if all the cards in the opponent's Power Charger are of the wind attribute.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_12",
@@ -4197,7 +4487,10 @@
     "sendToPower": 0,
     "effect": "",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_13.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "GRAY (Hunch Gray)",
+    "enEffectOfficial": "The Battle Begins ZUTOMAYONAKADEINONI.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_14",
@@ -4217,7 +4510,10 @@
     "sendToPower": 0,
     "effect": "相手のエリアエンチャントを相手のデッキの底に置く",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_14.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "SENTAI-RANGERS HEART RED (Nouriueo Cracker)",
+    "enEffectOfficial": "Put the opponent's Area Enchantment card at the bottom of the opponent's deck.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_15",
@@ -4317,7 +4613,10 @@
     "sendToPower": 1,
     "effect": "パワーチャージャーのカードが電気属性だけだったなら攻撃力+30",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_19.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Hunch Gray)",
+    "enEffectOfficial": "Attack +30 if all the cards in the Power Charger are of the Electric attribute.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_20",
@@ -4434,7 +4733,10 @@
     "sendToPower": 1,
     "effect": "真夜中なら攻撃力+70",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_25.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Ai no Pegasus",
+    "enEffectOfficial": "Attack +70 if it's midnight.",
+    "enSongTitleOfficial": "Ai no Pegasus"
   },
   {
     "id": "3rd_26",
@@ -4451,7 +4753,10 @@
     "sendToPower": 0,
     "effect": "真夜中の前後２マスも真夜中として扱う",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_26.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Trick & Treat",
+    "enEffectOfficial": "Two squares before and after midnight are also treated as midnight.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_27",
@@ -4468,7 +4773,10 @@
     "sendToPower": 0,
     "effect": "相手のHPを50回復させ、ターン終了時に50ダメージを与える",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_27.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Miserable liberation",
+    "enEffectOfficial": "Recovers 50 HP to the opponent and inflicts 50 damage at the end of the turn.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_28",
@@ -4485,7 +4793,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーのカードが炎属性だけだったなら攻撃力+80",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_28.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Explosion",
+    "enEffectOfficial": "Attack +80 if all the cards in the Power Charger are of the flame attribute.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_29",
@@ -4519,7 +4830,10 @@
     "sendToPower": 0,
     "effect": "アビスに電気属性のカードが３枚以上あるなら攻撃力+70",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_30.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Ingredients for DNA NABE",
+    "enEffectOfficial": "Attack +70 if there are at least three cards of the electric attribute in the Abyss.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_31",
@@ -4553,7 +4867,10 @@
     "sendToPower": 1,
     "effect": "アビスに風属性のカードが３枚以上あるなら攻撃力+80",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_32.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "UNIGURI village",
+    "enEffectOfficial": "Attack +80 if there are at least three cards of the wind attribute in the Abyss.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_33",
@@ -4573,7 +4890,10 @@
     "sendToPower": 0,
     "effect": "昼なら、時計を２つ進める",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_33.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "ZUTOMAYO PUZZLE GAME",
+    "enEffectOfficial": "If it's noon, advance the clocks by two.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_34",
@@ -4633,7 +4953,9 @@
     "sendToPower": 2,
     "effect": "パワーチャージャーのカードが闇属性だけだったなら攻撃力+30",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_36.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "SHOGA-MODOKI (Nareai Serve)",
+    "enEffectOfficial": "Attack +30 if all the cards in the Power Charger are of the darkness attribute."
   },
   {
     "id": "3rd_37",
@@ -4693,7 +5015,9 @@
     "sendToPower": 1,
     "effect": "相手のパワーチャージャーのカードが電気属性だけだったなら攻撃力+50",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_39.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Mabushii DNA Dake)",
+    "enEffectOfficial": "Attack +50 if all the cards in the opponent's Power Charger are of the electric attribute."
   },
   {
     "id": "3rd_40",
@@ -4713,7 +5037,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーのカードが炎属性だけだったなら攻撃力+20",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_40.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "RANI-CHAN (Intrusion)",
+    "enEffectOfficial": "Attack +20 if all the cards in the Power Charger are of the flame attribute.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_41",
@@ -4753,7 +5080,10 @@
     "sendToPower": 1,
     "effect": "相手のHPが100なら攻撃力+50",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_42.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Seigi)",
+    "enEffectOfficial": "Attack +50 if the opponent's HP is 100.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_43",
@@ -4873,7 +5203,10 @@
     "sendToPower": 1,
     "effect": "",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_48.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "UNIGURI compounding",
+    "enEffectOfficial": "NIGHT 30 | DAY 50",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_49",
@@ -4913,7 +5246,10 @@
     "sendToPower": 2,
     "effect": "",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_50.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN · RANI-CHAN (Intrusion)",
+    "enEffectOfficial": "SEND TO POWER",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_51",
@@ -4933,7 +5269,10 @@
     "sendToPower": 1,
     "effect": "アビスに３属性のカードがあるなら攻撃力+40",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_51.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN · KIRA-CHAN (Kira Killer)",
+    "enEffectOfficial": "Attack +40 if there are cards of 3 different attributes in the Abyss.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_52",
@@ -4970,7 +5309,10 @@
     "sendToPower": 1,
     "effect": "夜なら攻撃力+40",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_53.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Zanki-Sword",
+    "enEffectOfficial": "Attack +40 if it's night.",
+    "enSongTitleOfficial": "Send to Power"
   },
   {
     "id": "3rd_54",
@@ -5089,7 +5431,10 @@
     "sendToPower": 0,
     "effect": "アビスのカードが風属性だけだったなら攻撃力+70",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_60.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "To Be Continued",
+    "enEffectOfficial": "Attack +70 if all the cards in the Abyss are of the wind attribute.",
+    "enSongTitleOfficial": "To Be Continued"
   },
   {
     "id": "3rd_61",
@@ -5106,7 +5451,10 @@
     "sendToPower": 1,
     "effect": "すべてのカードの時計を１にする。ターンの終了時に、相手のフィールドにエリアエンチャントがあるならパワーチャージャーに置く",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_61.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "GAME CENTER TECHNO POOR",
+    "enEffectOfficial": "Set all cards' clocks to 1. At the end of the turn, if there is an Area Enchantment card on the opponent's field, place it on the Power Charger.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "3rd_62",
@@ -5140,7 +5488,10 @@
     "sendToPower": 0,
     "effect": "アビスのカードが電気属性だけだったなら攻撃力+60",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_63.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Uniguri Smash",
+    "enEffectOfficial": "Attack +60 if all the cards in the Abyss are of the electric attribute.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_64",
@@ -5562,7 +5913,10 @@
     "sendToPower": 0,
     "effect": "ターンの終了時に、昼なら時計を２つ進める。30ダメージ以上を受けたなら、すぐにアビスに置く",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_85.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Break off",
+    "enEffectOfficial": "At the end of the turn, if it is daytime, advance the clock by 2. If you take more than 30 damage in this turn, immediately place this card in the Abyss.",
+    "enSongTitleOfficial": "Break off"
   },
   {
     "id": "3rd_86",
@@ -5596,7 +5950,10 @@
     "sendToPower": 1,
     "effect": "相手のHPが100なら攻撃力+40",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_87.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Meals for banquet",
+    "enEffectOfficial": "Attack +40 if the opponent's HP is 100.",
+    "enSongTitleOfficial": "Meals for banquet"
   },
   {
     "id": "3rd_88",
@@ -5630,7 +5987,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が闇なら攻撃力+50",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_89.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Cell division",
+    "enEffectOfficial": "Attack +50 if your character card's attribute is darkness.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_90",
@@ -5664,7 +6024,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードのパワーコストが３以上なら攻撃力+20。相手がアビスにカードを置いたターンの終了時にパワーチャージャーに置く",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_91.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Subject",
+    "enEffectOfficial": "Attack +20 if your character card's power cost is 3 or more. When the opponent places a card in the Abyss, place this card on your Power Charger at the end of the turn.",
+    "enSongTitleOfficial": "Subject"
   },
   {
     "id": "3rd_92",
@@ -5681,7 +6044,10 @@
     "sendToPower": 0,
     "effect": "アビスの炎属性のカード１枚につき、攻撃力+10。アビスのカードが４枚以上になったターンの終了時にアビスに置く",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_92.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Bivouac",
+    "enEffectOfficial": "Attack +10 for each flame card in the Abyss. If there are 4 or more cards in the Abyss, place this card in the Abyss at the end of the turn.",
+    "enSongTitleOfficial": "Bivouac"
   },
   {
     "id": "3rd_93",
@@ -5698,7 +6064,10 @@
     "sendToPower": 1,
     "effect": "自分のキャラクターカードの属性が風なら攻撃力+30",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_93.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Switch",
+    "enEffectOfficial": "Attack +30 if your character card's attribute is wind.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_94",
@@ -5715,7 +6084,10 @@
     "sendToPower": 1,
     "effect": "カード名を１つ指定する。相手の手札から１枚を選んで公開し、そのカード名のカードなら攻撃力+40",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_94.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Shoot",
+    "enEffectOfficial": "Specify the name of a card. Choose and reveal 1 card from the opponent's hand. If it matches the specified name, Attack +40.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_95",
@@ -5766,7 +6138,10 @@
     "sendToPower": 0,
     "effect": "相手はターンの開始時にデッキの一番上を公開する。パワーコストが６以上のカードが山札から公開されたらパワーチャージャーに置く",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_97.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Off Minor",
+    "enEffectOfficial": "The opponent reveals the top card of his/her deck at the start of his/her turn. If there is a card with a power cost 6 or more, place it on the Power Charger.",
+    "enSongTitleOfficial": "High alert"
   },
   {
     "id": "3rd_98",
@@ -5817,7 +6192,10 @@
     "sendToPower": 0,
     "effect": "自分のキャラクターカードの属性が電気なら攻撃力+40",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_100.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Bats",
+    "enEffectOfficial": "Attack +40 if your character card's attribute is electric.",
+    "enSongTitleOfficial": "Off Minor"
   },
   {
     "id": "3rd_101",
@@ -5834,7 +6212,10 @@
     "sendToPower": 1,
     "effect": "アビスのカードが２枚以上なら攻撃力+40",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_101.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Research routines",
+    "enEffectOfficial": "Attack +40 if there are 2 or more cards in the Abyss.",
+    "enSongTitleOfficial": "Research routines"
   },
   {
     "id": "3rd_102",
@@ -5868,7 +6249,10 @@
     "sendToPower": 1,
     "effect": "ターンの開始時に相手のデッキの一番上を公開する。相手のカードにSEND TO POWER★が無ければ自分の攻撃力+30。SEND TO POWER★があったなら、すぐにこのカードをパワーチャージャーに置く",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_103.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Treatment options",
+    "enEffectOfficial": "At the start of your turn, reveal the top card of your opponent's deck. If there is no SEND TO POWER+ on your opponent's card, +30 Attack to you; if there is a SEND TO POWER+, immediately place this card on the Power Charger.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "3rd_104",
@@ -5905,7 +6289,10 @@
     "sendToPower": 0,
     "effect": "カード名を１つ指定する。相手の手札から１枚を選んで公開し、そのカード名のカードなら攻撃力+100",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_105.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "The shadow (FASTENING)",
+    "enEffectOfficial": "Specify the name of a card. Choose and reveal 1 card from the opponent's hand. If it matches the specified name, Attack +100.",
+    "enSongTitleOfficial": "The shadow (FASTENING)"
   },
   {
     "id": "3rd_106",
@@ -5925,7 +6312,10 @@
     "sendToPower": 0,
     "effect": "相手のHPが100なら攻撃力+100",
     "image": "https://r2.dan.tw/cards/off-minor/zutomayocard_3rd_106.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NEKO-RESETTER (Neko Reset)",
+    "enEffectOfficial": "Attack +100 if the opponent's HP is 100.",
+    "enSongTitleOfficial": "Neko Reset"
   },
   {
     "id": "4th_1",
@@ -5945,7 +6335,10 @@
     "sendToPower": 0,
     "effect": "手札から（TAIDADA）のキャラクターを好きな枚数公開し、その数だけ攻撃力+30",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_001.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (TAIDADA)",
+    "enEffectOfficial": "Reveal any number of \"TAIDADA\" characters from your hand. Attack +30 for each.",
+    "enSongTitleOfficial": "TAIDADA"
   },
   {
     "id": "4th_2",
@@ -5965,7 +6358,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーから（シェードの埃は延長）のキャラクターを２枚まで選び、このカードの効果として使用する",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_002.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "The last dance at the ball (SHADE)",
+    "enEffectOfficial": "Select up to 2 characters from the Power Charger (SHADE) and use this card's effect",
+    "enSongTitleOfficial": "The last dance at the ball (SHADE)"
   },
   {
     "id": "4th_3",
@@ -6025,7 +6421,10 @@
     "sendToPower": 0,
     "effect": "アビスにある風属性のカードの数だけ、攻撃力+20",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_005.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Mabushii DNA Dake)",
+    "enEffectOfficial": "Attack +20 for each wind card in the Abyss.",
+    "enSongTitleOfficial": "Mabushii DNA Dake"
   },
   {
     "id": "4th_6",
@@ -6045,7 +6444,10 @@
     "sendToPower": 0,
     "effect": "アビスのカードを４枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。\n相手のパワーチャージャーのキャラクターを１枚選び、バトルゾーンのキャラクターと入れ替える。\nこの効果で出したキャラクターの効果は発動しない",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_006.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Hippocampal Pain)",
+    "enEffectOfficial": "Search 4 cards from the Abyss, shuffle them face down and place them at the bottom of your deck. If you do not, lose the game. Then, return a card from your discard pile to your hand and swap it with a character in the Battle Zone. The effects of the character brought into the Battle Zone by this effect are not triggered.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_7",
@@ -6062,7 +6464,10 @@
     "sendToPower": 0,
     "effect": "手札から（TAIDADA）のキャラクターを好きな枚数公開し、その数だけ攻撃力+20",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_007.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Yearn for",
+    "enEffectOfficial": "Reveal any number of (TAIDADA) characters from your hand, Attack +20 for each.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_8",
@@ -6196,7 +6601,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーが闇属性だけなら、攻撃力+60",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_014.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "UNIGREAM-WORLD",
+    "enEffectOfficial": "If all cards in your Power Charger are darkness attribute, Attacks +60",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_15",
@@ -6256,7 +6664,10 @@
     "sendToPower": 1,
     "effect": "パワーチャージャーが炎属性だけなら、攻撃力+50",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_017.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (KUZURI)",
+    "enEffectOfficial": "Attack +50 if all cards in your Power Charger are flame attribute.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_18",
@@ -6316,7 +6727,10 @@
     "sendToPower": 0,
     "effect": "アビスにある電気属性のカードの数だけ、攻撃力+20",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_020.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Hippocampal Pain)",
+    "enEffectOfficial": "Attack +20 for each electric card in the Abyss.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_21",
@@ -6376,7 +6790,10 @@
     "sendToPower": 0,
     "effect": "このターンに（お勉強しといてよ）のキャラクターと入れ替えていたなら、攻撃力+100",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_023.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN(STUDY ME)",
+    "enEffectOfficial": "Attack +100 if you swap out with a [STUDY ME] character this turn.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_24",
@@ -6396,7 +6813,10 @@
     "sendToPower": 0,
     "effect": "このターンに（お勉強しといてよ）のキャラクターと入れ替えていたなら、攻撃力+110。\nこのキャラクターが与えるダメージは軽減されない",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_024.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (STUDY ME)",
+    "enEffectOfficial": "Attack + 110 if you swapped with a (STUDY ME) character this turn. Damage dealt by this character cannot be reduced.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_25",
@@ -6456,7 +6876,10 @@
     "sendToPower": 0,
     "effect": "アビスのカードを１枚以上選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。\n相手のデッキの上から、それと同じ枚数をアビスに置く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_027.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "TORI-NIRA-CHAN (One's Mind)",
+    "enEffectOfficial": "Select 1 or more cards from the Abyss. Shuffle them face down and place them at the bottom of your deck. Otherwise, you lose the game. Then, place the same number of cards from the top of your opponent's deck into the Abyss.",
+    "enSongTitleOfficial": "One's Mind"
   },
   {
     "id": "4th_28",
@@ -6476,7 +6899,10 @@
     "sendToPower": 0,
     "effect": "アビスのカードを６枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。\nクロノスを好きな時間にする",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_028.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "RANI-CHAN [Status : Awakening] (Pain Give Form)",
+    "enEffectOfficial": "Select 6 cards from the Abyss. Shuffle them face down and place them at the bottom of your deck. Otherwise, you lose the game. Set Chronos to your preferred time.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_29",
@@ -6493,7 +6919,10 @@
     "sendToPower": 0,
     "effect": "相手のアビスにカードがないなら、攻撃力+100",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_029.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Longing for Home",
+    "enEffectOfficial": "Attack +100 if there are no cards in your opponent's Abyss.",
+    "enSongTitleOfficial": "Longing for Home"
   },
   {
     "id": "4th_30",
@@ -6544,7 +6973,10 @@
     "sendToPower": 0,
     "effect": "手札を公開し、４属性以上あるなら、攻撃力+50。\n相手のエリアエンチャントが置かれているなら、すぐにアビスに置く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_032.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Patchwork notes",
+    "enEffectOfficial": "Reveal your hand. Attack +50 if it contains 4 or more attributes. If there is an Area Enchantment on your opponent's side, immediately place it into the Abyss.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_33",
@@ -6561,7 +6993,10 @@
     "sendToPower": 0,
     "effect": "アビスにあるカードが風属性だけなら、攻撃力+20。\nパワーチャージャーにカードを置いたとき、すぐにこのカードをアビスに置く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_033.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "The beginning from the end",
+    "enEffectOfficial": "Attack +20 if all cards in your Abyss are wind attribute. When a card is placed into your Power Charger, immediately place this card into your Abyss.",
+    "enSongTitleOfficial": "The beginning from the end"
   },
   {
     "id": "4th_34",
@@ -6581,7 +7016,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターの攻撃力が０なら、攻撃力+30",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_034.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Stardust UNIGURI-KUN",
+    "enEffectOfficial": "Attack +30 if the opponent's character's attack is 0.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_35",
@@ -6601,7 +7039,10 @@
     "sendToPower": 1,
     "effect": "手札から（TAIDADA） のキャラクターを好きな枚数公開し、その数だけ攻撃力+10",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_035.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (TAIDADA)",
+    "enEffectOfficial": "Reveal any number of (TAIDADA) characters from your hand, Attack +10 for each.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_36",
@@ -6641,7 +7082,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーが闇属性だけなら、攻撃力+20",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_037.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "GREINU (One's Mind)",
+    "enEffectOfficial": "Attack +20 if all cards in your Power Charger are darkness attribute.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_38",
@@ -6681,7 +7125,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターの攻撃力が０なら、攻撃力+40",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_039.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (KUZURI)",
+    "enEffectOfficial": "Attack +40 if the opponent's character's attack is 0.",
+    "enSongTitleOfficial": "SEND To POWER"
   },
   {
     "id": "4th_40",
@@ -6721,7 +7168,10 @@
     "sendToPower": 1,
     "effect": "このターンに（シェードの埃は延長）のキャラクターと入れ替えていたなら、\n相手のエンチャントの効果をすべて無効にする（すでに処理された効果は無効にできない）",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_041.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "INC-NEKO (SHADE)",
+    "enEffectOfficial": "If you swapped with a (SHADE) character this turn, negate all effects of all enchantments controlled by your opponent. (Effects that have already resolved are unaffected.)",
+    "enSongTitleOfficial": "Fantasy Is Reality; SEND To Power"
   },
   {
     "id": "4th_42",
@@ -7012,7 +7462,10 @@
     "sendToPower": 1,
     "effect": "相手のアビスにカードがないなら、攻撃力+50",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_056.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Grave Dance",
+    "enEffectOfficial": "Attack +50 if the opponent's Abyss has no cards.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_57",
@@ -7029,7 +7482,10 @@
     "sendToPower": 0,
     "effect": "アビスに３枚以上のカードがあるなら、相手のデッキの上から２枚を相手のアビスに置く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_057.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "The Byoushin that foretells the future",
+    "enEffectOfficial": "If there are 3 or more cards in your Abyss, place the top 2 cards from your opponent's deck into their Abyss.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_58",
@@ -7080,7 +7536,10 @@
     "sendToPower": 0,
     "effect": "相手のキャラクターのSEND TO POWERが★★なら、攻撃力+20",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_060.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Friendship squared",
+    "enEffectOfficial": "Attack +20 if the opponent's Character's SEND TO POWER is ◆◆.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_61",
@@ -7097,7 +7556,10 @@
     "sendToPower": 0,
     "effect": "手札からカードを好きな枚数選び、デッキの底に置く。そうしたなら、同じ数だけデッキからカードを引く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_061.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "The Stage's Recurrence",
+    "enEffectOfficial": "Place any number of cards from your hand at the bottom of the deck. If you do, draw the same number of cards from the deck.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_62",
@@ -7131,7 +7593,10 @@
     "sendToPower": 1,
     "effect": "手札から炎属性のカードを好きな枚数選び、アビスに置く。そうしたなら、同じ数だけカードを引く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_063.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Gohan is better than the flowers",
+    "enEffectOfficial": "Place any number of flame cards from your hand into the Abyss. If you do, draw the same number of cards.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_64",
@@ -7148,7 +7613,10 @@
     "sendToPower": 0,
     "effect": "アビスにあるカードが風属性だけなら、攻撃力+60",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_064.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Summer UNIGURI and the friends",
+    "enEffectOfficial": "Attack +60 if all cards in your Abyss are wind attribute.",
+    "enSongTitleOfficial": "Summer UNIGURI and the friends"
   },
   {
     "id": "4th_65",
@@ -7165,7 +7633,10 @@
     "sendToPower": 0,
     "effect": "バトルゾーンのカードが（お勉強しといてよ）なら、そのキャラクターのパワーコストを★★減らす。\nバトルゾーンのキャラクターを（お勉強しといてよ）以外のキャラクターに入れ替えたら、すぐにアビスに置く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_065.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "JK BIOSCOPE",
+    "enEffectOfficial": "If the card in the Battle Zone is a (STUDY ME), reduce that character's Power Cost by ++. When the character in the Battle Zone is swapped for a Character other than (STUDY ME), immediately place this card into the Abyss.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_66",
@@ -7325,7 +7796,10 @@
     "sendToPower": 2,
     "effect": "このターンに（シェードの埃は延長）のキャラクターと入れ替えていたなら、HP+20",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_073.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "SHADE-SHEPHERD-TAI (SHADE)",
+    "enEffectOfficial": "HP +20 if you swapped with a (SHADE) character this turn.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_74",
@@ -7365,7 +7839,10 @@
     "sendToPower": 1,
     "effect": "このターンに（シェードの埃は延長）のキャラクターと入れ替えていたなら、相手のHP-20",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_075.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "KAITO-INC-NEKO (SHADE)",
+    "enEffectOfficial": "Opponent's HP -20 if you swapped with a (SHADE) character this turn.",
+    "enSongTitleOfficial": "Sick of Power"
   },
   {
     "id": "4th_76",
@@ -7545,7 +8022,10 @@
     "sendToPower": 0,
     "effect": "相手のキャラクターの攻撃力が０なら、攻撃力+50",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_084.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN (Haze Haseru Haterumade)",
+    "enEffectOfficial": "Attack +50 if the opponent's character's attack is 0.",
+    "enSongTitleOfficial": "Haze Haseru Haterumade"
   },
   {
     "id": "4th_85",
@@ -7565,7 +8045,10 @@
     "sendToPower": 2,
     "effect": "",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_085.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "NIRA-CHAN… ? (Warmthaholic)",
+    "enEffectOfficial": "Select a card from the Abyss. Shuffle them face down and place them at the bottom of your deck. Otherwise, you lose the game. Look at the top 3 cards of your opponent's deck, rearrange them in any order you like, and return them to the deck.",
+    "enSongTitleOfficial": "Warmthaholic"
   },
   {
     "id": "4th_86",
@@ -7642,7 +8125,9 @@
     "sendToPower": 1,
     "effect": "バトルゾーンのカードが（TAIDADA）のキャラクターなら、カードを１枚引く。\nこのカードの効果でカードを引いたなら、手札の数はゲーム終了まで１枚増える",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_089.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Abduction",
+    "enEffectOfficial": "If the card in the Battle Zone is a (TAIDADA) character, draw 1 card. If you drew a card due to this card's effect, your hand limit increases by 1 until the end of the game."
   },
   {
     "id": "4th_90",
@@ -7659,7 +8144,9 @@
     "sendToPower": 0,
     "effect": "相手のアビスにあるカード１枚を、相手のデッキの底に戻す",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_090.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Resurrection of the Dead",
+    "enEffectOfficial": "Return a card from your opponent's Abyss to the bottom of their deck."
   },
   {
     "id": "4th_91",
@@ -7676,7 +8163,9 @@
     "sendToPower": 1,
     "effect": "手札から（TAIDADA）のキャラクターを好きな枚数公開し、その数だけ攻撃力+10。\nHPが50以下になったなら、パワーチャージャーに置く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_091.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Counterattack",
+    "enEffectOfficial": "Reveal any number of (TAIDADA) characters from your hand, Attack +10 for each. When your HP becomes 50 or less, place this card into your Power Charger."
   },
   {
     "id": "4th_92",
@@ -7693,7 +8182,9 @@
     "sendToPower": 1,
     "effect": "バトルゾーンのキャラクターが（シェードの埃は延長）なら、相手の攻撃力-40",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_092.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Take charge at the front line",
+    "enEffectOfficial": "If the character in the Battle Zone is (SHADE), the opponent's Attack is reduced by 40."
   },
   {
     "id": "4th_93",
@@ -7710,7 +8201,9 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーに２属性以上あるなら、HP+30",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_093.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Sharing the pain",
+    "enEffectOfficial": "HP +30 if there are 2 or more attributes in the Power Charger."
   },
   {
     "id": "4th_94",
@@ -7727,7 +8220,9 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーにある（シェードの埃は延長）のキャラクターを１枚選び、このカードの効果として使用する。\nパワーチャージャーにカードが５枚以上置かれているなら、すぐにアビスに置く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_094.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Searching !",
+    "enEffectOfficial": "Select a (SHADE) character from the Power Charger and use it as this card's effect. If there are 5 or more cards placed on the Power Charger, immediately place this card into the Abyss."
   },
   {
     "id": "4th_95",
@@ -7744,7 +8239,10 @@
     "sendToPower": 0,
     "effect": "パワーチャージャーに４属性以上あるなら、攻撃力+50。\nバトルに負けたとき、すぐにアビスに置く",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_095.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Not a laughing matter",
+    "enEffectOfficial": "Attack +50 if there are 4 or more attributes in the Power Charger. When you lose a battle, immediately place this card into the Abyss.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_96",
@@ -7761,7 +8259,10 @@
     "sendToPower": 1,
     "effect": "バトルゾーンのカードが（猫リセット）のキャラクターなら、自分がダメージを受けたとき、50ダメージを軽減する",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_096.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Webbing Map",
+    "enEffectOfficial": "If the card in the Battle Zone is a (Neko Reset) character, reduce damage by 50 when you take damage.",
+    "enSongTitleOfficial": "SEND TO POWER"
   },
   {
     "id": "4th_97",
@@ -7778,7 +8279,10 @@
     "sendToPower": 0,
     "effect": "手札を公開し、３属性以上あるなら、攻撃力+50",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_097.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Three people working together",
+    "enEffectOfficial": "Reveal your hand. Attack +50 if it contains 3 or more attributes.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_98",
@@ -7795,7 +8299,10 @@
     "sendToPower": 1,
     "effect": "バトルゾーンのカードが（猫リセット）のキャラクターなら、自分がダメージを受けたとき、100ダメージを軽減する",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_098.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Convalescence",
+    "enEffectOfficial": "If the card in the Battle Zone is a (Neko Reset) character, reduce damage by 100 when you take damage.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_99",
@@ -7812,7 +8319,10 @@
     "sendToPower": 1,
     "effect": "バトルゾーンのカードが（猫リセット）のキャラクターなら、相手の攻撃力を100にする",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_099.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Job Change",
+    "enEffectOfficial": "If the card in the Battle Zone is a (Neko Reset) character, set the opponent's Attack to 100.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_100",
@@ -7829,7 +8339,10 @@
     "sendToPower": 0,
     "effect": "バトルゾーンのカードが（猫リセット）のキャラクターなら、ターン終了時に、\nこのターンに軽減した数値分のダメージを相手に与える",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_100.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Location of the bomb",
+    "enEffectOfficial": "If the card in the Battle Zone is a (Neko Reset) character, deal damage to your opponent at the end of the turn equal to the amount reduced this turn.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_101",
@@ -7846,7 +8359,10 @@
     "sendToPower": 1,
     "effect": "相手のキャラクターの攻撃力が０なら、攻撃力+20",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_101.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Fresh ice cream",
+    "enEffectOfficial": "Attack +20 if the opponent's character's attack is 0.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_102",
@@ -7863,7 +8379,10 @@
     "sendToPower": 1,
     "effect": "パワーチャージャーにある（お勉強しといてよ）のカードの数だけ、攻撃力+10",
     "image": "https://r2.dan.tw/cards/fantasy-is-reality/zutomayocard_4th_102.jpg",
-    "errata": ""
+    "errata": "",
+    "enNameOfficial": "Leapt Through Time",
+    "enEffectOfficial": "Attack +10 for each (STUDY ME) card in your Power Charger.",
+    "enSongTitleOfficial": "Fantasy Is Reality"
   },
   {
     "id": "4th_103",
