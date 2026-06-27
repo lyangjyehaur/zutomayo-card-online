@@ -1,1 +1,51 @@
-[]
+[
+  {
+    "id": "1st_3",
+    "en_name": "NIRA-CHAN (Hunch Gray)",
+    "en_effect": "The Battle Begins",
+    "song_title": "Hunch Gray",
+    "needs_review": true,
+    "review_reason": "Effect text appears abbreviated/cropped - only 'The Battle Begins' detected, may be incomplete"
+  },
+  {
+    "id": "1st_1",
+    "en_name": "NIRA-CHAN (STUDY ME)",
+    "en_effect": "THE WORLD IS CHANGING.",
+    "song_title": "STUDY ME",
+    "needs_review": true,
+    "review_reason": "Effect text appears incomplete - only 'THE WORLD IS CHANGING.' detected, likely flavor text or partial OCR; full card effect may not have been captured"
+  },
+  {
+    "card_id": "1st_2",
+    "en_name": "NIRA-CHAN (Seigi)",
+    "en_effect": "",
+    "song_title": "THE WORLD IS CHANGING.",
+    "extra": {
+      "ability_name": "The Battle Begins",
+      "night_power": 130,
+      "day_power": 130,
+      "power_cost": "★★★★",
+      "card_number": "002/104",
+      "rarity": "UR",
+      "card_type": "Character",
+      "copyright": "©ZUTOMAYO 2022",
+      "branding": "ZUTOMAYONAKADEINONI"
+    },
+    "needs_review": true,
+    "review_reason": "No English effect text found on the card. The card may contain only Japanese effect text, or the effect area was not legible in the image. The ability name 'The Battle Begins' was identified but no full effect description in English was detected."
+  },
+  {
+    "id": "1st_4",
+    "en_name": "NIRA-CHAN (Ham)",
+    "en_effect": "+ The Battle Begins. ZUTOMAYONAKADELINNONI.",
+    "song_title": "ZUTOMAYONAKADELINNONI",
+    "needs_review": true,
+    "review_reason": "Effect text appears incomplete/garbled — only a short fragment captured. Card likely has longer Japanese text that OCR could not read; English portion may be minimal or partially obscured."
+  },
+  {
+    "card_id": "1st_5",
+    "en_name": "SHAKUMA-MEN (Humanoid)",
+    "en_effect": "Reverses the opponent's attack power day and night.\nEffective after the opponent's enchantment is activated.",
+    "song_title": "THE WORLD IS CHANGING, ZUTOMAYO"
+  }
+]
