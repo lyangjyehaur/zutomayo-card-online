@@ -19,6 +19,8 @@ NON_CARD_GAPS.md
 REMAINING_GAPS.md
 RULE_GAP_AUDIT.md
 RULE_ENGINE_AUDIT*.md
+QA_AUDIT*.md
+QA_OFFICIAL*.json
 
 # Codex internal design docs
 docs/superpowers/
