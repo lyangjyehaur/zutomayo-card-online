@@ -1,0 +1,39 @@
+services:
+  game:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    env_file: .env
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - PG_HOST=postgresql
+      - PG_PORT=5432
+      - REDIS_DB=0
+    networks:
+      - default
+      - 1panel-network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - '3001:3001'
+    env_file: .env
+    environment:
+      - API_PORT=3001
+      - PG_HOST=postgresql
+      - PG_PORT=5432
+      - REDIS_DB=0
+    networks:
+      - default
+      - 1panel-network
+    restart: unless-stopped
+
+networks:
+  1panel-network:
+    external: true

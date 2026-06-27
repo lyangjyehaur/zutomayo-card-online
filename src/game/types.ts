@@ -70,7 +70,6 @@ export interface CardDef {
   name: string;
   enNameOfficial?: string;
   enEffectOfficial?: string;
-  enSongTitleOfficial?: string;
   pack: string;
   song: string;
   illustrator: string;

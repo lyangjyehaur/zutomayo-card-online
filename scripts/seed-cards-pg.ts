@@ -38,7 +38,6 @@ const SCHEMA_SQL = `
     send_to_power INTEGER DEFAULT 0,
     effect TEXT DEFAULT '',
     en_effect_official TEXT DEFAULT '',
-    en_song_title_official TEXT DEFAULT '',
     image TEXT DEFAULT '',
     errata TEXT DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -114,7 +113,6 @@ function cardParams(card: CardDef): unknown[] {
     card.sendToPower,
     card.effect,
     card.enEffectOfficial ?? '',
-    card.enSongTitleOfficial ?? '',
     card.image,
     card.errata,
   ];
@@ -141,9 +139,9 @@ async function main(): Promise<void> {
         `INSERT INTO cards (
            id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
            attack_night, attack_day, power_cost, send_to_power, effect,
-           en_effect_official, en_song_title_official, image, errata
+           en_effect_official, image, errata
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            en_name_official = EXCLUDED.en_name_official,
@@ -160,7 +158,6 @@ async function main(): Promise<void> {
            send_to_power = EXCLUDED.send_to_power,
            effect = EXCLUDED.effect,
            en_effect_official = EXCLUDED.en_effect_official,
-           en_song_title_official = EXCLUDED.en_song_title_official,
            image = EXCLUDED.image,
            errata = EXCLUDED.errata,
            updated_at = NOW()`,
