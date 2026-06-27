@@ -737,12 +737,36 @@ export function placeRevealedCards(
     }
     const characters = slots.filter(card => getCardDef(card.defId)?.type === 'Character');
     const areas = slots.filter(card => getCardDef(card.defId)?.type === 'Area Enchant');
-    replaceDestination(G, index, characters, 'battleZone', hasOptionalSwapEffect(G, index, parsedEffects), timingEffects);
-    replaceDestination(G, index, areas, 'setZoneC', false, timingEffects);
+    // 官方 QA Q11/Q13：只進第一張卡到 destination，多餘的卡保留在 setZoneB，
+    // 由 finishTurn 在回合結束時送 ownerZone（QA 規定「ターンの終了時に」送）。
+    if (characters.length > 0) {
+      replaceDestination(G, index, [characters[0]], 'battleZone', hasOptionalSwapEffect(G, index, parsedEffects), timingEffects);
+    }
+    if (areas.length > 0) {
+      replaceDestination(G, index, [areas[0]], 'setZoneC', false, timingEffects);
+    }
+    // 清空已進入 destination 或被送走的卡的來源 zone；多餘卡保留在 setZoneB 並 suppress 效果。
+    const enteredIds = new Set<string>();
+    if (player.battleZone) enteredIds.add(player.battleZone.instanceId);
+    if (player.setZoneC) enteredIds.add(player.setZoneC.instanceId);
+    if (characters.length > 0) enteredIds.add(characters[0].instanceId);
+    if (areas.length > 0) enteredIds.add(areas[0].instanceId);
     for (const zone of ['setZoneA', 'setZoneB'] as const) {
       const card = player[zone];
-      const type = card && getCardDef(card.defId)?.type;
-      if (type === 'Character' || type === 'Area Enchant') player[zone] = null;
+      if (!card) continue;
+      if (enteredIds.has(card.instanceId)) {
+        player[zone] = null;
+      } else {
+        // QA Q11/Q13：只 suppress Character/AE 的多餘卡（效果不發動，時計仍參照）。
+        // Enchant 卡留在 setZoneA/setZoneB，效果正常觸發。
+        const type = getCardDef(card.defId)?.type;
+        if (type === 'Character' || type === 'Area Enchant') {
+          if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
+          if (!G.suppressedEffectCardIdsThisTurn.includes(card.instanceId)) {
+            G.suppressedEffectCardIdsThisTurn.push(card.instanceId);
+          }
+        }
+      }
     }
   }
 }

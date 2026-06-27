@@ -447,9 +447,16 @@ export function collectTurnEffects(
     }
   }
   for (const player of playerOrder) {
-    pending[player].sort((a, b) => (
-      (a.effect.priority === 'late' ? 1 : 0) - (b.effect.priority === 'late' ? 1 : 0)
-    ));
+    pending[player].sort((a, b) => {
+      const aPriority = a.effect.priority === 'late' ? 1 : 0;
+      const bPriority = b.effect.priority === 'late' ? 1 : 0;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      // 官方 QA Q22：moveSelfAreaEnchant 排在持續效果之前，確保移動後 suppress 生效。
+      // 例如晩餐会（2nd_92）對手★4以上入れ替え後，攻撃力+20 效果應不可用。
+      const aIsMove = a.effect.action.type === 'moveSelfAreaEnchant' ? 0 : 1;
+      const bIsMove = b.effect.action.type === 'moveSelfAreaEnchant' ? 0 : 1;
+      return aIsMove - bIsMove;
+    });
   }
   return pending;
 }
@@ -636,7 +643,11 @@ export function executeEffect(
       if (!G.modifiers.clockContributionDisabled) G.modifiers.clockContributionDisabled = [false, false];
       const wasDisabled = G.modifiers.clockContributionDisabled[opponentIndex];
       G.modifiers.clockContributionDisabled[opponentIndex] = true;
-      const rewind = wasDisabled ? 0 : (G.setCardsThisTurn?.[opponentIndex] ?? [])
+      // 官方 QA Q63：當回合新設定的 AE 不 rewind，次回合才発動。
+      // flag 仍設定（讓 applyPreChronosModifiers 次回合預處理），但 chronos 不倒帶。
+      const isNewThisTurn = Boolean(context.cardInstanceId)
+        && (G.setCardsThisTurn?.[player] ?? []).some(c => c.instanceId === context.cardInstanceId);
+      const rewind = (wasDisabled || isNewThisTurn) ? 0 : (G.setCardsThisTurn?.[opponentIndex] ?? [])
         .filter(card => getCardDef(card.defId)?.type === 'Character')
         .reduce((sum, card) => sum + (G.modifiers.cardClockSetTo ?? getCardDef(card.defId)?.clock ?? 0), 0);
       if (rewind > 0) G.chronos.position = normalizeChronosPosition(G.chronos.position - rewind);
