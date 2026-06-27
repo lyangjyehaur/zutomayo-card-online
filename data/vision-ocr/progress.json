@@ -3043,5 +3043,263 @@
     "status": "ok",
     "needs_review": true,
     "review_reason": "en_effect appears garbled; may be set name/franchise info rather than actual effect"
+  },
+  {
+    "id": "4th_73",
+    "en_name": "SHADE-SHEPHERD-TAI (SHADE)",
+    "en_effect": "HP +20 if you swapped with a (SHADE) character this turn.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_74",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Opponent's Attack -30 if you swapped with a (SHADE) character this turn.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "review_reason": "Card name returned as just 'ZUTOMAYO' which is likely the band name header, not the character name",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_75",
+    "en_name": "KAITO-INC-NEKO (SHADE)",
+    "en_effect": "Opponent's HP -20 if you swapped with a (SHADE) character this turn.",
+    "song_title": "Sick of Power",
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_76",
+    "en_name": "GREINU (Pain Give Form)",
+    "en_effect": "NIGHT 30 | DAY 50 The Battle Begins ZUTOMAYONAKADEIINONI.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": true,
+    "review_reason": "Effect text contains set name text 'The Battle Begins ZUTOMAYONAKADEIINONI' mixed with stats; actual effect unclear",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_77",
+    "en_name": "NIRA-CHAN (Pain Give Form)",
+    "en_effect": "The Battle Begins",
+    "song_title": "ZUTTOMAYONAKADE!!INONI.",
+    "needs_review": true,
+    "review_reason": "Effect text only has 'The Battle Begins' (set name); song_title looks like Japanese band name romanized; actual card effect text may be missing",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_78",
+    "en_name": "NIRA-CHAN (Warmthaholic)",
+    "en_effect": "The Battle Begins",
+    "song_title": "ZUTOMAYONAKADEIINONI.",
+    "needs_review": true,
+    "review_reason": "Effect text only has 'The Battle Begins' (set name); song_title looks like Japanese band name romanized; actual card effect text may be missing",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_79",
+    "en_name": "NIRA-CHAN (CREAM)",
+    "en_effect": "NIGHT 20 | DAY 60",
+    "song_title": "CREAM",
+    "needs_review": true,
+    "review_reason": "Effect text only has stats NIGHT/DAY, no actual card effect captured; song_title may just be the variant name",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_80",
+    "en_name": "GRAY [Job:Taxi Driver] (Neko Reset)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEIINONI.",
+    "song_title": "Neko Reset",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be set/series name text, not actual card effect",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_81",
+    "en_name": "NIRA-CHAN [Job:Camera Crew] (Neko Reset)",
+    "en_effect": "NIGHT 60 | DAY 80",
+    "song_title": "SEND To POWeR",
+    "needs_review": true,
+    "review_reason": "Effect text only has stats; song_title has unusual casing 'SEND To POWeR'",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_82",
+    "en_name": "MUGEN (KUZURI)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEIINONI.",
+    "song_title": "SEND TO POWER",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be set/series name text, not actual card effect",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_83",
+    "en_name": "GRAY...? (CREAM)",
+    "en_effect": "NIGHT 20 | DAY 40",
+    "song_title": "SEND TO POWER",
+    "needs_review": true,
+    "review_reason": "Effect text only has stats; song_title may be a tagline rather than song name",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_84",
+    "en_name": "NIRA-CHAN (Haze Haseru Haterumade)",
+    "en_effect": "Attack +50 if the opponent's character's attack is 0.",
+    "song_title": "Haze Haseru Haterumade",
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_85",
+    "en_name": "NIRA-CHAN… ? (Warmthaholic)",
+    "en_effect": "Select a card from the Abyss. Shuffle them face down and place them at the bottom of your deck. Otherwise, you lose the game. Look at the top 3 cards of your opponent's deck, rearrange them in any order you like, and return them to the deck.",
+    "song_title": "Warmthaholic",
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_86",
+    "en_name": "NIRA-CHAN (STUDY ME)",
+    "en_effect": "POWER COST: NIGHT 30 | DAY 50; The Battle Begins; SEND TO POWER",
+    "song_title": "Study Me",
+    "needs_review": true,
+    "ocr_status": "ok",
+    "review_reason": "Effect text may be incomplete — OCR returned stat/mode text rather than a full effect sentence"
+  },
+  {
+    "id": "4th_87",
+    "en_name": "NIRA-CHINA (STUDY ME)",
+    "en_effect": "Attack +50 if you swapped with a (STUDY ME) character this turn.",
+    "song_title": "Study Me",
+    "needs_review": true,
+    "ocr_status": "ok",
+    "review_reason": "Name 'NIRA-CHINA' may be OCR error — could be 'NIRA-CHAN' or a variant"
+  },
+  {
+    "id": "4th_88",
+    "en_name": "DAIKAIJU-UNIGURI (STUDY ME)",
+    "en_effect": "The Battle Begins",
+    "song_title": "Study Me",
+    "needs_review": true,
+    "ocr_status": "ok",
+    "review_reason": "OCR returned fragmented text with metadata mixed in; effect text needs manual verification"
+  },
+  {
+    "id": "4th_89",
+    "en_name": "Abduction",
+    "en_effect": "If the card in the Battle Zone is a (TAIDADA) character, draw 1 card. If you drew a card due to this card's effect, your hand limit increases by 1 until the end of the game.",
+    "song_title": null,
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_90",
+    "en_name": "Resurrection of the Dead",
+    "en_effect": "Return a card from your opponent's Abyss to the bottom of their deck.",
+    "song_title": null,
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_91",
+    "en_name": "Counterattack",
+    "en_effect": "Reveal any number of (TAIDADA) characters from your hand, Attack +10 for each. When your HP becomes 50 or less, place this card into your Power Charger.",
+    "song_title": null,
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_92",
+    "en_name": "Take charge at the front line",
+    "en_effect": "If the character in the Battle Zone is (SHADE), the opponent's Attack is reduced by 40.",
+    "song_title": null,
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_93",
+    "en_name": "Sharing the pain",
+    "en_effect": "HP +30 if there are 2 or more attributes in the Power Charger.",
+    "song_title": null,
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_94",
+    "en_name": "Searching !",
+    "en_effect": "Select a (SHADE) character from the Power Charger and use it as this card's effect. If there are 5 or more cards placed on the Power Charger, immediately place this card into the Abyss.",
+    "song_title": null,
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "4th_95",
+    "en_name": "Not a laughing matter",
+    "en_effect": "Attack +50 if there are 4 or more attributes in the Power Charger. When you lose a battle, immediately place this card into the Abyss.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_96",
+    "en_name": "Webbing Map",
+    "en_effect": "If the card in the Battle Zone is a (Neko Reset) character, reduce damage by 50 when you take damage.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "4th_97",
+    "en_name": "Three people working together",
+    "en_effect": "Reveal your hand. Attack +50 if it contains 3 or more attributes.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_98",
+    "en_name": "Convalescence",
+    "en_effect": "If the card in the Battle Zone is a (Neko Reset) character, reduce damage by 100 when you take damage.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_99",
+    "en_name": "Job Change",
+    "en_effect": "If the card in the Battle Zone is a (Neko Reset) character, set the opponent's Attack to 100.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_100",
+    "en_name": "Location of the bomb",
+    "en_effect": "If the card in the Battle Zone is a (Neko Reset) character, deal damage to your opponent at the end of the turn equal to the amount reduced this turn.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_101",
+    "en_name": "Fresh ice cream",
+    "en_effect": "Attack +20 if the opponent's character's attack is 0.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_102",
+    "en_name": "Leapt Through Time",
+    "en_effect": "Attack +10 for each (STUDY ME) card in your Power Charger.",
+    "song_title": "Fantasy Is Reality",
+    "needs_review": false
+  },
+  {
+    "id": "4th_103",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "4th_104",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
   }
 ]
