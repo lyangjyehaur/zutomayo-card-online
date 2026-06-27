@@ -807,5 +807,235 @@
     "en_effect": "NIGHT 30 | DAY 110 Character 106/104 POWER COST",
     "song_title": null,
     "needs_review": true
+  },
+  {
+    "id": "2nd_1",
+    "en_name": "ALL ALONG THE WATCHTOWER ZUTOMAYO",
+    "en_effect": "<NIGHT 140 | DAY 140> The Battle Begins ZUTOMAYONAKADEINONI. Character 002/104",
+    "song_title": "ALL ALONG THE WATCHTOWER, NIRA-CHAN (Kettobashita Moufu)",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_2",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_3",
+    "en_name": "NIRA-CHAN (MIRROR TUNE)",
+    "en_effect": "ALL ALONG THE WATCHTOWER NIGHT 100 | DAY 60 POWER COST The Battle Begins ZUTTOMAYONA KADEINONI Character 004/104 UR",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_4",
+    "en_name": "Collect the wind",
+    "en_effect": "While using this card, your attack power will always be your daytime attack power. Place this card in the Abyss at the end of the turn if your opponent plays an area enchantment.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_5",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_6",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_7",
+    "en_name": "KIRA-MAID GO!",
+    "en_effect": "If your character card's attribute is electric, choose a card with a SEND TO POWER 2+ card and place it at the bottom of your opponent's deck",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_8",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_9",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_10",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "2nd_11",
+    "en_name": "NIRA-CHAN (Kan Saete Kuyashiiwa)",
+    "en_effect": "If the attribute of the character card used in the previous turn was flame, you can move the clock forward from 0 to 5.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_12",
+    "en_name": "NIRA-CHAN (Inside Joke)",
+    "en_effect": "The Battle Begins",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Effect text 'The Battle Begins' looks like flavor/set name rather than actual game effect text; likely OCR missed the real effect block"
+  },
+  {
+    "id": "2nd_13",
+    "en_name": "AFRO☆SAMURAI (Kira Killer)",
+    "en_effect": "NIGHT 60 | DAY 100 Character The Battle Begins III-013/104",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Effect text appears to contain stats/card number mixed in; likely OCR merged multiple fields. Actual effect text not clearly extracted."
+  },
+  {
+    "id": "2nd_14",
+    "en_name": "ZUTOMARUKI-GO",
+    "en_effect": "If the Areas has two or more cards of the darkness attribute, recover 20 HP",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_15",
+    "en_name": "Playground equipment : Sphyma lewini",
+    "en_effect": "If the attribute of the character card used in the previous turn is darkness and it is now daytime, you may use an additional enchantment from your hand only the first time you use the card. Then draw a card.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_16",
+    "en_name": "NIHA-CHINA (STUDY ME)",
+    "en_effect": "The Battle Begins... with ZUTOMAYONAKADEINONI.",
+    "song_title": "NIHA-CHINA (STUDY ME)",
+    "needs_review": true,
+    "review_reason": "Effect text looks like flavor text rather than game effect; OCR may have missed actual effect block"
+  },
+  {
+    "id": "2nd_17",
+    "en_name": "NIRA-CHAN (QUILT)",
+    "en_effect": "",
+    "song_title": "ZUTOMAYONAKADEINNONI",
+    "needs_review": true,
+    "review_reason": "No effect text extracted; card may have effect text that OCR missed"
+  },
+  {
+    "id": "2nd_18",
+    "en_name": "HAKASE (FASTENING)",
+    "en_effect": "Attack +20 if the attribute of the character card used in the previous turn is wind.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_19",
+    "en_name": "GRAY (MIRROR TUNE)",
+    "en_effect": "If the attribute of the character card used in the previous turn was wind, choose a SEND TO POWER +1 card from your opponent's Power charger and place it at the bottom of your opponent's deck.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_20",
+    "en_name": "NIRA-CHAN[Job:Camera Crew] (Neko Reset)",
+    "en_effect": "The Battle Begins... ZUTOMAYONAKADEINONI.",
+    "song_title": "Neko Reset",
+    "needs_review": true,
+    "review_reason": "Effect text looks like flavor text rather than game effect; name format unusual with [Job:Camera Crew]"
+  },
+  {
+    "id": "2nd_21",
+    "en_name": "NIRA-CHAN",
+    "en_effect": "NIGHT 30 DAY 20 Attack +20 if the attribute of the opponent's character card is darkness",
+    "song_title": "Byoushinwo Kamu",
+    "ocr_status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_22",
+    "en_name": "NIRA-MAID·NANASHI·KIRA-CHAN",
+    "en_effect": "Attach 20 if the attribute of the character card used in the previous turn is electric.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "ocr_status": "ok",
+    "needs_review": true,
+    "review_reason": "Effect text may be incomplete or mistranslated (says 'Attach 20' which seems odd)"
+  },
+  {
+    "id": "2nd_23",
+    "en_name": "NIRA-CHAN (Kira Killer)",
+    "en_effect": "+Attack +40 if the attribute of character card used in the previous turn is electric and the opponent's character card is flame or darkness.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "ocr_status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_24",
+    "en_name": "NIRA-CHAN (MIRROR TUNE)",
+    "en_effect": "If the attribute of the character card used in the previous turn was electro and it is now night, choose a SEND TO POWER +1 card from your opponent's Power charger and place it at the bottom of your opponent's deck.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "ocr_status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_25",
+    "en_name": "ALL ALONG THE WATCHTOWER",
+    "en_effect": "Attack +50 if it's night.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "ocr_status": "ok",
+    "needs_review": true,
+    "review_reason": "en_name may actually be the card's character name rather than the song title; OCR returned song title as card name"
+  },
+  {
+    "id": "2nd_26",
+    "en_name": "Officers belonging to Ashban Electric Inc.",
+    "en_effect": "If it is night, +30 attack power of your character cards played at the same time.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "ocr_status": "ok",
+    "needs_review": true,
+    "review_reason": "Effect wording may be imprecise ('played at the same time' phrasing)"
+  },
+  {
+    "id": "2nd_27",
+    "en_name": "Neapolitan with UNIGURI-KUN",
+    "en_effect": "Select two cards from your hand, place them at the bottom of the deck and draw two cards.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "ocr_status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_28",
+    "en_name": "ALL ALONG THE WATCHTOWER",
+    "en_effect": "If your character card and your opponent's character card have the same Power cost, attack +40.",
+    "song_title": "After-party in a bathtub",
+    "ocr_status": "ok",
+    "needs_review": true,
+    "review_reason": "en_name may actually be the card's character name rather than the song title; OCR returned song title as card name. Flavor text 'After-party in a bathtub' is the actual card name possibly."
+  },
+  {
+    "id": "2nd_29",
+    "en_name": "Nighthawk",
+    "en_effect": "If the opponent's character card has a Power cost of 6 or more, attack power +50.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "ocr_status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_30",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Attack +50 if it's daytime.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "ocr_status": "ok",
+    "needs_review": true,
+    "review_reason": "en_name 'ZUTOMAYO' is likely the franchise/artist name, not the card name; OCR failed to capture actual card name"
   }
 ]
