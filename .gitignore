@@ -45,4 +45,5 @@ admin/
 
 # Meta-tooling
 .omh/
+.hermes/
 CARD_EFFECT_AUDIT_FINAL.md

@@ -69,28 +69,28 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 │  /api/* 代理 → API Server                   │
 └──────────────────┬──────────────────────────┘
                    │
-┌──────────────────┴──────────────────────────┐
-│           API 伺服器 (port 3001)             │
-│  Node HTTP · SQLite · HMAC tokens           │
-│  帳號 / 牌組 / 對戰紀錄 / 排行榜            │
-└─────────────────────────────────────────────┘
+┌──────────────────┴────────────────────────────┐
+│           API 伺服器 (port 3001)              │
+│  Node HTTP · PostgreSQL · Redis · HMAC tokens │
+│  帳號 / 牌組 / 對戰紀錄 / 排行榜             │
+└───────────────────────────────────────────────┘
 ```
 
 ### 技術棧
 
-| 領域         | 技術                                               | 版本      |
-| ------------ | -------------------------------------------------- | --------- |
-| UI 框架      | React                                              | 19        |
-| 路由         | React Router                                       | 7         |
-| 多人遊戲框架 | boardgame.io                                       | 0.50.2    |
-| 建構工具     | Vite                                               | 7         |
-| 語言         | TypeScript（strict 模式）                          | 5.8       |
-| 測試         | vitest（含 `@vitest/coverage-v8`）                 | 4         |
-| 屬性測試     | fast-check                                         | 4         |
-| 程式碼風格   | ESLint（typescript-eslint）                        | 9         |
-| 格式化       | Prettier                                           | 3         |
-| PWA          | vite-plugin-pwa                                    | 1         |
-| 後端         | Node HTTP + SQLite（better-sqlite3 / node:sqlite） | Node >=20 |
+| 領域         | 技術                                           | 版本      |
+| ------------ | ---------------------------------------------- | --------- |
+| UI 框架      | React                                          | 19        |
+| 路由         | React Router                                   | 7         |
+| 多人遊戲框架 | boardgame.io                                   | 0.50.2    |
+| 建構工具     | Vite                                           | 7         |
+| 語言         | TypeScript（strict 模式）                      | 5.8       |
+| 測試         | vitest（含 `@vitest/coverage-v8`）             | 4         |
+| 屬性測試     | fast-check                                     | 4         |
+| 程式碼風格   | ESLint（typescript-eslint）                    | 9         |
+| 格式化       | Prettier                                       | 3         |
+| PWA          | vite-plugin-pwa                                | 1         |
+| 後端         | Node HTTP + PostgreSQL + Redis（pg / ioredis） | Node >=20 |
 
 ### 核心遊戲引擎
 
@@ -104,14 +104,14 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 
 ### 數據存儲
 
-| 數據     | 存儲位置                    | 說明                                |
-| -------- | --------------------------- | ----------------------------------- |
-| 卡牌數據 | `cards.json` (git)          | 422 張卡，靜態數據                  |
-| 卡圖     | Cloudflare R2 (`r2.dan.tw`) | 422 張卡圖 CDN                      |
-| 用戶帳號 | SQLite (`api/server.cjs`)   | 註冊/登入/ELO                       |
-| 牌組     | SQLite + localStorage       | 伺服器同步 + 本地備份               |
-| 對戰紀錄 | SQLite + localStorage       | ELO 變動 + 歷史 + 已清理 action log |
-| 語言偏好 | localStorage                | 瀏覽器本地                          |
+| 數據     | 存儲位置                      | 說明                                |
+| -------- | ----------------------------- | ----------------------------------- |
+| 卡牌數據 | `cards.json` (git)            | 422 張卡，靜態數據                  |
+| 卡圖     | Cloudflare R2 (`r2.dan.tw`)   | 422 張卡圖 CDN                      |
+| 用戶帳號 | PostgreSQL (`api/server.cjs`) | 註冊/登入/ELO                       |
+| 牌組     | PostgreSQL + localStorage     | 伺服器同步 + 本地備份               |
+| 對戰紀錄 | PostgreSQL + localStorage     | ELO 變動 + 歷史 + 已清理 action log |
+| 語言偏好 | localStorage                  | 瀏覽器本地                          |
 
 ---
 
@@ -144,24 +144,25 @@ npm run server
 
 ### 開發指令清單
 
-| 指令                        | 說明                                                                     |
-| --------------------------- | ------------------------------------------------------------------------ |
-| `npm run dev`               | 啟動 Vite dev server                                                     |
-| `npm run build`             | TypeScript 檢查（`typecheck` + `typecheck:scripts`）後執行 Vite 生產構建 |
-| `npm run typecheck`         | `tsc --noEmit` 檢查 app 程式碼                                           |
-| `npm run typecheck:scripts` | `tsc --noEmit -p tsconfig.scripts.json` 檢查 scripts 程式碼              |
-| `npm run lint`              | ESLint 檢查                                                              |
-| `npm run lint:fix`          | ESLint 自動修復                                                          |
-| `npm run format`            | Prettier 格式化寫入                                                      |
-| `npm run format:check`      | Prettier 格式檢查（CI 使用）                                             |
-| `npm test`                  | vitest 單元測試（單次執行）                                              |
-| `npm run test:coverage`     | vitest 單元測試含覆蓋率報告                                              |
-| `npm run smoke`             | 遊戲邏輯 smoke 測試                                                      |
-| `npm run smoke:api`         | 帳號/牌組/對戰/排行榜 API loop                                           |
-| `npm run smoke:online`      | 線上對戰 smoke 測試                                                      |
-| `npm run rule:audit`        | 效果解析覆蓋率審計                                                       |
-| `npm run server`            | 啟動 boardgame.io 遊戲伺服器                                             |
-| `npm run preview`           | 預覽 Vite 生產構建結果                                                   |
+| 指令                           | 說明                                                                       |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| `npm run dev`                  | 啟動 Vite dev server                                                       |
+| `npm run build`                | TypeScript 檢查（`typecheck` + `typecheck:scripts`）後執行 Vite 生產構建   |
+| `npm run typecheck`            | `tsc --noEmit` 檢查 app 程式碼                                             |
+| `npm run typecheck:scripts`    | `tsc --noEmit -p tsconfig.scripts.json` 檢查 scripts 程式碼                |
+| `npm run lint`                 | ESLint 檢查                                                                |
+| `npm run lint:fix`             | ESLint 自動修復                                                            |
+| `npm run format`               | Prettier 格式化寫入                                                        |
+| `npm run format:check`         | Prettier 格式檢查（CI 使用）                                               |
+| `npm test`                     | vitest 單元測試（單次執行）                                                |
+| `npm run test:coverage`        | vitest 單元測試含覆蓋率報告                                                |
+| `npm run smoke`                | 遊戲邏輯 smoke 測試                                                        |
+| `npm run smoke:api`            | 帳號/牌組/對戰/排行榜 API loop                                             |
+| `npm run smoke:online`         | 線上對戰 smoke 測試                                                        |
+| `npm run rule:audit`           | 效果解析覆蓋率審計                                                         |
+| `npm run migrate:sqlite-to-pg` | 將舊 SQLite 資料遷移至 PostgreSQL（`users`/`decks`/`matches`，可重複執行） |
+| `npm run server`               | 啟動 boardgame.io 遊戲伺服器                                               |
+| `npm run preview`              | 預覽 Vite 生產構建結果                                                     |
 
 ### 測試
 
@@ -171,6 +172,14 @@ npm run smoke:api      # 帳號/牌組/對戰/排行榜 API loop
 npm run smoke:online   # 線上對戰測試
 npm run rule:audit     # 效果解析覆蓋率審計
 ```
+
+> `smoke:api` 與 `smoke:online` 需要 PostgreSQL + Redis 容器，執行前先啟動：
+>
+> ```bash
+> docker compose up -d postgres redis
+> ```
+>
+> `smoke`（遊戲邏輯）與 `rule:audit`（效果解析審計）為純遊戲邏輯測試，不需要 PG/Redis。
 
 ### 構建
 
@@ -183,7 +192,7 @@ npm run build          # TypeScript 檢查 + Vite 生產構建
 ## Docker 部署
 
 ```bash
-# 構建並啟動雙服務
+# 構建並啟動四服務
 docker compose up -d --build
 
 # 查看狀態
@@ -253,14 +262,14 @@ zutomayo-card-online/
 │   ├── server.ts              # boardgame.io 遊戲伺服器
 │   └── App.tsx                # 應用入口
 ├── api/                       # API 伺服器
-│   └── server.cjs             # Express + SQLite
+│   └── server.cjs             # Node HTTP + PostgreSQL + Redis
 ├── scripts/                   # 測試腳本
 ├── data/                      # 翻譯數據
 ├── cards.json                 # 422 張卡牌數據
 ├── qa.json                    # 74 條官方 Q&A
 ├── rules.md                   # 完整遊戲規則
 ├── Dockerfile                 # 遊戲伺服器鏡像
-├── docker-compose.yml         # 雙服務部署
+├── docker-compose.yml         # 四服務部署（PG + Redis + game + api）
 └── docs/
     ├── API.md                 # REST API 文檔
     └── DEPLOYMENT.md          # 部署指南

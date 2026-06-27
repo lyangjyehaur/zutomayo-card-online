@@ -5,9 +5,13 @@ import serve from 'koa-static';
 import type { DefaultContext, Next } from 'koa';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import Redis from 'ioredis';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { PostgresAdapter } from './server/db/postgres-adapter';
+import { RedisPubSub } from './server/transport/redis-pubsub';
 
 const require = createRequire(import.meta.url);
-const { Server, FlatFile } = require('boardgame.io/server') as typeof import('boardgame.io/server');
+const { Server, SocketIO } = require('boardgame.io/server') as typeof import('boardgame.io/server');
 const koaBody = require('koa-body') as typeof import('koa-body');
 
 // 擴充 Koa context 以涵蓋 koa-body（request.body）與 @koa/router（params）注入的屬性。
@@ -21,20 +25,49 @@ const configuredOrigins =
     .map((origin) => origin.trim())
     .filter(Boolean) ?? [];
 
-// 官方 QA P0-1：boardgame.io 配置 FlatFile DB adapter，解決線上房間重啟即滅。
-// 生產環境（Docker）使用 DB_DIR=/data（掛載 game-data volume）；
-// 開發環境 fallback 到項目根目錄下的 .data。
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
-const dbDir = process.env.DB_DIR || path.join(root, '.data');
-fs.mkdirSync(dbDir, { recursive: true });
+
+const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+
+// === 水平擴展基礎建設 ===
+// boardgame.io 多實例需要兩個獨立的跨節點層：
+//   1. Socket.IO adapter（@socket.io/redis-adapter）：連線層 rooms/sockets 同步
+//   2. boardgame.io PubSub（RedisPubSub）：應用層 sendAll payload 廣播
+// 兩者皆透過 transport 注入，缺一不可。
+// DB 改用 PostgresAdapter（自實作 StorageAPI.Async），解決 FlatFile 每次 move 寫整個 state 到磁碟的 I/O 瓶頸。
+
+// 共用 publish 連線（publish 不會進入 subscribe 模式，可安全共用）。
+const redisPubClient = new Redis(REDIS_URL);
+// Socket.IO adapter 專屬 subscribe 連線。
+const redisAdapterSubClient = redisPubClient.duplicate();
+// boardgame.io PubSub 專屬 subscribe 連線。
+const redisPubSubSubClient = redisPubClient.duplicate();
+
+const socketIoAdapter = createAdapter(redisPubClient, redisAdapterSubClient);
+const redisPubSub = new RedisPubSub<unknown>({
+  pubClient: redisPubClient,
+  subClient: redisPubSubSubClient,
+});
+
+// PostgresAdapter duck-type 相容於 StorageAPI.Async（type()=1 + 6 方法齊全），
+// RedisPubSub 結構相容於 GenericPubSub<IntermediateTransportData>，
+// 但兩者因不繼承 boardgame.io 內部抽象類別 / 泛型不公開，TS 無法自動判定相容，
+// 用結構化斷言注入。
+type ServerOpts = NonNullable<Parameters<typeof Server>[0]>;
+type SocketOpts = NonNullable<ConstructorParameters<typeof SocketIO>[0]>;
+
+const transport = new SocketIO({
+  socketAdapter: socketIoAdapter,
+  pubSub: redisPubSub,
+} as SocketOpts);
+
+const db = new PostgresAdapter();
 
 const server = Server({
   games: [ZutomayoCard],
-  db: new FlatFile({
-    dir: dbDir,
-    logging: process.env.NODE_ENV !== 'production',
-  }),
+  db: db as unknown as NonNullable<ServerOpts['db']>,
+  transport,
   origins: ['http://localhost:3000', /localhost:\d+/, /127\.0\.0\.1:\d+/, ...configuredOrigins],
 });
 
@@ -169,21 +202,21 @@ const PORT = Number(process.env.PORT) || 3000;
 const STALE_MATCH_TTL_MS = Number(process.env.STALE_MATCH_TTL_MS) || 30 * 60 * 1000; // 30 minutes
 const CLEANUP_INTERVAL_MS = Number(process.env.CLEANUP_INTERVAL_MS) || 5 * 60 * 1000; // every 5 min
 
-// Stale room cleanup
+// Stale room cleanup — 直接使用 PostgresAdapter instance（server.db 型別因斷言後不夠精確）。
 async function cleanupStaleMatches() {
   try {
-    const matchIDs = await server.db.listMatches({});
+    const matchIDs = await db.listMatches({});
     if (!matchIDs || !Array.isArray(matchIDs)) return;
     let cleaned = 0;
     for (const matchID of matchIDs) {
       try {
-        const { metadata } = await server.db.fetch(matchID, { metadata: true });
+        const { metadata } = await db.fetch(matchID, { metadata: true });
         if (!metadata) continue;
         const updatedAt = metadata.updatedAt ? new Date(metadata.updatedAt).getTime() : 0;
         const createdAt = metadata.createdAt ? new Date(metadata.createdAt).getTime() : 0;
         const age = Date.now() - Math.max(createdAt, updatedAt);
         if (age > STALE_MATCH_TTL_MS) {
-          await server.db.wipe(matchID);
+          await db.wipe(matchID);
           cleaned++;
         }
       } catch {
@@ -198,6 +231,20 @@ async function cleanupStaleMatches() {
 
 setInterval(cleanupStaleMatches, CLEANUP_INTERVAL_MS);
 console.log(`Stale match cleanup: TTL=${STALE_MATCH_TTL_MS / 60000}min, interval=${CLEANUP_INTERVAL_MS / 60000}min`);
+
+// Graceful shutdown：關閉 PG pool 與 Redis 連線，避免重啟時連線洩漏。
+async function shutdown(signal: string): Promise<void> {
+  console.log(`[shutdown] ${signal} received, closing connections...`);
+  try {
+    await Promise.all([db.close(), redisPubSub.close(), redisPubClient.quit(), redisAdapterSubClient.quit()]);
+  } catch (err) {
+    console.error('[shutdown] error:', err);
+  }
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 server.run(PORT, () => {
   console.log(`Zutomayo Card server running on port ${PORT}`);

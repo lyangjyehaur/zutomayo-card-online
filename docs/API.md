@@ -275,7 +275,7 @@ Notes:
 
 - Requires a user JWT. The authenticated user must be the `winnerId`; otherwise the server returns `403`. This prevents clients from forging match results on behalf of another user.
 - ELO changes are `0` if either submitted user ID is not found.
-- `duration` maps to `duration_seconds` in SQLite.
+- `duration` maps to `duration_seconds` in PostgreSQL.
 - `actionLog` is sanitized before storage. Hidden card IDs, deck order, raw text, and unknown payload fields are stripped.
 - Safe trace fields are preserved: `id`, `chronosPosition`, `hp`, `pendingEffectCardDefId`, `pendingChoiceType`, `result.ok`, and `result.message`.
 - Supported sanitized payloads include janken, mulligan, set-card actions, effect resolution summaries, pending choice summaries, and game-over reason.

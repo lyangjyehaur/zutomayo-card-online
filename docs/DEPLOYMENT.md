@@ -1,9 +1,11 @@
 # Deployment
 
-Production deployment uses [docker-compose.yml](../docker-compose.yml) with two services:
+Production deployment uses [docker-compose.yml](../docker-compose.yml) with four services:
 
-- `game`: boardgame.io server, built React app, static card/admin assets, and `/api/*` proxy.
-- `api`: REST API service with SQLite persistence.
+- `postgres`: PostgreSQL 16 (`postgres:16-alpine`) database. Shared data layer for both boardgame.io match state (`bjg_matches` table) and API data (users/decks/matches). Healthcheck: `pg_isready`.
+- `redis`: Redis 7 (`redis:7-alpine`, `appendonly yes`, `maxmemory-policy allkeys-lru`). Powers boardgame.io PubSub, Socket.IO redis-adapter, matchmaking queue, and rate-limit counters. Healthcheck: `redis-cli ping`.
+- `game`: boardgame.io server, built React app, static card/admin assets, and `/api/*` proxy. Persists match state via `PostgresAdapter` and broadcasts cross-node via `RedisPubSub` + `@socket.io/redis-adapter`.
+- `api`: REST API service with PostgreSQL + Redis persistence. Uses `pg.Pool` for users/decks/matches and Redis for the matchmaking queue (sorted set + Lua atomic pairing) and rate limit (`INCR` + `EXPIRE`).
 
 Target host: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
 
@@ -11,7 +13,7 @@ Target host: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
 
 - Node.js `>=20` (see `engines` in [package.json](../package.json)); the Docker images use Node 22.
 - Docker with Compose v2.
-- A persistent volume for the API's SQLite database (see [Volumes](#volumes--資料卷)).
+- Persistent volumes for PostgreSQL and Redis data (see [Volumes](#volumes--資料卷)).
 
 ## Ports / 連接埠
 
@@ -24,7 +26,7 @@ Users should normally open `http://<host>:3000`.
 
 ## Compose Setup / Compose 設定
 
-Start or rebuild both services:
+Start or rebuild all four services:
 
 ```bash
 docker compose up -d --build
@@ -52,7 +54,12 @@ Variables are passed through `docker-compose.yml` from the host environment (e.g
 | ----------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `PORT`            | `3000`                  | boardgame.io/static server port inside the container.                                                                           |
 | `NODE_ENV`        | `production` in Compose | Runtime mode.                                                                                                                   |
-| `DB_DIR`          | `/data`                 | Directory for game service persistent data (mounted from the `game-data` volume).                                               |
+| `PG_HOST`         | `postgres`              | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                 |
+| `PG_PORT`         | `5432`                  | PostgreSQL port.                                                                                                                |
+| `PG_USER`         | `zutomayo`              | PostgreSQL user.                                                                                                                |
+| `PG_PASSWORD`     | `zutomayo_dev`          | PostgreSQL password.                                                                                                            |
+| `PG_DATABASE`     | `zutomayo`              | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                        |
+| `REDIS_URL`       | `redis://redis:6379`    | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Use `redis://localhost:6379` for local dev.              |
 | `ALLOWED_ORIGINS` | empty                   | Comma-separated extra origins allowed by boardgame.io CORS.                                                                     |
 | `JWT_SECRET`      | empty                   | Shared HMAC secret. The `game` service forwards it so the same key signs/verifies across services; set the same value as `api`. |
 
@@ -66,61 +73,76 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 
 ### `api`
 
-| Variable          | Default             | Notes                                                                                                                                |
-| ----------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `API_PORT`        | `3001`              | API service port inside the container.                                                                                               |
-| `DB_PATH`         | `/data/zutomayo.db` | SQLite database path. Parent directory is created if missing.                                                                        |
-| `JWT_SECRET`      | random per process  | HMAC key for signed user/admin tokens. Set a stable secret in production or all tokens become invalid when the API process restarts. |
-| `ADMIN_PASSWORD`  | empty               | Password checked by `POST /api/admin/login`. When empty, admin login returns `503` and admin endpoints are effectively disabled.     |
-| `ALLOWED_ORIGINS` | empty               | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                     |
+| Variable          | Default              | Notes                                                                                                                                |
+| ----------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `API_PORT`        | `3001`               | API service port inside the container.                                                                                               |
+| `PG_HOST`         | `postgres`           | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                      |
+| `PG_PORT`         | `5432`               | PostgreSQL port.                                                                                                                     |
+| `PG_USER`         | `zutomayo`           | PostgreSQL user.                                                                                                                     |
+| `PG_PASSWORD`     | `zutomayo_dev`       | PostgreSQL password.                                                                                                                 |
+| `PG_DATABASE`     | `zutomayo`           | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                |
+| `REDIS_URL`       | `redis://redis:6379` | Redis connection URL for the matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                           |
+| `JWT_SECRET`      | random per process   | HMAC key for signed user/admin tokens. Set a stable secret in production or all tokens become invalid when the API process restarts. |
+| `ADMIN_PASSWORD`  | empty                | Password checked by `POST /api/admin/login`. When empty, admin login returns `503` and admin endpoints are effectively disabled.     |
+| `ALLOWED_ORIGINS` | empty                | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                     |
 
 ## Volumes / 資料卷
 
-| Volume      | Mount        | Purpose                                                                                                                                                                                                                             |
-| ----------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `game-data` | `game:/data` | Game service persistent data directory (`DB_DIR=/data`). The current boardgame.io server keeps match state in memory, so this volume is reserved for any future file-based persistence; match state is not durable across restarts. |
-| `api-data`  | `api:/data`  | Stores the SQLite database at `/data/zutomayo.db` (path configured via `DB_PATH`). This is the source of truth for users, decks, matches, and leaderboard.                                                                          |
+| Volume       | Mount                               | Purpose                                                                                                                                 |
+| ------------ | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `pg-data`    | `postgres:/var/lib/postgresql/data` | PostgreSQL data directory. Source of truth for boardgame.io match state (`bjg_matches`) and API data (users/decks/matches/leaderboard). |
+| `redis-data` | `redis:/data`                       | Redis AOF persistence directory. Holds matchmaking queue and rate-limit counters; loss is tolerable but causes a cold restart.          |
 
-## SQLite Backup / Restore
+## PostgreSQL Backup / Restore
 
-The API stores all registered users, saved decks, submitted matches, and leaderboard state in the `api-data` Docker volume at `/data/zutomayo.db` inside the `api` container. The database uses WAL mode, so prefer SQLite's online backup command over copying only the main `.db` file from a running container.
+PostgreSQL stores all registered users, saved decks, submitted matches, leaderboard state, and boardgame.io match state in the `pg-data` Docker volume (the `postgres` data directory). Back up with `pg_dump`; no service downtime is required.
 
-Create a consistent backup while the service is running:
-
-```bash
-docker compose exec api sqlite3 /data/zutomayo.db ".backup '/data/zutomayo-$(date +%Y%m%d-%H%M%S).db'"
-docker compose cp api:/data/zutomayo-YYYYMMDD-HHMMSS.db ./backups/
-```
-
-If the API image does not include the `sqlite3` CLI, stop the API briefly and copy the full SQLite file set:
+Create a consistent SQL backup while the service is running:
 
 ```bash
-docker compose stop api
-docker compose cp api:/data/zutomayo.db ./backups/zutomayo.db
-docker compose cp api:/data/zutomayo.db-wal ./backups/zutomayo.db-wal
-docker compose cp api:/data/zutomayo.db-shm ./backups/zutomayo.db-shm
-docker compose start api
+docker compose exec postgres pg_dump -U zutomayo zutomayo > backup.sql
 ```
 
-Restore from a `.backup` database file:
+Restore from a SQL backup file:
 
 ```bash
-docker compose stop api
-docker compose cp ./backups/zutomayo-YYYYMMDD-HHMMSS.db api:/data/zutomayo.db
-docker compose run --rm --no-deps api rm -f /data/zutomayo.db-wal /data/zutomayo.db-shm
-docker compose start api
+docker compose exec -T postgres psql -U zutomayo zutomayo < backup.sql
 ```
 
-For a full file-set restore, copy `zutomayo.db`, `zutomayo.db-wal`, and `zutomayo.db-shm` back into `/data` while the API is stopped, then start the service.
-
-Volume inspection and manual export:
+For a compressed custom-format backup (supports parallel and selective restore):
 
 ```bash
-docker volume inspect zc-remaining_api-data
-docker run --rm -v zc-remaining_api-data:/data -v "$PWD/backups:/backup" alpine sh -c 'cp /data/zutomayo.db* /backup/'
+# backup
+docker compose exec postgres pg_dump -U zutomayo -Fc zutomayo > backup.dump
+# restore
+docker compose exec -T postgres pg_restore -U zutomayo -d zutomayo -c < backup.dump
 ```
 
-The actual volume name is prefixed by the Compose project directory. Confirm it with `docker compose ps` and `docker volume ls`.
+## 水平擴展 / Horizontal Scaling
+
+The `game` and `api` services can be replicated (multiple instances) to scale horizontally. PostgreSQL serves as the shared data layer — both boardgame.io (via `PostgresAdapter`, writing the `bjg_matches` table) and the API (via `pg.Pool`, writing the users/decks/matches tables) use the same instance, isolated by table prefix (`bjg_` vs no prefix).
+
+Redis serves four roles simultaneously:
+
+- boardgame.io PubSub (custom `RedisPubSub` implementing `GenericPubSub`) for cross-node match-state broadcast.
+- `@socket.io/redis-adapter` for Socket.IO horizontal scaling.
+- Matchmaking queue shared across API instances: a Redis sorted set (`mm:queue`) plus a hash (`mm:{userId}`) plus a Lua script perform atomic pairing, so multiple instances never match the same user twice.
+- Rate-limit counters shared across API instances: Redis `INCR` + `EXPIRE` for cross-instance counting.
+
+To scale up, increase the replica count for `game` and/or `api`. Both `postgres` and `redis` should remain single instances. Ensure `JWT_SECRET` and `ALLOWED_ORIGINS` are identical across all instances of the same service.
+
+## 資料遷移 / SQLite → PostgreSQL Migration
+
+To migrate data from a previous SQLite deployment to PostgreSQL, use [scripts/migrate-sqlite-to-pg.ts](../scripts/migrate-sqlite-to-pg.ts). It migrates the `users`, `decks`, and `matches` tables using `ON CONFLICT DO NOTHING`, so it is safe to re-run.
+
+```bash
+npm i -D better-sqlite3  # migration-only dependency, not required in production
+SQLITE_PATH=/data/zutomayo.db \
+PG_HOST=localhost PG_USER=zutomayo PG_PASSWORD=zutomayo_dev \
+PG_DATABASE=zutomayo npm run migrate:sqlite-to-pg
+```
+
+boardgame.io match state is not migrated — only API data (users/decks/matches) is. In-flight matches must be restarted after the cutover.
 
 ## Update / 更新
 

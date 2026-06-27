@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
+import { Pool } from 'pg';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import type { ActionLogEntry, ActionLogResult, PendingChoice } from '../src/game/types';
 
@@ -85,23 +86,38 @@ interface MatchHistoryEntry {
 
 type ApiServerModule = {
   handleRequest: (req: MockRequest, res: MockResponse) => void;
-  closeDatabase: () => void;
+  closeDatabase: () => Promise<void>;
+  schemaReady: Promise<void>;
 };
 
 const tmp = mkdtempSync(join(tmpdir(), 'zutomayo-api-smoke-'));
 const port = 3900 + Math.floor(Math.random() * 1000);
 const baseUrl = `http://127.0.0.1:${port}`;
 
+// 水平擴展後 smoke 測試需要真實 PG + Redis（透過 docker-compose up postgres redis）。
 process.env.API_PORT = String(port);
-process.env.DB_PATH = join(tmp, 'smoke.db');
+process.env.PG_HOST = process.env.PG_HOST || 'localhost';
+process.env.PG_PORT = process.env.PG_PORT || '5432';
+process.env.PG_USER = process.env.PG_USER || 'zutomayo';
+process.env.PG_PASSWORD = process.env.PG_PASSWORD || 'zutomayo_dev';
+process.env.PG_DATABASE = process.env.PG_DATABASE || 'zutomayo';
+process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 process.env.JWT_SECRET = 'api-smoke-secret';
 
 // This smoke uses the real API request handler in-process so it works in
-// sandboxes/CI where opening a local listening socket is forbidden. The DB is
-// still an isolated, disposable SQLite file and `node api/server.cjs` remains
-// the production way to start the HTTP service.
+// sandboxes/CI where opening a local listening socket is forbidden.
+// DB 改用 PG，測試前 TRUNCATE 所有 table 確保隔離。
 const require = createRequire(import.meta.url);
 const apiServer = require('../api/server.cjs') as ApiServerModule;
+
+// 直接 PG 連線用於測試前清空 table（避免 leaderboard 看到舊資料）。
+const cleanupPool = new Pool({
+  host: process.env.PG_HOST,
+  port: Number(process.env.PG_PORT),
+  user: process.env.PG_USER,
+  password: process.env.PG_PASSWORD,
+  database: process.env.PG_DATABASE,
+});
 
 function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
   const normalized: Record<string, string> = { 'content-type': 'application/json' };
@@ -149,17 +165,26 @@ async function api<T>(_baseUrl: string, path: string, options: RequestInit = {})
       },
     };
 
+    // handleRequest 內的 readBody() 會在 async checkRateLimit（Redis INCR）
+    // 完成後才註冊 req.on('data')/req.on('end') listener。若用 queueMicrotask
+    // 在 microtask 階段就 emit，listener 尚未註冊，事件遺失導致 readBody 永不
+    // resolve（測試 hang）。
+    // 修法：監聽 newListener 事件，等 readBody 真的註冊 'data' listener 後，
+    // 再用 process.nextTick 在 listener 完成註冊後 emit data/end。
+    // 這模擬真實 Node.js HTTP IncomingMessage 行為（data 在 listener 註冊後才到達）。
+    req.once('newListener', (event: string) => {
+      if (event !== 'data') return;
+      process.nextTick(() => {
+        if (options.body) req.emit('data', options.body);
+        req.emit('end');
+      });
+    });
+
     try {
       apiServer.handleRequest(req, res);
     } catch (error) {
       reject(error);
-      return;
     }
-
-    queueMicrotask(() => {
-      if (options.body) req.emit('data', options.body);
-      req.emit('end');
-    });
   });
 }
 
@@ -168,6 +193,13 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 try {
+  console.log('api-smoke: awaiting schemaReady...');
+  // 等 schema 初始化完成，再清空 table 確保測試隔離。
+  await apiServer.schemaReady;
+  console.log('api-smoke: schema ready, truncating tables...');
+  await cleanupPool.query('TRUNCATE TABLE users, decks, matches RESTART IDENTITY CASCADE');
+  console.log('api-smoke: tables truncated, starting assertions...');
+
   const stamp = Date.now();
   const emailA = `smoke-a-${stamp}@example.test`;
   const emailB = `smoke-b-${stamp}@example.test`;
@@ -528,6 +560,7 @@ try {
 
   console.log('api smoke: all assertions passed');
 } finally {
-  apiServer.closeDatabase();
+  await apiServer.closeDatabase();
+  await cleanupPool.end();
   rmSync(tmp, { recursive: true, force: true });
 }

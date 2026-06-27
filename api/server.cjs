@@ -1,109 +1,99 @@
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
+const util = require('util');
+const { Pool } = require('pg');
+const Redis = require('ioredis');
 
-function loadDatabase() {
-  try {
-    return require('better-sqlite3');
-  } catch (nativeError) {
-    try {
-      const { DatabaseSync } = require('node:sqlite');
-      return class NodeSqliteDatabase {
-        constructor(filename) {
-          this.db = new DatabaseSync(filename);
-        }
-
-        pragma(statement) {
-          this.db.exec(`PRAGMA ${statement}`);
-        }
-
-        exec(sql) {
-          return this.db.exec(sql);
-        }
-
-        prepare(sql) {
-          return this.db.prepare(sql);
-        }
-
-        close() {
-          this.db.close();
-        }
-      };
-    } catch {
-      throw nativeError;
-    }
-  }
-}
-
-const Database = loadDatabase();
+const pbkdf2 = util.promisify(crypto.pbkdf2);
 
 // ===== Config =====
 const PORT = Number(process.env.API_PORT) || 3001;
-const DB_PATH = process.env.DB_PATH || '/data/zutomayo.db';
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 // P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 
-// ===== Database =====
-if (DB_PATH !== ':memory:') {
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+// PostgreSQL 設定（水平擴展：以 PG 取代 SQLite）
+const PG_HOST = process.env.PG_HOST || 'localhost';
+const PG_PORT = Number(process.env.PG_PORT) || 5432;
+const PG_USER = process.env.PG_USER || 'postgres';
+const PG_PASSWORD = process.env.PG_PASSWORD || '';
+const PG_DATABASE = process.env.PG_DATABASE || 'postgres';
+
+// Redis 設定（matchmaking 佇列 + rate limit）
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+
+// ===== Database (PG + Redis) =====
+const pool = new Pool({
+  host: PG_HOST,
+  port: PG_PORT,
+  user: PG_USER,
+  password: PG_PASSWORD,
+  database: PG_DATABASE,
+  max: Number(process.env.PG_POOL_MAX) || 20,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+});
+
+const redis = new Redis(REDIS_URL, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: true,
+});
+// 連線層錯誤（如 Redis 暫時斷線）不應變成 unhandled error event；
+// query 層錯誤仍會 reject promise 由各 handler 的 safe() 接住。
+redis.on('error', () => {});
+
+async function initSchema() {
+  // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      nickname TEXT NOT NULL,
+      elo INTEGER NOT NULL DEFAULT 1000,
+      match_count INTEGER NOT NULL DEFAULT 0,
+      wins INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_elo ON users (elo DESC);
+
+    CREATE TABLE IF NOT EXISTS decks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      card_ids JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_decks_user ON decks(user_id);
+
+    CREATE TABLE IF NOT EXISTS matches (
+      id TEXT PRIMARY KEY,
+      player0_id TEXT REFERENCES users(id),
+      player1_id TEXT REFERENCES users(id),
+      winner_id TEXT,
+      loser_id TEXT,
+      winner_elo_change INTEGER NOT NULL DEFAULT 0,
+      loser_elo_change INTEGER NOT NULL DEFAULT 0,
+      turns INTEGER,
+      duration_seconds INTEGER,
+      action_log JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_matches_player0 ON matches(player0_id);
+    CREATE INDEX IF NOT EXISTS idx_matches_player1 ON matches(player1_id);
+    CREATE INDEX IF NOT EXISTS idx_matches_winner ON matches(winner_id);
+    CREATE INDEX IF NOT EXISTS idx_matches_loser ON matches(loser_id);
+    CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC);
+  `);
 }
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    salt TEXT NOT NULL,
-    nickname TEXT NOT NULL,
-    elo INTEGER DEFAULT 1000,
-    match_count INTEGER DEFAULT 0,
-    wins INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS decks (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    card_ids TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS matches (
-    id TEXT PRIMARY KEY,
-    player0_id TEXT,
-    player1_id TEXT,
-    winner_id TEXT,
-    loser_id TEXT,
-    winner_elo_change INTEGER DEFAULT 0,
-    loser_elo_change INTEGER DEFAULT 0,
-    turns INTEGER,
-    duration_seconds INTEGER,
-    action_log TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (player0_id) REFERENCES users(id),
-    FOREIGN KEY (player1_id) REFERENCES users(id)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_decks_user ON decks(user_id);
-  CREATE INDEX IF NOT EXISTS idx_matches_player0 ON matches(player0_id);
-  CREATE INDEX IF NOT EXISTS idx_matches_player1 ON matches(player1_id);
-`);
-
-const matchColumns = db
-  .prepare('PRAGMA table_info(matches)')
-  .all()
-  .map((column) => column.name);
-if (!matchColumns.includes('action_log')) {
-  db.prepare('ALTER TABLE matches ADD COLUMN action_log TEXT').run();
-}
+// 啟動時嘗試初始化 schema，連不上 PG 也允許載入（語法檢查用）。
+// 匯出 schemaReady 供測試 await，避免載入後立即發 request 造成 race condition。
+const schemaReady = initSchema().catch((err) => {
+  console.error('Schema init failed:', err.message);
+});
 
 // ===== Auth =====
 // P0-4：PBKDF2 迭代數從 10000 提升至 100000（現代安全標準）。
@@ -111,8 +101,10 @@ const PBKDF2_ITERATIONS = 100000;
 // 向後相容：舊用戶的密碼仍用舊迭代數驗證，登入成功後自動升級。
 const PBKDF2_LEGACY_ITERATIONS = 10000;
 
-function hashPassword(password, salt, iterations = PBKDF2_ITERATIONS) {
-  return crypto.pbkdf2Sync(password, salt, iterations, 64, 'sha512').toString('hex');
+// 非同步 pbkdf2（避免事件迴圈阻塞，水平擴展下不可擋迴圈）。
+async function hashPassword(password, salt, iterations = PBKDF2_ITERATIONS) {
+  const buf = await pbkdf2(password, salt, iterations, 64, 'sha512');
+  return buf.toString('hex');
 }
 
 function base64urlJson(value) {
@@ -329,25 +321,19 @@ function sanitizeActionLog(actionLog) {
     });
 }
 
-// ===== Rate Limiting (P0-4) =====
-const rateLimitBuckets = new Map();
+// ===== Rate Limiting (P0-4, Redis INCR + TTL) =====
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_AUTH = 10;
 const RATE_LIMIT_DEFAULT = 120;
 
-function checkRateLimit(ip, limit) {
-  const now = Date.now();
-  const key = `${ip}:${Math.floor(now / RATE_LIMIT_WINDOW_MS)}`;
-  const count = rateLimitBuckets.get(key) || 0;
-  if (count >= limit) return false;
-  rateLimitBuckets.set(key, count + 1);
-  // 清理過期條目
-  if (rateLimitBuckets.size > 10000) {
-    for (const [k] of rateLimitBuckets) {
-      if (k !== key && rateLimitBuckets.get(k) === undefined) rateLimitBuckets.delete(k);
-    }
+async function checkRateLimit(ip, limit) {
+  const minuteWindow = Math.floor(Date.now() / RATE_LIMIT_WINDOW_MS);
+  const key = `ratelimit:${ip}:${minuteWindow}`;
+  const count = await redis.incr(key);
+  if (count === 1) {
+    await redis.expire(key, 120);
   }
-  return true;
+  return count <= limit;
 }
 
 // ===== CORS (P0-4 收緊為白名單) =====
@@ -365,59 +351,75 @@ function getCorsOrigin(reqOrigin) {
   return null;
 }
 
-// ===== Matchmaking Queue (in-memory) =====
-// Map<userId, { queueId, joinedAt, deckName?, deckIds?, status, matchId?, opponentId?, role?, realMatchId?, timeoutAt? }>
-const matchmakingQueue = new Map();
+// ===== Matchmaking (Redis Hash + Sorted Set + Lua 原子配對) =====
+// 結構：
+//   mm:queue      sorted set，score = joinedAt(ms)，member = userId
+//   mm:{userId}   hash，欄位：queueId/joinedAt/deckName/deckIds/status/matchId/opponentId/role/realMatchId
 const MATCHMAKING_TIMEOUT_MS = 60 * 1000;
 const MATCHMAKING_TIMEOUT_GRACE_MS = 10 * 1000;
+// entry TTL = timeout + grace（70 秒）
+const MM_TTL_SECONDS = Math.ceil((MATCHMAKING_TIMEOUT_MS + MATCHMAKING_TIMEOUT_GRACE_MS) / 1000);
 
 function generateMatchmakingId() {
   return 'mm_' + crypto.randomBytes(8).toString('hex');
 }
 
-function cleanExpiredMatchmakingEntries() {
-  const now = Date.now();
-  for (const [uid, entry] of matchmakingQueue) {
-    // 未配對且超過 60 秒未配對成功 -> 標記 timeout
-    if (entry.status === 'queued' && now - entry.joinedAt > MATCHMAKING_TIMEOUT_MS) {
-      entry.status = 'timeout';
-      entry.timeoutAt = now;
-    }
-    // 已標記 timeout 且超過寬限期 -> 刪除
-    if (entry.status === 'timeout' && entry.timeoutAt && now - entry.timeoutAt > MATCHMAKING_TIMEOUT_GRACE_MS) {
-      matchmakingQueue.delete(uid);
-    }
-  }
-}
+// Lua：原子配對（多實例下不會把同一人配給兩人）。
+// KEYS[1] = mm:queue
+// ARGV[1] = userId, ARGV[2] = now(ms), ARGV[3] = matchId, ARGV[4] = timeoutMs
+const MATCH_LUA = `
+local userId = ARGV[1]
+local now = tonumber(ARGV[2])
+local matchId = ARGV[3]
+local timeoutMs = tonumber(ARGV[4])
 
-function tryMatchUser(userId) {
-  const now = Date.now();
-  for (const [otherId, other] of matchmakingQueue) {
-    if (otherId === userId) continue;
-    if (other.status !== 'queued') continue;
-    if (now - other.joinedAt > MATCHMAKING_TIMEOUT_MS) continue;
+-- 清掉過期的 queued 玩家（轉 timeout）
+local expired = redis.call('ZRANGEBYSCORE', KEYS[1], 0, now - timeoutMs)
+for i, uid in ipairs(expired) do
+  redis.call('HSET', 'mm:' .. uid, 'status', 'timeout')
+  redis.call('ZREM', KEYS[1], uid)
+end
 
-    const matchId = generateMatchmakingId();
-    // userId 字串較小者為 host（player '0'），確保雙方決定一致
-    const [hostId, guestId] = userId < otherId ? [userId, otherId] : [otherId, userId];
+-- 找最早的 waiting 對手
+local opponents = redis.call('ZRANGE', KEYS[1], 0, 0)
+if #opponents == 0 or opponents[1] == userId then
+  return ''
+end
+local opponentId = opponents[1]
 
-    const userEntry = matchmakingQueue.get(userId);
-    const otherEntry = matchmakingQueue.get(otherId);
+-- 原子移除對手
+redis.call('ZREM', KEYS[1], opponentId)
+redis.call('ZREM', KEYS[1], userId)
 
-    userEntry.status = 'matched';
-    userEntry.matchId = matchId;
-    userEntry.opponentId = otherId;
-    userEntry.role = userId === hostId ? 'host' : 'guest';
+-- userId 字串較小者為 host
+local hostId, guestId
+if userId < opponentId then
+  hostId = userId; guestId = opponentId
+else
+  hostId = opponentId; guestId = userId
+end
 
-    otherEntry.status = 'matched';
-    otherEntry.matchId = matchId;
-    otherEntry.opponentId = userId;
-    otherEntry.role = otherId === hostId ? 'host' : 'guest';
+redis.call('HSET', 'mm:' .. userId, 'status', 'matched', 'matchId', matchId, 'opponentId', opponentId, 'role', userId == hostId and 'host' or 'guest')
+redis.call('HSET', 'mm:' .. opponentId, 'status', 'matched', 'matchId', matchId, 'opponentId', userId, 'role', opponentId == hostId and 'host' or 'guest')
 
-    return matchId;
-  }
-  return null;
-}
+return opponentId
+`;
+
+// Lua：清理過期 queued 玩家（status endpoint 用）。
+// KEYS[1] = mm:queue, ARGV[1] = now(ms), ARGV[2] = timeoutMs
+const CLEAN_LUA = `
+local now = tonumber(ARGV[1])
+local timeoutMs = tonumber(ARGV[2])
+local expired = redis.call('ZRANGEBYSCORE', KEYS[1], 0, now - timeoutMs)
+for i, uid in ipairs(expired) do
+  redis.call('HSET', 'mm:' .. uid, 'status', 'timeout')
+  redis.call('ZREM', KEYS[1], uid)
+end
+return #expired
+`;
+
+redis.defineCommand('mmTryMatch', { numberOfKeys: 1, lua: MATCH_LUA });
+redis.defineCommand('mmCleanExpired', { numberOfKeys: 1, lua: CLEAN_LUA });
 
 // ===== HTTP Handler =====
 function handleRequest(req, res) {
@@ -439,14 +441,9 @@ function handleRequest(req, res) {
     return;
   }
 
-  // Rate limiting (P0-4)
+  // Rate limiting (P0-4, Redis)
   const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
   const isAuthEndpoint = pathname === '/api/login' || pathname === '/api/register' || pathname === '/api/admin/login';
-  if (!checkRateLimit(clientIp, isAuthEndpoint ? RATE_LIMIT_AUTH : RATE_LIMIT_DEFAULT)) {
-    res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
-    res.end(JSON.stringify({ error: 'Too many requests. Please try again later.' }));
-    return;
-  }
 
   const json = (data, status = 200) => {
     res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -466,54 +463,73 @@ function handleRequest(req, res) {
       });
     });
 
-  // ===== Auth Routes =====
+  // 統一 async handler 錯誤處理：PG/Redis 丟錯時回 500，避免 unhandled rejection 崩潰。
+  const safe = (fn) => {
+    Promise.resolve()
+      .then(fn)
+      .catch(() => {
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Internal server error' }));
+        }
+      });
+  };
 
-  // Register
-  if (pathname === '/api/register' && method === 'POST') {
-    readBody().then(({ email, password, nickname }) => {
+  // 先做 rate limit（async），其餘邏輯在 callback 內繼續。
+  safe(async () => {
+    if (!(await checkRateLimit(clientIp, isAuthEndpoint ? RATE_LIMIT_AUTH : RATE_LIMIT_DEFAULT))) {
+      res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
+      res.end(JSON.stringify({ error: 'Too many requests. Please try again later.' }));
+      return;
+    }
+
+    // ===== Auth Routes =====
+
+    // Register
+    if (pathname === '/api/register' && method === 'POST') {
+      const { email, password, nickname } = await readBody();
       if (!email || !password) return json({ error: 'Email and password required' }, 400);
       if (password.length < 6) return json({ error: 'Password must be at least 6 characters' }, 400);
 
       const cleanEmail = String(email).slice(0, 120).toLowerCase();
       const cleanNickname = sanitizeText(nickname || String(cleanEmail).split('@')[0], 30) || 'player';
 
-      const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail);
+      const existing = (await pool.query('SELECT id FROM users WHERE email = $1', [cleanEmail])).rows[0];
       if (existing) return json({ error: 'Email already registered' }, 409);
 
       const id = 'u_' + crypto.randomBytes(8).toString('hex');
       const salt = crypto.randomBytes(16).toString('hex');
-      const hash = hashPassword(password, salt);
+      const hash = await hashPassword(password, salt);
 
-      db.prepare('INSERT INTO users (id, email, password_hash, salt, nickname) VALUES (?, ?, ?, ?, ?)').run(
+      await pool.query('INSERT INTO users (id, email, password_hash, salt, nickname) VALUES ($1, $2, $3, $4, $5)', [
         id,
         cleanEmail,
         hash,
         salt,
         cleanNickname,
-      );
+      ]);
 
       const token = createToken(id);
       json({ token, user: { id, email: cleanEmail, nickname: cleanNickname, elo: 1000 } });
-    });
-    return;
-  }
+      return;
+    }
 
-  // Login
-  if (pathname === '/api/login' && method === 'POST') {
-    readBody().then(({ email, password }) => {
-      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    // Login
+    if (pathname === '/api/login' && method === 'POST') {
+      const { email, password } = await readBody();
+      const user = (await pool.query('SELECT * FROM users WHERE email = $1', [email])).rows[0];
       if (!user) return json({ error: 'Invalid credentials' }, 401);
 
       // P0-4：先用新迭代數驗證，失敗再用舊迭代數驗證（向後相容）。
-      const newHash = hashPassword(password, user.salt, PBKDF2_ITERATIONS);
-      const legacyHash = hashPassword(password, user.salt, PBKDF2_LEGACY_ITERATIONS);
+      const newHash = await hashPassword(password, user.salt, PBKDF2_ITERATIONS);
+      const legacyHash = await hashPassword(password, user.salt, PBKDF2_LEGACY_ITERATIONS);
       if (newHash !== user.password_hash && legacyHash !== user.password_hash) {
         return json({ error: 'Invalid credentials' }, 401);
       }
 
       // 若密碼仍用舊迭代數，登入成功後自動升級到新迭代數。
       if (newHash !== user.password_hash) {
-        db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, user.id);
+        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
       }
 
       const token = createToken(user.id);
@@ -521,45 +537,50 @@ function handleRequest(req, res) {
         token,
         user: { id: user.id, email: user.email, nickname: user.nickname, elo: user.elo },
       });
-    });
-    return;
-  }
+      return;
+    }
 
-  // Get profile
-  if (pathname === '/api/profile' && method === 'GET') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-    if (!user) return json({ error: 'User not found' }, 404);
-    json({
-      id: user.id,
-      email: user.email,
-      nickname: user.nickname,
-      elo: user.elo,
-      matchCount: user.match_count,
-      wins: user.wins,
-      winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
-      createdAt: user.created_at,
-    });
-    return;
-  }
+    // Get profile
+    if (pathname === '/api/profile' && method === 'GET') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
+      if (!user) return json({ error: 'User not found' }, 404);
+      json({
+        id: user.id,
+        email: user.email,
+        nickname: user.nickname,
+        elo: user.elo,
+        matchCount: user.match_count,
+        wins: user.wins,
+        winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
+        createdAt: user.created_at,
+      });
+      return;
+    }
 
-  // ===== Deck Routes =====
+    // ===== Deck Routes =====
 
-  // List user's decks
-  if (pathname === '/api/decks' && method === 'GET') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    const decks = db.prepare('SELECT * FROM decks WHERE user_id = ? ORDER BY updated_at DESC').all(userId);
-    json({ decks: decks.map((d) => ({ ...d, cardIds: JSON.parse(d.card_ids) })) });
-    return;
-  }
+    // List user's decks
+    if (pathname === '/api/decks' && method === 'GET') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const decks = (await pool.query('SELECT * FROM decks WHERE user_id = $1 ORDER BY updated_at DESC', [userId]))
+        .rows;
+      json({
+        decks: decks.map((d) => ({
+          ...d,
+          cardIds: Array.isArray(d.card_ids) ? d.card_ids : [],
+        })),
+      });
+      return;
+    }
 
-  // Create deck
-  if (pathname === '/api/decks' && method === 'POST') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    readBody().then(({ name, cardIds }) => {
+    // Create deck
+    if (pathname === '/api/decks' && method === 'POST') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const { name, cardIds } = await readBody();
       if (!name || !Array.isArray(cardIds) || cardIds.length !== 20) {
         return json({ error: 'Name and 20 card IDs required' }, 400);
       }
@@ -571,167 +592,181 @@ function handleRequest(req, res) {
       }
 
       const id = 'd_' + crypto.randomBytes(8).toString('hex');
-      db.prepare('INSERT INTO decks (id, user_id, name, card_ids) VALUES (?, ?, ?, ?)').run(
+      await pool.query('INSERT INTO decks (id, user_id, name, card_ids) VALUES ($1, $2, $3, $4::jsonb)', [
         id,
         userId,
         name,
         JSON.stringify(cardIds),
-      );
+      ]);
       json({ id, name, cardIds });
-    });
-    return;
-  }
-
-  // Delete deck
-  if (pathname.match(/^\/api\/decks\/d_/) && method === 'DELETE') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    const deckId = pathname.split('/').pop();
-    const result = db.prepare('DELETE FROM decks WHERE id = ? AND user_id = ?').run(deckId, userId);
-    if (result.changes === 0) return json({ error: 'Deck not found' }, 404);
-    json({ deleted: true });
-    return;
-  }
-
-  // ===== Match Routes =====
-
-  // Get match action log
-  const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
-  if (matchLogRoute && method === 'GET') {
-    const matchId = matchLogRoute[1];
-    const match = db.prepare('SELECT id, action_log FROM matches WHERE id = ?').get(matchId);
-    if (!match) return json({ error: 'Match not found' }, 404);
-    let actionLog = [];
-    try {
-      actionLog = match.action_log ? JSON.parse(match.action_log) : [];
-    } catch {
-      actionLog = [];
+      return;
     }
-    json({ matchId: match.id, actionLog: sanitizeActionLog(actionLog) });
-    return;
-  }
 
-  // Submit match result
-  if (pathname === '/api/matches' && method === 'POST') {
-    // P0-2：強制 JWT 認證，只有贏家可以提交自己的勝利。
-    const authUserId = getAuthUserId(req);
-    if (!authUserId) return json({ error: 'Unauthorized' }, 401);
+    // Delete deck
+    if (pathname.match(/^\/api\/decks\/d_/) && method === 'DELETE') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const deckId = pathname.split('/').pop();
+      const result = await pool.query('DELETE FROM decks WHERE id = $1 AND user_id = $2', [deckId, userId]);
+      if (result.rowCount === 0) return json({ error: 'Deck not found' }, 404);
+      json({ deleted: true });
+      return;
+    }
 
-    readBody().then(({ winnerId, loserId, turns, duration, actionLog, action_log }) => {
+    // ===== Match Routes =====
+
+    // Get match action log
+    const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
+    if (matchLogRoute && method === 'GET') {
+      const matchId = matchLogRoute[1];
+      const match = (await pool.query('SELECT id, action_log FROM matches WHERE id = $1', [matchId])).rows[0];
+      if (!match) return json({ error: 'Match not found' }, 404);
+      const actionLog = Array.isArray(match.action_log) ? match.action_log : [];
+      json({ matchId: match.id, actionLog: sanitizeActionLog(actionLog) });
+      return;
+    }
+
+    // Submit match result
+    if (pathname === '/api/matches' && method === 'POST') {
+      // P0-2：強制 JWT 認證，只有贏家可以提交自己的勝利。
+      const authUserId = getAuthUserId(req);
+      if (!authUserId) return json({ error: 'Unauthorized' }, 401);
+
+      const { winnerId, loserId, turns, duration, actionLog, action_log } = await readBody();
       if (!winnerId || !loserId) return json({ error: 'Winner and loser IDs required' }, 400);
       // P0-2：認證使用者必須是贏家，杜絕偽造勝負。
       if (winnerId !== authUserId) return json({ error: 'Forbidden: winner must match authenticated user' }, 403);
 
-      const winner = db.prepare('SELECT * FROM users WHERE id = ?').get(winnerId);
-      const loser = db.prepare('SELECT * FROM users WHERE id = ?').get(loserId);
-
-      let winnerEloChange = 0;
-      let loserEloChange = 0;
-
-      if (winner && loser) {
-        const newWinnerElo = calculateElo(winner.elo, loser.elo, 1);
-        const newLoserElo = calculateElo(loser.elo, winner.elo, 0);
-        winnerEloChange = newWinnerElo - winner.elo;
-        loserEloChange = newLoserElo - loser.elo;
-
-        db.prepare('UPDATE users SET elo = ?, match_count = match_count + 1, wins = wins + 1 WHERE id = ?').run(
-          newWinnerElo,
-          winnerId,
-        );
-        db.prepare('UPDATE users SET elo = ?, match_count = match_count + 1 WHERE id = ?').run(newLoserElo, loserId);
-      }
-
-      const matchId = 'm_' + crypto.randomBytes(8).toString('hex');
       const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
-      const player0Id = winner ? winnerId : null;
-      const player1Id = loser ? loserId : null;
-      db.prepare(
-        'INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      ).run(
-        matchId,
-        player0Id,
-        player1Id,
-        winnerId,
-        loserId,
-        winnerEloChange,
-        loserEloChange,
-        turns || 0,
-        duration || 0,
-        JSON.stringify(sanitizedActionLog),
-      );
+      const matchId = 'm_' + crypto.randomBytes(8).toString('hex');
 
+      // 交易：兩個 UPDATE users + 一個 INSERT matches 必須原子。
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const winner = (await client.query('SELECT * FROM users WHERE id = $1', [winnerId])).rows[0];
+        const loser = (await client.query('SELECT * FROM users WHERE id = $1', [loserId])).rows[0];
+
+        let winnerEloChange = 0;
+        let loserEloChange = 0;
+
+        if (winner && loser) {
+          const newWinnerElo = calculateElo(winner.elo, loser.elo, 1);
+          const newLoserElo = calculateElo(loser.elo, winner.elo, 0);
+          winnerEloChange = newWinnerElo - winner.elo;
+          loserEloChange = newLoserElo - loser.elo;
+
+          await client.query(
+            'UPDATE users SET elo = $1, match_count = match_count + 1, wins = wins + 1 WHERE id = $2',
+            [newWinnerElo, winnerId],
+          );
+          await client.query('UPDATE users SET elo = $1, match_count = match_count + 1 WHERE id = $2', [
+            newLoserElo,
+            loserId,
+          ]);
+        }
+
+        const player0Id = winner ? winnerId : null;
+        const player1Id = loser ? loserId : null;
+        await client.query(
+          'INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)',
+          [
+            matchId,
+            player0Id,
+            player1Id,
+            winnerId,
+            loserId,
+            winnerEloChange,
+            loserEloChange,
+            turns || 0,
+            duration || 0,
+            JSON.stringify(sanitizedActionLog),
+          ],
+        );
+
+        await client.query('COMMIT');
+
+        json({
+          matchId,
+          winnerEloChange,
+          loserEloChange,
+          winnerNewElo: (winner?.elo || 1000) + winnerEloChange,
+          loserNewElo: (loser?.elo || 1000) + loserEloChange,
+        });
+        return;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+
+    // Leaderboard
+    if (pathname === '/api/leaderboard' && method === 'GET') {
+      const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
+      const entries = (
+        await pool.query(
+          'SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT $1',
+          [limit],
+        )
+      ).rows;
       json({
-        matchId,
-        winnerEloChange,
-        loserEloChange,
-        winnerNewElo: (winner?.elo || 1000) + winnerEloChange,
-        loserNewElo: (loser?.elo || 1000) + loserEloChange,
+        leaderboard: entries.map((e) => ({
+          id: e.id,
+          nickname: sanitizeText(e.nickname, 60),
+          elo: e.elo,
+          matchCount: e.match_count,
+          wins: e.wins,
+          winRate: e.match_count > 0 ? Math.round((e.wins / e.match_count) * 100) : 0,
+        })),
       });
-    });
-    return;
-  }
+      return;
+    }
 
-  // Leaderboard
-  if (pathname === '/api/leaderboard' && method === 'GET') {
-    const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
-    const entries = db
-      .prepare('SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT ?')
-      .all(limit);
-    json({
-      leaderboard: entries.map((e) => ({
-        id: e.id,
-        nickname: sanitizeText(e.nickname, 60),
-        elo: e.elo,
-        matchCount: e.match_count,
-        wins: e.wins,
-        winRate: e.match_count > 0 ? Math.round((e.wins / e.match_count) * 100) : 0,
-      })),
-    });
-    return;
-  }
-
-  // P2-10：使用者對戰歷史（跨裝置同步）。
-  if (pathname === '/api/matches' && method === 'GET') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
-    const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
-    const matches = db
-      .prepare(
-        `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
+    // P2-10：使用者對戰歷史（跨裝置同步）。
+    if (pathname === '/api/matches' && method === 'GET') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
+      const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+      const matches = (
+        await pool.query(
+          `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
        FROM matches m
        LEFT JOIN users w ON m.winner_id = w.id
        LEFT JOIN users l ON m.loser_id = l.id
-       WHERE m.player0_id = ? OR m.player1_id = ?
-       ORDER BY m.created_at DESC LIMIT ? OFFSET ?`,
-      )
-      .all(userId, userId, limit, offset);
-    json({
-      matches: matches.map((m) => ({
-        id: m.id,
-        winnerId: m.winner_id,
-        loserId: m.loser_id,
-        winnerNickname: m.winner_nickname,
-        loserNickname: m.loser_nickname,
-        winnerEloChange: m.winner_elo_change,
-        loserEloChange: m.loser_elo_change,
-        turns: m.turns,
-        duration: m.duration_seconds,
-        createdAt: m.created_at,
-      })),
-    });
-    return;
-  }
+       WHERE m.player0_id = $1 OR m.player1_id = $2
+       ORDER BY m.created_at DESC LIMIT $3 OFFSET $4`,
+          [userId, userId, limit, offset],
+        )
+      ).rows;
+      json({
+        matches: matches.map((m) => ({
+          id: m.id,
+          winnerId: m.winner_id,
+          loserId: m.loser_id,
+          winnerNickname: m.winner_nickname,
+          loserNickname: m.loser_nickname,
+          winnerEloChange: m.winner_elo_change,
+          loserEloChange: m.loser_elo_change,
+          turns: m.turns,
+          duration: m.duration_seconds,
+          createdAt: m.created_at,
+        })),
+      });
+      return;
+    }
 
-  // PUT /api/profile — 修改暱稱（P2 補齊）。
-  if (pathname === '/api/profile' && method === 'PUT') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    readBody().then(({ nickname }) => {
+    // PUT /api/profile — 修改暱稱（P2 補齊）。
+    if (pathname === '/api/profile' && method === 'PUT') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const { nickname } = await readBody();
       const clean = sanitizeText(nickname, 30);
       if (!clean) return json({ error: 'Nickname required' }, 400);
-      db.prepare('UPDATE users SET nickname = ? WHERE id = ?').run(clean, userId);
-      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      await pool.query('UPDATE users SET nickname = $1 WHERE id = $2', [clean, userId]);
+      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
       json({
         id: user.id,
         email: user.email,
@@ -741,193 +776,222 @@ function handleRequest(req, res) {
         wins: user.wins,
         winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
       });
-    });
-    return;
-  }
+      return;
+    }
 
-  // ===== Admin API (P0-3 + P2-12) =====
+    // ===== Admin API (P0-3 + P2-12) =====
 
-  // Admin 登入
-  if (pathname === '/api/admin/login' && method === 'POST') {
-    if (!ADMIN_PASSWORD) return json({ error: 'Admin not configured' }, 503);
-    readBody().then(({ password }) => {
+    // Admin 登入
+    if (pathname === '/api/admin/login' && method === 'POST') {
+      if (!ADMIN_PASSWORD) return json({ error: 'Admin not configured' }, 503);
+      const { password } = await readBody();
       if (password !== ADMIN_PASSWORD) return json({ error: 'Invalid password' }, 401);
       json({ token: createAdminToken() });
-    });
-    return;
-  }
+      return;
+    }
 
-  // Admin：使用者列表
-  if (pathname === '/api/admin/users' && method === 'GET') {
-    if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-    const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
-    const users = db
-      .prepare(
-        'SELECT id, email, nickname, elo, match_count, wins, created_at FROM users ORDER BY created_at DESC LIMIT ?',
-      )
-      .all(limit);
-    json({
-      users: users.map((u) => ({
-        id: u.id,
-        email: u.email,
-        nickname: u.nickname,
-        elo: u.elo,
-        matchCount: u.match_count,
-        wins: u.wins,
-        createdAt: u.created_at,
-        winRate: u.match_count > 0 ? Math.round((u.wins / u.match_count) * 100) : 0,
-      })),
-    });
-    return;
-  }
+    // Admin：使用者列表
+    if (pathname === '/api/admin/users' && method === 'GET') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
+      const users = (
+        await pool.query(
+          'SELECT id, email, nickname, elo, match_count, wins, created_at FROM users ORDER BY created_at DESC LIMIT $1',
+          [limit],
+        )
+      ).rows;
+      json({
+        users: users.map((u) => ({
+          id: u.id,
+          email: u.email,
+          nickname: u.nickname,
+          elo: u.elo,
+          matchCount: u.match_count,
+          wins: u.wins,
+          createdAt: u.created_at,
+          winRate: u.match_count > 0 ? Math.round((u.wins / u.match_count) * 100) : 0,
+        })),
+      });
+      return;
+    }
 
-  // Admin：對戰列表
-  if (pathname === '/api/admin/matches' && method === 'GET') {
-    if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-    const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
-    const matches = db
-      .prepare(
-        `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
+    // Admin：對戰列表
+    if (pathname === '/api/admin/matches' && method === 'GET') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
+      const matches = (
+        await pool.query(
+          `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
        FROM matches m
        LEFT JOIN users w ON m.winner_id = w.id
        LEFT JOIN users l ON m.loser_id = l.id
-       ORDER BY m.created_at DESC LIMIT ?`,
-      )
-      .all(limit);
-    json({
-      matches: matches.map((m) => ({
-        id: m.id,
-        winnerId: m.winner_id,
-        loserId: m.loser_id,
-        winnerNickname: m.winner_nickname,
-        loserNickname: m.loser_nickname,
-        winnerEloChange: m.winner_elo_change,
-        loserEloChange: m.loser_elo_change,
-        turns: m.turns,
-        duration: m.duration_seconds,
-        createdAt: m.created_at,
-      })),
-    });
-    return;
-  }
+       ORDER BY m.created_at DESC LIMIT $1`,
+          [limit],
+        )
+      ).rows;
+      json({
+        matches: matches.map((m) => ({
+          id: m.id,
+          winnerId: m.winner_id,
+          loserId: m.loser_id,
+          winnerNickname: m.winner_nickname,
+          loserNickname: m.loser_nickname,
+          winnerEloChange: m.winner_elo_change,
+          loserEloChange: m.loser_elo_change,
+          turns: m.turns,
+          duration: m.duration_seconds,
+          createdAt: m.created_at,
+        })),
+      });
+      return;
+    }
 
-  // Admin：重置使用者 ELO
-  if (pathname.startsWith('/api/admin/users/') && pathname.endsWith('/elo') && method === 'PUT') {
-    if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-    const targetUserId = pathname.split('/')[4];
-    readBody().then(({ elo }) => {
+    // Admin：重置使用者 ELO
+    if (pathname.startsWith('/api/admin/users/') && pathname.endsWith('/elo') && method === 'PUT') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const targetUserId = pathname.split('/')[4];
+      const { elo } = await readBody();
       const newElo = Math.max(0, Math.min(9999, Math.trunc(Number(elo) || 1000)));
-      db.prepare('UPDATE users SET elo = ? WHERE id = ?').run(newElo, targetUserId);
+      await pool.query('UPDATE users SET elo = $1 WHERE id = $2', [newElo, targetUserId]);
       json({ id: targetUserId, elo: newElo });
-    });
-    return;
-  }
+      return;
+    }
 
-  // ===== Matchmaking Routes =====
+    // ===== Matchmaking Routes =====
 
-  // POST /api/matchmaking/queue — 加入配對佇列
-  if (pathname === '/api/matchmaking/queue' && method === 'POST') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    readBody().then(({ deckName, deckIds }) => {
-      cleanExpiredMatchmakingEntries();
-      const existing = matchmakingQueue.get(userId);
+    // POST /api/matchmaking/queue — 加入配對佇列
+    if (pathname === '/api/matchmaking/queue' && method === 'POST') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const { deckName, deckIds } = await readBody();
+      const existing = await redis.hgetall(`mm:${userId}`);
       // 若已在佇列且已配對，不重複加入
       if (existing && existing.status === 'matched') {
         return json({ queueId: existing.queueId, status: 'matched' });
       }
       const queueId = (existing && existing.queueId) || 'q_' + crypto.randomBytes(8).toString('hex');
-      const entry = {
+      const now = Date.now();
+      const cleanDeckName = typeof deckName === 'string' ? sanitizeText(deckName, 60) : '';
+      const cleanDeckIds = Array.isArray(deckIds) ? deckIds.filter((id) => typeof id === 'string').slice(0, 20) : [];
+
+      await redis.hset(`mm:${userId}`, {
         queueId,
-        joinedAt: Date.now(),
-        deckName: typeof deckName === 'string' ? sanitizeText(deckName, 60) : undefined,
-        deckIds: Array.isArray(deckIds) ? deckIds.filter((id) => typeof id === 'string').slice(0, 20) : undefined,
+        joinedAt: String(now),
+        deckName: cleanDeckName,
+        deckIds: JSON.stringify(cleanDeckIds),
         status: 'queued',
-        matchId: undefined,
-        opponentId: undefined,
-        role: undefined,
-        realMatchId: undefined,
-        timeoutAt: undefined,
-      };
-      matchmakingQueue.set(userId, entry);
+      });
+      await redis.zadd('mm:queue', now, userId);
+      await redis.expire(`mm:${userId}`, MM_TTL_SECONDS);
 
-      // 嘗試立即配對
-      tryMatchUser(userId);
+      // 嘗試立即配對（Lua 原子）
+      const matchId = generateMatchmakingId();
+      await redis.mmTryMatch('mm:queue', userId, String(now), matchId, String(MATCHMAKING_TIMEOUT_MS));
 
-      const current = matchmakingQueue.get(userId);
+      const current = await redis.hgetall(`mm:${userId}`);
+      if (!current || !current.status) return json({ status: 'timeout' });
       json({ queueId: current.queueId, status: current.status });
-    });
-    return;
-  }
-
-  // GET /api/matchmaking/status — 查詢配對狀態
-  if (pathname === '/api/matchmaking/status' && method === 'GET') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    cleanExpiredMatchmakingEntries();
-    const entry = matchmakingQueue.get(userId);
-    if (!entry) return json({ status: 'timeout' });
-    json({
-      status: entry.status,
-      matchId: entry.matchId,
-      opponentId: entry.opponentId,
-      role: entry.role,
-      realMatchId: entry.realMatchId,
-    });
-    return;
-  }
-
-  // DELETE /api/matchmaking/queue — 離開佇列
-  if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    const entry = matchmakingQueue.get(userId);
-    if (entry && entry.opponentId && matchmakingQueue.has(entry.opponentId)) {
-      // 已配對情況下離開，標記對手為 timeout 讓對手能即時知道
-      const opponent = matchmakingQueue.get(entry.opponentId);
-      opponent.status = 'timeout';
-      opponent.timeoutAt = Date.now();
+      return;
     }
-    matchmakingQueue.delete(userId);
-    json({ deleted: true });
-    return;
-  }
 
-  // PUT /api/matchmaking/match — host 回報真實 boardgame.io matchID
-  if (pathname === '/api/matchmaking/match' && method === 'PUT') {
-    const userId = getAuthUserId(req);
-    if (!userId) return json({ error: 'Unauthorized' }, 401);
-    readBody().then(({ matchId }) => {
+    // GET /api/matchmaking/status — 查詢配對狀態
+    if (pathname === '/api/matchmaking/status' && method === 'GET') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      await redis.mmCleanExpired('mm:queue', String(Date.now()), String(MATCHMAKING_TIMEOUT_MS));
+      const entry = await redis.hgetall(`mm:${userId}`);
+      if (!entry || !entry.status) return json({ status: 'timeout' });
+      json({
+        status: entry.status,
+        matchId: entry.matchId || undefined,
+        opponentId: entry.opponentId || undefined,
+        role: entry.role || undefined,
+        realMatchId: entry.realMatchId || undefined,
+      });
+      return;
+    }
+
+    // DELETE /api/matchmaking/queue — 離開佇列
+    if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const entry = await redis.hgetall(`mm:${userId}`);
+      if (entry && entry.opponentId) {
+        const opponent = await redis.hgetall(`mm:${entry.opponentId}`);
+        if (opponent && opponent.status) {
+          // 已配對情況下離開，標記對手為 timeout 讓對手能即時知道
+          await redis.hset(`mm:${entry.opponentId}`, 'status', 'timeout');
+        }
+      }
+      await redis.zrem('mm:queue', userId);
+      await redis.del(`mm:${userId}`);
+      json({ deleted: true });
+      return;
+    }
+
+    // PUT /api/matchmaking/match — host 回報真實 boardgame.io matchID
+    if (pathname === '/api/matchmaking/match' && method === 'PUT') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const { matchId } = await readBody();
       if (typeof matchId !== 'string' || !matchId) {
         return json({ error: 'matchId required' }, 400);
       }
-      const entry = matchmakingQueue.get(userId);
+      const entry = await redis.hgetall(`mm:${userId}`);
       if (!entry || entry.status !== 'matched') {
         return json({ error: 'Not in a matched queue' }, 400);
       }
-      entry.realMatchId = matchId;
+      await redis.hset(`mm:${userId}`, 'realMatchId', matchId);
       json({ ok: true });
-    });
-    return;
-  }
+      return;
+    }
 
-  // ===== Default =====
-  res.writeHead(404);
-  res.end('Not Found');
+    // ===== Default =====
+    res.writeHead(404);
+    res.end('Not Found');
+  });
 }
 
 // ===== Start =====
 const server = http.createServer(handleRequest);
+
+async function closeDatabase() {
+  await pool.end();
+  await redis.quit();
+}
+
+// Graceful shutdown
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    await closeDatabase();
+  } catch {}
+  server.close();
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
 if (require.main === module) {
-  server.listen(PORT, () => {
-    console.log(`Zutomayo API server running on port ${PORT}`);
-  });
+  initSchema()
+    .then(() => {
+      server.listen(PORT, () => {
+        console.log(`Zutomayo API server running on port ${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error('Failed to initialize schema, starting anyway:', err.message);
+      server.listen(PORT, () => {
+        console.log(`Zutomayo API server running on port ${PORT}`);
+      });
+    });
 }
 
 module.exports = {
   handleRequest,
   server,
-  closeDatabase: () => {
-    if (typeof db.close === 'function') db.close();
-  },
+  closeDatabase,
+  schemaReady,
 };
