@@ -1889,5 +1889,294 @@
     "song_title": "vision_unavailable",
     "needs_review": true,
     "review_reason": "Vision API returned 429 rate limit error. Marked vision_unavailable per instructions."
+  },
+  {
+    "id": "3rd_36",
+    "en_name": "SHOGA-MODOKI (Nareai Serve)",
+    "en_effect": "Attack +30 if all the cards in the Power Charger are of the darkness attribute.",
+    "song_title": "",
+    "needs_review": false,
+    "ocr_quality": "ok"
+  },
+  {
+    "id": "3rd_37",
+    "en_name": "UNKNOWN",
+    "en_effect": "UNKNOWN",
+    "song_title": "Kira Killer",
+    "needs_review": true,
+    "ocr_quality": "poor",
+    "review_reason": "OCR returned garbled/insufficient text. Only got 'ZUTOMAYO' as name and incoherent effect text. Needs re-scan with better image or manual correction."
+  },
+  {
+    "id": "3rd_38",
+    "en_name": "UNKNOWN",
+    "en_effect": "UNKNOWN",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "ocr_quality": "poor",
+    "review_reason": "OCR returned set header info rather than card-specific name/effect. 'Off Minor' is the set name, not the card name. Stats string was captured as effect. Needs re-scan."
+  },
+  {
+    "id": "3rd_39",
+    "en_name": "NIRA-CHAN (Mabushii DNA Dake)",
+    "en_effect": "Attack +50 if all the cards in the opponent's Power Charger are of the electric attribute.",
+    "song_title": "",
+    "needs_review": false,
+    "ocr_quality": "ok"
+  },
+  {
+    "id": "3rd_40",
+    "en_name": "RANI-CHAN (Intrusion)",
+    "en_effect": "Attack +20 if all the cards in the Power Charger are of the flame attribute.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "ocr_quality": "ok"
+  },
+  {
+    "id": "3rd_41",
+    "en_name": "NIRA-CHAN • KIRA-CHAN (Kira Killer)",
+    "en_effect": "Send To Pocket",
+    "song_title": "ZUTTOMAYONAKADEIINONI.",
+    "needs_review": true,
+    "ocr_quality": "partial",
+    "review_reason": "The 'Send To Pocket' text appears to be a sticker/tape overlay effect, not the main card effect. The main effect text may not have been captured. Needs verification."
+  },
+  {
+    "id": "3rd_42",
+    "en_name": "NIRA-CHAN (Seigi)",
+    "en_effect": "Attack +50 if the opponent's HP is 100.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "ocr_quality": "ok"
+  },
+  {
+    "id": "3rd_43",
+    "en_name": "UNKNOWN",
+    "en_effect": "UNKNOWN",
+    "song_title": "ZUTTOMAYONAKADEIINONI.",
+    "needs_review": true,
+    "ocr_quality": "poor",
+    "review_reason": "OCR returned 'ZUTOMAYO KIDS' as name and 'The Battle Begins' as effect - likely reading header/metadata rather than card name and effect. Needs re-scan."
+  },
+  {
+    "id": "3rd_44",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "ocr_quality": "vision_unavailable",
+    "review_reason": "Vision API returned 429 rate limit error. Not retried per instructions."
+  },
+  {
+    "id": "3rd_45",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "ocr_quality": "vision_unavailable",
+    "review_reason": "Vision API returned 429 rate limit error. Not retried per instructions."
+  },
+  {
+    "id": "3rd_46",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "ocr_quality": "vision_unavailable",
+    "review_reason": "Vision API returned 429 rate limit error. Not retried per instructions."
+  },
+  {
+    "id": "3rd_47",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "ocr_quality": "vision_unavailable",
+    "review_reason": "Vision API returned 429 rate limit error. Not retried per instructions."
+  },
+  {
+    "id": "3rd_48",
+    "en_name": "UNIGURI compounding",
+    "en_effect": "NIGHT 30 | DAY 50",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_49",
+    "en_name": "SHOGAST",
+    "en_effect": "NIGHT 30 | DAY 70",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "review_reason": "OCR returned partial data; effect text may include card number 049/104"
+  },
+  {
+    "id": "3rd_50",
+    "en_name": "NIRA-CHAN · RANI-CHAN (Intrusion)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_51",
+    "en_name": "NIRA-CHAN · KIRA-CHAN (Kira Killer)",
+    "en_effect": "Attack +40 if there are cards of 3 different attributes in the Abyss.",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_52",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit error"
+  },
+  {
+    "id": "3rd_53",
+    "en_name": "Zanki-Sword",
+    "en_effect": "Attack +40 if it's night.",
+    "song_title": "Send to Power",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_54",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit error"
+  },
+  {
+    "id": "3rd_55",
+    "en_name": "The unsuitable rally is over.",
+    "en_effect": "Return the opponent's Area Enchantment card to the bottom of the deck, the opponent cannot set any Area Enchantment anymore. When the opponent places a card in the Abyss, place this card on your Power Charger at the end of the turn.",
+    "song_title": "SEND To Power",
+    "needs_review": true,
+    "review_reason": "en_name looks like it may be effect text rather than a card name"
+  },
+  {
+    "id": "3rd_56",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit error"
+  },
+  {
+    "id": "3rd_57",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit error"
+  },
+  {
+    "id": "3rd_58",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit error"
+  },
+  {
+    "id": "3rd_59",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit error"
+  },
+  {
+    "id": "3rd_60",
+    "en_name": "To Be Continued",
+    "en_effect": "Attack +70 if all the cards in the Abyss are of the wind attribute.",
+    "song_title": "To Be Continued",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_61",
+    "en_name": "GAME CENTER TECHNO POOR",
+    "en_effect": "Set all cards' clocks to 1. At the end of the turn, if there is an Area Enchantment card on the opponent's field, place it on the Power Charger.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_62",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Attack +50 if there are cards of 3 different attributes in the Abyss.",
+    "song_title": "Best kelp broth",
+    "needs_review": true,
+    "review_reason": "en_name='ZUTOMAYO' is the band name header, likely not the actual card name. OCR may have confused the band name with card title."
+  },
+  {
+    "id": "3rd_63",
+    "en_name": "Uniguri Smash",
+    "en_effect": "Attack +60 if all the cards in the Abyss are of the electric attribute.",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_64",
+    "en_name": "Matching mobile phones",
+    "en_effect": "+ Attack by the amount of your own HP each other. Place in the Abyss at the end of the turn when the opponent's HP falls below 40.",
+    "song_title": "ZUTOMAYO",
+    "needs_review": true,
+    "review_reason": "en_effect text appears slightly garbled/unusual phrasing. Verify against source card."
+  },
+  {
+    "id": "3rd_65",
+    "en_name": "HAKASE (Intrusion)",
+    "en_effect": "NIGHT 20 | DAY 20",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "review_reason": "Character card - en_effect captured stats (NIGHT/DAY) rather than actual ability text. Card may have no printed effect text, or OCR failed to capture it."
+  },
+  {
+    "id": "3rd_66",
+    "en_name": "NIRA-CHAN (Hanaichi Monnme)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "review_reason": "en_effect captured 'SEND TO POWER' which appears to be a label/sidebar, not the actual card effect. Character card may need re-inspection."
+  },
+  {
+    "id": "3rd_67",
+    "en_name": "SASHIMI (Truth In Lies)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "review_reason": "en_effect captured 'SEND TO POWER' which appears to be a label/sidebar, not the actual card effect. Character card may need re-inspection."
+  },
+  {
+    "id": "3rd_68",
+    "en_name": "NIRA-CHAN (Time Left)",
+    "en_effect": "The Battle Begins",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "review_reason": "en_effect captured 'The Battle Begins' which appears to be a set/song label, not an actual ability. Character card may need re-inspection."
+  },
+  {
+    "id": "3rd_69",
+    "en_name": "UNIGURI-KUN (Byoushinwo Kamu)",
+    "en_effect": "NIGHT 10 | DAY 40",
+    "song_title": "Byoushinwo Kamu",
+    "needs_review": true,
+    "review_reason": "en_effect captured stats only. Character card - actual ability text may be absent or was not captured by OCR."
+  },
+  {
+    "id": "3rd_70",
+    "en_name": "INC-NEKO (Seigi)",
+    "en_effect": "The Battle Begins",
+    "song_title": "ZUTTOMAYONAKADEIINONI.",
+    "needs_review": true,
+    "review_reason": "en_effect captured 'The Battle Begins' which is a set label, not an actual ability. Character card may need re-inspection."
+  },
+  {
+    "id": "3rd_71",
+    "en_name": "NIRA-CHAN (Seigi)",
+    "en_effect": "NIGHT 10 | DAY 50",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "review_reason": "en_effect captured stats only. Character card - actual ability text may be absent or was not captured by OCR."
   }
 ]
