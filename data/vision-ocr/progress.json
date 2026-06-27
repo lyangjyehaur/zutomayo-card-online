@@ -1037,5 +1037,234 @@
     "ocr_status": "ok",
     "needs_review": true,
     "review_reason": "en_name 'ZUTOMAYO' is likely the franchise/artist name, not the card name; OCR failed to capture actual card name"
+  },
+  {
+    "id": "2nd_31",
+    "en_name": "In delivery",
+    "en_effect": "Select two cards from your hand, place them at the bottom of the deck and draw two cards.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_32",
+    "en_name": "Desire",
+    "en_effect": "Attack +30.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_33",
+    "en_name": "GRAY (Stay Foolish)",
+    "en_effect": "Send To POWER",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Effect text is very short; may be incomplete or a keyword rather than full effect"
+  },
+  {
+    "id": "2nd_34",
+    "en_name": "NIRA-CHAN (Stay Foolish)",
+    "en_effect": "NIGHT 40 | DAY 40",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Character card stats captured as effect; 'SEND To POWER' sticker text also visible but separate from effect"
+  },
+  {
+    "id": "2nd_35",
+    "en_name": "KIRA-CHAN (Kira Killer)",
+    "en_effect": "Attack +20 if there is a flame card in the Power charger.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_36",
+    "en_name": "NIRA-CHAN (Hunch Gray)",
+    "en_effect": "The clock changes to midnight if there are two or more flame cards in the Abyss.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_37",
+    "en_name": "NIRA-CHAN DOLL",
+    "en_effect": "None",
+    "song_title": "The Battle Begins ZUTTOMAYONAKADEIINONI.",
+    "needs_review": true,
+    "review_reason": "Effect shown as 'None'; song title includes band name suffix which may not be part of the actual title"
+  },
+  {
+    "id": "2nd_38",
+    "en_name": "NIRA-CHAN (Haze Haseru Haterumade)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEININONI.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be flavor/preamble text rather than a game effect; romanization may be approximate"
+  },
+  {
+    "id": "2nd_39",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit error on vision_analyze"
+  },
+  {
+    "id": "2nd_40",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "429 rate limit error on vision_analyze"
+  },
+  {
+    "id": "2nd_41",
+    "en_name": "NIRA-MAID (DARKEN)",
+    "en_effect": "If the attribute of the character card used in the previous turn was wind and it is now daytime, attack power +40 only the first time the card is used.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_42",
+    "en_name": "ZUTOMAYO-COCKTAIL",
+    "en_effect": "",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "en_effect appears empty — may be OCR miss or card has no English effect text"
+  },
+  {
+    "id": "2nd_43",
+    "en_name": "ALL ALONG THE WATCHTOWER ZUTOMAYO",
+    "en_effect": "NIGHT 30 | DAY 30 POWER COST --- Character 043/104 Send To Power",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "en_effect looks like OCR mixed metadata with effect text; likely not the actual card effect"
+  },
+  {
+    "id": "2nd_44",
+    "en_name": "Part-timer・Baker (Neko Reset)",
+    "en_effect": "Attack +20 if the attribute of the character card used in the previous turn is darkness.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_45",
+    "en_name": "NIRA-CHAN・KIRA-CHAN(Kira Killer)",
+    "en_effect": "If the Power charger has a wind card, attack +20.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_46",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "Rate limited (429) during vision_analyze; could not OCR"
+  },
+  {
+    "id": "2nd_47",
+    "en_name": "UNIGURI-GAHAKU",
+    "en_effect": "If the attribute of the character card used in the previous turn is darkness, place the top card of the deck on the Power charger if it has power, otherwise on the Abyss.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_48",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "Rate limited (429) during vision_analyze; could not OCR"
+  },
+  {
+    "id": "2nd_49",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "Rate limited (429) during vision_analyze; could not OCR"
+  },
+  {
+    "id": "2nd_50",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "Rate limited (429) during vision_analyze; could not OCR"
+  },
+  {
+    "id": "2nd_51",
+    "en_name": "NIRA-CHAN (Summer Slack)",
+    "en_effect": "NIGHT 80 | DAY 40 POWER COST + The Battle Begins ZUTTOMAYONAKADEIINONI.",
+    "song_title": "Summer Slack",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be raw stat/header text rather than a proper effect; OCR may have merged layout text."
+  },
+  {
+    "id": "2nd_52",
+    "en_name": "FRANKEN (Dear.Mr「F」)",
+    "en_effect": "NIGHT 90 | DAY 90 + The Battle Begins",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_53",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "API returned 429 Too Many Requests"
+  },
+  {
+    "id": "2nd_54",
+    "en_name": "Different forms in different worlds",
+    "en_effect": "Attack +30 if your character card's attribute is flame.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Vision returned 'ZUTOMAYO' as en_name which is the set/brand header, not the card name. Inferred card name from flavor text field."
+  },
+  {
+    "id": "2nd_55",
+    "en_name": "ZTMY claw-machine",
+    "en_effect": "If your character card's attribute is flame, place your opponent's area enchantment card on top of your opponent's deck.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_56",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "API returned 429 Too Many Requests"
+  },
+  {
+    "id": "2nd_57",
+    "en_name": "ZUTOMAYO (darkness enchant)",
+    "en_effect": "Attack +30 if your character card's attribute is darkness.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": true,
+    "review_reason": "Vision returned 'ZUTOMAYO' as en_name which is the set/brand header; actual card name unclear. Effect text confirmed."
+  },
+  {
+    "id": "2nd_58",
+    "en_name": "Preparing for opening",
+    "en_effect": "+1+1 for each darkness card in the Abyss. Place this card in the Abyss at the end of the turn when your character card is placed on your Power charger.",
+    "song_title": "ALL ALONG THE WATCHTOWER",
+    "needs_review": false
+  },
+  {
+    "id": "2nd_59",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "API returned 429 Too Many Requests"
+  },
+  {
+    "id": "2nd_60",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "API returned 429 Too Many Requests"
   }
 ]
