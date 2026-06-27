@@ -16,7 +16,6 @@
     "review_reason": "Effect text appears incomplete - only 'THE WORLD IS CHANGING.' detected, likely flavor text or partial OCR; full card effect may not have been captured"
   },
   {
-    "card_id": "1st_2",
     "en_name": "NIRA-CHAN (Seigi)",
     "en_effect": "",
     "song_title": "THE WORLD IS CHANGING.",
@@ -32,7 +31,8 @@
       "branding": "ZUTOMAYONAKADEINONI"
     },
     "needs_review": true,
-    "review_reason": "No English effect text found on the card. The card may contain only Japanese effect text, or the effect area was not legible in the image. The ability name 'The Battle Begins' was identified but no full effect description in English was detected."
+    "review_reason": "No English effect text found on the card. The card may contain only Japanese effect text, or the effect area was not legible in the image. The ability name 'The Battle Begins' was identified but no full effect description in English was detected.",
+    "id": "1st_2"
   },
   {
     "id": "1st_4",
@@ -43,9 +43,230 @@
     "review_reason": "Effect text appears incomplete/garbled — only a short fragment captured. Card likely has longer Japanese text that OCR could not read; English portion may be minimal or partially obscured."
   },
   {
-    "card_id": "1st_5",
     "en_name": "SHAKUMA-MEN (Humanoid)",
     "en_effect": "Reverses the opponent's attack power day and night.\nEffective after the opponent's enchantment is activated.",
-    "song_title": "THE WORLD IS CHANGING, ZUTOMAYO"
+    "song_title": "THE WORLD IS CHANGING, ZUTOMAYO",
+    "id": "1st_5"
+  },
+  {
+    "id": "1st_6",
+    "en_name": "KITTE-MEN · INC-NEKO (Seigi)",
+    "en_effect": "Choose any one of the Abyss cards and use it in this turn.",
+    "song_title": "THE WORLD IS CHANGING."
+  },
+  {
+    "id": "1st_7",
+    "en_name": "Laboratory of Ashban Electric Inc. (Ham)",
+    "en_effect": "Attack +50 if the Abyss's card has four different attributes.",
+    "song_title": "The World Is Changing"
+  },
+  {
+    "id": "1st_8",
+    "en_name": "Compass Clock (Hunch Gray)",
+    "en_effect": "Clock disabled. Return to the time at the beginning of this turn.",
+    "song_title": "THE WORLD IS CHANGING."
+  },
+  {
+    "id": "1st_9",
+    "en_name": "NIRA-CHAN (STUDY ME)",
+    "en_effect": "THE WORLD IS CHANGING. 1 ZUTOMAYO ZTMY SEND TO POWER NIGHT 50 | DAY 10 POWER COST Character 009/104 The Battle Begins ZUTTOMAYONAKADEINONI SR illustrator: OSAkechan ©ZUTOMAYO 2022",
+    "song_title": "STUDY ME",
+    "needs_review": true,
+    "review_reason": "OCR returned metadata/stats mixed with effect text; actual card effect text unclear"
+  },
+  {
+    "id": "1st_10",
+    "en_name": "NIRA-CHAN (One's Mind)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "review_reason": "Effect text 'SEND TO POWER' may be game mechanic label rather than card effect; stats NIGHT 60 | DAY 20 also visible but not captured in effect"
+  },
+  {
+    "id": "1st_11",
+    "en_name": "NIRA-CHAN (Stay.Foolish)",
+    "en_effect": "NIGHT 100 | DAY 20",
+    "song_title": "Stay.Foolish",
+    "needs_review": true,
+    "review_reason": "Only stats captured as effect text; no actual card effect text identified by OCR"
+  },
+  {
+    "id": "1st_12",
+    "en_name": "NIRA-CHAN [Job:Animator] (Neko Reset)",
+    "en_effect": "THE WORLD IS CHANGING. NIGHT 100 | DAY 60 POWER COST ★★★★ Character 012/104 The Battle Begins SR Illustrator: okaka ©ZUTOMAYO 2022",
+    "song_title": "ZUTOMAYONAKADEINONI",
+    "needs_review": true,
+    "review_reason": "OCR returned metadata/stats instead of actual card effect text; effect text unclear"
+  },
+  {
+    "id": "1st_13",
+    "en_name": "AFRO☆SAMURAI (MILABO)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEINONI.",
+    "song_title": "ZUTOMAYONAKADEINONI.",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be series/copyright info rather than card effect"
+  },
+  {
+    "id": "1st_14",
+    "en_name": "NIRA-CHAN (JK BOMBER)",
+    "en_effect": "1, THE WORLD IS CHANGING., SEND TO POWER, NIGHT 40, DAY 40, POWER COST, Character, 014/104, SR, Illustrator: ryuMA, The Battle Begins, ZUTOMAYONAKADEINONI., ©ZUTOMAYO 2022",
+    "song_title": "JK BOMBER",
+    "needs_review": true,
+    "review_reason": "OCR returned metadata/stats instead of actual card effect text; effect text unclear"
+  },
+  {
+    "id": "1st_15",
+    "en_name": "NIRA-CHAN (Minority Myakuraku)",
+    "en_effect": "",
+    "song_title": "Minority Myakuraku",
+    "needs_review": true,
+    "review_reason": "No effect text extracted by OCR; may be missing from card or OCR failed to read it"
+  },
+  {
+    "id": "1st_16",
+    "en_name": "NIRA-CHAN (Byoushinwo Kamu)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEIINONI.",
+    "song_title": "Byoushinwo Kamu",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be a boilerplate line combined with the series name; no distinct card ability text was identified. The subtitle 'Byoushinwo Kamu' is romanized from Japanese rather than confirmed as official English."
+  },
+  {
+    "id": "1st_17",
+    "en_name": "NIRA-CHAN (Haze Haseru Haterumade)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "Haze Haseru Haterumade",
+    "needs_review": true,
+    "review_reason": "Effect text 'SEND TO POWER' may be a keyword/ability strip rather than full effect text. Song title is romanized from Japanese; not confirmed as official English translation."
+  },
+  {
+    "id": "1st_18",
+    "en_name": "NIRA-CHAN (INSIDE JOKE)",
+    "en_effect": "",
+    "song_title": "ZUTOMAYOKA DEIINONI.",
+    "needs_review": true,
+    "review_reason": "No distinct English effect text was found on the card. The song title line 'ZUTOMAYOKA DEIINONI' appears to be a romanized series reference rather than a song title."
+  },
+  {
+    "id": "1st_19",
+    "en_name": "NIRA-CHAN (MIRROR TUNE)",
+    "en_effect": "The Battle Begins",
+    "song_title": "ZUTTOMAYONAKADEINONI.",
+    "needs_review": true,
+    "review_reason": "Effect text 'The Battle Begins' may be a shared tagline rather than a card-specific ability. Song title appears to be the romanized series name."
+  },
+  {
+    "id": "1st_20",
+    "en_name": "ZUTOMAYO SQUARE",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEINONI.",
+    "song_title": "Dear, Mr. 'F'",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be boilerplate branding; no card-specific English ability text was identified. 'Dear, Mr. F' was visible on artwork elements (computer screen) — may be a song reference within the illustration rather than an official card field."
+  },
+  {
+    "id": "1st_21",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "UNIGURI are multiplying",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "review_reason": "Card name is just 'ZUTOMAYO' with no subtitle — uncertain if the full English name was captured. Effect text 'UNIGURI are multiplying' was read from the card but context is unclear."
+  },
+  {
+    "id": "1st_22",
+    "en_name": "NIRA-CHAN (Humanoid)",
+    "en_effect": "The Battle Begins",
+    "song_title": "ZUTOMAYONAKADEINNONI.",
+    "needs_review": true,
+    "review_reason": "Effect text 'The Battle Begins' may be a shared tagline rather than card-specific ability. Song title line appears to be the romanized series name."
+  },
+  {
+    "id": "1st_23",
+    "en_name": "NIRA-CHAN (Hunch Gray)",
+    "en_effect": "The Battle Begins",
+    "song_title": "Hunch Gray",
+    "needs_review": true,
+    "review_reason": "Effect text 'The Battle Begins' may be a shared tagline rather than card-specific ability."
+  },
+  {
+    "id": "1st_24",
+    "en_name": "NIRA-CHAN (Can't Be Right)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEINONI",
+    "song_title": "Can't Be Right",
+    "needs_review": true,
+    "review_reason": "Effect text appears to combine a shared tagline with the series name; no card-specific ability text was identified."
+  },
+  {
+    "id": "1st_25",
+    "en_name": "",
+    "en_effect": "",
+    "status": "vision_unavailable",
+    "review_reason": "Rate limit (429) during OCR"
+  },
+  {
+    "id": "1st_26",
+    "en_name": "Declaration of the Opening",
+    "en_effect": "Time goes back by the opponent's clock minutes from the beginning of this turn.",
+    "song_title": "THE WORLD IS CHANGING"
+  },
+  {
+    "id": "1st_27",
+    "en_name": "Mirror Shooter",
+    "en_effect": "Attack +50 if the attribute of the opponent's character card is electric.",
+    "song_title": "THE WORLD IS CHANGING."
+  },
+  {
+    "id": "1st_28",
+    "en_name": "Study Group",
+    "en_effect": "40 damage reduction when you take damage.",
+    "song_title": "THE WORLD IS CHANGING"
+  },
+  {
+    "id": "1st_29",
+    "en_name": "Microwave Oven of Lightning",
+    "en_effect": "Attack +50 if the attribute of the opponent's character card is darkness.",
+    "song_title": "THE WORLD IS CHANGING"
+  },
+  {
+    "id": "1st_30",
+    "en_name": "Sphere like a Bomb",
+    "en_effect": "Your attack power is increased by 30.",
+    "song_title": "Sphere like a Bomb"
+  },
+  {
+    "id": "1st_31",
+    "en_name": "Washing a Car",
+    "en_effect": "Attack +50 if the attribute of the opponent's character card is flame.",
+    "song_title": "THE WORLD IS CHANGING."
+  },
+  {
+    "id": "1st_32",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Attack: +50 if your HP is below 30.",
+    "song_title": "THE WORLD IS CHANGING",
+    "needs_review": true,
+    "review_reason": "en_name 'ZUTOMAYO' is likely the band name not the card name; OCR may have missed the actual card name"
+  },
+  {
+    "id": "1st_33",
+    "en_name": "NIRA-CHAN (Inemuri Enseitai)",
+    "en_effect": "The Battle Begins",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true,
+    "review_reason": "Effect text 'The Battle Begins' may be a song title rather than effect text; OCR confidence low on distinguishing effect vs flavor"
+  },
+  {
+    "id": "1st_34",
+    "en_name": "Squad of Radiant DNA",
+    "en_effect": "",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "review_reason": "No English effect text found; card may only have stats (NIGHT 70 | DAY 30) without descriptive effect"
+  },
+  {
+    "id": "1st_35",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "NIGHT 70 | DAY 30",
+    "song_title": "GREINU (One's Mind)",
+    "needs_review": true,
+    "review_reason": "en_name 'ZUTOMAYO' is likely the band name not the card name; effect text may be stats not actual effect"
   }
 ]
