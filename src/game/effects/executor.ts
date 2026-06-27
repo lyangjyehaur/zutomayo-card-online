@@ -483,6 +483,12 @@ export function executeEffect(
   const value = Number(effect.action.params.value ?? 0);
   switch (effect.action.type) {
     case 'boostAttack': {
+      // 官方 QA Q40/Q74：角色 power cost 不足時攻撃力修飾效果不発動，
+      // 不設定修飾器避免殘留導致 power 補足後攻撃力錯誤。
+      // battleZone 為 null 時不跳過（無角色可修飾，修飾器不會造成殘留問題）。
+      if (me.battleZone && power(G, player) < (effectivePowerCost(me.battleZone, G, player) ?? 0)) {
+        return { success: true, message: 'Attack boost skipped (battleZone power cost not met)' };
+      }
       let multiplier = 1;
       if (effect.action.params.per === 'zoneElementCount') {
         multiplier = zoneElementCount(
@@ -509,15 +515,23 @@ export function executeEffect(
       return { success: true, message: `Attack +${boost}` };
     }
     case 'boostBothAttackByOwnHp': {
-      // 官方 QA Q54：逐效果套用並鉗制至 0。
-      const myCurrent = effectiveAttack(me.battleZone, G, player) ?? 0;
-      const myNew = Math.max(0, myCurrent + me.hp);
-      const myBase = computeBaseAttack(me.battleZone, G, player);
-      G.modifiers.attack[player] = myNew - myBase;
-      const oppCurrent = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
-      const oppNew = Math.max(0, oppCurrent + opponent.hp);
-      const oppBase = computeBaseAttack(opponent.battleZone, G, opponentIndex);
-      G.modifiers.attack[opponentIndex] = oppNew - oppBase;
+      // 官方 QA Q40/Q74/Q54：逐效果套用並鉗制至 0，且角色 power cost 不足時不発動。
+      // 雙方各自檢查 power cost，不足者跳過修飾，避免殘留修飾器。
+      // battleZone 為 null 時仍設定修飾器（無角色可修飾，不會造成殘留問題）。
+      const myPowerOk = !me.battleZone || power(G, player) >= (effectivePowerCost(me.battleZone, G, player) ?? 0);
+      if (myPowerOk) {
+        const myCurrent = effectiveAttack(me.battleZone, G, player) ?? 0;
+        const myNew = Math.max(0, myCurrent + me.hp);
+        const myBase = computeBaseAttack(me.battleZone, G, player);
+        G.modifiers.attack[player] = myNew - myBase;
+      }
+      const oppPowerOk = !opponent.battleZone || power(G, opponentIndex) >= (effectivePowerCost(opponent.battleZone, G, opponentIndex) ?? 0);
+      if (oppPowerOk) {
+        const oppCurrent = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
+        const oppNew = Math.max(0, oppCurrent + opponent.hp);
+        const oppBase = computeBaseAttack(opponent.battleZone, G, opponentIndex);
+        G.modifiers.attack[opponentIndex] = oppNew - oppBase;
+      }
       return { success: true, message: 'Both players gain attack equal to own HP' };
     }
     case 'boostPower': {
@@ -536,6 +550,12 @@ export function executeEffect(
       return { success: true, message: `Power +${boost}` };
     }
     case 'reduceAttack': {
+      // 官方 QA Q40/Q74：對手角色 power cost 不足時攻撃力修飾效果不発動，
+      // 不設定修飾器避免殘留導致 power 補足後攻撃力錯誤。
+      // battleZone 為 null 時不跳過（無角色可修飾，修飾器不會造成殘留問題）。
+      if (opponent.battleZone && power(G, opponentIndex) < (effectivePowerCost(opponent.battleZone, G, opponentIndex) ?? 0)) {
+        return { success: true, message: 'Attack reduce skipped (opponent battleZone power cost not met)' };
+      }
       // 官方 QA Q54：逐效果套用並鉗制至 0。
       const currentAttack = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
       const newAttack = Math.max(0, currentAttack - value);
