@@ -268,5 +268,243 @@
     "song_title": "GREINU (One's Mind)",
     "needs_review": true,
     "review_reason": "en_name 'ZUTOMAYO' is likely the band name not the card name; effect text may be stats not actual effect"
+  },
+  {
+    "id": "1st_36",
+    "en_name": "SYAKUMA-MEN...?",
+    "en_effect": "THE WORLD IS CHANGING.",
+    "song_title": "ZUTOMAYONAKADEINONI.",
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "1st_37",
+    "en_name": "UNIGURI SUPER STAR",
+    "en_effect": "NIGHT 100 | DAY 40",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "review_reason": "en_effect may be stats only, not actual effect text; song_title may be set name not song",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "1st_38",
+    "en_name": "NIRA-CHAN (Inside Joke)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "review_reason": "Raw OCR was messy; card name extracted from mixed text. en_effect unclear - SEND TO POWER may be keyword not full effect.",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "1st_39",
+    "en_name": "GRAY (Ham)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true,
+    "review_reason": "en_effect may be incomplete; song_title may be tagline not actual song title",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "1st_40",
+    "en_name": "NIRA-CHAN (MIRROR TUNE)",
+    "en_effect": "NIGHT 60 | DAY 60",
+    "song_title": "MIRROR TUNE",
+    "needs_review": true,
+    "review_reason": "en_effect appears to be stats only, no distinct effect text detected",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "1st_41",
+    "en_name": "NIRA-CHAN·NANASHI (DARKEN)",
+    "en_effect": "NIGHT 70 | DAY 70",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "review_reason": "en_effect appears to be stats only; character name separator (· vs space) uncertain",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "1st_42",
+    "en_name": "UNIGURI-KUN-MIMI-KAYUSHI",
+    "en_effect": "",
+    "song_title": "SEND TO POWER",
+    "needs_review": true,
+    "review_reason": "No distinct effect text found; song_title may be keyword ability not song; card name romanization uncertain",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "1st_43",
+    "en_name": "Paper Carrier (Neko Reset)",
+    "en_effect": "NIGHT 30 | DAY 50",
+    "song_title": "Neko Reset",
+    "needs_review": true,
+    "review_reason": "en_effect appears to be stats only; card name format unusual",
+    "ocr_status": "ok"
+  },
+  {
+    "id": "1st_44",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "review_reason": "vision_unavailable - 429 rate limit error",
+    "ocr_status": "vision_unavailable"
+  },
+  {
+    "id": "1st_45",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "review_reason": "vision_unavailable - 429 rate limit error",
+    "ocr_status": "vision_unavailable"
+  },
+  {
+    "id": "1st_46",
+    "en_name": "Knight of Justice",
+    "en_effect": "NIGHT 40 | DAY 80 POWER COST",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true,
+    "review_reason": "Effect text appears to be stats line (NIGHT/DAY/POWER COST) rather than actual effect text; character card may have no separate effect paragraph"
+  },
+  {
+    "id": "1st_47",
+    "en_name": "NIRA-CHINA (STUDY ME)",
+    "en_effect": "The Battle Begins",
+    "song_title": "NIRA-CHINA (STUDY ME)",
+    "needs_review": true,
+    "review_reason": "Effect text is set name 'The Battle Begins' not actual card effect; character card may have no separate effect paragraph"
+  },
+  {
+    "id": "1st_48",
+    "en_name": "NIRA-CHAN (MILABO)",
+    "en_effect": "The Battle Begins ZUTTOMAYONAKADEIINONI.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true,
+    "review_reason": "Effect text is set name + game name, not actual card effect text"
+  },
+  {
+    "id": "1st_49",
+    "en_name": "NIRA-CHAN (Nouriueno Cracker)",
+    "en_effect": "The Battle Begins",
+    "song_title": "ZUTTOMAYONAKADEIINONI.",
+    "needs_review": true,
+    "review_reason": "Effect text is set name only; character card may have no separate effect paragraph"
+  },
+  {
+    "id": "1st_50",
+    "en_name": "Growing UNIGURI",
+    "en_effect": "Send To Power",
+    "song_title": "The Battle Begins",
+    "needs_review": true,
+    "review_reason": "Effect text is orange sticker/mechanic text 'Send To Power' not a traditional effect; song_title extracted as set name"
+  },
+  {
+    "id": "1st_51",
+    "en_name": "NIRA-CHAN (Hunch Gray)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "Hunch Gray",
+    "needs_review": true,
+    "review_reason": "Effect text is mechanic/sticker keyword 'SEND TO POWER' not traditional effect text"
+  },
+  {
+    "id": "1st_52",
+    "en_name": "NIRA-CHAN on the run (Kan Saete Kuyashiiwa)",
+    "en_effect": "NIGHT 20 | DAY 80",
+    "song_title": "NIRA-CHAN on the run (Kan Saete Kuyashiiwa)",
+    "needs_review": true,
+    "review_reason": "Vision returned 'ZUTOMAYO' as en_name (franchise name, not card name); corrected to name from song_title field. Effect text is stats line."
+  },
+  {
+    "id": "1st_53",
+    "en_name": "Ferris wheel (Nouriueno Cracker)",
+    "en_effect": "Attack +30 if it's night.",
+    "song_title": "Ferris wheel",
+    "needs_review": false
+  },
+  {
+    "id": "1st_54",
+    "en_name": "CYOKI · CYOKI",
+    "en_effect": "Attack +30 if the attribute of the opponent's character card is wind.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false
+  },
+  {
+    "id": "1st_55",
+    "en_name": "Supporting Band",
+    "en_effect": "Attack +20 if your HP is below 50.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false
+  },
+  {
+    "id": "1st_56",
+    "en_name": "Kazekazami of Sunset",
+    "en_effect": "Attack +30 if the attribute of the opponent's character card is electric.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false
+  },
+  {
+    "id": "1st_57",
+    "en_name": "UNIGURI Bread",
+    "en_effect": "30 damage reduction when you take damage.",
+    "song_title": "SEND TO P0WER",
+    "needs_review": false
+  },
+  {
+    "id": "1st_58",
+    "en_name": "Bomb Stripe",
+    "en_effect": "Attack +20 if the opponent's character card has a power cost of 2 or more +.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false
+  },
+  {
+    "id": "1st_59",
+    "en_name": "Lemon-scented sauteed UNIGURI",
+    "en_effect": "Attack +30 if it's daytime.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false
+  },
+  {
+    "id": "1st_60",
+    "en_name": "Electric Key",
+    "en_effect": "Attack +30 if the attribute of the opponent's character card is darkness.",
+    "song_title": "The World Is Changing / Send To Power",
+    "needs_review": false
+  },
+  {
+    "id": "1st_61",
+    "en_name": "ZUTOMAYO CITY",
+    "en_effect": "Attack +30 when day changes to night.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "1st_62",
+    "en_name": "Rice cooked with Bamboo Shoots",
+    "en_effect": "Attack +30 if the attribute of the opponent's character card is flame.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false
+  },
+  {
+    "id": "1st_63",
+    "en_name": "Fluffy Cat",
+    "en_effect": "Reversing one's basic attack power day and night.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true,
+    "review_reason": "Effect text may be imprecise - OCR uncertain on exact wording"
+  },
+  {
+    "id": "1st_64",
+    "en_name": "A little luxury breakfast",
+    "en_effect": "Attack +30 if the opponent's character card has a power cost of 2 or more ★.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false
+  },
+  {
+    "id": "1st_65",
+    "en_name": "KAKIHARA-KURIMUNTO",
+    "en_effect": "NIGHT 50 | DAY 10",
+    "song_title": "Byoushinwo Kamu",
+    "needs_review": true,
+    "review_reason": "OCR captured metadata as effect text; actual effect may be 'NIGHT 50 | DAY 10' or different. En name uncertain."
   }
 ]
