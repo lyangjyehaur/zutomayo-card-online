@@ -1,6 +1,6 @@
 # REST API
 
-The API service runs from [api/server.cjs](/private/tmp/zc-docs/api/server.cjs). In Docker, the game server proxies `/api/*` to the `api` service; the API is also exposed directly on port `3001`.
+The API service runs from [api/server.cjs](../api/server.cjs). In Docker, the game server proxies `/api/*` to the `api` service; the API is also exposed directly on port `3001`.
 
 Base URLs:
 
@@ -210,7 +210,21 @@ Request:
   "winnerId": "u_winner",
   "loserId": "u_loser",
   "turns": 12,
-  "duration": 420
+  "duration": 420,
+  "actionLog": [
+    {
+      "id": 1,
+      "turn": 1,
+      "step": "janken",
+      "player": 0,
+      "action": "janken",
+      "timestamp": 1790000000000,
+      "chronosPosition": 0,
+      "hp": [100, 100],
+      "payload": { "choice": "rock" },
+      "result": { "ok": true, "message": "Choice recorded" }
+    }
+  ]
 }
 ```
 
@@ -231,8 +245,49 @@ Notes:
 - This endpoint is not currently authenticated.
 - ELO changes are `0` if either submitted user ID is not found.
 - `duration` maps to `duration_seconds` in SQLite.
+- `actionLog` is sanitized before storage. Hidden card IDs, deck order, raw text, and unknown payload fields are stripped.
+- Safe trace fields are preserved: `id`, `chronosPosition`, `hp`, `pendingEffectCardDefId`, `pendingChoiceType`, `result.ok`, and `result.message`.
+- Supported sanitized payloads include janken, mulligan, set-card actions, effect resolution summaries, pending choice summaries, and game-over reason.
+- The stored trace is an explainable audit log, not a deterministic replay format.
+- Guest placeholder IDs such as `guest-player-1` are accepted for match records but do not update ELO or leaderboard stats.
 
 Errors: `400`.
+
+### `GET /api/matches/:id/log`
+
+Return a stored match's sanitized action log.
+
+Response:
+
+```json
+{
+  "matchId": "m_...",
+  "actionLog": [
+    {
+      "id": 4,
+      "turn": 2,
+      "step": "effectOrder",
+      "player": 0,
+      "action": "resolvePendingEffect",
+      "timestamp": 1790000003000,
+      "chronosPosition": 4,
+      "hp": [100, 93],
+      "pendingEffectCardDefId": "1st_9",
+      "payload": {
+        "index": 0,
+        "effectId": "effect-1",
+        "cardDefId": "1st_9",
+        "source": "played",
+        "trigger": "onUse",
+        "actionType": "directDamage"
+      },
+      "result": { "ok": true, "message": "Resolved direct damage" }
+    }
+  ]
+}
+```
+
+Errors: `404`.
 
 ## Leaderboard / 排行榜
 

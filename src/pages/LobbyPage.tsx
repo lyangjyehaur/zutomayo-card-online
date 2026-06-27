@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getProfile, isLoggedIn, login, logout as logoutAccount, register, type DeckResponse } from '../api/client';
+import { ApiError, getProfile, isLoggedIn, login, logout as logoutAccount, register, type DeckResponse } from '../api/client';
 import { Card } from '../components/Card';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
 import type { AIDifficulty } from '../game/ai';
 import type { PlayerIndex, ZutomayoSetupData } from '../game/types';
 import { CUSTOM_DECK_NAME, loadCustomDeckIds } from '../game/cards/deckBuilder';
 import { PRESET_DECKS } from '../game/cards/presetDecks';
 import { t, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
+import { isOnlineRoomErrorKey, type OnlineRoomErrorKey } from '../onlineRoomStatus';
 
 type DeckOption = {
   id: string;
@@ -25,7 +27,6 @@ type DeckOptionGroup = {
 };
 
 type AuthMode = 'login' | 'register';
-type OnlineRoomErrorKey = 'online.roomFull' | 'online.roomNotFound' | 'online.connectionFailed';
 type AuthUser = {
   id: string;
   email: string;
@@ -184,12 +185,16 @@ function DifficultyButtons({ onStart }: { onStart: (difficulty: AIDifficulty) =>
 
 function authErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
+  if (
+    error instanceof TypeError
+    || (error instanceof ApiError && error.status !== undefined && error.status >= 500)
+    || message.includes('fetch')
+    || message.includes('network')
+  ) {
+    return t('auth.serviceUnavailable');
+  }
   if (message.includes('exists') || message.includes('registered')) return t('auth.emailExists');
   return t('auth.invalidCredentials');
-}
-
-function isOnlineRoomErrorKey(value: string): value is OnlineRoomErrorKey {
-  return value === 'online.roomFull' || value === 'online.roomNotFound' || value === 'online.connectionFailed';
 }
 
 function onlineErrorMessage(error: unknown): string {
@@ -202,12 +207,6 @@ function profileStats(user: AuthUser): { matchCount: number; wins: number; winRa
   const wins = user.wins ?? 0;
   const winRate = user.winRate ?? (matchCount > 0 ? Math.round((wins / matchCount) * 100) : 0);
   return { matchCount, wins, winRate };
-}
-
-function buildOnlineRoomUrl(matchID: string): string {
-  const path = `/play/online/${encodeURIComponent(matchID)}`;
-  if (typeof window === 'undefined') return path;
-  return `${window.location.origin}${path}`;
 }
 
 function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<void> }) {
@@ -228,8 +227,9 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
       .then(profile => {
         if (!cancelled) setUser(profile);
       })
-      .catch(() => {
-        if (!cancelled) logoutAccount();
+      .catch(err => {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 404)) logoutAccount();
+        if (!cancelled) setError(t('auth.profileUnavailable'));
       });
     return () => {
       cancelled = true;
@@ -317,6 +317,7 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
       >
         {t('auth.login')} / {t('auth.register')}
       </button>
+      {!expanded && error && <p className="error-copy auth-error">{error}</p>}
 
       {expanded && (
         <form className="auth-form" onSubmit={handleSubmit}>
@@ -385,37 +386,16 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
 function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) => Promise<OnlineSession> }) {
   const [matchID, setMatchID] = useState('');
   const [createdMatchID, setCreatedMatchID] = useState('');
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
-  const shareLink = createdMatchID ? buildOnlineRoomUrl(createdMatchID) : '';
 
   const runOnline = async (id?: string) => {
     setError('');
-    setCopied(false);
     try {
       const nextSession = await startOnline(id);
       setCreatedMatchID(id ? '' : nextSession.matchID);
     } catch (err) {
       setError(onlineErrorMessage(err));
     }
-  };
-
-  const copyShareLink = async () => {
-    if (!shareLink) return;
-    try {
-      await navigator.clipboard.writeText(shareLink);
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = shareLink;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-    }
-    setCopied(true);
   };
 
   return (
@@ -441,17 +421,11 @@ function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) => Promi
         </div>
       </div>
       {createdMatchID && (
-        <div className="online-share-card" role="status" aria-live="polite">
-          <span>{t('online.roomCode')}</span>
-          <strong className="online-room-code">{createdMatchID}</strong>
-          <label className="share-link-row">
-            <span>{t('online.shareLink')}</span>
-            <input value={shareLink} readOnly aria-label={t('online.shareLink')} />
-          </label>
-          <button className="secondary-action" type="button" onClick={copyShareLink}>
-            {copied ? t('online.copied') : t('online.copyLink')}
-          </button>
-        </div>
+        <OnlineRoomInfo
+          className="online-share-card"
+          matchID={createdMatchID}
+          helperText={t('online.hostWaitingHelper')}
+        />
       )}
       {error && <p className="error-copy">{error}</p>}
     </section>
@@ -469,6 +443,7 @@ interface LobbyPageProps {
   onStartOnline: (matchID?: string) => Promise<OnlineSession>;
   onAuthChanged: () => void | Promise<void>;
   onShowTutorial: () => void;
+  serverDeckError?: string;
 }
 
 export function LobbyPage({
@@ -482,6 +457,7 @@ export function LobbyPage({
   onStartOnline,
   onAuthChanged,
   onShowTutorial,
+  serverDeckError,
 }: LobbyPageProps) {
   const navigate = useNavigate();
   const locale = useLocale();
@@ -525,6 +501,7 @@ export function LobbyPage({
 
       <section className="lobby-grid">
         <div className="lobby-panel deck-panel">
+          {serverDeckError && <p className="error-copy">{serverDeckError}</p>}
           <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={deckOptions} onChange={setDeck0Name} />
           <DeckSelector label={t('lobby.opponentDeck')} value={deck1Name} options={deckOptions} onChange={setDeck1Name} />
         </div>

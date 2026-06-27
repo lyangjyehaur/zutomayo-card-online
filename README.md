@@ -65,7 +65,7 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
                    │
 ┌──────────────────┴──────────────────────────┐
 │           API 伺服器 (port 3001)             │
-│  Express · better-sqlite3 · JWT             │
+│  Node HTTP · SQLite · HMAC tokens           │
 │  帳號 / 牌組 / 對戰紀錄 / 排行榜            │
 └─────────────────────────────────────────────┘
 ```
@@ -88,7 +88,7 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 | 卡圖 | Cloudflare R2 (`r2.dan.tw`) | 422 張卡圖 CDN |
 | 用戶帳號 | SQLite (`api/server.cjs`) | 註冊/登入/ELO |
 | 牌組 | SQLite + localStorage | 伺服器同步 + 本地備份 |
-| 對戰紀錄 | SQLite + localStorage | ELO 變動 + 歷史 |
+| 對戰紀錄 | SQLite + localStorage | ELO 變動 + 歷史 + 已清理 action log |
 | 語言偏好 | localStorage | 瀏覽器本地 |
 
 ---
@@ -123,6 +123,7 @@ npm run server
 
 ```bash
 npm run smoke          # 遊戲邏輯測試
+npm run smoke:api      # 帳號/牌組/對戰/排行榜 API loop
 npm run smoke:online   # 線上對戰測試
 npm run rule:audit     # 效果解析覆蓋率審計
 ```
@@ -307,6 +308,7 @@ zutomayo-card-online/
 | POST | `/api/decks` | 建立牌組 |
 | DELETE | `/api/decks/:id` | 刪除牌組 |
 | POST | `/api/matches` | 上報對戰結果 |
+| GET | `/api/matches/:id/log` | 取得已清理 action log |
 | GET | `/api/leaderboard` | 排行榜 |
 
 詳見 [docs/API.md](docs/API.md)

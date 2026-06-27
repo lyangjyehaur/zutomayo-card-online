@@ -47,6 +47,21 @@ export function clearStoredOnlineSession(): void {
   getStorage()?.removeItem(ONLINE_SESSION_STORAGE_KEY);
 }
 
+export async function leaveOnlineSession(session: OnlineSession): Promise<void> {
+  try {
+    await fetch(`/games/zutomayo-card/${encodeURIComponent(session.matchID)}/leave`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerID: session.playerID,
+        credentials: session.playerCredentials,
+      }),
+    });
+  } catch {
+    // Local cleanup still happens; the server may already have dropped the room.
+  }
+}
+
 export async function validateOnlineSession(
   session: OnlineSession,
 ): Promise<OnlineSessionValidationResult> {

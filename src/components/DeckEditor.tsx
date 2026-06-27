@@ -15,6 +15,7 @@ interface DeckEditorProps {
   saving?: boolean;
   synced?: boolean;
   syncLabel?: string;
+  errorMessage?: string;
   saveLocalDeck?: boolean;
 }
 
@@ -62,6 +63,7 @@ export function DeckEditor({
   saving = false,
   synced = false,
   syncLabel,
+  errorMessage,
   saveLocalDeck = true,
 }: DeckEditorProps) {
   const allCards = useMemo(() => getAllCardDefs(), []);
@@ -166,6 +168,8 @@ export function DeckEditor({
           </button>
         </div>
       </header>
+
+      {errorMessage && <p className="error-copy deck-editor-error" role="alert">{errorMessage}</p>}
 
       <section className="deck-rules">
         <div className={deck.length === DECK_SIZE ? 'rule valid' : 'rule invalid'}>

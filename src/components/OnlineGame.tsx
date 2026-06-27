@@ -3,7 +3,7 @@ import { Client, type BoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { ZutomayoCard } from '../game/Game';
 import type { GameState } from '../game/types';
-import { Board } from './Board';
+import { Board, type BoardGameOverActions } from './Board';
 import { t } from '../i18n';
 
 interface OnlineGameProps {
@@ -11,7 +11,9 @@ interface OnlineGameProps {
   playerID: string;
   playerCredentials: string;
   showRejoinedStatus?: boolean;
-  onBack: () => void;
+  onLeaveRequest: () => void;
+  onReturnToLobby: () => void;
+  onCreateNewRoom: () => void;
 }
 
 type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
@@ -21,15 +23,18 @@ function OnlineLoading() {
 }
 
 function OnlineBoard(
-  props: BoardProps<GameState> & { onConnectionStatusChange: (isConnected: boolean) => void },
+  props: BoardProps<GameState> & {
+    gameOverActions: BoardGameOverActions;
+    onConnectionStatusChange: (isConnected: boolean) => void;
+  },
 ) {
-  const { onConnectionStatusChange, ...boardProps } = props;
+  const { gameOverActions, onConnectionStatusChange, ...boardProps } = props;
 
   useEffect(() => {
     onConnectionStatusChange(props.isConnected);
   }, [onConnectionStatusChange, props.isConnected]);
 
-  return <Board {...boardProps} />;
+  return <Board {...boardProps} gameOverActions={gameOverActions} />;
 }
 
 export function OnlineGame({
@@ -37,15 +42,24 @@ export function OnlineGame({
   playerID,
   playerCredentials,
   showRejoinedStatus = false,
-  onBack,
+  onLeaveRequest,
+  onReturnToLobby,
+  onCreateNewRoom,
 }: OnlineGameProps) {
   const connectedOnce = useRef(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onReturnToLobbyRef = useRef(onReturnToLobby);
+  const onCreateNewRoomRef = useRef(onCreateNewRoom);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
 
   useEffect(() => () => {
     if (statusTimer.current) clearTimeout(statusTimer.current);
   }, []);
+
+  useEffect(() => {
+    onReturnToLobbyRef.current = onReturnToLobby;
+    onCreateNewRoomRef.current = onCreateNewRoom;
+  }, [onReturnToLobby, onCreateNewRoom]);
 
   const flashRejoined = useCallback(() => {
     if (statusTimer.current) clearTimeout(statusTimer.current);
@@ -68,7 +82,22 @@ export function OnlineGame({
   const [OnlineClient] = useState(() => Client({
     game: ZutomayoCard,
     board: (props: BoardProps<GameState>) => (
-      <OnlineBoard {...props} onConnectionStatusChange={handleConnectionStatusChange} />
+      <OnlineBoard
+        {...props}
+        gameOverActions={{
+          helperText: t('online.gameOverHelper'),
+          primary: {
+            label: t('common.backToLobby'),
+            onClick: () => onReturnToLobbyRef.current(),
+          },
+          secondary: {
+            label: t('online.createNewRoom'),
+            onClick: () => onCreateNewRoomRef.current(),
+            variant: 'secondary',
+          },
+        }}
+        onConnectionStatusChange={handleConnectionStatusChange}
+      />
     ),
     loading: OnlineLoading,
     numPlayers: 2,
@@ -79,7 +108,7 @@ export function OnlineGame({
   return (
     <div className="app game-app">
       <header className="game-header">
-        <button className="back-btn" type="button" onClick={onBack}>{t('common.backToLobby')}</button>
+        <button className="back-btn" type="button" onClick={onLeaveRequest}>{t('online.leaveRoom')}</button>
         <div>
           <strong>{t('game.onlineMode')}</strong>
           <span>{t('game.matchCode')} {matchID}</span>

@@ -1,171 +1,417 @@
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { once } from 'node:events';
+import { EventEmitter } from 'node:events';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
+import type { ActionLogEntry } from '../src/game/types';
 
 interface ApiResponse<T> {
   status: number;
   body: T;
 }
 
-async function api<T>(
-  baseUrl: string,
-  path: string,
-  options: RequestInit = {},
-): Promise<ApiResponse<T>> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers ?? {}),
-    },
-  });
-  const text = await response.text();
-  return {
-    status: response.status,
-    body: text ? JSON.parse(text) : {},
+interface AuthResponse {
+  token: string;
+  user: {
+    id: string;
+    email: string;
+    nickname: string;
+    elo: number;
   };
 }
 
-async function waitForServer(child: ChildProcess, baseUrl: string): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < 5_000) {
-    if (child.exitCode !== null) break;
-    try {
-      const response = await fetch(`${baseUrl}/api/leaderboard`);
-      if (response.ok) return;
-    } catch {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-  }
-  throw new Error('API server did not start');
+interface ProfileResponse {
+  id: string;
+  email: string;
+  nickname: string;
+  elo: number;
+  matchCount: number;
+  wins: number;
+  winRate: number;
 }
 
-function stopServer(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null) return Promise.resolve();
-  child.kill();
-  return once(child, 'exit').then(() => undefined);
+interface DeckResponse {
+  id: string;
+  name: string;
+  cardIds: string[];
 }
+
+interface MatchResponse {
+  matchId: string;
+  winnerEloChange: number;
+  loserEloChange: number;
+  winnerNewElo: number;
+  loserNewElo: number;
+}
+
+interface LeaderboardEntry {
+  id: string;
+  nickname: string;
+  elo: number;
+  matchCount: number;
+  wins: number;
+  winRate: number;
+}
+
+type ApiServerModule = {
+  handleRequest: (req: any, res: any) => void;
+  closeDatabase: () => void;
+};
 
 const tmp = mkdtempSync(join(tmpdir(), 'zutomayo-api-smoke-'));
 const port = 3900 + Math.floor(Math.random() * 1000);
 const baseUrl = `http://127.0.0.1:${port}`;
-const output: string[] = [];
-const server = spawn('node', ['server.cjs'], {
-  cwd: 'api',
-  env: {
-    ...process.env,
-    API_PORT: String(port),
-    DB_PATH: join(tmp, 'smoke.db'),
-    JWT_SECRET: 'api-smoke-secret',
-  },
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
 
-server.stdout?.on('data', chunk => output.push(String(chunk)));
-server.stderr?.on('data', chunk => output.push(String(chunk)));
+process.env.API_PORT = String(port);
+process.env.DB_PATH = join(tmp, 'smoke.db');
+process.env.JWT_SECRET = 'api-smoke-secret';
+
+// This smoke uses the real API request handler in-process so it works in
+// sandboxes/CI where opening a local listening socket is forbidden. The DB is
+// still an isolated, disposable SQLite file and `node api/server.cjs` remains
+// the production way to start the HTTP service.
+const require = createRequire(import.meta.url);
+const apiServer = require('../api/server.cjs') as ApiServerModule;
+
+function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
+  const normalized: Record<string, string> = { 'content-type': 'application/json' };
+  if (!headers) return normalized;
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => {
+      normalized[key.toLowerCase()] = value;
+    });
+    return normalized;
+  }
+  if (Array.isArray(headers)) {
+    for (const [key, value] of headers) normalized[key.toLowerCase()] = value;
+    return normalized;
+  }
+  for (const [key, value] of Object.entries(headers)) normalized[key.toLowerCase()] = String(value);
+  return normalized;
+}
+
+async function api<T>(
+  _baseUrl: string,
+  path: string,
+  options: RequestInit = {},
+): Promise<ApiResponse<T>> {
+  return new Promise((resolve, reject) => {
+    const req = new EventEmitter() as any;
+    req.method = options.method ?? 'GET';
+    req.url = path;
+    req.headers = normalizeHeaders(options.headers);
+    let status = 200;
+
+    const res = {
+      setHeader: () => undefined,
+      writeHead: (nextStatus: number) => {
+        status = nextStatus;
+      },
+      end: (chunk: unknown = '') => {
+        const text = Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk ?? '');
+        let body: unknown = {};
+        if (text) {
+          try {
+            body = JSON.parse(text);
+          } catch {
+            body = text;
+          }
+        }
+        resolve({ status, body: body as T });
+      },
+    };
+
+    try {
+      apiServer.handleRequest(req, res);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    queueMicrotask(() => {
+      if (options.body) req.emit('data', options.body);
+      req.emit('end');
+    });
+  });
+}
+
+function authHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
 
 try {
-  await waitForServer(server, baseUrl);
-
-  const email = `smoke-${Date.now()}@example.test`;
+  const stamp = Date.now();
+  const emailA = `smoke-a-${stamp}@example.test`;
+  const emailB = `smoke-b-${stamp}@example.test`;
   const password = 'secret123';
-  const registered = await api<{ token: string; user: { id: string; email: string } }>(
-    baseUrl,
-    '/api/register',
-    {
-      method: 'POST',
-      body: JSON.stringify({ email, password, nickname: 'Smoke One' }),
-    },
-  );
-  assert.equal(registered.status, 200);
-  assert.ok(registered.body.token);
-  assert.equal(registered.body.user.email, email);
+  const validDeckIds = PRESET_DECKS.dark.ids;
+  assert.equal(validDeckIds.length, 20);
 
-  const loser = await api<{ user: { id: string } }>(baseUrl, '/api/register', {
+  const registeredA = await api<AuthResponse>(baseUrl, '/api/register', {
+    method: 'POST',
+    body: JSON.stringify({ email: emailA, password, nickname: 'Smoke One' }),
+  });
+  assert.equal(registeredA.status, 200);
+  assert.ok(registeredA.body.token);
+  assert.equal(registeredA.body.user.email, emailA);
+  assert.equal(registeredA.body.user.elo, 1000);
+
+  const registeredB = await api<AuthResponse>(baseUrl, '/api/register', {
     method: 'POST',
     body: JSON.stringify({
-      email: `smoke-loser-${Date.now()}@example.test`,
+      email: emailB,
       password,
       nickname: 'Smoke Two',
     }),
   });
-  assert.equal(loser.status, 200);
+  assert.equal(registeredB.status, 200);
+  assert.ok(registeredB.body.token);
+  assert.equal(registeredB.body.user.email, emailB);
 
-  const login = await api<{ token: string; user: { id: string } }>(baseUrl, '/api/login', {
+  const loginA = await api<AuthResponse>(baseUrl, '/api/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: emailA, password }),
   });
-  assert.equal(login.status, 200);
-  assert.equal(login.body.user.id, registered.body.user.id);
+  assert.equal(loginA.status, 200);
+  assert.equal(loginA.body.user.id, registeredA.body.user.id);
 
-  const profile = await api<{ id: string; matchCount: number }>(baseUrl, '/api/profile', {
-    headers: { Authorization: `Bearer ${login.body.token}` },
+  const loginB = await api<AuthResponse>(baseUrl, '/api/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: emailB, password }),
   });
-  assert.equal(profile.status, 200);
-  assert.equal(profile.body.id, registered.body.user.id);
-  assert.equal(profile.body.matchCount, 0);
+  assert.equal(loginB.status, 200);
+  assert.equal(loginB.body.user.id, registeredB.body.user.id);
 
-  const tamperedToken = `${login.body.token.slice(0, -1)}x`;
+  const profileA = await api<ProfileResponse>(baseUrl, '/api/profile', {
+    headers: authHeaders(loginA.body.token),
+  });
+  assert.equal(profileA.status, 200);
+  assert.equal(profileA.body.id, registeredA.body.user.id);
+  assert.equal(profileA.body.matchCount, 0);
+  assert.equal(profileA.body.wins, 0);
+  assert.equal(profileA.body.elo, 1000);
+
+  const profileB = await api<ProfileResponse>(baseUrl, '/api/profile', {
+    headers: authHeaders(loginB.body.token),
+  });
+  assert.equal(profileB.status, 200);
+  assert.equal(profileB.body.id, registeredB.body.user.id);
+  assert.equal(profileB.body.matchCount, 0);
+  assert.equal(profileB.body.wins, 0);
+  assert.equal(profileB.body.elo, 1000);
+
+  const tamperedToken = `${loginA.body.token.slice(0, -1)}x`;
   const tamperedProfile = await api(baseUrl, '/api/profile', {
-    headers: { Authorization: `Bearer ${tamperedToken}` },
+    headers: authHeaders(tamperedToken),
   });
   assert.equal(tamperedProfile.status, 401);
 
-  const createdDeck = await api<{ id: string; cardIds: string[] }>(baseUrl, '/api/decks', {
+  const createdDeck = await api<DeckResponse>(baseUrl, '/api/decks', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${login.body.token}` },
-    body: JSON.stringify({ name: 'Smoke Deck', cardIds: PRESET_DECKS.dark.ids }),
+    headers: authHeaders(loginA.body.token),
+    body: JSON.stringify({ name: 'Smoke Deck', cardIds: validDeckIds }),
   });
   assert.equal(createdDeck.status, 200);
-  assert.equal(createdDeck.body.cardIds.length, 20);
+  assert.ok(createdDeck.body.id.startsWith('d_'));
+  assert.deepEqual(createdDeck.body.cardIds, validDeckIds);
 
-  const listedDecks = await api<{ decks: { id: string }[] }>(baseUrl, '/api/decks', {
-    headers: { Authorization: `Bearer ${login.body.token}` },
+  const listedDecks = await api<{ decks: DeckResponse[] }>(baseUrl, '/api/decks', {
+    headers: authHeaders(loginA.body.token),
   });
   assert.equal(listedDecks.status, 200);
-  assert.ok(listedDecks.body.decks.some(deck => deck.id === createdDeck.body.id));
+  const roundtrippedDeck = listedDecks.body.decks.find(deck => deck.id === createdDeck.body.id);
+  assert.ok(roundtrippedDeck);
+  assert.equal(roundtrippedDeck.name, 'Smoke Deck');
+  assert.deepEqual(roundtrippedDeck.cardIds, validDeckIds);
 
-  const deletedDeck = await api<{ deleted: boolean }>(baseUrl, `/api/decks/${createdDeck.body.id}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${login.body.token}` },
-  });
-  assert.equal(deletedDeck.status, 200);
-  assert.equal(deletedDeck.body.deleted, true);
+  const actionLog: ActionLogEntry[] = [
+    {
+      turn: 1,
+      step: 'janken',
+      player: 0,
+      action: 'janken',
+      timestamp: stamp,
+      payload: { choice: 'rock', hiddenHand: ['1st_1'], deckOrder: ['1st_2'] },
+    },
+    {
+      turn: 1,
+      step: 'mulligan',
+      player: 1,
+      action: 'mulligan',
+      timestamp: stamp + 1,
+      payload: { redrawnCount: 2, cardIds: ['1st_3', '1st_4'] },
+    },
+    {
+      turn: 2,
+      step: 'turnSet',
+      player: 0,
+      action: 'setTurnCard',
+      timestamp: stamp + 2,
+      payload: { slot: 'B', cardDefId: '1st_9' },
+    },
+    {
+      id: 4,
+      turn: 2,
+      step: 'effectOrder',
+      player: 0,
+      action: 'resolvePendingEffect',
+      timestamp: stamp + 3,
+      chronosPosition: 4,
+      hp: [100, 93],
+      pendingEffectCardDefId: '1st_9',
+      result: { ok: true, message: 'Resolved direct damage', secret: 'strip-me' } as any,
+      payload: { index: 0, effectId: 'effect-1', cardDefId: '1st_9', source: 'played', trigger: 'onUse', actionType: 'directDamage', rawText: 'hidden raw text' },
+      unsafeNested: { deckOrder: ['1st_1'] } as any,
+    },
+    {
+      id: 5,
+      turn: 2,
+      step: 'effectOrder',
+      player: 0,
+      action: 'submitPendingChoice',
+      timestamp: stamp + 4,
+      pendingChoiceType: 'handToDeckBottomThenDraw' as any,
+      payload: { choiceId: 'choice-1', choiceType: 'handToDeckBottomThenDraw', selectedCount: 2, min: 2, max: 2, destinationZone: 'deck', destinationPosition: 'bottom', drawCount: 2, selectedCardIds: ['hidden'] },
+    },
+  ];
 
-  const match = await api<{ matchId: string; winnerEloChange: number }>(baseUrl, '/api/matches', {
+  const match = await api<MatchResponse>(baseUrl, '/api/matches', {
     method: 'POST',
     body: JSON.stringify({
-      winnerId: registered.body.user.id,
-      loserId: loser.body.user.id,
+      winnerId: registeredA.body.user.id,
+      loserId: registeredB.body.user.id,
       turns: 7,
       duration: 180,
-      actionLog: [{ turn: 1, step: 'janken', player: 0, action: 'janken', timestamp: Date.now(), payload: { choice: 'rock' } }],
+      actionLog,
     }),
   });
   assert.equal(match.status, 200);
   assert.ok(match.body.matchId.startsWith('m_'));
-  assert.notEqual(match.body.winnerEloChange, 0);
+  assert.ok(match.body.winnerEloChange > 0);
+  assert.ok(match.body.loserEloChange < 0);
+  assert.ok(match.body.winnerNewElo > 1000);
+  assert.ok(match.body.loserNewElo < 1000);
 
-  const leaderboard = await api<{ leaderboard: { id: string; matchCount: number; wins: number }[] }>(
+  const afterMatchProfileA = await api<ProfileResponse>(baseUrl, '/api/profile', {
+    headers: authHeaders(loginA.body.token),
+  });
+  assert.equal(afterMatchProfileA.status, 200);
+  assert.equal(afterMatchProfileA.body.matchCount, 1);
+  assert.equal(afterMatchProfileA.body.wins, 1);
+  assert.equal(afterMatchProfileA.body.winRate, 100);
+  assert.equal(afterMatchProfileA.body.elo, match.body.winnerNewElo);
+
+  const afterMatchProfileB = await api<ProfileResponse>(baseUrl, '/api/profile', {
+    headers: authHeaders(loginB.body.token),
+  });
+  assert.equal(afterMatchProfileB.status, 200);
+  assert.equal(afterMatchProfileB.body.matchCount, 1);
+  assert.equal(afterMatchProfileB.body.wins, 0);
+  assert.equal(afterMatchProfileB.body.winRate, 0);
+  assert.equal(afterMatchProfileB.body.elo, match.body.loserNewElo);
+
+  const leaderboard = await api<{ leaderboard: LeaderboardEntry[] }>(
     baseUrl,
     '/api/leaderboard?limit=10',
   );
   assert.equal(leaderboard.status, 200);
-  assert.ok(leaderboard.body.leaderboard.some(entry => (
-    entry.id === registered.body.user.id
-    && entry.matchCount === 1
-    && entry.wins === 1
-  )));
+  const entryA = leaderboard.body.leaderboard.find(entry => entry.id === registeredA.body.user.id);
+  const entryB = leaderboard.body.leaderboard.find(entry => entry.id === registeredB.body.user.id);
+  assert.ok(entryA);
+  assert.ok(entryB);
+  assert.equal(entryA.matchCount, 1);
+  assert.equal(entryA.wins, 1);
+  assert.equal(entryA.winRate, 100);
+  assert.equal(entryA.elo, match.body.winnerNewElo);
+  assert.equal(entryB.matchCount, 1);
+  assert.equal(entryB.wins, 0);
+  assert.equal(entryB.winRate, 0);
+  assert.equal(entryB.elo, match.body.loserNewElo);
+
+  const matchLog = await api<{ matchId: string; actionLog: ActionLogEntry[] }>(
+    baseUrl,
+    `/api/matches/${match.body.matchId}/log`,
+  );
+  assert.equal(matchLog.status, 200);
+  assert.equal(matchLog.body.matchId, match.body.matchId);
+  assert.equal(matchLog.body.actionLog.length, actionLog.length);
+  assert.deepEqual(matchLog.body.actionLog[0].payload, { choice: 'rock' });
+  assert.deepEqual(matchLog.body.actionLog[1].payload, { redrawnCount: 2 });
+  assert.deepEqual(matchLog.body.actionLog[2].payload, { slot: 'B', faceDown: true });
+  assert.deepEqual(matchLog.body.actionLog[3].payload, {
+    index: 0,
+    effectId: 'effect-1',
+    cardDefId: '1st_9',
+    source: 'played',
+    trigger: 'onUse',
+    actionType: 'directDamage',
+  });
+  assert.equal(matchLog.body.actionLog[3].id, 4);
+  assert.equal(matchLog.body.actionLog[3].chronosPosition, 4);
+  assert.deepEqual(matchLog.body.actionLog[3].hp, [100, 93]);
+  assert.equal(matchLog.body.actionLog[3].pendingEffectCardDefId, '1st_9');
+  assert.deepEqual(matchLog.body.actionLog[3].result, { ok: true, message: 'Resolved direct damage' });
+  assert.deepEqual(matchLog.body.actionLog[4].payload, {
+    selectedCount: 2,
+    min: 2,
+    max: 2,
+    choiceId: 'choice-1',
+    choiceType: 'handToDeckBottomThenDraw',
+    destinationZone: 'deck',
+    destinationPosition: 'bottom',
+    drawCount: 2,
+  });
+  assert.equal(matchLog.body.actionLog[4].pendingChoiceType, 'handToDeckBottomThenDraw');
+  assert.equal(JSON.stringify(matchLog.body.actionLog).includes('hiddenHand'), false);
+  assert.equal(JSON.stringify(matchLog.body.actionLog).includes('deckOrder'), false);
+  assert.equal(JSON.stringify(matchLog.body.actionLog).includes('rawText'), false);
+  assert.equal(JSON.stringify(matchLog.body.actionLog).includes('selectedCardIds'), false);
+  assert.equal(JSON.stringify(matchLog.body.actionLog).includes('unsafeNested'), false);
+  assert.equal(JSON.stringify(matchLog.body.actionLog).includes('strip-me'), false);
+
+  const guestPlaceholderMatch = await api<MatchResponse>(baseUrl, '/api/matches', {
+    method: 'POST',
+    body: JSON.stringify({
+      winnerId: registeredA.body.user.id,
+      loserId: 'guest-player-1',
+      turns: 1,
+      duration: 30,
+      actionLog: [
+        { turn: 1, step: 'turnSet', player: 0, action: 'confirmReady', timestamp: stamp + 4, payload: { cardIds: ['1st_9'] } },
+      ],
+    }),
+  });
+  assert.equal(guestPlaceholderMatch.status, 200);
+  assert.equal(guestPlaceholderMatch.body.winnerEloChange, 0);
+  assert.equal(guestPlaceholderMatch.body.loserEloChange, 0);
+
+  const afterGuestProfileA = await api<ProfileResponse>(baseUrl, '/api/profile', {
+    headers: authHeaders(loginA.body.token),
+  });
+  assert.equal(afterGuestProfileA.status, 200);
+  assert.equal(afterGuestProfileA.body.matchCount, 1);
+  assert.equal(afterGuestProfileA.body.wins, 1);
+  assert.equal(afterGuestProfileA.body.elo, match.body.winnerNewElo);
+
+  const deletedDeck = await api<{ deleted: boolean }>(baseUrl, `/api/decks/${createdDeck.body.id}`, {
+    method: 'DELETE',
+    headers: authHeaders(loginA.body.token),
+  });
+  assert.equal(deletedDeck.status, 200);
+  assert.equal(deletedDeck.body.deleted, true);
+
+  const decksAfterDelete = await api<{ decks: DeckResponse[] }>(baseUrl, '/api/decks', {
+    headers: authHeaders(loginA.body.token),
+  });
+  assert.equal(decksAfterDelete.status, 200);
+  assert.equal(decksAfterDelete.body.decks.some(deck => deck.id === createdDeck.body.id), false);
 
   console.log('api smoke: all assertions passed');
 } catch (error) {
-  if (output.length > 0) console.error(output.join(''));
   throw error;
 } finally {
-  await stopServer(server);
+  apiServer.closeDatabase();
   rmSync(tmp, { recursive: true, force: true });
 }

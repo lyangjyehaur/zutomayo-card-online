@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Current status for the ZUTOMAYO CARD Online implementation. This file tracks product and architecture progress; card-effect parser/executor gaps remain detailed in [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md).
+Current status for the ZUTOMAYO CARD Online implementation. This file tracks product and architecture progress; current rules/effect status is detailed in [RULE_ENGINE_AUDIT.md](RULE_ENGINE_AUDIT.md) and [CARD_EFFECT_AUDIT_FINAL.md](CARD_EFFECT_AUDIT_FINAL.md).
 
 ## Phase Status / 階段狀態
 
@@ -29,17 +29,17 @@ Current status for the ZUTOMAYO CARD Online implementation. This file tracks pro
 
 ## Current State and Remaining Work / 目前狀態與待辦
 
-From [NON_CARD_GAPS.md](NON_CARD_GAPS.md), adjusted for the current implementation state:
+Current implementation state:
 
 1. Account frontend integration: ✅ DONE — lobby login/register/logout/profile UI is wired, and guest mode remains available.
 2. Server-backed deck sync: ✅ DONE — deck editor saves to authenticated deck CRUD while preserving browser-local fallback for guests.
 3. Match result integration: ✅ DONE — completed authenticated matches submit to `/api/matches` with sanitized action logs.
 4. Leaderboard/profile UI: ✅ DONE — `/api/leaderboard` and user ELO/profile stats are exposed in the React app.
-5. Authenticated match ownership: ✅ DONE for reconnect/resume via boardgame.io `playerCredentials`; account-bound seat enforcement remains optional future product scope.
+5. Online seat resume: ✅ DONE via boardgame.io `playerCredentials`; account-bound online seat enforcement is future product scope.
 6. Action log/replay: add an authoritative sanitized move trace for debugging and disputes; do not rely on human-readable `G.log` alone.
 7. Online lifecycle polish: PARTIAL — reconnect, full-room/missing-room errors, and waiting states exist; invite/share-link polish, stale-room cleanup, and abandon handling remain.
 8. Hard AI lookahead: ✅ DONE — hardLookahead() simulates all card combinations, calculates damage differential, considers Chronos and Power Cost.
-9. Card-effect completion: ✅ DONE by current parser/executor audit — 267/267 effect lines parse, runtime AST coverage is checked, and parsed-but-partial is 0. Future work is semantic refinement with card-specific regressions.
+9. Card-effect completion: ✅ DONE by current parser/executor audit — 267/267 effect lines parse, runtime AST coverage is checked, parsed-but-partial is 0, and semantic regressions are covered in `scripts/game-smoke.ts`.
 10. Persistence hardening: ✅ DONE — api-smoke.ts tests, HMAC token signing, backup/restore docs in DEPLOYMENT.md.
 
 ## Verification / 驗證
@@ -48,9 +48,10 @@ Use these after game, online, or backend changes:
 
 ```bash
 npm run smoke
+npm run smoke:api
 npm run build
 npm run smoke:online
 npm run rule:audit
 ```
 
-For API changes, also test the affected endpoint against `api/server.cjs` and verify the SQLite schema migration path on an existing database.
+For API changes, run `npm run smoke:api`; it exercises auth, profile, deck CRUD, match reporting, sanitized match-log retrieval, leaderboard/profile stats, and guest placeholder match reporting against an isolated SQLite DB.

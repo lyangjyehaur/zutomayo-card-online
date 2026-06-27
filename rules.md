@@ -122,5 +122,6 @@ Chronos medal 所在時段對應側為優先玩家，先處理效果。
 - Set Zone A/B 同目的地衝突時 A 優先；只有 B 有 Character 或 Area Enchant 時仍會正常進場。
 - Enchant 保留到效果處理後離場；Area Enchant 進 Set Zone C 並持續存在。
 - 每個效果處理前各自檢查當下 Power Cost。攻擊加減、傷害減免、HP、抽牌與部分 Chronos 效果會實際改變狀態。
-- 已支援前一回合 Character 屬性條件、部分確定性目標移動、`4th_53` / `4th_54` / `4th_58` 的可選固定 1 張手牌支付後抽 1 張、`4th_61` / `4th_62` / `4th_63` 的可選任意張數手牌支付後同數抽牌、自己的 Abyss 支付選牌到底牌並在無法支付時敗北、`4th_27` 依 Abyss 支付張數延伸磨對手牌庫、`4th_6` 對手 Power Charger Character 與 Battle Zone Character 入替及入場角色效果抑制，以及持續型 Area Enchant 攻擊加成。
-- 尚未完整支援全部 422 張卡。玩家選擇普通效果順序、傷害減免時機、Chronos transition / zone-entry 事件、部分 Area Enchant 離場、基本手牌/移動選牌、Abyss 支付選牌、`4th_6` 對手 Character 入替、手牌支付抽牌與 Clock 選擇流程已支援，但追加出牌、其他可變張數選擇、更多依已選張數延伸的後續效果、deck ordering、broader replacement/continuous modifier 與更複雜 timing 仍有限制，詳見 [RULE_GAP_AUDIT.md](RULE_GAP_AUDIT.md)。
+- 422 張卡牌資料與 250 張有效果卡已進入目前 parser/executor 覆蓋基準；267/267 效果行可解析，`unparsedLines=0`、`parsedButPartial=0`。
+- 玩家選擇效果順序、同一卡多段效果順序、傷害減免時機、Chronos transition、zone-entry events、Area Enchant 離場、手牌/移動選牌、Abyss 支付選牌、對手 Character 入替、手牌支付抽牌、Clock 選擇、deck top reorder 與持續型 modifier 皆有 runtime 支援與 smoke regression。
+- 目前規則與效果現況詳見 [RULE_ENGINE_AUDIT.md](RULE_ENGINE_AUDIT.md) 與 [CARD_EFFECT_AUDIT_FINAL.md](CARD_EFFECT_AUDIT_FINAL.md)。

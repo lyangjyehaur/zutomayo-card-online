@@ -16,6 +16,8 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
   const [deckName, setDeckName] = useState(t('deck.custom'));
   const [saving, setSaving] = useState(false);
   const [syncedDeckId, setSyncedDeckId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [saveError, setSaveError] = useState('');
   const loggedIn = isLoggedIn();
 
   useEffect(() => {
@@ -23,10 +25,16 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
     let cancelled = false;
     getDecks()
       .then(decks => {
-        if (!cancelled) onServerDecksLoaded(decks);
+        if (!cancelled) {
+          setLoadError('');
+          onServerDecksLoaded(decks);
+        }
       })
       .catch(() => {
-        if (!cancelled) onServerDecksLoaded([]);
+        if (!cancelled) {
+          setLoadError(t('deck.loadServerError'));
+          onServerDecksLoaded([]);
+        }
       });
     return () => {
       cancelled = true;
@@ -48,9 +56,11 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
       saving={saving}
       synced={!!syncedDeckId}
       syncLabel={loggedIn && syncedDeckId ? t('deck.synced') : undefined}
+      errorMessage={saveError || loadError}
       saveLocalDeck={!loggedIn}
       onSave={async deckIds => {
         setSaving(true);
+        setSaveError('');
         try {
           if (loggedIn) {
             const savedDeck = await createDeck(deckName.trim() || t('deck.custom'), deckIds);
@@ -60,10 +70,12 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
             localStorage.setItem(CUSTOM_DECK_STORAGE_KEY, JSON.stringify(deckIds));
             onDeckSaved();
           }
+          navigate('/');
+        } catch {
+          setSaveError(loggedIn ? t('deck.saveServerError') : t('deck.saveLocalError'));
         } finally {
           setSaving(false);
         }
-        navigate('/');
       }}
       onCancel={() => navigate('/')}
     />

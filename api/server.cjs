@@ -2,7 +2,41 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const Database = require('better-sqlite3');
+
+function loadDatabase() {
+  try {
+    return require('better-sqlite3');
+  } catch (nativeError) {
+    try {
+      const { DatabaseSync } = require('node:sqlite');
+      return class NodeSqliteDatabase {
+        constructor(filename) {
+          this.db = new DatabaseSync(filename);
+        }
+
+        pragma(statement) {
+          this.db.exec(`PRAGMA ${statement}`);
+        }
+
+        exec(sql) {
+          return this.db.exec(sql);
+        }
+
+        prepare(sql) {
+          return this.db.prepare(sql);
+        }
+
+        close() {
+          this.db.close();
+        }
+      };
+    } catch {
+      throw nativeError;
+    }
+  }
+}
+
+const Database = loadDatabase();
 
 // ===== Config =====
 const PORT = Number(process.env.API_PORT) || 3001;
@@ -10,6 +44,9 @@ const DB_PATH = process.env.DB_PATH || '/data/zutomayo.db';
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 
 // ===== Database =====
+if (DB_PATH !== ':memory:') {
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+}
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
@@ -157,18 +194,51 @@ function sanitizePayload(action, payload) {
     return { confirmed: true };
   }
   if (action === 'chooseEffectOrder' || action === 'resolvePendingEffect') {
+    const clean = { index: Math.max(0, Math.trunc(finiteNumber(data.index, 0))) };
+    for (const key of ['effectId', 'cardDefId', 'source', 'trigger', 'actionType']) {
+      const value = optionalString(data[key]);
+      if (value) clean[key] = value;
+    }
+    return clean;
+  }
+  if (action === 'submitPendingChoice') {
     const clean = {
-      index: Math.max(0, Math.trunc(finiteNumber(data.index, 0))),
+      selectedCount: Math.max(0, Math.trunc(finiteNumber(data.selectedCount, 0))),
+      min: Math.max(0, Math.trunc(finiteNumber(data.min, 0))),
+      max: Math.max(0, Math.trunc(finiteNumber(data.max, 0))),
     };
-    const effectId = optionalString(data.effectId);
-    const cardDefId = optionalString(data.cardDefId);
-    const source = optionalString(data.source);
-    if (effectId) clean.effectId = effectId;
-    if (cardDefId) clean.cardDefId = cardDefId;
-    if (source) clean.source = source;
+    for (const key of ['choiceId', 'choiceType', 'sourceZone', 'destinationZone', 'destinationPosition', 'effectLabel']) {
+      const value = optionalString(data[key]);
+      if (value) clean[key] = value;
+    }
+    for (const key of ['sourcePlayer', 'destinationPlayer', 'targetPlayer', 'drawCount', 'followUpDrawCount']) {
+      if (data[key] !== undefined) clean[key] = Math.max(0, Math.trunc(finiteNumber(data[key], 0)));
+    }
+    if (data.faceDown !== undefined) clean.faceDown = Boolean(data.faceDown);
+    if (data.shuffle !== undefined) clean.shuffle = Boolean(data.shuffle);
+    return clean;
+  }
+  if (action === 'gameOver') {
+    const clean = { draw: Boolean(data.draw) };
+    if (data.winner === 0 || data.winner === 1 || data.winner === null) clean.winner = data.winner;
+    const reason = optionalString(data.reason);
+    if (reason) clean.reason = reason;
     return clean;
   }
   return {};
+}
+
+function sanitizeResult(result) {
+  if (!result || typeof result !== 'object') return undefined;
+  const clean = { ok: Boolean(result.ok) };
+  const message = optionalString(result.message);
+  if (message) clean.message = message;
+  return clean;
+}
+
+function sanitizeHp(value) {
+  if (!Array.isArray(value) || value.length !== 2) return undefined;
+  return [Math.trunc(finiteNumber(value[0], 0)), Math.trunc(finiteNumber(value[1], 0))];
 }
 
 function sanitizeActionLog(actionLog) {
@@ -185,6 +255,16 @@ function sanitizeActionLog(actionLog) {
         action,
         timestamp: Math.max(0, Math.trunc(finiteNumber(entry.timestamp, Date.now()))),
       };
+      if (entry.id !== undefined) clean.id = Math.max(0, Math.trunc(finiteNumber(entry.id, 0)));
+      if (entry.chronosPosition !== undefined) clean.chronosPosition = Math.max(0, Math.trunc(finiteNumber(entry.chronosPosition, 0)));
+      const hp = sanitizeHp(entry.hp);
+      if (hp) clean.hp = hp;
+      const pendingEffectCardDefId = optionalString(entry.pendingEffectCardDefId);
+      if (pendingEffectCardDefId) clean.pendingEffectCardDefId = pendingEffectCardDefId;
+      const pendingChoiceType = optionalString(entry.pendingChoiceType);
+      if (pendingChoiceType) clean.pendingChoiceType = pendingChoiceType;
+      const result = sanitizeResult(entry.result);
+      if (result) clean.result = result;
       const payload = sanitizePayload(action, entry.payload);
       if (Object.keys(payload).length > 0) clean.payload = payload;
       return clean;
@@ -359,11 +439,13 @@ function handleRequest(req, res) {
 
       const matchId = 'm_' + crypto.randomBytes(8).toString('hex');
       const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
+      const player0Id = winner ? winnerId : null;
+      const player1Id = loser ? loserId : null;
       db.prepare('INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(
           matchId,
-          winnerId,
-          loserId,
+          player0Id,
+          player1Id,
           winnerId,
           loserId,
           winnerEloChange,
@@ -403,6 +485,16 @@ function handleRequest(req, res) {
 
 // ===== Start =====
 const server = http.createServer(handleRequest);
-server.listen(PORT, () => {
-  console.log(`Zutomayo API server running on port ${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`Zutomayo API server running on port ${PORT}`);
+  });
+}
+
+module.exports = {
+  handleRequest,
+  server,
+  closeDatabase: () => {
+    if (typeof db.close === 'function') db.close();
+  },
+};

@@ -8,8 +8,42 @@ export interface DeckResponse {
   cardIds: string[];
 }
 
+export interface ProfileResponse {
+  id: string;
+  email: string;
+  nickname: string;
+  elo: number;
+  matchCount: number;
+  wins: number;
+  winRate: number;
+  createdAt: string;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  nickname: string;
+  elo: number;
+  matchCount: number;
+  wins: number;
+  winRate: number;
+}
+
 interface DeckListResponse {
   decks: DeckResponse[];
+}
+
+interface LeaderboardListResponse {
+  leaderboard: LeaderboardEntry[];
+}
+
+export class ApiError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
 }
 
 async function request<T = any>(path: string, options: RequestInit = {}): Promise<T> {
@@ -21,8 +55,16 @@ async function request<T = any>(path: string, options: RequestInit = {}): Promis
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  const text = await res.text();
+  let data: any = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { error: text };
+    }
+  }
+  if (!res.ok) throw new ApiError(data.error || 'Request failed', res.status);
   return data;
 }
 
@@ -54,7 +96,7 @@ export function isLoggedIn(): boolean {
 }
 
 // ===== Profile =====
-export async function getProfile() {
+export async function getProfile(): Promise<ProfileResponse> {
   return request('/profile');
 }
 
@@ -99,6 +141,7 @@ export async function getMatchLog(matchId: string): Promise<ActionLogEntry[]> {
 }
 
 // ===== Leaderboard =====
-export async function getLeaderboard(limit = 100) {
-  return request(`/leaderboard?limit=${limit}`);
+export async function getLeaderboard(limit = 100): Promise<LeaderboardEntry[]> {
+  const data = await request<LeaderboardListResponse>(`/leaderboard?limit=${limit}`);
+  return data.leaderboard;
 }

@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { OnlineGame } from '../components/OnlineGame';
+import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
 import { t, useLocale } from '../i18n';
-import { clearStoredOnlineSession, validateOnlineSession, type OnlineSession } from '../onlineSession';
-
-type ReconnectStatus = 'reconnecting' | 'retrying' | 'waiting' | 'ready' | 'roomNotFound' | 'roomFull' | 'connectionFailed';
-type OnlineRoomErrorKey = 'online.roomFull' | 'online.roomNotFound' | 'online.connectionFailed';
+import { clearStoredOnlineSession, leaveOnlineSession, validateOnlineSession, type OnlineSession } from '../onlineSession';
+import {
+  isOnlineFailureStatus,
+  onlineErrorStatus,
+  onlineStatusPanelCopy,
+  type OnlineRoomStatus,
+} from '../onlineRoomStatus';
 
 type MatchPlayer = {
   id: number;
@@ -20,44 +24,12 @@ interface OnlineGamePageProps {
   session: OnlineSession | null;
   onClearSession: () => void;
   onJoinSharedRoom: (matchID: string) => Promise<OnlineSession>;
-}
-
-function isOnlineRoomErrorKey(value: string): value is OnlineRoomErrorKey {
-  return value === 'online.roomFull' || value === 'online.roomNotFound' || value === 'online.connectionFailed';
-}
-
-function onlineErrorStatus(error: unknown): ReconnectStatus {
-  if (error instanceof Error && isOnlineRoomErrorKey(error.message)) {
-    if (error.message === 'online.roomFull') return 'roomFull';
-    if (error.message === 'online.roomNotFound') return 'roomNotFound';
-  }
-  return 'connectionFailed';
-}
-
-function buildOnlineRoomUrl(matchID: string): string {
-  const path = `/play/online/${encodeURIComponent(matchID)}`;
-  if (typeof window === 'undefined') return path;
-  return `${window.location.origin}${path}`;
-}
-
-async function leaveOnlineSession(session: OnlineSession): Promise<void> {
-  try {
-    await fetch(`/games/zutomayo-card/${encodeURIComponent(session.matchID)}/leave`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        playerID: session.playerID,
-        credentials: session.playerCredentials,
-      }),
-    });
-  } catch {
-    // Local cleanup still happens; the server may already have dropped the room.
-  }
+  onCreateNewRoom: () => Promise<OnlineSession>;
 }
 
 async function fetchRoom(matchID: string): Promise<
   | { ok: true; opponentJoined: boolean }
-  | { ok: false; reason: Exclude<ReconnectStatus, 'reconnecting' | 'retrying' | 'waiting' | 'ready'> }
+  | { ok: false; reason: Exclude<OnlineRoomStatus, 'reconnecting' | 'retrying' | 'waiting' | 'ready'> }
 > {
   try {
     const response = await fetch(`/games/zutomayo-card/${encodeURIComponent(matchID)}`);
@@ -71,49 +43,62 @@ async function fetchRoom(matchID: string): Promise<
   }
 }
 
-function RoomInfo({ matchID }: { matchID: string }) {
-  const [copied, setCopied] = useState(false);
-  const shareLink = useMemo(() => buildOnlineRoomUrl(matchID), [matchID]);
+function roomInfoHelper(status: OnlineRoomStatus): string {
+  if (status === 'waiting') return t('online.hostWaitingHelper');
+  if (status === 'ready') return t('online.roomReadyHelper');
+  return t('online.reconnectHelper');
+}
 
-  const copyShareLink = async () => {
-    try {
-      await navigator.clipboard.writeText(shareLink);
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = shareLink;
-      textarea.setAttribute('readonly', '');
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
-    }
-    setCopied(true);
-  };
-
+function LeaveConfirmDialog({
+  leaving,
+  onCancel,
+  onConfirm,
+}: {
+  leaving: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
   return (
-    <div className="online-room-info">
-      <span>{t('online.roomCode')}</span>
-      <strong className="online-room-code">{matchID}</strong>
-      <label className="share-link-row">
-        <span>{t('online.shareLink')}</span>
-        <input value={shareLink} readOnly aria-label={t('online.shareLink')} />
-      </label>
-      <button className="secondary-action" type="button" onClick={copyShareLink}>
-        {copied ? t('online.copied') : t('online.copyLink')}
-      </button>
+    <div className="leave-confirm-backdrop" role="presentation">
+      <section
+        className="leave-confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="leave-confirm-title"
+      >
+        <span>{t('game.onlineMode')}</span>
+        <h2 id="leave-confirm-title">{t('online.leaveTitle')}</h2>
+        <p>{t('online.leaveBody')}</p>
+        <div className="online-panel-actions">
+          <button className="secondary-action" type="button" disabled={leaving} onClick={onCancel}>
+            {t('online.stayInRoom')}
+          </button>
+          <button className="danger-action" type="button" disabled={leaving} onClick={onConfirm}>
+            {leaving ? t('online.leaving') : t('online.leaveRoom')}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
 
-export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom }: OnlineGamePageProps) {
+export function OnlineGamePage({
+  session,
+  onClearSession,
+  onJoinSharedRoom,
+  onCreateNewRoom,
+}: OnlineGamePageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const locale = useLocale();
   const { matchID = '' } = useParams<'matchID'>();
   const activeSession = session?.matchID === matchID ? session : null;
-  const [reconnectStatus, setReconnectStatus] = useState<ReconnectStatus>('reconnecting');
+  const [reconnectStatus, setReconnectStatus] = useState<OnlineRoomStatus>('reconnecting');
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [leavePromptOpen, setLeavePromptOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [creatingRoom, setCreatingRoom] = useState(false);
+  const [actionError, setActionError] = useState('');
   const routeState = location.state as { freshOnlineSession?: boolean; resumeOnlineSession?: boolean } | null;
   const showRejoinedStatus = routeState?.freshOnlineSession !== true;
 
@@ -134,7 +119,7 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom }: On
     return () => {
       cancelled = true;
     };
-  }, [activeSession, matchID, onJoinSharedRoom]);
+  }, [activeSession, matchID, onJoinSharedRoom, retryNonce]);
 
   useEffect(() => {
     if (!activeSession) return;
@@ -193,7 +178,7 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom }: On
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [activeSession]);
+  }, [activeSession, retryNonce]);
 
   useEffect(() => {
     if (!activeSession || reconnectStatus !== 'ready') return;
@@ -211,99 +196,133 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom }: On
     };
   }, [activeSession, locale, reconnectStatus]);
 
-  const leaveAndReturn = useCallback(async () => {
-    if (activeSession) await leaveOnlineSession(activeSession);
+  useEffect(() => {
+    if (!activeSession) setLeavePromptOpen(false);
+  }, [activeSession]);
+
+  const retryStatusCheck = useCallback(() => {
+    setActionError('');
+    setRetryNonce(value => value + 1);
+  }, []);
+
+  const returnToLobby = useCallback(() => {
     onClearSession();
     navigate('/');
+  }, [navigate, onClearSession]);
+
+  const requestLeave = useCallback(() => {
+    setLeavePromptOpen(true);
+  }, []);
+
+  const leaveAndReturn = useCallback(async () => {
+    setActionError('');
+    setLeaving(true);
+    try {
+      if (activeSession) await leaveOnlineSession(activeSession);
+      onClearSession();
+      navigate('/');
+    } finally {
+      setLeaving(false);
+    }
   }, [activeSession, navigate, onClearSession]);
 
-  if (!activeSession) {
-    const isError = reconnectStatus === 'roomFull'
-      || reconnectStatus === 'roomNotFound'
-      || reconnectStatus === 'connectionFailed';
-    const title = reconnectStatus === 'roomFull'
-      ? t('online.roomFull')
-      : reconnectStatus === 'roomNotFound'
-      ? t('online.roomNotFound')
-      : reconnectStatus === 'connectionFailed'
-      ? t('online.connectionFailed')
-      : t('onlineSession.reconnecting');
+  const createNewRoom = useCallback(async () => {
+    setCreatingRoom(true);
+    setActionError('');
+    try {
+      if (activeSession) await leaveOnlineSession(activeSession);
+      onClearSession();
+      await onCreateNewRoom();
+    } catch {
+      setActionError(t('online.createRoomFailed'));
+    } finally {
+      setCreatingRoom(false);
+    }
+  }, [activeSession, locale, onClearSession, onCreateNewRoom]);
+
+  const closeLeavePrompt = useCallback(() => {
+    if (!leaving) setLeavePromptOpen(false);
+  }, [leaving]);
+
+  const backActionForStatus = useCallback((status: OnlineRoomStatus) => {
+    if (activeSession && (status === 'waiting' || status === 'reconnecting' || status === 'retrying' || status === 'connectionFailed')) {
+      requestLeave();
+      return;
+    }
+    returnToLobby();
+  }, [activeSession, requestLeave, returnToLobby]);
+
+  const renderStatusPanel = (status: OnlineRoomStatus, panelSession: OnlineSession | null) => {
+    const copy = onlineStatusPanelCopy(status);
+    const showRoomInfo = panelSession && (status === 'waiting' || status === 'reconnecting' || status === 'retrying' || status === 'ready');
+    const isFailure = isOnlineFailureStatus(status);
+    const canLeave = panelSession && !isFailure;
+    const canRetry = copy.canRetry || status === 'retrying';
+    const primaryLabel = isFailure ? t('common.backToLobby') : canLeave ? t('online.leaveRoom') : t('common.backToLobby');
 
     return (
       <main className="online-session-missing app-screen">
-        <section className="empty-route-panel">
+        <section className={`empty-route-panel online-status-panel ${copy.tone}`}>
           <span>{t('game.onlineMode')}</span>
-          <h1>{title}</h1>
-          <p>{isError ? t('onlineSession.resumeErrorBody') : t('onlineSession.resumeCheckingBody')}</p>
-          <button className="primary-action" type="button" onClick={() => navigate('/')}>
-            {t('common.backToLobby')}
-          </button>
+          <h1>{t(copy.titleKey)}</h1>
+          <p>{t(copy.bodyKey)}</p>
+          {showRoomInfo && (
+            <OnlineRoomInfo matchID={panelSession.matchID} helperText={roomInfoHelper(status)} />
+          )}
+          <div className="online-panel-actions">
+            <button
+              className={canLeave ? 'danger-action' : 'primary-action'}
+              type="button"
+              onClick={() => backActionForStatus(status)}
+            >
+              {primaryLabel}
+            </button>
+            {canRetry && (
+              <button className="secondary-action" type="button" onClick={retryStatusCheck}>
+                {t('online.retryAction')}
+              </button>
+            )}
+            {copy.canCreateNewRoom && (
+              <button className="secondary-action" type="button" disabled={creatingRoom} onClick={() => void createNewRoom()}>
+                {creatingRoom ? t('online.creatingRoom') : t('online.createNewRoom')}
+              </button>
+            )}
+          </div>
+          {actionError && <p className="error-copy">{actionError}</p>}
         </section>
+        {leavePromptOpen && (
+          <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={() => void leaveAndReturn()} />
+        )}
       </main>
     );
+  };
+
+  if (!activeSession) {
+    return renderStatusPanel(reconnectStatus, null);
   }
 
   if (reconnectStatus !== 'ready') {
-    const isRoomNotFound = reconnectStatus === 'roomNotFound';
-    const isRoomFull = reconnectStatus === 'roomFull';
-    const isConnectionFailed = reconnectStatus === 'connectionFailed' || reconnectStatus === 'retrying';
-    const isWaiting = reconnectStatus === 'waiting';
-    const title = isRoomNotFound
-      ? t('online.roomNotFound')
-      : isRoomFull
-      ? t('online.roomFull')
-      : isConnectionFailed
-      ? t('online.connectionFailed')
-      : isWaiting
-      ? t('online.waitingForOpponent')
-      : t('onlineSession.reconnecting');
-    const body = isRoomNotFound
-      ? t('onlineSession.roomGoneBody')
-      : isRoomFull
-      ? t('onlineSession.seatTakenBody')
-      : reconnectStatus === 'retrying'
-      ? t('onlineSession.disconnectedRetrying')
-      : isWaiting
-      ? t('onlineSession.resumeCheckingBody')
-      : t('onlineSession.resumeCheckingBody');
-
-    return (
-      <main className="online-session-missing app-screen">
-        <section className={`empty-route-panel ${isWaiting ? 'waiting-room-panel' : ''}`}>
-          <span>{t('game.onlineMode')}</span>
-          <h1>{title}</h1>
-          <p>{body}</p>
-          {isWaiting && <RoomInfo matchID={activeSession.matchID} />}
-          {isWaiting ? (
-            <button className="danger-action" type="button" onClick={() => void leaveAndReturn()}>
-              {t('online.cancelRoom')}
-            </button>
-          ) : (isRoomNotFound || isRoomFull || isConnectionFailed) && (
-            <button
-              className="primary-action"
-              type="button"
-              onClick={() => {
-                onClearSession();
-                navigate('/');
-              }}
-            >
-              {t('common.backToLobby')}
-            </button>
-          )}
-        </section>
-      </main>
-    );
+    return renderStatusPanel(reconnectStatus, activeSession);
   }
 
   return (
-    <OnlineGame
-      matchID={activeSession.matchID}
-      playerID={activeSession.playerID}
-      playerCredentials={activeSession.playerCredentials}
-      showRejoinedStatus={showRejoinedStatus}
-      onBack={() => {
-        void leaveAndReturn();
-      }}
-    />
+    <>
+      <OnlineGame
+        matchID={activeSession.matchID}
+        playerID={activeSession.playerID}
+        playerCredentials={activeSession.playerCredentials}
+        showRejoinedStatus={showRejoinedStatus}
+        onLeaveRequest={requestLeave}
+        onReturnToLobby={() => {
+          void leaveAndReturn();
+        }}
+        onCreateNewRoom={() => {
+          void createNewRoom();
+        }}
+      />
+      {leavePromptOpen && (
+        <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={() => void leaveAndReturn()} />
+      )}
+    </>
   );
 }

@@ -167,6 +167,7 @@ function RouterShell() {
   const [tutorial, setTutorial] = useState(() => !localStorage.getItem('zutomayo_tutorial_seen'));
   const [customDeckAvailable, setCustomDeckAvailable] = useState(hasCustomDeck);
   const [serverDecks, setServerDecks] = useState<DeckResponse[]>([]);
+  const [serverDeckError, setServerDeckError] = useState('');
   const [deck0Name, setDeck0Name] = useState(DEFAULT_DECK_NAME);
   const [deck1Name, setDeck1Name] = useState(DEFAULT_DECK_NAME);
   const [onlineSession, setOnlineSession] = useState<OnlineSession | null>(loadOnlineSession);
@@ -184,16 +185,19 @@ function RouterShell() {
   const refreshServerDecks = useCallback(async () => {
     if (!isLoggedIn()) {
       setServerDecks([]);
+      setServerDeckError('');
       setDeck0Name(current => current.startsWith('server:') ? DEFAULT_DECK_NAME : current);
       setDeck1Name(current => current.startsWith('server:') ? DEFAULT_DECK_NAME : current);
       return;
     }
     try {
       setServerDecks(await getDecks());
+      setServerDeckError('');
     } catch {
       setServerDecks([]);
+      setServerDeckError(t('deck.loadServerError'));
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     void refreshServerDecks();
@@ -286,6 +290,7 @@ function RouterShell() {
                 onStartOnline={startOnline}
                 onAuthChanged={refreshServerDecks}
                 onShowTutorial={() => setTutorial(true)}
+                serverDeckError={serverDeckError}
               />
             )}
           />
@@ -298,6 +303,7 @@ function RouterShell() {
                 session={onlineSession}
                 onClearSession={clearOnlineSession}
                 onJoinSharedRoom={joinSharedOnlineRoom}
+                onCreateNewRoom={() => startOnline()}
               />
             )}
           />
@@ -309,7 +315,10 @@ function RouterShell() {
                 onServerDecksLoaded={setServerDecks}
                 onDeckSaved={deck => {
                   setCustomDeckAvailable(hasCustomDeck());
-                  if (deck) setServerDecks(current => [deck, ...current]);
+                  if (deck) {
+                    setServerDeckError('');
+                    setServerDecks(current => [deck, ...current]);
+                  }
                 }}
               />
             )}
