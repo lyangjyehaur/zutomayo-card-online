@@ -3,7 +3,8 @@ const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
-const staticCards = require('../cards.json');
+let staticCards = [];
+try { staticCards = require('../cards.json'); } catch (_) { /* API container may not have cards.json */ }
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 
