@@ -18,12 +18,23 @@ export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B';
 export type TimingEventType = 'turnStart' | 'turnEnd' | 'damageReceived' | 'chronosChanged' | 'zoneEntered' | 'characterReplaced' | 'battle';
 
+export interface ActionLogResult {
+  ok: boolean;
+  message?: string;
+}
+
 export interface ActionLogEntry {
+  id?: number;
   turn: number;
   step: string;
   player: PlayerIndex;
   action: string;
   payload?: any;
+  result?: ActionLogResult;
+  chronosPosition?: number;
+  hp?: [number, number];
+  pendingEffectCardDefId?: string;
+  pendingChoiceType?: PendingChoice['type'];
   timestamp: number;
 }
 

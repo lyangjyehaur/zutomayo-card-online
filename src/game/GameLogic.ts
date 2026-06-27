@@ -94,17 +94,163 @@ function recordAction(
   player: PlayerIndex,
   action: string,
   payload?: ActionLogEntry['payload'],
+  options: {
+    result?: ActionLogEntry['result'];
+    context?: Partial<Pick<ActionLogEntry, 'pendingEffectCardDefId' | 'pendingChoiceType'>>;
+  } = {},
 ): void {
   if (!Array.isArray(G.actionLog)) G.actionLog = [];
+  const pendingEffectPlayer = G.pendingEffectPlayer;
+  const pendingEffectCardDefId = options.context?.pendingEffectCardDefId
+    ?? (pendingEffectPlayer === null ? undefined : G.pendingEffects[pendingEffectPlayer]?.[0]?.cardDefId);
+  const pendingChoiceType = options.context?.pendingChoiceType ?? G.pendingChoice?.type;
+  const nextId = G.actionLog.reduce((max, entry) => (
+    Number.isInteger(entry.id) ? Math.max(max, Number(entry.id)) : max
+  ), 0) + 1;
   const entry: ActionLogEntry = {
+    id: nextId,
     turn: G.turnNumber,
     step: G.step,
     player,
     action,
+    chronosPosition: G.chronos.position,
+    hp: [G.players[0].hp, G.players[1].hp],
     timestamp: Date.now(),
   };
   if (payload !== undefined) entry.payload = payload;
+  if (options.result) {
+    entry.result = {
+      ok: Boolean(options.result.ok),
+      ...(options.result.message ? { message: options.result.message.slice(0, 240) } : {}),
+    };
+  }
+  if (pendingEffectCardDefId) entry.pendingEffectCardDefId = pendingEffectCardDefId;
+  if (pendingChoiceType) entry.pendingChoiceType = pendingChoiceType;
   G.actionLog.push(entry);
+}
+
+function effectActionSummary(effect: ParsedEffect): { trigger: ParsedEffect['trigger']; actionType: string } {
+  return {
+    trigger: effect.trigger,
+    actionType: effect.action.type,
+  };
+}
+
+function choiceDestinationSummary(choice: PendingChoice): Record<string, unknown> {
+  if (choice.type === 'handToDeckBottomThenDraw') {
+    return { destinationZone: 'deck', destinationPosition: 'bottom', drawCount: choice.payload.drawCount };
+  }
+  if (choice.type === 'cardMove') {
+    return {
+      sourcePlayer: choice.payload.sourcePlayer,
+      sourceZone: choice.payload.sourceZone,
+      destinationPlayer: choice.payload.destinationPlayer,
+      destinationZone: choice.payload.destinationZone,
+      destinationPosition: choice.payload.destinationPosition,
+    };
+  }
+  if (choice.type === 'optionalHandMoveThenDraw') {
+    return {
+      sourcePlayer: choice.payload.sourcePlayer,
+      sourceZone: choice.payload.sourceZone,
+      destinationPlayer: choice.payload.destinationPlayer,
+      destinationZone: choice.payload.destinationZone,
+      destinationPosition: choice.payload.destinationPosition,
+      drawCount: choice.payload.drawCount,
+    };
+  }
+  if (choice.type === 'abyssToDeckBottomOrLose') {
+    return {
+      sourceZone: 'abyss',
+      destinationZone: 'deck',
+      destinationPosition: 'bottom',
+      faceDown: choice.payload.faceDown,
+      shuffle: choice.payload.shuffle,
+      followUpChoiceType: choice.payload.followUpChoiceType,
+    };
+  }
+  if (choice.type === 'reorderOpponentDeckTop') {
+    return {
+      targetPlayer: choice.payload.targetPlayer,
+      effectLabel: 'reorderOpponentDeckTop',
+    };
+  }
+  if (choice.type === 'opponentPowerCharacterSwap') {
+    return {
+      targetPlayer: choice.payload.opponentPlayer,
+      effectLabel: 'opponentPowerCharacterSwap',
+    };
+  }
+  if (choice.type === 'useFromAbyss') {
+    return {
+      sourcePlayer: choice.payload.sourcePlayer,
+      sourceZone: choice.payload.sourceZone ?? 'abyss',
+      effectLabel: 'useFromAbyss',
+    };
+  }
+  if (choice.type === 'useFromHand') {
+    return {
+      sourcePlayer: choice.payload.sourcePlayer,
+      sourceZone: 'hand',
+      followUpDrawCount: choice.payload.followUpDrawCount,
+      effectLabel: 'useFromHand',
+    };
+  }
+  if (choice.type === 'revealHandAttackBoost') {
+    return {
+      sourcePlayer: choice.payload.sourcePlayer,
+      effectLabel: 'revealHandAttackBoost',
+    };
+  }
+  if (choice.type === 'nameGuessOpponentHandReveal') {
+    return {
+      targetPlayer: choice.payload.opponentPlayer,
+      effectLabel: 'nameGuessOpponentHandReveal',
+    };
+  }
+  if (choice.type === 'handAbyssSwap') return { effectLabel: 'handAbyssSwap' };
+  if (choice.type === 'clockPosition') return { effectLabel: 'clockPosition' };
+  return { effectLabel: 'clockAdvance' };
+}
+
+function choiceActionPayload(choice: PendingChoice, selectedCount: number): Record<string, unknown> {
+  return {
+    choiceId: choice.id,
+    choiceType: choice.type,
+    selectedCount,
+    min: choice.min,
+    max: choice.max,
+    ...choiceDestinationSummary(choice),
+  };
+}
+
+function recordPendingChoiceAction(
+  G: GameState,
+  player: PlayerIndex,
+  choice: PendingChoice,
+  selectedCount: number,
+  result: ActionLogEntry['result'] = { ok: true, message: 'Choice submitted' },
+): void {
+  recordAction(G, player, 'submitPendingChoice', choiceActionPayload(choice, selectedCount), {
+    result,
+    context: { pendingChoiceType: choice.type },
+  });
+}
+
+function hasGameOverTrace(G: GameState): boolean {
+  return (G.actionLog ?? []).some(entry => entry.action === 'gameOver');
+}
+
+function recordGameOverTrace(G: GameState): void {
+  if (G.step !== 'gameOver' || hasGameOverTrace(G)) return;
+  const player = G.winner ?? 0;
+  recordAction(G, player, 'gameOver', {
+    winner: G.winner,
+    draw: G.winner === null,
+    reason: G.gameoverReason ?? undefined,
+  }, {
+    result: { ok: true, message: G.gameoverReason ?? undefined },
+  });
 }
 
 export function emptyModifiers(): CombatModifiers {
@@ -627,7 +773,10 @@ export function resolveTimingEvent(
         onTimingEvent: nestedEvent => resolveTimingEvent(G, parsedEffects, nestedEvent),
       });
       if (result.success) G.log.push(`Player ${pendingEffect.player}: ${result.message}.`);
-      if ((G.step as GameState['step']) === 'gameOver') return;
+      if ((G.step as GameState['step']) === 'gameOver') {
+        recordGameOverTrace(G);
+        return;
+      }
     }
   }
 
@@ -648,7 +797,10 @@ export function resolveTimingEvent(
           onTimingEvent: nestedEvent => resolveTimingEvent(G, parsedEffects, nestedEvent),
         });
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
-        if ((G.step as GameState['step']) === 'gameOver') return;
+        if ((G.step as GameState['step']) === 'gameOver') {
+          recordGameOverTrace(G);
+          return;
+        }
       }
     }
   }
@@ -706,6 +858,7 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
   G.delayedEffects = [];
   clearPendingChoice(G);
   G.log.push(reason);
+  recordGameOverTrace(G);
 }
 
 function characterElementPlayedThisTurn(G: GameState, player: PlayerIndex): Element | null {
@@ -894,6 +1047,9 @@ export function resolvePendingEffect(
   if (!Number.isInteger(index) || index < 0 || index >= G.pendingEffects[player].length) return false;
   const pendingEffect = G.pendingEffects[player][index];
   if (!pendingEffect || pendingEffect.player !== player) return false;
+  if (G.pendingEffects[player].slice(0, index).some(effect => effect.cardInstanceId === pendingEffect.cardInstanceId)) {
+    return false;
+  }
   if (pendingEffectPhase(G) === 'normal' && pendingEffectPriority(pendingEffect) === 'late') return false;
   recordAction(G, player, 'chooseEffectOrder', {
     index,
@@ -913,8 +1069,21 @@ export function resolvePendingEffect(
     G.chronos.position = beforeChronos;
     setChronosPosition(G, afterChronos, parsedEffects);
   }
+  recordAction(G, player, 'resolvePendingEffect', {
+    effectId: pendingEffect.id,
+    cardDefId: pendingEffect.cardDefId,
+    source: pendingEffect.source,
+    ...effectActionSummary(pendingEffect.effect),
+  }, {
+    result: { ok: result.success, message: result.message },
+    context: {
+      pendingEffectCardDefId: pendingEffect.cardDefId,
+      pendingChoiceType: G.pendingChoice?.type,
+    },
+  });
   if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
   if ((G.step as GameState['step']) === 'gameOver') {
+    recordGameOverTrace(G);
     clearPendingEffects(G);
     return true;
   }
@@ -949,7 +1118,9 @@ export function submitPendingChoice(
     }
     const drawCount = Number(choice.payload.drawCount ?? 0);
     if (playerState.deck.length < drawCount) {
-      endGame(G, (1 - player) as PlayerIndex, `Player ${player} loses: choice attempted to draw ${drawCount} with only ${playerState.deck.length} cards.`);
+      const reason = `Player ${player} loses: choice attempted to draw ${drawCount} with only ${playerState.deck.length} cards.`;
+      recordPendingChoiceAction(G, player, choice, optionIds.length, { ok: false, message: reason });
+      endGame(G, (1 - player) as PlayerIndex, reason);
       return true;
     }
     drawUnchecked(playerState, drawCount);
@@ -993,7 +1164,9 @@ export function submitPendingChoice(
       }
 
       if (playerState.deck.length < drawCount) {
-        endGame(G, (1 - player) as PlayerIndex, `Player ${player} loses: choice attempted to draw ${drawCount} with only ${playerState.deck.length} cards.`);
+        const reason = `Player ${player} loses: choice attempted to draw ${drawCount} with only ${playerState.deck.length} cards.`;
+        recordPendingChoiceAction(G, player, choice, optionIds.length, { ok: false, message: reason });
+        endGame(G, (1 - player) as PlayerIndex, reason);
         return true;
       }
       drawUnchecked(playerState, drawCount);
@@ -1213,6 +1386,7 @@ export function submitPendingChoice(
     }
   }
   if (choice.type !== 'abyssToDeckBottomOrLose') G.lastChoiceSelectionCount[player] = null;
+  recordPendingChoiceAction(G, player, choice, optionIds.length);
   clearPendingChoice(G);
   if (nextChoice) {
     G.pendingChoice = nextChoice;

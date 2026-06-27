@@ -10,7 +10,22 @@ import { saveMatchRecord } from '../game/matchHistory';
 import { t } from '../i18n';
 
 const TURN_TIMER_SECONDS = 60;
-type Props = BoardProps<GameState>;
+
+export type BoardGameOverAction = {
+  label: string;
+  onClick: () => void;
+  variant?: 'primary' | 'secondary';
+};
+
+export type BoardGameOverActions = {
+  helperText?: string;
+  primary: BoardGameOverAction;
+  secondary?: BoardGameOverAction;
+};
+
+type Props = BoardProps<GameState> & {
+  gameOverActions?: BoardGameOverActions;
+};
 
 type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
 type FeedbackMessage = {
@@ -191,11 +206,50 @@ function accountIdForPlayer(player: PlayerIndex, accountPlayer: PlayerIndex, pro
   return player === accountPlayer ? profile.id : `guest-player-${player}`;
 }
 
+function matchSubmissionKey(G: GameState, winner: PlayerIndex | null): string {
+  const firstEntry = G.actionLog?.[0];
+  const lastEntry = G.actionLog?.[G.actionLog.length - 1];
+  const path = typeof window === 'undefined' ? 'server' : window.location.pathname;
+  return [
+    'zutomayo-match-submit',
+    path,
+    winner ?? 'draw',
+    G.turnNumber,
+    G.gameoverReason ?? '',
+    G.actionLog?.length ?? 0,
+    firstEntry?.timestamp ?? '',
+    lastEntry?.timestamp ?? '',
+    lastEntry?.action ?? '',
+  ].join(':');
+}
+
+function isAlreadySubmitted(key: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markSubmitted(key: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(key, '1');
+  } catch {
+    // Submission still proceeds; the in-memory ref prevents same-mount duplicates.
+  }
+}
+
 function signedChange(value: number): string {
   return value > 0 ? `+${value}` : `${value}`;
 }
 
-function GameOverScreen({ G, ctx, matchStartedAt, playerID }: Props & { matchStartedAt: number }) {
+function gameOverActionClass(action: BoardGameOverAction): string {
+  return action.variant === 'secondary' ? 'secondary-action' : 'primary-action';
+}
+
+function GameOverScreen({ G, ctx, matchStartedAt, playerID, gameOverActions }: Props & { matchStartedAt: number }) {
   const saved = useRef(false);
   const [eloNotice, setEloNotice] = useState('');
 
@@ -205,6 +259,9 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID }: Props & { matchSta
     const gameover = ctx.gameover as { winner?: string | number; draw?: boolean } | undefined;
     const durationSeconds = (Date.now() - matchStartedAt) / 1000;
     const winner = normalizeWinner(G, gameover);
+    const submitKey = matchSubmissionKey(G, winner);
+    if (isAlreadySubmitted(submitKey)) return;
+    markSubmitted(submitKey);
     saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds);
 
     const accountPlayer = activeAccountPlayer(playerID);
@@ -224,6 +281,10 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID }: Props & { matchSta
         ) as Promise<MatchSubmitResponse>;
       })
       .then(result => {
+        if ((result.winnerEloChange ?? 0) === 0 && (result.loserEloChange ?? 0) === 0) {
+          setEloNotice(t('auth.matchSubmittedNoElo'));
+          return;
+        }
         const change = winner === accountPlayer
           ? result.winnerEloChange ?? 0
           : result.loserEloChange ?? 0;
@@ -231,6 +292,7 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID }: Props & { matchSta
       })
       .catch(() => {
         // Local history above remains the fallback when the API is unavailable.
+        setEloNotice(t('auth.matchSubmitFailed'));
       });
   }, [G, ctx.gameover, matchStartedAt, playerID]);
 
@@ -242,9 +304,23 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID }: Props & { matchSta
         <p>{translateGameOverReason(G.gameoverReason)}</p>
         {eloNotice && <p className="elo-notice">{eloNotice}</p>}
         {ctx.gameover && (
-          <button className="primary-action" type="button" onClick={() => window.location.reload()}>
-            {t('board.playAgain')}
-          </button>
+          gameOverActions ? (
+            <div className="game-over-actions">
+              {gameOverActions.helperText && <p className="game-over-helper">{gameOverActions.helperText}</p>}
+              <button className={gameOverActionClass(gameOverActions.primary)} type="button" onClick={gameOverActions.primary.onClick}>
+                {gameOverActions.primary.label}
+              </button>
+              {gameOverActions.secondary && (
+                <button className={gameOverActionClass(gameOverActions.secondary)} type="button" onClick={gameOverActions.secondary.onClick}>
+                  {gameOverActions.secondary.label}
+                </button>
+              )}
+            </div>
+          ) : (
+            <button className="primary-action" type="button" onClick={() => window.location.reload()}>
+              {t('board.playAgain')}
+            </button>
+          )
         )}
       </div>
     </div>
@@ -631,6 +707,78 @@ function effectSummary(effect: GameState['pendingEffects'][number][number]): str
   return value === undefined ? action.type : `${action.type} ${value}`;
 }
 
+function latestTraceMessage(G: GameState): string | null {
+  const latest = [...(G.actionLog ?? [])].reverse().find(entry => entry.result?.message || entry.action);
+  if (!latest) return null;
+  const message = latest.result?.message;
+  const hp = latest.hp ? `${t('board.phaseHp')} ${latest.hp[0]}/${latest.hp[1]}` : null;
+  const chronos = typeof latest.chronosPosition === 'number' ? `${t('board.phaseChronos')} ${latest.chronosPosition}/12` : null;
+  return [message ?? latest.action, hp, chronos].filter(Boolean).join(' · ');
+}
+
+function choiceInstruction(type: string): string {
+  if (type === 'handToDeckBottomThenDraw') return t('board.choiceHintDeckBottomDraw');
+  if (type === 'reorderOpponentDeckTop') return t('board.choiceHintReorder');
+  if (type === 'opponentPowerCharacterSwap') return t('board.choiceHintSwap');
+  if (type === 'abyssToDeckBottomOrLose') return t('board.choiceHintAbyss');
+  if (type.includes('Hand') || type.includes('hand')) return t('board.choiceHintHand');
+  return t('board.choiceHintDefault');
+}
+
+function phaseInstruction(G: GameState, meIndex: PlayerIndex, required: number, minimum: number): { title: string; body: string; meta: string[] } {
+  const me = G.players[meIndex];
+  if (G.pendingChoice) {
+    const mine = G.pendingChoice.player === meIndex;
+    return {
+      title: mine ? t('board.phaseChoiceTitle') : t('board.phaseChoiceWaitingTitle'),
+      body: mine ? choiceInstruction(G.pendingChoice.type) : `${playerName(G.pendingChoice.player)} ${t('board.phaseChoosing')}`,
+      meta: [`${t('board.choiceCount')} ${G.pendingChoice.min}-${G.pendingChoice.max}`],
+    };
+  }
+  if (G.step === 'effectOrder') {
+    const player = G.pendingEffectPlayer;
+    const pendingCount = player === null ? 0 : G.pendingEffects[player].length;
+    return {
+      title: player === meIndex ? t('board.phaseEffectTitle') : t('board.phaseEffectWaitingTitle'),
+      body: player === meIndex ? t('board.phaseEffectBody') : player === null ? t('board.phaseEffectResolving') : `${playerName(player)} ${t('board.phaseResolvingEffects')}`,
+      meta: [`${t('board.phasePendingEffects')} ${pendingCount}`],
+    };
+  }
+  if (G.step === 'initialSet') {
+    return {
+      title: t('board.phaseInitialSetTitle'),
+      body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseInitialSetBody'),
+      meta: [`${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/1`],
+    };
+  }
+  if (G.step === 'turnSet') {
+    return {
+      title: G.ready[meIndex] ? t('board.phaseWaitingTitle') : t('board.phaseTurnSetTitle'),
+      body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseTurnSetBody'),
+      meta: [`${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/${required}`, `${t('board.phaseMinimum')} ${minimum}`],
+    };
+  }
+  return { title: t('board.gameOver'), body: t('online.gameOverHelper'), meta: [] };
+}
+
+function PhaseInstructionBar({ G, meIndex, required, minimum }: { G: GameState; meIndex: PlayerIndex; required: number; minimum: number }) {
+  const instruction = phaseInstruction(G, meIndex, required, minimum);
+  const trace = latestTraceMessage(G);
+  return (
+    <section className="phase-instruction-bar" aria-live="polite">
+      <div>
+        <span>{t('board.turn')} {G.turnNumber}</span>
+        <strong>{instruction.title}</strong>
+        <p>{instruction.body}</p>
+      </div>
+      <div className="phase-instruction-meta">
+        {instruction.meta.map(item => <span key={item}>{item}</span>)}
+        {trace && <span className="phase-last-action">{trace}</span>}
+      </div>
+    </section>
+  );
+}
+
 function EffectOrderPanel({ G, moves, playerID }: {
   G: GameState;
   moves: Props['moves'];
@@ -707,7 +855,8 @@ function PendingChoicePanel({ G, moves, playerID }: {
       </div>
       {isCurrentPlayer ? (
         <>
-          <p>{choice.prompt || choice.type}</p>
+          <p>{choice.prompt || choiceInstruction(choice.type)}</p>
+          <p className="pending-choice-range">{t('board.choiceCount')} {selected.length}/{choice.max} · {t('board.phaseMinimum')} {choice.min}</p>
           <div className="effect-order-list">
             {choice.options.map(option => {
               const isSelected = selected.includes(option.id);
@@ -847,6 +996,7 @@ function BattleBoard({ G, moves, playerID }: Props) {
   return (
     <div className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'}`}>
       <main className="field-layout">
+        <PhaseInstructionBar G={G} meIndex={meIndex} required={required} minimum={minimum} />
         <OpponentStatsBar G={G} opponentIndex={opponentIndex} damageAmount={opponentDamage} />
         <CentralArena G={G} meIndex={meIndex} opponentIndex={opponentIndex} time={time} />
         <BottomZones G={G} meIndex={meIndex} moves={moves} />

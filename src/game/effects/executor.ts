@@ -179,7 +179,7 @@ function evaluateCondition(
       const actual = new Set(conditionZoneCards(G, player, cond)
         .map(card => getCardDef(card.defId)?.element)
         .filter((element): element is Element => !!element));
-      return actual.size === required.size && [...required].every(element => actual.has(element as Element));
+      return [...required].every(element => actual.has(element as Element));
     }
     case 'abyssElementCount': {
       const owner = conditionPlayer(cond, player);
@@ -776,8 +776,13 @@ export function executeEffect(
       if (!card) return { success: false, message: 'No own Area Enchant' };
       me.setZoneC = null;
       card.faceUp = true;
-      if (effect.action.params.destination === 'powerCharger') me.powerCharger.push(card);
-      else me.abyss.push(card);
+      if (effect.action.params.destination === 'powerCharger') {
+        me.powerCharger.push(card);
+        emitZoneEntered(G, context, player, 'powerCharger', card);
+      } else {
+        me.abyss.push(card);
+        emitZoneEntered(G, context, player, 'abyss', card);
+      }
       return { success: true, message: `Move own Area Enchant to ${effect.action.params.destination === 'powerCharger' ? 'Power Charger' : 'Abyss'}` };
     }
     case 'useFromAbyss': {

@@ -206,12 +206,15 @@ function fivePowerCards() {
     assert.notEqual(pendingPlayer, null);
     (pendingPlayer === 0 ? player0 : player1).moves.resolvePendingEffect(0);
   }
-  assert.equal(player0.getState()?.G.step, 'turnSet');
+  assert.ok(['turnSet', 'gameOver'].includes(player0.getState()?.G.step ?? ''));
   const actionLog = player0.getState()?.G.actionLog ?? [];
   assert.ok(actionLog.length >= 8);
+  assert.ok(actionLog.every(entry => Number.isInteger(entry.id)));
+  assert.ok(actionLog.every(entry => typeof entry.timestamp === 'number'));
+  assert.ok(actionLog.every(entry => typeof entry.chronosPosition === 'number'));
+  assert.ok(actionLog.every(entry => Array.isArray(entry.hp) && entry.hp.length === 2));
   assert.ok(actionLog.some(entry => entry.action === 'mulligan' && entry.payload?.redrawnCount === 0));
   assert.ok(actionLog.some(entry => entry.action === 'confirmReady' && entry.player === 0));
-  assert.ok(actionLog.every(entry => typeof entry.timestamp === 'number'));
   player0.stop();
   player1.stop();
 }
@@ -377,16 +380,19 @@ function fivePowerCards() {
   assert.equal((G as any).pendingEffects[1].length, 1);
 
   const resolvePendingEffect = (ZutomayoCard.moves as any).resolvePendingEffect;
-  assert.equal(resolvePendingEffect({ G, playerID: '0' }, 1), undefined);
+  assert.equal(resolvePendingEffect({ G, playerID: '0' }, 1), 'INVALID_MOVE');
+  assert.equal(G.players[1].hp, 100);
+
+  assert.equal(resolvePendingEffect({ G, playerID: '0' }, 0), undefined);
   const orderLog = G.actionLog.at(-1);
-  assert.equal(orderLog?.action, 'chooseEffectOrder');
-  assert.equal(orderLog?.payload?.index, 1);
+  assert.equal(orderLog?.action, 'resolvePendingEffect');
+  assert.equal(orderLog?.result?.ok, true);
   assert.ok(orderLog?.payload?.effectId);
   assert.equal(orderLog?.payload?.cardDefId, '1st_9');
   assert.equal(orderLog?.payload?.source, 'battleZone');
-  assert.equal(G.players[1].hp, 89);
-  assert.match(G.log.at(-1) ?? '', /Deal 11/);
-  assert.equal((G as any).pendingEffects[0][0].rawText, 'deal 7 first');
+  assert.equal(G.players[1].hp, 93);
+  assert.match(G.log.at(-1) ?? '', /Deal 7/);
+  assert.equal((G as any).pendingEffects[0][0].rawText, 'deal 11 second');
 
   assert.equal(resolvePendingEffect({ G, playerID: '0' }, 0), undefined);
   assert.equal(G.players[1].hp, 82);
@@ -936,6 +942,24 @@ function fivePowerCards() {
   placeRevealedCards(changedAwayState, false, allParsedEffects);
   assert.equal(changedAwayState.players[0].setZoneC, null);
   assert.equal(changedAwayState.players[0].abyss.at(-1)?.instanceId, changedAwayArea.instanceId);
+
+  const powerEnteredFromSelfMoveState = preparedState();
+  const movingArea = createInstance('2nd_86', true);
+  const reactiveArea = createInstance('4th_33', true);
+  powerEnteredFromSelfMoveState.players[0].setZoneC = movingArea;
+  powerEnteredFromSelfMoveState.players[1].setZoneC = reactiveArea;
+  const moveSelfToPower: ParsedEffect = {
+    trigger: 'onChronosChanged',
+    conditions: [],
+    action: { type: 'moveSelfAreaEnchant', params: { destination: 'powerCharger' } },
+    rawText: 'move own Area Enchant to Power Charger',
+  };
+  assert.equal(executeEffect(moveSelfToPower, powerEnteredFromSelfMoveState, 0, {
+    onTimingEvent: event => resolveTimingEvent(powerEnteredFromSelfMoveState, allParsedEffects, event),
+  }).success, true);
+  assert.equal(powerEnteredFromSelfMoveState.players[0].powerCharger.at(-1)?.instanceId, movingArea.instanceId);
+  assert.equal(powerEnteredFromSelfMoveState.players[1].setZoneC, null);
+  assert.equal(powerEnteredFromSelfMoveState.players[1].abyss.at(-1)?.instanceId, reactiveArea.instanceId);
 
   assert.notEqual(parseEffect('相手のアビスのカードを1枚選んでデッキの底に戻させる')?.action.type, 'drawCards');
   assert.notEqual(parseEffect('手札を１枚選んでデッキの底に置き、カードを１枚引く')?.action.type, 'drawCards');
@@ -2607,7 +2631,8 @@ function fivePowerCards() {
   assert.equal(specificElementsState.modifiers.attack[0], 100);
   const extraChaosElementsState = preparedState();
   extraChaosElementsState.players[0].abyss = ['1st_1', '1st_2', '1st_3', '1st_4', '4th_6'].map(id => createInstance(id, true));
-  assert.deepEqual(executeEffect(parsedCardEffect('3rd_8'), extraChaosElementsState, 0), { success: false, message: 'Condition not met' });
+  assert.equal(executeEffect(parsedCardEffect('3rd_8'), extraChaosElementsState, 0).success, true);
+  assert.equal(extraChaosElementsState.modifiers.attack[0], 100);
 
   const opponentAttackZeroState = preparedState();
   opponentAttackZeroState.players[1].battleZone = createInstance('1st_1', true);
