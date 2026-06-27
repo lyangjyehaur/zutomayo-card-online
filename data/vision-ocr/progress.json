@@ -506,5 +506,306 @@
     "song_title": "Byoushinwo Kamu",
     "needs_review": true,
     "review_reason": "OCR captured metadata as effect text; actual effect may be 'NIGHT 50 | DAY 10' or different. En name uncertain."
+  },
+  {
+    "id": "1st_66",
+    "en_name": "HAKASE (FASTENING)",
+    "en_effect": "",
+    "song_title": "The Battle Begins",
+    "needs_review": true
+  },
+  {
+    "id": "1st_67",
+    "en_name": "CHIRITORI-MEN (Kan Saete Kuyashiwa)",
+    "en_effect": "+ The Battle Begins ZUTTOMAYONAKADEINONI",
+    "song_title": "CHIRITORI-MEN (Kan Saete Kuyashiwa)",
+    "needs_review": true
+  },
+  {
+    "id": "1st_68",
+    "en_name": "UCHUJIN-STRINGS (Inside Joke)",
+    "en_effect": "",
+    "song_title": "UCHUJIN-STRINGS (Inside Joke)",
+    "needs_review": true
+  },
+  {
+    "id": "1st_69",
+    "en_name": "NIRA-CHAN",
+    "en_effect": "",
+    "song_title": "Byoushinwo Kamu",
+    "needs_review": true
+  },
+  {
+    "id": "1st_70",
+    "en_name": "UNIGURI-KUN (Kettobashita Moufu)",
+    "en_effect": "",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true
+  },
+  {
+    "id": "1st_71",
+    "en_name": "NIRA-CHAN (Konnakoto Soudou)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true
+  },
+  {
+    "id": "1st_72",
+    "en_name": "TEIKETSU (FASTENING)",
+    "en_effect": "",
+    "song_title": "TEIKETSU (FASTENING)",
+    "needs_review": true
+  },
+  {
+    "id": "1st_73",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "1st_74",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "1st_75",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "1st_76",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "1st_77",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "1st_78",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "1st_79",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "1st_80",
+    "en_name": "NANASHI (DARKEN)",
+    "en_effect": "NIGHT 40 | DAY 20",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true,
+    "review_reason": "Character card with stat-line instead of effect text; en_name includes parenthetical"
+  },
+  {
+    "id": "1st_81",
+    "en_name": "Strawberry Cake",
+    "en_effect": "Recovers 10 HP if your character card's attribute is darkness.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_82",
+    "en_name": "Portrait of the deceased",
+    "en_effect": "Attack +20 if your character card's attribute is darkness.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_83",
+    "en_name": "Corridor",
+    "en_effect": "Attack +20 if it's night.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_84",
+    "en_name": "Crater",
+    "en_effect": "Attack +30 when night changes to day.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true,
+    "review_reason": "Vision initially returned 'ZUTOMAYO' as en_name; corrected to 'Crater' based on description mentioning the name bar. Verify against card image."
+  },
+  {
+    "id": "1st_85",
+    "en_name": "Cluttered Sofas",
+    "en_effect": "20 damage reduction when you take damage.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_86",
+    "en_name": "ZUTOMAYO",
+    "en_effect": "Swap one card in hand with the top card of the Abyss.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true,
+    "review_reason": "Vision returned 'ZUTOMAYO' as en_name which is likely the series name, not the card name. Card type is Fate. Verify actual card name from image."
+  },
+  {
+    "id": "1st_87",
+    "en_name": "Remnants",
+    "en_effect": "Recovers 10 HP if your character card's attribute is flame.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_88",
+    "en_name": "Illuminate into the Red Darkness",
+    "en_effect": "Attack +20 if your character card's attribute is flame.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_89",
+    "en_name": "Clock (Byoushinwo Kamu)",
+    "en_effect": "Your attack power is increased by 10.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": true,
+    "review_reason": "en_name includes Japanese romanization in parentheses; may not be on the actual card. Verify exact English name."
+  },
+  {
+    "id": "1st_90",
+    "en_name": "DNA NABE",
+    "en_effect": "Attack +20 when day changes to night.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_91",
+    "en_name": "SHAKKURI's beckoning cat shop",
+    "en_effect": "Attack +20 if the attribute of the opponent's character card is flame or wind.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_92",
+    "en_name": "Compounding of Wonder Drug",
+    "en_effect": "Draw a card from the deck and add it to your hand. *After using this card, the number of cards in your hand increases by one until the end of the battle.",
+    "song_title": "THE WORLD IS CHANGING.",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_93",
+    "en_name": "CRT TV \"STRONG\"",
+    "en_effect": "Recovers 10 HP if your character card's attribute is electric.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false,
+    "review_reason": ""
+  },
+  {
+    "id": "1st_94",
+    "en_name": "Control Room",
+    "en_effect": "Attack +20 if your character card's attribute is electric.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "1st_95",
+    "en_name": "Parabolic Antenna",
+    "en_effect": "Attack +20 if the attribute of the opponent's character card is darkness or electric.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "1st_96",
+    "en_name": "FPS",
+    "en_effect": "Attack +10 when day changes to night.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "1st_97",
+    "en_name": "Mental Maintenance",
+    "en_effect": "Attack +20 when night changes to day.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "1st_98",
+    "en_name": "Slum Mart",
+    "en_effect": "Attack +30 if the opponent's character card has a power cost of 0 or 1+.",
+    "song_title": null,
+    "needs_review": false
+  },
+  {
+    "id": "1st_99",
+    "en_name": "Scribble on the Blackboard",
+    "en_effect": "Recovers 10 HP if your character card's attribute is wind.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "1st_100",
+    "en_name": "Vegetatisation",
+    "en_effect": "Attack +20 if your character card's attribute is wind.",
+    "song_title": "SEND TO FLOWER",
+    "needs_review": false
+  },
+  {
+    "id": "1st_101",
+    "en_name": "Eggs of Justice",
+    "en_effect": "Attack +20 if the opponent's character card has a power cost of 0 or 1+.",
+    "song_title": null,
+    "needs_review": false
+  },
+  {
+    "id": "1st_102",
+    "en_name": "A sense of Thirst",
+    "en_effect": "Attack +20 if it's daytime.",
+    "song_title": null,
+    "needs_review": false
+  },
+  {
+    "id": "1st_103",
+    "en_name": "Concession",
+    "en_effect": "Select one of your opponent's Abyss cards and have it returned to the deck.",
+    "song_title": "SEND TO POWER",
+    "needs_review": false
+  },
+  {
+    "id": "1st_104",
+    "en_name": "Historical Documents, Summon",
+    "en_effect": "Put the top card of the opponent's deck, with or without power, on the Abyss.",
+    "song_title": null,
+    "needs_review": false
+  },
+  {
+    "id": "1st_105",
+    "en_name": "UNIGURI-KUN (KanSaete Kuyashiiwa)",
+    "en_effect": "",
+    "song_title": "KanSaete Kuyashiiwa",
+    "needs_review": true
+  },
+  {
+    "id": "1st_106",
+    "en_name": "(Ham) GRAY",
+    "en_effect": "NIGHT 30 | DAY 110 Character 106/104 POWER COST",
+    "song_title": null,
+    "needs_review": true
   }
 ]
