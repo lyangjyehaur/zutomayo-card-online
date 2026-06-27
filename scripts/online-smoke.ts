@@ -24,10 +24,12 @@ process.env.PG_USER = process.env.PG_USER || 'zutomayo';
 process.env.PG_PASSWORD = process.env.PG_PASSWORD || 'zutomayo_dev';
 process.env.PG_DATABASE = process.env.PG_DATABASE || 'zutomayo';
 process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+process.env.REDIS_DB = process.env.REDIS_DB || '0';
 
 const REDIS_URL = process.env.REDIS_URL;
+const REDIS_DB = Number(process.env.REDIS_DB) || 0;
 // 雙 Redis 連線設計（同 src/server.ts）：publish 共用 + 兩條 subscribe 專屬。
-const redisPubClient = new Redis(REDIS_URL);
+const redisPubClient = new Redis(REDIS_URL, { db: REDIS_DB });
 const redisAdapterSubClient = redisPubClient.duplicate();
 const redisPubSubSubClient = redisPubClient.duplicate();
 const socketIoAdapter = createAdapter(redisPubClient, redisAdapterSubClient);

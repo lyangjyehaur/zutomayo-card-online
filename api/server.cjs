@@ -20,7 +20,9 @@ const PG_PASSWORD = process.env.PG_PASSWORD || '';
 const PG_DATABASE = process.env.PG_DATABASE || 'postgres';
 
 // Redis 設定（matchmaking 佇列 + rate limit）
+// 復用服務器既有 Redis 時用 REDIS_DB 切到獨立 DB index（0-15）避免與其他服務的 key 衝突。
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const REDIS_DB = Number(process.env.REDIS_DB) || 0;
 
 // ===== Database (PG + Redis) =====
 const pool = new Pool({
@@ -35,6 +37,7 @@ const pool = new Pool({
 });
 
 const redis = new Redis(REDIS_URL, {
+  db: REDIS_DB,
   maxRetriesPerRequest: null,
   enableReadyCheck: true,
 });

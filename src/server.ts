@@ -29,6 +29,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
 
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+// 復用服務器既有 Redis 時用 REDIS_DB 切到獨立 DB index（0-15）避免與其他服務的 key 衝突。
+// duplicate() 會繼承此選項，因此 redisAdapterSubClient / redisPubSubSubClient 也用同一 DB。
+const REDIS_DB = Number(process.env.REDIS_DB) || 0;
 
 // === 水平擴展基礎建設 ===
 // boardgame.io 多實例需要兩個獨立的跨節點層：
@@ -38,7 +41,7 @@ const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 // DB 改用 PostgresAdapter（自實作 StorageAPI.Async），解決 FlatFile 每次 move 寫整個 state 到磁碟的 I/O 瓶頸。
 
 // 共用 publish 連線（publish 不會進入 subscribe 模式，可安全共用）。
-const redisPubClient = new Redis(REDIS_URL);
+const redisPubClient = new Redis(REDIS_URL, { db: REDIS_DB });
 // Socket.IO adapter 專屬 subscribe 連線。
 const redisAdapterSubClient = redisPubClient.duplicate();
 // boardgame.io PubSub 專屬 subscribe 連線。
