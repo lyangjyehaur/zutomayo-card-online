@@ -1607,5 +1607,287 @@
     "song_title": "ALL ALONG THE WATCHTOWER",
     "needs_review": true,
     "review_reason": "Same card name as 2nd_104; possibly duplicate or vision misread; effect text is stats not ability text"
+  },
+  {
+    "id": "3rd_1",
+    "en_name": "NIRA-CHAN (Byoushinwo Kamu)",
+    "en_effect": "Attack +100 if it's midnight.",
+    "song_title": "Byoushinwo Kamu",
+    "status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_2",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "status": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "3rd_3",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "status": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "3rd_4",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "status": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "3rd_5",
+    "en_name": "The egocentric password",
+    "en_effect": "If your HP is less than opponent's HP, set the Clock to midnight.",
+    "song_title": "The egocentric password",
+    "status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_6",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "status": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "3rd_7",
+    "en_name": "Them",
+    "en_effect": "If your HP is less than opponent's HP, set the Clock to noon.",
+    "song_title": "Them",
+    "status": "ok",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_8",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "status": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "3rd_9",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "status": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "3rd_10",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "status": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "3rd_11",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "status": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "3rd_12",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "status": "vision_unavailable",
+    "needs_review": true
+  },
+  {
+    "id": "3rd_13",
+    "en_name": "GRAY (Hunch Gray)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEINONI.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "3rd_14",
+    "en_name": "SENTAI-RANGERS HEART RED (Nouriueo Cracker)",
+    "en_effect": "Put the opponent's Area Enchantment card at the bottom of the opponent's deck.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "3rd_15",
+    "en_name": "NIRA-CHAN (Seigi)",
+    "en_effect": "SEND TO POWER",
+    "song_title": "ZUTOMAYONAKADEINONI",
+    "needs_review": true,
+    "ocr_status": "ok",
+    "review_reason": "Effect text 'SEND TO POWER' may be a keyword/ability tag rather than full effect; flavor text mapping uncertain"
+  },
+  {
+    "id": "3rd_16",
+    "en_name": "NIRA-CHAN (Konnakoto Soudou)",
+    "en_effect": "POWER COST NIGHT 90 | DAY 130 Character The Battle Begins ZUTOMAYO NAKA DE DEKIRU KOTO",
+    "song_title": "NIRA-CHAN (Konnakoto Soudou)",
+    "needs_review": true,
+    "ocr_status": "ok",
+    "review_reason": "Effect text appears to include stats/UI labels mixed in; no clean ability text extracted"
+  },
+  {
+    "id": "3rd_17",
+    "en_name": "NIRA-MAID · NANASHI (DARKEN)",
+    "en_effect": "Attack +40 if all the cards in the opponent's Power Charger are of the darkness attribute.",
+    "song_title": "Off Minor",
+    "needs_review": true,
+    "ocr_status": "ok",
+    "review_reason": "Middle dot '·' in name may be incorrect separator"
+  },
+  {
+    "id": "3rd_18",
+    "en_name": "NIRA-CHAN (Neko Reset)",
+    "en_effect": "The Battle Begins",
+    "song_title": "Neko Reset",
+    "needs_review": true,
+    "ocr_status": "ok",
+    "review_reason": "Effect text 'The Battle Begins' appears minimal; may be missing additional text or this is a starter/basic card"
+  },
+  {
+    "id": "3rd_19",
+    "en_name": "NIRA-CHAN (Hunch Gray)",
+    "en_effect": "Attack +30 if all the cards in the Power Charger are of the Electric attribute.",
+    "song_title": "Off Minor",
+    "needs_review": false,
+    "ocr_status": "ok"
+  },
+  {
+    "id": "3rd_20",
+    "en_name": "NIRA-CHAN (Flow Different)",
+    "en_effect": "The Battle Begins ZUTOMAYONAKADEIINONI.",
+    "song_title": "NIRA-CHAN (Flow Different)",
+    "needs_review": true,
+    "ocr_status": "ok",
+    "review_reason": "Song title may be same as card name (uncertain); extra dot in romanization"
+  },
+  {
+    "id": "3rd_21",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "ocr_status": "vision_unavailable",
+    "review_reason": "429 rate limit error; image not analyzed"
+  },
+  {
+    "id": "3rd_22",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "ocr_status": "vision_unavailable",
+    "review_reason": "429 rate limit error; image not analyzed"
+  },
+  {
+    "id": "3rd_23",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "ocr_status": "vision_unavailable",
+    "review_reason": "429 rate limit error; image not analyzed"
+  },
+  {
+    "id": "3rd_24",
+    "en_name": null,
+    "en_effect": null,
+    "song_title": null,
+    "needs_review": true,
+    "ocr_status": "vision_unavailable",
+    "review_reason": "429 rate limit error; image not analyzed"
+  },
+  {
+    "id": "3rd_25",
+    "en_name": "Ai no Pegasus",
+    "en_effect": "Attack +70 if it's midnight.",
+    "song_title": "Ai no Pegasus",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_26",
+    "en_name": "Trick & Treat",
+    "en_effect": "Two squares before and after midnight are also treated as midnight.",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_27",
+    "en_name": "Miserable liberation",
+    "en_effect": "Recovers 50 HP to the opponent and inflicts 50 damage at the end of the turn.",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_28",
+    "en_name": "Explosion",
+    "en_effect": "Attack +80 if all the cards in the Power Charger are of the flame attribute.",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_29",
+    "en_name": "Dance, Dance, Dance",
+    "en_effect": "Attack+50 if it's daytime.",
+    "song_title": "Dance, Dance, Dance",
+    "needs_review": true,
+    "review_reason": "OCR returned 'ZUTOMAYO' as en_name which is the band name, not the card name. Best guess inferred from song_title field."
+  },
+  {
+    "id": "3rd_30",
+    "en_name": "Ingredients for DNA NABE",
+    "en_effect": "Attack +70 if there are at least three cards of the electric attribute in the Abyss.",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_31",
+    "en_name": "Moonlight",
+    "en_effect": "Choose a card from your hand, regardless of its Power, and place it in the Abyss. Draw a card from the deck.",
+    "song_title": "Moonlight",
+    "needs_review": true,
+    "review_reason": "OCR returned 'ZUTOMAYO' as en_name which is the band name, not the card name. Best guess 'Moonlight' inferred from song_title field."
+  },
+  {
+    "id": "3rd_32",
+    "en_name": "UNIGURI village",
+    "en_effect": "Attack +80 if there are at least three cards of the wind attribute in the Abyss.",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_33",
+    "en_name": "ZUTOMAYO PUZZLE GAME",
+    "en_effect": "If it's noon, advance the clocks by two.",
+    "song_title": "Off Minor",
+    "needs_review": false
+  },
+  {
+    "id": "3rd_34",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "Vision API returned 429 rate limit error. Marked vision_unavailable per instructions."
+  },
+  {
+    "id": "3rd_35",
+    "en_name": "vision_unavailable",
+    "en_effect": "vision_unavailable",
+    "song_title": "vision_unavailable",
+    "needs_review": true,
+    "review_reason": "Vision API returned 429 rate limit error. Marked vision_unavailable per instructions."
   }
 ]
