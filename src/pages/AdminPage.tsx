@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
-import { getAllCardDefs } from '../game/cards/loader';
+import { getAllCardDefs, refreshCards } from '../game/cards/loader';
 import { parseEffect } from '../game/effects/parser';
 import type { ParsedEffect } from '../game/effects';
 import type { CardDef, CardType, Element } from '../game/types';
@@ -11,6 +11,9 @@ import {
   adminGetUsers,
   adminLogin,
   adminResetElo,
+  adminUpdateCard,
+  adminUpdateCardI18n,
+  fetchCardI18n,
 } from '../api/client';
 import type { AdminMatch, AdminUser } from '../api/client';
 import '../components/AdminPanel.css';
@@ -19,21 +22,21 @@ const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
 
 const ELEMENT_OPTIONS: Element[] = ['闇', '炎', '電気', '風', 'カオス'];
 const TYPE_OPTIONS: CardType[] = ['Character', 'Enchant', 'Area Enchant'];
+const RARITY_OPTIONS = ['N', 'R', 'SR', 'UR', 'SE'] as const;
 const ELEMENTS: (Element | 'all')[] = ['all', ...ELEMENT_OPTIONS];
 const TYPES: (CardType | 'all')[] = ['all', ...TYPE_OPTIONS];
 const FALLBACK_PACKS = ['THE WORLD IS CHANGING', 'ALL ALONG THE WATCHTOWER', 'Off Minor', 'Fantasy Is Reality'];
-const TRIGGERS = [
-  'all',
-  'onUse',
-  'onTurnStart',
-  'onTurnEnd',
-  'onDamageReceived',
-  'onChronosChanged',
-  'onZoneEntered',
-  'onBattle',
-];
-// // I18N_LANGS will be used in i18n tab refactor
+const TRIGGERS = ['all', 'onUse', 'onTurnStart', 'onTurnEnd', 'onDamageReceived', 'onChronosChanged', 'onZoneEntered', 'onBattle'];
+const I18N_LANGS = [
+  { code: 'ja', label: '日本語' },
+  { code: 'zh-TW', label: '繁體中文' },
+  { code: 'zh-CN', label: '简体中文' },
+  { code: 'zh-HK', label: '廣東話' },
+  { code: 'en', label: 'English' },
+  { code: 'ko', label: '한국어' },
+] as const;
 
+type ModalTab = 'basic' | 'engine' | 'i18n';
 type ParsedCardMeta = {
   card: CardDef;
   lines: string[];
@@ -46,135 +49,229 @@ type ParsedCardMeta = {
   hasAreaExpiry: boolean;
 };
 
+type CardEditDraft = {
+  name: string; element: Element; type: CardType; rarity: string;
+  clock: string; attackNight: string; attackDay: string;
+  powerCost: string; sendToPower: string;
+  effect: string; image: string; errata: string;
+  pack: string; song: string; illustrator: string;
+};
 
+function cardToDraft(card: CardDef): CardEditDraft {
+  return {
+    name: card.name, element: card.element, type: card.type, rarity: card.rarity,
+    clock: String(card.clock),
+    attackNight: card.attack ? String(card.attack.night) : '',
+    attackDay: card.attack ? String(card.attack.day) : '',
+    powerCost: String(card.powerCost), sendToPower: String(card.sendToPower),
+    effect: card.effect, image: card.image, errata: card.errata,
+    pack: card.pack, song: card.song, illustrator: card.illustrator,
+  };
+}
 
+function draftToPatch(draft: CardEditDraft): Partial<CardDef> {
+  const num = (v: string) => { const n = Number(v); return Number.isFinite(n) ? Math.trunc(n) : 0; };
+  return {
+    name: draft.name, element: draft.element, type: draft.type, rarity: draft.rarity,
+    clock: num(draft.clock),
+    attack: draft.type === 'Character' ? { night: num(draft.attackNight), day: num(draft.attackDay) } : null,
+    powerCost: num(draft.powerCost), sendToPower: num(draft.sendToPower),
+    effect: draft.effect, image: draft.image.trim(), errata: draft.errata,
+    pack: draft.pack, song: draft.song, illustrator: draft.illustrator,
+  };
+}
 
+function changedFields(card: CardDef, draft: CardEditDraft): Partial<CardDef> {
+  const next = draftToPatch(draft);
+  const changed: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(next)) {
+    if (k === 'attack') {
+      const a = card.attack, b = v as CardDef['attack'];
+      if (!a && !b) continue;
+      if (!a || !b || a.night !== b.night || a.day !== b.day) changed.attack = b;
+    } else if ((card as unknown as Record<string, unknown>)[k] !== v) {
+      changed[k] = v;
+    }
+  }
+  return changed as Partial<CardDef>;
+}
 
-
-
-
-
-
-
+// ===== Parser helpers =====
 function effectLines(card: CardDef): string[] {
-  return card.effect
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
+  return card.effect.split('\n').map((l) => l.trim()).filter(Boolean);
 }
 
 function conditionTypes(effect: ParsedEffect): string[] {
   const collect = (conditions: ParsedEffect['conditions']): string[] =>
-    conditions.flatMap((condition) =>
-      condition.type === 'and' || condition.type === 'or'
-        ? [condition.type, ...collect(condition.value)]
-        : [condition.type],
-    );
+    conditions.flatMap((c) => c.type === 'and' || c.type === 'or' ? [c.type, ...collect(c.value)] : [c.type]);
   return collect(effect.conditions);
 }
 
 function parseCardMeta(card: CardDef): ParsedCardMeta {
   const lines = effectLines(card);
-  const parsed = lines.map((line) => parseEffect(line)).filter((item): item is ParsedEffect => Boolean(item));
-  const unparsedLines = lines.filter((line) => !parseEffect(line));
-  const allEffects = parsed.flatMap((effect) => (effect.expiry ? [effect, effect.expiry] : [effect]));
-  const actions = [...new Set(allEffects.map((effect) => effect.action.type))];
-  const triggers = [...new Set(allEffects.map((effect) => effect.trigger))];
-  const conditions = [...new Set(allEffects.flatMap(conditionTypes))];
-  const hasPendingChoice = actions.some((action) => /choose|reveal|recover|move|swap|reorder|useFrom/i.test(action));
-  const hasAreaExpiry =
-    card.type === 'Area Enchant' &&
-    allEffects.some(
-      (effect) =>
-        Boolean(effect.expiry) ||
-        effect.action.type === 'moveSelfAreaEnchant' ||
-        effect.rawText.includes('ターンの終了時') ||
-        effect.rawText.includes('アビスに置く'),
-    );
+  const parsed = lines.map((l) => parseEffect(l)).filter((x): x is ParsedEffect => Boolean(x));
+  const unparsedLines = lines.filter((l) => !parseEffect(l));
+  const all = parsed.flatMap((e) => e.expiry ? [e, e.expiry] : [e]);
+  const actions = [...new Set(all.map((e) => e.action.type))];
+  const triggers = [...new Set(all.map((e) => e.trigger))];
+  const conditions = [...new Set(all.flatMap(conditionTypes))];
+  const hasPendingChoice = actions.some((a) => /choose|reveal|recover|move|swap|reorder|useFrom/i.test(a));
+  const hasAreaExpiry = card.type === 'Area Enchant' && all.some((e) =>
+    Boolean(e.expiry) || e.action.type === 'moveSelfAreaEnchant' || e.rawText.includes('ターンの終了時') || e.rawText.includes('アビスに置く'));
   return { card, lines, parsed, unparsedLines, triggers, actions, conditions, hasPendingChoice, hasAreaExpiry };
 }
 
 function badgeList(items: string[], empty = '—') {
   if (items.length === 0) return <span className="engine-badge muted">{empty}</span>;
-  return items.map((item) => (
-    <span className="engine-badge" key={item}>
-      {item}
-    </span>
-  ));
+  return items.map((item) => <span className="engine-badge" key={item}>{item}</span>);
 }
 
+// ===== EffectInspector (read-only) =====
 function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
   const astJson = JSON.stringify(meta.parsed, null, 2);
-  if (meta.lines.length === 0)
-    return (
-      <section className="effect-inspector">
-        <h4>效果引擎</h4>
-        <p className="admin-empty-copy">無效果</p>
-      </section>
-    );
-
+  if (meta.lines.length === 0) return <section className="effect-inspector"><h4>效果引擎</h4><p className="admin-empty-copy">無效果</p></section>;
   return (
     <section className="effect-inspector">
       <div className="inspector-heading">
-        <div>
-          <h4>效果引擎</h4>
-          <p>
-            {meta.parsed.length}/{meta.lines.length} 行已解析
-            {meta.unparsedLines.length ? `，未解析 ${meta.unparsedLines.length} 行` : ''}
-          </p>
-        </div>
-        <button className="filter-chip" type="button" onClick={() => navigator.clipboard?.writeText(astJson)}>
-          複製 AST
-        </button>
+        <div><h4>效果引擎</h4><p>{meta.parsed.length}/{meta.lines.length} 行已解析{meta.unparsedLines.length ? `，未解析 ${meta.unparsedLines.length} 行` : ''}</p></div>
+        <button className="filter-chip" type="button" onClick={() => navigator.clipboard?.writeText(astJson)}>複製 AST</button>
       </div>
-      <div className="effect-original">
-        <strong>原文</strong>
-        {meta.lines.map((line) => (
-          <p key={line}>{line}</p>
-        ))}
-      </div>
+      <div className="effect-original"><strong>原文</strong>{meta.lines.map((l) => <p key={l}>{l}</p>)}</div>
       <div className="engine-badge-grid">
-        <div>
-          <span>Trigger</span>
-          <div>{badgeList(meta.triggers)}</div>
-        </div>
-        <div>
-          <span>Action</span>
-          <div>{badgeList(meta.actions)}</div>
-        </div>
-        <div>
-          <span>Condition</span>
-          <div>{badgeList(meta.conditions)}</div>
-        </div>
+        <div><span>Trigger</span><div>{badgeList(meta.triggers)}</div></div>
+        <div><span>Action</span><div>{badgeList(meta.actions)}</div></div>
+        <div><span>Condition</span><div>{badgeList(meta.conditions)}</div></div>
       </div>
-      {meta.parsed.map((effect, index) => (
-        <article className="parsed-effect-card" key={`${effect.rawText}-${index}`}>
+      {meta.parsed.map((effect, i) => (
+        <article className="parsed-effect-card" key={`${effect.rawText}-${i}`}>
           <div>{badgeList([effect.trigger, effect.action.type])}</div>
           <p>{effect.rawText}</p>
           {effect.conditions.length > 0 && <small>條件：{conditionTypes(effect).join(', ')}</small>}
-          {effect.expiry && (
-            <small>
-              附帶 expiry：{effect.expiry.trigger} / {effect.expiry.action.type}
-            </small>
-          )}
+          {effect.expiry && <small>附帶 expiry：{effect.expiry.trigger} / {effect.expiry.action.type}</small>}
         </article>
       ))}
-      <details className="ast-details">
-        <summary>查看完整 AST JSON</summary>
-        <pre>{astJson}</pre>
-      </details>
-      {meta.unparsedLines.length > 0 && (
-        <div className="admin-unparsed-lines">
-          <strong>未解析行</strong>
-          {meta.unparsedLines.map((line) => (
-            <p key={line}>{line}</p>
-          ))}
-        </div>
-      )}
+      <details className="ast-details"><summary>查看完整 AST JSON</summary><pre>{astJson}</pre></details>
+      {meta.unparsedLines.length > 0 && <div className="admin-unparsed-lines"><strong>未解析行</strong>{meta.unparsedLines.map((l) => <p key={l}>{l}</p>)}</div>}
     </section>
   );
 }
 
+// ===== Card Edit Form =====
+function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: CardDef) => void }) {
+  const [draft, setDraft] = useState<CardEditDraft>(() => cardToDraft(card));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => { setDraft(cardToDraft(card)); setSuccess(false); setError(''); }, [card]);
+
+  const set = (field: keyof CardEditDraft, value: string) => setDraft((d) => ({ ...d, [field]: value }));
+
+  const handleSave = async () => {
+    const patch = changedFields(card, draft);
+    if (Object.keys(patch).length === 0) { setSuccess(true); return; }
+    setSaving(true); setError(''); setSuccess(false);
+    try {
+      await adminUpdateCard(card.id, patch);
+      setSuccess(true);
+      onSaved({ ...card, ...patch } as CardDef);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '儲存失敗');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="card-edit-form">
+      <div className="edit-field"><label>名稱</label><input value={draft.name} onChange={(e) => set('name', e.target.value)} /></div>
+      <div className="edit-row">
+        <div className="edit-field"><label>屬性</label><select value={draft.element} onChange={(e) => set('element', e.target.value)}>{ELEMENT_OPTIONS.map((el) => <option key={el}>{el}</option>)}</select></div>
+        <div className="edit-field"><label>類型</label><select value={draft.type} onChange={(e) => set('type', e.target.value)}>{TYPE_OPTIONS.map((tp) => <option key={tp}>{tp}</option>)}</select></div>
+        <div className="edit-field"><label>稀有度</label><select value={draft.rarity} onChange={(e) => set('rarity', e.target.value)}>{RARITY_OPTIONS.map((r) => <option key={r}>{r}</option>)}</select></div>
+      </div>
+      <div className="edit-row">
+        <div className="edit-field"><label>時計</label><input type="number" value={draft.clock} onChange={(e) => set('clock', e.target.value)} /></div>
+        <div className="edit-field"><label>Power Cost</label><input type="number" value={draft.powerCost} onChange={(e) => set('powerCost', e.target.value)} /></div>
+        <div className="edit-field"><label>SEND TO POWER</label><input type="number" value={draft.sendToPower} onChange={(e) => set('sendToPower', e.target.value)} /></div>
+      </div>
+      {draft.type === 'Character' && (
+        <div className="edit-row">
+          <div className="edit-field"><label>🌙 夜間攻擊</label><input type="number" value={draft.attackNight} onChange={(e) => set('attackNight', e.target.value)} /></div>
+          <div className="edit-field"><label>☀️ 日間攻擊</label><input type="number" value={draft.attackDay} onChange={(e) => set('attackDay', e.target.value)} /></div>
+        </div>
+      )}
+      <div className="edit-field"><label>效果原文</label><textarea value={draft.effect} onChange={(e) => set('effect', e.target.value)} rows={4} /></div>
+      <div className="edit-field"><label>圖片 URL</label><input value={draft.image} onChange={(e) => set('image', e.target.value)} /></div>
+      <div className="edit-row">
+        <div className="edit-field"><label>歌曲</label><input value={draft.song} onChange={(e) => set('song', e.target.value)} /></div>
+        <div className="edit-field"><label>畫師</label><input value={draft.illustrator} onChange={(e) => set('illustrator', e.target.value)} /></div>
+      </div>
+      <div className="edit-field"><label>卡包</label><select value={draft.pack} onChange={(e) => set('pack', e.target.value)}>{FALLBACK_PACKS.map((p) => <option key={p}>{p}</option>)}</select></div>
+      <div className="edit-field"><label>勘誤</label><textarea value={draft.errata} onChange={(e) => set('errata', e.target.value)} rows={2} /></div>
+      <div className="edit-actions">
+        <button className="primary-action" type="button" disabled={saving} onClick={() => void handleSave()}>{saving ? '儲存中…' : '儲存'}</button>
+        {success && <span className="save-success">✓ 已儲存</span>}
+        {error && <span className="save-error">{error}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ===== i18n Editor =====
+function I18nEditor({ cardId }: { cardId: string }) {
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchCardI18n(cardId)
+      .then((data) => {
+        const init: Record<string, string> = {};
+        for (const lang of I18N_LANGS) init[lang.code] = data[lang.code] ?? '';
+        setDraft(init);
+      })
+      .catch(() => {
+        const init: Record<string, string> = {};
+        for (const lang of I18N_LANGS) init[lang.code] = '';
+        setDraft(init);
+      })
+      .finally(() => setLoading(false));
+  }, [cardId]);
+
+  const handleSave = async () => {
+    setSaving(true); setError(''); setSuccess(false);
+    try {
+      for (const lang of I18N_LANGS) {
+        await adminUpdateCardI18n(cardId, lang.code, draft[lang.code] ?? '');
+      }
+      setSuccess(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '儲存失敗');
+    } finally { setSaving(false); }
+  };
+
+  if (loading) return <p>載入翻譯中…</p>;
+
+  return (
+    <div className="i18n-editor">
+      {I18N_LANGS.map((lang) => (
+        <div className="i18n-field" key={lang.code}>
+          <label>{lang.label} <span className="i18n-code">({lang.code})</span></label>
+          <textarea value={draft[lang.code] ?? ''} onChange={(e) => setDraft((d) => ({ ...d, [lang.code]: e.target.value }))} rows={3} placeholder={`${lang.label} 翻譯…`} />
+        </div>
+      ))}
+      <div className="edit-actions">
+        <button className="primary-action" type="button" disabled={saving} onClick={() => void handleSave()}>{saving ? '儲存中…' : '儲存翻譯'}</button>
+        {success && <span className="save-success">✓ 已儲存</span>}
+        {error && <span className="save-error">{error}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ===== Main Component =====
 export function AdminPage() {
   const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(() => Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY)));
@@ -199,121 +296,22 @@ export function AdminPage() {
   const [searchText, setSearchText] = useState('');
   const [sortBy, setSortBy] = useState<'id' | 'name' | 'cost' | 'attack'>('id');
   const [selectedCard, setSelectedCard] = useState<CardDef | null>(null);
+  const [modalTab, setModalTab] = useState<ModalTab>('basic');
+  const [cardVersion, setCardVersion] = useState(0);
 
-  const adminToken = () => sessionStorage.getItem(ADMIN_TOKEN_KEY) || '';
+  const allCards = useMemo(() => getAllCardDefs(), [cardVersion]);
+  const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
 
-  const handleLogin = useCallback(async () => {
-    setError('');
-    setLoggingIn(true);
-    try {
-      const { token } = await adminLogin(password);
-      sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
-      setAuthenticated(true);
-      setPassword('');
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : '登入失敗';
-      setError(msg === 'Invalid password' ? '密碼錯誤' : msg);
-    } finally {
-      setLoggingIn(false);
-    }
-  }, [password]);
-
-  const handleLogout = useCallback(() => {
-    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
-    setAuthenticated(false);
-    setUsers([]);
-    setMatches([]);
-    setAdminError('');
-    setEloEdits({});
-  }, []);
-
-  const refreshUsers = useCallback(async () => {
-    const token = adminToken();
-    if (!token) return;
-    setAdminLoading(true);
-    setAdminError('');
-    try {
-      const data = await adminGetUsers(token);
-      setUsers(data.users);
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : '無法取得使用者列表';
-      setAdminError(msg === 'Unauthorized' ? '驗證失效，請重新登入' : msg);
-      if (err instanceof ApiError && err.status === 401) handleLogout();
-    } finally {
-      setAdminLoading(false);
-    }
-  }, [handleLogout]);
-
-  const refreshMatches = useCallback(async () => {
-    const token = adminToken();
-    if (!token) return;
-    setAdminLoading(true);
-    setAdminError('');
-    try {
-      const data = await adminGetMatches(token);
-      setMatches(data.matches);
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : '無法取得對戰列表';
-      setAdminError(msg === 'Unauthorized' ? '驗證失效，請重新登入' : msg);
-      if (err instanceof ApiError && err.status === 401) handleLogout();
-    } finally {
-      setAdminLoading(false);
-    }
-  }, [handleLogout]);
-
-  const handleResetElo = useCallback(
-    async (userId: string) => {
-      const token = adminToken();
-      if (!token) return;
-      const raw = eloEdits[userId];
-      const newElo = Number(raw);
-      if (raw === '' || Number.isNaN(newElo)) {
-        setAdminError('請輸入有效的 ELO 數值');
-        return;
-      }
-      setEloSavingId(userId);
-      setAdminError('');
-      try {
-        const result = await adminResetElo(token, userId, newElo);
-        setUsers((prev) => prev.map((u) => (u.id === result.id ? { ...u, elo: result.elo } : u)));
-        setEloEdits((prev) => {
-          const next = { ...prev };
-          delete next[userId];
-          return next;
-        });
-      } catch (err) {
-        const msg = err instanceof ApiError ? err.message : 'ELO 重置失敗';
-        setAdminError(msg === 'Unauthorized' ? '驗證失效，請重新登入' : msg);
-        if (err instanceof ApiError && err.status === 401) handleLogout();
-      } finally {
-        setEloSavingId(null);
-      }
-    },
-    [eloEdits, handleLogout],
-  );
-
-  useEffect(() => {
-    if (!authenticated) return;
-    if (activeTab === 'users' && users.length === 0) void refreshUsers();
-    if (activeTab === 'matches' && matches.length === 0) void refreshMatches();
-  }, [activeTab, authenticated, matches.length, refreshMatches, refreshUsers, users.length]);
-
-  const allCards = useMemo(() => getAllCardDefs(), []);
   const metaById = useMemo(() => new Map(allCards.map((card) => [card.id, parseCardMeta(card)])), [allCards]);
   const audit = useMemo(() => {
     const metas = [...metaById.values()];
-    const effectCards = metas.filter((meta) => meta.lines.length > 0);
+    const effectCards = metas.filter((m) => m.lines.length > 0);
     return {
-      totalCards: metas.length,
-      effectCards: effectCards.length,
-      effectLines: metas.reduce((sum, meta) => sum + meta.lines.length, 0),
-      parsedLines: metas.reduce((sum, meta) => sum + meta.parsed.length, 0),
-      unparsedLines: metas.reduce((sum, meta) => sum + meta.unparsedLines.length, 0),
-      runtimeParsedEffects: metas.reduce(
-        (sum, meta) =>
-          sum + meta.parsed.flatMap((effect) => (effect.expiry ? [effect, effect.expiry] : [effect])).length,
-        0,
-      ),
+      totalCards: metas.length, effectCards: effectCards.length,
+      effectLines: metas.reduce((s, m) => s + m.lines.length, 0),
+      parsedLines: metas.reduce((s, m) => s + m.parsed.length, 0),
+      unparsedLines: metas.reduce((s, m) => s + m.unparsedLines.length, 0),
+      runtimeParsedEffects: metas.reduce((s, m) => s + m.parsed.flatMap((e) => e.expiry ? [e, e.expiry] : [e]).length, 0),
     };
   }, [metaById]);
 
@@ -323,76 +321,62 @@ export function AdminPage() {
     if (filterType !== 'all') cards = cards.filter((c) => c.type === filterType);
     if (filterPack !== 'all') cards = cards.filter((c) => c.pack === filterPack);
     if (filterTrigger !== 'all') cards = cards.filter((c) => metaById.get(c.id)?.triggers.includes(filterTrigger));
-    if (filterAction)
-      cards = cards.filter((c) =>
-        metaById.get(c.id)?.actions.some((action) => action.toLowerCase().includes(filterAction.toLowerCase())),
-      );
-    if (filterCondition)
-      cards = cards.filter((c) =>
-        metaById
-          .get(c.id)
-          ?.conditions.some((condition) => condition.toLowerCase().includes(filterCondition.toLowerCase())),
-      );
+    if (filterAction) cards = cards.filter((c) => metaById.get(c.id)?.actions.some((a) => a.toLowerCase().includes(filterAction.toLowerCase())));
+    if (filterCondition) cards = cards.filter((c) => metaById.get(c.id)?.conditions.some((cond) => cond.toLowerCase().includes(filterCondition.toLowerCase())));
     if (pendingOnly) cards = cards.filter((c) => metaById.get(c.id)?.hasPendingChoice);
     if (areaExpiryOnly) cards = cards.filter((c) => metaById.get(c.id)?.hasAreaExpiry);
     if (searchText) {
       const q = searchText.toLowerCase();
-      cards = cards.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.effect.toLowerCase().includes(q) ||
-          c.id.toLowerCase().includes(q) ||
-          c.song.toLowerCase().includes(q),
-      );
+      cards = cards.filter((c) => c.name.toLowerCase().includes(q) || c.effect.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || c.song.toLowerCase().includes(q));
     }
     return [...cards].sort((a, b) => {
       if (sortBy === 'cost') return a.powerCost - b.powerCost;
-      if (sortBy === 'attack')
-        return (
-          (b.attack ? Math.max(b.attack.night, b.attack.day) : 0) -
-          (a.attack ? Math.max(a.attack.night, a.attack.day) : 0)
-        );
+      if (sortBy === 'attack') return ((b.attack ? Math.max(b.attack.night, b.attack.day) : 0) - (a.attack ? Math.max(a.attack.night, a.attack.day) : 0));
       if (sortBy === 'name') return a.name.localeCompare(b.name);
       return a.id.localeCompare(b.id);
     });
-  }, [
-    allCards,
-    areaExpiryOnly,
-    filterAction,
-    filterCondition,
-    filterElement,
-    filterPack,
-    filterTrigger,
-    filterType,
-    pendingOnly,
-    searchText,
-    sortBy,
-    metaById,
-  ]);
+  }, [allCards, areaExpiryOnly, filterAction, filterCondition, filterElement, filterPack, filterTrigger, filterType, pendingOnly, searchText, sortBy, metaById]);
+
+  const handleLogin = useCallback(async () => {
+    setLoggingIn(true); setError('');
+    try {
+      const { token: tok } = await adminLogin(password);
+      sessionStorage.setItem(ADMIN_TOKEN_KEY, tok);
+      setAuthenticated(true);
+    } catch (e) { setError(e instanceof ApiError ? e.message : '登入失敗'); }
+    finally { setLoggingIn(false); }
+  }, [password]);
+
+  const handleLogout = useCallback(() => { sessionStorage.removeItem(ADMIN_TOKEN_KEY); setAuthenticated(false); }, []);
+
+  const refreshUsers = useCallback(async () => {
+    if (!token) return;
+    setAdminLoading(true); setAdminError('');
+    try { const { users: u } = await adminGetUsers(token); setUsers(u); }
+    catch (e) { setAdminError(e instanceof Error ? e.message : '載入失敗'); }
+    finally { setAdminLoading(false); }
+  }, [token]);
+
+  const refreshMatches = useCallback(async () => {
+    if (!token) return;
+    setAdminLoading(true); setAdminError('');
+    try { const { matches: m } = await adminGetMatches(token); setMatches(m); }
+    catch (e) { setAdminError(e instanceof Error ? e.message : '載入失敗'); }
+    finally { setAdminLoading(false); }
+  }, [token]);
+
+  useEffect(() => {
+    if (activeTab === 'users' && users.length === 0) void refreshUsers();
+    if (activeTab === 'matches' && matches.length === 0) void refreshMatches();
+  }, [activeTab, matches.length, refreshMatches, refreshUsers, users.length]);
 
   if (!authenticated) {
     return (
       <main className="admin-page app-screen">
-        <header className="screen-header">
-          <button className="back-btn" onClick={() => navigate('/')}>
-            {t('common.backToLobby')}
-          </button>
-          <h1>管理員驗證</h1>
-        </header>
+        <header className="screen-header"><button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button><h1>管理員驗證</h1></header>
         <section className="admin-login">
-          <input
-            type="password"
-            placeholder="輸入管理密碼"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !loggingIn) void handleLogin();
-            }}
-            disabled={loggingIn}
-          />
-          <button onClick={() => void handleLogin()} disabled={loggingIn || !password}>
-            {loggingIn ? '驗證中…' : '登入'}
-          </button>
+          <input type="password" placeholder="輸入管理密碼" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !loggingIn) void handleLogin(); }} disabled={loggingIn} />
+          <button onClick={() => void handleLogin()} disabled={loggingIn || !password}>{loggingIn ? '驗證中…' : '登入'}</button>
           {error && <p className="admin-error">{error}</p>}
         </section>
       </main>
@@ -400,257 +384,72 @@ export function AdminPage() {
   }
 
   const selectedMeta = selectedCard ? metaById.get(selectedCard.id) : null;
-  const CardModal =
-    selectedCard && selectedMeta ? (
-      <div className="admin-modal-overlay" onClick={() => setSelectedCard(null)}>
-        <div className="admin-modal admin-modal-wide" onClick={(e) => e.stopPropagation()}>
-          <button className="admin-modal-close" onClick={() => setSelectedCard(null)}>
-            ✕
-          </button>
-          <div className="admin-modal-content admin-modal-inspector-content">
-            <div className="admin-card-profile">
-              <img src={selectedCard.image} alt={selectedCard.name} referrerPolicy="no-referrer" />
-              <h3>{selectedCard.name}</h3>
-              <p className="admin-card-id">{selectedCard.id}</p>
-              <table className="admin-detail-table">
-                <tbody>
-                  <tr>
-                    <td>屬性</td>
-                    <td>{selectedCard.element}</td>
-                  </tr>
-                  <tr>
-                    <td>類型</td>
-                    <td>{selectedCard.type}</td>
-                  </tr>
-                  <tr>
-                    <td>稀有度</td>
-                    <td>{selectedCard.rarity}</td>
-                  </tr>
-                  <tr>
-                    <td>時計</td>
-                    <td>{selectedCard.clock}</td>
-                  </tr>
-                  {selectedCard.attack && (
-                    <tr>
-                      <td>攻擊力</td>
-                      <td>
-                        🌙{selectedCard.attack.night} / ☀️{selectedCard.attack.day}
-                      </td>
-                    </tr>
-                  )}
-                  <tr>
-                    <td>Power Cost</td>
-                    <td>{selectedCard.powerCost}</td>
-                  </tr>
-                  <tr>
-                    <td>SEND TO POWER</td>
-                    <td>{selectedCard.sendToPower}</td>
-                  </tr>
-                  <tr>
-                    <td>歌曲</td>
-                    <td>{selectedCard.song || '—'}</td>
-                  </tr>
-                  <tr>
-                    <td>畫師</td>
-                    <td>{selectedCard.illustrator || '—'}</td>
-                  </tr>
-                  <tr>
-                    <td>卡包</td>
-                    <td>{selectedCard.pack}</td>
-                  </tr>
-                  {selectedCard.errata && (
-                    <tr>
-                      <td>勘誤</td>
-                      <td className="admin-errata">{selectedCard.errata}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <EffectInspector meta={selectedMeta} />
-          </div>
+  const CardModal = selectedCard && selectedMeta ? (
+    <div className="admin-modal-overlay" onClick={() => setSelectedCard(null)}>
+      <div className="admin-modal admin-modal-wide" onClick={(e) => e.stopPropagation()}>
+        <button className="admin-modal-close" onClick={() => setSelectedCard(null)}>✕</button>
+        <div className="modal-header">
+          <img src={selectedCard.image} alt={selectedCard.name} className="modal-thumb" referrerPolicy="no-referrer" />
+          <div><h3>{selectedCard.name}</h3><p className="admin-card-id">{selectedCard.id}</p></div>
+        </div>
+        <div className="modal-tabs">
+          {([['basic', '📝 基本資訊'], ['engine', '⚙️ 效果引擎'], ['i18n', '🌐 多語言']] as const).map(([key, label]) => (
+            <button key={key} className={`modal-tab ${modalTab === key ? 'active' : ''}`} onClick={() => setModalTab(key)}>{label}</button>
+          ))}
+        </div>
+        <div className="modal-tab-content">
+          {modalTab === 'basic' && <CardEditForm card={selectedCard} onSaved={(updated) => { setSelectedCard(updated); setCardVersion((v) => v + 1); void refreshCards(); }} />}
+          {modalTab === 'engine' && <EffectInspector meta={selectedMeta} />}
+          {modalTab === 'i18n' && <I18nEditor cardId={selectedCard.id} />}
         </div>
       </div>
-    ) : null;
+    </div>
+  ) : null;
 
   return (
     <main className="admin-page app-screen">
       <header className="screen-header">
-        <button className="back-btn" onClick={() => navigate('/')}>
-          {t('common.backToLobby')}
-        </button>
+        <button className="back-btn" onClick={() => navigate('/')}>{t('common.backToLobby')}</button>
         <h1>管理員面板</h1>
-        {activeTab === 'cards' && (
-          <span className="admin-count">
-            {filtered.length} / {allCards.length} 張
-          </span>
-        )}
+        {activeTab === 'cards' && <span className="admin-count">{filtered.length} / {allCards.length} 張</span>}
         <div className="admin-tabs">
-          <button
-            className={`filter-chip ${activeTab === 'cards' ? 'active' : ''}`}
-            onClick={() => setActiveTab('cards')}
-          >
-            卡牌資料
-          </button>
-          <button
-            className={`filter-chip ${activeTab === 'users' ? 'active' : ''}`}
-            onClick={() => setActiveTab('users')}
-          >
-            使用者
-          </button>
-          <button
-            className={`filter-chip ${activeTab === 'matches' ? 'active' : ''}`}
-            onClick={() => setActiveTab('matches')}
-          >
-            對戰
-          </button>
+          <button className={`filter-chip ${activeTab === 'cards' ? 'active' : ''}`} onClick={() => setActiveTab('cards')}>卡牌資料</button>
+          <button className={`filter-chip ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>使用者</button>
+          <button className={`filter-chip ${activeTab === 'matches' ? 'active' : ''}`} onClick={() => setActiveTab('matches')}>對戰</button>
         </div>
-        <button className="nav-link" onClick={() => navigate('/admin/i18n')}>
-          🌐 i18n
-        </button>
-        <button className="logout-btn" onClick={handleLogout}>
-          登出
-        </button>
+        <button className="logout-btn" onClick={handleLogout}>登出</button>
       </header>
 
       {activeTab === 'cards' && (
         <>
           <section className="admin-audit-summary">
-            <div>
-              <span>總卡</span>
-              <strong>{audit.totalCards}</strong>
-            </div>
-            <div>
-              <span>效果卡</span>
-              <strong>{audit.effectCards}</strong>
-            </div>
-            <div>
-              <span>效果行</span>
-              <strong>
-                {audit.parsedLines}/{audit.effectLines}
-              </strong>
-            </div>
-            <div>
-              <span>未解析</span>
-              <strong>{audit.unparsedLines}</strong>
-            </div>
-            <div>
-              <span>Runtime effects</span>
-              <strong>{audit.runtimeParsedEffects}</strong>
-            </div>
+            <div><span>總卡</span><strong>{audit.totalCards}</strong></div>
+            <div><span>效果卡</span><strong>{audit.effectCards}</strong></div>
+            <div><span>效果行</span><strong>{audit.parsedLines}/{audit.effectLines}</strong></div>
+            <div><span>未解析</span><strong>{audit.unparsedLines}</strong></div>
+            <div><span>Runtime effects</span><strong>{audit.runtimeParsedEffects}</strong></div>
           </section>
-
           <div className="admin-filters">
-            <input
-              type="text"
-              placeholder="搜尋卡名/效果/ID..."
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className="admin-search"
-            />
-            <div className="admin-filter-row">
-              <label>屬性</label>
-              {ELEMENTS.map((el) => (
-                <button
-                  key={el}
-                  className={`filter-chip ${filterElement === el ? 'active' : ''}`}
-                  onClick={() => setFilterElement(el)}
-                >
-                  {el === 'all' ? '全部' : el}
-                </button>
-              ))}
-            </div>
-            <div className="admin-filter-row">
-              <label>類型</label>
-              {TYPES.map((type) => (
-                <button
-                  key={type}
-                  className={`filter-chip ${filterType === type ? 'active' : ''}`}
-                  onClick={() => setFilterType(type)}
-                >
-                  {type === 'all' ? '全部' : type === 'Character' ? '角色' : type === 'Enchant' ? '附魔' : '區域'}
-                </button>
-              ))}
-            </div>
-            <div className="admin-filter-row">
-              <label>Trigger</label>
-              {TRIGGERS.map((trigger) => (
-                <button
-                  key={trigger}
-                  className={`filter-chip ${filterTrigger === trigger ? 'active' : ''}`}
-                  onClick={() => setFilterTrigger(trigger)}
-                >
-                  {trigger === 'all' ? '全部' : trigger}
-                </button>
-              ))}
-            </div>
-            <div className="admin-filter-row admin-engine-searches">
-              <label>引擎</label>
-              <input placeholder="Action type" value={filterAction} onChange={(e) => setFilterAction(e.target.value)} />
-              <input
-                placeholder="Condition type"
-                value={filterCondition}
-                onChange={(e) => setFilterCondition(e.target.value)}
-              />
-              <button
-                className={`filter-chip ${pendingOnly ? 'active' : ''}`}
-                onClick={() => setPendingOnly((v) => !v)}
-              >
-                待選卡
-              </button>
-              <button
-                className={`filter-chip ${areaExpiryOnly ? 'active' : ''}`}
-                onClick={() => setAreaExpiryOnly((v) => !v)}
-              >
-                Area expiry
-              </button>
-            </div>
-            <div className="admin-filter-row">
-              <label>卡包</label>
-              {FALLBACK_PACKS.map((pack: string) => (
-                <button
-                  key={pack}
-                  className={`filter-chip ${filterPack === pack ? 'active' : ''}`}
-                  onClick={() => setFilterPack(pack)}
-                >
-                  {pack === 'all' ? '全部' : pack}
-                </button>
-              ))}
-            </div>
-            <div className="admin-filter-row">
-              <label>排序</label>
-              {(['id', 'name', 'cost', 'attack'] as const).map((sort) => (
-                <button
-                  key={sort}
-                  className={`filter-chip ${sortBy === sort ? 'active' : ''}`}
-                  onClick={() => setSortBy(sort)}
-                >
-                  {sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '能量' : '攻擊'}
-                </button>
-              ))}
-            </div>
+            <input type="text" placeholder="搜尋卡名/效果/ID..." value={searchText} onChange={(e) => setSearchText(e.target.value)} className="admin-search" />
+            <div className="admin-filter-row"><label>屬性</label>{ELEMENTS.map((el) => <button key={el} className={`filter-chip ${filterElement === el ? 'active' : ''}`} onClick={() => setFilterElement(el)}>{el === 'all' ? '全部' : el}</button>)}</div>
+            <div className="admin-filter-row"><label>類型</label>{TYPES.map((type) => <button key={type} className={`filter-chip ${filterType === type ? 'active' : ''}`} onClick={() => setFilterType(type)}>{type === 'all' ? '全部' : type === 'Character' ? '角色' : type === 'Enchant' ? '附魔' : '區域'}</button>)}</div>
+            <div className="admin-filter-row"><label>Trigger</label>{TRIGGERS.map((trigger) => <button key={trigger} className={`filter-chip ${filterTrigger === trigger ? 'active' : ''}`} onClick={() => setFilterTrigger(trigger)}>{trigger === 'all' ? '全部' : trigger}</button>)}</div>
+            <div className="admin-filter-row admin-engine-searches"><label>引擎</label><input placeholder="Action type" value={filterAction} onChange={(e) => setFilterAction(e.target.value)} /><input placeholder="Condition type" value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)} /><button className={`filter-chip ${pendingOnly ? 'active' : ''}`} onClick={() => setPendingOnly((v) => !v)}>待選卡</button><button className={`filter-chip ${areaExpiryOnly ? 'active' : ''}`} onClick={() => setAreaExpiryOnly((v) => !v)}>Area expiry</button></div>
+            <div className="admin-filter-row"><label>卡包</label>{FALLBACK_PACKS.map((pack) => <button key={pack} className={`filter-chip ${filterPack === pack ? 'active' : ''}`} onClick={() => setFilterPack(pack)}>{pack === 'all' ? '全部' : pack}</button>)}</div>
+            <div className="admin-filter-row"><label>排序</label>{(['id', 'name', 'cost', 'attack'] as const).map((sort) => <button key={sort} className={`filter-chip ${sortBy === sort ? 'active' : ''}`} onClick={() => setSortBy(sort)}>{sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '能量' : '攻擊'}</button>)}</div>
           </div>
-
           <div className="admin-grid">
             {filtered.map((card) => {
               const meta = metaById.get(card.id);
               return (
-                <div key={card.id} className="admin-card" onClick={() => setSelectedCard(card)}>
+                <div key={card.id} className="admin-card" onClick={() => { setSelectedCard(card); setModalTab('basic'); }}>
                   <img src={card.image} alt={card.name} loading="lazy" referrerPolicy="no-referrer" />
                   <div className="admin-card-overlay">
                     <span className="admin-card-name">{card.name}</span>
                     <span className="admin-card-id">{card.id}</span>
-                    <span className="admin-card-meta">
-                      {card.element} • {card.type === 'Character' ? '角' : card.type === 'Enchant' ? '附' : '域'}
-                      {card.type === 'Character' && card.attack && ` • 🌙${card.attack.night}/☀️${card.attack.day}`}
-                      {card.powerCost > 0 && ` • ⚡${card.powerCost}`}
-                    </span>
+                    <span className="admin-card-meta">{card.element} • {card.type === 'Character' ? '角' : card.type === 'Enchant' ? '附' : '域'}{card.type === 'Character' && card.attack && ` • 🌙${card.attack.night}/☀️${card.attack.day}`}{card.powerCost > 0 && ` • ⚡${card.powerCost}`}</span>
                   </div>
-                  {card.effect && (
-                    <div className={`admin-card-effect-badge ${meta?.unparsedLines.length ? 'warning' : ''}`}>
-                      {meta?.parsed.length ?? 0}
-                    </div>
-                  )}
+                  {card.effect && <div className={`admin-card-effect-badge ${meta?.unparsedLines.length ? 'warning' : ''}`}>{meta?.parsed.length ?? 0}</div>}
                 </div>
               );
             })}
@@ -659,120 +458,29 @@ export function AdminPage() {
       )}
 
       {activeTab === 'users' && (
-        <section className="admin-section">
-          <div className="admin-section-heading">
-            <h2>使用者列表</h2>
-            <button className="filter-chip" onClick={() => void refreshUsers()} disabled={adminLoading}>
-              {adminLoading ? '載入中…' : '重新載入'}
-            </button>
-          </div>
+        <section className="admin-data-section">
+          {adminLoading && <p>載入中…</p>}
           {adminError && <p className="admin-error">{adminError}</p>}
-          {users.length === 0 && !adminLoading && <p className="admin-empty-copy">尚無使用者資料</p>}
-          {users.length > 0 && (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>暱稱</th>
-                  <th>Email</th>
-                  <th>ELO</th>
-                  <th>對戰</th>
-                  <th>勝場</th>
-                  <th>勝率</th>
-                  <th>建立時間</th>
-                  <th>重置 ELO</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td>{user.nickname || '—'}</td>
-                    <td className="admin-table-muted">{user.email}</td>
-                    <td>
-                      <strong>{user.elo}</strong>
-                    </td>
-                    <td>{user.matchCount}</td>
-                    <td>{user.wins}</td>
-                    <td>{user.winRate}%</td>
-                    <td className="admin-table-muted">{new Date(user.createdAt).toLocaleString()}</td>
-                    <td>
-                      <div className="admin-elo-cell">
-                        <input
-                          type="number"
-                          placeholder={String(user.elo)}
-                          value={eloEdits[user.id] ?? ''}
-                          onChange={(e) => setEloEdits((prev) => ({ ...prev, [user.id]: e.target.value }))}
-                          disabled={eloSavingId === user.id}
-                        />
-                        <button
-                          className="filter-chip"
-                          onClick={() => void handleResetElo(user.id)}
-                          disabled={eloSavingId === user.id || !eloEdits[user.id]}
-                        >
-                          {eloSavingId === user.id ? '儲存中…' : '重置'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <table className="admin-data-table"><thead><tr><th>ID</th><th>Email</th><th>暱稱</th><th>ELO</th><th>場次</th><th>勝率</th><th>操作</th></tr></thead>
+            <tbody>{users.map((u) => (
+              <tr key={u.id}><td className="id-cell">{u.id}</td><td>{u.email}</td><td>{u.nickname}</td><td>{eloEdits[u.id] ?? u.elo}<input className="elo-input" value={eloEdits[u.id] ?? ''} placeholder={String(u.elo)} onChange={(e) => setEloEdits((prev) => ({ ...prev, [u.id]: e.target.value }))} /></td><td>{u.matchCount}</td><td>{u.winRate}%</td><td><button className="filter-chip" disabled={eloSavingId === u.id} onClick={() => { const v = Number(eloEdits[u.id]); if (!Number.isFinite(v)) return; void adminResetElo(token, u.id, Math.trunc(v)).then(refreshUsers).then(() => setEloEdits((p) => { const n = { ...p }; delete n[u.id]; return n; })); setEloSavingId(u.id); setTimeout(() => setEloSavingId(null), 1500); }}>{eloSavingId === u.id ? '已更新' : '更新 ELO'}</button></td></tr>
+            ))}</tbody>
+          </table>
         </section>
       )}
 
       {activeTab === 'matches' && (
-        <section className="admin-section">
-          <div className="admin-section-heading">
-            <h2>對戰列表</h2>
-            <button className="filter-chip" onClick={() => void refreshMatches()} disabled={adminLoading}>
-              {adminLoading ? '載入中…' : '重新載入'}
-            </button>
-          </div>
+        <section className="admin-data-section">
+          {adminLoading && <p>載入中…</p>}
           {adminError && <p className="admin-error">{adminError}</p>}
-          {matches.length === 0 && !adminLoading && <p className="admin-empty-copy">尚無對戰紀錄</p>}
-          {matches.length > 0 && (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>時間</th>
-                  <th>勝者</th>
-                  <th>敗者</th>
-                  <th>ELO 變動</th>
-                  <th>回合數</th>
-                  <th>時長</th>
-                  <th>對戰 ID</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matches.map((match) => (
-                  <tr key={match.id}>
-                    <td className="admin-table-muted">{new Date(match.createdAt).toLocaleString()}</td>
-                    <td>
-                      {match.winnerNickname || '—'}{' '}
-                      <span className="admin-table-muted">({match.winnerId.slice(0, 8)})</span>
-                    </td>
-                    <td>
-                      {match.loserNickname || '—'}{' '}
-                      <span className="admin-table-muted">({match.loserId.slice(0, 8)})</span>
-                    </td>
-                    <td>
-                      <span className="admin-elo-up">+{match.winnerEloChange}</span> /{' '}
-                      <span className="admin-elo-down">{match.loserEloChange}</span>
-                    </td>
-                    <td>{match.turns}</td>
-                    <td>
-                      {match.duration
-                        ? `${Math.floor(match.duration / 60)}:${String(match.duration % 60).padStart(2, '0')}`
-                        : '—'}
-                    </td>
-                    <td className="admin-table-muted">{match.id.slice(0, 8)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <table className="admin-data-table"><thead><tr><th>ID</th><th>勝者</th><th>敗者</th><th>ELO Δ</th><th>回合</th><th>時長</th><th>時間</th></tr></thead>
+            <tbody>{matches.map((m) => (
+              <tr key={m.id}><td className="id-cell">{m.id}</td><td>{m.winnerNickname ?? m.winnerId}</td><td>{m.loserNickname ?? m.loserId}</td><td>{m.winnerEloChange >= 0 ? '+' : ''}{m.winnerEloChange} / {m.loserEloChange}</td><td>{m.turns ?? '—'}</td><td>{m.duration != null ? `${Math.round(m.duration / 60)}m` : '—'}</td><td>{new Date(m.createdAt).toLocaleString()}</td></tr>
+            ))}</tbody>
+          </table>
         </section>
       )}
+
       {CardModal}
     </main>
   );

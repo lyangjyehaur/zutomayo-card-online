@@ -480,3 +480,62 @@
     padding: 0.3rem 0.35rem;
   }
 }
+
+/* Modal header + tabs */
+.modal-header {
+  display: flex; gap: 0.8rem; align-items: center;
+  padding: 0.8rem 1rem; border-bottom: 1px solid #333;
+}
+.modal-thumb { width: 56px; height: 78px; object-fit: cover; border-radius: 6px; }
+.modal-header h3 { margin: 0; color: var(--gold); font-size: 1rem; }
+.modal-tabs {
+  display: flex; gap: 0; border-bottom: 1px solid #333;
+}
+.modal-tab {
+  flex: 1; padding: 0.55rem 0.8rem; border: none; background: transparent;
+  color: #888; font-size: 0.82rem; font-weight: 700; cursor: pointer;
+  border-bottom: 2px solid transparent; transition: all 0.15s;
+}
+.modal-tab:hover { color: var(--gold); }
+.modal-tab.active { color: var(--gold); border-bottom-color: var(--gold); background: rgba(244,211,94,0.06); }
+.modal-tab-content { padding: 1rem; max-height: 60vh; overflow-y: auto; }
+
+/* Card edit form */
+.card-edit-form { display: grid; gap: 0.65rem; }
+.edit-field { display: grid; gap: 0.2rem; }
+.edit-field label { font-size: 0.72rem; color: #888; font-weight: 700; }
+.edit-field input, .edit-field select, .edit-field textarea {
+  padding: 0.4rem 0.55rem; border: 1px solid #333; border-radius: 5px;
+  background: #16213e; color: #e0e0e0; font-size: 0.82rem;
+}
+.edit-field textarea { resize: vertical; font-family: inherit; }
+.edit-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem; }
+.edit-actions { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.5rem; }
+.save-success { color: #b9f6ca; font-size: 0.82rem; font-weight: 700; }
+.save-error { color: #ef9a9a; font-size: 0.82rem; }
+
+/* i18n editor */
+.i18n-editor { display: grid; gap: 0.65rem; }
+.i18n-field { display: grid; gap: 0.2rem; }
+.i18n-field label { font-size: 0.78rem; color: #ccc; font-weight: 700; }
+.i18n-code { color: #888; font-weight: 400; }
+.i18n-field textarea {
+  padding: 0.4rem 0.55rem; border: 1px solid #333; border-radius: 5px;
+  background: #16213e; color: #e0e0e0; font-size: 0.82rem;
+  resize: vertical; font-family: inherit;
+}
+
+/* Admin data tables */
+.admin-data-section { padding: 0.5rem 0; overflow-x: auto; }
+.admin-data-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.admin-data-table th { text-align: left; color: #888; font-size: 0.7rem; padding: 0.4rem 0.5rem; border-bottom: 1px solid #333; }
+.admin-data-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #222; }
+.admin-data-table .id-cell { font-family: monospace; font-size: 0.68rem; color: #888; max-width: 8rem; overflow: hidden; text-overflow: ellipsis; }
+.elo-input { width: 4.5rem; padding: 0.15rem 0.3rem; border: 1px solid #333; border-radius: 3px; background: #16213e; color: #e0e0e0; font-size: 0.72rem; margin-left: 0.3rem; }
+
+/* Responsive */
+@media (max-width: 767px) {
+  .modal-header { flex-direction: column; text-align: center; }
+  .modal-tab-content { max-height: 50vh; }
+  .edit-row { grid-template-columns: 1fr; }
+}
