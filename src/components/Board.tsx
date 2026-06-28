@@ -1337,7 +1337,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
   return (
     <div
-      className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'} relative h-screen w-screen overflow-hidden bg-lacquer-deep text-bone font-sans`}
+      className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'} !block relative h-screen w-screen overflow-hidden bg-lacquer-deep text-bone font-sans`}
     >
       {/* 環境光暈 — 完全照搬 demo */}
       <div className="pointer-events-none absolute inset-0">
