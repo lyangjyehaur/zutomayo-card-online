@@ -60,7 +60,7 @@ export function OnlineGame({
   playerID,
   playerCredentials,
   showRejoinedStatus = false,
-  onLeaveRequest,
+  onLeaveRequest: _onLeaveRequest,
   onReturnToLobby,
   onCreateNewRoom,
   onOpponentDetected,
@@ -141,21 +141,8 @@ export function OnlineGame({
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
-      <header className="absolute inset-x-0 top-0 z-40 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
-        <button
-          className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50 transition hover:text-bone"
-          type="button"
-          onClick={onLeaveRequest}
-        >
-          {t('online.leaveRoom')}
-        </button>
-        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-4">
-          <strong className="font-display text-sm italic text-bone">{t('game.onlineMode')}</strong>
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
-            {t('game.matchCode')} {matchID}
-          </span>
-        </div>
-        {connectionStatus && (
+      {connectionStatus && (
+        <div className="absolute right-6 top-1.5 z-50">
           <span className={`font-mono text-[10px] uppercase tracking-[0.3em] ${
             connectionStatus === 'disconnected' ? 'text-vermilion/80' : 'text-gold/70'
           }`}>
@@ -165,8 +152,8 @@ export function OnlineGame({
                 ? t('onlineSession.disconnectedRetrying')
                 : t('onlineSession.reconnecting')}
           </span>
-        )}
-      </header>
+        </div>
+      )}
       <div className="h-full w-full">
         <OnlineClient playerID={playerID} matchID={matchID} credentials={playerCredentials} />
       </div>

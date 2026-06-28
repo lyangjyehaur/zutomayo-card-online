@@ -582,20 +582,23 @@ function OpponentStatsBar({
 
   return (
     <section
-      className={`relative flex items-end justify-between gap-6 border-b border-bone/5 pb-3 ${damageAmount ? 'damaged' : ''}`}
+      className={`relative flex items-center justify-between gap-6 border-b border-bone/5 pb-3 ${damageAmount ? 'damaged' : ''}`}
       aria-label={t('player.opponent')}
     >
-      <div className="min-w-52 flex-1">
-        <strong className="font-display text-xl italic text-bone">{playerName(opponentIndex)}</strong>
-        <div className="mt-2 max-w-sm">
-          <LpBar hp={opponent.hp} tone="vermilion" />
+      <div className="flex items-center gap-6">
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('player.opponent')}</div>
+          <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
         </div>
-        <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.25em] text-bone/40">
-          {t('board.hp')} {opponent.hp}/100 · {t('board.hand')} {opponent.hand.length} · {t('board.deck')}{' '}
-          {opponent.deck.length}
+        <div className="w-72">
+          <LpBar hp={opponent.hp} tone="vermilion" />
+          <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
+            <span>{t('board.hp')} {opponent.hp}/100</span>
+            <span>{t('board.hand')} · {opponent.hand.length}</span>
+          </div>
         </div>
       </div>
-      <div className="flex items-end gap-2" aria-label={t('board.hand')}>
+      <div className="flex items-end gap-1.5" aria-label={t('board.hand')}>
         {opponent.hand.map((card, index) => (
           <div
             key={card.instanceId}
@@ -636,17 +639,8 @@ function BottomZones({
   const me = G.players[meIndex];
 
   return (
-    <section className="relative flex items-center justify-between gap-4 border-t border-bone/5 pt-3" aria-label={t('player.me')}>
-      <div className="min-w-52">
-        <strong className="font-display text-xl italic text-bone">{playerName(meIndex)}</strong>
-        <div className="mt-2">
-          <LpBar hp={me.hp} tone="gold" />
-        </div>
-        <div className={`mt-2 font-mono text-[10px] uppercase tracking-[0.25em] text-bone/40 ${hpClass(me.hp)}`}>
-          {t('board.hp')} {me.hp}/100 · {t('board.deck')} {me.deck.length} · {t('board.powerCharger')}{' '}
-          {powerTotal(G, meIndex)} · {t('board.abyss')} {me.abyss.length}
-        </div>
-      </div>
+    <section className="relative flex flex-1 flex-col items-center justify-end gap-3 border-t border-bone/5 pt-3" aria-label={t('player.me')}>
+      {/* 設置區 */}
       <div className="flex items-center justify-center gap-3">
         <StackZone kind="power" label={t('board.powerCharger')} value={powerTotal(G, meIndex)} cards={me.powerCharger} />
         <FieldZone
@@ -679,6 +673,22 @@ function BottomZones({
           onFocusCard={onFocusCard}
         />
         <StackZone kind="deck" label={t('board.deckZone')} value={me.deck.length} />
+      </div>
+      {/* 玩家資訊列 */}
+      <div className="flex w-full items-end justify-between px-2">
+        <div className="w-72">
+          <div className="flex items-center gap-4">
+            <div className="font-display text-xl italic">{playerName(meIndex)}</div>
+          </div>
+          <LpBar hp={me.hp} tone="gold" />
+          <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
+            <span>{t('board.hp')} {me.hp}/100</span>
+            <span>{t('board.deck')} · {me.deck.length}</span>
+          </div>
+        </div>
+        <div className={`font-mono text-[10px] uppercase tracking-[0.25em] text-bone/40 ${hpClass(me.hp)}`}>
+          {t('board.powerCharger')} {powerTotal(G, meIndex)} · {t('board.abyss')} {me.abyss.length}
+        </div>
       </div>
       {damageAmount ? (
         <span
@@ -1347,12 +1357,24 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           />
         </main>
 
-        {/* 側欄 */}
-        <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto">
-          <FocusPanel focus={focusedCard} />
-          {G.step === 'effectOrder' && <EffectOrderPanel G={G} moves={moves} playerID={playerID} />}
-          {G.pendingChoice && <PendingChoicePanel G={G} moves={moves} playerID={playerID} />}
-          <BattleLogPanel G={G} />
+        {/* 側欄 — Focus 和 Log 互不影響 */}
+        <aside className="flex min-h-0 flex-col overflow-hidden">
+          <div className="flex-shrink-0 overflow-y-auto p-1">
+            <FocusPanel focus={focusedCard} />
+          </div>
+          {G.step === 'effectOrder' && (
+            <div className="flex-shrink-0 overflow-y-auto p-1">
+              <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
+            </div>
+          )}
+          {G.pendingChoice && (
+            <div className="flex-shrink-0 overflow-y-auto p-1">
+              <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto p-1">
+            <BattleLogPanel G={G} />
+          </div>
         </aside>
       </div>
 
