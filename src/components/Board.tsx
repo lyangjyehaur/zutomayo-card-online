@@ -1213,6 +1213,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
   const opponent = G.players[opponentIndex];
+  const locale = useLocale();
   const minimum = getMinimumSetCount(G, meIndex);
   const required = getRequiredSetCount(G, meIndex);
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
@@ -1531,9 +1532,9 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                     <span>{t('card.clock')} {cardDefinition(focusedCard.card)!.clock}</span>
                   </div>
                 )}
-                {(getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', useLocale()) || cardDefinition(focusedCard.card)?.effect) && (
+                {(getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', locale) || cardDefinition(focusedCard.card)?.effect) && (
                   <p className="mt-3 text-[11px] leading-relaxed text-bone/50">
-                    {getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', useLocale()) ?? cardDefinition(focusedCard.card)?.effect}
+                    {getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', locale) ?? cardDefinition(focusedCard.card)?.effect}
                   </p>
                 )}
               </>
