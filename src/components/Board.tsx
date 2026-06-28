@@ -903,15 +903,6 @@ function effectSummary(effect: GameState['pendingEffects'][number][number]): str
   return value === undefined ? action.type : `${action.type} ${value}`;
 }
 
-function latestTraceMessage(G: GameState): string | null {
-  const latest = [...(G.actionLog ?? [])].reverse().find((entry) => entry.result?.message || entry.action);
-  if (!latest) return null;
-  const message = latest.result?.message;
-  const hp = latest.hp ? `${t('board.phaseHp')} ${latest.hp[0]}/${latest.hp[1]}` : null;
-  const chronos =
-    typeof latest.chronosPosition === 'number' ? `${t('board.phaseChronos')} ${latest.chronosPosition}/12` : null;
-  return [message ?? latest.action, hp, chronos].filter(Boolean).join(' · ');
-}
 
 function choiceInstruction(type: string): string {
   if (type === 'handToDeckBottomThenDraw') return t('board.choiceHintDeckBottomDraw');
@@ -970,55 +961,6 @@ function phaseInstruction(
   return { title: t('board.gameOver'), body: t('online.gameOverHelper'), meta: [] };
 }
 
-function PhaseInstructionBar({
-  G,
-  meIndex,
-  required,
-  minimum,
-}: {
-  G: GameState;
-  meIndex: PlayerIndex;
-  required: number;
-  minimum: number;
-}) {
-  const instruction = phaseInstruction(G, meIndex, required, minimum);
-  const trace = latestTraceMessage(G);
-  // 回合內階段：設置 → 公開 → 時間 → 效果 → 戰鬥 → 結算
-  const isSetup = G.step === 'initialSet' || G.step === 'turnSet';
-  const isReveal = false; // 公開是瞬間事件，不持續顯示
-  const isEffect = G.step === 'effectOrder' || !!G.pendingChoice;
-  const isBattle = Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1;
-  const phases = [
-    { label: '設置', active: isSetup },
-    { label: '公開', active: isReveal },
-    { label: '時間', active: false },
-    { label: '效果', active: isEffect },
-    { label: '戰鬥', active: isBattle },
-    { label: '結算', active: G.step === 'gameOver' },
-  ];
-  return (
-    <section className="flex items-center justify-between gap-4 border-b border-bone/5 py-1.5" aria-live="polite">
-      {/* 階段指示器 */}
-      <div className="flex items-center gap-3 font-mono text-[9px] uppercase tracking-[0.2em]">
-        {phases.map((phase, i) => (
-          <span key={phase.label} className={`flex items-center gap-1.5 ${phase.active ? 'text-gold' : 'text-bone/20'}`}>
-            {i > 0 && <span className="text-bone/10">›</span>}
-            {phase.label}
-          </span>
-        ))}
-      </div>
-      {/* 當前指令 */}
-      <div className="flex items-center gap-3 text-[10px] text-bone/45">
-        <strong className="font-display text-sm italic text-bone/80">{instruction.title}</strong>
-        <span>{instruction.body}</span>
-        {instruction.meta.map((item) => (
-          <span key={item} className="font-mono text-[9px] uppercase tracking-[0.15em] text-bone/30">{item}</span>
-        ))}
-        {trace && <span className="max-w-64 truncate font-mono text-[9px] text-gold/40">{trace}</span>}
-      </div>
-    </section>
-  );
-}
 
 function EffectOrderPanel({
   G,
@@ -1350,12 +1292,6 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
   };
 
   const time = getChronosTime(G);
-  const phaseText =
-    G.step === 'effectOrder'
-      ? t('board.effectOrder')
-      : G.step === 'initialSet'
-        ? t('board.initialSet')
-        : `${t('board.setCards')} ${required} ${t('board.cardsUnit')}`;
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required;
   const myDamage = damageFlash?.target === meIndex ? damageFlash.amount : undefined;
   const opponentDamage = damageFlash?.target === opponentIndex ? damageFlash.amount : undefined;
@@ -1369,25 +1305,39 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
         <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
       </div>
 
-      {/* 頂欄 */}
-      <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
-        <button className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-bone" type="button" disabled>
-          Exit
-        </button>
-        <div className="flex items-center gap-6 font-mono text-[10px] uppercase tracking-[0.3em]">
+      {/* 頂欄 — 整合階段指示器 */}
+      <header className="absolute inset-x-0 top-0 z-30 flex h-10 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur">
+        {/* 左：回合 + 晝夜 */}
+        <div className="flex items-center gap-4 font-mono text-[9px] uppercase tracking-[0.2em]">
           <span className="text-bone/40">{t('board.turn')} {G.turnNumber}</span>
           <span className="text-bone/40">{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
-          <span className="text-gold">{phaseText}</span>
+          <span className={`ml-2 ${timeLeft <= 10 ? 'text-vermilion' : 'text-bone/40'}`}>{timeLeft}{t('board.secondsUnit')}</span>
         </div>
-        <div className="flex items-center gap-5">
-          <span className={`font-mono text-[10px] uppercase tracking-[0.3em] ${timeLeft <= 10 ? 'text-vermilion' : 'text-bone/40'}`}>
-            {timeLeft}{t('board.secondsUnit')}
-          </span>
+        {/* 中：階段指示器 */}
+        <div className="flex items-center gap-2.5 font-mono text-[9px] uppercase tracking-[0.2em]">
+          {[
+            { label: '設置', active: G.step === 'initialSet' || G.step === 'turnSet' },
+            { label: '公開', active: false },
+            { label: '時間', active: false },
+            { label: '效果', active: G.step === 'effectOrder' || !!G.pendingChoice },
+            { label: '戰鬥', active: Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1 },
+            { label: '結算', active: G.step === 'gameOver' },
+          ].map((phase, i) => (
+            <span key={phase.label} className={`flex items-center gap-1 ${phase.active ? 'text-gold' : 'text-bone/20'}`}>
+              {i > 0 && <span className="text-bone/10">›</span>}
+              {phase.label}
+            </span>
+          ))}
+        </div>
+        {/* 右：當前指令 */}
+        <div className="flex items-center gap-2 font-mono text-[9px] text-bone/45">
+          <strong className="font-display text-xs italic text-bone/80">{phaseInstruction(G, meIndex, required, minimum).title}</strong>
+          <span className="max-w-48 truncate">{phaseInstruction(G, meIndex, required, minimum).body}</span>
         </div>
       </header>
 
       {/* 主內容雙欄 */}
-      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] grid-rows-[1fr] gap-4 px-4 pb-48 pt-14">
+      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] grid-rows-[1fr] gap-4 px-4 pb-48 pt-10">
         {/* 戰場欄 */}
         <main className="field-layout flex min-h-0 flex-col gap-3 overflow-hidden">
           <div className="flex-shrink-0">
@@ -1410,9 +1360,6 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               damageAmount={myDamage}
               onFocusCard={setFocusedCard}
             />
-          </div>
-          <div className="flex-shrink-0">
-            <PhaseInstructionBar G={G} meIndex={meIndex} required={required} minimum={minimum} />
           </div>
         </main>
 
