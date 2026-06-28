@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs } from '../game/cards/loader';
-import { Card } from './Card';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/deckBuilder';
 import { t } from '../i18n';
 import { ArrowLeft, Search, Save, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -70,6 +69,7 @@ export function DeckEditor({
   const [searchText, setSearchText] = useState('');
   const [sortBy, setSortBy] = useState<'cost' | 'attack' | 'name'>('cost');
   const [page, setPage] = useState(0);
+  const [previewCard, setPreviewCard] = useState<CardDef | null>(null);
 
   const filteredCards = useMemo(() => {
     let cards = allCards;
@@ -311,7 +311,7 @@ export function DeckEditor({
             </div>
           </div>
 
-          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-3 justify-items-center gap-3 overflow-y-auto sm:grid-cols-4 lg:grid-cols-5">
+          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-3 content-start gap-3 overflow-y-auto sm:grid-cols-4 lg:grid-cols-5">
             {visibleCards.map((card) => {
               const count = deckCounts.get(card.id) ?? 0;
               const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
@@ -321,17 +321,81 @@ export function DeckEditor({
                   type="button"
                   disabled={!canAdd}
                   onClick={() => addCard(card.id)}
-                  className="group relative flex w-full cursor-pointer justify-center rounded-sm ring-1 ring-bone/10 transition hover:-translate-y-1 hover:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10"
+                  onMouseEnter={() => setPreviewCard(card)}
+                  onMouseLeave={() => setPreviewCard(null)}
+                  onFocus={() => setPreviewCard(card)}
+                  onBlur={() => setPreviewCard(null)}
+                  className="group relative flex aspect-[5/7] w-full cursor-pointer flex-col overflow-hidden rounded-sm bg-lacquer-deep ring-1 ring-bone/10 transition hover:-translate-y-1 hover:ring-gold/40 focus:outline-none focus:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10"
                 >
-                  <Card card={{ instanceId: `pool-${card.id}`, defId: card.id, faceUp: true }} size="tiny" />
+                  <img
+                    src={card.image}
+                    alt={card.name}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="absolute inset-0 size-full object-cover"
+                  />
+                  {/* 底部漸層 + 卡名（hover 顯示） */}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-lacquer-deep via-lacquer-deep/70 to-transparent" />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    <div className="truncate font-display text-xs font-medium text-bone/90">{card.name}</div>
+                  </div>
+                  {/* 費用角標 */}
+                  <span className="absolute left-1 top-1 rounded-full bg-lacquer-deep/80 px-1.5 py-0.5 font-mono text-[9px] text-gold ring-1 ring-gold/30">
+                    {card.powerCost}
+                  </span>
+                  {/* 已加入數量 */}
                   {count > 0 && (
-                    <span className="absolute right-1 top-1 rounded-full bg-gold/20 px-1.5 py-0.5 font-mono text-[9px] text-gold">
-                      {count}
+                    <span className="absolute right-1 top-1 rounded-full bg-gold/30 px-1.5 py-0.5 font-mono text-[9px] text-gold ring-1 ring-gold/40">
+                      ×{count}
                     </span>
                   )}
                 </button>
               );
             })}
+          </div>
+
+          {/* 卡牌資訊預覽列（hover/focus 顯示完整 meta） */}
+          <div className="mt-3 min-h-[64px] rounded-sm bg-lacquer-deep/60 p-3 ring-1 ring-bone/5">
+            {previewCard ? (
+              <div className="flex items-start gap-3">
+                <div className="flex shrink-0 flex-col gap-1 font-mono text-[9px] uppercase tracking-widest text-bone/50">
+                  <span>
+                    <span className="text-gold/70">COST</span> {previewCard.powerCost}
+                  </span>
+                  {previewCard.attack && (
+                    <span>
+                      <span className="text-gold/70">ATK</span> {previewCard.attack.night}/{previewCard.attack.day}
+                    </span>
+                  )}
+                  <span>
+                    <span className="text-gold/70">CLK</span> {previewCard.clock}
+                  </span>
+                  {previewCard.sendToPower > 0 && (
+                    <span>
+                      <span className="text-gold/70">CHG</span> {previewCard.sendToPower}
+                    </span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-display text-sm font-medium text-bone/90">{previewCard.name}</span>
+                    <span className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-bone/40">
+                      {elementLabel(previewCard.element)} · {typeLabel(previewCard.type)} · {previewCard.rarity}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 truncate font-mono text-[9px] text-bone/30">
+                    {previewCard.song} · {previewCard.illustrator}
+                  </div>
+                  {previewCard.effect && (
+                    <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-bone/50">{previewCard.effect}</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-bone/30">
+                {t('deckEditor.search')} — hover to inspect
+              </div>
+            )}
           </div>
         </section>
 

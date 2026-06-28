@@ -7057,8 +7057,3 @@ button.zone:focus-visible {
 .lobby-menu-icon {
   line-height: 1;
 }
-
-/* 牌組編輯器卡池：放大 tiny 卡片為響應式固定寬度（避免 100% 在 flex 內計算異常） */
-.deck-pool-grid {
-  --card-tiny-w: clamp(110px, 15vw, 150px);
-}
