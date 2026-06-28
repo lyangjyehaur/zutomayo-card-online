@@ -60,9 +60,12 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       {/* 環境層：隨機卡牌模糊背景 + 紫光暈 + 點陣紋理 */}
       <div className="pointer-events-none absolute inset-0">
         {bgImage && (
-          <div
-            className="absolute inset-0 scale-110 bg-cover bg-center opacity-25 blur-[60px] brightness-[0.5]"
-            style={{ backgroundImage: `url(${bgImage})` }}
+          <img
+            src={bgImage}
+            alt=""
+            aria-hidden="true"
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 size-full scale-110 object-cover opacity-25 blur-[60px] brightness-[0.5]"
           />
         )}
         {/* 暗化遮罩，確保文字可讀 */}
