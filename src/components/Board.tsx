@@ -1432,9 +1432,9 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 )}
                 <span className="font-mono text-[9px] text-bone/30">⚡</span>
               </div>
-              <Slot card={opponent.setZoneC} label="C" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneA} label="C" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
               <Slot card={opponent.setZoneB} label="B" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
-              <Slot card={opponent.setZoneA} label="A" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneC} label="C" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
               {/* 對手牌組 */}
               <div className="flex flex-col items-center gap-1">
                 <div className="relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
@@ -1516,7 +1516,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 )}
                 <span className="font-mono text-[9px] text-bone/30">⚡ {t('board.powerCharger')}</span>
               </div>
-              <Slot card={me.setZoneA} label="A" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
+              <Slot card={me.setZoneA} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
               <Slot card={me.setZoneB} label="B" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined} />
               <Slot card={me.setZoneC} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} />
               {/* 牌組 — 右邊 — 根據數量堆疊 */}
@@ -1619,12 +1619,17 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 <div className="mt-1 font-mono text-[9px] uppercase tracking-widest text-bone/40">
                   {cardDefinition(focusedCard.card)?.element} · {cardDefinition(focusedCard.card)?.type}
                 </div>
-                {cardDefinition(focusedCard.card)?.attack && (
-                  <div className="mt-3 flex justify-between font-mono text-[10px] text-bone/60">
-                    <span>ATK {cardDefinition(focusedCard.card)!.attack!.night}/{cardDefinition(focusedCard.card)!.attack!.day}</span>
-                    <span>{t('card.clock')} {cardDefinition(focusedCard.card)!.clock}</span>
-                  </div>
-                )}
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px] text-bone/50">
+                  <span>⚡ {t('card.energy')} <span className="text-gold">{cardDefinition(focusedCard.card)?.powerCost}</span></span>
+                  <span>🕐 {t('card.clock')} <span className="text-gold">{cardDefinition(focusedCard.card)?.clock}</span></span>
+                  {cardDefinition(focusedCard.card)?.attack && (
+                    <>
+                      <span>🌙 {t('card.night')} <span className="text-gold">{cardDefinition(focusedCard.card)!.attack!.night}</span></span>
+                      <span>☀️ {t('card.day')} <span className="text-gold">{cardDefinition(focusedCard.card)!.attack!.day}</span></span>
+                    </>
+                  )}
+                  <span>⚡→ STP <span className="text-gold">{cardDefinition(focusedCard.card)?.sendToPower ?? 0}</span></span>
+                </div>
                 {(getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', locale) || cardDefinition(focusedCard.card)?.effect) && (
                   <p className="mt-3 text-[11px] leading-relaxed text-bone/50">
                     {getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', locale) ?? cardDefinition(focusedCard.card)?.effect}
@@ -1636,29 +1641,43 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             )}
           </div>
 
-          {/* EffectOrder / PendingChoice 面板 */}
-          {G.step === 'effectOrder' && <EffectOrderPanel G={G} moves={moves} playerID={playerID} />}
-          {G.pendingChoice && <PendingChoicePanel G={G} moves={moves} playerID={playerID} />}
-
-          {/* 戰鬥日誌 — 照搬 demo flex-1 overflow-hidden */}
+          {/* Log — 可讀性優化 */}
           <div className="flex flex-1 flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Ritual Log</span>
+              <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Log</span>
               <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
             </div>
-            <div className="flex-1 space-y-2 overflow-hidden font-mono text-[10px] leading-relaxed text-bone/40">
-              {(G.actionLog ?? []).slice(-14).reverse().map((entry, i) => (
-                <p key={i}>
-                  <span className="text-bone/60">[T{entry.turn}]</span> {entry.result?.message ?? entry.action}
-                </p>
-              ))}
+            <div className="flex-1 space-y-1.5 overflow-y-auto font-mono text-[10px] leading-relaxed">
+              {(G.actionLog ?? []).slice(-20).reverse().map((entry) => {
+                const isBattle = entry.action?.includes('battle') || entry.action?.includes('damage');
+                const isSet = entry.action?.includes('setCard') || entry.action?.includes('setInitial');
+                const isEffect = entry.action?.includes('effect') || entry.action?.includes('resolve');
+                const tone = isBattle ? 'text-vermilion/80' : isSet ? 'text-gold/60' : isEffect ? 'text-bone/70' : 'text-bone/40';
+                return (
+                  <p key={`${entry.timestamp}-${entry.action}`} className={tone}>
+                    <span className="text-bone/25">T{entry.turn}</span>{' '}
+                    {entry.result?.message ?? entry.action}
+                    {entry.hp && <span className="text-bone/30"> [{entry.hp[0]}/{entry.hp[1]}]</span>}
+                  </p>
+                );
+              })}
               {(!G.actionLog || G.actionLog.length === 0) && (
-                <p className="text-bone/30">{t('board.waitingOpponent')}</p>
+                <p className="text-bone/20">{t('board.waitingOpponent')}</p>
               )}
             </div>
           </div>
         </aside>
       </div>
+
+      {/* 效果結算 — 居中覆蓋層 */}
+      {(G.step === 'effectOrder' || G.pendingChoice) && (
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+          <div className="pointer-events-auto max-w-md rounded-sm bg-lacquer p-5 ring-1 ring-bone/10 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)]">
+            {G.step === 'effectOrder' && <EffectOrderPanel G={G} moves={moves} playerID={playerID} />}
+            {G.pendingChoice && <PendingChoicePanel G={G} moves={moves} playerID={playerID} />}
+          </div>
+        </div>
+      )}
 
       <FeedbackOverlay message={phaseMessage} />
     </div>
