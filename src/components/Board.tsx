@@ -1,7 +1,7 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getProfile, isLoggedIn, submitMatch } from '../api/client';
-import type { CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } from '../game/types';
+import type { ActionLogEntry, CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { Card, type CardSize } from './Card';
 import { Chronos } from './Chronos';
@@ -57,6 +57,51 @@ type MatchSubmitResponse = {
 
 function playerName(index: PlayerIndex): string {
   return index === 0 ? t('player.zero') : t('player.one');
+}
+
+function formatLogEntry(entry: ActionLogEntry): { text: string; tone: 'battle' | 'set' | 'effect' | 'info' } {
+  const p = playerName(entry.player);
+  const a = entry.action;
+  const payload = entry.payload as Record<string, unknown> | undefined;
+  const msg = entry.result?.message;
+
+  if (a === 'janken') {
+    const choice = payload?.choice as string;
+    const mark = choice === 'rock' ? '✊' : choice === 'paper' ? '✋' : '✌️';
+    return { text: `${p} ${t('board.janken')} ${mark}`, tone: 'info' };
+  }
+  if (a === 'mulligan') {
+    const count = payload?.redrawnCount as number ?? 0;
+    return { text: count > 0 ? `${p} ${t('board.redrewCards')} ${count} ${t('board.cardsUnit')}` : `${p} ${t('board.keepHand')}`, tone: 'info' };
+  }
+  if (a === 'setInitialCard') {
+    return { text: `${p} ${t('board.initialSet')} → ${(payload?.slot as string) ?? 'A'}`, tone: 'set' };
+  }
+  if (a === 'setTurnCard') {
+    return { text: `${p} ${t('board.setCards')} → ${(payload?.slot as string) ?? '?'}`, tone: 'set' };
+  }
+  if (a === 'confirmReady') {
+    return { text: `${p} ${t('board.readyWaiting')}`, tone: 'set' };
+  }
+  if (a === 'timeoutSkip') {
+    return { text: `${p} ${t('board.timer')} ⏱`, tone: 'info' };
+  }
+  if (a === 'chooseEffectOrder') {
+    return { text: `${p} ${t('board.chooseEffect')}`, tone: 'effect' };
+  }
+  if (a === 'submitPendingChoice') {
+    return { text: `${p} ${t('board.submitChoice')}`, tone: 'effect' };
+  }
+  if (a === 'gameOver') {
+    return { text: msg ?? t('board.gameOver'), tone: 'battle' };
+  }
+  // 有 result.message 時優先用（效果引擎的詳細訊息）
+  if (msg) {
+    const isBattle = msg.includes('damage') || msg.includes('HP') || msg.includes('battle');
+    const isEffect = msg.includes('effect') || msg.includes('draw') || msg.includes('discard') || msg.includes('send');
+    return { text: msg, tone: isBattle ? 'battle' : isEffect ? 'effect' : 'info' };
+  }
+  return { text: `${p}: ${a}`, tone: 'info' };
 }
 
 function jankenMark(choice: JankenChoice | null): string {
@@ -1380,7 +1425,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
         <div className="flex flex-col">
 
           {/* 對手區域 — flex-1 justify-start（照搬 demo） */}
-          <div className="flex flex-1 flex-col items-center justify-start gap-4 pt-3">
+          <div className="flex flex-col min-h-[180px] items-center justify-start gap-4 pt-3">
             {/* 對手資訊：名字在右 + LP bar + 統計 */}
             <div className="flex items-center gap-6">
               <div className="text-right">
@@ -1456,7 +1501,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           </div>
 
           {/* Chronos + 戰鬥區 */}
-          <div className="my-2 flex items-center justify-center gap-8">
+          <div className="my-2 flex flex-1 min-h-0 items-center justify-center gap-8">
             <FieldZone
               label={t('board.battleZone')}
               shortLabel={t('board.battleZoneShort')}
@@ -1486,7 +1531,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           </div>
 
           {/* 玩家區域 — flex-1 justify-end（照搬 demo） */}
-          <div className="flex flex-1 flex-col items-center justify-end gap-3 pb-2">
+          <div className="flex flex-col min-h-[220px] items-center justify-end gap-3 pb-2">
             {/* 玩家設置區 + 充能/牌組 */}
             <div className="flex items-end gap-3">
               {/* 充能區 — 左邊 */}
@@ -1641,23 +1686,22 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             )}
           </div>
 
-          {/* Log — 可讀性優化 */}
+          {/* Log — i18n 格式化 */}
           <div className="flex flex-1 flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Log</span>
               <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
             </div>
-            <div className="flex-1 space-y-1.5 overflow-y-auto font-mono text-[10px] leading-relaxed">
+            <div className="flex-1 space-y-1 overflow-y-auto font-mono text-[10px] leading-relaxed">
               {(G.actionLog ?? []).slice(-20).reverse().map((entry) => {
-                const isBattle = entry.action?.includes('battle') || entry.action?.includes('damage');
-                const isSet = entry.action?.includes('setCard') || entry.action?.includes('setInitial');
-                const isEffect = entry.action?.includes('effect') || entry.action?.includes('resolve');
-                const tone = isBattle ? 'text-vermilion/80' : isSet ? 'text-gold/60' : isEffect ? 'text-bone/70' : 'text-bone/40';
+                const { text, tone } = formatLogEntry(entry);
+                const toneClass = tone === 'battle' ? 'text-vermilion/80' : tone === 'set' ? 'text-gold/60' : tone === 'effect' ? 'text-bone/70' : 'text-bone/40';
                 return (
-                  <p key={`${entry.timestamp}-${entry.action}`} className={tone}>
-                    <span className="text-bone/25">T{entry.turn}</span>{' '}
-                    {entry.result?.message ?? entry.action}
-                    {entry.hp && <span className="text-bone/30"> [{entry.hp[0]}/{entry.hp[1]}]</span>}
+                  <p key={`${entry.timestamp}-${entry.action}`} className={toneClass}>
+                    <span className="text-bone/20">T{entry.turn}</span>{' '}
+                    {text}
+                    {entry.hp && <span className="text-bone/25"> [{entry.hp[0]}/{entry.hp[1]}]</span>}
+                    {typeof entry.chronosPosition === 'number' && <span className="text-bone/25"> ⏱{entry.chronosPosition}/12</span>}
                   </p>
                 );
               })}
