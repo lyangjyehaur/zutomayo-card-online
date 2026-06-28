@@ -763,7 +763,7 @@ function HandDrawer({
 }) {
   const center = (cards.length - 1) / 2;
   return (
-    <section className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex items-end justify-between gap-4 px-6 pb-4" aria-label={t('board.hand')}>
+    <section className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex items-end justify-between gap-4 px-6 pb-4" aria-label={t('board.hand')}>
       <div className="pointer-events-auto min-w-48">{children}</div>
       <div className="pointer-events-auto flex min-h-44 flex-1 items-end justify-center overflow-visible">
         <div className="flex items-end justify-center">
@@ -1326,7 +1326,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       </header>
 
       {/* 主內容雙欄 */}
-      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] gap-4 px-4 pb-52 pt-14">
+      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] gap-4 px-4 pb-48 pt-14">
         {/* 戰場欄 */}
         <main className="field-layout flex min-h-0 flex-col gap-3 overflow-hidden">
           <OpponentStatsBar G={G} opponentIndex={opponentIndex} damageAmount={opponentDamage} />
