@@ -626,52 +626,19 @@ function OpponentStatsBar({
 function BottomZones({
   G,
   meIndex,
-  moves,
   damageAmount,
-  onFocusCard,
 }: {
   G: GameState;
   meIndex: PlayerIndex;
-  moves: Props['moves'];
   damageAmount?: number;
-  onFocusCard?: (focus: FocusedCard) => void;
 }) {
   const me = G.players[meIndex];
 
   return (
     <section className="relative flex flex-1 flex-col items-center justify-end gap-3 border-t border-bone/5 pt-3" aria-label={t('player.me')}>
-      {/* 設置區 */}
+      {/* 資源區 */}
       <div className="flex items-center justify-center gap-3">
         <StackZone kind="power" label={t('board.powerCharger')} value={powerTotal(G, meIndex)} cards={me.powerCharger} />
-        <FieldZone
-          label={t('board.setZoneA')}
-          shortLabel="A"
-          className="set-zone set-zone-a"
-          card={me.setZoneA}
-          onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
-          size="normal"
-          owner={meIndex}
-          onFocusCard={onFocusCard}
-        />
-        <FieldZone
-          label={t('board.setZoneB')}
-          shortLabel="B"
-          className="set-zone set-zone-b"
-          card={me.setZoneB}
-          onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
-          size="normal"
-          owner={meIndex}
-          onFocusCard={onFocusCard}
-        />
-        <FieldZone
-          label={t('board.areaEnchant')}
-          shortLabel="C"
-          className="area-zone area-zone-c"
-          card={me.setZoneC}
-          size="normal"
-          owner={meIndex}
-          onFocusCard={onFocusCard}
-        />
         <StackZone kind="deck" label={t('board.deckZone')} value={me.deck.length} />
       </div>
       {/* 玩家資訊列 */}
@@ -707,21 +674,54 @@ function CentralArena({
   meIndex,
   opponentIndex,
   time,
+  moves,
   onFocusCard,
 }: {
   G: GameState;
   meIndex: PlayerIndex;
   opponentIndex: PlayerIndex;
   time: ChronosTime;
+  moves: Props['moves'];
   onFocusCard?: (focus: FocusedCard) => void;
 }) {
   const me = G.players[meIndex];
   const opponent = G.players[opponentIndex];
 
   return (
-    <section className="flex min-h-0 max-h-[420px] items-center justify-center" aria-label={t('chronos.title')}>
-      <div className="grid w-full max-w-3xl grid-rows-[80px_1fr_80px] items-center justify-items-center gap-2">
-        <div className="opp-battle-slot">
+    <section className="flex min-h-0 flex-1 items-center justify-center" aria-label={t('chronos.title')}>
+      {/* 對手戰鬥區 | Chronos | 我方戰鬥區 */}
+      <div className="flex items-center gap-6">
+        {/* 對手側：設置區 + 戰鬥區 */}
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex gap-2">
+            <FieldZone
+              label={t('board.setZoneA')}
+              shortLabel="A"
+              className="set-zone set-zone-a"
+              card={opponent.setZoneA}
+              size="small"
+              owner={opponentIndex}
+              onFocusCard={onFocusCard}
+            />
+            <FieldZone
+              label={t('board.setZoneB')}
+              shortLabel="B"
+              className="set-zone set-zone-b"
+              card={opponent.setZoneB}
+              size="small"
+              owner={opponentIndex}
+              onFocusCard={onFocusCard}
+            />
+            <FieldZone
+              label={t('board.areaEnchant')}
+              shortLabel="C"
+              className="area-zone area-zone-c"
+              card={opponent.setZoneC}
+              size="small"
+              owner={opponentIndex}
+              onFocusCard={onFocusCard}
+            />
+          </div>
           <FieldZone
             label={`${t('player.opponent')} ${t('board.battleZone')}`}
             shortLabel={t('board.battleZoneShort')}
@@ -733,13 +733,17 @@ function CentralArena({
             onFocusCard={onFocusCard}
           />
         </div>
+
+        {/* Chronos */}
         <Chronos
           chronos={G.chronos}
           currentTime={time}
           nightSidePlayer={G.chronos.nightSidePlayer}
           currentPlayer={meIndex}
         />
-        <div className="my-battle-slot">
+
+        {/* 我方側：戰鬥區 + 設置區 */}
+        <div className="flex flex-col items-center gap-2">
           <FieldZone
             label={`${t('player.me')} ${t('board.battleZone')}`}
             shortLabel={t('board.battleZoneShort')}
@@ -750,6 +754,37 @@ function CentralArena({
             owner={meIndex}
             onFocusCard={onFocusCard}
           />
+          <div className="flex gap-2">
+            <FieldZone
+              label={t('board.setZoneA')}
+              shortLabel="A"
+              className="set-zone set-zone-a"
+              card={me.setZoneA}
+              onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
+              size="small"
+              owner={meIndex}
+              onFocusCard={onFocusCard}
+            />
+            <FieldZone
+              label={t('board.setZoneB')}
+              shortLabel="B"
+              className="set-zone set-zone-b"
+              card={me.setZoneB}
+              onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
+              size="small"
+              owner={meIndex}
+              onFocusCard={onFocusCard}
+            />
+            <FieldZone
+              label={t('board.areaEnchant')}
+              shortLabel="C"
+              className="area-zone area-zone-c"
+              card={me.setZoneC}
+              size="small"
+              owner={meIndex}
+              onFocusCard={onFocusCard}
+            />
+          </div>
         </div>
       </div>
     </section>
@@ -1351,14 +1386,13 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             meIndex={meIndex}
             opponentIndex={opponentIndex}
             time={time}
+            moves={moves}
             onFocusCard={setFocusedCard}
           />
           <BottomZones
             G={G}
             meIndex={meIndex}
-            moves={moves}
             damageAmount={myDamage}
-            onFocusCard={setFocusedCard}
           />
         </main>
 
