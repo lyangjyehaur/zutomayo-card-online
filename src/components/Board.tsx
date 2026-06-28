@@ -1099,15 +1099,15 @@ function FocusPanel({ focus }: { focus: FocusedCard }) {
   const locale = useLocale();
   const translatedEffect = def ? getTranslatedEffect(def.id, locale) : null;
   return (
-    <section className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
-      <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">Focus</div>
+    <section className="flex flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10" style={{ height: '480px' }}>
+      <div className="flex-shrink-0 font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">Focus</div>
       {focus && def ? (
-        <div className="mt-3">
-          <div className="text-[10px] uppercase tracking-[0.25em] text-bone/35">
+        <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex-shrink-0 text-[10px] uppercase tracking-[0.25em] text-bone/35">
             {playerName(focus.owner)} · {focus.zone}
           </div>
-          {/* 卡圖 */}
-          <div className="mt-2 aspect-[3/4] w-full overflow-hidden rounded-sm ring-1 ring-bone/10">
+          {/* 卡圖 — 固定高度 */}
+          <div className="mt-2 flex-shrink-0 aspect-[3/4] w-full overflow-hidden rounded-sm ring-1 ring-bone/10">
             <img
               src={def.image}
               alt={def.name}
@@ -1116,8 +1116,8 @@ function FocusPanel({ focus }: { focus: FocusedCard }) {
               referrerPolicy="no-referrer"
             />
           </div>
-          <h2 className="mt-2 font-display text-xl italic text-bone">{def.name}</h2>
-          <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-bone/45">
+          <h2 className="mt-2 flex-shrink-0 font-display text-xl italic text-bone">{def.name}</h2>
+          <div className="mt-2 flex-shrink-0 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-bone/45">
             <span>
               {t('card.energy')} <span className="text-gold">{def.powerCost}</span>
             </span>
@@ -1136,12 +1136,16 @@ function FocusPanel({ focus }: { focus: FocusedCard }) {
             )}
           </div>
           {(translatedEffect || def.effect) && (
-            <p className="mt-4 text-xs leading-relaxed text-bone/60">{translatedEffect ?? def.effect}</p>
+            <p className="mt-2 min-h-0 flex-1 overflow-y-auto text-xs leading-relaxed text-bone/60">{translatedEffect ?? def.effect}</p>
           )}
         </div>
       ) : (
-        <div className="mt-8 rounded-sm bg-lacquer-deep/50 p-4 text-center font-mono text-[10px] uppercase tracking-[0.25em] text-bone/25 ring-1 ring-bone/5">
-          {t('card.unknown')}
+        /* 無焦點時佔位，保持同樣高度 */
+        <div className="mt-2 flex flex-1 flex-col items-center justify-center rounded-sm bg-lacquer-deep/50 ring-1 ring-bone/5">
+          <div className="aspect-[3/4] w-32 rounded-sm bg-lacquer-deep/80 ring-1 ring-bone/10" />
+          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.25em] text-bone/25">
+            {t('card.unknown')}
+          </p>
         </div>
       )}
     </section>
