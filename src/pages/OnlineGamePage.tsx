@@ -66,16 +66,16 @@ function LeaveConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className="leave-confirm-backdrop" role="presentation">
-      <section className="leave-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="leave-confirm-title">
+    <div className="modal modal-open" role="presentation">
+      <section className="modal-box card bg-base-200" role="dialog" aria-modal="true" aria-labelledby="leave-confirm-title">
         <span>{t('game.onlineMode')}</span>
         <h2 id="leave-confirm-title">{t('online.leaveTitle')}</h2>
         <p>{t('online.leaveBody')}</p>
-        <div className="online-panel-actions">
-          <button className="secondary-action" type="button" disabled={leaving} onClick={onCancel}>
+        <div className="modal-action">
+          <button className="btn btn-sm" type="button" disabled={leaving} onClick={onCancel}>
             {t('online.stayInRoom')}
           </button>
-          <button className="danger-action" type="button" disabled={leaving} onClick={onConfirm}>
+          <button className="btn btn-ghost btn-sm" type="button" disabled={leaving} onClick={onConfirm}>
             {leaving ? t('online.leaving') : t('online.leaveRoom')}
           </button>
         </div>
@@ -285,27 +285,31 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
 
     return (
       <main className="online-session-missing app-screen">
-        <section className={`empty-route-panel online-status-panel ${copy.tone}`}>
+        <section
+          className={`card bg-base-200 ${
+            copy.tone === 'error' ? 'alert alert-error' : copy.tone === 'waiting' ? 'alert alert-warning' : 'alert alert-info'
+          }`}
+        >
           <span>{t('game.onlineMode')}</span>
           <h1>{t(copy.titleKey)}</h1>
           <p>{t(copy.bodyKey)}</p>
           {showRoomInfo && <OnlineRoomInfo matchID={panelSession.matchID} helperText={roomInfoHelper(status)} />}
-          <div className="online-panel-actions">
+          <div className="card-actions">
             <button
-              className={canLeave ? 'danger-action' : 'primary-action'}
+              className={canLeave ? 'btn btn-ghost btn-sm' : 'btn btn-sm'}
               type="button"
               onClick={() => backActionForStatus(status)}
             >
               {primaryLabel}
             </button>
             {canRetry && (
-              <button className="secondary-action" type="button" onClick={retryStatusCheck}>
+              <button className="btn btn-sm" type="button" onClick={retryStatusCheck}>
                 {t('online.retryAction')}
               </button>
             )}
             {copy.canCreateNewRoom && (
               <button
-                className="secondary-action"
+                className="btn btn-sm"
                 type="button"
                 disabled={creatingRoom}
                 onClick={() => void createNewRoom()}
@@ -314,7 +318,7 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
               </button>
             )}
           </div>
-          {actionError && <p className="error-copy">{actionError}</p>}
+          {actionError && <p className="alert alert-error">{actionError}</p>}
         </section>
         {leavePromptOpen && (
           <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={() => void leaveAndReturn()} />

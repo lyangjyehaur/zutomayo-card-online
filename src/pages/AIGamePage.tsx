@@ -58,19 +58,19 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
 
   return (
     <main className="ai-setup app-screen">
-      <header className="screen-header">
-        <div>
+      <header className="navbar">
+        <div className="navbar-start flex-col items-start">
           <span>{t('lobby.menu')}</span>
           <h1>{t('aiSetup.title')}</h1>
         </div>
-        <div className="screen-actions">
-          <button className="secondary-action" type="button" onClick={() => navigate('/')}>
+        <div className="navbar-end">
+          <button className="btn btn-ghost" type="button" onClick={() => navigate('/')}>
             {t('common.backToLobby')}
           </button>
         </div>
       </header>
 
-      <section className="ai-setup-panel lobby-panel">
+      <section className="card bg-base-200">
         <div className="section-heading">
           <h3>{t('aiSetup.chooseDifficulty')}</h3>
           <span>{t('lobby.difficulty')}</span>
@@ -79,7 +79,7 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
           {levels.map((level) => (
             <button
               key={level.id}
-              className={`difficulty-card ${level.id} ${difficulty === level.id ? 'selected' : ''}`}
+              className={`card bg-base-200 btn ${difficulty === level.id ? 'btn-active' : ''}`}
               type="button"
               onClick={() => {
                 setDifficulty(level.id);

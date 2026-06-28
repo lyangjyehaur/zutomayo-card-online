@@ -77,8 +77,8 @@ export function I18nManager() {
   if (!authenticated) {
     return (
       <main className="admin-page app-screen">
-        <header className="screen-header">
-          <button className="back-btn" onClick={() => navigate('/')}>
+        <header className="navbar">
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
             {t('common.backToLobby')}
           </button>
           <h1>{t('admin.i18nTitle')}</h1>
@@ -95,10 +95,10 @@ export function I18nManager() {
             }}
             disabled={loggingIn}
           />
-          <button onClick={() => void handleLogin()} disabled={loggingIn || !password}>
+          <button className="btn btn-sm" onClick={() => void handleLogin()} disabled={loggingIn || !password}>
             {loggingIn ? t('admin.verifying') : t('admin.login')}
           </button>
-          {error && <p className="admin-error">{error}</p>}
+          {error && <p className="alert alert-error">{error}</p>}
         </section>
       </main>
     );
@@ -120,12 +120,12 @@ export function I18nManager() {
 
   return (
     <main className="admin-page app-screen">
-      <header className="screen-header">
-        <button className="back-btn" onClick={() => navigate('/')}>
+      <header className="navbar">
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
         </button>
         <h1>{t('admin.i18nTitle')}</h1>
-        <button className="logout-btn" onClick={handleLogout}>
+        <button className="btn btn-sm" onClick={handleLogout}>
           {t('admin.logout')}
         </button>
       </header>
@@ -135,7 +135,7 @@ export function I18nManager() {
           {availableLocales.map((locale) => (
             <button
               key={locale}
-              className={`locale-tab ${selectedLocale === locale ? 'active' : ''}`}
+              className={`btn btn-sm ${selectedLocale === locale ? 'btn-active' : 'btn-ghost'}`}
               onClick={() => setSelectedLocale(locale)}
             >
               {getLocaleFlag(locale)} {getLocaleLabel(locale)}
@@ -170,8 +170,8 @@ export function I18nManager() {
         </div>
       </div>
 
-      <div className="i18n-table-wrapper">
-        <table className="i18n-table">
+      <div className="overflow-x-auto">
+        <table className="table table-zebra table-sm">
           <thead>
             <tr>
               <th>{t('admin.i18nColKey')}</th>
@@ -212,8 +212,8 @@ export function I18nManager() {
                           }}
                           autoFocus
                         />
-                        <button onClick={handleSaveEdit}>✓</button>
-                        <button onClick={() => setEditKey(null)}>✕</button>
+                        <button className="btn btn-sm" onClick={handleSaveEdit}>✓</button>
+                        <button className="btn btn-sm" onClick={() => setEditKey(null)}>✕</button>
                       </div>
                     ) : (
                       <span className={isMissing ? 'text-missing' : ''}>

@@ -38,11 +38,11 @@ export function LocalGamePage({ deck0Name, deck1Name }: LocalGamePageProps) {
 
   return (
     <div className="app game-app">
-      <header className="game-header">
-        <button className="back-btn" type="button" onClick={() => navigate('/')}>
+      <header className="navbar">
+        <button className="btn btn-ghost" type="button" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
         </button>
-        <div>
+        <div className="navbar-end flex-col items-end">
           <strong>{t('game.localMode')}</strong>
           <span>
             {t('player.zero')} / {t('player.one')}
