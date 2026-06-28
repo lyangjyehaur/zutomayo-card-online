@@ -121,7 +121,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               {/* 中：副標 + 主標 + 說明 */}
               <div className="relative">
                 <div className="mb-2 text-[10px] uppercase tracking-[0.35em] text-bone/40">{subtitle}</div>
-                <h2 className="font-display text-5xl leading-none tracking-tight">{t(titleKey)}</h2>
+                <h2 className="font-display text-5xl font-extrabold leading-none tracking-tight">{t(titleKey)}</h2>
                 <p className="mt-4 max-w-[22ch] text-sm leading-relaxed text-bone/50">{caption}</p>
               </div>
 
