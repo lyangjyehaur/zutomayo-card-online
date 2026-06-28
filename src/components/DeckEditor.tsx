@@ -446,7 +446,7 @@ export function DeckEditor({
               )}
             </div>
             {previewCard.effect && (
-              <p className="mt-2.5 border-l border-gold/30 pl-3 text-[12px] leading-relaxed text-bone/80">
+              <p className="mt-2.5 text-[12px] leading-relaxed text-bone/80">
                 {getTranslatedEffect(previewCard.id, locale) ?? previewCard.effect}
               </p>
             )}
