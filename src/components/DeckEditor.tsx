@@ -215,7 +215,7 @@ export function DeckEditor({
       )}
 
       <div className="relative z-10 grid h-full grid-cols-[1fr_320px] gap-4 px-6 pb-6 pt-16">
-        <section className="flex flex-col rounded-sm bg-lacquer/60 p-5 ring-1 ring-bone/10">
+        <section className="flex min-h-0 flex-col rounded-sm bg-lacquer/60 p-5 ring-1 ring-bone/10">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
               <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Archive</div>
@@ -311,7 +311,7 @@ export function DeckEditor({
             </div>
           </div>
 
-          <div className="grid flex-1 grid-cols-4 justify-items-center gap-3 overflow-y-auto sm:grid-cols-5 lg:grid-cols-6">
+          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-3 justify-items-center gap-3 overflow-y-auto sm:grid-cols-4 lg:grid-cols-5">
             {visibleCards.map((card) => {
               const count = deckCounts.get(card.id) ?? 0;
               const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
@@ -321,7 +321,7 @@ export function DeckEditor({
                   type="button"
                   disabled={!canAdd}
                   onClick={() => addCard(card.id)}
-                  className="group relative cursor-pointer rounded-sm ring-1 ring-bone/10 transition hover:-translate-y-1 hover:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10"
+                  className="group relative flex w-full cursor-pointer justify-center rounded-sm ring-1 ring-bone/10 transition hover:-translate-y-1 hover:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10"
                 >
                   <Card card={{ instanceId: `pool-${card.id}`, defId: card.id, faceUp: true }} size="tiny" />
                   {count > 0 && (
@@ -335,7 +335,7 @@ export function DeckEditor({
           </div>
         </section>
 
-        <aside className="flex flex-col rounded-sm bg-lacquer p-5 ring-1 ring-bone/10">
+        <aside className="flex min-h-0 flex-col rounded-sm bg-lacquer p-5 ring-1 ring-bone/10">
           <div className="mb-3 flex items-end justify-between border-b border-bone/10 pb-3">
             <div className="min-w-0">
               <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Active Deck</div>
@@ -367,7 +367,7 @@ export function DeckEditor({
             </div>
           </div>
 
-          <div className="flex-1 space-y-1.5 overflow-y-auto">
+          <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
             {deckEntries.map(({ card, count, firstIndex }) => (
               <div
                 key={`${card.id}-${firstIndex}`}

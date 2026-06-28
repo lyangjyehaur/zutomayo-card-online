@@ -7057,3 +7057,8 @@ button.zone:focus-visible {
 .lobby-menu-icon {
   line-height: 1;
 }
+
+/* 牌組編輯器卡池：讓 tiny 卡片填滿 grid cell（覆蓋固定的 75px） */
+.deck-pool-grid .card-tiny {
+  --card-w: 100%;
+}
