@@ -1,24 +1,22 @@
-import type { ChangeEvent } from 'react';
-import { availableLocales, getLocaleFlag, getLocaleLabel, setLocale, t, useLocale, type Locale } from '../i18n';
+import { availableLocales, getLocaleFlag, getLocaleLabel, setLocale, t, useLocale } from '../i18n';
 
 export function LanguageSwitcher() {
   const locale = useLocale();
 
-  const changeLocale = (event: ChangeEvent<HTMLSelectElement>) => {
-    const nextLocale = event.target.value as Locale;
-    if (availableLocales.includes(nextLocale)) setLocale(nextLocale);
-  };
-
   return (
-    <label className="language-switcher" title={`${t('settings.language')}: ${getLocaleLabel(locale)}`}>
-      <span className="language-switcher-label">{t('settings.language')}</span>
-      <select value={locale} onChange={changeLocale} aria-label={t('settings.language')}>
+    <div className="dropdown dropdown-end" title={`${t('settings.language')}: ${getLocaleLabel(locale)}`}>
+      <button className="btn btn-ghost btn-xs" type="button" tabIndex={0}>
+        {getLocaleFlag(locale)} {getLocaleLabel(locale)}
+      </button>
+      <ul className="menu dropdown-content bg-base-200 rounded-box z-[1] mt-2 w-40 p-2 shadow-xl" tabIndex={0}>
         {availableLocales.map((option) => (
-          <option key={option} value={option}>
-            {getLocaleFlag(option)} {getLocaleLabel(option)}
-          </option>
+          <li key={option}>
+            <button type="button" className={option === locale ? 'active' : ''} onClick={() => setLocale(option)}>
+              {getLocaleFlag(option)} {getLocaleLabel(option)}
+            </button>
+          </li>
         ))}
-      </select>
-    </label>
+      </ul>
+    </div>
   );
 }

@@ -130,38 +130,44 @@ function DeckSelector({
   onChange: (deckName: string) => void;
 }) {
   return (
-    <section className="deck-selector">
-      <div className="section-heading">
-        <h3>{label}</h3>
-        <span>{t('lobby.deckSelectHint')}</span>
+    <section className="flex flex-col gap-3">
+      <div>
+        <h3 className="card-title">{label}</h3>
+        <span className="text-sm opacity-70">{t('lobby.deckSelectHint')}</span>
       </div>
-      <div className="deck-option-grid">
+      <div className="grid gap-3 md:grid-cols-2">
         {options.map((group) => (
-          <div className="deck-option-group" key={group.label}>
-            <span className="deck-option-group-label">{group.label}</span>
+          <div className="flex flex-col gap-2" key={group.label}>
+            <span className="text-sm font-semibold opacity-70">{group.label}</span>
             {group.options.map((option) => (
               <button
                 key={option.id}
-                className={`deck-option-card ${value === option.id ? 'selected' : ''}`}
+                className={`card bg-base-200 hover:shadow-2xl cursor-pointer transition-shadow ${
+                  value === option.id ? 'ring ring-primary' : ''
+                }`}
                 type="button"
                 disabled={option.disabled}
                 onClick={() => onChange(option.id)}
               >
-                <div className="deck-preview-stack" aria-hidden="true">
-                  {option.previewIds.map((id, index) => (
-                    <Card
-                      key={`${option.id}-${id}-${index}`}
-                      card={{ instanceId: `${option.id}-${id}-${index}`, defId: id, faceUp: true }}
-                      size="micro"
-                    />
-                  ))}
+                <div className="card-body gap-3 p-4">
+                  <div className="deck-preview-stack" aria-hidden="true">
+                    {option.previewIds.map((id, index) => (
+                      <Card
+                        key={`${option.id}-${id}-${index}`}
+                        card={{ instanceId: `${option.id}-${id}-${index}`, defId: id, faceUp: true }}
+                        size="micro"
+                      />
+                    ))}
+                  </div>
+                  <div className="flex flex-col gap-1 text-left">
+                    <strong>{option.name}</strong>
+                    <span className="text-sm opacity-70">{option.description}</span>
+                  </div>
+                  <div className="card-actions">
+                    {option.synced && <span className="badge badge-primary">{t('deck.synced')}</span>}
+                    {value === option.id && <span className="badge badge-success">{t('common.selected')}</span>}
+                  </div>
                 </div>
-                <div className="deck-option-copy">
-                  <strong>{option.name}</strong>
-                  <span>{option.description}</span>
-                </div>
-                {option.synced && <small>{t('deck.synced')}</small>}
-                {value === option.id && <em>{t('common.selected')}</em>}
               </button>
             ))}
           </div>
@@ -179,23 +185,27 @@ function DifficultyButtons({ onStart }: { onStart: (difficulty: AIDifficulty) =>
   ];
 
   return (
-    <section className="lobby-panel ai-panel">
-      <div className="section-heading">
-        <h3>{t('lobby.aiBattle')}</h3>
-        <span>{t('lobby.difficulty')}</span>
-      </div>
-      <div className="difficulty-grid">
-        {levels.map((level) => (
-          <button
-            key={level.id}
-            className={`difficulty-card ${level.id}`}
-            type="button"
-            onClick={() => onStart(level.id)}
-          >
-            <strong>{level.label}</strong>
-            <span>{level.detail}</span>
-          </button>
-        ))}
+    <section className="card bg-base-200 shadow-xl">
+      <div className="card-body">
+        <div>
+          <h3 className="card-title">{t('lobby.aiBattle')}</h3>
+          <span className="text-sm opacity-70">{t('lobby.difficulty')}</span>
+        </div>
+        <div className="grid gap-3">
+          {levels.map((level) => (
+            <button
+              key={level.id}
+              className="btn btn-ghost h-auto justify-start p-4 text-left"
+              type="button"
+              onClick={() => onStart(level.id)}
+            >
+              <span className="flex flex-col gap-1">
+                <strong>{level.label}</strong>
+                <span className="text-sm opacity-70">{level.detail}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -306,99 +316,108 @@ function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<vo
   if (user) {
     const stats = profileStats(user);
     return (
-      <section className="auth-section logged-in" aria-label={user.nickname || t('auth.guest')}>
-        <div className="auth-user-badge">
-          <strong>{user.nickname || t('auth.guest')}</strong>
-          <div className="auth-profile-stats">
-            <span>ELO {user.elo}</span>
-            <span>
-              {t('auth.winRate')} {stats.winRate}%
-            </span>
-            <span>
-              {t('auth.wins')} {stats.wins}/{stats.matchCount}
-            </span>
+      <section className="card bg-base-200 shadow-xl" aria-label={user.nickname || t('auth.guest')}>
+        <div className="card-body gap-3 p-4">
+          <div>
+            <strong>{user.nickname || t('auth.guest')}</strong>
+            <div className="flex flex-wrap gap-2 pt-2">
+              <span className="badge badge-primary">ELO {user.elo}</span>
+              <span className="badge badge-success">
+                {t('auth.winRate')} {stats.winRate}%
+              </span>
+              <span className="badge badge-warning">
+                {t('auth.wins')} {stats.wins}/{stats.matchCount}
+              </span>
+            </div>
+          </div>
+          <div className="card-actions items-center">
+            <button className="btn btn-secondary btn-sm" type="button" onClick={handleLogout}>
+              {t('auth.logout')}
+            </button>
+            {status && <span className="badge badge-success">{status}</span>}
           </div>
         </div>
-        <button className="secondary-action auth-logout" type="button" onClick={handleLogout}>
-          {t('auth.logout')}
-        </button>
-        {status && <span className="auth-status">{status}</span>}
       </section>
     );
   }
 
   return (
-    <section className={`auth-section ${expanded ? 'expanded' : ''}`}>
-      <button
-        className="secondary-action auth-toggle"
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        {t('auth.login')} / {t('auth.register')}
-      </button>
-      {!expanded && error && <p className="error-copy auth-error">{error}</p>}
+    <section className="card bg-base-200 shadow-xl">
+      <div className="card-body gap-3 p-4">
+        <button
+          className="btn btn-secondary btn-sm"
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {t('auth.login')} / {t('auth.register')}
+        </button>
+        {!expanded && error && <div className="alert alert-error">{error}</div>}
 
-      {expanded && (
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <div className="auth-mode-switch" role="tablist" aria-label={`${t('auth.login')} / ${t('auth.register')}`}>
-            <button
-              className={mode === 'login' ? 'active' : ''}
-              type="button"
-              role="tab"
-              aria-selected={mode === 'login'}
-              onClick={() => switchMode('login')}
-            >
-              {t('auth.login')}
-            </button>
-            <button
-              className={mode === 'register' ? 'active' : ''}
-              type="button"
-              role="tab"
-              aria-selected={mode === 'register'}
-              onClick={() => switchMode('register')}
-            >
-              {t('auth.register')}
-            </button>
-          </div>
-          <label>
-            <span>{t('auth.email')}</span>
-            <input
-              type="email"
-              value={email}
-              autoComplete="email"
-              required
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </label>
-          {mode === 'register' && (
-            <label>
-              <span>{t('auth.nickname')}</span>
+        {expanded && (
+          <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+            <div className="join" role="tablist" aria-label={`${t('auth.login')} / ${t('auth.register')}`}>
+              <button
+                className={`btn btn-sm join-item ${mode === 'login' ? 'btn-primary' : 'btn-ghost'}`}
+                type="button"
+                role="tab"
+                aria-selected={mode === 'login'}
+                onClick={() => switchMode('login')}
+              >
+                {t('auth.login')}
+              </button>
+              <button
+                className={`btn btn-sm join-item ${mode === 'register' ? 'btn-primary' : 'btn-ghost'}`}
+                type="button"
+                role="tab"
+                aria-selected={mode === 'register'}
+                onClick={() => switchMode('register')}
+              >
+                {t('auth.register')}
+              </button>
+            </div>
+            <label className="form-control">
+              <span>{t('auth.email')}</span>
               <input
-                type="text"
-                value={nickname}
-                autoComplete="nickname"
+                className="input input-bordered"
+                type="email"
+                value={email}
+                autoComplete="email"
                 required
-                onChange={(event) => setNickname(event.target.value)}
+                onChange={(event) => setEmail(event.target.value)}
               />
             </label>
-          )}
-          <label>
-            <span>{t('auth.password')}</span>
-            <input
-              type="password"
-              value={password}
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              required
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </label>
-          {error && <p className="error-copy auth-error">{error}</p>}
-          <button className="primary-action auth-submit" type="submit" disabled={submitting}>
-            {mode === 'login' ? t('auth.login') : t('auth.register')}
-          </button>
-        </form>
-      )}
+            {mode === 'register' && (
+              <label className="form-control">
+                <span>{t('auth.nickname')}</span>
+                <input
+                  className="input input-bordered"
+                  type="text"
+                  value={nickname}
+                  autoComplete="nickname"
+                  required
+                  onChange={(event) => setNickname(event.target.value)}
+                />
+              </label>
+            )}
+            <label className="form-control">
+              <span>{t('auth.password')}</span>
+              <input
+                className="input input-bordered"
+                type="password"
+                value={password}
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                required
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+            {error && <div className="alert alert-error">{error}</div>}
+            <button className="btn btn-primary" type="submit" disabled={submitting}>
+              {mode === 'login' ? t('auth.login') : t('auth.register')}
+            </button>
+          </form>
+        )}
+      </div>
     </section>
   );
 }
@@ -530,52 +549,49 @@ function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) => Promi
   };
 
   return (
-    <section className="lobby-panel online-panel">
-      <div className="section-heading">
-        <h3>{t('lobby.onlineTitle')}</h3>
-        <span>{t('game.onlineMode')}</span>
-      </div>
-      <div className="online-actions">
-        <button className="primary-action" type="button" onClick={handleQuickMatch} disabled={matchmakingActive}>
-          {t('lobby.quickMatch')}
-        </button>
-        <button className="secondary-action" type="button" onClick={() => runOnline()} disabled={matchmakingActive}>
-          {t('lobby.createRoom')}
-        </button>
-        <div className="join-row">
-          <input
-            value={matchID}
-            onChange={(event) => setMatchID(event.target.value.trim())}
-            placeholder={t('lobby.roomCodePlaceholder')}
-            aria-label={t('lobby.roomCode')}
-            disabled={matchmakingActive}
-          />
-          <button
-            className="secondary-action"
-            type="button"
-            disabled={!matchID || matchmakingActive}
-            onClick={() => runOnline(matchID)}
-          >
-            {t('lobby.joinRoom')}
-          </button>
+    <section className="card bg-base-200 shadow-xl">
+      <div className="card-body">
+        <div>
+          <h3 className="card-title">{t('lobby.onlineTitle')}</h3>
+          <span className="text-sm opacity-70">{t('game.onlineMode')}</span>
         </div>
-      </div>
-      {matchmakingActive && (
-        <div className="matchmaking-status">
-          <span className="matchmaking-status-text">{t('lobby.matchmakingSearching')}</span>
-          <button className="secondary-action" type="button" onClick={handleCancelMatchmaking}>
-            {t('lobby.matchmakingCancel')}
+        <div className="grid gap-3">
+          <button className="btn btn-primary" type="button" onClick={handleQuickMatch} disabled={matchmakingActive}>
+            {t('lobby.quickMatch')}
           </button>
+          <button className="btn btn-secondary" type="button" onClick={() => runOnline()} disabled={matchmakingActive}>
+            {t('lobby.createRoom')}
+          </button>
+          <div className="join">
+            <input
+              className="input input-bordered join-item min-w-0 flex-1"
+              value={matchID}
+              onChange={(event) => setMatchID(event.target.value.trim())}
+              placeholder={t('lobby.roomCodePlaceholder')}
+              aria-label={t('lobby.roomCode')}
+              disabled={matchmakingActive}
+            />
+            <button
+              className="btn btn-secondary join-item"
+              type="button"
+              disabled={!matchID || matchmakingActive}
+              onClick={() => runOnline(matchID)}
+            >
+              {t('lobby.joinRoom')}
+            </button>
+          </div>
         </div>
-      )}
-      {createdMatchID && (
-        <OnlineRoomInfo
-          className="online-share-card"
-          matchID={createdMatchID}
-          helperText={t('online.hostWaitingHelper')}
-        />
-      )}
-      {error && <p className="error-copy">{error}</p>}
+        {matchmakingActive && (
+          <div className="alert alert-info">
+            <span>{t('lobby.matchmakingSearching')}</span>
+            <button className="btn btn-sm" type="button" onClick={handleCancelMatchmaking}>
+              {t('lobby.matchmakingCancel')}
+            </button>
+          </div>
+        )}
+        {createdMatchID && <OnlineRoomInfo matchID={createdMatchID} helperText={t('online.hostWaitingHelper')} />}
+        {error && <div className="alert alert-error">{error}</div>}
+      </div>
     </section>
   );
 }
@@ -619,38 +635,71 @@ export function LobbyPage({
   }, [customDeckAvailable, locale, serverDecks]);
 
   return (
-    <main className="lobby">
-      <div className="lobby-backdrop" />
-      <section className="lobby-hero">
-        <div className="title-lockup">
-          <span>{t('lobby.menu')}</span>
-          <h1>{t('app.title')}</h1>
-          <p>{t('app.subtitle')}</p>
+    <main className="min-h-screen container mx-auto flex flex-col gap-4 p-4">
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <span>{t('lobby.menu')}</span>
+            <h1 className="text-2xl font-bold text-primary">{t('app.title')}</h1>
+            <p>{t('app.subtitle')}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+          </div>
         </div>
-        <div className="lobby-actions">
-          <AuthSection onAuthChanged={onAuthChanged} />
-          <LanguageSwitcher />
-          <div className="primary-menu">
-            <button className="menu-action featured" type="button" onClick={() => navigate('/play/local')}>
-              {t('lobby.localBattle')}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <button
+              className="card bg-base-200 hover:shadow-2xl cursor-pointer transition-shadow"
+              type="button"
+              onClick={() => navigate('/play/local')}
+            >
+              <div className="card-body p-4">
+                <h2 className="card-title">{t('lobby.localBattle')}</h2>
+              </div>
             </button>
-            <button className="menu-action" type="button" onClick={() => navigate('/deck-builder')}>
-              {t('lobby.deckEditor')}
+            <button
+              className="card bg-base-200 hover:shadow-2xl cursor-pointer transition-shadow"
+              type="button"
+              onClick={() => navigate('/deck-builder')}
+            >
+              <div className="card-body p-4">
+                <h2 className="card-title">{t('lobby.deckEditor')}</h2>
+              </div>
             </button>
-            <button className="menu-action" type="button" onClick={() => navigate('/history')}>
-              {t('lobby.matchHistory')}
+            <button
+              className="card bg-base-200 hover:shadow-2xl cursor-pointer transition-shadow"
+              type="button"
+              onClick={() => navigate('/history')}
+            >
+              <div className="card-body p-4">
+                <h2 className="card-title">{t('lobby.matchHistory')}</h2>
+              </div>
             </button>
-            <button className="menu-action" type="button" onClick={onShowTutorial}>
-              {t('lobby.tutorial')}
+            <button
+              className="card bg-base-200 hover:shadow-2xl cursor-pointer transition-shadow"
+              type="button"
+              onClick={onShowTutorial}
+            >
+              <div className="card-body p-4">
+                <h2 className="card-title">{t('lobby.tutorial')}</h2>
+              </div>
             </button>
+          </div>
+          <div className="flex flex-wrap items-start gap-2">
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => navigate('/leaderboard')}>
+              {t('leaderboard.title')}
+            </button>
+            <AuthSection onAuthChanged={onAuthChanged} />
           </div>
         </div>
       </section>
 
-      <section className="lobby-grid">
-        <div className="lobby-panel deck-panel">
-          {serverDeckError && <p className="error-copy">{serverDeckError}</p>}
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="flex flex-col gap-6">
+          {serverDeckError && <div className="alert alert-error">{serverDeckError}</div>}
           <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={deckOptions} onChange={setDeck0Name} />
+          <div className="divider" />
           <DeckSelector
             label={t('lobby.opponentDeck')}
             value={deck1Name}
@@ -658,7 +707,7 @@ export function LobbyPage({
             onChange={setDeck1Name}
           />
         </div>
-        <div className="lobby-side">
+        <div className="flex flex-col gap-4">
           <DifficultyButtons onStart={onStartAI} />
           <OnlinePanel startOnline={onStartOnline} />
         </div>

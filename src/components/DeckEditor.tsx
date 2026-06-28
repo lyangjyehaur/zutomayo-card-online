@@ -149,74 +149,82 @@ export function DeckEditor({
   };
 
   return (
-    <main className="deck-editor app-screen">
-      <header className="screen-header">
-        <div>
+    <main className="min-h-screen container mx-auto flex flex-col gap-4 p-4">
+      <header className="navbar rounded-box bg-base-200 shadow-xl">
+        <div className="flex-1">
           <span>{t('lobby.menu')}</span>
-          <h1>{t('deckEditor.title')}</h1>
+          <h1 className="text-2xl font-bold text-primary">{t('deckEditor.title')}</h1>
         </div>
-        <div className="screen-actions">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {onDeckNameChange && (
-            <label className="deck-name-field">
+            <label className="form-control w-48">
               <span>{t('deck.custom')}</span>
               <input
+                className="input input-bordered input-sm"
                 value={deckName ?? ''}
                 aria-label={t('deck.custom')}
                 onChange={(event) => onDeckNameChange(event.target.value)}
               />
             </label>
           )}
-          {syncLabel && <span className={`sync-indicator ${synced ? 'synced' : ''}`}>{syncLabel}</span>}
-          <button className="secondary-action" type="button" onClick={onCancel}>
+          {syncLabel && <span className={synced ? 'badge badge-success' : 'badge badge-warning'}>{syncLabel}</span>}
+          <button className="btn btn-ghost" type="button" onClick={onCancel}>
             {t('common.backToLobby')}
           </button>
-          <button className="primary-action" type="button" disabled={!isValid || saving} onClick={saveDeck}>
+          <button className="btn btn-primary" type="button" disabled={!isValid || saving} onClick={saveDeck}>
             {saveLabel ?? t('deckEditor.saveDeck')}
           </button>
         </div>
       </header>
 
       {errorMessage && (
-        <p className="error-copy deck-editor-error" role="alert">
+        <div className="alert alert-error" role="alert">
           {errorMessage}
-        </p>
+        </div>
       )}
 
-      <section className="deck-rules">
-        <div className={deck.length === DECK_SIZE ? 'rule valid' : 'rule invalid'}>
-          <strong>
+      <section className="stats shadow">
+        <div className="stat">
+          <strong className={deck.length === DECK_SIZE ? 'stat-value text-success' : 'stat-value text-warning'}>
             {deck.length}/{DECK_SIZE}
           </strong>
-          <span>{t('deckEditor.ruleSize')}</span>
+          <span className="stat-title">{t('deckEditor.ruleSize')}</span>
         </div>
-        <div className={characterCount >= 10 ? 'rule valid' : 'rule invalid'}>
-          <strong>{characterCount}</strong>
-          <span>{t('deckEditor.ruleCharacters')}</span>
+        <div className="stat">
+          <strong className={characterCount >= 10 ? 'stat-value text-success' : 'stat-value text-warning'}>
+            {characterCount}
+          </strong>
+          <span className="stat-title">{t('deckEditor.ruleCharacters')}</span>
         </div>
-        <div className={copyLimitValid ? 'rule valid' : 'rule invalid'}>
-          <strong>{MAX_COPIES}</strong>
-          <span>{t('deckEditor.ruleCopies')}</span>
+        <div className="stat">
+          <strong className={copyLimitValid ? 'stat-value text-success' : 'stat-value text-warning'}>
+            {MAX_COPIES}
+          </strong>
+          <span className="stat-title">{t('deckEditor.ruleCopies')}</span>
         </div>
-        <div className={isValid ? 'rule valid strong' : 'rule invalid strong'}>
-          <strong>{isValid ? t('deckEditor.valid') : t('deckEditor.invalid')}</strong>
+        <div className="stat">
+          <strong className={isValid ? 'badge badge-success' : 'badge badge-warning'}>
+            {isValid ? t('deckEditor.valid') : t('deckEditor.invalid')}
+          </strong>
         </div>
       </section>
 
       <section className="deck-workspace">
         <div className="collection-panel">
-          <div className="editor-filters">
+          <div className="grid gap-3">
             <input
+              className="input input-bordered"
               type="search"
               placeholder={t('deckEditor.search')}
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
             />
-            <div className="filter-group">
+            <div className="flex flex-wrap items-center gap-2">
               <span>{t('deckEditor.filterElement')}</span>
               {ELEMENTS.map((element) => (
                 <button
                   key={element}
-                  className={filterElement === element ? 'active' : ''}
+                  className={`btn btn-sm ${filterElement === element ? 'btn-primary' : 'btn-ghost'}`}
                   type="button"
                   onClick={() => setFilterElement(element)}
                 >
@@ -224,12 +232,12 @@ export function DeckEditor({
                 </button>
               ))}
             </div>
-            <div className="filter-group">
+            <div className="flex flex-wrap items-center gap-2">
               <span>{t('deckEditor.filterType')}</span>
               {TYPES.map((type) => (
                 <button
                   key={type}
-                  className={filterType === type ? 'active' : ''}
+                  className={`btn btn-sm ${filterType === type ? 'btn-primary' : 'btn-ghost'}`}
                   type="button"
                   onClick={() => setFilterType(type)}
                 >
@@ -237,36 +245,50 @@ export function DeckEditor({
                 </button>
               ))}
             </div>
-            <div className="filter-group">
+            <div className="flex flex-wrap items-center gap-2">
               <span>{t('deckEditor.sort')}</span>
-              <button className={sortBy === 'cost' ? 'active' : ''} type="button" onClick={() => setSortBy('cost')}>
+              <button
+                className={`btn btn-sm ${sortBy === 'cost' ? 'btn-primary' : 'btn-ghost'}`}
+                type="button"
+                onClick={() => setSortBy('cost')}
+              >
                 {t('deckEditor.sortCost')}
               </button>
-              <button className={sortBy === 'attack' ? 'active' : ''} type="button" onClick={() => setSortBy('attack')}>
+              <button
+                className={`btn btn-sm ${sortBy === 'attack' ? 'btn-primary' : 'btn-ghost'}`}
+                type="button"
+                onClick={() => setSortBy('attack')}
+              >
                 {t('deckEditor.sortAttack')}
               </button>
-              <button className={sortBy === 'name' ? 'active' : ''} type="button" onClick={() => setSortBy('name')}>
+              <button
+                className={`btn btn-sm ${sortBy === 'name' ? 'btn-primary' : 'btn-ghost'}`}
+                type="button"
+                onClick={() => setSortBy('name')}
+              >
                 {t('deckEditor.sortName')}
               </button>
             </div>
           </div>
 
-          <div className="panel-title-row">
+          <div className="flex items-center justify-between gap-3">
             <h2>
               {t('deckEditor.cardPool')} ({filteredCards.length})
             </h2>
-            <div className="pager">
+            <div className="join">
               <button
+                className="btn btn-sm join-item"
                 type="button"
                 disabled={currentPage === 0}
                 onClick={() => setPage((value) => Math.max(0, value - 1))}
               >
                 {t('common.prev')}
               </button>
-              <span>
+              <span className="btn btn-sm btn-disabled join-item">
                 {currentPage + 1}/{totalPages} {t('common.page')}
               </span>
               <button
+                className="btn btn-sm join-item"
                 type="button"
                 disabled={currentPage >= totalPages - 1}
                 onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
@@ -301,9 +323,9 @@ export function DeckEditor({
         </div>
 
         <aside className="current-deck-panel">
-          <div className="panel-title-row">
+          <div className="flex items-center justify-between gap-3">
             <h2>{t('deckEditor.currentDeck')}</h2>
-            <span>
+            <span className="badge badge-primary">
               {deck.length}/{DECK_SIZE}
             </span>
           </div>

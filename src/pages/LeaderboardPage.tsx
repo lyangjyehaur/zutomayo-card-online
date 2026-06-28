@@ -41,54 +41,66 @@ export function LeaderboardPage() {
   }, []);
 
   return (
-    <main className="leaderboard-page app-screen">
-      <header className="screen-header">
-        <button className="back-btn" type="button" onClick={() => navigate('/')}>
+    <main className="min-h-screen container mx-auto flex flex-col gap-4 p-4">
+      <header className="navbar rounded-box bg-base-200 shadow-xl">
+        <button className="btn btn-ghost" type="button" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
         </button>
-        <h1>{t('leaderboard.title')}</h1>
+        <h1 className="text-2xl font-bold text-primary">{t('leaderboard.title')}</h1>
+        <div />
       </header>
 
-      {loading && <p className="loading-text">{t('leaderboard.loading')}</p>}
+      {loading && (
+        <div className="alert alert-info">
+          <span>{t('leaderboard.loading')}</span>
+        </div>
+      )}
       {error && (
-        <p className="error-copy error-text" role="alert">
+        <div className="alert alert-error" role="alert">
           {error}
-        </p>
+        </div>
       )}
 
-      {!loading && !error && entries.length === 0 && <p className="empty-text">{t('leaderboard.empty')}</p>}
+      {!loading && !error && entries.length === 0 && (
+        <div className="alert">
+          <span>{t('leaderboard.empty')}</span>
+        </div>
+      )}
 
       {!loading && !error && entries.length > 0 && (
-        <table className="leaderboard-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>{t('leaderboard.nickname')}</th>
-              <th>ELO</th>
-              <th>{t('leaderboard.matches')}</th>
-              <th>{t('leaderboard.wins')}</th>
-              <th>{t('leaderboard.winRate')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry, i) => (
-              <tr
-                key={entry.id}
-                className={`${i < 3 ? `top-${i + 1}` : ''} ${entry.id === currentUserId ? 'current-user' : ''}`.trim()}
-              >
-                <td className="rank">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
-                <td className="player-name">
-                  {entry.nickname}
-                  {entry.id === currentUserId && <span>{t('leaderboard.currentUser')}</span>}
-                </td>
-                <td className="elo">{entry.elo}</td>
-                <td>{entry.matchCount}</td>
-                <td>{entry.wins}</td>
-                <td className="winrate">{entry.winRate}%</td>
+        <div className="overflow-x-auto rounded-box bg-base-200 shadow-xl">
+          <table className="table table-zebra table-sm">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>{t('leaderboard.nickname')}</th>
+                <th>ELO</th>
+                <th>{t('leaderboard.matches')}</th>
+                <th>{t('leaderboard.wins')}</th>
+                <th>{t('leaderboard.winRate')}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {entries.map((entry, i) => (
+                <tr key={entry.id} className={entry.id === currentUserId ? 'bg-primary/10' : ''}>
+                  <td>{i < 3 ? <span className="badge badge-primary">{i + 1}</span> : i + 1}</td>
+                  <td>
+                    <div className="flex items-center gap-2">
+                      <span>{entry.nickname}</span>
+                      {entry.id === currentUserId && (
+                        <span className="badge badge-success">{t('leaderboard.currentUser')}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td>{entry.elo}</td>
+                  <td>{entry.matchCount}</td>
+                  <td>{entry.wins}</td>
+                  <td>{entry.winRate}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </main>
   );
