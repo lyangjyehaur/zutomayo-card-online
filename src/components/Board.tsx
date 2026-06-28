@@ -709,8 +709,8 @@ function CentralArena({
   const opponent = G.players[opponentIndex];
 
   return (
-    <section className="flex min-h-0 flex-1 items-center justify-center" aria-label={t('chronos.title')}>
-      <div className="grid w-full max-w-3xl grid-rows-[88px_minmax(180px,1fr)_88px] items-center justify-items-center gap-4">
+    <section className="flex min-h-0 max-h-[420px] items-center justify-center" aria-label={t('chronos.title')}>
+      <div className="grid w-full max-w-3xl grid-rows-[80px_1fr_80px] items-center justify-items-center gap-2">
         <div className="opp-battle-slot">
           <FieldZone
             label={`${t('player.opponent')} ${t('board.battleZone')}`}
