@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs } from '../game/cards/loader';
 import { getTranslatedEffect } from '../game/cards/i18n';
@@ -72,6 +73,61 @@ export function DeckEditor({
   const [sortBy, setSortBy] = useState<'cost' | 'attack' | 'name'>('cost');
   const [page, setPage] = useState(0);
   const [previewCard, setPreviewCard] = useState<CardDef | null>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
+  const hoveredRef = useRef<HTMLButtonElement | null>(null);
+
+  // hover 時計算浮層位置：優先顯示在卡牌右側，空間不足時顯示左側
+  const updatePopoverPosition = () => {
+    const el = hoveredRef.current;
+    if (!el) {
+      setPopoverPos(null);
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    const popoverWidth = 320;
+    const popoverHeight = 240;
+    const gap = 12;
+    const margin = 8;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    let left = rect.right + gap;
+    if (left + popoverWidth > window.innerWidth - margin) {
+      left = rect.left - gap - popoverWidth;
+    }
+    if (left < margin) {
+      left = Math.min(Math.max(centerX - popoverWidth / 2, margin), window.innerWidth - margin - popoverWidth);
+    }
+
+    let top = centerY - popoverHeight / 2;
+    top = Math.min(Math.max(top, margin), window.innerHeight - margin - popoverHeight);
+
+    setPopoverPos({ top, left });
+  };
+
+  const handleCardEnter = (card: CardDef, event: React.MouseEvent<HTMLButtonElement> | React.FocusEvent<HTMLButtonElement>) => {
+    hoveredRef.current = event.currentTarget;
+    setPreviewCard(card);
+    requestAnimationFrame(updatePopoverPosition);
+  };
+
+  const handleCardLeave = () => {
+    hoveredRef.current = null;
+    setPreviewCard(null);
+    setPopoverPos(null);
+  };
+
+  useEffect(() => {
+    if (!previewCard) return;
+    const onScroll = () => updatePopoverPosition();
+    const onResize = () => updatePopoverPosition();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [previewCard]);
 
   const filteredCards = useMemo(() => {
     let cards = allCards;
@@ -326,10 +382,10 @@ export function DeckEditor({
                     type="button"
                     disabled={!canAdd}
                     onClick={() => addCard(card.id)}
-                    onMouseEnter={() => setPreviewCard(card)}
-                    onMouseLeave={() => setPreviewCard(null)}
-                    onFocus={() => setPreviewCard(card)}
-                    onBlur={() => setPreviewCard(null)}
+                    onMouseEnter={(e) => handleCardEnter(card, e)}
+                    onMouseLeave={handleCardLeave}
+                    onFocus={(e) => handleCardEnter(card, e)}
+                    onBlur={handleCardLeave}
                     className={`relative flex aspect-[5/7] w-full cursor-pointer flex-col overflow-hidden rounded-sm bg-lacquer-deep ring-1 transition hover:-translate-y-1 hover:ring-gold/40 focus:outline-none focus:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10 ${
                       count > 0 ? 'ring-gold/30' : 'ring-bone/10'
                     }`}
@@ -361,64 +417,65 @@ export function DeckEditor({
               );
             })}
           </div>
+        </section>
 
-          {/* 完整 meta 預覽區：僅 hover 時顯示，高度自適應 */}
-          {previewCard && (
-            <div className="mt-3 shrink-0 rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/80 to-lacquer p-4 ring-1 ring-gold/20">
-              <div className="flex items-start gap-4">
-                {/* 左：卡圖縮圖 */}
-                <div className="relative aspect-[5/7] w-16 shrink-0 overflow-hidden rounded-xs ring-1 ring-gold/20">
-                  <img
-                    src={previewCard.image}
-                    alt={previewCard.name}
-                    referrerPolicy="no-referrer"
-                    className="absolute inset-0 size-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-lacquer-deep/40 to-transparent" />
-                </div>
-                {/* 右：完整 meta */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-display text-base font-bold text-bone/90">{previewCard.name}</span>
-                    <span className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-gold/50">
-                      {elementLabel(previewCard.element)} · {typeLabel(previewCard.type)} · {previewCard.rarity}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
-                    <span className="text-bone/60">
-                      <span className="text-gold/70">COST</span> {previewCard.powerCost}
-                    </span>
-                    {previewCard.attack && (
-                      <span className="text-bone/60">
-                        <span className="text-gold/70">ATK</span> {previewCard.attack.night}/{previewCard.attack.day}
-                      </span>
-                    )}
-                    <span className="text-bone/60">
-                      <span className="text-gold/70">CLK</span> {previewCard.clock}
-                    </span>
-                    {previewCard.sendToPower > 0 && (
-                      <span className="text-bone/60">
-                        <span className="text-gold/70">CHG</span> {previewCard.sendToPower}
-                      </span>
-                    )}
-                  </div>
-                  {previewCard.effect && (
-                    <p className="mt-2.5 border-l border-gold/20 pl-3 text-[12px] leading-relaxed text-bone/70">
-                      {getTranslatedEffect(previewCard.id, locale) ?? previewCard.effect}
-                    </p>
-                  )}
-                  {(previewCard.song || previewCard.illustrator) && (
-                    <div className="mt-2 font-mono text-[9px] text-bone/30">
-                      {previewCard.song && <span>{previewCard.song}</span>}
-                      {previewCard.song && previewCard.illustrator && <span> · </span>}
-                      {previewCard.illustrator && <span>illust. {previewCard.illustrator}</span>}
-                    </div>
-                  )}
+        {/* hover 浮層：透過 portal 渲染到 document.body，避免被 overflow 裁切 */}
+        {previewCard && popoverPos && createPortal(
+          <aside
+            aria-hidden="true"
+            className="pointer-events-none fixed z-50 w-80 rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/95 to-lacquer p-4 shadow-2xl ring-1 ring-gold/30 backdrop-blur"
+            style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` as CSSProperties['left'] }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="relative aspect-[5/7] w-14 shrink-0 overflow-hidden rounded-xs ring-1 ring-gold/20">
+                <img
+                  src={previewCard.image}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="absolute inset-0 size-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-lacquer-deep/40 to-transparent" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-display text-sm font-bold text-bone/90">{previewCard.name}</div>
+                <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">
+                  {elementLabel(previewCard.element)} · {typeLabel(previewCard.type)} · {previewCard.rarity}
                 </div>
               </div>
             </div>
-          )}
-        </section>
+            <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
+              <span className="text-bone/60">
+                <span className="text-gold/70">COST</span> {previewCard.powerCost}
+              </span>
+              {previewCard.attack && (
+                <span className="text-bone/60">
+                  <span className="text-gold/70">ATK</span> {previewCard.attack.night}/{previewCard.attack.day}
+                </span>
+              )}
+              <span className="text-bone/60">
+                <span className="text-gold/70">CLK</span> {previewCard.clock}
+              </span>
+              {previewCard.sendToPower > 0 && (
+                <span className="text-bone/60">
+                  <span className="text-gold/70">CHG</span> {previewCard.sendToPower}
+                </span>
+              )}
+            </div>
+            {previewCard.effect && (
+              <p className="mt-2.5 border-l border-gold/30 pl-3 text-[12px] leading-relaxed text-bone/80">
+                {getTranslatedEffect(previewCard.id, locale) ?? previewCard.effect}
+              </p>
+            )}
+            {(previewCard.song || previewCard.illustrator) && (
+              <div className="mt-2 font-mono text-[9px] text-bone/30">
+                {previewCard.song && <span>{previewCard.song}</span>}
+                {previewCard.song && previewCard.illustrator && <span> · </span>}
+                {previewCard.illustrator && <span>illust. {previewCard.illustrator}</span>}
+              </div>
+            )}
+          </aside>,
+          document.body,
+        )}
 
         <aside className="flex min-h-0 flex-col rounded-sm bg-lacquer p-5 ring-1 ring-bone/10">
           <div className="mb-3 flex items-end justify-between border-b border-bone/10 pb-3">
