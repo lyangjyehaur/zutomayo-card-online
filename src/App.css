@@ -3,7 +3,7 @@
 /*
  * 漆器塔羅設計系統（Lacquered Tarot Design System）
  * 靈感來自 card-bloom-tapestry demo
- * 深漆黑背景 + 米白骨色文字 + 金朱雙色點綴 + 襯線斜體標題 + 等寬字數值
+ * 深漆黑背景 + 米白骨色文字 + 金紫雙色點綴 + 襯線斜體標題 + 等寬字數值
  */
 
 @theme inline {
@@ -27,7 +27,7 @@
   --bone: oklch(0.965 0.012 90);
   --gold: oklch(0.74 0.09 80);
   --gold-soft: oklch(0.62 0.07 80);
-  --vermilion: oklch(0.58 0.19 25);
+  --vermilion: oklch(0.6 0.19 295);
 
   /* 字體 */
   --font-display: 'EB Garamond', 'Songti SC', 'STSong', serif;

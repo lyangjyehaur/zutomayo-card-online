@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Swords, Bot, LayoutGrid } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { AuthSection } from '../components/lobby/AuthSection';
+import { getAllCardDefs } from '../game/cards/loader';
 import { t } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
@@ -46,11 +48,25 @@ const ENTRIES: Entry[] = [
 
 export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
+  // 每次進入首頁隨機取一張卡牌作為模糊背景
+  const bgImage = useMemo(() => {
+    const cards = getAllCardDefs();
+    if (cards.length === 0) return null;
+    return cards[Math.floor(Math.random() * cards.length)].image;
+  }, []);
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
-      {/* 環境層：中央朱紅光暈 + 點陣紋理 */}
+      {/* 環境層：隨機卡牌模糊背景 + 紫光暈 + 點陣紋理 */}
       <div className="pointer-events-none absolute inset-0">
+        {bgImage && (
+          <div
+            className="absolute inset-0 scale-110 bg-cover bg-center opacity-25 blur-[60px] brightness-[0.5]"
+            style={{ backgroundImage: `url(${bgImage})` }}
+          />
+        )}
+        {/* 暗化遮罩，確保文字可讀 */}
+        <div className="absolute inset-0 bg-lacquer-deep/70" />
         <div className="absolute left-1/2 top-1/2 h-[80vh] w-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/10 blur-[140px]" />
         <div className="absolute inset-0 opacity-[0.04] [background-image:radial-gradient(rgba(255,255,255,0.6)_1px,transparent_1px)] [background-size:3px_3px]" />
       </div>
