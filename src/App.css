@@ -7058,7 +7058,7 @@ button.zone:focus-visible {
   line-height: 1;
 }
 
-/* 牌組編輯器卡池：讓 tiny 卡片填滿 grid cell（覆蓋固定的 75px） */
-.deck-pool-grid .card-tiny {
-  --card-w: 100%;
+/* 牌組編輯器卡池：放大 tiny 卡片為響應式固定寬度（避免 100% 在 flex 內計算異常） */
+.deck-pool-grid {
+  --card-tiny-w: clamp(110px, 15vw, 150px);
 }
