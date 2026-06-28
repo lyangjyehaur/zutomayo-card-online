@@ -1397,23 +1397,61 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 </div>
               </div>
             </div>
-            {/* 對手手牌背 */}
+            {/* 對手手牌背 — 上下顛倒 */}
             <div className="flex gap-1.5">
               {opponent.hand.map((card, index) => (
                 <div
                   key={card.instanceId}
-                  className="h-12 w-9 overflow-hidden rounded-xs ring-1 ring-bone/10"
-                  style={{ transform: `translateY(${Math.abs(index - (opponent.hand.length - 1) / 2) * 2}px)` }}
+                  className="h-12 w-9 overflow-hidden rounded-xs ring-1 ring-bone/10 rotate-180"
+                  style={{ transform: `translateY(${Math.abs(index - (opponent.hand.length - 1) / 2) * 2}px) rotate(180deg)` }}
                 >
                   <img src="/card-back.jpg" alt="" className="h-full w-full object-cover" loading="lazy" />
                 </div>
               ))}
             </div>
-            {/* 對手設置區 */}
-            <div className="flex gap-3">
-              <Slot card={opponent.setZoneA} label="A" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
-              <Slot card={opponent.setZoneB} label="B" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+            {/* 對手設置區 — CBA 從右到左 + 上下顛倒 + 充能/牌組/深淵 */}
+            <div className="flex items-start gap-3 rotate-180">
+              {/* 對手充能區 */}
+              <div className="flex flex-col items-center gap-1">
+                {opponent.powerCharger.length > 0 ? (
+                  <div className="relative flex size-[88px] items-end justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                    {opponent.powerCharger.slice(-3).map((card, i) => {
+                      const def = getCardDef(card.defId);
+                      return (
+                        <div key={card.instanceId} className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-bone/10" style={{ left: `${12 + i * 14}px` }}>
+                          {def?.image && <img src={def.image} alt="" className="h-full w-full object-cover opacity-70" loading="lazy" referrerPolicy="no-referrer" />}
+                        </div>
+                      );
+                    })}
+                    <span className="absolute top-1 right-1 font-mono text-[10px] text-gold/70">{opponent.powerCharger.reduce((s, c) => s + (getCardDef(c.defId)?.sendToPower ?? 0), 0)}</span>
+                  </div>
+                ) : (
+                  <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                    <span className="font-mono text-lg text-gold/60">0</span>
+                  </div>
+                )}
+                <span className="font-mono text-[9px] text-bone/30">⚡</span>
+              </div>
               <Slot card={opponent.setZoneC} label="C" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneB} label="B" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneA} label="A" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              {/* 對手牌組 */}
+              <div className="flex flex-col items-center gap-1">
+                <div className="relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                  {Array.from({ length: Math.min(opponent.deck.length, 3) }).map((_, i) => (
+                    <img key={i} src="/card-back.jpg" alt="" className="absolute h-[72px] w-[48px] rounded-xs object-cover" style={{ top: `${4 - i * 2}px`, left: `${16 + i * 2}px`, opacity: 1 - i * 0.15 }} loading="lazy" />
+                  ))}
+                  <span className="absolute bottom-1 right-1 font-mono text-[10px] text-bone/50">{opponent.deck.length}</span>
+                </div>
+                <span className="font-mono text-[9px] text-bone/30">🃏</span>
+              </div>
+              {/* 對手深淵 */}
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                  <span className="font-mono text-sm text-bone/30">🕳️ {opponent.abyss.length}</span>
+                </div>
+                <span className="font-mono text-[9px] text-bone/30">{t('board.abyss')}</span>
+              </div>
             </div>
           </div>
 
@@ -1422,7 +1460,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             <FieldZone
               label={t('board.battleZone')}
               shortLabel={t('board.battleZoneShort')}
-              className="battle-zone opponent-battle-zone"
+              className="battle-zone opponent-battle-zone rotate-180"
               card={opponent.battleZone}
               size="normal"
               activeTime={time}
@@ -1481,12 +1519,22 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               <Slot card={me.setZoneA} label="A" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
               <Slot card={me.setZoneB} label="B" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined} />
               <Slot card={me.setZoneC} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} />
-              {/* 牌組 — 右邊 */}
+              {/* 牌組 — 右邊 — 根據數量堆疊 */}
               <div className="flex flex-col items-center gap-1">
-                <div className="flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
-                  <img src="/card-back.jpg" alt="" className="h-[80px] w-[56px] rounded-xs object-cover" loading="lazy" />
+                <div className="relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                  {Array.from({ length: Math.min(me.deck.length, 3) }).map((_, i) => (
+                    <img key={i} src="/card-back.jpg" alt="" className="absolute h-[72px] w-[48px] rounded-xs object-cover" style={{ top: `${4 - i * 2}px`, left: `${16 + i * 2}px`, opacity: 1 - i * 0.15 }} loading="lazy" />
+                  ))}
+                  <span className="absolute bottom-1 right-1 font-mono text-[10px] text-bone/50">{me.deck.length}</span>
                 </div>
-                <span className="font-mono text-[9px] text-bone/30">🃏 {me.deck.length}</span>
+                <span className="font-mono text-[9px] text-bone/30">🃏</span>
+              </div>
+              {/* 深淵 */}
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                  <span className="font-mono text-sm text-bone/30">🕳️ {me.abyss.length}</span>
+                </div>
+                <span className="font-mono text-[9px] text-bone/30">{t('board.abyss')}</span>
               </div>
             </div>
             {/* 玩家資訊列 — 照搬 demo 底部排列 */}
