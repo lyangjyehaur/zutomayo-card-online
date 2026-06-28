@@ -1375,6 +1375,29 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
     previousTurnNumber.current = G.turnNumber;
   }, [G.turnNumber, G.lastBattleResult, G.players, meIndex, opponentIndex]);
 
+  // DEBUG: log layout dimensions on every render
+  useEffect(() => {
+    const board = document.querySelector('.board');
+    if (!board) return;
+    const grid = board.querySelector('[class*="grid-cols"]');
+    if (!grid) return;
+    const children = Array.from((grid.children[0] as HTMLElement)?.children || []);
+    const dims = children.map((c: Element) => {
+      const r = c.getBoundingClientRect();
+      const s = window.getComputedStyle(c as HTMLElement);
+      return { h: Math.round(r.height), flexGrow: s.flexGrow, flexShrink: s.flexShrink, minHeight: s.minHeight, className: c.className?.substring(0, 40) };
+    });
+    console.log('[LAYOUT]', JSON.stringify({
+      gridH: Math.round(grid.getBoundingClientRect().height),
+      opponentH: dims[0]?.h,
+      chronosH: dims[1]?.h,
+      playerH: dims[2]?.h,
+      handCards: me.hand.length,
+      step: G.step,
+      turnNumber: G.turnNumber,
+    }));
+  });
+
   const setFromHand = (handIndex: number) => {
     if (G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
     if (G.step === 'initialSet') moves.setInitialCard(handIndex);
