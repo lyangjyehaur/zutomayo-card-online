@@ -423,25 +423,12 @@ export function DeckEditor({
         {previewCard && popoverPos && createPortal(
           <aside
             aria-hidden="true"
-            className="pointer-events-none fixed z-50 w-80 rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/95 to-lacquer p-4 shadow-2xl ring-1 ring-gold/30 backdrop-blur"
+            className="pointer-events-none fixed z-50 w-72 rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/95 to-lacquer p-4 shadow-2xl ring-1 ring-gold/30 backdrop-blur"
             style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` as CSSProperties['left'] }}
           >
-            <div className="flex items-start gap-3">
-              <div className="relative aspect-[5/7] w-14 shrink-0 overflow-hidden rounded-xs ring-1 ring-gold/20">
-                <img
-                  src={previewCard.image}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                  className="absolute inset-0 size-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-lacquer-deep/40 to-transparent" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-display text-sm font-bold text-bone/90">{previewCard.name}</div>
-                <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">
-                  {elementLabel(previewCard.element)} · {typeLabel(previewCard.type)} · {previewCard.rarity}
-                </div>
-              </div>
+            <div className="truncate font-display text-sm font-bold text-bone/90">{previewCard.name}</div>
+            <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">
+              {elementLabel(previewCard.element)} · {typeLabel(previewCard.type)} · {previewCard.rarity}
             </div>
             <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
               <span className="text-bone/60">
