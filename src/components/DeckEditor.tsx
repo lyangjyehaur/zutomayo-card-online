@@ -357,10 +357,10 @@ export function DeckEditor({
             })}
           </div>
 
-          {/* 完整 meta 預覽區：hover/focus 卡牌時顯示完整資訊，高度自適應不截斷 */}
-          <div className="mt-3 shrink-0 rounded-sm bg-lacquer-deep/60 p-4 ring-1 ring-bone/5">
+          {/* 完整 meta 預覽區：固定高度，內部滾動，避免佈局跳動 */}
+          <div className="mt-3 flex h-44 shrink-0 flex-col overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
             {previewCard ? (
-              <div className="flex items-start gap-4">
+              <div className="flex min-h-0 flex-1 items-start gap-4 overflow-y-auto p-4">
                 {/* 左：卡圖縮圖 */}
                 <div className="relative aspect-[5/7] w-16 shrink-0 overflow-hidden rounded-xs ring-1 ring-bone/10">
                   <img
@@ -414,7 +414,7 @@ export function DeckEditor({
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-center py-2 font-mono text-[10px] uppercase tracking-[0.3em] text-bone/30">
+              <div className="flex flex-1 items-center justify-center font-mono text-[10px] uppercase tracking-[0.3em] text-bone/30">
                 hover a card to inspect
               </div>
             )}
