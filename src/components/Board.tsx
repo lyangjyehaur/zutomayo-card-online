@@ -755,7 +755,7 @@ function CentralArena({
   const opponent = G.players[opponentIndex];
 
   return (
-    <section className="flex min-h-0 flex-1 items-center justify-center" aria-label={t('chronos.title')}>
+    <section className="flex h-full items-center justify-center" aria-label={t('chronos.title')}>
       {/* 對手戰鬥區 | Chronos | 我方戰鬥區 */}
       <div className="flex items-center gap-8">
         <FieldZone
@@ -1387,25 +1387,33 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       </header>
 
       {/* 主內容雙欄 */}
-      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] gap-4 px-4 pb-48 pt-14">
+      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] grid-rows-[1fr] gap-4 px-4 pb-48 pt-14">
         {/* 戰場欄 */}
         <main className="field-layout flex min-h-0 flex-col gap-3 overflow-hidden">
-          <OpponentStatsBar G={G} opponentIndex={opponentIndex} damageAmount={opponentDamage} onFocusCard={setFocusedCard} />
-          <CentralArena
-            G={G}
-            meIndex={meIndex}
-            opponentIndex={opponentIndex}
-            time={time}
-            onFocusCard={setFocusedCard}
-          />
-          <BottomZones
-            G={G}
-            meIndex={meIndex}
-            moves={moves}
-            damageAmount={myDamage}
-            onFocusCard={setFocusedCard}
-          />
-          <PhaseInstructionBar G={G} meIndex={meIndex} required={required} minimum={minimum} />
+          <div className="flex-shrink-0">
+            <OpponentStatsBar G={G} opponentIndex={opponentIndex} damageAmount={opponentDamage} onFocusCard={setFocusedCard} />
+          </div>
+          <div className="min-h-0 flex-1">
+            <CentralArena
+              G={G}
+              meIndex={meIndex}
+              opponentIndex={opponentIndex}
+              time={time}
+              onFocusCard={setFocusedCard}
+            />
+          </div>
+          <div className="flex-shrink-0">
+            <BottomZones
+              G={G}
+              meIndex={meIndex}
+              moves={moves}
+              damageAmount={myDamage}
+              onFocusCard={setFocusedCard}
+            />
+          </div>
+          <div className="flex-shrink-0">
+            <PhaseInstructionBar G={G} meIndex={meIndex} required={required} minimum={minimum} />
+          </div>
         </main>
 
         <HandDrawer
@@ -1431,7 +1439,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
         {/* 側欄 — Focus 和 Log 互不影響 */}
         <aside className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex-shrink-0 overflow-y-auto p-1">
+          <div className="max-h-[40vh] flex-shrink-0 overflow-y-auto p-1">
             <FocusPanel focus={focusedCard} />
           </div>
           {G.step === 'effectOrder' && (
