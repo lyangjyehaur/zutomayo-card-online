@@ -948,33 +948,38 @@ function PhaseInstructionBar({
 }) {
   const instruction = phaseInstruction(G, meIndex, required, minimum);
   const trace = latestTraceMessage(G);
+  // 回合內階段：設置 → 公開 → 時間 → 效果 → 戰鬥 → 結算
+  const isSetup = G.step === 'initialSet' || G.step === 'turnSet';
+  const isReveal = false; // 公開是瞬間事件，不持續顯示
+  const isEffect = G.step === 'effectOrder' || !!G.pendingChoice;
+  const isBattle = Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1;
   const phases = [
-    { label: 'Draw', active: false },
-    { label: 'Prep', active: G.step === 'initialSet' || G.step === 'turnSet' },
-    { label: 'Main', active: G.step === 'effectOrder' || !!G.pendingChoice },
-    { label: 'Battle', active: Boolean(G.lastBattleResult?.damage) },
-    { label: 'End', active: G.step === 'gameOver' },
+    { label: '設置', active: isSetup },
+    { label: '公開', active: isReveal },
+    { label: '時間', active: false },
+    { label: '效果', active: isEffect },
+    { label: '戰鬥', active: isBattle },
+    { label: '結算', active: G.step === 'gameOver' },
   ];
   return (
-    <section className="border-y border-bone/5 py-2" aria-live="polite">
-      <div className="flex items-center justify-center gap-8 font-mono text-[10px] uppercase tracking-[0.3em]">
-        {phases.map((phase) => (
-          <span key={phase.label} className={phase.active ? 'text-gold' : 'text-bone/20'}>
+    <section className="flex items-center justify-between gap-4 border-b border-bone/5 py-1.5" aria-live="polite">
+      {/* 階段指示器 */}
+      <div className="flex items-center gap-3 font-mono text-[9px] uppercase tracking-[0.2em]">
+        {phases.map((phase, i) => (
+          <span key={phase.label} className={`flex items-center gap-1.5 ${phase.active ? 'text-gold' : 'text-bone/20'}`}>
+            {i > 0 && <span className="text-bone/10">›</span>}
             {phase.label}
           </span>
         ))}
       </div>
-      <div className="mt-2 flex items-center justify-between gap-4 text-xs text-bone/45">
-        <div>
-          <strong className="font-display text-base italic text-bone/80">{instruction.title}</strong>
-          <p className="mt-0.5">{instruction.body}</p>
-        </div>
-        <div className="flex flex-wrap justify-end gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-bone/35">
-          {instruction.meta.map((item) => (
-            <span key={item}>{item}</span>
-          ))}
-          {trace && <span className="max-w-96 truncate text-gold/50">{trace}</span>}
-        </div>
+      {/* 當前指令 */}
+      <div className="flex items-center gap-3 text-[10px] text-bone/45">
+        <strong className="font-display text-sm italic text-bone/80">{instruction.title}</strong>
+        <span>{instruction.body}</span>
+        {instruction.meta.map((item) => (
+          <span key={item} className="font-mono text-[9px] uppercase tracking-[0.15em] text-bone/30">{item}</span>
+        ))}
+        {trace && <span className="max-w-64 truncate font-mono text-[9px] text-gold/40">{trace}</span>}
       </div>
     </section>
   );
