@@ -1369,8 +1369,8 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
         </div>
       </header>
 
-      {/* 雙欄佈局 — 完全照搬 demo grid-cols-[1fr_280px] px-6 pb-4 pt-14 */}
-      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] gap-4 px-6 pb-4 pt-14">
+      {/* 雙欄佈局 — grid 高度扣除 header h-12 */}
+      <div className="relative z-10 grid h-[calc(100%-3rem)] grid-cols-[1fr_280px] gap-4 px-6 pb-4 pt-14">
 
         {/* ===== 左欄：戰場 ===== */}
         <div className="flex flex-col">
