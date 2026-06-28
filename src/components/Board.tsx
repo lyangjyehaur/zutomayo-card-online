@@ -1425,7 +1425,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
         <div className="flex flex-col">
 
           {/* 對手區域 — flex-1 justify-start（照搬 demo） */}
-          <div className="flex flex-col min-h-[180px] items-center justify-start gap-4 pt-3">
+          <div className="flex flex-col h-[240px] shrink-0 items-center justify-start gap-4 pt-3">
             {/* 對手資訊：名字在右 + LP bar + 統計 */}
             <div className="flex items-center gap-6">
               <div className="text-right">
@@ -1531,7 +1531,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           </div>
 
           {/* 玩家區域 — flex-1 justify-end（照搬 demo） */}
-          <div className="flex flex-col min-h-[220px] items-center justify-end gap-3 pb-2">
+          <div className="flex flex-col h-[280px] shrink-0 items-center justify-end gap-3 pb-2">
             {/* 玩家設置區 + 充能/牌組 */}
             <div className="flex items-end gap-3">
               {/* 充能區 — 左邊 */}
