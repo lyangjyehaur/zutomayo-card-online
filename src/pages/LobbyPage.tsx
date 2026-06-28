@@ -65,11 +65,11 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             alt=""
             aria-hidden="true"
             referrerPolicy="no-referrer"
-            className="absolute inset-0 size-full scale-110 object-cover opacity-25 blur-[60px] brightness-[0.5]"
+            className="absolute inset-0 size-full scale-125 object-cover opacity-40 blur-[50px] saturate-[1.3]"
           />
         )}
-        {/* 暗化遮罩，確保文字可讀 */}
-        <div className="absolute inset-0 bg-lacquer-deep/70" />
+        {/* 暗化遮罩，確保文字可讀（漸層：中央較透、邊緣較暗） */}
+        <div className="absolute inset-0 bg-lacquer-deep/55" />
         <div className="absolute left-1/2 top-1/2 h-[80vh] w-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/10 blur-[140px]" />
         <div className="absolute inset-0 opacity-[0.04] [background-image:radial-gradient(rgba(255,255,255,0.6)_1px,transparent_1px)] [background-size:3px_3px]" />
       </div>
