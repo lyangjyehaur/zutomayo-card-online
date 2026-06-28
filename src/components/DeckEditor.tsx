@@ -427,19 +427,19 @@ export function DeckEditor({
             </div>
             <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
               <span className="text-bone/60">
-                <span className="text-gold/70">COST</span> {previewCard.powerCost}
+                <span className="text-gold/70">{t('card.energy')}</span> {previewCard.powerCost}
               </span>
               {previewCard.attack && (
                 <span className="text-bone/60">
-                  <span className="text-gold/70">ATK</span> {previewCard.attack.night}/{previewCard.attack.day}
+                  <span className="text-gold/70">{t('card.night')}/{t('card.day')}</span> {previewCard.attack.night}/{previewCard.attack.day}
                 </span>
               )}
               <span className="text-bone/60">
-                <span className="text-gold/70">CLK</span> {previewCard.clock}
+                <span className="text-gold/70">{t('card.clock')}</span> {previewCard.clock}
               </span>
               {previewCard.sendToPower > 0 && (
                 <span className="text-bone/60">
-                  <span className="text-gold/70">CHG</span> {previewCard.sendToPower}
+                  <span className="text-gold/70">{t('card.charge')}</span> {previewCard.sendToPower}
                 </span>
               )}
             </div>
