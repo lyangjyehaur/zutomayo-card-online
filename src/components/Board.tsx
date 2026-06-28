@@ -1442,10 +1442,10 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       </header>
 
       {/* 雙欄佈局 — header 浮在上面，pt-14 撐開頂部空間 */}
-      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] gap-4 px-6 pb-4 pt-14">
+      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] gap-4 overflow-hidden px-6 pb-4 pt-14">
 
         {/* ===== 左欄：戰場 ===== */}
-        <div className="flex flex-col">
+        <div className="flex min-h-0 flex-col overflow-hidden">
 
           {/* 對手區域 — flex-1 justify-start（照搬 demo） */}
           <div className="flex flex-col h-[240px] shrink-0 items-center justify-start gap-4 pt-3">
@@ -1665,7 +1665,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
         </div>
 
         {/* ===== 右欄：側欄 — 照搬 demo aside 結構 ===== */}
-        <aside className="flex flex-col gap-3">
+        <aside className="flex min-h-0 flex-col gap-3 overflow-hidden">
           {/* Focus 卡牌詳情 — 照搬 demo rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 */}
           <div className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
             <div className="mb-3 flex items-center justify-between">
