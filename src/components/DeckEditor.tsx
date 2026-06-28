@@ -397,8 +397,6 @@ export function DeckEditor({
                       referrerPolicy="no-referrer"
                       className="absolute inset-0 size-full object-cover"
                     />
-                    {/* 底部漸層 */}
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/4 bg-gradient-to-t from-lacquer-deep/90 to-transparent" />
                     {/* 費用角標 */}
                     <span className="absolute left-1 top-1 rounded-full bg-lacquer-deep/85 px-1.5 py-0.5 font-mono text-[9px] leading-none text-gold ring-1 ring-gold/30">
                       {card.powerCost}
