@@ -421,7 +421,7 @@ export function AdminPage() {
       </header>
 
       {activeTab === 'cards' && (
-        <>
+        <div className="admin-card-area">
           <section className="admin-audit-summary">
             <div><span>總卡</span><strong>{audit.totalCards}</strong></div>
             <div><span>效果卡</span><strong>{audit.effectCards}</strong></div>
@@ -454,7 +454,7 @@ export function AdminPage() {
               );
             })}
           </div>
-        </>
+        </div>
       )}
 
       {activeTab === 'users' && (
