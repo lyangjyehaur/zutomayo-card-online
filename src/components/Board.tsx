@@ -432,15 +432,17 @@ function LpBar({ hp, tone }: { hp: number; tone: 'gold' | 'vermilion' }) {
   );
 }
 
-/* Slot — 照搬 demo 的卡槽設計 */
+/* Slot — 照搬 demo 的卡槽設計 + 佔位文字 */
 function Slot({
   card,
+  label,
   size: _size = "small",
   owner,
   onFocusCard,
   onClick,
 }: {
   card: CardInstance | null;
+  label?: string;
   size?: CardSize;
   owner: PlayerIndex;
   onFocusCard?: (focus: FocusedCard) => void;
@@ -451,7 +453,7 @@ function Slot({
     <div
       className={`grid size-[88px] place-items-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)] ${onClick ? "cursor-pointer transition hover:ring-gold/30" : ""}`}
       onClick={onClick}
-      onMouseEnter={() => card && onFocusCard?.({ card, owner, zone: "slot" })}
+      onMouseEnter={() => card && onFocusCard?.({ card, owner, zone: label ?? "slot" })}
       onMouseLeave={() => onFocusCard?.(null)}
     >
       {card && def ? (
@@ -462,6 +464,8 @@ function Slot({
         <div className="h-[80px] w-[56px] rounded-xs bg-lacquer ring-1 ring-bone/10">
           <img src="/card-back.jpg" alt="" className="h-full w-full rounded-xs object-cover" loading="lazy" />
         </div>
+      ) : label ? (
+        <span className="font-display text-xl italic text-bone/20">{label}</span>
       ) : null}
     </div>
   );
@@ -1407,9 +1411,9 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             </div>
             {/* 對手設置區 */}
             <div className="flex gap-3">
-              <Slot card={opponent.setZoneA} size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
-              <Slot card={opponent.setZoneB} size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
-              <Slot card={opponent.setZoneC} size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneA} label="A" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneB} label="B" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneC} label="C" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
             </div>
           </div>
 
@@ -1445,11 +1449,27 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
           {/* 玩家區域 — flex-1 justify-end（照搬 demo） */}
           <div className="flex flex-1 flex-col items-center justify-end gap-3 pb-2">
-            {/* 玩家設置區 */}
-            <div className="flex gap-3">
-              <Slot card={me.setZoneA} size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
-              <Slot card={me.setZoneB} size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined} />
-              <Slot card={me.setZoneC} size="small" owner={meIndex} onFocusCard={setFocusedCard} />
+            {/* 玩家設置區 + 牌組/充能 */}
+            <div className="flex items-end gap-3">
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                  <div className="flex flex-col items-center">
+                    <div className="flex h-14 w-10 items-center justify-center rounded-xs bg-lacquer ring-1 ring-bone/10">
+                      <span className="font-display text-[10px] italic text-gold/40">ZC</span>
+                    </div>
+                  </div>
+                </div>
+                <span className="font-mono text-[9px] text-bone/30">🃏 {me.deck.length}</span>
+              </div>
+              <Slot card={me.setZoneA} label="A" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
+              <Slot card={me.setZoneB} label="B" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined} />
+              <Slot card={me.setZoneC} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} />
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                  <span className="font-mono text-lg text-gold/60">{powerTotal(G, meIndex)}</span>
+                </div>
+                <span className="font-mono text-[9px] text-bone/30">⚡ {t('board.powerCharger')}</span>
+              </div>
             </div>
             {/* 玩家資訊列 — 照搬 demo 底部排列 */}
             <div className="flex w-full items-end justify-between px-2">
@@ -1514,7 +1534,14 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
         <aside className="flex flex-col gap-3">
           {/* Focus 卡牌詳情 — 照搬 demo rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 */}
           <div className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
-            <div className="mb-3 text-[10px] uppercase tracking-[0.3em] text-gold/70">Focus</div>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Focus</span>
+              {focusedCard && (
+                <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bone/35">
+                  {playerName(focusedCard.owner)} · {focusedCard.zone}
+                </span>
+              )}
+            </div>
             {focusedCard ? (
               <>
                 <div className="aspect-[3/4] w-full overflow-hidden rounded-xs bg-gradient-to-br from-vermilion/30 via-lacquer-deep to-lacquer ring-1 ring-bone/10">
