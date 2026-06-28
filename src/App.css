@@ -1,6 +1,13 @@
-@import "tailwindcss";
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
 @plugin "daisyui" {
   themes: dark --default;
+}
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+  img, video { max-width: 100%; height: auto; }
 }
 
 :root {
