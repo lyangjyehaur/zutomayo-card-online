@@ -432,6 +432,41 @@ function LpBar({ hp, tone }: { hp: number; tone: 'gold' | 'vermilion' }) {
   );
 }
 
+/* Slot — 照搬 demo 的卡槽設計 */
+function Slot({
+  card,
+  size: _size = "small",
+  owner,
+  onFocusCard,
+  onClick,
+}: {
+  card: CardInstance | null;
+  size?: CardSize;
+  owner: PlayerIndex;
+  onFocusCard?: (focus: FocusedCard) => void;
+  onClick?: () => void;
+}) {
+  const def = card?.faceUp ? getCardDef(card.defId) : undefined;
+  return (
+    <div
+      className={`grid size-[88px] place-items-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)] ${onClick ? "cursor-pointer transition hover:ring-gold/30" : ""}`}
+      onClick={onClick}
+      onMouseEnter={() => card && onFocusCard?.({ card, owner, zone: "slot" })}
+      onMouseLeave={() => onFocusCard?.(null)}
+    >
+      {card && def ? (
+        <div className="h-[80px] w-[56px] overflow-hidden rounded-xs ring-1 ring-bone/10">
+          <img src={def.image} alt={def.name} className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+        </div>
+      ) : card ? (
+        <div className="h-[80px] w-[56px] rounded-xs bg-lacquer ring-1 ring-bone/10">
+          <img src="/card-back.jpg" alt="" className="h-full w-full rounded-xs object-cover" loading="lazy" />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function FieldZone({
   label,
   shortLabel,
@@ -570,7 +605,7 @@ function StackZone({
   );
 }
 
-function OpponentStatsBar({
+export function OpponentStatsBar({
   G,
   opponentIndex,
   damageAmount,
@@ -659,7 +694,7 @@ function OpponentStatsBar({
   );
 }
 
-function BottomZones({
+export function BottomZones({
   G,
   meIndex,
   moves,
@@ -738,7 +773,7 @@ function BottomZones({
   );
 }
 
-function CentralArena({
+export function CentralArena({
   G,
   meIndex,
   opponentIndex,
@@ -791,7 +826,7 @@ function CentralArena({
   );
 }
 
-function HandDrawer({
+export function HandDrawer({
   cards,
   owner,
   onCardClick,
@@ -844,7 +879,7 @@ function HandDrawer({
   );
 }
 
-function ActionsBar({
+export function ActionsBar({
   ready,
   canConfirm,
   cardsSet,
@@ -1094,7 +1129,7 @@ function PendingChoicePanel({
   );
 }
 
-function FocusPanel({ focus }: { focus: FocusedCard }) {
+export function FocusPanel({ focus }: { focus: FocusedCard }) {
   const def = cardDefinition(focus?.card ?? null);
   const locale = useLocale();
   const translatedEffect = def ? getTranslatedEffect(def.id, locale) : null;
@@ -1152,7 +1187,7 @@ function FocusPanel({ focus }: { focus: FocusedCard }) {
   );
 }
 
-function BattleLogPanel({ G }: { G: GameState }) {
+export function BattleLogPanel({ G }: { G: GameState }) {
   const entries = (G.actionLog ?? []).slice(-14).reverse();
   return (
     <section className="flex min-h-0 flex-1 flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10">
@@ -1177,6 +1212,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
+  const opponent = G.players[opponentIndex];
   const minimum = getMinimumSetCount(G, meIndex);
   const required = getRequiredSetCount(G, meIndex);
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
@@ -1185,7 +1221,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
   const [handExpanded, setHandExpanded] = useState(true);
   const [phaseMessage, setPhaseMessage] = useState<FeedbackMessage | null>(null);
   const [focusedCard, setFocusedCard] = useState<FocusedCard>(null);
-  const [damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
+  const [_damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const previousTurnNumber = useRef(G.turnNumber);
@@ -1297,28 +1333,24 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
   const time = getChronosTime(G);
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required;
-  const myDamage = damageFlash?.target === meIndex ? damageFlash.amount : undefined;
-  const opponentDamage = damageFlash?.target === opponentIndex ? damageFlash.amount : undefined;
 
   return (
     <div
       className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'} relative h-screen w-screen overflow-hidden bg-lacquer-deep text-bone font-sans`}
     >
-      {/* 環境光暈 */}
+      {/* 環境光暈 — 完全照搬 demo */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
       </div>
 
-      {/* 頂欄 — 整合階段指示器 */}
-      <header className="absolute inset-x-0 top-0 z-30 flex h-10 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur">
-        {/* 左：回合 + 晝夜 */}
-        <div className="flex items-center gap-4 font-mono text-[9px] uppercase tracking-[0.2em]">
+      {/* 頂欄 — demo 格式 + 階段指示器 */}
+      <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
+        <div className="flex items-center gap-8 font-mono text-[10px] uppercase tracking-[0.3em]">
           <span className="text-bone/40">{t('board.turn')} {G.turnNumber}</span>
           <span className="text-bone/40">{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
-          <span className={`ml-2 ${timeLeft <= 10 ? 'text-vermilion' : 'text-bone/40'}`}>{timeLeft}{t('board.secondsUnit')}</span>
+          <span className={`text-bone/40 ${timeLeft <= 10 ? 'text-vermilion' : ''}`}>{timeLeft}{t('board.secondsUnit')}</span>
         </div>
-        {/* 中：階段指示器 */}
-        <div className="flex items-center gap-2.5 font-mono text-[9px] uppercase tracking-[0.2em]">
+        <div className="flex items-center gap-6 font-mono text-[10px] uppercase tracking-[0.3em]">
           {[
             { label: '設置', active: G.step === 'initialSet' || G.step === 'turnSet' },
             { label: '公開', active: false },
@@ -1326,85 +1358,210 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             { label: '效果', active: G.step === 'effectOrder' || !!G.pendingChoice },
             { label: '戰鬥', active: Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1 },
             { label: '結算', active: G.step === 'gameOver' },
-          ].map((phase, i) => (
-            <span key={phase.label} className={`flex items-center gap-1 ${phase.active ? 'text-gold' : 'text-bone/20'}`}>
-              {i > 0 && <span className="text-bone/10">›</span>}
-              {phase.label}
-            </span>
+          ].map((phase) => (
+            <span key={phase.label} className={phase.active ? 'text-gold' : 'text-bone/20'}>{phase.label}</span>
           ))}
         </div>
-        {/* 右：當前指令 */}
-        <div className="flex items-center gap-2 font-mono text-[9px] text-bone/45">
-          <strong className="font-display text-xs italic text-bone/80">{phaseInstruction(G, meIndex, required, minimum).title}</strong>
-          <span className="max-w-48 truncate">{phaseInstruction(G, meIndex, required, minimum).body}</span>
+        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.3em]">
+          <span className="text-bone/40">{phaseInstruction(G, meIndex, required, minimum).title}</span>
+          <span className="text-gold">{phaseInstruction(G, meIndex, required, minimum).body}</span>
         </div>
       </header>
 
-      {/* 主內容雙欄 */}
-      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] grid-rows-[1fr] gap-4 px-4 pb-48 pt-10">
-        {/* 戰場欄 */}
-        <main className="field-layout flex min-h-0 flex-col gap-3 overflow-hidden">
-          <div className="flex-shrink-0">
-            <OpponentStatsBar G={G} opponentIndex={opponentIndex} damageAmount={opponentDamage} onFocusCard={setFocusedCard} />
+      {/* 雙欄佈局 — 完全照搬 demo grid-cols-[1fr_280px] px-6 pb-4 pt-14 */}
+      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] gap-4 px-6 pb-4 pt-14">
+
+        {/* ===== 左欄：戰場 ===== */}
+        <div className="flex flex-col">
+
+          {/* 對手區域 — flex-1 justify-start（照搬 demo） */}
+          <div className="flex flex-1 flex-col items-center justify-start gap-4 pt-3">
+            {/* 對手資訊：名字在右 + LP bar + 統計 */}
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('player.opponent')}</div>
+                <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
+              </div>
+              <div className="w-72">
+                <div className="relative h-1 w-full bg-bone/10">
+                  <div className="absolute inset-y-0 left-0 bg-vermilion" style={{ width: `${opponent.hp}%` }} />
+                </div>
+                <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
+                  <span>{opponent.hp} / 100</span>
+                  <span>{t('board.hand')} · {opponent.hand.length}</span>
+                </div>
+              </div>
+            </div>
+            {/* 對手手牌背 */}
+            <div className="flex gap-1.5">
+              {opponent.hand.map((card, index) => (
+                <div
+                  key={card.instanceId}
+                  className="h-12 w-9 overflow-hidden rounded-xs ring-1 ring-bone/10"
+                  style={{ transform: `translateY(${Math.abs(index - (opponent.hand.length - 1) / 2) * 2}px)` }}
+                >
+                  <img src="/card-back.jpg" alt="" className="h-full w-full object-cover" loading="lazy" />
+                </div>
+              ))}
+            </div>
+            {/* 對手設置區 */}
+            <div className="flex gap-3">
+              <Slot card={opponent.setZoneA} size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneB} size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneC} size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+            </div>
           </div>
-          <div className="min-h-0 flex-1">
-            <CentralArena
-              G={G}
-              meIndex={meIndex}
-              opponentIndex={opponentIndex}
-              time={time}
+
+          {/* Chronos + 戰鬥區 */}
+          <div className="my-2 flex items-center justify-center gap-8">
+            <FieldZone
+              label={t('board.battleZone')}
+              shortLabel={t('board.battleZoneShort')}
+              className="battle-zone opponent-battle-zone"
+              card={opponent.battleZone}
+              size="normal"
+              activeTime={time}
+              owner={opponentIndex}
+              onFocusCard={setFocusedCard}
+            />
+            <Chronos
+              chronos={G.chronos}
+              currentTime={time}
+              nightSidePlayer={G.chronos.nightSidePlayer}
+              currentPlayer={meIndex}
+            />
+            <FieldZone
+              label={t('board.battleZone')}
+              shortLabel={t('board.battleZoneShort')}
+              className="battle-zone player-battle-zone"
+              card={me.battleZone}
+              size="normal"
+              activeTime={time}
+              owner={meIndex}
               onFocusCard={setFocusedCard}
             />
           </div>
-          <div className="flex-shrink-0">
-            <BottomZones
-              G={G}
-              meIndex={meIndex}
-              moves={moves}
-              damageAmount={myDamage}
-              onFocusCard={setFocusedCard}
-            />
-          </div>
-        </main>
 
-        <HandDrawer
-          cards={me.hand}
-          owner={meIndex}
-          expanded={handExpanded}
-          onToggle={() => setHandExpanded((value) => !value)}
-          onCardClick={!G.ready[meIndex] ? setFromHand : undefined}
-          onFocusCard={setFocusedCard}
-        >
-          <ActionsBar
-            ready={G.ready[meIndex]}
-            canConfirm={canConfirm}
-            cardsSet={me.cardsSetThisTurn}
-            required={required}
-            onConfirm={() => {
-              showTransientPhaseMessage({ title: t('board.setConfirmed'), tone: 'neutral' });
-              moves.confirmReady();
-              setHandExpanded(false);
-            }}
-          />
-        </HandDrawer>
-
-        {/* 側欄 — Focus 和 Log 互不影響 */}
-        <aside className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex-shrink-0 overflow-y-auto p-1">
-            <FocusPanel focus={focusedCard} />
+          {/* 玩家區域 — flex-1 justify-end（照搬 demo） */}
+          <div className="flex flex-1 flex-col items-center justify-end gap-3 pb-2">
+            {/* 玩家設置區 */}
+            <div className="flex gap-3">
+              <Slot card={me.setZoneA} size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
+              <Slot card={me.setZoneB} size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined} />
+              <Slot card={me.setZoneC} size="small" owner={meIndex} onFocusCard={setFocusedCard} />
+            </div>
+            {/* 玩家資訊列 — 照搬 demo 底部排列 */}
+            <div className="flex w-full items-end justify-between px-2">
+              {/* 左：LP bar */}
+              <div className="w-72">
+                <div className="relative h-1 w-full bg-bone/10">
+                  <div className="absolute inset-y-0 left-0 bg-gold" style={{ width: `${me.hp}%` }} />
+                </div>
+                <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
+                  <span>{me.hp} / 100</span>
+                  <span>{t('board.deck')} · {me.deck.length}</span>
+                </div>
+              </div>
+              {/* 中：手牌扇形 */}
+              <div className="flex items-end gap-1 px-4">
+                {me.hand.map((card, index) => {
+                  const center = (me.hand.length - 1) / 2;
+                  const rotate = (index - center) * 4;
+                  const translateY = Math.abs(index - center) * 6;
+                  return (
+                    <div
+                      key={card.instanceId}
+                      className="h-36 w-24 shrink-0 cursor-pointer rounded-sm bg-gradient-to-b from-bone/10 to-lacquer-deep p-0.5 ring-1 ring-bone/15 transition-all duration-300 hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-gold hover:shadow-[0_20px_40px_-10px] hover:shadow-gold/30"
+                      style={{ transform: `rotate(${rotate}deg) translateY(${translateY}px)` }}
+                      onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined}
+                      onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
+                      onMouseLeave={() => setFocusedCard(null)}
+                    >
+                      <Card card={card} size="normal" className="!h-full !w-full" showBadges={false} showPopover onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined} />
+                    </div>
+                  );
+                })}
+              </div>
+              {/* 右：操作按鈕 — 照搬 demo */}
+              <div className="flex w-44 flex-col gap-2">
+                {!G.ready[meIndex] ? (
+                  <button
+                    className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    type="button"
+                    disabled={!canConfirm}
+                    onClick={() => {
+                      showTransientPhaseMessage({ title: t('board.setConfirmed'), tone: 'neutral' });
+                      moves.confirmReady();
+                    }}
+                  >
+                    {t('board.confirmSet')} ({me.cardsSetThisTurn}/{required})
+                  </button>
+                ) : (
+                  <button className="border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60" type="button" disabled>
+                    {t('board.readyWaiting')}
+                  </button>
+                )}
+                <button className="border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5" type="button" disabled>
+                  {t('board.powerCharger')} {powerTotal(G, meIndex)}
+                </button>
+              </div>
+            </div>
           </div>
-          {G.step === 'effectOrder' && (
-            <div className="flex-shrink-0 overflow-y-auto p-1">
-              <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
+        </div>
+
+        {/* ===== 右欄：側欄 — 照搬 demo aside 結構 ===== */}
+        <aside className="flex flex-col gap-3">
+          {/* Focus 卡牌詳情 — 照搬 demo rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 */}
+          <div className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+            <div className="mb-3 text-[10px] uppercase tracking-[0.3em] text-gold/70">Focus</div>
+            {focusedCard ? (
+              <>
+                <div className="aspect-[3/4] w-full overflow-hidden rounded-xs bg-gradient-to-br from-vermilion/30 via-lacquer-deep to-lacquer ring-1 ring-bone/10">
+                  {cardDefinition(focusedCard.card)?.image && (
+                    <img src={cardDefinition(focusedCard.card)!.image} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                  )}
+                </div>
+                <div className="mt-3 font-display text-lg italic">{cardDefinition(focusedCard.card)?.name ?? '?'}</div>
+                <div className="mt-1 font-mono text-[9px] uppercase tracking-widest text-bone/40">
+                  {cardDefinition(focusedCard.card)?.element} · {cardDefinition(focusedCard.card)?.type}
+                </div>
+                {cardDefinition(focusedCard.card)?.attack && (
+                  <div className="mt-3 flex justify-between font-mono text-[10px] text-bone/60">
+                    <span>ATK {cardDefinition(focusedCard.card)!.attack!.night}/{cardDefinition(focusedCard.card)!.attack!.day}</span>
+                    <span>{t('card.clock')} {cardDefinition(focusedCard.card)!.clock}</span>
+                  </div>
+                )}
+                {(getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', useLocale()) || cardDefinition(focusedCard.card)?.effect) && (
+                  <p className="mt-3 text-[11px] leading-relaxed text-bone/50">
+                    {getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', useLocale()) ?? cardDefinition(focusedCard.card)?.effect}
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="aspect-[3/4] w-full rounded-xs bg-gradient-to-br from-vermilion/10 via-lacquer-deep to-lacquer ring-1 ring-bone/10" />
+            )}
+          </div>
+
+          {/* EffectOrder / PendingChoice 面板 */}
+          {G.step === 'effectOrder' && <EffectOrderPanel G={G} moves={moves} playerID={playerID} />}
+          {G.pendingChoice && <PendingChoicePanel G={G} moves={moves} playerID={playerID} />}
+
+          {/* 戰鬥日誌 — 照搬 demo flex-1 overflow-hidden */}
+          <div className="flex flex-1 flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Ritual Log</span>
+              <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
             </div>
-          )}
-          {G.pendingChoice && (
-            <div className="flex-shrink-0 overflow-y-auto p-1">
-              <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
+            <div className="flex-1 space-y-2 overflow-hidden font-mono text-[10px] leading-relaxed text-bone/40">
+              {(G.actionLog ?? []).slice(-14).reverse().map((entry, i) => (
+                <p key={i}>
+                  <span className="text-bone/60">[T{entry.turn}]</span> {entry.result?.message ?? entry.action}
+                </p>
+              ))}
+              {(!G.actionLog || G.actionLog.length === 0) && (
+                <p className="text-bone/30">{t('board.waitingOpponent')}</p>
+              )}
             </div>
-          )}
-          <div className="min-h-0 flex-1 overflow-y-auto p-1">
-            <BattleLogPanel G={G} />
           </div>
         </aside>
       </div>
