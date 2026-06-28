@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { Swords, Bot, LayoutGrid } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { AuthSection } from '../components/lobby/AuthSection';
 import { t } from '../i18n';
@@ -11,77 +12,112 @@ interface LobbyPageProps {
   onShowTutorial: () => void;
 }
 
-export function LobbyPage({ onAuthChanged, onShowTutorial }: LobbyPageProps) {
+type Entry = {
+  to: '/online' | '/ai' | '/deck-builder';
+  titleKey: 'lobby.onlineTitle' | 'lobby.aiBattle' | 'lobby.deckEditor';
+  subtitle: string;
+  caption: string;
+  Icon: typeof Swords;
+};
+
+const ENTRIES: Entry[] = [
+  {
+    to: '/online',
+    titleKey: 'lobby.onlineTitle',
+    subtitle: 'Online Duel',
+    caption: '與遠方的對手進行儀式',
+    Icon: Swords,
+  },
+  {
+    to: '/ai',
+    titleKey: 'lobby.aiBattle',
+    subtitle: 'VS. CPU',
+    caption: '於靜室中獨自演練',
+    Icon: Bot,
+  },
+  {
+    to: '/deck-builder',
+    titleKey: 'lobby.deckEditor',
+    subtitle: 'Deck Editor',
+    caption: '編織你的命運序列',
+    Icon: LayoutGrid,
+  },
+];
+
+export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
 
   return (
-    <main className="min-h-screen container mx-auto flex flex-col gap-6 p-4">
-      {/* 頂部列：標題 + 語言選擇 */}
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <span className="text-sm opacity-70">{t('lobby.menu')}</span>
-          <h1 className="text-3xl font-bold text-primary">{t('app.title')}</h1>
-          <p className="text-sm opacity-70">{t('app.subtitle')}</p>
+    <main className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
+      {/* 環境層：中央朱紅光暈 + 點陣紋理 */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-1/2 top-1/2 h-[80vh] w-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/10 blur-[140px]" />
+        <div className="absolute inset-0 opacity-[0.04] [background-image:radial-gradient(rgba(255,255,255,0.6)_1px,transparent_1px)] [background-size:3px_3px]" />
+      </div>
+
+      {/* 頂部 Header */}
+      <header className="absolute inset-x-0 top-0 z-20 flex h-16 items-center justify-between px-8">
+        <div className="flex items-center gap-3">
+          <div className="size-2 rounded-full bg-vermilion shadow-[0_0_12px] shadow-vermilion/60" />
+          <span className="font-display text-xl italic tracking-tight">{t('app.title')}</span>
+          <span className="ml-3 hidden text-[10px] uppercase tracking-[0.3em] text-bone/40 md:inline">
+            {t('app.subtitle')}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
           <LanguageSwitcher />
+          <AuthSection onAuthChanged={onAuthChanged} />
         </div>
       </header>
 
-      {/* 主選單三個大卡片 */}
-      <section className="lobby-menu-cards grid gap-4 sm:grid-cols-2 lg:grid-cols-3 flex-1">
-        <button
-          className="lobby-menu-card card bg-base-200 hover:shadow-2xl cursor-pointer transition-shadow"
-          type="button"
-          onClick={() => navigate('/online')}
-        >
-          <div className="card-body items-center text-center gap-2 p-8">
-            <span className="lobby-menu-icon text-4xl">🌐</span>
-            <h2 className="card-title">{t('lobby.onlineTitle')}</h2>
-            <p className="text-sm opacity-70">{t('game.onlineMode')}</p>
-          </div>
-        </button>
-        <button
-          className="lobby-menu-card card bg-base-200 hover:shadow-2xl cursor-pointer transition-shadow"
-          type="button"
-          onClick={() => navigate('/ai')}
-        >
-          <div className="card-body items-center text-center gap-2 p-8">
-            <span className="lobby-menu-icon text-4xl">🤖</span>
-            <h2 className="card-title">{t('lobby.aiBattle')}</h2>
-            <p className="text-sm opacity-70">{t('lobby.difficulty')}</p>
-          </div>
-        </button>
-        <button
-          className="lobby-menu-card card bg-base-200 hover:shadow-2xl cursor-pointer transition-shadow"
-          type="button"
-          onClick={() => navigate('/deck-builder')}
-        >
-          <div className="card-body items-center text-center gap-2 p-8">
-            <span className="lobby-menu-icon text-4xl">🗂️</span>
-            <h2 className="card-title">{t('lobby.deckEditor')}</h2>
-            <p className="text-sm opacity-70">{t('deck.localDecks')}</p>
-          </div>
-        </button>
+      {/* 中央三聯幅卡 */}
+      <section className="relative z-10 flex h-full items-center justify-center px-8">
+        <div className="grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-3">
+          {ENTRIES.map(({ to, titleKey, subtitle, caption, Icon }, i) => (
+            <button
+              key={to}
+              type="button"
+              onClick={() => navigate(to)}
+              className="group relative flex h-[460px] flex-col justify-between overflow-hidden rounded-sm bg-lacquer p-8 text-left ring-1 ring-bone/10 transition-all duration-500 hover:-translate-y-1 hover:ring-gold/50 hover:shadow-[0_30px_80px_-20px] hover:shadow-vermilion/30"
+            >
+              {/* 卡內裝飾：內框線 */}
+              <div className="pointer-events-none absolute inset-3 rounded-sm ring-1 ring-bone/5 transition-all duration-500 group-hover:ring-gold/20" />
+              {/* 卡內裝飾：底部漸層 */}
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-vermilion/10 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+
+              {/* 頂：編號 + 圖示 */}
+              <div className="relative flex items-start justify-between">
+                <span className="font-mono text-[10px] tracking-[0.3em] text-gold/70">0{i + 1} / 03</span>
+                <Icon className="size-5 text-bone/40 transition-colors group-hover:text-gold" strokeWidth={1.25} />
+              </div>
+
+              {/* 中：副標 + 主標 + 說明 */}
+              <div className="relative">
+                <div className="mb-2 text-[10px] uppercase tracking-[0.35em] text-bone/40">{subtitle}</div>
+                <h2 className="font-display text-5xl leading-none tracking-tight">{t(titleKey)}</h2>
+                <p className="mt-4 max-w-[22ch] text-sm leading-relaxed text-bone/50">{caption}</p>
+              </div>
+
+              {/* 底：Enter + 箭頭 */}
+              <div className="relative flex items-center justify-between border-t border-bone/10 pt-5">
+                <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40 transition-colors group-hover:text-bone/80">
+                  Enter
+                </span>
+                <span className="font-display text-xl italic text-gold/60 transition-transform duration-500 group-hover:translate-x-1 group-hover:text-gold">
+                  →
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
       </section>
 
-      {/* 底部區：登入區塊 + 次要連結 */}
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex flex-col gap-3 lg:max-w-sm lg:flex-1">
-          <AuthSection onAuthChanged={onAuthChanged} />
-        </div>
-        <nav className="flex flex-wrap items-center gap-2" aria-label={t('nav.primary')}>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => navigate('/leaderboard')}>
-            🏆 {t('leaderboard.title')}
-          </button>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => navigate('/history')}>
-            📜 {t('lobby.matchHistory')}
-          </button>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={onShowTutorial}>
-            ❓ {t('lobby.tutorial')}
-          </button>
-        </nav>
-      </section>
+      {/* 底部 Footer */}
+      <footer className="absolute inset-x-0 bottom-0 z-20 flex h-10 items-center justify-between px-8 text-[10px] uppercase tracking-[0.3em] text-bone/30">
+        <span>v0.8.2 — omega</span>
+        <span className="hidden md:inline">choose your ritual</span>
+        <span className="font-mono">© zutomayo 2026</span>
+      </footer>
     </main>
   );
 }

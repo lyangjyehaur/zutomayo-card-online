@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { LogOut } from 'lucide-react';
 import { ApiError, getProfile, isLoggedIn, login, logout as logoutAccount, register } from '../../api/client';
 import { t } from '../../i18n';
 
@@ -113,25 +114,30 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
   if (user) {
     const stats = profileStats(user);
     return (
-      <section className="card bg-base-200 shadow-xl" aria-label={user.nickname || t('auth.guest')}>
-        <div className="card-body gap-3 p-4">
-          <div>
-            <strong>{user.nickname || t('auth.guest')}</strong>
-            <div className="flex flex-wrap gap-2 pt-2">
-              <span className="badge badge-primary">ELO {user.elo}</span>
-              <span className="badge badge-success">
-                {t('auth.winRate')} {stats.winRate}%
-              </span>
-              <span className="badge badge-warning">
-                {t('auth.wins')} {stats.wins}/{stats.matchCount}
-              </span>
-            </div>
+      <section className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10" aria-label={user.nickname || t('auth.guest')}>
+        <div className="flex flex-col gap-3">
+          <p className="font-display text-sm italic text-bone">{user.nickname || t('auth.guest')}</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span className="font-mono text-[10px] text-gold/70">ELO {user.elo}</span>
+            <span className="font-mono text-[10px] text-bone/40">
+              {t('auth.winRate')} {stats.winRate}%
+            </span>
+            <span className="font-mono text-[10px] text-bone/40">
+              {t('auth.wins')} {stats.wins}/{stats.matchCount}
+            </span>
           </div>
-          <div className="card-actions items-center">
-            <button className="btn btn-secondary btn-sm" type="button" onClick={handleLogout}>
-              {t('auth.logout')}
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              className="border border-bone/20 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5"
+              type="button"
+              onClick={handleLogout}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <LogOut strokeWidth={1.25} className="size-3" />
+                {t('auth.logout')}
+              </span>
             </button>
-            {status && <span className="badge badge-success">{status}</span>}
+            {status && <span className="font-mono text-[10px] text-gold/70">{status}</span>}
           </div>
         </div>
       </section>
@@ -139,23 +145,28 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
   }
 
   return (
-    <section className="card bg-base-200 shadow-xl">
-      <div className="card-body gap-3 p-4">
+    <section className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+      <div className="flex flex-col gap-3">
         <button
-          className="btn btn-secondary btn-sm"
+          className="border border-bone/20 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5"
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
           {t('auth.login')} / {t('auth.register')}
         </button>
-        {!expanded && error && <div className="alert alert-error">{error}</div>}
+        {!expanded && error && <p className="text-[10px] text-vermilion/80">{error}</p>}
+        {!expanded && status && <p className="font-mono text-[10px] text-gold/70">{status}</p>}
 
         {expanded && (
           <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-            <div className="join" role="tablist" aria-label={`${t('auth.login')} / ${t('auth.register')}`}>
+            <div
+              className="flex gap-4 border-b border-bone/10 pb-2"
+              role="tablist"
+              aria-label={`${t('auth.login')} / ${t('auth.register')}`}
+            >
               <button
-                className={`btn btn-sm join-item ${mode === 'login' ? 'btn-primary' : 'btn-ghost'}`}
+                className={`text-[10px] uppercase tracking-[0.3em] transition ${mode === 'login' ? 'text-gold' : 'text-bone/40 hover:text-bone/60'}`}
                 type="button"
                 role="tab"
                 aria-selected={mode === 'login'}
@@ -164,7 +175,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
                 {t('auth.login')}
               </button>
               <button
-                className={`btn btn-sm join-item ${mode === 'register' ? 'btn-primary' : 'btn-ghost'}`}
+                className={`text-[10px] uppercase tracking-[0.3em] transition ${mode === 'register' ? 'text-gold' : 'text-bone/40 hover:text-bone/60'}`}
                 type="button"
                 role="tab"
                 aria-selected={mode === 'register'}
@@ -173,10 +184,10 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
                 {t('auth.register')}
               </button>
             </div>
-            <label className="form-control">
-              <span>{t('auth.email')}</span>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('auth.email')}</span>
               <input
-                className="input input-bordered"
+                className="border border-bone/10 bg-lacquer-deep px-3 py-2 text-sm text-bone placeholder:text-bone/30 focus:outline-none focus:ring-1 focus:ring-gold/40"
                 type="email"
                 value={email}
                 autoComplete="email"
@@ -185,10 +196,10 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
               />
             </label>
             {mode === 'register' && (
-              <label className="form-control">
-                <span>{t('auth.nickname')}</span>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('auth.nickname')}</span>
                 <input
-                  className="input input-bordered"
+                  className="border border-bone/10 bg-lacquer-deep px-3 py-2 text-sm text-bone placeholder:text-bone/30 focus:outline-none focus:ring-1 focus:ring-gold/40"
                   type="text"
                   value={nickname}
                   autoComplete="nickname"
@@ -197,10 +208,10 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
                 />
               </label>
             )}
-            <label className="form-control">
-              <span>{t('auth.password')}</span>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('auth.password')}</span>
               <input
-                className="input input-bordered"
+                className="border border-bone/10 bg-lacquer-deep px-3 py-2 text-sm text-bone placeholder:text-bone/30 focus:outline-none focus:ring-1 focus:ring-gold/40"
                 type="password"
                 value={password}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
@@ -208,8 +219,12 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
                 onChange={(event) => setPassword(event.target.value)}
               />
             </label>
-            {error && <div className="alert alert-error">{error}</div>}
-            <button className="btn btn-primary" type="submit" disabled={submitting}>
+            {error && <p className="text-[10px] text-vermilion/80">{error}</p>}
+            <button
+              className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:opacity-50"
+              type="submit"
+              disabled={submitting}
+            >
               {mode === 'login' ? t('auth.login') : t('auth.register')}
             </button>
           </form>

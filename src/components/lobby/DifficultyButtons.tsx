@@ -1,3 +1,4 @@
+import { ChevronRight } from 'lucide-react';
 import type { AIDifficulty } from '../../game/ai';
 import { t } from '../../i18n';
 
@@ -9,27 +10,29 @@ export function DifficultyButtons({ onStart }: { onStart: (difficulty: AIDifficu
   ];
 
   return (
-    <section className="card bg-base-200 shadow-xl">
-      <div className="card-body">
-        <div>
-          <h3 className="card-title">{t('lobby.aiBattle')}</h3>
-          <span className="text-sm opacity-70">{t('lobby.difficulty')}</span>
-        </div>
-        <div className="grid gap-3">
-          {levels.map((level) => (
-            <button
-              key={level.id}
-              className="btn btn-ghost h-auto justify-start p-4 text-left"
-              type="button"
-              onClick={() => onStart(level.id)}
-            >
-              <span className="flex flex-col gap-1">
-                <strong>{level.label}</strong>
-                <span className="text-sm opacity-70">{level.detail}</span>
-              </span>
-            </button>
-          ))}
-        </div>
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="font-display text-lg italic text-bone">{t('lobby.aiBattle')}</h3>
+        <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('lobby.difficulty')}</span>
+      </div>
+      <div className="flex flex-col gap-2">
+        {levels.map((level) => (
+          <button
+            key={level.id}
+            className="group flex items-center justify-between border border-bone/10 px-4 py-3 transition hover:border-gold/30 hover:bg-bone/5"
+            type="button"
+            onClick={() => onStart(level.id)}
+          >
+            <span className="flex flex-col gap-0.5 text-left">
+              <span className="font-display text-base italic text-bone">{level.label}</span>
+              <span className="text-[10px] text-bone/40">{level.detail}</span>
+            </span>
+            <ChevronRight
+              strokeWidth={1.25}
+              className="size-4 text-bone/30 transition group-hover:translate-x-0.5 group-hover:text-gold/70"
+            />
+          </button>
+        ))}
       </div>
     </section>
   );

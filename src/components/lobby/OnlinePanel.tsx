@@ -143,49 +143,72 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
   };
 
   return (
-    <section className="card bg-base-200 shadow-xl">
-      <div className="card-body">
-        <div>
-          <h3 className="card-title">{t('lobby.onlineTitle')}</h3>
-          <span className="text-sm opacity-70">{t('game.onlineMode')}</span>
-        </div>
-        <div className="grid gap-3">
-          <button className="btn btn-primary" type="button" onClick={handleQuickMatch} disabled={matchmakingActive}>
-            {t('lobby.quickMatch')}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={() => runOnline()} disabled={matchmakingActive}>
-            {t('lobby.createRoom')}
-          </button>
-          <div className="join">
-            <input
-              className="input input-bordered join-item min-w-0 flex-1"
-              value={matchID}
-              onChange={(event) => setMatchID(event.target.value.trim())}
-              placeholder={t('lobby.roomCodePlaceholder')}
-              aria-label={t('lobby.roomCode')}
-              disabled={matchmakingActive}
-            />
-            <button
-              className="btn btn-secondary join-item"
-              type="button"
-              disabled={!matchID || matchmakingActive}
-              onClick={() => runOnline(matchID)}
-            >
-              {t('lobby.joinRoom')}
-            </button>
-          </div>
-        </div>
-        {matchmakingActive && (
-          <div className="alert alert-info">
-            <span>{t('lobby.matchmakingSearching')}</span>
-            <button className="btn btn-sm" type="button" onClick={handleCancelMatchmaking}>
-              {t('lobby.matchmakingCancel')}
-            </button>
-          </div>
-        )}
-        {createdMatchID && <OnlineRoomInfo matchID={createdMatchID} helperText={t('online.hostWaitingHelper')} />}
-        {error && <div className="alert alert-error">{error}</div>}
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="font-display text-lg italic text-bone">{t('lobby.onlineTitle')}</h3>
+        <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('game.onlineMode')}</span>
       </div>
+      <div className="flex flex-col gap-2">
+        <button
+          className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:opacity-50"
+          type="button"
+          onClick={handleQuickMatch}
+          disabled={matchmakingActive}
+        >
+          {t('lobby.quickMatch')}
+        </button>
+        <button
+          className="border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 disabled:opacity-50"
+          type="button"
+          onClick={() => runOnline()}
+          disabled={matchmakingActive}
+        >
+          {t('lobby.createRoom')}
+        </button>
+        <div className="flex gap-2">
+          <input
+            className="min-w-0 flex-1 border border-bone/10 bg-lacquer-deep px-3 py-2 text-sm text-bone placeholder:text-bone/30 focus:outline-none focus:ring-1 focus:ring-gold/40 disabled:opacity-50"
+            value={matchID}
+            onChange={(event) => setMatchID(event.target.value.trim())}
+            placeholder={t('lobby.roomCodePlaceholder')}
+            aria-label={t('lobby.roomCode')}
+            disabled={matchmakingActive}
+          />
+          <button
+            className="border border-bone/20 px-4 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 disabled:opacity-50"
+            type="button"
+            disabled={!matchID || matchmakingActive}
+            onClick={() => runOnline(matchID)}
+          >
+            {t('lobby.joinRoom')}
+          </button>
+        </div>
+      </div>
+      {matchmakingActive && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-[10px] text-gold/70">
+            <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
+            {t('lobby.matchmakingSearching')}
+          </span>
+          <button
+            className="text-[10px] uppercase tracking-[0.3em] text-vermilion/70 transition hover:text-vermilion"
+            type="button"
+            onClick={handleCancelMatchmaking}
+          >
+            {t('lobby.matchmakingCancel')}
+          </button>
+        </div>
+      )}
+      {createdMatchID && (
+        <div className="flex flex-col gap-2 rounded-sm bg-lacquer p-3 ring-1 ring-bone/10">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('online.roomCode')}</span>
+            <span className="font-mono text-xs text-gold">{createdMatchID}</span>
+          </div>
+          <OnlineRoomInfo matchID={createdMatchID} helperText={t('online.hostWaitingHelper')} />
+        </div>
+      )}
+      {error && <p className="text-[10px] text-vermilion/80">{error}</p>}
     </section>
   );
 }

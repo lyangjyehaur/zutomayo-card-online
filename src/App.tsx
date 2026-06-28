@@ -64,26 +64,42 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  if (location.pathname.startsWith('/play/')) return null;
+  // 全螢幕單屏頁面有自己的 Header，不需要 NavBar
+  if (
+    location.pathname.startsWith('/play/') ||
+    location.pathname === '/' ||
+    location.pathname === '/online' ||
+    location.pathname === '/ai'
+  ) {
+    return null;
+  }
 
-  const buttonClass = (path: string) => `nav-link ${location.pathname === path ? 'active' : ''}`;
+  const buttonClass = (path: string) =>
+    `text-[10px] uppercase tracking-[0.3em] transition-colors ${
+      location.pathname === path ? 'text-gold' : 'text-bone/50 hover:text-bone'
+    }`;
 
   return (
-    <nav className="nav-bar" aria-label={t('nav.primary')}>
-      <button className={buttonClass('/')} type="button" onClick={() => navigate('/')}>
-        {t('nav.lobby')}
-      </button>
-      <button className={buttonClass('/online')} type="button" onClick={() => navigate('/online')}>
-        🌐 {t('lobby.onlineTitle')}
-      </button>
-      <button className={buttonClass('/ai')} type="button" onClick={() => navigate('/ai')}>
-        🤖 {t('lobby.aiBattle')}
-      </button>
-      <button className={buttonClass('/deck-builder')} type="button" onClick={() => navigate('/deck-builder')}>
-        🗂️ {t('nav.deckBuilder')}
-      </button>
-      <button className="nav-link tutorial" type="button" onClick={onShowTutorial}>
-        ❓ {t('nav.tutorial')}
+    <nav
+      className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur"
+      aria-label={t('nav.primary')}
+    >
+      <div className="flex items-center gap-6">
+        <button className={buttonClass('/')} type="button" onClick={() => navigate('/')}>
+          {t('nav.lobby')}
+        </button>
+        <button className={buttonClass('/online')} type="button" onClick={() => navigate('/online')}>
+          {t('lobby.onlineTitle')}
+        </button>
+        <button className={buttonClass('/ai')} type="button" onClick={() => navigate('/ai')}>
+          {t('lobby.aiBattle')}
+        </button>
+        <button className={buttonClass('/deck-builder')} type="button" onClick={() => navigate('/deck-builder')}>
+          {t('nav.deckBuilder')}
+        </button>
+      </div>
+      <button className={buttonClass('')} type="button" onClick={onShowTutorial}>
+        {t('nav.tutorial')}
       </button>
     </nav>
   );
@@ -277,7 +293,12 @@ function RouterShell() {
 
   const deck0 = selectedDeckName(deck0Name, customDeckAvailable);
   const deck1 = selectedDeckName(deck1Name, customDeckAvailable);
-  const hideNav = location.pathname.startsWith('/play/');
+  // 全螢幕單屏頁面（首頁/線上/電腦/對戰中）有自己的 Header，不需要 NavBar 和 padding
+  const hideNav =
+    location.pathname.startsWith('/play/') ||
+    location.pathname === '/' ||
+    location.pathname === '/online' ||
+    location.pathname === '/ai';
 
   return (
     <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
