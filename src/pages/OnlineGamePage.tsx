@@ -66,21 +66,33 @@ function LeaveConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className="modal modal-open" role="presentation">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-lacquer-deep/70 px-4 backdrop-blur-sm" role="presentation">
       <section
-        className="modal-box card bg-base-200"
+        className="w-full max-w-md rounded-sm bg-lacquer p-6 text-bone ring-1 ring-bone/10"
         role="dialog"
         aria-modal="true"
         aria-labelledby="leave-confirm-title"
       >
-        <span>{t('game.onlineMode')}</span>
-        <h2 id="leave-confirm-title">{t('online.leaveTitle')}</h2>
-        <p>{t('online.leaveBody')}</p>
-        <div className="modal-action">
-          <button className="btn btn-sm" type="button" disabled={leaving} onClick={onCancel}>
+        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('game.onlineMode')}</span>
+        <h2 id="leave-confirm-title" className="mt-3 font-display text-2xl italic">
+          {t('online.leaveTitle')}
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-bone/60">{t('online.leaveBody')}</p>
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold disabled:opacity-40"
+            type="button"
+            disabled={leaving}
+            onClick={onCancel}
+          >
             {t('online.stayInRoom')}
           </button>
-          <button className="btn btn-ghost btn-sm" type="button" disabled={leaving} onClick={onConfirm}>
+          <button
+            className="border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:border-vermilion/50 hover:text-vermilion disabled:opacity-40"
+            type="button"
+            disabled={leaving}
+            onClick={onConfirm}
+          >
             {leaving ? t('online.leaving') : t('online.leaveRoom')}
           </button>
         </div>
@@ -287,42 +299,53 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
       : canLeave
         ? t('online.leaveRoom')
         : t('common.backToLobby');
+    const panelTone = copy.tone === 'error' ? 'text-vermilion/80' : copy.tone === 'waiting' ? 'text-gold/70' : 'text-bone/45';
 
     return (
-      <main className="online-session-missing app-screen">
-        <section
-          className={`card bg-base-200 ${
-            copy.tone === 'error'
-              ? 'alert alert-error'
-              : copy.tone === 'waiting'
-                ? 'alert alert-warning'
-                : 'alert alert-info'
-          }`}
-        >
-          <span>{t('game.onlineMode')}</span>
-          <h1>{t(copy.titleKey)}</h1>
-          <p>{t(copy.bodyKey)}</p>
+      <main className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
+        </div>
+        <section className="relative z-10 w-full max-w-xl rounded-sm bg-lacquer p-6 ring-1 ring-bone/10">
+          <span className={`font-mono text-[10px] uppercase tracking-[0.3em] ${panelTone}`}>
+            {t('game.onlineMode')}
+          </span>
+          <h1 className="mt-3 font-display text-3xl italic">{t(copy.titleKey)}</h1>
+          <p className="mt-3 text-sm leading-relaxed text-bone/60">{t(copy.bodyKey)}</p>
           {showRoomInfo && <OnlineRoomInfo matchID={panelSession.matchID} helperText={roomInfoHelper(status)} />}
-          <div className="card-actions">
+          <div className="mt-6 flex flex-wrap gap-3">
             <button
-              className={canLeave ? 'btn btn-ghost btn-sm' : 'btn btn-sm'}
+              className={
+                canLeave
+                  ? 'border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:border-vermilion/50 hover:text-vermilion'
+                  : 'bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold'
+              }
               type="button"
               onClick={() => backActionForStatus(status)}
             >
               {primaryLabel}
             </button>
             {canRetry && (
-              <button className="btn btn-sm" type="button" onClick={retryStatusCheck}>
+              <button
+                className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold"
+                type="button"
+                onClick={retryStatusCheck}
+              >
                 {t('online.retryAction')}
               </button>
             )}
             {copy.canCreateNewRoom && (
-              <button className="btn btn-sm" type="button" disabled={creatingRoom} onClick={() => void createNewRoom()}>
+              <button
+                className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold disabled:opacity-40"
+                type="button"
+                disabled={creatingRoom}
+                onClick={() => void createNewRoom()}
+              >
                 {creatingRoom ? t('online.creatingRoom') : t('online.createNewRoom')}
               </button>
             )}
           </div>
-          {actionError && <p className="alert alert-error">{actionError}</p>}
+          {actionError && <p className="mt-4 text-[10px] text-vermilion/80">{actionError}</p>}
         </section>
         {leavePromptOpen && (
           <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={() => void leaveAndReturn()} />

@@ -23,7 +23,7 @@ type MatchDataMember = { id: number; name?: string } | undefined;
 
 function OnlineLoading() {
   return (
-    <div className="online-connection-panel" role="status">
+    <div className="flex h-screen w-screen items-center justify-center bg-lacquer-deep font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50" role="status">
       {t('onlineSession.reconnecting')}
     </div>
   );
@@ -140,19 +140,25 @@ export function OnlineGame({
   );
 
   return (
-    <div className="app game-app">
-      <header className="game-header">
-        <button className="back-btn" type="button" onClick={onLeaveRequest}>
+    <div className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
+      <header className="absolute inset-x-0 top-0 z-40 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
+        <button
+          className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50 transition hover:text-bone"
+          type="button"
+          onClick={onLeaveRequest}
+        >
           {t('online.leaveRoom')}
         </button>
-        <div>
-          <strong>{t('game.onlineMode')}</strong>
-          <span>
+        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-4">
+          <strong className="font-display text-sm italic text-bone">{t('game.onlineMode')}</strong>
+          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
             {t('game.matchCode')} {matchID}
           </span>
         </div>
         {connectionStatus && (
-          <span className={`online-connection-status ${connectionStatus}`}>
+          <span className={`font-mono text-[10px] uppercase tracking-[0.3em] ${
+            connectionStatus === 'disconnected' ? 'text-vermilion/80' : 'text-gold/70'
+          }`}>
             {connectionStatus === 'rejoined'
               ? t('onlineSession.rejoined')
               : connectionStatus === 'disconnected'
@@ -161,7 +167,7 @@ export function OnlineGame({
           </span>
         )}
       </header>
-      <div className="game-container single">
+      <div className="h-full w-full">
         <OnlineClient playerID={playerID} matchID={matchID} credentials={playerCredentials} />
       </div>
     </div>
