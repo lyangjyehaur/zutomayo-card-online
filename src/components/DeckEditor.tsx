@@ -310,22 +310,20 @@ export function DeckEditor({
             </div>
           </div>
 
-          <div className="deck-pool-list min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
+          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-3 content-start gap-3 overflow-y-auto pr-1 sm:grid-cols-4 lg:grid-cols-5">
             {visibleCards.map((card) => {
               const count = deckCounts.get(card.id) ?? 0;
               const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
               return (
-                <button
-                  key={card.id}
-                  type="button"
-                  disabled={!canAdd}
-                  onClick={() => addCard(card.id)}
-                  className={`group flex w-full items-stretch gap-3 rounded-sm bg-lacquer-deep/60 p-2 text-left ring-1 transition hover:-translate-y-0.5 hover:ring-gold/40 focus:outline-none focus:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10 ${
-                    count > 0 ? 'ring-gold/30' : 'ring-bone/10'
-                  }`}
-                >
-                  {/* 左：卡圖 */}
-                  <div className="relative aspect-[5/7] w-14 shrink-0 overflow-hidden rounded-xs ring-1 ring-bone/10">
+                <div key={card.id} className="group relative">
+                  <button
+                    type="button"
+                    disabled={!canAdd}
+                    onClick={() => addCard(card.id)}
+                    className={`relative flex aspect-[5/7] w-full cursor-pointer flex-col overflow-hidden rounded-sm bg-lacquer-deep ring-1 transition hover:-translate-y-1 hover:ring-gold/40 focus:outline-none focus:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10 ${
+                      count > 0 ? 'ring-gold/30' : 'ring-bone/10'
+                    }`}
+                  >
                     <img
                       src={card.image}
                       alt={card.name}
@@ -333,47 +331,41 @@ export function DeckEditor({
                       referrerPolicy="no-referrer"
                       className="absolute inset-0 size-full object-cover"
                     />
-                    <span className="absolute left-0.5 top-0.5 rounded-full bg-lacquer-deep/85 px-1 py-0.5 font-mono text-[8px] leading-none text-gold">
+                    {/* 底部漸層 + 卡名 */}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-lacquer-deep via-lacquer-deep/80 to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2">
+                      <div className="truncate font-display text-xs font-medium text-bone/90">{card.name}</div>
+                    </div>
+                    {/* 費用角標 */}
+                    <span className="absolute left-1 top-1 rounded-full bg-lacquer-deep/85 px-1.5 py-0.5 font-mono text-[9px] leading-none text-gold ring-1 ring-gold/30">
                       {card.powerCost}
                     </span>
+                    {/* 已加入數量 */}
                     {count > 0 && (
-                      <span className="absolute bottom-0.5 right-0.5 rounded-full bg-gold/30 px-1 py-0.5 font-mono text-[8px] leading-none text-gold ring-1 ring-gold/40">
+                      <span className="absolute right-1 top-1 rounded-full bg-gold/30 px-1.5 py-0.5 font-mono text-[9px] leading-none text-gold ring-1 ring-gold/40">
                         ×{count}
                       </span>
                     )}
-                  </div>
-                  {/* 右：meta 資訊 */}
-                  <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                    <div className="flex items-baseline gap-2">
-                      <span className="truncate font-display text-sm font-medium text-bone/90">{card.name}</span>
-                      <span className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-bone/40">
-                        {elementLabel(card.element)} · {typeLabel(card.type)}
-                      </span>
+                  </button>
+                  {/* hover/focus 浮層：完整 meta（覆蓋在卡牌上方） */}
+                  <div className="pointer-events-none absolute inset-0 z-10 flex flex-col justify-end bg-lacquer-deep/95 p-2.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 peer-focus:opacity-100">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="truncate font-display text-xs font-bold text-bone/90">{card.name}</span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 font-mono text-[9px] uppercase tracking-widest text-bone/50">
-                      <span>
-                        <span className="text-gold/60">COST</span> {card.powerCost}
-                      </span>
-                      {card.attack && (
-                        <span>
-                          <span className="text-gold/60">ATK</span> {card.attack.night}/{card.attack.day}
-                        </span>
-                      )}
-                      <span>
-                        <span className="text-gold/60">CLK</span> {card.clock}
-                      </span>
-                      {card.sendToPower > 0 && (
-                        <span>
-                          <span className="text-gold/60">CHG</span> {card.sendToPower}
-                        </span>
-                      )}
-                      <span className="text-bone/30">{card.rarity}</span>
+                    <div className="mt-0.5 font-mono text-[8px] uppercase tracking-widest text-bone/40">
+                      {elementLabel(card.element)} · {typeLabel(card.type)} · {card.rarity}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 font-mono text-[8px] uppercase tracking-widest">
+                      <span className="text-gold/70">COST {card.powerCost}</span>
+                      {card.attack && <span className="text-gold/70">ATK {card.attack.night}/{card.attack.day}</span>}
+                      <span className="text-gold/70">CLK {card.clock}</span>
+                      {card.sendToPower > 0 && <span className="text-gold/70">CHG {card.sendToPower}</span>}
                     </div>
                     {card.effect && (
-                      <p className="line-clamp-1 text-[10px] leading-snug text-bone/40">{card.effect}</p>
+                      <p className="mt-1.5 line-clamp-3 text-[9px] leading-snug text-bone/50">{card.effect}</p>
                     )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
