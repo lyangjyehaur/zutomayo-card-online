@@ -65,7 +65,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             alt=""
             aria-hidden="true"
             referrerPolicy="no-referrer"
-            className="absolute inset-0 size-full scale-125 object-cover opacity-40 blur-[50px] saturate-[1.3]"
+            className="absolute inset-0 size-full scale-125 object-cover opacity-30 blur-[18px] saturate-[1.2]"
           />
         )}
         {/* 暗化遮罩，確保文字可讀（漸層：中央較透、邊緣較暗） */}
