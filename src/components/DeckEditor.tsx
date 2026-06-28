@@ -372,7 +372,7 @@ export function DeckEditor({
             </div>
           </div>
 
-          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-3 content-start gap-3 overflow-y-auto pr-1 sm:grid-cols-4 lg:grid-cols-5">
+          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-3 content-start gap-3 overflow-y-auto p-1 pr-2 sm:grid-cols-4 lg:grid-cols-5">
             {visibleCards.map((card) => {
               const count = deckCounts.get(card.id) ?? 0;
               const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
@@ -386,17 +386,19 @@ export function DeckEditor({
                     onMouseLeave={handleCardLeave}
                     onFocus={(e) => handleCardEnter(card, e)}
                     onBlur={handleCardLeave}
-                    className={`relative flex aspect-[5/7] w-full cursor-pointer flex-col overflow-hidden rounded-sm bg-lacquer-deep ring-1 transition hover:-translate-y-1 hover:ring-gold/40 focus:outline-none focus:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10 ${
+                    className={`relative flex aspect-[5/7] w-full cursor-pointer flex-col rounded-sm bg-lacquer-deep ring-1 transition hover:-translate-y-1 hover:ring-gold/40 focus:outline-none focus:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10 ${
                       count > 0 ? 'ring-gold/30' : 'ring-bone/10'
                     }`}
                   >
-                    <img
-                      src={card.image}
-                      alt={card.name}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      className="absolute inset-0 size-full object-cover"
-                    />
+                    <div className="absolute inset-0 overflow-hidden rounded-sm">
+                      <img
+                        src={card.image}
+                        alt={card.name}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        className="absolute inset-0 size-full object-cover"
+                      />
+                    </div>
                     {/* 費用角標 */}
                     <span className="absolute left-1 top-1 rounded-full bg-lacquer-deep/85 px-1.5 py-0.5 font-mono text-[9px] leading-none text-gold ring-1 ring-gold/30">
                       {card.powerCost}
