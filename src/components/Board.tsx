@@ -1558,13 +1558,13 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                   return (
                     <div
                       key={card.instanceId}
-                      className="h-36 w-24 shrink-0 cursor-pointer rounded-sm bg-gradient-to-b from-bone/10 to-lacquer-deep p-0.5 ring-1 ring-bone/15 transition-all duration-300 hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-gold hover:shadow-[0_20px_40px_-10px] hover:shadow-gold/30"
+                      className="h-36 w-24 shrink-0 cursor-pointer transition-all duration-300 hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-gold hover:shadow-[0_20px_40px_-10px] hover:shadow-gold/30"
                       style={{ transform: `rotate(${rotate}deg) translateY(${translateY}px)` }}
                       onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined}
                       onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
                       onMouseLeave={() => setFocusedCard(null)}
                     >
-                      <Card card={card} size="normal" className="!h-full !w-full" showBadges={false} showPopover onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined} />
+                      <Card card={card} size="normal" className="!h-full !w-full !aspect-auto" showBadges={false} showPopover onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined} />
                     </div>
                   );
                 })}
