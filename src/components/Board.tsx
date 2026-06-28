@@ -1595,7 +1595,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 </div>
               </div>
               {/* 中：手牌扇形 */}
-              <div className="flex items-end gap-1 px-4">
+              <div className="flex items-end gap-1 px-4" aria-label="手牌">
                 {me.hand.map((card, index) => {
                   const center = (me.hand.length - 1) / 2;
                   const rotate = (index - center) * 4;
