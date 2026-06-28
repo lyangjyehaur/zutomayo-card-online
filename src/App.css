@@ -8176,3 +8176,17 @@ button.zone:focus-visible {
   }
 }
 
+/* 手牌區域：徹底清除 Card 組件的邊框和背景 */
+[aria-label="手牌"] .game-card,
+[aria-label="手牌"] .game-card .card-frame,
+[aria-label="手牌"] .game-card .card-art {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+[aria-label="手牌"] .game-card .card-art img {
+  border-radius: 0.25rem;
+}
+

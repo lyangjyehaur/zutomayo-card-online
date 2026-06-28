@@ -1564,7 +1564,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                       onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
                       onMouseLeave={() => setFocusedCard(null)}
                     >
-                      <Card card={card} size="normal" className="!h-full !w-full !aspect-auto" showBadges={false} showPopover onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined} />
+                      <Card card={card} size="normal" className="!h-full !w-full !aspect-auto !border-0 !bg-transparent !shadow-none !rounded-none" showBadges={false} showPopover onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined} />
                     </div>
                   );
                 })}
