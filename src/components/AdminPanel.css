@@ -48,6 +48,12 @@
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.5rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #130d21;
+  border-bottom: 1px solid #222;
+  padding-bottom: 0.6rem;
 }
 
 .admin-search {
