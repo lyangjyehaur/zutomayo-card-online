@@ -1142,7 +1142,7 @@ input:focus {
     var(--shadow);
 }
 
-.board > *:not([aria-label="手牌"]) {
+.board > *:not([aria-label="手牌"]):not(header) {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -2870,7 +2870,7 @@ input:focus {
     0 1rem 2.4rem rgba(0, 0, 0, 0.34);
 }
 
-.board > *:not([aria-label="手牌"]) {
+.board > *:not([aria-label="手牌"]):not(header) {
   min-width: 0;
   min-height: 0;
   overflow: visible;
@@ -4431,7 +4431,7 @@ button.zone:focus-visible {
     0 1rem 2.4rem rgba(0, 0, 0, 0.34);
 }
 
-.board > *:not([aria-label="手牌"]) {
+.board > *:not([aria-label="手牌"]):not(header) {
   min-width: 0;
   min-height: 0;
 }
@@ -7103,7 +7103,7 @@ button.zone:focus-visible {
   z-index: 0;
 }
 
-.board > *:not([aria-label="手牌"]) {
+.board > *:not([aria-label="手牌"]):not(header) {
   position: relative;
   z-index: 1;
 }
