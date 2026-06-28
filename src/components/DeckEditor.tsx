@@ -4,6 +4,7 @@ import { getAllCardDefs } from '../game/cards/loader';
 import { Card } from './Card';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/deckBuilder';
 import { t } from '../i18n';
+import { ArrowLeft, Search, Save, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DeckEditorProps {
   onSave: (deckIds: string[]) => void | Promise<void>;
@@ -45,12 +46,6 @@ function typeLabel(type: CardType | 'all'): string {
     'Area Enchant': t('card.type.areaEnchant'),
   };
   return labels[type];
-}
-
-function typeShort(type: CardType): string {
-  if (type === 'Character') return '角';
-  if (type === 'Enchant') return '附';
-  return '域';
 }
 
 export function DeckEditor({
@@ -121,6 +116,23 @@ export function DeckEditor({
     [deck, allCards],
   );
 
+  const deckEntries = useMemo(() => {
+    const entries: { card: CardDef; count: number; firstIndex: number }[] = [];
+    const indexMap = new Map<string, number>();
+    deck.forEach((id, index) => {
+      const card = allCards.find((item) => item.id === id);
+      if (!card) return;
+      const existing = indexMap.get(id);
+      if (existing !== undefined) {
+        entries[existing].count += 1;
+      } else {
+        indexMap.set(id, entries.length);
+        entries.push({ card, count: 1, firstIndex: index });
+      }
+    });
+    return entries;
+  }, [deck, allCards]);
+
   const characterCount = deckCards.filter((card) => card.type === 'Character').length;
   const copyLimitValid = [...deckCounts.values()].every((count) => count <= MAX_COPIES);
   const isValid =
@@ -148,216 +160,255 @@ export function DeckEditor({
     await onSave(deck);
   };
 
+  const emptySlotCount = Math.max(0, DECK_SIZE - deck.length);
+
   return (
-    <main className="min-h-screen container mx-auto flex flex-col gap-4 p-4">
-      <header className="navbar rounded-box bg-base-200 shadow-xl">
-        <div className="flex-1">
-          <span>{t('lobby.menu')}</span>
-          <h1 className="text-2xl font-bold text-primary">{t('deckEditor.title')}</h1>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="relative h-screen w-screen overflow-hidden bg-lacquer-deep text-bone font-sans">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-40 top-0 h-[60vh] w-[60vh] rounded-full bg-gold/8 blur-[140px]" />
+      </div>
+
+      <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-bone/50 transition hover:text-bone"
+        >
+          <ArrowLeft className="size-3.5" /> {t('common.backToLobby')}
+        </button>
+        <div className="font-display text-sm italic">Deck Editor · 牌組編輯</div>
+        <div className="flex items-center gap-3">
           {onDeckNameChange && (
-            <label className="form-control w-48">
-              <span>{t('deck.custom')}</span>
-              <input
-                className="input input-bordered input-sm"
-                value={deckName ?? ''}
-                aria-label={t('deck.custom')}
-                onChange={(event) => onDeckNameChange(event.target.value)}
-              />
-            </label>
+            <input
+              value={deckName ?? ''}
+              aria-label={t('deck.custom')}
+              placeholder={t('deck.custom')}
+              onChange={(event) => onDeckNameChange(event.target.value)}
+              className="w-40 border border-bone/10 bg-transparent px-3 py-1.5 text-xs text-bone placeholder:text-bone/30 focus:border-gold/40 focus:outline-none"
+            />
           )}
-          {syncLabel && <span className={synced ? 'badge badge-success' : 'badge badge-warning'}>{syncLabel}</span>}
-          <button className="btn btn-ghost" type="button" onClick={onCancel}>
-            {t('common.backToLobby')}
-          </button>
-          <button className="btn btn-primary" type="button" disabled={!isValid || saving} onClick={saveDeck}>
-            {saveLabel ?? t('deckEditor.saveDeck')}
+          {syncLabel && (
+            <span
+              className={`font-mono text-[10px] uppercase tracking-[0.3em] ${synced ? 'text-gold' : 'text-bone/40'}`}
+            >
+              {syncLabel}
+            </span>
+          )}
+          <button
+            type="button"
+            disabled={!isValid || saving}
+            onClick={saveDeck}
+            className="flex items-center gap-2 bg-bone px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+          >
+            <Save className="size-3.5" /> {saveLabel ?? t('deckEditor.saveDeck')}
           </button>
         </div>
       </header>
 
       {errorMessage && (
-        <div className="alert alert-error" role="alert">
+        <div
+          className="absolute inset-x-0 top-12 z-30 bg-vermilion/10 px-6 py-1.5 text-[10px] text-vermilion/80"
+          role="alert"
+        >
           {errorMessage}
         </div>
       )}
 
-      <section className="stats shadow">
-        <div className="stat">
-          <strong className={deck.length === DECK_SIZE ? 'stat-value text-success' : 'stat-value text-warning'}>
-            {deck.length}/{DECK_SIZE}
-          </strong>
-          <span className="stat-title">{t('deckEditor.ruleSize')}</span>
-        </div>
-        <div className="stat">
-          <strong className={characterCount >= 10 ? 'stat-value text-success' : 'stat-value text-warning'}>
-            {characterCount}
-          </strong>
-          <span className="stat-title">{t('deckEditor.ruleCharacters')}</span>
-        </div>
-        <div className="stat">
-          <strong className={copyLimitValid ? 'stat-value text-success' : 'stat-value text-warning'}>
-            {MAX_COPIES}
-          </strong>
-          <span className="stat-title">{t('deckEditor.ruleCopies')}</span>
-        </div>
-        <div className="stat">
-          <strong className={isValid ? 'badge badge-success' : 'badge badge-warning'}>
-            {isValid ? t('deckEditor.valid') : t('deckEditor.invalid')}
-          </strong>
-        </div>
-      </section>
+      <div className="relative z-10 grid h-full grid-cols-[1fr_320px] gap-4 px-6 pb-6 pt-16">
+        <section className="flex flex-col rounded-sm bg-lacquer/60 p-5 ring-1 ring-bone/10">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Archive</div>
+              <h2 className="font-display text-2xl italic">Card Pool</h2>
+            </div>
+            <div className="flex items-center gap-2 border border-bone/10 px-3 py-1.5">
+              <Search className="size-3.5 text-bone/40" />
+              <input
+                type="search"
+                placeholder={t('deckEditor.search')}
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                className="w-56 bg-transparent text-xs text-bone placeholder:text-bone/30 focus:outline-none"
+              />
+            </div>
+          </div>
 
-      <section className="deck-workspace">
-        <div className="collection-panel">
-          <div className="grid gap-3">
-            <input
-              className="input input-bordered"
-              type="search"
-              placeholder={t('deckEditor.search')}
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <span>{t('deckEditor.filterElement')}</span>
+          <div className="mb-4 space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">
+                {t('deckEditor.filterElement')}
+              </span>
               {ELEMENTS.map((element) => (
                 <button
                   key={element}
-                  className={`btn btn-sm ${filterElement === element ? 'btn-primary' : 'btn-ghost'}`}
                   type="button"
                   onClick={() => setFilterElement(element)}
+                  className={`text-[10px] uppercase tracking-[0.3em] transition ${
+                    filterElement === element ? 'text-gold' : 'text-bone/40 hover:text-bone'
+                  }`}
                 >
                   {elementLabel(element)}
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span>{t('deckEditor.filterType')}</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('deckEditor.filterType')}</span>
               {TYPES.map((type) => (
                 <button
                   key={type}
-                  className={`btn btn-sm ${filterType === type ? 'btn-primary' : 'btn-ghost'}`}
                   type="button"
                   onClick={() => setFilterType(type)}
+                  className={`text-[10px] uppercase tracking-[0.3em] transition ${
+                    filterType === type ? 'text-gold' : 'text-bone/40 hover:text-bone'
+                  }`}
                 >
                   {typeLabel(type)}
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span>{t('deckEditor.sort')}</span>
-              <button
-                className={`btn btn-sm ${sortBy === 'cost' ? 'btn-primary' : 'btn-ghost'}`}
-                type="button"
-                onClick={() => setSortBy('cost')}
-              >
-                {t('deckEditor.sortCost')}
-              </button>
-              <button
-                className={`btn btn-sm ${sortBy === 'attack' ? 'btn-primary' : 'btn-ghost'}`}
-                type="button"
-                onClick={() => setSortBy('attack')}
-              >
-                {t('deckEditor.sortAttack')}
-              </button>
-              <button
-                className={`btn btn-sm ${sortBy === 'name' ? 'btn-primary' : 'btn-ghost'}`}
-                type="button"
-                onClick={() => setSortBy('name')}
-              >
-                {t('deckEditor.sortName')}
-              </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('deckEditor.sort')}</span>
+              {(['cost', 'attack', 'name'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setSortBy(option)}
+                  className={`text-[10px] uppercase tracking-[0.3em] transition ${
+                    sortBy === option ? 'text-gold' : 'text-bone/40 hover:text-bone'
+                  }`}
+                >
+                  {option === 'cost'
+                    ? t('deckEditor.sortCost')
+                    : option === 'attack'
+                      ? t('deckEditor.sortAttack')
+                      : t('deckEditor.sortName')}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <h2>
-              {t('deckEditor.cardPool')} ({filteredCards.length})
-            </h2>
-            <div className="join">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
+              {filteredCards.length} · {currentPage + 1}/{totalPages}
+            </span>
+            <div className="flex items-center gap-3">
               <button
-                className="btn btn-sm join-item"
                 type="button"
                 disabled={currentPage === 0}
                 onClick={() => setPage((value) => Math.max(0, value - 1))}
+                className="flex items-center gap-1 text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40"
               >
-                {t('common.prev')}
+                <ChevronLeft className="size-3.5" /> {t('common.prev')}
               </button>
-              <span className="btn btn-sm btn-disabled join-item">
-                {currentPage + 1}/{totalPages} {t('common.page')}
-              </span>
               <button
-                className="btn btn-sm join-item"
                 type="button"
                 disabled={currentPage >= totalPages - 1}
                 onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+                className="flex items-center gap-1 text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40"
               >
-                {t('common.next')}
+                {t('common.next')} <ChevronRight className="size-3.5" />
               </button>
             </div>
           </div>
 
-          <div className="card-pool-grid">
+          <div className="grid flex-1 grid-cols-4 justify-items-center gap-3 overflow-y-auto sm:grid-cols-5 lg:grid-cols-6">
             {visibleCards.map((card) => {
               const count = deckCounts.get(card.id) ?? 0;
               const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
               return (
                 <button
                   key={card.id}
-                  className={`pool-card ${count > 0 ? 'in-deck' : ''}`}
                   type="button"
                   disabled={!canAdd}
                   onClick={() => addCard(card.id)}
+                  className="group relative cursor-pointer rounded-sm ring-1 ring-bone/10 transition hover:-translate-y-1 hover:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10"
                 >
                   <Card card={{ instanceId: `pool-${card.id}`, defId: card.id, faceUp: true }} size="tiny" />
                   {count > 0 && (
-                    <span className="copy-badge">
-                      {t('deckEditor.copyCount')} {count}
+                    <span className="absolute right-1 top-1 rounded-full bg-gold/20 px-1.5 py-0.5 font-mono text-[9px] text-gold">
+                      {count}
                     </span>
                   )}
                 </button>
               );
             })}
           </div>
-        </div>
+        </section>
 
-        <aside className="current-deck-panel">
-          <div className="flex items-center justify-between gap-3">
-            <h2>{t('deckEditor.currentDeck')}</h2>
-            <span className="badge badge-primary">
-              {deck.length}/{DECK_SIZE}
-            </span>
+        <aside className="flex flex-col rounded-sm bg-lacquer p-5 ring-1 ring-bone/10">
+          <div className="mb-3 flex items-end justify-between border-b border-bone/10 pb-3">
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Active Deck</div>
+              <h2 className="truncate font-display text-2xl italic">
+                {deckName?.trim() || t('deckEditor.currentDeck')}
+              </h2>
+            </div>
+            <div className="font-mono text-xs text-bone/50">
+              <span className="text-gold">{deck.length}</span> / {DECK_SIZE}
+            </div>
           </div>
-          <div className="deck-slot-grid">
-            {Array.from({ length: DECK_SIZE }, (_, index) => {
-              const card = deckCards[index];
-              if (!card) {
-                return (
-                  <div key={`empty-${index}`} className="deck-slot empty">
-                    {t('deckEditor.emptySlot')}
-                  </div>
-                );
-              }
-              return (
-                <button
-                  key={`${card.id}-${index}`}
-                  className="deck-slot"
-                  type="button"
-                  onClick={() => removeCard(index)}
-                >
-                  <span className="deck-card-type">{typeShort(card.type)}</span>
-                  <strong>{card.name}</strong>
-                  <span>
-                    {t('card.energy')} {card.powerCost}
-                  </span>
-                  <em>{t('deckEditor.removeCard')}</em>
-                </button>
-              );
-            })}
+
+          <div className="mb-3 space-y-1 font-mono text-[10px] uppercase tracking-widest text-bone/40">
+            <div className="flex items-center justify-between">
+              <span>{t('deckEditor.ruleCharacters')}</span>
+              <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-gold' : 'text-vermilion/70'}>
+                {characterCount}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>{t('deckEditor.ruleCopies')}</span>
+              <span className={copyLimitValid ? 'text-gold' : 'text-vermilion/70'}>×{MAX_COPIES}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>{t('deckEditor.ruleSize')}</span>
+              <span className={deck.length === DECK_SIZE ? 'text-gold' : 'text-vermilion/70'}>
+                {deck.length}/{DECK_SIZE}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex-1 space-y-1.5 overflow-y-auto">
+            {deckEntries.map(({ card, count, firstIndex }) => (
+              <div
+                key={`${card.id}-${firstIndex}`}
+                className="flex items-center justify-between rounded-xs bg-lacquer-deep/60 px-3 py-2 ring-1 ring-bone/5 transition hover:ring-gold/30"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="font-mono text-[10px] text-gold">{card.powerCost}</span>
+                  <span className="truncate font-display text-sm italic text-bone/80">{card.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[10px] text-bone/40">×{count}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeCard(firstIndex)}
+                    aria-label={t('deckEditor.removeCard')}
+                    className="text-[10px] text-bone/30 transition hover:text-vermilion"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+            {Array.from({ length: emptySlotCount }, (_, index) => (
+              <div
+                key={`empty-${index}`}
+                className="rounded-xs border border-dashed border-bone/10 px-3 py-2 text-[10px] text-bone/20"
+              >
+                {t('deckEditor.emptySlot')}
+              </div>
+            ))}
+          </div>
+
+          <div
+            className={`mt-3 border-t border-bone/10 pt-3 font-mono text-[10px] uppercase tracking-widest ${
+              isValid ? 'text-gold' : 'text-vermilion/70'
+            }`}
+          >
+            {isValid ? t('deckEditor.valid') : t('deckEditor.invalid')} · {deck.length}/{DECK_SIZE}
           </div>
         </aside>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }
