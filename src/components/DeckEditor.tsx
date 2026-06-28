@@ -336,10 +336,23 @@ export function DeckEditor({
                       referrerPolicy="no-referrer"
                       className="absolute inset-0 size-full object-cover"
                     />
-                    {/* 底部漸層 + 卡名 */}
+                    {/* 底部漸層 + 卡名（預設顯示） */}
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-lacquer-deep via-lacquer-deep/80 to-transparent" />
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 p-2">
                       <div className="truncate font-display text-xs font-medium text-bone/90">{card.name}</div>
+                    </div>
+                    {/* hover 時覆蓋漸層浮層：顯示基本數值 */}
+                    <div className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-lacquer-deep via-lacquer-deep/90 to-lacquer-deep/30 p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      <div className="truncate font-display text-xs font-bold text-bone/90">{card.name}</div>
+                      <div className="mt-0.5 font-mono text-[8px] uppercase tracking-widest text-bone/40">
+                        {elementLabel(card.element)} · {typeLabel(card.type)}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-1.5 font-mono text-[8px] uppercase tracking-widest text-gold/80">
+                        <span>C{card.powerCost}</span>
+                        {card.attack && <span>A{card.attack.night}/{card.attack.day}</span>}
+                        <span>K{card.clock}</span>
+                        {card.sendToPower > 0 && <span>G{card.sendToPower}</span>}
+                      </div>
                     </div>
                     {/* 費用角標 */}
                     <span className="absolute left-1 top-1 rounded-full bg-lacquer-deep/85 px-1.5 py-0.5 font-mono text-[9px] leading-none text-gold ring-1 ring-gold/30">
@@ -357,55 +370,53 @@ export function DeckEditor({
             })}
           </div>
 
-          {/* 完整 meta 預覽區：固定高度，內部滾動，避免佈局跳動 */}
-          <div className="mt-3 flex h-44 shrink-0 flex-col overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+          {/* 完整 meta 預覽區：固定高度，漸層背景，內部滾動 */}
+          <div className="mt-3 flex h-48 shrink-0 flex-col overflow-hidden rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/80 to-lacquer ring-1 ring-gold/20">
             {previewCard ? (
               <div className="flex min-h-0 flex-1 items-start gap-4 overflow-y-auto p-4">
                 {/* 左：卡圖縮圖 */}
-                <div className="relative aspect-[5/7] w-16 shrink-0 overflow-hidden rounded-xs ring-1 ring-bone/10">
+                <div className="relative aspect-[5/7] w-16 shrink-0 overflow-hidden rounded-xs ring-1 ring-gold/20">
                   <img
                     src={previewCard.image}
                     alt={previewCard.name}
                     referrerPolicy="no-referrer"
                     className="absolute inset-0 size-full object-cover"
                   />
+                  <div className="absolute inset-0 bg-gradient-to-t from-lacquer-deep/40 to-transparent" />
                 </div>
                 {/* 右：完整 meta */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
                     <span className="font-display text-base font-bold text-bone/90">{previewCard.name}</span>
-                    <span className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-bone/40">
+                    <span className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-gold/50">
                       {elementLabel(previewCard.element)} · {typeLabel(previewCard.type)} · {previewCard.rarity}
                     </span>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
-                    <span>
-                      <span className="text-gold/60">COST</span>{' '}
-                      <span className="text-bone/70">{previewCard.powerCost}</span>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
+                    <span className="text-bone/60">
+                      <span className="text-gold/70">COST</span> {previewCard.powerCost}
                     </span>
                     {previewCard.attack && (
-                      <span>
-                        <span className="text-gold/60">ATK</span>{' '}
-                        <span className="text-bone/70">
-                          {previewCard.attack.night}/{previewCard.attack.day}
-                        </span>
+                      <span className="text-bone/60">
+                        <span className="text-gold/70">ATK</span> {previewCard.attack.night}/{previewCard.attack.day}
                       </span>
                     )}
-                    <span>
-                      <span className="text-gold/60">CLK</span> <span className="text-bone/70">{previewCard.clock}</span>
+                    <span className="text-bone/60">
+                      <span className="text-gold/70">CLK</span> {previewCard.clock}
                     </span>
                     {previewCard.sendToPower > 0 && (
-                      <span>
-                        <span className="text-gold/60">CHG</span>{' '}
-                        <span className="text-bone/70">{previewCard.sendToPower}</span>
+                      <span className="text-bone/60">
+                        <span className="text-gold/70">CHG</span> {previewCard.sendToPower}
                       </span>
                     )}
                   </div>
                   {previewCard.effect && (
-                    <p className="mt-2 text-[12px] leading-relaxed text-bone/70">{previewCard.effect}</p>
+                    <p className="mt-2.5 border-l border-gold/20 pl-3 text-[12px] leading-relaxed text-bone/70">
+                      {previewCard.effect}
+                    </p>
                   )}
                   {(previewCard.song || previewCard.illustrator) && (
-                    <div className="mt-2 border-t border-bone/10 pt-1.5 font-mono text-[9px] text-bone/30">
+                    <div className="mt-2 font-mono text-[9px] text-bone/30">
                       {previewCard.song && <span>{previewCard.song}</span>}
                       {previewCard.song && previewCard.illustrator && <span> · </span>}
                       {previewCard.illustrator && <span>illust. {previewCard.illustrator}</span>}
