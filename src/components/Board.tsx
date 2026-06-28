@@ -159,7 +159,7 @@ function JankenScreen({ G, moves, playerID }: Props) {
   ];
 
   return (
-    <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
+    <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
       </div>
@@ -211,7 +211,7 @@ function MulliganScreen({
     );
 
   return (
-    <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-lacquer-deep px-6 font-sans text-bone">
+    <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep px-6 font-sans text-bone">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
       </div>
@@ -403,7 +403,7 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID, gameOverActions }: P
   }, [G, ctx.gameover, matchStartedAt, playerID]);
 
   return (
-    <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
+    <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
       </div>
@@ -1386,7 +1386,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
   return (
     <div
-      className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'} !block relative h-screen w-screen overflow-hidden bg-lacquer-deep text-bone font-sans`}
+      className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'} !block relative h-full min-h-0 w-full overflow-hidden bg-lacquer-deep text-bone font-sans`}
     >
       {/* 環境光暈 — 完全照搬 demo */}
       <div className="pointer-events-none absolute inset-0">
