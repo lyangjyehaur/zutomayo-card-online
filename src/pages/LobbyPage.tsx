@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Swords, Bot, LayoutGrid } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { AuthSection } from '../components/lobby/AuthSection';
-import { getAllCardDefs } from '../game/cards/loader';
+import { getAllCardDefs, refreshCards } from '../game/cards/loader';
 import { t } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
@@ -49,10 +49,22 @@ const ENTRIES: Entry[] = [
 export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
   // 每次進入首頁隨機取一張卡牌作為模糊背景
-  const bgImage = useMemo(() => {
+  const [bgImage, setBgImage] = useState<string | null>(() => {
     const cards = getAllCardDefs();
     if (cards.length === 0) return null;
     return cards[Math.floor(Math.random() * cards.length)].image;
+  });
+
+  // 確保 API 卡牌載入後也更新背景（首次 mount 時可能只有靜態 cards.json）
+  useEffect(() => {
+    let cancelled = false;
+    void refreshCards().then((cards) => {
+      if (cancelled || cards.length === 0) return;
+      setBgImage(cards[Math.floor(Math.random() * cards.length)].image);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
