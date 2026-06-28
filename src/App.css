@@ -7078,12 +7078,19 @@ button.zone:focus-visible {
 
 /* ---------- 1. Board 根容器與佈局 ---------- */
 .board {
-  background: var(--lacquer-deep);
-  color: var(--bone);
-  font-family: var(--font-sans);
-  position: relative;
-  overflow: hidden;
-  min-height: 100vh;
+  background: var(--lacquer-deep) !important;
+  color: var(--bone) !important;
+  font-family: var(--font-sans) !important;
+  position: relative !important;
+  overflow: hidden !important;
+  min-height: 100vh !important;
+  display: block !important;
+  grid-template-rows: none !important;
+  grid-template-columns: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
 }
 
 .board::before {
@@ -7110,19 +7117,20 @@ button.zone:focus-visible {
 }
 
 .field-layout {
-  display: grid;
-  grid-template-rows: auto auto 1fr auto auto;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  max-width: 100%;
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-rows: none !important;
+  grid-template-columns: none !important;
+  grid-template-areas: none !important;
+  gap: 0.5rem !important;
+  padding: 0 !important;
+  max-width: 100% !important;
+  overflow: visible !important;
 }
 
-.board.drawer-expanded .field-layout {
-  padding-bottom: 280px;
-}
-
+.board.drawer-expanded .field-layout,
 .board.drawer-collapsed .field-layout {
-  padding-bottom: 60px;
+  padding-bottom: 0 !important;
 }
 
 /* ---------- 2. PhaseInstructionBar（階段指示） ---------- */
@@ -7662,21 +7670,21 @@ button.zone:focus-visible {
   transform: scale(0.95);
 }
 
-/* ---------- 12. EffectOrderPanel / PendingChoicePanel ---------- */
+/* ---------- 12. EffectOrderPanel / PendingChoicePanel（側欄內容） ---------- */
 .effect-order-panel {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 30;
-  max-width: 480px;
-  width: 90%;
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  transform: none !important;
+  z-index: auto !important;
+  max-width: none !important;
+  width: 100% !important;
   background: color-mix(in oklch, var(--lacquer-deep) 95%, transparent);
   backdrop-filter: blur(16px);
   border: 1px solid color-mix(in oklch, var(--gold) 20%, transparent);
   border-radius: 2px;
-  padding: 1.25rem;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  padding: 1rem;
+  box-shadow: none;
 }
 
 .effect-order-heading {

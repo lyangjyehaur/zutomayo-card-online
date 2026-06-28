@@ -1155,25 +1155,83 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
   const myDamage = damageFlash?.target === meIndex ? damageFlash.amount : undefined;
   const opponentDamage = damageFlash?.target === opponentIndex ? damageFlash.amount : undefined;
 
+  const showSidebar = G.step === 'effectOrder' || !!G.pendingChoice;
+
   return (
-    <div className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'}`}>
-      <main className="field-layout">
-        <PhaseInstructionBar G={G} meIndex={meIndex} required={required} minimum={minimum} />
-        <OpponentStatsBar G={G} opponentIndex={opponentIndex} damageAmount={opponentDamage} />
-        <CentralArena G={G} meIndex={meIndex} opponentIndex={opponentIndex} time={time} />
-        <BottomZones G={G} meIndex={meIndex} moves={moves} />
-        <StatusBar
-          G={G}
-          meIndex={meIndex}
-          timeLeft={timeLeft}
-          timerTone={timerTone}
-          time={time}
-          phaseText={phaseText}
-          damageAmount={myDamage}
-        />
-      </main>
-      {G.step === 'effectOrder' && <EffectOrderPanel G={G} moves={moves} playerID={playerID} />}
-      {G.pendingChoice && <PendingChoicePanel G={G} moves={moves} playerID={playerID} />}
+    <div
+      className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'} relative h-screen w-screen overflow-hidden bg-lacquer-deep text-bone font-sans`}
+    >
+      {/* 環境光暈 */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
+      </div>
+
+      {/* 頂欄 */}
+      <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
+        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
+          {t('board.turn')} {G.turnNumber}
+        </span>
+        <div className="flex items-center gap-6 font-mono text-[10px] uppercase tracking-[0.3em]">
+          <span className="text-bone/40">{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
+          <span className="text-gold">{phaseText}</span>
+        </div>
+        <span className={`font-mono text-[10px] uppercase tracking-[0.3em] ${timeLeft <= 10 ? 'text-vermilion' : 'text-bone/40'}`}>
+          {timeLeft}{t('board.secondsUnit')}
+        </span>
+      </header>
+
+      {/* 主內容雙欄 */}
+      <div
+        className={`relative z-10 grid h-full gap-4 px-4 pb-4 pt-14 ${
+          showSidebar ? 'grid-cols-[1fr_300px]' : 'grid-cols-1'
+        }`}
+      >
+        {/* 戰場欄 */}
+        <main className="field-layout flex min-h-0 flex-col gap-2">
+          <PhaseInstructionBar G={G} meIndex={meIndex} required={required} minimum={minimum} />
+          <OpponentStatsBar G={G} opponentIndex={opponentIndex} damageAmount={opponentDamage} />
+          <CentralArena G={G} meIndex={meIndex} opponentIndex={opponentIndex} time={time} />
+          <BottomZones G={G} meIndex={meIndex} moves={moves} />
+          <StatusBar
+            G={G}
+            meIndex={meIndex}
+            timeLeft={timeLeft}
+            timerTone={timerTone}
+            time={time}
+            phaseText={phaseText}
+            damageAmount={myDamage}
+          />
+        </main>
+
+        {/* 側欄 */}
+        {showSidebar && (
+          <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+            {G.step === 'effectOrder' && <EffectOrderPanel G={G} moves={moves} playerID={playerID} />}
+            {G.pendingChoice && <PendingChoicePanel G={G} moves={moves} playerID={playerID} />}
+            {/* Ritual Log */}
+            <div className="flex min-h-0 flex-1 flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">
+                  Ritual Log
+                </span>
+                <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
+              </div>
+              <div className="flex-1 space-y-1.5 overflow-y-auto font-mono text-[10px] leading-relaxed text-bone/40">
+                {(G.actionLog ?? []).slice(-12).reverse().map((entry, i) => (
+                  <p key={i}>
+                    <span className="text-bone/60">[{t('board.turn')} {entry.turn}]</span>{' '}
+                    {entry.result?.message ?? entry.action}
+                  </p>
+                ))}
+                {(!G.actionLog || G.actionLog.length === 0) && (
+                  <p className="text-bone/30">{t('board.waitingOpponent')}</p>
+                )}
+              </div>
+            </div>
+          </aside>
+        )}
+      </div>
+
       <HandDrawer
         cards={me.hand}
         expanded={handExpanded}
