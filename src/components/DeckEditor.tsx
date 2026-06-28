@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs } from '../game/cards/loader';
+import { getTranslatedEffect } from '../game/cards/i18n';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/deckBuilder';
-import { t } from '../i18n';
+import { t, useLocale } from '../i18n';
 import { ArrowLeft, Search, Save, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DeckEditorProps {
@@ -61,6 +62,7 @@ export function DeckEditor({
   saveLocalDeck = true,
 }: DeckEditorProps) {
   const allCards = useMemo(() => getAllCardDefs(), []);
+  const locale = useLocale();
   const [deck, setDeck] = useState<string[]>(() =>
     initialDeck.length > 0 ? initialDeck : (loadCustomDeckIds() ?? []),
   );
@@ -78,12 +80,15 @@ export function DeckEditor({
     if (filterType !== 'all') cards = cards.filter((card) => card.type === filterType);
     if (searchText) {
       const query = searchText.toLowerCase();
-      cards = cards.filter(
-        (card) =>
+      cards = cards.filter((card) => {
+        const translatedEffect = getTranslatedEffect(card.id, locale);
+        return (
           card.name.toLowerCase().includes(query) ||
           card.effect.toLowerCase().includes(query) ||
-          card.song.toLowerCase().includes(query),
-      );
+          (translatedEffect?.toLowerCase().includes(query) ?? false) ||
+          card.song.toLowerCase().includes(query)
+        );
+      });
     }
 
     return [...cards].sort((a, b) => {
@@ -95,7 +100,7 @@ export function DeckEditor({
       }
       return a.name.localeCompare(b.name);
     });
-  }, [allCards, filterElement, filterType, searchText, sortBy]);
+  }, [allCards, filterElement, filterType, searchText, sortBy, locale]);
 
   useEffect(() => {
     setPage(0);
@@ -399,7 +404,7 @@ export function DeckEditor({
                   </div>
                   {previewCard.effect && (
                     <p className="mt-2.5 border-l border-gold/20 pl-3 text-[12px] leading-relaxed text-bone/70">
-                      {previewCard.effect}
+                      {getTranslatedEffect(previewCard.id, locale) ?? previewCard.effect}
                     </p>
                   )}
                   {(previewCard.song || previewCard.illustrator) && (
