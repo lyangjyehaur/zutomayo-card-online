@@ -1,13 +1,23 @@
-@import "tailwindcss/theme" layer(theme);
-@import "tailwindcss/utilities" layer(utilities);
+@import 'tailwindcss/theme' layer(theme);
+@import 'tailwindcss/utilities' layer(utilities);
 @plugin "daisyui" {
   themes: dark --default;
 }
 
 @layer base {
-  *, *::before, *::after { box-sizing: border-box; }
-  body { margin: 0; }
-  img, video { max-width: 100%; height: auto; }
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+  }
+  img,
+  video {
+    max-width: 100%;
+    height: auto;
+  }
 }
 
 :root {
@@ -7005,4 +7015,31 @@ button.zone:focus-visible {
   .card-popover {
     transition: opacity 120ms ease !important;
   }
+}
+
+/* ===== 新首頁主選單樣式 ===== */
+
+/* 非遊戲頁面允許滾動（新首頁用 min-h-screen 不再固定 100vh） */
+.app-shell.has-nav .route-content {
+  overflow-y: auto;
+}
+
+/* 主選單卡片：置中、大尺寸、hover 效果 */
+.lobby-menu-cards {
+  align-content: center;
+}
+
+.lobby-menu-card {
+  min-height: 12rem;
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.lobby-menu-card:hover {
+  transform: translateY(-4px);
+}
+
+.lobby-menu-icon {
+  line-height: 1;
 }

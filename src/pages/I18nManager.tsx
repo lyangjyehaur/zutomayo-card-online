@@ -212,8 +212,12 @@ export function I18nManager() {
                           }}
                           autoFocus
                         />
-                        <button className="btn btn-sm" onClick={handleSaveEdit}>✓</button>
-                        <button className="btn btn-sm" onClick={() => setEditKey(null)}>✕</button>
+                        <button className="btn btn-sm" onClick={handleSaveEdit}>
+                          ✓
+                        </button>
+                        <button className="btn btn-sm" onClick={() => setEditKey(null)}>
+                          ✕
+                        </button>
                       </div>
                     ) : (
                       <span className={isMissing ? 'text-missing' : ''}>

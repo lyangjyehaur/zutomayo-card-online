@@ -9,11 +9,13 @@ import type { AIDifficulty } from './game/ai';
 import { AdminPage } from './pages/AdminPage';
 import { I18nManager } from './pages/I18nManager';
 import { AIGamePage } from './pages/AIGamePage';
+import { AILobbyPage } from './pages/AILobbyPage';
 import { DeckEditorPage } from './pages/DeckEditorPage';
 import { LobbyPage, DEFAULT_DECK_NAME, onlineDeckName, selectedDeckName } from './pages/LobbyPage';
 import { LocalGamePage } from './pages/LocalGamePage';
 import { MatchHistoryPage } from './pages/MatchHistoryPage';
 import { OnlineGamePage } from './pages/OnlineGamePage';
+import { OnlineLobbyPage } from './pages/OnlineLobbyPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { t, useLocale, type TranslationKey } from './i18n';
 import {
@@ -71,17 +73,17 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
       <button className={buttonClass('/')} type="button" onClick={() => navigate('/')}>
         {t('nav.lobby')}
       </button>
+      <button className={buttonClass('/online')} type="button" onClick={() => navigate('/online')}>
+        🌐 {t('lobby.onlineTitle')}
+      </button>
+      <button className={buttonClass('/ai')} type="button" onClick={() => navigate('/ai')}>
+        🤖 {t('lobby.aiBattle')}
+      </button>
       <button className={buttonClass('/deck-builder')} type="button" onClick={() => navigate('/deck-builder')}>
-        {t('nav.deckBuilder')}
-      </button>
-      <button className={buttonClass('/history')} type="button" onClick={() => navigate('/history')}>
-        {t('nav.history')}
-      </button>
-      <button className={buttonClass('/leaderboard')} type="button" onClick={() => navigate('/leaderboard')}>
-        🏆 {t('leaderboard.title')}
+        🗂️ {t('nav.deckBuilder')}
       </button>
       <button className="nav-link tutorial" type="button" onClick={onShowTutorial}>
-        {t('nav.tutorial')}
+        ❓ {t('nav.tutorial')}
       </button>
     </nav>
   );
@@ -284,8 +286,25 @@ function RouterShell() {
         <Routes>
           <Route
             path="/"
+            element={<LobbyPage onAuthChanged={refreshServerDecks} onShowTutorial={() => setTutorial(true)} />}
+          />
+          <Route
+            path="/online"
             element={
-              <LobbyPage
+              <OnlineLobbyPage
+                deck0Name={deck0Name}
+                customDeckAvailable={customDeckAvailable}
+                serverDecks={serverDecks}
+                setDeck0Name={setDeck0Name}
+                onStartOnline={startOnline}
+                serverDeckError={serverDeckError}
+              />
+            }
+          />
+          <Route
+            path="/ai"
+            element={
+              <AILobbyPage
                 deck0Name={deck0Name}
                 deck1Name={deck1Name}
                 customDeckAvailable={customDeckAvailable}
@@ -293,9 +312,6 @@ function RouterShell() {
                 setDeck0Name={setDeck0Name}
                 setDeck1Name={setDeck1Name}
                 onStartAI={startAI}
-                onStartOnline={startOnline}
-                onAuthChanged={refreshServerDecks}
-                onShowTutorial={() => setTutorial(true)}
                 serverDeckError={serverDeckError}
               />
             }

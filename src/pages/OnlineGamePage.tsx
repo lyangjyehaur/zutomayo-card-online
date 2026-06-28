@@ -67,7 +67,12 @@ function LeaveConfirmDialog({
 }) {
   return (
     <div className="modal modal-open" role="presentation">
-      <section className="modal-box card bg-base-200" role="dialog" aria-modal="true" aria-labelledby="leave-confirm-title">
+      <section
+        className="modal-box card bg-base-200"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="leave-confirm-title"
+      >
         <span>{t('game.onlineMode')}</span>
         <h2 id="leave-confirm-title">{t('online.leaveTitle')}</h2>
         <p>{t('online.leaveBody')}</p>
@@ -287,7 +292,11 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
       <main className="online-session-missing app-screen">
         <section
           className={`card bg-base-200 ${
-            copy.tone === 'error' ? 'alert alert-error' : copy.tone === 'waiting' ? 'alert alert-warning' : 'alert alert-info'
+            copy.tone === 'error'
+              ? 'alert alert-error'
+              : copy.tone === 'waiting'
+                ? 'alert alert-warning'
+                : 'alert alert-info'
           }`}
         >
           <span>{t('game.onlineMode')}</span>
@@ -308,12 +317,7 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
               </button>
             )}
             {copy.canCreateNewRoom && (
-              <button
-                className="btn btn-sm"
-                type="button"
-                disabled={creatingRoom}
-                onClick={() => void createNewRoom()}
-              >
+              <button className="btn btn-sm" type="button" disabled={creatingRoom} onClick={() => void createNewRoom()}>
                 {creatingRoom ? t('online.creatingRoom') : t('online.createNewRoom')}
               </button>
             )}
