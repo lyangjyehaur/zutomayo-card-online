@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Swords, Bot, LayoutGrid } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { AuthSection } from '../components/lobby/AuthSection';
-import { getAllCardDefs, refreshCards } from '../game/cards/loader';
+import { getAllCardDefs } from '../game/cards/loader';
 import { t } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
@@ -46,25 +46,21 @@ const ENTRIES: Entry[] = [
   },
 ];
 
+function pickRandomCardImage(): string | null {
+  const cards = getAllCardDefs().filter((card) => typeof card.image === 'string' && card.image.length > 0);
+  if (cards.length === 0) return null;
+  return cards[Math.floor(Math.random() * cards.length)].image;
+}
+
 export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
   // 每次進入首頁隨機取一張卡牌作為模糊背景
-  const [bgImage, setBgImage] = useState<string | null>(() => {
-    const cards = getAllCardDefs();
-    if (cards.length === 0) return null;
-    return cards[Math.floor(Math.random() * cards.length)].image;
-  });
+  const [bgImage, setBgImage] = useState<string | null>(pickRandomCardImage);
 
-  // 確保 API 卡牌載入後也更新背景（首次 mount 時可能只有靜態 cards.json）
+  // 每次 mount 時重新隨機取一張（確保返回首頁也有背景）
   useEffect(() => {
-    let cancelled = false;
-    void refreshCards().then((cards) => {
-      if (cancelled || cards.length === 0) return;
-      setBgImage(cards[Math.floor(Math.random() * cards.length)].image);
-    });
-    return () => {
-      cancelled = true;
-    };
+    const next = pickRandomCardImage();
+    if (next) setBgImage(next);
   }, []);
 
   return (
