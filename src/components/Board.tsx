@@ -1449,26 +1449,44 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
           {/* 玩家區域 — flex-1 justify-end（照搬 demo） */}
           <div className="flex flex-1 flex-col items-center justify-end gap-3 pb-2">
-            {/* 玩家設置區 + 牌組/充能 */}
+            {/* 玩家設置區 + 充能/牌組 */}
             <div className="flex items-end gap-3">
+              {/* 充能區 — 左邊 */}
               <div className="flex flex-col items-center gap-1">
-                <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
-                  <div className="flex flex-col items-center">
-                    <div className="flex h-14 w-10 items-center justify-center rounded-xs bg-lacquer ring-1 ring-bone/10">
-                      <span className="font-display text-[10px] italic text-gold/40">ZC</span>
-                    </div>
+                {me.powerCharger.length > 0 ? (
+                  <div className="relative flex size-[88px] items-end justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                    {me.powerCharger.slice(-3).map((card, i) => {
+                      const def = getCardDef(card.defId);
+                      return (
+                        <div
+                          key={card.instanceId}
+                          className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-bone/10"
+                          style={{ left: `${12 + i * 14}px` }}
+                        >
+                          {def?.image && (
+                            <img src={def.image} alt="" className="h-full w-full object-cover opacity-70" loading="lazy" referrerPolicy="no-referrer" />
+                          )}
+                        </div>
+                      );
+                    })}
+                    <span className="absolute top-1 right-1 font-mono text-[10px] text-gold/70">{powerTotal(G, meIndex)}</span>
                   </div>
-                </div>
-                <span className="font-mono text-[9px] text-bone/30">🃏 {me.deck.length}</span>
+                ) : (
+                  <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                    <span className="font-mono text-lg text-gold/60">{powerTotal(G, meIndex)}</span>
+                  </div>
+                )}
+                <span className="font-mono text-[9px] text-bone/30">⚡ {t('board.powerCharger')}</span>
               </div>
               <Slot card={me.setZoneA} label="A" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
               <Slot card={me.setZoneB} label="B" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined} />
               <Slot card={me.setZoneC} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} />
+              {/* 牌組 — 右邊 */}
               <div className="flex flex-col items-center gap-1">
-                <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
-                  <span className="font-mono text-lg text-gold/60">{powerTotal(G, meIndex)}</span>
+                <div className="flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                  <img src="/card-back.jpg" alt="" className="h-[80px] w-[56px] rounded-xs object-cover" loading="lazy" />
                 </div>
-                <span className="font-mono text-[9px] text-bone/30">⚡ {t('board.powerCharger')}</span>
+                <span className="font-mono text-[9px] text-bone/30">🃏 {me.deck.length}</span>
               </div>
             </div>
             {/* 玩家資訊列 — 照搬 demo 底部排列 */}
