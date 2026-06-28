@@ -1386,7 +1386,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
         {/* 側欄 — Focus 和 Log 互不影響 */}
         <aside className="flex min-h-0 flex-col overflow-hidden">
-          <div className="max-h-[40vh] flex-shrink-0 overflow-y-auto p-1">
+          <div className="flex-shrink-0 overflow-y-auto p-1">
             <FocusPanel focus={focusedCard} />
           </div>
           {G.step === 'effectOrder' && (
