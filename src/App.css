@@ -2873,7 +2873,7 @@ input:focus {
 .board > *:not([data-zone="hand"]):not(header) {
   min-width: 0;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .field-panel {
