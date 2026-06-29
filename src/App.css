@@ -6973,7 +6973,7 @@ button.zone:focus-visible {
 }
 
 .chronos-face-group {
-  transform-box: fill-box;
+  transform-box: view-box;
   transform-origin: center;
   transition: transform 500ms ease;
 }

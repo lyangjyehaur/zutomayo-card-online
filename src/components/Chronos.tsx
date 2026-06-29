@@ -80,7 +80,7 @@ export function Chronos({ chronos, currentTime, nightSidePlayer, currentPlayer }
 
         <g
           className="chronos-face-group"
-          transform={`rotate(${rotation} ${center} ${center})`}
+          style={{ transform: `rotate(${rotation}deg)` }}
         >
           <path className="chronos-night-arc" d={topSemiCircle(center, arcRadius)} />
           <path className="chronos-day-arc" d={bottomSemiCircle(center, arcRadius)} />
