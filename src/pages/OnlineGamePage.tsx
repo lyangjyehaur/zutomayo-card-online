@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
-import { t, useLocale } from '../i18n';
+import { t, translate, useLocale } from '../i18n';
 import {
   clearStoredOnlineSession,
   leaveOnlineSession,
@@ -262,7 +262,7 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
       onClearSession();
       await onCreateNewRoom();
     } catch {
-      setActionError(t('online.createRoomFailed'));
+      setActionError(translate(locale, 'online.createRoomFailed'));
     } finally {
       setCreatingRoom(false);
     }

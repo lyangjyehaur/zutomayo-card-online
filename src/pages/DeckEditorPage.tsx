@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createDeck, getDecks, isLoggedIn, type DeckResponse } from '../api/client';
 import { DeckEditor } from '../components/DeckEditor';
-import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/deckBuilder';
+import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
 import { t } from '../i18n';
 
 interface DeckEditorPageProps {

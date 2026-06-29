@@ -1,6 +1,6 @@
 import { type DeckResponse } from '../../api/client';
 import type { PlayerIndex, ZutomayoSetupData } from '../../game/types';
-import { CUSTOM_DECK_NAME, loadCustomDeckIds } from '../../game/cards/deckBuilder';
+import { CUSTOM_DECK_NAME, loadCustomDeckIds } from '../../game/cards/customDeck';
 import { PRESET_DECKS } from '../../game/cards/presetDecks';
 import { t } from '../../i18n';
 

@@ -1,23 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { getDecks, isLoggedIn, type DeckResponse } from './api/client';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
-import { loadConfigFromAPI, refreshCards } from './game/cards/loader';
-import { hasCustomDeck } from './game/cards/deckBuilder';
+import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
-import { AdminPage } from './pages/AdminPage';
-import { I18nManager } from './pages/I18nManager';
-import { AIGamePage } from './pages/AIGamePage';
-import { AILobbyPage } from './pages/AILobbyPage';
-import { DeckEditorPage } from './pages/DeckEditorPage';
 import { LobbyPage, DEFAULT_DECK_NAME, onlineDeckName, selectedDeckName } from './pages/LobbyPage';
-import { LocalGamePage } from './pages/LocalGamePage';
-import { MatchHistoryPage } from './pages/MatchHistoryPage';
-import { OnlineGamePage } from './pages/OnlineGamePage';
-import { OnlineLobbyPage } from './pages/OnlineLobbyPage';
-import { LeaderboardPage } from './pages/LeaderboardPage';
-import { t, useLocale, type TranslationKey } from './i18n';
+import { t, translate, useLocale, type TranslationKey } from './i18n';
 import {
   clearStoredOnlineSession,
   loadOnlineSession,
@@ -28,6 +17,27 @@ import {
 } from './onlineSession';
 import './App.css';
 import './components/InteractiveTutorial.css';
+
+const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })));
+const I18nManager = lazy(() => import('./pages/I18nManager').then((module) => ({ default: module.I18nManager })));
+const AIGamePage = lazy(() => import('./pages/AIGamePage').then((module) => ({ default: module.AIGamePage })));
+const AILobbyPage = lazy(() => import('./pages/AILobbyPage').then((module) => ({ default: module.AILobbyPage })));
+const DeckEditorPage = lazy(() =>
+  import('./pages/DeckEditorPage').then((module) => ({ default: module.DeckEditorPage })),
+);
+const LocalGamePage = lazy(() => import('./pages/LocalGamePage').then((module) => ({ default: module.LocalGamePage })));
+const MatchHistoryPage = lazy(() =>
+  import('./pages/MatchHistoryPage').then((module) => ({ default: module.MatchHistoryPage })),
+);
+const OnlineGamePage = lazy(() =>
+  import('./pages/OnlineGamePage').then((module) => ({ default: module.OnlineGamePage })),
+);
+const OnlineLobbyPage = lazy(() =>
+  import('./pages/OnlineLobbyPage').then((module) => ({ default: module.OnlineLobbyPage })),
+);
+const LeaderboardPage = lazy(() =>
+  import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
+);
 
 type OnlineRoomErrorKey = 'online.roomFull' | 'online.roomNotFound' | 'online.connectionFailed';
 
@@ -179,12 +189,20 @@ function NotFoundPage() {
   );
 }
 
+function RouteFallback() {
+  return (
+    <main className="app-screen grid place-items-center bg-lacquer-deep font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
+      {t('game.loading')}
+    </main>
+  );
+}
+
 function RouterShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const locale = useLocale();
   const [tutorial, setTutorial] = useState(() => !localStorage.getItem('zutomayo_tutorial_seen'));
-  const [customDeckAvailable, setCustomDeckAvailable] = useState(hasCustomDeck);
+  const [customDeckAvailable, setCustomDeckAvailable] = useState(hasStoredCustomDeck);
   const [serverDecks, setServerDecks] = useState<DeckResponse[]>([]);
   const [serverDeckError, setServerDeckError] = useState('');
   const [deck0Name, setDeck0Name] = useState(DEFAULT_DECK_NAME);
@@ -214,7 +232,7 @@ function RouterShell() {
       setServerDeckError('');
     } catch {
       setServerDecks([]);
-      setServerDeckError(t('deck.loadServerError'));
+      setServerDeckError(translate(locale, 'deck.loadServerError'));
     }
   }, [locale]);
 
@@ -223,8 +241,10 @@ function RouterShell() {
   }, [refreshServerDecks]);
 
   useEffect(() => {
-    void refreshCards();
-    void loadConfigFromAPI();
+    void import('./game/cards/loader').then(({ loadConfigFromAPI, refreshCards }) => {
+      void refreshCards();
+      void loadConfigFromAPI();
+    });
   }, []);
 
   const startAI = (difficulty: AIDifficulty) => {
@@ -304,74 +324,76 @@ function RouterShell() {
     <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
       {!hideNav && <NavBar onShowTutorial={() => setTutorial(true)} />}
       <div className="route-content">
-        <Routes>
-          <Route
-            path="/"
-            element={<LobbyPage onAuthChanged={refreshServerDecks} onShowTutorial={() => setTutorial(true)} />}
-          />
-          <Route
-            path="/online"
-            element={
-              <OnlineLobbyPage
-                deck0Name={deck0Name}
-                customDeckAvailable={customDeckAvailable}
-                serverDecks={serverDecks}
-                setDeck0Name={setDeck0Name}
-                onStartOnline={startOnline}
-                serverDeckError={serverDeckError}
-              />
-            }
-          />
-          <Route
-            path="/ai"
-            element={
-              <AILobbyPage
-                deck0Name={deck0Name}
-                deck1Name={deck1Name}
-                customDeckAvailable={customDeckAvailable}
-                serverDecks={serverDecks}
-                setDeck0Name={setDeck0Name}
-                setDeck1Name={setDeck1Name}
-                onStartAI={startAI}
-                serverDeckError={serverDeckError}
-              />
-            }
-          />
-          <Route path="/play/local" element={<LocalGamePage deck0Name={deck0} deck1Name={deck1} />} />
-          <Route path="/play/ai" element={<AIGamePage deck0Name={deck0} deck1Name={deck1} />} />
-          <Route
-            path="/play/online/:matchID"
-            element={
-              <OnlineGamePage
-                session={onlineSession}
-                onClearSession={clearOnlineSession}
-                onJoinSharedRoom={joinSharedOnlineRoom}
-                onCreateNewRoom={() => startOnline()}
-              />
-            }
-          />
-          <Route
-            path="/deck-builder"
-            element={
-              <DeckEditorPage
-                serverDecks={serverDecks}
-                onServerDecksLoaded={setServerDecks}
-                onDeckSaved={(deck) => {
-                  setCustomDeckAvailable(hasCustomDeck());
-                  if (deck) {
-                    setServerDeckError('');
-                    setServerDecks((current) => [deck, ...current]);
-                  }
-                }}
-              />
-            }
-          />
-          <Route path="/history" element={<MatchHistoryPage />} />
-          <Route path="/leaderboard" element={<LeaderboardPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/admin/i18n" element={<I18nManager />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route
+              path="/"
+              element={<LobbyPage onAuthChanged={refreshServerDecks} onShowTutorial={() => setTutorial(true)} />}
+            />
+            <Route
+              path="/online"
+              element={
+                <OnlineLobbyPage
+                  deck0Name={deck0Name}
+                  customDeckAvailable={customDeckAvailable}
+                  serverDecks={serverDecks}
+                  setDeck0Name={setDeck0Name}
+                  onStartOnline={startOnline}
+                  serverDeckError={serverDeckError}
+                />
+              }
+            />
+            <Route
+              path="/ai"
+              element={
+                <AILobbyPage
+                  deck0Name={deck0Name}
+                  deck1Name={deck1Name}
+                  customDeckAvailable={customDeckAvailable}
+                  serverDecks={serverDecks}
+                  setDeck0Name={setDeck0Name}
+                  setDeck1Name={setDeck1Name}
+                  onStartAI={startAI}
+                  serverDeckError={serverDeckError}
+                />
+              }
+            />
+            <Route path="/play/local" element={<LocalGamePage deck0Name={deck0} deck1Name={deck1} />} />
+            <Route path="/play/ai" element={<AIGamePage deck0Name={deck0} deck1Name={deck1} />} />
+            <Route
+              path="/play/online/:matchID"
+              element={
+                <OnlineGamePage
+                  session={onlineSession}
+                  onClearSession={clearOnlineSession}
+                  onJoinSharedRoom={joinSharedOnlineRoom}
+                  onCreateNewRoom={() => startOnline()}
+                />
+              }
+            />
+            <Route
+              path="/deck-builder"
+              element={
+                <DeckEditorPage
+                  serverDecks={serverDecks}
+                  onServerDecksLoaded={setServerDecks}
+                  onDeckSaved={(deck) => {
+                    setCustomDeckAvailable(hasStoredCustomDeck());
+                    if (deck) {
+                      setServerDeckError('');
+                      setServerDecks((current) => [deck, ...current]);
+                    }
+                  }}
+                />
+              }
+            />
+            <Route path="/history" element={<MatchHistoryPage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/admin" element={<AdminPage />} />
+            <Route path="/admin/i18n" element={<I18nManager />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Suspense>
       </div>
       {resumePromptSession && !hideNav && (
         <OnlineResumePrompt

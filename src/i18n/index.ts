@@ -127,8 +127,12 @@ export function useLocale(): Locale {
   return useSyncExternalStore(subscribeLocale, getLocale, getLocale);
 }
 
+export function translate(locale: Locale, key: TranslationKey): string {
+  return dictionaries[locale][key] ?? key;
+}
+
 export function t(key: TranslationKey): string {
-  return dictionaries[currentLocale][key] ?? key;
+  return translate(currentLocale, key);
 }
 
 export type { TranslationKey };

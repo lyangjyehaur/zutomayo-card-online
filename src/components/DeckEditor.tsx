@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs } from '../game/cards/loader';
 import { getTranslatedEffect } from '../game/cards/i18n';
-import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/deckBuilder';
+import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
 import { ArrowLeft, Search, Save, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -224,12 +224,12 @@ export function DeckEditor({
   const emptySlotCount = Math.max(0, DECK_SIZE - deck.length);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-lacquer-deep text-bone font-sans">
+    <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-lacquer-deep text-bone font-sans">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -left-40 top-0 h-[60vh] w-[60vh] rounded-full bg-gold/8 blur-[140px]" />
       </div>
 
-      <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
+      <header className="relative z-30 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-bone/5 bg-lacquer-deep/80 px-3 py-2 backdrop-blur md:h-12 md:flex-nowrap md:px-6 md:py-0">
         <button
           type="button"
           onClick={onCancel}
@@ -237,15 +237,15 @@ export function DeckEditor({
         >
           <ArrowLeft className="size-3.5" /> {t('common.backToLobby')}
         </button>
-        <div className="font-display text-sm italic">Deck Editor · 牌組編輯</div>
-        <div className="flex items-center gap-3">
+        <div className="hidden font-display text-sm italic sm:block">Deck Editor · 牌組編輯</div>
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 md:flex-nowrap md:gap-3">
           {onDeckNameChange && (
             <input
               value={deckName ?? ''}
               aria-label={t('deck.custom')}
               placeholder={t('deck.custom')}
               onChange={(event) => onDeckNameChange(event.target.value)}
-              className="w-40 border border-bone/10 bg-transparent px-3 py-1.5 text-xs text-bone placeholder:text-bone/30 focus:border-gold/40 focus:outline-none"
+              className="w-32 border border-bone/10 bg-transparent px-3 py-1.5 text-xs text-bone placeholder:text-bone/30 focus:border-gold/40 focus:outline-none sm:w-40"
             />
           )}
           {syncLabel && (
@@ -268,15 +268,15 @@ export function DeckEditor({
 
       {errorMessage && (
         <div
-          className="absolute inset-x-0 top-12 z-30 bg-vermilion/10 px-6 py-1.5 text-[10px] text-vermilion/80"
+          className="relative z-30 bg-vermilion/10 px-4 py-1.5 text-[10px] text-vermilion/80 md:px-6"
           role="alert"
         >
           {errorMessage}
         </div>
       )}
 
-      <div className="relative z-10 grid h-full grid-cols-[1fr_320px] gap-4 px-6 pb-6 pt-16">
-        <section className="flex min-h-0 flex-col rounded-sm bg-lacquer/60 p-5 ring-1 ring-bone/10">
+      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-3 py-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden lg:px-6 lg:py-6">
+        <section className="flex min-h-[32rem] flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10 md:p-5 lg:min-h-0">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
               <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Archive</div>
@@ -461,7 +461,7 @@ export function DeckEditor({
           document.body,
         )}
 
-        <aside className="flex min-h-0 flex-col rounded-sm bg-lacquer p-5 ring-1 ring-bone/10">
+        <aside className="flex min-h-[24rem] flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 md:p-5 lg:min-h-0">
           <div className="mb-3 flex items-end justify-between border-b border-bone/10 pb-3">
             <div className="min-w-0">
               <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Active Deck</div>

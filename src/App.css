@@ -1,4 +1,7 @@
 @import 'tailwindcss';
+@plugin "daisyui" {
+  themes: dark --default;
+}
 
 /*
  * 漆器塔羅設計系統（Lacquered Tarot Design System）
@@ -8209,4 +8212,20 @@ button.zone:focus-visible {
 
 [data-zone="hand"] .game-card .card-art img {
   border-radius: 0.25rem;
+}
+
+.local-duel-responsive {
+  min-height: 0;
+}
+
+@media (max-width: 1180px) {
+  .local-duel-responsive {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+    padding: 0.5rem;
+  }
+
+  .local-duel-responsive .player-view {
+    min-height: min(46rem, calc(100vh - 5rem));
+  }
 }

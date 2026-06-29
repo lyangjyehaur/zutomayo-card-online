@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -170,7 +171,7 @@ export function Card({
     setImageFailed(false);
   }, [card.defId]);
 
-  const calculatePopoverPosition = (): PopoverPosition | null => {
+  const calculatePopoverPosition = useCallback((): PopoverPosition | null => {
     const element = cardRef.current;
     if (!element) return null;
     const rect = element.getBoundingClientRect();
@@ -209,9 +210,9 @@ export function Card({
     }
 
     return { top, left, placement };
-  };
+  }, []);
 
-  const updateCardPopoverPosition = () => {
+  const updateCardPopoverPosition = useCallback(() => {
     const next = calculatePopoverPosition();
     if (!next) return;
     setPopoverPosition((current) => {
@@ -225,7 +226,7 @@ export function Card({
       }
       return next;
     });
-  };
+  }, [calculatePopoverPosition]);
 
   useEffect(() => {
     if (!popoverVisible) {
@@ -239,7 +240,7 @@ export function Card({
       window.removeEventListener('resize', updateCardPopoverPosition);
       window.removeEventListener('scroll', updateCardPopoverPosition, true);
     };
-  }, [popoverVisible, card.instanceId, activeTime]);
+  }, [popoverVisible, card.instanceId, activeTime, updateCardPopoverPosition]);
 
   useEffect(() => {
     if (!tappedOpen) return;

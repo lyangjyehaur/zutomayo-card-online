@@ -1,5 +1,5 @@
 import type { BoardProps } from 'boardgame.io/react';
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getProfile, isLoggedIn, submitMatch } from '../api/client';
 import type { ActionLogEntry, CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
@@ -1276,10 +1276,10 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
   const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const previousTurnNumber = useRef(G.turnNumber);
 
-  const clearPhaseTimers = () => {
+  const clearPhaseTimers = useCallback(() => {
     for (const phaseTimer of phaseTimers.current) clearTimeout(phaseTimer);
     phaseTimers.current = [];
-  };
+  }, []);
 
   const showTransientPhaseMessage = (message: FeedbackMessage, duration = 1500) => {
     clearPhaseTimers();
@@ -1288,7 +1288,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
     phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), effectiveDuration));
   };
 
-  const playBattleFeedbackSequence = (resultMessage: FeedbackMessage) => {
+  const playBattleFeedbackSequence = useCallback((resultMessage: FeedbackMessage) => {
     clearPhaseTimers();
     const reduced = prefersReducedMotion();
     const phaseDuration = reduced ? 250 : 700;
@@ -1306,9 +1306,9 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       offset += item.duration;
     }
     phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), offset));
-  };
+  }, [clearPhaseTimers]);
 
-  useEffect(() => () => clearPhaseTimers(), []);
+  useEffect(() => () => clearPhaseTimers(), [clearPhaseTimers]);
 
   useEffect(() => {
     if (useServerTimer) {
@@ -1373,7 +1373,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       }
     }
     previousTurnNumber.current = G.turnNumber;
-  }, [G.turnNumber, G.lastBattleResult, G.players, meIndex, opponentIndex]);
+  }, [G, meIndex, opponentIndex, playBattleFeedbackSequence]);
 
   const setFromHand = (handIndex: number) => {
     if (G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
@@ -1394,13 +1394,13 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       </div>
 
       {/* 頂欄 — demo 格式 + 階段指示器 */}
-      <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
-        <div className="flex items-center gap-8 font-mono text-[10px] uppercase tracking-[0.3em]">
+      <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between gap-3 overflow-x-auto border-b border-bone/5 bg-lacquer-deep/80 px-3 backdrop-blur md:px-6">
+        <div className="flex shrink-0 items-center gap-4 font-mono text-[10px] uppercase tracking-[0.3em] md:gap-8">
           <span className="text-bone/40">{t('board.turn')} {G.turnNumber}</span>
           <span className="text-bone/40">{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
           <span className={`text-bone/40 ${timeLeft <= 10 ? 'text-vermilion' : ''}`}>{timeLeft}{t('board.secondsUnit')}</span>
         </div>
-        <div className="flex items-center gap-6 font-mono text-[10px] uppercase tracking-[0.3em]">
+        <div className="hidden shrink-0 items-center gap-6 font-mono text-[10px] uppercase tracking-[0.3em] md:flex">
           {[
             { label: '設置', active: G.step === 'initialSet' || G.step === 'turnSet' },
             { label: '公開', active: false },
@@ -1412,27 +1412,27 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             <span key={phase.label} className={phase.active ? 'text-gold' : 'text-bone/20'}>{phase.label}</span>
           ))}
         </div>
-        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.3em]">
+        <div className="hidden shrink-0 items-center gap-3 font-mono text-[10px] uppercase tracking-[0.3em] lg:flex">
           <span className="text-bone/40">{phaseInstruction(G, meIndex, required, minimum).title}</span>
           <span className="text-gold">{phaseInstruction(G, meIndex, required, minimum).body}</span>
         </div>
       </header>
 
       {/* 雙欄佈局 — header 浮在上面，pt-14 撐開頂部空間 */}
-      <div className="relative z-10 grid h-full grid-cols-[1fr_280px] gap-4 overflow-hidden px-6 pb-4 pt-14">
+      <div className="relative z-10 grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-14 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-4 lg:overflow-hidden lg:px-6">
 
         {/* ===== 左欄：戰場 ===== */}
-        <div className="flex min-h-0 flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
 
           {/* 對手區域 — flex-1 justify-start（照搬 demo） */}
-          <div className="flex flex-col h-[240px] shrink-0 items-center justify-start gap-4 pt-3">
+          <div className="flex h-auto min-h-[13rem] shrink-0 flex-col items-center justify-start gap-2 pt-2 lg:h-[240px] lg:gap-4 lg:pt-3">
             {/* 對手資訊：名字在右 + LP bar + 統計 */}
-            <div className="flex items-center gap-6">
+            <div className="flex flex-wrap items-center justify-center gap-3 lg:gap-6">
               <div className="text-right">
                 <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('player.opponent')}</div>
                 <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
               </div>
-              <div className="w-72">
+              <div className="w-56 sm:w-72">
                 <div className="relative h-1 w-full bg-bone/10">
                   <div className="absolute inset-y-0 left-0 bg-vermilion" style={{ width: `${opponent.hp}%` }} />
                 </div>
@@ -1455,7 +1455,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               ))}
             </div>
             {/* 對手設置區 — CBA 從右到左 + 上下顛倒 + 充能/牌組/深淵 */}
-            <div className="flex items-start gap-3 rotate-180">
+            <div className="flex max-w-full items-start gap-2 overflow-x-auto pb-1 rotate-180 lg:gap-3">
               {/* 對手充能區 */}
               <div className="flex flex-col items-center gap-1">
                 {opponent.powerCharger.length > 0 ? (
@@ -1477,7 +1477,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 )}
                 <span className="font-mono text-[9px] text-bone/30">⚡</span>
               </div>
-              <Slot card={opponent.setZoneA} label="C" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot card={opponent.setZoneA} label="A" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
               <Slot card={opponent.setZoneB} label="B" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
               <Slot card={opponent.setZoneC} label="C" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
               {/* 對手牌組 */}
@@ -1501,7 +1501,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           </div>
 
           {/* Chronos + 戰鬥區 */}
-          <div className="my-2 flex flex-1 min-h-0 items-center justify-center gap-8">
+          <div className="my-2 flex min-h-[10rem] flex-wrap items-center justify-center gap-3 lg:flex-1 lg:min-h-0 lg:gap-8">
             <FieldZone
               label={t('board.battleZone')}
               shortLabel={t('board.battleZoneShort')}
@@ -1531,9 +1531,9 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           </div>
 
           {/* 玩家區域 — flex-1 justify-end（照搬 demo） */}
-          <div className="flex flex-col h-[280px] shrink-0 items-center justify-end gap-3 pb-2">
+          <div className="flex h-auto min-h-[18rem] shrink-0 flex-col items-center justify-end gap-3 pb-2 lg:h-[280px]">
             {/* 玩家設置區 + 充能/牌組 */}
-            <div className="flex items-end gap-3">
+            <div className="flex max-w-full items-end gap-2 overflow-x-auto pb-1 lg:gap-3">
               {/* 充能區 — 左邊 */}
               <div className="flex flex-col items-center gap-1">
                 {me.powerCharger.length > 0 ? (
@@ -1561,7 +1561,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 )}
                 <span className="font-mono text-[9px] text-bone/30">⚡ {t('board.powerCharger')}</span>
               </div>
-              <Slot card={me.setZoneA} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
+              <Slot card={me.setZoneA} label="A" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
               <Slot card={me.setZoneB} label="B" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined} />
               <Slot card={me.setZoneC} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} />
               {/* 牌組 — 右邊 — 根據數量堆疊 */}
@@ -1583,9 +1583,9 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               </div>
             </div>
             {/* 玩家資訊列 — 照搬 demo 底部排列 */}
-            <div className="flex w-full items-end justify-between px-2">
+            <div className="flex w-full flex-col items-stretch justify-between gap-3 px-2 lg:flex-row lg:items-end">
               {/* 左：LP bar */}
-              <div className="w-72">
+              <div className="w-full lg:w-72">
                 <div className="relative h-1 w-full bg-bone/10">
                   <div className="absolute inset-y-0 left-0 bg-gold" style={{ width: `${me.hp}%` }} />
                 </div>
@@ -1595,7 +1595,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 </div>
               </div>
               {/* 中：手牌扇形 */}
-              <div className="flex items-end gap-1 px-4" data-zone="hand">
+              <div className="flex items-end gap-1 overflow-x-auto px-1 pb-2 lg:overflow-visible lg:px-4" data-zone="hand">
                 {me.hand.map((card, index) => {
                   const center = (me.hand.length - 1) / 2;
                   const rotate = (index - center) * 4;
@@ -1603,7 +1603,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                   return (
                     <div
                       key={card.instanceId}
-                      className="h-36 w-24 shrink-0 cursor-pointer transition-all duration-300 hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-gold hover:shadow-[0_20px_40px_-10px] hover:shadow-gold/30"
+                      className="h-28 w-[4.75rem] shrink-0 cursor-pointer transition-all duration-300 hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-gold hover:shadow-[0_20px_40px_-10px] hover:shadow-gold/30 sm:h-32 sm:w-20 lg:h-36 lg:w-24"
                       style={{ transform: `rotate(${rotate}deg) translateY(${translateY}px)` }}
                       onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined}
                       onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
@@ -1615,10 +1615,10 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 })}
               </div>
               {/* 右：操作按鈕 — 照搬 demo */}
-              <div className="flex w-44 flex-col gap-2">
+              <div className="flex w-full flex-row gap-2 lg:w-44 lg:flex-col">
                 {!G.ready[meIndex] ? (
                   <button
-                    className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex-1 bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 lg:flex-none"
                     type="button"
                     disabled={!canConfirm}
                     onClick={() => {
@@ -1629,11 +1629,11 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                     {t('board.confirmSet')} ({me.cardsSetThisTurn}/{required})
                   </button>
                 ) : (
-                  <button className="border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60" type="button" disabled>
+                  <button className="flex-1 border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 lg:flex-none" type="button" disabled>
                     {t('board.readyWaiting')}
                   </button>
                 )}
-                <button className="border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5" type="button" disabled>
+                <button className="flex-1 border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 lg:flex-none" type="button" disabled>
                   {t('board.powerCharger')} {powerTotal(G, meIndex)}
                 </button>
               </div>
@@ -1642,7 +1642,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
         </div>
 
         {/* ===== 右欄：側欄 — 照搬 demo aside 結構 ===== */}
-        <aside className="flex min-h-0 flex-col gap-3 overflow-hidden">
+        <aside className="flex max-h-[22rem] min-h-[18rem] flex-col gap-3 overflow-hidden lg:max-h-none lg:min-h-0">
           {/* Focus 卡牌詳情 — 照搬 demo rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 */}
           <div className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
             <div className="mb-3 flex items-center justify-between">

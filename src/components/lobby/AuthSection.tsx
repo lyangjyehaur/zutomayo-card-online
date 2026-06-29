@@ -114,7 +114,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
   if (user) {
     const stats = profileStats(user);
     return (
-      <section className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10" aria-label={user.nickname || t('auth.guest')}>
+      <section className="rounded-sm bg-lacquer p-2 ring-1 ring-bone/10 sm:p-4" aria-label={user.nickname || t('auth.guest')}>
         <div className="flex flex-col gap-3">
           <p className="font-display text-sm italic text-bone">{user.nickname || t('auth.guest')}</p>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -128,7 +128,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
           </div>
           <div className="flex items-center gap-3 pt-1">
             <button
-              className="border border-bone/20 px-3 py-1 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5"
+              className="border border-bone/20 px-2.5 py-1 text-[9px] uppercase tracking-[0.12em] text-bone/60 transition hover:bg-bone/5 sm:px-3 sm:text-[10px] sm:tracking-[0.3em]"
               type="button"
               onClick={handleLogout}
             >
@@ -145,15 +145,18 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
   }
 
   return (
-    <section className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+    <section className="rounded-sm bg-lacquer p-2 ring-1 ring-bone/10 sm:p-4">
       <div className="flex flex-col gap-3">
         <button
-          className="border border-bone/20 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5"
+          className="whitespace-nowrap border border-bone/20 px-2.5 py-1.5 text-[9px] uppercase tracking-[0.12em] text-bone/60 transition hover:bg-bone/5 sm:px-4 sm:text-[10px] sm:tracking-[0.3em]"
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
         >
-          {t('auth.login')} / {t('auth.register')}
+          <span className="sm:hidden">{t('auth.login')}</span>
+          <span className="hidden sm:inline">
+            {t('auth.login')} / {t('auth.register')}
+          </span>
         </button>
         {!expanded && error && <p className="text-[10px] text-vermilion/80">{error}</p>}
         {!expanded && status && <p className="font-mono text-[10px] text-gold/70">{status}</p>}

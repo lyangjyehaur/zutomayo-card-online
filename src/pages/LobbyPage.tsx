@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Swords, Bot, LayoutGrid } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { AuthSection } from '../components/lobby/AuthSection';
-import { getAllCardDefs } from '../game/cards/loader';
 import { t } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
@@ -46,7 +45,8 @@ const ENTRIES: Entry[] = [
   },
 ];
 
-function pickRandomCardImage(): string | null {
+async function pickRandomCardImage(): Promise<string | null> {
+  const { getAllCardDefs } = await import('../game/cards/loader');
   const cards = getAllCardDefs().filter((card) => typeof card.image === 'string' && card.image.length > 0);
   if (cards.length === 0) return null;
   return cards[Math.floor(Math.random() * cards.length)].image;
@@ -55,12 +55,17 @@ function pickRandomCardImage(): string | null {
 export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
   // 每次進入首頁隨機取一張卡牌作為模糊背景
-  const [bgImage, setBgImage] = useState<string | null>(pickRandomCardImage);
+  const [bgImage, setBgImage] = useState<string | null>(null);
 
   // 每次 mount 時重新隨機取一張（確保返回首頁也有背景）
   useEffect(() => {
-    const next = pickRandomCardImage();
-    if (next) setBgImage(next);
+    let cancelled = false;
+    void pickRandomCardImage().then((next) => {
+      if (!cancelled && next) setBgImage(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -83,7 +88,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       </div>
 
       {/* 頂部 Header */}
-      <header className="absolute inset-x-0 top-0 z-20 flex h-16 items-center justify-between px-8">
+      <header className="absolute inset-x-0 top-0 z-20 flex h-16 items-center justify-between gap-3 px-4 md:px-8">
         <div className="flex items-center gap-3">
           <div className="size-2 rounded-full bg-vermilion shadow-[0_0_12px] shadow-vermilion/60" />
           <span className="font-display text-xl italic tracking-tight">{t('app.title')}</span>
@@ -91,21 +96,21 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             {t('app.subtitle')}
           </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex min-w-0 items-center justify-end gap-2 md:gap-4">
           <LanguageSwitcher />
           <AuthSection onAuthChanged={onAuthChanged} />
         </div>
       </header>
 
       {/* 中央三聯幅卡 */}
-      <section className="relative z-10 flex h-full items-center justify-center px-8">
-        <div className="grid w-full max-w-6xl grid-cols-1 gap-6 md:grid-cols-3">
+      <section className="relative z-10 h-full overflow-y-auto px-4 pb-14 pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
+        <div className="grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
           {ENTRIES.map(({ to, titleKey, subtitle, caption, Icon }, i) => (
             <button
               key={to}
               type="button"
               onClick={() => navigate(to)}
-              className="group relative flex h-[460px] flex-col justify-between overflow-hidden rounded-sm bg-lacquer p-8 text-left ring-1 ring-bone/10 transition-all duration-500 hover:-translate-y-1 hover:ring-gold/50 hover:shadow-[0_30px_80px_-20px] hover:shadow-vermilion/30"
+              className="group relative flex min-h-[11rem] flex-col justify-between overflow-hidden rounded-sm bg-lacquer p-5 text-left ring-1 ring-bone/10 transition-all duration-500 hover:-translate-y-1 hover:ring-gold/50 hover:shadow-[0_30px_80px_-20px] hover:shadow-vermilion/30 md:h-[460px] md:p-8"
             >
               {/* 卡內裝飾：內框線 */}
               <div className="pointer-events-none absolute inset-3 rounded-sm ring-1 ring-bone/5 transition-all duration-500 group-hover:ring-gold/20" />

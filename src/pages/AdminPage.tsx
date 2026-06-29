@@ -578,9 +578,7 @@ export function AdminPage() {
   const [sortBy, setSortBy] = useState<'id' | 'name' | 'cost' | 'attack'>('id');
   const [selectedCard, setSelectedCard] = useState<CardDef | null>(null);
   const [modalTab, setModalTab] = useState<ModalTab>('basic');
-  const [cardVersion, setCardVersion] = useState(0);
-
-  const allCards = useMemo(() => getAllCardDefs(), [cardVersion]);
+  const [allCards, setAllCards] = useState(() => getAllCardDefs());
   const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
 
   const metaById = useMemo(() => new Map(allCards.map((card) => [card.id, parseCardMeta(card)])), [allCards]);
@@ -777,8 +775,8 @@ export function AdminPage() {
                 card={selectedCard}
                 onSaved={(updated) => {
                   setSelectedCard(updated);
-                  setCardVersion((v) => v + 1);
-                  void refreshCards();
+                  setAllCards((cards) => cards.map((card) => (card.id === updated.id ? updated : card)));
+                  void refreshCards().then(() => setAllCards(getAllCardDefs()));
                 }}
               />
             )}

@@ -38,7 +38,7 @@ export function LocalGamePage({ deck0Name, deck1Name }: LocalGamePageProps) {
 
   return (
     <div className="app game-app">
-      <header className="navbar">
+      <header className="navbar shrink-0">
         <button className="btn btn-ghost" type="button" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
         </button>
@@ -49,7 +49,7 @@ export function LocalGamePage({ deck0Name, deck1Name }: LocalGamePageProps) {
           </span>
         </div>
       </header>
-      <div className="game-container local-duel">
+      <div className="game-container local-duel local-duel-responsive">
         <section className="player-view">
           <div className="view-label">{t('player.zeroView')}</div>
           <LocalClient playerID="0" />
