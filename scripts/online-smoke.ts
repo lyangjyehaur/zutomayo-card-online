@@ -7,8 +7,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ZutomayoCard, resetParsedEffects } from '../src/game/Game';
 import { initCards } from '../src/game/cards/loader';
-import { validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
-import { PRESET_DECKS } from '../src/game/cards/presetDecks';
+import { getPresetDeck, validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
 import { PostgresAdapter } from '../src/server/db/postgres-adapter';
 import { RedisPubSub } from '../src/server/transport/redis-pubsub';
 import type { CardInstance, GameState, ZutomayoSetupData } from '../src/game/types';
@@ -284,6 +283,10 @@ if (existsSync(onlineSmokeCardsPath)) {
   resetParsedEffects();
 }
 
+function presetDeckIds(name: string): string[] {
+  return getPresetDeck(name).map((card) => card.defId);
+}
+
 const server = Server({
   games: [ZutomayoCard],
   db: db as unknown as NonNullable<ServerOpts['db']>,
@@ -308,8 +311,8 @@ try {
     'player0 hand should be visible to player0',
   );
 
-  const customDeck0Ids = [...PRESET_DECKS.electric.ids];
-  const customDeck1Ids = [...PRESET_DECKS.wind.ids];
+  const customDeck0Ids = presetDeckIds('electric');
+  const customDeck1Ids = presetDeckIds('wind');
   assert.equal(validateConstructedDeckIds(customDeck0Ids), null);
   assert.equal(validateConstructedDeckIds(customDeck1Ids), null);
   const customMatch = await startJoinedClients({ deck0Ids: customDeck0Ids, deck1Ids: customDeck1Ids });

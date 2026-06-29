@@ -129,6 +129,10 @@ function preparedState(): GameState {
   return G;
 }
 
+function presetDeckIds(name: string): string[] {
+  return getPresetDeck(name).map((card) => card.defId);
+}
+
 function parsedCardEffect(defId: string): ParsedEffect {
   const card = getAllCardDefs().find((item) => item.id === defId);
   assert.ok(card, `missing card ${defId}`);
@@ -162,7 +166,7 @@ function fivePowerCards() {
 }
 
 {
-  const customIds = PRESET_DECKS.dark.ids;
+  const customIds = presetDeckIds('dark');
   assert.equal(validateConstructedDeckIds(customIds), null);
   assert.equal(isValidConstructedDeck(customIds), true);
 
@@ -185,7 +189,7 @@ function fivePowerCards() {
   assert.equal(validateConstructedDeckIds(noCharacters), null);
   assert.match(getCharacterCountWarning(noCharacters) ?? '', /at least 10 Character/);
 
-  const G = setupGame({ deck0Ids: customIds, deck1Ids: PRESET_DECKS.flame.ids });
+  const G = setupGame({ deck0Ids: customIds, deck1Ids: presetDeckIds('flame') });
   assert.deepEqual(
     [...G.players[0].hand, ...G.players[0].deck].map((card) => card.defId).sort(),
     [...customIds].sort(),
@@ -702,10 +706,13 @@ function fivePowerCards() {
 {
   // #6 預設牌組與 randomDeck 應通過 validateConstructedDeckIds（buildDeck 內驗證）。
   for (const key of Object.keys(PRESET_DECKS)) {
-    const preset = PRESET_DECKS[key];
-    assert.equal(validateConstructedDeckIds(preset.ids), null, `preset ${key} should be valid`);
     // 透過 getPresetDeck 走 buildDeck，應不拋錯。
     const deck = getPresetDeck(key);
+    assert.equal(
+      validateConstructedDeckIds(deck.map((card) => card.defId)),
+      null,
+      `preset ${key} should be valid`,
+    );
     assert.equal(deck.length, 20);
   }
   // randomDeck 走 buildDeck 也應不拋錯。

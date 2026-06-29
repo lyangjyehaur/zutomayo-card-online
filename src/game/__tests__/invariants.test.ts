@@ -40,8 +40,8 @@ function testCard(id: string, type: CardType): CardDef {
 
 function testCardDefs(): CardDef[] {
   return [
-    ...Array.from({ length: 12 }, (_, i) => testCard(`test-character-${i + 1}`, 'Character')),
-    ...Array.from({ length: 6 }, (_, i) => testCard(`test-enchant-${i + 1}`, 'Enchant')),
+    ...Array.from({ length: 15 }, (_, i) => testCard(`test-character-${i + 1}`, 'Character')),
+    ...Array.from({ length: 8 }, (_, i) => testCard(`test-enchant-${i + 1}`, 'Enchant')),
     ...Array.from({ length: 2 }, (_, i) => testCard(`test-area-enchant-${i + 1}`, 'Area Enchant')),
   ];
 }

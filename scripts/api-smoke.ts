@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { Pool } from 'pg';
-import { PRESET_DECKS } from '../src/game/cards/presetDecks';
+import { initCards } from '../src/game/cards/loader';
+import { getPresetDeck } from '../src/game/cards/deckBuilder';
 import type { ActionLogEntry, ActionLogResult, PendingChoice } from '../src/game/types';
 
 // Mock HTTP request：模擬 server.cjs handleRequest 接收的 req 物件。
@@ -36,6 +37,12 @@ interface AuthResponse {
     nickname: string;
     elo: number;
   };
+}
+
+initCards(JSON.parse(readFileSync(resolve('cards.json'), 'utf8')));
+
+function presetDeckIds(name: string): string[] {
+  return getPresetDeck(name).map((card) => card.defId);
 }
 
 interface ProfileResponse {
@@ -204,7 +211,7 @@ try {
   const emailA = `smoke-a-${stamp}@example.test`;
   const emailB = `smoke-b-${stamp}@example.test`;
   const password = 'secret123';
-  const validDeckIds = PRESET_DECKS.dark.ids;
+  const validDeckIds = presetDeckIds('dark');
   assert.equal(validDeckIds.length, 20);
 
   const registeredA = await api<AuthResponse>(baseUrl, '/api/register', {
@@ -286,6 +293,7 @@ try {
 
   const actionLog: ActionLogEntry[] = [
     {
+      id: 1,
       turn: 1,
       step: 'janken',
       player: 0,
@@ -294,6 +302,7 @@ try {
       payload: { choice: 'rock', hiddenHand: ['1st_1'], deckOrder: ['1st_2'] },
     },
     {
+      id: 2,
       turn: 1,
       step: 'mulligan',
       player: 1,
@@ -302,6 +311,7 @@ try {
       payload: { redrawnCount: 2, cardIds: ['1st_3', '1st_4'] },
     },
     {
+      id: 3,
       turn: 2,
       step: 'turnSet',
       player: 0,

@@ -95,6 +95,15 @@ function readJsonFile<T>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf8')) as T;
 }
 
+function presetCardIds(cards: CardDef[], element: CardDef['element']): string[] {
+  const ids = cards
+    .filter((card) => card.element === element)
+    .slice(0, 20)
+    .map((card) => card.id);
+  if (ids.length !== 20) throw new Error(`Preset element ${element} does not have enough cards`);
+  return ids;
+}
+
 function cardParams(card: CardDef): unknown[] {
   return [
     card.id,
@@ -124,7 +133,7 @@ async function main(): Promise<void> {
   const presetDecks = Object.entries(PRESET_DECKS).map(([id, deck]) => ({
     id,
     name: deck.name,
-    cardIds: deck.ids,
+    cardIds: presetCardIds(cards, deck.element),
   }));
 
   await pool.query(SCHEMA_SQL);
