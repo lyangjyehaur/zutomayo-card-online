@@ -108,6 +108,11 @@ export const zhCN: Record<TranslationKey, string> = {
 
   'board.janken': '猜拳',
   'board.jankenHint': '猜拳胜者成为夜侧玩家',
+  'board.jankenWin': '胜出',
+  'board.battleDraw': '势均力敌',
+  'board.effectFailed.powerCost': '能量不足，效果未发动',
+  'board.effectFailed.disabled': '效果被禁用',
+  'board.effectFailed.condition': '条件不满足，效果未发动',
   'board.rock': '石头',
   'board.paper': '布',
   'board.scissors': '剪刀',

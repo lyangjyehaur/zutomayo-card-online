@@ -30,6 +30,7 @@ import type { ParsedEffect, Condition, EffectValue, ActionType } from './types';
 import { getAllCardDefs, getCardDef } from '../cards/loader';
 import { getChronosTimeForPosition, normalizeChronosPosition } from '../chronos';
 import { pushHpChange } from '../hpChange';
+import { recordAction } from '../actionLog';
 import {
   isCharacterCard,
   legalCardMoveCards,
@@ -461,7 +462,11 @@ export function collectTurnEffects(
       .filter((card) => !(G.suppressedEffectCardIdsThisTurn ?? []).includes(card.instanceId))
       .filter((card, index, all) => all.findIndex((other) => other.instanceId === card.instanceId) === index);
     for (const card of candidates) {
-      if (areEffectsDisabledForCard(G, player, card.defId)) continue;
+      if (areEffectsDisabledForCard(G, player, card.defId)) {
+        // 效果被禁用（如 enchantEffectsDisabled），記錄到 actionLog 讓玩家知道為何附魔未生效。
+        recordAction(G, player, 'effectFailed', { cardDefId: card.defId, reason: 'disabled' });
+        continue;
+      }
       const definition = getCardDef(card.defId);
       const effects = parsedEffects.get(card.defId) ?? [];
       for (const [effectIndex, effect] of effects.entries()) {
@@ -472,6 +477,8 @@ export function collectTurnEffects(
         if ((effect.trigger === 'onUse' || effect.trigger === 'onEnter') && !isNew && !canRunPersisted) continue;
         if (!definition || power(G, player) < definition.powerCost) {
           G.log.push(`Player ${player}: ${definition?.name ?? card.defId} effect skipped (power cost).`);
+          // 能量不足導致效果未發動，記錄到 actionLog 供玩家回溯復盤。
+          recordAction(G, player, 'effectFailed', { cardDefId: card.defId, reason: 'powerCost' });
           continue;
         }
         pending[player].push({
@@ -1827,12 +1834,25 @@ export function processTurnEffects(
       for (const pendingEffect of pending[player]) {
         const priority = pendingEffect.effect.priority === 'late' ? 'late' : 'normal';
         if (priority !== phase) continue;
-        if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) continue;
+        if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) {
+          // 執行階段再次檢查禁用（效果執行中途可能被其他效果禁用），記錄失敗。
+          recordAction(G, player, 'effectFailed', { cardDefId: pendingEffect.cardDefId, reason: 'disabled' });
+          continue;
+        }
         const result = executeEffect(pendingEffect.effect, G, player, {
           cardInstanceId: pendingEffect.cardInstanceId,
           cardDefId: pendingEffect.cardDefId,
         });
-        if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
+        if (result.success) {
+          G.log.push(`Player ${player}: ${result.message}.`);
+        } else {
+          // 效果條件不滿足或執行失敗，記錄到 actionLog 讓玩家知道附魔未生效原因。
+          recordAction(G, player, 'effectFailed', {
+            cardDefId: pendingEffect.cardDefId,
+            reason: 'condition',
+            message: result.message,
+          });
+        }
         if ((G.step as GameState['step']) === 'gameOver') return;
       }
     }

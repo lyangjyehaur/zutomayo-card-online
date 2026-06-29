@@ -108,6 +108,11 @@ export const en: Record<TranslationKey, string> = {
 
   'board.janken': 'Rock-Paper-Scissors',
   'board.jankenHint': 'Winner becomes the Night-side player',
+  'board.jankenWin': 'wins',
+  'board.battleDraw': 'Draw',
+  'board.effectFailed.powerCost': 'insufficient power, effect not activated',
+  'board.effectFailed.disabled': 'effect disabled',
+  'board.effectFailed.condition': 'condition not met, effect not activated',
   'board.rock': 'Rock',
   'board.paper': 'Paper',
   'board.scissors': 'Scissors',

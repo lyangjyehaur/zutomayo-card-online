@@ -110,17 +110,30 @@ function slotLabel(slot: string): string {
 function formatLogEntry(
   entry: ActionLogEntry,
   locale: string,
-): { segments: LogSegment[]; tone: LogTone } {
+): { segments: LogSegment[]; tone: LogTone; breakdown?: HpChangeBreakdown } {
   const p = playerName(entry.player);
   const a = entry.action;
   const payload = entry.payload as Record<string, unknown> | undefined;
   const msg = entry.result?.message;
   const effectText = translatedActionLogEffect(entry, locale);
+  const payloadBreakdown = payload?.breakdown as HpChangeBreakdown | undefined;
 
   if (a === 'janken') {
     const choice = payload?.choice as string;
     const mark = choice === 'rock' ? '✊' : choice === 'paper' ? '✋' : '✌️';
     return { segments: [seg(`${p} ${t('board.janken')} ${mark}`)], tone: 'info' };
+  }
+  if (a === 'jankenResult') {
+    const draw = Boolean(payload?.draw);
+    const choice0 = payload?.choice0 as string;
+    const choice1 = payload?.choice1 as string;
+    const mark0 = choice0 === 'rock' ? '✊' : choice0 === 'paper' ? '✋' : '✌️';
+    const mark1 = choice1 === 'rock' ? '✊' : choice1 === 'paper' ? '✋' : '✌️';
+    const winnerName = payload?.winner !== undefined ? playerName(payload.winner as PlayerIndex) : '';
+    const text = draw
+      ? `${t('board.janken')} ${mark0} vs ${mark1} — ${t('board.jankenDraw' as never)}`
+      : `${t('board.janken')} ${mark0} vs ${mark1} — ${winnerName} ${t('board.jankenWin' as never)}`;
+    return { segments: [seg(text)], tone: 'info' };
   }
   if (a === 'mulligan') {
     const count = (payload?.redrawnCount as number) ?? 0;
@@ -164,7 +177,32 @@ function formatLogEntry(
       segments.push(seg(' · '));
       segments.push(cardSeg(sourceCardDefId));
     }
-    return { segments, tone: 'battle' };
+    return { segments, tone: 'battle', breakdown: payloadBreakdown };
+  }
+  if (a === 'battleDraw') {
+    const p0Attack = (payload?.p0Attack as number) ?? 0;
+    const p1Attack = (payload?.p1Attack as number) ?? 0;
+    const p0CardDefId = payload?.p0CardDefId as string | undefined;
+    const p1CardDefId = payload?.p1CardDefId as string | undefined;
+    const segments: LogSegment[] = [seg(`${t('board.battleDraw' as never)} ${p0Attack} vs ${p1Attack} · `)];
+    if (p0CardDefId) segments.push(cardSeg(p0CardDefId));
+    segments.push(seg(' vs '));
+    if (p1CardDefId) segments.push(cardSeg(p1CardDefId));
+    return { segments, tone: 'battle', breakdown: payloadBreakdown };
+  }
+  if (a === 'effectFailed') {
+    const cardDefId = payload?.cardDefId as string | undefined;
+    const reason = (payload?.reason as string) ?? '';
+    const reasonKey =
+      reason === 'powerCost'
+        ? 'board.effectFailed.powerCost'
+        : reason === 'disabled'
+          ? 'board.effectFailed.disabled'
+          : 'board.effectFailed.condition';
+    const segments: LogSegment[] = [seg(`${p} `)];
+    if (cardDefId) segments.push(cardSeg(cardDefId));
+    segments.push(seg(` ${t(reasonKey as never)}`));
+    return { segments, tone: 'effect' };
   }
   if (a === 'confirmReady') {
     return { segments: [seg(`${p} ${t('board.readyWaiting')}`)], tone: 'set' };
@@ -239,6 +277,41 @@ function renderLogSegments(segments: LogSegment[]): ReactNode {
     if (s.type === 'card') return <LogCardChip key={i} cardDefId={s.cardDefId} />;
     return <span key={i}>{s.text}</span>;
   });
+}
+
+/**
+ * log 行下方的精簡 breakdown 顯示：縮排小字，每行 label: value。
+ * 與 notice 的 BreakdownBlock 相比更精簡，適合 log 面板的緊湊空間。
+ * value 若為 i18n key（board. 開頭）會翻譯；附帶 cardDefId 的行顯示為可 hover 卡牌 chip。
+ */
+function LogBreakdown({ breakdown }: { breakdown: HpChangeBreakdown }) {
+  return (
+    <div className="ml-3 mt-0.5 flex flex-col gap-px border-l border-bone/10 pl-2">
+      {breakdown.lines.map((line, idx) => {
+        const valueDisplay = line.value.startsWith('board.') ? t(line.value as never) : line.value;
+        return (
+          <div key={idx} className="flex items-baseline gap-1 text-[8px] text-bone/45">
+            <span className="text-bone/30">{t(line.label as never)}:</span>
+            {line.cardDefId ? (
+              <LogCardChip cardDefId={line.cardDefId} />
+            ) : (
+              <span
+                className={
+                  line.value.startsWith('-')
+                    ? 'text-vermilion/70'
+                    : line.value.startsWith('+')
+                      ? 'text-[var(--teal)]/70'
+                      : 'text-bone/55'
+                }
+              >
+                {valueDisplay}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function jankenMark(choice: JankenChoice | null): string {
@@ -1779,15 +1852,21 @@ export function BattleLogPanel({ G }: { G: GameState }) {
         <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto font-mono text-[10px] leading-relaxed text-bone/40">
-        {entries.map((entry) => (
-          <p key={`${entry.id ?? entry.timestamp}-${entry.action}`}>
-            <span className="text-bone/60">[{actionTime(entry.timestamp)}]</span>{' '}
-            <span className="text-gold/50">
-              {t('board.turn')} {entry.turn}
-            </span>{' '}
-            {renderLogSegments(formatLogEntry(entry, locale).segments)}
-          </p>
-        ))}
+        {entries.map((entry) => {
+          const { segments, breakdown } = formatLogEntry(entry, locale);
+          return (
+            <div key={`${entry.id ?? entry.timestamp}-${entry.action}`}>
+              <p>
+                <span className="text-bone/60">[{actionTime(entry.timestamp)}]</span>{' '}
+                <span className="text-gold/50">
+                  {t('board.turn')} {entry.turn}
+                </span>{' '}
+                {renderLogSegments(segments)}
+              </p>
+              {breakdown && <LogBreakdown breakdown={breakdown} />}
+            </div>
+          );
+        })}
         {entries.length === 0 && <p className="text-bone/30">{t('board.waitingOpponent')}</p>}
       </div>
     </section>
@@ -2401,7 +2480,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 .slice(-20)
                 .reverse()
                 .map((entry) => {
-                  const { segments, tone } = formatLogEntry(entry, locale);
+                  const { segments, tone, breakdown } = formatLogEntry(entry, locale);
                   const toneClass =
                     tone === 'battle'
                       ? 'text-vermilion/80'
@@ -2411,18 +2490,21 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                           ? 'text-bone/70'
                           : 'text-bone/40';
                   return (
-                    <p key={`${entry.timestamp}-${entry.action}`} className={toneClass}>
-                      <span className="text-bone/20">T{entry.turn}</span> {renderLogSegments(segments)}
-                      {entry.hp && tone !== 'battle' && (
-                        <span className="text-bone/25">
-                          {' '}
-                          [{entry.hp[0]}/{entry.hp[1]}]
-                        </span>
-                      )}
-                      {typeof entry.chronosPosition === 'number' && (
-                        <span className="text-bone/25"> ⏱{entry.chronosPosition}/12</span>
-                      )}
-                    </p>
+                    <div key={`${entry.timestamp}-${entry.action}`}>
+                      <p className={toneClass}>
+                        <span className="text-bone/20">T{entry.turn}</span> {renderLogSegments(segments)}
+                        {entry.hp && tone !== 'battle' && (
+                          <span className="text-bone/25">
+                            {' '}
+                            [{entry.hp[0]}/{entry.hp[1]}]
+                          </span>
+                        )}
+                        {typeof entry.chronosPosition === 'number' && (
+                          <span className="text-bone/25"> ⏱{entry.chronosPosition}/12</span>
+                        )}
+                      </p>
+                      {breakdown && <LogBreakdown breakdown={breakdown} />}
+                    </div>
                   );
                 })}
               {(!G.actionLog || G.actionLog.length === 0) && (

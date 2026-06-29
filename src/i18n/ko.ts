@@ -108,6 +108,11 @@ export const ko: Record<TranslationKey, string> = {
 
   'board.janken': '가위바위보',
   'board.jankenHint': '승리자가 야간 플레이어가 됩니다',
+  'board.jankenWin': '승리',
+  'board.battleDraw': '무승부',
+  'board.effectFailed.powerCost': '에너지 부족, 효과 미발동',
+  'board.effectFailed.disabled': '효과 무효화',
+  'board.effectFailed.condition': '조건 미충족, 효과 미발동',
   'board.rock': '바위',
   'board.paper': '보',
   'board.scissors': '가위',

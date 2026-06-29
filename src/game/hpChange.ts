@@ -46,13 +46,14 @@ export function pushHpChange(
     G.recentHpChanges.splice(0, G.recentHpChanges.length - MAX_HP_CHANGES_KEPT);
   }
   // 同步寫入 actionLog，讓 log 時間軸能看到 HP 變化與成因，供玩家回溯復盤。
-  // payload 記錄 delta / reason / sourceCardDefId，UI 層 formatLogEntry 負責翻譯與卡牌片段渲染。
+  // payload 記錄 delta / reason / sourceCardDefId / breakdown，UI 層 formatLogEntry 負責翻譯與卡牌片段渲染。
   recordAction(G, player, 'hpChange', {
     delta,
     reason,
     before: Math.round(G.players[player].hp - delta),
     after: Math.round(G.players[player].hp),
     ...(sourceCardDefId ? { sourceCardDefId } : {}),
+    ...(breakdown ? { breakdown } : {}),
   });
   // 同步推一筆 hpChange GameNotice，由統一 overlay 置中顯示。
   // titleKey 使用 `board.hpChange.<reason>`，與 i18n 既有 key 命名一致。

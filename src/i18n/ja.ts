@@ -108,6 +108,11 @@ export const ja: Record<TranslationKey, string> = {
 
   'board.janken': 'じゃんけん',
   'board.jankenHint': '勝者が夜側プレイヤーになります',
+  'board.jankenWin': '勝利',
+  'board.battleDraw': '引き分け',
+  'board.effectFailed.powerCost': 'エネルギー不足、効果不発',
+  'board.effectFailed.disabled': '効果無効化',
+  'board.effectFailed.condition': '条件未満、効果不発',
   'board.rock': 'グー',
   'board.paper': 'パー',
   'board.scissors': 'チョキ',

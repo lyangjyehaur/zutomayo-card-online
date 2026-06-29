@@ -410,6 +410,7 @@ export function resolveJanken(
     G.jankenChoices = [null, null];
     G.jankenDrawCount = (G.jankenDrawCount ?? 0) + 1;
     G.log.push('Janken draw. Choose again.');
+    recordAction(G, 0, 'jankenResult', { draw: true, choice0, choice1 });
     return { winner: null };
   }
   const winner: PlayerIndex = beats[choice0] === choice1 ? 0 : 1;
@@ -417,6 +418,7 @@ export function resolveJanken(
   G.step = 'mulligan';
   G.ready = [false, false];
   G.log.push(`Player ${winner} wins janken and takes the night side.`);
+  recordAction(G, winner, 'jankenResult', { draw: false, winner, choice0, choice1 });
   return { winner };
 }
 
@@ -1060,6 +1062,14 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
       winnerAttack: attacks[0],
       loserAttack: attacks[1],
       damage: 0,
+      breakdown: drawBreakdown,
+    });
+    // 平手無 HP 變化，但記錄到 actionLog 讓玩家能回溯戰鬥攻擊力比較。
+    recordAction(G, 0, 'battleDraw', {
+      p0Attack: attacks[0],
+      p1Attack: attacks[1],
+      p0CardDefId: G.players[0].battleZone?.defId,
+      p1CardDefId: G.players[1].battleZone?.defId,
       breakdown: drawBreakdown,
     });
     return;

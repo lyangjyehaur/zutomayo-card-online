@@ -106,6 +106,11 @@ export const zhTW = {
 
   'board.janken': '猜拳',
   'board.jankenHint': '猜拳勝者成為夜側玩家',
+  'board.jankenWin': '勝出',
+  'board.battleDraw': '勢均力敵',
+  'board.effectFailed.powerCost': '能量不足，效果未發動',
+  'board.effectFailed.disabled': '效果被禁用',
+  'board.effectFailed.condition': '條件不滿足，效果未發動',
   'board.rock': '石頭',
   'board.paper': '布',
   'board.scissors': '剪刀',
