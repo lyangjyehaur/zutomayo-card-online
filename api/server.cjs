@@ -4,16 +4,15 @@ const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
 const { getAccountProfile, loginAccount, registerAccount, updateAccountProfile } = require('./accountService.cjs');
+const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
 const { adminLogin, listAdminUsers, resetUserElo } = require('./adminService.cjs');
 const {
-  cardRowToDef,
   getAllCardI18n,
   getCardI18n,
   getGameConfig,
   getPresetDecks,
   getPublicCard,
   getPublicCards,
-  normalizeI18nLang,
 } = require('./cardDataService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks } = require('./deckService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
@@ -293,81 +292,6 @@ function finiteNumber(value, fallback = 0) {
 
 function optionalString(value) {
   return typeof value === 'string' ? value.slice(0, 120) : undefined;
-}
-
-function cardDefToDbParams(card) {
-  const attack =
-    card.attack && typeof card.attack === 'object'
-      ? {
-          night: Number.isFinite(Number(card.attack.night)) ? Math.trunc(Number(card.attack.night)) : null,
-          day: Number.isFinite(Number(card.attack.day)) ? Math.trunc(Number(card.attack.day)) : null,
-        }
-      : null;
-
-  return [
-    card.id,
-    card.name,
-    card.enNameOfficial || '',
-    card.pack,
-    card.song || '',
-    card.illustrator || '',
-    card.rarity || '',
-    card.element,
-    card.type,
-    Math.trunc(Number(card.clock) || 0),
-    attack?.night ?? null,
-    attack?.day ?? null,
-    Math.trunc(Number(card.powerCost) || 0),
-    Math.trunc(Number(card.sendToPower) || 0),
-    card.effect || '',
-    card.enEffectOfficial || '',
-    card.image || '',
-    card.errata || '',
-  ];
-}
-
-function normalizeCardForUpsert(id, body, baseCard) {
-  const bodyCard = body && typeof body === 'object' ? body : {};
-  const candidate = {
-    ...(baseCard || {}),
-    ...bodyCard,
-    id,
-  };
-  if (baseCard?.attack && bodyCard.attack && typeof bodyCard.attack === 'object') {
-    candidate.attack = { ...baseCard.attack, ...bodyCard.attack };
-  }
-
-  for (const field of ['name', 'pack', 'element', 'type']) {
-    if (typeof candidate[field] !== 'string' || candidate[field].length === 0) {
-      return null;
-    }
-  }
-
-  return {
-    id,
-    name: String(candidate.name),
-    enNameOfficial: typeof candidate.enNameOfficial === 'string' ? candidate.enNameOfficial : '',
-    pack: String(candidate.pack),
-    song: typeof candidate.song === 'string' ? candidate.song : '',
-    illustrator: typeof candidate.illustrator === 'string' ? candidate.illustrator : '',
-    rarity: typeof candidate.rarity === 'string' ? candidate.rarity : '',
-    element: String(candidate.element),
-    type: String(candidate.type),
-    clock: Math.trunc(Number(candidate.clock) || 0),
-    attack:
-      candidate.attack && typeof candidate.attack === 'object'
-        ? {
-            night: Math.trunc(Number(candidate.attack.night) || 0),
-            day: Math.trunc(Number(candidate.attack.day) || 0),
-          }
-        : null,
-    powerCost: Math.trunc(Number(candidate.powerCost) || 0),
-    sendToPower: Math.trunc(Number(candidate.sendToPower) || 0),
-    effect: typeof candidate.effect === 'string' ? candidate.effect : '',
-    enEffectOfficial: typeof candidate.enEffectOfficial === 'string' ? candidate.enEffectOfficial : '',
-    image: typeof candidate.image === 'string' ? candidate.image : '',
-    errata: typeof candidate.errata === 'string' ? candidate.errata : '',
-  };
 }
 
 function sanitizePayload(action, payload) {
@@ -849,23 +773,9 @@ function handleRequest(req, res) {
     if (adminCardI18nRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const cardId = decodeURIComponent(adminCardI18nRoute[1]);
-      const body = await readBody();
-      const lang = normalizeI18nLang(body?.lang);
-      if (!lang) return json({ error: 'Unsupported language' }, 400);
-      if (typeof body?.effectText !== 'string') return json({ error: 'effectText required' }, 400);
-
-      await pool.query(
-        `INSERT INTO card_effects_i18n (card_id, lang, effect_text)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (card_id, lang) DO UPDATE SET
-           effect_text = EXCLUDED.effect_text`,
-        [cardId, lang, body.effectText],
-      );
-      await pool.query(
-        'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-        ['upsert_card_i18n', 'card_effects_i18n', cardId, JSON.stringify({ lang, effectText: body.effectText })],
-      );
-      json({ ok: true });
+      const result = await upsertCardI18n(pool, cardId, await readBody());
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
@@ -873,53 +783,9 @@ function handleRequest(req, res) {
     if (adminCardRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const cardId = decodeURIComponent(adminCardRoute[1]);
-      const body = await readBody();
-      const existing = (
-        await pool.query(
-          `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
-                  attack_night, attack_day, power_cost, send_to_power, effect,
-                  en_effect_official, image, errata
-           FROM cards
-           WHERE id = $1`,
-          [cardId],
-        )
-      ).rows[0];
-      const card = normalizeCardForUpsert(cardId, body, existing ? cardRowToDef(existing) : staticCardMap.get(cardId));
-      if (!card) return json({ error: 'Card requires name, pack, element, and type' }, 400);
-
-      await pool.query(
-        `INSERT INTO cards (
-           id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
-           attack_night, attack_day, power_cost, send_to_power, effect,
-           en_effect_official, image, errata
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-         ON CONFLICT (id) DO UPDATE SET
-           name = EXCLUDED.name,
-           en_name_official = EXCLUDED.en_name_official,
-           pack = EXCLUDED.pack,
-           song = EXCLUDED.song,
-           illustrator = EXCLUDED.illustrator,
-           rarity = EXCLUDED.rarity,
-           element = EXCLUDED.element,
-           type = EXCLUDED.type,
-           clock = EXCLUDED.clock,
-           attack_night = EXCLUDED.attack_night,
-           attack_day = EXCLUDED.attack_day,
-           power_cost = EXCLUDED.power_cost,
-           send_to_power = EXCLUDED.send_to_power,
-           effect = EXCLUDED.effect,
-           en_effect_official = EXCLUDED.en_effect_official,
-           image = EXCLUDED.image,
-           errata = EXCLUDED.errata,
-           updated_at = NOW()`,
-        cardDefToDbParams(card),
-      );
-      await pool.query(
-        'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-        ['upsert_card', 'card', cardId, JSON.stringify({ card })],
-      );
-      json(card);
+      const result = await upsertCard(pool, staticCardMap, cardId, await readBody());
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
@@ -927,25 +793,9 @@ function handleRequest(req, res) {
     if (adminConfigRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const key = decodeURIComponent(adminConfigRoute[1]);
-      const body = await readBody();
-      if (!body || typeof body !== 'object' || !Object.prototype.hasOwnProperty.call(body, 'value')) {
-        return json({ error: 'Config value required' }, 400);
-      }
-      const description = typeof body.description === 'string' ? body.description : '';
-      await pool.query(
-        `INSERT INTO game_config (key, value, description)
-         VALUES ($1, $2::jsonb, $3)
-         ON CONFLICT (key) DO UPDATE SET
-           value = EXCLUDED.value,
-           description = EXCLUDED.description,
-           updated_at = NOW()`,
-        [key, JSON.stringify(body.value), description],
-      );
-      await pool.query(
-        'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-        ['upsert_config', 'game_config', key, JSON.stringify({ value: body.value, description })],
-      );
-      json({ key, value: body.value, description });
+      const result = await upsertGameConfig(pool, key, await readBody());
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
