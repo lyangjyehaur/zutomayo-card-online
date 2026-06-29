@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
+const { getAccountProfile, loginAccount, registerAccount, updateAccountProfile } = require('./accountService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks } = require('./deckService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
@@ -687,56 +688,32 @@ function handleRequest(req, res) {
 
     // Register
     if (pathname === '/api/register' && method === 'POST') {
-      const { email, password, nickname } = await readBody();
-      if (!email || !password) return json({ error: 'Email and password required' }, 400);
-      if (password.length < 6) return json({ error: 'Password must be at least 6 characters' }, 400);
-
-      const cleanEmail = String(email).slice(0, 120).toLowerCase();
-      const cleanNickname = sanitizeText(nickname || String(cleanEmail).split('@')[0], 30) || 'player';
-
-      const existing = (await pool.query('SELECT id FROM users WHERE email = $1', [cleanEmail])).rows[0];
-      if (existing) return json({ error: 'Email already registered' }, 409);
-
-      const id = 'u_' + crypto.randomBytes(8).toString('hex');
-      const salt = crypto.randomBytes(16).toString('hex');
-      const hash = await hashPassword(password, salt);
-
-      await pool.query('INSERT INTO users (id, email, password_hash, salt, nickname) VALUES ($1, $2, $3, $4, $5)', [
-        id,
-        cleanEmail,
-        hash,
-        salt,
-        cleanNickname,
-      ]);
-
-      const token = createToken(id);
-      json({ token, user: { id, email: cleanEmail, nickname: cleanNickname, elo: 1000 } });
+      const result = await registerAccount({
+        pool,
+        body: await readBody(),
+        sanitizeText,
+        hashPassword,
+        createToken,
+        generateUserId: () => 'u_' + crypto.randomBytes(8).toString('hex'),
+        generateSalt: () => crypto.randomBytes(16).toString('hex'),
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
     // Login
     if (pathname === '/api/login' && method === 'POST') {
-      const { email, password } = await readBody();
-      const user = (await pool.query('SELECT * FROM users WHERE email = $1', [email])).rows[0];
-      if (!user) return json({ error: 'Invalid credentials' }, 401);
-
-      // P0-4：先用新迭代數驗證，失敗再用舊迭代數驗證（向後相容）。
-      const newHash = await hashPassword(password, user.salt, PBKDF2_ITERATIONS);
-      const legacyHash = await hashPassword(password, user.salt, PBKDF2_LEGACY_ITERATIONS);
-      if (newHash !== user.password_hash && legacyHash !== user.password_hash) {
-        return json({ error: 'Invalid credentials' }, 401);
-      }
-
-      // 若密碼仍用舊迭代數，登入成功後自動升級到新迭代數。
-      if (newHash !== user.password_hash) {
-        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
-      }
-
-      const token = createToken(user.id);
-      json({
-        token,
-        user: { id: user.id, email: user.email, nickname: user.nickname, elo: user.elo },
+      const result = await loginAccount({
+        pool,
+        body: await readBody(),
+        hashPassword,
+        createToken,
+        currentIterations: PBKDF2_ITERATIONS,
+        legacyIterations: PBKDF2_LEGACY_ITERATIONS,
       });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
@@ -744,18 +721,9 @@ function handleRequest(req, res) {
     if (pathname === '/api/profile' && method === 'GET') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
-      if (!user) return json({ error: 'User not found' }, 404);
-      json({
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        elo: user.elo,
-        matchCount: user.match_count,
-        wins: user.wins,
-        winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
-        createdAt: user.created_at,
-      });
+      const result = await getAccountProfile(pool, userId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
@@ -838,20 +806,9 @@ function handleRequest(req, res) {
     if (pathname === '/api/profile' && method === 'PUT') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const { nickname } = await readBody();
-      const clean = sanitizeText(nickname, 30);
-      if (!clean) return json({ error: 'Nickname required' }, 400);
-      await pool.query('UPDATE users SET nickname = $1 WHERE id = $2', [clean, userId]);
-      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
-      json({
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        elo: user.elo,
-        matchCount: user.match_count,
-        wins: user.wins,
-        winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
-      });
+      const result = await updateAccountProfile({ pool, userId, body: await readBody(), sanitizeText });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
