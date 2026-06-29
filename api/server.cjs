@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
-const { normalizeWinnerPlayer, verifyBoardgameMatchResult } = require('./matchVerification.cjs');
+const { submitMatchResult } = require('./matchSubmission.cjs');
 let staticCards = [];
 try { staticCards = require('../cards.json'); } catch (_) { /* API container may not have cards.json */ }
 let staticCardI18n = {};
@@ -276,13 +276,6 @@ function verifyAdminToken(req) {
 function sanitizeText(value, maxLen = 60) {
   if (typeof value !== 'string') return '';
   return value.slice(0, maxLen).replace(/[<>]/g, '');
-}
-
-// ===== ELO =====
-function calculateElo(ratingA, ratingB, scoreA) {
-  const K = 32;
-  const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
-  return Math.round(ratingA + K * (scoreA - expectedA));
 }
 
 // ===== Action Log Sanitization =====
@@ -838,84 +831,15 @@ function handleRequest(req, res) {
       if (!authUserId) return json({ error: 'Unauthorized' }, 401);
 
       const body = await readBody();
-      const { winnerId, loserId, turns, duration, actionLog, action_log, sourceMatchId, winnerPlayer } = body;
-      if (!winnerId || !loserId) return json({ error: 'Winner and loser IDs required' }, 400);
-      // P0-2：認證使用者必須是贏家，杜絕偽造勝負。
-      if (winnerId !== authUserId) return json({ error: 'Forbidden: winner must match authenticated user' }, 403);
-
-      const cleanSourceMatchId =
-        typeof sourceMatchId === 'string' && sourceMatchId.length > 0 ? sourceMatchId.slice(0, 120) : '';
-      const sourceVerification = await verifyBoardgameMatchResult(
+      const result = await submitMatchResult({
         pool,
-        cleanSourceMatchId,
-        normalizeWinnerPlayer(winnerPlayer),
         authUserId,
-      );
-      if (!sourceVerification.ok) return json({ error: sourceVerification.error }, sourceVerification.status);
-
-      const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
-      const matchId = 'm_' + crypto.randomBytes(8).toString('hex');
-
-      // 交易：兩個 UPDATE users + 一個 INSERT matches 必須原子。
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        const winner = (await client.query('SELECT * FROM users WHERE id = $1', [winnerId])).rows[0];
-        const loser = (await client.query('SELECT * FROM users WHERE id = $1', [loserId])).rows[0];
-
-        let winnerEloChange = 0;
-        let loserEloChange = 0;
-
-        if (winner && loser) {
-          const newWinnerElo = calculateElo(winner.elo, loser.elo, 1);
-          const newLoserElo = calculateElo(loser.elo, winner.elo, 0);
-          winnerEloChange = newWinnerElo - winner.elo;
-          loserEloChange = newLoserElo - loser.elo;
-
-          await client.query(
-            'UPDATE users SET elo = $1, match_count = match_count + 1, wins = wins + 1 WHERE id = $2',
-            [newWinnerElo, winnerId],
-          );
-          await client.query('UPDATE users SET elo = $1, match_count = match_count + 1 WHERE id = $2', [
-            newLoserElo,
-            loserId,
-          ]);
-        }
-
-        const player0Id = winner ? winnerId : null;
-        const player1Id = loser ? loserId : null;
-        await client.query(
-          'INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)',
-          [
-            matchId,
-            player0Id,
-            player1Id,
-            winnerId,
-            loserId,
-            winnerEloChange,
-            loserEloChange,
-            turns || 0,
-            duration || 0,
-            JSON.stringify(sanitizedActionLog),
-          ],
-        );
-
-        await client.query('COMMIT');
-
-        json({
-          matchId,
-          winnerEloChange,
-          loserEloChange,
-          winnerNewElo: (winner?.elo || 1000) + winnerEloChange,
-          loserNewElo: (loser?.elo || 1000) + loserEloChange,
-        });
-        return;
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-      } finally {
-        client.release();
-      }
+        body,
+        sanitizeActionLog,
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
     }
 
     // Leaderboard
