@@ -102,6 +102,7 @@ export const en: Record<TranslationKey, string> = {
   'player.zero': 'Player 1',
   'player.one': 'Player 2',
   'player.ai': 'Computer',
+  'player.self': 'Player',
   'player.me': 'You',
   'player.opponent': 'Opponent',
   'player.zeroView': "Player 1's View",

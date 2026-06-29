@@ -102,6 +102,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'player.zero': '玩家一',
   'player.one': '玩家二',
   'player.ai': '电脑',
+  'player.self': '玩家',
   'player.me': '我方',
   'player.opponent': '对手',
   'player.zeroView': '玩家一视角',

@@ -102,6 +102,7 @@ export const ko: Record<TranslationKey, string> = {
   'player.zero': '플레이어 1',
   'player.one': '플레이어 2',
   'player.ai': '컴퓨터',
+  'player.self': '플레이어',
   'player.me': '나',
   'player.opponent': '상대',
   'player.zeroView': '플레이어 1 시점',

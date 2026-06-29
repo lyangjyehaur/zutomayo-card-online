@@ -33,8 +33,8 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
   );
 
   useAIMoves(boardProps.G, boardProps.ctx, aiMoves, boardProps.playerID || '0', difficulty);
-  // AI 對戰時對手（playerID=1）顯示為「電腦」而非「玩家二」。
-  return <Board {...boardProps} opponentLabel={t('player.ai' as never)} />;
+  // AI 對戰時我方顯示為「玩家」、對手顯示為「電腦」。
+  return <Board {...boardProps} selfLabel={t('player.self' as never)} opponentLabel={t('player.ai' as never)} />;
 }
 
 export function AIGame({ difficulty, deck0Name, deck1Name }: AIGameProps) {

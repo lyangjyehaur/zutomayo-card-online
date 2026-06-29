@@ -102,6 +102,7 @@ export const ja: Record<TranslationKey, string> = {
   'player.zero': 'プレイヤー1',
   'player.one': 'プレイヤー2',
   'player.ai': 'COM',
+  'player.self': 'プレイヤー',
   'player.me': '自分',
   'player.opponent': '相手',
   'player.zeroView': 'プレイヤー1視点',
