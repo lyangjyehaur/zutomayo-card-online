@@ -32,7 +32,7 @@ export function Chronos({ chronos, currentTime, nightSidePlayer, currentPlayer }
   const faceRadius = 182;
   const arcRadius = 190;
   const position = normalizeChronosPosition(chronos.position);
-  const rotation = nightSidePlayer === currentPlayer ? 0 : 180;
+  const rotation = nightSidePlayer === currentPlayer ? 180 : 0;
   const stepAngle = 360 / CHRONOS_MAPPING.positions;
   const nightPositions: readonly number[] = CHRONOS_MAPPING.nightPositions;
   const ticks = Array.from({ length: CHRONOS_MAPPING.positions }, (_, index) => {

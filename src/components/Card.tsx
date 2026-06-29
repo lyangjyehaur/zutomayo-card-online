@@ -293,8 +293,7 @@ export function Card({
       >
         <div className="card-frame">
           <div className="card-back-frame">
-            <div className="card-back-sigil">ZC</div>
-            <div className="card-back-ring" />
+            <img src="/card-back.jpg" alt="" className="h-full w-full object-cover" loading="lazy" />
           </div>
         </div>
       </div>

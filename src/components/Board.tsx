@@ -1,7 +1,16 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { getProfile, isLoggedIn, submitMatch } from '../api/client';
-import type { ActionLogEntry, CardInstance, ChronosTime, GameState, JankenChoice, PlayerIndex } from '../game/types';
+import type {
+  ActionLogEntry,
+  CardInstance,
+  ChronosTime,
+  GameState,
+  HpChangeBreakdown,
+  HpChangeEntry,
+  JankenChoice,
+  PlayerIndex,
+} from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { Card, type CardSize } from './Card';
 import { Chronos } from './Chronos';
@@ -219,6 +228,163 @@ function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | nul
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+const HP_CHANGE_REASON_LABEL: Record<HpChangeEntry['reason'], string> = {
+  battle: 'board.hpChange.battle',
+  directDamage: 'board.hpChange.directDamage',
+  heal: 'board.hpChange.heal',
+  healOpponent: 'board.hpChange.healOpponent',
+  healBoth: 'board.hpChange.healBoth',
+};
+
+interface HpChangeFlash {
+  id: number;
+  delta: number;
+  reason: HpChangeEntry['reason'];
+  sourceCardDefId?: string;
+  breakdown?: HpChangeBreakdown;
+}
+
+/**
+ * 格式化 breakdown 明細行的 value。
+ * - 若該行附帶 cardDefId，顯示對應卡名（含附魔卡）。
+ * - 若 value 是 i18n key（以 'board.' 開頭），翻譯後顯示。
+ * - 否則直接顯示原始 value（數字、+/- 等）。
+ */
+function formatBreakdownValue(value: string, cardDefId?: string): string {
+  if (cardDefId) {
+    const def = getCardDef(cardDefId);
+    if (def?.name) return def.name;
+  }
+  if (value.startsWith('board.')) return t(value as never);
+  return value;
+}
+
+/**
+ * 雙方區域的 HP 變化浮動提示。
+ *
+ * 監聽 G.recentHpChanges 中屬於 `player` 的新增項目（以 id 去重），
+ * 每筆顯示 +HP / -HP 數字、原因，並附上完整計算明細（breakdown），
+ * 說明這次 HP 是如何計算的（攻擊力、原始傷害、減傷、最終傷害 …），
+ * 若有附魔卡參與減傷也會在明細中標示。約 3.4 秒後自動消失。
+ *
+ * 元件首次 mount 時會把 lastSeenId 設為當前 max id，避免回放歷史提示。
+ */
+function HpChangeFlashes({ G, player }: { G: GameState; player: PlayerIndex }) {
+  const lastSeenIdRef = useRef<number>(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [active, setActive] = useState<HpChangeFlash[]>([]);
+
+  useEffect(() => {
+    const mine = (G.recentHpChanges ?? []).filter((e) => e.player === player);
+    const maxId = mine.reduce((max, e) => Math.max(max, e.id), 0);
+    const newEntries = mine.filter((e) => e.id > lastSeenIdRef.current);
+    lastSeenIdRef.current = maxId;
+    if (newEntries.length === 0) return;
+    // 有 breakdown 時延長顯示時間，讓玩家看清楚計算過程。
+    const duration = prefersReducedMotion() ? 1800 : 3400;
+    setActive((prev) => [
+      ...prev,
+      ...newEntries.map((e) => ({
+        id: e.id,
+        delta: e.delta,
+        reason: e.reason,
+        sourceCardDefId: e.sourceCardDefId,
+        breakdown: e.breakdown,
+      })),
+    ]);
+    for (const e of newEntries) {
+      const timer = setTimeout(() => {
+        setActive((prev) => prev.filter((p) => p.id !== e.id));
+      }, duration);
+      timersRef.current.push(timer);
+    }
+  }, [G.recentHpChanges, player]);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of timersRef.current) clearTimeout(timer);
+      timersRef.current = [];
+    };
+  }, []);
+
+  if (active.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center">
+      {active.map((item) => {
+        const isHeal = item.delta > 0;
+        const cardName = item.sourceCardDefId ? getCardDef(item.sourceCardDefId)?.name : undefined;
+        const breakdown = item.breakdown;
+        // 參與卡：排除已在 source 行顯示的來源卡，避免重複。
+        const participantNames = (breakdown?.participantCardDefIds ?? [])
+          .filter((id) => id !== item.sourceCardDefId)
+          .map((id) => getCardDef(id)?.name)
+          .filter((n): n is string => Boolean(n));
+        return (
+          <div key={item.id} className="hp-change-float flex flex-col items-center">
+            <div
+              className={`font-display text-3xl italic drop-shadow-[0_2px_8px_rgba(0,0,0,0.75)] ${isHeal ? 'text-[var(--teal)]' : 'text-vermilion'}`}
+            >
+              {isHeal ? '+' : ''}
+              {item.delta}
+            </div>
+            <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.25em] text-bone/75">
+              {t(HP_CHANGE_REASON_LABEL[item.reason] as never)}
+              {cardName ? ` · ${cardName}` : ''}
+            </div>
+            {breakdown && breakdown.lines.length > 0 && (
+              <div className="mt-1.5 min-w-[180px] max-w-[260px] rounded-sm border border-bone/10 bg-lacquer-deep/85 px-2.5 py-1.5 backdrop-blur-sm">
+                <div className="mb-1 font-mono text-[8px] uppercase tracking-[0.22em] text-gold/70">
+                  {t(breakdown.title as never)}
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {breakdown.lines.map((line, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-baseline justify-between gap-2 font-mono text-[9px] text-bone/80"
+                    >
+                      <span className="text-bone/55">{t(line.label as never)}</span>
+                      <span
+                        className={
+                          line.cardDefId
+                            ? 'max-w-[140px] truncate text-gold-soft'
+                            : line.value.startsWith('-')
+                              ? 'text-vermilion/85'
+                              : line.value.startsWith('+')
+                                ? 'text-[var(--teal)]/85'
+                                : 'text-bone/85'
+                        }
+                        title={line.cardDefId ? formatBreakdownValue(line.value, line.cardDefId) : undefined}
+                      >
+                        {formatBreakdownValue(line.value, line.cardDefId)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {participantNames.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1 border-t border-bone/10 pt-1">
+                    <span className="font-mono text-[8px] uppercase tracking-[0.18em] text-bone/40">
+                      {t('board.hpChange.participants' as never)}
+                    </span>
+                    {participantNames.map((n, i) => (
+                      <span
+                        key={`${n}-${i}`}
+                        className="rounded-sm border border-jade/30 bg-jade/10 px-1 py-px font-mono text-[8px] text-jade"
+                      >
+                        {n}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -532,7 +698,12 @@ function hpClass(hp: number): string {
 type FocusedCard = { card: CardInstance; owner: PlayerIndex; zone: string } | null;
 
 function cardDefinition(card: CardInstance | null) {
-  return card?.faceUp ? getCardDef(card.defId) : undefined;
+  if (!card || card.defId === '__hidden__') return undefined;
+  return getCardDef(card.defId);
+}
+
+function wasSetThisTurn(G: GameState, player: PlayerIndex, card: CardInstance | null): boolean {
+  return !!card && G.setCardsThisTurn[player].some((item) => item.instanceId === card.instanceId);
 }
 
 function actionTime(timestamp: number): string {
@@ -862,6 +1033,7 @@ export function BottomZones({
           shortLabel="C"
           className="area-zone area-zone-c"
           card={me.setZoneC}
+          onClick={wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex] ? () => moves.undoSetCard('C') : undefined}
           size="normal"
           owner={meIndex}
           onFocusCard={onFocusCard}
@@ -1096,7 +1268,7 @@ function phaseInstruction(
   meIndex: PlayerIndex,
   required: number,
   minimum: number,
-): { title: string; body: string; meta: string[] } {
+): { title: string; body: string; meta: { text: string; done: boolean }[] } {
   const me = G.players[meIndex];
   if (G.pendingChoice) {
     const mine = G.pendingChoice.player === meIndex;
@@ -1105,7 +1277,7 @@ function phaseInstruction(
       body: mine
         ? choiceInstruction(G.pendingChoice.type)
         : `${playerName(G.pendingChoice.player)} ${t('board.phaseChoosing')}`,
-      meta: [`${t('board.choiceCount')} ${G.pendingChoice.min}-${G.pendingChoice.max}`],
+      meta: [{ text: `${t('board.choiceCount')} ${G.pendingChoice.min}-${G.pendingChoice.max}`, done: false }],
     };
   }
   if (G.step === 'effectOrder') {
@@ -1119,21 +1291,24 @@ function phaseInstruction(
           : player === null
             ? t('board.phaseEffectResolving')
             : `${playerName(player)} ${t('board.phaseResolvingEffects')}`,
-      meta: [`${t('board.phasePendingEffects')} ${pendingCount}`],
+      meta: [{ text: `${t('board.phasePendingEffects')} ${pendingCount}`, done: false }],
     };
   }
   if (G.step === 'initialSet') {
     return {
       title: t('board.phaseInitialSetTitle'),
       body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseInitialSetBody'),
-      meta: [`${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/1`],
+      meta: [{ text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/1`, done: me.cardsSetThisTurn >= 1 }],
     };
   }
   if (G.step === 'turnSet') {
     return {
       title: G.ready[meIndex] ? t('board.phaseWaitingTitle') : t('board.phaseTurnSetTitle'),
       body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseTurnSetBody'),
-      meta: [`${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/${required}`, `${t('board.phaseMinimum')} ${minimum}`],
+      meta: [
+        { text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/${required}`, done: me.cardsSetThisTurn >= required },
+        { text: `${t('board.phaseMinimum')} ${minimum}`, done: me.cardsSetThisTurn >= minimum },
+      ],
     };
   }
   return { title: t('board.gameOver'), body: t('online.gameOverHelper'), meta: [] };
@@ -1156,10 +1331,14 @@ function PhaseInstructionBanner({
             <div className="flex shrink-0 flex-wrap gap-1.5">
               {instruction.meta.map((item) => (
                 <span
-                  key={item}
-                  className="rounded-sm border border-bone/10 bg-bone/5 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-bone/45"
+                  key={item.text}
+                  className={
+                    item.done
+                      ? 'rounded-sm border border-jade/40 bg-jade/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-jade'
+                      : 'rounded-sm border border-bone/10 bg-bone/5 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-bone/45'
+                  }
                 >
-                  {item}
+                  {item.text}
                 </span>
               ))}
             </div>
@@ -1566,7 +1745,8 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('player.opponent')}</div>
                 <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
               </div>
-              <div className="w-56 sm:w-72">
+              <div className="relative w-56 sm:w-72">
+                <HpChangeFlashes G={G} player={opponentIndex} />
                 <div className="relative h-1 w-full bg-bone/10">
                   <div className="absolute inset-y-0 left-0 bg-vermilion" style={{ width: `${opponent.hp}%` }} />
                 </div>
@@ -1698,7 +1878,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               </div>
               <Slot card={me.setZoneA} label="A" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
               <Slot card={me.setZoneB} label="B" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined} />
-              <Slot card={me.setZoneC} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} />
+              <Slot card={me.setZoneC} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex] ? () => moves.undoSetCard('C') : undefined} />
               {/* 牌組 — 右邊 — 根據數量堆疊 */}
               <div className="flex flex-col items-center gap-1">
                 <div className="relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
@@ -1720,7 +1900,8 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             {/* 玩家資訊列 — 照搬 demo 底部排列 */}
             <div className="flex w-full flex-col items-stretch justify-between gap-3 px-2 lg:flex-row lg:items-end">
               {/* 左：LP bar */}
-              <div className="w-full lg:w-72">
+              <div className="relative w-full lg:w-72">
+                <HpChangeFlashes G={G} player={meIndex} />
                 <div className="relative h-1 w-full bg-bone/10">
                   <div className="absolute inset-y-0 left-0 bg-gold" style={{ width: `${me.hp}%` }} />
                 </div>
@@ -1898,6 +2079,25 @@ export function Board(props: Props) {
     }
     previousStep.current = props.G.step;
   }, [props.G.step, props.G.jankenChoices, props.G.chronos.nightSidePlayer, me]);
+
+  // 猜拳平手提示：resolveJanken 平手時不改 step，僅遞增 jankenDrawCount 並重置 choices。
+  // 以 ref 記錄上次 drawCount，變化時顯示短暫提示，避免與「初次進入 janken」混淆。
+  const previousDrawCountRef = useRef<number>(props.G.jankenDrawCount ?? 0);
+  useEffect(() => {
+    const drawCount = props.G.jankenDrawCount ?? 0;
+    if (drawCount > previousDrawCountRef.current && props.G.step === 'janken') {
+      setSetupFeedback({
+        title: t('board.jankenDraw'),
+        tone: 'neutral',
+      });
+      if (setupFeedbackTimer.current) clearTimeout(setupFeedbackTimer.current);
+      setupFeedbackTimer.current = setTimeout(
+        () => setSetupFeedback(null),
+        prefersReducedMotion() ? 1000 : 1600,
+      );
+    }
+    previousDrawCountRef.current = drawCount;
+  }, [props.G.jankenDrawCount, props.G.step]);
 
   const showMulliganFeedback = (redrawCount: number) => {
     if (setupFeedbackTimer.current) clearTimeout(setupFeedbackTimer.current);

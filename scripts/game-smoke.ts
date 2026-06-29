@@ -226,16 +226,20 @@ function fivePowerCards() {
   player1.moves.keepHand();
   assert.equal(player0.getState()?.G.step, 'initialSet');
   player0.moves.setInitialCard(0);
-  const opponentSetLog = (player1.getState()?.G.actionLog ?? []).find(
-    (entry) => entry.action === 'setInitialCard' && entry.player === 0,
+  assert.equal(
+    (player1.getState()?.G.actionLog ?? []).some((entry) => entry.action === 'setInitialCard' && entry.player === 0),
+    false,
   );
-  assert.deepEqual(opponentSetLog?.payload, { zone: 'battleZone', faceDown: true });
-  assert.equal(JSON.stringify(opponentSetLog).includes('defId'), false);
   assert.notEqual(player0.getState()?.G.players[0].battleZone?.defId, '__hidden__');
   assert.equal(player1.getState()?.G.players[0].battleZone?.defId, '__hidden__');
   assert.equal(player1.getState()?.G.players[0].battleZone?.instanceId, 'hidden-p0-battle');
   player1.moves.setInitialCard(0);
   player0.moves.confirmReady();
+  const opponentSetLog = (player1.getState()?.G.actionLog ?? []).find(
+    (entry) => entry.action === 'setInitialCard' && entry.player === 0,
+  );
+  assert.deepEqual(opponentSetLog?.payload, { zone: 'battleZone', faceDown: true });
+  assert.equal(JSON.stringify(opponentSetLog).includes('defId'), false);
   player1.moves.confirmReady();
   for (let i = 0; i < 20 && player0.getState()?.G.step === 'effectOrder'; i++) {
     const globalState = player0.getState()?.G;
@@ -556,6 +560,26 @@ function fivePowerCards() {
   assert.equal(G.step, 'turnSet');
   assert.equal(G.turnNumber, 2);
   assert.deepEqual(G.previousTurnCharacterElements, [null, null]);
+}
+
+{
+  const G = preparedState();
+  G.step = 'turnSet';
+  G.turnNumber = 2;
+  G.lastBattleResult = { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 };
+  G.players[0].hand = [createInstance('2nd_5', true)]; // Area Enchant
+  G.players[1].hand = [createInstance('1st_1', true)];
+  assert.equal(setTurnCard(G, 0, 0, 'A'), true);
+  assert.equal(G.players[0].setZoneA, null);
+  assert.equal(G.players[0].setZoneC?.defId, '2nd_5');
+  assert.equal(G.players[0].setZoneC?.faceUp, false);
+  assert.equal(G.actionLog.some((entry) => entry.action === 'setTurnCard' && entry.player === 0), false);
+  assert.equal(confirmReady(G, 0, noEffects), true);
+  assert.equal(G.actionLog.some((entry) => entry.action === 'setTurnCard' && entry.player === 0), true);
+  assert.equal(setTurnCard(G, 1, 0, 'A'), true);
+  assert.equal(confirmReady(G, 1, noEffects), true);
+  assert.equal(G.players[0].setZoneC?.defId, '2nd_5');
+  assert.equal(G.players[0].setZoneC?.faceUp, true);
 }
 
 {

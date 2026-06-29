@@ -15,7 +15,7 @@ export const CHRONOS_MAPPING = {
 export type JankenChoice = 'rock' | 'paper' | 'scissors';
 export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'effectOrder' | 'gameOver';
 export type PlayerIndex = 0 | 1;
-export type SetSlot = 'A' | 'B';
+export type SetSlot = 'A' | 'B' | 'C';
 export type TimingEventType =
   | 'turnStart'
   | 'turnEnd'
@@ -24,6 +24,45 @@ export type TimingEventType =
   | 'zoneEntered'
   | 'characterReplaced'
   | 'battle';
+
+export type HpChangeReason = 'battle' | 'directDamage' | 'heal' | 'healOpponent' | 'healBoth';
+
+/**
+ * HP 變化計算明細的一行說明。
+ * - label：例如「攻擊力」「原始傷害」「減傷」「最終傷害」
+ * - value：例如「30」「10」「-5」「25」
+ * - cardDefId：若該行與某張卡（含附魔卡）相關，附上卡牌定義 ID 供 UI 顯示卡名
+ */
+export interface HpChangeBreakdownLine {
+  label: string;
+  value: string;
+  cardDefId?: string;
+}
+
+/**
+ * HP 變化的完整計算明細，供 UI 顯示「這次 HP 是怎麼算的」。
+ * - title：摘要標題（例如「戰鬥傷害計算」「效果回復」）
+ * - lines：結構化明細行，依計算順序排列
+ * - participantCardDefIds：實際參與本次計算的所有卡牌（含附魔卡），用於 UI 標註參與卡
+ *
+ * battle 統一涵蓋攻擊力比較、減傷、不可減傷等；effect 涵蓋 directDamage / heal 類。
+ */
+export interface HpChangeBreakdown {
+  title: string;
+  lines: HpChangeBreakdownLine[];
+  participantCardDefIds: string[];
+}
+
+export interface HpChangeEntry {
+  id: number;
+  player: PlayerIndex;
+  delta: number;
+  reason: HpChangeReason;
+  sourceCardDefId?: string;
+  breakdown?: HpChangeBreakdown;
+  turn: number;
+  timestamp: number;
+}
 
 export interface ActionLogResult {
   ok: boolean;
@@ -317,10 +356,12 @@ export interface GameState {
   areaEnchantSetLocked: [boolean, boolean];
   damageReducedThisTurn: [number, number];
   jankenChoices: [JankenChoice | null, JankenChoice | null];
+  jankenDrawCount: number;
   mulliganUsed: [boolean, boolean];
   modifiers: CombatModifiers;
   winner: PlayerIndex | null;
   gameoverReason: string | null;
   log: string[];
   actionLog: ActionLogEntry[];
+  recentHpChanges: HpChangeEntry[];
 }

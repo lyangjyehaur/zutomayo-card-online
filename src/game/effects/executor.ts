@@ -3,6 +3,8 @@ import type {
   CardInstance,
   Element,
   GameState,
+  HpChangeBreakdown,
+  HpChangeBreakdownLine,
   PendingAbyssToDeckBottomPayload,
   PendingCardFilter,
   PendingCardMovePayload,
@@ -27,6 +29,7 @@ import { CHRONOS_MAPPING } from '../types';
 import type { ParsedEffect, Condition, EffectValue, ActionType } from './types';
 import { getAllCardDefs, getCardDef } from '../cards/loader';
 import { getChronosTimeForPosition, normalizeChronosPosition } from '../chronos';
+import { pushHpChange } from '../hpChange';
 import {
   isCharacterCard,
   legalCardMoveCards,
@@ -638,30 +641,137 @@ function handleSetOpponentElement({ effect, G, opponentIndex }: EffectHandlerArg
   return { success: true, message: `Opponent element set to ${element}` };
 }
 
-function handleHeal({ effect, me, opponent, value }: EffectHandlerArgs): { success: boolean; message: string } {
-  if (effect.action.params.target === 'opponent') {
-    opponent.hp = Math.min(100, opponent.hp + value);
-    return { success: true, message: `Heal opponent ${value}` };
-  }
-  me.hp = Math.min(100, me.hp + value);
-  return { success: true, message: `Heal ${value}` };
+/** 組裝效果類（heal / directDamage）HP 變化的計算明細。 */
+function buildEffectHpChangeBreakdown(
+  titleKey: string,
+  lines: HpChangeBreakdownLine[],
+  sourceCardDefId?: string,
+): HpChangeBreakdown {
+  return {
+    title: titleKey,
+    lines,
+    participantCardDefIds: sourceCardDefId ? [sourceCardDefId] : [],
+  };
 }
 
-function handleHealOpponent({ opponent, value }: EffectHandlerArgs): { success: boolean; message: string } {
-  opponent.hp = Math.min(100, opponent.hp + value);
-  return { success: true, message: `Heal opponent ${value}` };
-}
-
-function handleHealBoth({ me, opponent, value }: EffectHandlerArgs): { success: boolean; message: string } {
-  me.hp = Math.min(100, me.hp + value);
-  opponent.hp = Math.min(100, opponent.hp + value);
-  return { success: true, message: `Heal both ${value}` };
-}
-
-function handleDirectDamage({ effect, G, player, opponent, opponentIndex, valueParam, value }: EffectHandlerArgs): {
+function handleHeal({ effect, G, player, context, me, opponent, opponentIndex, value }: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
+  const sourceCardDefId = context.cardDefId;
+  if (effect.action.params.target === 'opponent') {
+    const before = opponent.hp;
+    opponent.hp = Math.min(100, before + value);
+    const delta = opponent.hp - before;
+    const breakdown = buildEffectHpChangeBreakdown(
+      'board.hpChange.healCalc',
+      [
+        { label: 'board.hpChange.source', value: sourceCardDefId ?? '—', ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}) },
+        { label: 'board.hpChange.healAmount', value: `+${value}` },
+        ...(delta < value ? [{ label: 'board.hpChange.cappedAt100', value: `${delta}` }] : []),
+      ],
+      sourceCardDefId,
+    );
+    pushHpChange(G, opponentIndex, delta, 'heal', sourceCardDefId, breakdown);
+    return { success: true, message: `Heal opponent ${value}` };
+  }
+  const before = me.hp;
+  me.hp = Math.min(100, before + value);
+  const delta = me.hp - before;
+  const breakdown = buildEffectHpChangeBreakdown(
+    'board.hpChange.healCalc',
+    [
+      { label: 'board.hpChange.source', value: sourceCardDefId ?? '—', ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}) },
+      { label: 'board.hpChange.healAmount', value: `+${value}` },
+      ...(delta < value ? [{ label: 'board.hpChange.cappedAt100', value: `${delta}` }] : []),
+    ],
+    sourceCardDefId,
+  );
+  pushHpChange(G, player, delta, 'heal', sourceCardDefId, breakdown);
+  return { success: true, message: `Heal ${value}` };
+}
+
+function handleHealOpponent({ G, context, opponent, opponentIndex, value }: EffectHandlerArgs): {
+  success: boolean;
+  message: string;
+} {
+  const sourceCardDefId = context.cardDefId;
+  const before = opponent.hp;
+  opponent.hp = Math.min(100, before + value);
+  const delta = opponent.hp - before;
+  const breakdown = buildEffectHpChangeBreakdown(
+    'board.hpChange.healCalc',
+    [
+      { label: 'board.hpChange.source', value: sourceCardDefId ?? '—', ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}) },
+      { label: 'board.hpChange.healAmount', value: `+${value}` },
+      ...(delta < value ? [{ label: 'board.hpChange.cappedAt100', value: `${delta}` }] : []),
+    ],
+    sourceCardDefId,
+  );
+  pushHpChange(G, opponentIndex, delta, 'healOpponent', sourceCardDefId, breakdown);
+  return { success: true, message: `Heal opponent ${value}` };
+}
+
+function handleHealBoth({ G, player, context, me, opponent, opponentIndex, value }: EffectHandlerArgs): {
+  success: boolean;
+  message: string;
+} {
+  const sourceCardDefId = context.cardDefId;
+  const beforeMe = me.hp;
+  me.hp = Math.min(100, beforeMe + value);
+  const deltaMe = me.hp - beforeMe;
+  pushHpChange(
+    G,
+    player,
+    deltaMe,
+    'healBoth',
+    sourceCardDefId,
+    buildEffectHpChangeBreakdown(
+      'board.hpChange.healBothCalc',
+      [
+        { label: 'board.hpChange.source', value: sourceCardDefId ?? '—', ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}) },
+        { label: 'board.hpChange.healAmount', value: `+${value}` },
+        ...(deltaMe < value ? [{ label: 'board.hpChange.cappedAt100', value: `${deltaMe}` }] : []),
+      ],
+      sourceCardDefId,
+    ),
+  );
+  const beforeOpp = opponent.hp;
+  opponent.hp = Math.min(100, beforeOpp + value);
+  const deltaOpp = opponent.hp - beforeOpp;
+  pushHpChange(
+    G,
+    opponentIndex,
+    deltaOpp,
+    'healBoth',
+    sourceCardDefId,
+    buildEffectHpChangeBreakdown(
+      'board.hpChange.healBothCalc',
+      [
+        { label: 'board.hpChange.source', value: sourceCardDefId ?? '—', ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}) },
+        { label: 'board.hpChange.healAmount', value: `+${value}` },
+        ...(deltaOpp < value ? [{ label: 'board.hpChange.cappedAt100', value: `${deltaOpp}` }] : []),
+      ],
+      sourceCardDefId,
+    ),
+  );
+  return { success: true, message: `Heal both ${value}` };
+}
+
+function handleDirectDamage({
+  effect,
+  G,
+  player,
+  context,
+  opponent,
+  opponentIndex,
+  valueParam,
+  value,
+}: EffectHandlerArgs): {
+  success: boolean;
+  message: string;
+} {
+  const sourceCardDefId = context.cardDefId;
   if (effect.action.params.timing === 'turnEnd') {
     const { timing: _timing, ...params } = effect.action.params;
     if (!G.delayedEffects) G.delayedEffects = [];
@@ -681,13 +791,34 @@ function handleDirectDamage({ effect, G, player, opponent, opponentIndex, valueP
     });
     return { success: true, message: 'Scheduled turn-end damage' };
   }
-  const damage = valueParam === 'reducedThisTurn' ? (G.damageReducedThisTurn?.[player] ?? 0) : value;
-  if (damage === -1) G.modifiers.unreduceableDamage[player] = true;
-  else {
-    opponent.hp = Math.max(0, opponent.hp - damage);
-    if (opponent.hp <= 0) loseByHp(G, opponentIndex, `Player ${opponentIndex} loses at 0 HP.`);
+  const usesReducedThisTurn = valueParam === 'reducedThisTurn';
+  const damage = usesReducedThisTurn ? (G.damageReducedThisTurn?.[player] ?? 0) : value;
+  if (damage === -1) {
+    G.modifiers.unreduceableDamage[player] = true;
+    return { success: true, message: 'Battle damage cannot be reduced' };
   }
-  return { success: true, message: damage === -1 ? 'Battle damage cannot be reduced' : `Deal ${damage}` };
+  const before = opponent.hp;
+  opponent.hp = Math.max(0, before - damage);
+  const delta = opponent.hp - before;
+  const breakdownLines: HpChangeBreakdownLine[] = [
+    { label: 'board.hpChange.source', value: sourceCardDefId ?? '—', ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}) },
+  ];
+  if (usesReducedThisTurn) {
+    breakdownLines.push({ label: 'board.hpChange.reducedThisTurnBase', value: `${damage}` });
+  } else {
+    breakdownLines.push({ label: 'board.hpChange.damageAmount', value: `${damage}` });
+  }
+  breakdownLines.push({ label: 'board.hpChange.finalDamage', value: `${-delta}` });
+  pushHpChange(
+    G,
+    opponentIndex,
+    delta,
+    'directDamage',
+    sourceCardDefId,
+    buildEffectHpChangeBreakdown('board.hpChange.directDamageCalc', breakdownLines, sourceCardDefId),
+  );
+  if (opponent.hp <= 0) loseByHp(G, opponentIndex, `Player ${opponentIndex} loses at 0 HP.`);
+  return { success: true, message: `Deal ${damage}` };
 }
 
 function handleDamageReduce({ G, player, value }: EffectHandlerArgs): { success: boolean; message: string } {

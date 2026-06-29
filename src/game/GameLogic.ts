@@ -20,6 +20,8 @@ import type {
   CombatModifiers,
   Element,
   GameState,
+  HpChangeBreakdown,
+  HpChangeBreakdownLine,
   JankenChoice,
   PendingChoice,
   PendingEffect,
@@ -39,6 +41,7 @@ import {
   shuffleDeck,
   validateConstructedDeckIds,
 } from './cards/deckBuilder';
+import { pushHpChange } from './hpChange';
 
 const playerIndexes: PlayerIndex[] = [0, 1];
 
@@ -386,12 +389,14 @@ export function setupGame(
     areaEnchantSetLocked: [false, false],
     damageReducedThisTurn: [0, 0],
     jankenChoices: [null, null],
+    jankenDrawCount: 0,
     mulliganUsed: [false, false],
     modifiers: emptyModifiers(),
     winner: null,
     gameoverReason: null,
     log: ['Game initialized. Janken determines the night-side player.'],
     actionLog: [],
+    recentHpChanges: [],
   };
   G.players[0].deck = shuffleDeck(setupDeck(0, setupData.deck0Ids, setupData.deck0Name, allowBrowserCustomDeckName));
   G.players[1].deck = shuffleDeck(setupDeck(1, setupData.deck1Ids, setupData.deck1Name, allowBrowserCustomDeckName));
@@ -412,6 +417,7 @@ export function resolveJanken(
   };
   if (choice0 === choice1) {
     G.jankenChoices = [null, null];
+    G.jankenDrawCount = (G.jankenDrawCount ?? 0) + 1;
     G.log.push('Janken draw. Choose again.');
     return { winner: null };
   }
@@ -475,11 +481,12 @@ function setCard(G: GameState, player: PlayerIndex, handIndex: number, slot: Set
   const state = G.players[player];
   if (G.ready[player] || handIndex < 0 || handIndex >= state.hand.length) return false;
   if (slot === 'B' && G.step === 'initialSet') return false;
+  if (slot === 'C') return false;
   if (state.cardsSetThisTurn >= getRequiredSetCount(G, player)) return false;
-  const zone = slot === 'A' ? 'setZoneA' : 'setZoneB';
-  if (state[zone]) return false;
   const def = getCardDef(state.hand[handIndex].defId);
   if (def?.type === 'Area Enchant' && G.areaEnchantSetLocked?.[player]) return false;
+  const zone = def?.type === 'Area Enchant' && !state.setZoneC ? 'setZoneC' : slot === 'A' ? 'setZoneA' : 'setZoneB';
+  if (state[zone]) return false;
   const card = state.hand.splice(handIndex, 1)[0];
   card.faceUp = false;
   state[zone] = card;
@@ -498,14 +505,11 @@ export function setInitialCard(G: GameState, player: PlayerIndex, handIndex: num
   state.battleZone = card;
   state.cardsSetThisTurn++;
   G.setCardsThisTurn[player].push(card);
-  recordAction(G, player, 'setInitialCard', { zone: 'battleZone', faceDown: true });
   return true;
 }
 
 export function setTurnCard(G: GameState, player: PlayerIndex, handIndex: number, slot: SetSlot): boolean {
-  const placed = G.step === 'turnSet' && setCard(G, player, handIndex, slot);
-  if (placed) recordAction(G, player, 'setTurnCard', { slot, faceDown: true });
-  return placed;
+  return G.step === 'turnSet' && setCard(G, player, handIndex, slot);
 }
 
 export function undoSetCard(G: GameState, player: PlayerIndex, slot: SetSlot): boolean {
@@ -521,7 +525,7 @@ export function undoSetCard(G: GameState, player: PlayerIndex, slot: SetSlot): b
     G.setCardsThisTurn[player] = G.setCardsThisTurn[player].filter((c) => c.instanceId !== card.instanceId);
     return true;
   }
-  const zone = slot === 'A' ? 'setZoneA' : 'setZoneB';
+  const zone = slot === 'C' ? 'setZoneC' : slot === 'A' ? 'setZoneA' : 'setZoneB';
   const card = state[zone];
   if (!card) return false;
   card.faceUp = true;
@@ -532,10 +536,38 @@ export function undoSetCard(G: GameState, player: PlayerIndex, slot: SetSlot): b
   return true;
 }
 
+function confirmedSetCardPayloads(G: GameState, player: PlayerIndex): { action: 'setInitialCard' | 'setTurnCard'; payload: ActionLogEntry['payload'] }[] {
+  const state = G.players[player];
+  const playedIds = new Set(G.setCardsThisTurn[player].map((card) => card.instanceId));
+  if (G.step === 'initialSet') {
+    if (state.battleZone && playedIds.has(state.battleZone.instanceId)) {
+      return [{ action: 'setInitialCard', payload: { zone: 'battleZone', faceDown: true } }];
+    }
+    return [];
+  }
+  const payloads: { action: 'setTurnCard'; payload: ActionLogEntry['payload'] }[] = [];
+  for (const [slot, card] of [
+    ['A', state.setZoneA],
+    ['B', state.setZoneB],
+    ['C', state.setZoneC],
+  ] as const) {
+    if (!card || !playedIds.has(card.instanceId)) continue;
+    payloads.push({ action: 'setTurnCard', payload: { slot, faceDown: true } });
+  }
+  return payloads;
+}
+
+function recordConfirmedSetCards(G: GameState, player: PlayerIndex): void {
+  for (const entry of confirmedSetCardPayloads(G, player)) {
+    recordAction(G, player, entry.action, entry.payload);
+  }
+}
+
 export function confirmReady(G: GameState, player: PlayerIndex, parsedEffects: Map<string, ParsedEffect[]>): boolean {
   if (!['initialSet', 'turnSet'].includes(G.step) || G.ready[player]) return false;
   const cardsSet = G.players[player].cardsSetThisTurn;
   if (cardsSet < getMinimumSetCount(G, player) || cardsSet > getRequiredSetCount(G, player)) return false;
+  recordConfirmedSetCards(G, player);
   G.ready[player] = true;
   recordAction(G, player, 'confirmReady', { confirmed: true });
   if (G.ready[0] && G.ready[1]) resolveTurn(G, parsedEffects);
@@ -549,6 +581,7 @@ export function timeoutSkip(G: GameState, player: PlayerIndex, parsedEffects: Ma
   if (G.step !== 'turnSet' || G.ready[player]) return false;
   // 伺服器權威超時檢查：Date.now() 在 boardgame.io server/master 執行，為權威時間。
   if (typeof G.turnStartTime !== 'number' || Date.now() - G.turnStartTime < TURN_TIMER_MS) return false;
+  recordConfirmedSetCards(G, player);
   G.ready[player] = true;
   recordAction(G, player, 'timeoutSkip', { confirmed: true });
   if (G.ready[0] && G.ready[1]) resolveTurn(G, parsedEffects);
@@ -561,6 +594,7 @@ export function revealCards(G: GameState): void {
     if (player.battleZone) player.battleZone.faceUp = true;
     if (player.setZoneA) player.setZoneA.faceUp = true;
     if (player.setZoneB) player.setZoneB.faceUp = true;
+    if (player.setZoneC) player.setZoneC.faceUp = true;
   }
 }
 
@@ -729,7 +763,16 @@ export function placeRevealedCards(
       continue;
     }
     const characters = slots.filter((card) => getCardDef(card.defId)?.type === 'Character');
-    const areas = slots.filter((card) => getCardDef(card.defId)?.type === 'Area Enchant');
+    const directArea =
+      player.setZoneC &&
+      G.setCardsThisTurn[index].some((card) => card.instanceId === player.setZoneC?.instanceId) &&
+      getCardDef(player.setZoneC.defId)?.type === 'Area Enchant'
+        ? player.setZoneC
+        : null;
+    const areas = [
+      ...slots.filter((card) => getCardDef(card.defId)?.type === 'Area Enchant'),
+      ...(directArea ? [directArea] : []),
+    ];
     // 官方 QA Q11/Q13：只進第一張卡到 destination，多餘的卡保留在 setZoneB，
     // 由 finishTurn 在回合結束時送 ownerZone（QA 規定「ターンの終了時に」送）。
     if (characters.length > 0) {
@@ -748,6 +791,9 @@ export function placeRevealedCards(
       // QA 規定「ターンの終了時」指定がないため「すぐに」移動，且效果不発動。
       const immediateMove = getImmediateMoveOnSetHpCondition(areas[0], timingEffects);
       if (immediateMove && G.players[index].hp <= immediateMove.hpThreshold) {
+        if (directArea && areas[0].instanceId === directArea.instanceId) {
+          G.players[index].setZoneC = null;
+        }
         sendToOwnerZone(areas[0], G.players[index], G, index, timingEffects);
         if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
         if (!G.suppressedEffectCardIdsThisTurn.includes(areas[0].instanceId)) {
@@ -756,6 +802,13 @@ export function placeRevealedCards(
         G.log.push(
           `Player ${index}: ${areas[0].defId} HP<=${immediateMove.hpThreshold} at set, immediate move to ${immediateMove.destination}.`,
         );
+      } else if (directArea && areas[0].instanceId === directArea.instanceId) {
+        resolveTimingEvent(G, timingEffects, {
+          type: 'zoneEntered',
+          player: index,
+          zone: 'setZoneC',
+          cardDefId: directArea.defId,
+        });
       } else {
         replaceDestination(G, index, [areas[0]], 'setZoneC', false, timingEffects);
       }
@@ -835,6 +888,7 @@ export function resolveTimingEvent(
   options: {
     effectFilter?: (effect: ParsedEffect) => boolean;
     recordEvent?: boolean;
+    onEffectExecuted?: (info: { cardDefId: string; effect: ParsedEffect; player: PlayerIndex; success: boolean }) => void;
   } = {},
 ): void {
   const trigger = timingTrigger(event);
@@ -855,6 +909,12 @@ export function resolveTimingEvent(
         onTimingEvent: (nestedEvent) => resolveTimingEvent(G, parsedEffects, nestedEvent),
       });
       if (result.success) G.log.push(`Player ${pendingEffect.player}: ${result.message}.`);
+      options.onEffectExecuted?.({
+        cardDefId: pendingEffect.cardDefId,
+        effect: pendingEffect.effect,
+        player: pendingEffect.player,
+        success: result.success,
+      });
       if ((G.step as GameState['step']) === 'gameOver') {
         recordGameOverTrace(G);
         return;
@@ -891,6 +951,7 @@ export function resolveTimingEvent(
           onTimingEvent: (nestedEvent) => resolveTimingEvent(G, parsedEffects, nestedEvent),
         });
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
+        options.onEffectExecuted?.({ cardDefId: card.defId, effect, player, success: result.success });
         if ((G.step as GameState['step']) === 'gameOver') {
           recordGameOverTrace(G);
           return;
@@ -916,18 +977,62 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   const loser = (1 - winner) as PlayerIndex;
   const rawDamage = attacks[winner] - attacks[loser];
   const damageReceivedEvent: TimingEvent = { type: 'damageReceived', player: loser, amount: rawDamage };
+  // 收集實際參與減傷計算的卡（含附魔卡），供 HP 變化 breakdown 顯示。
+  const damageReduceParticipants: { cardDefId: string; value: number }[] = [];
+  const reductionBefore = G.modifiers.damageReduction[loser] ?? 0;
   resolveTimingEvent(G, parsedEffects, damageReceivedEvent, {
     effectFilter: (effect) => effect.action.type === 'damageReduce',
+    onEffectExecuted: ({ cardDefId, effect, success }) => {
+      if (success && effect.action.type === 'damageReduce') {
+        const v = Number(effect.action.params.value ?? 0);
+        damageReduceParticipants.push({ cardDefId, value: v });
+      }
+    },
   });
   if (G.step === 'gameOver') return;
-  const damage = G.modifiers.unreduceableDamage[winner]
-    ? rawDamage
-    : Math.max(0, rawDamage - G.modifiers.damageReduction[loser]);
-  if (!G.modifiers.unreduceableDamage[winner]) {
+  const reductionApplied = (G.modifiers.damageReduction[loser] ?? 0) - reductionBefore;
+  const unreduceable = Boolean(G.modifiers.unreduceableDamage[winner]);
+  const damage = unreduceable ? rawDamage : Math.max(0, rawDamage - G.modifiers.damageReduction[loser]);
+  if (!unreduceable) {
     if (!G.damageReducedThisTurn) G.damageReducedThisTurn = [0, 0];
     G.damageReducedThisTurn[loser] += Math.min(rawDamage, G.modifiers.damageReduction[loser]);
   }
-  G.players[loser].hp = Math.max(0, G.players[loser].hp - damage);
+  const loserHpBefore = G.players[loser].hp;
+  G.players[loser].hp = Math.max(0, loserHpBefore - damage);
+  // 組裝戰鬥 HP 變化 breakdown：攻擊力比較 → 原始傷害 → 減傷 → 最終傷害。
+  // label 存 i18n key 字串，由 UI 層翻譯（引擎層不依賴 i18n）。
+  const winnerCard = G.players[winner].battleZone;
+  const loserCard = G.players[loser].battleZone;
+  const battleLines: HpChangeBreakdownLine[] = [
+    {
+      label: 'board.hpChange.winnerAttack',
+      value: `${attacks[winner]}`,
+      ...(winnerCard ? { cardDefId: winnerCard.defId } : {}),
+    },
+    {
+      label: 'board.hpChange.loserAttack',
+      value: `${attacks[loser]}`,
+      ...(loserCard ? { cardDefId: loserCard.defId } : {}),
+    },
+    { label: 'board.hpChange.rawDamage', value: `${rawDamage}` },
+  ];
+  if (reductionApplied > 0) {
+    battleLines.push({ label: 'board.hpChange.damageReduction', value: `-${reductionApplied}` });
+  }
+  if (unreduceable) {
+    battleLines.push({ label: 'board.hpChange.unreduceable', value: 'board.hpChange.yes' });
+  }
+  battleLines.push({ label: 'board.hpChange.finalDamage', value: `${damage}` });
+  const battleBreakdown: HpChangeBreakdown = {
+    title: 'board.hpChange.battleCalc',
+    lines: battleLines,
+    participantCardDefIds: [
+      ...(winnerCard ? [winnerCard.defId] : []),
+      ...(loserCard ? [loserCard.defId] : []),
+      ...damageReduceParticipants.map((p) => p.cardDefId),
+    ],
+  };
+  pushHpChange(G, loser, G.players[loser].hp - loserHpBefore, 'battle', undefined, battleBreakdown);
   G.lastBattleResult = { winner, damage, winnerAttack: attacks[winner], loserAttack: attacks[loser] };
   G.log.push(`Battle ${attacks[0]}–${attacks[1]}: Player ${winner} deals ${damage}.`);
   resolveTimingEvent(G, parsedEffects, { type: 'battle' });

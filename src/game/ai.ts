@@ -218,7 +218,7 @@ export function aiSelectCards(
   G: GameState,
   playerIdx: number,
   difficulty: AIDifficulty,
-): { handIndex: number; slot: 'A' | 'B' }[] {
+): { handIndex: number; slot: SetSlot }[] {
   const aiPlayerIdx = playerIdx as PlayerIndex;
   const player = G.players[playerIdx];
   const maxCards = Math.max(0, getRequiredSetCount(G, aiPlayerIdx) - player.cardsSetThisTurn);

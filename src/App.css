@@ -16,6 +16,7 @@
   --color-gold: var(--gold);
   --color-gold-soft: var(--gold-soft);
   --color-vermilion: var(--vermilion);
+  --color-jade: var(--jade);
   --font-display: var(--font-display);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
@@ -31,6 +32,7 @@
   --gold: oklch(0.74 0.09 80);
   --gold-soft: oklch(0.62 0.07 80);
   --vermilion: oklch(0.6 0.19 295);
+  --jade: oklch(0.72 0.14 155);
 
   /* 字體 */
   --font-display: 'Kaisei Tokumin', 'EB Garamond', 'Songti SC', 'STSong', serif;
@@ -6737,6 +6739,38 @@ button.zone:focus-visible {
   text-shadow: 0 0 0.7rem rgba(255, 92, 122, 0.45);
   pointer-events: none;
   animation: damage-float 850ms ease-out forwards;
+}
+
+/* HP 變化浮動提示（雙方區域各一組，顯示 +HP / -HP 與原因） */
+@keyframes hp-change-float {
+  0% {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.85);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(-0.9rem) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-1.8rem) scale(1.06);
+  }
+}
+
+.hp-change-float {
+  pointer-events: none;
+  animation: hp-change-float 1.6s ease-out forwards;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-change-float {
+    animation-duration: 0.9s;
+  }
 }
 
 .effect-order-panel {
