@@ -921,15 +921,36 @@ input:focus {
   overflow: hidden;
 }
 
+.board-client-frame {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.board-client-frame > :not(.hidden-client) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .local-duel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   gap: 0.65rem;
+  height: 100%;
+  max-height: 100%;
 }
 
 .player-view {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.player-view > :not(.view-label) {
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
@@ -7114,6 +7135,20 @@ button.zone:focus-visible {
   z-index: 1;
 }
 
+.board > .board-effect-overlay {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 80 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.board > .board-phase-instruction {
+  position: absolute !important;
+  z-index: 30 !important;
+}
+
 .board.chrono-night {
   background: color-mix(in oklch, var(--lacquer-deep) 92%, oklch(0.3 0.05 270));
 }
@@ -7400,14 +7435,14 @@ button.zone:focus-visible {
 }
 
 .battle-perspective-stage .opponent-battle-zone {
-  left: calc(50% - min(9rem, 46%));
-  transform: translate(-50%, -50%) rotate(180deg) scale(0.72);
+  left: calc(50% - min(11.5rem, 62%));
+  transform: translate(-50%, -50%) rotate(180deg) scale(0.64);
   transform-origin: center center;
 }
 
 .battle-perspective-stage .player-battle-zone {
-  left: calc(50% + min(9rem, 46%));
-  transform: translate(-50%, -50%) scale(0.72);
+  left: calc(50% + min(11.5rem, 62%));
+  transform: translate(-50%, -50%) scale(0.64);
   transform-origin: center center;
   border-color: color-mix(in oklch, var(--gold) 34%, transparent);
 }

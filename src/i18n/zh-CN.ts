@@ -190,7 +190,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'board.phaseResolvingEffects': '正在结算效果',
   'board.phasePendingEffects': '待结算',
   'board.phaseInitialSetTitle': '初始设置',
-  'board.phaseInitialSetBody': '选 1 张手牌放到设置区 A。',
+  'board.phaseInitialSetBody': '选 1 张手牌背面放到战斗区。',
   'board.phaseWaitingOpponentReady': '已确认，等待对手。',
   'board.phaseSetCount': '已设置',
   'board.phaseWaitingTitle': '等待对手确认',

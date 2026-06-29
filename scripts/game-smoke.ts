@@ -229,8 +229,11 @@ function fivePowerCards() {
   const opponentSetLog = (player1.getState()?.G.actionLog ?? []).find(
     (entry) => entry.action === 'setInitialCard' && entry.player === 0,
   );
-  assert.deepEqual(opponentSetLog?.payload, { slot: 'A', faceDown: true });
+  assert.deepEqual(opponentSetLog?.payload, { zone: 'battleZone', faceDown: true });
   assert.equal(JSON.stringify(opponentSetLog).includes('defId'), false);
+  assert.notEqual(player0.getState()?.G.players[0].battleZone?.defId, '__hidden__');
+  assert.equal(player1.getState()?.G.players[0].battleZone?.defId, '__hidden__');
+  assert.equal(player1.getState()?.G.players[0].battleZone?.instanceId, 'hidden-p0-battle');
   player1.moves.setInitialCard(0);
   player0.moves.confirmReady();
   player1.moves.confirmReady();
@@ -537,6 +540,12 @@ function fivePowerCards() {
   G.players[1].hand = [createInstance('2nd_5', true)]; // Area Enchant, clock 1
   assert.equal(setInitialCard(G, 0, 0), true);
   assert.equal(setInitialCard(G, 1, 0), true);
+  assert.equal(G.players[0].setZoneA, null);
+  assert.equal(G.players[1].setZoneA, null);
+  assert.equal(G.players[0].battleZone?.defId, '1st_5');
+  assert.equal(G.players[1].battleZone?.defId, '2nd_5');
+  assert.equal(G.players[0].battleZone?.faceUp, false);
+  assert.equal(G.players[1].battleZone?.faceUp, false);
   assert.equal(confirmReady(G, 0, noEffects), true);
   assert.equal(confirmReady(G, 1, noEffects), true);
   assert.equal(G.chronos.position, 1);

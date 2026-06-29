@@ -7,6 +7,7 @@ import {
   type MatchRecord,
 } from '../game/matchHistory';
 import type { ActionLogEntry } from '../game/types';
+import { getTranslatedEffect } from '../game/cards/i18n';
 import { t, useLocale } from '../i18n';
 
 interface MatchHistoryProps {
@@ -49,9 +50,17 @@ function traceContext(entry: ActionLogEntry): string[] {
   return lines;
 }
 
-function TraceEntry({ entry }: { entry: ActionLogEntry }) {
+function traceResultMessage(entry: ActionLogEntry, locale: string): string | null {
+  if (entry.pendingEffectCardDefId) {
+    return getTranslatedEffect(entry.pendingEffectCardDefId, locale) ?? entry.result?.message ?? null;
+  }
+  return entry.result?.message ?? null;
+}
+
+function TraceEntry({ entry, locale }: { entry: ActionLogEntry; locale: string }) {
   const payload = formatTracePayload(entry.payload);
   const context = traceContext(entry);
+  const resultMessage = traceResultMessage(entry, locale);
   return (
     <li className="card bg-base-200 shadow">
       <div className="card-body gap-2">
@@ -60,8 +69,8 @@ function TraceEntry({ entry }: { entry: ActionLogEntry }) {
         </strong>
         <span>{entry.step}</span>
         {payload && <p>{payload}</p>}
-        {entry.result?.message && (
-          <p className={entry.result.ok ? 'text-success' : 'text-error'}>{entry.result.message}</p>
+        {resultMessage && (
+          <p className={entry.result?.ok ? 'text-success' : 'text-error'}>{resultMessage}</p>
         )}
         {context.length > 0 && <small>{context.join(' · ')}</small>}
       </div>
@@ -120,7 +129,7 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
           ) : (
             <ol className="flex flex-col gap-3">
               {trace.map((entry, index) => (
-                <TraceEntry key={`${entry.id ?? index}-${entry.timestamp}`} entry={entry} />
+                <TraceEntry key={`${entry.id ?? index}-${entry.timestamp}`} entry={entry} locale={locale} />
               ))}
             </ol>
           )}

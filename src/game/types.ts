@@ -187,6 +187,7 @@ export interface PendingChoiceBase {
   min: number;
   max: number;
   prompt?: string;
+  sourceCardDefId?: string;
 }
 
 export type PendingChoice =

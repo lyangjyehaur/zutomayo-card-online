@@ -75,6 +75,7 @@ function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerI
       revealedHandIds.has(card.instanceId) ? { ...card } : hiddenCard(`hidden-p${owner}-hand-${index}`),
     ),
     deck: player.deck.map((_, index) => hiddenCard(`hidden-p${owner}-deck-${index}`)),
+    battleZone: redactHiddenCard(player.battleZone, `hidden-p${owner}-battle`),
     setZoneA: redactHiddenCard(player.setZoneA, `hidden-p${owner}-set-a`),
     setZoneB: redactHiddenCard(player.setZoneB, `hidden-p${owner}-set-b`),
   };

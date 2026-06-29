@@ -190,7 +190,7 @@ export const ko: Record<TranslationKey, string> = {
   'board.phaseResolvingEffects': '효과 해결 중',
   'board.phasePendingEffects': '대기',
   'board.phaseInitialSetTitle': '초기 배치',
-  'board.phaseInitialSetBody': '손패 1장을 세트 존 A에 둡니다.',
+  'board.phaseInitialSetBody': '손패 1장을 뒷면으로 배틀 존에 둡니다.',
   'board.phaseWaitingOpponentReady': '확정 완료. 상대를 기다립니다.',
   'board.phaseSetCount': '배치됨',
   'board.phaseWaitingTitle': '상대 확정 대기',

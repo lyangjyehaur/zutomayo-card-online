@@ -190,7 +190,7 @@ export const ja: Record<TranslationKey, string> = {
   'board.phaseResolvingEffects': '効果を解決中',
   'board.phasePendingEffects': '待機中',
   'board.phaseInitialSetTitle': '初期セット',
-  'board.phaseInitialSetBody': '手札から1枚をセットゾーンAに置きます。',
+  'board.phaseInitialSetBody': '手札から1枚を裏向きでバトルゾーンに置きます。',
   'board.phaseWaitingOpponentReady': '確定済み。相手を待っています。',
   'board.phaseSetCount': 'セット済み',
   'board.phaseWaitingTitle': '相手の確定待ち',

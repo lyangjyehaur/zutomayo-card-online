@@ -190,7 +190,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'board.phaseResolvingEffects': '正在結算效果',
   'board.phasePendingEffects': '待結算',
   'board.phaseInitialSetTitle': '初始設置',
-  'board.phaseInitialSetBody': '揀 1 張手牌放到設置區 A。',
+  'board.phaseInitialSetBody': '揀 1 張手牌背面放到戰鬥區。',
   'board.phaseWaitingOpponentReady': '已確認，等緊對手。',
   'board.phaseSetCount': '已設置',
   'board.phaseWaitingTitle': '等待對手確認',

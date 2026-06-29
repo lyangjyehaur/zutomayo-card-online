@@ -48,7 +48,7 @@ export function AIGame({ difficulty, deck0Name, deck1Name }: AIGameProps) {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
-      <div className="h-full w-full">
+      <div className="board-client-frame h-full w-full">
         <AIClient playerID="0" />
         <div className="hidden-client">
           <AIClient playerID="1" />

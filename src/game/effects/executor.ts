@@ -38,6 +38,7 @@ import {
 
 export interface EffectExecutionContext {
   cardInstanceId?: string;
+  cardDefId?: string;
   onTimingEvent?: (event: TimingEvent) => void;
 }
 
@@ -1676,7 +1677,11 @@ export function executeEffect(
   const valueParam = effect.action.params.value;
   const value = Number(effect.action.params.value ?? 0);
   const handler = effectHandlers[effect.action.type];
-  return handler({ effect, G, player, context, me, opponent, opponentIndex, valueParam, value });
+  const result = handler({ effect, G, player, context, me, opponent, opponentIndex, valueParam, value });
+  if (G.pendingChoice && context.cardDefId && !G.pendingChoice.sourceCardDefId) {
+    G.pendingChoice.sourceCardDefId = context.cardDefId;
+  }
+  return result;
 }
 
 export function processTurnEffects(
@@ -1694,6 +1699,7 @@ export function processTurnEffects(
         if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) continue;
         const result = executeEffect(pendingEffect.effect, G, player, {
           cardInstanceId: pendingEffect.cardInstanceId,
+          cardDefId: pendingEffect.cardDefId,
         });
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
         if ((G.step as GameState['step']) === 'gameOver') return;

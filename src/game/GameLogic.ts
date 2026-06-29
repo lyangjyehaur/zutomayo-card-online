@@ -489,9 +489,17 @@ function setCard(G: GameState, player: PlayerIndex, handIndex: number, slot: Set
 }
 
 export function setInitialCard(G: GameState, player: PlayerIndex, handIndex: number): boolean {
-  const placed = G.step === 'initialSet' && setCard(G, player, handIndex, 'A');
-  if (placed) recordAction(G, player, 'setInitialCard', { slot: 'A', faceDown: true });
-  return placed;
+  if (G.step !== 'initialSet') return false;
+  const state = G.players[player];
+  if (G.ready[player] || handIndex < 0 || handIndex >= state.hand.length) return false;
+  if (state.battleZone || state.cardsSetThisTurn >= getRequiredSetCount(G, player)) return false;
+  const card = state.hand.splice(handIndex, 1)[0];
+  card.faceUp = false;
+  state.battleZone = card;
+  state.cardsSetThisTurn++;
+  G.setCardsThisTurn[player].push(card);
+  recordAction(G, player, 'setInitialCard', { zone: 'battleZone', faceDown: true });
+  return true;
 }
 
 export function setTurnCard(G: GameState, player: PlayerIndex, handIndex: number, slot: SetSlot): boolean {
@@ -503,6 +511,16 @@ export function setTurnCard(G: GameState, player: PlayerIndex, handIndex: number
 export function undoSetCard(G: GameState, player: PlayerIndex, slot: SetSlot): boolean {
   if (!['initialSet', 'turnSet'].includes(G.step) || G.ready[player]) return false;
   const state = G.players[player];
+  if (G.step === 'initialSet') {
+    const card = state.battleZone;
+    if (!card) return false;
+    card.faceUp = true;
+    state.hand.push(card);
+    state.battleZone = null;
+    state.cardsSetThisTurn--;
+    G.setCardsThisTurn[player] = G.setCardsThisTurn[player].filter((c) => c.instanceId !== card.instanceId);
+    return true;
+  }
   const zone = slot === 'A' ? 'setZoneA' : 'setZoneB';
   const card = state[zone];
   if (!card) return false;
@@ -540,6 +558,7 @@ export function timeoutSkip(G: GameState, player: PlayerIndex, parsedEffects: Ma
 export function revealCards(G: GameState): void {
   G.log.push('「嫌（やぁ）」— cards revealed simultaneously.');
   for (const player of G.players) {
+    if (player.battleZone) player.battleZone.faceUp = true;
     if (player.setZoneA) player.setZoneA.faceUp = true;
     if (player.setZoneB) player.setZoneB.faceUp = true;
   }
@@ -690,8 +709,17 @@ export function placeRevealedCards(
     if (initial) {
       // 官方 QA Q42：1 ターン目所有卡（含非角色卡）都先進 battleZone。
       // Q1：非角色卡進 battleZone 後立即送 ownerZone（效果不發動，攻撃力0）。
+      const preparedBattleCard = player.battleZone;
       replaceDestination(G, index, slots, 'battleZone', false, timingEffects);
       const battleCard = player.battleZone;
+      if (battleCard && preparedBattleCard?.instanceId === battleCard.instanceId) {
+        resolveTimingEvent(G, timingEffects, {
+          type: 'zoneEntered',
+          player: index,
+          zone: 'battleZone',
+          cardDefId: battleCard.defId,
+        });
+      }
       if (battleCard && getCardDef(battleCard.defId)?.type !== 'Character') {
         player.battleZone = null;
         sendToOwnerZone(battleCard, player, G, index, timingEffects);
@@ -823,6 +851,7 @@ export function resolveTimingEvent(
       if (areEffectsDisabledForCard(G, pendingEffect.player, pendingEffect.cardDefId)) continue;
       const result = executeEffect(pendingEffect.effect, G, pendingEffect.player, {
         cardInstanceId: pendingEffect.cardInstanceId,
+        cardDefId: pendingEffect.cardDefId,
         onTimingEvent: (nestedEvent) => resolveTimingEvent(G, parsedEffects, nestedEvent),
       });
       if (result.success) G.log.push(`Player ${pendingEffect.player}: ${result.message}.`);
@@ -858,6 +887,7 @@ export function resolveTimingEvent(
           continue;
         const result = executeEffect(effect, G, player, {
           cardInstanceId: card.instanceId,
+          cardDefId: card.defId,
           onTimingEvent: (nestedEvent) => resolveTimingEvent(G, parsedEffects, nestedEvent),
         });
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
@@ -1147,6 +1177,7 @@ export function resolvePendingEffect(
   const beforeChronos = G.chronos.position;
   const result = executeEffect(pendingEffect.effect, G, player, {
     cardInstanceId: pendingEffect.cardInstanceId,
+    cardDefId: pendingEffect.cardDefId,
     onTimingEvent: (event) => resolveTimingEvent(G, parsedEffects, event),
   });
   if (G.chronos.position !== beforeChronos) {

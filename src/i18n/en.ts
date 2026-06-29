@@ -190,7 +190,7 @@ export const en: Record<TranslationKey, string> = {
   'board.phaseResolvingEffects': 'is resolving effects',
   'board.phasePendingEffects': 'Pending',
   'board.phaseInitialSetTitle': 'Initial Set',
-  'board.phaseInitialSetBody': 'Set 1 card from hand to Set Zone A.',
+  'board.phaseInitialSetBody': 'Set 1 card from hand face down to the Battle Zone.',
   'board.phaseWaitingOpponentReady': 'Confirmed. Waiting for opponent.',
   'board.phaseSetCount': 'Set',
   'board.phaseWaitingTitle': 'Waiting for Opponent',

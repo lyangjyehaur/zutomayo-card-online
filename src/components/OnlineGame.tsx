@@ -154,7 +154,7 @@ export function OnlineGame({
           </span>
         </div>
       )}
-      <div className="h-full w-full">
+      <div className="board-client-frame h-full w-full">
         <OnlineClient playerID={playerID} matchID={matchID} credentials={playerCredentials} />
       </div>
     </div>

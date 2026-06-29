@@ -115,7 +115,7 @@ function sortSelectionsForPlayOrder(selections: AISelection[]): AISelection[] {
 
 function availableSetSlots(G: GameState, playerIdx: PlayerIndex): SetSlot[] {
   const player = G.players[playerIdx];
-  if (G.step === 'initialSet') return player.setZoneA ? [] : ['A'];
+  if (G.step === 'initialSet') return player.battleZone ? [] : ['A'];
   const slots: SetSlot[] = [];
   if (!player.setZoneA) slots.push('A');
   if (!player.setZoneB) slots.push('B');
@@ -131,12 +131,17 @@ function simulateBattle(
   const player = sim.players[playerIdx];
 
   for (const selection of selections) {
-    const zone = selection.slot === 'A' ? 'setZoneA' : 'setZoneB';
-    if (player[zone]) return null;
     const card = player.hand[selection.handIndex];
     if (!card) return null;
     card.faceUp = false;
-    player[zone] = card;
+    if (sim.step === 'initialSet') {
+      if (player.battleZone) return null;
+      player.battleZone = card;
+    } else {
+      const zone = selection.slot === 'A' ? 'setZoneA' : 'setZoneB';
+      if (player[zone]) return null;
+      player[zone] = card;
+    }
     sim.setCardsThisTurn[playerIdx].push(card);
   }
 

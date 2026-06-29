@@ -59,11 +59,17 @@ function playerName(index: PlayerIndex): string {
   return index === 0 ? t('player.zero') : t('player.one');
 }
 
-function formatLogEntry(entry: ActionLogEntry): { text: string; tone: 'battle' | 'set' | 'effect' | 'info' } {
+function translatedActionLogEffect(entry: ActionLogEntry, locale: string): string | null {
+  if (!entry.pendingEffectCardDefId) return null;
+  return getTranslatedEffect(entry.pendingEffectCardDefId, locale);
+}
+
+function formatLogEntry(entry: ActionLogEntry, locale: string): { text: string; tone: 'battle' | 'set' | 'effect' | 'info' } {
   const p = playerName(entry.player);
   const a = entry.action;
   const payload = entry.payload as Record<string, unknown> | undefined;
   const msg = entry.result?.message;
+  const effectText = translatedActionLogEffect(entry, locale);
 
   if (a === 'janken') {
     const choice = payload?.choice as string;
@@ -75,7 +81,7 @@ function formatLogEntry(entry: ActionLogEntry): { text: string; tone: 'battle' |
     return { text: count > 0 ? `${p} ${t('board.redrewCards')} ${count} ${t('board.cardsUnit')}` : `${p} ${t('board.keepHand')}`, tone: 'info' };
   }
   if (a === 'setInitialCard') {
-    return { text: `${p} ${t('board.initialSet')} → ${(payload?.slot as string) ?? 'A'}`, tone: 'set' };
+    return { text: `${p} ${t('board.initialSet')} → ${t('board.battleZone')}`, tone: 'set' };
   }
   if (a === 'setTurnCard') {
     return { text: `${p} ${t('board.setCards')} → ${(payload?.slot as string) ?? '?'}`, tone: 'set' };
@@ -92,11 +98,15 @@ function formatLogEntry(entry: ActionLogEntry): { text: string; tone: 'battle' |
   if (a === 'submitPendingChoice') {
     return { text: `${p} ${t('board.submitChoice')}`, tone: 'effect' };
   }
+  if (a === 'resolvePendingEffect' && effectText) {
+    return { text: `${p}: ${effectText}`, tone: 'effect' };
+  }
   if (a === 'gameOver') {
     return { text: msg ?? t('board.gameOver'), tone: 'battle' };
   }
-  // 有 result.message 時優先用（效果引擎的詳細訊息）
+  // 有 result.message 時優先用；效果訊息若能對應到卡牌，顯示卡牌效果 i18n 文本。
   if (msg) {
+    if (effectText) return { text: `${p}: ${effectText}`, tone: 'effect' };
     const isBattle = msg.includes('damage') || msg.includes('HP') || msg.includes('battle');
     const isEffect = msg.includes('effect') || msg.includes('draw') || msg.includes('discard') || msg.includes('send');
     return { text: msg, tone: isBattle ? 'battle' : isEffect ? 'effect' : 'info' };
@@ -1051,6 +1061,26 @@ function effectSummary(effect: GameState['pendingEffects'][number][number]): str
   return value === undefined ? action.type : `${action.type} ${value}`;
 }
 
+function translatedPendingEffectText(
+  effect: GameState['pendingEffects'][number][number],
+  locale: string,
+): string {
+  return getTranslatedEffect(effect.cardDefId, locale) ?? effect.rawText ?? effectSummary(effect);
+}
+
+function translatedChoicePrompt(G: GameState, locale: string): string | null {
+  const choice = G.pendingChoice;
+  if (!choice?.prompt) return null;
+  if (choice.sourceCardDefId) {
+    return getTranslatedEffect(choice.sourceCardDefId, locale) ?? choice.prompt;
+  }
+  const sourceEffect = G.pendingEffects
+    .flat()
+    .find((effect) => effect.rawText === choice.prompt);
+  if (!sourceEffect) return choice.prompt;
+  return getTranslatedEffect(sourceEffect.cardDefId, locale) ?? choice.prompt;
+}
+
 
 function choiceInstruction(type: string): string {
   if (type === 'handToDeckBottomThenDraw') return t('board.choiceHintDeckBottomDraw');
@@ -1109,6 +1139,37 @@ function phaseInstruction(
   return { title: t('board.gameOver'), body: t('online.gameOverHelper'), meta: [] };
 }
 
+function PhaseInstructionBanner({
+  instruction,
+}: {
+  instruction: ReturnType<typeof phaseInstruction>;
+}) {
+  return (
+    <section className="board-phase-instruction pointer-events-none absolute inset-x-3 top-14 z-30 flex justify-center lg:inset-x-6">
+      <div className="w-full max-w-3xl rounded-sm border border-bone/10 bg-lacquer-deep/82 px-3 py-2 text-bone shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)] backdrop-blur md:px-4">
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-4">
+          <div className="min-w-0">
+            <div className="font-mono text-[9px] uppercase tracking-[0.28em] text-gold/70">{instruction.title}</div>
+            <p className="mt-1 text-xs leading-snug text-bone/70 md:text-sm">{instruction.body}</p>
+          </div>
+          {instruction.meta.length > 0 && (
+            <div className="flex shrink-0 flex-wrap gap-1.5">
+              {instruction.meta.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-sm border border-bone/10 bg-bone/5 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-bone/45"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 
 function EffectOrderPanel({
   G,
@@ -1119,6 +1180,7 @@ function EffectOrderPanel({
   moves: Props['moves'];
   playerID: Props['playerID'];
 }) {
+  const locale = useLocale();
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const currentPlayer = G.pendingEffectPlayer;
   if (currentPlayer === null) return null;
@@ -1136,6 +1198,7 @@ function EffectOrderPanel({
         <div className="effect-order-list">
           {pending.map((effect, index) => {
             const card = getCardDef(effect.cardDefId);
+            const effectText = translatedPendingEffectText(effect, locale);
             return (
               <button
                 key={effect.id}
@@ -1144,8 +1207,8 @@ function EffectOrderPanel({
                 onClick={() => moves.resolvePendingEffect(index)}
               >
                 <span className="effect-order-card">{card?.name ?? effect.cardDefId}</span>
-                <span className="effect-order-text">{effect.rawText || effectSummary(effect)}</span>
-                <span className="effect-order-action">{effectSummary(effect)}</span>
+                <span className="effect-order-text">{effectText}</span>
+                <span className="effect-order-action">{t('common.select')}</span>
               </button>
             );
           })}
@@ -1166,6 +1229,7 @@ function PendingChoicePanel({
   moves: Props['moves'];
   playerID: Props['playerID'];
 }) {
+  const locale = useLocale();
   const choice = G.pendingChoice;
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const [selected, setSelected] = useState<string[]>([]);
@@ -1178,6 +1242,7 @@ function PendingChoicePanel({
 
   const isCurrentPlayer = choice.player === meIndex;
   const canSubmit = selected.length >= choice.min && selected.length <= choice.max;
+  const prompt = translatedChoicePrompt(G, locale) ?? choiceInstruction(choice.type);
   const toggle = (optionId: string) => {
     setSelected((current) => {
       if (current.includes(optionId)) return current.filter((item) => item !== optionId);
@@ -1194,7 +1259,7 @@ function PendingChoicePanel({
       </div>
       {isCurrentPlayer ? (
         <>
-          <p>{choice.prompt || choiceInstruction(choice.type)}</p>
+          <p>{prompt}</p>
           <p className="pending-choice-range">
             {t('board.choiceCount')} {selected.length}/{choice.max} · {t('board.phaseMinimum')} {choice.min}
           </p>
@@ -1301,6 +1366,7 @@ export function FocusPanel({ focus }: { focus: FocusedCard }) {
 }
 
 export function BattleLogPanel({ G }: { G: GameState }) {
+  const locale = useLocale();
   const entries = (G.actionLog ?? []).slice(-14).reverse();
   return (
     <section className="flex min-h-0 flex-1 flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10">
@@ -1312,7 +1378,7 @@ export function BattleLogPanel({ G }: { G: GameState }) {
         {entries.map((entry) => (
           <p key={`${entry.id ?? entry.timestamp}-${entry.action}`}>
             <span className="text-bone/60">[{actionTime(entry.timestamp)}]</span>{' '}
-            <span className="text-gold/50">{t('board.turn')} {entry.turn}</span> {entry.result?.message ?? entry.action}
+            <span className="text-gold/50">{t('board.turn')} {entry.turn}</span> {formatLogEntry(entry, locale).text}
           </p>
         ))}
         {entries.length === 0 && <p className="text-bone/30">{t('board.waitingOpponent')}</p>}
@@ -1447,6 +1513,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
   const time = getChronosTime(G);
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required;
+  const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
 
   return (
     <div
@@ -1477,13 +1544,15 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           ))}
         </div>
         <div className="hidden shrink-0 items-center gap-3 font-mono text-[10px] uppercase tracking-[0.3em] lg:flex">
-          <span className="text-bone/40">{phaseInstruction(G, meIndex, required, minimum).title}</span>
-          <span className="text-gold">{phaseInstruction(G, meIndex, required, minimum).body}</span>
+          <span className="text-bone/40">{currentInstruction.title}</span>
+          <span className="text-gold">{currentInstruction.body}</span>
         </div>
       </header>
 
-      {/* 雙欄佈局 — header 浮在上面，pt-14 撐開頂部空間 */}
-      <div className="relative z-10 grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-14 lg:grid-cols-[minmax(0,1fr)_280px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6">
+      <PhaseInstructionBanner instruction={currentInstruction} />
+
+      {/* 雙欄佈局 — header 與階段提示浮在上方，pt-28 撐開頂部空間 */}
+      <div className="relative z-10 grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-28 lg:grid-cols-[minmax(0,1fr)_280px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6">
 
         {/* ===== 左欄：戰場 ===== */}
         <div className="battle-perspective-field flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
@@ -1592,6 +1661,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               activeTime={time}
               owner={meIndex}
               onFocusCard={setFocusedCard}
+              onClick={G.step === 'initialSet' && me.battleZone && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
             />
           </div>
 
@@ -1674,7 +1744,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                       onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
                       onMouseLeave={() => setFocusedCard(null)}
                     >
-                      <Card card={card} size="normal" className="!h-full !w-full !aspect-auto !border-0 !bg-transparent !shadow-none !rounded-none" showBadges={false} showPopover onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined} />
+                      <Card card={card} size="normal" className="!h-full !w-full !aspect-auto !border-0 !bg-transparent !shadow-none !rounded-none" showBadges={false} showPopover />
                     </div>
                   );
                 })}
@@ -1752,14 +1822,14 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           </div>
 
           {/* Log — i18n 格式化 */}
-          <div className="flex flex-1 flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+          <div className="flex min-h-0 flex-1 flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Log</span>
               <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
             </div>
-            <div className="flex-1 space-y-1 overflow-y-auto font-mono text-[10px] leading-relaxed">
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto font-mono text-[10px] leading-relaxed">
               {(G.actionLog ?? []).slice(-20).reverse().map((entry) => {
-                const { text, tone } = formatLogEntry(entry);
+                const { text, tone } = formatLogEntry(entry, locale);
                 const toneClass = tone === 'battle' ? 'text-vermilion/80' : tone === 'set' ? 'text-gold/60' : tone === 'effect' ? 'text-bone/70' : 'text-bone/40';
                 return (
                   <p key={`${entry.timestamp}-${entry.action}`} className={toneClass}>
@@ -1780,10 +1850,13 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
       {/* 效果結算 — 居中覆蓋層 */}
       {(G.step === 'effectOrder' || G.pendingChoice) && (
-        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
-          <div className="pointer-events-auto max-w-md rounded-sm bg-lacquer p-5 ring-1 ring-bone/10 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)]">
-            {G.step === 'effectOrder' && <EffectOrderPanel G={G} moves={moves} playerID={playerID} />}
-            {G.pendingChoice && <PendingChoicePanel G={G} moves={moves} playerID={playerID} />}
+        <div className="board-effect-overlay pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+          <div className="pointer-events-auto w-full max-w-md px-4">
+            {G.pendingChoice ? (
+              <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
+            ) : (
+              <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
+            )}
           </div>
         </div>
       )}
