@@ -16,12 +16,40 @@ import {
   resolvePendingEffect,
   submitPendingChoice,
 } from '../GameLogic';
-import type { GameState, JankenChoice, PlayerIndex, SetSlot } from '../types';
+import type { CardDef, CardType, GameState, JankenChoice, PlayerIndex, SetSlot } from '../types';
+
+function testCard(id: string, type: CardType): CardDef {
+  return {
+    id,
+    name: id,
+    pack: 'test',
+    song: 'test',
+    illustrator: 'test',
+    rarity: 'N',
+    element: '闇',
+    type,
+    clock: 0,
+    attack: type === 'Character' ? { night: 10, day: 10 } : null,
+    powerCost: 0,
+    sendToPower: 0,
+    effect: '',
+    image: '',
+    errata: '',
+  };
+}
+
+function testCardDefs(): CardDef[] {
+  return [
+    ...Array.from({ length: 12 }, (_, i) => testCard(`test-character-${i + 1}`, 'Character')),
+    ...Array.from({ length: 6 }, (_, i) => testCard(`test-enchant-${i + 1}`, 'Enchant')),
+    ...Array.from({ length: 2 }, (_, i) => testCard(`test-area-enchant-${i + 1}`, 'Area Enchant')),
+  ];
+}
 
 // 從 cards.json 載入卡牌數據（測試環境無 API/server，直接讀檔案）
 const cardsJsonPath = resolve('cards.json');
-if (!isCardsInitialized() && existsSync(cardsJsonPath)) {
-  initCards(JSON.parse(readFileSync(cardsJsonPath, 'utf8')));
+if (!isCardsInitialized()) {
+  initCards(existsSync(cardsJsonPath) ? JSON.parse(readFileSync(cardsJsonPath, 'utf8')) : testCardDefs());
 }
 
 // 預先解析所有卡牌效果，供遊戲流程使用
