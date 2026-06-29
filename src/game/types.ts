@@ -113,7 +113,7 @@ export interface ActionLogResult {
 }
 
 export interface ActionLogEntry {
-  id?: number;
+  id: number;
   turn: number;
   step: string;
   player: PlayerIndex;

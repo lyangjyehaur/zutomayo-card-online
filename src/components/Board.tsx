@@ -2510,7 +2510,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                           ? 'text-bone/70'
                           : 'text-bone/40';
                   return (
-                    <div key={`${entry.timestamp}-${entry.action}`}>
+                    <div key={entry.id}>
                       <p className={toneClass}>
                         <span className="text-bone/20">T{entry.turn}</span> {renderLogSegments(segments)}
                         {entry.hp && tone !== 'battle' && (
