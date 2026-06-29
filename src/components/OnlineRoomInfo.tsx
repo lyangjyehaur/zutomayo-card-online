@@ -13,7 +13,7 @@ export function buildOnlineRoomUrl(matchID: string): string {
   return `${window.location.origin}${path}`;
 }
 
-async function copyText(text: string): Promise<void> {
+export async function copyText(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
     return;
