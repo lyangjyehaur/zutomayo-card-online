@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
+import { createSign, generateKeyPairSync } from 'node:crypto';
 import { Pool } from 'pg';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import type { ActionLogEntry, ActionLogResult, PendingChoice } from '../src/game/types';
@@ -26,16 +27,6 @@ interface MockResponse {
 interface ApiResponse<T> {
   status: number;
   body: T;
-}
-
-interface AuthResponse {
-  token: string;
-  user: {
-    id: string;
-    email: string;
-    nickname: string;
-    elo: number;
-  };
 }
 
 interface ProfileResponse {
@@ -93,6 +84,54 @@ type ApiServerModule = {
 const tmp = mkdtempSync(join(tmpdir(), 'zutomayo-api-smoke-'));
 const port = 3900 + Math.floor(Math.random() * 1000);
 const baseUrl = `http://127.0.0.1:${port}`;
+const logtoIssuer = 'https://logto-smoke.test/oidc';
+const logtoAudience = 'https://zutomayo-card-online.test/api';
+const logtoKid = 'api-smoke-key';
+const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const logtoPublicJwk = {
+  ...publicKey.export({ format: 'jwk' }),
+  alg: 'RS256',
+  kid: logtoKid,
+  use: 'sig',
+};
+const originalFetch = globalThis.fetch;
+
+globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  if (url === `${logtoIssuer}/.well-known/openid-configuration`) {
+    return Response.json({
+      issuer: logtoIssuer,
+      jwks_uri: `${logtoIssuer}/jwks`,
+    });
+  }
+  if (url === `${logtoIssuer}/jwks`) {
+    return Response.json({ keys: [logtoPublicJwk] });
+  }
+  return originalFetch(input, init);
+};
+
+function base64urlJson(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function createLogtoToken({ sub, email, name }: { sub: string; email: string; name: string }): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'RS256', kid: logtoKid, typ: 'JWT' });
+  const payload = base64urlJson({
+    aud: logtoAudience,
+    email,
+    exp: now + 60 * 60,
+    iat: now,
+    iss: logtoIssuer,
+    name,
+    sub,
+  });
+  const input = `${header}.${payload}`;
+  const signer = createSign('RSA-SHA256');
+  signer.update(input);
+  signer.end();
+  return `${input}.${signer.sign(privateKey, 'base64url')}`;
+}
 
 // 水平擴展後 smoke 測試需要真實 PG + Redis（透過 docker-compose up postgres redis）。
 process.env.API_PORT = String(port);
@@ -103,6 +142,8 @@ process.env.PG_PASSWORD = process.env.PG_PASSWORD || 'zutomayo_dev';
 process.env.PG_DATABASE = process.env.PG_DATABASE || 'zutomayo';
 process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 process.env.JWT_SECRET = 'api-smoke-secret';
+process.env.LOGTO_ISSUER = logtoIssuer;
+process.env.LOGTO_AUDIENCE = logtoAudience;
 
 // This smoke uses the real API request handler in-process so it works in
 // sandboxes/CI where opening a local listening socket is forbidden.
@@ -203,64 +244,52 @@ try {
   const stamp = Date.now();
   const emailA = `smoke-a-${stamp}@example.test`;
   const emailB = `smoke-b-${stamp}@example.test`;
-  const password = 'secret123';
+  const tokenA = createLogtoToken({ sub: `logto-smoke-a-${stamp}`, email: emailA, name: 'Smoke One' });
+  const tokenB = createLogtoToken({ sub: `logto-smoke-b-${stamp}`, email: emailB, name: 'Smoke Two' });
   const validDeckIds = PRESET_DECKS.dark.ids;
   assert.equal(validDeckIds.length, 20);
 
-  const registeredA = await api<AuthResponse>(baseUrl, '/api/register', {
+  const syncedA = await api<ProfileResponse>(baseUrl, '/api/logto/profile', {
     method: 'POST',
-    body: JSON.stringify({ email: emailA, password, nickname: 'Smoke One' }),
+    headers: authHeaders(tokenA),
+    body: JSON.stringify({ nickname: 'Smoke One' }),
   });
-  assert.equal(registeredA.status, 200);
-  assert.ok(registeredA.body.token);
-  assert.equal(registeredA.body.user.email, emailA);
-  assert.equal(registeredA.body.user.elo, 1000);
+  assert.equal(syncedA.status, 200);
+  assert.equal(syncedA.body.email, emailA);
+  assert.equal(syncedA.body.nickname, 'Smoke One');
+  assert.equal(syncedA.body.elo, 1000);
 
-  const registeredB = await api<AuthResponse>(baseUrl, '/api/register', {
+  const syncedB = await api<ProfileResponse>(baseUrl, '/api/logto/profile', {
     method: 'POST',
-    body: JSON.stringify({
-      email: emailB,
-      password,
-      nickname: 'Smoke Two',
-    }),
+    headers: authHeaders(tokenB),
+    body: JSON.stringify({ nickname: 'Smoke Two' }),
   });
-  assert.equal(registeredB.status, 200);
-  assert.ok(registeredB.body.token);
-  assert.equal(registeredB.body.user.email, emailB);
+  assert.equal(syncedB.status, 200);
+  assert.equal(syncedB.body.email, emailB);
+  assert.equal(syncedB.body.nickname, 'Smoke Two');
 
-  const loginA = await api<AuthResponse>(baseUrl, '/api/login', {
-    method: 'POST',
-    body: JSON.stringify({ email: emailA, password }),
-  });
-  assert.equal(loginA.status, 200);
-  assert.equal(loginA.body.user.id, registeredA.body.user.id);
-
-  const loginB = await api<AuthResponse>(baseUrl, '/api/login', {
-    method: 'POST',
-    body: JSON.stringify({ email: emailB, password }),
-  });
-  assert.equal(loginB.status, 200);
-  assert.equal(loginB.body.user.id, registeredB.body.user.id);
+  const userA = syncedA.body;
+  const userB = syncedB.body;
 
   const profileA = await api<ProfileResponse>(baseUrl, '/api/profile', {
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
   });
   assert.equal(profileA.status, 200);
-  assert.equal(profileA.body.id, registeredA.body.user.id);
+  assert.equal(profileA.body.id, userA.id);
   assert.equal(profileA.body.matchCount, 0);
   assert.equal(profileA.body.wins, 0);
   assert.equal(profileA.body.elo, 1000);
 
   const profileB = await api<ProfileResponse>(baseUrl, '/api/profile', {
-    headers: authHeaders(loginB.body.token),
+    headers: authHeaders(tokenB),
   });
   assert.equal(profileB.status, 200);
-  assert.equal(profileB.body.id, registeredB.body.user.id);
+  assert.equal(profileB.body.id, userB.id);
   assert.equal(profileB.body.matchCount, 0);
   assert.equal(profileB.body.wins, 0);
   assert.equal(profileB.body.elo, 1000);
 
-  const tamperedToken = `${loginA.body.token.slice(0, -1)}x`;
+  const tamperedToken = `${tokenA.slice(0, -1)}x`;
   const tamperedProfile = await api(baseUrl, '/api/profile', {
     headers: authHeaders(tamperedToken),
   });
@@ -268,7 +297,7 @@ try {
 
   const createdDeck = await api<DeckResponse>(baseUrl, '/api/decks', {
     method: 'POST',
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
     body: JSON.stringify({ name: 'Smoke Deck', cardIds: validDeckIds }),
   });
   assert.equal(createdDeck.status, 200);
@@ -276,7 +305,7 @@ try {
   assert.deepEqual(createdDeck.body.cardIds, validDeckIds);
 
   const listedDecks = await api<{ decks: DeckResponse[] }>(baseUrl, '/api/decks', {
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
   });
   assert.equal(listedDecks.status, 200);
   const roundtrippedDeck = listedDecks.body.decks.find((deck) => deck.id === createdDeck.body.id);
@@ -359,8 +388,8 @@ try {
   const matchNoToken = await api(baseUrl, '/api/matches', {
     method: 'POST',
     body: JSON.stringify({
-      winnerId: registeredA.body.user.id,
-      loserId: registeredB.body.user.id,
+      winnerId: userA.id,
+      loserId: userB.id,
       turns: 1,
       duration: 10,
       actionLog: [],
@@ -371,10 +400,10 @@ try {
   // P0-2：winnerId 不符認證使用者回 403（以 B 的 token 宣稱 A 贏）。
   const matchForbidden = await api(baseUrl, '/api/matches', {
     method: 'POST',
-    headers: authHeaders(loginB.body.token),
+    headers: authHeaders(tokenB),
     body: JSON.stringify({
-      winnerId: registeredA.body.user.id,
-      loserId: registeredB.body.user.id,
+      winnerId: userA.id,
+      loserId: userB.id,
       turns: 1,
       duration: 10,
       actionLog: [],
@@ -384,10 +413,10 @@ try {
 
   const match = await api<MatchResponse>(baseUrl, '/api/matches', {
     method: 'POST',
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
     body: JSON.stringify({
-      winnerId: registeredA.body.user.id,
-      loserId: registeredB.body.user.id,
+      winnerId: userA.id,
+      loserId: userB.id,
       turns: 7,
       duration: 180,
       actionLog,
@@ -401,7 +430,7 @@ try {
   assert.ok(match.body.loserNewElo < 1000);
 
   const afterMatchProfileA = await api<ProfileResponse>(baseUrl, '/api/profile', {
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
   });
   assert.equal(afterMatchProfileA.status, 200);
   assert.equal(afterMatchProfileA.body.matchCount, 1);
@@ -410,7 +439,7 @@ try {
   assert.equal(afterMatchProfileA.body.elo, match.body.winnerNewElo);
 
   const afterMatchProfileB = await api<ProfileResponse>(baseUrl, '/api/profile', {
-    headers: authHeaders(loginB.body.token),
+    headers: authHeaders(tokenB),
   });
   assert.equal(afterMatchProfileB.status, 200);
   assert.equal(afterMatchProfileB.body.matchCount, 1);
@@ -420,8 +449,8 @@ try {
 
   const leaderboard = await api<{ leaderboard: LeaderboardEntry[] }>(baseUrl, '/api/leaderboard?limit=10');
   assert.equal(leaderboard.status, 200);
-  const entryA = leaderboard.body.leaderboard.find((entry) => entry.id === registeredA.body.user.id);
-  const entryB = leaderboard.body.leaderboard.find((entry) => entry.id === registeredB.body.user.id);
+  const entryA = leaderboard.body.leaderboard.find((entry) => entry.id === userA.id);
+  const entryB = leaderboard.body.leaderboard.find((entry) => entry.id === userB.id);
   assert.ok(entryA);
   assert.ok(entryB);
   assert.equal(entryA.matchCount, 1);
@@ -476,9 +505,9 @@ try {
 
   const guestPlaceholderMatch = await api<MatchResponse>(baseUrl, '/api/matches', {
     method: 'POST',
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
     body: JSON.stringify({
-      winnerId: registeredA.body.user.id,
+      winnerId: userA.id,
       loserId: 'guest-player-1',
       turns: 1,
       duration: 30,
@@ -499,7 +528,7 @@ try {
   assert.equal(guestPlaceholderMatch.body.loserEloChange, 0);
 
   const afterGuestProfileA = await api<ProfileResponse>(baseUrl, '/api/profile', {
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
   });
   assert.equal(afterGuestProfileA.status, 200);
   assert.equal(afterGuestProfileA.body.matchCount, 1);
@@ -508,7 +537,7 @@ try {
 
   // P2-10：GET /api/matches 回傳使用者對戰歷史。
   const historyA = await api<{ matches: MatchHistoryEntry[] }>(baseUrl, '/api/matches', {
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
   });
   assert.equal(historyA.status, 200);
   assert.equal(historyA.body.matches.length, 2);
@@ -517,7 +546,7 @@ try {
   assert.ok(historyAIds.includes(guestPlaceholderMatch.body.matchId));
 
   const historyB = await api<{ matches: MatchHistoryEntry[] }>(baseUrl, '/api/matches', {
-    headers: authHeaders(loginB.body.token),
+    headers: authHeaders(tokenB),
   });
   assert.equal(historyB.status, 200);
   assert.equal(historyB.body.matches.length, 1);
@@ -528,29 +557,29 @@ try {
   // PUT /api/profile 修改暱稱。
   const updatedProfile = await api<ProfileResponse>(baseUrl, '/api/profile', {
     method: 'PUT',
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
     body: JSON.stringify({ nickname: 'Smoke One Updated' }),
   });
   assert.equal(updatedProfile.status, 200);
-  assert.equal(updatedProfile.body.id, registeredA.body.user.id);
+  assert.equal(updatedProfile.body.id, userA.id);
   assert.equal(updatedProfile.body.nickname, 'Smoke One Updated');
 
   // 驗證暱稱已持久化。
   const refetchedProfileA = await api<ProfileResponse>(baseUrl, '/api/profile', {
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
   });
   assert.equal(refetchedProfileA.status, 200);
   assert.equal(refetchedProfileA.body.nickname, 'Smoke One Updated');
 
   const deletedDeck = await api<{ deleted: boolean }>(baseUrl, `/api/decks/${createdDeck.body.id}`, {
     method: 'DELETE',
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
   });
   assert.equal(deletedDeck.status, 200);
   assert.equal(deletedDeck.body.deleted, true);
 
   const decksAfterDelete = await api<{ decks: DeckResponse[] }>(baseUrl, '/api/decks', {
-    headers: authHeaders(loginA.body.token),
+    headers: authHeaders(tokenA),
   });
   assert.equal(decksAfterDelete.status, 200);
   assert.equal(
@@ -560,6 +589,7 @@ try {
 
   console.log('api smoke: all assertions passed');
 } finally {
+  globalThis.fetch = originalFetch;
   await apiServer.closeDatabase();
   await cleanupPool.end();
   rmSync(tmp, { recursive: true, force: true });

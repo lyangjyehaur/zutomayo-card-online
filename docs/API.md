@@ -13,85 +13,42 @@ Authenticated endpoints require:
 Authorization: Bearer <token>
 ```
 
-User tokens are returned by `POST /api/register` and `POST /api/login` (7-day expiry). Admin tokens are returned by `POST /api/admin/login` (24-hour expiry) and carry an `admin: true` claim.
+User bearer tokens are Logto access tokens whose issuer and audience match `LOGTO_ISSUER` and `LOGTO_AUDIENCE`. Admin tokens are returned by `POST /api/admin/login` (24-hour expiry) and carry an `admin: true` claim.
 
 ## Rate Limiting / 速率限制
 
 All requests are rate-limited per client IP over a rolling 60-second window:
 
-| Endpoint group                                                     | Limit     | Notes                   |
-| ------------------------------------------------------------------ | --------- | ----------------------- |
-| Auth endpoints (`/api/login`, `/api/register`, `/api/admin/login`) | 10 / min  | Brute-force protection. |
-| All other endpoints                                                | 120 / min | Default bucket.         |
+| Endpoint group                                            | Limit     | Notes                   |
+| --------------------------------------------------------- | --------- | ----------------------- |
+| Auth endpoints (`/api/logto/profile`, `/api/admin/login`) | 10 / min  | Brute-force protection. |
+| All other endpoints                                       | 120 / min | Default bucket.         |
 
 When exceeded, the server responds with `429 Too Many Requests` and a `Retry-After: 60` header.
 
 ## Auth / 帳號
 
-### `POST /api/register`
+### `POST /api/logto/profile`
 
-Create a user.
+Verify a Logto access token, create or update a local game account, and return the local profile used for ELO, decks, match history, and leaderboard.
 
 Request:
 
 ```json
 {
-  "email": "player@example.com",
-  "password": "secret123",
   "nickname": "Player"
 }
 ```
 
-Rules:
+Notes:
 
-- `email` and `password` are required.
-- `password` must be at least 6 characters.
-- `nickname` is optional and defaults to the email prefix.
+- Requires `Authorization: Bearer <logto-access-token>`.
+- The local account is linked by Logto `sub`.
+- Client-provided nickname is optional and sanitized. Email is read from verified token claims rather than trusted from the request body.
 
-Response:
+Response: same shape as `GET /api/profile`.
 
-```json
-{
-  "token": "<token>",
-  "user": {
-    "id": "u_...",
-    "email": "player@example.com",
-    "nickname": "Player",
-    "elo": 1000
-  }
-}
-```
-
-Errors: `400`, `409`.
-
-### `POST /api/login`
-
-Authenticate an existing user.
-
-Request:
-
-```json
-{
-  "email": "player@example.com",
-  "password": "secret123"
-}
-```
-
-Response:
-
-```json
-{
-  "token": "<token>",
-  "user": {
-    "id": "u_...",
-    "email": "player@example.com",
-    "nickname": "Player",
-    "elo": 1000
-  }
-}
-```
-
-Errors: `401`.
+Errors: `401`, `404`.
 
 ### `GET /api/profile`
 
@@ -116,7 +73,7 @@ Errors: `401`, `404`.
 
 ### `PUT /api/profile`
 
-Update the authenticated user's nickname. Requires a user JWT.
+Update the authenticated user's nickname. Requires a user bearer token.
 
 Request:
 
@@ -273,7 +230,7 @@ Response:
 
 Notes:
 
-- Requires a user JWT. The authenticated user must be the `winnerId`; otherwise the server returns `403`. This prevents clients from forging match results on behalf of another user.
+- Requires a user bearer token. The authenticated user must be the `winnerId`; otherwise the server returns `403`. This prevents clients from forging match results on behalf of another user.
 - ELO changes are `0` if either submitted user ID is not found.
 - `duration` maps to `duration_seconds` in PostgreSQL.
 - `actionLog` is sanitized before storage. Hidden card IDs, deck order, raw text, and unknown payload fields are stripped.
@@ -286,7 +243,7 @@ Errors: `400`, `401`, `403`.
 
 ### `GET /api/matches`
 
-List the authenticated user's match history (cross-device sync). Requires a user JWT.
+List the authenticated user's match history (cross-device sync). Requires a user bearer token.
 
 Query:
 
@@ -409,7 +366,7 @@ Errors: `401` (wrong password), `503` (admin not configured).
 
 ### `GET /api/admin/users`
 
-List registered users, newest first. Requires an admin token.
+List Logto-linked users, newest first. Requires an admin token.
 
 Query:
 
@@ -496,7 +453,7 @@ Errors: `401`.
 
 ## Matchmaking / 配對佇列
 
-In-memory matchmaking queue keyed by user ID. Entries expire after 60 seconds without a match, with a 10-second grace window before deletion. All endpoints require a user JWT.
+In-memory matchmaking queue keyed by user ID. Entries expire after 60 seconds without a match, with a 10-second grace window before deletion. All endpoints require a user bearer token.
 
 ### `POST /api/matchmaking/queue`
 

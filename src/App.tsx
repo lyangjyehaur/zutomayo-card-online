@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { getDecks, getProfile, isLoggedIn, type DeckResponse } from './api/client';
+import { isLogtoConfigured } from './auth/logto';
+import { LogtoTokenBridge } from './auth/LogtoTokenBridge';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
@@ -37,6 +39,9 @@ const OnlineLobbyPage = lazy(() =>
 );
 const LeaderboardPage = lazy(() =>
   import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
+);
+const LogtoCallbackPage = lazy(() =>
+  import('./pages/LogtoCallbackPage').then((module) => ({ default: module.LogtoCallbackPage })),
 );
 
 type OnlineRoomErrorKey = 'online.roomFull' | 'online.roomNotFound' | 'online.connectionFailed';
@@ -92,6 +97,7 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
   // 全螢幕單屏頁面有自己的 Header，不需要 NavBar
   if (
     location.pathname.startsWith('/play/') ||
+    location.pathname === '/callback' ||
     location.pathname === '/' ||
     location.pathname === '/online' ||
     location.pathname === '/ai'
@@ -335,12 +341,14 @@ function RouterShell() {
   // 全螢幕單屏頁面（首頁/線上/電腦/對戰中）有自己的 Header，不需要 NavBar 和 padding
   const hideNav =
     location.pathname.startsWith('/play/') ||
+    location.pathname === '/callback' ||
     location.pathname === '/' ||
     location.pathname === '/online' ||
     location.pathname === '/ai';
 
   return (
     <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
+      {isLogtoConfigured && <LogtoTokenBridge />}
       {!hideNav && <NavBar onShowTutorial={() => setTutorial(true)} />}
       <div className="route-content">
         <Suspense fallback={<RouteFallback />}>
@@ -408,6 +416,7 @@ function RouterShell() {
             />
             <Route path="/history" element={<MatchHistoryPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/callback" element={<LogtoCallbackPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/admin/i18n" element={<I18nManager />} />
             <Route path="*" element={<NotFoundPage />} />

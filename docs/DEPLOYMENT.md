@@ -62,13 +62,15 @@ Variables are passed through `docker-compose.yml` from the host environment (e.g
 | `REDIS_URL`       | `redis://redis:6379`    | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Use `redis://localhost:6379` for local dev.                                               |
 | `REDIS_DB`        | `0`                     | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
 | `ALLOWED_ORIGINS` | empty                   | Comma-separated extra origins allowed by boardgame.io CORS.                                                                                                      |
-| `JWT_SECRET`      | empty                   | Shared HMAC secret. The `game` service forwards it so the same key signs/verifies across services; set the same value as `api`.                                  |
 
 Frontend build-time variables (baked into the bundle at `vite build`):
 
-| Variable       | Default | Notes                                                       |
-| -------------- | ------- | ----------------------------------------------------------- |
-| `VITE_API_URL` | `/api`  | API base used by [src/api/client.ts](../src/api/client.ts). |
+| Variable                  | Default | Notes                                                                                                                                         |
+| ------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_URL`            | `/api`  | API base used by [src/api/client.ts](../src/api/client.ts).                                                                                   |
+| `VITE_LOGTO_ENDPOINT`     | empty   | Logto tenant endpoint, for example `https://example.logto.app`. Logto UI is enabled only when endpoint, app ID, and API resource are all set. |
+| `VITE_LOGTO_APP_ID`       | empty   | Logto SPA application ID.                                                                                                                     |
+| `VITE_LOGTO_API_RESOURCE` | empty   | Logto API resource indicator/audience used when requesting access tokens for this API. Required to enable Logto sign-in.                      |
 
 > Admin authentication is no longer handled in the frontend. The `VITE_ADMIN_PASSWORD` build-time variable has been removed; admin login now goes through `POST /api/admin/login` backed by the `ADMIN_PASSWORD` environment variable on the `api` service.
 
@@ -84,9 +86,34 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `PG_DATABASE`     | `zutomayo`           | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                            |
 | `REDIS_URL`       | `redis://redis:6379` | Redis connection URL for the matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                                                       |
 | `REDIS_DB`        | `0`                  | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
-| `JWT_SECRET`      | random per process   | HMAC key for signed user/admin tokens. Set a stable secret in production or all tokens become invalid when the API process restarts.                             |
+| `JWT_SECRET`      | random per process   | HMAC key for signed admin tokens. Set a stable secret in production or admin sessions become invalid when the API process restarts.                              |
 | `ADMIN_PASSWORD`  | empty                | Password checked by `POST /api/admin/login`. When empty, admin login returns `503` and admin endpoints are effectively disabled.                                 |
 | `ALLOWED_ORIGINS` | empty                | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                 |
+| `LOGTO_ISSUER`    | empty                | Logto OIDC issuer. Usually `VITE_LOGTO_ENDPOINT` plus `/oidc` is accepted automatically, so `https://example.logto.app` is valid.                                |
+| `LOGTO_AUDIENCE`  | empty                | Expected access-token audience. Set this to the same value as `VITE_LOGTO_API_RESOURCE`.                                                                         |
+
+## Logto Account Management
+
+Logto can be used as the primary account system while this app keeps local gameplay data (ELO, decks, match history, leaderboard rows) in PostgreSQL. On first authenticated API call, the API verifies the Logto access token and creates or links a local `users` row by Logto `sub` and verified token email.
+
+Logto Console setup:
+
+1. Create a Single Page Application.
+2. Add redirect URI `https://<app-host>/callback` and post sign-out redirect URI `https://<app-host>/`.
+3. Create an API resource and copy its indicator/audience.
+4. Put the values in your deployment `.env`:
+
+```bash
+VITE_LOGTO_ENDPOINT=https://<tenant>.logto.app
+VITE_LOGTO_APP_ID=<spa-app-id>
+VITE_LOGTO_API_RESOURCE=https://<your-api-resource>
+LOGTO_ISSUER=https://<tenant>.logto.app
+LOGTO_AUDIENCE=https://<your-api-resource>
+```
+
+`VITE_LOGTO_*` values are baked into the frontend bundle at `docker compose build` time. Rebuild the `game` image after changing them. `LOGTO_ISSUER` and `LOGTO_AUDIENCE` are runtime variables for the `api` service.
+
+The app does not expose local email/password registration or login routes. User identity comes from Logto; PostgreSQL stores only game-local profile, deck, match, and leaderboard data linked by Logto `sub`.
 
 ## Volumes / 資料卷
 
@@ -97,7 +124,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 
 ## PostgreSQL Backup / Restore
 
-PostgreSQL stores all registered users, saved decks, submitted matches, leaderboard state, and boardgame.io match state in the `pg-data` Docker volume (the `postgres` data directory). Back up with `pg_dump`; no service downtime is required.
+PostgreSQL stores all Logto-linked users, saved decks, submitted matches, leaderboard state, and boardgame.io match state in the `pg-data` Docker volume (the `postgres` data directory). Back up with `pg_dump`; no service downtime is required.
 
 Create a consistent SQL backup while the service is running:
 
@@ -131,7 +158,7 @@ Redis serves four roles simultaneously:
 - Matchmaking queue shared across API instances: a Redis sorted set (`mm:queue`) plus a hash (`mm:{userId}`) plus a Lua script perform atomic pairing, so multiple instances never match the same user twice.
 - Rate-limit counters shared across API instances: Redis `INCR` + `EXPIRE` for cross-instance counting.
 
-To scale up, increase the replica count for `game` and/or `api`. Both `postgres` and `redis` should remain single instances. Ensure `JWT_SECRET` and `ALLOWED_ORIGINS` are identical across all instances of the same service.
+To scale up, increase the replica count for `game` and/or `api`. Both `postgres` and `redis` should remain single instances. Ensure `LOGTO_ISSUER`, `LOGTO_AUDIENCE`, `JWT_SECRET`, and `ALLOWED_ORIGINS` are identical across all API instances.
 
 ## Reusing Existing PostgreSQL / Redis
 
@@ -199,19 +226,6 @@ services:
       - REDIS_URL=redis://10.0.0.6:6379
       - REDIS_DB=2
 ```
-
-## 資料遷移 / SQLite → PostgreSQL Migration
-
-To migrate data from a previous SQLite deployment to PostgreSQL, use [scripts/migrate-sqlite-to-pg.ts](../scripts/migrate-sqlite-to-pg.ts). It migrates the `users`, `decks`, and `matches` tables using `ON CONFLICT DO NOTHING`, so it is safe to re-run.
-
-```bash
-npm i -D better-sqlite3  # migration-only dependency, not required in production
-SQLITE_PATH=/data/zutomayo.db \
-PG_HOST=localhost PG_USER=zutomayo PG_PASSWORD=zutomayo_dev \
-PG_DATABASE=zutomayo npm run migrate:sqlite-to-pg
-```
-
-boardgame.io match state is not migrated — only API data (users/decks/matches) is. In-flight matches must be restarted after the cutover.
 
 ## Update / 更新
 

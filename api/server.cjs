@@ -1,22 +1,31 @@
 const http = require('http');
 const crypto = require('crypto');
-const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
 let staticCards = [];
-try { staticCards = require('../cards.json'); } catch (_) { /* API container may not have cards.json */ }
+try {
+  staticCards = require('../cards.json');
+} catch (_) {
+  /* API container may not have cards.json */
+}
 let staticCardI18n = {};
-try { staticCardI18n = require('../data/card-effects-i18n.json'); } catch (_) { /* API container may not have i18n data */ }
-
-const pbkdf2 = util.promisify(crypto.pbkdf2);
+try {
+  staticCardI18n = require('../data/card-effects-i18n.json');
+} catch (_) {
+  /* API container may not have i18n data */
+}
 
 // ===== Config =====
 const PORT = Number(process.env.API_PORT) || 3001;
+// Signs short-lived admin tokens only. Player authentication is handled by Logto.
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 // P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const LOGTO_ISSUER = normalizeLogtoIssuer(process.env.LOGTO_ISSUER || process.env.LOGTO_ENDPOINT || '');
+const LOGTO_AUDIENCE = process.env.LOGTO_AUDIENCE || process.env.LOGTO_API_RESOURCE || '';
+const LOGTO_CLOCK_TOLERANCE_SECONDS = 60;
 
-// PostgreSQL 設定（水平擴展：以 PG 取代 SQLite）
+// PostgreSQL 設定（水平擴展）
 const PG_HOST = process.env.PG_HOST || 'localhost';
 const PG_PORT = Number(process.env.PG_PORT) || 5432;
 const PG_USER = process.env.PG_USER || 'postgres';
@@ -57,14 +66,21 @@ const I18N_LANG_ALIASES = new Map([
   ['zhHK', 'zh-HK'],
 ]);
 
+function normalizeLogtoIssuer(value) {
+  const trimmed = String(value || '')
+    .trim()
+    .replace(/\/+$/, '');
+  if (!trimmed) return '';
+  return trimmed.endsWith('/oidc') ? trimmed : `${trimmed}/oidc`;
+}
+
 async function initSchema() {
-  // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
+  // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS）。
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      salt TEXT NOT NULL,
+      logto_sub TEXT UNIQUE NOT NULL,
       nickname TEXT NOT NULL,
       elo INTEGER NOT NULL DEFAULT 1000,
       match_count INTEGER NOT NULL DEFAULT 0,
@@ -72,6 +88,8 @@ async function initSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_users_elo ON users (elo DESC);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS logto_sub TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_logto_sub ON users (logto_sub) WHERE logto_sub IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS decks (
       id TEXT PRIMARY KEY,
@@ -172,17 +190,6 @@ const schemaReady = initSchema().catch((err) => {
 });
 
 // ===== Auth =====
-// P0-4：PBKDF2 迭代數從 10000 提升至 100000（現代安全標準）。
-const PBKDF2_ITERATIONS = 100000;
-// 向後相容：舊用戶的密碼仍用舊迭代數驗證，登入成功後自動升級。
-const PBKDF2_LEGACY_ITERATIONS = 10000;
-
-// 非同步 pbkdf2（避免事件迴圈阻塞，水平擴展下不可擋迴圈）。
-async function hashPassword(password, salt, iterations = PBKDF2_ITERATIONS) {
-  const buf = await pbkdf2(password, salt, iterations, 64, 'sha512');
-  return buf.toString('hex');
-}
-
 function base64urlJson(value) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
 }
@@ -191,49 +198,147 @@ function signTokenInput(input) {
   return crypto.createHmac('sha256', JWT_SECRET).update(input).digest('base64url');
 }
 
-function createToken(userId) {
-  const now = Math.floor(Date.now() / 1000);
-  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
-  const payload = base64urlJson({
-    sub: userId,
-    userId,
-    iat: now,
-    exp: now + 7 * 24 * 60 * 60,
-  });
-  const input = `${header}.${payload}`;
-  return `${input}.${signTokenInput(input)}`;
+function bearerToken(req) {
+  const auth = req.headers.authorization;
+  if (!auth) return null;
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : auth;
 }
 
-function verifyToken(token) {
+let logtoOpenIdConfigPromise = null;
+let logtoJwksCache = { expiresAt: 0, keys: [] };
+
+function base64urlDecode(value) {
+  return Buffer.from(value, 'base64url');
+}
+
+function decodeJwtPart(value) {
+  return JSON.parse(base64urlDecode(value).toString('utf8'));
+}
+
+function tokenAudienceMatches(aud) {
+  if (!LOGTO_AUDIENCE) return false;
+  if (Array.isArray(aud)) return aud.includes(LOGTO_AUDIENCE);
+  return aud === LOGTO_AUDIENCE;
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status}`);
+  return response.json();
+}
+
+async function getLogtoOpenIdConfig() {
+  if (!LOGTO_ISSUER) return null;
+  logtoOpenIdConfigPromise ||= fetchJson(`${LOGTO_ISSUER}/.well-known/openid-configuration`);
+  return logtoOpenIdConfigPromise;
+}
+
+async function getLogtoJwks() {
+  const now = Date.now();
+  if (logtoJwksCache.expiresAt > now && logtoJwksCache.keys.length > 0) return logtoJwksCache.keys;
+  const config = await getLogtoOpenIdConfig();
+  if (!config?.jwks_uri) return [];
+  const jwks = await fetchJson(config.jwks_uri);
+  logtoJwksCache = {
+    keys: Array.isArray(jwks.keys) ? jwks.keys : [],
+    expiresAt: now + 10 * 60 * 1000,
+  };
+  return logtoJwksCache.keys;
+}
+
+async function verifyLogtoToken(token) {
+  if (!LOGTO_ISSUER || !LOGTO_AUDIENCE) return null;
+
   try {
-    if (typeof token !== 'string') return null;
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    const [header, payloadPart, signature] = parts;
-    const input = `${header}.${payloadPart}`;
-    const expected = signTokenInput(input);
-    const signatureBuffer = Buffer.from(signature);
-    const expectedBuffer = Buffer.from(expected);
-    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
-      return null;
-    }
+    const [headerPart, payloadPart, signaturePart] = parts;
+    const header = decodeJwtPart(headerPart);
+    if (header.alg !== 'RS256' || typeof header.kid !== 'string') return null;
 
-    const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
-    if (parsedHeader.alg !== 'HS256' || parsedHeader.typ !== 'JWT') return null;
+    const payload = decodeJwtPart(payloadPart);
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.iss !== LOGTO_ISSUER) return null;
+    if (!tokenAudienceMatches(payload.aud)) return null;
+    if (typeof payload.sub !== 'string' || !payload.sub) return null;
+    if (!Number.isFinite(payload.exp) || payload.exp + LOGTO_CLOCK_TOLERANCE_SECONDS < now) return null;
+    if (Number.isFinite(payload.nbf) && payload.nbf - LOGTO_CLOCK_TOLERANCE_SECONDS > now) return null;
 
-    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
-    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
-    const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
-    return typeof userId === 'string' ? userId : null;
+    const keys = await getLogtoJwks();
+    const jwk = keys.find((key) => key.kid === header.kid);
+    if (!jwk) return null;
+
+    const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+    const verifier = crypto.createVerify('RSA-SHA256');
+    verifier.update(`${headerPart}.${payloadPart}`);
+    verifier.end();
+    return verifier.verify(publicKey, base64urlDecode(signaturePart)) ? payload : null;
   } catch {
     return null;
   }
 }
 
-function getAuthUserId(req) {
-  const auth = req.headers.authorization;
-  if (!auth) return null;
-  return verifyToken(auth.replace('Bearer ', ''));
+function logtoFallbackEmail(sub) {
+  const digest = crypto.createHash('sha256').update(sub).digest('hex').slice(0, 16);
+  return `logto-${digest}@logto.local`;
+}
+
+function cleanEmail(value, fallback) {
+  const email = typeof value === 'string' ? value.trim().slice(0, 120).toLowerCase() : '';
+  return email.includes('@') ? email : fallback;
+}
+
+function nicknameFromClaims(claims, fallbackEmail) {
+  return sanitizeText(claims.name || claims.username || String(fallbackEmail).split('@')[0], 30) || 'player';
+}
+
+async function ensureLogtoUser(claims, profile = {}) {
+  const sub = claims.sub;
+  const fallbackEmail = logtoFallbackEmail(sub);
+  const claimEmail = cleanEmail(claims.email, '');
+  let email = claimEmail || fallbackEmail;
+  const nickname = sanitizeText(profile.nickname || nicknameFromClaims(claims, email), 30) || 'player';
+
+  const existingBySub = (await pool.query('SELECT id, email FROM users WHERE logto_sub = $1', [sub])).rows[0];
+  if (existingBySub) {
+    if (email !== existingBySub.email) {
+      const emailOwner = (
+        await pool.query('SELECT id FROM users WHERE email = $1 AND id <> $2', [email, existingBySub.id])
+      ).rows[0];
+      if (emailOwner) email = existingBySub.email || fallbackEmail;
+    }
+    await pool.query('UPDATE users SET email = $1, nickname = $2 WHERE id = $3', [email, nickname, existingBySub.id]);
+    return existingBySub.id;
+  }
+
+  const existingByEmail = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
+  if (existingByEmail) email = fallbackEmail;
+
+  const id = `u_${crypto.randomBytes(8).toString('hex')}`;
+  await pool.query('INSERT INTO users (id, email, nickname, logto_sub) VALUES ($1, $2, $3, $4)', [
+    id,
+    email,
+    nickname,
+    sub,
+  ]);
+  return id;
+}
+
+async function authenticateRequest(req, profile) {
+  const token = bearerToken(req);
+  if (!token) return null;
+
+  const logtoClaims = await verifyLogtoToken(token);
+  if (!logtoClaims) return null;
+
+  const userId = await ensureLogtoUser(logtoClaims, profile);
+  return { userId, claims: logtoClaims };
+}
+
+async function getAuthUserId(req) {
+  const auth = await authenticateRequest(req);
+  return auth?.userId ?? null;
 }
 
 // P0-3：Admin token 機制（payload 含 admin: true）。
@@ -319,7 +424,8 @@ async function verifyBoardgameMatchResult(sourceMatchId, winnerPlayer, authUserI
   if (winnerPlayer !== 0 && winnerPlayer !== 1) {
     return { ok: false, status: 400, error: 'winnerPlayer required for source match verification' };
   }
-  const match = (await pool.query('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', [sourceMatchId])).rows[0];
+  const match = (await pool.query('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', [sourceMatchId]))
+    .rows[0];
   if (!match) return { ok: false, status: 404, error: 'Source match not found' };
   if (!isBoardgameFinished(match.state)) return { ok: false, status: 409, error: 'Source match is not finished' };
   const authoritativeWinner = boardgameWinnerFromState(match.state);
@@ -696,7 +802,7 @@ function handleRequest(req, res) {
 
   // Rate limiting (P0-4, Redis)
   const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
-  const isAuthEndpoint = pathname === '/api/login' || pathname === '/api/register' || pathname === '/api/admin/login';
+  const isAuthEndpoint = pathname === '/api/logto/profile' || pathname === '/api/admin/login';
 
   const json = (data, status = 200) => {
     res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -738,66 +844,31 @@ function handleRequest(req, res) {
 
     // ===== Auth Routes =====
 
-    // Register
-    if (pathname === '/api/register' && method === 'POST') {
-      const { email, password, nickname } = await readBody();
-      if (!email || !password) return json({ error: 'Email and password required' }, 400);
-      if (password.length < 6) return json({ error: 'Password must be at least 6 characters' }, 400);
-
-      const cleanEmail = String(email).slice(0, 120).toLowerCase();
-      const cleanNickname = sanitizeText(nickname || String(cleanEmail).split('@')[0], 30) || 'player';
-
-      const existing = (await pool.query('SELECT id FROM users WHERE email = $1', [cleanEmail])).rows[0];
-      if (existing) return json({ error: 'Email already registered' }, 409);
-
-      const id = 'u_' + crypto.randomBytes(8).toString('hex');
-      const salt = crypto.randomBytes(16).toString('hex');
-      const hash = await hashPassword(password, salt);
-
-      await pool.query('INSERT INTO users (id, email, password_hash, salt, nickname) VALUES ($1, $2, $3, $4, $5)', [
-        id,
-        cleanEmail,
-        hash,
-        salt,
-        cleanNickname,
-      ]);
-
-      const token = createToken(id);
-      json({ token, user: { id, email: cleanEmail, nickname: cleanNickname, elo: 1000 } });
-      return;
-    }
-
-    // Login
-    if (pathname === '/api/login' && method === 'POST') {
-      const { email, password } = await readBody();
-      const user = (await pool.query('SELECT * FROM users WHERE email = $1', [email])).rows[0];
-      if (!user) return json({ error: 'Invalid credentials' }, 401);
-
-      // P0-4：先用新迭代數驗證，失敗再用舊迭代數驗證（向後相容）。
-      const newHash = await hashPassword(password, user.salt, PBKDF2_ITERATIONS);
-      const legacyHash = await hashPassword(password, user.salt, PBKDF2_LEGACY_ITERATIONS);
-      if (newHash !== user.password_hash && legacyHash !== user.password_hash) {
-        return json({ error: 'Invalid credentials' }, 401);
-      }
-
-      // 若密碼仍用舊迭代數，登入成功後自動升級到新迭代數。
-      if (newHash !== user.password_hash) {
-        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, user.id]);
-      }
-
-      const token = createToken(user.id);
+    // Get profile
+    if (pathname === '/api/profile' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
+      if (!user) return json({ error: 'User not found' }, 404);
       json({
-        token,
-        user: { id: user.id, email: user.email, nickname: user.nickname, elo: user.elo },
+        id: user.id,
+        email: user.email,
+        nickname: user.nickname,
+        elo: user.elo,
+        matchCount: user.match_count,
+        wins: user.wins,
+        winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
+        createdAt: user.created_at,
       });
       return;
     }
 
-    // Get profile
-    if (pathname === '/api/profile' && method === 'GET') {
-      const userId = getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
+    // Sync Logto profile into the local game account table.
+    if (pathname === '/api/logto/profile' && method === 'POST') {
+      const { nickname } = await readBody();
+      const auth = await authenticateRequest(req, { nickname });
+      if (!auth) return json({ error: 'Unauthorized' }, 401);
+      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [auth.userId])).rows[0];
       if (!user) return json({ error: 'User not found' }, 404);
       json({
         id: user.id,
@@ -816,7 +887,7 @@ function handleRequest(req, res) {
 
     // List user's decks
     if (pathname === '/api/decks' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const decks = (await pool.query('SELECT * FROM decks WHERE user_id = $1 ORDER BY updated_at DESC', [userId]))
         .rows;
@@ -831,7 +902,7 @@ function handleRequest(req, res) {
 
     // Create deck
     if (pathname === '/api/decks' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const { name, cardIds } = await readBody();
       if (!name || !Array.isArray(cardIds) || cardIds.length !== 20) {
@@ -857,7 +928,7 @@ function handleRequest(req, res) {
 
     // Delete deck
     if (pathname.match(/^\/api\/decks\/d_/) && method === 'DELETE') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const deckId = pathname.split('/').pop();
       const result = await pool.query('DELETE FROM decks WHERE id = $1 AND user_id = $2', [deckId, userId]);
@@ -881,8 +952,8 @@ function handleRequest(req, res) {
 
     // Submit match result
     if (pathname === '/api/matches' && method === 'POST') {
-      // P0-2：強制 JWT 認證，只有贏家可以提交自己的勝利。
-      const authUserId = getAuthUserId(req);
+      // P0-2：強制 Logto 認證，只有贏家可以提交自己的勝利。
+      const authUserId = await getAuthUserId(req);
       if (!authUserId) return json({ error: 'Unauthorized' }, 401);
 
       const body = await readBody();
@@ -989,7 +1060,7 @@ function handleRequest(req, res) {
 
     // P2-10：使用者對戰歷史（跨裝置同步）。
     if (pathname === '/api/matches' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
       const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
@@ -1023,7 +1094,7 @@ function handleRequest(req, res) {
 
     // PUT /api/profile — 修改暱稱（P2 補齊）。
     if (pathname === '/api/profile' && method === 'PUT') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const { nickname } = await readBody();
       const clean = sanitizeText(nickname, 30);
@@ -1169,7 +1240,9 @@ function handleRequest(req, res) {
     // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯（與 data/card-effects-i18n.json 結構相同）
     if (pathname === '/api/cards/i18n' && method === 'GET') {
       try {
-        const rows = (await pool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang')).rows;
+        const rows = (
+          await pool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang')
+        ).rows;
         if (rows.length > 0) {
           const grouped = {};
           for (const row of rows) {
@@ -1191,9 +1264,8 @@ function handleRequest(req, res) {
       const cardId = decodeURIComponent(publicCardI18nRoute[1]);
       const translations = staticI18nForCard(cardId);
       try {
-        const rows = (
-          await pool.query('SELECT lang, effect_text FROM card_effects_i18n WHERE card_id = $1', [cardId])
-        ).rows;
+        const rows = (await pool.query('SELECT lang, effect_text FROM card_effects_i18n WHERE card_id = $1', [cardId]))
+          .rows;
         for (const row of rows) {
           const lang = normalizeI18nLang(row.lang);
           if (lang) translations[lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
@@ -1366,7 +1438,7 @@ function handleRequest(req, res) {
 
     // POST /api/matchmaking/queue — 加入配對佇列
     if (pathname === '/api/matchmaking/queue' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const { deckName, deckIds } = await readBody();
       const existing = await redis.hgetall(`mm:${userId}`);
@@ -1401,7 +1473,7 @@ function handleRequest(req, res) {
 
     // GET /api/matchmaking/status — 查詢配對狀態
     if (pathname === '/api/matchmaking/status' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       await redis.mmCleanExpired('mm:queue', String(Date.now()), String(MATCHMAKING_TIMEOUT_MS));
       const entry = await redis.hgetall(`mm:${userId}`);
@@ -1418,7 +1490,7 @@ function handleRequest(req, res) {
 
     // DELETE /api/matchmaking/queue — 離開佇列
     if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const entry = await redis.hgetall(`mm:${userId}`);
       if (entry && entry.opponentId) {
@@ -1436,7 +1508,7 @@ function handleRequest(req, res) {
 
     // PUT /api/matchmaking/match — host 回報真實 boardgame.io matchID
     if (pathname === '/api/matchmaking/match' && method === 'PUT') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const { matchId } = await readBody();
       if (typeof matchId !== 'string' || !matchId) {

@@ -2,11 +2,13 @@ import type { ActionLogEntry, CardDef } from '../game/types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
+const LOGTO_AUTH_KEY = 'zutomayo_logto_authenticated';
 const PUBLIC_DATA_CACHE_MS = 5 * 60 * 1000;
 
 let cardsCache: { expiresAt: number; data: CardDef[] } | null = null;
 let configCache: { expiresAt: number; data: Record<string, unknown> } | null = null;
 let presetDecksCache: { expiresAt: number; data: Array<{ id: string; name: string; cardIds: string[] }> } | null = null;
+let accessTokenProvider: (() => Promise<string | null | undefined>) | null = null;
 
 export interface DeckResponse {
   id: string;
@@ -52,8 +54,28 @@ export class ApiError extends Error {
   }
 }
 
+export function setAccessTokenProvider(provider: (() => Promise<string | null | undefined>) | null): void {
+  accessTokenProvider = provider;
+}
+
+export function setLogtoAuthenticated(authenticated: boolean): void {
+  if (authenticated) {
+    localStorage.setItem(LOGTO_AUTH_KEY, '1');
+  } else {
+    localStorage.removeItem(LOGTO_AUTH_KEY);
+  }
+}
+
+async function getAuthToken(): Promise<string | null> {
+  if (accessTokenProvider) {
+    const token = await accessTokenProvider();
+    if (token) return token;
+  }
+  return null;
+}
+
 async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('zutomayo_token');
+  const token = await getAuthToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) || {}),
@@ -116,41 +138,28 @@ export async function fetchPresetDecks(): Promise<Array<{ id: string; name: stri
   return data;
 }
 
-// ===== Auth =====
-interface AuthResponse {
-  token: string;
-  user: ProfileResponse;
-}
-
-export async function register(email: string, password: string, nickname?: string) {
-  const data = await request<AuthResponse>('/register', {
-    method: 'POST',
-    body: JSON.stringify({ email, password, nickname }),
-  });
-  localStorage.setItem('zutomayo_token', data.token);
-  return data.user;
-}
-
-export async function login(email: string, password: string) {
-  const data = await request<AuthResponse>('/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-  });
-  localStorage.setItem('zutomayo_token', data.token);
-  return data.user;
-}
-
 export function logout() {
-  localStorage.removeItem('zutomayo_token');
+  accessTokenProvider = null;
+  localStorage.removeItem(LOGTO_AUTH_KEY);
 }
 
 export function isLoggedIn(): boolean {
-  return !!localStorage.getItem('zutomayo_token');
+  return localStorage.getItem(LOGTO_AUTH_KEY) === '1';
 }
 
 // ===== Profile =====
 export async function getProfile(): Promise<ProfileResponse> {
   return request('/profile');
+}
+
+export async function syncLogtoProfile(profile: {
+  email?: string | null;
+  nickname?: string | null;
+}): Promise<ProfileResponse> {
+  return request('/logto/profile', {
+    method: 'POST',
+    body: JSON.stringify(profile),
+  });
 }
 
 // ===== Decks =====

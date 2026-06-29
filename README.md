@@ -72,28 +72,28 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
                    │
 ┌──────────────────┴────────────────────────────┐
 │           API 伺服器 (port 3001)              │
-│  Node HTTP · PostgreSQL · Redis · HMAC tokens │
+│  Node HTTP · PostgreSQL · Redis · Logto Auth  │
 │  帳號 / 牌組 / 對戰紀錄 / 排行榜             │
 └───────────────────────────────────────────────┘
 ```
 
 ### 技術棧
 
-| 領域         | 技術                                                    | 版本      |
-| ------------ | ------------------------------------------------------- | --------- |
-| UI 框架      | React                                                   | 19        |
-| 路由         | React Router                                            | 7         |
-| CSS 框架     | Tailwind CSS + daisyUI 5 + Lucide React 圖示            | 4 / 5     |
-| 多人遊戲框架 | boardgame.io                                            | 0.50.2    |
-| 建構工具     | Vite                                                    | 7         |
-| 語言         | TypeScript（strict 模式）                               | 5.8       |
-| 測試         | vitest（含 `@vitest/coverage-v8`）                      | 4         |
-| 屬性測試     | fast-check                                              | 4         |
-| 程式碼風格   | ESLint（typescript-eslint）                             | 9         |
-| 格式化       | Prettier                                                | 3         |
-| TypeScript 執行 | tsx                                                | 4         |
-| PWA          | vite-plugin-pwa                                         | 1         |
-| 後端         | Node HTTP + PostgreSQL + Redis（pg / ioredis）          | Node >=20 |
+| 領域            | 技術                                           | 版本      |
+| --------------- | ---------------------------------------------- | --------- |
+| UI 框架         | React                                          | 19        |
+| 路由            | React Router                                   | 7         |
+| CSS 框架        | Tailwind CSS + daisyUI 5 + Lucide React 圖示   | 4 / 5     |
+| 多人遊戲框架    | boardgame.io                                   | 0.50.2    |
+| 建構工具        | Vite                                           | 7         |
+| 語言            | TypeScript（strict 模式）                      | 5.8       |
+| 測試            | vitest（含 `@vitest/coverage-v8`）             | 4         |
+| 屬性測試        | fast-check                                     | 4         |
+| 程式碼風格      | ESLint（typescript-eslint）                    | 9         |
+| 格式化          | Prettier                                       | 3         |
+| TypeScript 執行 | tsx                                            | 4         |
+| PWA             | vite-plugin-pwa                                | 1         |
+| 後端            | Node HTTP + PostgreSQL + Redis（pg / ioredis） | Node >=20 |
 
 ### 核心遊戲引擎
 
@@ -107,15 +107,15 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 
 ### 數據存儲
 
-| 數據     | 存儲位置                      | 說明                                |
-| -------- | ----------------------------- | ----------------------------------- |
-| 卡牌數據 | `cards.json` (git)            | 422 張卡，靜態數據                  |
-| 卡圖     | Cloudflare R2 (`r2.dan.tw`)   | 422 張卡圖 CDN                      |
-| 用戶帳號 | PostgreSQL (`api/server.cjs`) | 註冊/登入/ELO                       |
-| 牌組     | PostgreSQL + localStorage     | 伺服器同步 + 本地備份 + 本地自訂牌組 |
-| 對戰紀錄 | PostgreSQL + localStorage     | ELO 變動 + 歷史 + 已清理 action log |
-| 線上 Session | localStorage             | 線上對戰重連資訊                    |
-| 語言偏好 | localStorage                  | 瀏覽器本地                          |
+| 數據         | 存儲位置                      | 說明                                 |
+| ------------ | ----------------------------- | ------------------------------------ |
+| 卡牌數據     | `cards.json` (git)            | 422 張卡，靜態數據                   |
+| 卡圖         | Cloudflare R2 (`r2.dan.tw`)   | 422 張卡圖 CDN                       |
+| 用戶帳號     | PostgreSQL (`api/server.cjs`) | 註冊/登入/ELO                        |
+| 牌組         | PostgreSQL + localStorage     | 伺服器同步 + 本地備份 + 本地自訂牌組 |
+| 對戰紀錄     | PostgreSQL + localStorage     | ELO 變動 + 歷史 + 已清理 action log  |
+| 線上 Session | localStorage                  | 線上對戰重連資訊                     |
+| 語言偏好     | localStorage                  | 瀏覽器本地                           |
 
 ---
 
@@ -148,27 +148,26 @@ npm run server
 
 ### 開發指令清單
 
-| 指令                           | 說明                                                                       |
-| ------------------------------ | -------------------------------------------------------------------------- |
-| `npm run dev`                  | 啟動 Vite dev server                                                       |
-| `npm run build`                | TypeScript 檢查（`typecheck` + `typecheck:scripts`）後執行 Vite 生產構建   |
-| `npm run typecheck`            | `tsc --noEmit` 檢查 app 程式碼                                             |
-| `npm run typecheck:scripts`    | `tsc --noEmit -p tsconfig.scripts.json` 檢查 scripts 程式碼                |
-| `npm run lint`                 | ESLint 檢查                                                                |
-| `npm run lint:fix`             | ESLint 自動修復                                                            |
-| `npm run format`               | Prettier 格式化寫入                                                        |
-| `npm run format:check`         | Prettier 格式檢查（CI 使用）                                               |
-| `npm test`                     | vitest 單元測試（單次執行）                                                |
-| `npm run test:watch`           | vitest 監控模式（自動重跑）                                                |
-| `npm run test:coverage`        | vitest 單元測試含覆蓋率報告                                                |
-| `npm run smoke`                | 遊戲邏輯 smoke 測試                                                        |
-| `npm run smoke:api`            | 帳號/牌組/對戰/排行榜 API loop                                             |
-| `npm run smoke:online`         | 線上對戰 smoke 測試                                                        |
-| `npm run rule:audit`           | 效果解析覆蓋率審計                                                         |
-| `npm run seed:cards`           | 將 `cards.json` 卡牌數據匯入 PostgreSQL（供 API 查詢）                     |
-| `npm run migrate:sqlite-to-pg` | 將舊 SQLite 資料遷移至 PostgreSQL（`users`/`decks`/`matches`，可重複執行） |
-| `npm run server`               | 啟動 boardgame.io 遊戲伺服器                                               |
-| `npm run preview`              | 預覽 Vite 生產構建結果                                                     |
+| 指令                        | 說明                                                                     |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `npm run dev`               | 啟動 Vite dev server                                                     |
+| `npm run build`             | TypeScript 檢查（`typecheck` + `typecheck:scripts`）後執行 Vite 生產構建 |
+| `npm run typecheck`         | `tsc --noEmit` 檢查 app 程式碼                                           |
+| `npm run typecheck:scripts` | `tsc --noEmit -p tsconfig.scripts.json` 檢查 scripts 程式碼              |
+| `npm run lint`              | ESLint 檢查                                                              |
+| `npm run lint:fix`          | ESLint 自動修復                                                          |
+| `npm run format`            | Prettier 格式化寫入                                                      |
+| `npm run format:check`      | Prettier 格式檢查（CI 使用）                                             |
+| `npm test`                  | vitest 單元測試（單次執行）                                              |
+| `npm run test:watch`        | vitest 監控模式（自動重跑）                                              |
+| `npm run test:coverage`     | vitest 單元測試含覆蓋率報告                                              |
+| `npm run smoke`             | 遊戲邏輯 smoke 測試                                                      |
+| `npm run smoke:api`         | 帳號/牌組/對戰/排行榜 API loop                                           |
+| `npm run smoke:online`      | 線上對戰 smoke 測試                                                      |
+| `npm run rule:audit`        | 效果解析覆蓋率審計                                                       |
+| `npm run seed:cards`        | 將 `cards.json` 卡牌數據匯入 PostgreSQL（供 API 查詢）                   |
+| `npm run server`            | 啟動 boardgame.io 遊戲伺服器                                             |
+| `npm run preview`           | 預覽 Vite 生產構建結果                                                   |
 
 ### 測試
 
@@ -302,7 +301,6 @@ zutomayo-card-online/
 │   ├── rule-audit.ts          # 效果解析覆蓋率審計
 │   ├── effect-smoke.ts        # 效果引擎單元測試
 │   ├── seed-cards-pg.ts       # 卡牌數據匯入 PostgreSQL
-│   ├── migrate-sqlite-to-pg.ts # SQLite → PostgreSQL 遷移
 │   └── semantic-audit-dump.ts # 語意審計數據匯出
 ├── data/                       # 翻譯數據
 ├── cards.json                  # 422 張卡牌數據
@@ -320,13 +318,15 @@ zutomayo-card-online/
 ### 覆蓋率
 
 ```
-總卡牌:      422 張
-有效果卡:    250 張
-效果行:      267 行
-已解析:      267 行 (100%)
-未解析:      0
-部分解析:    0
-```
+
+總卡牌: 422 張
+有效果卡: 250 張
+效果行: 267 行
+已解析: 267 行 (100%)
+未解析: 0
+部分解析: 0
+
+````
 
 ### 架構
 
@@ -334,7 +334,7 @@ zutomayo-card-online/
 日文效果文字 → parseEffect() → { trigger, conditions[], action }
                                     ↓
                               executeEffect() → 遊戲狀態變更
-```
+````
 
 ### 支援的效果類型（按數量排序）
 
@@ -395,27 +395,26 @@ zutomayo-card-online/
 
 | 方法   | 路徑                       | 認證  | 說明                           |
 | ------ | -------------------------- | ----- | ------------------------------ |
-| POST   | `/api/register`            | 無    | 註冊帳號                       |
-| POST   | `/api/login`               | 無    | 登入                           |
-| GET    | `/api/profile`             | JWT   | 取得用戶資料                   |
-| PUT    | `/api/profile`             | JWT   | 修改暱稱                       |
-| GET    | `/api/decks`               | JWT   | 列出牌組                       |
-| POST   | `/api/decks`               | JWT   | 建立牌組                       |
-| DELETE | `/api/decks/:id`           | JWT   | 刪除牌組                       |
-| POST   | `/api/matches`             | JWT   | 上報對戰結果（認證者須為贏家） |
-| GET    | `/api/matches`             | JWT   | 取得認證使用者的對戰歷史       |
+| POST   | `/api/logto/profile`       | Logto | 同步 Logto 帳號至本地遊戲資料  |
+| GET    | `/api/profile`             | Logto | 取得用戶資料                   |
+| PUT    | `/api/profile`             | Logto | 修改暱稱                       |
+| GET    | `/api/decks`               | Logto | 列出牌組                       |
+| POST   | `/api/decks`               | Logto | 建立牌組                       |
+| DELETE | `/api/decks/:id`           | Logto | 刪除牌組                       |
+| POST   | `/api/matches`             | Logto | 上報對戰結果（認證者須為贏家） |
+| GET    | `/api/matches`             | Logto | 取得認證使用者的對戰歷史       |
 | GET    | `/api/matches/:id/log`     | 無    | 取得已清理 action log          |
 | GET    | `/api/leaderboard`         | 無    | 排行榜                         |
 | POST   | `/api/admin/login`         | 無    | Admin 登入，回傳 admin token   |
 | GET    | `/api/admin/users`         | Admin | 取得使用者列表                 |
 | GET    | `/api/admin/matches`       | Admin | 取得所有對戰列表               |
 | PUT    | `/api/admin/users/:id/elo` | Admin | 重設使用者 ELO                 |
-| POST   | `/api/matchmaking/queue`   | JWT   | 加入配對佇列                   |
-| GET    | `/api/matchmaking/status`  | JWT   | 查詢配對狀態                   |
-| DELETE | `/api/matchmaking/queue`   | JWT   | 離開佇列                       |
-| PUT    | `/api/matchmaking/match`   | JWT   | host 回報 boardgame.io matchID |
+| POST   | `/api/matchmaking/queue`   | Logto | 加入配對佇列                   |
+| GET    | `/api/matchmaking/status`  | Logto | 查詢配對狀態                   |
+| DELETE | `/api/matchmaking/queue`   | Logto | 離開佇列                       |
+| PUT    | `/api/matchmaking/match`   | Logto | host 回報 boardgame.io matchID |
 
-速率限制：`/api/login`、`/api/register`、`/api/admin/login` 為 10/min，其餘 120/min。
+速率限制：`/api/logto/profile`、`/api/admin/login` 為 10/min，其餘 120/min。
 
 詳見 [docs/API.md](docs/API.md)
 
