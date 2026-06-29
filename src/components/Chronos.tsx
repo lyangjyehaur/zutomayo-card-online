@@ -44,9 +44,15 @@ export function Chronos({ chronos, currentTime, nightSidePlayer, currentPlayer }
       time: nightPositions.includes(index) ? 'night' : 'day',
     };
   });
+  // 當 nightSidePlayer === currentPlayer 時，face-group 旋轉 180 度，
+  // medal 的 translate 座標會跟著旋轉，導致位置錯位。
+  // 修正：旋轉 180 度時，medal 座標改用繞中心對稱的點（2*center - 原座標），
+  // 這樣旋轉後正好落在正確的 position 位置上。
   const medalAngle = (position * stepAngle - 90) * (Math.PI / 180);
-  const medalX = center + radius * Math.cos(medalAngle);
-  const medalY = center + radius * Math.sin(medalAngle);
+  const rawMedalX = center + radius * Math.cos(medalAngle);
+  const rawMedalY = center + radius * Math.sin(medalAngle);
+  const medalX = rotation === 180 ? 2 * center - rawMedalX : rawMedalX;
+  const medalY = rotation === 180 ? 2 * center - rawMedalY : rawMedalY;
   const timeLabel = CHRONOS_LABELS[position] ?? CHRONOS_LABELS[0];
   const sideLabel = currentTime === 'night' ? t('board.night') : t('board.day');
 
