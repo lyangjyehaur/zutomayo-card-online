@@ -88,6 +88,8 @@ export const en: Record<TranslationKey, string> = {
   'deck.flame': 'Flame Burst Deck',
   'deck.electric': 'Thunder Strike Deck',
   'deck.wind': 'Wind Rider Deck',
+  'deck.counter': 'Counter Deck',
+  'deck.counterDesc': 'Analyzes your deck and builds a counter from the full card pool',
   'deck.custom': 'Custom Deck',
   'deck.darkDesc': 'Night-side pressure and stable trades',
   'deck.flameDesc': 'Burst damage and aggressive offense',

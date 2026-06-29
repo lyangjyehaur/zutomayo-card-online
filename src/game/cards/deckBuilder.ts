@@ -11,6 +11,12 @@ export { CUSTOM_DECK_NAME, CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from './
  */
 export const RANDOM_DECK_NAME = '__random__';
 
+/**
+ * 克制牌組識別碼。AI 對手專用，分析玩家牌組特性後從卡池組出克制牌組。
+ * 僅用於 AI 對戰的對手牌組，玩家不可選。
+ */
+export const COUNTER_DECK_NAME = '__counter__';
+
 // Fisher-Yates shuffle
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -125,6 +131,51 @@ export function randomElementDeck(element: Element): CardInstance[] {
   const otherCount = 20 - charCount;
   const deckChars = shuffle(characters).slice(0, charCount);
   const deckOthers = shuffle(others).slice(0, otherCount);
+  const deck = shuffle([...deckChars, ...deckOthers]);
+  return deck.map((c) => createInstance(c.id));
+}
+
+/**
+ * 分析玩家牌組特性後，從完整卡池組出克制牌組。
+ *
+ * 克制策略：
+ * 1. 計算玩家角色卡的平均攻擊力（day+night 之和），挑攻擊力 >= 該平均的角色卡，
+ *    確保戰鬥時攻擊力不輸（攻擊力壓制）
+ * 2. 優先挑 sendToPower > 0 的附魔/區域附魔卡，搶奪 power 優勢，確保高費角色能發動
+ * 3. 優先挑有 effect 的卡，增加戰術多樣性
+ *
+ * 輸出仍符合官方標準：20 張、Character >= 10、同卡最多 2 張。
+ */
+export function buildCounterDeck(playerDeck: CardInstance[]): CardInstance[] {
+  const allCards = getAllCardDefs();
+  const playerDefs = playerDeck
+    .map((c) => getCardDef(c.defId))
+    .filter((d): d is NonNullable<typeof d> => d !== undefined);
+  const playerChars = playerDefs.filter((c) => c.type === 'Character' && c.attack);
+  // 玩家角色卡平均總攻擊力（day + night），作為 AI 挑卡的门檻
+  const playerAvgAttack =
+    playerChars.length > 0
+      ? playerChars.reduce((sum, c) => sum + (c.attack!.day + c.attack!.night), 0) / playerChars.length
+      : 50;
+
+  const aiChars = allCards.filter((c) => c.type === 'Character' && c.attack);
+  // 攻擊力壓制：挑 day+night 總和 >= 玩家平均的角色卡，按攻擊力降序
+  const strongChars = aiChars
+    .filter((c) => c.attack!.day + c.attack!.night >= playerAvgAttack)
+    .sort((a, b) => b.attack!.day + b.attack!.night - (a.attack!.day + a.attack!.night));
+  // 若強卡不足，放寬到所有角色卡
+  const charPool = strongChars.length >= 10 ? strongChars : aiChars;
+  const charCount = 14; // 14 張角色卡，確保戰鬥力充足
+  const deckChars = shuffle(charPool).slice(0, charCount);
+
+  const aiOthers = allCards.filter((c) => c.type !== 'Character');
+  // power 優勢：優先 sendToPower > 0 的卡，其次有 effect 的卡
+  const powerCards = aiOthers.filter((c) => c.sendToPower > 0);
+  const effectCards = aiOthers.filter((c) => c.effect && c.effect.trim().length > 0);
+  const otherPool = [...new Set([...powerCards, ...effectCards])];
+  const otherCount = 20 - charCount;
+  const deckOthers = shuffle(otherPool).slice(0, otherCount);
+
   const deck = shuffle([...deckChars, ...deckOthers]);
   return deck.map((c) => createInstance(c.id));
 }

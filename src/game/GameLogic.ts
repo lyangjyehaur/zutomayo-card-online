@@ -35,7 +35,9 @@ import { getChronosTimeForPosition, normalizeChronosPosition } from './chronos';
 import { getCardDef } from './cards/loader';
 import {
   buildDeck,
+  buildCounterDeck,
   CUSTOM_DECK_NAME,
+  COUNTER_DECK_NAME,
   getPresetDeck,
   randomDeck,
   shuffleDeck,
@@ -389,8 +391,15 @@ export function setupGame(
     recentHpChanges: [],
     recentGameNotices: [],
   };
-  G.players[0].deck = shuffleDeck(setupDeck(0, setupData.deck0Ids, setupData.deck0Name, allowBrowserCustomDeckName));
-  G.players[1].deck = shuffleDeck(setupDeck(1, setupData.deck1Ids, setupData.deck1Name, allowBrowserCustomDeckName));
+  // 先組玩家牌組（deck0），再組 AI/對手牌組（deck1）。
+  // 若 deck1 指定克制牌組（COUNTER_DECK_NAME），需參考 deck0 內容來組克制牌組。
+  const player0Deck = setupDeck(0, setupData.deck0Ids, setupData.deck0Name, allowBrowserCustomDeckName);
+  G.players[0].deck = shuffleDeck(player0Deck);
+  const isCounterDeck1 = !setupData.deck1Ids && setupData.deck1Name === COUNTER_DECK_NAME;
+  const player1Deck = isCounterDeck1
+    ? buildCounterDeck(player0Deck)
+    : setupDeck(1, setupData.deck1Ids, setupData.deck1Name, allowBrowserCustomDeckName);
+  G.players[1].deck = shuffleDeck(player1Deck);
   drawUnchecked(G.players[0], 5);
   drawUnchecked(G.players[1], 5);
   return G;

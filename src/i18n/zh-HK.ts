@@ -88,6 +88,8 @@ export const zhHK: Record<TranslationKey, string> = {
   'deck.flame': '火焰爆發牌組',
   'deck.electric': '電閃牌組',
   'deck.wind': '疾風牌組',
+  'deck.counter': '克制牌組',
+  'deck.counterDesc': '分析玩家牌組特性，從卡池組出克制牌組',
   'deck.custom': '自訂牌組',
   'deck.darkDesc': '夜側壓力同穩定交換',
   'deck.flameDesc': '爆發傷害同主動進攻',

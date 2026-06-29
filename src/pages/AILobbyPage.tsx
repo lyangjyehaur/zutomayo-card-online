@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import type { DeckResponse } from '../api/client';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { DifficultyButtons } from '../components/lobby/DifficultyButtons';
-import { buildDeckOptions, buildServerDeckOptions } from '../components/lobby/shared';
+import { buildAIOpponentDeckOptions, buildDeckOptions, buildServerDeckOptions } from '../components/lobby/shared';
 import type { AIDifficulty } from '../game/ai';
 import { t, translate, useLocale } from '../i18n';
 
@@ -31,7 +31,8 @@ export function AILobbyPage({
 }: AILobbyPageProps) {
   const navigate = useNavigate();
   const locale = useLocale();
-  const deckOptions = useMemo(() => {
+  // 玩家牌組用完整選項（含自訂牌組）；AI 對手牌組移除自訂牌組、改用克制牌組選項。
+  const playerDeckOptions = useMemo(() => {
     const localOptions = buildDeckOptions(customDeckAvailable);
     const serverOptions = buildServerDeckOptions(serverDecks);
     return [
@@ -39,6 +40,14 @@ export function AILobbyPage({
       ...(serverOptions.length > 0 ? [{ label: translate(locale, 'deck.serverDecks'), options: serverOptions }] : []),
     ];
   }, [customDeckAvailable, locale, serverDecks]);
+  const opponentDeckOptions = useMemo(() => {
+    const localOptions = buildAIOpponentDeckOptions();
+    const serverOptions = buildServerDeckOptions(serverDecks);
+    return [
+      { label: translate(locale, 'deck.localDecks'), options: localOptions },
+      ...(serverOptions.length > 0 ? [{ label: translate(locale, 'deck.serverDecks'), options: serverOptions }] : []),
+    ];
+  }, [locale, serverDecks]);
 
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-lacquer-deep font-sans text-bone">
@@ -63,12 +72,12 @@ export function AILobbyPage({
       <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 py-4 md:grid-cols-[minmax(0,1fr)_24rem] md:overflow-hidden md:px-6 md:py-6">
         <div className="flex min-h-0 flex-col gap-6 md:overflow-y-auto md:pr-2">
           {serverDeckError && <p className="text-[10px] text-vermilion/80">{serverDeckError}</p>}
-          <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={deckOptions} onChange={setDeck0Name} />
+          <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={playerDeckOptions} onChange={setDeck0Name} />
           <div className="border-t border-bone/10 pt-6">
             <DeckSelector
               label={t('lobby.opponentDeck')}
               value={deck1Name}
-              options={deckOptions}
+              options={opponentDeckOptions}
               onChange={setDeck1Name}
             />
           </div>

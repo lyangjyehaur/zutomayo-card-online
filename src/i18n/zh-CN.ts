@@ -88,6 +88,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'deck.flame': '炎爆牌组',
   'deck.electric': '电闪牌组',
   'deck.wind': '疾风牌组',
+  'deck.counter': '克制牌组',
+  'deck.counterDesc': '分析玩家牌组特性，从卡池组出克制牌组',
   'deck.custom': '自定义牌组',
   'deck.darkDesc': '夜侧高压与稳定交换',
   'deck.flameDesc': '爆发伤害与主动进攻',

@@ -2,7 +2,7 @@ import { type DeckResponse } from '../../api/client';
 import type { PlayerIndex, ZutomayoSetupData } from '../../game/types';
 import { CUSTOM_DECK_NAME, loadCustomDeckIds } from '../../game/cards/customDeck';
 import { PRESET_DECKS } from '../../game/cards/presetDecks';
-import { RANDOM_DECK_NAME } from '../../game/cards/deckBuilder';
+import { COUNTER_DECK_NAME, RANDOM_DECK_NAME } from '../../game/cards/deckBuilder';
 import { t } from '../../i18n';
 
 export type DeckOption = {
@@ -40,6 +40,8 @@ export function serverDeckIdFromOption(optionId: string): string | null {
 export function selectedDeckName(deckName: string, customDeckAvailable: boolean): string | undefined {
   if (serverDeckIdFromOption(deckName)) return DEFAULT_DECK_NAME;
   if (deckName === CUSTOM_DECK_NAME && !customDeckAvailable) return undefined;
+  // AI 對手選了克制牌組時，回傳隨機牌組名稱作為 fallback（僅本地對戰路徑會用到）。
+  if (deckName === COUNTER_DECK_NAME) return RANDOM_DECK_NAME;
   return deckName || undefined;
 }
 
@@ -82,6 +84,38 @@ export function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
       previewIds: loadCustomDeckIds()?.slice(0, 3) ?? presetOptions[0]?.previewIds ?? [],
       disabled: !customDeckAvailable,
     },
+  ];
+}
+
+/**
+ * AI 對手專用牌組選項：移除自訂牌組（AI 不該用玩家自訂牌組），新增克制牌組。
+ * 克制牌組會在開局時分析玩家牌組特性，從卡池組出克制牌組。
+ */
+export function buildAIOpponentDeckOptions(): DeckOption[] {
+  const presetOptions = Object.entries(PRESET_DECKS).map(([id, deck]) => {
+    const copy = DECK_COPY[id];
+    return {
+      id,
+      name: copy ? t(copy.nameKey) : deck.name,
+      description: copy ? t(copy.descKey) : deck.name,
+      previewIds: [],
+    };
+  });
+
+  return [
+    {
+      id: RANDOM_DECK_NAME,
+      name: t('deck.random'),
+      description: t('deck.randomDesc'),
+      previewIds: [],
+    },
+    {
+      id: COUNTER_DECK_NAME,
+      name: t('deck.counter'),
+      description: t('deck.counterDesc'),
+      previewIds: [],
+    },
+    ...presetOptions,
   ];
 }
 

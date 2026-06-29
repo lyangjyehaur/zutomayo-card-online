@@ -88,6 +88,8 @@ export const ko: Record<TranslationKey, string> = {
   'deck.flame': '불꽃 폭발 덱',
   'deck.electric': '천둥 강타 덱',
   'deck.wind': '바람 타기 덱',
+  'deck.counter': '카운터 덱',
+  'deck.counterDesc': '플레이어 덱을 분석하여 카드 풀에서 카운터 덱 구성',
   'deck.custom': '커스텀 덱',
   'deck.darkDesc': '야간 고압과 안정적 교환',
   'deck.flameDesc': '폭발 데미지와 공격적 공세',

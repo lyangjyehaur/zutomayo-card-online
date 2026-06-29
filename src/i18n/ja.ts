@@ -88,6 +88,8 @@ export const ja: Record<TranslationKey, string> = {
   'deck.flame': '炎のデッキ',
   'deck.electric': '電気のデッキ',
   'deck.wind': '風のデッキ',
+  'deck.counter': 'カウンターデッキ',
+  'deck.counterDesc': 'プレイヤーのデッキを分析し、カープールから対策デッキを構築',
   'deck.custom': 'カスタムデッキ',
   'deck.darkDesc': '夜側の高圧展開と安定した交換',
   'deck.flameDesc': '爆発ダメージと積極攻撃',
