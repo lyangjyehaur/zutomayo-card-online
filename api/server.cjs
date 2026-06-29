@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
+const { createUserDeck, deleteUserDeck, listUserDecks } = require('./deckService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
 let staticCards = [];
@@ -764,14 +765,7 @@ function handleRequest(req, res) {
     if (pathname === '/api/decks' && method === 'GET') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const decks = (await pool.query('SELECT * FROM decks WHERE user_id = $1 ORDER BY updated_at DESC', [userId]))
-        .rows;
-      json({
-        decks: decks.map((d) => ({
-          ...d,
-          cardIds: Array.isArray(d.card_ids) ? d.card_ids : [],
-        })),
-      });
+      json(await listUserDecks(pool, userId));
       return;
     }
 
@@ -779,25 +773,9 @@ function handleRequest(req, res) {
     if (pathname === '/api/decks' && method === 'POST') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const { name, cardIds } = await readBody();
-      if (!name || !Array.isArray(cardIds) || cardIds.length !== 20) {
-        return json({ error: 'Name and 20 card IDs required' }, 400);
-      }
-      // Validate deck
-      const counts = {};
-      for (const id of cardIds) {
-        counts[id] = (counts[id] || 0) + 1;
-        if (counts[id] > 2) return json({ error: `Card ${id} appears more than twice` }, 400);
-      }
-
-      const id = 'd_' + crypto.randomBytes(8).toString('hex');
-      await pool.query('INSERT INTO decks (id, user_id, name, card_ids) VALUES ($1, $2, $3, $4::jsonb)', [
-        id,
-        userId,
-        name,
-        JSON.stringify(cardIds),
-      ]);
-      json({ id, name, cardIds });
+      const result = await createUserDeck(pool, userId, await readBody());
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
@@ -806,9 +784,9 @@ function handleRequest(req, res) {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const deckId = pathname.split('/').pop();
-      const result = await pool.query('DELETE FROM decks WHERE id = $1 AND user_id = $2', [deckId, userId]);
-      if (result.rowCount === 0) return json({ error: 'Deck not found' }, 404);
-      json({ deleted: true });
+      const result = await deleteUserDeck(pool, userId, deckId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
