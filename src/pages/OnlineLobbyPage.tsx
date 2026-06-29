@@ -15,6 +15,7 @@ interface OnlineLobbyPageProps {
   setDeck0Name: (deckName: string) => void;
   onStartOnline: (matchID?: string) => Promise<OnlineSession>;
   serverDeckError?: string;
+  cardsReady: boolean;
 }
 
 export function OnlineLobbyPage({
@@ -24,6 +25,7 @@ export function OnlineLobbyPage({
   setDeck0Name,
   onStartOnline,
   serverDeckError,
+  cardsReady,
 }: OnlineLobbyPageProps) {
   const navigate = useNavigate();
   const locale = useLocale();
@@ -62,19 +64,19 @@ export function OnlineLobbyPage({
           <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={deckOptions} onChange={setDeck0Name} />
         </div>
         <div className="flex min-h-0 flex-col gap-4 md:overflow-y-auto md:pr-2">
-          <OnlinePanel startOnline={onStartOnline} disabled={!deck0Name} />
+          <OnlinePanel startOnline={onStartOnline} disabled={!cardsReady || !deck0Name} />
           {/* 本地對戰入口（PVP 本地，與線上同為對人對戰） */}
           <section className="flex flex-col gap-3 rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
             <div className="flex flex-col gap-1">
               <h3 className="font-display text-lg italic text-bone">{t('lobby.localBattle')}</h3>
               <span className="text-[10px] text-bone/40">{t('app.subtitle')}</span>
             </div>
-            {!deck0Name && <p className="text-[10px] text-vermilion/70">{t('lobby.selectDeckFirst')}</p>}
+            {(!cardsReady || !deck0Name) && <p className="text-[10px] text-vermilion/70">{t('lobby.selectDeckFirst')}</p>}
             <button
               className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
               type="button"
               onClick={() => navigate('/play/local')}
-              disabled={!deck0Name}
+              disabled={!cardsReady || !deck0Name}
             >
               {t('lobby.localBattle')}
             </button>

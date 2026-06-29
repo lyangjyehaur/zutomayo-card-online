@@ -220,6 +220,8 @@ function RouterShell() {
   const [customDeckAvailable, setCustomDeckAvailable] = useState(hasStoredCustomDeck);
   const [serverDecks, setServerDecks] = useState<DeckResponse[]>([]);
   const [serverDeckError, setServerDeckError] = useState('');
+  // 卡牌資料是否已載入完成；未完成時禁用開局按鈕，避免空牌組崩潰。
+  const [cardsReady, setCardsReady] = useState(false);
   // 預設不選中任何牌組，玩家每次必須主動選擇才能開始遊戲。
   const [deck0Name, setDeck0Name] = useState('');
   const [deck1Name, setDeck1Name] = useState('');
@@ -258,7 +260,7 @@ function RouterShell() {
 
   useEffect(() => {
     void import('./game/cards/loader').then(({ loadConfigFromAPI, refreshCards }) => {
-      void refreshCards();
+      void refreshCards().finally(() => setCardsReady(true));
       void loadConfigFromAPI();
     });
     // 同樣載入效果翻譯（API 優先，fallback 到靜態 JSON）
@@ -360,6 +362,7 @@ function RouterShell() {
                   setDeck0Name={setDeck0Name}
                   onStartOnline={startOnline}
                   serverDeckError={serverDeckError}
+                  cardsReady={cardsReady}
                 />
               }
             />
@@ -375,6 +378,7 @@ function RouterShell() {
                   setDeck1Name={setDeck1Name}
                   onStartAI={startAI}
                   serverDeckError={serverDeckError}
+                  cardsReady={cardsReady}
                 />
               }
             />

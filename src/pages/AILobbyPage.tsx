@@ -17,6 +17,7 @@ interface AILobbyPageProps {
   setDeck1Name: (deckName: string) => void;
   onStartAI: (difficulty: AIDifficulty) => void;
   serverDeckError?: string;
+  cardsReady: boolean;
 }
 
 export function AILobbyPage({
@@ -28,6 +29,7 @@ export function AILobbyPage({
   setDeck1Name,
   onStartAI,
   serverDeckError,
+  cardsReady,
 }: AILobbyPageProps) {
   const navigate = useNavigate();
   const locale = useLocale();
@@ -40,14 +42,11 @@ export function AILobbyPage({
       ...(serverOptions.length > 0 ? [{ label: translate(locale, 'deck.serverDecks'), options: serverOptions }] : []),
     ];
   }, [customDeckAvailable, locale, serverDecks]);
+  // AI 對手牌組移除自訂牌組與伺服器牌組（AI 不該用玩家自訂牌組），改用克制牌組選項。
   const opponentDeckOptions = useMemo(() => {
     const localOptions = buildAIOpponentDeckOptions();
-    const serverOptions = buildServerDeckOptions(serverDecks);
-    return [
-      { label: translate(locale, 'deck.localDecks'), options: localOptions },
-      ...(serverOptions.length > 0 ? [{ label: translate(locale, 'deck.serverDecks'), options: serverOptions }] : []),
-    ];
-  }, [locale, serverDecks]);
+    return [{ label: translate(locale, 'deck.localDecks'), options: localOptions }];
+  }, [locale]);
 
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-lacquer-deep font-sans text-bone">
@@ -83,7 +82,7 @@ export function AILobbyPage({
           </div>
         </div>
         <div className="flex min-h-0 flex-col gap-4 md:overflow-y-auto md:pr-2">
-          <DifficultyButtons onStart={onStartAI} disabled={!deck0Name || !deck1Name} />
+          <DifficultyButtons onStart={onStartAI} disabled={!cardsReady || !deck0Name || !deck1Name} />
         </div>
       </div>
     </main>

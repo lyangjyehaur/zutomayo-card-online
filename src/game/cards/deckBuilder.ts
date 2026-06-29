@@ -1,5 +1,5 @@
 import type { CardInstance, Element } from '../types';
-import { createInstance, getAllCardDefs, getCardDef } from './loader';
+import { createInstance, getAllCardDefs, getCardDef, isCardsInitialized } from './loader';
 import { PRESET_DECKS } from './presetDecks';
 import { CUSTOM_DECK_NAME, loadCustomDeckIds } from './customDeck';
 
@@ -25,6 +25,16 @@ function shuffle<T>(arr: T[]): T[] {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+/**
+ * 防禦：卡牌未載入時直接 throw，避免產出空牌組導致開局崩潰。
+ * 瀏覽器端 refreshCards() 是非同步，慢網路下可能在載入完成前就開局。
+ */
+function assertCardsLoaded(): void {
+  if (!isCardsInitialized()) {
+    throw new Error('Cards not loaded yet. Call refreshCards() before starting a game.');
+  }
 }
 
 // Build a deck from a list of card def IDs (must be 20 cards)
@@ -123,6 +133,7 @@ export function randomDeck(): CardInstance[] {
  * 59-60 張角色卡，足以隨機抽出合法牌組。カオス 屬性僅 4 張，不支援。
  */
 export function randomElementDeck(element: Element): CardInstance[] {
+  assertCardsLoaded();
   const pool = getAllCardDefs().filter((c) => c.element === element);
   const characters = pool.filter((c) => c.type === 'Character');
   const others = pool.filter((c) => c.type !== 'Character');
