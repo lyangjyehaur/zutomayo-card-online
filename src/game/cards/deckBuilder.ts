@@ -142,9 +142,11 @@ export function randomElementDeck(element: Element): CardInstance[] {
  * 1. 計算玩家角色卡的平均攻擊力（day+night 之和），挑攻擊力 >= 該平均的角色卡，
  *    確保戰鬥時攻擊力不輸（攻擊力壓制）
  * 2. 優先挑 sendToPower > 0 的附魔/區域附魔卡，搶奪 power 優勢，確保高費角色能發動
- * 3. 優先挑有 effect 的卡，增加戰術多樣性
+ * 3. 非角色卡若不足，從剩餘非角色卡補齊
  *
- * 輸出仍符合官方標準：20 張、Character >= 10、同卡最多 2 張。
+ * 輸出符合官方標準：20 張、Character >= 10、同卡最多 2 張。
+ * 從 unique 卡定義抽，每張最多 1 張，必然符合同卡上限。
+ * 最後走 validateConstructedDeckIds 驗證，確保合法。
  */
 export function buildCounterDeck(playerDeck: CardInstance[]): CardInstance[] {
   const allCards = getAllCardDefs();
@@ -169,15 +171,25 @@ export function buildCounterDeck(playerDeck: CardInstance[]): CardInstance[] {
   const deckChars = shuffle(charPool).slice(0, charCount);
 
   const aiOthers = allCards.filter((c) => c.type !== 'Character');
-  // power 優勢：優先 sendToPower > 0 的卡，其次有 effect 的卡
+  // power 優勢：優先 sendToPower > 0 的卡；不足時從其餘非角色卡補齊。
   const powerCards = aiOthers.filter((c) => c.sendToPower > 0);
-  const effectCards = aiOthers.filter((c) => c.effect && c.effect.trim().length > 0);
-  const otherPool = [...new Set([...powerCards, ...effectCards])];
   const otherCount = 20 - charCount;
-  const deckOthers = shuffle(otherPool).slice(0, otherCount);
+  let deckOthers = shuffle(powerCards).slice(0, otherCount);
+  if (deckOthers.length < otherCount) {
+    // 不足時從剩餘非角色卡補齊，避免牌組少於 20 張
+    const usedIds = new Set(deckOthers.map((c) => c.id));
+    const fillers = shuffle(aiOthers.filter((c) => !usedIds.has(c.id))).slice(0, otherCount - deckOthers.length);
+    deckOthers = [...deckOthers, ...fillers];
+  }
 
-  const deck = shuffle([...deckChars, ...deckOthers]);
-  return deck.map((c) => createInstance(c.id));
+  const defIds = [...deckChars, ...deckOthers].map((c) => c.id);
+  // 保險：走驗證確保合法，若不合法 fallback 到 randomDeck
+  const validationError = validateConstructedDeckIds(defIds);
+  if (validationError) {
+    // 理論上不該發生，但保留 fallback 避免開局崩潰
+    return randomDeck();
+  }
+  return defIds.map((id) => createInstance(id));
 }
 
 // Shuffle a deck
