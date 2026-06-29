@@ -44,6 +44,11 @@ schema.json
 cards.json
 data/card-effects-i18n.json
 
+# Environment variables (contain secrets)
+.env
+.env.*
+!.env.example
+
 # Standalone admin HTML (replaced by React admin)
 admin/
 
