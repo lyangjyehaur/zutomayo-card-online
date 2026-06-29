@@ -51,7 +51,6 @@ export const ja: Record<TranslationKey, string> = {
   'auth.matchSubmittedNoElo': '対戦を記録しました。ゲスト相手はELOに反映されません',
   'auth.matchSubmitFailed': 'ローカル履歴は保存しましたが、対戦結果を送信できませんでした',
 
-  'lobby.localBattle': 'ローカル対戦',
   'lobby.aiBattle': 'コンピュータ対戦',
   'lobby.createRoom': 'ルーム作成',
   'lobby.joinRoom': 'ルーム参加',
@@ -110,8 +109,6 @@ export const ja: Record<TranslationKey, string> = {
   'player.self': 'プレイヤー',
   'player.me': '自分',
   'player.opponent': '相手',
-  'player.zeroView': 'プレイヤー1視点',
-  'player.oneView': 'プレイヤー2視点',
 
   'board.janken': 'じゃんけん',
   'board.jankenHint': '勝者が夜側プレイヤーになります',
@@ -293,7 +290,6 @@ export const ja: Record<TranslationKey, string> = {
 
   'game.aiMode': 'コンピュータ対戦',
   'game.onlineMode': 'オンライン対戦',
-  'game.localMode': 'ローカル対戦',
   'game.matchCode': 'ルームコード',
   'game.loading': '対戦を読み込み中...',
 

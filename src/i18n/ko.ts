@@ -51,7 +51,6 @@ export const ko: Record<TranslationKey, string> = {
   'auth.matchSubmittedNoElo': '대전이 기록되었습니다. 게스트 상대는 ELO에 반영되지 않습니다',
   'auth.matchSubmitFailed': '로컬 기록은 저장했지만 대전 결과를 보고하지 못했습니다',
 
-  'lobby.localBattle': '로컬 2인 대전',
   'lobby.aiBattle': 'AI 연습',
   'lobby.createRoom': '방 만들기',
   'lobby.joinRoom': '방 참가',
@@ -110,8 +109,6 @@ export const ko: Record<TranslationKey, string> = {
   'player.self': '플레이어',
   'player.me': '나',
   'player.opponent': '상대',
-  'player.zeroView': '플레이어 1 시점',
-  'player.oneView': '플레이어 2 시점',
 
   'board.janken': '가위바위보',
   'board.jankenHint': '승리자가 야간 플레이어가 됩니다',
@@ -293,7 +290,6 @@ export const ko: Record<TranslationKey, string> = {
 
   'game.aiMode': 'AI 대전',
   'game.onlineMode': '온라인 대전',
-  'game.localMode': '로컬 대전',
   'game.matchCode': '방 코드',
   'game.loading': '매치 로딩 중...',
 

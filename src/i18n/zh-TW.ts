@@ -49,7 +49,6 @@ export const zhTW = {
   'auth.matchSubmittedNoElo': '對戰已記錄；訪客對手不計入 ELO',
   'auth.matchSubmitFailed': '已保存本地紀錄，但無法上報對戰結果',
 
-  'lobby.localBattle': '雙人本機對戰',
   'lobby.aiBattle': '與電腦對戰',
   'lobby.createRoom': '創建房間',
   'lobby.joinRoom': '加入房間',
@@ -108,8 +107,6 @@ export const zhTW = {
   'player.self': '玩家',
   'player.me': '我方',
   'player.opponent': '對手',
-  'player.zeroView': '玩家一視角',
-  'player.oneView': '玩家二視角',
 
   'board.janken': '猜拳',
   'board.jankenHint': '猜拳勝者成為夜側玩家',
@@ -291,7 +288,6 @@ export const zhTW = {
 
   'game.aiMode': '電腦對戰',
   'game.onlineMode': '線上對戰',
-  'game.localMode': '本機對戰',
   'game.matchCode': '房間代碼',
   'game.loading': '載入對戰中...',
 

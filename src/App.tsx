@@ -25,7 +25,6 @@ const AILobbyPage = lazy(() => import('./pages/AILobbyPage').then((module) => ({
 const DeckEditorPage = lazy(() =>
   import('./pages/DeckEditorPage').then((module) => ({ default: module.DeckEditorPage })),
 );
-const LocalGamePage = lazy(() => import('./pages/LocalGamePage').then((module) => ({ default: module.LocalGamePage })));
 const MatchHistoryPage = lazy(() =>
   import('./pages/MatchHistoryPage').then((module) => ({ default: module.MatchHistoryPage })),
 );
@@ -382,7 +381,6 @@ function RouterShell() {
                 />
               }
             />
-            <Route path="/play/local" element={<LocalGamePage deck0Name={deck0} deck1Name={deck1} />} />
             <Route path="/play/ai" element={<AIGamePage deck0Name={deck0} deck1Name={deck1} />} />
             <Route
               path="/play/online/:matchID"

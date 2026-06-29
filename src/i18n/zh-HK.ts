@@ -51,7 +51,6 @@ export const zhHK: Record<TranslationKey, string> = {
   'auth.matchSubmittedNoElo': '對戰已記錄；訪客對手唔計 ELO',
   'auth.matchSubmitFailed': '已保存本地紀錄，但上報對戰失敗',
 
-  'lobby.localBattle': '本機雙人遊戲',
   'lobby.aiBattle': '同電腦打',
   'lobby.createRoom': '開房',
   'lobby.joinRoom': '加入房間',
@@ -110,8 +109,6 @@ export const zhHK: Record<TranslationKey, string> = {
   'player.self': '玩家',
   'player.me': '我方',
   'player.opponent': '對手',
-  'player.zeroView': '玩家一視角',
-  'player.oneView': '玩家二視角',
 
   'board.janken': '猜拳',
   'board.jankenHint': '贏猜拳嘅人成為夜側玩家',
@@ -293,7 +290,6 @@ export const zhHK: Record<TranslationKey, string> = {
 
   'game.aiMode': '電腦遊戲',
   'game.onlineMode': '綫上遊戲',
-  'game.localMode': '本機遊戲',
   'game.matchCode': '房間代碼',
   'game.loading': '載入遊戲中...',
 

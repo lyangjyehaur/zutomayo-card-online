@@ -51,7 +51,6 @@ export const en: Record<TranslationKey, string> = {
   'auth.matchSubmittedNoElo': 'Match recorded; guest opponent does not affect ELO',
   'auth.matchSubmitFailed': 'Local history was saved, but match reporting failed',
 
-  'lobby.localBattle': 'Local 2-Player Battle',
   'lobby.aiBattle': 'Practice vs AI',
   'lobby.createRoom': 'Create Room',
   'lobby.joinRoom': 'Join Room',
@@ -110,8 +109,6 @@ export const en: Record<TranslationKey, string> = {
   'player.self': 'Player',
   'player.me': 'You',
   'player.opponent': 'Opponent',
-  'player.zeroView': "Player 1's View",
-  'player.oneView': "Player 2's View",
 
   'board.janken': 'Rock-Paper-Scissors',
   'board.jankenHint': 'Winner becomes the Night-side player',
@@ -293,7 +290,6 @@ export const en: Record<TranslationKey, string> = {
 
   'game.aiMode': 'AI Battle',
   'game.onlineMode': 'Online Battle',
-  'game.localMode': 'Local Battle',
   'game.matchCode': 'Room Code',
   'game.loading': 'Loading match...',
 
