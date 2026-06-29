@@ -5,6 +5,16 @@ const { Pool } = require('pg');
 const Redis = require('ioredis');
 const { getAccountProfile, loginAccount, registerAccount, updateAccountProfile } = require('./accountService.cjs');
 const { adminLogin, listAdminUsers, resetUserElo } = require('./adminService.cjs');
+const {
+  cardRowToDef,
+  getAllCardI18n,
+  getCardI18n,
+  getGameConfig,
+  getPresetDecks,
+  getPublicCard,
+  getPublicCards,
+  normalizeI18nLang,
+} = require('./cardDataService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks } = require('./deckService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
@@ -55,12 +65,6 @@ const redis = new Redis(REDIS_URL, {
 redis.on('error', () => {});
 
 const staticCardMap = new Map(staticCards.map((card) => [card.id, card]));
-const I18N_LANGS = ['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko'];
-const I18N_LANG_ALIASES = new Map([
-  ['zhTW', 'zh-TW'],
-  ['zhCN', 'zh-CN'],
-  ['zhHK', 'zh-HK'],
-]);
 
 async function initSchema() {
   // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
@@ -291,35 +295,6 @@ function optionalString(value) {
   return typeof value === 'string' ? value.slice(0, 120) : undefined;
 }
 
-function cardRowToDef(row) {
-  const def = {
-    id: row.id,
-    name: row.name,
-    pack: row.pack,
-    song: row.song || '',
-    illustrator: row.illustrator || '',
-    rarity: row.rarity || '',
-    element: row.element,
-    type: row.type,
-    clock: row.clock ?? 0,
-    attack:
-      row.attack_night === null ||
-      row.attack_night === undefined ||
-      row.attack_day === null ||
-      row.attack_day === undefined
-        ? null
-        : { night: row.attack_night, day: row.attack_day },
-    powerCost: row.power_cost ?? 0,
-    sendToPower: row.send_to_power ?? 0,
-    effect: row.effect || '',
-    image: row.image || '',
-    errata: row.errata || '',
-  };
-  if (row.en_name_official) def.enNameOfficial = row.en_name_official;
-  if (row.en_effect_official) def.enEffectOfficial = row.en_effect_official;
-  return def;
-}
-
 function cardDefToDbParams(card) {
   const attack =
     card.attack && typeof card.attack === 'object'
@@ -393,30 +368,6 @@ function normalizeCardForUpsert(id, body, baseCard) {
     image: typeof candidate.image === 'string' ? candidate.image : '',
     errata: typeof candidate.errata === 'string' ? candidate.errata : '',
   };
-}
-
-function filterStaticCards(searchParams) {
-  let cards = staticCards;
-  const pack = searchParams.get('pack');
-  const element = searchParams.get('element');
-  const type = searchParams.get('type');
-  if (pack) cards = cards.filter((card) => card.pack === pack);
-  if (element) cards = cards.filter((card) => card.element === element);
-  if (type) cards = cards.filter((card) => card.type === type);
-  return cards;
-}
-
-function normalizeI18nLang(lang) {
-  if (typeof lang !== 'string') return null;
-  const canonical = I18N_LANG_ALIASES.get(lang) || lang;
-  return I18N_LANGS.includes(canonical) ? canonical : null;
-}
-
-function staticI18nForCard(cardId) {
-  const source = staticCardI18n && typeof staticCardI18n === 'object' ? staticCardI18n[cardId] : null;
-  return Object.fromEntries(
-    I18N_LANGS.map((lang) => [lang, source && typeof source[lang] === 'string' ? source[lang] : '']),
-  );
 }
 
 function sanitizePayload(action, payload) {
@@ -851,129 +802,39 @@ function handleRequest(req, res) {
     // Public: list card definitions from PG, falling back to static cards.json when cards are not seeded.
     if (pathname === '/api/cards' && method === 'GET') {
       res.setHeader('Cache-Control', 'public, max-age=300');
-      try {
-        const conditions = [];
-        const values = [];
-        for (const [param, column] of [
-          ['pack', 'pack'],
-          ['element', 'element'],
-          ['type', 'type'],
-        ]) {
-          const value = url.searchParams.get(param);
-          if (!value) continue;
-          values.push(value);
-          conditions.push(`${column} = $${values.length}`);
-        }
-        const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const cards = (
-          await pool.query(
-            `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
-                    attack_night, attack_day, power_cost, send_to_power, effect,
-                    en_effect_official, image, errata
-             FROM cards ${where}
-             ORDER BY id`,
-            values,
-          )
-        ).rows;
-        if (cards.length > 0) {
-          json(cards.map(cardRowToDef));
-          return;
-        }
-
-        const hasSeededCards = (await pool.query('SELECT 1 FROM cards LIMIT 1')).rows.length > 0;
-        if (hasSeededCards) {
-          json([]);
-          return;
-        }
-      } catch {
-        // Keep the API usable in offline/dev environments where PG card data is not available.
-      }
-      json(filterStaticCards(url.searchParams));
+      json(await getPublicCards(pool, url.searchParams, staticCards));
       return;
     }
 
     // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯（與 data/card-effects-i18n.json 結構相同）
     if (pathname === '/api/cards/i18n' && method === 'GET') {
-      try {
-        const rows = (await pool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang')).rows;
-        if (rows.length > 0) {
-          const grouped = {};
-          for (const row of rows) {
-            if (!grouped[row.card_id]) grouped[row.card_id] = {};
-            grouped[row.card_id][row.lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
-          }
-          json(grouped);
-          return;
-        }
-      } catch {
-        // Fallback below
-      }
-      json(staticCardI18n);
+      json(await getAllCardI18n(pool, staticCardI18n));
       return;
     }
 
     const publicCardI18nRoute = pathname.match(/^\/api\/cards\/([^/]+)\/i18n$/);
     if (publicCardI18nRoute && method === 'GET') {
       const cardId = decodeURIComponent(publicCardI18nRoute[1]);
-      const translations = staticI18nForCard(cardId);
-      try {
-        const rows = (
-          await pool.query('SELECT lang, effect_text FROM card_effects_i18n WHERE card_id = $1', [cardId])
-        ).rows;
-        for (const row of rows) {
-          const lang = normalizeI18nLang(row.lang);
-          if (lang) translations[lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
-        }
-      } catch {
-        // Static fallback already populated above.
-      }
-      json(translations);
+      json(await getCardI18n(pool, staticCardI18n, cardId));
       return;
     }
 
     const publicCardRoute = pathname.match(/^\/api\/cards\/([^/]+)$/);
     if (publicCardRoute && method === 'GET') {
       const cardId = decodeURIComponent(publicCardRoute[1]);
-      try {
-        const card = (
-          await pool.query(
-            `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
-                    attack_night, attack_day, power_cost, send_to_power, effect,
-                    en_effect_official, image, errata
-             FROM cards
-             WHERE id = $1`,
-            [cardId],
-          )
-        ).rows[0];
-        if (card) {
-          json(cardRowToDef(card));
-          return;
-        }
-      } catch {
-        // Static fallback below.
-      }
-
-      const fallback = staticCardMap.get(cardId);
-      if (!fallback) return json({ error: 'Card not found' }, 404);
-      json(fallback);
+      const result = await getPublicCard(pool, staticCardMap, cardId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
     if (pathname === '/api/config' && method === 'GET') {
-      const rows = (await pool.query('SELECT key, value FROM game_config ORDER BY key')).rows;
-      json(Object.fromEntries(rows.map((row) => [row.key, row.value])));
+      json(await getGameConfig(pool));
       return;
     }
 
     if (pathname === '/api/preset-decks' && method === 'GET') {
-      const rows = (await pool.query('SELECT id, name, card_ids FROM preset_decks ORDER BY id')).rows;
-      json(
-        rows.map((deck) => ({
-          id: deck.id,
-          name: deck.name,
-          cardIds: Array.isArray(deck.card_ids) ? deck.card_ids : [],
-        })),
-      );
+      json(await getPresetDecks(pool));
       return;
     }
 
