@@ -41,7 +41,7 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 - **響應式設計** — 桌面/平板/手機自適應
 - **六語言** — 繁體中文（台灣）、粵語（香港）、簡體中文、日本語、English、한국어
 - **互動式教學** — 新手引導，逐步學習遊戲規則
-- **牌組編輯器** — 422 張卡篩選/排序/組牌
+- **牌組編輯器** — 422 張卡篩選/排序/組牌，支援伺服器同步與本地自訂牌組
 - **對戰紀錄** — 本地歷史記錄
 - **排行榜** — ELO 評分系統
 
@@ -60,13 +60,14 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 ┌─────────────────────────────────────────────┐
 │              前端 (Vite + React)             │
 │  React 19 · TypeScript · React Router 7     │
-│  boardgame.io Client · 純 CSS 變數          │
+│  Tailwind CSS 4 · daisyUI 5 · Lucide        │
+│  boardgame.io Client                        │
 └──────────────────┬──────────────────────────┘
                    │ HTTP / WebSocket
 ┌──────────────────┴──────────────────────────┐
 │           遊戲伺服器 (port 3000)             │
 │  boardgame.io Server · Koa · Socket.IO      │
-│  /api/* 代理 → API Server                   │
+│  Redis Adapter (Pub/Sub) · /api/* 代理      │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────┴────────────────────────────┐
@@ -78,19 +79,21 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 
 ### 技術棧
 
-| 領域         | 技術                                           | 版本      |
-| ------------ | ---------------------------------------------- | --------- |
-| UI 框架      | React                                          | 19        |
-| 路由         | React Router                                   | 7         |
-| 多人遊戲框架 | boardgame.io                                   | 0.50.2    |
-| 建構工具     | Vite                                           | 7         |
-| 語言         | TypeScript（strict 模式）                      | 5.8       |
-| 測試         | vitest（含 `@vitest/coverage-v8`）             | 4         |
-| 屬性測試     | fast-check                                     | 4         |
-| 程式碼風格   | ESLint（typescript-eslint）                    | 9         |
-| 格式化       | Prettier                                       | 3         |
-| PWA          | vite-plugin-pwa                                | 1         |
-| 後端         | Node HTTP + PostgreSQL + Redis（pg / ioredis） | Node >=20 |
+| 領域         | 技術                                                    | 版本      |
+| ------------ | ------------------------------------------------------- | --------- |
+| UI 框架      | React                                                   | 19        |
+| 路由         | React Router                                            | 7         |
+| CSS 框架     | Tailwind CSS + daisyUI 5 + Lucide React 圖示            | 4 / 5     |
+| 多人遊戲框架 | boardgame.io                                            | 0.50.2    |
+| 建構工具     | Vite                                                    | 7         |
+| 語言         | TypeScript（strict 模式）                               | 5.8       |
+| 測試         | vitest（含 `@vitest/coverage-v8`）                      | 4         |
+| 屬性測試     | fast-check                                              | 4         |
+| 程式碼風格   | ESLint（typescript-eslint）                             | 9         |
+| 格式化       | Prettier                                                | 3         |
+| TypeScript 執行 | tsx                                                | 4         |
+| PWA          | vite-plugin-pwa                                         | 1         |
+| 後端         | Node HTTP + PostgreSQL + Redis（pg / ioredis）          | Node >=20 |
 
 ### 核心遊戲引擎
 
@@ -109,8 +112,9 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 | 卡牌數據 | `cards.json` (git)            | 422 張卡，靜態數據                  |
 | 卡圖     | Cloudflare R2 (`r2.dan.tw`)   | 422 張卡圖 CDN                      |
 | 用戶帳號 | PostgreSQL (`api/server.cjs`) | 註冊/登入/ELO                       |
-| 牌組     | PostgreSQL + localStorage     | 伺服器同步 + 本地備份               |
+| 牌組     | PostgreSQL + localStorage     | 伺服器同步 + 本地備份 + 本地自訂牌組 |
 | 對戰紀錄 | PostgreSQL + localStorage     | ELO 變動 + 歷史 + 已清理 action log |
+| 線上 Session | localStorage             | 線上對戰重連資訊                    |
 | 語言偏好 | localStorage                  | 瀏覽器本地                          |
 
 ---
@@ -155,11 +159,13 @@ npm run server
 | `npm run format`               | Prettier 格式化寫入                                                        |
 | `npm run format:check`         | Prettier 格式檢查（CI 使用）                                               |
 | `npm test`                     | vitest 單元測試（單次執行）                                                |
+| `npm run test:watch`           | vitest 監控模式（自動重跑）                                                |
 | `npm run test:coverage`        | vitest 單元測試含覆蓋率報告                                                |
 | `npm run smoke`                | 遊戲邏輯 smoke 測試                                                        |
 | `npm run smoke:api`            | 帳號/牌組/對戰/排行榜 API loop                                             |
 | `npm run smoke:online`         | 線上對戰 smoke 測試                                                        |
 | `npm run rule:audit`           | 效果解析覆蓋率審計                                                         |
+| `npm run seed:cards`           | 將 `cards.json` 卡牌數據匯入 PostgreSQL（供 API 查詢）                     |
 | `npm run migrate:sqlite-to-pg` | 將舊 SQLite 資料遷移至 PostgreSQL（`users`/`decks`/`matches`，可重複執行） |
 | `npm run server`               | 啟動 boardgame.io 遊戲伺服器                                               |
 | `npm run preview`              | 預覽 Vite 生產構建結果                                                     |
@@ -218,39 +224,55 @@ zutomayo-card-online/
 │   │   ├── GameLogic.ts       # 核心規則（回合、戰鬥、傷害）
 │   │   ├── Game.ts            # boardgame.io Game 定義
 │   │   ├── types.ts           # 類型定義
-│   │   ├── ai.ts              # AI 對手邏輯
+│   │   ├── ai.ts              # AI 對手邏輯（簡單/普通/困難）
+│   │   ├── useAIMoves.ts      # React hook：AI 自動出牌
 │   │   ├── chronos.ts         # Chronos 晝夜系統
 │   │   ├── matchHistory.ts    # 對戰紀錄
-│   │   ├── onlineSession.ts   # 線上房間 session 管理
 │   │   ├── cards/             # 卡牌數據加載與牌組構建
-│   │   │   ├── loader.ts      # 卡牌數據加載
+│   │   │   ├── loader.ts      # 卡牌數據加載（本地 + API）
 │   │   │   ├── deckBuilder.ts # 牌組構建驗證
-│   │   │   └── presetDecks.ts # 預設牌組
-│   │   └── effects/           # 效果引擎
-│   │       ├── parser.ts      # 日文效果文字 → 結構化數據
-│   │       ├── executor.ts    # 結構化數據 → 遊戲狀態變更
-│   │       ├── types.ts       # 效果類型定義
-│   │       └── choices.ts     # 玩家選擇流程
+│   │   │   ├── presetDecks.ts # 預設牌組
+│   │   │   ├── customDeck.ts  # 本地自訂牌組（localStorage）
+│   │   │   └── i18n.ts        # 卡牌翻譯工具
+│   │   ├── effects/           # 效果引擎
+│   │   │   ├── parser.ts      # 日文效果文字 → 結構化數據
+│   │   │   ├── executor.ts    # 結構化數據 → 遊戲狀態變更
+│   │   │   ├── types.ts       # 效果類型定義
+│   │   │   └── choices.ts     # 玩家選擇流程
+│   │   └── __tests__/         # 遊戲引擎測試
+│   │       ├── chronos.test.ts
+│   │       └── invariants.test.ts
 │   ├── components/            # React 組件
-│   │   ├── Board.tsx          # 遊戲主畫面
+│   │   ├── Board.tsx          # 遊戲主畫面（~78K）
 │   │   ├── Card.tsx           # 卡牌渲染 + Popover
 │   │   ├── Chronos.tsx        # Chronos 時鐘 SVG
+│   │   ├── AIGame.tsx         # AI 對戰 UI 邏輯
+│   │   ├── OnlineGame.tsx     # 線上對戰 UI 邏輯
+│   │   ├── OnlineRoomInfo.tsx # 線上房間資訊面板
 │   │   ├── DeckEditor.tsx     # 牌組編輯器
 │   │   ├── InteractiveTutorial.tsx # 互動式教學
 │   │   ├── LanguageSwitcher.tsx # 語言切換器
 │   │   ├── MatchHistory.tsx   # 對戰紀錄
-│   │   └── ...
+│   │   └── lobby/             # 大廳子組件
+│   │       ├── AuthSection.tsx      # 登入/註冊區塊
+│   │       ├── DeckSelector.tsx     # 牌組選擇器
+│   │       ├── DifficultyButtons.tsx # 難度按鈕（AI 模式）
+│   │       ├── OnlinePanel.tsx      # 線上配對面板
+│   │       └── shared.ts            # 共用類型
 │   ├── pages/                 # 頁面路由
-│   │   ├── LobbyPage.tsx      # 大廳
+│   │   ├── LobbyPage.tsx      # 首頁大廳
 │   │   ├── LocalGamePage.tsx  # 本機對戰
-│   │   ├── AIGamePage.tsx     # AI 練習
-│   │   ├── OnlineGamePage.tsx # 線上對戰
-│   │   ├── DeckEditorPage.tsx # 牌組編輯器
+│   │   ├── AILobbyPage.tsx    # AI 模式選單
+│   │   ├── AIGamePage.tsx     # AI 對戰頁面
+│   │   ├── OnlineLobbyPage.tsx # 線上模式選單
+│   │   ├── OnlineGamePage.tsx # 線上對戰頁面
+│   │   ├── DeckEditorPage.tsx # 牌組編輯器（路由版）
 │   │   ├── MatchHistoryPage.tsx # 對戰紀錄
 │   │   ├── LeaderboardPage.tsx # 排行榜
 │   │   ├── AdminPage.tsx      # 管理後台
-│   │   └── I18nManager.tsx    # i18n 管理
+│   │   └── I18nManager.tsx    # i18n 翻譯管理
 │   ├── i18n/                  # 國際化
+│   │   ├── index.ts           # i18n 核心（t() / translate()）
 │   │   ├── zh-TW.ts           # 繁體中文（台灣）
 │   │   ├── zh-HK.ts           # 粵語（香港）
 │   │   ├── zh-CN.ts           # 簡體中文
@@ -258,23 +280,39 @@ zutomayo-card-online/
 │   │   ├── en.ts              # English
 │   │   └── ko.ts              # 한국어
 │   ├── api/                   # API 客戶端
-│   │   └── client.ts
-│   ├── server.ts              # boardgame.io 遊戲伺服器
-│   └── App.tsx                # 應用入口
+│   │   └── client.ts          # fetch wrapper（登入/牌組/對戰/配對）
+│   ├── server/                # 遊戲伺服器擴展
+│   │   ├── db/
+│   │   │   └── postgres-adapter.ts # PostgreSQL 適配器
+│   │   └── transport/
+│   │       └── redis-pubsub.ts     # Redis Pub/Sub 傳輸層
+│   ├── onlineSession.ts       # 線上 Session 管理（localStorage 持久化）
+│   ├── onlineRoomStatus.ts    # 線上房間狀態輪詢
+│   ├── server.ts              # boardgame.io 遊戲伺服器入口
+│   ├── App.tsx                # 應用入口（路由 + NavBar + 教學 + 重連）
+│   └── main.tsx               # React DOM 掛載點
 ├── api/                       # API 伺服器
-│   └── server.cjs             # Node HTTP + PostgreSQL + Redis
-├── scripts/                   # 測試腳本
-├── data/                      # 翻譯數據
-├── cards.json                 # 422 張卡牌數據
-├── qa.json                    # 74 條官方 Q&A
-├── rules.md                   # 完整遊戲規則
-├── Dockerfile                 # 遊戲伺服器鏡像
-├── docker-compose.yml         # 四服務部署（PG + Redis + game + api）
+│   ├── server.cjs             # Node HTTP + PostgreSQL + Redis
+│   ├── package.json
+│   └── Dockerfile
+├── scripts/                   # 測試與工具腳本
+│   ├── game-smoke.ts          # 遊戲邏輯 smoke test（~148K）
+│   ├── api-smoke.ts           # API 整合 smoke test
+│   ├── online-smoke.ts        # 線上對戰 smoke test
+│   ├── rule-audit.ts          # 效果解析覆蓋率審計
+│   ├── effect-smoke.ts        # 效果引擎單元測試
+│   ├── seed-cards-pg.ts       # 卡牌數據匯入 PostgreSQL
+│   ├── migrate-sqlite-to-pg.ts # SQLite → PostgreSQL 遷移
+│   └── semantic-audit-dump.ts # 語意審計數據匯出
+├── data/                       # 翻譯數據
+├── cards.json                  # 422 張卡牌數據
+├── qa.json                     # 74 條官方 Q&A
+├── rules.md                    # 完整遊戲規則
+├── Dockerfile                  # 遊戲伺服器鏡像
+├── docker-compose.yml          # 四服務部署（PG + Redis + game + api）
 └── docs/
-    ├── API.md                 # REST API 文檔
-    └── DEPLOYMENT.md          # 部署指南
-```
-
+    ├── API.md                  # REST API 文檔
+    └── DEPLOYMENT.md           # 部署指南
 ---
 
 ## 效果引擎
@@ -339,9 +377,11 @@ zutomayo-card-online/
 
 | 路徑                    | 頁面             | 說明                       |
 | ----------------------- | ---------------- | -------------------------- |
-| `/`                     | LobbyPage        | 大廳（牌組選擇、模式切換） |
+| `/`                     | LobbyPage        | 首頁大廳（模式切換）       |
+| `/online`               | OnlineLobbyPage  | 線上對戰選單               |
+| `/ai`                   | AILobbyPage      | AI 練習選單                |
 | `/play/local`           | LocalGamePage    | 本機雙人對戰               |
-| `/play/ai`              | AIGamePage       | AI 練習                    |
+| `/play/ai`              | AIGamePage       | AI 對戰                    |
 | `/play/online/:matchID` | OnlineGamePage   | 線上對戰                   |
 | `/deck-builder`         | DeckEditorPage   | 牌組編輯器                 |
 | `/history`              | MatchHistoryPage | 對戰紀錄                   |
@@ -385,14 +425,14 @@ zutomayo-card-online/
 
 支援 6 種語言，所有 UI 文字和 250 張效果卡都有對應翻譯：
 
-| 語言             | 代碼  | 旗標 |
-| ---------------- | ----- | ---- |
-| 繁體中文（台灣） | zh-TW | 🇹🇼   |
-| 粵語（香港）     | zh-HK | 🇭🇰   |
-| 簡體中文         | zh-CN | 🇨🇳   |
-| 日本語           | ja    | 🇯🇵   |
-| English          | en    | 🇬🇧   |
-| 한국어           | ko    | 🇰🇷   |
+| 語言             | 代碼  |
+| ---------------- | ----- |
+| 繁體中文（台灣） | zh-TW |
+| 粵語（香港）     | zh-HK |
+| 簡體中文         | zh-CN |
+| 日本語           | ja    |
+| English          | en    |
+| 한국어           | ko    |
 
 翻譯管理：`/admin` → i18n 管理頁面
 
@@ -402,7 +442,7 @@ zutomayo-card-online/
 
 - [遊戲規則](rules.md) — 完整官方規則
 - [官方 Q&A](qa.json) — 74 條官方問答
-- [開發計劃](PLAN.md) — 11 個 Phase 完成狀態
+- [開發計劃](PLAN.md) — Phase 完成狀態
 - [REST API](docs/API.md) — API 端點文檔
 - [部署指南](docs/DEPLOYMENT.md) — Docker 部署說明
 

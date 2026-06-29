@@ -1,4 +1,7 @@
-import { ZutomayoCard } from './game/Game';
+import { ZutomayoCard, resetParsedEffects } from './game/Game';
+import { initCards } from './game/cards/loader';
+import { initEffectI18n } from './game/cards/i18n';
+import type { CardDef } from './game/types';
 import path from 'path';
 import fs from 'fs';
 import serve from 'koa-static';
@@ -66,6 +69,29 @@ const transport = new SocketIO({
 } as SocketOpts);
 
 const db = new PostgresAdapter();
+
+// === 卡牌資料初始化 ===
+// 遊戲伺服器從檔案系統載入卡牌數據供 boardgame.io server-side 遊戲邏輯使用。
+// 瀏覽器端則透過 API 動態載入（參見 App.tsx refreshCards）。
+try {
+  const cardsPath = path.join(root, 'cards.json');
+  if (fs.existsSync(cardsPath)) {
+    const cards = JSON.parse(fs.readFileSync(cardsPath, 'utf8')) as CardDef[];
+    initCards(cards);
+    // 卡片載入後重建 parsed effects cache
+    resetParsedEffects();
+    console.log(`[server] Loaded ${cards.length} cards from cards.json`);
+  }
+} catch (err) {
+  console.error('[server] Failed to load cards.json:', err);
+}
+try {
+  const i18nPath = path.join(root, 'data', 'card-effects-i18n.json');
+  if (fs.existsSync(i18nPath)) {
+    const i18n = JSON.parse(fs.readFileSync(i18nPath, 'utf8'));
+    initEffectI18n(i18n);
+  }
+} catch { /* translations are optional on server */ }
 
 const server = Server({
   games: [ZutomayoCard],

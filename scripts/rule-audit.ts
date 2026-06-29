@@ -1,6 +1,15 @@
-import { getAllCardDefs } from '../src/game/cards/loader';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { getAllCardDefs, initCards } from '../src/game/cards/loader';
 import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
 import type { ParsedEffect } from '../src/game/effects/types';
+
+// 初始化卡牌數據
+const cardsJsonPath = resolve('cards.json');
+if (existsSync(cardsJsonPath)) {
+  const cards = JSON.parse(readFileSync(cardsJsonPath, 'utf8'));
+  initCards(cards);
+}
 
 const executorSupportedActions = new Set([
   'boostAttack',

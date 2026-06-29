@@ -7314,6 +7314,104 @@ button.zone:focus-visible {
   border-color: color-mix(in oklch, var(--gold) 15%, transparent);
 }
 
+.battle-perspective-field {
+  --battlefield-dom-plane: perspective(900px) rotateX(38deg);
+  isolation: isolate;
+  position: relative;
+}
+
+.battlefield-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.95;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.battle-perspective-field > *:not(.battlefield-canvas) {
+  position: relative;
+  z-index: 1;
+}
+
+.battlefield-depth-row {
+  position: relative;
+  transform-style: preserve-3d;
+  transform-origin: center center;
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.battlefield-depth-row::before {
+  display: none;
+}
+
+.battlefield-depth-far {
+  flex-direction: row-reverse;
+  filter: saturate(0.78) brightness(0.86);
+  transform: var(--battlefield-dom-plane) translateY(0.2rem) scale(0.88);
+}
+
+.battlefield-depth-far > * {
+  transform: rotate(180deg);
+}
+
+.battlefield-depth-mid {
+  transform: var(--battlefield-dom-plane) translateY(0.1rem) scale(0.98);
+}
+
+.battlefield-depth-near {
+  transform: var(--battlefield-dom-plane) translateY(-0.2rem) scale(1.03);
+}
+
+.battlefield-depth-row .zone,
+.battlefield-depth-row .game-card,
+.battlefield-depth-row img,
+.battlefield-depth-row > div {
+  transform-style: preserve-3d;
+}
+
+.battlefield-depth-far .zone,
+.battlefield-depth-far > div,
+.battlefield-depth-near .zone,
+.battlefield-depth-near > div {
+  box-shadow:
+    inset 0 0.45rem 0.8rem rgba(0, 0, 0, 0.42),
+    0 0.75rem 1.5rem rgba(0, 0, 0, 0.22);
+}
+
+.battle-perspective-stage {
+  align-self: center;
+  isolation: isolate;
+  min-height: clamp(9.5rem, 25vh, 15rem);
+  padding: clamp(0.75rem, 2vh, 1.25rem) clamp(0.4rem, 2vw, 1.5rem);
+  position: relative;
+  width: min(100%, 36rem);
+}
+
+.battle-perspective-stage .battle-zone {
+  background: color-mix(in oklch, var(--lacquer-deep) 72%, transparent);
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  box-shadow:
+    inset 0 0.5rem 1rem rgba(0, 0, 0, 0.42),
+    0 0.9rem 1.8rem rgba(0, 0, 0, 0.24);
+}
+
+.battle-perspective-stage .opponent-battle-zone {
+  left: calc(50% - min(9rem, 46%));
+  transform: translate(-50%, -50%) rotate(180deg) scale(0.72);
+  transform-origin: center center;
+}
+
+.battle-perspective-stage .player-battle-zone {
+  left: calc(50% + min(9rem, 46%));
+  transform: translate(-50%, -50%) scale(0.72);
+  transform-origin: center center;
+  border-color: color-mix(in oklch, var(--gold) 34%, transparent);
+}
+
 .set-zone {
   border-color: color-mix(in oklch, var(--bone) 8%, transparent);
 }

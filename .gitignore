@@ -40,6 +40,10 @@ scripts/audit-dump.ts
 cards-by-pack/
 schema.json
 
+# Card data (now in PostgreSQL, files kept locally for dev/server)
+cards.json
+data/card-effects-i18n.json
+
 # Standalone admin HTML (replaced by React admin)
 admin/
 

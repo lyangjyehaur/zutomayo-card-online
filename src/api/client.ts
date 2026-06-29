@@ -94,6 +94,10 @@ export async function fetchCards(force = false): Promise<CardDef[]> {
   return data;
 }
 
+export async function fetchAllCardI18n(): Promise<Record<string, Record<string, string>>> {
+  return request<Record<string, Record<string, string>>>('/cards/i18n');
+}
+
 export async function fetchCardI18n(cardId: string): Promise<Record<string, string>> {
   return request<Record<string, string>>(`/cards/${encodeURIComponent(cardId)}/i18n`);
 }

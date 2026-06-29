@@ -1096,6 +1096,26 @@ function handleRequest(req, res) {
       return;
     }
 
+    // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯（與 data/card-effects-i18n.json 結構相同）
+    if (pathname === '/api/cards/i18n' && method === 'GET') {
+      try {
+        const rows = (await pool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang')).rows;
+        if (rows.length > 0) {
+          const grouped = {};
+          for (const row of rows) {
+            if (!grouped[row.card_id]) grouped[row.card_id] = {};
+            grouped[row.card_id][row.lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
+          }
+          json(grouped);
+          return;
+        }
+      } catch {
+        // Fallback below
+      }
+      json(staticCardI18n);
+      return;
+    }
+
     const publicCardI18nRoute = pathname.match(/^\/api\/cards\/([^/]+)\/i18n$/);
     if (publicCardI18nRoute && method === 'GET') {
       const cardId = decodeURIComponent(publicCardI18nRoute[1]);

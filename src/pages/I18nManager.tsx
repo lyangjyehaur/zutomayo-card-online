@@ -1,6 +1,6 @@
 import { useCallback, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { t, availableLocales, getLocaleLabel, getLocaleFlag, type Locale } from '../i18n';
+import { t, availableLocales, getLocaleLabel, type Locale } from '../i18n';
 import { zhTW } from '../i18n/zh-TW';
 import { zhHK } from '../i18n/zh-HK';
 import { zhCN } from '../i18n/zh-CN';
@@ -138,7 +138,7 @@ export function I18nManager() {
               className={`btn btn-sm ${selectedLocale === locale ? 'btn-active' : 'btn-ghost'}`}
               onClick={() => setSelectedLocale(locale)}
             >
-              {getLocaleFlag(locale)} {getLocaleLabel(locale)}
+              {getLocaleLabel(locale)}
             </button>
           ))}
         </div>
@@ -177,7 +177,7 @@ export function I18nManager() {
               <th>{t('admin.i18nColKey')}</th>
               <th>{t('admin.i18nColBase')}</th>
               <th>
-                {getLocaleFlag(selectedLocale)} {getLocaleLabel(selectedLocale)}
+                {getLocaleLabel(selectedLocale)}
               </th>
               <th>{t('admin.i18nColStatus')}</th>
             </tr>

@@ -31,12 +31,12 @@ const localeLabels: Record<Locale, string> = {
 };
 
 const localeFlags: Record<Locale, string> = {
-  'zh-TW': '🇹🇼',
-  'zh-HK': '🇭🇰',
-  'zh-CN': '🇨🇳',
-  ja: '🇯🇵',
-  en: '🇬🇧',
-  ko: '🇰🇷',
+  'zh-TW': '',
+  'zh-HK': '',
+  'zh-CN': '',
+  ja: '',
+  en: '',
+  ko: '',
 };
 
 const listeners = new Set<() => void>();

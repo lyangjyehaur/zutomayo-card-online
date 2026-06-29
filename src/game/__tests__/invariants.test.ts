@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { getAllCardDefs } from '../cards/loader';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { initCards, getAllCardDefs, isCardsInitialized } from '../cards/loader';
 import { parseAllEffects, parseEffect } from '../effects/parser';
 import type { ParsedEffect, EffectTrigger, ActionType } from '../effects';
 import {
@@ -15,6 +17,12 @@ import {
   submitPendingChoice,
 } from '../GameLogic';
 import type { GameState, JankenChoice, PlayerIndex, SetSlot } from '../types';
+
+// 從 cards.json 載入卡牌數據（測試環境無 API/server，直接讀檔案）
+const cardsJsonPath = resolve('cards.json');
+if (!isCardsInitialized() && existsSync(cardsJsonPath)) {
+  initCards(JSON.parse(readFileSync(cardsJsonPath, 'utf8')));
+}
 
 // 預先解析所有卡牌效果，供遊戲流程使用
 const parsedEffects = parseAllEffects(getAllCardDefs().map((card) => ({ id: card.id, effect: card.effect })));

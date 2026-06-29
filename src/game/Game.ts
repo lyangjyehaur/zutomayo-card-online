@@ -8,7 +8,7 @@ import type {
   SetSlot,
   ZutomayoSetupData,
 } from './types';
-import { getAllCardDefs } from './cards/loader';
+import { getAllCardDefs, isCardsInitialized } from './cards/loader';
 import { parseAllEffects } from './effects';
 import {
   chooseJanken,
@@ -31,7 +31,24 @@ export type { ZutomayoSetupData } from './types';
 // its reducer, so keeping it local works in both Vite and the Node server.
 const INVALID_MOVE = 'INVALID_MOVE';
 
-const parsedEffects = parseAllEffects(getAllCardDefs().map((card) => ({ id: card.id, effect: card.effect })));
+let _parsedEffects: ReturnType<typeof parseAllEffects> | null = null;
+
+function getParsedEffects(): ReturnType<typeof parseAllEffects> {
+  if (!_parsedEffects) {
+    if (!isCardsInitialized()) {
+      // 尚未初始化 — 強制用當前 getAllCardDefs()（可能是空陣列）
+      // 所有 move 第一次被呼叫時，卡片資料應該已經就緒
+      // （由 server.ts initCards 或 App.tsx refreshCards 保證）
+    }
+    _parsedEffects = parseAllEffects(getAllCardDefs().map((card) => ({ id: card.id, effect: card.effect })));
+  }
+  return _parsedEffects;
+}
+
+/** 清除 parsed effects cache（測試用，或在 cards 重新載入後呼叫） */
+export function resetParsedEffects(): void {
+  _parsedEffects = null;
+}
 
 function playerIndex(playerID: string | null): PlayerIndex | null {
   return playerID === '0' || playerID === '1' ? (Number(playerID) as PlayerIndex) : null;
@@ -126,20 +143,20 @@ const moves: Record<string, Move<GameState>> = {
   },
   confirmReady: ({ G, playerID }) => {
     const player = playerIndex(playerID);
-    if (player === null || !confirmReady(G, player, parsedEffects)) return INVALID_MOVE;
+    if (player === null || !confirmReady(G, player, getParsedEffects())) return INVALID_MOVE;
   },
   // P3-16：線上回合超時由伺服器權威判斷，強制跳過該玩家回合（避免卡死）。
   timeoutSkip: ({ G, playerID }) => {
     const player = playerIndex(playerID);
-    if (player === null || !timeoutSkip(G, player, parsedEffects)) return INVALID_MOVE;
+    if (player === null || !timeoutSkip(G, player, getParsedEffects())) return INVALID_MOVE;
   },
   resolvePendingEffect: ({ G, playerID }, index: number) => {
     const player = playerIndex(playerID);
-    if (player === null || !resolvePendingEffectChoice(G, player, index, parsedEffects)) return INVALID_MOVE;
+    if (player === null || !resolvePendingEffectChoice(G, player, index, getParsedEffects())) return INVALID_MOVE;
   },
   submitPendingChoice: ({ G, playerID }, optionIds: string[]) => {
     const player = playerIndex(playerID);
-    if (player === null || !submitPendingChoice(G, player, optionIds, parsedEffects)) return INVALID_MOVE;
+    if (player === null || !submitPendingChoice(G, player, optionIds, getParsedEffects())) return INVALID_MOVE;
   },
 };
 

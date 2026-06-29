@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { createInstance, getAllCardDefs } from '../src/game/cards/loader';
+import { createInstance, getAllCardDefs, initCards } from '../src/game/cards/loader';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import {
   getCharacterCountWarning,
@@ -33,9 +33,19 @@ import { collectTurnEffects, executeEffect, processTurnEffects } from '../src/ga
 import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
 import { CHRONOS_MAPPING, type GameState, type TimingEvent } from '../src/game/types';
 import type { ParsedEffect } from '../src/game/effects';
-import { ZutomayoCard } from '../src/game/Game';
+import { ZutomayoCard, resetParsedEffects } from '../src/game/Game';
 import { aiSelectCards } from '../src/game/ai';
 import type { Ctx } from 'boardgame.io';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+// 初始化卡牌數據（smoke test 直接讀取 cards.json）
+const cardsJsonPath = resolve('cards.json');
+if (existsSync(cardsJsonPath)) {
+  const cards = JSON.parse(readFileSync(cardsJsonPath, 'utf8'));
+  initCards(cards);
+  resetParsedEffects();
+}
 
 const require = createRequire(import.meta.url);
 const { Client } = require('boardgame.io/client') as typeof import('boardgame.io/client');

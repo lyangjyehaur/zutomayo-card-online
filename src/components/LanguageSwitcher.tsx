@@ -1,4 +1,4 @@
-import { availableLocales, getLocaleFlag, getLocaleLabel, setLocale, t, useLocale, type Locale } from '../i18n';
+import { availableLocales, getLocaleLabel, setLocale, t, useLocale, type Locale } from '../i18n';
 
 export function LanguageSwitcher() {
   const locale = useLocale();
@@ -14,7 +14,7 @@ export function LanguageSwitcher() {
       >
         {availableLocales.map((option) => (
           <option key={option} value={option} className="bg-lacquer-deep text-bone">
-            {getLocaleFlag(option)} {getLocaleLabel(option)}
+            {getLocaleLabel(option)}
           </option>
         ))}
       </select>

@@ -120,6 +120,70 @@ function jankenLabel(choice: JankenChoice): string {
   return labels[choice];
 }
 
+function BattlefieldCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const parent = canvas?.parentElement;
+    if (!canvas || !parent) return;
+
+    const draw = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(1, rect.width);
+      const height = Math.max(1, rect.height);
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      const pathTrapezoid = (leftTop: number, rightTop: number, leftBottom: number, rightBottom: number, yTop: number, yBottom: number) => {
+        ctx.beginPath();
+        ctx.moveTo(leftTop, yTop);
+        ctx.lineTo(rightTop, yTop);
+        ctx.lineTo(rightBottom, yBottom);
+        ctx.lineTo(leftBottom, yBottom);
+        ctx.closePath();
+      };
+
+      const topY = height * 0.16;
+      const bottomY = height * 0.96;
+      const leftTop = width * 0.16;
+      const rightTop = width * 0.84;
+      const leftBottom = width * -0.08;
+      const rightBottom = width * 1.08;
+
+      const fieldGradient = ctx.createLinearGradient(0, topY, 0, bottomY);
+      fieldGradient.addColorStop(0, 'rgba(38, 29, 54, 0.20)');
+      fieldGradient.addColorStop(0.48, 'rgba(28, 21, 42, 0.38)');
+      fieldGradient.addColorStop(1, 'rgba(8, 9, 18, 0.76)');
+
+      pathTrapezoid(leftTop, rightTop, leftBottom, rightBottom, topY, bottomY);
+      ctx.fillStyle = fieldGradient;
+      ctx.fill();
+
+      const glow = ctx.createRadialGradient(width * 0.5, height * 0.58, 0, width * 0.5, height * 0.58, width * 0.42);
+      glow.addColorStop(0, 'rgba(199, 83, 180, 0.13)');
+      glow.addColorStop(1, 'rgba(199, 83, 180, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, width, height);
+    };
+
+    const observer = new ResizeObserver(draw);
+    observer.observe(parent);
+    draw();
+
+    return () => observer.disconnect();
+  }, []);
+
+  return <canvas ref={canvasRef} className="battlefield-canvas" aria-hidden="true" />;
+}
+
 function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | null; onAction?: () => void }) {
   if (!message) return null;
 
@@ -1419,10 +1483,11 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       </header>
 
       {/* 雙欄佈局 — header 浮在上面，pt-14 撐開頂部空間 */}
-      <div className="relative z-10 grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-14 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-4 lg:overflow-hidden lg:px-6">
+      <div className="relative z-10 grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-14 lg:grid-cols-[minmax(0,1fr)_280px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6">
 
         {/* ===== 左欄：戰場 ===== */}
-        <div className="flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
+        <div className="battle-perspective-field flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
+          <BattlefieldCanvas />
 
           {/* 對手區域 — flex-1 justify-start（照搬 demo） */}
           <div className="flex h-auto min-h-[13rem] shrink-0 flex-col items-center justify-start gap-2 pt-2 lg:h-[240px] lg:gap-4 lg:pt-3">
@@ -1455,7 +1520,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               ))}
             </div>
             {/* 對手設置區 — CBA 從右到左 + 上下顛倒 + 充能/牌組/深淵 */}
-            <div className="flex max-w-full items-start gap-2 overflow-x-auto pb-1 rotate-180 lg:gap-3">
+            <div className="battlefield-depth-row battlefield-depth-far flex max-w-full items-start gap-2 overflow-x-auto pb-1 lg:gap-3">
               {/* 對手充能區 */}
               <div className="flex flex-col items-center gap-1">
                 {opponent.powerCharger.length > 0 ? (
@@ -1501,11 +1566,11 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           </div>
 
           {/* Chronos + 戰鬥區 */}
-          <div className="my-2 flex min-h-[10rem] flex-wrap items-center justify-center gap-3 lg:flex-1 lg:min-h-0 lg:gap-8">
+          <div className="battle-perspective-stage battlefield-depth-row battlefield-depth-mid my-2 flex min-h-[10rem] items-center justify-center lg:flex-1 lg:min-h-0">
             <FieldZone
               label={t('board.battleZone')}
               shortLabel={t('board.battleZoneShort')}
-              className="battle-zone opponent-battle-zone rotate-180"
+              className="battle-zone opponent-battle-zone"
               card={opponent.battleZone}
               size="normal"
               activeTime={time}
@@ -1533,7 +1598,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
           {/* 玩家區域 — flex-1 justify-end（照搬 demo） */}
           <div className="flex h-auto min-h-[18rem] shrink-0 flex-col items-center justify-end gap-3 pb-2 lg:h-[280px]">
             {/* 玩家設置區 + 充能/牌組 */}
-            <div className="flex max-w-full items-end gap-2 overflow-x-auto pb-1 lg:gap-3">
+            <div className="battlefield-depth-row battlefield-depth-near flex max-w-full items-end gap-2 overflow-x-auto pb-1 lg:gap-3">
               {/* 充能區 — 左邊 */}
               <div className="flex flex-col items-center gap-1">
                 {me.powerCharger.length > 0 ? (

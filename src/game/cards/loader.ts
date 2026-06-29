@@ -1,19 +1,26 @@
 import type { CardDef, CardInstance } from '../types';
-import cardsData from '../../../cards.json';
 
-const STATIC_CARDS = cardsData as CardDef[];
-
-const cardMap = new Map<string, CardDef>();
-let currentCards: CardDef[] = STATIC_CARDS;
+let cardMap = new Map<string, CardDef>();
+let currentCards: CardDef[] = [];
 let currentConfig: Record<string, unknown> = {};
 let cardsRefreshPromise: Promise<CardDef[]> | null = null;
+let _initialized = false;
 
-function replaceCards(cards: CardDef[]): void {
+export function isCardsInitialized(): boolean {
+  return _initialized;
+}
+
+/**
+ * 從外部載入卡牌數據（遊戲伺服器啟動時呼叫，讀取 cards.json 檔案系統）。
+ * 瀏覽器端請使用 loadCardsFromAPI() / refreshCards()。
+ */
+export function initCards(cards: CardDef[]): void {
   currentCards = cards;
   cardMap.clear();
   for (const card of cards) {
     cardMap.set(card.id, card);
   }
+  _initialized = true;
 }
 
 function isCardDefArray(value: unknown): value is CardDef[] {
@@ -36,12 +43,21 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
-replaceCards(STATIC_CARDS);
-
-export async function loadCardsFromAPI(): Promise<CardDef[]> {
+/**
+ * 從 API 載入卡牌數據。
+ * API 不可用時 fallback 到靜態 /cards.json（Vite dev 或 server 提供）。
+ */
+async function loadCardsFromAPI(): Promise<CardDef[]> {
+  // 先試 PG-backed API
   const cards = await fetchJson<unknown>('/api/cards');
   if (isCardDefArray(cards)) {
-    replaceCards(cards);
+    initCards(cards);
+    return getAllCardDefs();
+  }
+  // Fallback：靜態 cards.json
+  const staticCards = await fetchJson<unknown>('/cards.json');
+  if (isCardDefArray(staticCards)) {
+    initCards(staticCards);
   }
   return getAllCardDefs();
 }

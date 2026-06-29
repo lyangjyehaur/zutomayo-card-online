@@ -3,7 +3,10 @@ import { createRequire } from 'node:module';
 import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { ZutomayoCard } from '../src/game/Game';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { ZutomayoCard, resetParsedEffects } from '../src/game/Game';
+import { initCards } from '../src/game/cards/loader';
 import { validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import { PostgresAdapter } from '../src/server/db/postgres-adapter';
@@ -272,6 +275,14 @@ const transport = new ServerSocketIO({
   socketAdapter: socketIoAdapter,
   pubSub: redisPubSub,
 } as SocketOpts);
+
+// 初始化卡牌數據（供 server-side 遊戲邏輯使用）
+const onlineSmokeCardsPath = resolve('cards.json');
+if (existsSync(onlineSmokeCardsPath)) {
+  const onlineSmokeCards = JSON.parse(readFileSync(onlineSmokeCardsPath, 'utf8'));
+  initCards(onlineSmokeCards);
+  resetParsedEffects();
+}
 
 const server = Server({
   games: [ZutomayoCard],

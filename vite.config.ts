@@ -2,11 +2,49 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import fs from 'fs';
+import path from 'path';
+import type { Connect } from 'vite';
+
+// Vite 預設只 serve public/ 目錄下的檔案。
+// 此 middleware 讓 dev server 也能提供 cards.json 和 data/ 給前端 fallback 使用。
+function serveStaticData(): { name: string; configureServer: (server: { middlewares: Connect.Server }) => void } {
+  return {
+    name: 'static-data',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!req.url) return next();
+        const url = req.url;
+
+        if (url === '/cards.json') {
+          const filePath = path.resolve('cards.json');
+          if (fs.existsSync(filePath)) {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(fs.readFileSync(filePath));
+            return;
+          }
+        }
+
+        if (url?.startsWith('/data/')) {
+          const filePath = path.resolve('.' + url);
+          if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(fs.readFileSync(filePath));
+            return;
+          }
+        }
+
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig({
   plugins: [
     tailwindcss(),
     react(),
+    serveStaticData(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],

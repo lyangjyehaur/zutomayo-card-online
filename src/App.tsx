@@ -245,6 +245,10 @@ function RouterShell() {
       void refreshCards();
       void loadConfigFromAPI();
     });
+    // 同樣載入效果翻譯（API 優先，fallback 到靜態 JSON）
+    void import('./game/cards/i18n').then(({ loadEffectI18nFromAPI }) => {
+      void loadEffectI18nFromAPI();
+    });
   }, []);
 
   const startAI = (difficulty: AIDifficulty) => {
