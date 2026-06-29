@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
+const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
 let staticCards = [];
 try { staticCards = require('../cards.json'); } catch (_) { /* API container may not have cards.json */ }
@@ -817,10 +818,9 @@ function handleRequest(req, res) {
     const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
     if (matchLogRoute && method === 'GET') {
       const matchId = matchLogRoute[1];
-      const match = (await pool.query('SELECT id, action_log FROM matches WHERE id = $1', [matchId])).rows[0];
-      if (!match) return json({ error: 'Match not found' }, 404);
-      const actionLog = Array.isArray(match.action_log) ? match.action_log : [];
-      json({ matchId: match.id, actionLog: sanitizeActionLog(actionLog) });
+      const result = await getMatchActionLog(pool, matchId, sanitizeActionLog);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
@@ -844,23 +844,7 @@ function handleRequest(req, res) {
 
     // Leaderboard
     if (pathname === '/api/leaderboard' && method === 'GET') {
-      const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
-      const entries = (
-        await pool.query(
-          'SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT $1',
-          [limit],
-        )
-      ).rows;
-      json({
-        leaderboard: entries.map((e) => ({
-          id: e.id,
-          nickname: sanitizeText(e.nickname, 60),
-          elo: e.elo,
-          matchCount: e.match_count,
-          wins: e.wins,
-          winRate: e.match_count > 0 ? Math.round((e.wins / e.match_count) * 100) : 0,
-        })),
-      });
+      json(await getLeaderboard(pool, url.searchParams.get('limit'), sanitizeText));
       return;
     }
 
@@ -868,33 +852,7 @@ function handleRequest(req, res) {
     if (pathname === '/api/matches' && method === 'GET') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
-      const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
-      const matches = (
-        await pool.query(
-          `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
-       FROM matches m
-       LEFT JOIN users w ON m.winner_id = w.id
-       LEFT JOIN users l ON m.loser_id = l.id
-       WHERE m.player0_id = $1 OR m.player1_id = $2
-       ORDER BY m.created_at DESC LIMIT $3 OFFSET $4`,
-          [userId, userId, limit, offset],
-        )
-      ).rows;
-      json({
-        matches: matches.map((m) => ({
-          id: m.id,
-          winnerId: m.winner_id,
-          loserId: m.loser_id,
-          winnerNickname: m.winner_nickname,
-          loserNickname: m.loser_nickname,
-          winnerEloChange: m.winner_elo_change,
-          loserEloChange: m.loser_elo_change,
-          turns: m.turns,
-          duration: m.duration_seconds,
-          createdAt: m.created_at,
-        })),
-      });
+      json(await getUserMatches(pool, userId, url.searchParams.get('limit'), url.searchParams.get('offset')));
       return;
     }
 
@@ -958,31 +916,7 @@ function handleRequest(req, res) {
     // Admin：對戰列表
     if (pathname === '/api/admin/matches' && method === 'GET') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-      const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
-      const matches = (
-        await pool.query(
-          `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
-       FROM matches m
-       LEFT JOIN users w ON m.winner_id = w.id
-       LEFT JOIN users l ON m.loser_id = l.id
-       ORDER BY m.created_at DESC LIMIT $1`,
-          [limit],
-        )
-      ).rows;
-      json({
-        matches: matches.map((m) => ({
-          id: m.id,
-          winnerId: m.winner_id,
-          loserId: m.loser_id,
-          winnerNickname: m.winner_nickname,
-          loserNickname: m.loser_nickname,
-          winnerEloChange: m.winner_elo_change,
-          loserEloChange: m.loser_elo_change,
-          turns: m.turns,
-          duration: m.duration_seconds,
-          createdAt: m.created_at,
-        })),
-      });
+      json(await getAdminMatches(pool, url.searchParams.get('limit')));
       return;
     }
 
