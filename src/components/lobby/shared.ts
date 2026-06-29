@@ -62,7 +62,8 @@ export function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
       id,
       name: copy ? t(copy.nameKey) : deck.name,
       description: copy ? t(copy.descKey) : deck.name,
-      previewIds: deck.ids.slice(0, 3),
+      // 同屬性隨機牌組無固定卡牌組成，previewIds 留空，由 UI 顯示屬性描述。
+      previewIds: [],
     };
   });
 

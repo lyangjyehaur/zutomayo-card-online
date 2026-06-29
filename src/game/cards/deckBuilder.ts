@@ -1,4 +1,4 @@
-import type { CardInstance } from '../types';
+import type { CardInstance, Element } from '../types';
 import { createInstance, getAllCardDefs, getCardDef } from './loader';
 import { PRESET_DECKS } from './presetDecks';
 import { CUSTOM_DECK_NAME, loadCustomDeckIds } from './customDeck';
@@ -66,6 +66,7 @@ export function hasCustomDeck(): boolean {
 
 // Get a preset deck by name
 export function getPresetDeck(name: string): CardInstance[] {
+  if (name === RANDOM_DECK_NAME) return randomDeck();
   if (name === CUSTOM_DECK_NAME) {
     const ids = loadCustomDeckIds();
     if (!ids) throw new Error('No custom deck saved');
@@ -75,7 +76,8 @@ export function getPresetDeck(name: string): CardInstance[] {
   }
   const preset = PRESET_DECKS[name];
   if (!preset) throw new Error(`Unknown preset deck: ${name}`);
-  return buildDeck(preset.ids);
+  // 同屬性隨機：從該屬性卡池隨機抽取 20 張，每次開局都不同。
+  return randomElementDeck(preset.element);
 }
 
 // Get all preset deck names
@@ -99,6 +101,26 @@ export function randomDeck(): CardInstance[] {
   const characters = allCards.filter((c) => c.type === 'Character');
   const others = allCards.filter((c) => c.type !== 'Character');
   // 官方推薦 Character >= 50%（非強制）；隨機決定 10-15 張角色卡，其餘從非角色卡隨機抽取
+  const charCount = 10 + Math.floor(Math.random() * 6); // 10-15
+  const otherCount = 20 - charCount;
+  const deckChars = shuffle(characters).slice(0, charCount);
+  const deckOthers = shuffle(others).slice(0, otherCount);
+  const deck = shuffle([...deckChars, ...deckOthers]);
+  return deck.map((c) => createInstance(c.id));
+}
+
+/**
+ * 從指定屬性卡池隨機產生 20 張牌組。
+ *
+ * 與 randomDeck() 同標準（20 張、同卡最多 2 張、Character >= 50% 推薦），
+ * 但卡池限制為單一屬性。四個主要屬性（闇/炎/電気/風）各有 104-106 張卡、
+ * 59-60 張角色卡，足以隨機抽出合法牌組。カオス 屬性僅 4 張，不支援。
+ */
+export function randomElementDeck(element: Element): CardInstance[] {
+  const pool = getAllCardDefs().filter((c) => c.element === element);
+  const characters = pool.filter((c) => c.type === 'Character');
+  const others = pool.filter((c) => c.type !== 'Character');
+  // 官方推薦 Character >= 50%（非強制）；隨機決定 10-15 張角色卡
   const charCount = 10 + Math.floor(Math.random() * 6); // 10-15
   const otherCount = 20 - charCount;
   const deckChars = shuffle(characters).slice(0, charCount);
