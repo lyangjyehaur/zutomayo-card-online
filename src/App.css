@@ -6532,9 +6532,7 @@ button.zone:focus-visible {
   display: grid;
   place-items: center;
   padding: clamp(1rem, 3vw, 2rem);
-  background: rgba(3, 6, 14, 0.5);
-  backdrop-filter: blur(0.18rem);
-  animation: phase-fade-in 180ms ease-out;
+  pointer-events: none;
 }
 
 .phase-message-panel {
@@ -6741,35 +6739,35 @@ button.zone:focus-visible {
   animation: damage-float 850ms ease-out forwards;
 }
 
-/* HP 變化浮動提示（雙方區域各一組，顯示 +HP / -HP 與原因） */
+/* HP 變化浮動提示（置中面板風格，淡入後穩定停留再淡出） */
 @keyframes hp-change-float {
   0% {
     opacity: 0;
-    transform: translateY(0.5rem) scale(0.85);
+    transform: translateY(0.4rem) scale(0.96);
   }
-  18% {
+  8% {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-  72% {
+  90% {
     opacity: 1;
-    transform: translateY(-0.9rem) scale(1);
+    transform: translateY(0) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translateY(-1.8rem) scale(1.06);
+    transform: translateY(-0.3rem) scale(1);
   }
 }
 
 .hp-change-float {
   pointer-events: none;
-  animation: hp-change-float 1.6s ease-out forwards;
+  animation: hp-change-float 5s ease-out forwards;
   will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .hp-change-float {
-    animation-duration: 0.9s;
+    animation-duration: 3s;
   }
 }
 
@@ -8168,7 +8166,7 @@ button.zone:focus-visible {
   margin-bottom: 0.5rem;
 }
 
-/* ---------- 15. FeedbackOverlay（階段回饋浮層） ---------- */
+/* ---------- 15. FeedbackOverlay（階段回饋浮層，置中面板無遮罩） ---------- */
 .phase-message-overlay {
   position: fixed;
   inset: 0;
@@ -8176,8 +8174,20 @@ button.zone:focus-visible {
   align-items: center;
   justify-content: center;
   z-index: 50;
-  background: color-mix(in oklch, var(--lacquer-deep) 40%, transparent);
-  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+/* GameNoticeOverlay 專用：強制 fixed + 高 z-index，避免被祖先 overflow:hidden 裁掉。
+   針對 .phase-message-overlay 的多處衝突定義（L6528 absolute vs L8170 fixed）
+   用 !important 確保置中面板真正覆蓋全螢幕。 */
+.game-notice-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 200 !important;
+  pointer-events: none !important;
 }
 
 .phase-message-panel {

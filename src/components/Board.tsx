@@ -6,15 +6,22 @@ import type {
   CardInstance,
   ChronosTime,
   GameState,
+  GameNotice,
   HpChangeBreakdown,
-  HpChangeEntry,
   JankenChoice,
   PlayerIndex,
 } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
-import { Card, type CardSize } from './Card';
+import { Card, CardPopover, computePopoverPosition, type CardSize, type PopoverPosition } from './Card';
 import { Chronos } from './Chronos';
-import { getChronosTime, getMinimumSetCount, getRequiredSetCount } from '../game/GameLogic';
+import {
+  getBaseAttack,
+  getChronosTime,
+  getEffectiveAttack,
+  getMinimumSetCount,
+  getRequiredSetCount,
+  isAttackPowerInsufficient,
+} from '../game/GameLogic';
 import { saveMatchRecord } from '../game/matchHistory';
 import { t, useLocale } from '../i18n';
 import { getTranslatedEffect } from '../game/cards/i18n';
@@ -73,7 +80,37 @@ function translatedActionLogEffect(entry: ActionLogEntry, locale: string): strin
   return getTranslatedEffect(entry.pendingEffectCardDefId, locale);
 }
 
-function formatLogEntry(entry: ActionLogEntry, locale: string): { text: string; tone: 'battle' | 'set' | 'effect' | 'info' } {
+type LogSegment =
+  | { type: 'text'; text: string }
+  | { type: 'card'; cardDefId: string };
+
+type LogTone = 'battle' | 'set' | 'effect' | 'info';
+
+function seg(text: string): LogSegment {
+  return { type: 'text', text };
+}
+function cardSeg(cardDefId: string): LogSegment {
+  return { type: 'card', cardDefId };
+}
+
+function zoneLabel(zone: string): string {
+  if (zone === 'powerCharger') return t('board.powerCharger');
+  if (zone === 'abyss') return t('board.abyss');
+  if (zone === 'battleZone') return t('board.battleZone');
+  return zone;
+}
+
+function slotLabel(slot: string): string {
+  if (slot === 'A') return t('board.setZoneA');
+  if (slot === 'B') return t('board.setZoneB');
+  if (slot === 'C') return t('board.setZoneC' as never);
+  return slot;
+}
+
+function formatLogEntry(
+  entry: ActionLogEntry,
+  locale: string,
+): { segments: LogSegment[]; tone: LogTone } {
   const p = playerName(entry.player);
   const a = entry.action;
   const payload = entry.payload as Record<string, unknown> | undefined;
@@ -83,44 +120,125 @@ function formatLogEntry(entry: ActionLogEntry, locale: string): { text: string; 
   if (a === 'janken') {
     const choice = payload?.choice as string;
     const mark = choice === 'rock' ? '✊' : choice === 'paper' ? '✋' : '✌️';
-    return { text: `${p} ${t('board.janken')} ${mark}`, tone: 'info' };
+    return { segments: [seg(`${p} ${t('board.janken')} ${mark}`)], tone: 'info' };
   }
   if (a === 'mulligan') {
-    const count = payload?.redrawnCount as number ?? 0;
-    return { text: count > 0 ? `${p} ${t('board.redrewCards')} ${count} ${t('board.cardsUnit')}` : `${p} ${t('board.keepHand')}`, tone: 'info' };
+    const count = (payload?.redrawnCount as number) ?? 0;
+    const text =
+      count > 0 ? `${p} ${t('board.redrewCards')} ${count} ${t('board.cardsUnit')}` : `${p} ${t('board.keepHand')}`;
+    return { segments: [seg(text)], tone: 'info' };
   }
   if (a === 'setInitialCard') {
-    return { text: `${p} ${t('board.initialSet')} → ${t('board.battleZone')}`, tone: 'set' };
+    const cardDefId = payload?.cardDefId as string | undefined;
+    const segments: LogSegment[] = [seg(`${p} ${t('board.initialSet')} `)];
+    if (cardDefId) segments.push(cardSeg(cardDefId));
+    segments.push(seg(` → ${t('board.battleZone')}`));
+    return { segments, tone: 'set' };
   }
   if (a === 'setTurnCard') {
-    return { text: `${p} ${t('board.setCards')} → ${(payload?.slot as string) ?? '?'}`, tone: 'set' };
+    const cardDefId = payload?.cardDefId as string | undefined;
+    const slot = (payload?.slot as string) ?? '?';
+    const segments: LogSegment[] = [seg(`${p} ${t('board.setCards')} `)];
+    if (cardDefId) segments.push(cardSeg(cardDefId));
+    segments.push(seg(` → ${slotLabel(slot)}`));
+    return { segments, tone: 'set' };
+  }
+  if (a === 'zoneEntered') {
+    const cardDefId = payload?.cardDefId as string | undefined;
+    const zone = (payload?.zone as string) ?? '';
+    const segments: LogSegment[] = [seg(`${p} `)];
+    if (cardDefId) segments.push(cardSeg(cardDefId));
+    segments.push(seg(` → ${zoneLabel(zone)}`));
+    return { segments, tone: 'set' };
+  }
+  if (a === 'hpChange') {
+    const delta = (payload?.delta as number) ?? 0;
+    const reason = (payload?.reason as string) ?? '';
+    const before = (payload?.before as number) ?? 0;
+    const after = (payload?.after as number) ?? 0;
+    const sourceCardDefId = payload?.sourceCardDefId as string | undefined;
+    const reasonLabel = reason ? t(`board.hpChange.${reason}` as never) : '';
+    const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
+    const segments: LogSegment[] = [seg(`${p} HP ${before}→${after} (${deltaStr}) ${reasonLabel}`)];
+    if (sourceCardDefId) {
+      segments.push(seg(' · '));
+      segments.push(cardSeg(sourceCardDefId));
+    }
+    return { segments, tone: 'battle' };
   }
   if (a === 'confirmReady') {
-    return { text: `${p} ${t('board.readyWaiting')}`, tone: 'set' };
+    return { segments: [seg(`${p} ${t('board.readyWaiting')}`)], tone: 'set' };
   }
   if (a === 'timeoutSkip') {
-    return { text: `${p} ${t('board.timer')} ⏱`, tone: 'info' };
+    return { segments: [seg(`${p} ${t('board.timer')} ⏱`)], tone: 'info' };
   }
   if (a === 'chooseEffectOrder') {
-    return { text: `${p} ${t('board.chooseEffect')}`, tone: 'effect' };
+    return { segments: [seg(`${p} ${t('board.chooseEffect')}`)], tone: 'effect' };
   }
   if (a === 'submitPendingChoice') {
-    return { text: `${p} ${t('board.submitChoice')}`, tone: 'effect' };
+    return { segments: [seg(`${p} ${t('board.submitChoice')}`)], tone: 'effect' };
   }
   if (a === 'resolvePendingEffect' && effectText) {
-    return { text: `${p}: ${effectText}`, tone: 'effect' };
+    return { segments: [seg(`${p}: ${effectText}`)], tone: 'effect' };
   }
   if (a === 'gameOver') {
-    return { text: msg ?? t('board.gameOver'), tone: 'battle' };
+    return { segments: [seg(msg ?? t('board.gameOver'))], tone: 'battle' };
   }
-  // 有 result.message 時優先用；效果訊息若能對應到卡牌，顯示卡牌效果 i18n 文本。
   if (msg) {
-    if (effectText) return { text: `${p}: ${effectText}`, tone: 'effect' };
+    if (effectText) return { segments: [seg(`${p}: ${effectText}`)], tone: 'effect' };
     const isBattle = msg.includes('damage') || msg.includes('HP') || msg.includes('battle');
     const isEffect = msg.includes('effect') || msg.includes('draw') || msg.includes('discard') || msg.includes('send');
-    return { text: msg, tone: isBattle ? 'battle' : isEffect ? 'effect' : 'info' };
+    return { segments: [seg(msg)], tone: isBattle ? 'battle' : isEffect ? 'effect' : 'info' };
   }
-  return { text: `${p}: ${a}`, tone: 'info' };
+  return { segments: [seg(`${p}: ${a}`)], tone: 'info' };
+}
+
+/**
+ * log 行中的卡牌片段：顯示為 [卡名] 並支援 hover/touch 顯示 CardPopover 詳細資訊。
+ * 與戰場卡共用 CardPopover 和 computePopoverPosition，定位以 chip 的 DOM rect 為錨點。
+ */
+function LogCardChip({ cardDefId }: { cardDefId: string }) {
+  const [hovered, setHovered] = useState(false);
+  const [position, setPosition] = useState<PopoverPosition | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+  const def = getCardDef(cardDefId);
+
+  useEffect(() => {
+    if (!hovered) {
+      setPosition(null);
+      return;
+    }
+    const element = ref.current;
+    if (!element) return;
+    const update = () => setPosition(computePopoverPosition(element.getBoundingClientRect()));
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [hovered]);
+
+  if (!def) return <span>[{cardDefId}]</span>;
+  return (
+    <span
+      ref={ref}
+      className="cursor-help text-gold-soft underline decoration-dotted underline-offset-2"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      [{def.name}]
+      {hovered && position && <CardPopover def={def} position={position} />}
+    </span>
+  );
+}
+
+function renderLogSegments(segments: LogSegment[]): ReactNode {
+  return segments.map((s, i) => {
+    if (s.type === 'card') return <LogCardChip key={i} cardDefId={s.cardDefId} />;
+    return <span key={i}>{s.text}</span>;
+  });
 }
 
 function jankenMark(choice: JankenChoice | null): string {
@@ -161,7 +279,14 @@ function BattlefieldCanvas() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
-      const pathTrapezoid = (leftTop: number, rightTop: number, leftBottom: number, rightBottom: number, yTop: number, yBottom: number) => {
+      const pathTrapezoid = (
+        leftTop: number,
+        rightTop: number,
+        leftBottom: number,
+        rightBottom: number,
+        yTop: number,
+        yBottom: number,
+      ) => {
         ctx.beginPath();
         ctx.moveTo(leftTop, yTop);
         ctx.lineTo(rightTop, yTop);
@@ -208,22 +333,18 @@ function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | nul
 
   return (
     <div
-      className={`phase-message-overlay phase-message-${message.tone ?? 'neutral'} pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-lacquer-deep/55 px-4 text-bone backdrop-blur-sm`}
+      className={`phase-message-overlay phase-message-${message.tone ?? 'neutral'}`}
       role="status"
       aria-live="polite"
     >
-      <div className="pointer-events-auto min-w-72 max-w-md rounded-sm bg-lacquer p-4 text-center ring-1 ring-bone/10 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.9)]">
-        {message.kicker && (
-          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{message.kicker}</div>
-        )}
-        <strong className="block font-display text-lg italic text-bone">{message.title}</strong>
+      <div className="phase-message-panel pointer-events-auto">
+        {message.kicker && <div className="phase-message-kicker">{message.kicker}</div>}
+        <strong className="phase-message-title">{message.title}</strong>
         {message.lines?.map((line) => (
-          <p key={line} className="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-bone/50">
-            {line}
-          </p>
+          <p key={line}>{line}</p>
         ))}
         {message.actionLabel && onAction && (
-          <button className={primaryActionClass('mt-4')} type="button" onClick={onAction}>
+          <button className={`phase-message-action ${primaryActionClass()}`} type="button" onClick={onAction}>
             {message.actionLabel}
           </button>
         )}
@@ -232,159 +353,231 @@ function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | nul
   );
 }
 
-const HP_CHANGE_REASON_LABEL: Record<HpChangeEntry['reason'], string> = {
-  battle: 'board.hpChange.battle',
-  directDamage: 'board.hpChange.directDamage',
-  heal: 'board.hpChange.heal',
-  healOpponent: 'board.hpChange.healOpponent',
-  healBoth: 'board.hpChange.healBoth',
-};
-
-interface HpChangeFlash {
-  id: number;
-  delta: number;
-  reason: HpChangeEntry['reason'];
-  sourceCardDefId?: string;
-  breakdown?: HpChangeBreakdown;
-}
-
 /**
  * 格式化 breakdown 明細行的 value。
- * - 若該行附帶 cardDefId，顯示對應卡名（含附魔卡）。
+ * - 若該行附帶 cardDefId，同時顯示卡名與數值（如「卡名 30」）。
  * - 若 value 是 i18n key（以 'board.' 開頭），翻譯後顯示。
  * - 否則直接顯示原始 value（數字、+/- 等）。
  */
 function formatBreakdownValue(value: string, cardDefId?: string): string {
   if (cardDefId) {
     const def = getCardDef(cardDefId);
-    if (def?.name) return def.name;
+    if (def?.name) return `${def.name} ${value}`;
   }
   if (value.startsWith('board.')) return t(value as never);
   return value;
 }
 
 /**
- * 雙方區域的 HP 變化浮動提示。
+ * 統一遊戲事件提示 overlay（置中面板、無遮罩）。
  *
- * 監聽 G.recentHpChanges 中屬於 `player` 的新增項目（以 id 去重），
- * 每筆顯示 +HP / -HP 數字、原因，並附上完整計算明細（breakdown），
- * 說明這次 HP 是如何計算的（攻擊力、原始傷害、減傷、最終傷害 …），
- * 若有附魔卡參與減傷也會在明細中標示。約 3.4 秒後自動消失。
+ * 監聯 G.recentGameNotices 的新增項目（以 id 去重），佇列依序顯示：
+ * HP 變化、時鐘推進、戰鬥結果（平手 / 傷害減免）、回合切換。
+ * 每筆顯示固定時長後自動消失，期間累積的事件排隊播放，避免多個浮層互相競爭定位。
  *
- * 元件首次 mount 時會把 lastSeenId 設為當前 max id，避免回放歷史提示。
+ * 採用 phase-message-panel 樣式，與 FeedbackOverlay 視覺一致。
+ * 元件首次 mount 時跳過歷史 notice（lastSeenId 初始化為 -1，首次設為當前 max 並 return），
+ * 僅顯示 mount 後新增的事件。
  */
-function HpChangeFlashes({ G, player }: { G: GameState; player: PlayerIndex }) {
-  const lastSeenIdRef = useRef<number>(0);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const [active, setActive] = useState<HpChangeFlash[]>([]);
+function noticeDuration(notice: GameNotice): number {
+  const reduced = prefersReducedMotion();
+  if (notice.breakdown && notice.breakdown.lines.length > 0) return reduced ? 3000 : 5200;
+  return reduced ? 2200 : 3800;
+}
+
+function chronosTimeLabel(time: ChronosTime): string {
+  return time === 'night' ? t('board.notice.night' as never) : t('board.notice.day' as never);
+}
+
+function BreakdownBlock({ breakdown }: { breakdown: HpChangeBreakdown }) {
+  const participantNames = breakdown.participantCardDefIds
+    .map((id) => getCardDef(id)?.name)
+    .filter((n): n is string => Boolean(n));
+  return (
+    <div className="mt-1 min-w-[240px] max-w-[340px] border-t border-bone/10 pt-2">
+      <div className="mb-1 font-mono text-[8px] uppercase tracking-[0.22em] text-gold/70">
+        {t(breakdown.title as never)}
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {breakdown.lines.map((line, idx) => (
+          <div key={idx} className="flex items-baseline justify-between gap-2 font-mono text-[9px] text-bone/80">
+            <span className="text-bone/55">{t(line.label as never)}</span>
+            <span
+              className={
+                line.cardDefId
+                  ? 'max-w-[220px] truncate text-gold-soft'
+                  : line.value.startsWith('-')
+                    ? 'text-vermilion/85'
+                    : line.value.startsWith('+')
+                      ? 'text-[var(--teal)]/85'
+                      : 'text-bone/85'
+              }
+              title={line.cardDefId ? formatBreakdownValue(line.value, line.cardDefId) : undefined}
+            >
+              {formatBreakdownValue(line.value, line.cardDefId)}
+            </span>
+          </div>
+        ))}
+      </div>
+      {participantNames.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1 border-t border-bone/10 pt-1">
+          <span className="font-mono text-[8px] uppercase tracking-[0.18em] text-bone/40">
+            {t('board.hpChange.participants' as never)}
+          </span>
+          {participantNames.map((n, i) => (
+            <span
+              key={`${n}-${i}`}
+              className="rounded-sm border border-jade/30 bg-jade/10 px-1 py-px font-mono text-[8px] text-jade"
+            >
+              {n}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
+  switch (notice.kind) {
+    case 'hpChange': {
+      const isHeal = (notice.delta ?? 0) > 0;
+      const cardName = notice.sourceCardDefId ? getCardDef(notice.sourceCardDefId)?.name : undefined;
+      const ownerName = notice.player !== undefined ? playerName(notice.player) : '';
+      return (
+        <>
+          <div className="phase-message-kicker">
+            {ownerName}
+            {cardName ? ` · ${cardName}` : ''}
+          </div>
+          <strong
+            className={`phase-message-title font-display text-4xl italic ${isHeal ? 'text-[var(--teal)]' : 'text-vermilion'}`}
+          >
+            {isHeal ? '+' : ''}
+            {notice.delta}
+          </strong>
+          {notice.breakdown && <BreakdownBlock breakdown={notice.breakdown} />}
+        </>
+      );
+    }
+    case 'chronosChange': {
+      const sourceCardName = notice.chronosSourceCardDefId
+        ? getCardDef(notice.chronosSourceCardDefId)?.name
+        : undefined;
+      const fromTime = notice.chronosFromTime ? chronosTimeLabel(notice.chronosFromTime) : '';
+      const toTime = notice.chronosToTime ? chronosTimeLabel(notice.chronosToTime) : '';
+      const delta = notice.chronosDelta ?? 0;
+      const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
+      const isCardEffect = notice.chronosSourceKind === 'cardEffect';
+      const sideLabel =
+        isCardEffect && notice.player !== undefined && me !== undefined
+          ? notice.player === me
+            ? t('board.me' as never)
+            : t('board.opponent' as never)
+          : undefined;
+      return (
+        <>
+          <div className="phase-message-kicker">
+            {t(notice.titleKey as never)}
+            {sideLabel ? ` · ${sideLabel}` : ''}
+            {sourceCardName ? ` · ${sourceCardName}` : ''}
+          </div>
+          <strong className="phase-message-title font-display text-3xl italic">
+            {notice.chronosFrom} → {notice.chronosTo}
+          </strong>
+          <p className="mt-1 font-mono text-lg tracking-[0.1em] text-gold-soft">{deltaStr}</p>
+          {(fromTime || toTime) && (
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-bone/50">
+              {fromTime} → {toTime}
+            </p>
+          )}
+          {notice.breakdown && <BreakdownBlock breakdown={notice.breakdown} />}
+        </>
+      );
+    }
+    case 'battleResult': {
+      return (
+        <>
+          <div className="phase-message-kicker">{t('board.notice.battle' as never)}</div>
+          <strong className="phase-message-title font-display text-2xl italic">{t(notice.titleKey as never)}</strong>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-bone/50">
+            {notice.winnerAttack} vs {notice.loserAttack}
+          </p>
+          {notice.breakdown && <BreakdownBlock breakdown={notice.breakdown} />}
+        </>
+      );
+    }
+    case 'turnStart': {
+      return (
+        <>
+          <div className="phase-message-kicker">{t('board.notice.turnStart' as never)}</div>
+          <strong className="phase-message-title font-display text-3xl italic">
+            {notice.turn} {t('board.notice.turnUnit' as never)}
+          </strong>
+        </>
+      );
+    }
+    default:
+      return null;
+  }
+}
+
+function GameNoticeOverlay({ G, me }: { G: GameState; me?: PlayerIndex }) {
+  const lastSeenIdRef = useRef<number>(-1);
+  const [queue, setQueue] = useState<GameNotice[]>([]);
+  const [current, setCurrent] = useState<GameNotice | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 用原始型別（最後一筆 id + 數量）作為 effect 依賴，避免 boardgame.io immer/playerView
+  // 淺拷貝導致 recentGameNotices 參考比較失效的邊界情況。
+  const notices = G.recentGameNotices ?? [];
+  const lastNoticeId = notices.length > 0 ? notices[notices.length - 1].id : 0;
+  const noticeCount = notices.length;
 
   useEffect(() => {
-    const mine = (G.recentHpChanges ?? []).filter((e) => e.player === player);
-    const maxId = mine.reduce((max, e) => Math.max(max, e.id), 0);
-    const newEntries = mine.filter((e) => e.id > lastSeenIdRef.current);
-    lastSeenIdRef.current = maxId;
-    if (newEntries.length === 0) return;
-    // 有 breakdown 時延長顯示時間，讓玩家看清楚計算過程。
-    const duration = prefersReducedMotion() ? 1800 : 3400;
-    setActive((prev) => [
-      ...prev,
-      ...newEntries.map((e) => ({
-        id: e.id,
-        delta: e.delta,
-        reason: e.reason,
-        sourceCardDefId: e.sourceCardDefId,
-        breakdown: e.breakdown,
-      })),
-    ]);
-    for (const e of newEntries) {
-      const timer = setTimeout(() => {
-        setActive((prev) => prev.filter((p) => p.id !== e.id));
-      }, duration);
-      timersRef.current.push(timer);
+    const arr = G.recentGameNotices ?? [];
+    const maxId = arr.reduce((max, n) => Math.max(max, n.id), 0);
+    if (lastSeenIdRef.current === -1) {
+      lastSeenIdRef.current = maxId;
+      return;
     }
-  }, [G.recentHpChanges, player]);
+    const newOnes = arr.filter((n) => n.id > lastSeenIdRef.current);
+    lastSeenIdRef.current = maxId;
+    if (newOnes.length === 0) return;
+    setQueue((prev) => [...prev, ...newOnes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastNoticeId, noticeCount]);
+
+  useEffect(() => {
+    if (current || queue.length === 0) return;
+    const next = queue[0];
+    setCurrent(next);
+    setQueue((prev) => prev.slice(1));
+    timerRef.current = setTimeout(() => setCurrent(null), noticeDuration(next));
+  }, [current, queue]);
 
   useEffect(() => {
     return () => {
-      for (const timer of timersRef.current) clearTimeout(timer);
-      timersRef.current = [];
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
-  if (active.length === 0) return null;
+  if (!current) return null;
+
+  let content: ReactNode;
+  try {
+    content = renderNoticeContent(current, me);
+  } catch {
+    content = <strong>Notice render error</strong>;
+  }
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center">
-      {active.map((item) => {
-        const isHeal = item.delta > 0;
-        const cardName = item.sourceCardDefId ? getCardDef(item.sourceCardDefId)?.name : undefined;
-        const breakdown = item.breakdown;
-        // 參與卡：排除已在 source 行顯示的來源卡，避免重複。
-        const participantNames = (breakdown?.participantCardDefIds ?? [])
-          .filter((id) => id !== item.sourceCardDefId)
-          .map((id) => getCardDef(id)?.name)
-          .filter((n): n is string => Boolean(n));
-        return (
-          <div key={item.id} className="hp-change-float flex flex-col items-center">
-            <div
-              className={`font-display text-3xl italic drop-shadow-[0_2px_8px_rgba(0,0,0,0.75)] ${isHeal ? 'text-[var(--teal)]' : 'text-vermilion'}`}
-            >
-              {isHeal ? '+' : ''}
-              {item.delta}
-            </div>
-            <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.25em] text-bone/75">
-              {t(HP_CHANGE_REASON_LABEL[item.reason] as never)}
-              {cardName ? ` · ${cardName}` : ''}
-            </div>
-            {breakdown && breakdown.lines.length > 0 && (
-              <div className="mt-1.5 min-w-[180px] max-w-[260px] rounded-sm border border-bone/10 bg-lacquer-deep/85 px-2.5 py-1.5 backdrop-blur-sm">
-                <div className="mb-1 font-mono text-[8px] uppercase tracking-[0.22em] text-gold/70">
-                  {t(breakdown.title as never)}
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  {breakdown.lines.map((line, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-baseline justify-between gap-2 font-mono text-[9px] text-bone/80"
-                    >
-                      <span className="text-bone/55">{t(line.label as never)}</span>
-                      <span
-                        className={
-                          line.cardDefId
-                            ? 'max-w-[140px] truncate text-gold-soft'
-                            : line.value.startsWith('-')
-                              ? 'text-vermilion/85'
-                              : line.value.startsWith('+')
-                                ? 'text-[var(--teal)]/85'
-                                : 'text-bone/85'
-                        }
-                        title={line.cardDefId ? formatBreakdownValue(line.value, line.cardDefId) : undefined}
-                      >
-                        {formatBreakdownValue(line.value, line.cardDefId)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                {participantNames.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1 border-t border-bone/10 pt-1">
-                    <span className="font-mono text-[8px] uppercase tracking-[0.18em] text-bone/40">
-                      {t('board.hpChange.participants' as never)}
-                    </span>
-                    {participantNames.map((n, i) => (
-                      <span
-                        key={`${n}-${i}`}
-                        className="rounded-sm border border-jade/30 bg-jade/10 px-1 py-px font-mono text-[8px] text-jade"
-                      >
-                        {n}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+    <div
+      className={`phase-message-overlay game-notice-overlay phase-message-${current.tone}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="phase-message-panel hp-change-float">{content}</div>
     </div>
   );
 }
@@ -551,6 +744,11 @@ function matchSubmissionKey(G: GameState, winner: PlayerIndex | null): string {
   ].join(':');
 }
 
+function onlineSourceMatchID(matchID: string | undefined): string | undefined {
+  if (typeof window === 'undefined' || !window.location.pathname.startsWith('/play/online/')) return undefined;
+  return matchID && matchID !== 'default' ? matchID : undefined;
+}
+
 function isAlreadySubmitted(key: string): boolean {
   if (typeof window === 'undefined') return false;
   try {
@@ -597,7 +795,7 @@ function gameOverActionClass(action: BoardGameOverAction): string {
   return action.variant === 'secondary' ? secondaryActionClass() : primaryActionClass();
 }
 
-function GameOverScreen({ G, ctx, matchStartedAt, playerID, gameOverActions }: Props & { matchStartedAt: number }) {
+function GameOverScreen({ G, ctx, matchStartedAt, playerID, matchID, gameOverActions }: Props & { matchStartedAt: number }) {
   const saved = useRef(false);
   const [eloNotice, setEloNotice] = useState('');
 
@@ -626,6 +824,8 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID, gameOverActions }: P
           G.turnNumber,
           durationSeconds,
           G.actionLog,
+          onlineSourceMatchID(matchID),
+          winner,
         ) as Promise<MatchSubmitResponse>;
       })
       .then((result) => {
@@ -640,7 +840,7 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID, gameOverActions }: P
         // Local history above remains the fallback when the API is unavailable.
         setEloNotice(t('auth.matchSubmitFailed'));
       });
-  }, [G, ctx.gameover, matchStartedAt, playerID]);
+  }, [G, ctx.gameover, matchID, matchStartedAt, playerID]);
 
   return (
     <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
@@ -726,7 +926,7 @@ function LpBar({ hp, tone }: { hp: number; tone: 'gold' | 'vermilion' }) {
 function Slot({
   card,
   label,
-  size: _size = "small",
+  size: _size = 'small',
   owner,
   onFocusCard,
   onClick,
@@ -741,14 +941,20 @@ function Slot({
   const def = card?.faceUp ? getCardDef(card.defId) : undefined;
   return (
     <div
-      className={`grid size-[88px] place-items-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)] ${onClick ? "cursor-pointer transition hover:ring-gold/30" : ""}`}
+      className={`grid size-[88px] place-items-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)] ${onClick ? 'cursor-pointer transition hover:ring-gold/30' : ''}`}
       onClick={onClick}
-      onMouseEnter={() => card && onFocusCard?.({ card, owner, zone: label ?? "slot" })}
+      onMouseEnter={() => card && onFocusCard?.({ card, owner, zone: label ?? 'slot' })}
       onMouseLeave={() => onFocusCard?.(null)}
     >
       {card && def ? (
         <div className="h-[80px] w-[56px] overflow-hidden rounded-xs ring-1 ring-bone/10">
-          <img src={def.image} alt={def.name} className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+          <img
+            src={def.image}
+            alt={def.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
         </div>
       ) : card ? (
         <div className="h-[80px] w-[56px] rounded-xs bg-lacquer ring-1 ring-bone/10">
@@ -847,7 +1053,10 @@ function StackZone({
   if (kind === 'deck') {
     return (
       <div className="flex flex-col items-center gap-2" aria-label={`${label}: ${value}`}>
-        <div className="flex h-16 w-11 items-center justify-center rounded-xs bg-lacquer ring-1 ring-bone/10" aria-hidden="true">
+        <div
+          className="flex h-16 w-11 items-center justify-center rounded-xs bg-lacquer ring-1 ring-bone/10"
+          aria-hidden="true"
+        >
           <div className="font-display text-sm italic text-gold/60">ZC</div>
         </div>
         <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-bone/40" aria-hidden="true">
@@ -890,7 +1099,10 @@ function StackZone({
   }
 
   return (
-    <div className="flex min-w-24 flex-col gap-2 rounded-sm bg-lacquer-deep/50 p-3 ring-1 ring-bone/5" aria-label={`${label}: ${value}`}>
+    <div
+      className="flex min-w-24 flex-col gap-2 rounded-sm bg-lacquer-deep/50 p-3 ring-1 ring-bone/5"
+      aria-label={`${label}: ${value}`}
+    >
       <strong className="font-mono text-[10px] uppercase tracking-[0.25em] text-bone/45">
         <span>{label}</span>
       </strong>
@@ -926,8 +1138,12 @@ export function OpponentStatsBar({
         <div className="w-72">
           <LpBar hp={opponent.hp} tone="vermilion" />
           <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
-            <span>{t('board.hp')} {opponent.hp}/100</span>
-            <span>{t('board.hand')} · {opponent.hand.length}</span>
+            <span>
+              {t('board.hp')} {opponent.hp}/100
+            </span>
+            <span>
+              {t('board.hand')} · {opponent.hand.length}
+            </span>
           </div>
         </div>
       </div>
@@ -1004,10 +1220,18 @@ export function BottomZones({
   const me = G.players[meIndex];
 
   return (
-    <section className="relative flex flex-1 flex-col items-center justify-end gap-3 border-t border-bone/5 pt-3" aria-label={t('player.me')}>
+    <section
+      className="relative flex flex-1 flex-col items-center justify-end gap-3 border-t border-bone/5 pt-3"
+      aria-label={t('player.me')}
+    >
       {/* 設置區 */}
       <div className="flex items-center justify-center gap-3">
-        <StackZone kind="power" label={t('board.powerCharger')} value={powerTotal(G, meIndex)} cards={me.powerCharger} />
+        <StackZone
+          kind="power"
+          label={t('board.powerCharger')}
+          value={powerTotal(G, meIndex)}
+          cards={me.powerCharger}
+        />
         <FieldZone
           label={t('board.setZoneA')}
           shortLabel="A"
@@ -1033,7 +1257,9 @@ export function BottomZones({
           shortLabel="C"
           className="area-zone area-zone-c"
           card={me.setZoneC}
-          onClick={wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex] ? () => moves.undoSetCard('C') : undefined}
+          onClick={
+            wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex] ? () => moves.undoSetCard('C') : undefined
+          }
           size="normal"
           owner={meIndex}
           onFocusCard={onFocusCard}
@@ -1048,8 +1274,12 @@ export function BottomZones({
           </div>
           <LpBar hp={me.hp} tone="gold" />
           <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
-            <span>{t('board.hp')} {me.hp}/100</span>
-            <span>{t('board.deck')} · {me.deck.length}</span>
+            <span>
+              {t('board.hp')} {me.hp}/100
+            </span>
+            <span>
+              {t('board.deck')} · {me.deck.length}
+            </span>
           </div>
         </div>
         <div className={`font-mono text-[10px] uppercase tracking-[0.25em] text-bone/40 ${hpClass(me.hp)}`}>
@@ -1138,7 +1368,10 @@ export function HandDrawer({
 }) {
   const center = (cards.length - 1) / 2;
   return (
-    <section className="pointer-events-none fixed bottom-0 left-4 z-30 flex items-end justify-between gap-4 pb-4 [right:calc(280px+2rem)]" aria-label={t('board.hand')}>
+    <section
+      className="pointer-events-none fixed bottom-0 left-4 z-30 flex items-end justify-between gap-4 pb-4 [right:calc(280px+2rem)]"
+      aria-label={t('board.hand')}
+    >
       <div className="pointer-events-auto min-w-48">{children}</div>
       <div className="pointer-events-auto flex min-h-44 flex-1 items-end justify-center overflow-visible">
         <div className="flex items-end justify-center">
@@ -1233,10 +1466,7 @@ function effectSummary(effect: GameState['pendingEffects'][number][number]): str
   return value === undefined ? action.type : `${action.type} ${value}`;
 }
 
-function translatedPendingEffectText(
-  effect: GameState['pendingEffects'][number][number],
-  locale: string,
-): string {
+function translatedPendingEffectText(effect: GameState['pendingEffects'][number][number], locale: string): string {
   return getTranslatedEffect(effect.cardDefId, locale) ?? effect.rawText ?? effectSummary(effect);
 }
 
@@ -1246,13 +1476,10 @@ function translatedChoicePrompt(G: GameState, locale: string): string | null {
   if (choice.sourceCardDefId) {
     return getTranslatedEffect(choice.sourceCardDefId, locale) ?? choice.prompt;
   }
-  const sourceEffect = G.pendingEffects
-    .flat()
-    .find((effect) => effect.rawText === choice.prompt);
+  const sourceEffect = G.pendingEffects.flat().find((effect) => effect.rawText === choice.prompt);
   if (!sourceEffect) return choice.prompt;
   return getTranslatedEffect(sourceEffect.cardDefId, locale) ?? choice.prompt;
 }
-
 
 function choiceInstruction(type: string): string {
   if (type === 'handToDeckBottomThenDraw') return t('board.choiceHintDeckBottomDraw');
@@ -1306,7 +1533,10 @@ function phaseInstruction(
       title: G.ready[meIndex] ? t('board.phaseWaitingTitle') : t('board.phaseTurnSetTitle'),
       body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseTurnSetBody'),
       meta: [
-        { text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/${required}`, done: me.cardsSetThisTurn >= required },
+        {
+          text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/${required}`,
+          done: me.cardsSetThisTurn >= required,
+        },
         { text: `${t('board.phaseMinimum')} ${minimum}`, done: me.cardsSetThisTurn >= minimum },
       ],
     };
@@ -1314,11 +1544,7 @@ function phaseInstruction(
   return { title: t('board.gameOver'), body: t('online.gameOverHelper'), meta: [] };
 }
 
-function PhaseInstructionBanner({
-  instruction,
-}: {
-  instruction: ReturnType<typeof phaseInstruction>;
-}) {
+function PhaseInstructionBanner({ instruction }: { instruction: ReturnType<typeof phaseInstruction> }) {
   return (
     <section className="board-phase-instruction pointer-events-none absolute inset-x-3 top-14 z-30 flex justify-center lg:inset-x-6">
       <div className="w-full max-w-3xl rounded-sm border border-bone/10 bg-lacquer-deep/82 px-3 py-2 text-bone shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)] backdrop-blur md:px-4">
@@ -1348,7 +1574,6 @@ function PhaseInstructionBanner({
     </section>
   );
 }
-
 
 function EffectOrderPanel({
   G,
@@ -1528,16 +1753,16 @@ export function FocusPanel({ focus }: { focus: FocusedCard }) {
             )}
           </div>
           {(translatedEffect || def.effect) && (
-            <p className="mt-2 min-h-0 flex-1 overflow-y-auto text-xs leading-relaxed text-bone/60">{translatedEffect ?? def.effect}</p>
+            <p className="mt-2 min-h-0 flex-1 overflow-y-auto text-xs leading-relaxed text-bone/60">
+              {translatedEffect ?? def.effect}
+            </p>
           )}
         </div>
       ) : (
         /* 無焦點時佔位，保持同樣高度 */
         <div className="mt-2 flex flex-1 flex-col items-center justify-center rounded-sm bg-lacquer-deep/50 ring-1 ring-bone/5">
           <div className="aspect-[3/4] w-32 rounded-sm bg-lacquer-deep/80 ring-1 ring-bone/10" />
-          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.25em] text-bone/25">
-            {t('card.unknown')}
-          </p>
+          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.25em] text-bone/25">{t('card.unknown')}</p>
         </div>
       )}
     </section>
@@ -1557,7 +1782,10 @@ export function BattleLogPanel({ G }: { G: GameState }) {
         {entries.map((entry) => (
           <p key={`${entry.id ?? entry.timestamp}-${entry.action}`}>
             <span className="text-bone/60">[{actionTime(entry.timestamp)}]</span>{' '}
-            <span className="text-gold/50">{t('board.turn')} {entry.turn}</span> {formatLogEntry(entry, locale).text}
+            <span className="text-gold/50">
+              {t('board.turn')} {entry.turn}
+            </span>{' '}
+            {renderLogSegments(formatLogEntry(entry, locale).segments)}
           </p>
         ))}
         {entries.length === 0 && <p className="text-bone/30">{t('board.waitingOpponent')}</p>}
@@ -1597,25 +1825,28 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
     phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), effectiveDuration));
   };
 
-  const playBattleFeedbackSequence = useCallback((resultMessage: FeedbackMessage) => {
-    clearPhaseTimers();
-    const reduced = prefersReducedMotion();
-    const phaseDuration = reduced ? 250 : 700;
-    const resultDuration = reduced ? 1200 : 2600;
-    const sequence: { message: FeedbackMessage; duration: number }[] = [
-      { message: { title: t('board.phaseReveal'), tone: 'phase' }, duration: phaseDuration },
-      { message: { title: t('board.phaseTimeAdvance'), tone: 'phase' }, duration: phaseDuration },
-      { message: { title: t('board.phaseBattleStart'), tone: 'phase' }, duration: phaseDuration },
-      { message: resultMessage, duration: resultDuration },
-    ];
+  const playBattleFeedbackSequence = useCallback(
+    (resultMessage: FeedbackMessage) => {
+      clearPhaseTimers();
+      const reduced = prefersReducedMotion();
+      const phaseDuration = reduced ? 250 : 700;
+      const resultDuration = reduced ? 1200 : 2600;
+      const sequence: { message: FeedbackMessage; duration: number }[] = [
+        { message: { title: t('board.phaseReveal'), tone: 'phase' }, duration: phaseDuration },
+        { message: { title: t('board.phaseTimeAdvance'), tone: 'phase' }, duration: phaseDuration },
+        { message: { title: t('board.phaseBattleStart'), tone: 'phase' }, duration: phaseDuration },
+        { message: resultMessage, duration: resultDuration },
+      ];
 
-    let offset = 0;
-    for (const item of sequence) {
-      phaseTimers.current.push(setTimeout(() => setPhaseMessage(item.message), offset));
-      offset += item.duration;
-    }
-    phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), offset));
-  }, [clearPhaseTimers]);
+      let offset = 0;
+      for (const item of sequence) {
+        phaseTimers.current.push(setTimeout(() => setPhaseMessage(item.message), offset));
+        offset += item.duration;
+      }
+      phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), offset));
+    },
+    [clearPhaseTimers],
+  );
 
   useEffect(() => () => clearPhaseTimers(), [clearPhaseTimers]);
 
@@ -1706,9 +1937,14 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       {/* 頂欄 — demo 格式 + 階段指示器 */}
       <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between gap-3 overflow-x-auto border-b border-bone/5 bg-lacquer-deep/80 px-3 backdrop-blur md:px-6">
         <div className="flex shrink-0 items-center gap-4 font-mono text-[10px] uppercase tracking-[0.3em] md:gap-8">
-          <span className="text-bone/40">{t('board.turn')} {G.turnNumber}</span>
+          <span className="text-bone/40">
+            {t('board.turn')} {G.turnNumber}
+          </span>
           <span className="text-bone/40">{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
-          <span className={`text-bone/40 ${timeLeft <= 10 ? 'text-vermilion' : ''}`}>{timeLeft}{t('board.secondsUnit')}</span>
+          <span className={`text-bone/40 ${timeLeft <= 10 ? 'text-vermilion' : ''}`}>
+            {timeLeft}
+            {t('board.secondsUnit')}
+          </span>
         </div>
         <div className="hidden shrink-0 items-center gap-6 font-mono text-[10px] uppercase tracking-[0.3em] md:flex">
           {[
@@ -1719,7 +1955,9 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             { label: '戰鬥', active: Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1 },
             { label: '結算', active: G.step === 'gameOver' },
           ].map((phase) => (
-            <span key={phase.label} className={phase.active ? 'text-gold' : 'text-bone/20'}>{phase.label}</span>
+            <span key={phase.label} className={phase.active ? 'text-gold' : 'text-bone/20'}>
+              {phase.label}
+            </span>
           ))}
         </div>
         <div className="hidden shrink-0 items-center gap-3 font-mono text-[10px] uppercase tracking-[0.3em] lg:flex">
@@ -1732,7 +1970,6 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
 
       {/* 雙欄佈局 — header 與階段提示浮在上方，pt-28 撐開頂部空間 */}
       <div className="relative z-10 grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-28 lg:grid-cols-[minmax(0,1fr)_280px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6">
-
         {/* ===== 左欄：戰場 ===== */}
         <div className="battle-perspective-field flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
           <BattlefieldCanvas />
@@ -1746,13 +1983,14 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
               </div>
               <div className="relative w-56 sm:w-72">
-                <HpChangeFlashes G={G} player={opponentIndex} />
                 <div className="relative h-1 w-full bg-bone/10">
                   <div className="absolute inset-y-0 left-0 bg-vermilion" style={{ width: `${opponent.hp}%` }} />
                 </div>
                 <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
                   <span>{opponent.hp} / 100</span>
-                  <span>{t('board.hand')} · {opponent.hand.length}</span>
+                  <span>
+                    {t('board.hand')} · {opponent.hand.length}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1762,7 +2000,9 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 <div
                   key={card.instanceId}
                   className="h-12 w-9 overflow-hidden rounded-xs ring-1 ring-bone/10 rotate-180"
-                  style={{ transform: `translateY(${Math.abs(index - (opponent.hand.length - 1) / 2) * 2}px) rotate(180deg)` }}
+                  style={{
+                    transform: `translateY(${Math.abs(index - (opponent.hand.length - 1) / 2) * 2}px) rotate(180deg)`,
+                  }}
                 >
                   <img src="/card-back.jpg" alt="" className="h-full w-full object-cover" loading="lazy" />
                 </div>
@@ -1777,12 +2017,26 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                     {opponent.powerCharger.slice(-3).map((card, i) => {
                       const def = getCardDef(card.defId);
                       return (
-                        <div key={card.instanceId} className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-bone/10" style={{ left: `${12 + i * 14}px` }}>
-                          {def?.image && <img src={def.image} alt="" className="h-full w-full object-cover opacity-70" loading="lazy" referrerPolicy="no-referrer" />}
+                        <div
+                          key={card.instanceId}
+                          className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-bone/10"
+                          style={{ left: `${12 + i * 14}px` }}
+                        >
+                          {def?.image && (
+                            <img
+                              src={def.image}
+                              alt=""
+                              className="h-full w-full object-cover opacity-70"
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                            />
+                          )}
                         </div>
                       );
                     })}
-                    <span className="absolute top-1 right-1 font-mono text-[10px] text-gold/70">{opponent.powerCharger.reduce((s, c) => s + (getCardDef(c.defId)?.sendToPower ?? 0), 0)}</span>
+                    <span className="absolute top-1 right-1 font-mono text-[10px] text-gold/70">
+                      {opponent.powerCharger.reduce((s, c) => s + (getCardDef(c.defId)?.sendToPower ?? 0), 0)}
+                    </span>
                   </div>
                 ) : (
                   <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
@@ -1791,16 +2045,43 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 )}
                 <span className="font-mono text-[9px] text-bone/30">⚡</span>
               </div>
-              <Slot card={opponent.setZoneA} label="A" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
-              <Slot card={opponent.setZoneB} label="B" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
-              <Slot card={opponent.setZoneC} label="C" size="small" owner={opponentIndex} onFocusCard={setFocusedCard} />
+              <Slot
+                card={opponent.setZoneA}
+                label="A"
+                size="small"
+                owner={opponentIndex}
+                onFocusCard={setFocusedCard}
+              />
+              <Slot
+                card={opponent.setZoneB}
+                label="B"
+                size="small"
+                owner={opponentIndex}
+                onFocusCard={setFocusedCard}
+              />
+              <Slot
+                card={opponent.setZoneC}
+                label="C"
+                size="small"
+                owner={opponentIndex}
+                onFocusCard={setFocusedCard}
+              />
               {/* 對手牌組 */}
               <div className="flex flex-col items-center gap-1">
                 <div className="relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
                   {Array.from({ length: Math.min(opponent.deck.length, 3) }).map((_, i) => (
-                    <img key={i} src="/card-back.jpg" alt="" className="absolute h-[72px] w-[48px] rounded-xs object-cover" style={{ top: `${4 - i * 2}px`, left: `${16 + i * 2}px`, opacity: 1 - i * 0.15 }} loading="lazy" />
+                    <img
+                      key={i}
+                      src="/card-back.jpg"
+                      alt=""
+                      className="absolute h-[72px] w-[48px] rounded-xs object-cover"
+                      style={{ top: `${4 - i * 2}px`, left: `${16 + i * 2}px`, opacity: 1 - i * 0.15 }}
+                      loading="lazy"
+                    />
                   ))}
-                  <span className="absolute bottom-1 right-1 font-mono text-[10px] text-bone/50">{opponent.deck.length}</span>
+                  <span className="absolute bottom-1 right-1 font-mono text-[10px] text-bone/50">
+                    {opponent.deck.length}
+                  </span>
                 </div>
                 <span className="font-mono text-[9px] text-bone/30">🃏</span>
               </div>
@@ -1841,7 +2122,9 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               activeTime={time}
               owner={meIndex}
               onFocusCard={setFocusedCard}
-              onClick={G.step === 'initialSet' && me.battleZone && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
+              onClick={
+                G.step === 'initialSet' && me.battleZone && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined
+              }
             />
           </div>
 
@@ -1862,12 +2145,20 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                           style={{ left: `${12 + i * 14}px` }}
                         >
                           {def?.image && (
-                            <img src={def.image} alt="" className="h-full w-full object-cover opacity-70" loading="lazy" referrerPolicy="no-referrer" />
+                            <img
+                              src={def.image}
+                              alt=""
+                              className="h-full w-full object-cover opacity-70"
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                            />
                           )}
                         </div>
                       );
                     })}
-                    <span className="absolute top-1 right-1 font-mono text-[10px] text-gold/70">{powerTotal(G, meIndex)}</span>
+                    <span className="absolute top-1 right-1 font-mono text-[10px] text-gold/70">
+                      {powerTotal(G, meIndex)}
+                    </span>
                   </div>
                 ) : (
                   <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
@@ -1876,14 +2167,46 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                 )}
                 <span className="font-mono text-[9px] text-bone/30">⚡ {t('board.powerCharger')}</span>
               </div>
-              <Slot card={me.setZoneA} label="A" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined} />
-              <Slot card={me.setZoneB} label="B" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined} />
-              <Slot card={me.setZoneC} label="C" size="small" owner={meIndex} onFocusCard={setFocusedCard} onClick={wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex] ? () => moves.undoSetCard('C') : undefined} />
+              <Slot
+                card={me.setZoneA}
+                label="A"
+                size="small"
+                owner={meIndex}
+                onFocusCard={setFocusedCard}
+                onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
+              />
+              <Slot
+                card={me.setZoneB}
+                label="B"
+                size="small"
+                owner={meIndex}
+                onFocusCard={setFocusedCard}
+                onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
+              />
+              <Slot
+                card={me.setZoneC}
+                label="C"
+                size="small"
+                owner={meIndex}
+                onFocusCard={setFocusedCard}
+                onClick={
+                  wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex]
+                    ? () => moves.undoSetCard('C')
+                    : undefined
+                }
+              />
               {/* 牌組 — 右邊 — 根據數量堆疊 */}
               <div className="flex flex-col items-center gap-1">
                 <div className="relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
                   {Array.from({ length: Math.min(me.deck.length, 3) }).map((_, i) => (
-                    <img key={i} src="/card-back.jpg" alt="" className="absolute h-[72px] w-[48px] rounded-xs object-cover" style={{ top: `${4 - i * 2}px`, left: `${16 + i * 2}px`, opacity: 1 - i * 0.15 }} loading="lazy" />
+                    <img
+                      key={i}
+                      src="/card-back.jpg"
+                      alt=""
+                      className="absolute h-[72px] w-[48px] rounded-xs object-cover"
+                      style={{ top: `${4 - i * 2}px`, left: `${16 + i * 2}px`, opacity: 1 - i * 0.15 }}
+                      loading="lazy"
+                    />
                   ))}
                   <span className="absolute bottom-1 right-1 font-mono text-[10px] text-bone/50">{me.deck.length}</span>
                 </div>
@@ -1901,17 +2224,21 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
             <div className="flex w-full flex-col items-stretch justify-between gap-3 px-2 lg:flex-row lg:items-end">
               {/* 左：LP bar */}
               <div className="relative w-full lg:w-72">
-                <HpChangeFlashes G={G} player={meIndex} />
                 <div className="relative h-1 w-full bg-bone/10">
                   <div className="absolute inset-y-0 left-0 bg-gold" style={{ width: `${me.hp}%` }} />
                 </div>
                 <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
                   <span>{me.hp} / 100</span>
-                  <span>{t('board.deck')} · {me.deck.length}</span>
+                  <span>
+                    {t('board.deck')} · {me.deck.length}
+                  </span>
                 </div>
               </div>
               {/* 中：手牌扇形 */}
-              <div className="flex items-end gap-1 overflow-x-auto px-1 pb-2 lg:overflow-visible lg:px-4" data-zone="hand">
+              <div
+                className="flex items-end gap-1 overflow-x-auto px-1 pb-2 lg:overflow-visible lg:px-4"
+                data-zone="hand"
+              >
                 {me.hand.map((card, index) => {
                   const center = (me.hand.length - 1) / 2;
                   const rotate = (index - center) * 4;
@@ -1925,7 +2252,13 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                       onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
                       onMouseLeave={() => setFocusedCard(null)}
                     >
-                      <Card card={card} size="normal" className="!h-full !w-full !aspect-auto !border-0 !bg-transparent !shadow-none !rounded-none" showBadges={false} showPopover />
+                      <Card
+                        card={card}
+                        size="normal"
+                        className="!h-full !w-full !aspect-auto !border-0 !bg-transparent !shadow-none !rounded-none"
+                        showBadges={false}
+                        showPopover
+                      />
                     </div>
                   );
                 })}
@@ -1945,11 +2278,19 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                     {t('board.confirmSet')} ({me.cardsSetThisTurn}/{required})
                   </button>
                 ) : (
-                  <button className="flex-1 border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 lg:flex-none" type="button" disabled>
+                  <button
+                    className="flex-1 border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 lg:flex-none"
+                    type="button"
+                    disabled
+                  >
                     {t('board.readyWaiting')}
                   </button>
                 )}
-                <button className="flex-1 border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 lg:flex-none" type="button" disabled>
+                <button
+                  className="flex-1 border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 lg:flex-none"
+                  type="button"
+                  disabled
+                >
                   {t('board.powerCharger')} {powerTotal(G, meIndex)}
                 </button>
               </div>
@@ -1973,7 +2314,13 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               <>
                 <div className="aspect-[3/4] w-full overflow-hidden rounded-xs bg-gradient-to-br from-vermilion/30 via-lacquer-deep to-lacquer ring-1 ring-bone/10">
                   {cardDefinition(focusedCard.card)?.image && (
-                    <img src={cardDefinition(focusedCard.card)!.image} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                    <img
+                      src={cardDefinition(focusedCard.card)!.image}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
                   )}
                 </div>
                 <div className="mt-3 font-display text-lg italic">{cardDefinition(focusedCard.card)?.name ?? '?'}</div>
@@ -1981,19 +2328,60 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
                   {cardDefinition(focusedCard.card)?.element} · {cardDefinition(focusedCard.card)?.type}
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px] text-bone/50">
-                  <span>⚡ {t('card.energy')} <span className="text-gold">{cardDefinition(focusedCard.card)?.powerCost}</span></span>
-                  <span>🕐 {t('card.clock')} <span className="text-gold">{cardDefinition(focusedCard.card)?.clock}</span></span>
+                  <span>
+                    ⚡ {t('card.energy')}{' '}
+                    <span className="text-gold">{cardDefinition(focusedCard.card)?.powerCost}</span>
+                  </span>
+                  <span>
+                    🕐 {t('card.clock')} <span className="text-gold">{cardDefinition(focusedCard.card)?.clock}</span>
+                  </span>
                   {cardDefinition(focusedCard.card)?.attack && (
                     <>
-                      <span>🌙 {t('card.night')} <span className="text-gold">{cardDefinition(focusedCard.card)!.attack!.night}</span></span>
-                      <span>☀️ {t('card.day')} <span className="text-gold">{cardDefinition(focusedCard.card)!.attack!.day}</span></span>
+                      <span>
+                        🌙 {t('card.night')}{' '}
+                        <span className="text-gold">{cardDefinition(focusedCard.card)!.attack!.night}</span>
+                      </span>
+                      <span>
+                        ☀️ {t('card.day')}{' '}
+                        <span className="text-gold">{cardDefinition(focusedCard.card)!.attack!.day}</span>
+                      </span>
                     </>
                   )}
-                  <span>⚡→ STP <span className="text-gold">{cardDefinition(focusedCard.card)?.sendToPower ?? 0}</span></span>
+                  {/* 戰場卡牌顯示原始 vs 實際攻擊力（含附魔增益 / 能量不足歸零） */}
+                  {focusedCard.zone === t('board.battleZone') &&
+                    cardDefinition(focusedCard.card)?.attack && (
+                      <>
+                        <span className="col-span-2 mt-1 border-t border-bone/10 pt-1">
+                          {t('board.hpChange.rawAttack' as never)}{' '}
+                          <span className="text-gold">
+                            {getBaseAttack(focusedCard.card, G, focusedCard.owner) ?? '—'}
+                          </span>
+                        </span>
+                        <span className="col-span-2">
+                          {t('board.hpChange.effectiveAttack' as never)}{' '}
+                          <span
+                            className={
+                              isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
+                                ? 'text-vermilion'
+                                : 'text-[var(--teal)]'
+                            }
+                          >
+                            {isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
+                              ? t('board.hpChange.insufficientPower' as never)
+                              : getEffectiveAttack(focusedCard.card, G, focusedCard.owner)}
+                          </span>
+                        </span>
+                      </>
+                    )}
+                  <span>
+                    ⚡→ STP <span className="text-gold">{cardDefinition(focusedCard.card)?.sendToPower ?? 0}</span>
+                  </span>
                 </div>
-                {(getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', locale) || cardDefinition(focusedCard.card)?.effect) && (
+                {(getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', locale) ||
+                  cardDefinition(focusedCard.card)?.effect) && (
                   <p className="mt-3 text-[11px] leading-relaxed text-bone/50">
-                    {getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', locale) ?? cardDefinition(focusedCard.card)?.effect}
+                    {getTranslatedEffect(cardDefinition(focusedCard.card)?.id ?? '', locale) ??
+                      cardDefinition(focusedCard.card)?.effect}
                   </p>
                 )}
               </>
@@ -2009,18 +2397,34 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
               <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
             </div>
             <div className="min-h-0 flex-1 space-y-1 overflow-y-auto font-mono text-[10px] leading-relaxed">
-              {(G.actionLog ?? []).slice(-20).reverse().map((entry) => {
-                const { text, tone } = formatLogEntry(entry, locale);
-                const toneClass = tone === 'battle' ? 'text-vermilion/80' : tone === 'set' ? 'text-gold/60' : tone === 'effect' ? 'text-bone/70' : 'text-bone/40';
-                return (
-                  <p key={`${entry.timestamp}-${entry.action}`} className={toneClass}>
-                    <span className="text-bone/20">T{entry.turn}</span>{' '}
-                    {text}
-                    {entry.hp && <span className="text-bone/25"> [{entry.hp[0]}/{entry.hp[1]}]</span>}
-                    {typeof entry.chronosPosition === 'number' && <span className="text-bone/25"> ⏱{entry.chronosPosition}/12</span>}
-                  </p>
-                );
-              })}
+              {(G.actionLog ?? [])
+                .slice(-20)
+                .reverse()
+                .map((entry) => {
+                  const { segments, tone } = formatLogEntry(entry, locale);
+                  const toneClass =
+                    tone === 'battle'
+                      ? 'text-vermilion/80'
+                      : tone === 'set'
+                        ? 'text-gold/60'
+                        : tone === 'effect'
+                          ? 'text-bone/70'
+                          : 'text-bone/40';
+                  return (
+                    <p key={`${entry.timestamp}-${entry.action}`} className={toneClass}>
+                      <span className="text-bone/20">T{entry.turn}</span> {renderLogSegments(segments)}
+                      {entry.hp && tone !== 'battle' && (
+                        <span className="text-bone/25">
+                          {' '}
+                          [{entry.hp[0]}/{entry.hp[1]}]
+                        </span>
+                      )}
+                      {typeof entry.chronosPosition === 'number' && (
+                        <span className="text-bone/25"> ⏱{entry.chronosPosition}/12</span>
+                      )}
+                    </p>
+                  );
+                })}
               {(!G.actionLog || G.actionLog.length === 0) && (
                 <p className="text-bone/20">{t('board.waitingOpponent')}</p>
               )}
@@ -2043,6 +2447,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
       )}
 
       <FeedbackOverlay message={phaseMessage} />
+      <GameNoticeOverlay G={G} me={meIndex} />
     </div>
   );
 }
@@ -2053,6 +2458,10 @@ export function Board(props: Props) {
   const previousStep = useRef(props.G.step);
   const setupFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [setupFeedback, setSetupFeedback] = useState<FeedbackMessage | null>(null);
+  // 戰敗延遲：step 變成 gameOver 時，延遲顯示 GameOverScreen，
+  // 讓最後的 HP 變化 breakdown 等 notice 有時間播完。
+  const [gameOverDelayed, setGameOverDelayed] = useState(false);
+  const gameOverTriggeredRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -2060,6 +2469,15 @@ export function Board(props: Props) {
     },
     [],
   );
+
+  useEffect(() => {
+    if (props.G.step === 'gameOver' && !gameOverTriggeredRef.current) {
+      gameOverTriggeredRef.current = true;
+      setGameOverDelayed(true);
+      const timer = setTimeout(() => setGameOverDelayed(false), prefersReducedMotion() ? 4500 : 6500);
+      return () => clearTimeout(timer);
+    }
+  }, [props.G.step]);
 
   useEffect(() => {
     if (
@@ -2091,10 +2509,7 @@ export function Board(props: Props) {
         tone: 'neutral',
       });
       if (setupFeedbackTimer.current) clearTimeout(setupFeedbackTimer.current);
-      setupFeedbackTimer.current = setTimeout(
-        () => setSetupFeedback(null),
-        prefersReducedMotion() ? 1000 : 1600,
-      );
+      setupFeedbackTimer.current = setTimeout(() => setSetupFeedback(null), prefersReducedMotion() ? 1000 : 1600);
     }
     previousDrawCountRef.current = drawCount;
   }, [props.G.jankenDrawCount, props.G.step]);
@@ -2122,6 +2537,8 @@ export function Board(props: Props) {
   if (props.G.step === 'mulligan') {
     return renderWithSetupFeedback(<MulliganScreen {...props} onMulliganFeedback={showMulliganFeedback} />);
   }
-  if (props.G.step === 'gameOver') return <GameOverScreen {...props} matchStartedAt={matchStartedAt.current} />;
+  if (props.G.step === 'gameOver' && !gameOverDelayed) {
+    return <GameOverScreen {...props} matchStartedAt={matchStartedAt.current} />;
+  }
   return renderWithSetupFeedback(<BattleBoard {...props} />);
 }

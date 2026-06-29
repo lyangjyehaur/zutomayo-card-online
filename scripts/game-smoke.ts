@@ -257,13 +257,14 @@ function fivePowerCards() {
   }
   assert.ok(['turnSet', 'gameOver'].includes(player0.getState()?.G.step ?? ''));
   const actionLog = player0.getState()?.G.actionLog ?? [];
-  assert.ok(actionLog.length >= 8);
+  assert.ok(actionLog.length >= 6);
   assert.ok(actionLog.every((entry) => Number.isInteger(entry.id)));
   assert.ok(actionLog.every((entry) => typeof entry.timestamp === 'number'));
   assert.ok(actionLog.every((entry) => typeof entry.chronosPosition === 'number'));
   assert.ok(actionLog.every((entry) => Array.isArray(entry.hp) && entry.hp.length === 2));
   assert.ok(actionLog.some((entry) => entry.action === 'mulligan' && entry.payload?.redrawnCount === 0));
-  assert.ok(actionLog.some((entry) => entry.action === 'confirmReady' && entry.player === 0));
+  // confirmReady 不應記錄到 actionLog（對回溯復盤無資訊價值）。
+  assert.ok(actionLog.every((entry) => entry.action !== 'confirmReady'));
   player0.stop();
   player1.stop();
 }

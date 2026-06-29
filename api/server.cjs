@@ -102,6 +102,17 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_matches_loser ON matches(loser_id);
     CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC);
 
+    CREATE TABLE IF NOT EXISTS bjg_matches (
+      match_id TEXT PRIMARY KEY,
+      state JSONB,
+      initial_state JSONB,
+      metadata JSONB NOT NULL,
+      log JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_bjg_matches_updated_at ON bjg_matches (updated_at);
+    CREATE INDEX IF NOT EXISTS idx_bjg_matches_game_name ON bjg_matches ((metadata->>'gameName'));
+
     CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -271,6 +282,55 @@ function calculateElo(ratingA, ratingB, scoreA) {
   const K = 32;
   const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
   return Math.round(ratingA + K * (scoreA - expectedA));
+}
+
+function normalizeWinnerPlayer(value) {
+  if (value === 0 || value === '0') return 0;
+  if (value === 1 || value === '1') return 1;
+  return null;
+}
+
+function boardgameWinnerFromState(state) {
+  if (!state || typeof state !== 'object') return null;
+  const gameover = state.ctx && typeof state.ctx === 'object' ? state.ctx.gameover : null;
+  if (gameover && typeof gameover === 'object') {
+    if (gameover.draw) return null;
+    const winner = normalizeWinnerPlayer(gameover.winner);
+    if (winner !== null) return winner;
+  }
+  const G = state.G && typeof state.G === 'object' ? state.G : null;
+  return normalizeWinnerPlayer(G?.winner);
+}
+
+function isBoardgameFinished(state) {
+  if (!state || typeof state !== 'object') return false;
+  const G = state.G && typeof state.G === 'object' ? state.G : null;
+  return Boolean(state.ctx?.gameover) || G?.step === 'gameOver';
+}
+
+function playerDataUserId(metadata, player) {
+  const seat = metadata?.players?.[String(player)] || metadata?.players?.[player];
+  const userId = seat?.data?.userId;
+  return typeof userId === 'string' ? userId : '';
+}
+
+async function verifyBoardgameMatchResult(sourceMatchId, winnerPlayer, authUserId) {
+  if (!sourceMatchId) return { ok: true };
+  if (winnerPlayer !== 0 && winnerPlayer !== 1) {
+    return { ok: false, status: 400, error: 'winnerPlayer required for source match verification' };
+  }
+  const match = (await pool.query('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', [sourceMatchId])).rows[0];
+  if (!match) return { ok: false, status: 404, error: 'Source match not found' };
+  if (!isBoardgameFinished(match.state)) return { ok: false, status: 409, error: 'Source match is not finished' };
+  const authoritativeWinner = boardgameWinnerFromState(match.state);
+  if (authoritativeWinner === null) return { ok: false, status: 409, error: 'Source match has no winner' };
+  if (authoritativeWinner !== winnerPlayer) {
+    return { ok: false, status: 403, error: 'Winner does not match source match' };
+  }
+  if (playerDataUserId(match.metadata, winnerPlayer) !== authUserId) {
+    return { ok: false, status: 403, error: 'Winner seat is not bound to authenticated user' };
+  }
+  return { ok: true };
 }
 
 // ===== Action Log Sanitization =====
@@ -825,10 +885,20 @@ function handleRequest(req, res) {
       const authUserId = getAuthUserId(req);
       if (!authUserId) return json({ error: 'Unauthorized' }, 401);
 
-      const { winnerId, loserId, turns, duration, actionLog, action_log } = await readBody();
+      const body = await readBody();
+      const { winnerId, loserId, turns, duration, actionLog, action_log, sourceMatchId, winnerPlayer } = body;
       if (!winnerId || !loserId) return json({ error: 'Winner and loser IDs required' }, 400);
       // P0-2：認證使用者必須是贏家，杜絕偽造勝負。
       if (winnerId !== authUserId) return json({ error: 'Forbidden: winner must match authenticated user' }, 403);
+
+      const cleanSourceMatchId =
+        typeof sourceMatchId === 'string' && sourceMatchId.length > 0 ? sourceMatchId.slice(0, 120) : '';
+      const sourceVerification = await verifyBoardgameMatchResult(
+        cleanSourceMatchId,
+        normalizeWinnerPlayer(winnerPlayer),
+        authUserId,
+      );
+      if (!sourceVerification.ok) return json({ error: sourceVerification.error }, sourceVerification.status);
 
       const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
       const matchId = 'm_' + crypto.randomBytes(8).toString('hex');

@@ -1,4 +1,6 @@
 import type { GameState, HpChangeBreakdown, HpChangeReason, PlayerIndex } from './types';
+import { pushGameNotice } from './gameNotices';
+import { recordAction } from './actionLog';
 
 /**
  * HP 變化事件保留上限，避免 recentHpChanges 陣列無限增長。
@@ -43,4 +45,25 @@ export function pushHpChange(
   if (G.recentHpChanges.length > MAX_HP_CHANGES_KEPT) {
     G.recentHpChanges.splice(0, G.recentHpChanges.length - MAX_HP_CHANGES_KEPT);
   }
+  // 同步寫入 actionLog，讓 log 時間軸能看到 HP 變化與成因，供玩家回溯復盤。
+  // payload 記錄 delta / reason / sourceCardDefId，UI 層 formatLogEntry 負責翻譯與卡牌片段渲染。
+  recordAction(G, player, 'hpChange', {
+    delta,
+    reason,
+    before: Math.round(G.players[player].hp - delta),
+    after: Math.round(G.players[player].hp),
+    ...(sourceCardDefId ? { sourceCardDefId } : {}),
+  });
+  // 同步推一筆 hpChange GameNotice，由統一 overlay 置中顯示。
+  // titleKey 使用 `board.hpChange.<reason>`，與 i18n 既有 key 命名一致。
+  pushGameNotice(G, {
+    kind: 'hpChange',
+    tone: delta > 0 ? 'success' : 'danger',
+    titleKey: `board.hpChange.${reason}`,
+    player,
+    delta,
+    reason,
+    ...(sourceCardDefId ? { sourceCardDefId } : {}),
+    ...(breakdown ? { breakdown } : {}),
+  });
 }

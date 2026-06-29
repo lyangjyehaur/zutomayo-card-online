@@ -5,6 +5,7 @@ import type {
   GameState,
   JankenChoice,
   PlayerIndex,
+  PlayerState,
   SetSlot,
   ZutomayoSetupData,
 } from './types';
@@ -88,13 +89,35 @@ function redactPlayedCardsForViewer(G: GameState, owner: PlayerIndex, viewer: Pl
   );
 }
 
+/**
+ * 判斷 setInitialCard / setTurnCard log 所對應的卡牌是否已翻開。
+ * 卡牌在 resolveTurn（confirmReady 後）統一翻開，之後 step 進入 effectOrder。
+ * 跨輪（entry.turn < G.turnNumber）必定已過戰鬥結算，卡牌已公開。
+ */
+function isSetCardRevealed(G: GameState, entry: ActionLogEntry): boolean {
+  if (entry.turn < G.turnNumber) return true;
+  return G.step === 'effectOrder' || G.step === 'gameOver';
+}
+
 function redactActionLogForViewer(G: GameState, viewer: PlayerIndex | null, bothChose: boolean): ActionLogEntry[] {
   return (G.actionLog ?? [])
     .filter((entry) => entry.action !== 'janken' || bothChose || entry.player === viewer)
-    .map((entry) => ({
-      ...entry,
-      payload: entry.payload && typeof entry.payload === 'object' ? { ...entry.payload } : entry.payload,
-    }));
+    .map((entry) => {
+      const payload = entry.payload && typeof entry.payload === 'object' ? { ...entry.payload } : entry.payload;
+      // 對手在卡牌翻開前不應從 actionLog 得知 faceDown 卡的 cardDefId（資訊隱藏）。
+      // setInitialCard / setTurnCard 的卡在 resolveBattle 前為 faceDown；
+      // resolveTurn（進入 effectOrder/battle）後翻開，翻開後允許 log 顯示卡名供復盤。
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        (entry.action === 'setInitialCard' || entry.action === 'setTurnCard') &&
+        entry.player !== viewer &&
+        !isSetCardRevealed(G, entry)
+      ) {
+        delete (payload as Record<string, unknown>).cardDefId;
+      }
+      return { ...entry, payload };
+    });
 }
 
 function playerView({ G, playerID }: { G: GameState; playerID: string | null }): GameState {
@@ -109,8 +132,11 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
 
   return {
     ...G,
-    players: [redactPlayerForViewer(G, 0, viewer), redactPlayerForViewer(G, 1, viewer)],
-    setCardsThisTurn: [redactPlayedCardsForViewer(G, 0, viewer), redactPlayedCardsForViewer(G, 1, viewer)],
+    players: [redactPlayerForViewer(G, 0, viewer), redactPlayerForViewer(G, 1, viewer)] as [PlayerState, PlayerState],
+    setCardsThisTurn: [
+      redactPlayedCardsForViewer(G, 0, viewer),
+      redactPlayedCardsForViewer(G, 1, viewer),
+    ] as [CardInstance[], CardInstance[]],
     jankenChoices,
     pendingChoice,
     actionLog: redactActionLogForViewer(G, viewer, bothChose),

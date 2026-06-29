@@ -1,6 +1,6 @@
 import type { CardDef, CardInstance } from '../types';
 
-let cardMap = new Map<string, CardDef>();
+const cardMap = new Map<string, CardDef>();
 let currentCards: CardDef[] = [];
 let currentConfig: Record<string, unknown> = {};
 let cardsRefreshPromise: Promise<CardDef[]> | null = null;

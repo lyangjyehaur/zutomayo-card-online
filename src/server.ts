@@ -179,6 +179,10 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 // API proxy — forward /api/* to the API server
 const API_SERVER = process.env.API_URL || 'http://api:3001';
 
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (!ctx.path.startsWith('/api/')) return next();
 
@@ -196,16 +200,28 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
     rawBody = Buffer.concat(chunks).toString('utf-8');
   }
 
+  const authorization = firstHeaderValue(ctx.request.headers.authorization);
+  const forwardedFor = [firstHeaderValue(ctx.request.headers['x-forwarded-for']), ctx.ip]
+    .filter((value): value is string => Boolean(value))
+    .join(', ');
+  const requestHeaders: Record<string, string> = {
+    'content-type': firstHeaderValue(ctx.request.headers['content-type']) || 'application/json',
+    host: url.host,
+    'x-forwarded-for': forwardedFor,
+    'x-forwarded-host': firstHeaderValue(ctx.request.headers.host) || ctx.host,
+    'x-forwarded-proto': ctx.protocol,
+  };
+  if (authorization) requestHeaders.authorization = authorization;
+  if (ctx.method !== 'GET' && ctx.method !== 'HEAD') {
+    requestHeaders['content-length'] = rawBody ? String(Buffer.byteLength(rawBody)) : '0';
+  }
+
   return new Promise<void>((resolve) => {
     const proxyReq = http.request(
       url,
       {
         method: ctx.method,
-        headers: {
-          'content-type': ctx.request.headers['content-type'] || 'application/json',
-          'content-length': rawBody ? String(Buffer.byteLength(rawBody)) : '0',
-          host: url.host,
-        },
+        headers: requestHeaders,
         timeout: 10000,
       },
       (proxyRes) => {

@@ -64,6 +64,49 @@ export interface HpChangeEntry {
   timestamp: number;
 }
 
+/**
+ * 統一遊戲事件提示（GameNotice）。
+ *
+ * 為了讓「遊戲進行的每一步」都有置中面板提示（HP 變化、時鐘推進、戰鬥結果、
+ * 回合切換），且避免多個浮層互相競爭定位，引擎層在關鍵節點統一 push 到
+ * `recentGameNotices`，由 UI 層單一 overlay 依序消費顯示。
+ *
+ * titleKey / kickerKey 存 i18n key 字串，由 UI 層翻譯（引擎層不依賴 i18n）。
+ */
+export type GameNoticeKind = 'hpChange' | 'chronosChange' | 'battleResult' | 'turnStart';
+export type GameNoticeTone = 'success' | 'danger' | 'neutral' | 'phase';
+
+export interface GameNotice {
+  id: number;
+  kind: GameNoticeKind;
+  tone: GameNoticeTone;
+  titleKey: string;
+  kickerKey?: string;
+  /** hpChange / battleResult 適用：受影響玩家。 */
+  player?: PlayerIndex;
+  /** hpChange 專用。 */
+  delta?: number;
+  reason?: HpChangeReason;
+  sourceCardDefId?: string;
+  breakdown?: HpChangeBreakdown;
+  /** chronosChange 專用：from→to 位置與晝夜轉換、來源歸因。 */
+  chronosFrom?: number;
+  chronosTo?: number;
+  chronosDelta?: number;
+  chronosFromTime?: ChronosTime;
+  chronosToTime?: ChronosTime;
+  chronosSourceKind?: 'turnAdvance' | 'cardEffect';
+  chronosSourceCardDefId?: string;
+  /** battleResult 專用。 */
+  winner?: PlayerIndex | null;
+  winnerAttack?: number;
+  loserAttack?: number;
+  damage?: number;
+  /** turnStart 專用。 */
+  turn?: number;
+  timestamp: number;
+}
+
 export interface ActionLogResult {
   ok: boolean;
   message?: string;
@@ -364,4 +407,5 @@ export interface GameState {
   log: string[];
   actionLog: ActionLogEntry[];
   recentHpChanges: HpChangeEntry[];
+  recentGameNotices: GameNotice[];
 }

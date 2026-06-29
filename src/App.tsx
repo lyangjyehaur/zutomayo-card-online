@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { getDecks, isLoggedIn, type DeckResponse } from './api/client';
+import { getDecks, getProfile, isLoggedIn, type DeckResponse } from './api/client';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
@@ -56,11 +56,26 @@ async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
   return data.matchID;
 }
 
+async function currentAccountSeatData(): Promise<{ userId: string } | undefined> {
+  if (!isLoggedIn()) return undefined;
+  try {
+    const profile = await getProfile();
+    return { userId: profile.id };
+  } catch {
+    return undefined;
+  }
+}
+
 async function joinMatch(matchID: string, playerID: '0' | '1'): Promise<{ playerCredentials: string }> {
+  const data = await currentAccountSeatData();
   const response = await fetch(`/games/zutomayo-card/${matchID}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ playerID, playerName: playerID === '0' ? t('player.zero') : t('player.one') }),
+    body: JSON.stringify({
+      playerID,
+      playerName: playerID === '0' ? t('player.zero') : t('player.one'),
+      ...(data ? { data } : {}),
+    }),
   });
   if (!response.ok) {
     if (response.status === 404) throw onlineRoomError('online.roomNotFound');

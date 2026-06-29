@@ -49,13 +49,55 @@ interface CardProps {
   showPopover?: boolean;
 }
 
-type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
+export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
-type PopoverPosition = {
+export type PopoverPosition = {
   top: number;
   left: number;
   placement: PopoverPlacement;
 };
+
+/**
+ * 根據錨點元素的 DOMRect 計算 popover 顯示位置。
+ * 抽成獨立函數供 Card 元件與 log 卡牌 chip 共用，避免重複實作定位邏輯。
+ */
+export function computePopoverPosition(rect: DOMRect): PopoverPosition {
+  const popoverWidth = Math.min(Math.max(window.innerWidth * 0.16, 184), 248);
+  const popoverHeight = Math.min(Math.max(window.innerHeight * 0.2, 220), 288);
+  const gap = 12;
+  const margin = 8;
+  const centerY = rect.top + rect.height / 2;
+  const centerX = rect.left + rect.width / 2;
+
+  let placement: PopoverPlacement = 'right';
+  let top = centerY;
+  let left = rect.right + gap;
+
+  if (left + popoverWidth > window.innerWidth - margin) {
+    placement = 'left';
+    left = rect.left - gap;
+  }
+
+  if (placement === 'right' || placement === 'left') {
+    top = Math.min(Math.max(centerY, margin + popoverHeight / 2), window.innerHeight - margin - popoverHeight / 2);
+  }
+
+  if (placement === 'left' && left - popoverWidth < margin) {
+    placement = 'bottom';
+    left = Math.min(Math.max(centerX, margin + popoverWidth / 2), window.innerWidth - margin - popoverWidth / 2);
+    top = rect.bottom + gap;
+    if (top + popoverHeight > window.innerHeight - margin) {
+      placement = 'top';
+      top = rect.top - gap;
+      if (top - popoverHeight < margin) {
+        placement = 'bottom';
+        top = rect.bottom + gap;
+      }
+    }
+  }
+
+  return { top, left, placement };
+}
 
 function cardClassName(
   def: CardDef | undefined,
@@ -91,7 +133,7 @@ function typeLabel(type: CardType): string {
   return t(TYPE_LABEL_KEY[type]);
 }
 
-function CardPopover({
+export function CardPopover({
   def,
   activeTime,
   position,
@@ -174,42 +216,7 @@ export function Card({
   const calculatePopoverPosition = useCallback((): PopoverPosition | null => {
     const element = cardRef.current;
     if (!element) return null;
-    const rect = element.getBoundingClientRect();
-    const popoverWidth = Math.min(Math.max(window.innerWidth * 0.16, 184), 248);
-    const popoverHeight = Math.min(Math.max(window.innerHeight * 0.2, 220), 288);
-    const gap = 12;
-    const margin = 8;
-    const centerY = rect.top + rect.height / 2;
-    const centerX = rect.left + rect.width / 2;
-
-    let placement: PopoverPlacement = 'right';
-    let top = centerY;
-    let left = rect.right + gap;
-
-    if (left + popoverWidth > window.innerWidth - margin) {
-      placement = 'left';
-      left = rect.left - gap;
-    }
-
-    if (placement === 'right' || placement === 'left') {
-      top = Math.min(Math.max(centerY, margin + popoverHeight / 2), window.innerHeight - margin - popoverHeight / 2);
-    }
-
-    if (placement === 'left' && left - popoverWidth < margin) {
-      placement = 'bottom';
-      left = Math.min(Math.max(centerX, margin + popoverWidth / 2), window.innerWidth - margin - popoverWidth / 2);
-      top = rect.bottom + gap;
-      if (top + popoverHeight > window.innerHeight - margin) {
-        placement = 'top';
-        top = rect.top - gap;
-        if (top - popoverHeight < margin) {
-          placement = 'bottom';
-          top = rect.bottom + gap;
-        }
-      }
-    }
-
-    return { top, left, placement };
+    return computePopoverPosition(element.getBoundingClientRect());
   }, []);
 
   const updateCardPopoverPosition = useCallback(() => {

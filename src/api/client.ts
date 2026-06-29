@@ -181,10 +181,12 @@ export async function submitMatch(
   turns: number,
   duration?: number,
   actionLog?: ActionLogEntry[],
+  sourceMatchId?: string,
+  winnerPlayer?: 0 | 1,
 ) {
   return request('/matches', {
     method: 'POST',
-    body: JSON.stringify({ winnerId, loserId, turns, duration, actionLog }),
+    body: JSON.stringify({ winnerId, loserId, turns, duration, actionLog, sourceMatchId, winnerPlayer }),
   });
 }
 
