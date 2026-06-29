@@ -7,6 +7,7 @@ import { Board } from './Board';
 import { useAIMoves, type ZutomayoMoveDispatchers } from '../game/useAIMoves';
 import type { AIDifficulty } from '../game/ai';
 import type { GameState } from '../game/types';
+import { t } from '../i18n';
 
 
 interface AIGameProps {
@@ -32,7 +33,8 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
   );
 
   useAIMoves(boardProps.G, boardProps.ctx, aiMoves, boardProps.playerID || '0', difficulty);
-  return <Board {...boardProps} />;
+  // AI 對戰時對手（playerID=1）顯示為「電腦」而非「玩家二」。
+  return <Board {...boardProps} opponentLabel={t('player.ai' as never)} />;
 }
 
 export function AIGame({ difficulty, deck0Name, deck1Name }: AIGameProps) {

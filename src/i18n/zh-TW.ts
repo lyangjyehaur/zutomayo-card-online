@@ -99,6 +99,7 @@ export const zhTW = {
 
   'player.zero': '玩家一',
   'player.one': '玩家二',
+  'player.ai': '電腦',
   'player.me': '我方',
   'player.opponent': '對手',
   'player.zeroView': '玩家一視角',

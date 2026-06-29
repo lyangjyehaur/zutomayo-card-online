@@ -52,6 +52,8 @@ type Props = BoardProps<GameState> & {
   gameOverActions?: BoardGameOverActions;
   // P3-16：線上模式用伺服器權威計時器（G.turnStartTime）；本機/AI 維持客戶端 setInterval。
   useServerTimer?: boolean;
+  // 對手顯示名稱 override（如 AI 對戰時傳入「電腦」），未傳則用 player.one i18n key。
+  opponentLabel?: string;
 };
 
 type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
@@ -71,7 +73,12 @@ type MatchSubmitResponse = {
   loserEloChange?: number;
 };
 
+// 對手名稱 override（AI 對戰時設為「電腦」等），由 Board 元件 mount 時設定。
+// formatLogEntry 等純函數無法存取 prop，故用 module-level 變數統一覆寫 player.one 顯示。
+let opponentLabelOverride: string | null = null;
+
 function playerName(index: PlayerIndex): string {
+  if (index === 1 && opponentLabelOverride) return opponentLabelOverride;
   return index === 0 ? t('player.zero') : t('player.one');
 }
 
@@ -1873,12 +1880,19 @@ export function BattleLogPanel({ G }: { G: GameState }) {
   );
 }
 
-function BattleBoard({ G, moves, playerID, useServerTimer = false }: Props) {
+function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel }: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
   const opponent = G.players[opponentIndex];
   const locale = useLocale();
+  // 設定對手名稱 override（AI 對戰時為「電腦」），formatLogEntry 等純函數透過 module-level 變數讀取。
+  useEffect(() => {
+    opponentLabelOverride = opponentLabel ?? null;
+    return () => {
+      opponentLabelOverride = null;
+    };
+  }, [opponentLabel]);
   const minimum = getMinimumSetCount(G, meIndex);
   const required = getRequiredSetCount(G, meIndex);
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
