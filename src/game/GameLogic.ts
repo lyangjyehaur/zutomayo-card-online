@@ -1013,45 +1013,42 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
     G.lastBattleResult = { winner: null, damage: 0, winnerAttack: attacks[0], loserAttack: attacks[1] };
     G.log.push(`Battle ${attacks[0]}–${attacks[1]}: draw.`);
     // 平手（攻擊力相等）無 HP 變化，仍推 battleResult notice 讓 UI 提示「勢均力敵」。
+    // 平手 breakdown 精簡為「各玩家實際攻擊力」一行，原始攻擊力僅在與實際不同時才顯示。
+    // 與戰鬥 breakdown 同風格，避免固定 4 行的冗餘。
+    const p0Card = G.players[0].battleZone;
+    const p1Card = G.players[1].battleZone;
+    const p0Base = p0Card ? getBaseAttack(p0Card, G, 0) : null;
+    const p1Base = p1Card ? getBaseAttack(p1Card, G, 1) : null;
+    const p0Insufficient = p0Card ? isAttackPowerInsufficient(p0Card, G, 0) : false;
+    const p1Insufficient = p1Card ? isAttackPowerInsufficient(p1Card, G, 1) : false;
+    const p0AttackText = p0Insufficient ? 'board.hpChange.insufficientPower' : `${attacks[0]}`;
+    const p1AttackText = p1Insufficient ? 'board.hpChange.insufficientPower' : `${attacks[1]}`;
+    const p0ShowBase = !p0Insufficient && p0Base !== null && p0Base !== attacks[0];
+    const p1ShowBase = !p1Insufficient && p1Base !== null && p1Base !== attacks[1];
+    const drawLines: HpChangeBreakdownLine[] = [
+      {
+        label: 'board.hpChange.p0Attack',
+        value: p0AttackText,
+        ...(p0Card ? { cardDefId: p0Card.defId } : {}),
+      },
+    ];
+    if (p0ShowBase) {
+      drawLines.push({ label: 'board.hpChange.p0RawAttack', value: `${p0Base}` });
+    }
+    drawLines.push({
+      label: 'board.hpChange.p1Attack',
+      value: p1AttackText,
+      ...(p1Card ? { cardDefId: p1Card.defId } : {}),
+    });
+    if (p1ShowBase) {
+      drawLines.push({ label: 'board.hpChange.p1RawAttack', value: `${p1Base}` });
+    }
     const drawBreakdown: HpChangeBreakdown = {
       title: 'board.notice.battleDraw',
-      lines: [
-        {
-          label: 'board.hpChange.p0RawAttack',
-          value: (() => {
-            const c = G.players[0].battleZone;
-            return c && getBaseAttack(c, G, 0) !== null ? `${getBaseAttack(c, G, 0)}` : '—';
-          })(),
-          ...(G.players[0].battleZone ? { cardDefId: G.players[0].battleZone!.defId } : {}),
-        },
-        {
-          label: 'board.hpChange.p0EffectiveAttack',
-          value: (() => {
-            const c = G.players[0].battleZone;
-            return c && isAttackPowerInsufficient(c, G, 0) ? 'board.hpChange.insufficientPower' : `${attacks[0]}`;
-          })(),
-          ...(G.players[0].battleZone ? { cardDefId: G.players[0].battleZone!.defId } : {}),
-        },
-        {
-          label: 'board.hpChange.p1RawAttack',
-          value: (() => {
-            const c = G.players[1].battleZone;
-            return c && getBaseAttack(c, G, 1) !== null ? `${getBaseAttack(c, G, 1)}` : '—';
-          })(),
-          ...(G.players[1].battleZone ? { cardDefId: G.players[1].battleZone!.defId } : {}),
-        },
-        {
-          label: 'board.hpChange.p1EffectiveAttack',
-          value: (() => {
-            const c = G.players[1].battleZone;
-            return c && isAttackPowerInsufficient(c, G, 1) ? 'board.hpChange.insufficientPower' : `${attacks[1]}`;
-          })(),
-          ...(G.players[1].battleZone ? { cardDefId: G.players[1].battleZone!.defId } : {}),
-        },
-      ],
+      lines: drawLines,
       participantCardDefIds: [
-        ...(G.players[0].battleZone ? [G.players[0].battleZone!.defId] : []),
-        ...(G.players[1].battleZone ? [G.players[1].battleZone!.defId] : []),
+        ...(p0Card ? [p0Card.defId] : []),
+        ...(p1Card ? [p1Card.defId] : []),
       ],
     };
     pushGameNotice(G, {
@@ -1100,7 +1097,8 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   }
   const loserHpBefore = G.players[loser].hp;
   G.players[loser].hp = Math.max(0, loserHpBefore - damage);
-  // 組裝戰鬥 HP 變化 breakdown：攻擊力比較 → 原始傷害 → 減傷 → 最終傷害。
+  // 組裝戰鬥 HP 變化 breakdown：精簡為「勝者攻擊 / 敗者攻擊 / 最終傷害」三行。
+  // 原始攻擊力僅在與實際不同時才顯示（能量不足或附魔增減），避免無謂重複。
   // label 存 i18n key 字串，由 UI 層翻譯（引擎層不依賴 i18n）。
   const winnerCard = G.players[winner].battleZone;
   const loserCard = G.players[loser].battleZone;
@@ -1108,36 +1106,36 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   const loserBase = loserCard ? getBaseAttack(loserCard, G, loser) : null;
   const winnerInsufficient = winnerCard ? isAttackPowerInsufficient(winnerCard, G, winner) : false;
   const loserInsufficient = loserCard ? isAttackPowerInsufficient(loserCard, G, loser) : false;
+  const winnerAttackText = winnerInsufficient ? 'board.hpChange.insufficientPower' : `${attacks[winner]}`;
+  const loserAttackText = loserInsufficient ? 'board.hpChange.insufficientPower' : `${attacks[loser]}`;
+  const winnerShowBase = !winnerInsufficient && winnerBase !== null && winnerBase !== attacks[winner];
+  const loserShowBase = !loserInsufficient && loserBase !== null && loserBase !== attacks[loser];
   const battleLines: HpChangeBreakdownLine[] = [
     {
-      label: 'board.hpChange.winnerRawAttack',
-      value: winnerBase !== null ? `${winnerBase}` : '—',
+      label: 'board.hpChange.winnerAttack',
+      value: winnerAttackText,
       ...(winnerCard ? { cardDefId: winnerCard.defId } : {}),
     },
-    {
-      label: 'board.hpChange.winnerEffectiveAttack',
-      value: winnerInsufficient ? 'board.hpChange.insufficientPower' : `${attacks[winner]}`,
-      ...(winnerCard ? { cardDefId: winnerCard.defId } : {}),
-    },
-    {
-      label: 'board.hpChange.loserRawAttack',
-      value: loserBase !== null ? `${loserBase}` : '—',
-      ...(loserCard ? { cardDefId: loserCard.defId } : {}),
-    },
-    {
-      label: 'board.hpChange.loserEffectiveAttack',
-      value: loserInsufficient ? 'board.hpChange.insufficientPower' : `${attacks[loser]}`,
-      ...(loserCard ? { cardDefId: loserCard.defId } : {}),
-    },
-    { label: 'board.hpChange.rawDamage', value: `${rawDamage}` },
   ];
-  if (reductionApplied > 0) {
-    battleLines.push({ label: 'board.hpChange.damageReduction', value: `-${reductionApplied}` });
+  if (winnerShowBase) {
+    battleLines.push({ label: 'board.hpChange.winnerRawAttack', value: `${winnerBase}` });
   }
-  if (unreduceable) {
-    battleLines.push({ label: 'board.hpChange.unreduceable', value: 'board.hpChange.yes' });
+  battleLines.push({
+    label: 'board.hpChange.loserAttack',
+    value: loserAttackText,
+    ...(loserCard ? { cardDefId: loserCard.defId } : {}),
+  });
+  if (loserShowBase) {
+    battleLines.push({ label: 'board.hpChange.loserRawAttack', value: `${loserBase}` });
   }
-  battleLines.push({ label: 'board.hpChange.finalDamage', value: `${damage}` });
+  // 最終傷害行：若無減傷直接顯示 damage；有減傷則附 (原始 -減傷) 明細。
+  const damageText =
+    reductionApplied > 0
+      ? `${damage} (${rawDamage}-${reductionApplied})`
+      : unreduceable
+        ? `${damage} (board.hpChange.unreduceable)`
+        : `${damage}`;
+  battleLines.push({ label: 'board.hpChange.finalDamage', value: damageText });
   const battleBreakdown: HpChangeBreakdown = {
     title: 'board.hpChange.battleCalc',
     lines: battleLines,
