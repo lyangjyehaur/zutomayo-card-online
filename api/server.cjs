@@ -4,6 +4,7 @@ const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
 const { getAccountProfile, loginAccount, registerAccount, updateAccountProfile } = require('./accountService.cjs');
+const { adminLogin, listAdminUsers, resetUserElo } = require('./adminService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks } = require('./deckService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
@@ -816,35 +817,16 @@ function handleRequest(req, res) {
 
     // Admin 登入
     if (pathname === '/api/admin/login' && method === 'POST') {
-      if (!ADMIN_PASSWORD) return json({ error: 'Admin not configured' }, 503);
-      const { password } = await readBody();
-      if (password !== ADMIN_PASSWORD) return json({ error: 'Invalid password' }, 401);
-      json({ token: createAdminToken() });
+      const result = await adminLogin(await readBody(), ADMIN_PASSWORD, createAdminToken);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
     // Admin：使用者列表
     if (pathname === '/api/admin/users' && method === 'GET') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-      const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
-      const users = (
-        await pool.query(
-          'SELECT id, email, nickname, elo, match_count, wins, created_at FROM users ORDER BY created_at DESC LIMIT $1',
-          [limit],
-        )
-      ).rows;
-      json({
-        users: users.map((u) => ({
-          id: u.id,
-          email: u.email,
-          nickname: u.nickname,
-          elo: u.elo,
-          matchCount: u.match_count,
-          wins: u.wins,
-          createdAt: u.created_at,
-          winRate: u.match_count > 0 ? Math.round((u.wins / u.match_count) * 100) : 0,
-        })),
-      });
+      json(await listAdminUsers(pool, url.searchParams.get('limit')));
       return;
     }
 
@@ -860,9 +842,7 @@ function handleRequest(req, res) {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const targetUserId = pathname.split('/')[4];
       const { elo } = await readBody();
-      const newElo = Math.max(0, Math.min(9999, Math.trunc(Number(elo) || 1000)));
-      await pool.query('UPDATE users SET elo = $1 WHERE id = $2', [newElo, targetUserId]);
-      json({ id: targetUserId, elo: newElo });
+      json(await resetUserElo(pool, targetUserId, elo));
       return;
     }
 
