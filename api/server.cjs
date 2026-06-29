@@ -15,6 +15,12 @@ const {
   getPublicCards,
 } = require('./cardDataService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks } = require('./deckService.cjs');
+const {
+  getMatchmakingStatus,
+  joinMatchmakingQueue,
+  leaveMatchmakingQueue,
+  reportRealMatch,
+} = require('./matchmakingService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
 let staticCards = [];
@@ -805,34 +811,18 @@ function handleRequest(req, res) {
     if (pathname === '/api/matchmaking/queue' && method === 'POST') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const { deckName, deckIds } = await readBody();
-      const existing = await redis.hgetall(`mm:${userId}`);
-      // 若已在佇列且已配對，不重複加入
-      if (existing && existing.status === 'matched') {
-        return json({ queueId: existing.queueId, status: 'matched' });
-      }
-      const queueId = (existing && existing.queueId) || 'q_' + crypto.randomBytes(8).toString('hex');
-      const now = Date.now();
-      const cleanDeckName = typeof deckName === 'string' ? sanitizeText(deckName, 60) : '';
-      const cleanDeckIds = Array.isArray(deckIds) ? deckIds.filter((id) => typeof id === 'string').slice(0, 20) : [];
-
-      await redis.hset(`mm:${userId}`, {
-        queueId,
-        joinedAt: String(now),
-        deckName: cleanDeckName,
-        deckIds: JSON.stringify(cleanDeckIds),
-        status: 'queued',
-      });
-      await redis.zadd('mm:queue', now, userId);
-      await redis.expire(`mm:${userId}`, MM_TTL_SECONDS);
-
-      // 嘗試立即配對（Lua 原子）
-      const matchId = generateMatchmakingId();
-      await redis.mmTryMatch('mm:queue', userId, String(now), matchId, String(MATCHMAKING_TIMEOUT_MS));
-
-      const current = await redis.hgetall(`mm:${userId}`);
-      if (!current || !current.status) return json({ status: 'timeout' });
-      json({ queueId: current.queueId, status: current.status });
+      json(
+        await joinMatchmakingQueue({
+          redis,
+          userId,
+          body: await readBody(),
+          sanitizeText,
+          generateQueueId: () => 'q_' + crypto.randomBytes(8).toString('hex'),
+          generateMatchId: generateMatchmakingId,
+          ttlSeconds: MM_TTL_SECONDS,
+          timeoutMs: MATCHMAKING_TIMEOUT_MS,
+        }),
+      );
       return;
     }
 
@@ -840,16 +830,7 @@ function handleRequest(req, res) {
     if (pathname === '/api/matchmaking/status' && method === 'GET') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      await redis.mmCleanExpired('mm:queue', String(Date.now()), String(MATCHMAKING_TIMEOUT_MS));
-      const entry = await redis.hgetall(`mm:${userId}`);
-      if (!entry || !entry.status) return json({ status: 'timeout' });
-      json({
-        status: entry.status,
-        matchId: entry.matchId || undefined,
-        opponentId: entry.opponentId || undefined,
-        role: entry.role || undefined,
-        realMatchId: entry.realMatchId || undefined,
-      });
+      json(await getMatchmakingStatus(redis, userId, Date.now(), MATCHMAKING_TIMEOUT_MS));
       return;
     }
 
@@ -857,17 +838,7 @@ function handleRequest(req, res) {
     if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const entry = await redis.hgetall(`mm:${userId}`);
-      if (entry && entry.opponentId) {
-        const opponent = await redis.hgetall(`mm:${entry.opponentId}`);
-        if (opponent && opponent.status) {
-          // 已配對情況下離開，標記對手為 timeout 讓對手能即時知道
-          await redis.hset(`mm:${entry.opponentId}`, 'status', 'timeout');
-        }
-      }
-      await redis.zrem('mm:queue', userId);
-      await redis.del(`mm:${userId}`);
-      json({ deleted: true });
+      json(await leaveMatchmakingQueue(redis, userId));
       return;
     }
 
@@ -876,15 +847,9 @@ function handleRequest(req, res) {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const { matchId } = await readBody();
-      if (typeof matchId !== 'string' || !matchId) {
-        return json({ error: 'matchId required' }, 400);
-      }
-      const entry = await redis.hgetall(`mm:${userId}`);
-      if (!entry || entry.status !== 'matched') {
-        return json({ error: 'Not in a matched queue' }, 400);
-      }
-      await redis.hset(`mm:${userId}`, 'realMatchId', matchId);
-      json({ ok: true });
+      const result = await reportRealMatch(redis, userId, matchId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
