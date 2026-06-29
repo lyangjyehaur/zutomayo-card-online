@@ -85,6 +85,16 @@ async function joinMatch(matchID: string, playerID: '0' | '1'): Promise<{ player
   return response.json();
 }
 
+async function currentAccountSeatData(): Promise<{ userId: string } | undefined> {
+  if (!isLoggedIn()) return undefined;
+  try {
+    const profile = await getProfile();
+    return { userId: profile.id };
+  } catch {
+    return undefined;
+  }
+}
+
 function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
