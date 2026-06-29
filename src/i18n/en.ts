@@ -81,6 +81,8 @@ export const en: Record<TranslationKey, string> = {
   'difficulty.normalDesc': 'Standard play',
   'difficulty.hardDesc': 'Aggressive picks',
 
+  'deck.random': 'Random Deck',
+  'deck.randomDesc': 'Randomly draw 20 cards from the full 422-card pool',
   'deck.dark': 'Shadow Deck',
   'deck.flame': 'Flame Burst Deck',
   'deck.electric': 'Thunder Strike Deck',

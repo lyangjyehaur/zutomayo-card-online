@@ -81,6 +81,8 @@ export const ja: Record<TranslationKey, string> = {
   'difficulty.normalDesc': '標準的な判断',
   'difficulty.hardDesc': '高圧的な選択',
 
+  'deck.random': 'ランダムデッキ',
+  'deck.randomDesc': '全422枚のカードプールからランダムに20枚抽出',
   'deck.dark': '闇のデッキ',
   'deck.flame': '炎のデッキ',
   'deck.electric': '電気のデッキ',

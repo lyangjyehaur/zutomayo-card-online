@@ -81,6 +81,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'difficulty.normalDesc': '标准判断',
   'difficulty.hardDesc': '高压选牌',
 
+  'deck.random': '随机牌组',
+  'deck.randomDesc': '从完整 422 张卡池随机抽取 20 张',
   'deck.dark': '暗影牌组',
   'deck.flame': '炎爆牌组',
   'deck.electric': '电闪牌组',

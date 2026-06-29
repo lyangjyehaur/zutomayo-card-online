@@ -79,6 +79,8 @@ export const zhTW = {
   'difficulty.normalDesc': '標準判斷',
   'difficulty.hardDesc': '高壓選牌',
 
+  'deck.random': '隨機牌組',
+  'deck.randomDesc': '從完整 422 張卡池隨機抽取 20 張',
   'deck.dark': '闇影牌組',
   'deck.flame': '炎爆牌組',
   'deck.electric': '電閃牌組',

@@ -2,6 +2,7 @@ import { type DeckResponse } from '../../api/client';
 import type { PlayerIndex, ZutomayoSetupData } from '../../game/types';
 import { CUSTOM_DECK_NAME, loadCustomDeckIds } from '../../game/cards/customDeck';
 import { PRESET_DECKS } from '../../game/cards/presetDecks';
+import { RANDOM_DECK_NAME } from '../../game/cards/deckBuilder';
 import { t } from '../../i18n';
 
 export type DeckOption = {
@@ -66,6 +67,12 @@ export function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
   });
 
   return [
+    {
+      id: RANDOM_DECK_NAME,
+      name: t('deck.random'),
+      description: t('deck.randomDesc'),
+      previewIds: [],
+    },
     ...presetOptions,
     {
       id: CUSTOM_DECK_NAME,

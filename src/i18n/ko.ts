@@ -81,6 +81,8 @@ export const ko: Record<TranslationKey, string> = {
   'difficulty.normalDesc': '기본 전략',
   'difficulty.hardDesc': '공격적 선택',
 
+  'deck.random': '랜덤 덱',
+  'deck.randomDesc': '전체 422장 카드 풀에서 무작위로 20장 추출',
   'deck.dark': '그림자 덱',
   'deck.flame': '불꽃 폭발 덱',
   'deck.electric': '천둥 강타 덱',

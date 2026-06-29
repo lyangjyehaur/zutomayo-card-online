@@ -5,6 +5,12 @@ import { CUSTOM_DECK_NAME, loadCustomDeckIds } from './customDeck';
 
 export { CUSTOM_DECK_NAME, CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from './customDeck';
 
+/**
+ * 隨機牌組識別碼。lobby 預設選此選項，每次開局從完整 422 張卡池隨機抽取 20 張。
+ * 與 preset/custom 不同，不預先固定任何卡牌，確保每次對戰牌組都不同。
+ */
+export const RANDOM_DECK_NAME = '__random__';
+
 // Fisher-Yates shuffle
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -77,18 +83,27 @@ export function getPresetDeckNames(): string[] {
   return Object.keys(PRESET_DECKS);
 }
 
-// Generate a random deck from all available cards
+/**
+ * 從完整卡池隨機產生符合官方標準的 20 張牌組。
+ *
+ * 官方規則：
+ * - 牌組正好 20 張
+ * - 同卡最多 2 張（從 unique 卡定義抽，必然符合）
+ * - Character >= 50% 為推薦（非強制），這裡軟性確保 10-15 張角色卡
+ *
+ * 卡池涵蓋全部 422 張卡（Character 242 + Enchant 153 + Area Enchant 27），
+ * 每次呼叫都重新隨機，確保每次對戰牌組都不同。
+ */
 export function randomDeck(): CardInstance[] {
   const allCards = getAllCardDefs();
   const characters = allCards.filter((c) => c.type === 'Character');
-  const enchants = allCards.filter((c) => c.type === 'Enchant');
-  const areaEnchants = allCards.filter((c) => c.type === 'Area Enchant');
-
-  const deckChars = shuffle(characters).slice(0, 12);
-  const deckEnchants = shuffle(enchants).slice(0, 6);
-  const deckAE = shuffle(areaEnchants).slice(0, 2);
-  const deck = shuffle([...deckChars, ...deckEnchants, ...deckAE]);
-
+  const others = allCards.filter((c) => c.type !== 'Character');
+  // 官方推薦 Character >= 50%（非強制）；隨機決定 10-15 張角色卡，其餘從非角色卡隨機抽取
+  const charCount = 10 + Math.floor(Math.random() * 6); // 10-15
+  const otherCount = 20 - charCount;
+  const deckChars = shuffle(characters).slice(0, charCount);
+  const deckOthers = shuffle(others).slice(0, otherCount);
+  const deck = shuffle([...deckChars, ...deckOthers]);
   return deck.map((c) => createInstance(c.id));
 }
 
