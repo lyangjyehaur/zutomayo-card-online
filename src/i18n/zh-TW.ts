@@ -59,6 +59,7 @@ export const zhTW = {
   'lobby.myDeck': '我方牌組',
   'lobby.opponentDeck': '對手牌組',
   'lobby.deckSelectHint': '選擇本局使用的 20 張牌牌組',
+  'lobby.selectDeckFirst': '請先選擇牌組',
   'lobby.onlineTitle': '線上房間',
   'lobby.roomCode': '房間代碼',
   'lobby.roomCodePlaceholder': '輸入房間代碼',

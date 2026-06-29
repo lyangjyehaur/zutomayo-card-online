@@ -61,6 +61,7 @@ export const en: Record<TranslationKey, string> = {
   'lobby.myDeck': 'Your Deck',
   'lobby.opponentDeck': 'Opponent Deck',
   'lobby.deckSelectHint': 'Choose a 20-card deck for this match',
+  'lobby.selectDeckFirst': 'Please select a deck first',
   'lobby.onlineTitle': 'Online Room',
   'lobby.roomCode': 'Room Code',
   'lobby.roomCodePlaceholder': 'Enter room code',

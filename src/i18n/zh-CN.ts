@@ -61,6 +61,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'lobby.myDeck': '我方牌组',
   'lobby.opponentDeck': '对手牌组',
   'lobby.deckSelectHint': '选择本局使用的 20 张卡牌牌组',
+  'lobby.selectDeckFirst': '请先选择牌组',
   'lobby.onlineTitle': '在线房间',
   'lobby.roomCode': '房间代码',
   'lobby.roomCodePlaceholder': '输入房间代码',

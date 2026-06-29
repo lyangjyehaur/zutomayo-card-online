@@ -61,6 +61,7 @@ export const ko: Record<TranslationKey, string> = {
   'lobby.myDeck': '내 덱',
   'lobby.opponentDeck': '상대 덱',
   'lobby.deckSelectHint': '이번 대전에서 사용할 20장 덱을 선택하세요',
+  'lobby.selectDeckFirst': '먼저 덱을 선택하세요',
   'lobby.onlineTitle': '온라인 방',
   'lobby.roomCode': '방 코드',
   'lobby.roomCodePlaceholder': '방 코드 입력',

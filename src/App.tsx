@@ -5,7 +5,7 @@ import { InteractiveTutorial } from './components/InteractiveTutorial';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
-import { LobbyPage, DEFAULT_DECK_NAME, onlineDeckName, selectedDeckName } from './pages/LobbyPage';
+import { LobbyPage, onlineDeckName, selectedDeckName } from './pages/LobbyPage';
 import { t, translate, useLocale, type TranslationKey } from './i18n';
 import {
   clearStoredOnlineSession,
@@ -220,8 +220,9 @@ function RouterShell() {
   const [customDeckAvailable, setCustomDeckAvailable] = useState(hasStoredCustomDeck);
   const [serverDecks, setServerDecks] = useState<DeckResponse[]>([]);
   const [serverDeckError, setServerDeckError] = useState('');
-  const [deck0Name, setDeck0Name] = useState(DEFAULT_DECK_NAME);
-  const [deck1Name, setDeck1Name] = useState(DEFAULT_DECK_NAME);
+  // 預設不選中任何牌組，玩家每次必須主動選擇才能開始遊戲。
+  const [deck0Name, setDeck0Name] = useState('');
+  const [deck1Name, setDeck1Name] = useState('');
   const [onlineSession, setOnlineSession] = useState<OnlineSession | null>(loadOnlineSession);
   const [resumePromptSession, setResumePromptSession] = useState<OnlineSession | null>(() =>
     location.pathname.startsWith('/play/online/') ? null : loadOnlineSession(),
@@ -238,8 +239,8 @@ function RouterShell() {
     if (!isLoggedIn()) {
       setServerDecks([]);
       setServerDeckError('');
-      setDeck0Name((current) => (current.startsWith('server:') ? DEFAULT_DECK_NAME : current));
-      setDeck1Name((current) => (current.startsWith('server:') ? DEFAULT_DECK_NAME : current));
+      setDeck0Name((current) => (current.startsWith('server:') ? '' : current));
+      setDeck1Name((current) => (current.startsWith('server:') ? '' : current));
       return;
     }
     try {

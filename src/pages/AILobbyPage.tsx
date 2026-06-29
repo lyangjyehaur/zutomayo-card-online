@@ -74,7 +74,7 @@ export function AILobbyPage({
           </div>
         </div>
         <div className="flex min-h-0 flex-col gap-4 md:overflow-y-auto md:pr-2">
-          <DifficultyButtons onStart={onStartAI} />
+          <DifficultyButtons onStart={onStartAI} disabled={!deck0Name || !deck1Name} />
         </div>
       </div>
     </main>

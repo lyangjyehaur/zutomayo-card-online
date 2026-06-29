@@ -61,6 +61,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'lobby.myDeck': '我方牌組',
   'lobby.opponentDeck': '對手牌組',
   'lobby.deckSelectHint': '揀今局用嘅 20 張牌牌組',
+  'lobby.selectDeckFirst': '請先揀選牌組',
   'lobby.onlineTitle': '綫上房間',
   'lobby.roomCode': '房間代碼',
   'lobby.roomCodePlaceholder': '輸入房間代碼',

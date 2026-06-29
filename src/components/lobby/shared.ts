@@ -39,7 +39,7 @@ export function serverDeckIdFromOption(optionId: string): string | null {
 
 export function selectedDeckName(deckName: string, customDeckAvailable: boolean): string | undefined {
   if (serverDeckIdFromOption(deckName)) return DEFAULT_DECK_NAME;
-  if (deckName === CUSTOM_DECK_NAME && !customDeckAvailable) return DEFAULT_DECK_NAME;
+  if (deckName === CUSTOM_DECK_NAME && !customDeckAvailable) return undefined;
   return deckName || undefined;
 }
 
@@ -48,11 +48,11 @@ export function onlineDeckName(player: PlayerIndex, deckName: string, serverDeck
   if (serverDeckId) {
     const serverDeck = serverDecks.find((deck) => deck.id === serverDeckId);
     if (serverDeck) return player === 0 ? { deck0Ids: serverDeck.cardIds } : { deck1Ids: serverDeck.cardIds };
-    return player === 0 ? { deck0Name: DEFAULT_DECK_NAME } : { deck1Name: DEFAULT_DECK_NAME };
+    return {};
   }
-  const selectedName = deckName === CUSTOM_DECK_NAME ? DEFAULT_DECK_NAME : deckName;
-  if (!selectedName) return {};
-  return player === 0 ? { deck0Name: selectedName } : { deck1Name: selectedName };
+  if (deckName === CUSTOM_DECK_NAME) return {};
+  if (!deckName) return {};
+  return player === 0 ? { deck0Name: deckName } : { deck1Name: deckName };
 }
 
 export function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {

@@ -61,6 +61,7 @@ export const ja: Record<TranslationKey, string> = {
   'lobby.myDeck': '自分のデッキ',
   'lobby.opponentDeck': '相手のデッキ',
   'lobby.deckSelectHint': 'このゲームで使う20枚デッキを選択',
+  'lobby.selectDeckFirst': '先にデッキを選択してください',
   'lobby.onlineTitle': 'オンラインルーム',
   'lobby.roomCode': 'ルームコード',
   'lobby.roomCodePlaceholder': 'ルームコードを入力',

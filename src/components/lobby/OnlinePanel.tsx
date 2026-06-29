@@ -18,7 +18,13 @@ function onlineErrorMessage(error: unknown): string {
   return t('online.connectionFailed');
 }
 
-export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) => Promise<OnlineSession> }) {
+export function OnlinePanel({
+  startOnline,
+  disabled = false,
+}: {
+  startOnline: (matchID?: string) => Promise<OnlineSession>;
+  disabled?: boolean;
+}) {
   const [matchID, setMatchID] = useState('');
   const [createdMatchID, setCreatedMatchID] = useState('');
   const [error, setError] = useState('');
@@ -148,12 +154,13 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
         <h3 className="font-display text-lg italic text-bone">{t('lobby.onlineTitle')}</h3>
         <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('game.onlineMode')}</span>
       </div>
+      {disabled && <p className="text-[10px] text-vermilion/70">{t('lobby.selectDeckFirst')}</p>}
       <div className="flex flex-col gap-2">
         <button
           className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:opacity-50"
           type="button"
           onClick={handleQuickMatch}
-          disabled={matchmakingActive}
+          disabled={matchmakingActive || disabled}
         >
           {t('lobby.quickMatch')}
         </button>
@@ -161,7 +168,7 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
           className="border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 disabled:opacity-50"
           type="button"
           onClick={() => runOnline()}
-          disabled={matchmakingActive}
+          disabled={matchmakingActive || disabled}
         >
           {t('lobby.createRoom')}
         </button>
