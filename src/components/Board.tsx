@@ -1,6 +1,5 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { getProfile, isLoggedIn, submitMatch } from '../api/client';
 import type {
   ActionLogEntry,
   CardInstance,
@@ -22,9 +21,9 @@ import {
   getRequiredSetCount,
   isAttackPowerInsufficient,
 } from '../game/GameLogic';
-import { saveMatchRecord } from '../game/matchHistory';
 import { t, useLocale } from '../i18n';
 import { getTranslatedEffect } from '../game/cards/i18n';
+import { useOnlineMatchSubmission } from './board/useOnlineMatchSubmission';
 
 const TURN_TIMER_SECONDS = 60;
 
@@ -66,15 +65,6 @@ type FeedbackMessage = {
   tone?: FeedbackTone;
   actionLabel?: string;
 };
-type AccountProfile = {
-  id: string;
-  elo: number;
-};
-type MatchSubmitResponse = {
-  winnerEloChange?: number;
-  loserEloChange?: number;
-};
-
 // 對手/我方名稱 override（AI 對戰時設為「電腦」/「玩家」等），由 Board 元件 mount 時設定。
 // formatLogEntry 等純函數無法存取 prop，故用 module-level 變數統一覆寫顯示。
 let opponentLabelOverride: string | null = null;
@@ -792,69 +782,6 @@ function translateGameOverReason(reason: string | null): string {
   return t('board.reason');
 }
 
-function normalizeWinner(G: GameState, gameover?: { winner?: string | number; draw?: boolean }): PlayerIndex | null {
-  if (gameover?.draw) return null;
-  const winner = gameover?.winner ?? G.winner;
-  if (winner === 0 || winner === '0') return 0;
-  if (winner === 1 || winner === '1') return 1;
-  return G.winner;
-}
-
-function activeAccountPlayer(playerID: Props['playerID']): PlayerIndex | null {
-  if (playerID !== '0' && playerID !== '1') return 0;
-  const player = Number(playerID) as PlayerIndex;
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/play/online/')) return player;
-  return player === 0 ? 0 : null;
-}
-
-function accountIdForPlayer(player: PlayerIndex, accountPlayer: PlayerIndex, profile: AccountProfile): string {
-  return player === accountPlayer ? profile.id : `guest-player-${player}`;
-}
-
-function matchSubmissionKey(G: GameState, winner: PlayerIndex | null): string {
-  const firstEntry = G.actionLog?.[0];
-  const lastEntry = G.actionLog?.[G.actionLog.length - 1];
-  const path = typeof window === 'undefined' ? 'server' : window.location.pathname;
-  return [
-    'zutomayo-match-submit',
-    path,
-    winner ?? 'draw',
-    G.turnNumber,
-    G.gameoverReason ?? '',
-    G.actionLog?.length ?? 0,
-    firstEntry?.timestamp ?? '',
-    lastEntry?.timestamp ?? '',
-    lastEntry?.action ?? '',
-  ].join(':');
-}
-
-function onlineSourceMatchID(matchID: string | undefined): string | undefined {
-  if (typeof window === 'undefined' || !window.location.pathname.startsWith('/play/online/')) return undefined;
-  return matchID && matchID !== 'default' ? matchID : undefined;
-}
-
-function isAlreadySubmitted(key: string): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.sessionStorage.getItem(key) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function markSubmitted(key: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.setItem(key, '1');
-  } catch {
-    // Submission still proceeds; the in-memory ref prevents same-mount duplicates.
-  }
-}
-
-function signedChange(value: number): string {
-  return value > 0 ? `+${value}` : `${value}`;
-}
-
 function primaryActionClass(extra = ''): string {
   return [
     'bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition',
@@ -880,51 +807,13 @@ function gameOverActionClass(action: BoardGameOverAction): string {
 }
 
 function GameOverScreen({ G, ctx, matchStartedAt, playerID, matchID, gameOverActions }: Props & { matchStartedAt: number }) {
-  const saved = useRef(false);
-  const [eloNotice, setEloNotice] = useState('');
-
-  useEffect(() => {
-    if (saved.current) return;
-    saved.current = true;
-    const gameover = ctx.gameover as { winner?: string | number; draw?: boolean } | undefined;
-    const durationSeconds = (Date.now() - matchStartedAt) / 1000;
-    const winner = normalizeWinner(G, gameover);
-    const submitKey = matchSubmissionKey(G, winner);
-    if (isAlreadySubmitted(submitKey)) return;
-    markSubmitted(submitKey);
-    saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds);
-
-    const accountPlayer = activeAccountPlayer(playerID);
-    if (!isLoggedIn() || winner === null || accountPlayer === null) return;
-
-    const loser = (1 - winner) as PlayerIndex;
-    getProfile()
-      .then((profile: AccountProfile) => {
-        const winnerId = accountIdForPlayer(winner, accountPlayer, profile);
-        const loserId = accountIdForPlayer(loser, accountPlayer, profile);
-        return submitMatch(
-          winnerId,
-          loserId,
-          G.turnNumber,
-          durationSeconds,
-          G.actionLog,
-          onlineSourceMatchID(matchID),
-          winner,
-        ) as Promise<MatchSubmitResponse>;
-      })
-      .then((result) => {
-        if ((result.winnerEloChange ?? 0) === 0 && (result.loserEloChange ?? 0) === 0) {
-          setEloNotice(t('auth.matchSubmittedNoElo'));
-          return;
-        }
-        const change = winner === accountPlayer ? (result.winnerEloChange ?? 0) : (result.loserEloChange ?? 0);
-        setEloNotice(`${t('auth.eloChange')} ${signedChange(change)}`);
-      })
-      .catch(() => {
-        // Local history above remains the fallback when the API is unavailable.
-        setEloNotice(t('auth.matchSubmitFailed'));
-      });
-  }, [G, ctx.gameover, matchID, matchStartedAt, playerID]);
+  const eloNotice = useOnlineMatchSubmission({
+    G,
+    gameover: ctx.gameover as { winner?: string | number; draw?: boolean } | undefined,
+    matchID,
+    matchStartedAt,
+    playerID,
+  });
 
   return (
     <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
