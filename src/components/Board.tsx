@@ -857,8 +857,8 @@ function signedChange(value: number): string {
 
 function primaryActionClass(extra = ''): string {
   return [
-    'bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition',
-    'hover:bg-gold disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-bone',
+    'bg-bone px-8 py-3 text-[11px] font-medium uppercase tracking-[0.3em] text-lacquer transition',
+    'hover:bg-gold active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-bone',
     extra,
   ]
     .filter(Boolean)
@@ -867,8 +867,8 @@ function primaryActionClass(extra = ''): string {
 
 function secondaryActionClass(extra = ''): string {
   return [
-    'border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition',
-    'hover:border-gold/40 hover:bg-bone/5 hover:text-bone disabled:cursor-not-allowed disabled:opacity-40',
+    'border border-bone/20 px-8 py-3 text-[11px] uppercase tracking-[0.3em] text-bone/70 transition',
+    'hover:bg-bone/5 hover:text-bone disabled:cursor-not-allowed disabled:opacity-40',
     extra,
   ]
     .filter(Boolean)
@@ -879,9 +879,31 @@ function gameOverActionClass(action: BoardGameOverAction): string {
   return action.variant === 'secondary' ? secondaryActionClass() : primaryActionClass();
 }
 
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+// 從當前玩家視角判斷勝負：線上對戰 playerID 為自己座位，AI 對戰玩家預設為 0。
+function myPlayerIndex(playerID: string | null | undefined): PlayerIndex {
+  if (playerID === '0' || playerID === '1') return Number(playerID) as PlayerIndex;
+  return 0;
+}
+
+function ResultCell({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] uppercase tracking-widest text-bone/40">{label}</div>
+      <div className={`mt-1 truncate font-display text-xl italic ${accent ? 'text-gold' : 'text-bone'}`}>{value}</div>
+    </div>
+  );
+}
+
 function GameOverScreen({ G, ctx, matchStartedAt, playerID, matchID, gameOverActions }: Props & { matchStartedAt: number }) {
   const saved = useRef(false);
-  const [eloNotice, setEloNotice] = useState('');
+  const [eloChange, setEloChange] = useState<number | null>(null);
+  const [eloStatus, setEloStatus] = useState('');
 
   useEffect(() => {
     if (saved.current) return;
@@ -914,33 +936,69 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID, matchID, gameOverAct
       })
       .then((result) => {
         if ((result.winnerEloChange ?? 0) === 0 && (result.loserEloChange ?? 0) === 0) {
-          setEloNotice(t('auth.matchSubmittedNoElo'));
+          setEloStatus(t('auth.matchSubmittedNoElo'));
           return;
         }
         const change = winner === accountPlayer ? (result.winnerEloChange ?? 0) : (result.loserEloChange ?? 0);
-        setEloNotice(`${t('auth.eloChange')} ${signedChange(change)}`);
+        setEloChange(change);
       })
       .catch(() => {
         // Local history above remains the fallback when the API is unavailable.
-        setEloNotice(t('auth.matchSubmitFailed'));
+        setEloStatus(t('auth.matchSubmitFailed'));
       });
   }, [G, ctx.gameover, matchID, matchStartedAt, playerID]);
+
+  const gameover = ctx.gameover as { winner?: string | number; draw?: boolean } | undefined;
+  const winner = normalizeWinner(G, gameover);
+  const myPlayer = myPlayerIndex(playerID);
+  const outcome: 'victory' | 'defeat' | 'draw' =
+    winner === null ? 'draw' : winner === myPlayer ? 'victory' : 'defeat';
+  const win = outcome === 'victory';
+  const durationSeconds = (Date.now() - matchStartedAt) / 1000;
+  const reason = translateGameOverReason(G.gameoverReason);
+  const glyphKey =
+    outcome === 'victory'
+      ? 'board.result.glyph.victory'
+      : outcome === 'defeat'
+        ? 'board.result.glyph.defeat'
+        : 'board.result.glyph.draw';
+  const titleKey =
+    outcome === 'victory' ? 'board.result.victory' : outcome === 'defeat' ? 'board.result.defeat' : 'board.result.draw';
 
   return (
     <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
+        <div
+          className={`absolute left-1/2 top-1/2 h-[90vh] w-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[160px] ${win ? 'bg-gold/15' : 'bg-vermilion/15'}`}
+        />
+        <div className="absolute inset-0 opacity-[0.04] [background-image:radial-gradient(rgba(255,255,255,0.6)_1px,transparent_1px)] [background-size:3px_3px]" />
       </div>
-      <div className="relative z-10 w-full max-w-lg rounded-sm bg-lacquer p-6 text-center ring-1 ring-bone/10">
-        <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('board.gameOver')}</div>
-        <h1 className="mt-3 font-display text-4xl italic">
-          {G.winner === null ? t('board.draw') : `${playerName(G.winner)} ${t('board.playerWins')}`}
+
+      <main className="relative z-10 flex w-full max-w-3xl flex-col items-center justify-center px-8 text-center">
+        <div className={`font-mono text-[10px] uppercase tracking-[0.6em] ${win ? 'text-gold' : 'text-vermilion'}`}>
+          {t('board.result.concluded')}
+        </div>
+        <h1
+          className={`mt-4 font-display text-[6rem] italic leading-none sm:text-[10rem] ${win ? 'text-bone' : 'text-bone/70'}`}
+        >
+          {t(glyphKey)}
         </h1>
-        <p className="mt-4 text-sm leading-relaxed text-bone/60">{translateGameOverReason(G.gameoverReason)}</p>
-        {eloNotice && <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{eloNotice}</p>}
+        <div className="mt-2 font-display text-2xl italic tracking-wide">
+          {t(titleKey)} · {t('board.turn')} {G.turnNumber}
+        </div>
+
+        <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-bone/10 py-6 sm:grid-cols-4">
+          <ResultCell label={t('auth.eloChange')} value={eloChange !== null ? signedChange(eloChange) : '—'} accent={win} />
+          <ResultCell label={t('board.result.duration')} value={formatDuration(durationSeconds)} />
+          <ResultCell label={t('board.result.turns')} value={String(G.turnNumber)} />
+          <ResultCell label={t('board.result.reason')} value={reason} />
+        </div>
+
+        {eloStatus && <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{eloStatus}</p>}
+
         {ctx.gameover &&
           (gameOverActions ? (
-            <div className="mt-6 flex flex-col items-center gap-3">
+            <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:gap-3">
               {gameOverActions.helperText && <p className="text-xs text-bone/45">{gameOverActions.helperText}</p>}
               <button
                 className={gameOverActionClass(gameOverActions.primary)}
@@ -960,11 +1018,11 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID, matchID, gameOverAct
               )}
             </div>
           ) : (
-            <button className={primaryActionClass('mt-6')} type="button" onClick={() => window.location.reload()}>
+            <button className={primaryActionClass('mt-10')} type="button" onClick={() => window.location.reload()}>
               {t('board.playAgain')}
             </button>
           ))}
-      </div>
+      </main>
     </div>
   );
 }
