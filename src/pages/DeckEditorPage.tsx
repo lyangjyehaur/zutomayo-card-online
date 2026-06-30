@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createDeck, getDecks, isLoggedIn, type DeckResponse } from '../api/client';
 import { DeckEditor } from '../components/DeckEditor';
+import { useToast } from '../components/ToastProvider';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
 import { t } from '../i18n';
 
@@ -13,6 +14,7 @@ interface DeckEditorPageProps {
 
 export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }: DeckEditorPageProps) {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [deckName, setDeckName] = useState(t('deck.custom'));
   const [saving, setSaving] = useState(false);
   const [syncedDeckId, setSyncedDeckId] = useState<string | null>(null);
@@ -70,9 +72,19 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
             localStorage.setItem(CUSTOM_DECK_STORAGE_KEY, JSON.stringify(deckIds));
             onDeckSaved();
           }
+          showToast({
+            title: loggedIn ? t('deck.saveServerSuccess') : t('deck.saveLocalSuccess'),
+            kind: 'success',
+          });
           navigate('/');
         } catch {
-          setSaveError(loggedIn ? t('deck.saveServerError') : t('deck.saveLocalError'));
+          const message = loggedIn ? t('deck.saveServerError') : t('deck.saveLocalError');
+          setSaveError(message);
+          showToast({
+            title: t('deck.saveFailedTitle'),
+            body: message,
+            kind: 'error',
+          });
         } finally {
           setSaving(false);
         }

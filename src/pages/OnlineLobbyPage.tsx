@@ -13,6 +13,7 @@ import {
 } from '../api/client';
 import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
+import { useToast } from '../components/ToastProvider';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
 import { t, translate, useLocale } from '../i18n';
@@ -70,6 +71,7 @@ export function OnlineLobbyPage({
   cardsReady,
 }: OnlineLobbyPageProps) {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const locale = useLocale();
   const deckOptions = useMemo<DeckOptionGroup[]>(() => {
     const localOptions = buildDeckOptions(customDeckAvailable);
@@ -228,6 +230,11 @@ export function OnlineLobbyPage({
     if (!createdMatchID) return;
     await copyText(buildOnlineRoomUrl(createdMatchID));
     setCopied(true);
+    showToast({
+      title: t('online.copied'),
+      body: t('online.copySuccessHelp'),
+      kind: 'success',
+    });
   };
 
   const canStart = cardsReady && !!deck0Name;

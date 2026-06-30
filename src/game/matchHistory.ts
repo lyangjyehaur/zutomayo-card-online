@@ -77,6 +77,10 @@ export function clearMatchRecords(): void {
   localStorage.removeItem('zutomayo_match_records');
 }
 
+export function replaceMatchRecords(records: MatchRecord[]): void {
+  localStorage.setItem('zutomayo_match_records', JSON.stringify(records.slice(0, 50)));
+}
+
 export function downloadActionLogJson(
   actionLog: ActionLogEntry[],
   filename = `zutomayo-action-log-${Date.now()}.json`,

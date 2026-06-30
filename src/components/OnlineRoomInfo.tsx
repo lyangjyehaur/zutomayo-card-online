@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { copyText } from '../clipboard';
 import { t } from '../i18n';
+import { useToast } from './ToastProvider';
 
 interface OnlineRoomInfoProps {
   matchID: string;
@@ -15,6 +16,7 @@ export function buildOnlineRoomUrl(matchID: string): string {
 }
 
 export function OnlineRoomInfo({ matchID, helperText, className = '' }: OnlineRoomInfoProps) {
+  const { showToast } = useToast();
   const [copied, setCopied] = useState(false);
   const shareLink = useMemo(() => buildOnlineRoomUrl(matchID), [matchID]);
 
@@ -25,6 +27,11 @@ export function OnlineRoomInfo({ matchID, helperText, className = '' }: OnlineRo
   const copyShareLink = async () => {
     await copyText(shareLink);
     setCopied(true);
+    showToast({
+      title: t('online.copied'),
+      body: t('online.copySuccessHelp'),
+      kind: 'success',
+    });
   };
 
   return (

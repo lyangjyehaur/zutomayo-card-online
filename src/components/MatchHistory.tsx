@@ -4,11 +4,13 @@ import {
   downloadMatchActionLog,
   getMatchRecords,
   getMatchStats,
+  replaceMatchRecords,
   type MatchRecord,
 } from '../game/matchHistory';
 import type { ActionLogEntry } from '../game/types';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { t, useLocale } from '../i18n';
+import { useToast } from './ToastProvider';
 
 interface MatchHistoryProps {
   onBack: () => void;
@@ -140,6 +142,7 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
 }
 
 export function MatchHistory({ onBack }: MatchHistoryProps) {
+  const { showToast } = useToast();
   const [records, setRecords] = useState(() => getMatchRecords());
   const [page, setPage] = useState(0);
   const [selectedRecord, setSelectedRecord] = useState<MatchRecord | null>(null);
@@ -150,10 +153,30 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
   const visibleRecords = records.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
 
   const clearHistory = () => {
+    const previousRecords = records;
+    const previousPage = currentPage;
+    if (previousRecords.length === 0) return;
     clearMatchRecords();
     setRecords([]);
     setPage(0);
     setSelectedRecord(null);
+    showToast({
+      title: t('history.clearSuccessTitle'),
+      body: t('history.clearSuccessBody'),
+      kind: 'warning',
+      durationMs: 9000,
+      actionLabel: t('history.undoClearAction'),
+      onAction: () => {
+        replaceMatchRecords(previousRecords);
+        setRecords(previousRecords);
+        setPage(previousPage);
+        setSelectedRecord(null);
+        showToast({
+          title: t('history.restoreSuccessTitle'),
+          kind: 'success',
+        });
+      },
+    });
   };
 
   return (

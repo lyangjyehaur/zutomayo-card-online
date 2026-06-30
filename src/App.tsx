@@ -4,6 +4,8 @@ import { identifyAnalytics, trackPageView } from './analytics';
 import { getDecks, getProfile, isLoggedIn, type DeckResponse } from './api/client';
 import { ensureCompatibleAppVersion } from './clientVersion';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
+import { NetworkStatusNotifier } from './components/NetworkStatusNotifier';
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PwaStatusPrompt } from './components/PwaStatusPrompt';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
@@ -471,6 +473,8 @@ function RouterShell() {
           onDismiss={dismissResumePrompt}
         />
       )}
+      <NetworkStatusNotifier />
+      <PwaInstallPrompt />
       <PwaStatusPrompt />
       {tutorial && (
         <InteractiveTutorial

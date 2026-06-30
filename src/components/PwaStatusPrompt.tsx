@@ -8,6 +8,7 @@ import {
 } from '../clientVersion';
 import { t } from '../i18n';
 import { APP_VERSION_INFO, type AppVersionInfo } from '../version';
+import { AppDrawer } from './AppDrawer';
 
 export function PwaStatusPrompt() {
   const [updateReady, setUpdateReady] = useState<PwaUpdateReadyDetail | null>(null);
@@ -80,89 +81,75 @@ export function PwaStatusPrompt() {
 
   return (
     <>
-      {updateReady && (
-        <aside className="online-resume-prompt pwa-status-prompt" role="status" aria-live="polite">
+      <AppDrawer
+        open={!!updateReady}
+        kicker={t('pwa.kicker')}
+        title={t('pwa.updateTitle')}
+        description={t('pwa.updateBody')}
+        actions={[
+          {
+            label: isApplyingUpdate ? t('pwa.updatingAction') : t('pwa.updateAction'),
+            onClick: applyUpdate,
+            disabled: isApplyingUpdate,
+            eventName: 'C_PWA_Update_Apply',
+          },
+          {
+            label: t('pwa.recoverAction'),
+            onClick: () => {
+              setUpdateReady(null);
+              setIsRecoverPromptOpen(true);
+            },
+            tone: 'secondary',
+            eventName: 'C_PWA_Recover_Open',
+          },
+          {
+            label: t('onlineSession.dismissAction'),
+            onClick: () => setUpdateReady(null),
+            tone: 'secondary',
+            eventName: 'C_PWA_Update_Dismiss',
+          },
+        ]}
+      >
+        <dl className="pwa-version-list">
           <div>
-            <span>{t('pwa.kicker')}</span>
-            <strong>{t('pwa.updateTitle')}</strong>
-            <p>{t('pwa.updateBody')}</p>
-            <dl className="pwa-version-list">
-              <div>
-                <dt>{t('pwa.currentVersion')}</dt>
-                <dd>{versionText(APP_VERSION_INFO)}</dd>
-              </div>
-              <div>
-                <dt>{t('pwa.latestVersion')}</dt>
-                <dd>{versionText(latestVersion)}</dd>
-              </div>
-            </dl>
+            <dt>{t('pwa.currentVersion')}</dt>
+            <dd>{versionText(APP_VERSION_INFO)}</dd>
           </div>
-          <div className="online-resume-actions">
-            <button
-              className="primary-action"
-              type="button"
-              disabled={isApplyingUpdate}
-              onClick={applyUpdate}
-              data-umami-event="C_PWA_Update_Apply"
-            >
-              {isApplyingUpdate ? t('pwa.updatingAction') : t('pwa.updateAction')}
-            </button>
-            <button
-              className="secondary-action"
-              type="button"
-              onClick={() => setIsRecoverPromptOpen(true)}
-              data-umami-event="C_PWA_Recover_Open"
-            >
-              {t('pwa.recoverAction')}
-            </button>
-            <button
-              className="secondary-action"
-              type="button"
-              onClick={() => setUpdateReady(null)}
-              data-umami-event="C_PWA_Update_Dismiss"
-            >
-              {t('onlineSession.dismissAction')}
-            </button>
+          <div>
+            <dt>{t('pwa.latestVersion')}</dt>
+            <dd>{versionText(latestVersion)}</dd>
           </div>
-        </aside>
-      )}
-      {isRecoverPromptOpen && (
-        <div className="pwa-recover-overlay" role="presentation">
-          <section className="pwa-recover-panel" role="dialog" aria-modal="true" aria-labelledby="pwa-recover-title">
-            <div>
-              <span>{t('pwa.kicker')}</span>
-              <h2 id="pwa-recover-title">{t('pwa.recoverTitle')}</h2>
-              <p>{t('pwa.recoverBody')}</p>
-            </div>
-            <ul>
-              <li>{t('pwa.recoverStepServiceWorker')}</li>
-              <li>{t('pwa.recoverStepCache')}</li>
-              <li>{t('pwa.recoverStepReload')}</li>
-            </ul>
-            <div className="pwa-recover-actions">
-              <button
-                className="danger-action"
-                type="button"
-                disabled={isRecovering}
-                onClick={() => void recover()}
-                data-umami-event="C_PWA_Recover_ClearCache"
-                data-umami-event-source="recover_dialog"
-              >
-                {isRecovering ? t('pwa.recoveringAction') : t('pwa.clearCacheAction')}
-              </button>
-              <button
-                className="secondary-action"
-                type="button"
-                disabled={isRecovering}
-                onClick={() => setIsRecoverPromptOpen(false)}
-                data-umami-event="C_PWA_Recover_Cancel"
-              >
-                {t('common.cancel')}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+        </dl>
+      </AppDrawer>
+      <AppDrawer
+        open={isRecoverPromptOpen}
+        tone="danger"
+        kicker={t('pwa.kicker')}
+        title={t('pwa.recoverTitle')}
+        description={t('pwa.recoverBody')}
+        actions={[
+          {
+            label: isRecovering ? t('pwa.recoveringAction') : t('pwa.clearCacheAction'),
+            onClick: () => void recover(),
+            disabled: isRecovering,
+            tone: 'danger',
+            eventName: 'C_PWA_Recover_ClearCache',
+          },
+          {
+            label: t('common.cancel'),
+            onClick: () => setIsRecoverPromptOpen(false),
+            disabled: isRecovering,
+            tone: 'secondary',
+            eventName: 'C_PWA_Recover_Cancel',
+          },
+        ]}
+      >
+        <ul className="app-drawer-list">
+          <li>{t('pwa.recoverStepServiceWorker')}</li>
+          <li>{t('pwa.recoverStepCache')}</li>
+          <li>{t('pwa.recoverStepReload')}</li>
+        </ul>
+      </AppDrawer>
     </>
   );
 }

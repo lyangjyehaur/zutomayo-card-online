@@ -851,14 +851,6 @@ input:focus {
   border-color: rgba(255, 92, 122, 0.45);
 }
 
-.pwa-status-prompt {
-  border-color: rgba(245, 211, 104, 0.36);
-}
-
-.pwa-status-prompt.recover {
-  border-color: rgba(255, 92, 122, 0.45);
-}
-
 .pwa-version-list {
   display: grid;
   gap: 0.3rem;
@@ -889,7 +881,7 @@ input:focus {
   text-align: right;
 }
 
-.pwa-recover-overlay {
+.app-drawer-overlay {
   position: fixed;
   inset: 0;
   z-index: 80;
@@ -897,41 +889,51 @@ input:focus {
   align-items: end;
   justify-items: center;
   padding: 1rem;
-  background: rgba(5, 7, 16, 0.56);
-  backdrop-filter: blur(6px);
+  background: rgba(5, 7, 16, 0.62);
+  backdrop-filter: blur(8px);
 }
 
-.pwa-recover-panel {
+.app-drawer-panel {
   display: grid;
-  gap: 1rem;
-  width: min(100%, 28rem);
-  border: 1px solid rgba(255, 92, 122, 0.42);
+  gap: 0.9rem;
+  width: min(100%, 30rem);
+  border: 1px solid rgba(245, 211, 104, 0.28);
   border-radius: var(--radius);
   padding: 1rem;
   background: rgba(10, 13, 28, 0.97);
   box-shadow: var(--shadow);
+  animation: drawer-rise 180ms ease-out;
 }
 
-.pwa-recover-panel span {
+.app-drawer-overlay.danger .app-drawer-panel {
+  border-color: rgba(255, 92, 122, 0.42);
+}
+
+.app-drawer-panel > div:first-child {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.app-drawer-panel > div:first-child > span {
   color: var(--gold);
   font-size: 0.72rem;
   font-weight: 900;
 }
 
-.pwa-recover-panel h2 {
-  margin: 0.25rem 0 0;
+.app-drawer-panel h2 {
+  margin: 0;
   color: var(--text);
   font-size: 1.1rem;
 }
 
-.pwa-recover-panel p {
-  margin: 0.45rem 0 0;
+.app-drawer-panel p {
+  margin: 0;
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.55;
 }
 
-.pwa-recover-panel ul {
+.app-drawer-list {
   display: grid;
   gap: 0.55rem;
   margin: 0;
@@ -940,13 +942,100 @@ input:focus {
   font-size: 0.82rem;
 }
 
-.pwa-recover-actions {
-  display: grid;
+.app-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.5rem;
 }
 
-.online-resume-prompt:not(.pwa-status-prompt) + .pwa-status-prompt {
-  bottom: calc(clamp(0.75rem, 2vw, 1.25rem) + 5.6rem);
+.app-drawer-close {
+  min-width: 2.4rem;
+  padding-inline: 0.7rem;
+  font-size: 1.1rem;
+}
+
+.toast-viewport {
+  position: fixed;
+  right: clamp(0.75rem, 2vw, 1.25rem);
+  bottom: clamp(0.75rem, 2vw, 1.25rem);
+  z-index: 90;
+  display: grid;
+  gap: 0.55rem;
+  width: min(calc(100vw - 1.5rem), 26rem);
+  pointer-events: none;
+}
+
+.toast-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.8rem;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 0.72rem;
+  background: rgba(10, 13, 28, 0.96);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  pointer-events: auto;
+}
+
+.toast-item.success {
+  border-color: rgba(114, 230, 170, 0.34);
+}
+
+.toast-item.warning {
+  border-color: rgba(245, 211, 104, 0.45);
+}
+
+.toast-item.error {
+  border-color: rgba(255, 92, 122, 0.48);
+}
+
+.toast-item strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.toast-item p {
+  margin: 0.16rem 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.toast-actions button {
+  border: 1px solid rgba(245, 211, 104, 0.24);
+  border-radius: var(--radius);
+  min-height: 2rem;
+  padding: 0.35rem 0.58rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.toast-actions button:first-child:not(:last-child) {
+  border-color: rgba(245, 211, 104, 0.55);
+  color: var(--gold);
+}
+
+@keyframes drawer-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.65rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .online-resume-actions {
@@ -1236,8 +1325,33 @@ input:focus {
     flex: 1;
   }
 
-  .online-resume-prompt:not(.pwa-status-prompt) + .pwa-status-prompt {
-    bottom: calc(clamp(0.75rem, 2vw, 1.25rem) + 8.5rem);
+  .app-drawer-overlay {
+    align-items: end;
+    padding: 0.65rem;
+  }
+
+  .app-drawer-panel {
+    width: 100%;
+  }
+
+  .app-drawer-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .toast-viewport {
+    right: 0.65rem;
+    bottom: 0.65rem;
+    width: calc(100vw - 1.3rem);
+  }
+
+  .toast-item {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .toast-actions {
+    justify-content: flex-end;
   }
 
   .error-boundary-actions {
