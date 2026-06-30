@@ -6,22 +6,23 @@ type Queryable = {
 };
 
 const require = createRequire(import.meta.url);
-const { createUserDeck, deleteUserDeck, listUserDecks, mapDeckRow, validateDeckInput } = require('../deckService.cjs') as {
-  createUserDeck: (
-    pool: Queryable,
-    userId: string,
-    body: Record<string, unknown>,
-    generateDeckId?: () => string,
-  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-  deleteUserDeck: (
-    pool: Queryable,
-    userId: string,
-    deckId: string,
-  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-  listUserDecks: (pool: Queryable, userId: string) => Promise<Record<string, unknown>>;
-  mapDeckRow: (deck: Record<string, unknown>) => Record<string, unknown>;
-  validateDeckInput: (name: unknown, cardIds: unknown) => string | null;
-};
+const { createUserDeck, deleteUserDeck, listUserDecks, mapDeckRow, validateDeckInput } =
+  require('../deckService.cjs') as {
+    createUserDeck: (
+      pool: Queryable,
+      userId: string,
+      body: Record<string, unknown>,
+      generateDeckId?: () => string,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+    deleteUserDeck: (
+      pool: Queryable,
+      userId: string,
+      deckId: string,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+    listUserDecks: (pool: Queryable, userId: string) => Promise<Record<string, unknown>>;
+    mapDeckRow: (deck: Record<string, unknown>) => Record<string, unknown>;
+    validateDeckInput: (pool: Queryable, name: unknown, cardIds: unknown) => Promise<string | null>;
+  };
 
 function makeCardIds(): string[] {
   return Array.from({ length: 20 }, (_, i) => `card-${Math.floor(i / 2)}`);
@@ -30,6 +31,17 @@ function makeCardIds(): string[] {
 function poolResult(rows: unknown[] = [], rowCount = 1): Queryable {
   return {
     query: vi.fn(async () => ({ rows, rowCount })),
+  };
+}
+
+function poolWithKnownCards(cardIds: string[]): Queryable {
+  return {
+    query: vi.fn(async (sql: string) => {
+      if (sql.startsWith('SELECT id FROM cards')) {
+        return { rows: [...new Set(cardIds)].map((id) => ({ id })), rowCount: cardIds.length };
+      }
+      return { rows: [], rowCount: 1 };
+    }),
   };
 }
 
@@ -44,13 +56,26 @@ describe('deck service', () => {
     expect(mapDeckRow({ id: 'd_2', card_ids: null })).toMatchObject({ cardIds: [] });
   });
 
-  it('validates deck name, size, and max two copies per card', () => {
-    expect(validateDeckInput('', makeCardIds())).toBe('Name and 20 card IDs required');
-    expect(validateDeckInput('Deck', ['one'])).toBe('Name and 20 card IDs required');
-    expect(validateDeckInput('Deck', ['triple', 'triple', 'triple', ...Array.from({ length: 17 }, (_, i) => `c-${i}`)])).toBe(
-      'Card triple appears more than twice',
+  it('validates deck name, size, max two copies, and known card ids', async () => {
+    const cardIds = makeCardIds();
+    const pool = poolWithKnownCards(cardIds);
+    await expect(validateDeckInput(pool, '', cardIds)).resolves.toBe('Name and 20 card IDs required');
+    await expect(validateDeckInput(pool, 'Deck', ['one'])).resolves.toBe('Name and 20 card IDs required');
+    await expect(
+      validateDeckInput(pool, 'Deck', [
+        'triple',
+        'triple',
+        'triple',
+        ...Array.from({ length: 17 }, (_, i) => `c-${i}`),
+      ]),
+    ).resolves.toBe('Card triple appears more than twice');
+    await expect(validateDeckInput(pool, 'Deck', [...cardIds.slice(0, 19), 1])).resolves.toBe(
+      'Deck card IDs must be strings',
     );
-    expect(validateDeckInput('Deck', makeCardIds())).toBeNull();
+    await expect(
+      validateDeckInput(poolWithKnownCards(cardIds.filter((id) => id !== cardIds[0])), 'Deck', cardIds),
+    ).resolves.toBe(`Unknown card in deck: ${cardIds[0]}`);
+    await expect(validateDeckInput(pool, 'Deck', cardIds)).resolves.toBeNull();
   });
 
   it('lists user decks ordered by updated_at descending', async () => {
@@ -63,8 +88,8 @@ describe('deck service', () => {
   });
 
   it('creates valid decks with generated ids and JSON card ids', async () => {
-    const pool = poolResult();
     const cardIds = makeCardIds();
+    const pool = poolWithKnownCards(cardIds);
 
     await expect(createUserDeck(pool, 'u_1', { name: 'Deck', cardIds }, () => 'd_fixed')).resolves.toEqual({
       ok: true,

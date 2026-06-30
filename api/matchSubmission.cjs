@@ -25,14 +25,21 @@ async function submitMatchResult({
 
   const cleanSourceMatchId =
     typeof sourceMatchId === 'string' && sourceMatchId.length > 0 ? sourceMatchId.slice(0, 120) : '';
-  const sourceVerification = await verifyBoardgameMatchResult(
-    pool,
-    cleanSourceMatchId,
-    normalizeWinnerPlayer(winnerPlayer),
-    authUserId,
-  );
-  if (!sourceVerification.ok) {
-    return { ok: false, status: sourceVerification.status, error: sourceVerification.error };
+  let resolvedWinnerId = winnerId;
+  let resolvedLoserId = loserId;
+  let sourceVerification = null;
+  if (cleanSourceMatchId) {
+    sourceVerification = await verifyBoardgameMatchResult(
+      pool,
+      cleanSourceMatchId,
+      normalizeWinnerPlayer(winnerPlayer),
+      authUserId,
+    );
+    if (!sourceVerification.ok) {
+      return { ok: false, status: sourceVerification.status, error: sourceVerification.error };
+    }
+    resolvedWinnerId = sourceVerification.winnerUserId;
+    resolvedLoserId = sourceVerification.loserUserId || `guest-player-${sourceVerification.loserPlayer}`;
   }
 
   const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
@@ -41,13 +48,22 @@ async function submitMatchResult({
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const winner = (await client.query('SELECT * FROM users WHERE id = $1', [winnerId])).rows[0];
-    const loser = (await client.query('SELECT * FROM users WHERE id = $1', [loserId])).rows[0];
+    if (cleanSourceMatchId) {
+      const existing = (await client.query('SELECT id FROM matches WHERE source_match_id = $1', [cleanSourceMatchId]))
+        .rows[0];
+      if (existing) {
+        await client.query('ROLLBACK');
+        return { ok: false, status: 409, error: 'Source match result already submitted' };
+      }
+    }
+
+    const winner = (await client.query('SELECT * FROM users WHERE id = $1', [resolvedWinnerId])).rows[0];
+    const loser = (await client.query('SELECT * FROM users WHERE id = $1', [resolvedLoserId])).rows[0];
 
     let winnerEloChange = 0;
     let loserEloChange = 0;
 
-    if (winner && loser) {
+    if (cleanSourceMatchId && winner && loser) {
       const newWinnerElo = calculateElo(winner.elo, loser.elo, 1);
       const newLoserElo = calculateElo(loser.elo, winner.elo, 0);
       winnerEloChange = newWinnerElo - winner.elo;
@@ -55,24 +71,25 @@ async function submitMatchResult({
 
       await client.query('UPDATE users SET elo = $1, match_count = match_count + 1, wins = wins + 1 WHERE id = $2', [
         newWinnerElo,
-        winnerId,
+        resolvedWinnerId,
       ]);
       await client.query('UPDATE users SET elo = $1, match_count = match_count + 1 WHERE id = $2', [
         newLoserElo,
-        loserId,
+        resolvedLoserId,
       ]);
     }
 
-    const player0Id = winner ? winnerId : null;
-    const player1Id = loser ? loserId : null;
+    const player0Id = winner ? resolvedWinnerId : null;
+    const player1Id = loser ? resolvedLoserId : null;
     await client.query(
-      'INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)',
+      'INSERT INTO matches (id, source_match_id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)',
       [
         matchId,
+        cleanSourceMatchId || null,
         player0Id,
         player1Id,
-        winnerId,
-        loserId,
+        resolvedWinnerId,
+        resolvedLoserId,
         winnerEloChange,
         loserEloChange,
         turns || 0,
@@ -95,6 +112,9 @@ async function submitMatchResult({
     };
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err && err.code === '23505' && cleanSourceMatchId) {
+      return { ok: false, status: 409, error: 'Source match result already submitted' };
+    }
     throw err;
   } finally {
     client.release();

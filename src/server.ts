@@ -30,6 +30,8 @@ const configuredOrigins =
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
+const adminRoot = path.join(root, 'admin');
+const dataRoot = path.join(root, 'data');
 
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 // 復用服務器既有 Redis 時用 REDIS_DB 切到獨立 DB index（0-15）避免與其他服務的 key 衝突。
@@ -91,7 +93,9 @@ try {
     const i18n = JSON.parse(fs.readFileSync(i18nPath, 'utf8'));
     initEffectI18n(i18n);
   }
-} catch { /* translations are optional on server */ }
+} catch {
+  /* translations are optional on server */
+}
 
 const server = Server({
   games: [ZutomayoCard],
@@ -99,6 +103,14 @@ const server = Server({
   transport,
   origins: ['http://localhost:3000', /localhost:\d+/, /127\.0\.0\.1:\d+/, ...configuredOrigins],
 });
+
+function safeStaticFile(baseDir: string, requestPath: string, routePrefix: string): string | null {
+  const relativePath = requestPath.slice(routePrefix.length).replace(/^\/+/, '');
+  const resolvedBase = path.resolve(baseDir);
+  const resolvedPath = path.resolve(resolvedBase, relativePath);
+  if (resolvedPath !== resolvedBase && !resolvedPath.startsWith(resolvedBase + path.sep)) return null;
+  return resolvedPath;
+}
 
 server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: KoaContext) => {
   const matchID = ctx.params.id;
@@ -136,8 +148,8 @@ server.app.use(serve(path.join(root, 'dist')));
 // Serve admin panel assets for the React /admin iframe.
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/admin/index.html' || ctx.path.startsWith('/admin/')) {
-    const filePath = path.join(root, ctx.path);
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    const filePath = safeStaticFile(adminRoot, ctx.path, '/admin');
+    if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const ext = path.extname(filePath);
       const types: Record<string, string> = {
         '.html': 'text/html',
@@ -156,8 +168,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 // Serve data (card JSON)
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path.startsWith('/data/')) {
-    const filePath = path.join(root, ctx.path);
-    if (fs.existsSync(filePath)) {
+    const filePath = safeStaticFile(dataRoot, ctx.path, '/data');
+    if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       ctx.type = 'application/json';
       ctx.body = fs.readFileSync(filePath);
       return;

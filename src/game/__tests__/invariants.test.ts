@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { initCards, getAllCardDefs, isCardsInitialized } from '../cards/loader';
 import { parseAllEffects, parseEffect } from '../effects/parser';
+import { ZutomayoCard } from '../Game';
 import type { ParsedEffect, EffectTrigger, ActionType } from '../effects';
 import {
   setupGame,
@@ -199,6 +200,18 @@ function applyOperation(G: GameState, op: Operation): void {
 }
 
 describe('rule engine invariants (property-based)', () => {
+  it('playerView hides deck order even from the deck owner', () => {
+    const G = setupGame();
+    const view = (ZutomayoCard.playerView as (args: { G: GameState; playerID: string | null }) => GameState)({
+      G,
+      playerID: '0',
+    });
+
+    expect(view.players[0].deck).toHaveLength(G.players[0].deck.length);
+    expect(view.players[0].deck.every((card) => card.defId === '__hidden__')).toBe(true);
+    expect(view.players[0].hand[0].defId).toBe(G.players[0].hand[0].defId);
+  });
+
   it('HP 永遠在 [0, 100] 範圍內（任意合法操作序列後）', () => {
     fc.assert(
       fc.property(fc.array(operationArb, { maxLength: 40 }), (ops) => {

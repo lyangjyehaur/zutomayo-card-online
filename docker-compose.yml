@@ -3,10 +3,8 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${PG_USER:-zutomayo}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:-zutomayo_dev}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
       POSTGRES_DB: ${PG_DATABASE:-zutomayo}
-    ports:
-      - '5432:5432'
     volumes:
       - pg-data:/var/lib/postgresql/data
     healthcheck:
@@ -19,8 +17,6 @@ services:
   redis:
     image: redis:7-alpine
     command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'allkeys-lru']
-    ports:
-      - '6379:6379'
     volumes:
       - redis-data:/data
     healthcheck:
@@ -42,7 +38,7 @@ services:
       - PG_HOST=postgres
       - PG_PORT=5432
       - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:-zutomayo_dev}
+      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - REDIS_URL=redis://redis:6379
       - REDIS_DB=${REDIS_DB:-0}
@@ -66,7 +62,7 @@ services:
       - PG_HOST=postgres
       - PG_PORT=5432
       - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:-zutomayo_dev}
+      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - REDIS_URL=redis://redis:6379
       - REDIS_DB=${REDIS_DB:-0}

@@ -10,16 +10,23 @@ function mapDeckRow(deck) {
   };
 }
 
-function validateDeckInput(name, cardIds) {
+async function validateDeckInput(pool, name, cardIds) {
   if (!name || !Array.isArray(cardIds) || cardIds.length !== 20) {
     return 'Name and 20 card IDs required';
   }
 
   const counts = {};
   for (const id of cardIds) {
+    if (typeof id !== 'string') return 'Deck card IDs must be strings';
     counts[id] = (counts[id] || 0) + 1;
     if (counts[id] > 2) return `Card ${id} appears more than twice`;
   }
+  const uniqueIds = Object.keys(counts);
+  const existing = new Set(
+    (await pool.query('SELECT id FROM cards WHERE id = ANY($1::text[])', [uniqueIds])).rows.map((row) => row.id),
+  );
+  const missing = uniqueIds.find((id) => !existing.has(id));
+  if (missing) return `Unknown card in deck: ${missing}`;
   return null;
 }
 
@@ -30,7 +37,7 @@ async function listUserDecks(pool, userId) {
 
 async function createUserDeck(pool, userId, body, generateDeckId = () => 'd_' + crypto.randomBytes(8).toString('hex')) {
   const { name, cardIds } = body;
-  const validationError = validateDeckInput(name, cardIds);
+  const validationError = await validateDeckInput(pool, name, cardIds);
   if (validationError) return { ok: false, status: 400, error: validationError };
 
   const id = generateDeckId();

@@ -72,7 +72,11 @@ async function reportRealMatch(redis, userId, matchId) {
   if (!entry || entry.status !== 'matched') {
     return { ok: false, status: 400, error: 'Not in a matched queue' };
   }
+  if (!entry.opponentId) {
+    return { ok: false, status: 409, error: 'Matched queue is missing opponent' };
+  }
   await redis.hset(`mm:${userId}`, 'realMatchId', matchId);
+  await redis.hset(`mm:${entry.opponentId}`, 'realMatchId', matchId);
   return { ok: true, body: { ok: true } };
 }
 

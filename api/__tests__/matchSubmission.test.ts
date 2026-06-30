@@ -11,9 +11,7 @@ type Pool = {
   query: ReturnType<typeof vi.fn<QueryFn>>;
   connect: ReturnType<typeof vi.fn<() => Promise<Client>>>;
 };
-type SubmitResult =
-  | { ok: true; body: Record<string, unknown> }
-  | { ok: false; status: number; error: string };
+type SubmitResult = { ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string };
 
 const require = createRequire(import.meta.url);
 const { calculateElo, submitMatchResult } = require('../matchSubmission.cjs') as {
@@ -106,14 +104,36 @@ describe('submitMatchResult', () => {
   it('updates both users and stores a sanitized match record in one transaction', async () => {
     const winner = { id: 'u_winner', elo: 1000 };
     const loser = { id: 'u_loser', elo: 1000 };
-    const { pool, client } = makePool({ winner, loser });
+    const { pool, client } = makePool({
+      winner,
+      loser,
+      sourceRows: [
+        {
+          state: { ctx: { gameover: { winner: 0 } }, G: { step: 'gameOver', winner: 0 } },
+          metadata: {
+            players: {
+              '0': { data: { userId: 'u_winner' } },
+              '1': { data: { userId: 'u_loser' } },
+            },
+          },
+        },
+      ],
+    });
     const sanitizeActionLog = vi.fn(() => [{ action: 'clean' }]);
 
     await expect(
       submitMatchResult({
         pool,
         authUserId: 'u_winner',
-        body: { winnerId: 'u_winner', loserId: 'u_loser', turns: 7, duration: 42, actionLog: [{ action: 'raw' }] },
+        body: {
+          winnerId: 'u_winner',
+          loserId: 'guest-player-1',
+          sourceMatchId: 'bg_match_1',
+          winnerPlayer: 0,
+          turns: 7,
+          duration: 42,
+          actionLog: [{ action: 'raw' }],
+        },
         sanitizeActionLog,
         generateMatchId: () => 'm_fixed',
       }),
@@ -139,9 +159,10 @@ describe('submitMatchResult', () => {
       [984, 'u_loser'],
     );
     expect(client.query).toHaveBeenCalledWith(
-      'INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)',
+      'INSERT INTO matches (id, source_match_id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)',
       [
         'm_fixed',
+        'bg_match_1',
         'u_winner',
         'u_loser',
         'u_winner',
@@ -155,6 +176,36 @@ describe('submitMatchResult', () => {
     );
     expect(client.query).toHaveBeenCalledWith('COMMIT');
     expect(client.release).toHaveBeenCalledOnce();
+  });
+
+  it('stores unsourced match records without changing Elo', async () => {
+    const winner = { id: 'u_winner', elo: 1000 };
+    const loser = { id: 'u_loser', elo: 1000 };
+    const { pool, client } = makePool({ winner, loser });
+
+    await expect(
+      submitMatchResult({
+        pool,
+        authUserId: 'u_winner',
+        body: { winnerId: 'u_winner', loserId: 'u_loser', turns: 3 },
+        sanitizeActionLog: () => [],
+        generateMatchId: () => 'm_unsourced',
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      body: {
+        matchId: 'm_unsourced',
+        winnerEloChange: 0,
+        loserEloChange: 0,
+        winnerNewElo: 1000,
+        loserNewElo: 1000,
+      },
+    });
+
+    expect(client.query).not.toHaveBeenCalledWith(
+      'UPDATE users SET elo = $1, match_count = match_count + 1, wins = wins + 1 WHERE id = $2',
+      expect.anything(),
+    );
   });
 
   it('rolls back and releases the transaction client when inserting the match fails', async () => {

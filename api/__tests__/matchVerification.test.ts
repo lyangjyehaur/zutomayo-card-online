@@ -65,9 +65,12 @@ describe('match verification helpers', () => {
 });
 
 describe('verifyBoardgameMatchResult', () => {
-  it('allows legacy submissions without a source match id', async () => {
+  it('requires a source match id for ranked verification', async () => {
     const { pool, query } = poolWithRows([]);
-    await expect(verifyBoardgameMatchResult(pool, '', null, 'u_1')).resolves.toEqual({ ok: true });
+    await expect(verifyBoardgameMatchResult(pool, '', null, 'u_1')).resolves.toMatchObject({
+      ok: false,
+      status: 400,
+    });
     expect(query).not.toHaveBeenCalled();
   });
 
@@ -86,7 +89,12 @@ describe('verifyBoardgameMatchResult', () => {
     });
 
     await expect(
-      verifyBoardgameMatchResult(poolWithRows([{ state: { ctx: {}, G: { step: 'battle', winner: 0 } }, metadata: {} }]).pool, 'm', 0, 'u_0'),
+      verifyBoardgameMatchResult(
+        poolWithRows([{ state: { ctx: {}, G: { step: 'battle', winner: 0 } }, metadata: {} }]).pool,
+        'm',
+        0,
+        'u_0',
+      ),
     ).resolves.toMatchObject({ ok: false, status: 409 });
 
     await expect(
@@ -122,11 +130,23 @@ describe('verifyBoardgameMatchResult', () => {
     const { pool, query } = poolWithRows([
       {
         state: { ctx: { gameover: { winner: '1' } }, G: { step: 'gameOver', winner: 1 } },
-        metadata: { players: { '1': { data: { userId: 'u_winner' } } } },
+        metadata: {
+          players: {
+            '0': { data: { userId: 'u_loser' } },
+            '1': { data: { userId: 'u_winner' } },
+          },
+        },
       },
     ]);
 
-    await expect(verifyBoardgameMatchResult(pool, 'match_1', 1, 'u_winner')).resolves.toEqual({ ok: true });
+    await expect(verifyBoardgameMatchResult(pool, 'match_1', 1, 'u_winner')).resolves.toMatchObject({
+      ok: true,
+      sourceMatchId: 'match_1',
+      winnerPlayer: 1,
+      loserPlayer: 0,
+      winnerUserId: 'u_winner',
+      loserUserId: 'u_loser',
+    });
     expect(query).toHaveBeenCalledWith('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', ['match_1']);
   });
 });

@@ -31,11 +31,12 @@ function playerDataUserId(metadata, player) {
 }
 
 async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, authUserId) {
-  if (!sourceMatchId) return { ok: true };
+  if (!sourceMatchId) return { ok: false, status: 400, error: 'sourceMatchId required for ranked match submission' };
   if (winnerPlayer !== 0 && winnerPlayer !== 1) {
     return { ok: false, status: 400, error: 'winnerPlayer required for source match verification' };
   }
-  const match = (await pool.query('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', [sourceMatchId])).rows[0];
+  const match = (await pool.query('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', [sourceMatchId]))
+    .rows[0];
   if (!match) return { ok: false, status: 404, error: 'Source match not found' };
   if (!isBoardgameFinished(match.state)) return { ok: false, status: 409, error: 'Source match is not finished' };
   const authoritativeWinner = boardgameWinnerFromState(match.state);
@@ -46,7 +47,15 @@ async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, aut
   if (playerDataUserId(match.metadata, winnerPlayer) !== authUserId) {
     return { ok: false, status: 403, error: 'Winner seat is not bound to authenticated user' };
   }
-  return { ok: true };
+  const loserPlayer = winnerPlayer === 0 ? 1 : 0;
+  return {
+    ok: true,
+    sourceMatchId,
+    winnerPlayer,
+    loserPlayer,
+    winnerUserId: playerDataUserId(match.metadata, winnerPlayer),
+    loserUserId: playerDataUserId(match.metadata, loserPlayer),
+  };
 }
 
 module.exports = {

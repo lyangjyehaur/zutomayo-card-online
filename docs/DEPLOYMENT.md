@@ -24,6 +24,9 @@ Target host: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
 
 Users should normally open `http://<host>:3000`.
 
+PostgreSQL (`5432`) and Redis (`6379`) are intentionally not published to the host by the default Compose file. They
+are reachable only on the Compose network by `game` and `api`.
+
 ## Compose Setup / Compose 設定
 
 Start or rebuild all four services:
@@ -46,7 +49,8 @@ docker compose down
 
 ## Environment / 環境變數
 
-Variables are passed through `docker-compose.yml` from the host environment (e.g. via a `.env` file or shell export). The Compose file reads `${VAR:-}` for secrets, so unset values become empty strings rather than failing.
+Variables are passed through `docker-compose.yml` from the host environment (e.g. via a `.env` file or shell export).
+`PG_PASSWORD` is required; Compose exits early if it is missing.
 
 ### `game`
 
@@ -57,7 +61,7 @@ Variables are passed through `docker-compose.yml` from the host environment (e.g
 | `PG_HOST`         | `postgres`              | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
 | `PG_PORT`         | `5432`                  | PostgreSQL port.                                                                                                                                                 |
 | `PG_USER`         | `zutomayo`              | PostgreSQL user.                                                                                                                                                 |
-| `PG_PASSWORD`     | `zutomayo_dev`          | PostgreSQL password.                                                                                                                                             |
+| `PG_PASSWORD`     | required                | PostgreSQL password. Set a strong value in `.env` or the shell before running Compose.                                                                           |
 | `PG_DATABASE`     | `zutomayo`              | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                                                         |
 | `REDIS_URL`       | `redis://redis:6379`    | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Use `redis://localhost:6379` for local dev.                                               |
 | `REDIS_DB`        | `0`                     | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
@@ -80,7 +84,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `PG_HOST`         | `postgres`           | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
 | `PG_PORT`         | `5432`               | PostgreSQL port.                                                                                                                                                 |
 | `PG_USER`         | `zutomayo`           | PostgreSQL user.                                                                                                                                                 |
-| `PG_PASSWORD`     | `zutomayo_dev`       | PostgreSQL password.                                                                                                                                             |
+| `PG_PASSWORD`     | required             | PostgreSQL password. Set a strong value in `.env` or the shell before running Compose.                                                                           |
 | `PG_DATABASE`     | `zutomayo`           | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                            |
 | `REDIS_URL`       | `redis://redis:6379` | Redis connection URL for the matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                                                       |
 | `REDIS_DB`        | `0`                  | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
@@ -145,7 +149,7 @@ Create a dedicated database; the app uses generic table names (`users`, `decks`,
 # On the server's existing PostgreSQL (as superuser)
 psql -U postgres -h localhost
 CREATE DATABASE zutomayo;
-CREATE USER zutomayo WITH PASSWORD 'zutomayo_dev';
+CREATE USER zutomayo WITH PASSWORD '<strong-password>';
 GRANT ALL PRIVILEGES ON DATABASE zutomayo TO zutomayo;
 ```
 
@@ -155,7 +159,7 @@ Then point the services at the existing instance — remove the `postgres` and `
 PG_HOST=<existing-pg-host>
 PG_PORT=5432
 PG_USER=zutomayo
-PG_PASSWORD=zutomayo_dev
+PG_PASSWORD=<strong-password>
 PG_DATABASE=zutomayo   # the dedicated database created above
 ```
 
@@ -207,7 +211,7 @@ To migrate data from a previous SQLite deployment to PostgreSQL, use [scripts/mi
 ```bash
 npm i -D better-sqlite3  # migration-only dependency, not required in production
 SQLITE_PATH=/data/zutomayo.db \
-PG_HOST=localhost PG_USER=zutomayo PG_PASSWORD=zutomayo_dev \
+PG_HOST=localhost PG_USER=zutomayo PG_PASSWORD=<strong-password> \
 PG_DATABASE=zutomayo npm run migrate:sqlite-to-pg
 ```
 

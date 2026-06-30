@@ -4,28 +4,32 @@ import { describe, expect, it, vi } from 'vitest';
 type RedisLike = Record<string, ReturnType<typeof vi.fn>>;
 
 const require = createRequire(import.meta.url);
-const { getMatchmakingStatus, joinMatchmakingQueue, leaveMatchmakingQueue, reportRealMatch } = require(
-  '../matchmakingService.cjs',
-) as {
-  getMatchmakingStatus: (redis: RedisLike, userId: string, now: number, timeoutMs: number) => Promise<Record<string, unknown>>;
-  joinMatchmakingQueue: (input: {
-    redis: RedisLike;
-    userId: string;
-    body: Record<string, unknown>;
-    sanitizeText: (value: unknown, maxLen?: number) => string;
-    generateQueueId: () => string;
-    generateMatchId: () => string;
-    now: number;
-    ttlSeconds: number;
-    timeoutMs: number;
-  }) => Promise<Record<string, unknown>>;
-  leaveMatchmakingQueue: (redis: RedisLike, userId: string) => Promise<Record<string, unknown>>;
-  reportRealMatch: (
-    redis: RedisLike,
-    userId: string,
-    matchId: unknown,
-  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-};
+const { getMatchmakingStatus, joinMatchmakingQueue, leaveMatchmakingQueue, reportRealMatch } =
+  require('../matchmakingService.cjs') as {
+    getMatchmakingStatus: (
+      redis: RedisLike,
+      userId: string,
+      now: number,
+      timeoutMs: number,
+    ) => Promise<Record<string, unknown>>;
+    joinMatchmakingQueue: (input: {
+      redis: RedisLike;
+      userId: string;
+      body: Record<string, unknown>;
+      sanitizeText: (value: unknown, maxLen?: number) => string;
+      generateQueueId: () => string;
+      generateMatchId: () => string;
+      now: number;
+      ttlSeconds: number;
+      timeoutMs: number;
+    }) => Promise<Record<string, unknown>>;
+    leaveMatchmakingQueue: (redis: RedisLike, userId: string) => Promise<Record<string, unknown>>;
+    reportRealMatch: (
+      redis: RedisLike,
+      userId: string,
+      matchId: unknown,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  };
 
 function makeRedis(entries: Record<string, Record<string, string>> = {}): RedisLike {
   return {
@@ -61,11 +65,8 @@ describe('matchmaking service', () => {
   });
 
   it('queues users with sanitized deck data and tries to match atomically', async () => {
-    const redis = makeRedis({ 'mm:u_1': {}, });
-    redis.hgetall = vi
-      .fn()
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({ queueId: 'q_fixed', status: 'queued' });
+    const redis = makeRedis({ 'mm:u_1': {} });
+    redis.hgetall = vi.fn().mockResolvedValueOnce({}).mockResolvedValueOnce({ queueId: 'q_fixed', status: 'queued' });
     const sanitizeText = vi.fn(() => 'Clean Deck');
 
     await expect(
@@ -134,8 +135,9 @@ describe('matchmaking service', () => {
       error: 'Not in a matched queue',
     });
 
-    const redis = makeRedis({ 'mm:u_1': { status: 'matched' } });
+    const redis = makeRedis({ 'mm:u_1': { status: 'matched', opponentId: 'u_2' } });
     await expect(reportRealMatch(redis, 'u_1', 'bg_1')).resolves.toEqual({ ok: true, body: { ok: true } });
     expect(redis.hset).toHaveBeenCalledWith('mm:u_1', 'realMatchId', 'bg_1');
+    expect(redis.hset).toHaveBeenCalledWith('mm:u_2', 'realMatchId', 'bg_1');
   });
 });

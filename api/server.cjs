@@ -99,6 +99,7 @@ async function initSchema() {
 
     CREATE TABLE IF NOT EXISTS matches (
       id TEXT PRIMARY KEY,
+      source_match_id TEXT,
       player0_id TEXT REFERENCES users(id),
       player1_id TEXT REFERENCES users(id),
       winner_id TEXT,
@@ -115,6 +116,10 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_matches_winner ON matches(winner_id);
     CREATE INDEX IF NOT EXISTS idx_matches_loser ON matches(loser_id);
     CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC);
+    ALTER TABLE matches ADD COLUMN IF NOT EXISTS source_match_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_source_match_id
+      ON matches(source_match_id)
+      WHERE source_match_id IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS bjg_matches (
       match_id TEXT PRIMARY KEY,

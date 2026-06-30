@@ -64,10 +64,14 @@ function redactHiddenCard(card: CardInstance | null, placeholder: string): CardI
   return card.faceUp ? { ...card } : hiddenCard(placeholder);
 }
 
+function redactDeckForViewer(player: PlayerState, owner: PlayerIndex): CardInstance[] {
+  return player.deck.map((card, index) => (card.faceUp ? { ...card } : hiddenCard(`hidden-p${owner}-deck-${index}`)));
+}
+
 function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerIndex | null) {
   const player = G.players[owner];
   const isOwner = viewer === owner;
-  if (isOwner) return { ...player, hand: [...player.hand], deck: [...player.deck] };
+  if (isOwner) return { ...player, hand: [...player.hand], deck: redactDeckForViewer(player, owner) };
   const revealedHandIds = new Set(G.revealedHandCardIds?.[owner] ?? []);
 
   return {
@@ -75,7 +79,7 @@ function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerI
     hand: player.hand.map((card, index) =>
       revealedHandIds.has(card.instanceId) ? { ...card } : hiddenCard(`hidden-p${owner}-hand-${index}`),
     ),
-    deck: player.deck.map((_, index) => hiddenCard(`hidden-p${owner}-deck-${index}`)),
+    deck: redactDeckForViewer(player, owner),
     battleZone: redactHiddenCard(player.battleZone, `hidden-p${owner}-battle`),
     setZoneA: redactHiddenCard(player.setZoneA, `hidden-p${owner}-set-a`),
     setZoneB: redactHiddenCard(player.setZoneB, `hidden-p${owner}-set-b`),
@@ -133,10 +137,10 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
   return {
     ...G,
     players: [redactPlayerForViewer(G, 0, viewer), redactPlayerForViewer(G, 1, viewer)] as [PlayerState, PlayerState],
-    setCardsThisTurn: [
-      redactPlayedCardsForViewer(G, 0, viewer),
-      redactPlayedCardsForViewer(G, 1, viewer),
-    ] as [CardInstance[], CardInstance[]],
+    setCardsThisTurn: [redactPlayedCardsForViewer(G, 0, viewer), redactPlayedCardsForViewer(G, 1, viewer)] as [
+      CardInstance[],
+      CardInstance[],
+    ],
     jankenChoices,
     pendingChoice,
     actionLog: redactActionLogForViewer(G, viewer, bothChose),
