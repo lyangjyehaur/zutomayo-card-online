@@ -28,6 +28,7 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
       setTurnCard: boardProps.moves.setTurnCard,
       confirmReady: boardProps.moves.confirmReady,
       resolvePendingEffect: boardProps.moves.resolvePendingEffect,
+      submitPendingChoice: boardProps.moves.submitPendingChoice,
     }),
     [boardProps.moves],
   );

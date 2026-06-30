@@ -1857,6 +1857,17 @@ const abyssToDeckBottomOrLoseHandler: ChoiceHandler = {
     const abyssIds = new Set(playerState.abyss.map((card) => card.instanceId));
     if (!optionIds.every((optionId) => abyssIds.has(optionId))) return { status: 'invalid' };
 
+    // 先驗證 followUp choice 可行性，避免 splice 後才失敗導致狀態污染永久卡死。
+    if (c.payload.followUpChoiceType === 'reorderOpponentDeckTop') {
+      const preCheck = buildReorderOpponentDeckTopChoice(
+        G,
+        player,
+        Number(c.payload.followUpCount ?? 0),
+        choice.prompt,
+      );
+      if (!preCheck.success) return { status: 'invalid' };
+    }
+
     const selectedCards: CardInstance[] = [];
     for (const optionId of optionIds) {
       const abyssIndex = playerState.abyss.findIndex((card) => card.instanceId === optionId);

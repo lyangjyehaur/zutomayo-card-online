@@ -352,6 +352,10 @@ function loseOnEffectOverdraw(G: GameState, player: PlayerIndex, count: number):
   G.step = 'gameOver';
   G.winner = (1 - player) as PlayerIndex;
   G.gameoverReason = `Player ${player} loses: effect attempted to draw ${count} with only ${G.players[player].deck.length} cards.`;
+  G.ready = [true, true];
+  G.pendingEffects = [[], []];
+  G.pendingEffectPlayer = null;
+  G.pendingChoice = null;
   G.log.push(G.gameoverReason);
   return true;
 }
@@ -361,6 +365,9 @@ function loseByHp(G: GameState, player: PlayerIndex, reason: string): void {
   G.winner = (1 - player) as PlayerIndex;
   G.gameoverReason = reason;
   G.ready = [true, true];
+  G.pendingEffects = [[], []];
+  G.pendingEffectPlayer = null;
+  G.pendingChoice = null;
   G.log.push(reason);
 }
 
@@ -1710,6 +1717,8 @@ function handleHandToDeckBottomThenDrawChoice({ effect, G, player, me }: EffectH
 } {
   const discardCount = Number(effect.action.params.discardCount ?? 1);
   const drawCount = Number(effect.action.params.drawCount ?? discardCount);
+  if (me.hand.length < discardCount)
+    return { success: false, message: 'Not enough hand cards to discard' };
   G.pendingChoice = {
     id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
     player,
