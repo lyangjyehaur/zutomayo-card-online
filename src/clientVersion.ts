@@ -1,6 +1,12 @@
 import { registerSW } from 'virtual:pwa-register';
 import { APP_VERSION_INFO, isSameAppVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 
+export const PWA_UPDATE_READY_EVENT = 'zutomayo:pwa-update-ready';
+
+export interface PwaUpdateReadyDetail {
+  applyUpdate: () => void;
+}
+
 export class VersionMismatchError extends Error {
   serverVersion: AppVersionInfo | null;
 
@@ -42,12 +48,39 @@ export function reloadForAppUpdate(): void {
   window.location.reload();
 }
 
+export async function recoverPwaAndReload(): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  const unregisterServiceWorkers = async () => {
+    if (!('serviceWorker' in navigator)) return;
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+  };
+
+  const clearCaches = async () => {
+    if (!('caches' in window)) return;
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+  };
+
+  await Promise.allSettled([unregisterServiceWorkers(), clearCaches()]);
+  window.location.reload();
+}
+
 export function registerPwaAutoUpdate(): void {
   if (typeof window === 'undefined') return;
   const updateSW = registerSW({
     immediate: true,
     onNeedRefresh() {
-      void updateSW(true);
+      window.dispatchEvent(
+        new CustomEvent<PwaUpdateReadyDetail>(PWA_UPDATE_READY_EVENT, {
+          detail: {
+            applyUpdate: () => {
+              void updateSW(true);
+            },
+          },
+        }),
+      );
     },
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return;

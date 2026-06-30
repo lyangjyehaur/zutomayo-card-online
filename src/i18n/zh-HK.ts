@@ -369,6 +369,22 @@ export const zhHK: Record<TranslationKey, string> = {
   'online.copySuccessHelp': '連結已複製，可以貼畀對手。',
   'online.gameOverHelper': '綫上對戰已結束。可以返大廳或者開新房再打一局。',
 
+  'pwa.kicker': '應用程式更新',
+  'pwa.updateTitle': '有新版本可用',
+  'pwa.updateBody': '新嘅遊戲同介面檔案已準備好。建議唔係對戰中先套用更新。',
+  'pwa.updateAction': '套用更新',
+  'pwa.updatingAction': '更新中...',
+  'pwa.recoverAction': '修復快取',
+  'pwa.recoverTitle': '清除 PWA 快取？',
+  'pwa.recoverBody': '會移除本機 service worker 同快取檔案，重新載入後會重新下載最新資源。',
+  'pwa.clearCacheAction': '清除並重載',
+  'pwa.recoveringAction': '清除中...',
+
+  'appError.kicker': '系統恢復',
+  'appError.title': '畫面遇到錯誤',
+  'appError.body': '可以先重試畫面；如果仍然失敗，請重新載入，或者清除 PWA 快取後重新下載最新檔案。',
+  'appError.retryAction': '重試畫面',
+
   'admin.title': '卡牌資料管理',
   'admin.i18nTitle': 'i18n 管理',
   'admin.adminVerify': '管理員驗證',

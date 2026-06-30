@@ -372,6 +372,24 @@ export const en: Record<TranslationKey, string> = {
   'online.copySuccessHelp': 'Link copied. Paste it to your opponent.',
   'online.gameOverHelper': 'The online match is over. Return to the lobby or create a new room for another match.',
 
+  'pwa.kicker': 'App update',
+  'pwa.updateTitle': 'New version available',
+  'pwa.updateBody': 'Fresh game and interface files are ready. Apply the update when you are not in a match.',
+  'pwa.updateAction': 'Update now',
+  'pwa.updatingAction': 'Updating...',
+  'pwa.recoverAction': 'Repair cache',
+  'pwa.recoverTitle': 'Clear PWA cache?',
+  'pwa.recoverBody':
+    'This removes local service workers and cached files. The latest assets will download after reload.',
+  'pwa.clearCacheAction': 'Clear and reload',
+  'pwa.recoveringAction': 'Clearing...',
+
+  'appError.kicker': 'System recovery',
+  'appError.title': 'The screen hit an error',
+  'appError.body':
+    'Try the screen again first. If it keeps failing, reload or clear the PWA cache to download the latest files.',
+  'appError.retryAction': 'Try screen again',
+
   'admin.title': 'Card Data Manager',
   'admin.i18nTitle': 'i18n Manager',
   'admin.adminVerify': 'Admin Authentication',

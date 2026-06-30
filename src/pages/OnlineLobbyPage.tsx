@@ -11,7 +11,8 @@ import {
   type DeckResponse,
   type ProfileResponse,
 } from '../api/client';
-import { buildOnlineRoomUrl, copyText } from '../components/OnlineRoomInfo';
+import { copyText } from '../clipboard';
+import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
 import { t, translate, useLocale } from '../i18n';

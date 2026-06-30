@@ -73,12 +73,18 @@ Variables are passed through `docker-compose.yml` from the host environment (e.g
 
 Frontend build-time variables (baked into the bundle at `vite build`):
 
-| Variable                  | Default              | Notes                                                                                                   |
-| ------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------- |
-| `VITE_API_URL`            | `/api`               | API base used by [src/api/client.ts](../src/api/client.ts).                                             |
-| `VITE_APP_VERSION`        | `APP_VERSION`        | Usually set automatically from `APP_VERSION` by the Docker build.                                       |
-| `VITE_APP_BUILD_ID`       | `APP_BUILD_ID`       | Must match the `game` runtime `APP_BUILD_ID`, otherwise clients are asked to reload before online play. |
-| `VITE_GAME_RULES_VERSION` | `GAME_RULES_VERSION` | Must match the `game` runtime `GAME_RULES_VERSION`.                                                     |
+| Variable                          | Default              | Notes                                                                                                                            |
+| --------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_URL`                    | `/api`               | API base used by [src/api/client.ts](../src/api/client.ts).                                                                      |
+| `VITE_APP_VERSION`                | `APP_VERSION`        | Usually set automatically from `APP_VERSION` by the Docker build.                                                                |
+| `VITE_APP_BUILD_ID`               | `APP_BUILD_ID`       | Must match the `game` runtime `APP_BUILD_ID`, otherwise clients are asked to reload before online play.                          |
+| `VITE_GAME_RULES_VERSION`         | `GAME_RULES_VERSION` | Must match the `game` runtime `GAME_RULES_VERSION`.                                                                              |
+| `VITE_UMAMI_WEBSITE_ID`           | empty                | Umami website ID. Set from deployment secrets; falls back to `VITE_UMAMI_SECONDARY_WEBSITE_ID` for gallery config compatibility. |
+| `VITE_UMAMI_SCRIPT_URL`           | empty                | Umami analytics script URL. Set from deployment secrets. Analytics is disabled when this or the website ID is empty.             |
+| `VITE_UMAMI_HOST_URL`             | empty                | Optional Umami host URL override. Usually unnecessary when loading the standard Umami script directly.                           |
+| `VITE_UMAMI_TELEMETRY_SCRIPT_URL` | empty                | Optional replay / telemetry script URL. Leave empty for standard Umami analytics only.                                           |
+| `VITE_UMAMI_SECONDARY_WEBSITE_ID` | empty                | Backward-compatible alias used by `zutumayo-gallery`.                                                                            |
+| `VITE_UMAMI_SECONDARY_HOST_URL`   | empty                | Backward-compatible host URL alias used by `zutumayo-gallery`.                                                                   |
 
 > Admin authentication is no longer handled in the frontend. The `VITE_ADMIN_PASSWORD` build-time variable has been removed; admin login now goes through `POST /api/admin/login` backed by the `ADMIN_PASSWORD` environment variable on the `api` service.
 

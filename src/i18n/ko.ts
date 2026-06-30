@@ -371,6 +371,23 @@ export const ko: Record<TranslationKey, string> = {
   'online.copySuccessHelp': '링크가 복사되었습니다. 상대에게 붙여넣으세요.',
   'online.gameOverHelper': '온라인 대전이 끝났습니다. 로비로 돌아가거나 새 방을 만들 수 있습니다.',
 
+  'pwa.kicker': '앱 업데이트',
+  'pwa.updateTitle': '새 버전을 사용할 수 있습니다',
+  'pwa.updateBody': '새 게임과 화면 파일이 준비되었습니다. 대전 중이 아닐 때 업데이트를 적용하세요.',
+  'pwa.updateAction': '업데이트 적용',
+  'pwa.updatingAction': '업데이트 중...',
+  'pwa.recoverAction': '캐시 복구',
+  'pwa.recoverTitle': 'PWA 캐시를 지울까요?',
+  'pwa.recoverBody': '로컬 service worker와 캐시 파일을 제거합니다. 다시 불러온 뒤 최신 리소스를 다운로드합니다.',
+  'pwa.clearCacheAction': '지우고 다시 불러오기',
+  'pwa.recoveringAction': '지우는 중...',
+
+  'appError.kicker': '시스템 복구',
+  'appError.title': '화면에서 오류가 발생했습니다',
+  'appError.body':
+    '먼저 화면을 다시 시도하세요. 계속 실패하면 다시 불러오거나 PWA 캐시를 지워 최신 파일을 다운로드하세요.',
+  'appError.retryAction': '화면 다시 시도',
+
   'admin.title': '카드 데이터 관리',
   'admin.i18nTitle': 'i18n 관리',
   'admin.adminVerify': '관리자 인증',

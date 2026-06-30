@@ -372,6 +372,24 @@ export const ja: Record<TranslationKey, string> = {
   'online.copySuccessHelp': 'リンクをコピーしました。相手に貼り付けてください。',
   'online.gameOverHelper': 'オンライン対戦は終了しました。ロビーへ戻るか、新しいルームを作成できます。',
 
+  'pwa.kicker': 'アプリ更新',
+  'pwa.updateTitle': '新しいバージョンがあります',
+  'pwa.updateBody': '新しいゲームと画面ファイルの準備ができました。対戦中でないときに適用してください。',
+  'pwa.updateAction': '更新を適用',
+  'pwa.updatingAction': '更新中...',
+  'pwa.recoverAction': 'キャッシュ修復',
+  'pwa.recoverTitle': 'PWA キャッシュを削除しますか？',
+  'pwa.recoverBody':
+    'ローカルの service worker とキャッシュ済みファイルを削除します。再読み込み後に最新リソースを取得します。',
+  'pwa.clearCacheAction': '削除して再読み込み',
+  'pwa.recoveringAction': '削除中...',
+
+  'appError.kicker': 'システム復旧',
+  'appError.title': '画面でエラーが発生しました',
+  'appError.body':
+    'まず画面を再試行してください。続けて失敗する場合は、再読み込みするか PWA キャッシュを削除して最新ファイルを取得してください。',
+  'appError.retryAction': '画面を再試行',
+
   'admin.title': 'カードデータ管理',
   'admin.i18nTitle': 'i18n 管理',
   'admin.adminVerify': '管理者認証',

@@ -1,8 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { identifyAnalytics, trackPageView } from './analytics';
 import { getDecks, getProfile, isLoggedIn, type DeckResponse } from './api/client';
 import { ensureCompatibleAppVersion } from './clientVersion';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
+import { PwaStatusPrompt } from './components/PwaStatusPrompt';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
@@ -244,6 +246,36 @@ function RouterShell() {
   const [resumePromptStatus, setResumePromptStatus] = useState<'idle' | 'reconnecting' | 'error'>('idle');
   const [resumeErrorReason, setResumeErrorReason] = useState<OnlineSessionValidationReason | null>(null);
 
+  useEffect(() => {
+    trackPageView(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      try {
+        if (sessionStorage.getItem('umami_identify_sent') === 'true') return;
+        const didIdentify = identifyAnalytics({
+          app_version: APP_VERSION_INFO.appVersion,
+          build_id: APP_VERSION_INFO.buildId,
+          rules_version: APP_VERSION_INFO.rulesVersion,
+          locale,
+          is_logged_in: isLoggedIn() ? 'true' : 'false',
+          has_custom_deck: hasStoredCustomDeck() ? 'true' : 'false',
+        });
+        if (didIdentify) sessionStorage.setItem('umami_identify_sent', 'true');
+      } catch {
+        // Analytics should never affect gameplay.
+      }
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [locale]);
+
   const closeTutorial = () => {
     localStorage.setItem('zutomayo_tutorial_seen', '1');
     setTutorial(false);
@@ -439,6 +471,7 @@ function RouterShell() {
           onDismiss={dismissResumePrompt}
         />
       )}
+      <PwaStatusPrompt />
       {tutorial && (
         <InteractiveTutorial
           onComplete={closeTutorial}

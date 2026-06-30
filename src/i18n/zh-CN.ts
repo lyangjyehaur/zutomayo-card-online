@@ -369,6 +369,22 @@ export const zhCN: Record<TranslationKey, string> = {
   'online.copySuccessHelp': '链接已复制，可粘贴给对手。',
   'online.gameOverHelper': '在线对战已结束。可回大厅或创建新房间再打一局。',
 
+  'pwa.kicker': '应用程序更新',
+  'pwa.updateTitle': '有新版本可用',
+  'pwa.updateBody': '新的游戏与界面文件已准备好。建议在非对战中时套用更新。',
+  'pwa.updateAction': '套用更新',
+  'pwa.updatingAction': '更新中...',
+  'pwa.recoverAction': '修复缓存',
+  'pwa.recoverTitle': '清除 PWA 缓存？',
+  'pwa.recoverBody': '会移除本机 service worker 与缓存文件，重新载入后会重新下载最新资源。',
+  'pwa.clearCacheAction': '清除并重载',
+  'pwa.recoveringAction': '清除中...',
+
+  'appError.kicker': '系统恢复',
+  'appError.title': '画面遇到错误',
+  'appError.body': '可以先重试画面；若仍然失败，请重新载入，或清除 PWA 缓存后重新下载最新文件。',
+  'appError.retryAction': '重试画面',
+
   'admin.title': '卡牌数据管理',
   'admin.i18nTitle': 'i18n 管理',
   'admin.adminVerify': '管理员验证',
