@@ -35,8 +35,13 @@ async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, aut
   if (winnerPlayer !== 0 && winnerPlayer !== 1) {
     return { ok: false, status: 400, error: 'winnerPlayer required for source match verification' };
   }
-  const match = (await pool.query('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', [sourceMatchId]))
-    .rows[0];
+  let match;
+  try {
+    match = (await pool.query('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', [sourceMatchId])).rows[0];
+  } catch (err) {
+    if (err?.code === '42P01') return { ok: false, status: 404, error: 'Source match not found' };
+    throw err;
+  }
   if (!match) return { ok: false, status: 404, error: 'Source match not found' };
   if (!isBoardgameFinished(match.state)) return { ok: false, status: 409, error: 'Source match is not finished' };
   const authoritativeWinner = boardgameWinnerFromState(match.state);

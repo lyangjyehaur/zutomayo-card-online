@@ -121,17 +121,6 @@ async function initSchema() {
       ON matches(source_match_id)
       WHERE source_match_id IS NOT NULL;
 
-    CREATE TABLE IF NOT EXISTS bjg_matches (
-      match_id TEXT PRIMARY KEY,
-      state JSONB,
-      initial_state JSONB,
-      metadata JSONB NOT NULL,
-      log JSONB NOT NULL DEFAULT '[]'::jsonb,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_bjg_matches_updated_at ON bjg_matches (updated_at);
-    CREATE INDEX IF NOT EXISTS idx_bjg_matches_game_name ON bjg_matches ((metadata->>'gameName'));
-
     CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
