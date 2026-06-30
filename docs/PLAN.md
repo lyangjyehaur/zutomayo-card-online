@@ -18,12 +18,14 @@ Current status for the ZUTOMAYO CARD Online implementation. This file tracks pro
 | 9     | Match history and leaderboard | Done   | Browser-local match history, `/api/matches`, `/api/leaderboard`, authenticated match submission, ELO feedback, and leaderboard/profile UI are integrated.          |
 | 10    | AI practice                   | Done   | Easy/Normal/Hard levels are available. Hard uses `hardLookahead()` to simulate card combinations and evaluate damage differential.                                 |
 | 11    | Backend and deployment        | Done   | Docker Compose runs `game` on `3000` and `api` on `3001`; API persists to PostgreSQL and Redis.                                                                    |
+| 12    | Error reporting               | Done   | GlitchTip/Sentry-compatible SDKs capture browser, API, and game-server errors with release/environment context and safe online breadcrumbs.                        |
 
 ## Current Baseline / 目前基準
 
 - Frontend: Vite + React + TypeScript + React Router.
 - Game server: [src/server.ts](src/server.ts), boardgame.io, port `3000`.
 - API server: [api/server.cjs](api/server.cjs), Node HTTP + PostgreSQL + Redis, port `3001`.
+- Observability: GlitchTip/Sentry-compatible browser + Node SDKs, configured by DSN environment variables.
 - Deployment target: Docker Compose on Debian 12 host `149.104.6.238`.
 - Card audit from `npm run rule:audit`: 422 total cards, 250 effect cards, 267 effect lines, 267 parsed lines, 288 runtime parsed effects, 0 unparsed lines, 0 parsed-but-partial lines.
 

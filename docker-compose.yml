@@ -39,6 +39,11 @@ services:
         VITE_LOGTO_ENDPOINT: ${VITE_LOGTO_ENDPOINT:-}
         VITE_LOGTO_APP_ID: ${VITE_LOGTO_APP_ID:-}
         VITE_LOGTO_API_RESOURCE: ${VITE_LOGTO_API_RESOURCE:-}
+        VITE_GLITCHTIP_DSN: ${VITE_GLITCHTIP_DSN:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-production}
+        VITE_SENTRY_RELEASE: ${VITE_SENTRY_RELEASE:-}
+        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0}
     ports:
       - '3000:3000'
     environment:
@@ -52,6 +57,11 @@ services:
       - REDIS_URL=redis://redis:6379
       - REDIS_DB=${REDIS_DB:-0}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - GLITCHTIP_DSN=${GLITCHTIP_DSN:-}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,6 +89,11 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - LOGTO_ISSUER=${LOGTO_ISSUER:-}
       - LOGTO_AUDIENCE=${LOGTO_AUDIENCE:-}
+      - GLITCHTIP_DSN=${GLITCHTIP_DSN:-}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0}
     depends_on:
       postgres:
         condition: service_healthy

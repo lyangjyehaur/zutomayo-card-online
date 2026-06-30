@@ -10,8 +10,11 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import Redis from 'ioredis';
 import { createAdapter } from '@socket.io/redis-adapter';
+import { captureServerError, flushErrorReporting, initServerErrorReporting } from './observability/node';
 import { PostgresAdapter } from './server/db/postgres-adapter';
 import { RedisPubSub } from './server/transport/redis-pubsub';
+
+initServerErrorReporting('game');
 
 const require = createRequire(import.meta.url);
 const { Server, SocketIO } = require('boardgame.io/server') as typeof import('boardgame.io/server');
@@ -83,6 +86,7 @@ try {
     console.log(`[server] Loaded ${cards.length} cards from cards.json`);
   }
 } catch (err) {
+  captureServerError(err, { tags: { component: 'startup', phase: 'load_cards' } });
   console.error('[server] Failed to load cards.json:', err);
 }
 try {
@@ -91,13 +95,23 @@ try {
     const i18n = JSON.parse(fs.readFileSync(i18nPath, 'utf8'));
     initEffectI18n(i18n);
   }
-} catch { /* translations are optional on server */ }
+} catch (err) {
+  captureServerError(err, { tags: { component: 'startup', phase: 'load_card_i18n' } });
+  /* translations are optional on server */
+}
 
 const server = Server({
   games: [ZutomayoCard],
   db: db as unknown as NonNullable<ServerOpts['db']>,
   transport,
   origins: ['http://localhost:3000', /localhost:\d+/, /127\.0\.0\.1:\d+/, ...configuredOrigins],
+});
+
+server.app.on('error', (err: unknown, ctx: KoaContext) => {
+  captureServerError(err, {
+    extra: { path: ctx?.path },
+    tags: { component: 'koa', method: ctx?.method, route: ctx?.path },
+  });
 });
 
 server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: KoaContext) => {
@@ -243,7 +257,11 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
       resolve();
     });
 
-    proxyReq.on('error', () => {
+    proxyReq.on('error', (err) => {
+      captureServerError(err, {
+        extra: { path: ctx.path, upstream: url.toString() },
+        tags: { component: 'api_proxy', method: ctx.method },
+      });
       ctx.status = 502;
       ctx.body = JSON.stringify({ error: 'API server unavailable' });
       resolve();
@@ -291,6 +309,7 @@ async function cleanupStaleMatches() {
     }
     if (cleaned > 0) console.log(`[cleanup] Removed ${cleaned} stale matches`);
   } catch (err) {
+    captureServerError(err, { tags: { component: 'cleanup', phase: 'stale_matches' } });
     console.error('[cleanup] Error:', err);
   }
 }
@@ -304,8 +323,10 @@ async function shutdown(signal: string): Promise<void> {
   try {
     await Promise.all([db.close(), redisPubSub.close(), redisPubClient.quit(), redisAdapterSubClient.quit()]);
   } catch (err) {
+    captureServerError(err, { tags: { component: 'shutdown', signal } });
     console.error('[shutdown] error:', err);
   }
+  await flushErrorReporting();
   process.exit(0);
 }
 

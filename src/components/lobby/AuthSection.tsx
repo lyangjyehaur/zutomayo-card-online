@@ -4,6 +4,7 @@ import { LogIn, LogOut } from 'lucide-react';
 import { ApiError, getProfile, logout as logoutAccount, syncLogtoProfile } from '../../api/client';
 import { isLogtoConfigured, logtoPostLogoutRedirectUri, logtoRedirectUri } from '../../auth/logto';
 import { t } from '../../i18n';
+import { addErrorBreadcrumb, setErrorReportingUser } from '../../observability/sentry';
 
 export type AuthUser = {
   id: string;
@@ -112,6 +113,8 @@ function LogtoAuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promi
           : await getProfile();
         if (cancelled) return;
         setUser(profile);
+        setErrorReportingUser(profile);
+        addErrorBreadcrumb('auth.profile_synced', { userId: profile.id });
         setStatus(t('auth.loginSuccess'));
         void onAuthChanged();
       } catch (err) {
@@ -145,6 +148,8 @@ function LogtoAuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promi
     setError('');
     setStatus('');
     logoutAccount();
+    setErrorReportingUser(null);
+    addErrorBreadcrumb('auth.logout');
     setUser(null);
     void onAuthChanged();
     try {

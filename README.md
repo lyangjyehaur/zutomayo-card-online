@@ -93,6 +93,7 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 | 格式化          | Prettier                                       | 3         |
 | TypeScript 執行 | tsx                                            | 4         |
 | PWA             | vite-plugin-pwa                                | 1         |
+| 錯誤搜集        | GlitchTip / Sentry-compatible SDK              | -         |
 | 後端            | Node HTTP + PostgreSQL + Redis（pg / ioredis） | Node >=20 |
 
 ### 核心遊戲引擎
@@ -107,15 +108,15 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 
 ### 數據存儲
 
-| 數據         | 存儲位置                      | 說明                                 |
-| ------------ | ----------------------------- | ------------------------------------ |
-| 卡牌數據     | `cards.json` (git)            | 422 張卡，靜態數據                   |
-| 卡圖         | Cloudflare R2 (`r2.dan.tw`)   | 422 張卡圖 CDN                       |
-| 用戶帳號     | PostgreSQL (`api/server.cjs`) | 註冊/登入/ELO                        |
-| 牌組         | PostgreSQL + localStorage     | 伺服器同步 + 本地備份 + 本地自訂牌組 |
-| 對戰紀錄     | PostgreSQL + localStorage     | ELO 變動 + 歷史 + 已清理 action log  |
-| 線上 Session | localStorage                  | 線上對戰重連資訊                     |
-| 語言偏好     | localStorage                  | 瀏覽器本地                           |
+| 數據         | 存儲位置                    | 說明                                 |
+| ------------ | --------------------------- | ------------------------------------ |
+| 卡牌數據     | `cards.json` (git)          | 422 張卡，靜態數據                   |
+| 卡圖         | Cloudflare R2 (`r2.dan.tw`) | 422 張卡圖 CDN                       |
+| 用戶帳號     | Logto + PostgreSQL          | Logto 身分 + 本地 ELO/profile        |
+| 牌組         | PostgreSQL + localStorage   | 伺服器同步 + 本地備份 + 本地自訂牌組 |
+| 對戰紀錄     | PostgreSQL + localStorage   | ELO 變動 + 歷史 + 已清理 action log  |
+| 線上 Session | localStorage                | 線上對戰重連資訊                     |
+| 語言偏好     | localStorage                | 瀏覽器本地                           |
 
 ---
 

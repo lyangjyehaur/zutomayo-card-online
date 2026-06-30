@@ -50,51 +50,66 @@ Variables are passed through `docker-compose.yml` from the host environment (e.g
 
 ### `game`
 
-| Variable          | Default                 | Notes                                                                                                                                                            |
-| ----------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`            | `3000`                  | boardgame.io/static server port inside the container.                                                                                                            |
-| `NODE_ENV`        | `production` in Compose | Runtime mode.                                                                                                                                                    |
-| `PG_HOST`         | `postgres`              | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
-| `PG_PORT`         | `5432`                  | PostgreSQL port.                                                                                                                                                 |
-| `PG_USER`         | `zutomayo`              | PostgreSQL user.                                                                                                                                                 |
-| `PG_PASSWORD`     | `zutomayo_dev`          | PostgreSQL password.                                                                                                                                             |
-| `PG_DATABASE`     | `zutomayo`              | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                                                         |
-| `REDIS_URL`       | `redis://redis:6379`    | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Use `redis://localhost:6379` for local dev.                                               |
-| `REDIS_DB`        | `0`                     | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
-| `ALLOWED_ORIGINS` | empty                   | Comma-separated extra origins allowed by boardgame.io CORS.                                                                                                      |
+| Variable                    | Default                 | Notes                                                                                                                                                            |
+| --------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                      | `3000`                  | boardgame.io/static server port inside the container.                                                                                                            |
+| `NODE_ENV`                  | `production` in Compose | Runtime mode.                                                                                                                                                    |
+| `PG_HOST`                   | `postgres`              | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
+| `PG_PORT`                   | `5432`                  | PostgreSQL port.                                                                                                                                                 |
+| `PG_USER`                   | `zutomayo`              | PostgreSQL user.                                                                                                                                                 |
+| `PG_PASSWORD`               | `zutomayo_dev`          | PostgreSQL password.                                                                                                                                             |
+| `PG_DATABASE`               | `zutomayo`              | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                                                         |
+| `REDIS_URL`                 | `redis://redis:6379`    | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Use `redis://localhost:6379` for local dev.                                               |
+| `REDIS_DB`                  | `0`                     | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
+| `ALLOWED_ORIGINS`           | empty                   | Comma-separated extra origins allowed by boardgame.io CORS.                                                                                                      |
+| `GLITCHTIP_DSN`             | empty                   | GlitchTip DSN for server-side error reporting. `SENTRY_DSN` can be used instead.                                                                                 |
+| `SENTRY_DSN`                | empty                   | Sentry-compatible DSN for server-side error reporting.                                                                                                           |
+| `SENTRY_ENVIRONMENT`        | `production` in Compose | Environment name attached to server-side error events.                                                                                                           |
+| `SENTRY_RELEASE`            | empty                   | Release/version attached to server-side error events, usually a commit SHA.                                                                                      |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0`                     | Optional tracing sample rate. Keep `0` unless you intentionally want performance traces.                                                                         |
 
 Frontend build-time variables (baked into the bundle at `vite build`):
 
-| Variable                  | Default | Notes                                                                                                                                         |
-| ------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_API_URL`            | `/api`  | API base used by [src/api/client.ts](../src/api/client.ts).                                                                                   |
-| `VITE_LOGTO_ENDPOINT`     | empty   | Logto tenant endpoint, for example `https://example.logto.app`. Logto UI is enabled only when endpoint, app ID, and API resource are all set. |
-| `VITE_LOGTO_APP_ID`       | empty   | Logto SPA application ID.                                                                                                                     |
-| `VITE_LOGTO_API_RESOURCE` | empty   | Logto API resource indicator/audience used when requesting access tokens for this API. Required to enable Logto sign-in.                      |
+| Variable                         | Default | Notes                                                                                                                                         |
+| -------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_URL`                   | `/api`  | API base used by [src/api/client.ts](../src/api/client.ts).                                                                                   |
+| `VITE_LOGTO_ENDPOINT`            | empty   | Logto tenant endpoint, for example `https://example.logto.app`. Logto UI is enabled only when endpoint, app ID, and API resource are all set. |
+| `VITE_LOGTO_APP_ID`              | empty   | Logto SPA application ID.                                                                                                                     |
+| `VITE_LOGTO_API_RESOURCE`        | empty   | Logto API resource indicator/audience used when requesting access tokens for this API. Required to enable Logto sign-in.                      |
+| `VITE_GLITCHTIP_DSN`             | empty   | GlitchTip DSN for browser error reporting. `VITE_SENTRY_DSN` can be used instead.                                                             |
+| `VITE_SENTRY_DSN`                | empty   | Sentry-compatible DSN for browser error reporting.                                                                                            |
+| `VITE_SENTRY_ENVIRONMENT`        | empty   | Environment name attached to browser error events.                                                                                            |
+| `VITE_SENTRY_RELEASE`            | empty   | Release/version attached to browser error events, usually a commit SHA.                                                                       |
+| `VITE_SENTRY_TRACES_SAMPLE_RATE` | `0`     | Optional browser tracing sample rate. Keep `0` unless you intentionally want performance traces.                                              |
 
 > Admin authentication is no longer handled in the frontend. The `VITE_ADMIN_PASSWORD` build-time variable has been removed; admin login now goes through `POST /api/admin/login` backed by the `ADMIN_PASSWORD` environment variable on the `api` service.
 
 ### `api`
 
-| Variable          | Default              | Notes                                                                                                                                                            |
-| ----------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API_PORT`        | `3001`               | API service port inside the container.                                                                                                                           |
-| `PG_HOST`         | `postgres`           | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
-| `PG_PORT`         | `5432`               | PostgreSQL port.                                                                                                                                                 |
-| `PG_USER`         | `zutomayo`           | PostgreSQL user.                                                                                                                                                 |
-| `PG_PASSWORD`     | `zutomayo_dev`       | PostgreSQL password.                                                                                                                                             |
-| `PG_DATABASE`     | `zutomayo`           | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                            |
-| `REDIS_URL`       | `redis://redis:6379` | Redis connection URL for the matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                                                       |
-| `REDIS_DB`        | `0`                  | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
-| `JWT_SECRET`      | random per process   | HMAC key for signed admin tokens. Set a stable secret in production or admin sessions become invalid when the API process restarts.                              |
-| `ADMIN_PASSWORD`  | empty                | Password checked by `POST /api/admin/login`. When empty, admin login returns `503` and admin endpoints are effectively disabled.                                 |
-| `ALLOWED_ORIGINS` | empty                | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                 |
-| `LOGTO_ISSUER`    | empty                | Logto OIDC issuer. Usually `VITE_LOGTO_ENDPOINT` plus `/oidc` is accepted automatically, so `https://example.logto.app` is valid.                                |
-| `LOGTO_AUDIENCE`  | empty                | Expected access-token audience. Set this to the same value as `VITE_LOGTO_API_RESOURCE`.                                                                         |
+| Variable                    | Default                 | Notes                                                                                                                                                            |
+| --------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API_PORT`                  | `3001`                  | API service port inside the container.                                                                                                                           |
+| `PG_HOST`                   | `postgres`              | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
+| `PG_PORT`                   | `5432`                  | PostgreSQL port.                                                                                                                                                 |
+| `PG_USER`                   | `zutomayo`              | PostgreSQL user.                                                                                                                                                 |
+| `PG_PASSWORD`               | `zutomayo_dev`          | PostgreSQL password.                                                                                                                                             |
+| `PG_DATABASE`               | `zutomayo`              | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                            |
+| `REDIS_URL`                 | `redis://redis:6379`    | Redis connection URL for the matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                                                       |
+| `REDIS_DB`                  | `0`                     | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
+| `JWT_SECRET`                | random per process      | HMAC key for signed admin tokens. Set a stable secret in production or admin sessions become invalid when the API process restarts.                              |
+| `ADMIN_PASSWORD`            | empty                   | Password checked by `POST /api/admin/login`. When empty, admin login returns `503` and admin endpoints are effectively disabled.                                 |
+| `ALLOWED_ORIGINS`           | empty                   | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                 |
+| `LOGTO_ISSUER`              | empty                   | Logto OIDC issuer. Usually `VITE_LOGTO_ENDPOINT` plus `/oidc` is accepted automatically, so `https://example.logto.app` is valid.                                |
+| `LOGTO_AUDIENCE`            | empty                   | Expected access-token audience. Set this to the same value as `VITE_LOGTO_API_RESOURCE`.                                                                         |
+| `GLITCHTIP_DSN`             | empty                   | GlitchTip DSN for server-side error reporting. `SENTRY_DSN` can be used instead.                                                                                 |
+| `SENTRY_DSN`                | empty                   | Sentry-compatible DSN for server-side error reporting.                                                                                                           |
+| `SENTRY_ENVIRONMENT`        | `production` in Compose | Environment name attached to server-side error events.                                                                                                           |
+| `SENTRY_RELEASE`            | empty                   | Release/version attached to server-side error events, usually a commit SHA.                                                                                      |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0`                     | Optional tracing sample rate. Keep `0` unless you intentionally want performance traces.                                                                         |
 
 ## Logto Account Management
 
-Logto can be used as the primary account system while this app keeps local gameplay data (ELO, decks, match history, leaderboard rows) in PostgreSQL. On first authenticated API call, the API verifies the Logto access token and creates or links a local `users` row by Logto `sub` and verified token email.
+Logto can be used as the primary account system while this app keeps local gameplay data (ELO, decks, match history, leaderboard rows) in PostgreSQL. On first authenticated API call, the API verifies the Logto access token and creates or updates a local `users` row by Logto `sub`.
 
 Logto Console setup:
 
@@ -114,6 +129,23 @@ LOGTO_AUDIENCE=https://<your-api-resource>
 `VITE_LOGTO_*` values are baked into the frontend bundle at `docker compose build` time. Rebuild the `game` image after changing them. `LOGTO_ISSUER` and `LOGTO_AUDIENCE` are runtime variables for the `api` service.
 
 The app does not expose local email/password registration or login routes. User identity comes from Logto; PostgreSQL stores only game-local profile, deck, match, and leaderboard data linked by Logto `sub`.
+
+## Error Reporting / GlitchTip
+
+The app uses Sentry-compatible SDKs, so the same integration works with GlitchTip or Sentry. Set GlitchTip DSNs in deployment `.env`:
+
+```bash
+GLITCHTIP_DSN=https://<key>@glitchtip.example/<project-id>
+VITE_GLITCHTIP_DSN=https://<browser-key>@glitchtip.example/<project-id>
+SENTRY_ENVIRONMENT=production
+VITE_SENTRY_ENVIRONMENT=production
+SENTRY_RELEASE=<commit-sha>
+VITE_SENTRY_RELEASE=<commit-sha>
+```
+
+`VITE_*` values are baked into the browser bundle at build time, so rebuild the `game` image after changing the frontend DSN, environment, release, or tracing sample rate.
+
+The browser integration captures React errors and unhandled client errors. The API and game server capture server exceptions, startup/schema failures, cleanup failures, shutdown failures, Koa errors, and API proxy failures. User context is intentionally limited to local user ID and nickname; email is not sent. Session replay is not enabled to avoid leaking hidden card or deck information.
 
 ## Volumes / 資料卷
 

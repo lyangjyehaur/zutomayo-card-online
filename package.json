@@ -28,6 +28,8 @@
   },
   "dependencies": {
     "@logto/react": "^4.0.14",
+    "@sentry/node": "^10.62.0",
+    "@sentry/react": "^10.62.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/koa-static": "^4.0.4",
     "@types/node": "^22.0.0",

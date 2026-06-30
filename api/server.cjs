@@ -2,6 +2,10 @@ const http = require('http');
 const crypto = require('crypto');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
+const { captureError, flushErrorReporting, initErrorReporting } = require('./observability.cjs');
+
+initErrorReporting('api');
+
 let staticCards = [];
 try {
   staticCards = require('../cards.json');
@@ -186,6 +190,7 @@ async function initSchema() {
 // 啟動時嘗試初始化 schema，連不上 PG 也允許載入（語法檢查用）。
 // 匯出 schemaReady 供測試 await，避免載入後立即發 request 造成 race condition。
 const schemaReady = initSchema().catch((err) => {
+  captureError(err, { tags: { component: 'schema' } });
   console.error('Schema init failed:', err.message);
 });
 
@@ -826,7 +831,11 @@ function handleRequest(req, res) {
   const safe = (fn) => {
     Promise.resolve()
       .then(fn)
-      .catch(() => {
+      .catch((err) => {
+        captureError(err, {
+          extra: { path: pathname },
+          tags: { component: 'http', method, route: pathname },
+        });
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Internal server error' }));
@@ -1535,6 +1544,7 @@ const server = http.createServer(handleRequest);
 async function closeDatabase() {
   await pool.end();
   await redis.quit();
+  await flushErrorReporting();
 }
 
 // Graceful shutdown
@@ -1544,7 +1554,10 @@ async function shutdown() {
   shuttingDown = true;
   try {
     await closeDatabase();
-  } catch {}
+  } catch (err) {
+    captureError(err, { tags: { component: 'shutdown' } });
+    await flushErrorReporting();
+  }
   server.close();
   process.exit(0);
 }
@@ -1559,6 +1572,7 @@ if (require.main === module) {
       });
     })
     .catch((err) => {
+      captureError(err, { tags: { component: 'schema', phase: 'listen_fallback' } });
       console.error('Failed to initialize schema, starting anyway:', err.message);
       server.listen(PORT, () => {
         console.log(`Zutomayo API server running on port ${PORT}`);

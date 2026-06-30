@@ -10,6 +10,7 @@ import {
 import { t } from '../../i18n';
 import type { OnlineSession } from '../../onlineSession';
 import { isOnlineRoomErrorKey } from '../../onlineRoomStatus';
+import { addErrorBreadcrumb } from '../../observability/sentry';
 
 type MatchmakingPhase = 'idle' | 'polling' | 'host-starting' | 'guest-joining' | 'done';
 
@@ -51,10 +52,18 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
 
   const runOnline = async (id?: string) => {
     setError('');
+    addErrorBreadcrumb(id ? 'online.join_room' : 'online.create_room', { hasMatchId: Boolean(id) });
     try {
       const nextSession = await startOnline(id);
+      addErrorBreadcrumb('online.room_started', {
+        matchID: nextSession.matchID,
+        playerID: nextSession.playerID,
+      });
       setCreatedMatchID(id ? '' : nextSession.matchID);
     } catch (err) {
+      addErrorBreadcrumb('online.room_start_failed', {
+        message: err instanceof Error ? err.message : 'unknown',
+      });
       setError(onlineErrorMessage(err));
     }
   };
@@ -70,6 +79,9 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
       if (cancelRef.current) return;
       if (phaseRef.current !== 'polling') return;
       resetMatchmaking();
+      addErrorBreadcrumb('matchmaking.status_failed', {
+        message: err instanceof Error ? err.message : 'unknown',
+      });
       setError(onlineErrorMessage(err));
       return;
     }
@@ -78,17 +90,25 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
     if (phaseRef.current !== 'polling') return;
 
     if (status.status === 'matched') {
+      addErrorBreadcrumb('matchmaking.matched', {
+        role: status.role,
+        hasRealMatchId: Boolean(status.realMatchId),
+      });
       if (status.role === 'host') {
         phaseRef.current = 'host-starting';
         stopPolling();
         try {
           const session = await startOnline();
           phaseRef.current = 'done';
+          addErrorBreadcrumb('matchmaking.host_started_room', { matchID: session.matchID });
           // 通知 guest 真實 boardgame.io matchID（fire and forget，避免阻塞導航）
           void matchmakingReportMatch(session.matchID).catch(() => {});
         } catch (err) {
           phaseRef.current = 'idle';
           setMatchmakingActive(false);
+          addErrorBreadcrumb('matchmaking.host_start_failed', {
+            message: err instanceof Error ? err.message : 'unknown',
+          });
           setError(onlineErrorMessage(err));
           void matchmakingLeave().catch(() => {});
         }
@@ -98,9 +118,13 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
         try {
           await startOnline(status.realMatchId);
           phaseRef.current = 'done';
+          addErrorBreadcrumb('matchmaking.guest_joined_room', { matchID: status.realMatchId });
         } catch (err) {
           phaseRef.current = 'idle';
           setMatchmakingActive(false);
+          addErrorBreadcrumb('matchmaking.guest_join_failed', {
+            message: err instanceof Error ? err.message : 'unknown',
+          });
           setError(onlineErrorMessage(err));
           void matchmakingLeave().catch(() => {});
         }
@@ -108,6 +132,7 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
       // guest 但尚未收到 realMatchId，繼續輪詢
     } else if (status.status === 'timeout') {
       resetMatchmaking();
+      addErrorBreadcrumb('matchmaking.timeout');
       setError(t('lobby.matchmakingTimeout'));
     }
   }, [resetMatchmaking, startOnline, stopPolling]);
@@ -121,10 +146,14 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
     setMatchmakingActive(true);
     cancelRef.current = false;
     phaseRef.current = 'polling';
+    addErrorBreadcrumb('matchmaking.queue');
     try {
       await matchmakingQueue();
     } catch (err) {
       resetMatchmaking();
+      addErrorBreadcrumb('matchmaking.queue_failed', {
+        message: err instanceof Error ? err.message : 'unknown',
+      });
       setError(onlineErrorMessage(err));
       return;
     }
@@ -139,6 +168,7 @@ export function OnlinePanel({ startOnline }: { startOnline: (matchID?: string) =
   const handleCancelMatchmaking = () => {
     cancelRef.current = true;
     resetMatchmaking();
+    addErrorBreadcrumb('matchmaking.cancel');
     void matchmakingLeave().catch(() => {});
   };
 

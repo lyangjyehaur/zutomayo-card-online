@@ -7,7 +7,7 @@ import prettierConfig from 'eslint-config-prettier/flat';
 export default [
   // Ignored paths
   {
-    ignores: ['dist/', 'node_modules/', '.data/', 'public/cards/', 'api/server.cjs'],
+    ignores: ['dist/', 'node_modules/', '.data/', 'public/cards/', 'api/server.cjs', 'api/observability.cjs'],
   },
   // Base recommended
   js.configs.recommended,
