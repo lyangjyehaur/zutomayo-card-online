@@ -383,6 +383,12 @@ export const en: Record<TranslationKey, string> = {
     'This removes local service workers and cached files. The latest assets will download after reload.',
   'pwa.clearCacheAction': 'Clear and reload',
   'pwa.recoveringAction': 'Clearing...',
+  'pwa.manualCheckLabel': 'Tap repeatedly to check for updates',
+  'pwa.manualChecking': 'Checking...',
+  'pwa.manualUpdateReady': 'Update ready',
+  'pwa.manualUpToDate': 'Up to date',
+  'pwa.manualUnsupported': 'Not supported',
+  'pwa.manualFailed': 'Check failed',
 
   'appError.kicker': 'System recovery',
   'appError.title': 'The screen hit an error',

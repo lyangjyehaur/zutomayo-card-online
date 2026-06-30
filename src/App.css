@@ -782,6 +782,24 @@ input:focus {
   box-shadow: 0 0 0 0.16rem rgba(245, 211, 104, 0.16);
 }
 
+.version-update-trigger {
+  min-width: 10.5rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.version-update-trigger:hover,
+.version-update-trigger:focus-visible {
+  color: rgba(245, 211, 104, 0.82);
+}
+
 .error-copy {
   margin: 0;
   color: #ffd7df;

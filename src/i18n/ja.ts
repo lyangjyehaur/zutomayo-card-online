@@ -383,6 +383,12 @@ export const ja: Record<TranslationKey, string> = {
     'ローカルの service worker とキャッシュ済みファイルを削除します。再読み込み後に最新リソースを取得します。',
   'pwa.clearCacheAction': '削除して再読み込み',
   'pwa.recoveringAction': '削除中...',
+  'pwa.manualCheckLabel': '連続タップで更新確認',
+  'pwa.manualChecking': '確認中...',
+  'pwa.manualUpdateReady': '更新準備完了',
+  'pwa.manualUpToDate': '最新です',
+  'pwa.manualUnsupported': '未対応です',
+  'pwa.manualFailed': '確認失敗',
 
   'appError.kicker': 'システム復旧',
   'appError.title': '画面でエラーが発生しました',

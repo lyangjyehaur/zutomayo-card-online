@@ -377,6 +377,12 @@ export const zhTW = {
   'pwa.recoverBody': '會移除本機 service worker 與快取檔案，重新載入後會重新下載最新資源。',
   'pwa.clearCacheAction': '清除並重載',
   'pwa.recoveringAction': '清除中...',
+  'pwa.manualCheckLabel': '連點檢查更新',
+  'pwa.manualChecking': '檢查更新中...',
+  'pwa.manualUpdateReady': '新版本已就緒',
+  'pwa.manualUpToDate': '已是最新版本',
+  'pwa.manualUnsupported': '此瀏覽器不支援',
+  'pwa.manualFailed': '檢查失敗',
 
   'appError.kicker': '系統恢復',
   'appError.title': '畫面遇到錯誤',

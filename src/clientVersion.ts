@@ -7,6 +7,20 @@ export interface PwaUpdateReadyDetail {
   applyUpdate: () => void;
 }
 
+let currentRegistration: ServiceWorkerRegistration | null = null;
+let currentApplyUpdate: (() => void) | null = null;
+
+function dispatchPwaUpdateReady(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent<PwaUpdateReadyDetail>(PWA_UPDATE_READY_EVENT, {
+      detail: {
+        applyUpdate: currentApplyUpdate ?? reloadForAppUpdate,
+      },
+    }),
+  );
+}
+
 export class VersionMismatchError extends Error {
   serverVersion: AppVersionInfo | null;
 
@@ -67,23 +81,34 @@ export async function recoverPwaAndReload(): Promise<void> {
   window.location.reload();
 }
 
+export async function checkForPwaUpdate(): Promise<'update-ready' | 'up-to-date' | 'unsupported'> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return 'unsupported';
+
+  const registration = currentRegistration ?? (await navigator.serviceWorker.getRegistration());
+  if (!registration) return 'unsupported';
+
+  await registration.update();
+  if (registration.waiting) {
+    dispatchPwaUpdateReady();
+    return 'update-ready';
+  }
+
+  return 'up-to-date';
+}
+
 export function registerPwaAutoUpdate(): void {
   if (typeof window === 'undefined') return;
   const updateSW = registerSW({
     immediate: true,
     onNeedRefresh() {
-      window.dispatchEvent(
-        new CustomEvent<PwaUpdateReadyDetail>(PWA_UPDATE_READY_EVENT, {
-          detail: {
-            applyUpdate: () => {
-              void updateSW(true);
-            },
-          },
-        }),
-      );
+      dispatchPwaUpdateReady();
     },
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return;
+      currentRegistration = registration;
+      currentApplyUpdate = () => {
+        void updateSW(true);
+      };
       window.setInterval(
         () => {
           void registration.update();

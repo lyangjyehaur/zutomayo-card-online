@@ -379,6 +379,12 @@ export const zhCN: Record<TranslationKey, string> = {
   'pwa.recoverBody': '会移除本机 service worker 与缓存文件，重新载入后会重新下载最新资源。',
   'pwa.clearCacheAction': '清除并重载',
   'pwa.recoveringAction': '清除中...',
+  'pwa.manualCheckLabel': '连点检查更新',
+  'pwa.manualChecking': '检查更新中...',
+  'pwa.manualUpdateReady': '新版本已就绪',
+  'pwa.manualUpToDate': '已是最新版本',
+  'pwa.manualUnsupported': '此浏览器不支持',
+  'pwa.manualFailed': '检查失败',
 
   'appError.kicker': '系统恢复',
   'appError.title': '画面遇到错误',

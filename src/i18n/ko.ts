@@ -381,6 +381,12 @@ export const ko: Record<TranslationKey, string> = {
   'pwa.recoverBody': '로컬 service worker와 캐시 파일을 제거합니다. 다시 불러온 뒤 최신 리소스를 다운로드합니다.',
   'pwa.clearCacheAction': '지우고 다시 불러오기',
   'pwa.recoveringAction': '지우는 중...',
+  'pwa.manualCheckLabel': '연속 탭으로 업데이트 확인',
+  'pwa.manualChecking': '확인 중...',
+  'pwa.manualUpdateReady': '업데이트 준비됨',
+  'pwa.manualUpToDate': '최신 버전',
+  'pwa.manualUnsupported': '지원되지 않음',
+  'pwa.manualFailed': '확인 실패',
 
   'appError.kicker': '시스템 복구',
   'appError.title': '화면에서 오류가 발생했습니다',

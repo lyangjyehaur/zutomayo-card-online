@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Swords, Bot, LayoutGrid } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
+import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
 import { t } from '../i18n';
 
@@ -146,7 +147,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
 
       {/* 底部 Footer */}
       <footer className="absolute inset-x-0 bottom-0 z-20 flex h-10 items-center justify-between px-8 text-[10px] uppercase tracking-[0.3em] text-bone/30">
-        <span>v0.8.2 — omega</span>
+        <VersionUpdateTrigger />
         <span className="hidden md:inline">choose your ritual</span>
         <span className="font-mono">© zutomayo 2026</span>
       </footer>
