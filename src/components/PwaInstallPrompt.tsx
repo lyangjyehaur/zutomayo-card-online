@@ -4,6 +4,16 @@ import { AppDrawer } from './AppDrawer';
 import { useToast } from './ToastProvider';
 
 type InstallOutcome = 'accepted' | 'dismissed';
+type InstallPromptState = {
+  dismissedUntil?: number;
+  installedAt?: string;
+  lastNotifiedAt?: number;
+};
+
+const INSTALL_PROMPT_STATE_KEY = 'zutomayo_pwa_install_prompt';
+const INSTALL_NOTICE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+const INSTALL_DISMISS_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+const INSTALL_SYSTEM_DISMISS_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000;
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -17,6 +27,43 @@ function isStandaloneMode(): boolean {
   );
 }
 
+function readInstallPromptState(): InstallPromptState {
+  try {
+    const value = localStorage.getItem(INSTALL_PROMPT_STATE_KEY);
+    return value ? (JSON.parse(value) as InstallPromptState) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeInstallPromptState(state: InstallPromptState): void {
+  try {
+    localStorage.setItem(INSTALL_PROMPT_STATE_KEY, JSON.stringify(state));
+  } catch {
+    // Storage can fail in private mode; the install prompt should still work.
+  }
+}
+
+function shouldNotifyInstallReady(now = Date.now()): boolean {
+  if (isStandaloneMode()) return false;
+  const state = readInstallPromptState();
+  if (state.installedAt) return false;
+  if (state.dismissedUntil && state.dismissedUntil > now) return false;
+  if (state.lastNotifiedAt && now - state.lastNotifiedAt < INSTALL_NOTICE_COOLDOWN_MS) return false;
+  return true;
+}
+
+function markInstallPromptNotified(now = Date.now()): void {
+  writeInstallPromptState({ ...readInstallPromptState(), lastNotifiedAt: now });
+}
+
+function dismissInstallPromptFor(durationMs: number): void {
+  writeInstallPromptState({
+    ...readInstallPromptState(),
+    dismissedUntil: Date.now() + durationMs,
+  });
+}
+
 export function PwaInstallPrompt() {
   const { showToast } = useToast();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -27,6 +74,8 @@ export function PwaInstallPrompt() {
       event.preventDefault();
       const promptEvent = event as BeforeInstallPromptEvent;
       setInstallPrompt(promptEvent);
+      if (!shouldNotifyInstallReady()) return;
+      markInstallPromptNotified();
       showToast({
         title: t('pwa.installReadyTitle'),
         body: t('pwa.installReadyBody'),
@@ -37,6 +86,7 @@ export function PwaInstallPrompt() {
       });
     };
     const onInstalled = () => {
+      writeInstallPromptState({ installedAt: new Date().toISOString() });
       setInstallPrompt(null);
       setIsInstallDrawerOpen(false);
       showToast({
@@ -56,6 +106,7 @@ export function PwaInstallPrompt() {
 
   const install = async () => {
     if (!installPrompt) {
+      dismissInstallPromptFor(INSTALL_DISMISS_COOLDOWN_MS);
       showToast({
         title: isStandaloneMode() ? t('pwa.installAlreadyTitle') : t('pwa.installUnavailableTitle'),
         body: isStandaloneMode() ? t('pwa.installAlreadyBody') : t('pwa.installUnavailableBody'),
@@ -70,10 +121,17 @@ export function PwaInstallPrompt() {
     const choice = await installPrompt.userChoice;
     if (choice.outcome === 'accepted') {
       window.umami?.track('C_PWA_Install_Accepted');
+      writeInstallPromptState({ installedAt: new Date().toISOString() });
       setInstallPrompt(null);
     } else {
       window.umami?.track('C_PWA_Install_Dismissed');
+      dismissInstallPromptFor(INSTALL_SYSTEM_DISMISS_COOLDOWN_MS);
     }
+  };
+
+  const dismissInstallDrawer = () => {
+    dismissInstallPromptFor(INSTALL_DISMISS_COOLDOWN_MS);
+    setIsInstallDrawerOpen(false);
   };
 
   return (
@@ -82,7 +140,7 @@ export function PwaInstallPrompt() {
       kicker={t('pwa.kicker')}
       title={t('pwa.installTitle')}
       description={t('pwa.installBody')}
-      onClose={() => setIsInstallDrawerOpen(false)}
+      onClose={dismissInstallDrawer}
       actions={[
         {
           label: t('pwa.installAction'),
@@ -91,7 +149,7 @@ export function PwaInstallPrompt() {
         },
         {
           label: t('pwa.installLaterAction'),
-          onClick: () => setIsInstallDrawerOpen(false),
+          onClick: dismissInstallDrawer,
           tone: 'secondary',
           eventName: 'C_PWA_Install_Later',
         },
