@@ -177,6 +177,7 @@ function fivePowerCards() {
   assert.match(validateConstructedDeckIds(unknown) ?? '', /Unknown card/);
 
   const tooManyCopies = [...customIds];
+  tooManyCopies[1] = tooManyCopies[0];
   tooManyCopies[2] = tooManyCopies[0];
   assert.match(validateConstructedDeckIds(tooManyCopies) ?? '', /more than 2 copies/);
 
