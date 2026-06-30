@@ -269,11 +269,16 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 });
 
 // Serve the Vite app for client-side routes.
-server.app.use(async (ctx: KoaContext) => {
+// boardgame.io 的 lobby API 路由（/games/:name/create 等）在 server.run() 時才透過
+// configureApp 掛載到 app，位於此中間件之後。因此 /games/ 路徑必須 await next()
+// 讓請求繼續到 boardgame.io router，否則 createMatch/join 等都會被擋成 404。
+server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.status === 404 && !ctx.path.startsWith('/games/')) {
     ctx.type = 'html';
     ctx.body = fs.readFileSync(path.join(root, 'dist', 'index.html'));
+    return;
   }
+  await next();
 });
 
 const PORT = Number(process.env.PORT) || 3000;
