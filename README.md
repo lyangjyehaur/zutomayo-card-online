@@ -72,29 +72,29 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
                    │
 ┌──────────────────┴────────────────────────────┐
 │           API 伺服器 (port 3001)              │
-│  Node HTTP · PostgreSQL · Redis · Logto Auth  │
+│  Hono · Zod · PostgreSQL · Redis · Logto Auth │
 │  帳號 / 牌組 / 對戰紀錄 / 排行榜             │
 └───────────────────────────────────────────────┘
 ```
 
 ### 技術棧
 
-| 領域            | 技術                                           | 版本      |
-| --------------- | ---------------------------------------------- | --------- |
-| UI 框架         | React                                          | 19        |
-| 路由            | React Router                                   | 7         |
-| CSS 框架        | Tailwind CSS + daisyUI 5 + Lucide React 圖示   | 4 / 5     |
-| 多人遊戲框架    | boardgame.io                                   | 0.50.2    |
-| 建構工具        | Vite                                           | 7         |
-| 語言            | TypeScript（strict 模式）                      | 5.8       |
-| 測試            | vitest（含 `@vitest/coverage-v8`）             | 4         |
-| 屬性測試        | fast-check                                     | 4         |
-| 程式碼風格      | ESLint（typescript-eslint）                    | 9         |
-| 格式化          | Prettier                                       | 3         |
-| TypeScript 執行 | tsx                                            | 4         |
-| PWA             | vite-plugin-pwa                                | 1         |
-| 錯誤搜集        | GlitchTip / Sentry-compatible SDK              | -         |
-| 後端            | Node HTTP + PostgreSQL + Redis（pg / ioredis） | Node >=20 |
+| 領域            | 技術                                            | 版本      |
+| --------------- | ----------------------------------------------- | --------- |
+| UI 框架         | React                                           | 19        |
+| 路由            | React Router                                    | 7         |
+| CSS 框架        | Tailwind CSS + daisyUI 5 + Lucide React 圖示    | 4 / 5     |
+| 多人遊戲框架    | boardgame.io                                    | 0.50.2    |
+| 建構工具        | Vite                                            | 7         |
+| 語言            | TypeScript（strict 模式）                       | 5.8       |
+| 測試            | vitest（含 `@vitest/coverage-v8`）              | 4         |
+| 屬性測試        | fast-check                                      | 4         |
+| 程式碼風格      | ESLint（typescript-eslint）                     | 9         |
+| 格式化          | Prettier                                        | 3         |
+| TypeScript 執行 | tsx                                             | 4         |
+| PWA             | vite-plugin-pwa                                 | 1         |
+| 錯誤搜集        | GlitchTip / Sentry-compatible SDK               | -         |
+| 後端            | Hono + Zod + PostgreSQL + Redis（pg / ioredis） | Node >=20 |
 
 ### 核心遊戲引擎
 
@@ -292,7 +292,7 @@ zutomayo-card-online/
 │   ├── App.tsx                # 應用入口（路由 + NavBar + 教學 + 重連）
 │   └── main.tsx               # React DOM 掛載點
 ├── api/                       # API 伺服器
-│   ├── server.cjs             # Node HTTP + PostgreSQL + Redis
+│   ├── server.cjs             # Hono + Zod + PostgreSQL + Redis
 │   ├── package.json
 │   └── Dockerfile
 ├── scripts/                   # 測試與工具腳本

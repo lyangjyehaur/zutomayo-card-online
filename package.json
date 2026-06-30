@@ -27,6 +27,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.6",
     "@logto/react": "^4.0.14",
     "@sentry/node": "^10.62.0",
     "@sentry/react": "^10.62.0",
@@ -35,13 +36,15 @@
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.10",
     "boardgame.io": "^0.50.2",
+    "hono": "^4.12.27",
     "ioredis": "^5.4.2",
     "koa-static": "^5.0.0",
     "pg": "^8.13.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.18.0",
-    "tsx": "^4.22.4"
+    "tsx": "^4.22.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

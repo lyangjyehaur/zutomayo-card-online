@@ -3,26 +3,10 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EventEmitter } from 'node:events';
 import { createSign, generateKeyPairSync } from 'node:crypto';
 import { Pool } from 'pg';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import type { ActionLogEntry, ActionLogResult, PendingChoice } from '../src/game/types';
-
-// Mock HTTP request：模擬 server.cjs handleRequest 接收的 req 物件。
-interface MockRequest extends EventEmitter {
-  method: string;
-  url: string;
-  headers: Record<string, string | undefined>;
-  socket: { remoteAddress: string };
-}
-
-// Mock HTTP response：模擬 server.cjs handleRequest 接收的 res 物件。
-interface MockResponse {
-  setHeader: (name: string, value: string) => void;
-  writeHead: (status: number, headers?: Record<string, string>) => void;
-  end: (chunk?: unknown) => void;
-}
 
 interface ApiResponse<T> {
   status: number;
@@ -76,7 +60,9 @@ interface MatchHistoryEntry {
 }
 
 type ApiServerModule = {
-  handleRequest: (req: MockRequest, res: MockResponse) => void;
+  app: {
+    request: (path: string, options?: RequestInit) => Promise<Response>;
+  };
   closeDatabase: () => Promise<void>;
   schemaReady: Promise<void>;
 };
@@ -145,8 +131,8 @@ process.env.JWT_SECRET = 'api-smoke-secret';
 process.env.LOGTO_ISSUER = logtoIssuer;
 process.env.LOGTO_AUDIENCE = logtoAudience;
 
-// This smoke uses the real API request handler in-process so it works in
-// sandboxes/CI where opening a local listening socket is forbidden.
+// This smoke uses the real Hono app in-process so it works in sandboxes/CI
+// where opening a local listening socket is forbidden.
 // DB 改用 PG，測試前 TRUNCATE 所有 table 確保隔離。
 const require = createRequire(import.meta.url);
 const apiServer = require('../api/server.cjs') as ApiServerModule;
@@ -178,55 +164,20 @@ function normalizeHeaders(headers: HeadersInit | undefined): Record<string, stri
 }
 
 async function api<T>(_baseUrl: string, path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
-  return new Promise((resolve, reject) => {
-    const req = new EventEmitter() as MockRequest;
-    req.method = options.method ?? 'GET';
-    req.url = path;
-    req.headers = normalizeHeaders(options.headers);
-    // server.cjs rate limiting reads req.socket.remoteAddress; provide a stub.
-    req.socket = { remoteAddress: '127.0.0.1' };
-    let status = 200;
-
-    const res: MockResponse = {
-      setHeader: (): void => undefined,
-      writeHead: (nextStatus: number) => {
-        status = nextStatus;
-      },
-      end: (chunk: unknown = '') => {
-        const text = Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk ?? '');
-        let body: unknown = {};
-        if (text) {
-          try {
-            body = JSON.parse(text);
-          } catch {
-            body = text;
-          }
-        }
-        resolve({ status, body: body as T });
-      },
-    };
-
-    // handleRequest 內的 readBody() 會在 async checkRateLimit（Redis INCR）
-    // 完成後才註冊 req.on('data')/req.on('end') listener。若用 queueMicrotask
-    // 在 microtask 階段就 emit，listener 尚未註冊，事件遺失導致 readBody 永不
-    // resolve（測試 hang）。
-    // 修法：監聽 newListener 事件，等 readBody 真的註冊 'data' listener 後，
-    // 再用 process.nextTick 在 listener 完成註冊後 emit data/end。
-    // 這模擬真實 Node.js HTTP IncomingMessage 行為（data 在 listener 註冊後才到達）。
-    req.once('newListener', (event: string) => {
-      if (event !== 'data') return;
-      process.nextTick(() => {
-        if (options.body) req.emit('data', options.body);
-        req.emit('end');
-      });
-    });
-
-    try {
-      apiServer.handleRequest(req, res);
-    } catch (error) {
-      reject(error);
-    }
+  const response = await apiServer.app.request(path, {
+    ...options,
+    headers: normalizeHeaders(options.headers),
   });
+  const text = await response.text();
+  let body: unknown = {};
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+  return { status: response.status, body: body as T };
 }
 
 function authHeaders(token: string): Record<string, string> {

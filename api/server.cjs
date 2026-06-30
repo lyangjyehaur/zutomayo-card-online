@@ -1,7 +1,9 @@
-const http = require('http');
 const crypto = require('crypto');
+const { createAdaptorServer, getRequestListener } = require('@hono/node-server');
+const { Hono } = require('hono');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
+const { z } = require('zod');
 const { captureError, flushErrorReporting, initErrorReporting } = require('./observability.cjs');
 
 initErrorReporting('api');
@@ -203,8 +205,16 @@ function signTokenInput(input) {
   return crypto.createHmac('sha256', JWT_SECRET).update(input).digest('base64url');
 }
 
+function requestHeader(req, name) {
+  if (!req) return undefined;
+  if (typeof req.header === 'function') return req.header(name);
+  if (typeof req.headers?.get === 'function') return req.headers.get(name);
+  const lower = name.toLowerCase();
+  return req.headers?.[lower] || req.headers?.[name];
+}
+
 function bearerToken(req) {
-  const auth = req.headers.authorization;
+  const auth = requestHeader(req, 'authorization');
   if (!auth) return null;
   const match = auth.match(/^Bearer\s+(.+)$/i);
   return match ? match[1] : auth;
@@ -360,7 +370,7 @@ function createAdminToken() {
 }
 
 function verifyAdminToken(req) {
-  const auth = req.headers.authorization;
+  const auth = requestHeader(req, 'authorization');
   if (!auth) return false;
   try {
     const token = auth.replace('Bearer ', '');
@@ -785,604 +795,590 @@ return #expired
 redis.defineCommand('mmTryMatch', { numberOfKeys: 1, lua: MATCH_LUA });
 redis.defineCommand('mmCleanExpired', { numberOfKeys: 1, lua: CLEAN_LUA });
 
-// ===== HTTP Handler =====
-function handleRequest(req, res) {
-  const url = new URL(req.url, `http://localhost:${PORT}`);
-  const method = req.method;
-  const pathname = url.pathname;
+// ===== Hono App =====
+const app = new Hono();
 
-  // CORS (P0-4：白名單制)
-  const corsOrigin = getCorsOrigin(req.headers.origin);
+const jsonBodySchema = z.object({}).passthrough();
+const logtoProfileBodySchema = z.object({ nickname: z.string().optional() }).passthrough();
+const deckBodySchema = z.object({ name: z.string(), cardIds: z.array(z.string()) }).passthrough();
+const matchBodySchema = z
+  .object({
+    action_log: z.unknown().optional(),
+    actionLog: z.unknown().optional(),
+    duration: z.unknown().optional(),
+    loserId: z.string().optional(),
+    sourceMatchId: z.unknown().optional(),
+    turns: z.unknown().optional(),
+    winnerId: z.string().optional(),
+    winnerPlayer: z.unknown().optional(),
+  })
+  .passthrough();
+const nicknameBodySchema = z.object({ nickname: z.string().optional() }).passthrough();
+const adminLoginBodySchema = z.object({ password: z.string().optional() }).passthrough();
+const adminEloBodySchema = z.object({ elo: z.unknown().optional() }).passthrough();
+const cardI18nBodySchema = z.object({ effectText: z.unknown().optional(), lang: z.unknown().optional() }).passthrough();
+const configBodySchema = z.object({ description: z.string().optional(), value: z.unknown().optional() }).passthrough();
+const matchmakingQueueBodySchema = z
+  .object({ deckIds: z.array(z.string()).optional(), deckName: z.string().optional() })
+  .passthrough();
+const matchmakingMatchBodySchema = z.object({ matchId: z.string().optional() }).passthrough();
+
+function json(c, data, status = 200) {
+  return c.json(data, status);
+}
+
+async function readBody(c) {
+  try {
+    const body = await c.req.json();
+    const parsed = jsonBodySchema.safeParse(body);
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
+  }
+}
+
+async function readValidatedBody(c, schema, fallback = {}) {
+  const body = await readBody(c);
+  const result = schema.safeParse(body);
+  return result.success ? result.data : fallback;
+}
+
+function queryInt(c, name, fallback, max, min = 0) {
+  const result = z.coerce.number().int().safeParse(c.req.query(name));
+  const value = result.success && Number.isFinite(result.data) ? result.data : fallback;
+  return Math.min(Math.max(value, min), max);
+}
+
+function routeParam(c, name) {
+  const value = c.req.param(name) || '';
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function clientIp(c) {
+  return (c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || c.env?.incoming?.socket?.remoteAddress || '')
+    .toString()
+    .split(',')[0]
+    .trim();
+}
+
+function requireAdmin(c) {
+  if (verifyAdminToken(c.req)) return true;
+  return json(c, { error: 'Unauthorized' }, 401);
+}
+
+app.use('*', async (c, next) => {
+  const corsOrigin = getCorsOrigin(c.req.header('origin'));
   if (corsOrigin) {
-    res.setHeader('Access-Control-Allow-Origin', corsOrigin);
-    res.setHeader('Vary', 'Origin');
+    c.header('Access-Control-Allow-Origin', corsOrigin);
+    c.header('Vary', 'Origin');
   }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (method === 'OPTIONS') {
-    res.writeHead(200);
-    res.end();
-    return;
-  }
+  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (c.req.method === 'OPTIONS') return c.body(null, 200);
 
-  // Rate limiting (P0-4, Redis)
-  const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
+  const pathname = new URL(c.req.url).pathname;
   const isAuthEndpoint = pathname === '/api/logto/profile' || pathname === '/api/admin/login';
+  if (!(await checkRateLimit(clientIp(c), isAuthEndpoint ? RATE_LIMIT_AUTH : RATE_LIMIT_DEFAULT))) {
+    c.header('Retry-After', '60');
+    return json(c, { error: 'Too many requests. Please try again later.' }, 429);
+  }
 
-  const json = (data, status = 200) => {
-    res.writeHead(status, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(data));
-  };
+  await next();
+});
 
-  const readBody = () =>
-    new Promise((resolve) => {
-      let body = '';
-      req.on('data', (chunk) => (body += chunk));
-      req.on('end', () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch {
-          resolve({});
-        }
-      });
-    });
+app.onError((err, c) => {
+  captureError(err, {
+    extra: { path: c.req.path },
+    tags: { component: 'http', method: c.req.method, route: c.req.path },
+  });
+  return json(c, { error: 'Internal server error' }, 500);
+});
 
-  // 統一 async handler 錯誤處理：PG/Redis 丟錯時回 500，避免 unhandled rejection 崩潰。
-  const safe = (fn) => {
-    Promise.resolve()
-      .then(fn)
-      .catch((err) => {
-        captureError(err, {
-          extra: { path: pathname },
-          tags: { component: 'http', method, route: pathname },
-        });
-        if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Internal server error' }));
-        }
-      });
-  };
+app.get('/api/profile', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
+  if (!user) return json(c, { error: 'User not found' }, 404);
+  return json(c, {
+    id: user.id,
+    email: user.email,
+    nickname: user.nickname,
+    elo: user.elo,
+    matchCount: user.match_count,
+    wins: user.wins,
+    winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
+    createdAt: user.created_at,
+  });
+});
 
-  // 先做 rate limit（async），其餘邏輯在 callback 內繼續。
-  safe(async () => {
-    if (!(await checkRateLimit(clientIp, isAuthEndpoint ? RATE_LIMIT_AUTH : RATE_LIMIT_DEFAULT))) {
-      res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
-      res.end(JSON.stringify({ error: 'Too many requests. Please try again later.' }));
-      return;
-    }
+app.post('/api/logto/profile', async (c) => {
+  const { nickname } = await readValidatedBody(c, logtoProfileBodySchema);
+  const auth = await authenticateRequest(c.req, { nickname });
+  if (!auth) return json(c, { error: 'Unauthorized' }, 401);
+  const user = (await pool.query('SELECT * FROM users WHERE id = $1', [auth.userId])).rows[0];
+  if (!user) return json(c, { error: 'User not found' }, 404);
+  return json(c, {
+    id: user.id,
+    email: user.email,
+    nickname: user.nickname,
+    elo: user.elo,
+    matchCount: user.match_count,
+    wins: user.wins,
+    winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
+    createdAt: user.created_at,
+  });
+});
 
-    // ===== Auth Routes =====
+app.get('/api/decks', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  const decks = (await pool.query('SELECT * FROM decks WHERE user_id = $1 ORDER BY updated_at DESC', [userId])).rows;
+  return json(c, {
+    decks: decks.map((d) => ({
+      ...d,
+      cardIds: Array.isArray(d.card_ids) ? d.card_ids : [],
+    })),
+  });
+});
 
-    // Get profile
-    if (pathname === '/api/profile' && method === 'GET') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
-      if (!user) return json({ error: 'User not found' }, 404);
-      json({
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        elo: user.elo,
-        matchCount: user.match_count,
-        wins: user.wins,
-        winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
-        createdAt: user.created_at,
-      });
-      return;
-    }
+app.post('/api/decks', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  const { name, cardIds } = await readValidatedBody(c, deckBodySchema, {});
+  if (!name || !Array.isArray(cardIds) || cardIds.length !== 20) {
+    return json(c, { error: 'Name and 20 card IDs required' }, 400);
+  }
+  // Validate deck
+  const counts = {};
+  for (const id of cardIds) {
+    counts[id] = (counts[id] || 0) + 1;
+    if (counts[id] > 2) return json(c, { error: `Card ${id} appears more than twice` }, 400);
+  }
 
-    // Sync Logto profile into the local game account table.
-    if (pathname === '/api/logto/profile' && method === 'POST') {
-      const { nickname } = await readBody();
-      const auth = await authenticateRequest(req, { nickname });
-      if (!auth) return json({ error: 'Unauthorized' }, 401);
-      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [auth.userId])).rows[0];
-      if (!user) return json({ error: 'User not found' }, 404);
-      json({
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        elo: user.elo,
-        matchCount: user.match_count,
-        wins: user.wins,
-        winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
-        createdAt: user.created_at,
-      });
-      return;
-    }
+  const id = 'd_' + crypto.randomBytes(8).toString('hex');
+  await pool.query('INSERT INTO decks (id, user_id, name, card_ids) VALUES ($1, $2, $3, $4::jsonb)', [
+    id,
+    userId,
+    name,
+    JSON.stringify(cardIds),
+  ]);
+  return json(c, { id, name, cardIds });
+});
 
-    // ===== Deck Routes =====
+app.delete('/api/decks/:deckId', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  const deckId = routeParam(c, 'deckId');
+  if (!deckId.startsWith('d_')) return c.text('Not Found', 404);
+  const result = await pool.query('DELETE FROM decks WHERE id = $1 AND user_id = $2', [deckId, userId]);
+  if (result.rowCount === 0) return json(c, { error: 'Deck not found' }, 404);
+  return json(c, { deleted: true });
+});
 
-    // List user's decks
-    if (pathname === '/api/decks' && method === 'GET') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const decks = (await pool.query('SELECT * FROM decks WHERE user_id = $1 ORDER BY updated_at DESC', [userId]))
-        .rows;
-      json({
-        decks: decks.map((d) => ({
-          ...d,
-          cardIds: Array.isArray(d.card_ids) ? d.card_ids : [],
-        })),
-      });
-      return;
-    }
+app.get('/api/matches/:matchId/log', async (c) => {
+  const matchId = routeParam(c, 'matchId');
+  const match = (await pool.query('SELECT id, action_log FROM matches WHERE id = $1', [matchId])).rows[0];
+  if (!match) return json(c, { error: 'Match not found' }, 404);
+  const actionLog = Array.isArray(match.action_log) ? match.action_log : [];
+  return json(c, { matchId: match.id, actionLog: sanitizeActionLog(actionLog) });
+});
 
-    // Create deck
-    if (pathname === '/api/decks' && method === 'POST') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const { name, cardIds } = await readBody();
-      if (!name || !Array.isArray(cardIds) || cardIds.length !== 20) {
-        return json({ error: 'Name and 20 card IDs required' }, 400);
-      }
-      // Validate deck
-      const counts = {};
-      for (const id of cardIds) {
-        counts[id] = (counts[id] || 0) + 1;
-        if (counts[id] > 2) return json({ error: `Card ${id} appears more than twice` }, 400);
-      }
+app.post('/api/matches', async (c) => {
+  // P0-2：強制 Logto 認證，只有贏家可以提交自己的勝利。
+  const authUserId = await getAuthUserId(c.req);
+  if (!authUserId) return json(c, { error: 'Unauthorized' }, 401);
 
-      const id = 'd_' + crypto.randomBytes(8).toString('hex');
-      await pool.query('INSERT INTO decks (id, user_id, name, card_ids) VALUES ($1, $2, $3, $4::jsonb)', [
-        id,
-        userId,
-        name,
-        JSON.stringify(cardIds),
+  const body = await readValidatedBody(c, matchBodySchema, {});
+  const { winnerId, loserId, turns, duration, actionLog, action_log, sourceMatchId, winnerPlayer } = body;
+  if (!winnerId || !loserId) return json(c, { error: 'Winner and loser IDs required' }, 400);
+  // P0-2：認證使用者必須是贏家，杜絕偽造勝負。
+  if (winnerId !== authUserId) return json(c, { error: 'Forbidden: winner must match authenticated user' }, 403);
+
+  const cleanSourceMatchId =
+    typeof sourceMatchId === 'string' && sourceMatchId.length > 0 ? sourceMatchId.slice(0, 120) : '';
+  const sourceVerification = await verifyBoardgameMatchResult(
+    cleanSourceMatchId,
+    normalizeWinnerPlayer(winnerPlayer),
+    authUserId,
+  );
+  if (!sourceVerification.ok) return json(c, { error: sourceVerification.error }, sourceVerification.status);
+
+  const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
+  const matchId = 'm_' + crypto.randomBytes(8).toString('hex');
+
+  // 交易：兩個 UPDATE users + 一個 INSERT matches 必須原子。
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const winner = (await client.query('SELECT * FROM users WHERE id = $1', [winnerId])).rows[0];
+    const loser = (await client.query('SELECT * FROM users WHERE id = $1', [loserId])).rows[0];
+
+    let winnerEloChange = 0;
+    let loserEloChange = 0;
+
+    if (winner && loser) {
+      const newWinnerElo = calculateElo(winner.elo, loser.elo, 1);
+      const newLoserElo = calculateElo(loser.elo, winner.elo, 0);
+      winnerEloChange = newWinnerElo - winner.elo;
+      loserEloChange = newLoserElo - loser.elo;
+
+      await client.query('UPDATE users SET elo = $1, match_count = match_count + 1, wins = wins + 1 WHERE id = $2', [
+        newWinnerElo,
+        winnerId,
       ]);
-      json({ id, name, cardIds });
-      return;
+      await client.query('UPDATE users SET elo = $1, match_count = match_count + 1 WHERE id = $2', [
+        newLoserElo,
+        loserId,
+      ]);
     }
 
-    // Delete deck
-    if (pathname.match(/^\/api\/decks\/d_/) && method === 'DELETE') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const deckId = pathname.split('/').pop();
-      const result = await pool.query('DELETE FROM decks WHERE id = $1 AND user_id = $2', [deckId, userId]);
-      if (result.rowCount === 0) return json({ error: 'Deck not found' }, 404);
-      json({ deleted: true });
-      return;
-    }
+    const player0Id = winner ? winnerId : null;
+    const player1Id = loser ? loserId : null;
+    await client.query(
+      'INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)',
+      [
+        matchId,
+        player0Id,
+        player1Id,
+        winnerId,
+        loserId,
+        winnerEloChange,
+        loserEloChange,
+        turns || 0,
+        duration || 0,
+        JSON.stringify(sanitizedActionLog),
+      ],
+    );
 
-    // ===== Match Routes =====
+    await client.query('COMMIT');
 
-    // Get match action log
-    const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
-    if (matchLogRoute && method === 'GET') {
-      const matchId = matchLogRoute[1];
-      const match = (await pool.query('SELECT id, action_log FROM matches WHERE id = $1', [matchId])).rows[0];
-      if (!match) return json({ error: 'Match not found' }, 404);
-      const actionLog = Array.isArray(match.action_log) ? match.action_log : [];
-      json({ matchId: match.id, actionLog: sanitizeActionLog(actionLog) });
-      return;
-    }
+    return json(c, {
+      matchId,
+      winnerEloChange,
+      loserEloChange,
+      winnerNewElo: (winner?.elo || 1000) + winnerEloChange,
+      loserNewElo: (loser?.elo || 1000) + loserEloChange,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+});
 
-    // Submit match result
-    if (pathname === '/api/matches' && method === 'POST') {
-      // P0-2：強制 Logto 認證，只有贏家可以提交自己的勝利。
-      const authUserId = await getAuthUserId(req);
-      if (!authUserId) return json({ error: 'Unauthorized' }, 401);
+app.get('/api/leaderboard', async (c) => {
+  const limit = queryInt(c, 'limit', 100, 500);
+  const entries = (
+    await pool.query(
+      'SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT $1',
+      [limit],
+    )
+  ).rows;
+  return json(c, {
+    leaderboard: entries.map((e) => ({
+      id: e.id,
+      nickname: sanitizeText(e.nickname, 60),
+      elo: e.elo,
+      matchCount: e.match_count,
+      wins: e.wins,
+      winRate: e.match_count > 0 ? Math.round((e.wins / e.match_count) * 100) : 0,
+    })),
+  });
+});
 
-      const body = await readBody();
-      const { winnerId, loserId, turns, duration, actionLog, action_log, sourceMatchId, winnerPlayer } = body;
-      if (!winnerId || !loserId) return json({ error: 'Winner and loser IDs required' }, 400);
-      // P0-2：認證使用者必須是贏家，杜絕偽造勝負。
-      if (winnerId !== authUserId) return json({ error: 'Forbidden: winner must match authenticated user' }, 403);
-
-      const cleanSourceMatchId =
-        typeof sourceMatchId === 'string' && sourceMatchId.length > 0 ? sourceMatchId.slice(0, 120) : '';
-      const sourceVerification = await verifyBoardgameMatchResult(
-        cleanSourceMatchId,
-        normalizeWinnerPlayer(winnerPlayer),
-        authUserId,
-      );
-      if (!sourceVerification.ok) return json({ error: sourceVerification.error }, sourceVerification.status);
-
-      const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
-      const matchId = 'm_' + crypto.randomBytes(8).toString('hex');
-
-      // 交易：兩個 UPDATE users + 一個 INSERT matches 必須原子。
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        const winner = (await client.query('SELECT * FROM users WHERE id = $1', [winnerId])).rows[0];
-        const loser = (await client.query('SELECT * FROM users WHERE id = $1', [loserId])).rows[0];
-
-        let winnerEloChange = 0;
-        let loserEloChange = 0;
-
-        if (winner && loser) {
-          const newWinnerElo = calculateElo(winner.elo, loser.elo, 1);
-          const newLoserElo = calculateElo(loser.elo, winner.elo, 0);
-          winnerEloChange = newWinnerElo - winner.elo;
-          loserEloChange = newLoserElo - loser.elo;
-
-          await client.query(
-            'UPDATE users SET elo = $1, match_count = match_count + 1, wins = wins + 1 WHERE id = $2',
-            [newWinnerElo, winnerId],
-          );
-          await client.query('UPDATE users SET elo = $1, match_count = match_count + 1 WHERE id = $2', [
-            newLoserElo,
-            loserId,
-          ]);
-        }
-
-        const player0Id = winner ? winnerId : null;
-        const player1Id = loser ? loserId : null;
-        await client.query(
-          'INSERT INTO matches (id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)',
-          [
-            matchId,
-            player0Id,
-            player1Id,
-            winnerId,
-            loserId,
-            winnerEloChange,
-            loserEloChange,
-            turns || 0,
-            duration || 0,
-            JSON.stringify(sanitizedActionLog),
-          ],
-        );
-
-        await client.query('COMMIT');
-
-        json({
-          matchId,
-          winnerEloChange,
-          loserEloChange,
-          winnerNewElo: (winner?.elo || 1000) + winnerEloChange,
-          loserNewElo: (loser?.elo || 1000) + loserEloChange,
-        });
-        return;
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-      } finally {
-        client.release();
-      }
-    }
-
-    // Leaderboard
-    if (pathname === '/api/leaderboard' && method === 'GET') {
-      const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
-      const entries = (
-        await pool.query(
-          'SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT $1',
-          [limit],
-        )
-      ).rows;
-      json({
-        leaderboard: entries.map((e) => ({
-          id: e.id,
-          nickname: sanitizeText(e.nickname, 60),
-          elo: e.elo,
-          matchCount: e.match_count,
-          wins: e.wins,
-          winRate: e.match_count > 0 ? Math.round((e.wins / e.match_count) * 100) : 0,
-        })),
-      });
-      return;
-    }
-
-    // P2-10：使用者對戰歷史（跨裝置同步）。
-    if (pathname === '/api/matches' && method === 'GET') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
-      const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
-      const matches = (
-        await pool.query(
-          `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
+app.get('/api/matches', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  const limit = queryInt(c, 'limit', 50, 200);
+  const offset = queryInt(c, 'offset', 0, Number.MAX_SAFE_INTEGER);
+  const matches = (
+    await pool.query(
+      `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
        FROM matches m
        LEFT JOIN users w ON m.winner_id = w.id
        LEFT JOIN users l ON m.loser_id = l.id
        WHERE m.player0_id = $1 OR m.player1_id = $2
        ORDER BY m.created_at DESC LIMIT $3 OFFSET $4`,
-          [userId, userId, limit, offset],
-        )
-      ).rows;
-      json({
-        matches: matches.map((m) => ({
-          id: m.id,
-          winnerId: m.winner_id,
-          loserId: m.loser_id,
-          winnerNickname: m.winner_nickname,
-          loserNickname: m.loser_nickname,
-          winnerEloChange: m.winner_elo_change,
-          loserEloChange: m.loser_elo_change,
-          turns: m.turns,
-          duration: m.duration_seconds,
-          createdAt: m.created_at,
-        })),
-      });
-      return;
-    }
+      [userId, userId, limit, offset],
+    )
+  ).rows;
+  return json(c, {
+    matches: matches.map((m) => ({
+      id: m.id,
+      winnerId: m.winner_id,
+      loserId: m.loser_id,
+      winnerNickname: m.winner_nickname,
+      loserNickname: m.loser_nickname,
+      winnerEloChange: m.winner_elo_change,
+      loserEloChange: m.loser_elo_change,
+      turns: m.turns,
+      duration: m.duration_seconds,
+      createdAt: m.created_at,
+    })),
+  });
+});
 
-    // PUT /api/profile — 修改暱稱（P2 補齊）。
-    if (pathname === '/api/profile' && method === 'PUT') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const { nickname } = await readBody();
-      const clean = sanitizeText(nickname, 30);
-      if (!clean) return json({ error: 'Nickname required' }, 400);
-      await pool.query('UPDATE users SET nickname = $1 WHERE id = $2', [clean, userId]);
-      const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
-      json({
-        id: user.id,
-        email: user.email,
-        nickname: user.nickname,
-        elo: user.elo,
-        matchCount: user.match_count,
-        wins: user.wins,
-        winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
-      });
-      return;
-    }
+app.put('/api/profile', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  const { nickname } = await readValidatedBody(c, nicknameBodySchema);
+  const clean = sanitizeText(nickname, 30);
+  if (!clean) return json(c, { error: 'Nickname required' }, 400);
+  await pool.query('UPDATE users SET nickname = $1 WHERE id = $2', [clean, userId]);
+  const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
+  return json(c, {
+    id: user.id,
+    email: user.email,
+    nickname: user.nickname,
+    elo: user.elo,
+    matchCount: user.match_count,
+    wins: user.wins,
+    winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
+  });
+});
 
-    // ===== Admin API (P0-3 + P2-12) =====
+app.post('/api/admin/login', async (c) => {
+  if (!ADMIN_PASSWORD) return json(c, { error: 'Admin not configured' }, 503);
+  const { password } = await readValidatedBody(c, adminLoginBodySchema);
+  if (password !== ADMIN_PASSWORD) return json(c, { error: 'Invalid password' }, 401);
+  return json(c, { token: createAdminToken() });
+});
 
-    // Admin 登入
-    if (pathname === '/api/admin/login' && method === 'POST') {
-      if (!ADMIN_PASSWORD) return json({ error: 'Admin not configured' }, 503);
-      const { password } = await readBody();
-      if (password !== ADMIN_PASSWORD) return json({ error: 'Invalid password' }, 401);
-      json({ token: createAdminToken() });
-      return;
-    }
+app.get('/api/admin/users', async (c) => {
+  const admin = requireAdmin(c);
+  if (admin !== true) return admin;
+  const limit = queryInt(c, 'limit', 100, 500);
+  const users = (
+    await pool.query(
+      'SELECT id, email, nickname, elo, match_count, wins, created_at FROM users ORDER BY created_at DESC LIMIT $1',
+      [limit],
+    )
+  ).rows;
+  return json(c, {
+    users: users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      nickname: u.nickname,
+      elo: u.elo,
+      matchCount: u.match_count,
+      wins: u.wins,
+      createdAt: u.created_at,
+      winRate: u.match_count > 0 ? Math.round((u.wins / u.match_count) * 100) : 0,
+    })),
+  });
+});
 
-    // Admin：使用者列表
-    if (pathname === '/api/admin/users' && method === 'GET') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-      const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500);
-      const users = (
-        await pool.query(
-          'SELECT id, email, nickname, elo, match_count, wins, created_at FROM users ORDER BY created_at DESC LIMIT $1',
-          [limit],
-        )
-      ).rows;
-      json({
-        users: users.map((u) => ({
-          id: u.id,
-          email: u.email,
-          nickname: u.nickname,
-          elo: u.elo,
-          matchCount: u.match_count,
-          wins: u.wins,
-          createdAt: u.created_at,
-          winRate: u.match_count > 0 ? Math.round((u.wins / u.match_count) * 100) : 0,
-        })),
-      });
-      return;
-    }
-
-    // Admin：對戰列表
-    if (pathname === '/api/admin/matches' && method === 'GET') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-      const limit = Math.min(Number(url.searchParams.get('limit')) || 50, 200);
-      const matches = (
-        await pool.query(
-          `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
+app.get('/api/admin/matches', async (c) => {
+  const admin = requireAdmin(c);
+  if (admin !== true) return admin;
+  const limit = queryInt(c, 'limit', 50, 200);
+  const matches = (
+    await pool.query(
+      `SELECT m.*, w.nickname AS winner_nickname, l.nickname AS loser_nickname
        FROM matches m
        LEFT JOIN users w ON m.winner_id = w.id
        LEFT JOIN users l ON m.loser_id = l.id
        ORDER BY m.created_at DESC LIMIT $1`,
-          [limit],
-        )
-      ).rows;
-      json({
-        matches: matches.map((m) => ({
-          id: m.id,
-          winnerId: m.winner_id,
-          loserId: m.loser_id,
-          winnerNickname: m.winner_nickname,
-          loserNickname: m.loser_nickname,
-          winnerEloChange: m.winner_elo_change,
-          loserEloChange: m.loser_elo_change,
-          turns: m.turns,
-          duration: m.duration_seconds,
-          createdAt: m.created_at,
-        })),
-      });
-      return;
+      [limit],
+    )
+  ).rows;
+  return json(c, {
+    matches: matches.map((m) => ({
+      id: m.id,
+      winnerId: m.winner_id,
+      loserId: m.loser_id,
+      winnerNickname: m.winner_nickname,
+      loserNickname: m.loser_nickname,
+      winnerEloChange: m.winner_elo_change,
+      loserEloChange: m.loser_elo_change,
+      turns: m.turns,
+      duration: m.duration_seconds,
+      createdAt: m.created_at,
+    })),
+  });
+});
+
+app.put('/api/admin/users/:userId/elo', async (c) => {
+  const admin = requireAdmin(c);
+  if (admin !== true) return admin;
+  const targetUserId = routeParam(c, 'userId');
+  const { elo } = await readValidatedBody(c, adminEloBodySchema);
+  const newElo = Math.max(0, Math.min(9999, Math.trunc(Number(elo) || 1000)));
+  await pool.query('UPDATE users SET elo = $1 WHERE id = $2', [newElo, targetUserId]);
+  return json(c, { id: targetUserId, elo: newElo });
+});
+
+app.get('/api/cards', async (c) => {
+  c.header('Cache-Control', 'public, max-age=300');
+  try {
+    const searchParams = new URL(c.req.url).searchParams;
+    const conditions = [];
+    const values = [];
+    for (const [param, column] of [
+      ['pack', 'pack'],
+      ['element', 'element'],
+      ['type', 'type'],
+    ]) {
+      const value = searchParams.get(param);
+      if (!value) continue;
+      values.push(value);
+      conditions.push(`${column} = $${values.length}`);
     }
-
-    // Admin：重置使用者 ELO
-    if (pathname.startsWith('/api/admin/users/') && pathname.endsWith('/elo') && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-      const targetUserId = pathname.split('/')[4];
-      const { elo } = await readBody();
-      const newElo = Math.max(0, Math.min(9999, Math.trunc(Number(elo) || 1000)));
-      await pool.query('UPDATE users SET elo = $1 WHERE id = $2', [newElo, targetUserId]);
-      json({ id: targetUserId, elo: newElo });
-      return;
-    }
-
-    // ===== Card Data Routes =====
-
-    // Public: list card definitions from PG, falling back to static cards.json when cards are not seeded.
-    if (pathname === '/api/cards' && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300');
-      try {
-        const conditions = [];
-        const values = [];
-        for (const [param, column] of [
-          ['pack', 'pack'],
-          ['element', 'element'],
-          ['type', 'type'],
-        ]) {
-          const value = url.searchParams.get(param);
-          if (!value) continue;
-          values.push(value);
-          conditions.push(`${column} = $${values.length}`);
-        }
-        const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const cards = (
-          await pool.query(
-            `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const cards = (
+      await pool.query(
+        `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
                     attack_night, attack_day, power_cost, send_to_power, effect,
                     en_effect_official, image, errata
              FROM cards ${where}
              ORDER BY id`,
-            values,
-          )
-        ).rows;
-        if (cards.length > 0) {
-          json(cards.map(cardRowToDef));
-          return;
-        }
-
-        const hasSeededCards = (await pool.query('SELECT 1 FROM cards LIMIT 1')).rows.length > 0;
-        if (hasSeededCards) {
-          json([]);
-          return;
-        }
-      } catch {
-        // Keep the API usable in offline/dev environments where PG card data is not available.
-      }
-      json(filterStaticCards(url.searchParams));
-      return;
+        values,
+      )
+    ).rows;
+    if (cards.length > 0) {
+      return json(c, cards.map(cardRowToDef));
     }
 
-    // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯（與 data/card-effects-i18n.json 結構相同）
-    if (pathname === '/api/cards/i18n' && method === 'GET') {
-      try {
-        const rows = (
-          await pool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang')
-        ).rows;
-        if (rows.length > 0) {
-          const grouped = {};
-          for (const row of rows) {
-            if (!grouped[row.card_id]) grouped[row.card_id] = {};
-            grouped[row.card_id][row.lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
-          }
-          json(grouped);
-          return;
-        }
-      } catch {
-        // Fallback below
-      }
-      json(staticCardI18n);
-      return;
+    const hasSeededCards = (await pool.query('SELECT 1 FROM cards LIMIT 1')).rows.length > 0;
+    if (hasSeededCards) {
+      return json(c, []);
     }
+  } catch {
+    // Keep the API usable in offline/dev environments where PG card data is not available.
+  }
+  return json(c, filterStaticCards(new URL(c.req.url).searchParams));
+});
 
-    const publicCardI18nRoute = pathname.match(/^\/api\/cards\/([^/]+)\/i18n$/);
-    if (publicCardI18nRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardI18nRoute[1]);
-      const translations = staticI18nForCard(cardId);
-      try {
-        const rows = (await pool.query('SELECT lang, effect_text FROM card_effects_i18n WHERE card_id = $1', [cardId]))
-          .rows;
-        for (const row of rows) {
-          const lang = normalizeI18nLang(row.lang);
-          if (lang) translations[lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
-        }
-      } catch {
-        // Static fallback already populated above.
+app.get('/api/cards/i18n', async (c) => {
+  try {
+    const rows = (await pool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang'))
+      .rows;
+    if (rows.length > 0) {
+      const grouped = {};
+      for (const row of rows) {
+        if (!grouped[row.card_id]) grouped[row.card_id] = {};
+        grouped[row.card_id][row.lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
       }
-      json(translations);
-      return;
+      return json(c, grouped);
     }
+  } catch {
+    // Fallback below
+  }
+  return json(c, staticCardI18n);
+});
 
-    const publicCardRoute = pathname.match(/^\/api\/cards\/([^/]+)$/);
-    if (publicCardRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardRoute[1]);
-      try {
-        const card = (
-          await pool.query(
-            `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+app.get('/api/cards/:cardId/i18n', async (c) => {
+  const cardId = routeParam(c, 'cardId');
+  const translations = staticI18nForCard(cardId);
+  try {
+    const rows = (await pool.query('SELECT lang, effect_text FROM card_effects_i18n WHERE card_id = $1', [cardId]))
+      .rows;
+    for (const row of rows) {
+      const lang = normalizeI18nLang(row.lang);
+      if (lang) translations[lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
+    }
+  } catch {
+    // Static fallback already populated above.
+  }
+  return json(c, translations);
+});
+
+app.get('/api/cards/:cardId', async (c) => {
+  const cardId = routeParam(c, 'cardId');
+  try {
+    const card = (
+      await pool.query(
+        `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
                     attack_night, attack_day, power_cost, send_to_power, effect,
                     en_effect_official, image, errata
              FROM cards
              WHERE id = $1`,
-            [cardId],
-          )
-        ).rows[0];
-        if (card) {
-          json(cardRowToDef(card));
-          return;
-        }
-      } catch {
-        // Static fallback below.
-      }
-
-      const fallback = staticCardMap.get(cardId);
-      if (!fallback) return json({ error: 'Card not found' }, 404);
-      json(fallback);
-      return;
+        [cardId],
+      )
+    ).rows[0];
+    if (card) {
+      return json(c, cardRowToDef(card));
     }
+  } catch {
+    // Static fallback below.
+  }
 
-    if (pathname === '/api/config' && method === 'GET') {
-      const rows = (await pool.query('SELECT key, value FROM game_config ORDER BY key')).rows;
-      json(Object.fromEntries(rows.map((row) => [row.key, row.value])));
-      return;
-    }
+  const fallback = staticCardMap.get(cardId);
+  if (!fallback) return json(c, { error: 'Card not found' }, 404);
+  return json(c, fallback);
+});
 
-    if (pathname === '/api/preset-decks' && method === 'GET') {
-      const rows = (await pool.query('SELECT id, name, card_ids FROM preset_decks ORDER BY id')).rows;
-      json(
-        rows.map((deck) => ({
-          id: deck.id,
-          name: deck.name,
-          cardIds: Array.isArray(deck.card_ids) ? deck.card_ids : [],
-        })),
-      );
-      return;
-    }
+app.get('/api/config', async (c) => {
+  const rows = (await pool.query('SELECT key, value FROM game_config ORDER BY key')).rows;
+  return json(c, Object.fromEntries(rows.map((row) => [row.key, row.value])));
+});
 
-    // Admin: no-op reload signal for clients that refetch card data after edits.
-    if (pathname === '/api/admin/cards/reload' && method === 'POST') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-      json({ ok: true });
-      return;
-    }
+app.get('/api/preset-decks', async (c) => {
+  const rows = (await pool.query('SELECT id, name, card_ids FROM preset_decks ORDER BY id')).rows;
+  return json(
+    c,
+    rows.map((deck) => ({
+      id: deck.id,
+      name: deck.name,
+      cardIds: Array.isArray(deck.card_ids) ? deck.card_ids : [],
+    })),
+  );
+});
 
-    const adminCardI18nRoute = pathname.match(/^\/api\/admin\/cards\/([^/]+)\/i18n$/);
-    if (adminCardI18nRoute && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-      const cardId = decodeURIComponent(adminCardI18nRoute[1]);
-      const body = await readBody();
-      const lang = normalizeI18nLang(body?.lang);
-      if (!lang) return json({ error: 'Unsupported language' }, 400);
-      if (typeof body?.effectText !== 'string') return json({ error: 'effectText required' }, 400);
+app.post('/api/admin/cards/reload', async (c) => {
+  const admin = requireAdmin(c);
+  if (admin !== true) return admin;
+  return json(c, { ok: true });
+});
 
-      await pool.query(
-        `INSERT INTO card_effects_i18n (card_id, lang, effect_text)
+app.put('/api/admin/cards/:cardId/i18n', async (c) => {
+  const admin = requireAdmin(c);
+  if (admin !== true) return admin;
+  const cardId = routeParam(c, 'cardId');
+  const body = await readValidatedBody(c, cardI18nBodySchema);
+  const lang = normalizeI18nLang(body?.lang);
+  if (!lang) return json(c, { error: 'Unsupported language' }, 400);
+  if (typeof body?.effectText !== 'string') return json(c, { error: 'effectText required' }, 400);
+
+  await pool.query(
+    `INSERT INTO card_effects_i18n (card_id, lang, effect_text)
          VALUES ($1, $2, $3)
          ON CONFLICT (card_id, lang) DO UPDATE SET
            effect_text = EXCLUDED.effect_text`,
-        [cardId, lang, body.effectText],
-      );
-      await pool.query(
-        'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-        ['upsert_card_i18n', 'card_effects_i18n', cardId, JSON.stringify({ lang, effectText: body.effectText })],
-      );
-      json({ ok: true });
-      return;
-    }
+    [cardId, lang, body.effectText],
+  );
+  await pool.query(
+    'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
+    ['upsert_card_i18n', 'card_effects_i18n', cardId, JSON.stringify({ lang, effectText: body.effectText })],
+  );
+  return json(c, { ok: true });
+});
 
-    const adminCardRoute = pathname.match(/^\/api\/admin\/cards\/([^/]+)$/);
-    if (adminCardRoute && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-      const cardId = decodeURIComponent(adminCardRoute[1]);
-      const body = await readBody();
-      const existing = (
-        await pool.query(
-          `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+app.put('/api/admin/cards/:cardId', async (c) => {
+  const admin = requireAdmin(c);
+  if (admin !== true) return admin;
+  const cardId = routeParam(c, 'cardId');
+  const body = await readBody(c);
+  const existing = (
+    await pool.query(
+      `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
                   attack_night, attack_day, power_cost, send_to_power, effect,
                   en_effect_official, image, errata
            FROM cards
            WHERE id = $1`,
-          [cardId],
-        )
-      ).rows[0];
-      const card = normalizeCardForUpsert(cardId, body, existing ? cardRowToDef(existing) : staticCardMap.get(cardId));
-      if (!card) return json({ error: 'Card requires name, pack, element, and type' }, 400);
+      [cardId],
+    )
+  ).rows[0];
+  const card = normalizeCardForUpsert(cardId, body, existing ? cardRowToDef(existing) : staticCardMap.get(cardId));
+  if (!card) return json(c, { error: 'Card requires name, pack, element, and type' }, 400);
 
-      await pool.query(
-        `INSERT INTO cards (
+  await pool.query(
+    `INSERT INTO cards (
            id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
            attack_night, attack_day, power_cost, send_to_power, effect,
            en_effect_official, image, errata
@@ -1407,139 +1403,124 @@ function handleRequest(req, res) {
            image = EXCLUDED.image,
            errata = EXCLUDED.errata,
            updated_at = NOW()`,
-        cardDefToDbParams(card),
-      );
-      await pool.query(
-        'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-        ['upsert_card', 'card', cardId, JSON.stringify({ card })],
-      );
-      json(card);
-      return;
-    }
+    cardDefToDbParams(card),
+  );
+  await pool.query(
+    'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
+    ['upsert_card', 'card', cardId, JSON.stringify({ card })],
+  );
+  return json(c, card);
+});
 
-    const adminConfigRoute = pathname.match(/^\/api\/admin\/config\/([^/]+)$/);
-    if (adminConfigRoute && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
-      const key = decodeURIComponent(adminConfigRoute[1]);
-      const body = await readBody();
-      if (!body || typeof body !== 'object' || !Object.prototype.hasOwnProperty.call(body, 'value')) {
-        return json({ error: 'Config value required' }, 400);
-      }
-      const description = typeof body.description === 'string' ? body.description : '';
-      await pool.query(
-        `INSERT INTO game_config (key, value, description)
+app.put('/api/admin/config/:key', async (c) => {
+  const admin = requireAdmin(c);
+  if (admin !== true) return admin;
+  const key = routeParam(c, 'key');
+  const body = await readValidatedBody(c, configBodySchema);
+  if (!body || typeof body !== 'object' || !Object.prototype.hasOwnProperty.call(body, 'value')) {
+    return json(c, { error: 'Config value required' }, 400);
+  }
+  const description = typeof body.description === 'string' ? body.description : '';
+  await pool.query(
+    `INSERT INTO game_config (key, value, description)
          VALUES ($1, $2::jsonb, $3)
          ON CONFLICT (key) DO UPDATE SET
            value = EXCLUDED.value,
            description = EXCLUDED.description,
            updated_at = NOW()`,
-        [key, JSON.stringify(body.value), description],
-      );
-      await pool.query(
-        'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-        ['upsert_config', 'game_config', key, JSON.stringify({ value: body.value, description })],
-      );
-      json({ key, value: body.value, description });
-      return;
-    }
+    [key, JSON.stringify(body.value), description],
+  );
+  await pool.query(
+    'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
+    ['upsert_config', 'game_config', key, JSON.stringify({ value: body.value, description })],
+  );
+  return json(c, { key, value: body.value, description });
+});
 
-    // ===== Matchmaking Routes =====
+app.post('/api/matchmaking/queue', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  const { deckName, deckIds } = await readValidatedBody(c, matchmakingQueueBodySchema);
+  const existing = await redis.hgetall(`mm:${userId}`);
+  // 若已在佇列且已配對，不重複加入
+  if (existing && existing.status === 'matched') {
+    return json(c, { queueId: existing.queueId, status: 'matched' });
+  }
+  const queueId = (existing && existing.queueId) || 'q_' + crypto.randomBytes(8).toString('hex');
+  const now = Date.now();
+  const cleanDeckName = typeof deckName === 'string' ? sanitizeText(deckName, 60) : '';
+  const cleanDeckIds = Array.isArray(deckIds) ? deckIds.filter((id) => typeof id === 'string').slice(0, 20) : [];
 
-    // POST /api/matchmaking/queue — 加入配對佇列
-    if (pathname === '/api/matchmaking/queue' && method === 'POST') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const { deckName, deckIds } = await readBody();
-      const existing = await redis.hgetall(`mm:${userId}`);
-      // 若已在佇列且已配對，不重複加入
-      if (existing && existing.status === 'matched') {
-        return json({ queueId: existing.queueId, status: 'matched' });
-      }
-      const queueId = (existing && existing.queueId) || 'q_' + crypto.randomBytes(8).toString('hex');
-      const now = Date.now();
-      const cleanDeckName = typeof deckName === 'string' ? sanitizeText(deckName, 60) : '';
-      const cleanDeckIds = Array.isArray(deckIds) ? deckIds.filter((id) => typeof id === 'string').slice(0, 20) : [];
-
-      await redis.hset(`mm:${userId}`, {
-        queueId,
-        joinedAt: String(now),
-        deckName: cleanDeckName,
-        deckIds: JSON.stringify(cleanDeckIds),
-        status: 'queued',
-      });
-      await redis.zadd('mm:queue', now, userId);
-      await redis.expire(`mm:${userId}`, MM_TTL_SECONDS);
-
-      // 嘗試立即配對（Lua 原子）
-      const matchId = generateMatchmakingId();
-      await redis.mmTryMatch('mm:queue', userId, String(now), matchId, String(MATCHMAKING_TIMEOUT_MS));
-
-      const current = await redis.hgetall(`mm:${userId}`);
-      if (!current || !current.status) return json({ status: 'timeout' });
-      json({ queueId: current.queueId, status: current.status });
-      return;
-    }
-
-    // GET /api/matchmaking/status — 查詢配對狀態
-    if (pathname === '/api/matchmaking/status' && method === 'GET') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      await redis.mmCleanExpired('mm:queue', String(Date.now()), String(MATCHMAKING_TIMEOUT_MS));
-      const entry = await redis.hgetall(`mm:${userId}`);
-      if (!entry || !entry.status) return json({ status: 'timeout' });
-      json({
-        status: entry.status,
-        matchId: entry.matchId || undefined,
-        opponentId: entry.opponentId || undefined,
-        role: entry.role || undefined,
-        realMatchId: entry.realMatchId || undefined,
-      });
-      return;
-    }
-
-    // DELETE /api/matchmaking/queue — 離開佇列
-    if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const entry = await redis.hgetall(`mm:${userId}`);
-      if (entry && entry.opponentId) {
-        const opponent = await redis.hgetall(`mm:${entry.opponentId}`);
-        if (opponent && opponent.status) {
-          // 已配對情況下離開，標記對手為 timeout 讓對手能即時知道
-          await redis.hset(`mm:${entry.opponentId}`, 'status', 'timeout');
-        }
-      }
-      await redis.zrem('mm:queue', userId);
-      await redis.del(`mm:${userId}`);
-      json({ deleted: true });
-      return;
-    }
-
-    // PUT /api/matchmaking/match — host 回報真實 boardgame.io matchID
-    if (pathname === '/api/matchmaking/match' && method === 'PUT') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const { matchId } = await readBody();
-      if (typeof matchId !== 'string' || !matchId) {
-        return json({ error: 'matchId required' }, 400);
-      }
-      const entry = await redis.hgetall(`mm:${userId}`);
-      if (!entry || entry.status !== 'matched') {
-        return json({ error: 'Not in a matched queue' }, 400);
-      }
-      await redis.hset(`mm:${userId}`, 'realMatchId', matchId);
-      json({ ok: true });
-      return;
-    }
-
-    // ===== Default =====
-    res.writeHead(404);
-    res.end('Not Found');
+  await redis.hset(`mm:${userId}`, {
+    queueId,
+    joinedAt: String(now),
+    deckName: cleanDeckName,
+    deckIds: JSON.stringify(cleanDeckIds),
+    status: 'queued',
   });
-}
+  await redis.zadd('mm:queue', now, userId);
+  await redis.expire(`mm:${userId}`, MM_TTL_SECONDS);
+
+  // 嘗試立即配對（Lua 原子）
+  const matchId = generateMatchmakingId();
+  await redis.mmTryMatch('mm:queue', userId, String(now), matchId, String(MATCHMAKING_TIMEOUT_MS));
+
+  const current = await redis.hgetall(`mm:${userId}`);
+  if (!current || !current.status) return json(c, { status: 'timeout' });
+  return json(c, { queueId: current.queueId, status: current.status });
+});
+
+app.get('/api/matchmaking/status', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  await redis.mmCleanExpired('mm:queue', String(Date.now()), String(MATCHMAKING_TIMEOUT_MS));
+  const entry = await redis.hgetall(`mm:${userId}`);
+  if (!entry || !entry.status) return json(c, { status: 'timeout' });
+  return json(c, {
+    status: entry.status,
+    matchId: entry.matchId || undefined,
+    opponentId: entry.opponentId || undefined,
+    role: entry.role || undefined,
+    realMatchId: entry.realMatchId || undefined,
+  });
+});
+
+app.delete('/api/matchmaking/queue', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  const entry = await redis.hgetall(`mm:${userId}`);
+  if (entry && entry.opponentId) {
+    const opponent = await redis.hgetall(`mm:${entry.opponentId}`);
+    if (opponent && opponent.status) {
+      // 已配對情況下離開，標記對手為 timeout 讓對手能即時知道
+      await redis.hset(`mm:${entry.opponentId}`, 'status', 'timeout');
+    }
+  }
+  await redis.zrem('mm:queue', userId);
+  await redis.del(`mm:${userId}`);
+  return json(c, { deleted: true });
+});
+
+app.put('/api/matchmaking/match', async (c) => {
+  const userId = await getAuthUserId(c.req);
+  if (!userId) return json(c, { error: 'Unauthorized' }, 401);
+  const { matchId } = await readValidatedBody(c, matchmakingMatchBodySchema);
+  if (typeof matchId !== 'string' || !matchId) {
+    return json(c, { error: 'matchId required' }, 400);
+  }
+  const entry = await redis.hgetall(`mm:${userId}`);
+  if (!entry || entry.status !== 'matched') {
+    return json(c, { error: 'Not in a matched queue' }, 400);
+  }
+  await redis.hset(`mm:${userId}`, 'realMatchId', matchId);
+  return json(c, { ok: true });
+});
+
+app.notFound((c) => c.text('Not Found', 404));
 
 // ===== Start =====
-const server = http.createServer(handleRequest);
+const handleRequest = getRequestListener(app.fetch);
+const server = createAdaptorServer({ fetch: app.fetch });
 
 async function closeDatabase() {
   await pool.end();
@@ -1581,6 +1562,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  app,
   handleRequest,
   server,
   closeDatabase,
