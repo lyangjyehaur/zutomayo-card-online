@@ -1,0 +1,2002 @@
+{
+  "1st_5": {
+    "ja": "相手の攻撃力を昼夜逆転する ※相手のエンチャント発動のち有効",
+    "zh-TW": "將對手的攻擊力進行晝夜逆轉 ※在對手的附魔發動之後才生效",
+    "zh-HK": "將對手嘅攻擊力進行晝夜逆轉 ※喺對手嘅附魔發動之後先至生效",
+    "zh-CN": "将对手的攻击力进行昼夜逆转 ※在对手的附魔发动之后才生效",
+    "en": "Reverse your opponent's Attack between day and night. ※Takes effect after the opponent's Enchant activates.",
+    "ko": "상대의 공격력을 주야 전환한다. ※상대의 인챈트 발동 후에 유효"
+  },
+  "1st_6": {
+    "ja": "アビスにあるエンチャントカードの中から自由に１枚選び、このカードの効果として使う",
+    "zh-TW": "從深淵中的附魔卡中自由選擇1張，作為這張卡的效果使用",
+    "zh-HK": "喺深淵入面嘅附魔卡當中揀1張，當做呢張卡嘅效果使用",
+    "zh-CN": "从深渊中的附魔卡中自由选择1张，作为这张卡的效果使用",
+    "en": "Choose 1 Enchant card from the Abyss and use it as this card's effect.",
+    "ko": "어비스에 있는 인챈트 카드 중에서 자유롭게 1장을 골라 이 카드의 효과로 사용한다"
+  },
+  "1st_7": {
+    "ja": "アビスに４種類の属性があると攻撃力+50",
+    "zh-TW": "若深淵中有4種屬性，則攻擊力+50",
+    "zh-HK": "如果深淵入面有4種屬性嘅話，攻擊力+50",
+    "zh-CN": "若深渊中有4种属性，则攻击力+50",
+    "en": "If there are 4 different attributes in the Abyss, Attack +50.",
+    "ko": "어비스에 4종류의 속성이 있으면 공격력 +50"
+  },
+  "1st_8": {
+    "ja": "時計を無効　このターンのはじまりの時間に戻る",
+    "zh-TW": "使時鐘無效，回到本回合開始的時間",
+    "zh-HK": "令時鐘無效，返去呢個回合開始嘅時間",
+    "zh-CN": "使时钟无效，回到本回合开始的时间",
+    "en": "Nullify the Clock. Return to the starting time of this turn.",
+    "ko": "시계를 무효화한다. 이 턴의 시작 시간으로 돌아간다"
+  },
+  "1st_25": {
+    "ja": "相手のキャラクターカードの属性が風なら攻撃力+50",
+    "zh-TW": "若對手的角色卡屬性為風，則攻擊力+50",
+    "zh-HK": "如果對手嘅角色卡屬性係風嘅話，攻擊力+50",
+    "zh-CN": "若对手的角色卡属性为风，则攻击力+50",
+    "en": "If your opponent's Character card's attribute is Wind, Attack +50.",
+    "ko": "상대의 캐릭터 카드 속성이 바람이면 공격력 +50"
+  },
+  "1st_26": {
+    "ja": "このターンのはじまりの時間から相手の時計分、時間が戻る",
+    "zh-TW": "從本回合開始的時間起，回退對手時鐘所對應的時間",
+    "zh-HK": "由呢個回合開始嘅時間起，倒退對手時鐘所對應嘅時間",
+    "zh-CN": "从本回合开始的时间起，回退对手时钟所对应的时间",
+    "en": "Go back in time from the start of this turn by the amount shown on your opponent's Clock.",
+    "ko": "이 턴의 시작 시간부터 상대의 시계만큼 시간이 돌아간다"
+  },
+  "1st_27": {
+    "ja": "相手のキャラクターカードの属性が電気なら攻撃力+50",
+    "zh-TW": "若對手的角色卡屬性為電氣，則攻擊力+50",
+    "zh-HK": "如果對手嘅角色卡屬性係電氣嘅話，攻擊力+50",
+    "zh-CN": "若对手的角色卡属性为电气，则攻击力+50",
+    "en": "If your opponent's Character card's attribute is Electric, Attack +50.",
+    "ko": "상대의 캐릭터 카드 속성이 전기이면 공격력 +50"
+  },
+  "1st_28": {
+    "ja": "自分がダメージを受けたとき40ダメージを軽減する",
+    "zh-TW": "當自己受到傷害時，減傷40點",
+    "zh-HK": "當自己受到傷害嗰陣，減傷40點",
+    "zh-CN": "当自己受到伤害时，减伤40点",
+    "en": "When you take damage, reduce the damage by 40.",
+    "ko": "자신이 데미지를 받을 때 40데미지를 경감한다"
+  },
+  "1st_29": {
+    "ja": "相手のキャラクターカードの属性が闇なら攻撃力+50",
+    "zh-TW": "若對手的角色卡屬性為闇，則攻擊力+50",
+    "zh-HK": "如果對手嘅角色卡屬性係闇嘅話，攻擊力+50",
+    "zh-CN": "若对手的角色卡属性为暗，则攻击力+50",
+    "en": "If your opponent's Character card's attribute is Dark, Attack +50.",
+    "ko": "상대의 캐릭터 카드 속성이 어둠이면 공격력 +50"
+  },
+  "1st_30": {
+    "ja": "自分の攻撃力+30",
+    "zh-TW": "自己的攻擊力+30",
+    "zh-HK": "自己嘅攻擊力+30",
+    "zh-CN": "自己的攻击力+30",
+    "en": "Your Attack +30.",
+    "ko": "자신의 공격력 +30"
+  },
+  "1st_31": {
+    "ja": "相手のキャラクターカードの属性が炎なら攻撃力+50",
+    "zh-TW": "若對手的角色卡屬性為炎，則攻擊力+50",
+    "zh-HK": "如果對手嘅角色卡屬性係炎嘅話，攻擊力+50",
+    "zh-CN": "若对手的角色卡属性为炎，则攻击力+50",
+    "en": "If your opponent's Character card's attribute is Flame, Attack +50.",
+    "ko": "상대의 캐릭터 카드 속성이 화염이면 공격력 +50"
+  },
+  "1st_32": {
+    "ja": "自分のHPが30以下なら攻撃力+50",
+    "zh-TW": "若自己的HP為30以下，則攻擊力+50",
+    "zh-HK": "如果自己嘅HP係30以下嘅話，攻擊力+50",
+    "zh-CN": "若自己的HP为30以下，则攻击力+50",
+    "en": "If your HP is 30 or below, Attack +50.",
+    "ko": "자신의 HP가 30 이하이면 공격력 +50"
+  },
+  "1st_53": {
+    "ja": "夜なら攻撃力+30",
+    "zh-TW": "若為夜晚，則攻擊力+30",
+    "zh-HK": "如果係夜晚嘅話，攻擊力+30",
+    "zh-CN": "若为夜晚，则攻击力+30",
+    "en": "If it is Night, Attack +30.",
+    "ko": "밤이면 공격력 +30"
+  },
+  "1st_54": {
+    "ja": "相手のキャラクターカードの属性が風なら攻撃力+30",
+    "zh-TW": "若對手的角色卡屬性為風，則攻擊力+30",
+    "zh-HK": "如果對手嘅角色卡屬性係風嘅話，攻擊力+30",
+    "zh-CN": "若对手的角色卡属性为风，则攻击力+30",
+    "en": "If your opponent's Character card's attribute is Wind, Attack +30.",
+    "ko": "상대의 캐릭터 카드 속성이 바람이면 공격력 +30"
+  },
+  "1st_55": {
+    "ja": "自分のHPが50以下なら攻撃力+20",
+    "zh-TW": "若自己的HP為50以下，則攻擊力+20",
+    "zh-HK": "如果自己嘅HP係50以下嘅話，攻擊力+20",
+    "zh-CN": "若自己的HP为50以下，则攻击力+20",
+    "en": "If your HP is 50 or below, Attack +20.",
+    "ko": "자신의 HP가 50 이하이면 공격력 +20"
+  },
+  "1st_56": {
+    "ja": "相手のキャラクターカードの属性が電気なら攻撃力+30",
+    "zh-TW": "若對手的角色卡屬性為電氣，則攻擊力+30",
+    "zh-HK": "如果對手嘅角色卡屬性係電氣嘅話，攻擊力+30",
+    "zh-CN": "若对手的角色卡属性为电气，则攻击力+30",
+    "en": "If your opponent's Character card's attribute is Electric, Attack +30.",
+    "ko": "상대의 캐릭터 카드 속성이 전기이면 공격력 +30"
+  },
+  "1st_57": {
+    "ja": "自分がダメージを受けたとき30ダメージを軽減する",
+    "zh-TW": "當自己受到傷害時，減傷30點",
+    "zh-HK": "當自己受到傷害嗰陣，減傷30點",
+    "zh-CN": "当自己受到伤害时，减伤30点",
+    "en": "When you take damage, reduce the damage by 30.",
+    "ko": "자신이 데미지를 받을 때 30데미지를 경감한다"
+  },
+  "1st_58": {
+    "ja": "相手のキャラクターカードのパワーコストが★２以上なら攻撃力+20",
+    "zh-TW": "若對手的角色卡能量消耗為★2以上，則攻擊力+20",
+    "zh-HK": "如果對手嘅角色卡能量消耗係★2以上嘅話，攻擊力+20",
+    "zh-CN": "若对手的角色卡能量消耗为★2以上，则攻击力+20",
+    "en": "If your opponent's Character card's Power Cost is ★2 or higher, Attack +20.",
+    "ko": "상대의 캐릭터 카드의 파워 코스트가 ★2 이상이면 공격력 +20"
+  },
+  "1st_59": {
+    "ja": "昼なら攻撃力+30",
+    "zh-TW": "若為白晝，則攻擊力+30",
+    "zh-HK": "如果係白晝嘅話，攻擊力+30",
+    "zh-CN": "若为白昼，则攻击力+30",
+    "en": "If it is Day, Attack +30.",
+    "ko": "낮이면 공격력 +30"
+  },
+  "1st_60": {
+    "ja": "相手のキャラクターカードの属性が闇なら攻撃力+30",
+    "zh-TW": "若對手的角色卡屬性為闇，則攻擊力+30",
+    "zh-HK": "如果對手嘅角色卡屬性係闇嘅話，攻擊力+30",
+    "zh-CN": "若对手的角色卡属性为暗，则攻击力+30",
+    "en": "If your opponent's Character card's attribute is Dark, Attack +30.",
+    "ko": "상대의 캐릭터 카드 속성이 어둠이면 공격력 +30"
+  },
+  "1st_61": {
+    "ja": "昼から夜に変わると攻撃力+30",
+    "zh-TW": "當白晝變為夜晚時，攻擊力+30",
+    "zh-HK": "當白晝變成夜晚嗰陣，攻擊力+30",
+    "zh-CN": "当白昼变为夜晚时，攻击力+30",
+    "en": "When Day changes to Night, Attack +30.",
+    "ko": "낮에서 밤으로 바뀌면 공격력 +30"
+  },
+  "1st_62": {
+    "ja": "相手のキャラクターカードの属性が炎なら攻撃力+30",
+    "zh-TW": "若對手的角色卡屬性為炎，則攻擊力+30",
+    "zh-HK": "如果對手嘅角色卡屬性係炎嘅話，攻擊力+30",
+    "zh-CN": "若对手的角色卡属性为炎，则攻击力+30",
+    "en": "If your opponent's Character card's attribute is Flame, Attack +30.",
+    "ko": "상대의 캐릭터 카드 속성이 화염이면 공격력 +30"
+  },
+  "1st_63": {
+    "ja": "自分の基礎攻撃力を昼夜逆転する",
+    "zh-TW": "將自己的基礎攻擊力進行晝夜逆轉",
+    "zh-HK": "將自己嘅基礎攻擊力進行晝夜逆轉",
+    "zh-CN": "将自己的基础攻击力进行昼夜逆转",
+    "en": "Reverse your base Attack between day and night.",
+    "ko": "자신의 기본 공격력을 주야 전환한다"
+  },
+  "1st_64": {
+    "ja": "相手のキャラクターカードのパワーコストが★２以上なら攻撃力+30",
+    "zh-TW": "若對手的角色卡能量消耗為★2以上，則攻擊力+30",
+    "zh-HK": "如果對手嘅角色卡能量消耗係★2以上嘅話，攻擊力+30",
+    "zh-CN": "若对手的角色卡能量消耗为★2以上，则攻击力+30",
+    "en": "If your opponent's Character card's Power Cost is ★2 or higher, Attack +30.",
+    "ko": "상대의 캐릭터 카드의 파워 코스트가 ★2 이상이면 공격력 +30"
+  },
+  "1st_81": {
+    "ja": "自分のキャラクターカードの属性が闇ならHPを10回復",
+    "zh-TW": "若自己的角色卡屬性為闇，則回復10點HP",
+    "zh-HK": "如果自己嘅角色卡屬性係闇嘅話，回復10點HP",
+    "zh-CN": "若自己的角色卡属性为暗，则恢复10点HP",
+    "en": "If your Character card's attribute is Dark, recover 10 HP.",
+    "ko": "자신의 캐릭터 카드 속성이 어둠이면 HP를 10 회복한다"
+  },
+  "1st_82": {
+    "ja": "自分のキャラクターカードの属性が闇なら攻撃力+20",
+    "zh-TW": "若自己的角色卡屬性為闇，則攻擊力+20",
+    "zh-HK": "如果自己嘅角色卡屬性係闇嘅話，攻擊力+20",
+    "zh-CN": "若自己的角色卡属性为暗，则攻击力+20",
+    "en": "If your Character card's attribute is Dark, Attack +20.",
+    "ko": "자신의 캐릭터 카드 속성이 어둠이면 공격력 +20"
+  },
+  "1st_83": {
+    "ja": "夜なら攻撃力+20",
+    "zh-TW": "若為夜晚，則攻擊力+20",
+    "zh-HK": "如果係夜晚嘅話，攻擊力+20",
+    "zh-CN": "若为夜晚，则攻击力+20",
+    "en": "If it is Night, Attack +20.",
+    "ko": "밤이면 공격력 +20"
+  },
+  "1st_84": {
+    "ja": "夜から昼に変わると攻撃力+30",
+    "zh-TW": "當夜晚變為白晝時，攻擊力+30",
+    "zh-HK": "當夜晚變成白晝嗰陣，攻擊力+30",
+    "zh-CN": "当夜晚变为白昼时，攻击力+30",
+    "en": "When Night changes to Day, Attack +30.",
+    "ko": "밤에서 낮으로 바뀌면 공격력 +30"
+  },
+  "1st_85": {
+    "ja": "自分がダメージを受けたとき20ダメージを軽減する",
+    "zh-TW": "當自己受到傷害時，減傷20點",
+    "zh-HK": "當自己受到傷害嗰陣，減傷20點",
+    "zh-CN": "当自己受到伤害时，减伤20点",
+    "en": "When you take damage, reduce the damage by 20.",
+    "ko": "자신이 데미지를 받을 때 20데미지를 경감한다"
+  },
+  "1st_86": {
+    "ja": "手札１枚とアビスの好きなカード１枚を入れ替える",
+    "zh-TW": "將手牌中的1張卡與深淵中任意1張卡交換",
+    "zh-HK": "將手牌入面嘅1張卡同深淵入面任意1張卡交換",
+    "zh-CN": "将手牌中的1张卡与深渊中任意1张卡交换",
+    "en": "Swap 1 card from your Hand with 1 card of your choice from the Abyss.",
+    "ko": "핸드 1장과 어비스에서 원하는 카드 1장을 교환한다"
+  },
+  "1st_87": {
+    "ja": "自分のキャラクターカードの属性が炎ならHPを10回復",
+    "zh-TW": "若自己的角色卡屬性為炎，則回復10點HP",
+    "zh-HK": "如果自己嘅角色卡屬性係炎嘅話，回復10點HP",
+    "zh-CN": "若自己的角色卡属性为炎，则恢复10点HP",
+    "en": "If your Character card's attribute is Flame, recover 10 HP.",
+    "ko": "자신의 캐릭터 카드 속성이 화염이면 HP를 10 회복한다"
+  },
+  "1st_88": {
+    "ja": "自分のキャラクターカードの属性が炎なら攻撃力+20",
+    "zh-TW": "若自己的角色卡屬性為炎，則攻擊力+20",
+    "zh-HK": "如果自己嘅角色卡屬性係炎嘅話，攻擊力+20",
+    "zh-CN": "若自己的角色卡属性为炎，则攻击力+20",
+    "en": "If your Character card's attribute is Flame, Attack +20.",
+    "ko": "자신의 캐릭터 카드 속성이 화염이면 공격력 +20"
+  },
+  "1st_89": {
+    "ja": "自分の攻撃力+10",
+    "zh-TW": "自己的攻擊力+10",
+    "zh-HK": "自己嘅攻擊力+10",
+    "zh-CN": "自己的攻击力+10",
+    "en": "Your Attack +10.",
+    "ko": "자신의 공격력 +10"
+  },
+  "1st_90": {
+    "ja": "昼から夜に変わると攻撃力+20",
+    "zh-TW": "當白晝變為夜晚時，攻擊力+20",
+    "zh-HK": "當白晝變成夜晚嗰陣，攻擊力+20",
+    "zh-CN": "当白昼变为夜晚时，攻击力+20",
+    "en": "When Day changes to Night, Attack +20.",
+    "ko": "낮에서 밤으로 바뀌면 공격력 +20"
+  },
+  "1st_91": {
+    "ja": "相手のキャラクターカードの属性が炎・風なら攻撃力+20",
+    "zh-TW": "若對手的角色卡屬性為炎或風，則攻擊力+20",
+    "zh-HK": "如果對手嘅角色卡屬性係炎或者風嘅話，攻擊力+20",
+    "zh-CN": "若对手的角色卡属性为炎或风，则攻击力+20",
+    "en": "If your opponent's Character card's attribute is Flame or Wind, Attack +20.",
+    "ko": "상대의 캐릭터 카드 속성이 화염 또는 바람이면 공격력 +20"
+  },
+  "1st_92": {
+    "ja": "デッキから１枚カードを引き、手札に加える\n※このカードを使用後、手札の数はバトル終了まで１枚増える",
+    "zh-TW": "從牌組抽1張卡加入手牌\n※使用此卡後，手牌數量在戰鬥結束前增加1張",
+    "zh-HK": "喺牌組抽1張卡加入手牌\n※用咗呢張卡之後，手牌數量喺戰鬥結束之前會多1張",
+    "zh-CN": "从牌组抽1张卡加入手牌\n※使用此卡后，手牌数量在战斗结束前增加1张",
+    "en": "Draw 1 card from your Deck and add it to your Hand.\n※After using this card, your hand size increases by 1 until the battle ends.",
+    "ko": "덱에서 카드 1장을 뽑아 핸드에 추가한다\n※이 카드 사용 후, 핸드의 장수는 배틀 종료까지 1장 증가한다"
+  },
+  "1st_93": {
+    "ja": "自分のキャラクターカードの属性が電気ならHPを10回復",
+    "zh-TW": "若自己的角色卡屬性為電氣，則回復10點HP",
+    "zh-HK": "如果自己嘅角色卡屬性係電氣嘅話，回復10點HP",
+    "zh-CN": "若自己的角色卡属性为电气，则恢复10点HP",
+    "en": "If your Character card's attribute is Electric, recover 10 HP.",
+    "ko": "자신의 캐릭터 카드 속성이 전기이면 HP를 10 회복한다"
+  },
+  "1st_94": {
+    "ja": "自分のキャラクターカードの属性が電気なら攻撃力+20",
+    "zh-TW": "若自己的角色卡屬性為電氣，則攻擊力+20",
+    "zh-HK": "如果自己嘅角色卡屬性係電氣嘅話，攻擊力+20",
+    "zh-CN": "若自己的角色卡属性为电气，则攻击力+20",
+    "en": "If your Character card's attribute is Electric, Attack +20.",
+    "ko": "자신의 캐릭터 카드 속성이 전기이면 공격력 +20"
+  },
+  "1st_95": {
+    "ja": "相手のキャラクターカードの属性が闇・電気なら攻撃力+20",
+    "zh-TW": "若對手的角色卡屬性為闇或電氣，則攻擊力+20",
+    "zh-HK": "如果對手嘅角色卡屬性係闇或者電氣嘅話，攻擊力+20",
+    "zh-CN": "若对手的角色卡属性为暗或电气，则攻击力+20",
+    "en": "If your opponent's Character card's attribute is Dark or Electric, Attack +20.",
+    "ko": "상대의 캐릭터 카드 속성이 어둠 또는 전기이면 공격력 +20"
+  },
+  "1st_96": {
+    "ja": "昼から夜に変わると攻撃力+10",
+    "zh-TW": "當白晝變為夜晚時，攻擊力+10",
+    "zh-HK": "當白晝變成夜晚嗰陣，攻擊力+10",
+    "zh-CN": "当白昼变为夜晚时，攻击力+10",
+    "en": "When Day changes to Night, Attack +10.",
+    "ko": "낮에서 밤으로 바뀌면 공격력 +10"
+  },
+  "1st_97": {
+    "ja": "夜から昼に変わると攻撃力+20",
+    "zh-TW": "當夜晚變為白晝時，攻擊力+20",
+    "zh-HK": "當夜晚變成白晝嗰陣，攻擊力+20",
+    "zh-CN": "当夜晚变为白昼时，攻击力+20",
+    "en": "When Night changes to Day, Attack +20.",
+    "ko": "밤에서 낮으로 바뀌면 공격력 +20"
+  },
+  "1st_98": {
+    "ja": "相手のキャラクターカードのパワーコストが★０か★１なら攻撃力+30",
+    "zh-TW": "若對手的角色卡能量消耗為★0或★1，則攻擊力+30",
+    "zh-HK": "如果對手嘅角色卡能量消耗係★0或者★1嘅話，攻擊力+30",
+    "zh-CN": "若对手的角色卡能量消耗为★0或★1，则攻击力+30",
+    "en": "If your opponent's Character card's Power Cost is ★0 or ★1, Attack +30.",
+    "ko": "상대의 캐릭터 카드의 파워 코스트가 ★0 또는 ★1이면 공격력 +30"
+  },
+  "1st_99": {
+    "ja": "自分のキャラクターカードの属性が風ならHPを10回復",
+    "zh-TW": "若自己的角色卡屬性為風，則回復10點HP",
+    "zh-HK": "如果自己嘅角色卡屬性係風嘅話，回復10點HP",
+    "zh-CN": "若自己的角色卡属性为风，则恢复10点HP",
+    "en": "If your Character card's attribute is Wind, recover 10 HP.",
+    "ko": "자신의 캐릭터 카드 속성이 바람이면 HP를 10 회복한다"
+  },
+  "1st_100": {
+    "ja": "自分のキャラクターカードの属性が風なら攻撃力+20",
+    "zh-TW": "若自己的角色卡屬性為風，則攻擊力+20",
+    "zh-HK": "如果自己嘅角色卡屬性係風嘅話，攻擊力+20",
+    "zh-CN": "若自己的角色卡属性为风，则攻击力+20",
+    "en": "If your Character card's attribute is Wind, Attack +20.",
+    "ko": "자신의 캐릭터 카드 속성이 바람이면 공격력 +20"
+  },
+  "1st_101": {
+    "ja": "相手のキャラクターカードのパワーコストが★０か★１なら攻撃力+20",
+    "zh-TW": "若對手的角色卡能量消耗為★0或★1，則攻擊力+20",
+    "zh-HK": "如果對手嘅角色卡能量消耗係★0或者★1嘅話，攻擊力+20",
+    "zh-CN": "若对手的角色卡能量消耗为★0或★1，则攻击力+20",
+    "en": "If your opponent's Character card's Power Cost is ★0 or ★1, Attack +20.",
+    "ko": "상대의 캐릭터 카드의 파워 코스트가 ★0 또는 ★1이면 공격력 +20"
+  },
+  "1st_102": {
+    "ja": "昼なら攻撃力+20",
+    "zh-TW": "若為白晝，則攻擊力+20",
+    "zh-HK": "如果係白晝嘅話，攻擊力+20",
+    "zh-CN": "若为白昼，则攻击力+20",
+    "en": "If it is Day, Attack +20.",
+    "ko": "낮이면 공격력 +20"
+  },
+  "1st_103": {
+    "ja": "相手のアビスのカードを1枚選んでデッキの底に戻させる",
+    "zh-TW": "選擇對手深淵中的1張卡，將其放回牌組底部",
+    "zh-HK": "揀對手深淵入面嘅1張卡，將佢放返牌組底",
+    "zh-CN": "选择对手深渊中的1张卡，将其放回牌组底部",
+    "en": "Choose 1 card from your opponent's Abyss and return it to the bottom of their Deck.",
+    "ko": "상대의 어비스에서 카드 1장을 골라 덱의 아래쪽으로 되돌린다"
+  },
+  "1st_104": {
+    "ja": "相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く",
+    "zh-TW": "將對手牌組最上方的卡不論是否有能量都放入深淵",
+    "zh-HK": "將對手牌組最頂嘅卡唔理有冇能量都放入深淵",
+    "zh-CN": "将对手牌组最上方的卡不论是否有能量都放入深渊",
+    "en": "Place the top card of your opponent's Deck into the Abyss, regardless of whether it has Power.",
+    "ko": "상대 덱의 맨 위 카드를 파워 유무에 관계없이 어비스에 놓는다"
+  },
+  "2nd_5": {
+    "ja": "相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く",
+    "zh-TW": "使對手角色卡的時鐘無效。在晝夜交替的回合結束時放入深淵",
+    "zh-HK": "令對手角色卡嘅時鐘無效。喺晝夜交替嘅回合結束嗰陣放入深淵",
+    "zh-CN": "使对手角色卡的时钟无效。在昼夜交替的回合结束时放入深渊",
+    "en": "Nullify your opponent's Character card's Clock. Place it into the Abyss at the end of the turn when Day and Night switch.",
+    "ko": "상대의 캐릭터 카드 시계를 무효화한다. 낮과 밤이 바뀌는 턴의 종료 시에 어비스에 놓는다"
+  },
+  "2nd_6": {
+    "ja": "このターン、同時にセットした自分のキャラクターカードのパワーコストを★２減らす",
+    "zh-TW": "本回合中，將同時設置的自己的角色卡的能量消耗減少★2",
+    "zh-HK": "呢個回合入面，將同時設置嘅自己角色卡嘅能量消耗減少★2",
+    "zh-CN": "本回合中，将同时设置的自己的角色卡的能量消耗减少★2",
+    "en": "This turn, reduce the Power Cost of your Character cards set at the same time by ★2.",
+    "ko": "이 턴, 동시에 세트한 자신의 캐릭터 카드의 파워 코스트를 ★2 줄인다"
+  },
+  "2nd_7": {
+    "ja": "このカードを使用中、自分の攻撃力は常に昼の攻撃力となる。相手がエリアエンチャントを出したターンの終了時にアビスに置く",
+    "zh-TW": "使用此卡期間，自己的攻擊力始終為白天的攻擊力。對手打出區域附魔的回合結束時置於深淵",
+    "zh-HK": "使用此卡期間，自己嘅攻擊力始終為白天嘅攻擊力。對手打出區域附魔嘅回合結束時置於深淵",
+    "zh-CN": "使用此卡期间，自己的攻击力始终为白天的攻击力。对手打出区域附魔的回合结束时置于深渊",
+    "en": "While this card is in use, your attack power is always your daytime attack power. Place it in the Abyss at the end of the turn your opponent plays an Area Enchant.",
+    "ko": "이 카드 사용 중, 자신의 공격력은 항상 주간 공격력이 된다. 상대가 에리아 인챈트를 낸 턴 종료 시 어비스에 놓는다."
+  },
+  "2nd_8": {
+    "ja": "自分のキャラクターカードの属性が電気なら、相手のパワーチャージャーからSEND TO POWER★★のカードを１枚選び、相手のデッキの底に置く",
+    "zh-TW": "若自己的角色卡屬性為雷，從對手的充能區中選擇1張SEND TO POWER★★的卡，置於對手牌組底部",
+    "zh-HK": "若自己嘅角色卡屬性為雷，從對手嘅充能區中選擇1張SEND TO POWER★★嘅卡，置於對手牌組底部",
+    "zh-CN": "若自己的角色卡属性为雷，从对手的充能区中选择1张SEND TO POWER★★的卡，置于对手牌组底部",
+    "en": "If your Character Card's element is Lightning, choose 1 card with SEND TO POWER ★★ from your opponent's Power Charger and place it at the bottom of their deck.",
+    "ko": "자신의 캐릭터 카드 속성이 번개라면, 상대의 파워 차저에서 SEND TO POWER ★★ 카드 1장을 선택하여 상대 덱 아래에 놓는다."
+  },
+  "2nd_9": {
+    "ja": "相手のキャラクターカードの属性が風なら攻撃力+20",
+    "zh-TW": "若對手的角色卡屬性為風，攻擊力+20",
+    "zh-HK": "若對手嘅角色卡屬性為風，攻擊力+20",
+    "zh-CN": "若对手的角色卡属性为风，攻击力+20",
+    "en": "If your opponent's Character Card's element is Wind, attack power +20.",
+    "ko": "상대의 캐릭터 카드 속성이 바람이라면 공격력 +20."
+  },
+  "2nd_10": {
+    "ja": "前のターンで使用したキャラクターカードの属性が炎なら攻撃力+20",
+    "zh-TW": "若上一回合使用的角色卡屬性為火，攻擊力+20",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為火，攻擊力+20",
+    "zh-CN": "若上一回合使用的角色卡属性为火，攻击力+20",
+    "en": "If the Character Card you used last turn was Fire element, attack power +20.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 불이라면 공격력 +20."
+  },
+  "2nd_11": {
+    "ja": "前のターンで使用したキャラクターカードの属性が炎なら、さらに追加で時計を０～５つまで進めてもよい",
+    "zh-TW": "若上一回合使用的角色卡屬性為火，可額外將時鐘推進0～5格",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為火，可額外將時鐘推進0～5格",
+    "zh-CN": "若上一回合使用的角色卡属性为火，可额外将时钟推进0～5格",
+    "en": "If the Character Card you used last turn was Fire element, you may additionally advance the clock by 0 to 5.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 불이라면, 추가로 시계를 0~5만큼 진행해도 된다."
+  },
+  "2nd_14": {
+    "ja": "アビスに闇属性のカードが２枚以上あるなら、HPを20回復",
+    "zh-TW": "若深淵中有2張以上暗屬性的卡，恢復HP 20",
+    "zh-HK": "若深淵中有2張以上暗屬性嘅卡，恢復HP 20",
+    "zh-CN": "若深渊中有2张以上暗属性的卡，恢复HP 20",
+    "en": "If there are 2 or more Dark element cards in your Abyss, recover 20 HP.",
+    "ko": "어비스에 어둠 속성 카드가 2장 이상 있다면 HP 20 회복."
+  },
+  "2nd_15": {
+    "ja": "前のターンで使用したキャラクターカードの属性が闇で、今が昼なら手札からエンチャントを追加で１枚使っても良い。その後、カードを１枚引く",
+    "zh-TW": "若上一回合使用的角色卡屬性為暗，且現在為白天，可從手牌額外使用1張附魔。之後抽1張卡",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為暗，且現在為白天，可從手牌額外使用1張附魔。之後抽1張卡",
+    "zh-CN": "若上一回合使用的角色卡属性为暗，且现在为白天，可从手牌额外使用1张附魔。之后抽1张卡",
+    "en": "If the Character Card you used last turn was Dark element and it is currently Day, you may use 1 additional Enchant from your hand. Then, draw 1 card.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 어둠이고 현재 낮이라면, 패에서 인챈트를 1장 추가로 사용해도 된다. 이후 카드 1장을 뽑는다."
+  },
+  "2nd_18": {
+    "ja": "前のターンで使用したキャラクターカードの属性が風なら攻撃力+20",
+    "zh-TW": "若上一回合使用的角色卡屬性為風，攻擊力+20",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為風，攻擊力+20",
+    "zh-CN": "若上一回合使用的角色卡属性为风，攻击力+20",
+    "en": "If the Character Card you used last turn was Wind element, attack power +20.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 바람이라면 공격력 +20."
+  },
+  "2nd_19": {
+    "ja": "前のターンで使用したキャラクターカードの属性が風なら相手のパワーチャージャーからSEND TO POWER★１のカードを１枚選び、相手のデッキの底に置く。",
+    "zh-TW": "若上一回合使用的角色卡屬性為風，從對手的充能區中選擇1張SEND TO POWER★1的卡，置於對手牌組底部",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為風，從對手嘅充能區中選擇1張SEND TO POWER★1嘅卡，置於對手牌組底部",
+    "zh-CN": "若上一回合使用的角色卡属性为风，从对手的充能区中选择1张SEND TO POWER★1的卡，置于对手牌组底部",
+    "en": "If the Character Card you used last turn was Wind element, choose 1 card with SEND TO POWER ★1 from your opponent's Power Charger and place it at the bottom of their deck.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 바람이라면, 상대의 파워 차저에서 SEND TO POWER ★1 카드 1장을 선택하여 상대 덱 아래에 놓는다."
+  },
+  "2nd_21": {
+    "ja": "相手のキャラクターカードの属性が闇なら攻撃力+20",
+    "zh-TW": "若對手的角色卡屬性為暗，攻擊力+20",
+    "zh-HK": "若對手嘅角色卡屬性為暗，攻擊力+20",
+    "zh-CN": "若对手的角色卡属性为暗，攻击力+20",
+    "en": "If your opponent's Character Card's element is Dark, attack power +20.",
+    "ko": "상대의 캐릭터 카드 속성이 어둠이라면 공격력 +20."
+  },
+  "2nd_22": {
+    "ja": "前のターンで使用したキャラクターカードの属性が電気なら攻撃力+20",
+    "zh-TW": "若上一回合使用的角色卡屬性為雷，攻擊力+20",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為雷，攻擊力+20",
+    "zh-CN": "若上一回合使用的角色卡属性为雷，攻击力+20",
+    "en": "If the Character Card you used last turn was Lightning element, attack power +20.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 번개라면 공격력 +20."
+  },
+  "2nd_23": {
+    "ja": "前のターンで使用したキャラクターカードの属性が電気かつ、相手のキャラクターカードが炎か闇なら攻撃力+40",
+    "zh-TW": "若上一回合使用的角色卡屬性為雷，且對手的角色卡屬性為火或暗，攻擊力+40",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為雷，且對手嘅角色卡屬性為火或暗，攻擊力+40",
+    "zh-CN": "若上一回合使用的角色卡属性为雷，且对手的角色卡属性为火或暗，攻击力+40",
+    "en": "If the Character Card you used last turn was Lightning element and your opponent's Character Card is Fire or Dark element, attack power +40.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 번개이고 상대의 캐릭터 카드가 불 또는 어둠이라면 공격력 +40."
+  },
+  "2nd_24": {
+    "ja": "前のターンで使用したキャラクターカードの属性が電気で、今が夜なら相手のパワーチャージャーからSEND TO POWER★１のカードを１枚選び、相手のデッキの底に置く",
+    "zh-TW": "若上一回合使用的角色卡屬性為雷，且現在為夜晚，從對手的充能區中選擇1張SEND TO POWER★1的卡，置於對手牌組底部",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為雷，且現在為夜晚，從對手嘅充能區中選擇1張SEND TO POWER★1嘅卡，置於對手牌組底部",
+    "zh-CN": "若上一回合使用的角色卡属性为雷，且现在为夜晚，从对手的充能区中选择1张SEND TO POWER★1的卡，置于对手牌组底部",
+    "en": "If the Character Card you used last turn was Lightning element and it is currently Night, choose 1 card with SEND TO POWER ★1 from your opponent's Power Charger and place it at the bottom of their deck.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 번개이고 현재 밤이라면, 상대의 파워 차저에서 SEND TO POWER ★1 카드 1장을 선택하여 상대 덱 아래에 놓는다."
+  },
+  "2nd_25": {
+    "ja": "夜なら攻撃力+50",
+    "zh-TW": "若為夜晚，攻擊力+50",
+    "zh-HK": "若為夜晚，攻擊力+50",
+    "zh-CN": "若为夜晚，攻击力+50",
+    "en": "If it is Night, attack power +50.",
+    "ko": "밤이라면 공격력 +50."
+  },
+  "2nd_26": {
+    "ja": "夜なら、同時に出した自分のキャラクターカードの攻撃力を+30する",
+    "zh-TW": "若為夜晚，同時打出的自己角色卡攻擊力+30",
+    "zh-HK": "若為夜晚，同時打出嘅自己角色卡攻擊力+30",
+    "zh-CN": "若为夜晚，同时打出的自己角色卡攻击力+30",
+    "en": "If it is Night, the attack power of your simultaneously played Character Card is +30.",
+    "ko": "밤이라면, 동시에 낸 자신의 캐릭터 카드 공격력 +30."
+  },
+  "2nd_27": {
+    "ja": "手札を２枚選んでデッキの底に置き、カードを２枚引く",
+    "zh-TW": "選擇2張手牌置於牌組底部，抽2張卡",
+    "zh-HK": "選擇2張手牌置於牌組底部，抽2張卡",
+    "zh-CN": "选择2张手牌置于牌组底部，抽2张卡",
+    "en": "Choose 2 cards from your hand, place them at the bottom of your deck, and draw 2 cards.",
+    "ko": "패에서 2장을 선택하여 덱 아래에 놓고, 카드 2장을 뽑는다."
+  },
+  "2nd_28": {
+    "ja": "自分のキャラクターカードと相手のキャラクターカードが同じパワーコストなら、攻撃力+40",
+    "zh-TW": "若自己的角色卡與對手的角色卡力量消耗相同，攻擊力+40",
+    "zh-HK": "若自己嘅角色卡與對手嘅角色卡力量消耗相同，攻擊力+40",
+    "zh-CN": "若自己的角色卡与对手的角色卡力量消耗相同，攻击力+40",
+    "en": "If your Character Card and your opponent's Character Card have the same Power Cost, attack power +40.",
+    "ko": "자신의 캐릭터 카드와 상대의 캐릭터 카드의 파워 코스트가 같다면 공격력 +40."
+  },
+  "2nd_29": {
+    "ja": "相手のキャラクターカードがパワーコスト６以上なら、攻撃力+50",
+    "zh-TW": "若對手的角色卡力量消耗為6以上，攻擊力+50",
+    "zh-HK": "若對手嘅角色卡力量消耗為6以上，攻擊力+50",
+    "zh-CN": "若对手的角色卡力量消耗为6以上，攻击力+50",
+    "en": "If your opponent's Character Card has a Power Cost of 6 or more, attack power +50.",
+    "ko": "상대의 캐릭터 카드 파워 코스트가 6 이상이라면 공격력 +50."
+  },
+  "2nd_30": {
+    "ja": "昼なら攻撃力+50",
+    "zh-TW": "若為白天，攻擊力+50",
+    "zh-HK": "若為白天，攻擊力+50",
+    "zh-CN": "若为白天，攻击力+50",
+    "en": "If it is Day, attack power +50.",
+    "ko": "낮이라면 공격력 +50."
+  },
+  "2nd_31": {
+    "ja": "手札を２枚選んでデッキの底に置き、カードを２枚引く",
+    "zh-TW": "選擇2張手牌置於牌組底部，抽2張卡",
+    "zh-HK": "選擇2張手牌置於牌組底部，抽2張卡",
+    "zh-CN": "选择2张手牌置于牌组底部，抽2张卡",
+    "en": "Choose 2 cards from your hand, place them at the bottom of your deck, and draw 2 cards.",
+    "ko": "패에서 2장을 선택하여 덱 아래에 놓고, 카드 2장을 뽑는다."
+  },
+  "2nd_32": {
+    "ja": "自分の攻撃力+30",
+    "zh-TW": "自己的攻擊力+30",
+    "zh-HK": "自己嘅攻擊力+30",
+    "zh-CN": "自己的攻击力+30",
+    "en": "Your attack power +30.",
+    "ko": "자신의 공격력 +30."
+  },
+  "2nd_35": {
+    "ja": "パワーチャージャーに炎属性のカードがあるなら、攻撃力+20",
+    "zh-TW": "若充能區中有火屬性的卡，攻擊力+20",
+    "zh-HK": "若充能區中有火屬性嘅卡，攻擊力+20",
+    "zh-CN": "若充能区中有火属性的卡，攻击力+20",
+    "en": "If there is a Fire element card in your Power Charger, attack power +20.",
+    "ko": "파워 차저에 불 속성 카드가 있다면 공격력 +20."
+  },
+  "2nd_36": {
+    "ja": "アビスに炎属性のカードが２枚以上あるなら、時計が真夜中になる",
+    "zh-TW": "若深淵中有2張以上火屬性的卡，時鐘變為午夜",
+    "zh-HK": "若深淵中有2張以上火屬性嘅卡，時鐘變為午夜",
+    "zh-CN": "若深渊中有2张以上火属性的卡，时钟变为午夜",
+    "en": "If there are 2 or more Fire element cards in your Abyss, the clock becomes midnight.",
+    "ko": "어비스에 불 속성 카드가 2장 이상 있다면 시계가 자정이 된다."
+  },
+  "2nd_40": {
+    "ja": "パワーチャージャーに闇属性のカードがあるなら、攻撃力+30",
+    "zh-TW": "若充能區中有暗屬性的卡，攻擊力+30",
+    "zh-HK": "若充能區中有暗屬性嘅卡，攻擊力+30",
+    "zh-CN": "若充能区中有暗属性的卡，攻击力+30",
+    "en": "If there is a Dark element card in your Power Charger, attack power +30.",
+    "ko": "파워 차저에 어둠 속성 카드가 있다면 공격력 +30."
+  },
+  "2nd_41": {
+    "ja": "前のターンで使用したキャラクターカードの属性が闇なら、デッキの一番上のカードをパワーがあればパワーチャージャーに、なければアビスに置く",
+    "zh-TW": "若上一回合使用的角色卡屬性為暗，將牌組頂端的卡若有力量則置於充能區，否則置於深淵",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為暗，將牌組頂端嘅卡若有力量則置於充能區，否則置於深淵",
+    "zh-CN": "若上一回合使用的角色卡属性为暗，将牌组顶端的卡若有力量则置于充能区，否则置于深渊",
+    "en": "If the Character Card you used last turn was Dark element, place the top card of your deck in the Power Charger if it has power, otherwise place it in the Abyss.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 어둠이라면, 덱 맨 위 카드에 파워가 있으면 파워 차저에, 없으면 어비스에 놓는다."
+  },
+  "2nd_42": {
+    "ja": "前のターンで使用したキャラクターカードの属性が闇なら攻撃力+20",
+    "zh-TW": "若上一回合使用的角色卡屬性為暗，攻擊力+20",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為暗，攻擊力+20",
+    "zh-CN": "若上一回合使用的角色卡属性为暗，攻击力+20",
+    "en": "If the Character Card you used last turn was Dark element, attack power +20.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 어둠이라면 공격력 +20."
+  },
+  "2nd_45": {
+    "ja": "パワーチャージャーに風属性のカードがあるなら、攻撃力+20",
+    "zh-TW": "若充能區中有風屬性的卡，攻擊力+20",
+    "zh-HK": "若充能區中有風屬性嘅卡，攻擊力+20",
+    "zh-CN": "若充能区中有风属性的卡，攻击力+20",
+    "en": "If there is a Wind element card in your Power Charger, attack power +20.",
+    "ko": "파워 차저에 바람 속성 카드가 있다면 공격력 +20."
+  },
+  "2nd_47": {
+    "ja": "前のターンで使用したキャラクターカードの属性が風で、今が昼なら攻撃力+40",
+    "zh-TW": "若上一回合使用的角色卡屬性為風，且現在為白天，攻擊力+40",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為風，且現在為白天，攻擊力+40",
+    "zh-CN": "若上一回合使用的角色卡属性为风，且现在为白天，攻击力+40",
+    "en": "If the Character Card you used last turn was Wind element and it is currently Day, attack power +40.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 바람이고 현재 낮이라면 공격력 +40."
+  },
+  "2nd_49": {
+    "ja": "パワーチャージャーに電気属性のカードがあるなら、攻撃力+20",
+    "zh-TW": "若充能區中有雷屬性的卡，攻擊力+20",
+    "zh-HK": "若充能區中有雷屬性嘅卡，攻擊力+20",
+    "zh-CN": "若充能区中有雷属性的卡，攻击力+20",
+    "en": "If there is a Lightning element card in your Power Charger, attack power +20.",
+    "ko": "파워 차저에 번개 속성 카드가 있다면 공격력 +20."
+  },
+  "2nd_50": {
+    "ja": "アビスに電気属性のカードがあるなら、相手のHPを20減らす",
+    "zh-TW": "若深淵中有雷屬性的卡，對手的HP減少20",
+    "zh-HK": "若深淵中有雷屬性嘅卡，對手嘅HP減少20",
+    "zh-CN": "若深渊中有雷属性的卡，对手的HP减少20",
+    "en": "If there is a Lightning element card in your Abyss, reduce your opponent's HP by 20.",
+    "ko": "어비스에 번개 속성 카드가 있다면 상대의 HP를 20 감소시킨다."
+  },
+  "2nd_53": {
+    "ja": "パワーチャージャーのカードが闇属性だけだったなら攻撃力+40",
+    "zh-TW": "若充能區中的卡全部為暗屬性，攻擊力+40",
+    "zh-HK": "若充能區中嘅卡全部為暗屬性，攻擊力+40",
+    "zh-CN": "若充能区中的卡全部为暗属性，攻击力+40",
+    "en": "If the cards in your Power Charger are all Dark element, attack power +40.",
+    "ko": "파워 차저의 카드가 모두 어둠 속성이라면 공격력 +40."
+  },
+  "2nd_54": {
+    "ja": "自分のキャラクターカードの属性が炎なら攻撃力+30",
+    "zh-TW": "若自己的角色卡屬性為火，攻擊力+30",
+    "zh-HK": "若自己嘅角色卡屬性為火，攻擊力+30",
+    "zh-CN": "若自己的角色卡属性为火，攻击力+30",
+    "en": "If your Character Card's element is Fire, attack power +30.",
+    "ko": "자신의 캐릭터 카드 속성이 불이라면 공격력 +30."
+  },
+  "2nd_55": {
+    "ja": "自分のキャラクターカードの属性が炎なら、相手のエリアエンチャントカードを相手のデッキの上に置く",
+    "zh-TW": "若自己的角色卡屬性為火，將對手的區域附魔卡置於對手牌組上方",
+    "zh-HK": "若自己嘅角色卡屬性為火，將對手嘅區域附魔卡置於對手牌組上方",
+    "zh-CN": "若自己的角色卡属性为火，将对手的区域附魔卡置于对手牌组上方",
+    "en": "If your Character Card's element is Fire, place your opponent's Area Enchant card on top of their deck.",
+    "ko": "자신의 캐릭터 카드 속성이 불이라면, 상대의 에리아 인챈트 카드를 상대 덱 위에 놓는다."
+  },
+  "2nd_56": {
+    "ja": "パワーチャージャーのカードが炎属性だけだったなら攻撃力+30",
+    "zh-TW": "若充能區中的卡全部為火屬性，攻擊力+30",
+    "zh-HK": "若充能區中嘅卡全部為火屬性，攻擊力+30",
+    "zh-CN": "若充能区中的卡全部为火属性，攻击力+30",
+    "en": "If the cards in your Power Charger are all Fire element, attack power +30.",
+    "ko": "파워 차저의 카드가 모두 불 속성이라면 공격력 +30."
+  },
+  "2nd_57": {
+    "ja": "自分のキャラクターカードの属性が闇なら攻撃力+30",
+    "zh-TW": "若自己的角色卡屬性為暗，攻擊力+30",
+    "zh-HK": "若自己嘅角色卡屬性為暗，攻擊力+30",
+    "zh-CN": "若自己的角色卡属性为暗，攻击力+30",
+    "en": "If your Character Card's element is Dark, attack power +30.",
+    "ko": "자신의 캐릭터 카드 속성이 어둠이라면 공격력 +30."
+  },
+  "2nd_58": {
+    "ja": "アビスの闇属性のカード１枚につき、★+１。キャラクターカードを自分のパワーチャージャーに置いたターンの終了時にアビスに置く",
+    "zh-TW": "深淵中每有1張暗屬性的卡，★+1。將角色卡置於自己的充能區的回合結束時置於深淵",
+    "zh-HK": "深淵中每有1張暗屬性嘅卡，★+1。將角色卡置於自己嘅充能區嘅回合結束時置於深淵",
+    "zh-CN": "深渊中每有1张暗属性的卡，★+1。将角色卡置于自己的充能区的回合结束时置于深渊",
+    "en": "+1★ for each Dark element card in your Abyss. Place it in the Abyss at the end of the turn a Character Card is placed in your Power Charger.",
+    "ko": "어비스의 어둠 속성 카드 1장당 ★+1. 캐릭터 카드를 자신의 파워 차저에 놓은 턴 종료 시 어비스에 놓는다."
+  },
+  "2nd_59": {
+    "ja": "昼なら、同時に出した自分のキャラクターカードの攻撃力+30",
+    "zh-TW": "若為白天，同時打出的自己角色卡攻擊力+30",
+    "zh-HK": "若為白天，同時打出嘅自己角色卡攻擊力+30",
+    "zh-CN": "若为白天，同时打出的自己角色卡攻击力+30",
+    "en": "If it is Day, the attack power of your simultaneously played Character Card is +30.",
+    "ko": "낮이라면, 동시에 낸 자신의 캐릭터 카드 공격력 +30."
+  },
+  "2nd_60": {
+    "ja": "自分のキャラクターカードの属性が風なら攻撃力+30",
+    "zh-TW": "若自己的角色卡屬性為風，攻擊力+30",
+    "zh-HK": "若自己嘅角色卡屬性為風，攻擊力+30",
+    "zh-CN": "若自己的角色卡属性为风，攻击力+30",
+    "en": "If your Character Card's element is Wind, attack power +30.",
+    "ko": "자신의 캐릭터 카드 속성이 바람이라면 공격력 +30."
+  },
+  "2nd_61": {
+    "ja": "パワーチャージャーのカードが電気属性だけだったなら攻撃力+40",
+    "zh-TW": "若充能區中的卡全部為雷屬性，攻擊力+40",
+    "zh-HK": "若充能區中嘅卡全部為雷屬性，攻擊力+40",
+    "zh-CN": "若充能区中的卡全部为雷属性，攻击力+40",
+    "en": "If the cards in your Power Charger are all Lightning element, attack power +40.",
+    "ko": "파워 차저의 카드가 모두 번개 속성이라면 공격력 +40."
+  },
+  "2nd_62": {
+    "ja": "同時に出したキャラクターカードを、変えなくてもよい",
+    "zh-TW": "同時打出的角色卡可以不進行變更",
+    "zh-HK": "同時打出嘅角色卡可以唔進行變更",
+    "zh-CN": "同时打出的角色卡可以不进行变更",
+    "en": "You may choose not to change your simultaneously played Character Card.",
+    "ko": "同時に 낸 캐릭터 카드를 변경하지 않아도 된다."
+  },
+  "2nd_63": {
+    "ja": "自分のキャラクターカードの属性が電気なら攻撃力+30",
+    "zh-TW": "若自己的角色卡屬性為雷，攻擊力+30",
+    "zh-HK": "若自己嘅角色卡屬性為雷，攻擊力+30",
+    "zh-CN": "若自己的角色卡属性为雷，攻击力+30",
+    "en": "If your Character Card's element is Lightning, attack power +30.",
+    "ko": "자신의 캐릭터 카드 속성이 번개라면 공격력 +30."
+  },
+  "2nd_64": {
+    "ja": "パワーチャージャーの電気属性のカード１枚につき、攻撃力+20。相手のHPが30以下になったターンの終了時にアビスに置く",
+    "zh-TW": "充能區中每有1張雷屬性的卡，攻擊力+20。對手的HP降至30以下的回合結束時置於深淵",
+    "zh-HK": "充能區中每有1張雷屬性嘅卡，攻擊力+20。對手嘅HP降至30以下嘅回合結束時置於深淵",
+    "zh-CN": "充能区中每有1张雷属性的卡，攻击力+20。对手的HP降至30以下的回合结束时置于深渊",
+    "en": "+20 attack power for each Lightning element card in your Power Charger. Place it in the Abyss at the end of the turn your opponent's HP drops to 30 or below.",
+    "ko": "파워 차저의 번개 속성 카드 1장당 공격력 +20. 상대의 HP가 30 이하가 된 턴 종료 시 어비스에 놓는다."
+  },
+  "2nd_68": {
+    "ja": "前のターンで使用したキャラクターカードの属性が炎で、今が夜なら攻撃力+30",
+    "zh-TW": "若上一回合使用的角色卡屬性為火，且現在為夜晚，攻擊力+30",
+    "zh-HK": "若上一回合使用嘅角色卡屬性為火，且現在為夜晚，攻擊力+30",
+    "zh-CN": "若上一回合使用的角色卡属性为火，且现在为夜晚，攻击力+30",
+    "en": "If the Character Card you used last turn was Fire element and it is currently Night, attack power +30.",
+    "ko": "지난 턴에 사용한 캐릭터 카드 속성이 불이고 현재 밤이라면 공격력 +30."
+  },
+  "2nd_69": {
+    "ja": "相手のキャラクターカードの属性が電気なら攻撃力+20",
+    "zh-TW": "若對手的角色卡屬性為雷，攻擊力+20",
+    "zh-HK": "若對手嘅角色卡屬性為雷，攻擊力+20",
+    "zh-CN": "若对手的角色卡属性为雷，攻击力+20",
+    "en": "If your opponent's Character Card's element is Lightning, attack power +20.",
+    "ko": "상대의 캐릭터 카드 속성이 번개라면 공격력 +20."
+  },
+  "2nd_76": {
+    "ja": "相手のキャラクターカードの属性が炎なら攻撃力+20",
+    "zh-TW": "若對手的角色卡屬性為火，攻擊力+20",
+    "zh-HK": "若對手嘅角色卡屬性為火，攻擊力+20",
+    "zh-CN": "若对手的角色卡属性为火，攻击力+20",
+    "en": "If your opponent's Character Card's element is Fire, attack power +20.",
+    "ko": "상대의 캐릭터 카드 속성이 불이라면 공격력 +20."
+  },
+  "2nd_81": {
+    "ja": "アビスのカードが闇属性だけだったなら攻撃力+20",
+    "zh-TW": "若深淵中的卡全部為暗屬性，攻擊力+20",
+    "zh-HK": "若深淵中嘅卡全部為暗屬性，攻擊力+20",
+    "zh-CN": "若深渊中的卡全部为暗属性，攻击力+20",
+    "en": "If the cards in your Abyss are all Dark element, attack power +20.",
+    "ko": "어비스의 카드가 모두 어둠 속성이라면 공격력 +20."
+  },
+  "2nd_82": {
+    "ja": "手札を１枚選んでデッキの底に置き、カードを１枚引く",
+    "zh-TW": "選擇1張手牌置於牌組底部，抽1張卡",
+    "zh-HK": "選擇1張手牌置於牌組底部，抽1張卡",
+    "zh-CN": "选择1张手牌置于牌组底部，抽1张卡",
+    "en": "Choose 1 card from your hand, place it at the bottom of your deck, and draw 1 card.",
+    "ko": "패에서 1장을 선택하여 덱 아래에 놓고, 카드 1장을 뽑는다."
+  },
+  "2nd_83": {
+    "ja": "夜なら攻撃力+30",
+    "zh-TW": "若為夜晚，攻擊力+30",
+    "zh-HK": "若為夜晚，攻擊力+30",
+    "zh-CN": "若为夜晚，攻击力+30",
+    "en": "If it is Night, attack power +30.",
+    "ko": "밤이라면 공격력 +30."
+  },
+  "2nd_84": {
+    "ja": "自分の攻撃力+10。相手のキャラクターカードの属性をバトルフィールドにいる間電気にする",
+    "zh-TW": "自己的攻擊力+10。對手的角色卡在戰場上期間屬性變為雷",
+    "zh-HK": "自己嘅攻擊力+10。對手嘅角色卡喺戰場上期間屬性變為雷",
+    "zh-CN": "自己的攻击力+10。对手的角色卡在战场上期间属性变为雷",
+    "en": "Your attack power +10. Your opponent's Character Card's element becomes Lightning while it is on the battlefield.",
+    "ko": "자신의 공격력 +10. 상대의 캐릭터 카드 속성을 배틀필드에 있는 동안 번개로 바꾼다."
+  },
+  "2nd_85": {
+    "ja": "自分のキャラクターカードの属性が闇ならHPを10回復",
+    "zh-TW": "若自己的角色卡屬性為暗，恢復HP 10",
+    "zh-HK": "若自己嘅角色卡屬性為暗，恢復HP 10",
+    "zh-CN": "若自己的角色卡属性为暗，恢复HP 10",
+    "en": "If your Character Card's element is Dark, recover 10 HP.",
+    "ko": "자신의 캐릭터 카드 속성이 어둠이라면 HP 10 회복."
+  },
+  "2nd_86": {
+    "ja": "夜なら攻撃力+20。夜じゃなくなったらパワーチャージャーに置く",
+    "zh-TW": "若為夜間，攻擊力+20。若不再是夜間，則置於充能區",
+    "zh-HK": "若為夜間，攻擊力+20。若不再是夜間，則置於充能區",
+    "zh-CN": "若为夜间，攻击+20。若不再是夜间，则置于充能区",
+    "en": "If it is Night, Attack +20. If it is no longer Night, place in Power Charger",
+    "ko": "야간이면 공격력 +20. 야간이 아니면 파워 충전소에 놓기"
+  },
+  "2nd_87": {
+    "ja": "アビスのカードが炎属性だけだったなら攻撃力+20",
+    "zh-TW": "若深淵中的卡牌全部為炎屬性，攻擊力+20",
+    "zh-HK": "若深淵中的卡牌全部為炎屬性，攻擊力+20",
+    "zh-CN": "若深渊中的卡牌全部为炎属性，攻击+20",
+    "en": "If all cards in Abyss are Flame attribute, Attack +20",
+    "ko": "어비스의 카드가 전부 화염 속성이라면 공격력 +20"
+  },
+  "2nd_88": {
+    "ja": "自分の攻撃力+10。相手のキャラクターカードの属性をバトルフィールドにいる間闇にする",
+    "zh-TW": "自己的攻擊力+10。將對手角色卡牌的屬性在戰鬥區域期間變為闇",
+    "zh-HK": "自己的攻擊力+10。將對手角色卡牌的屬性在戰鬥區域期間變為闇",
+    "zh-CN": "自己的攻击+10。将对手角色卡牌的属性在战斗区域期间变为暗",
+    "en": "Your Attack +10. Change opponent's Character card attribute to Dark while in Battle Zone",
+    "ko": "자신의 공격력 +10. 상대 캐릭터 카드의 속성을 배틀 존에 있는 동안 암으로 변경"
+  },
+  "2nd_89": {
+    "ja": "自分がダメージを受けたとき20ダメージを軽減する",
+    "zh-TW": "自己受到傷害時，減少20點傷害",
+    "zh-HK": "自己受到傷害時，減少20點傷害",
+    "zh-CN": "自己受到伤害时，减少20点伤害",
+    "en": "Reduce 20 Damage when you receive Damage",
+    "ko": "자신이 데미지를 받을 때 20 데미지 경감"
+  },
+  "2nd_90": {
+    "ja": "自分がダメージを受けたとき30ダメージを軽減する",
+    "zh-TW": "自己受到傷害時，減少30點傷害",
+    "zh-HK": "自己受到傷害時，減少30點傷害",
+    "zh-CN": "自己受到伤害时，减少30点伤害",
+    "en": "Reduce 30 Damage when you receive Damage",
+    "ko": "자신이 데미지를 받을 때 30 데미지 경감"
+  },
+  "2nd_91": {
+    "ja": "自分のキャラクターカードの属性が炎ならHPを10回復",
+    "zh-TW": "若自己的角色卡牌屬性為炎，恢復10點HP",
+    "zh-HK": "若自己的角色卡牌屬性為炎，恢復10點HP",
+    "zh-CN": "若自己的角色卡牌属性为炎，恢复10点HP",
+    "en": "If your Character card attribute is Flame, recover 10 HP",
+    "ko": "자신의 캐릭터 카드 속성이 화염이면 HP 10 회복"
+  },
+  "2nd_92": {
+    "ja": "キャラクターカードが２コスト以上なら、攻撃力+20。相手のキャラクターカードが４コスト以上ならパワーチャージャーに置く",
+    "zh-TW": "若角色卡牌費用為2以上，攻擊力+20。若對手的角色卡牌費用為4以上，置於充能區",
+    "zh-HK": "若角色卡牌費用為2以上，攻擊力+20。若對手的角色卡牌費用為4以上，置於充能區",
+    "zh-CN": "若角色卡牌费用为2以上，攻击+20。若对手的角色卡牌费用为4以上，置于充能区",
+    "en": "If Character card cost is 2 or more, Attack +20. If opponent's Character card cost is 4 or more, place in Power Charger",
+    "ko": "캐릭터 카드 비용이 2 이상이면 공격력 +20. 상대 캐릭터 카드 비용이 4 이상이면 파워 충전소에 놓기"
+  },
+  "2nd_93": {
+    "ja": "アビスのカードが電気属性だけだったなら攻撃力+20",
+    "zh-TW": "若深淵中的卡牌全部為電氣屬性，攻擊力+20",
+    "zh-HK": "若深淵中的卡牌全部為電氣屬性，攻擊力+20",
+    "zh-CN": "若深渊中的卡牌全部为电气属性，攻击+20",
+    "en": "If all cards in Abyss are Electric attribute, Attack +20",
+    "ko": "어비스의 카드가 전부 전기 속성이라면 공격력 +20"
+  },
+  "2nd_94": {
+    "ja": "手札を１枚選んでデッキの底に置き、カードを１枚引く",
+    "zh-TW": "選擇手牌中的1張卡牌置於牌組底部，抽1張卡牌",
+    "zh-HK": "選擇手牌中的1張卡牌置於牌組底部，抽1張卡牌",
+    "zh-CN": "选择手牌中的1张卡牌置于牌组底部，抽1张卡牌",
+    "en": "Choose 1 card from Hand and place at bottom of Deck, draw 1 card",
+    "ko": "핸드에서 1장을 골라 덱 아래에 놓고, 카드 1장을 뽑기"
+  },
+  "2nd_95": {
+    "ja": "昼なら攻撃力+30",
+    "zh-TW": "若為晝間，攻擊力+30",
+    "zh-HK": "若為晝間，攻擊力+30",
+    "zh-CN": "若为白昼，攻击+30",
+    "en": "If it is Day, Attack +30",
+    "ko": "주간이면 공격력 +30"
+  },
+  "2nd_96": {
+    "ja": "自分の攻撃力+10。相手のキャラクターカードの属性をバトルフィールドにいる間風にする",
+    "zh-TW": "自己的攻擊力+10。將對手角色卡牌的屬性在戰鬥區域期間變為風",
+    "zh-HK": "自己的攻擊力+10。將對手角色卡牌的屬性在戰鬥區域期間變為風",
+    "zh-CN": "自己的攻击+10。将对手角色卡牌的属性在战斗区域期间变为风",
+    "en": "Your Attack +10. Change opponent's Character card attribute to Wind while in Battle Zone",
+    "ko": "자신의 공격력 +10. 상대 캐릭터 카드의 속성을 배틀 존에 있는 동안 풍으로 변경"
+  },
+  "2nd_97": {
+    "ja": "自分のキャラクターカードの属性が電気ならHPを10回復",
+    "zh-TW": "若自己的角色卡牌屬性為電氣，恢復10點HP",
+    "zh-HK": "若自己的角色卡牌屬性為電氣，恢復10點HP",
+    "zh-CN": "若自己的角色卡牌属性为电气，恢复10点HP",
+    "en": "If your Character card attribute is Electric, recover 10 HP",
+    "ko": "자신의 캐릭터 카드 속성이 전기이면 HP 10 회복"
+  },
+  "2nd_98": {
+    "ja": "昼なら攻撃力+20。昼じゃなくなったらパワーチャージャーに置く",
+    "zh-TW": "若為晝間，攻擊力+20。若不再是晝間，則置於充能區",
+    "zh-HK": "若為晝間，攻擊力+20。若不再是晝間，則置於充能區",
+    "zh-CN": "若为白昼，攻击+20。若不再是白昼，则置于充能区",
+    "en": "If it is Day, Attack +20. If it is no longer Day, place in Power Charger",
+    "ko": "주간이면 공격력 +20. 주간이 아니면 파워 충전소에 놓기"
+  },
+  "2nd_99": {
+    "ja": "アビスのカードが風属性だけだったなら攻撃力+30",
+    "zh-TW": "若深淵中的卡牌全部為風屬性，攻擊力+30",
+    "zh-HK": "若深淵中的卡牌全部為風屬性，攻擊力+30",
+    "zh-CN": "若深渊中的卡牌全部为风属性，攻击+30",
+    "en": "If all cards in Abyss are Wind attribute, Attack +30",
+    "ko": "어비스의 카드가 전부 풍 속성이라면 공격력 +30"
+  },
+  "2nd_100": {
+    "ja": "自分の攻撃力+10。相手のキャラクターカードの属性をバトルフィールドにいる間炎にする",
+    "zh-TW": "自己的攻擊力+10。將對手角色卡牌的屬性在戰鬥區域期間變為炎",
+    "zh-HK": "自己的攻擊力+10。將對手角色卡牌的屬性在戰鬥區域期間變為炎",
+    "zh-CN": "自己的攻击+10。将对手角色卡牌的属性在战斗区域期间变为炎",
+    "en": "Your Attack +10. Change opponent's Character card attribute to Flame while in Battle Zone",
+    "ko": "자신의 공격력 +10. 상대 캐릭터 카드의 속성을 배틀 존에 있는 동안 화염으로 변경"
+  },
+  "2nd_101": {
+    "ja": "自分の攻撃力+20",
+    "zh-TW": "自己的攻擊力+20",
+    "zh-HK": "自己的攻擊力+20",
+    "zh-CN": "自己的攻击+20",
+    "en": "Your Attack +20",
+    "ko": "자신의 공격력 +20"
+  },
+  "2nd_102": {
+    "ja": "パワーチャージャーのカードが風属性だけだったなら攻撃力+50",
+    "zh-TW": "若充能區中的卡牌全部為風屬性，攻擊力+50",
+    "zh-HK": "若充能區中的卡牌全部為風屬性，攻擊力+50",
+    "zh-CN": "若充能区中的卡牌全部为风属性，攻击+50",
+    "en": "If all cards in Power Charger are Wind attribute, Attack +50",
+    "ko": "파워 충전소의 카드가 전부 풍 속성이라면 공격력 +50"
+  },
+  "2nd_103": {
+    "ja": "自分のキャラクターカードの属性が風ならHPを10回復",
+    "zh-TW": "若自己的角色卡牌屬性為風，恢復10點HP",
+    "zh-HK": "若自己的角色卡牌屬性為風，恢復10點HP",
+    "zh-CN": "若自己的角色卡牌属性为风，恢复10点HP",
+    "en": "If your Character card attribute is Wind, recover 10 HP",
+    "ko": "자신의 캐릭터 카드 속성이 풍이면 HP 10 회복"
+  },
+  "2nd_104": {
+    "ja": "キャラクターカードが２コスト以下なら、攻撃力+20。キャラクターカードが４コスト以上ならパワーチャージャーに置く",
+    "zh-TW": "若角色卡牌費用為2以下，攻擊力+20。若角色卡牌費用為4以上，置於充能區",
+    "zh-HK": "若角色卡牌費用為2以下，攻擊力+20。若角色卡牌費用為4以上，置於充能區",
+    "zh-CN": "若角色卡牌费用为2以下，攻击+20。若角色卡牌费用为4以上，置于充能区",
+    "en": "If Character card cost is 2 or less, Attack +20. If Character card cost is 4 or more, place in Power Charger",
+    "ko": "캐릭터 카드 비용이 2 이하이면 공격력 +20. 캐릭터 카드 비용이 4 이상이면 파워 충전소에 놓기"
+  },
+  "2nd_106": {
+    "ja": "アビスに風属性のカードが２枚以上あるなら、時計が正午になる",
+    "zh-TW": "若深淵中有2張以上風屬性卡牌，時鐘變為正午",
+    "zh-HK": "若深淵中有2張以上風屬性卡牌，時鐘變為正午",
+    "zh-CN": "若深渊中有2张以上风属性卡牌，时钟变为正午",
+    "en": "If there are 2 or more Wind attribute cards in Abyss, Clock becomes Noon",
+    "ko": "어비스에 풍 속성 카드가 2장 이상 있으면 시계가 정오가 됨"
+  },
+  "3rd_1": {
+    "ja": "真夜中なら攻撃力+100",
+    "zh-TW": "若為真夜中，攻擊力+100",
+    "zh-HK": "若為真夜中，攻擊力+100",
+    "zh-CN": "若为真夜中，攻击+100",
+    "en": "If it is Midnight, Attack +100",
+    "ko": "한밤중이면 공격력 +100"
+  },
+  "3rd_5": {
+    "ja": "HPが相手のHPより少ないなら、時計を真夜中にする",
+    "zh-TW": "若自己的HP低於對手的HP，將時鐘設為真夜中",
+    "zh-HK": "若自己的HP低於對手的HP，將時鐘設為真夜中",
+    "zh-CN": "若自己的HP低于对手的HP，将时钟设为真夜中",
+    "en": "If your HP is less than opponent's HP, set Clock to Midnight",
+    "ko": "자신의 HP가 상대 HP보다 적으면 시계를 한밤중으로 설정"
+  },
+  "3rd_6": {
+    "ja": "相手のHPが100なら攻撃力+100",
+    "zh-TW": "若對手的HP為100，攻擊力+100",
+    "zh-HK": "若對手的HP為100，攻擊力+100",
+    "zh-CN": "若对手的HP为100，攻击+100",
+    "en": "If opponent's HP is 100, Attack +100",
+    "ko": "상대 HP가 100이면 공격력 +100"
+  },
+  "3rd_7": {
+    "ja": "HPが相手のHPより少ないなら、時計を真昼にする",
+    "zh-TW": "若自己的HP低於對手的HP，將時鐘設為真晝",
+    "zh-HK": "若自己的HP低於對手的HP，將時鐘設為真晝",
+    "zh-CN": "若自己的HP低于对手的HP，将时钟设为正午",
+    "en": "If your HP is less than opponent's HP, set Clock to Noon",
+    "ko": "자신의 HP가 상대 HP보다 적으면 시계를 한낮으로 설정"
+  },
+  "3rd_8": {
+    "ja": "アビスに闇・炎・電気・風の４属性のカードがあるなら攻撃力+100",
+    "zh-TW": "若深淵中同時存在闇、炎、電氣、風四種屬性的卡牌，攻擊力+100",
+    "zh-HK": "若深淵中同時存在闇、炎、電氣、風四種屬性的卡牌，攻擊力+100",
+    "zh-CN": "若深渊中同时存在暗、炎、电气、风四种属性的卡牌，攻击+100",
+    "en": "If Abyss contains Dark, Flame, Electric, and Wind attribute cards, Attack +100",
+    "ko": "어비스에 암·화염·전기·풍 4속성 카드가 있으면 공격력 +100"
+  },
+  "3rd_9": {
+    "ja": "真夜中なら攻撃力+50",
+    "zh-TW": "若為真夜中，攻擊力+50",
+    "zh-HK": "若為真夜中，攻擊力+50",
+    "zh-CN": "若为真夜中，攻击+50",
+    "en": "If it is Midnight, Attack +50",
+    "ko": "한밤중이면 공격력 +50"
+  },
+  "3rd_11": {
+    "ja": "相手のパワーチャージャーのカードが風属性だけだったなら攻撃力+40",
+    "zh-TW": "若對手充能區中的卡牌全部為風屬性，攻擊力+40",
+    "zh-HK": "若對手充能區中的卡牌全部為風屬性，攻擊力+40",
+    "zh-CN": "若对手充能区中的卡牌全部为风属性，攻击+40",
+    "en": "If all cards in opponent's Power Charger are Wind attribute, Attack +40",
+    "ko": "상대 파워 충전소의 카드가 전부 풍 속성이라면 공격력 +40"
+  },
+  "3rd_14": {
+    "ja": "相手のエリアエンチャントを相手のデッキの底に置く",
+    "zh-TW": "將對手的區域附魔置於對手牌組底部",
+    "zh-HK": "將對手的區域附魔置於對手牌組底部",
+    "zh-CN": "将对手的区域附魔置于对手牌组底部",
+    "en": "Place opponent's Area Enchant at bottom of opponent's Deck",
+    "ko": "상대의 영역 인챈트를 상대 덱 아래에 놓기"
+  },
+  "3rd_17": {
+    "ja": "相手のパワーチャージャーのカードが闇属性だけだったなら攻撃力+40",
+    "zh-TW": "若對手充能區中的卡牌全部為闇屬性，攻擊力+40",
+    "zh-HK": "若對手充能區中的卡牌全部為闇屬性，攻擊力+40",
+    "zh-CN": "若对手充能区中的卡牌全部为暗属性，攻击+40",
+    "en": "If all cards in opponent's Power Charger are Dark attribute, Attack +40",
+    "ko": "상대 파워 충전소의 카드가 전부 암 속성이라면 공격력 +40"
+  },
+  "3rd_19": {
+    "ja": "パワーチャージャーのカードが電気属性だけだったなら攻撃力+30",
+    "zh-TW": "若充能區中的卡牌全部為電氣屬性，攻擊力+30",
+    "zh-HK": "若充能區中的卡牌全部為電氣屬性，攻擊力+30",
+    "zh-CN": "若充能区中的卡牌全部为电气属性，攻击+30",
+    "en": "If all cards in Power Charger are Electric attribute, Attack +30",
+    "ko": "파워 충전소의 카드가 전부 전기 속성이라면 공격력 +30"
+  },
+  "3rd_21": {
+    "ja": "相手のエリアエンチャントを相手のデッキの上に置く",
+    "zh-TW": "將對手的區域附魔置於對手牌組頂部",
+    "zh-HK": "將對手的區域附魔置於對手牌組頂部",
+    "zh-CN": "将对手的区域附魔置于对手牌组顶部",
+    "en": "Place opponent's Area Enchant on top of opponent's Deck",
+    "ko": "상대의 영역 인챈트를 상대 덱 위에 놓기"
+  },
+  "3rd_22": {
+    "ja": "アビスに闇・炎・電気・風の４属性のカードがあるなら攻撃力+40",
+    "zh-TW": "若深淵中同時存在闇、炎、電氣、風四種屬性的卡牌，攻擊力+40",
+    "zh-HK": "若深淵中同時存在闇、炎、電氣、風四種屬性的卡牌，攻擊力+40",
+    "zh-CN": "若深渊中同时存在暗、炎、电气、风四种属性的卡牌，攻击+40",
+    "en": "If Abyss contains Dark, Flame, Electric, and Wind attribute cards, Attack +40",
+    "ko": "어비스에 암·화염·전기·풍 4속성 카드가 있으면 공격력 +40"
+  },
+  "3rd_23": {
+    "ja": "相手のパワーチャージャーのカードが炎属性だけだったなら攻撃力+40",
+    "zh-TW": "若對手充能區中的卡牌全部為炎屬性，攻擊力+40",
+    "zh-HK": "若對手充能區中的卡牌全部為炎屬性，攻擊力+40",
+    "zh-CN": "若对手充能区中的卡牌全部为炎属性，攻击+40",
+    "en": "If all cards in opponent's Power Charger are Flame attribute, Attack +40",
+    "ko": "상대 파워 충전소의 카드가 전부 화염 속성이라면 공격력 +40"
+  },
+  "3rd_25": {
+    "ja": "真夜中なら攻撃力+70",
+    "zh-TW": "若為真夜中，攻擊力+70",
+    "zh-HK": "若為真夜中，攻擊力+70",
+    "zh-CN": "若为真夜中，攻击+70",
+    "en": "If it is Midnight, Attack +70",
+    "ko": "한밤중이면 공격력 +70"
+  },
+  "3rd_26": {
+    "ja": "真夜中の前後２マスも真夜中として扱う",
+    "zh-TW": "真夜中前後2格也視為真夜中",
+    "zh-HK": "真夜中前後2格也視為真夜中",
+    "zh-CN": "真夜中前后2格也视为真夜中",
+    "en": "2 spaces before and after Midnight are also treated as Midnight",
+    "ko": "한밤중 전후 2칸도 한밤중으로 취급"
+  },
+  "3rd_27": {
+    "ja": "相手のHPを50回復させ、ターン終了時に50ダメージを与える",
+    "zh-TW": "恢復對手50點HP，回合結束時給予50點傷害",
+    "zh-HK": "恢復對手50點HP，回合結束時給予50點傷害",
+    "zh-CN": "恢复对手50点HP，回合结束时给予50点伤害",
+    "en": "Recover opponent's HP by 50, then deal 50 Damage at end of Turn",
+    "ko": "상대 HP를 50 회복시키고, 턴 종료 시 50 데미지 부여"
+  },
+  "3rd_28": {
+    "ja": "パワーチャージャーのカードが炎属性だけだったなら攻撃力+80",
+    "zh-TW": "若充能區中的卡牌全部為炎屬性，攻擊力+80",
+    "zh-HK": "若充能區中的卡牌全部為炎屬性，攻擊力+80",
+    "zh-CN": "若充能区中的卡牌全部为炎属性，攻击+80",
+    "en": "If all cards in Power Charger are Flame attribute, Attack +80",
+    "ko": "파워 충전소의 카드가 전부 화염 속성이라면 공격력 +80"
+  },
+  "3rd_29": {
+    "ja": "昼なら攻撃力+50",
+    "zh-TW": "若為晝間，攻擊力+50",
+    "zh-HK": "若為晝間，攻擊力+50",
+    "zh-CN": "若为白昼，攻击+50",
+    "en": "If it is Day, Attack +50",
+    "ko": "주간이면 공격력 +50"
+  },
+  "3rd_30": {
+    "ja": "アビスに電気属性のカードが３枚以上あるなら攻撃力+70",
+    "zh-TW": "若深淵中有3張以上電氣屬性卡牌，攻擊力+70",
+    "zh-HK": "若深淵中有3張以上電氣屬性卡牌，攻擊力+70",
+    "zh-CN": "若深渊中有3张以上电气属性卡牌，攻击+70",
+    "en": "If there are 3 or more Electric attribute cards in Abyss, Attack +70",
+    "ko": "어비스에 전기 속성 카드가 3장 이상 있으면 공격력 +70"
+  },
+  "3rd_31": {
+    "ja": "手札からパワーの有無に関わらずカード１枚を選び、アビスに置く。\\nデッキからカードを１枚引く",
+    "zh-TW": "從手牌中選擇1張卡牌（無論有無力量），置於深淵。\\n從牌組中抽1張卡牌",
+    "zh-HK": "從手牌中選擇1張卡牌（無論有無力量），置於深淵。\\n從牌組中抽1張卡牌",
+    "zh-CN": "从手牌中选择1张卡牌（无论有无力量），置于深渊。\\n从牌组中抽1张卡牌",
+    "en": "Choose 1 card from Hand (regardless of Power) and place in Abyss.\\nDraw 1 card from Deck",
+    "ko": "핸드에서 파워 유무에 관계없이 카드 1장을 골라 어비스에 놓기。\\n덱에서 카드 1장을 뽑기"
+  },
+  "3rd_32": {
+    "ja": "アビスに風属性のカードが３枚以上あるなら攻撃力+80",
+    "zh-TW": "若深淵中有3張以上風屬性卡牌，攻擊力+80",
+    "zh-HK": "若深淵中有3張以上風屬性卡牌，攻擊力+80",
+    "zh-CN": "若深渊中有3张以上风属性卡牌，攻击+80",
+    "en": "If there are 3 or more Wind attribute cards in Abyss, Attack +80",
+    "ko": "어비스에 풍 속성 카드가 3장 이상 있으면 공격력 +80"
+  },
+  "3rd_33": {
+    "ja": "昼なら、時計を２つ進める",
+    "zh-TW": "若為晝間，將時鐘前進2格",
+    "zh-HK": "若為晝間，將時鐘前進2格",
+    "zh-CN": "若为白昼，将时钟前进2格",
+    "en": "If it is Day, advance Clock by 2",
+    "ko": "주간이면 시계를 2칸 전진"
+  },
+  "3rd_36": {
+    "ja": "パワーチャージャーのカードが闇属性だけだったなら攻撃力+30",
+    "zh-TW": "若充能區中的卡牌全部為闇屬性，攻擊力+30",
+    "zh-HK": "若充能區中的卡牌全部為闇屬性，攻擊力+30",
+    "zh-CN": "若充能区中的卡牌全部为暗属性，攻击+30",
+    "en": "If all cards in Power Charger are Dark attribute, Attack +30",
+    "ko": "파워 충전소의 카드가 전부 암 속성이라면 공격력 +30"
+  },
+  "3rd_39": {
+    "ja": "相手のパワーチャージャーのカードが電気属性だけだったなら攻撃力+50",
+    "zh-TW": "若對手充能區中的卡牌全部為電氣屬性，攻擊力+50",
+    "zh-HK": "若對手充能區中的卡牌全部為電氣屬性，攻擊力+50",
+    "zh-CN": "若对手充能区中的卡牌全部为电气属性，攻击+50",
+    "en": "If all cards in opponent's Power Charger are Electric attribute, Attack +50",
+    "ko": "상대 파워 충전소의 카드가 전부 전기 속성이라면 공격력 +50"
+  },
+  "3rd_40": {
+    "ja": "パワーチャージャーのカードが炎属性だけだったなら攻撃力+20",
+    "zh-TW": "若充能區中的卡牌全部為炎屬性，攻擊力+20",
+    "zh-HK": "若充能區中的卡牌全部為炎屬性，攻擊力+20",
+    "zh-CN": "若充能区中的卡牌全部为炎属性，攻击+20",
+    "en": "If all cards in Power Charger are Flame attribute, Attack +20",
+    "ko": "파워 충전소의 카드가 전부 화염 속성이라면 공격력 +20"
+  },
+  "3rd_42": {
+    "ja": "相手のHPが100なら攻撃力+50",
+    "zh-TW": "若對手的HP為100，攻擊力+50",
+    "zh-HK": "若對手的HP為100，攻擊力+50",
+    "zh-CN": "若对手的HP为100，攻击+50",
+    "en": "If opponent's HP is 100, Attack +50",
+    "ko": "상대 HP가 100이면 공격력 +50"
+  },
+  "3rd_45": {
+    "ja": "相手の手札を公開する",
+    "zh-TW": "公開對手的手牌",
+    "zh-HK": "公開對手的手牌",
+    "zh-CN": "公开对手的手牌",
+    "en": "Reveal opponent's Hand",
+    "ko": "상대 핸드 공개"
+  },
+  "3rd_47": {
+    "ja": "カード名を１つ指定する。相手の手札から１枚を選んで公開し、そのカード名のカードなら攻撃力+50",
+    "zh-TW": "指定1個卡牌名稱。從對手手牌中選擇1張並公開，若為該名稱的卡牌則攻擊力+50",
+    "zh-HK": "指定1個卡牌名稱。從對手手牌中選擇1張並公開，若為該名稱的卡牌則攻擊力+50",
+    "zh-CN": "指定1个卡牌名称。从对手手牌中选择1张并公开，若为该名称的卡牌则攻击+50",
+    "en": "Name 1 card. Choose 1 card from opponent's Hand and reveal it. If it matches the named card, Attack +50",
+    "ko": "카드 이름을 1개 지정. 상대 핸드에서 1장을 골라 공개하고, 해당 이름의 카드라면 공격력 +50"
+  },
+  "3rd_51": {
+    "ja": "アビスに３属性のカードがあるなら攻撃力+40",
+    "zh-TW": "若深淵中存在3種屬性的卡牌，攻擊力+40",
+    "zh-HK": "若深淵中存在3種屬性的卡牌，攻擊力+40",
+    "zh-CN": "若深渊中存在3种属性的卡牌，攻击+40",
+    "en": "If Abyss contains cards of 3 different attributes, Attack +40",
+    "ko": "어비스에 3속성 카드가 있으면 공격력 +40"
+  },
+  "3rd_52": {
+    "ja": "パワーチャージャーのカードが風属性だけだったなら攻撃力+40",
+    "zh-TW": "若充能區中的卡牌全部為風屬性，攻擊力+40",
+    "zh-HK": "若充能區中的卡牌全部為風屬性，攻擊力+40",
+    "zh-CN": "若充能区中的卡牌全部为风属性，攻击+40",
+    "en": "If all cards in Power Charger are Wind attribute, Attack +40",
+    "ko": "파워 충전소의 카드가 전부 풍 속성이라면 공격력 +40"
+  },
+  "3rd_53": {
+    "ja": "夜なら攻撃力+40",
+    "zh-TW": "若為夜晚，攻擊力+40",
+    "zh-HK": "若為夜晚，攻擊力+40",
+    "zh-CN": "若为夜晚，攻击力+40",
+    "en": "If it is Night, Attack +40",
+    "ko": "밤이면 공격력 +40"
+  },
+  "3rd_54": {
+    "ja": "自分のキャラクターカードの属性が闇なら攻撃力+60",
+    "zh-TW": "若自己的角色卡屬性為闇，攻擊力+60",
+    "zh-HK": "若自己的角色卡屬性為闇，攻擊力+60",
+    "zh-CN": "若自己的角色卡属性为暗，攻击力+60",
+    "en": "If your Character card's attribute is Dark, Attack +60",
+    "ko": "자신의 캐릭터 카드 속성이 어둠이면 공격력 +60"
+  },
+  "3rd_55": {
+    "ja": "相手のエリアエンチャントをデッキの底に戻し、以後相手はエリアエンチャントをセットできない。相手がアビスにカードを置いたターンの終了時にパワーチャージャーに置く",
+    "zh-TW": "將對手的區域附魔歸回牌組底部，之後對手無法設置區域附魔。對手將卡牌放入深淵的回合結束時，將此卡放入充能區",
+    "zh-HK": "將對手的區域附魔歸回牌組底部，之後對手無法設置區域附魔。對手將卡牌放入深淵的回合結束時，將此卡放入充能區",
+    "zh-CN": "将对手的区域附魔归回牌组底部，之后对手无法设置区域附魔。对手将卡牌放入深渊的回合结束时，将此卡放入充能区",
+    "en": "Return the opponent's Area Enchant to the bottom of their Deck. The opponent cannot set Area Enchants thereafter. At the end of the turn the opponent places a card in the Abyss, place this card in the Power Charger",
+    "ko": "상대의 에리어 인챈트를 덱 맨 아래로 되돌리고, 이후 상대는 에리어 인챈트를 설정할 수 없다. 상대가 어비스에 카드를 놓은 턴 종료시 파워 차저에 놓는다"
+  },
+  "3rd_56": {
+    "ja": "パワーチャージャーのカードが３枚以下なら攻撃力+50",
+    "zh-TW": "若充能區的卡牌為3張以下，攻擊力+50",
+    "zh-HK": "若充能區的卡牌為3張以下，攻擊力+50",
+    "zh-CN": "若充能区的卡牌为3张以下，攻击力+50",
+    "en": "If the Power Charger has 3 or fewer cards, Attack +50",
+    "ko": "파워 차저의 카드가 3장 이하면 공격력 +50"
+  },
+  "3rd_57": {
+    "ja": "アビスに炎属性のカードが４枚以上あるなら攻撃力+70",
+    "zh-TW": "若深淵中有4張以上炎屬性的卡牌，攻擊力+70",
+    "zh-HK": "若深淵中有4張以上炎屬性的卡牌，攻擊力+70",
+    "zh-CN": "若深渊中有4张以上炎属性的卡牌，攻击力+70",
+    "en": "If the Abyss contains 4 or more Flame attribute cards, Attack +70",
+    "ko": "어비스에 화염 속성 카드가 4장 이상 있으면 공격력 +70"
+  },
+  "3rd_58": {
+    "ja": "ターンの終了時に、お互いのHPを10回復。30ダメージ以上を受けたなら、すぐにアビスに置く",
+    "zh-TW": "回合結束時，雙方恢復10點HP。若受到30點以上傷害，則立即放入深淵",
+    "zh-HK": "回合結束時，雙方恢復10點HP。若受到30點以上傷害，則立即放入深淵",
+    "zh-CN": "回合结束时，双方恢复10点HP。若受到30点以上伤害，则立即放入深渊",
+    "en": "At the end of the turn, both players recover 10 HP. If you received 30 or more damage, immediately place this card in the Abyss",
+    "ko": "턴 종료시 양쪽 HP를 10 회복. 30 이상의 데미지를 받았으면 즉시 어비스에 놓는다"
+  },
+  "3rd_59": {
+    "ja": "カード名を１つ指定する。相手の手札から１枚を選んで公開し、そのカード名のカードなら攻撃力+100",
+    "zh-TW": "指定1個卡牌名稱。從對手手牌中選擇1張並公開，若為該名稱的卡牌，則攻擊力+100",
+    "zh-HK": "指定1個卡牌名稱。從對手手牌中選擇1張並公開，若為該名稱的卡牌，則攻擊力+100",
+    "zh-CN": "指定1个卡牌名称。从对手手牌中选择1张并公开，若为该名称的卡牌，则攻击力+100",
+    "en": "Name a card. Choose 1 card from the opponent's Hand and reveal it; if it is the named card, Attack +100",
+    "ko": "카드명을 1개 지정. 상대의 패에서 1장을 선택하여 공개하고, 그 카드명의 카드이면 공격력 +100"
+  },
+  "3rd_60": {
+    "ja": "アビスのカードが風属性だけだったなら攻撃力+70",
+    "zh-TW": "若深淵中的卡牌全為風屬性，攻擊力+70",
+    "zh-HK": "若深淵中的卡牌全為風屬性，攻擊力+70",
+    "zh-CN": "若深渊中的卡牌全为风属性，攻击力+70",
+    "en": "If all cards in the Abyss are Wind attribute, Attack +70",
+    "ko": "어비스의 카드가 풍속성뿐이면 공격력 +70"
+  },
+  "3rd_61": {
+    "ja": "すべてのカードの時計を１にする。ターンの終了時に、相手のフィールドにエリアエンチャントがあるならパワーチャージャーに置く",
+    "zh-TW": "將所有卡牌的時鐘設為1。回合結束時，若對手場上有區域附魔，則將此卡放入充能區",
+    "zh-HK": "將所有卡牌的時鐘設為1。回合結束時，若對手場上有區域附魔，則將此卡放入充能區",
+    "zh-CN": "将所有卡牌的时钟设为1。回合结束时，若对手场上有区域附魔，则将此卡放入充能区",
+    "en": "Set all cards' Clock to 1. At the end of the turn, if the opponent has an Area Enchant on the field, place this card in the Power Charger",
+    "ko": "모든 카드의 시계를 1로 한다. 턴 종료시 상대 필드에 에리어 인챈트가 있으면 파워 차저에 놓는다"
+  },
+  "3rd_62": {
+    "ja": "アビスに３属性のカードがあるなら攻撃力+50",
+    "zh-TW": "若深淵中有3種屬性的卡牌，攻擊力+50",
+    "zh-HK": "若深淵中有3種屬性的卡牌，攻擊力+50",
+    "zh-CN": "若深渊中有3种属性的卡牌，攻击力+50",
+    "en": "If the Abyss contains cards of 3 different attributes, Attack +50",
+    "ko": "어비스에 3속성의 카드가 있으면 공격력 +50"
+  },
+  "3rd_63": {
+    "ja": "アビスのカードが電気属性だけだったなら攻撃力+60",
+    "zh-TW": "若深淵中的卡牌全為電氣屬性，攻擊力+60",
+    "zh-HK": "若深淵中的卡牌全為電氣屬性，攻擊力+60",
+    "zh-CN": "若深渊中的卡牌全为电气属性，攻击力+60",
+    "en": "If all cards in the Abyss are Electric attribute, Attack +60",
+    "ko": "어비스의 카드가 전기 속성뿐이면 공격력 +60"
+  },
+  "3rd_64": {
+    "ja": "お互いの自分のHPの分だけ攻撃力+。相手のHPが40以下になったターンの終了時にアビスに置く",
+    "zh-TW": "攻擊力+雙方各自HP的數值。對手HP降至40以下的回合結束時，將此卡放入深淵",
+    "zh-HK": "攻擊力+雙方各自HP的數值。對手HP降至40以下的回合結束時，將此卡放入深淵",
+    "zh-CN": "攻击力+双方各自HP的数值。对手HP降至40以下的回合结束时，将此卡放入深渊",
+    "en": "Attack increases by each player's own HP. At the end of the turn the opponent's HP drops to 40 or below, place this card in the Abyss",
+    "ko": "양쪽 각자의 HP만큼 공격력+. 상대의 HP가 40 이하가 된 턴 종료시 어비스에 놓는다"
+  },
+  "3rd_81": {
+    "ja": "自分のキャラクターカードの属性が炎なら攻撃力+20",
+    "zh-TW": "若自己的角色卡屬性為炎，攻擊力+20",
+    "zh-HK": "若自己的角色卡屬性為炎，攻擊力+20",
+    "zh-CN": "若自己的角色卡属性为炎，攻击力+20",
+    "en": "If your Character card's attribute is Flame, Attack +20",
+    "ko": "자신의 캐릭터 카드 속성이 화염이면 공격력 +20"
+  },
+  "3rd_82": {
+    "ja": "パワーチャージャーのカードが闇属性だけだったなら攻撃力+40",
+    "zh-TW": "若充能區的卡牌全為闇屬性，攻擊力+40",
+    "zh-HK": "若充能區的卡牌全為闇屬性，攻擊力+40",
+    "zh-CN": "若充能区的卡牌全为暗属性，攻击力+40",
+    "en": "If all cards in the Power Charger are Dark attribute, Attack +40",
+    "ko": "파워 차저의 카드가 어둠 속성뿐이면 공격력 +40"
+  },
+  "3rd_83": {
+    "ja": "アビスに闇属性のカードが４枚以上あるなら攻撃力+60",
+    "zh-TW": "若深淵中有4張以上闇屬性的卡牌，攻擊力+60",
+    "zh-HK": "若深淵中有4張以上闇屬性的卡牌，攻擊力+60",
+    "zh-CN": "若深渊中有4张以上暗属性的卡牌，攻击力+60",
+    "en": "If the Abyss contains 4 or more Dark attribute cards, Attack +60",
+    "ko": "어비스에 어둠 속성 카드가 4장 이상 있으면 공격력 +60"
+  },
+  "3rd_84": {
+    "ja": "アビスのカードが炎属性だけだったなら攻撃力+70",
+    "zh-TW": "若深淵中的卡牌全為炎屬性，攻擊力+70",
+    "zh-HK": "若深淵中的卡牌全為炎屬性，攻擊力+70",
+    "zh-CN": "若深渊中的卡牌全为炎属性，攻击力+70",
+    "en": "If all cards in the Abyss are Flame attribute, Attack +70",
+    "ko": "어비스의 카드가 화염 속성뿐이면 공격력 +70"
+  },
+  "3rd_85": {
+    "ja": "ターンの終了時に、昼なら時計を２つ進める。30ダメージ以上を受けたなら、すぐにアビスに置く",
+    "zh-TW": "回合結束時，若為白天，則將時鐘推進2格。若受到30點以上傷害，則立即放入深淵",
+    "zh-HK": "回合結束時，若為白天，則將時鐘推進2格。若受到30點以上傷害，則立即放入深淵",
+    "zh-CN": "回合结束时，若为白天，则将时钟推进2格。若受到30点以上伤害，则立即放入深渊",
+    "en": "At the end of the turn, if it is Day, advance the Clock by 2. If you received 30 or more damage, immediately place this card in the Abyss",
+    "ko": "턴 종료시 낮이면 시계를 2 진행. 30 이상의 데미지를 받았으면 즉시 어비스에 놓는다"
+  },
+  "3rd_86": {
+    "ja": "アビスの闇属性のカード１枚につき、攻撃力+10。アビスのカードが４枚以上になったターンの終了時にアビスに置く",
+    "zh-TW": "深淵中每有1張闇屬性卡牌，攻擊力+10。深淵卡牌達到4張以上的回合結束時，將此卡放入深淵",
+    "zh-HK": "深淵中每有1張闇屬性卡牌，攻擊力+10。深淵卡牌達到4張以上的回合結束時，將此卡放入深淵",
+    "zh-CN": "深渊中每有1张暗属性卡牌，攻击力+10。深渊卡牌达到4张以上的回合结束时，将此卡放入深渊",
+    "en": "Attack +10 for each Dark attribute card in the Abyss. At the end of the turn the Abyss reaches 4 or more cards, place this card in the Abyss",
+    "ko": "어비스의 어둠 속성 카드 1장마다 공격력 +10. 어비스의 카드가 4장 이상이 된 턴 종료시 어비스에 놓는다"
+  },
+  "3rd_87": {
+    "ja": "相手のHPが100なら攻撃力+40",
+    "zh-TW": "若對手HP為100，攻擊力+40",
+    "zh-HK": "若對手HP為100，攻擊力+40",
+    "zh-CN": "若对手HP为100，攻击力+40",
+    "en": "If the opponent's HP is 100, Attack +40",
+    "ko": "상대의 HP가 100이면 공격력 +40"
+  },
+  "3rd_88": {
+    "ja": "アビスのカードが闇属性だけだったなら攻撃力+30",
+    "zh-TW": "若深淵中的卡牌全為闇屬性，攻擊力+30",
+    "zh-HK": "若深淵中的卡牌全為闇屬性，攻擊力+30",
+    "zh-CN": "若深渊中的卡牌全为暗属性，攻击力+30",
+    "en": "If all cards in the Abyss are Dark attribute, Attack +30",
+    "ko": "어비스의 카드가 어둠 속성뿐이면 공격력 +30"
+  },
+  "3rd_89": {
+    "ja": "自分のキャラクターカードの属性が闇なら攻撃力+50",
+    "zh-TW": "若自己的角色卡屬性為闇，攻擊力+50",
+    "zh-HK": "若自己的角色卡屬性為闇，攻擊力+50",
+    "zh-CN": "若自己的角色卡属性为暗，攻击力+50",
+    "en": "If your Character card's attribute is Dark, Attack +50",
+    "ko": "자신의 캐릭터 카드 속성이 어둠이면 공격력 +50"
+  },
+  "3rd_90": {
+    "ja": "自分のキャラクターカードの属性が炎なら攻撃力+30",
+    "zh-TW": "若自己的角色卡屬性為炎，攻擊力+30",
+    "zh-HK": "若自己的角色卡屬性為炎，攻擊力+30",
+    "zh-CN": "若自己的角色卡属性为炎，攻击力+30",
+    "en": "If your Character card's attribute is Flame, Attack +30",
+    "ko": "자신의 캐릭터 카드 속성이 화염이면 공격력 +30"
+  },
+  "3rd_91": {
+    "ja": "自分のキャラクターカードのパワーコストが３以上なら攻撃力+20。相手がアビスにカードを置いたターンの終了時にパワーチャージャーに置く",
+    "zh-TW": "若自己的角色卡力量消耗為3以上，攻擊力+20。對手將卡牌放入深淵的回合結束時，將此卡放入充能區",
+    "zh-HK": "若自己的角色卡力量消耗為3以上，攻擊力+20。對手將卡牌放入深淵的回合結束時，將此卡放入充能區",
+    "zh-CN": "若自己的角色卡力量消耗为3以上，攻击力+20。对手将卡牌放入深渊的回合结束时，将此卡放入充能区",
+    "en": "If your Character card's Power Cost is 3 or more, Attack +20. At the end of the turn the opponent places a card in the Abyss, place this card in the Power Charger",
+    "ko": "자신의 캐릭터 카드의 파워 코스트가 3 이상이면 공격력 +20. 상대가 어비스에 카드를 놓은 턴 종료시 파워 차저에 놓는다"
+  },
+  "3rd_92": {
+    "ja": "アビスの炎属性のカード１枚につき、攻撃力+10。アビスのカードが４枚以上になったターンの終了時にアビスに置く",
+    "zh-TW": "深淵中每有1張炎屬性卡牌，攻擊力+10。深淵卡牌達到4張以上的回合結束時，將此卡放入深淵",
+    "zh-HK": "深淵中每有1張炎屬性卡牌，攻擊力+10。深淵卡牌達到4張以上的回合結束時，將此卡放入深淵",
+    "zh-CN": "深渊中每有1张炎属性卡牌，攻击力+10。深渊卡牌达到4张以上的回合结束时，将此卡放入深渊",
+    "en": "Attack +10 for each Flame attribute card in the Abyss. At the end of the turn the Abyss reaches 4 or more cards, place this card in the Abyss",
+    "ko": "어비스의 화염 속성 카드 1장마다 공격력 +10. 어비스의 카드가 4장 이상이 된 턴 종료시 어비스에 놓는다"
+  },
+  "3rd_93": {
+    "ja": "自分のキャラクターカードの属性が風なら攻撃力+30",
+    "zh-TW": "若自己的角色卡屬性為風，攻擊力+30",
+    "zh-HK": "若自己的角色卡屬性為風，攻擊力+30",
+    "zh-CN": "若自己的角色卡属性为风，攻击力+30",
+    "en": "If your Character card's attribute is Wind, Attack +30",
+    "ko": "자신의 캐릭터 카드 속성이 바람이면 공격력 +30"
+  },
+  "3rd_94": {
+    "ja": "カード名を１つ指定する。相手の手札から１枚を選んで公開し、そのカード名のカードなら攻撃力+40",
+    "zh-TW": "指定1個卡牌名稱。從對手手牌中選擇1張並公開，若為該名稱的卡牌，則攻擊力+40",
+    "zh-HK": "指定1個卡牌名稱。從對手手牌中選擇1張並公開，若為該名稱的卡牌，則攻擊力+40",
+    "zh-CN": "指定1个卡牌名称。从对手手牌中选择1张并公开，若为该名称的卡牌，则攻击力+40",
+    "en": "Name a card. Choose 1 card from the opponent's Hand and reveal it; if it is the named card, Attack +40",
+    "ko": "카드명을 1개 지정. 상대의 패에서 1장을 선택하여 공개하고, 그 카드명의 카드이면 공격력 +40"
+  },
+  "3rd_95": {
+    "ja": "パワーチャージャーのカードが電気属性だけだったなら攻撃力+50",
+    "zh-TW": "若充能區的卡牌全為電氣屬性，攻擊力+50",
+    "zh-HK": "若充能區的卡牌全為電氣屬性，攻擊力+50",
+    "zh-CN": "若充能区的卡牌全为电气属性，攻击力+50",
+    "en": "If all cards in the Power Charger are Electric attribute, Attack +50",
+    "ko": "파워 차저의 카드가 전기 속성뿐이면 공격력 +50"
+  },
+  "3rd_96": {
+    "ja": "自分のキャラクターカードの属性が電気なら攻撃力+50",
+    "zh-TW": "若自己的角色卡屬性為電氣，攻擊力+50",
+    "zh-HK": "若自己的角色卡屬性為電氣，攻擊力+50",
+    "zh-CN": "若自己的角色卡属性为电气，攻击力+50",
+    "en": "If your Character card's attribute is Electric, Attack +50",
+    "ko": "자신의 캐릭터 카드 속성이 전기이면 공격력 +50"
+  },
+  "3rd_97": {
+    "ja": "相手はターンの開始時にデッキの一番上を公開する。パワーコストが６以上のカードが山札から公開されたらパワーチャージャーに置く",
+    "zh-TW": "對手在回合開始時公開牌組最上方的卡牌。若公開的卡牌力量消耗為6以上，則放入充能區",
+    "zh-HK": "對手在回合開始時公開牌組最上方的卡牌。若公開的卡牌力量消耗為6以上，則放入充能區",
+    "zh-CN": "对手在回合开始时公开牌组最上方的卡牌。若公开的卡牌力量消耗为6以上，则放入充能区",
+    "en": "The opponent reveals the top card of their Deck at the start of the turn. If the revealed card has a Power Cost of 6 or more, place it in the Power Charger",
+    "ko": "상대는 턴 시작시 덱 맨 위를 공개한다. 파워 코스트 6 이상의 카드가 공개되면 파워 차저에 놓는다"
+  },
+  "3rd_98": {
+    "ja": "アビスの電気属性のカード１枚につき、攻撃力+10。アビスのカードが４枚以上になったターンの終了時にアビスに置く",
+    "zh-TW": "深淵中每有1張電氣屬性卡牌，攻擊力+10。深淵卡牌達到4張以上的回合結束時，將此卡放入深淵",
+    "zh-HK": "深淵中每有1張電氣屬性卡牌，攻擊力+10。深淵卡牌達到4張以上的回合結束時，將此卡放入深淵",
+    "zh-CN": "深渊中每有1张电气属性卡牌，攻击力+10。深渊卡牌达到4张以上的回合结束时，将此卡放入深渊",
+    "en": "Attack +10 for each Electric attribute card in the Abyss. At the end of the turn the Abyss reaches 4 or more cards, place this card in the Abyss",
+    "ko": "어비스의 전기 속성 카드 1장마다 공격력 +10. 어비스의 카드가 4장 이상이 된 턴 종료시 어비스에 놓는다"
+  },
+  "3rd_99": {
+    "ja": "自分のキャラクターカードの属性が風なら攻撃力+30",
+    "zh-TW": "若自己的角色卡屬性為風，攻擊力+30",
+    "zh-HK": "若自己的角色卡屬性為風，攻擊力+30",
+    "zh-CN": "若自己的角色卡属性为风，攻击力+30",
+    "en": "If your Character card's attribute is Wind, Attack +30",
+    "ko": "자신의 캐릭터 카드 속성이 바람이면 공격력 +30"
+  },
+  "3rd_100": {
+    "ja": "自分のキャラクターカードの属性が電気なら攻撃力+40",
+    "zh-TW": "若自己的角色卡屬性為電氣，攻擊力+40",
+    "zh-HK": "若自己的角色卡屬性為電氣，攻擊力+40",
+    "zh-CN": "若自己的角色卡属性为电气，攻击力+40",
+    "en": "If your Character card's attribute is Electric, Attack +40",
+    "ko": "자신의 캐릭터 카드 속성이 전기이면 공격력 +40"
+  },
+  "3rd_101": {
+    "ja": "アビスのカードが２枚以上なら攻撃力+40",
+    "zh-TW": "若深淵中有2張以上卡牌，攻擊力+40",
+    "zh-HK": "若深淵中有2張以上卡牌，攻擊力+40",
+    "zh-CN": "若深渊中有2张以上卡牌，攻击力+40",
+    "en": "If the Abyss contains 2 or more cards, Attack +40",
+    "ko": "어비스의 카드가 2장 이상이면 공격력 +40"
+  },
+  "3rd_102": {
+    "ja": "パワーチャージャーのカードが風属性だけだったなら攻撃力+40",
+    "zh-TW": "若充能區的卡牌全為風屬性，攻擊力+40",
+    "zh-HK": "若充能區的卡牌全為風屬性，攻擊力+40",
+    "zh-CN": "若充能区的卡牌全为风属性，攻击力+40",
+    "en": "If all cards in the Power Charger are Wind attribute, Attack +40",
+    "ko": "파워 차저의 카드가 풍속성뿐이면 공격력 +40"
+  },
+  "3rd_103": {
+    "ja": "ターンの開始時に相手のデッキの一番上を公開する。相手のカードにSEND TO POWER★が無ければ自分の攻撃力+30。SEND TO POWER★があったなら、すぐにこのカードをパワーチャージャーに置く",
+    "zh-TW": "回合開始時公開對手牌組最上方的卡牌。若對手的卡牌沒有SEND TO POWER★，則自己攻擊力+30。若有SEND TO POWER★，則立即將此卡放入充能區",
+    "zh-HK": "回合開始時公開對手牌組最上方的卡牌。若對手的卡牌沒有SEND TO POWER★，則自己攻擊力+30。若有SEND TO POWER★，則立即將此卡放入充能區",
+    "zh-CN": "回合开始时公开对手牌组最上方的卡牌。若对手的卡牌没有SEND TO POWER★，则自己攻击力+30。若有SEND TO POWER★，则立即将此卡放入充能区",
+    "en": "At the start of the turn, reveal the top card of the opponent's Deck. If the opponent's card does not have SEND TO POWER★, your Attack +30. If it has SEND TO POWER★, immediately place this card in the Power Charger",
+    "ko": "턴 시작시 상대 덱 맨 위를 공개한다. 상대의 카드에 SEND TO POWER★이 없으면 자신의 공격력 +30. SEND TO POWER★이 있으면 즉시 이 카드를 파워 차저에 놓는다"
+  },
+  "3rd_104": {
+    "ja": "アビスの風属性のカード１枚につき、攻撃力+10。アビスのカードが４枚以上になったターンの終了時にアビスに置く",
+    "zh-TW": "深淵中每有1張風屬性卡牌，攻擊力+10。深淵卡牌達到4張以上的回合結束時，將此卡放入深淵",
+    "zh-HK": "深淵中每有1張風屬性卡牌，攻擊力+10。深淵卡牌達到4張以上的回合結束時，將此卡放入深淵",
+    "zh-CN": "深渊中每有1张风属性卡牌，攻击力+10。深渊卡牌达到4张以上的回合结束时，将此卡放入深渊",
+    "en": "Attack +10 for each Wind attribute card in the Abyss. At the end of the turn the Abyss reaches 4 or more cards, place this card in the Abyss",
+    "ko": "어비스의 풍속성 카드 1장마다 공격력 +10. 어비스의 카드가 4장 이상이 된 턴 종료시 어비스에 놓는다"
+  },
+  "3rd_105": {
+    "ja": "カード名を１つ指定する。相手の手札から１枚を選んで公開し、そのカード名のカードなら攻撃力+100",
+    "zh-TW": "指定1個卡牌名稱。從對手手牌中選擇1張並公開，若為該名稱的卡牌，則攻擊力+100",
+    "zh-HK": "指定1個卡牌名稱。從對手手牌中選擇1張並公開，若為該名稱的卡牌，則攻擊力+100",
+    "zh-CN": "指定1个卡牌名称。从对手手牌中选择1张并公开，若为该名称的卡牌，则攻击力+100",
+    "en": "Name a card. Choose 1 card from the opponent's Hand and reveal it; if it is the named card, Attack +100",
+    "ko": "카드명을 1개 지정. 상대의 패에서 1장을 선택하여 공개하고, 그 카드명의 카드이면 공격력 +100"
+  },
+  "3rd_106": {
+    "ja": "相手のHPが100なら攻撃力+100",
+    "zh-TW": "若對手HP為100，攻擊力+100",
+    "zh-HK": "若對手HP為100，攻擊力+100",
+    "zh-CN": "若对手HP为100，攻击力+100",
+    "en": "If the opponent's HP is 100, Attack +100",
+    "ko": "상대의 HP가 100이면 공격력 +100"
+  },
+  "4th_1": {
+    "ja": "手札から（TAIDADA）のキャラクターを好きな枚数公開し、その数だけ攻撃力+30",
+    "zh-TW": "從手牌中公開任意數量的（TAIDADA）角色，每公開1張攻擊力+30",
+    "zh-HK": "從手牌中公開任意數量的（TAIDADA）角色，每公開1張攻擊力+30",
+    "zh-CN": "从手牌中公开任意数量的（TAIDADA）角色，每公开1张攻击力+30",
+    "en": "Reveal any number of (TAIDADA) Character cards from your Hand; Attack +30 for each card revealed",
+    "ko": "패에서 (TAIDADA) 캐릭터를 원하는 수만큼 공개하고, 그 수만큼 공격력 +30"
+  },
+  "4th_2": {
+    "ja": "パワーチャージャーから（シェードの埃は延長）のキャラクターを２枚まで選び、このカードの効果として使用する",
+    "zh-TW": "從充能區中選擇最多2張（シェードの埃は延長）角色，作為此卡的效果使用",
+    "zh-HK": "從充能區中選擇最多2張（シェードの埃は延長）角色，作為此卡的效果使用",
+    "zh-CN": "从充能区中选择最多2张（シェードの埃は延長）角色，作为此卡的效果使用",
+    "en": "Choose up to 2 (シェードの埃は延長) Character cards from the Power Charger and use them as this card's effect",
+    "ko": "파워 차저에서 (シェードの埃は延長) 캐릭터를 최대 2장 선택하여 이 카드의 효과로 사용한다"
+  },
+  "4th_5": {
+    "ja": "アビスにある風属性のカードの数だけ、攻撃力+20",
+    "zh-TW": "深淵中每有1張風屬性卡牌，攻擊力+20",
+    "zh-HK": "深淵中每有1張風屬性卡牌，攻擊力+20",
+    "zh-CN": "深渊中每有1张风属性卡牌，攻击力+20",
+    "en": "Attack +20 for each Wind attribute card in the Abyss",
+    "ko": "어비스에 있는 풍속성 카드의 수만큼 공격력 +20"
+  },
+  "4th_6": {
+    "ja": "アビスのカードを４枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。\n相手のパワーチャージャーのキャラクターを１枚選び、バトルゾーンのキャラクターと入れ替える。\nこの効果で出したキャラクターの効果は発動しない",
+    "zh-TW": "選擇深淵中的4張卡牌，翻面洗混後放入牌組底部。若不執行此操作，則遊戲敗北。\n選擇對手充能區的1張角色，與戰鬥區的角色交換。\n此效果登場的角色效果不會發動",
+    "zh-HK": "選擇深淵中的4張卡牌，翻面洗混後放入牌組底部。若不執行此操作，則遊戲敗北。\n選擇對手充能區的1張角色，與戰鬥區的角色交換。\n此效果登場的角色效果不會發動",
+    "zh-CN": "选择深渊中的4张卡牌，翻面洗混后放入牌组底部。若不执行此操作，则游戏败北。\n选择对手充能区的1张角色，与战斗区的角色交换。\n此效果登场的角色效果不会发动",
+    "en": "Choose 4 cards from the Abyss, turn them face-down, shuffle them, and place them on the bottom of the Deck. If you do not, you lose the game.\nChoose 1 of the opponent's Character cards in the Power Charger and swap it with a Character in the Battle Zone.\nThe Character brought out by this effect does not activate its effect",
+    "ko": "어비스의 카드를 4장 선택하여 뒤집고 섞은 뒤 덱 맨 아래에 놓는다. 그렇게 하지 않으면 게임에서 패배한다.\n상대 파워 차저의 캐릭터를 1장 선택하여 배틀 존의 캐릭터와 교체한다.\n이 효과로 꺼낸 캐릭터의 효과는 발동하지 않는다"
+  },
+  "4th_7": {
+    "ja": "手札から（TAIDADA）のキャラクターを好きな枚数公開し、その数だけ攻撃力+20",
+    "zh-TW": "從手牌中公開任意數量的（TAIDADA）角色，每公開1張攻擊力+20",
+    "zh-HK": "從手牌中公開任意數量的（TAIDADA）角色，每公開1張攻擊力+20",
+    "zh-CN": "从手牌中公开任意数量的（TAIDADA）角色，每公开1张攻击力+20",
+    "en": "Reveal any number of (TAIDADA) Character cards from your Hand; Attack +20 for each card revealed",
+    "ko": "패에서 (TAIDADA) 캐릭터를 원하는 수만큼 공개하고, 그 수만큼 공격력 +20"
+  },
+  "4th_8": {
+    "ja": "手札を公開し、４属性以上あるなら、攻撃力+80",
+    "zh-TW": "公開手牌，若含有4種以上屬性，則攻擊力+80",
+    "zh-HK": "公開手牌，若含有4種以上屬性，則攻擊力+80",
+    "zh-CN": "公开手牌，若含有4种以上属性，则攻击力+80",
+    "en": "Reveal your Hand; if it contains 4 or more attributes, Attack +80",
+    "ko": "패를 공개하고, 4속성 이상이면 공격력 +80"
+  },
+  "4th_9": {
+    "ja": "アビスに３枚以上カードがあるなら、相手のキャラクターの攻撃力-30",
+    "zh-TW": "若深淵中有3張以上卡牌，則對手角色的攻擊力-30",
+    "zh-HK": "若深淵中有3張以上卡牌，則對手角色的攻擊力-30",
+    "zh-CN": "若深渊中有3张以上卡牌，则对手角色的攻击力-30",
+    "en": "If the Abyss contains 3 or more cards, the opponent's Character's Attack -30",
+    "ko": "어비스에 3장 이상 카드가 있으면 상대 캐릭터의 공격력 -30"
+  },
+  "4th_10": {
+    "ja": "手札から（TAIDADA）のキャラクターを好きな枚数公開し、その数だけ攻撃力+20",
+    "zh-TW": "從手牌中公開任意數量的（TAIDADA）角色，每公開1張攻擊力+20",
+    "zh-HK": "從手牌中公開任意數量的（TAIDADA）角色，每公開1張攻擊力+20",
+    "zh-CN": "从手牌中公开任意数量的（TAIDADA）角色，每公开1张攻击力+20",
+    "en": "Reveal any number of (TAIDADA) Character cards from your Hand; Attack +20 for each card revealed",
+    "ko": "패에서 (TAIDADA) 캐릭터를 원하는 수만큼 공개하고, 그 수만큼 공격력 +20"
+  },
+  "4th_11": {
+    "ja": "相手のアビスにカードがないなら、攻撃力+50",
+    "zh-TW": "若對手深淵中沒有卡牌，攻擊力+50",
+    "zh-HK": "若對手深淵中沒有卡牌，攻擊力+50",
+    "zh-CN": "若对手深渊中没有卡牌，攻击力+50",
+    "en": "If the opponent's Abyss has no cards, Attack +50",
+    "ko": "상대의 어비스에 카드가 없으면 공격력 +50"
+  },
+  "4th_14": {
+    "ja": "パワーチャージャーが闇属性だけなら、攻撃力+60",
+    "zh-TW": "若充能區的卡牌全為闇屬性，攻擊力+60",
+    "zh-HK": "若充能區的卡牌全為闇屬性，攻擊力+60",
+    "zh-CN": "若充能区的卡牌全为暗属性，攻击力+60",
+    "en": "If all cards in the Power Charger are Dark attribute, Attack +60",
+    "ko": "파워 차저가 어둠 속성뿐이면 공격력 +60"
+  },
+  "4th_17": {
+    "ja": "パワーチャージャーが炎属性だけなら、攻撃力+50",
+    "zh-TW": "若充能區的卡牌全為炎屬性，攻擊力+50",
+    "zh-HK": "若充能區的卡牌全為炎屬性，攻擊力+50",
+    "zh-CN": "若充能区的卡牌全为炎属性，攻击力+50",
+    "en": "If all cards in the Power Charger are Flame attribute, Attack +50",
+    "ko": "파워 차저가 화염 속성뿐이면 공격력 +50"
+  },
+  "4th_20": {
+    "ja": "アビスにある電気属性のカードの数だけ、攻撃力+20",
+    "zh-TW": "深淵中每有1張電氣屬性卡牌，攻擊力+20",
+    "zh-HK": "深淵中每有1張電氣屬性卡牌，攻擊力+20",
+    "zh-CN": "深渊中每有1张电气属性卡牌，攻击力+20",
+    "en": "Attack +20 for each Electric attribute card in the Abyss",
+    "ko": "어비스에 있는 전기 속성 카드의 수만큼 공격력 +20"
+  },
+  "4th_23": {
+    "ja": "このターンに（お勉強しといてよ）のキャラクターと入れ替えていたなら、攻撃力+100",
+    "zh-TW": "若本回合曾與《好好學習吧》的角色交換過，則攻擊力+100",
+    "zh-HK": "若本回合曾與《好好學習啦》嘅角色交換過，則攻擊力+100",
+    "zh-CN": "若本回合曾与《好好学习吧》的角色交换过，则攻击+100",
+    "en": "If you swapped with a (Study Hard, OK?) Character this turn, Attack +100.",
+    "ko": "이 턴에 (공부해 놓으라고) 캐릭터와 교체했다면, 공격력 +100"
+  },
+  "4th_24": {
+    "ja": "このターンに（お勉強しといてよ）のキャラクターと入れ替えていたなら、攻撃力+110。\nこのキャラクターが与えるダメージは軽減されない",
+    "zh-TW": "若本回合曾與《好好學習吧》的角色交換過，則攻擊力+110。\n此角色造成的傷害無法被減輕",
+    "zh-HK": "若本回合曾與《好好學習啦》嘅角色交換過，則攻擊力+110。\n此角色造成嘅傷害無法被減輕",
+    "zh-CN": "若本回合曾与《好好学习吧》的角色交换过，则攻击+110。\n此角色造成的伤害无法被减轻",
+    "en": "If you swapped with a (Study Hard, OK?) Character this turn, Attack +110.\nDamage dealt by this Character cannot be reduced.",
+    "ko": "이 턴에 (공부해 놓으라고) 캐릭터와 교체했다면, 공격력 +110.\n이 캐릭터가 주는 데미지는 경감되지 않는다"
+  },
+  "4th_27": {
+    "ja": "アビスのカードを１枚以上選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。\n相手のデッキの上から、それと同じ枚数をアビスに置く",
+    "zh-TW": "選擇深淵中的至少1張卡牌，翻面洗勻後放回牌組底部。若不執行，則遊戲敗北。\n從對手牌組頂部將相同數量的卡牌置入對手的深淵",
+    "zh-HK": "揀選深淵中嘅至少1張卡牌，翻面洗勻後放返牌組底部。若唔執行，則遊戲敗北。\n從對手牌組頂部將相同數量嘅卡牌置入對手嘅深淵",
+    "zh-CN": "选择深渊中的至少1张卡牌，翻面洗匀后放回牌组底部。若不执行，则游戏败北。\n从对手牌组顶部将相同数量的卡牌置入对手的深渊",
+    "en": "Choose one or more cards from the Abyss, shuffle them face-down, and place them on the bottom of your Deck. If you don't, you lose the game.\nPlace the same number of cards from the top of your opponent's Deck into their Abyss.",
+    "ko": "어비스에서 카드를 1장 이상 선택하여 뒤집어 섞고 덱 맨 아래에 놓는다. 그렇게 하지 않으면 게임에서 패배한다.\n상대 덱에서 같은 장수만큼 상대 어비스에 놓는다"
+  },
+  "4th_28": {
+    "ja": "アビスのカードを６枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。\nクロノスを好きな時間にする",
+    "zh-TW": "選擇深淵中的6張卡牌，翻面洗勻後放回牌組底部。若不執行，則遊戲敗北。\n將時鐘調整為任意時間",
+    "zh-HK": "揀選深淵中嘅6張卡牌，翻面洗勻後放返牌組底部。若唔執行，則遊戲敗北。\n將時鐘調整為任意時間",
+    "zh-CN": "选择深渊中的6张卡牌，翻面洗匀后放回牌组底部。若不执行，则游戏败北。\n将时钟调整为任意时间",
+    "en": "Choose 6 cards from the Abyss, shuffle them face-down, and place them on the bottom of your Deck. If you don't, you lose the game.\nSet the Clock to any time.",
+    "ko": "어비스에서 카드를 6장 선택하여 뒤집어 섞고 덱 맨 아래에 놓는다. 그렇게 하지 않으면 게임에서 패배한다.\n크로노스를 원하는 시간으로 설정한다"
+  },
+  "4th_29": {
+    "ja": "相手のアビスにカードがないなら、攻撃力+100",
+    "zh-TW": "若對手的深淵中沒有卡牌，則攻擊力+100",
+    "zh-HK": "若對手嘅深淵中冇卡牌，則攻擊力+100",
+    "zh-CN": "若对手的深渊中没有卡牌，则攻击+100",
+    "en": "If your opponent has no cards in their Abyss, Attack +100.",
+    "ko": "상대 어비스에 카드가 없다면, 공격력 +100"
+  },
+  "4th_30": {
+    "ja": "相手のアビスにカードがないなら、攻撃力+40。\n相手のアビスにカードが置かれたとき、すぐにこのカードをアビスに置く",
+    "zh-TW": "若對手的深淵中沒有卡牌，則攻擊力+40。\n當對手的深淵中被放入卡牌時，立即將此卡置入深淵",
+    "zh-HK": "若對手嘅深淵中冇卡牌，則攻擊力+40。\n當對手嘅深淵中被放入卡牌時，立即將此卡置入深淵",
+    "zh-CN": "若对手的深渊中没有卡牌，则攻击+40。\n当对手的深渊中被放入卡牌时，立即将此卡置入深渊",
+    "en": "If your opponent has no cards in their Abyss, Attack +40.\nWhen a card is placed in your opponent's Abyss, immediately place this card in your Abyss.",
+    "ko": "상대 어비스에 카드가 없다면, 공격력 +40.\n상대 어비스에 카드가 놓였을 때, 즉시 이 카드를 어비스에 놓는다"
+  },
+  "4th_31": {
+    "ja": "パワーチャージャーに４属性以上あるなら、攻撃力+100",
+    "zh-TW": "若充能區中有4種以上屬性，則攻擊力+100",
+    "zh-HK": "若充能區中有4種以上屬性，則攻擊力+100",
+    "zh-CN": "若充能区中有4种以上属性，则攻击+100",
+    "en": "If there are 4 or more attributes in the Power Charger, Attack +100.",
+    "ko": "파워 차저에 4속성 이상 있다면, 공격력 +100"
+  },
+  "4th_32": {
+    "ja": "手札を公開し、４属性以上あるなら、攻撃力+50。\n相手のエリアエンチャントが置かれているなら、すぐにアビスに置く",
+    "zh-TW": "公開手牌，若其中有4種以上屬性，則攻擊力+50。\n若對手場上有區域附魔，則立即將此卡置入深淵",
+    "zh-HK": "公開手牌，若其中有4種以上屬性，則攻擊力+50。\n若對手場上有區域附魔，則立即將此卡置入深淵",
+    "zh-CN": "公开手牌，若其中有4种以上属性，则攻击+50。\n若对手场上有区域附魔，则立即将此卡置入深渊",
+    "en": "Reveal your hand. If there are 4 or more attributes, Attack +50.\nIf your opponent has an Area Enchant in play, immediately place this card in your Abyss.",
+    "ko": "손패를 공개하고, 4속성 이상이라면 공격력 +50.\n상대 에리어 엔차트가 놓여 있다면, 즉시 이 카드를 어비스에 놓는다"
+  },
+  "4th_33": {
+    "ja": "アビスにあるカードが風属性だけなら、攻撃力+20。\nパワーチャージャーにカードを置いたとき、すぐにこのカードをアビスに置く",
+    "zh-TW": "若深淵中的卡牌全為風屬性，則攻擊力+20。\n當有卡牌被放入充能區時，立即將此卡置入深淵",
+    "zh-HK": "若深淵中嘅卡牌全為風屬性，則攻擊力+20。\n當有卡牌被放入充能區時，立即將此卡置入深淵",
+    "zh-CN": "若深渊中的卡牌全为风属性，则攻击+20。\n当有卡牌被放入充能区时，立即将此卡置入深渊",
+    "en": "If all cards in the Abyss are Wind attribute, Attack +20.\nWhen a card is placed in the Power Charger, immediately place this card in your Abyss.",
+    "ko": "어비스에 있는 카드가 풍속성뿐이라면, 공격력 +20.\n파워 차저에 카드를 놓았을 때, 즉시 이 카드를 어비스에 놓는다"
+  },
+  "4th_34": {
+    "ja": "相手のキャラクターの攻撃力が０なら、攻撃力+30",
+    "zh-TW": "若對手角色的攻擊力為0，則攻擊力+30",
+    "zh-HK": "若對手角色嘅攻擊力為0，則攻擊力+30",
+    "zh-CN": "若对手角色的攻击为0，则攻击+30",
+    "en": "If your opponent's Character's Attack is 0, Attack +30.",
+    "ko": "상대 캐릭터의 공격력이 0이라면, 공격력 +30"
+  },
+  "4th_35": {
+    "ja": "手札から（TAIDADA） のキャラクターを好きな枚数公開し、その数だけ攻撃力+10",
+    "zh-TW": "從手牌中公開任意數量的《TAIDADA》角色，每公開1張則攻擊力+10",
+    "zh-HK": "從手牌中公開任意數量嘅《TAIDADA》角色，每公開1張則攻擊力+10",
+    "zh-CN": "从手牌中公开任意数量的《TAIDADA》角色，每公开1张则攻击+10",
+    "en": "Reveal any number of (TAIDADA) Characters from your hand. Attack +10 for each revealed.",
+    "ko": "손패에서 (TAIDADA) 캐릭터를 원하는 수만큼 공개하고, 그 수만큼 공격력 +10"
+  },
+  "4th_37": {
+    "ja": "パワーチャージャーが闇属性だけなら、攻撃力+20",
+    "zh-TW": "若充能區中的卡牌全為闇屬性，則攻擊力+20",
+    "zh-HK": "若充能區中嘅卡牌全為闇屬性，則攻擊力+20",
+    "zh-CN": "若充能区中的卡牌全为暗属性，则攻击+20",
+    "en": "If all cards in the Power Charger are Dark attribute, Attack +20.",
+    "ko": "파워 차저에 암속성뿐이라면, 공격력 +20"
+  },
+  "4th_39": {
+    "ja": "相手のキャラクターの攻撃力が０なら、攻撃力+40",
+    "zh-TW": "若對手角色的攻擊力為0，則攻擊力+40",
+    "zh-HK": "若對手角色嘅攻擊力為0，則攻擊力+40",
+    "zh-CN": "若对手角色的攻击为0，则攻击+40",
+    "en": "If your opponent's Character's Attack is 0, Attack +40.",
+    "ko": "상대 캐릭터의 공격력이 0이라면, 공격력 +40"
+  },
+  "4th_41": {
+    "ja": "このターンに（シェードの埃は延長）のキャラクターと入れ替えていたなら、\n相手のエンチャントの効果をすべて無効にする（すでに処理された効果は無効にできない）",
+    "zh-TW": "若本回合曾與《影之塵埃延長中》的角色交換過，\n則使對手所有附魔的效果無效化（已處理的效果無法無效化）",
+    "zh-HK": "若本回合曾與《影之塵埃延長中》嘅角色交換過，\n則令對手所有附魔嘅效果無效化（已處理嘅效果無法無效化）",
+    "zh-CN": "若本回合曾与《影之尘埃延长中》的角色交换过，\n则使对手所有附魔的效果无效化（已处理的效果无法无效化）",
+    "en": "If you swapped with a (Shade's Dust Extended) Character this turn,\nnullify all of your opponent's Enchant effects (effects that have already been resolved cannot be nullified).",
+    "ko": "이 턴에 (그림자의 먼지는 연장) 캐릭터와 교체했다면,\n상대 엔차트의 효과를 모두 무효화한다 (이미 처리된 효과는 무효화할 수 없다)"
+  },
+  "4th_53": {
+    "ja": "手札にある（お勉強しといてよ）のキャラクターを1枚選び、パワーチャージャーに置いてもよい。そうしたなら、カードを１枚引く",
+    "zh-TW": "可從手牌中選擇1張《好好學習吧》的角色放入充能區。若如此做，則抽1張牌",
+    "zh-HK": "可以從手牌中揀選1張《好好學習啦》嘅角色放入充能區。若咁做，則抽1張牌",
+    "zh-CN": "可以从手牌中选择1张《好好学习吧》的角色放入充能区。若如此做，则抽1张牌",
+    "en": "You may choose one (Study Hard, OK?) Character from your hand and place it in the Power Charger. If you do, draw 1 card.",
+    "ko": "손패에 있는 (공부해 놓으라고) 캐릭터를 1장 골라 파워 차저에 놓아도 된다. 그렇게 했다면, 카드를 1장 뽑는다"
+  },
+  "4th_54": {
+    "ja": "手札から電気属性のカードを１枚選び、アビスに置く。そうしたならカードを１枚引く",
+    "zh-TW": "從手牌中選擇1張電氣屬性卡牌置入深淵。若如此做，則抽1張牌",
+    "zh-HK": "從手牌中揀選1張電氣屬性卡牌置入深淵。若咁做，則抽1張牌",
+    "zh-CN": "从手牌中选择1张电气属性卡牌置入深渊。若如此做，则抽1张牌",
+    "en": "Choose one Electric attribute card from your hand and place it in the Abyss. If you do, draw 1 card.",
+    "ko": "손패에서 전기속성 카드를 1장 골라 어비스에 놓는다. 그렇게 했다면 카드를 1장 뽑는다"
+  },
+  "4th_55": {
+    "ja": "バトルゾーンのカードが（TAIDADA）のキャラクターなら、HP+20",
+    "zh-TW": "若戰鬥區的卡牌為《TAIDADA》的角色，則HP+20",
+    "zh-HK": "若戰鬥區嘅卡牌為《TAIDADA》嘅角色，則HP+20",
+    "zh-CN": "若战斗区的卡牌为《TAIDADA》的角色，则HP+20",
+    "en": "If the card in the Battle Zone is a (TAIDADA) Character, HP +20.",
+    "ko": "배틀 존의 카드가 (TAIDADA) 캐릭터라면, HP +20"
+  },
+  "4th_56": {
+    "ja": "相手のアビスにカードがないなら、攻撃力+50",
+    "zh-TW": "若對手的深淵中沒有卡牌，則攻擊力+50",
+    "zh-HK": "若對手嘅深淵中冇卡牌，則攻擊力+50",
+    "zh-CN": "若对手的深渊中没有卡牌，则攻击+50",
+    "en": "If your opponent has no cards in their Abyss, Attack +50.",
+    "ko": "상대 어비스에 카드가 없다면, 공격력 +50"
+  },
+  "4th_57": {
+    "ja": "アビスに３枚以上のカードがあるなら、相手のデッキの上から２枚を相手のアビスに置く",
+    "zh-TW": "若深淵中有3張以上卡牌，則從對手牌組頂部將2張卡牌置入對手的深淵",
+    "zh-HK": "若深淵中有3張以上卡牌，則從對手牌組頂部將2張卡牌置入對手嘅深淵",
+    "zh-CN": "若深渊中有3张以上卡牌，则从对手牌组顶部将2张卡牌置入对手的深渊",
+    "en": "If there are 3 or more cards in the Abyss, place the top 2 cards of your opponent's Deck into their Abyss.",
+    "ko": "어비스에 3장 이상의 카드가 있다면, 상대 덱에서 2장을 상대 어비스에 놓는다"
+  },
+  "4th_58": {
+    "ja": "手札から風属性のカードを１枚選び、アビスに置く。そうしたならカードを１枚引く",
+    "zh-TW": "從手牌中選擇1張風屬性卡牌置入深淵。若如此做，則抽1張牌",
+    "zh-HK": "從手牌中揀選1張風屬性卡牌置入深淵。若咁做，則抽1張牌",
+    "zh-CN": "从手牌中选择1张风属性卡牌置入深渊。若如此做，则抽1张牌",
+    "en": "Choose one Wind attribute card from your hand and place it in the Abyss. If you do, draw 1 card.",
+    "ko": "손패에서 풍속성 카드를 1장 골라 어비스에 놓는다. 그렇게 했다면 카드를 1장 뽑는다"
+  },
+  "4th_59": {
+    "ja": "パワーチャージャーに３属性以上あるなら、HP+50",
+    "zh-TW": "若充能區中有3種以上屬性，則HP+50",
+    "zh-HK": "若充能區中有3種以上屬性，則HP+50",
+    "zh-CN": "若充能区中有3种以上属性，则HP+50",
+    "en": "If there are 3 or more attributes in the Power Charger, HP +50.",
+    "ko": "파워 차저에 3속성 이상 있다면, HP +50"
+  },
+  "4th_60": {
+    "ja": "相手のキャラクターのSEND TO POWERが★★なら、攻撃力+20",
+    "zh-TW": "若對手角色的SEND TO POWER為★★，則攻擊力+20",
+    "zh-HK": "若對手角色嘅SEND TO POWER為★★，則攻擊力+20",
+    "zh-CN": "若对手角色的SEND TO POWER为★★，则攻击+20",
+    "en": "If your opponent's Character's SEND TO POWER is ★★, Attack +20.",
+    "ko": "상대 캐릭터의 SEND TO POWER가 ★★라면, 공격력 +20"
+  },
+  "4th_61": {
+    "ja": "手札からカードを好きな枚数選び、デッキの底に置く。そうしたなら、同じ数だけデッキからカードを引く",
+    "zh-TW": "從手牌中選擇任意數量的卡牌放回牌組底部。若如此做，則從牌組抽取相同數量的卡牌",
+    "zh-HK": "從手牌中揀選任意數量嘅卡牌放返牌組底部。若咁做，則從牌組抽取相同數量嘅卡牌",
+    "zh-CN": "从手牌中选择任意数量的卡牌放回牌组底部。若如此做，则从牌组抽取相同数量的卡牌",
+    "en": "Choose any number of cards from your hand and place them on the bottom of your Deck. If you do, draw the same number of cards from your Deck.",
+    "ko": "손패에서 카드를 원하는 수만큼 골라 덱 맨 아래에 놓는다. 그렇게 했다면, 같은 수만큼 덱에서 카드를 뽑는다"
+  },
+  "4th_62": {
+    "ja": "手札から闇属性のカードを好きな枚数選び、アビスに置く。そうしたなら、同じ数だけカードを引く",
+    "zh-TW": "從手牌中選擇任意數量的闇屬性卡牌置入深淵。若如此做，則抽取相同數量的卡牌",
+    "zh-HK": "從手牌中揀選任意數量嘅闇屬性卡牌置入深淵。若咁做，則抽取相同數量嘅卡牌",
+    "zh-CN": "从手牌中选择任意数量的暗属性卡牌置入深渊。若如此做，则抽取相同数量的卡牌",
+    "en": "Choose any number of Dark attribute cards from your hand and place them in the Abyss. If you do, draw the same number of cards.",
+    "ko": "손패에서 암속성 카드를 원하는 수만큼 골라 어비스에 놓는다. 그렇게 했다면, 같은 수만큼 카드를 뽑는다"
+  },
+  "4th_63": {
+    "ja": "手札から炎属性のカードを好きな枚数選び、アビスに置く。そうしたなら、同じ数だけカードを引く",
+    "zh-TW": "從手牌中選擇任意數量的炎屬性卡牌置入深淵。若如此做，則抽取相同數量的卡牌",
+    "zh-HK": "從手牌中揀選任意數量嘅炎屬性卡牌置入深淵。若咁做，則抽取相同數量嘅卡牌",
+    "zh-CN": "从手牌中选择任意数量的炎属性卡牌置入深渊。若如此做，则抽取相同数量的卡牌",
+    "en": "Choose any number of Flame attribute cards from your hand and place them in the Abyss. If you do, draw the same number of cards.",
+    "ko": "손패에서 화염속성 카드를 원하는 수만큼 골라 어비스에 놓는다. 그렇게 했다면, 같은 수만큼 카드를 뽑는다"
+  },
+  "4th_64": {
+    "ja": "アビスにあるカードが風属性だけなら、攻撃力+60",
+    "zh-TW": "若深淵中的卡牌全為風屬性，則攻擊力+60",
+    "zh-HK": "若深淵中嘅卡牌全為風屬性，則攻擊力+60",
+    "zh-CN": "若深渊中的卡牌全为风属性，则攻击+60",
+    "en": "If all cards in the Abyss are Wind attribute, Attack +60.",
+    "ko": "어비스에 있는 카드가 풍속성뿐이라면, 공격력 +60"
+  },
+  "4th_65": {
+    "ja": "バトルゾーンのカードが（お勉強しといてよ）なら、そのキャラクターのパワーコストを★★減らす。\nバトルゾーンのキャラクターを（お勉強しといてよ）以外のキャラクターに入れ替えたら、すぐにアビスに置く",
+    "zh-TW": "若戰鬥區的卡牌為《好好學習吧》，則該角色的Power Cost減少★★。\n若將戰鬥區的角色替換為《好好學習吧》以外的角色，則立即將此卡置入深淵",
+    "zh-HK": "若戰鬥區嘅卡牌為《好好學習啦》，則該角色嘅Power Cost減少★★。\n若將戰鬥區嘅角色替換為《好好學習啦》以外嘅角色，則立即將此卡置入深淵",
+    "zh-CN": "若战斗区的卡牌为《好好学习吧》，则该角色的Power Cost减少★★。\n若将战斗区的角色替换为《好好学习吧》以外的角色，则立即将此卡置入深渊",
+    "en": "If the card in the Battle Zone is (Study Hard, OK?), reduce that Character's Power Cost by ★★.\nIf the Character in the Battle Zone is replaced with one other than (Study Hard, OK?), immediately place this card in the Abyss.",
+    "ko": "배틀 존의 카드가 (공부해 놓으라고)라면, 그 캐릭터의 파워 코스트를 ★★ 줄인다.\n배틀 존의 캐릭터를 (공부해 놓으라고) 이외의 캐릭터로 교체했다면, 즉시 이 카드를 어비스에 놓는다"
+  },
+  "4th_66": {
+    "ja": "相手のキャラクターのSEND TO POWERが★★なら、攻撃力+30",
+    "zh-TW": "若對手角色的SEND TO POWER為★★，則攻擊力+30",
+    "zh-HK": "若對手角色嘅SEND TO POWER為★★，則攻擊力+30",
+    "zh-CN": "若对手角色的SEND TO POWER为★★，则攻击+30",
+    "en": "If your opponent's Character's SEND TO POWER is ★★, Attack +30.",
+    "ko": "상대 캐릭터의 SEND TO POWER가 ★★라면, 공격력 +30"
+  },
+  "4th_73": {
+    "ja": "このターンに（シェードの埃は延長）のキャラクターと入れ替えていたなら、HP+20",
+    "zh-TW": "若本回合曾與《影之塵埃延長中》的角色交換過，則HP+20",
+    "zh-HK": "若本回合曾與《影之塵埃延長中》嘅角色交換過，則HP+20",
+    "zh-CN": "若本回合曾与《影之尘埃延长中》的角色交换过，则HP+20",
+    "en": "If you swapped with a (Shade's Dust Extended) Character this turn, HP +20.",
+    "ko": "이 턴에 (그림자의 먼지는 연장) 캐릭터와 교체했다면, HP +20"
+  },
+  "4th_74": {
+    "ja": "このターンに（シェードの埃は延長）のキャラクターと入れ替えていたなら、相手の攻撃力-30",
+    "zh-TW": "若本回合曾與《影之塵埃延長中》的角色交換過，則對手的攻擊力-30",
+    "zh-HK": "若本回合曾與《影之塵埃延長中》嘅角色交換過，則對手嘅攻擊力-30",
+    "zh-CN": "若本回合曾与《影之尘埃延长中》的角色交换过，则对手的攻击-30",
+    "en": "If you swapped with a (Shade's Dust Extended) Character this turn, your opponent's Attack -30.",
+    "ko": "이 턴에 (그림자의 먼지는 연장) 캐릭터와 교체했다면, 상대 공격력 -30"
+  },
+  "4th_75": {
+    "ja": "このターンに（シェードの埃は延長）のキャラクターと入れ替えていたなら、相手のHP-20",
+    "zh-TW": "若本回合曾與《影之塵埃延長中》的角色交換過，則對手的HP-20",
+    "zh-HK": "若本回合曾與《影之塵埃延長中》嘅角色交換過，則對手嘅HP-20",
+    "zh-CN": "若本回合曾与《影之尘埃延长中》的角色交换过，则对手的HP-20",
+    "en": "If you swapped with a (Shade's Dust Extended) Character this turn, your opponent's HP -20.",
+    "ko": "이 턴에 (그림자의 먼지는 연장) 캐릭터와 교체했다면, 상대 HP -20"
+  },
+  "4th_84": {
+    "ja": "相手のキャラクターの攻撃力が０なら、攻撃力+50",
+    "zh-TW": "若對手角色的攻擊力為0，則攻擊力+50",
+    "zh-HK": "若對手角色嘅攻擊力為0，則攻擊力+50",
+    "zh-CN": "若对手角色的攻击为0，则攻击+50",
+    "en": "If your opponent's Character's Attack is 0, Attack +50.",
+    "ko": "상대 캐릭터의 공격력이 0이라면, 공격력 +50"
+  },
+  "4th_87": {
+    "ja": "このターンに（お勉強しといてよ）のキャラクターと入れ替えていたなら、攻撃力+50",
+    "zh-TW": "若本回合曾與《好好學習吧》的角色交換過，則攻擊力+50",
+    "zh-HK": "若本回合曾與《好好學習啦》嘅角色交換過，則攻擊力+50",
+    "zh-CN": "若本回合曾与《好好学习吧》的角色交换过，则攻击+50",
+    "en": "If you swapped with a (Study Hard, OK?) Character this turn, Attack +50.",
+    "ko": "이 턴에 (공부해 놓으라고) 캐릭터와 교체했다면, 공격력 +50"
+  },
+  "4th_88": {
+    "ja": "アビスのカードを１枚選び、デッキの底に置く。そうしない場合、ゲームに敗北する。相手のデッキの上から３枚を見て、好きな順番に入れ替えて戻す",
+    "zh-TW": "選擇深淵中的1張卡牌放回牌組底部。若不執行，則遊戲敗北。查看對手牌組頂部的3張卡牌，按任意順序放回",
+    "zh-HK": "揀選深淵中嘅1張卡牌放返牌組底部。若唔執行，則遊戲敗北。查看對手牌組頂部嘅3張卡牌，按任意順序放返",
+    "zh-CN": "选择深渊中的1张卡牌放回牌组底部。若不执行，则游戏败北。查看对手牌组顶部的3张卡牌，按任意顺序放回",
+    "en": "Choose 1 card from the Abyss and place it on the bottom of your Deck. If you don't, you lose the game. Look at the top 3 cards of your opponent's Deck and return them in any order.",
+    "ko": "어비스에서 카드를 1장 골라 덱 맨 아래에 놓는다. 그렇게 하지 않으면 게임에서 패배한다. 상대 덱에서 3장을 확인한 후 원하는 순서대로 되돌려 놓는다"
+  },
+  "4th_89": {
+    "ja": "バトルゾーンのカードが（TAIDADA）のキャラクターなら、カードを１枚引く。\nこのカードの効果でカードを引いたなら、手札の数はゲーム終了まで１枚増える",
+    "zh-TW": "若戰鬥區的卡牌為《TAIDADA》的角色，則抽1張牌。\n若因此卡效果抽牌，則手牌上限在遊戲結束前增加1張",
+    "zh-HK": "若戰鬥區嘅卡牌為《TAIDADA》嘅角色，則抽1張牌。\n若因此卡效果抽牌，則手牌上限喺遊戲結束前增加1張",
+    "zh-CN": "若战斗区的卡牌为《TAIDADA》的角色，则抽1张牌。\n若因此卡效果抽牌，则手牌上限在游戏结束前增加1张",
+    "en": "If the card in the Battle Zone is a (TAIDADA) Character, draw 1 card.\nIf you drew a card from this card's effect, your maximum hand size increases by 1 for the rest of the game.",
+    "ko": "배틀 존의 카드가 (TAIDADA) 캐릭터라면, 카드를 1장 뽑는다.\n이 카드의 효과로 카드를 뽑았다면, 게임 종료까지 손패 수가 1장 증가한다"
+  },
+  "4th_90": {
+    "ja": "相手のアビスにあるカード１枚を、相手のデッキの底に戻す",
+    "zh-TW": "將對手深淵中的1張卡牌放回對手牌組底部",
+    "zh-HK": "將對手深淵中嘅1張卡牌放返對手牌組底部",
+    "zh-CN": "将对手深渊中的1张卡牌放回对手牌组底部",
+    "en": "Return 1 card from your opponent's Abyss to the bottom of their Deck.",
+    "ko": "상대 어비스에 있는 카드 1장을 상대 덱 맨 아래로 되돌린다"
+  },
+  "4th_91": {
+    "ja": "手札から（TAIDADA）のキャラクターを好きな枚数公開し、その数だけ攻撃力+10。\nHPが50以下になったなら、パワーチャージャーに置く",
+    "zh-TW": "從手牌中公開任意數量的《TAIDADA》角色，每公開1張則攻擊力+10。\n若HP降至50以下，則將此卡放入充能區",
+    "zh-HK": "從手牌中公開任意數量嘅《TAIDADA》角色，每公開1張則攻擊力+10。\n若HP跌至50以下，則將此卡放入充能區",
+    "zh-CN": "从手牌中公开任意数量的《TAIDADA》角色，每公开1张则攻击+10。\n若HP降至50以下，则将此卡放入充能区",
+    "en": "Reveal any number of (TAIDADA) Characters from your hand. Attack +10 for each revealed.\nIf your HP drops to 50 or below, place this card in the Power Charger.",
+    "ko": "손패에서 (TAIDADA) 캐릭터를 원하는 수만큼 공개하고, 그 수만큼 공격력 +10.\nHP가 50 이하가 되었다면, 파워 차저에 놓는다"
+  },
+  "4th_92": {
+    "ja": "バトルゾーンのキャラクターが（シェードの埃は延長）なら、相手の攻撃力-40",
+    "zh-TW": "若戰鬥區的角色為《影之塵埃延長中》，則對手的攻擊力-40",
+    "zh-HK": "若戰鬥區嘅角色為《影之塵埃延長中》，則對手嘅攻擊力-40",
+    "zh-CN": "若战斗区的角色为《影之尘埃延长中》，则对手的攻击-40",
+    "en": "If the Character in the Battle Zone is (Shade's Dust Extended), your opponent's Attack -40.",
+    "ko": "배틀 존의 캐릭터가 (그림자의 먼지는 연장)이라면, 상대 공격력 -40"
+  },
+  "4th_93": {
+    "ja": "パワーチャージャーに２属性以上あるなら、HP+30",
+    "zh-TW": "若充能區中有2種以上屬性，則HP+30",
+    "zh-HK": "若充能區中有2種以上屬性，則HP+30",
+    "zh-CN": "若充能区中有2种以上属性，则HP+30",
+    "en": "If there are 2 or more attributes in the Power Charger, HP +30.",
+    "ko": "파워 차저에 2속성 이상 있다면, HP +30"
+  },
+  "4th_94": {
+    "ja": "パワーチャージャーにある（シェードの埃は延長）のキャラクターを１枚選び、このカードの効果として使用する。\nパワーチャージャーにカードが５枚以上置かれているなら、すぐにアビスに置く",
+    "zh-TW": "從充能區中選擇1張《影之塵埃延長中》的角色，作為此卡效果使用。\n若充能區中放置了5張以上卡牌，則立即將此卡置入深淵",
+    "zh-HK": "從充能區中揀選1張《影之塵埃延長中》嘅角色，作為此卡效果使用。\n若充能區中放置了5張以上卡牌，則立即將此卡置入深淵",
+    "zh-CN": "从充能区中选择1张《影之尘埃延长中》的角色，作为此卡效果使用。\n若充能区中放置了5张以上卡牌，则立即将此卡置入深渊",
+    "en": "Choose one (Shade's Dust Extended) Character from the Power Charger and use it as this card's effect.\nIf there are 5 or more cards in the Power Charger, immediately place this card in the Abyss.",
+    "ko": "파워 차저에 있는 (그림자의 먼지는 연장) 캐릭터를 1장 골라 이 카드의 효과로 사용한다.\n파워 차저에 카드가 5장 이상 놓여 있다면, 즉시 이 카드를 어비스에 놓는다"
+  },
+  "4th_95": {
+    "ja": "パワーチャージャーに４属性以上あるなら、攻撃力+50。\nバトルに負けたとき、すぐにアビスに置く",
+    "zh-TW": "若充能區中有4種以上屬性，則攻擊力+50。\n戰鬥落敗時，立即將此卡置入深淵",
+    "zh-HK": "若充能區中有4種以上屬性，則攻擊力+50。\n戰鬥落敗時，立即將此卡置入深淵",
+    "zh-CN": "若充能区中有4种以上属性，则攻击+50。\n战斗落败时，立即将此卡置入深渊",
+    "en": "If there are 4 or more attributes in the Power Charger, Attack +50.\nWhen you lose a battle, immediately place this card in the Abyss.",
+    "ko": "파워 차저에 4속성 이상 있다면, 공격력 +50.\n배틀에서 졌을 때, 즉시 이 카드를 어비스에 놓는다"
+  },
+  "4th_96": {
+    "ja": "バトルゾーンのカードが（猫リセット）のキャラクターなら、自分がダメージを受けたとき、50ダメージを軽減する",
+    "zh-TW": "若戰鬥區的卡牌為《貓Reset》的角色，則當自己受到傷害時，減輕50點傷害",
+    "zh-HK": "若戰鬥區嘅卡牌為《貓Reset》嘅角色，則當自己受到傷害時，減輕50點傷害",
+    "zh-CN": "若战斗区的卡牌为《猫Reset》的角色，则当自己受到伤害时，减轻50点伤害",
+    "en": "If the card in the Battle Zone is a (Cat Reset) Character, reduce damage you receive by 50.",
+    "ko": "배틀 존의 카드가 (고양이 리셋) 캐릭터라면, 자신이 데미지를 받을 때 50데미지를 경감한다"
+  },
+  "4th_97": {
+    "ja": "手札を公開し、３属性以上あるなら、攻撃力+50",
+    "zh-TW": "公開手牌，若其中有3種以上屬性，則攻擊力+50",
+    "zh-HK": "公開手牌，若其中有3種以上屬性，則攻擊力+50",
+    "zh-CN": "公开手牌，若其中有3种以上属性，则攻击+50",
+    "en": "Reveal your hand. If there are 3 or more attributes, Attack +50.",
+    "ko": "손패를 공개하고, 3속성 이상이라면 공격력 +50"
+  },
+  "4th_98": {
+    "ja": "バトルゾーンのカードが（猫リセット）のキャラクターなら、自分がダメージを受けたとき、100ダメージを軽減する",
+    "zh-TW": "若戰鬥區的卡牌為《貓Reset》的角色，則當自己受到傷害時，減輕100點傷害",
+    "zh-HK": "若戰鬥區嘅卡牌為《貓Reset》嘅角色，則當自己受到傷害時，減輕100點傷害",
+    "zh-CN": "若战斗区的卡牌为《猫Reset》的角色，则当自己受到伤害时，减轻100点伤害",
+    "en": "If the card in the Battle Zone is a (Cat Reset) Character, reduce damage you receive by 100.",
+    "ko": "배틀 존의 카드가 (고양이 리셋) 캐릭터라면, 자신이 데미지를 받을 때 100데미지를 경감한다"
+  },
+  "4th_99": {
+    "ja": "バトルゾーンのカードが（猫リセット）のキャラクターなら、相手の攻撃力を100にする",
+    "zh-TW": "若戰鬥區的卡牌為《貓Reset》的角色，則將對手的攻擊力變為100",
+    "zh-HK": "若戰鬥區嘅卡牌為《貓Reset》嘅角色，則將對手嘅攻擊力變為100",
+    "zh-CN": "若战斗区的卡牌为《猫Reset》的角色，则将对手的攻击变为100",
+    "en": "If the card in the Battle Zone is a (Cat Reset) Character, set your opponent's Attack to 100.",
+    "ko": "배틀 존의 카드가 (고양이 리셋) 캐릭터라면, 상대 공격력을 100으로 한다"
+  },
+  "4th_100": {
+    "ja": "バトルゾーンのカードが（猫リセット）のキャラクターなら、ターン終了時に、\nこのターンに軽減した数値分のダメージを相手に与える",
+    "zh-TW": "若戰鬥區的卡牌為《貓Reset》的角色，則在回合結束時，\n對對手造成等同於本回合減輕數值的傷害",
+    "zh-HK": "若戰鬥區嘅卡牌為《貓Reset》嘅角色，則喺回合結束時，\n對對手造成等同於本回合減輕數值嘅傷害",
+    "zh-CN": "若战斗区的卡牌为《猫Reset》的角色，则在回合结束时，\n对对手造成等同于本回合减轻数值的伤害",
+    "en": "If the card in the Battle Zone is a (Cat Reset) Character, at the end of the turn,\ndeal damage to your opponent equal to the amount you reduced this turn.",
+    "ko": "배틀 존의 카드가 (고양이 리셋) 캐릭터라면, 턴 종료 시에\n이 턴에 경감한 수치만큼의 데미지를 상대에게 준다"
+  },
+  "4th_101": {
+    "ja": "相手のキャラクターの攻撃力が０なら、攻撃力+20",
+    "zh-TW": "若對手角色的攻擊力為0，則攻擊力+20",
+    "zh-HK": "若對手角色嘅攻擊力為0，則攻擊力+20",
+    "zh-CN": "若对手角色的攻击为0，则攻击+20",
+    "en": "If your opponent's Character's Attack is 0, Attack +20.",
+    "ko": "상대 캐릭터의 공격력이 0이라면, 공격력 +20"
+  },
+  "4th_102": {
+    "ja": "パワーチャージャーにある（お勉強しといてよ）のカードの数だけ、攻撃力+10",
+    "zh-TW": "每有1張《好好學習吧》的卡牌在充能區中，則攻擊力+10",
+    "zh-HK": "每有1張《好好學習啦》嘅卡牌喺充能區中，則攻擊力+10",
+    "zh-CN": "每有1张《好好学习吧》的卡牌在充能区中，则攻击+10",
+    "en": "Attack +10 for each (Study Hard, OK?) card in the Power Charger.",
+    "ko": "파워 차저에 있는 (공부해 놓으라고) 카드의 수만큼, 공격력 +10"
+  },
+  "4th_103": {
+    "ja": "アビスにあるカードが風属性だけなら、攻撃力+40",
+    "zh-TW": "若深淵中的卡牌全為風屬性，則攻擊力+40",
+    "zh-HK": "若深淵中嘅卡牌全為風屬性，則攻擊力+40",
+    "zh-CN": "若深渊中的卡牌全为风属性，则攻击+40",
+    "en": "If all cards in the Abyss are Wind attribute, Attack +40.",
+    "ko": "어비스에 있는 카드가 풍속성뿐이라면, 공격력 +40"
+  },
+  "4th_104": {
+    "ja": "パワーチャージャーにある（お勉強しといてよ）のカードの数だけ、攻撃力+20",
+    "zh-TW": "每有1張《好好學習吧》的卡牌在充能區中，則攻擊力+20",
+    "zh-HK": "每有1張《好好學習啦》嘅卡牌喺充能區中，則攻擊力+20",
+    "zh-CN": "每有1张《好好学习吧》的卡牌在充能区中，则攻击+20",
+    "en": "Attack +20 for each (Study Hard, OK?) card in the Power Charger.",
+    "ko": "파워 차저에 있는 (공부해 놓으라고) 카드의 수만큼, 공격력 +20"
+  }
+}
