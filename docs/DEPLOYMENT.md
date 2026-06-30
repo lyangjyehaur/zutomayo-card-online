@@ -54,43 +54,52 @@ Variables are passed through `docker-compose.yml` from the host environment (e.g
 
 ### `game`
 
-| Variable          | Default                 | Notes                                                                                                                                                            |
-| ----------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`            | `3000`                  | boardgame.io/static server port inside the container.                                                                                                            |
-| `NODE_ENV`        | `production` in Compose | Runtime mode.                                                                                                                                                    |
-| `PG_HOST`         | `postgres`              | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
-| `PG_PORT`         | `5432`                  | PostgreSQL port.                                                                                                                                                 |
-| `PG_USER`         | `zutomayo`              | PostgreSQL user.                                                                                                                                                 |
-| `PG_PASSWORD`     | required                | PostgreSQL password. Set a strong value in `.env` or the shell before running Compose.                                                                           |
-| `PG_DATABASE`     | `zutomayo`              | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                                                         |
-| `REDIS_URL`       | `redis://redis:6379`    | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Use `redis://localhost:6379` for local dev.                                               |
-| `REDIS_DB`        | `0`                     | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
-| `ALLOWED_ORIGINS` | empty                   | Comma-separated extra origins allowed by boardgame.io CORS.                                                                                                      |
-| `JWT_SECRET`      | empty                   | Shared HMAC secret. The `game` service forwards it so the same key signs/verifies across services; set the same value as `api`.                                  |
+| Variable             | Default                 | Notes                                                                                                                                                            |
+| -------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`               | `3000`                  | boardgame.io/static server port inside the container.                                                                                                            |
+| `NODE_ENV`           | `production` in Compose | Runtime mode.                                                                                                                                                    |
+| `PG_HOST`            | `postgres`              | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
+| `PG_PORT`            | `5432`                  | PostgreSQL port.                                                                                                                                                 |
+| `PG_USER`            | `zutomayo`              | PostgreSQL user.                                                                                                                                                 |
+| `PG_PASSWORD`        | required                | PostgreSQL password. Set a strong value in `.env` or the shell before running Compose.                                                                           |
+| `PG_DATABASE`        | `zutomayo`              | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                                                         |
+| `REDIS_URL`          | `redis://redis:6379`    | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Use `redis://localhost:6379` for local dev.                                               |
+| `REDIS_DB`           | `0`                     | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
+| `ALLOWED_ORIGINS`    | empty                   | Comma-separated extra origins allowed by boardgame.io CORS.                                                                                                      |
+| `JWT_SECRET`         | empty                   | Shared HMAC secret. The `game` service forwards it so the same key signs/verifies across services; set the same value as `api`.                                  |
+| `APP_VERSION`        | `0.1.0`                 | App release version exposed by `/api/app-version` and baked into the frontend bundle.                                                                            |
+| `APP_BUILD_ID`       | `0.1.0`                 | Build identifier used for client/server version checks. Set this to a git SHA, image tag, or release number and change it on every deploy.                       |
+| `GAME_RULES_VERSION` | `0.1.0`                 | Rules/calculation compatibility version. Bump when online matches must not mix old and new game logic.                                                           |
 
 Frontend build-time variables (baked into the bundle at `vite build`):
 
-| Variable       | Default | Notes                                                       |
-| -------------- | ------- | ----------------------------------------------------------- |
-| `VITE_API_URL` | `/api`  | API base used by [src/api/client.ts](../src/api/client.ts). |
+| Variable                  | Default              | Notes                                                                                                   |
+| ------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------- |
+| `VITE_API_URL`            | `/api`               | API base used by [src/api/client.ts](../src/api/client.ts).                                             |
+| `VITE_APP_VERSION`        | `APP_VERSION`        | Usually set automatically from `APP_VERSION` by the Docker build.                                       |
+| `VITE_APP_BUILD_ID`       | `APP_BUILD_ID`       | Must match the `game` runtime `APP_BUILD_ID`, otherwise clients are asked to reload before online play. |
+| `VITE_GAME_RULES_VERSION` | `GAME_RULES_VERSION` | Must match the `game` runtime `GAME_RULES_VERSION`.                                                     |
 
 > Admin authentication is no longer handled in the frontend. The `VITE_ADMIN_PASSWORD` build-time variable has been removed; admin login now goes through `POST /api/admin/login` backed by the `ADMIN_PASSWORD` environment variable on the `api` service.
 
 ### `api`
 
-| Variable          | Default              | Notes                                                                                                                                                            |
-| ----------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API_PORT`        | `3001`               | API service port inside the container.                                                                                                                           |
-| `PG_HOST`         | `postgres`           | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
-| `PG_PORT`         | `5432`               | PostgreSQL port.                                                                                                                                                 |
-| `PG_USER`         | `zutomayo`           | PostgreSQL user.                                                                                                                                                 |
-| `PG_PASSWORD`     | required             | PostgreSQL password. Set a strong value in `.env` or the shell before running Compose.                                                                           |
-| `PG_DATABASE`     | `zutomayo`           | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                            |
-| `REDIS_URL`       | `redis://redis:6379` | Redis connection URL for the matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                                                       |
-| `REDIS_DB`        | `0`                  | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
-| `JWT_SECRET`      | random per process   | HMAC key for signed user/admin tokens. Set a stable secret in production or all tokens become invalid when the API process restarts.                             |
-| `ADMIN_PASSWORD`  | empty                | Password checked by `POST /api/admin/login`. When empty, admin login returns `503` and admin endpoints are effectively disabled.                                 |
-| `ALLOWED_ORIGINS` | empty                | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                 |
+| Variable             | Default              | Notes                                                                                                                                                            |
+| -------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API_PORT`           | `3001`               | API service port inside the container.                                                                                                                           |
+| `PG_HOST`            | `postgres`           | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                  |
+| `PG_PORT`            | `5432`               | PostgreSQL port.                                                                                                                                                 |
+| `PG_USER`            | `zutomayo`           | PostgreSQL user.                                                                                                                                                 |
+| `PG_PASSWORD`        | required             | PostgreSQL password. Set a strong value in `.env` or the shell before running Compose.                                                                           |
+| `PG_DATABASE`        | `zutomayo`           | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                            |
+| `REDIS_URL`          | `redis://redis:6379` | Redis connection URL for the matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                                                       |
+| `REDIS_DB`           | `0`                  | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
+| `JWT_SECRET`         | random per process   | HMAC key for signed user/admin tokens. Set a stable secret in production or all tokens become invalid when the API process restarts.                             |
+| `ADMIN_PASSWORD`     | empty                | Password checked by `POST /api/admin/login`. When empty, admin login returns `503` and admin endpoints are effectively disabled.                                 |
+| `ALLOWED_ORIGINS`    | empty                | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                 |
+| `APP_VERSION`        | `0.1.0`              | App release version returned by `/api/version` and `/api/app-version`.                                                                                           |
+| `APP_BUILD_ID`       | `0.1.0`              | Build identifier; keep it aligned with the `game` service.                                                                                                       |
+| `GAME_RULES_VERSION` | `0.1.0`              | Rules/calculation compatibility version; keep it aligned with the `game` service.                                                                                |
 
 ## Volumes / 資料卷
 

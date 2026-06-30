@@ -1,7 +1,8 @@
-import { ZutomayoCard, resetParsedEffects } from './game/Game';
+import { ZutomayoOnlineCard, resetParsedEffects } from './game/Game';
 import { initCards } from './game/cards/loader';
 import { initEffectI18n } from './game/cards/i18n';
 import type { CardDef } from './game/types';
+import { APP_VERSION_INFO, isCompatibleVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 import path from 'path';
 import fs from 'fs';
 import serve from 'koa-static';
@@ -24,6 +25,46 @@ interface KoaContext extends DefaultContext {
   request: DefaultContext['request'] & { body?: unknown };
 }
 
+type VersionedPlayerData = Record<string, unknown> & { clientVersion?: unknown };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function versionFromData(value: unknown): AppVersionInfo | null {
+  return normalizeVersionInfo(isRecord(value) ? value.clientVersion : null);
+}
+
+function setupVersion(metadata: { setupData?: unknown } | undefined): AppVersionInfo | null {
+  return versionFromData(isRecord(metadata?.setupData) ? metadata.setupData : null);
+}
+
+function compatibleClientVersion(value: unknown): AppVersionInfo | null {
+  const version = normalizeVersionInfo(value);
+  return version && isCompatibleVersion(version) ? version : null;
+}
+
+function playerDataWithVersion(data: unknown, version: AppVersionInfo): VersionedPlayerData {
+  return {
+    ...(isRecord(data) ? data : {}),
+    clientVersion: version,
+  };
+}
+
+function firstAvailablePlayerID(players: Record<string | number, { name?: string } | undefined>): string | undefined {
+  return Object.keys(players)
+    .sort((a, b) => Number(a) - Number(b))
+    .find((id) => !players[id]?.name);
+}
+
+function authenticateVersionedCredentials(
+  credentials: string,
+  playerMetadata?: { credentials?: string; data?: VersionedPlayerData },
+): boolean {
+  if (!credentials || !playerMetadata?.credentials || credentials !== playerMetadata.credentials) return false;
+  return Boolean(compatibleClientVersion(playerMetadata.data?.clientVersion));
+}
+
 const configuredOrigins =
   process.env.ALLOWED_ORIGINS?.split(',')
     .map((origin) => origin.trim())
@@ -32,7 +73,6 @@ const configuredOrigins =
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
 const adminRoot = path.join(root, 'admin');
-const dataRoot = path.join(root, 'data');
 
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 // 復用服務器既有 Redis 時用 REDIS_DB 切到獨立 DB index（0-15）避免與其他服務的 key 衝突。
@@ -76,7 +116,7 @@ const db = new PostgresAdapter();
 // === 卡牌資料初始化（從 PostgreSQL 載入）===
 // 卡牌資料的 source of truth 是 PG 的 cards / card_effects_i18n 表（由 api 服務
 // 的 seed-cards-pg.ts 或 admin 上傳寫入）。game 服務的 boardgame.io server-side
-// 邏輯需要卡牌定義來初始化牌組，啟動時直接從 PG 讀取，不依賴檔案系統 cards.json。
+// 邏輯需要卡牌定義來初始化牌組，啟動時直接從 PG 讀取，不依賴檔案系統靜態卡表。
 // 瀏覽器端則透過 /api/cards 動態載入（參見 App.tsx refreshCards）。
 const cardPool = new Pool({
   host: process.env.PG_HOST || 'localhost',
@@ -130,7 +170,9 @@ async function loadCardsFromPG(): Promise<void> {
   resetParsedEffects();
   console.log(`[server] Loaded ${cards.length} cards from PostgreSQL`);
 
-  const i18nRows = await cardPool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang');
+  const i18nRows = await cardPool.query(
+    'SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang',
+  );
   const i18n: Record<string, Record<string, string>> = {};
   for (const row of i18nRows.rows) {
     const r = row as { card_id: string; lang: string; effect_text: string };
@@ -141,11 +183,27 @@ async function loadCardsFromPG(): Promise<void> {
   console.log(`[server] Loaded ${Object.keys(i18n).length} card i18n entries from PostgreSQL`);
 }
 
+const API_SERVER = process.env.API_URL || 'http://api:3001';
+
+async function verifyAdminReloadToken(authorization: string | undefined): Promise<boolean> {
+  if (!authorization) return false;
+  try {
+    const response = await fetch(new URL('/api/admin/cards/reload', API_SERVER), {
+      method: 'POST',
+      headers: { Authorization: authorization },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 const server = Server({
-  games: [ZutomayoCard],
+  games: [ZutomayoOnlineCard],
   db: db as unknown as NonNullable<ServerOpts['db']>,
   transport,
   origins: ['http://localhost:3000', /localhost:\d+/, /127\.0\.0\.1:\d+/, ...configuredOrigins],
+  authenticateCredentials: authenticateVersionedCredentials,
 });
 
 function safeStaticFile(baseDir: string, requestPath: string, routePrefix: string): string | null {
@@ -156,14 +214,37 @@ function safeStaticFile(baseDir: string, requestPath: string, routePrefix: strin
   return resolvedPath;
 }
 
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  if (ctx.path === '/api/app-version') {
+    ctx.set('Cache-Control', 'no-store');
+    ctx.body = APP_VERSION_INFO;
+    return;
+  }
+  if (ctx.path === '/api/admin/cards/reload' && ctx.method === 'POST') {
+    const authorization = firstHeaderValue(ctx.request.headers.authorization);
+    if (!(await verifyAdminReloadToken(authorization))) {
+      ctx.status = 401;
+      ctx.body = { error: 'Unauthorized' };
+      return;
+    }
+    await loadCardsFromPG();
+    ctx.set('Cache-Control', 'no-store');
+    ctx.body = { ok: true, version: APP_VERSION_INFO };
+    return;
+  }
+  await next();
+});
+
 server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: KoaContext) => {
   const matchID = ctx.params.id;
-  const body = (ctx.request.body ?? {}) as { playerID?: unknown; credentials?: unknown };
+  const body = (ctx.request.body ?? {}) as { playerID?: unknown; credentials?: unknown; clientVersion?: unknown };
   const playerID = body.playerID;
   const credentials = body.credentials;
+  const clientVersion = compatibleClientVersion(body.clientVersion);
 
   if (playerID !== '0' && playerID !== '1') ctx.throw(403, 'playerID is required');
   if (typeof credentials !== 'string') ctx.throw(403, 'credentials are required');
+  if (!clientVersion) ctx.throw(426, 'Client version does not match server game version');
 
   // 通過檢查後收窄型別：playerID 為 '0' | '1'，credentials 為 string。
   const typedPlayerID = playerID as '0' | '1';
@@ -171,10 +252,13 @@ server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: Koa
 
   const { metadata } = await server.db.fetch(matchID, { metadata: true });
   if (!metadata) ctx.throw(404, 'Match ' + matchID + ' not found');
+  if (!isCompatibleVersion(setupVersion(metadata))) ctx.throw(426, 'Room version does not match server game version');
 
   const player = metadata.players[typedPlayerID];
   if (!player) ctx.throw(404, 'Player ' + typedPlayerID + ' not found');
   if (!player.name || !player.credentials) ctx.throw(409, 'Player ' + typedPlayerID + ' not reserved');
+  if (!isCompatibleVersion(versionFromData(player.data)))
+    ctx.throw(426, 'Seat version does not match server game version');
 
   const isAuthorized = await server.auth.authenticateCredentials({
     playerID: typedPlayerID,
@@ -184,6 +268,61 @@ server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: Koa
   if (!isAuthorized) ctx.throw(409, 'Player ' + typedPlayerID + ' not available');
 
   ctx.body = { matchID, playerID: typedPlayerID };
+});
+
+server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaContext) => {
+  const matchID = ctx.params.id;
+  const body = (ctx.request.body ?? {}) as {
+    playerID?: unknown;
+    playerName?: unknown;
+    data?: unknown;
+    clientVersion?: unknown;
+  };
+  let playerID = body.playerID;
+  const playerName = body.playerName;
+  const clientVersion = compatibleClientVersion(
+    body.clientVersion ?? (isRecord(body.data) ? body.data.clientVersion : null),
+  );
+
+  if (typeof playerName !== 'string' || !playerName) ctx.throw(403, 'playerName is required');
+  if (!clientVersion) ctx.throw(426, 'Client version does not match server game version');
+  const typedPlayerName = playerName as string;
+  const typedClientVersion = clientVersion as AppVersionInfo;
+
+  const { metadata } = await server.db.fetch(matchID, { metadata: true });
+  if (!metadata) ctx.throw(404, 'Match ' + matchID + ' not found');
+  if (!isCompatibleVersion(setupVersion(metadata))) ctx.throw(426, 'Room version does not match server game version');
+
+  const existingPlayers = Object.values(metadata.players);
+  const existingMismatch = existingPlayers.some(
+    (player) => player?.name && !isCompatibleVersion(versionFromData(player.data)),
+  );
+  if (existingMismatch) ctx.throw(426, 'Opponent version does not match server game version');
+
+  if (playerID === undefined || playerID === null) {
+    playerID = firstAvailablePlayerID(metadata.players);
+    if (playerID === undefined) {
+      ctx.throw(409, `Match ${matchID} reached maximum number of players (${existingPlayers.length})`);
+    }
+  }
+
+  if (playerID !== '0' && playerID !== '1' && playerID !== 0 && playerID !== 1) {
+    ctx.throw(404, 'Player ' + String(playerID) + ' not found');
+  }
+
+  const typedPlayerID = String(playerID) as '0' | '1';
+  const player = metadata.players[typedPlayerID];
+  if (!player) ctx.throw(404, 'Player ' + typedPlayerID + ' not found');
+  if (player.name) ctx.throw(409, 'Player ' + typedPlayerID + ' not available');
+
+  player.data = playerDataWithVersion(body.data, typedClientVersion);
+  player.name = typedPlayerName;
+  const playerCredentials = await server.auth.generateCredentials(ctx);
+  player.credentials = playerCredentials;
+
+  await server.db.setMetadata(matchID, metadata);
+
+  ctx.body = { playerID: typedPlayerID, playerCredentials };
 });
 
 // Serve dist (frontend)
@@ -209,22 +348,7 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   await next();
 });
 
-// Serve data (card JSON)
-server.app.use(async (ctx: KoaContext, next: Next) => {
-  if (ctx.path.startsWith('/data/')) {
-    const filePath = safeStaticFile(dataRoot, ctx.path, '/data');
-    if (filePath && fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      ctx.type = 'application/json';
-      ctx.body = fs.readFileSync(filePath);
-      return;
-    }
-  }
-  await next();
-});
-
 // API proxy — forward /api/* to the API server
-const API_SERVER = process.env.API_URL || 'http://api:3001';
-
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -353,7 +477,13 @@ console.log(`Stale match cleanup: TTL=${STALE_MATCH_TTL_MS / 60000}min, interval
 async function shutdown(signal: string): Promise<void> {
   console.log(`[shutdown] ${signal} received, closing connections...`);
   try {
-    await Promise.all([db.close(), cardPool.end(), redisPubSub.close(), redisPubClient.quit(), redisAdapterSubClient.quit()]);
+    await Promise.all([
+      db.close(),
+      cardPool.end(),
+      redisPubSub.close(),
+      redisPubClient.quit(),
+      redisAdapterSubClient.quit(),
+    ]);
   } catch (err) {
     console.error('[shutdown] error:', err);
   }

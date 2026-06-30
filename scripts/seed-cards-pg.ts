@@ -1,16 +1,10 @@
-import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import type { CardDef } from '../src/game/types';
+import { loadSeedCardI18n, loadSeedCards } from './cardSource';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg') as typeof import('pg');
-
-type CardEffectsI18n = Record<string, Record<string, string>>;
-
-const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const pool = new Pool({
   host: process.env.PG_HOST || 'localhost',
@@ -91,10 +85,6 @@ const DEFAULT_GAME_CONFIG: Array<{ key: string; value: unknown; description: str
   { key: 'maxCopies', value: 2, description: 'Maximum copies of one card per deck' },
 ];
 
-function readJsonFile<T>(path: string): T {
-  return JSON.parse(readFileSync(path, 'utf8')) as T;
-}
-
 function presetCardIds(cards: CardDef[], element: CardDef['element']): string[] {
   const ids = cards
     .filter((card) => card.element === element)
@@ -128,8 +118,8 @@ function cardParams(card: CardDef): unknown[] {
 }
 
 async function main(): Promise<void> {
-  const cards = readJsonFile<CardDef[]>(resolve(projectRoot, 'cards.json'));
-  const effectsI18n = readJsonFile<CardEffectsI18n>(resolve(projectRoot, 'data/card-effects-i18n.json'));
+  const cards = await loadSeedCards();
+  const effectsI18n = await loadSeedCardI18n();
   const presetDecks = Object.entries(PRESET_DECKS).map(([id, deck]) => ({
     id,
     name: deck.name,

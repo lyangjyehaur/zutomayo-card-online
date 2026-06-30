@@ -36,16 +36,10 @@ import type { ParsedEffect } from '../src/game/effects';
 import { ZutomayoCard, resetParsedEffects } from '../src/game/Game';
 import { aiSelectCards } from '../src/game/ai';
 import type { Ctx } from 'boardgame.io';
-import { readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { loadCardsForScript } from './cardSource';
 
-// 初始化卡牌數據（smoke test 直接讀取 cards.json）
-const cardsJsonPath = resolve('cards.json');
-if (existsSync(cardsJsonPath)) {
-  const cards = JSON.parse(readFileSync(cardsJsonPath, 'utf8'));
-  initCards(cards);
-  resetParsedEffects();
-}
+initCards(await loadCardsForScript());
+resetParsedEffects();
 
 const require = createRequire(import.meta.url);
 const { Client } = require('boardgame.io/client') as typeof import('boardgame.io/client');
@@ -579,9 +573,15 @@ function fivePowerCards() {
   assert.equal(G.players[0].setZoneA, null);
   assert.equal(G.players[0].setZoneC?.defId, '2nd_5');
   assert.equal(G.players[0].setZoneC?.faceUp, false);
-  assert.equal(G.actionLog.some((entry) => entry.action === 'setTurnCard' && entry.player === 0), false);
+  assert.equal(
+    G.actionLog.some((entry) => entry.action === 'setTurnCard' && entry.player === 0),
+    false,
+  );
   assert.equal(confirmReady(G, 0, noEffects), true);
-  assert.equal(G.actionLog.some((entry) => entry.action === 'setTurnCard' && entry.player === 0), true);
+  assert.equal(
+    G.actionLog.some((entry) => entry.action === 'setTurnCard' && entry.player === 0),
+    true,
+  );
   assert.equal(setTurnCard(G, 1, 0, 'A'), true);
   assert.equal(confirmReady(G, 1, noEffects), true);
   assert.equal(G.players[0].setZoneC?.defId, '2nd_5');
@@ -709,11 +709,7 @@ function fivePowerCards() {
   for (const key of Object.keys(PRESET_DECKS)) {
     // 透過 getPresetDeck 走 buildDeck，應不拋錯。
     const deck = getPresetDeck(key);
-    assert.equal(
-      validateConstructedDeckIds(deck.map((card) => card.defId)),
-      null,
-      `preset ${key} should be valid`,
-    );
+    assert.equal(validateConstructedDeckIds(deck.map((card) => card.defId)), null, `preset ${key} should be valid`);
     assert.equal(deck.length, 20);
   }
   // randomDeck 走 buildDeck 也應不拋錯。

@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { initCards, getAllCardDefs, isCardsInitialized } from '../cards/loader';
 import { parseAllEffects, parseEffect } from '../effects/parser';
 import { ZutomayoCard } from '../Game';
@@ -47,10 +45,8 @@ function testCardDefs(): CardDef[] {
   ];
 }
 
-// 從 cards.json 載入卡牌數據（測試環境無 API/server，直接讀檔案）
-const cardsJsonPath = resolve('cards.json');
 if (!isCardsInitialized()) {
-  initCards(existsSync(cardsJsonPath) ? JSON.parse(readFileSync(cardsJsonPath, 'utf8')) : testCardDefs());
+  initCards(testCardDefs());
 }
 
 // 預先解析所有卡牌效果，供遊戲流程使用

@@ -11,7 +11,7 @@ export function isCardsInitialized(): boolean {
 }
 
 /**
- * 從外部載入卡牌數據（遊戲伺服器啟動時呼叫，讀取 cards.json 檔案系統）。
+ * 從外部載入卡牌數據（遊戲伺服器啟動時呼叫，server 端從 PostgreSQL 讀取）。
  * 瀏覽器端請使用 loadCardsFromAPI() / refreshCards()。
  */
 export function initCards(cards: CardDef[]): void {
@@ -32,10 +32,10 @@ function isCardDefArray(value: unknown): value is CardDef[] {
   );
 }
 
-async function fetchJson<T>(path: string): Promise<T | null> {
+async function fetchJson<T>(path: string, cache: RequestCache = 'no-store'): Promise<T | null> {
   if (typeof fetch === 'undefined') return null;
   try {
-    const response = await fetch(path, { cache: 'force-cache' });
+    const response = await fetch(path, { cache });
     if (!response.ok) return null;
     return (await response.json()) as T;
   } catch {
@@ -44,20 +44,13 @@ async function fetchJson<T>(path: string): Promise<T | null> {
 }
 
 /**
- * 從 API 載入卡牌數據。
- * API 不可用時 fallback 到靜態 /cards.json（Vite dev 或 server 提供）。
+ * 從 PG-backed API 載入卡牌數據（瀏覽器端）。
+ * API 不可用時保留既有（可能為空）的卡牌資料。
  */
 async function loadCardsFromAPI(): Promise<CardDef[]> {
-  // 先試 PG-backed API
   const cards = await fetchJson<unknown>('/api/cards');
   if (isCardDefArray(cards)) {
     initCards(cards);
-    return getAllCardDefs();
-  }
-  // Fallback：靜態 cards.json
-  const staticCards = await fetchJson<unknown>('/cards.json');
-  if (isCardDefArray(staticCards)) {
-    initCards(staticCards);
   }
   return getAllCardDefs();
 }

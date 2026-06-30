@@ -3,14 +3,14 @@ import { createRequire } from 'node:module';
 import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { readFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { ZutomayoCard, resetParsedEffects } from '../src/game/Game';
+import { ZutomayoCard, ZutomayoOnlineCard, resetParsedEffects } from '../src/game/Game';
 import { initCards } from '../src/game/cards/loader';
 import { getPresetDeck, validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
 import { PostgresAdapter } from '../src/server/db/postgres-adapter';
 import { RedisPubSub } from '../src/server/transport/redis-pubsub';
 import type { CardInstance, GameState, ZutomayoSetupData } from '../src/game/types';
+import { APP_VERSION_INFO, isCompatibleVersion } from '../src/version';
+import { loadCardsForScript } from './cardSource';
 
 const require = createRequire(import.meta.url);
 const { Server, SocketIO: ServerSocketIO } = require('boardgame.io/server') as typeof import('boardgame.io/server');
@@ -158,7 +158,7 @@ async function drainPendingEffects(client0: BoardgameClient, client1: BoardgameC
 async function createOnlineMatch(setupData: ZutomayoSetupData): Promise<string> {
   const { matchID } = await postJson<{ matchID: string }>('/games/zutomayo-card/create', {
     numPlayers: 2,
-    setupData,
+    setupData: { ...setupData, clientVersion: APP_VERSION_INFO },
   });
   return matchID;
 }
@@ -167,6 +167,7 @@ async function joinOnlineMatch(matchID: string, playerID: '0' | '1'): Promise<{ 
   return postJson<{ playerCredentials: string }>(`/games/zutomayo-card/${matchID}/join`, {
     playerID,
     playerName: `Player ${playerID}`,
+    data: { clientVersion: APP_VERSION_INFO },
   });
 }
 
@@ -276,22 +277,27 @@ const transport = new ServerSocketIO({
 } as SocketOpts);
 
 // 初始化卡牌數據（供 server-side 遊戲邏輯使用）
-const onlineSmokeCardsPath = resolve('cards.json');
-if (existsSync(onlineSmokeCardsPath)) {
-  const onlineSmokeCards = JSON.parse(readFileSync(onlineSmokeCardsPath, 'utf8'));
-  initCards(onlineSmokeCards);
-  resetParsedEffects();
-}
+initCards(await loadCardsForScript());
+resetParsedEffects();
 
 function presetDeckIds(name: string): string[] {
   return getPresetDeck(name).map((card) => card.defId);
 }
 
 const server = Server({
-  games: [ZutomayoCard],
+  games: [ZutomayoOnlineCard],
   db: db as unknown as NonNullable<ServerOpts['db']>,
   transport,
   origins: [/localhost:\d+/, /127\.0\.0\.1:\d+/],
+  authenticateCredentials: (
+    credentials: string,
+    playerMetadata?: { credentials?: string; data?: { clientVersion?: unknown } },
+  ) =>
+    Boolean(
+      credentials &&
+      playerMetadata?.credentials === credentials &&
+      isCompatibleVersion(playerMetadata.data?.clientVersion),
+    ),
 });
 let runResult: Awaited<ReturnType<typeof server.run>> | undefined;
 const clients: BoardgameClient[] = [];
@@ -327,7 +333,7 @@ try {
   invalidDeckIds[0] = 'missing_card';
   const invalidResponse = await postJsonResponse('/games/zutomayo-card/create', {
     numPlayers: 2,
-    setupData: { deck0Ids: invalidDeckIds, deck1Ids: customDeck1Ids },
+    setupData: { deck0Ids: invalidDeckIds, deck1Ids: customDeck1Ids, clientVersion: APP_VERSION_INFO },
   });
   assert.equal(invalidResponse.ok, false, 'invalid custom deck payload should be rejected');
 

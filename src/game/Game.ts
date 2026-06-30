@@ -213,6 +213,11 @@ export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetu
   },
 };
 
+export const ZutomayoOnlineCard: Game<GameState, Record<string, unknown>, ZutomayoSetupData> = {
+  ...ZutomayoCard,
+  validateSetupData: (setupData) => validateZutomayoSetupData(setupData, { requireClientVersion: true }),
+};
+
 export function createZutomayoCard(
   defaultSetupData: ZutomayoSetupData = {},
 ): Game<GameState, Record<string, unknown>, ZutomayoSetupData> {
@@ -225,8 +230,9 @@ export function createZutomayoCard(
           deck1Name: setupData?.deck1Name ?? defaultSetupData.deck1Name,
           deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
           deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
+          clientVersion: setupData?.clientVersion ?? defaultSetupData.clientVersion,
         },
-        { allowBrowserCustomDeckName: true },
+        { allowBrowserCustomDeckName: true, requireClientVersion: false },
       ),
     setup: (_context, setupData) =>
       setupGame(
@@ -235,6 +241,7 @@ export function createZutomayoCard(
           deck1Name: setupData?.deck1Name ?? defaultSetupData.deck1Name,
           deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
           deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
+          clientVersion: setupData?.clientVersion ?? defaultSetupData.clientVersion,
         },
         { allowBrowserCustomDeckName: true },
       ),

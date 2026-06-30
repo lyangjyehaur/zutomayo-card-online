@@ -40,31 +40,13 @@ function cardRowToDef(row) {
   return def;
 }
 
-function filterStaticCards(staticCards, searchParams) {
-  let cards = staticCards;
-  const pack = searchParams.get('pack');
-  const element = searchParams.get('element');
-  const type = searchParams.get('type');
-  if (pack) cards = cards.filter((card) => card.pack === pack);
-  if (element) cards = cards.filter((card) => card.element === element);
-  if (type) cards = cards.filter((card) => card.type === type);
-  return cards;
-}
-
 function normalizeI18nLang(lang) {
   if (typeof lang !== 'string') return null;
   const canonical = I18N_LANG_ALIASES.get(lang) || lang;
   return I18N_LANGS.includes(canonical) ? canonical : null;
 }
 
-function staticI18nForCard(staticCardI18n, cardId) {
-  const source = staticCardI18n && typeof staticCardI18n === 'object' ? staticCardI18n[cardId] : null;
-  return Object.fromEntries(
-    I18N_LANGS.map((lang) => [lang, source && typeof source[lang] === 'string' ? source[lang] : '']),
-  );
-}
-
-async function getPublicCards(pool, searchParams, staticCards) {
+async function getPublicCards(pool, searchParams) {
   try {
     const conditions = [];
     const values = [];
@@ -80,58 +62,50 @@ async function getPublicCards(pool, searchParams, staticCards) {
     }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const cards = (await pool.query(`${CARD_SELECT} FROM cards ${where} ORDER BY id`, values)).rows;
-    if (cards.length > 0) return cards.map(cardRowToDef);
-
-    const hasSeededCards = (await pool.query('SELECT 1 FROM cards LIMIT 1')).rows.length > 0;
-    if (hasSeededCards) return [];
+    return cards.map(cardRowToDef);
   } catch {
-    // Keep the API usable in offline/dev environments where PG card data is not available.
+    return [];
   }
-  return filterStaticCards(staticCards, searchParams);
 }
 
-async function getAllCardI18n(pool, staticCardI18n) {
+async function getAllCardI18n(pool) {
   try {
-    const rows = (await pool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang')).rows;
-    if (rows.length > 0) {
-      const grouped = {};
-      for (const row of rows) {
-        if (!grouped[row.card_id]) grouped[row.card_id] = {};
-        grouped[row.card_id][row.lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
-      }
-      return grouped;
+    const rows = (await pool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang'))
+      .rows;
+    const grouped = {};
+    for (const row of rows) {
+      if (!grouped[row.card_id]) grouped[row.card_id] = {};
+      grouped[row.card_id][row.lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
     }
+    return grouped;
   } catch {
-    // Fallback below.
+    return {};
   }
-  return staticCardI18n;
 }
 
-async function getCardI18n(pool, staticCardI18n, cardId) {
-  const translations = staticI18nForCard(staticCardI18n, cardId);
+async function getCardI18n(pool, cardId) {
+  const translations = Object.fromEntries(I18N_LANGS.map((lang) => [lang, '']));
   try {
-    const rows = (await pool.query('SELECT lang, effect_text FROM card_effects_i18n WHERE card_id = $1', [cardId])).rows;
+    const rows = (await pool.query('SELECT lang, effect_text FROM card_effects_i18n WHERE card_id = $1', [cardId]))
+      .rows;
     for (const row of rows) {
       const lang = normalizeI18nLang(row.lang);
       if (lang) translations[lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
     }
   } catch {
-    // Static fallback already populated above.
+    // Return the empty language shape when PG is unavailable.
   }
   return translations;
 }
 
-async function getPublicCard(pool, staticCardMap, cardId) {
+async function getPublicCard(pool, cardId) {
   try {
     const card = (await pool.query(`${CARD_SELECT} FROM cards WHERE id = $1`, [cardId])).rows[0];
     if (card) return { ok: true, body: cardRowToDef(card) };
+    return { ok: false, status: 404, error: 'Card not found' };
   } catch {
-    // Static fallback below.
+    return { ok: false, status: 503, error: 'Card data unavailable' };
   }
-
-  const fallback = staticCardMap.get(cardId);
-  if (!fallback) return { ok: false, status: 404, error: 'Card not found' };
-  return { ok: true, body: fallback };
 }
 
 async function getGameConfig(pool) {
@@ -151,7 +125,6 @@ async function getPresetDecks(pool) {
 module.exports = {
   CARD_SELECT,
   cardRowToDef,
-  filterStaticCards,
   getAllCardI18n,
   getCardI18n,
   getGameConfig,
@@ -159,5 +132,4 @@ module.exports = {
   getPublicCard,
   getPublicCards,
   normalizeI18nLang,
-  staticI18nForCard,
 };

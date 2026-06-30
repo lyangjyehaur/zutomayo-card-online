@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { getDecks, getProfile, isLoggedIn, type DeckResponse } from './api/client';
+import { ensureCompatibleAppVersion } from './clientVersion';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
@@ -15,6 +16,7 @@ import {
   type OnlineSession,
   type OnlineSessionValidationReason,
 } from './onlineSession';
+import { APP_VERSION_INFO } from './version';
 import './App.css';
 import './components/InteractiveTutorial.css';
 
@@ -38,18 +40,24 @@ const LeaderboardPage = lazy(() =>
   import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
 );
 
-type OnlineRoomErrorKey = 'online.roomFull' | 'online.roomNotFound' | 'online.connectionFailed';
+type OnlineRoomErrorKey =
+  | 'online.roomFull'
+  | 'online.roomNotFound'
+  | 'online.connectionFailed'
+  | 'online.versionMismatch';
 
 function onlineRoomError(key: OnlineRoomErrorKey): Error {
   return new Error(key);
 }
 
 async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
+  await ensureCompatibleAppVersion();
   const response = await fetch('/games/zutomayo-card/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ numPlayers: 2, setupData }),
+    body: JSON.stringify({ numPlayers: 2, setupData: { ...setupData, clientVersion: APP_VERSION_INFO } }),
   });
+  if (response.status === 426) throw onlineRoomError('online.versionMismatch');
   if (!response.ok) throw onlineRoomError('online.connectionFailed');
   const data = await response.json();
   return data.matchID;
@@ -66,6 +74,7 @@ async function currentAccountSeatData(): Promise<{ userId: string } | undefined>
 }
 
 async function joinMatch(matchID: string, playerID: '0' | '1'): Promise<{ playerCredentials: string }> {
+  await ensureCompatibleAppVersion();
   const data = await currentAccountSeatData();
   const response = await fetch(`/games/zutomayo-card/${matchID}/join`, {
     method: 'POST',
@@ -73,10 +82,12 @@ async function joinMatch(matchID: string, playerID: '0' | '1'): Promise<{ player
     body: JSON.stringify({
       playerID,
       playerName: playerID === '0' ? t('player.zero') : t('player.one'),
-      ...(data ? { data } : {}),
+      data: { ...(data ?? {}), clientVersion: APP_VERSION_INFO },
+      clientVersion: APP_VERSION_INFO,
     }),
   });
   if (!response.ok) {
+    if (response.status === 426) throw onlineRoomError('online.versionMismatch');
     if (response.status === 404) throw onlineRoomError('online.roomNotFound');
     if (response.status === 409) throw onlineRoomError('online.roomFull');
     throw onlineRoomError('online.connectionFailed');
@@ -130,12 +141,14 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
 }
 
 function resumeErrorTitle(reason: OnlineSessionValidationReason): TranslationKey {
+  if (reason === 'versionMismatch') return 'online.versionMismatch';
   if (reason === 'roomGone') return 'onlineSession.roomGoneTitle';
   if (reason === 'seatTaken') return 'onlineSession.seatTakenTitle';
   return 'onlineSession.resumeErrorTitle';
 }
 
 function resumeErrorBody(reason: OnlineSessionValidationReason): TranslationKey {
+  if (reason === 'versionMismatch') return 'online.versionMismatchBody';
   if (reason === 'roomGone') return 'onlineSession.roomGoneBody';
   if (reason === 'seatTaken') return 'onlineSession.seatTakenBody';
   return 'onlineSession.resumeErrorBody';

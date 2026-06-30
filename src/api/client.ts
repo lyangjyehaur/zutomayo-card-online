@@ -2,7 +2,7 @@ import type { ActionLogEntry, CardDef } from '../game/types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
-const PUBLIC_DATA_CACHE_MS = 5 * 60 * 1000;
+const PUBLIC_DATA_CACHE_MS = 0;
 
 let cardsCache: { expiresAt: number; data: CardDef[] } | null = null;
 let configCache: { expiresAt: number; data: Record<string, unknown> } | null = null;
@@ -88,7 +88,7 @@ function isFresh<T>(cache: { expiresAt: number; data: T } | null): cache is { ex
 
 // ===== Public Data =====
 export async function fetchCards(force = false): Promise<CardDef[]> {
-  if (!force && isFresh(cardsCache)) return cardsCache.data;
+  if (!force && PUBLIC_DATA_CACHE_MS > 0 && isFresh(cardsCache)) return cardsCache.data;
   const data = await request<CardDef[]>('/cards');
   cardsCache = { data, expiresAt: Date.now() + PUBLIC_DATA_CACHE_MS };
   return data;
@@ -103,14 +103,14 @@ export async function fetchCardI18n(cardId: string): Promise<Record<string, stri
 }
 
 export async function fetchGameConfig(): Promise<Record<string, unknown>> {
-  if (isFresh(configCache)) return configCache.data;
+  if (PUBLIC_DATA_CACHE_MS > 0 && isFresh(configCache)) return configCache.data;
   const data = await request<Record<string, unknown>>('/config');
   configCache = { data, expiresAt: Date.now() + PUBLIC_DATA_CACHE_MS };
   return data;
 }
 
 export async function fetchPresetDecks(): Promise<Array<{ id: string; name: string; cardIds: string[] }>> {
-  if (isFresh(presetDecksCache)) return presetDecksCache.data;
+  if (PUBLIC_DATA_CACHE_MS > 0 && isFresh(presetDecksCache)) return presetDecksCache.data;
   const data = await request<Array<{ id: string; name: string; cardIds: string[] }>>('/preset-decks');
   presetDecksCache = { data, expiresAt: Date.now() + PUBLIC_DATA_CACHE_MS };
   return data;
@@ -261,6 +261,7 @@ export async function adminUpdateCard(id: string, card: Partial<CardDef>): Promi
     headers: adminAuthHeaders(),
     body: JSON.stringify(card),
   });
+  await adminReloadGameCards();
   cardsCache = null;
   return updated;
 }
@@ -279,6 +280,14 @@ export async function adminUpdateCardI18n(cardId: string, lang: string, effectTe
     method: 'PUT',
     headers: adminAuthHeaders(),
     body: JSON.stringify({ lang, effectText }),
+  });
+  await adminReloadGameCards();
+}
+
+export async function adminReloadGameCards(): Promise<void> {
+  await request<{ ok: boolean }>('/admin/cards/reload', {
+    method: 'POST',
+    headers: adminAuthHeaders(),
   });
 }
 

@@ -4,47 +4,23 @@ import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import fs from 'fs';
 import path from 'path';
-import type { Connect } from 'vite';
 
-// Vite 預設只 serve public/ 目錄下的檔案。
-// 此 middleware 讓 dev server 也能提供 cards.json 和 data/ 給前端 fallback 使用。
-function serveStaticData(): { name: string; configureServer: (server: { middlewares: Connect.Server }) => void } {
-  return {
-    name: 'static-data',
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        if (!req.url) return next();
-        const url = req.url;
+const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as { version?: string };
+const fallbackVersion = packageJson.version ?? '0.1.0';
 
-        if (url === '/cards.json') {
-          const filePath = path.resolve('cards.json');
-          if (fs.existsSync(filePath)) {
-            res.setHeader('Content-Type', 'application/json');
-            res.end(fs.readFileSync(filePath));
-            return;
-          }
-        }
-
-        if (url?.startsWith('/data/')) {
-          const filePath = path.resolve('.' + url);
-          if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-            res.setHeader('Content-Type', 'application/json');
-            res.end(fs.readFileSync(filePath));
-            return;
-          }
-        }
-
-        next();
-      });
-    },
-  };
+function versionEnv(name: string, fallback: string): string {
+  return process.env[`VITE_${name}`] || process.env[name] || fallback;
 }
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(versionEnv('APP_VERSION', fallbackVersion)),
+    __APP_BUILD_ID__: JSON.stringify(versionEnv('APP_BUILD_ID', fallbackVersion)),
+    __GAME_RULES_VERSION__: JSON.stringify(versionEnv('GAME_RULES_VERSION', fallbackVersion)),
+  },
   plugins: [
     tailwindcss(),
     react(),
-    serveStaticData(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],

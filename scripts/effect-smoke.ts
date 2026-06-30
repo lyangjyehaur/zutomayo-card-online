@@ -1,22 +1,16 @@
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import { parseEffect } from '../src/game/effects/parser';
 import { executeEffect } from '../src/game/effects/executor';
 import { setupGame, getChronosTime, setInitialCard, resolveJanken, finishMulligan } from '../src/game/GameLogic';
 import type { GameState } from '../src/game/types';
 import type { ParsedEffect } from '../src/game/effects';
+import { loadCardsForScript } from './cardSource';
 
-const require = createRequire(import.meta.url);
-interface CardData {
-  id: string;
-  effect?: string;
-  [key: string]: unknown;
-}
-const cardsData: CardData[] = require('../cards.json');
+const cardsData = await loadCardsForScript();
 
 // ===== Test 1: Coverage — parse all effect cards =====
 console.log('=== Test 1: Parser Coverage ===');
-const effectCards = cardsData.filter((c: CardData) => c.effect && c.effect.trim().length > 0);
+const effectCards = cardsData.filter((card) => card.effect && card.effect.trim().length > 0);
 let parsed = 0;
 const failed: string[] = [];
 

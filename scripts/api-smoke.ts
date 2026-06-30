@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { Pool } from 'pg';
 import { initCards } from '../src/game/cards/loader';
 import { getPresetDeck } from '../src/game/cards/deckBuilder';
 import type { ActionLogEntry, ActionLogResult, PendingChoice } from '../src/game/types';
+import { loadCardsForScript } from './cardSource';
 
 // Mock HTTP request：模擬 server.cjs handleRequest 接收的 req 物件。
 interface MockRequest extends EventEmitter {
@@ -38,8 +39,6 @@ interface AuthResponse {
     elo: number;
   };
 }
-
-initCards(JSON.parse(readFileSync(resolve('cards.json'), 'utf8')));
 
 function presetDeckIds(name: string): string[] {
   return getPresetDeck(name).map((card) => card.defId);
@@ -110,6 +109,8 @@ process.env.PG_PASSWORD = process.env.PG_PASSWORD || 'zutomayo_dev';
 process.env.PG_DATABASE = process.env.PG_DATABASE || 'zutomayo';
 process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 process.env.JWT_SECRET = 'api-smoke-secret';
+
+initCards(await loadCardsForScript());
 
 // This smoke uses the real API request handler in-process so it works in
 // sandboxes/CI where opening a local listening socket is forbidden.

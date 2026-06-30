@@ -1,3 +1,5 @@
+import type { AppVersionInfo } from '../version';
+
 export type Element = '闇' | '炎' | '電気' | '風' | 'カオス';
 export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
 export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
@@ -145,6 +147,7 @@ export interface ZutomayoSetupData {
   deck1Name?: string;
   deck0Ids?: string[];
   deck1Ids?: string[];
+  clientVersion?: AppVersionInfo;
 }
 
 export interface CardDef {

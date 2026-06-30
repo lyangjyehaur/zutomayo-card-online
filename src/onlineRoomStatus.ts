@@ -7,9 +7,14 @@ export type OnlineRoomStatus =
   | 'ready'
   | 'roomNotFound'
   | 'roomFull'
+  | 'versionMismatch'
   | 'connectionFailed';
 
-export type OnlineRoomErrorKey = 'online.roomFull' | 'online.roomNotFound' | 'online.connectionFailed';
+export type OnlineRoomErrorKey =
+  | 'online.roomFull'
+  | 'online.roomNotFound'
+  | 'online.versionMismatch'
+  | 'online.connectionFailed';
 
 export type OnlineStatusPanelCopy = {
   titleKey: TranslationKey;
@@ -20,19 +25,27 @@ export type OnlineStatusPanelCopy = {
 };
 
 export function isOnlineRoomErrorKey(value: string): value is OnlineRoomErrorKey {
-  return value === 'online.roomFull' || value === 'online.roomNotFound' || value === 'online.connectionFailed';
+  return (
+    value === 'online.roomFull' ||
+    value === 'online.roomNotFound' ||
+    value === 'online.versionMismatch' ||
+    value === 'online.connectionFailed'
+  );
 }
 
 export function onlineErrorStatus(error: unknown): OnlineRoomStatus {
   if (error instanceof Error && isOnlineRoomErrorKey(error.message)) {
     if (error.message === 'online.roomFull') return 'roomFull';
     if (error.message === 'online.roomNotFound') return 'roomNotFound';
+    if (error.message === 'online.versionMismatch') return 'versionMismatch';
   }
   return 'connectionFailed';
 }
 
 export function isOnlineFailureStatus(status: OnlineRoomStatus): boolean {
-  return status === 'roomNotFound' || status === 'roomFull' || status === 'connectionFailed';
+  return (
+    status === 'roomNotFound' || status === 'roomFull' || status === 'versionMismatch' || status === 'connectionFailed'
+  );
 }
 
 export function onlineStatusPanelCopy(status: OnlineRoomStatus): OnlineStatusPanelCopy {
@@ -62,6 +75,16 @@ export function onlineStatusPanelCopy(status: OnlineRoomStatus): OnlineStatusPan
       bodyKey: 'online.connectionFailedBody',
       canRetry: true,
       canCreateNewRoom: true,
+      tone: 'error',
+    };
+  }
+
+  if (status === 'versionMismatch') {
+    return {
+      titleKey: 'online.versionMismatch',
+      bodyKey: 'online.versionMismatchBody',
+      canRetry: true,
+      canCreateNewRoom: false,
       tone: 'error',
     };
   }

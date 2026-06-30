@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { isVersionMismatchError, reloadForAppUpdate } from '../clientVersion';
 import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
 import { t, translate, useLocale } from '../i18n';
@@ -66,7 +67,10 @@ function LeaveConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-lacquer-deep/70 px-4 backdrop-blur-sm" role="presentation">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-lacquer-deep/70 px-4 backdrop-blur-sm"
+      role="presentation"
+    >
       <section
         className="w-full max-w-md rounded-sm bg-lacquer p-6 text-bone ring-1 ring-bone/10"
         role="dialog"
@@ -197,7 +201,13 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
       }
 
       clearStoredOnlineSession();
-      setReconnectStatus(result.reason === 'roomGone' ? 'roomNotFound' : 'roomFull');
+      setReconnectStatus(
+        result.reason === 'roomGone'
+          ? 'roomNotFound'
+          : result.reason === 'versionMismatch'
+            ? 'versionMismatch'
+            : 'roomFull',
+      );
     };
 
     void validate(false);
@@ -261,8 +271,12 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
       if (activeSession) await leaveOnlineSession(activeSession);
       onClearSession();
       await onCreateNewRoom();
-    } catch {
-      setActionError(translate(locale, 'online.createRoomFailed'));
+    } catch (err) {
+      setActionError(
+        isVersionMismatchError(err)
+          ? translate(locale, 'online.versionMismatchBody')
+          : translate(locale, 'online.createRoomFailed'),
+      );
     } finally {
       setCreatingRoom(false);
     }
@@ -299,7 +313,8 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
       : canLeave
         ? t('online.leaveRoom')
         : t('common.backToLobby');
-    const panelTone = copy.tone === 'error' ? 'text-vermilion/80' : copy.tone === 'waiting' ? 'text-gold/70' : 'text-bone/45';
+    const panelTone =
+      copy.tone === 'error' ? 'text-vermilion/80' : copy.tone === 'waiting' ? 'text-gold/70' : 'text-bone/45';
 
     return (
       <main className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
@@ -329,9 +344,9 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
               <button
                 className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold"
                 type="button"
-                onClick={retryStatusCheck}
+                onClick={status === 'versionMismatch' ? reloadForAppUpdate : retryStatusCheck}
               >
-                {t('online.retryAction')}
+                {status === 'versionMismatch' ? t('online.reloadAction') : t('online.retryAction')}
               </button>
             )}
             {copy.canCreateNewRoom && (

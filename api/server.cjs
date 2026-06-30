@@ -23,10 +23,6 @@ const {
 } = require('./matchmakingService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
-let staticCards = [];
-try { staticCards = require('../cards.json'); } catch (_) { /* API container may not have cards.json */ }
-let staticCardI18n = {};
-try { staticCardI18n = require('../data/card-effects-i18n.json'); } catch (_) { /* API container may not have i18n data */ }
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 
@@ -35,6 +31,14 @@ const PORT = Number(process.env.API_PORT) || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 // P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const APP_VERSION = process.env.APP_VERSION || '0.1.0';
+const APP_BUILD_ID = process.env.APP_BUILD_ID || APP_VERSION;
+const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
+const APP_VERSION_INFO = Object.freeze({
+  appVersion: APP_VERSION,
+  buildId: APP_BUILD_ID,
+  rulesVersion: GAME_RULES_VERSION,
+});
 
 // PostgreSQL 設定（水平擴展：以 PG 取代 SQLite）
 const PG_HOST = process.env.PG_HOST || 'localhost';
@@ -68,8 +72,6 @@ const redis = new Redis(REDIS_URL, {
 // 連線層錯誤（如 Redis 暫時斷線）不應變成 unhandled error event；
 // query 層錯誤仍會 reject promise 由各 handler 的 safe() 接住。
 redis.on('error', () => {});
-
-const staticCardMap = new Map(staticCards.map((card) => [card.id, card]));
 
 async function initSchema() {
   // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
@@ -564,6 +566,12 @@ function handleRequest(req, res) {
       return;
     }
 
+    if ((pathname === '/api/app-version' || pathname === '/api/version') && method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      json(APP_VERSION_INFO);
+      return;
+    }
+
     // ===== Auth Routes =====
 
     // Register
@@ -727,41 +735,46 @@ function handleRequest(req, res) {
 
     // ===== Card Data Routes =====
 
-    // Public: list card definitions from PG, falling back to static cards.json when cards are not seeded.
+    // Public: list card definitions from PostgreSQL.
     if (pathname === '/api/cards' && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300');
-      json(await getPublicCards(pool, url.searchParams, staticCards));
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getPublicCards(pool, url.searchParams));
       return;
     }
 
-    // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯（與 data/card-effects-i18n.json 結構相同）
+    // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯。
     if (pathname === '/api/cards/i18n' && method === 'GET') {
-      json(await getAllCardI18n(pool, staticCardI18n));
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getAllCardI18n(pool));
       return;
     }
 
     const publicCardI18nRoute = pathname.match(/^\/api\/cards\/([^/]+)\/i18n$/);
     if (publicCardI18nRoute && method === 'GET') {
       const cardId = decodeURIComponent(publicCardI18nRoute[1]);
-      json(await getCardI18n(pool, staticCardI18n, cardId));
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getCardI18n(pool, cardId));
       return;
     }
 
     const publicCardRoute = pathname.match(/^\/api\/cards\/([^/]+)$/);
     if (publicCardRoute && method === 'GET') {
       const cardId = decodeURIComponent(publicCardRoute[1]);
-      const result = await getPublicCard(pool, staticCardMap, cardId);
+      const result = await getPublicCard(pool, cardId);
       if (!result.ok) return json({ error: result.error }, result.status);
+      res.setHeader('Cache-Control', 'no-store');
       json(result.body);
       return;
     }
 
     if (pathname === '/api/config' && method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
       json(await getGameConfig(pool));
       return;
     }
 
     if (pathname === '/api/preset-decks' && method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
       json(await getPresetDecks(pool));
       return;
     }
@@ -787,7 +800,7 @@ function handleRequest(req, res) {
     if (adminCardRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const cardId = decodeURIComponent(adminCardRoute[1]);
-      const result = await upsertCard(pool, staticCardMap, cardId, await readBody());
+      const result = await upsertCard(pool, cardId, await readBody());
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;

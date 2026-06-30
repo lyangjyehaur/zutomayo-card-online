@@ -340,6 +340,7 @@ export const ja: Record<TranslationKey, string> = {
   'online.roomFull': 'ルームが満員です',
   'online.roomNotFound': 'ルームが存在しません',
   'online.connectionFailed': '接続に失敗しました',
+  'online.versionMismatch': '更新が必要です',
   'online.leaveConfirm': '本当に退出しますか？対戦が中断されます',
   'online.shareLink': '共有リンク',
   'online.reconnectingTitle': 'ルームに再接続中',
@@ -352,7 +353,10 @@ export const ja: Record<TranslationKey, string> = {
   'online.roomNotFoundBody': 'このルームは見つかりません。終了、期限切れ、またはサーバーリセットの可能性があります。',
   'online.roomFullBody': 'このルームにはすでに2人のプレイヤーがいます。これ以上参加できません。',
   'online.connectionFailedBody': 'オンラインサービスに接続できません。接続を確認して再試行してください。',
+  'online.versionMismatchBody':
+    '開いているゲームのバージョンがサーバーと一致しません。再読み込みしてから参加してください。',
   'online.retryAction': '再試行',
+  'online.reloadAction': '再読み込み',
   'online.createNewRoom': '新しいルームを作成',
   'online.creatingRoom': '作成中...',
   'online.createRoomFailed': '新しいルームを作成できません。あとでもう一度お試しください。',

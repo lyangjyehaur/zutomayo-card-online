@@ -340,6 +340,7 @@ export const en: Record<TranslationKey, string> = {
   'online.roomFull': 'Room is full',
   'online.roomNotFound': 'Room not found',
   'online.connectionFailed': 'Connection failed',
+  'online.versionMismatch': 'Update required',
   'online.leaveConfirm': 'Are you sure you want to leave? The match will be interrupted.',
   'online.shareLink': 'Share Link',
   'online.reconnectingTitle': 'Reconnecting to room',
@@ -352,7 +353,10 @@ export const en: Record<TranslationKey, string> = {
   'online.roomNotFoundBody': 'This room could not be found. It may have ended, expired, or the server was reset.',
   'online.roomFullBody': 'This room already has two players and cannot accept another seat.',
   'online.connectionFailedBody': 'The online service is not reachable right now. Check your connection and retry.',
+  'online.versionMismatchBody':
+    'Your open game version does not match the server. Reload before joining an online match.',
   'online.retryAction': 'Retry',
+  'online.reloadAction': 'Reload',
   'online.createNewRoom': 'Create New Room',
   'online.creatingRoom': 'Creating...',
   'online.createRoomFailed': 'Could not create a new room. Try again later.',

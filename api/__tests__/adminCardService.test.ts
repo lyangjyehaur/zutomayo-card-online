@@ -6,32 +6,30 @@ type Queryable = {
 };
 
 const require = createRequire(import.meta.url);
-const { cardDefToDbParams, normalizeCardForUpsert, upsertCard, upsertCardI18n, upsertGameConfig } = require(
-  '../adminCardService.cjs',
-) as {
-  cardDefToDbParams: (card: Record<string, unknown>) => unknown[];
-  normalizeCardForUpsert: (
-    id: string,
-    body: Record<string, unknown>,
-    baseCard?: Record<string, unknown>,
-  ) => Record<string, unknown> | null;
-  upsertCard: (
-    pool: Queryable,
-    staticCardMap: Map<string, Record<string, unknown>>,
-    cardId: string,
-    body: Record<string, unknown>,
-  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-  upsertCardI18n: (
-    pool: Queryable,
-    cardId: string,
-    body: Record<string, unknown>,
-  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-  upsertGameConfig: (
-    pool: Queryable,
-    key: string,
-    body: Record<string, unknown>,
-  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-};
+const { cardDefToDbParams, normalizeCardForUpsert, upsertCard, upsertCardI18n, upsertGameConfig } =
+  require('../adminCardService.cjs') as {
+    cardDefToDbParams: (card: Record<string, unknown>) => unknown[];
+    normalizeCardForUpsert: (
+      id: string,
+      body: Record<string, unknown>,
+      baseCard?: Record<string, unknown>,
+    ) => Record<string, unknown> | null;
+    upsertCard: (
+      pool: Queryable,
+      cardId: string,
+      body: Record<string, unknown>,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+    upsertCardI18n: (
+      pool: Queryable,
+      cardId: string,
+      body: Record<string, unknown>,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+    upsertGameConfig: (
+      pool: Queryable,
+      key: string,
+      body: Record<string, unknown>,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  };
 
 function poolWithRows(rows: unknown[] = []): Queryable {
   return {
@@ -50,15 +48,17 @@ const baseCard = {
 
 describe('admin card service', () => {
   it('normalizes card upsert payloads over an existing base card', () => {
-    expect(normalizeCardForUpsert('c_1', { name: 'Updated', attack: { day: 30 }, clock: '2' }, baseCard)).toMatchObject({
-      id: 'c_1',
-      name: 'Updated',
-      pack: 'pack-a',
-      element: '闇',
-      type: 'Character',
-      clock: 2,
-      attack: { night: 10, day: 30 },
-    });
+    expect(normalizeCardForUpsert('c_1', { name: 'Updated', attack: { day: 30 }, clock: '2' }, baseCard)).toMatchObject(
+      {
+        id: 'c_1',
+        name: 'Updated',
+        pack: 'pack-a',
+        element: '闇',
+        type: 'Character',
+        clock: 2,
+        attack: { night: 10, day: 30 },
+      },
+    );
     expect(normalizeCardForUpsert('bad', { name: 'Missing required fields' })).toBeNull();
   });
 
@@ -103,11 +103,11 @@ describe('admin card service', () => {
       ok: true,
       body: { ok: true },
     });
-    expect(pool.query).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining('INSERT INTO card_effects_i18n'),
-      ['c_1', 'zh-TW', '效果'],
-    );
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('INSERT INTO card_effects_i18n'), [
+      'c_1',
+      'zh-TW',
+      '效果',
+    ]);
     expect(pool.query).toHaveBeenNthCalledWith(
       2,
       'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
@@ -125,16 +125,32 @@ describe('admin card service', () => {
     expect(pool.query).not.toHaveBeenCalled();
   });
 
-  it('upserts cards using existing DB rows or static fallback data', async () => {
+  it('upserts cards using existing DB rows as base data', async () => {
     const pool = poolWithRows([]);
-    const staticCardMap = new Map([['c_1', baseCard]]);
 
-    await expect(upsertCard(pool, staticCardMap, 'c_1', { name: 'Updated' })).resolves.toMatchObject({
+    await expect(upsertCard(pool, 'c_1', { name: 'Updated' })).resolves.toMatchObject({
+      ok: false,
+      status: 400,
+    });
+
+    const existingPool = poolWithRows([
+      {
+        id: 'c_1',
+        name: 'Base',
+        pack: 'pack-a',
+        element: '闇',
+        type: 'Character',
+        clock: 0,
+        attack_night: 10,
+        attack_day: 20,
+      },
+    ]);
+    await expect(upsertCard(existingPool, 'c_1', { name: 'Updated' })).resolves.toMatchObject({
       ok: true,
       body: { id: 'c_1', name: 'Updated', pack: 'pack-a' },
     });
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO cards'), expect.any(Array));
-    expect(pool.query).toHaveBeenCalledWith(
+    expect(existingPool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO cards'), expect.any(Array));
+    expect(existingPool.query).toHaveBeenCalledWith(
       'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
       expect.arrayContaining(['upsert_card', 'card', 'c_1']),
     );

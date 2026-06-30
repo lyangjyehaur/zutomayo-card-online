@@ -1,10 +1,12 @@
+import { APP_VERSION_INFO } from './version';
+
 export interface OnlineSession {
   matchID: string;
   playerID: '0' | '1';
   playerCredentials: string;
 }
 
-export type OnlineSessionValidationReason = 'network' | 'roomGone' | 'seatTaken';
+export type OnlineSessionValidationReason = 'network' | 'roomGone' | 'seatTaken' | 'versionMismatch';
 
 export type OnlineSessionValidationResult = { ok: true } | { ok: false; reason: OnlineSessionValidationReason };
 
@@ -68,10 +70,12 @@ export async function validateOnlineSession(session: OnlineSession): Promise<Onl
       body: JSON.stringify({
         playerID: session.playerID,
         credentials: session.playerCredentials,
+        clientVersion: APP_VERSION_INFO,
       }),
     });
 
     if (response.ok) return { ok: true };
+    if (response.status === 426) return { ok: false, reason: 'versionMismatch' };
     if (response.status === 404) return { ok: false, reason: 'roomGone' };
     if (response.status === 403 || response.status === 409) return { ok: false, reason: 'seatTaken' };
     return { ok: false, reason: 'network' };

@@ -39,6 +39,7 @@ import {
 import { pushHpChange } from './hpChange';
 import { pushGameNotice } from './gameNotices';
 import { recordAction } from './actionLog';
+import { APP_VERSION_INFO, isCompatibleVersion } from '../version';
 
 const playerIndexes: PlayerIndex[] = [0, 1];
 
@@ -47,6 +48,7 @@ export const TURN_TIMER_MS = 60_000;
 
 interface SetupGameOptions {
   allowBrowserCustomDeckName?: boolean;
+  requireClientVersion?: boolean;
 }
 
 function validateSetupDeck(
@@ -70,6 +72,9 @@ export function validateZutomayoSetupData(
   options: SetupGameOptions = {},
 ): string | undefined {
   const data = setupData || {};
+  if (options.requireClientVersion === true && !isCompatibleVersion(data.clientVersion, APP_VERSION_INFO)) {
+    return 'Client version does not match server game version';
+  }
   return (
     validateSetupDeck(0, data.deck0Ids, data.deck0Name, options) ??
     validateSetupDeck(1, data.deck1Ids, data.deck1Name, options)

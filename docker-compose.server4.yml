@@ -3,12 +3,19 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+        APP_BUILD_ID: ${APP_BUILD_ID:-0.1.0}
+        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-0.1.0}
     ports:
       - '3000:3000'
     env_file: .env
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - APP_VERSION=${APP_VERSION:-0.1.0}
+      - APP_BUILD_ID=${APP_BUILD_ID:-0.1.0}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-0.1.0}
       - PG_HOST=postgresql
       - PG_PORT=5432
       - REDIS_DB=0
@@ -21,11 +28,18 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+        APP_BUILD_ID: ${APP_BUILD_ID:-0.1.0}
+        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-0.1.0}
     ports:
       - '3001:3001'
     env_file: .env
     environment:
       - API_PORT=3001
+      - APP_VERSION=${APP_VERSION:-0.1.0}
+      - APP_BUILD_ID=${APP_BUILD_ID:-0.1.0}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-0.1.0}
       - PG_HOST=postgresql
       - PG_PORT=5432
       - REDIS_DB=0

@@ -339,6 +339,7 @@ export const ko: Record<TranslationKey, string> = {
   'online.roomFull': '방이 가득 찼습니다',
   'online.roomNotFound': '방이 없습니다',
   'online.connectionFailed': '연결 실패',
+  'online.versionMismatch': '업데이트 필요',
   'online.leaveConfirm': '정말 나가시겠습니까? 대전이 중단됩니다',
   'online.shareLink': '공유 링크',
   'online.reconnectingTitle': '방에 재연결 중',
@@ -351,7 +352,10 @@ export const ko: Record<TranslationKey, string> = {
   'online.roomNotFoundBody': '이 방을 찾을 수 없습니다. 종료, 만료 또는 서버 재설정 때문일 수 있습니다.',
   'online.roomFullBody': '이 방에는 이미 두 명의 플레이어가 있어 더 참가할 수 없습니다.',
   'online.connectionFailedBody': '현재 온라인 서비스에 연결할 수 없습니다. 네트워크를 확인하고 다시 시도하세요.',
+  'online.versionMismatchBody':
+    '열려 있는 게임 버전이 서버와 일치하지 않습니다. 다시 불러온 뒤 온라인 대전에 참가하세요.',
   'online.retryAction': '재시도',
+  'online.reloadAction': '다시 불러오기',
   'online.createNewRoom': '새 방 만들기',
   'online.creatingRoom': '만드는 중...',
   'online.createRoomFailed': '새 방을 만들 수 없습니다. 나중에 다시 시도하세요.',

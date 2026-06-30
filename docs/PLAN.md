@@ -6,7 +6,7 @@ Current status for the ZUTOMAYO CARD Online implementation. This file tracks pro
 
 | Phase | Area                          | Status | Notes                                                                                                                                                                  |
 | ----- | ----------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0     | Rules and data baseline       | Done   | Official rules/Q&A captured in [rules.md](rules.md) and [qa.json](qa.json). Card data is loaded from [cards.json](cards.json).                                         |
+| 0     | Rules and data baseline       | Done   | Official rules/Q&A captured in [rules.md](rules.md) and [qa.json](qa.json). Card data is loaded from the PostgreSQL-backed card API.                                   |
 | 1     | Deterministic game state      | Done   | Explicit `GameState.step` flow: `janken -> mulligan -> initialSet -> turnSet -> effectOrder -> turnSet/gameOver`.                                                      |
 | 2     | Card/deck model               | Done   | 422 cards, deck construction validation, four preset decks, card image URLs on R2.                                                                                     |
 | 3     | Setup flow                    | Done   | Janken, night-side assignment, mulligan, initial face-down setup, simultaneous reveal.                                                                                 |

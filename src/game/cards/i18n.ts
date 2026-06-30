@@ -1,5 +1,5 @@
 // 卡牌效果 i18n 共享模組。
-// 資料來源優先順序：API（PG-backed）→ 靜態 JSON（伺服器提供）。
+// 資料來源：PG-backed API（伺服器於啟動時從 PostgreSQL 載入並提供）。
 
 let effectI18n: Record<string, Record<string, string>> = {};
 let _initialized = false;
@@ -9,7 +9,7 @@ export function isI18nInitialized(): boolean {
 }
 
 /**
- * 從外部載入翻譯數據（遊戲伺服器啟動時呼叫，讀取 data/card-effects-i18n.json 檔案系統）。
+ * 從外部載入翻譯數據（遊戲伺服器啟動時呼叫，從 PostgreSQL 讀取）。
  */
 export function initEffectI18n(data: Record<string, Record<string, string>>): void {
   effectI18n = data;
@@ -19,7 +19,7 @@ export function initEffectI18n(data: Record<string, Record<string, string>>): vo
 async function fetchJson<T>(path: string): Promise<T | null> {
   if (typeof fetch === 'undefined') return null;
   try {
-    const response = await fetch(path, { cache: 'force-cache' });
+    const response = await fetch(path);
     if (!response.ok) return null;
     return (await response.json()) as T;
   } catch {
@@ -28,20 +28,13 @@ async function fetchJson<T>(path: string): Promise<T | null> {
 }
 
 /**
- * 從 API 載入所有卡牌翻譯（批次）。
- * API 不可用時 fallback 到靜態 /data/card-effects-i18n.json。
+ * 從 PG-backed API 載入所有卡牌翻譯（批次）。
+ * API 不可用時保留既有（可能為空）的翻譯資料。
  */
 export async function loadEffectI18nFromAPI(): Promise<void> {
-  // 先試 PG-backed API 批次端點
   const data = await fetchJson<Record<string, Record<string, string>>>('/api/cards/i18n');
   if (data && typeof data === 'object') {
     initEffectI18n(data);
-    return;
-  }
-  // Fallback：靜態 JSON（Vite dev / game server 提供）
-  const staticData = await fetchJson<Record<string, Record<string, string>>>('/data/card-effects-i18n.json');
-  if (staticData && typeof staticData === 'object') {
-    initEffectI18n(staticData);
   }
 }
 
