@@ -73,8 +73,8 @@ const staticCardMap = new Map(staticCards.map((card) => [card.id, card]));
 
 async function initSchema() {
   // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
+  const schemaStatements = [
+    `CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
@@ -84,20 +84,20 @@ async function initSchema() {
       match_count INTEGER NOT NULL DEFAULT 0,
       wins INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_users_elo ON users (elo DESC);
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_users_elo ON users (elo DESC)`,
 
-    CREATE TABLE IF NOT EXISTS decks (
+    `CREATE TABLE IF NOT EXISTS decks (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       card_ids JSONB NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_decks_user ON decks(user_id);
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_decks_user ON decks(user_id)`,
 
-    CREATE TABLE IF NOT EXISTS matches (
+    `CREATE TABLE IF NOT EXISTS matches (
       id TEXT PRIMARY KEY,
       source_match_id TEXT,
       player0_id TEXT REFERENCES users(id),
@@ -110,18 +110,18 @@ async function initSchema() {
       duration_seconds INTEGER,
       action_log JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_matches_player0 ON matches(player0_id);
-    CREATE INDEX IF NOT EXISTS idx_matches_player1 ON matches(player1_id);
-    CREATE INDEX IF NOT EXISTS idx_matches_winner ON matches(winner_id);
-    CREATE INDEX IF NOT EXISTS idx_matches_loser ON matches(loser_id);
-    CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC);
-    ALTER TABLE matches ADD COLUMN IF NOT EXISTS source_match_id TEXT;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_source_match_id
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_matches_player0 ON matches(player0_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_matches_player1 ON matches(player1_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_matches_winner ON matches(winner_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_matches_loser ON matches(loser_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC)`,
+    `ALTER TABLE matches ADD COLUMN IF NOT EXISTS source_match_id TEXT`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_source_match_id
       ON matches(source_match_id)
-      WHERE source_match_id IS NOT NULL;
+      WHERE source_match_id IS NOT NULL`,
 
-    CREATE TABLE IF NOT EXISTS cards (
+    `CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       pack TEXT NOT NULL,
@@ -139,38 +139,42 @@ async function initSchema() {
       image TEXT DEFAULT '',
       errata TEXT DEFAULT '',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
+    )`,
 
-    CREATE TABLE IF NOT EXISTS card_effects_i18n (
+    `CREATE TABLE IF NOT EXISTS card_effects_i18n (
       card_id TEXT NOT NULL,
       lang TEXT NOT NULL,
       effect_text TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (card_id, lang)
-    );
+    )`,
 
-    CREATE TABLE IF NOT EXISTS game_config (
+    `CREATE TABLE IF NOT EXISTS game_config (
       key TEXT PRIMARY KEY,
       value JSONB NOT NULL,
       description TEXT DEFAULT '',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
+    )`,
 
-    CREATE TABLE IF NOT EXISTS preset_decks (
+    `CREATE TABLE IF NOT EXISTS preset_decks (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       card_ids JSONB NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
+    )`,
 
-    CREATE TABLE IF NOT EXISTS admin_audit_log (
+    `CREATE TABLE IF NOT EXISTS admin_audit_log (
       id BIGSERIAL PRIMARY KEY,
       action TEXT NOT NULL,
       target_type TEXT NOT NULL,
       target_id TEXT,
       details JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
+    )`,
+  ];
+
+  for (const statement of schemaStatements) {
+    await pool.query(statement);
+  }
 }
 
 // 啟動時嘗試初始化 schema，連不上 PG 也允許載入（語法檢查用）。
