@@ -29,6 +29,7 @@
   "dependencies": {
     "@hono/node-server": "^2.0.6",
     "@logto/react": "^4.0.14",
+    "@refinedev/core": "^5.0.12",
     "@sentry/node": "^10.62.0",
     "@sentry/react": "^10.62.0",
     "@socket.io/redis-adapter": "^8.3.0",

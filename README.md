@@ -94,6 +94,7 @@ ZUTOMAYO CARD 是一款 2 人對戰型集換式卡牌遊戲（TCG），以日本
 | TypeScript 執行 | tsx                                             | 4         |
 | PWA             | vite-plugin-pwa                                 | 1         |
 | 錯誤搜集        | GlitchTip / Sentry-compatible SDK               | -         |
+| 後台 CRUD       | Refine core + existing Admin API                | 5         |
 | 後端            | Hono + Zod + PostgreSQL + Redis（pg / ioredis） | Node >=20 |
 
 ### 核心遊戲引擎

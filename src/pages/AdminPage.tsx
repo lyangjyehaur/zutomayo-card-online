@@ -1,20 +1,14 @@
+import { Refine, useList, useUpdate } from '@refinedev/core';
+import type { HttpError } from '@refinedev/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
+import { adminRefineDataProvider, adminRefineResources } from '../refine/adminDataProvider';
 import { getAllCardDefs, refreshCards } from '../game/cards/loader';
 import { parseEffect } from '../game/effects/parser';
 import type { ParsedEffect } from '../game/effects';
 import type { CardDef, CardType, Element } from '../game/types';
-import {
-  ApiError,
-  adminGetMatches,
-  adminGetUsers,
-  adminLogin,
-  adminResetElo,
-  adminUpdateCard,
-  adminUpdateCardI18n,
-  fetchCardI18n,
-} from '../api/client';
+import { ApiError, adminLogin, fetchCardI18n } from '../api/client';
 import type { AdminMatch, AdminUser } from '../api/client';
 import '../components/AdminPanel.css';
 
@@ -268,6 +262,7 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
 
 // ===== Card Edit Form =====
 function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: CardDef) => void }) {
+  const { mutateAsync: updateCard } = useUpdate<CardDef, HttpError, Partial<CardDef>>();
   const [draft, setDraft] = useState<CardEditDraft>(() => cardToDraft(card));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -291,9 +286,9 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
     setError('');
     setSuccess(false);
     try {
-      await adminUpdateCard(card.id, patch);
+      const { data } = await updateCard({ resource: 'cards', id: card.id, values: patch });
       setSuccess(true);
-      onSaved({ ...card, ...patch } as CardDef);
+      onSaved(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : '儲存失敗');
     } finally {
@@ -477,6 +472,11 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
 
 // ===== i18n Editor =====
 function I18nEditor({ cardId }: { cardId: string }) {
+  const { mutateAsync: updateI18n } = useUpdate<
+    { id: string; effectText: string; lang: string },
+    HttpError,
+    { effectText: string; lang: string }
+  >();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -505,7 +505,11 @@ function I18nEditor({ cardId }: { cardId: string }) {
     setSuccess(false);
     try {
       for (const lang of I18N_LANGS) {
-        await adminUpdateCardI18n(cardId, lang.code, draft[lang.code] ?? '');
+        await updateI18n({
+          resource: 'cardI18n',
+          id: cardId,
+          values: { effectText: draft[lang.code] ?? '', lang: lang.code },
+        });
       }
       setSuccess(true);
     } catch (e) {
@@ -552,18 +556,24 @@ function I18nEditor({ cardId }: { cardId: string }) {
   );
 }
 
-// ===== Main Component =====
-export function AdminPage() {
+function AdminCrudPanel() {
   const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(() => Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY)));
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [activeTab, setActiveTab] = useState<'cards' | 'users' | 'matches'>('cards');
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [matches, setMatches] = useState<AdminMatch[]>([]);
-  const [adminLoading, setAdminLoading] = useState(false);
-  const [adminError, setAdminError] = useState('');
+  const usersQuery = useList<AdminUser>({
+    resource: 'users',
+    pagination: { pageSize: 100 },
+    queryOptions: { enabled: authenticated && activeTab === 'users' },
+  });
+  const matchesQuery = useList<AdminMatch>({
+    resource: 'matches',
+    pagination: { pageSize: 50 },
+    queryOptions: { enabled: authenticated && activeTab === 'matches' },
+  });
+  const { mutateAsync: updateUserElo } = useUpdate<{ id: string; elo: number }, HttpError, { elo: number }>();
   const [eloEdits, setEloEdits] = useState<Record<string, string>>({});
   const [eloSavingId, setEloSavingId] = useState<string | null>(null);
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
@@ -579,7 +589,22 @@ export function AdminPage() {
   const [selectedCard, setSelectedCard] = useState<CardDef | null>(null);
   const [modalTab, setModalTab] = useState<ModalTab>('basic');
   const [allCards, setAllCards] = useState(() => getAllCardDefs());
-  const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
+  const users: AdminUser[] = usersQuery.result.data ?? [];
+  const matches: AdminMatch[] = matchesQuery.result.data ?? [];
+  const adminLoading =
+    activeTab === 'users'
+      ? usersQuery.query.isLoading || usersQuery.query.isFetching
+      : activeTab === 'matches'
+        ? matchesQuery.query.isLoading || matchesQuery.query.isFetching
+        : false;
+  const adminError =
+    activeTab === 'users'
+      ? usersQuery.query.error instanceof Error
+        ? usersQuery.query.error.message
+        : ''
+      : activeTab === 'matches' && matchesQuery.query.error instanceof Error
+        ? matchesQuery.query.error.message
+        : '';
 
   const metaById = useMemo(() => new Map(allCards.map((card) => [card.id, parseCardMeta(card)])), [allCards]);
   const audit = useMemo(() => {
@@ -667,39 +692,6 @@ export function AdminPage() {
     sessionStorage.removeItem(ADMIN_TOKEN_KEY);
     setAuthenticated(false);
   }, []);
-
-  const refreshUsers = useCallback(async () => {
-    if (!token) return;
-    setAdminLoading(true);
-    setAdminError('');
-    try {
-      const { users: u } = await adminGetUsers(token);
-      setUsers(u);
-    } catch (e) {
-      setAdminError(e instanceof Error ? e.message : '載入失敗');
-    } finally {
-      setAdminLoading(false);
-    }
-  }, [token]);
-
-  const refreshMatches = useCallback(async () => {
-    if (!token) return;
-    setAdminLoading(true);
-    setAdminError('');
-    try {
-      const { matches: m } = await adminGetMatches(token);
-      setMatches(m);
-    } catch (e) {
-      setAdminError(e instanceof Error ? e.message : '載入失敗');
-    } finally {
-      setAdminLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (activeTab === 'users' && users.length === 0) void refreshUsers();
-    if (activeTab === 'matches' && matches.length === 0) void refreshMatches();
-  }, [activeTab, matches.length, refreshMatches, refreshUsers, users.length]);
 
   if (!authenticated) {
     return (
@@ -1022,17 +1014,22 @@ export function AdminPage() {
                       onClick={() => {
                         const v = Number(eloEdits[u.id]);
                         if (!Number.isFinite(v)) return;
-                        void adminResetElo(token, u.id, Math.trunc(v))
-                          .then(refreshUsers)
-                          .then(() =>
+                        setEloSavingId(u.id);
+                        void updateUserElo({
+                          resource: 'users',
+                          id: u.id,
+                          values: { elo: Math.trunc(v) },
+                        })
+                          .then(() => usersQuery.query.refetch())
+                          .then(() => {
                             setEloEdits((p) => {
                               const n = { ...p };
                               delete n[u.id];
                               return n;
-                            }),
-                          );
-                        setEloSavingId(u.id);
-                        setTimeout(() => setEloSavingId(null), 1500);
+                            });
+                          })
+                          .catch(() => undefined)
+                          .finally(() => setEloSavingId(null));
                       }}
                     >
                       {eloSavingId === u.id ? '已更新' : '更新 ELO'}
@@ -1091,5 +1088,18 @@ export function AdminPage() {
 
       {CardModal}
     </main>
+  );
+}
+
+// ===== Main Component =====
+export function AdminPage() {
+  return (
+    <Refine
+      dataProvider={adminRefineDataProvider}
+      resources={adminRefineResources}
+      options={{ syncWithLocation: false }}
+    >
+      <AdminCrudPanel />
+    </Refine>
   );
 }
