@@ -1,5 +1,5 @@
 import type { ParsedEffect } from './effects';
-import { buildReorderOpponentDeckTopChoice } from './effects/executor';
+import { buildReorderOpponentDeckTopChoice } from './effects/requestChoices';
 import {
   isCharacterCard,
   matchesCardMoveFilter,
