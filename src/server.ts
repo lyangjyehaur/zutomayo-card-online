@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import Redis from 'ioredis';
 import { createAdapter } from '@socket.io/redis-adapter';
+import { Pool } from 'pg';
 import { PostgresAdapter } from './server/db/postgres-adapter';
 import { RedisPubSub } from './server/transport/redis-pubsub';
 
@@ -72,29 +73,72 @@ const transport = new SocketIO({
 
 const db = new PostgresAdapter();
 
-// === 卡牌資料初始化 ===
-// 遊戲伺服器從檔案系統載入卡牌數據供 boardgame.io server-side 遊戲邏輯使用。
-// 瀏覽器端則透過 API 動態載入（參見 App.tsx refreshCards）。
-try {
-  const cardsPath = path.join(root, 'cards.json');
-  if (fs.existsSync(cardsPath)) {
-    const cards = JSON.parse(fs.readFileSync(cardsPath, 'utf8')) as CardDef[];
-    initCards(cards);
-    // 卡片載入後重建 parsed effects cache
-    resetParsedEffects();
-    console.log(`[server] Loaded ${cards.length} cards from cards.json`);
-  }
-} catch (err) {
-  console.error('[server] Failed to load cards.json:', err);
+// === 卡牌資料初始化（從 PostgreSQL 載入）===
+// 卡牌資料的 source of truth 是 PG 的 cards / card_effects_i18n 表（由 api 服務
+// 的 seed-cards-pg.ts 或 admin 上傳寫入）。game 服務的 boardgame.io server-side
+// 邏輯需要卡牌定義來初始化牌組，啟動時直接從 PG 讀取，不依賴檔案系統 cards.json。
+// 瀏覽器端則透過 /api/cards 動態載入（參見 App.tsx refreshCards）。
+const cardPool = new Pool({
+  host: process.env.PG_HOST || 'localhost',
+  port: Number(process.env.PG_PORT) || 5432,
+  user: process.env.PG_USER || 'postgres',
+  password: process.env.PG_PASSWORD || '',
+  database: process.env.PG_DATABASE || 'postgres',
+  max: 5,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+});
+
+const CARD_SELECT_SQL = `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+                    attack_night, attack_day, power_cost, send_to_power, effect,
+                    en_effect_official, image, errata FROM cards ORDER BY id`;
+
+function cardRowToDef(row: Record<string, unknown>): CardDef {
+  const def: CardDef = {
+    id: row.id as string,
+    name: row.name as string,
+    pack: row.pack as string,
+    song: (row.song as string) || '',
+    illustrator: (row.illustrator as string) || '',
+    rarity: (row.rarity as string) || '',
+    element: row.element as CardDef['element'],
+    type: row.type as CardDef['type'],
+    clock: (row.clock as number) ?? 0,
+    attack:
+      row.attack_night === null ||
+      row.attack_night === undefined ||
+      row.attack_day === null ||
+      row.attack_day === undefined
+        ? null
+        : { night: row.attack_night as number, day: row.attack_day as number },
+    powerCost: (row.power_cost as number) ?? 0,
+    sendToPower: (row.send_to_power as number) ?? 0,
+    effect: (row.effect as string) || '',
+    image: (row.image as string) || '',
+    errata: (row.errata as string) || '',
+  };
+  if (row.en_name_official) def.enNameOfficial = row.en_name_official as string;
+  if (row.en_effect_official) def.enEffectOfficial = row.en_effect_official as string;
+  return def;
 }
-try {
-  const i18nPath = path.join(root, 'data', 'card-effects-i18n.json');
-  if (fs.existsSync(i18nPath)) {
-    const i18n = JSON.parse(fs.readFileSync(i18nPath, 'utf8'));
-    initEffectI18n(i18n);
+
+async function loadCardsFromPG(): Promise<void> {
+  const { rows } = await cardPool.query(CARD_SELECT_SQL);
+  if (rows.length === 0) throw new Error('PG cards table is empty — run npm run seed:cards first');
+  const cards = rows.map((row) => cardRowToDef(row as Record<string, unknown>));
+  initCards(cards);
+  resetParsedEffects();
+  console.log(`[server] Loaded ${cards.length} cards from PostgreSQL`);
+
+  const i18nRows = await cardPool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang');
+  const i18n: Record<string, Record<string, string>> = {};
+  for (const row of i18nRows.rows) {
+    const r = row as { card_id: string; lang: string; effect_text: string };
+    if (!i18n[r.card_id]) i18n[r.card_id] = {};
+    i18n[r.card_id][r.lang] = typeof r.effect_text === 'string' ? r.effect_text : '';
   }
-} catch {
-  /* translations are optional on server */
+  initEffectI18n(i18n);
+  console.log(`[server] Loaded ${Object.keys(i18n).length} card i18n entries from PostgreSQL`);
 }
 
 const server = Server({
@@ -174,16 +218,6 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
       ctx.body = fs.readFileSync(filePath);
       return;
     }
-  }
-  await next();
-});
-
-// Serve cards.json at root
-server.app.use(async (ctx: KoaContext, next: Next) => {
-  if (ctx.path === '/cards.json') {
-    ctx.type = 'application/json';
-    ctx.body = fs.readFileSync(path.join(root, 'cards.json'));
-    return;
   }
   await next();
 });
@@ -319,7 +353,7 @@ console.log(`Stale match cleanup: TTL=${STALE_MATCH_TTL_MS / 60000}min, interval
 async function shutdown(signal: string): Promise<void> {
   console.log(`[shutdown] ${signal} received, closing connections...`);
   try {
-    await Promise.all([db.close(), redisPubSub.close(), redisPubClient.quit(), redisAdapterSubClient.quit()]);
+    await Promise.all([db.close(), cardPool.end(), redisPubSub.close(), redisPubClient.quit(), redisAdapterSubClient.quit()]);
   } catch (err) {
     console.error('[shutdown] error:', err);
   }
@@ -329,6 +363,26 @@ async function shutdown(signal: string): Promise<void> {
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 
-server.run(PORT, () => {
-  console.log(`Zutomayo Card server running on port ${PORT}`);
-});
+// 啟動流程：先從 PG 載入卡牌資料（boardgame.io setup 需要卡牌定義），再啟動伺服器。
+// PG 不可用時重試 5 次（間隔 2 秒），仍失敗則退出 — 卡牌未載入時 createMatch 會崩潰。
+async function bootstrap(): Promise<void> {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      await loadCardsFromPG();
+      break;
+    } catch (err) {
+      console.error(`[server] Failed to load cards from PG (attempt ${attempt}/5):`, err);
+      if (attempt === 5) {
+        console.error('[server] Giving up — cards are required for game logic. Exiting.');
+        process.exit(1);
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+
+  server.run(PORT, () => {
+    console.log(`Zutomayo Card server running on port ${PORT}`);
+  });
+}
+
+void bootstrap();

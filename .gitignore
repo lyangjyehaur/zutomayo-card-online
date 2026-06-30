@@ -40,6 +40,10 @@ scripts/audit-dump.ts
 cards-by-pack/
 schema.json
 
+# Card data (source of truth is PostgreSQL; files kept locally for dev/scripts only)
+cards.json
+data/card-effects-i18n.json
+
 # Environment variables (contain secrets)
 .env
 .env.*
