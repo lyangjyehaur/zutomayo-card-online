@@ -2,12 +2,12 @@ import { registerSW } from 'virtual:pwa-register';
 import { APP_VERSION_INFO, isSameAppVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 
 export const PWA_UPDATE_READY_EVENT = 'zutomayo:pwa-update-ready';
+export const PWA_RECOVER_REQUESTED_EVENT = 'zutomayo:pwa-recover-requested';
 
 export interface PwaUpdateReadyDetail {
   applyUpdate: () => void;
 }
 
-let currentRegistration: ServiceWorkerRegistration | null = null;
 let currentApplyUpdate: (() => void) | null = null;
 
 function dispatchPwaUpdateReady(): void {
@@ -81,19 +81,9 @@ export async function recoverPwaAndReload(): Promise<void> {
   window.location.reload();
 }
 
-export async function checkForPwaUpdate(): Promise<'update-ready' | 'up-to-date' | 'unsupported'> {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return 'unsupported';
-
-  const registration = currentRegistration ?? (await navigator.serviceWorker.getRegistration());
-  if (!registration) return 'unsupported';
-
-  await registration.update();
-  if (registration.waiting) {
-    dispatchPwaUpdateReady();
-    return 'update-ready';
-  }
-
-  return 'up-to-date';
+export function requestPwaRecoveryPrompt(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(PWA_RECOVER_REQUESTED_EVENT));
 }
 
 export function registerPwaAutoUpdate(): void {
@@ -105,7 +95,6 @@ export function registerPwaAutoUpdate(): void {
     },
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return;
-      currentRegistration = registration;
       currentApplyUpdate = () => {
         void updateSW(true);
       };

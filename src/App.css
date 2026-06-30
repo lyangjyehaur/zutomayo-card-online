@@ -859,6 +859,92 @@ input:focus {
   border-color: rgba(255, 92, 122, 0.45);
 }
 
+.pwa-version-list {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.55rem 0 0;
+}
+
+.pwa-version-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius);
+  padding: 0.38rem 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.pwa-version-list dt {
+  color: var(--gold);
+  font-weight: 900;
+}
+
+.pwa-version-list dd {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.pwa-recover-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  padding: 1rem;
+  background: rgba(5, 7, 16, 0.56);
+  backdrop-filter: blur(6px);
+}
+
+.pwa-recover-panel {
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 28rem);
+  border: 1px solid rgba(255, 92, 122, 0.42);
+  border-radius: var(--radius);
+  padding: 1rem;
+  background: rgba(10, 13, 28, 0.97);
+  box-shadow: var(--shadow);
+}
+
+.pwa-recover-panel span {
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.pwa-recover-panel h2 {
+  margin: 0.25rem 0 0;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.pwa-recover-panel p {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.pwa-recover-panel ul {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.pwa-recover-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
 .online-resume-prompt:not(.pwa-status-prompt) + .pwa-status-prompt {
   bottom: calc(clamp(0.75rem, 2vw, 1.25rem) + 5.6rem);
 }
