@@ -1,6 +1,5 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { getProfile, isLoggedIn, submitMatch } from '../api/client';
 import type {
   ActionLogEntry,
   CardInstance,
@@ -22,9 +21,9 @@ import {
   getRequiredSetCount,
   isAttackPowerInsufficient,
 } from '../game/GameLogic';
-import { saveMatchRecord } from '../game/matchHistory';
 import { t, useLocale } from '../i18n';
 import { getTranslatedEffect } from '../game/cards/i18n';
+import { normalizeGameOverWinner, useOnlineMatchSubmission } from './board/useOnlineMatchSubmission';
 
 const TURN_TIMER_SECONDS = 60;
 
@@ -66,15 +65,6 @@ type FeedbackMessage = {
   tone?: FeedbackTone;
   actionLabel?: string;
 };
-type AccountProfile = {
-  id: string;
-  elo: number;
-};
-type MatchSubmitResponse = {
-  winnerEloChange?: number;
-  loserEloChange?: number;
-};
-
 // 對手/我方名稱 override（AI 對戰時設為「電腦」/「玩家」等），由 Board 元件 mount 時設定。
 // formatLogEntry 等純函數無法存取 prop，故用 module-level 變數統一覆寫顯示。
 let opponentLabelOverride: string | null = null;
@@ -91,9 +81,7 @@ function translatedActionLogEffect(entry: ActionLogEntry, locale: string): strin
   return getTranslatedEffect(entry.pendingEffectCardDefId, locale);
 }
 
-type LogSegment =
-  | { type: 'text'; text: string }
-  | { type: 'card'; cardDefId: string };
+type LogSegment = { type: 'text'; text: string } | { type: 'card'; cardDefId: string };
 
 type LogTone = 'battle' | 'set' | 'effect' | 'info';
 
@@ -277,8 +265,7 @@ function LogCardChip({ cardDefId }: { cardDefId: string }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      [{def.name}]
-      {hovered && position && <CardPopover def={def} position={position} />}
+      [{def.name}]{hovered && position && <CardPopover def={def} position={position} />}
     </span>
   );
 }
@@ -792,69 +779,6 @@ function translateGameOverReason(reason: string | null): string {
   return t('board.reason');
 }
 
-function normalizeWinner(G: GameState, gameover?: { winner?: string | number; draw?: boolean }): PlayerIndex | null {
-  if (gameover?.draw) return null;
-  const winner = gameover?.winner ?? G.winner;
-  if (winner === 0 || winner === '0') return 0;
-  if (winner === 1 || winner === '1') return 1;
-  return G.winner;
-}
-
-function activeAccountPlayer(playerID: Props['playerID']): PlayerIndex | null {
-  if (playerID !== '0' && playerID !== '1') return 0;
-  const player = Number(playerID) as PlayerIndex;
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/play/online/')) return player;
-  return player === 0 ? 0 : null;
-}
-
-function accountIdForPlayer(player: PlayerIndex, accountPlayer: PlayerIndex, profile: AccountProfile): string {
-  return player === accountPlayer ? profile.id : `guest-player-${player}`;
-}
-
-function matchSubmissionKey(G: GameState, winner: PlayerIndex | null): string {
-  const firstEntry = G.actionLog?.[0];
-  const lastEntry = G.actionLog?.[G.actionLog.length - 1];
-  const path = typeof window === 'undefined' ? 'server' : window.location.pathname;
-  return [
-    'zutomayo-match-submit',
-    path,
-    winner ?? 'draw',
-    G.turnNumber,
-    G.gameoverReason ?? '',
-    G.actionLog?.length ?? 0,
-    firstEntry?.timestamp ?? '',
-    lastEntry?.timestamp ?? '',
-    lastEntry?.action ?? '',
-  ].join(':');
-}
-
-function onlineSourceMatchID(matchID: string | undefined): string | undefined {
-  if (typeof window === 'undefined' || !window.location.pathname.startsWith('/play/online/')) return undefined;
-  return matchID && matchID !== 'default' ? matchID : undefined;
-}
-
-function isAlreadySubmitted(key: string): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.sessionStorage.getItem(key) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function markSubmitted(key: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.setItem(key, '1');
-  } catch {
-    // Submission still proceeds; the in-memory ref prevents same-mount duplicates.
-  }
-}
-
-function signedChange(value: number): string {
-  return value > 0 ? `+${value}` : `${value}`;
-}
-
 function primaryActionClass(extra = ''): string {
   return [
     'bg-bone px-8 py-3 text-[11px] font-medium uppercase tracking-[0.3em] text-lacquer transition',
@@ -900,59 +824,26 @@ function ResultCell({ label, value, accent }: { label: string; value: string; ac
   );
 }
 
-function GameOverScreen({ G, ctx, matchStartedAt, playerID, matchID, gameOverActions }: Props & { matchStartedAt: number }) {
-  const saved = useRef(false);
-  const [eloChange, setEloChange] = useState<number | null>(null);
-  const [eloStatus, setEloStatus] = useState('');
-
-  useEffect(() => {
-    if (saved.current) return;
-    saved.current = true;
-    const gameover = ctx.gameover as { winner?: string | number; draw?: boolean } | undefined;
-    const durationSeconds = (Date.now() - matchStartedAt) / 1000;
-    const winner = normalizeWinner(G, gameover);
-    const submitKey = matchSubmissionKey(G, winner);
-    if (isAlreadySubmitted(submitKey)) return;
-    markSubmitted(submitKey);
-    saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds);
-
-    const accountPlayer = activeAccountPlayer(playerID);
-    if (!isLoggedIn() || winner === null || accountPlayer === null) return;
-
-    const loser = (1 - winner) as PlayerIndex;
-    getProfile()
-      .then((profile: AccountProfile) => {
-        const winnerId = accountIdForPlayer(winner, accountPlayer, profile);
-        const loserId = accountIdForPlayer(loser, accountPlayer, profile);
-        return submitMatch(
-          winnerId,
-          loserId,
-          G.turnNumber,
-          durationSeconds,
-          G.actionLog,
-          onlineSourceMatchID(matchID),
-          winner,
-        ) as Promise<MatchSubmitResponse>;
-      })
-      .then((result) => {
-        if ((result.winnerEloChange ?? 0) === 0 && (result.loserEloChange ?? 0) === 0) {
-          setEloStatus(t('auth.matchSubmittedNoElo'));
-          return;
-        }
-        const change = winner === accountPlayer ? (result.winnerEloChange ?? 0) : (result.loserEloChange ?? 0);
-        setEloChange(change);
-      })
-      .catch(() => {
-        // Local history above remains the fallback when the API is unavailable.
-        setEloStatus(t('auth.matchSubmitFailed'));
-      });
-  }, [G, ctx.gameover, matchID, matchStartedAt, playerID]);
+function GameOverScreen({
+  G,
+  ctx,
+  matchStartedAt,
+  playerID,
+  matchID,
+  gameOverActions,
+}: Props & { matchStartedAt: number }) {
+  const eloNotice = useOnlineMatchSubmission({
+    G,
+    gameover: ctx.gameover as { winner?: string | number; draw?: boolean } | undefined,
+    matchID,
+    matchStartedAt,
+    playerID,
+  });
 
   const gameover = ctx.gameover as { winner?: string | number; draw?: boolean } | undefined;
-  const winner = normalizeWinner(G, gameover);
+  const winner = normalizeGameOverWinner(G, gameover);
   const myPlayer = myPlayerIndex(playerID);
-  const outcome: 'victory' | 'defeat' | 'draw' =
-    winner === null ? 'draw' : winner === myPlayer ? 'victory' : 'defeat';
+  const outcome: 'victory' | 'defeat' | 'draw' = winner === null ? 'draw' : winner === myPlayer ? 'victory' : 'defeat';
   const win = outcome === 'victory';
   const durationSeconds = (Date.now() - matchStartedAt) / 1000;
   const reason = translateGameOverReason(G.gameoverReason);
@@ -988,13 +879,11 @@ function GameOverScreen({ G, ctx, matchStartedAt, playerID, matchID, gameOverAct
         </div>
 
         <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-bone/10 py-6 sm:grid-cols-4">
-          <ResultCell label={t('auth.eloChange')} value={eloChange !== null ? signedChange(eloChange) : '—'} accent={win} />
+          <ResultCell label={t('auth.eloChange')} value={eloNotice || '-'} accent={win} />
           <ResultCell label={t('board.result.duration')} value={formatDuration(durationSeconds)} />
           <ResultCell label={t('board.result.turns')} value={String(G.turnNumber)} />
           <ResultCell label={t('board.result.reason')} value={reason} />
         </div>
-
-        {eloStatus && <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{eloStatus}</p>}
 
         {ctx.gameover &&
           (gameOverActions ? (
@@ -2505,31 +2394,30 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                     </>
                   )}
                   {/* 戰場卡牌顯示原始 vs 實際攻擊力（含附魔增益 / 能量不足歸零） */}
-                  {focusedCard.zone === t('board.battleZone') &&
-                    cardDefinition(focusedCard.card)?.attack && (
-                      <>
-                        <span className="col-span-2 mt-1 border-t border-bone/10 pt-1">
-                          {t('board.hpChange.rawAttack' as never)}{' '}
-                          <span className="text-gold">
-                            {getBaseAttack(focusedCard.card, G, focusedCard.owner) ?? '—'}
-                          </span>
+                  {focusedCard.zone === t('board.battleZone') && cardDefinition(focusedCard.card)?.attack && (
+                    <>
+                      <span className="col-span-2 mt-1 border-t border-bone/10 pt-1">
+                        {t('board.hpChange.rawAttack' as never)}{' '}
+                        <span className="text-gold">
+                          {getBaseAttack(focusedCard.card, G, focusedCard.owner) ?? '—'}
                         </span>
-                        <span className="col-span-2">
-                          {t('board.hpChange.effectiveAttack' as never)}{' '}
-                          <span
-                            className={
-                              isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
-                                ? 'text-vermilion'
-                                : 'text-[var(--teal)]'
-                            }
-                          >
-                            {isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
-                              ? t('board.hpChange.insufficientPower' as never)
-                              : getEffectiveAttack(focusedCard.card, G, focusedCard.owner)}
-                          </span>
+                      </span>
+                      <span className="col-span-2">
+                        {t('board.hpChange.effectiveAttack' as never)}{' '}
+                        <span
+                          className={
+                            isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
+                              ? 'text-vermilion'
+                              : 'text-[var(--teal)]'
+                          }
+                        >
+                          {isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
+                            ? t('board.hpChange.insufficientPower' as never)
+                            : getEffectiveAttack(focusedCard.card, G, focusedCard.owner)}
                         </span>
-                      </>
-                    )}
+                      </span>
+                    </>
+                  )}
                   <span>
                     ⚡→ STP <span className="text-gold">{cardDefinition(focusedCard.card)?.sendToPower ?? 0}</span>
                   </span>
