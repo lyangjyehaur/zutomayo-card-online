@@ -574,7 +574,7 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.game.intro.body': 'これから実際の対戦を通じて、ゲームの全ての仕組みを順番に案内します。',
   'tutorial.game.janken.intro.title': 'じゃんけんで先攻・後攻を決める',
   'tutorial.game.janken.intro.body':
-    'ゲーム開始前、じゃんけんで夜側プレイヤーを決めます。勝者が夜側、敗者が昼側となります。グー、チョキ、パーをクリックして選びます。じゃんけんの結果があなたの初期位置を決定します。',
+    'ゲーム開始前、じゃんけんで夜側プレイヤーを決めます。勝者が夜側、敗者が昼側となります。「グー」をクリックして出拳します——相手はチョキを出すので、あなたが勝利して夜側プレイヤーとなり、効果処理の優先権を得ます。',
   'tutorial.game.janken.action.title': '手を選択してください',
   'tutorial.game.janken.action.body':
     'グー、チョキ、パーをクリックして選びます。じゃんけんの結果があなたの初期位置を決定します。',

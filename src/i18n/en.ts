@@ -576,7 +576,7 @@ export const en: Record<TranslationKey, string> = {
   'tutorial.game.intro.body': 'This tutorial will guide you through all game mechanics via a real match against AI.',
   'tutorial.game.janken.intro.title': 'Rock-Paper-Scissors Determines Turn Order',
   'tutorial.game.janken.intro.body':
-    'Before the game begins, both players play rock-paper-scissors to decide the Night-side player. The winner becomes the Night-side; the loser becomes the Day-side. Click to select rock, paper, or scissors — the result will determine your starting position.',
+    'Before the game begins, both players play rock-paper-scissors to decide the Night-side player. The winner becomes the Night-side; the loser becomes the Day-side. Click "Rock" — your opponent will play Scissors, so you win and become the Night-side player with effect priority.',
   'tutorial.game.janken.action.title': 'Choose Your Hand',
   'tutorial.game.janken.action.body':
     'Click to select rock, paper, or scissors. The result will determine your starting position.',
