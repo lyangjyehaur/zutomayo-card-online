@@ -558,7 +558,8 @@ export const zhTW = {
   'tutorial.game.intro.title': '歡迎來到 ZUTOMAYO CARD',
   'tutorial.game.intro.body': '接下來將透過一場真實對戰，逐步引導你認識遊戲的所有機制。',
   'tutorial.game.janken.intro.title': '猜拳決定先後手',
-  'tutorial.game.janken.intro.body': '遊戲開始前，雙方透過猜拳決定誰是夜側玩家。勝者直接成為夜側，敗者為晝側。',
+  'tutorial.game.janken.intro.body':
+    '遊戲開始前，雙方透過猜拳決定誰是夜側玩家。勝者直接成為夜側，敗者為晝側。點擊選擇石頭、剪刀或布，猜拳結果將決定你的初始位置。',
   'tutorial.game.janken.action.title': '選擇你的手勢',
   'tutorial.game.janken.action.body': '點擊選擇石頭、剪刀或布。猜拳結果將決定你的初始位置。',
   'tutorial.game.janken.result.title': '猜拳結果',

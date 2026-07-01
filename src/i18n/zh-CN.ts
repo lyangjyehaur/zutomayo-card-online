@@ -560,7 +560,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'tutorial.game.intro.title': '欢迎来到 ZUTOMAYO CARD',
   'tutorial.game.intro.body': '接下来将通过一场真实对战，逐步引导你认识游戏的所有机制。',
   'tutorial.game.janken.intro.title': '猜拳决定先后手',
-  'tutorial.game.janken.intro.body': '游戏开始前，双方通过猜拳决定谁是夜侧玩家。胜者直接成为夜侧，败者为昼侧。',
+  'tutorial.game.janken.intro.body':
+    '游戏开始前，双方通过猜拳决定谁是夜侧玩家。胜者直接成为夜侧，败者为昼侧。点击选择石头、剪刀或布，猜拳结果将决定你的初始位置。',
   'tutorial.game.janken.action.title': '选择你的手势',
   'tutorial.game.janken.action.body': '点击选择石头、剪刀或布。猜拳结果将决定你的初始位置。',
   'tutorial.game.janken.result.title': '猜拳结果',

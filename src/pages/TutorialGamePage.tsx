@@ -35,14 +35,13 @@ export function TutorialGamePage() {
     },
   });
 
-  // 教學進度在 janken-intro 之前（場地導覽階段）時隱藏 janken/mulligan 浮層，
+  // 教學進度在 janken 之前（場地導覽階段）時隱藏 janken/mulligan 浮層，
   // 等教學進度到了才顯示，避免猜拳面板一開始就彈出。
-  const jankenIntroStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'janken-intro');
-  const hideSetupOverlay = jankenIntroStepIndex === -1 || currentStep < jankenIntroStepIndex;
-  // AI 在 janken-intro（導覽步驟）時仍暫停，避免使用者還在讀文案時 AI 就出拳；
-  // 進到 janken-action 才恢復 AI 讓使用者實際操作。
-  const jankenActionStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'janken-action');
-  const aiPaused = jankenActionStepIndex === -1 || currentStep < jankenActionStepIndex;
+  const jankenStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'janken');
+  const hideSetupOverlay = jankenStepIndex === -1 || currentStep < jankenStepIndex;
+  // AI 在 janken 之前（場地導覽階段）仍暫停，避免使用者還在讀文案時 AI 就出拳；
+  // 進到 janken 步驟才恢復 AI 讓使用者實際操作（completeWhen 等玩家出拳後推進）。
+  const aiPaused = jankenStepIndex === -1 || currentStep < jankenStepIndex;
 
   // 猜拳結果彈窗的確認按鈕點擊時，若教學正在 janken-result 步驟，自動推進到下一步
   const jankenResultStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'janken-result');

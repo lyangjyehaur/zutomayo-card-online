@@ -94,20 +94,12 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     padding: 12,
   },
 
-  // 3. 猜拳
+  // 3. 猜拳（規則說明 + 操作合併為單一步驟，玩家出拳後自動推進）
   {
-    phase: 'janken-intro',
+    phase: 'janken',
     target: '[data-tut="janken-panel"]',
     title: 'tutorial.game.janken.intro.title',
     body: 'tutorial.game.janken.intro.body',
-    placement: 'top',
-    padding: 16,
-  },
-  {
-    phase: 'janken-action',
-    target: '[data-tut="janken-panel"]',
-    title: 'tutorial.game.janken.action.title',
-    body: 'tutorial.game.janken.action.body',
     placement: 'bottom',
     padding: 16,
     completeWhen: (G) => G.jankenChoices[0] !== null,
