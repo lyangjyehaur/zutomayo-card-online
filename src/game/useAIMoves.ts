@@ -31,7 +31,6 @@ function aiPickChoiceOptions(choice: PendingChoice): string[] | null {
  * - pendingChoiceDefIdsByTurn：該回合 pendingChoice 要選的卡（用 defId 匹配 option）
  */
 export interface TutorialAIScript {
-  janken?: JankenChoice;
   setCardsByTurn?: Record<number, { defId: string; slot: SetSlot }[]>;
   effectOrderByTurn?: Record<number, number[]>;
   pendingChoiceDefIdsByTurn?: Record<number, string[]>;
@@ -70,10 +69,15 @@ export function useAIMoves(
       const player = G.players[1];
       if (G.step === 'janken') {
         if (G.jankenChoices[1]) return;
-        // 教學腳本優先：指定出什麼拳（確保玩家贏）；否則隨機
-        const scripted = aiScript?.janken;
-        if (scripted) {
-          moves.janken(scripted);
+        // 教學模式：等玩家出拳後，AI 出會輸的拳，確保玩家不管出什麼都贏
+        if (aiScript) {
+          if (!G.jankenChoices[0]) return; // 等玩家先出
+          const beats: Record<JankenChoice, JankenChoice> = {
+            rock: 'scissors',
+            paper: 'rock',
+            scissors: 'paper',
+          };
+          moves.janken(beats[G.jankenChoices[0] as JankenChoice]);
         } else {
           const choices: JankenChoice[] = ['rock', 'paper', 'scissors'];
           moves.janken(choices[Math.floor(Math.random() * 3)]);

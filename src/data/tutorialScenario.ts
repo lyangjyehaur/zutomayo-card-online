@@ -97,12 +97,10 @@ export const TUTORIAL_DECK1_IDS: string[] = [
 
 /**
  * AI 腳本：覆寫 AI 決策，確保劇本完全可預測。
- * - janken: 出剪刀，讓玩家出石頭贏得猜拳成為夜側玩家
- * - T1: AI 出 1st_67 到 battleZone（攻擊力 50 > 玩家 30，AI 贏）
+ * - janken: AI 必出會輸的拳，玩家不管出什麼都贏成為夜側玩家
  * - T2: AI 出 1st_98 到 setZoneA（Enchant，加自己攻擊力但玩家仍贏）
  */
 export const TUTORIAL_AI_SCRIPT: TutorialAIScript = {
-  janken: 'scissors',
   setCardsByTurn: {
     1: [{ defId: '1st_67', slot: 'A' }],
     2: [{ defId: '1st_98', slot: 'A' }],

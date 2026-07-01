@@ -573,7 +573,7 @@ export const ko: Record<TranslationKey, string> = {
   'tutorial.game.intro.body': '실제 AI 대전을 통해 게임의 모든 메커니즘을 단계별로 안내해 드립니다.',
   'tutorial.game.janken.intro.title': '가위바위보로 선후공 결정',
   'tutorial.game.janken.intro.body':
-    '게임 시작 전, 가위바위보로 야간 플레이어를 정합니다. 승자가 야간 측, 패자가 주간 측이 됩니다. "바위"를 클릭하여 냅니다——상대는 가위를 내므로 당신이 승리하여 야간 측 플레이어가 되며, 효과 처리 우선권을 얻습니다.',
+    '게임 시작 전, 가위바위보로 야간 플레이어를 정합니다. 승자가 야간 측, 패자가 주간 측이 됩니다. 손 모양을 클릭하여 선택합니다. 결과가 당신의 시작 위치와 효과 처리 우선권을 결정합니다.',
   'tutorial.game.janken.action.title': '손 모양을 선택하세요',
   'tutorial.game.janken.action.body': '가위, 바위, 보를 클릭하여 선택합니다. 결과가 당신의 시작 위치를 결정합니다.',
   'tutorial.game.janken.result.title': '가위바위보 결과',
