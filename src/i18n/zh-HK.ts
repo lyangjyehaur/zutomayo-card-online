@@ -3,6 +3,13 @@ import type { TranslationKey } from './zh-TW';
 export const zhHK: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜同白晝交錯嘅綫上卡牌遊戲',
+  'app.footerAlpha': 'Alpha · 歡迎反饋',
+  'app.footerCopyright': 'Card assets © zutomayocard.net',
+
+  'intro.deckTitle': '歡迎嚟到 ZUTOMAYO CARD',
+  'intro.deckDescription': '開始遊戲之前，你需要揀一副牌組。可以用預設牌組，或者去牌組編輯器整自己嘅牌組。',
+  'intro.goToDeckBuilder': '去牌組編輯器',
+  'intro.exploreLater': '遲啲再睇',
 
   'common.back': '返回',
   'common.backToLobby': '返回大廳',
@@ -11,6 +18,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'common.close': '關閉',
   'common.confirm': '確認',
   'common.continue': '繼續',
+  'common.retry': '重試',
   'common.empty': '暫時未有資料',
   'common.next': '下一頁',
   'common.prev': '上一頁',
@@ -41,6 +49,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'auth.guest': '訪客',
   'auth.winRate': '勝率',
   'auth.wins': '勝場',
+  'auth.matches': '場',
   'auth.loginSuccess': '登入成功',
   'auth.registerSuccess': '註冊成功',
   'auth.invalidCredentials': '帳號或密碼錯誤',
@@ -50,6 +59,9 @@ export const zhHK: Record<TranslationKey, string> = {
   'auth.profileUnavailable': '載入唔到帳號資料，請稍後再試',
   'auth.matchSubmittedNoElo': '對戰已記錄；訪客對手唔計 ELO',
   'auth.matchSubmitFailed': '已保存本地紀錄，但上報對戰失敗',
+  'auth.submitting': '處理中...',
+  'auth.loginForm': '登入表單',
+  'auth.registerForm': '註冊表單',
 
   'lobby.aiBattle': '同電腦打',
   'lobby.createRoom': '開房',
@@ -113,6 +125,9 @@ export const zhHK: Record<TranslationKey, string> = {
   'deck.saveServerSuccess': '牌組已儲存到伺服器',
   'deck.saveLocalSuccess': '本地牌組已儲存',
   'deck.saveFailedTitle': '牌組儲存失敗',
+  'deck.selectionSuccess': '牌組已揀好',
+  'deck.readyToStart': '而家可以開始遊戲喇！',
+  'deck.foundCards': '搵到 {count} 張卡牌',
 
   'player.zero': '玩家一',
   'player.one': '玩家二',
@@ -313,6 +328,13 @@ export const zhHK: Record<TranslationKey, string> = {
   'game.onlineMode': '綫上遊戲',
   'game.matchCode': '房間代碼',
   'game.loading': '載入遊戲中...',
+  'game.pause': '暫停',
+  'game.confirmExit': '確定要離開遊戲？',
+  'game.exitWarning': '當前進度唔會儲存',
+  'game.exitGame': '離開遊戲',
+
+  'error.matchmakingFailed': '配對失敗',
+  'error.checkConnection': '請檢查網絡連接或者遲啲再試',
 
   'aiSetup.title': '電腦練習',
   'aiSetup.chooseDifficulty': '揀練習難度',

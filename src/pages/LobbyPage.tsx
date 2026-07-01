@@ -4,6 +4,7 @@ import { Swords, Bot, LayoutGrid } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
+import { AppDrawer } from '../components/AppDrawer';
 import { t } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
@@ -57,6 +58,8 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
   // 每次進入首頁隨機取一張卡牌作為模糊背景
   const [bgImage, setBgImage] = useState<string | null>(null);
+  // 首次訪問引導彈窗
+  const [showDeckIntro, setShowDeckIntro] = useState(false);
 
   // 每次 mount 時重新隨機取一張（確保返回首頁也有背景）
   useEffect(() => {
@@ -68,6 +71,25 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       cancelled = true;
     };
   }, []);
+
+  // 檢測首次訪問
+  useEffect(() => {
+    const seen = localStorage.getItem('zutomayo_deck_intro_seen');
+    if (!seen) {
+      setShowDeckIntro(true);
+    }
+  }, []);
+
+  const handleDismissIntro = () => {
+    localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+    setShowDeckIntro(false);
+  };
+
+  const handleGoToDeckBuilder = () => {
+    localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+    setShowDeckIntro(false);
+    navigate('/deck-builder');
+  };
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
@@ -148,9 +170,31 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       {/* 底部 Footer */}
       <footer className="absolute inset-x-0 bottom-0 z-20 flex h-10 items-center justify-between px-8 text-[10px] uppercase tracking-[0.3em] text-bone/30">
         <VersionUpdateTrigger />
-        <span className="hidden md:inline">choose your ritual</span>
-        <span className="font-mono">© zutomayo 2026</span>
+        <span className="hidden md:inline">{t('app.footerAlpha')}</span>
+        <span className="font-mono">{t('app.footerCopyright')}</span>
       </footer>
+
+      {/* 首次訪問引導彈窗 */}
+      <AppDrawer
+        open={showDeckIntro}
+        title={t('intro.deckTitle')}
+        description={t('intro.deckDescription')}
+        kicker="Welcome"
+        actions={[
+          {
+            label: t('intro.goToDeckBuilder'),
+            onClick: handleGoToDeckBuilder,
+            tone: 'primary',
+            eventName: 'deck-intro-go-to-builder',
+          },
+          {
+            label: t('intro.exploreLater'),
+            onClick: handleDismissIntro,
+            tone: 'secondary',
+            eventName: 'deck-intro-dismiss',
+          },
+        ]}
+      />
     </main>
   );
 }

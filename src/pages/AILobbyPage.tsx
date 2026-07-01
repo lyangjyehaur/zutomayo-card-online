@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import type { DeckResponse } from '../api/client';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { DifficultyButtons } from '../components/lobby/DifficultyButtons';
+import { useToast } from '../components/ToastProvider';
 import { buildAIOpponentDeckOptions, buildDeckOptions, buildServerDeckOptions } from '../components/lobby/shared';
 import type { AIDifficulty } from '../game/ai';
 import { t, translate, useLocale } from '../i18n';
@@ -32,6 +33,7 @@ export function AILobbyPage({
   cardsReady,
 }: AILobbyPageProps) {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const locale = useLocale();
   // 玩家牌組用完整選項（含自訂牌組）；AI 對手牌組移除自訂牌組、改用克制牌組選項。
   const playerDeckOptions = useMemo(() => {
@@ -47,6 +49,25 @@ export function AILobbyPage({
     const localOptions = buildAIOpponentDeckOptions();
     return [{ label: translate(locale, 'deck.localDecks'), options: localOptions }];
   }, [locale]);
+
+  // 牌組選擇後 Toast 提示（首次選擇時顯示）
+  const handlePlayerDeckChange = (newDeck: string) => {
+    const isFirstSelection = !deck0Name && newDeck;
+    setDeck0Name(newDeck);
+
+    if (isFirstSelection) {
+      const hasShownToast = sessionStorage.getItem('zutomayo_deck_selected_toast');
+      if (!hasShownToast) {
+        showToast({
+          title: t('deck.selectionSuccess'),
+          body: t('deck.readyToStart'),
+          kind: 'success',
+          durationMs: 3000,
+        });
+        sessionStorage.setItem('zutomayo_deck_selected_toast', 'true');
+      }
+    }
+  };
 
   return (
     <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-lacquer-deep font-sans text-bone">
@@ -75,7 +96,7 @@ export function AILobbyPage({
             label={t('lobby.myDeck')}
             value={deck0Name}
             options={playerDeckOptions}
-            onChange={setDeck0Name}
+            onChange={handlePlayerDeckChange}
           />
           <div className="border-t border-bone/10 pt-6">
             <DeckSelector

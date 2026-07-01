@@ -3,6 +3,13 @@ import type { TranslationKey } from './zh-TW';
 export const zhCN: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜与白昼交错的在线对战卡牌',
+  'app.footerAlpha': 'Alpha · 欢迎反馈',
+  'app.footerCopyright': 'Card assets © zutomayocard.net',
+
+  'intro.deckTitle': '欢迎来到 ZUTOMAYO CARD',
+  'intro.deckDescription': '在开始游戏前，你需要选择一副牌组。可以使用预设牌组，或前往牌组编辑器建立自己的牌组。',
+  'intro.goToDeckBuilder': '前往牌组编辑器',
+  'intro.exploreLater': '稍后探索',
 
   'common.back': '返回',
   'common.backToLobby': '返回大厅',
@@ -11,6 +18,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'common.close': '关闭',
   'common.confirm': '确认',
   'common.continue': '继续',
+  'common.retry': '重试',
   'common.empty': '暂无数据',
   'common.next': '下一页',
   'common.prev': '上一页',
@@ -41,6 +49,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'auth.guest': '访客',
   'auth.winRate': '胜率',
   'auth.wins': '胜场',
+  'auth.matches': '场',
   'auth.loginSuccess': '登录成功',
   'auth.registerSuccess': '注册成功',
   'auth.invalidCredentials': '账号或密码错误',
@@ -50,6 +59,9 @@ export const zhCN: Record<TranslationKey, string> = {
   'auth.profileUnavailable': '无法加载账号资料，请稍后再试',
   'auth.matchSubmittedNoElo': '对战已记录；访客对手不计入 ELO',
   'auth.matchSubmitFailed': '已保存本地记录，但无法上报对战结果',
+  'auth.submitting': '处理中...',
+  'auth.loginForm': '登录表单',
+  'auth.registerForm': '注册表单',
 
   'lobby.aiBattle': '与电脑对战',
   'lobby.createRoom': '创建房间',
@@ -113,6 +125,9 @@ export const zhCN: Record<TranslationKey, string> = {
   'deck.saveServerSuccess': '牌组已保存到服务器',
   'deck.saveLocalSuccess': '本地牌组已保存',
   'deck.saveFailedTitle': '牌组保存失败',
+  'deck.selectionSuccess': '牌组已选择',
+  'deck.readyToStart': '现在可以开始游戏了！',
+  'deck.foundCards': '找到 {count} 张卡片',
 
   'player.zero': '玩家一',
   'player.one': '玩家二',
@@ -313,6 +328,13 @@ export const zhCN: Record<TranslationKey, string> = {
   'game.onlineMode': '在线对战',
   'game.matchCode': '房间代码',
   'game.loading': '正在载入对战...',
+  'game.pause': '暂停',
+  'game.confirmExit': '确定要离开游戏？',
+  'game.exitWarning': '当前进度将不会保存',
+  'game.exitGame': '离开游戏',
+
+  'error.matchmakingFailed': '匹配失败',
+  'error.checkConnection': '请检查网络连接或稍后再试',
 
   'aiSetup.title': '电脑练习',
   'aiSetup.chooseDifficulty': '选择练习难度',

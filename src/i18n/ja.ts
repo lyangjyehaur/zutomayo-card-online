@@ -3,6 +3,13 @@ import type { TranslationKey } from './zh-TW';
 export const ja: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜と白昼が交差するオンライン対戦カードゲーム',
+  'app.footerAlpha': 'Alpha · フィードバック歓迎',
+  'app.footerCopyright': 'Card assets © zutomayocard.net',
+
+  'intro.deckTitle': 'ZUTOMAYO CARD へようこそ',
+  'intro.deckDescription': 'ゲームを始める前に、デッキを選択する必要があります。プリセットデッキを使うか、デッキエディタで自分のデッキを作成できます。',
+  'intro.goToDeckBuilder': 'デッキエディタへ',
+  'intro.exploreLater': '後で見る',
 
   'common.back': '戻る',
   'common.backToLobby': 'ロビーへ戻る',
@@ -11,6 +18,7 @@ export const ja: Record<TranslationKey, string> = {
   'common.close': '閉じる',
   'common.confirm': '確定',
   'common.continue': '続ける',
+  'common.retry': 'リトライ',
   'common.empty': 'データがありません',
   'common.next': '次へ',
   'common.prev': '前へ',
@@ -41,6 +49,7 @@ export const ja: Record<TranslationKey, string> = {
   'auth.guest': 'ゲスト',
   'auth.winRate': '勝率',
   'auth.wins': '勝利',
+  'auth.matches': '試合',
   'auth.loginSuccess': 'ログインしました',
   'auth.registerSuccess': '登録しました',
   'auth.invalidCredentials': 'メールアドレスまたはパスワードが違います',
@@ -50,6 +59,9 @@ export const ja: Record<TranslationKey, string> = {
   'auth.profileUnavailable': 'プロフィールを読み込めません。あとでもう一度お試しください',
   'auth.matchSubmittedNoElo': '対戦を記録しました。ゲスト相手はELOに反映されません',
   'auth.matchSubmitFailed': 'ローカル履歴は保存しましたが、対戦結果を送信できませんでした',
+  'auth.submitting': '処理中...',
+  'auth.loginForm': 'ログインフォーム',
+  'auth.registerForm': '登録フォーム',
 
   'lobby.aiBattle': 'コンピュータ対戦',
   'lobby.createRoom': 'ルーム作成',
@@ -113,6 +125,9 @@ export const ja: Record<TranslationKey, string> = {
   'deck.saveServerSuccess': 'デッキをサーバーに保存しました',
   'deck.saveLocalSuccess': 'ローカルデッキを保存しました',
   'deck.saveFailedTitle': 'デッキ保存に失敗しました',
+  'deck.selectionSuccess': 'デッキを選択しました',
+  'deck.readyToStart': 'これでゲームを始められます！',
+  'deck.foundCards': '{count} 枚のカードが見つかりました',
 
   'player.zero': 'プレイヤー1',
   'player.one': 'プレイヤー2',
@@ -313,6 +328,13 @@ export const ja: Record<TranslationKey, string> = {
   'game.onlineMode': 'オンライン対戦',
   'game.matchCode': 'ルームコード',
   'game.loading': '対戦を読み込み中...',
+  'game.pause': '一時停止',
+  'game.confirmExit': 'ゲームを終了しますか？',
+  'game.exitWarning': '現在の進行状況は保存されません',
+  'game.exitGame': 'ゲームを終了',
+
+  'error.matchmakingFailed': 'マッチングに失敗しました',
+  'error.checkConnection': 'ネットワーク接続を確認するか、あとでもう一度お試しください',
 
   'aiSetup.title': 'CPU練習',
   'aiSetup.chooseDifficulty': '練習難易度を選択',

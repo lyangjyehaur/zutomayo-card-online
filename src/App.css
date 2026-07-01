@@ -72,6 +72,17 @@
   --card-micro-h: calc(var(--card-micro-w) * 1.4);
 }
 
+/* 登錄按鈕加載動畫 */
+@keyframes shimmer {
+  0%,
+  100% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+}
+
 * {
   box-sizing: border-box;
   min-width: 0;

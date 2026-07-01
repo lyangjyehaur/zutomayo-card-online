@@ -3,6 +3,13 @@ import type { TranslationKey } from './zh-TW';
 export const en: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': 'Online Card Battle Where Night and Day Collide',
+  'app.footerAlpha': 'Alpha · Feedback Welcome',
+  'app.footerCopyright': 'Card assets © zutomayocard.net',
+
+  'intro.deckTitle': 'Welcome to ZUTOMAYO CARD',
+  'intro.deckDescription': 'Before starting a game, you need to select a deck. You can use a preset deck or create your own in the Deck Editor.',
+  'intro.goToDeckBuilder': 'Go to Deck Editor',
+  'intro.exploreLater': 'Explore Later',
 
   'common.back': 'Back',
   'common.backToLobby': 'Back to Lobby',
@@ -11,6 +18,7 @@ export const en: Record<TranslationKey, string> = {
   'common.close': 'Close',
   'common.confirm': 'Confirm',
   'common.continue': 'Continue',
+  'common.retry': 'Retry',
   'common.empty': 'No data yet',
   'common.next': 'Next',
   'common.prev': 'Previous',
@@ -41,6 +49,7 @@ export const en: Record<TranslationKey, string> = {
   'auth.guest': 'Guest',
   'auth.winRate': 'Win rate',
   'auth.wins': 'Wins',
+  'auth.matches': 'matches',
   'auth.loginSuccess': 'Logged in',
   'auth.registerSuccess': 'Registered',
   'auth.invalidCredentials': 'Invalid email or password',
@@ -50,6 +59,9 @@ export const en: Record<TranslationKey, string> = {
   'auth.profileUnavailable': 'Could not load account profile. Try again later.',
   'auth.matchSubmittedNoElo': 'Match recorded; guest opponent does not affect ELO',
   'auth.matchSubmitFailed': 'Local history was saved, but match reporting failed',
+  'auth.submitting': 'Submitting...',
+  'auth.loginForm': 'Login form',
+  'auth.registerForm': 'Registration form',
 
   'lobby.aiBattle': 'Practice vs AI',
   'lobby.createRoom': 'Create Room',
@@ -113,6 +125,9 @@ export const en: Record<TranslationKey, string> = {
   'deck.saveServerSuccess': 'Deck saved to the server',
   'deck.saveLocalSuccess': 'Local deck saved',
   'deck.saveFailedTitle': 'Deck save failed',
+  'deck.selectionSuccess': 'Deck selected',
+  'deck.readyToStart': 'You can now start a game!',
+  'deck.foundCards': 'Found {count} cards',
 
   'player.zero': 'Player 1',
   'player.one': 'Player 2',
@@ -313,6 +328,13 @@ export const en: Record<TranslationKey, string> = {
   'game.onlineMode': 'Online Battle',
   'game.matchCode': 'Room Code',
   'game.loading': 'Loading match...',
+  'game.pause': 'Pause',
+  'game.confirmExit': 'Exit the game?',
+  'game.exitWarning': 'Your current progress will not be saved',
+  'game.exitGame': 'Exit Game',
+
+  'error.matchmakingFailed': 'Matchmaking failed',
+  'error.checkConnection': 'Check your network connection or try again later',
 
   'aiSetup.title': 'AI Practice',
   'aiSetup.chooseDifficulty': 'Choose difficulty',

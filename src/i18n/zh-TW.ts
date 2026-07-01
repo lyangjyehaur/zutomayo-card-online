@@ -1,6 +1,13 @@
 export const zhTW = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜與白晝交錯的線上對戰卡牌',
+  'app.footerAlpha': 'Alpha · 歡迎反饋',
+  'app.footerCopyright': 'Card assets © zutomayocard.net',
+
+  'intro.deckTitle': '歡迎來到 ZUTOMAYO CARD',
+  'intro.deckDescription': '在開始遊戲前，你需要選擇一副牌組。可以使用預設牌組，或前往牌組編輯器建立自己的牌組。',
+  'intro.goToDeckBuilder': '前往牌組編輯器',
+  'intro.exploreLater': '稍後探索',
 
   'common.back': '返回',
   'common.backToLobby': '返回大廳',
@@ -9,6 +16,7 @@ export const zhTW = {
   'common.close': '關閉',
   'common.confirm': '確認',
   'common.continue': '繼續',
+  'common.retry': '重試',
   'common.empty': '尚無資料',
   'common.next': '下一頁',
   'common.prev': '上一頁',
@@ -39,6 +47,7 @@ export const zhTW = {
   'auth.guest': '訪客',
   'auth.winRate': '勝率',
   'auth.wins': '勝場',
+  'auth.matches': '場',
   'auth.loginSuccess': '登入成功',
   'auth.registerSuccess': '註冊成功',
   'auth.invalidCredentials': '帳號或密碼錯誤',
@@ -48,6 +57,9 @@ export const zhTW = {
   'auth.profileUnavailable': '無法載入帳號資料，請稍後再試',
   'auth.matchSubmittedNoElo': '對戰已記錄；訪客對手不計入 ELO',
   'auth.matchSubmitFailed': '已保存本地紀錄，但無法上報對戰結果',
+  'auth.submitting': '處理中...',
+  'auth.loginForm': '登入表單',
+  'auth.registerForm': '註冊表單',
 
   'lobby.aiBattle': '與電腦對戰',
   'lobby.createRoom': '創建房間',
@@ -111,6 +123,9 @@ export const zhTW = {
   'deck.saveServerSuccess': '牌組已儲存到伺服器',
   'deck.saveLocalSuccess': '本地牌組已儲存',
   'deck.saveFailedTitle': '牌組儲存失敗',
+  'deck.selectionSuccess': '牌組已選擇',
+  'deck.readyToStart': '現在可以開始遊戲了！',
+  'deck.foundCards': '找到 {count} 張卡片',
 
   'player.zero': '玩家一',
   'player.one': '玩家二',
@@ -311,6 +326,13 @@ export const zhTW = {
   'game.onlineMode': '線上對戰',
   'game.matchCode': '房間代碼',
   'game.loading': '載入對戰中...',
+  'game.pause': '暫停',
+  'game.confirmExit': '確定要離開遊戲？',
+  'game.exitWarning': '當前進度將不會保存',
+  'game.exitGame': '離開遊戲',
+
+  'error.matchmakingFailed': '配對失敗',
+  'error.checkConnection': '請檢查網路連接或稍後再試',
 
   'aiSetup.title': '電腦練習',
   'aiSetup.chooseDifficulty': '選擇練習難度',

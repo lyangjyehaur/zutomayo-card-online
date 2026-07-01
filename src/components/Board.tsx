@@ -1,5 +1,6 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type {
   ActionLogEntry,
   CardInstance,
@@ -13,6 +14,7 @@ import type {
 import { getCardDef } from '../game/cards/loader';
 import { Card, CardPopover, computePopoverPosition, type CardSize, type PopoverPosition } from './Card';
 import { Chronos } from './Chronos';
+import { AppDrawer } from './AppDrawer';
 import {
   getBaseAttack,
   getChronosTime,
@@ -2501,6 +2503,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
 }
 
 export function Board(props: Props) {
+  const navigate = useNavigate();
   const matchStartedAt = useRef(Date.now());
   const me = Number(props.playerID ?? '0') as PlayerIndex;
   const previousStep = useRef(props.G.step);
@@ -2510,6 +2513,8 @@ export function Board(props: Props) {
   // 讓最後的 HP 變化 breakdown 等 notice 有時間播完。
   const [gameOverDelayed, setGameOverDelayed] = useState(false);
   const gameOverTriggeredRef = useRef(false);
+  // 暫停/離開確認對話框
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   useEffect(
     () => () => {
@@ -2574,10 +2579,49 @@ export function Board(props: Props) {
     setupFeedbackTimer.current = setTimeout(() => setSetupFeedback(null), prefersReducedMotion() ? 1000 : 1600);
   };
 
+  const handleExitGame = () => {
+    setShowExitConfirm(false);
+    navigate('/');
+  };
+
   const renderWithSetupFeedback = (node: ReactNode) => (
     <div className="board-feedback-root">
       {node}
       <FeedbackOverlay message={setupFeedback} onAction={() => setSetupFeedback(null)} />
+
+      {/* 暫停/離開按鈕 */}
+      {props.G.step !== 'gameOver' && (
+        <button
+          className="fixed right-4 top-4 z-50 border border-bone/20 bg-lacquer-deep/90 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 backdrop-blur transition hover:bg-bone/5 hover:text-bone"
+          type="button"
+          onClick={() => setShowExitConfirm(true)}
+          aria-label={t('game.pause')}
+        >
+          {t('game.pause')}
+        </button>
+      )}
+
+      {/* 離開確認對話框 */}
+      <AppDrawer
+        open={showExitConfirm}
+        title={t('game.confirmExit')}
+        description={t('game.exitWarning')}
+        kicker="Warning"
+        actions={[
+          {
+            label: t('game.exitGame'),
+            onClick: handleExitGame,
+            tone: 'danger',
+            eventName: 'game-exit-confirm',
+          },
+          {
+            label: t('common.cancel'),
+            onClick: () => setShowExitConfirm(false),
+            tone: 'secondary',
+            eventName: 'game-exit-cancel',
+          },
+        ]}
+      />
     </div>
   );
 

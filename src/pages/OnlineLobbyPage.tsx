@@ -97,6 +97,25 @@ export function OnlineLobbyPage({
     };
   }, []);
 
+  // 牌組選擇後 Toast 提示（首次選擇時顯示）
+  const handleDeckChange = (newDeck: string) => {
+    const isFirstSelection = !deck0Name && newDeck;
+    setDeck0Name(newDeck);
+
+    if (isFirstSelection) {
+      const hasShownToast = sessionStorage.getItem('zutomayo_deck_selected_toast');
+      if (!hasShownToast) {
+        showToast({
+          title: t('deck.selectionSuccess'),
+          body: t('deck.readyToStart'),
+          kind: 'success',
+          durationMs: 3000,
+        });
+        sessionStorage.setItem('zutomayo_deck_selected_toast', 'true');
+      }
+    }
+  };
+
   // Matchmaking 狀態（原 OnlinePanel 邏輯移入，以便拆分到左右兩欄）。
   const [matchID, setMatchID] = useState('');
   const [createdMatchID, setCreatedMatchID] = useState('');
@@ -210,6 +229,15 @@ export function OnlineLobbyPage({
     } catch (err) {
       resetMatchmaking();
       setError(onlineErrorMessage(err));
+      // 顯示錯誤 Toast 並提供重試按鈕
+      showToast({
+        title: t('error.matchmakingFailed'),
+        body: t('error.checkConnection'),
+        kind: 'error',
+        durationMs: 6000,
+        actionLabel: t('common.retry'),
+        onAction: handleQuickMatch,
+      });
       return;
     }
     // 立即檢查一次（可能已立即配對）
@@ -301,14 +329,24 @@ export function OnlineLobbyPage({
           </div>
 
           {/* 開始匹配 */}
-          <button
-            className="bg-gradient-to-r from-vermilion to-gold py-4 font-display text-lg italic tracking-wide text-lacquer-deep transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
-            type="button"
-            onClick={handleQuickMatch}
-            disabled={matchmakingActive || !canStart}
-          >
-            {t('lobby.beginMatch')}
-          </button>
+          <div className="relative group">
+            <button
+              className="w-full bg-gradient-to-r from-vermilion to-gold py-4 font-display text-lg italic tracking-wide text-lacquer-deep transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
+              type="button"
+              onClick={handleQuickMatch}
+              disabled={matchmakingActive || !canStart}
+            >
+              {t('lobby.beginMatch')}
+            </button>
+
+            {/* Tooltip 提示 */}
+            {!canStart && (
+              <div className="pointer-events-none absolute -top-14 left-1/2 z-50 hidden -translate-x-1/2 whitespace-nowrap rounded bg-lacquer-deep px-3 py-2 text-xs text-gold shadow-lg ring-1 ring-gold/20 opacity-0 transition-opacity group-hover:block group-hover:opacity-100">
+                {!cardsReady ? t('game.loading') : t('lobby.selectDeckFirst')}
+                <div className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-lacquer-deep ring-1 ring-gold/20" />
+              </div>
+            )}
+          </div>
 
           {matchmakingActive && (
             <div className="flex items-center justify-between gap-3">
@@ -334,7 +372,7 @@ export function OnlineLobbyPage({
         <section className="flex min-h-0 flex-col gap-6 md:overflow-y-auto md:pr-2">
           {/* 牌組選擇 */}
           <div className="rounded-sm bg-lacquer/60 p-5 ring-1 ring-bone/10">
-            <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={deckOptions} onChange={setDeck0Name} />
+            <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={deckOptions} onChange={handleDeckChange} />
           </div>
 
           {/* 自訂房間 */}
@@ -344,14 +382,24 @@ export function OnlineLobbyPage({
                 <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.customRooms')}</div>
                 <h2 className="font-display text-2xl italic">{t('lobby.createRoom')}</h2>
               </div>
-              <button
-                className="border border-bone/20 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/70 transition hover:bg-bone/5 disabled:cursor-not-allowed disabled:opacity-40"
-                type="button"
-                onClick={() => runOnline()}
-                disabled={matchmakingActive || !canStart}
-              >
-                + {t('lobby.createRoom')}
-              </button>
+              <div className="relative group">
+                <button
+                  className="border border-bone/20 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/70 transition hover:bg-bone/5 disabled:cursor-not-allowed disabled:opacity-40"
+                  type="button"
+                  onClick={() => runOnline()}
+                  disabled={matchmakingActive || !canStart}
+                >
+                  + {t('lobby.createRoom')}
+                </button>
+
+                {/* Tooltip 提示 */}
+                {!canStart && (
+                  <div className="pointer-events-none absolute -top-14 left-1/2 z-50 hidden -translate-x-1/2 whitespace-nowrap rounded bg-lacquer-deep px-3 py-2 text-xs text-gold shadow-lg ring-1 ring-gold/20 opacity-0 transition-opacity group-hover:block group-hover:opacity-100">
+                    {!cardsReady ? t('game.loading') : t('lobby.selectDeckFirst')}
+                    <div className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-lacquer-deep ring-1 ring-gold/20" />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* 加入房間 */}

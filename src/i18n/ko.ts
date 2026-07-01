@@ -3,6 +3,13 @@ import type { TranslationKey } from './zh-TW';
 export const ko: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '밤과 낮이 교차하는 온라인 카드 대전',
+  'app.footerAlpha': 'Alpha · 피드백 환영',
+  'app.footerCopyright': 'Card assets © zutomayocard.net',
+
+  'intro.deckTitle': 'ZUTOMAYO CARD 에 오신 것을 환영합니다',
+  'intro.deckDescription': '게임을 시작하기 전에 덱을 선택해야 합니다. 프리셋 덱을 사용하거나 덱 에디터에서 직접 만들 수 있습니다.',
+  'intro.goToDeckBuilder': '덱 에디터로 이동',
+  'intro.exploreLater': '나중에 둘러보기',
 
   'common.back': '뒤로',
   'common.backToLobby': '로비로 돌아가기',
@@ -11,6 +18,7 @@ export const ko: Record<TranslationKey, string> = {
   'common.close': '닫기',
   'common.confirm': '확인',
   'common.continue': '계속',
+  'common.retry': '다시 시도',
   'common.empty': '데이터 없음',
   'common.next': '다음',
   'common.prev': '이전',
@@ -41,6 +49,7 @@ export const ko: Record<TranslationKey, string> = {
   'auth.guest': '게스트',
   'auth.winRate': '승률',
   'auth.wins': '승리',
+  'auth.matches': '경기',
   'auth.loginSuccess': '로그인 성공',
   'auth.registerSuccess': '가입 성공',
   'auth.invalidCredentials': '계정 또는 비밀번호 오류',
@@ -50,6 +59,9 @@ export const ko: Record<TranslationKey, string> = {
   'auth.profileUnavailable': '계정 프로필을 불러올 수 없습니다. 나중에 다시 시도하세요.',
   'auth.matchSubmittedNoElo': '대전이 기록되었습니다. 게스트 상대는 ELO에 반영되지 않습니다',
   'auth.matchSubmitFailed': '로컬 기록은 저장했지만 대전 결과를 보고하지 못했습니다',
+  'auth.submitting': '처리 중...',
+  'auth.loginForm': '로그인 양식',
+  'auth.registerForm': '가입 양식',
 
   'lobby.aiBattle': 'AI 연습',
   'lobby.createRoom': '방 만들기',
@@ -113,6 +125,9 @@ export const ko: Record<TranslationKey, string> = {
   'deck.saveServerSuccess': '덱을 서버에 저장했습니다',
   'deck.saveLocalSuccess': '로컬 덱을 저장했습니다',
   'deck.saveFailedTitle': '덱 저장 실패',
+  'deck.selectionSuccess': '덱을 선택했습니다',
+  'deck.readyToStart': '이제 게임을 시작할 수 있습니다!',
+  'deck.foundCards': '{count}장의 카드를 찾았습니다',
 
   'player.zero': '플레이어 1',
   'player.one': '플레이어 2',
@@ -313,6 +328,13 @@ export const ko: Record<TranslationKey, string> = {
   'game.onlineMode': '온라인 대전',
   'game.matchCode': '방 코드',
   'game.loading': '매치 로딩 중...',
+  'game.pause': '일시 정지',
+  'game.confirmExit': '게임을 종료하시겠습니까?',
+  'game.exitWarning': '현재 진행 상황은 저장되지 않습니다',
+  'game.exitGame': '게임 종료',
+
+  'error.matchmakingFailed': '매칭에 실패했습니다',
+  'error.checkConnection': '네트워크 연결을 확인하거나 나중에 다시 시도하세요',
 
   'aiSetup.title': 'AI 연습',
   'aiSetup.chooseDifficulty': '난이도 선택',
