@@ -138,10 +138,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     completeWhen: (G, entry) => entry?.step === 'initialSet' && G.step !== 'initialSet',
   },
 
-  // 5b. 時鐘推進說明（初始放置翻開後、效果處理前）
+  // 5b. 時鐘推進說明（高亮時鐘推進彈窗）
   {
     phase: 'clock-advance',
-    target: '[data-tut="chronos-clock"]',
+    target: '[data-tut="game-notice-panel"]',
     title: 'tutorial.game.clockAdvance.title',
     body: 'tutorial.game.clockAdvance.body',
     placement: 'bottom',
@@ -192,13 +192,13 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     completeWhen: (G) => !G.pendingChoice,
   },
 
-  // 6c. HP 計算說明（效果處理後、戰鬥結果前）
+  // 6c. HP 計算說明（高亮 HP 計算彈窗）
   {
     phase: 'hp-calc',
-    target: '[data-tut="player-hp"]',
+    target: '[data-tut="game-notice-panel"]',
     title: 'tutorial.game.hpCalc.title',
     body: 'tutorial.game.hpCalc.body',
-    placement: 'top',
+    placement: 'bottom',
     padding: 12,
   },
 

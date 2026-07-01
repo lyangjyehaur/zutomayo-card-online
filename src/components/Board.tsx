@@ -675,7 +675,10 @@ function GameNoticeOverlay({ G, me }: { G: GameState; me?: PlayerIndex }) {
       aria-live="polite"
     >
       {needsConfirm && <div className="game-notice-backdrop" />}
-      <div className={`phase-message-panel ${needsConfirm ? 'hp-change-confirm' : 'hp-change-float'}`}>
+      <div
+        className={`phase-message-panel ${needsConfirm ? 'hp-change-confirm' : 'hp-change-float'}`}
+        data-tut="game-notice-panel"
+      >
         {content}
         {needsConfirm && (
           <button
