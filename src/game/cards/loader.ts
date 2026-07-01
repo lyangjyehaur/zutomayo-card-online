@@ -5,6 +5,7 @@ let currentCards: CardDef[] = [];
 let currentConfig: Record<string, unknown> = {};
 let cardsRefreshPromise: Promise<CardDef[]> | null = null;
 let _initialized = false;
+const CARD_FETCH_TIMEOUT_MS = 2500;
 
 export function isCardsInitialized(): boolean {
   return _initialized;
@@ -32,14 +33,22 @@ function isCardDefArray(value: unknown): value is CardDef[] {
   );
 }
 
-async function fetchJson<T>(path: string, cache: RequestCache = 'no-store'): Promise<T | null> {
+async function fetchJson<T>(
+  path: string,
+  cache: RequestCache = 'no-store',
+  timeoutMs = CARD_FETCH_TIMEOUT_MS,
+): Promise<T | null> {
   if (typeof fetch === 'undefined') return null;
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeout = controller ? globalThis.setTimeout(() => controller.abort(), timeoutMs) : null;
   try {
-    const response = await fetch(path, { cache });
+    const response = await fetch(path, { cache, signal: controller?.signal });
     if (!response.ok) return null;
     return (await response.json()) as T;
   } catch {
     return null;
+  } finally {
+    if (timeout !== null) globalThis.clearTimeout(timeout);
   }
 }
 
@@ -51,6 +60,11 @@ async function loadCardsFromAPI(): Promise<CardDef[]> {
   const cards = await fetchJson<unknown>('/api/cards');
   if (isCardDefArray(cards)) {
     initCards(cards);
+  } else {
+    const bundledCards = await fetchJson<unknown>('/cards.json', 'default');
+    if (isCardDefArray(bundledCards)) {
+      initCards(bundledCards);
+    }
   }
   return getAllCardDefs();
 }

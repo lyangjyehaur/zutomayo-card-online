@@ -5,7 +5,12 @@ import type { DeckResponse } from '../api/client';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { DifficultyButtons } from '../components/lobby/DifficultyButtons';
 import { useToast } from '../components/ToastProvider';
-import { buildAIOpponentDeckOptions, buildDeckOptions, buildServerDeckOptions } from '../components/lobby/shared';
+import {
+  buildAIOpponentDeckOptions,
+  buildDeckOptions,
+  buildServerDeckOptions,
+  canStartAI,
+} from '../components/lobby/shared';
 import type { AIDifficulty } from '../game/ai';
 import { t, translate, useLocale } from '../i18n';
 
@@ -108,7 +113,7 @@ export function AILobbyPage({
           </div>
         </div>
         <div className="flex min-h-0 flex-col gap-4 md:overflow-y-auto md:pr-2">
-          <DifficultyButtons onStart={onStartAI} disabled={!cardsReady || !deck0Name || !deck1Name} />
+          <DifficultyButtons onStart={onStartAI} disabled={!canStartAI({ cardsReady, deck0Name, deck1Name })} />
         </div>
       </div>
     </main>

@@ -6,6 +6,7 @@ export interface AppVersionInfo {
 
 declare const __APP_VERSION__: string | undefined;
 declare const __APP_BUILD_ID__: string | undefined;
+declare const __APP_BUILT_AT__: string | undefined;
 declare const __GAME_RULES_VERSION__: string | undefined;
 
 const PACKAGE_VERSION = '0.1.0';
@@ -28,11 +29,21 @@ function readDefinedBuildId(): string | undefined {
   return typeof __APP_BUILD_ID__ === 'undefined' ? undefined : __APP_BUILD_ID__;
 }
 
+function readDefinedBuiltAt(): string | undefined {
+  return typeof __APP_BUILT_AT__ === 'undefined' ? undefined : __APP_BUILT_AT__;
+}
+
 function readDefinedRulesVersion(): string | undefined {
   return typeof __GAME_RULES_VERSION__ === 'undefined' ? undefined : __GAME_RULES_VERSION__;
 }
 
 const definedAppVersion = definedValue(readDefinedAppVersion());
+
+export const APP_BUILT_AT =
+  definedValue(readDefinedBuiltAt()) ??
+  readRuntimeEnv('APP_BUILT_AT') ??
+  readRuntimeEnv('APP_BUILD_TIME') ??
+  new Date().toISOString();
 
 export const APP_VERSION_INFO: AppVersionInfo = Object.freeze({
   appVersion: definedAppVersion ?? readRuntimeEnv('APP_VERSION') ?? PACKAGE_VERSION,

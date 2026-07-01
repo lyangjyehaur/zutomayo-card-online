@@ -60,6 +60,21 @@ export function selectedDeckName(deckName: string, customDeckAvailable: boolean)
   return sanitizeDeckName(deckName, { customDeckAvailable, allowCounter: false });
 }
 
+export function aiOpponentDeckName(deckName: string): string {
+  return sanitizeDeckName(deckName || RANDOM_DECK_NAME, { allowCounter: true }) ?? RANDOM_DECK_NAME;
+}
+
+export function canStartAI({
+  cardsReady,
+  deck0Name,
+}: {
+  cardsReady: boolean;
+  deck0Name: string;
+  deck1Name?: string;
+}): boolean {
+  return cardsReady && !!deck0Name;
+}
+
 export function onlineDeckName(player: PlayerIndex, deckName: string, serverDecks: DeckResponse[]): ZutomayoSetupData {
   // 線上模式先 sanitization：克制牌組降級為隨機牌組，避免線上對手拿到針對性牌組。
   const safeName = sanitizeDeckName(deckName, { customDeckAvailable: true, allowCounter: false });

@@ -8,7 +8,7 @@ import { AppDrawer } from '../components/AppDrawer';
 import { t } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
-export { DEFAULT_DECK_NAME, onlineDeckName, selectedDeckName } from '../components/lobby/shared';
+export { DEFAULT_DECK_NAME, aiOpponentDeckName, onlineDeckName, selectedDeckName } from '../components/lobby/shared';
 
 interface LobbyPageProps {
   onAuthChanged: () => void | Promise<void>;
@@ -189,7 +189,18 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           >
             {t('app.footerAlpha')}
           </button>
-          <span className="font-mono">{t('app.footerCopyright')}</span>
+          <span className="font-mono">
+            {t('app.footerCopyright')}
+            <a
+              className="text-bone/40 underline-offset-4 transition-colors hover:text-gold hover:underline focus-visible:text-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+              href="https://zutomayocard.net"
+              target="_blank"
+              rel="noreferrer"
+            >
+              ZUTOMAYO
+            </a>
+            {t('app.footerCopyrightSuffix')}
+          </span>
         </div>
       </footer>
 

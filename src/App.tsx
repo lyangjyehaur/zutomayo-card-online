@@ -11,7 +11,7 @@ import { PwaStatusPrompt } from './components/PwaStatusPrompt';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
-import { LobbyPage, onlineDeckName, selectedDeckName } from './pages/LobbyPage';
+import { LobbyPage, aiOpponentDeckName, onlineDeckName, selectedDeckName } from './pages/LobbyPage';
 import { t, translate, useLocale, type TranslationKey } from './i18n';
 import {
   clearStoredOnlineSession,
@@ -29,7 +29,9 @@ const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ def
 const I18nManager = lazy(() => import('./pages/I18nManager').then((module) => ({ default: module.I18nManager })));
 const AIGamePage = lazy(() => import('./pages/AIGamePage').then((module) => ({ default: module.AIGamePage })));
 const AILobbyPage = lazy(() => import('./pages/AILobbyPage').then((module) => ({ default: module.AILobbyPage })));
-const TutorialGamePage = lazy(() => import('./pages/TutorialGamePage').then((module) => ({ default: module.TutorialGamePage })));
+const TutorialGamePage = lazy(() =>
+  import('./pages/TutorialGamePage').then((module) => ({ default: module.TutorialGamePage })),
+);
 const DeckEditorPage = lazy(() =>
   import('./pages/DeckEditorPage').then((module) => ({ default: module.DeckEditorPage })),
 );
@@ -395,7 +397,7 @@ function RouterShell() {
   };
 
   const deck0 = selectedDeckName(deck0Name, customDeckAvailable);
-  const deck1 = selectedDeckName(deck1Name, customDeckAvailable);
+  const deck1 = aiOpponentDeckName(deck1Name);
   // 全螢幕單屏頁面（首頁/線上/電腦/對戰中）有自己的 Header，不需要 NavBar 和 padding
   const hideNav =
     location.pathname.startsWith('/play/') ||

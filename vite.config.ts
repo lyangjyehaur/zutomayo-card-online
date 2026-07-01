@@ -7,6 +7,7 @@ import path from 'path';
 
 const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as { version?: string };
 const fallbackVersion = packageJson.version ?? '0.1.0';
+const fallbackBuildTime = new Date().toISOString();
 
 function versionEnv(name: string, fallback: string): string {
   return process.env[`VITE_${name}`] || process.env[name] || fallback;
@@ -16,6 +17,7 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(versionEnv('APP_VERSION', fallbackVersion)),
     __APP_BUILD_ID__: JSON.stringify(versionEnv('APP_BUILD_ID', fallbackVersion)),
+    __APP_BUILT_AT__: JSON.stringify(versionEnv('APP_BUILT_AT', fallbackBuildTime)),
     __GAME_RULES_VERSION__: JSON.stringify(versionEnv('GAME_RULES_VERSION', fallbackVersion)),
   },
   build: {

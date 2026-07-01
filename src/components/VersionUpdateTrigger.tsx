@@ -1,10 +1,19 @@
 import { useRef } from 'react';
 import { requestPwaRecoveryPrompt } from '../clientVersion';
 import { t } from '../i18n';
-import { APP_VERSION_INFO } from '../version';
+import { APP_BUILT_AT, APP_VERSION_INFO } from '../version';
 
 const REQUIRED_TAPS = 7;
 const TAP_WINDOW_MS = 1500;
+
+function formatBuildTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
+    date.getMinutes(),
+  )}`;
+}
 
 export function VersionUpdateTrigger() {
   const tapCountRef = useRef(0);
@@ -30,7 +39,7 @@ export function VersionUpdateTrigger() {
     }
   };
 
-  const versionLabel = `v${APP_VERSION_INFO.appVersion} · ${APP_VERSION_INFO.buildId.slice(0, 7)}`;
+  const versionLabel = `v${APP_VERSION_INFO.appVersion} · ${APP_VERSION_INFO.buildId.slice(0, 7)} · ${formatBuildTime(APP_BUILT_AT)}`;
 
   return (
     <button
