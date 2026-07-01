@@ -107,14 +107,7 @@ describe('Effect Parser', () => {
 
     it('解析器不應該拋出異常', () => {
       // Property-based 精神：任意字串都不應該崩潰
-      const randomStrings = [
-        '',
-        '   ',
-        'random text',
-        '12345',
-        '！@#$%^&*()',
-        '<script>alert("xss")</script>',
-      ];
+      const randomStrings = ['', '   ', 'random text', '12345', '！@#$%^&*()', '<script>alert("xss")</script>'];
 
       for (const str of randomStrings) {
         expect(() => parseEffect(str)).not.toThrow();
@@ -122,4 +115,3 @@ describe('Effect Parser', () => {
     });
   });
 });
-
