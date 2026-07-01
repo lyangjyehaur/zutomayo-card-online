@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t, useLocale, type TranslationKey } from '../i18n';
 import { getProfile, isLoggedIn } from '../api/client';
@@ -7,32 +7,39 @@ import {
   adminCreateFeedbackTag,
   adminDeleteFeedbackPost,
   adminDeleteFeedbackTag,
+  adminMarkAsDuplicate,
   adminUpdatePostStatus,
   adminUpdatePostTag,
   createFeedbackPost,
   deleteFeedbackComment,
   editFeedbackComment,
   editFeedbackPost,
+  findSimilarPosts,
   getFeedbackPost,
   getFeedbackStats,
   isAdminMode,
   listFeedbackPosts,
   listFeedbackTags,
   listFeedbackVoters,
+  toggleFeedbackCommentReaction,
   toggleFeedbackCommentVote,
   toggleFeedbackVote,
+  uploadFeedbackImage,
   type FeedbackComment,
   type FeedbackPost,
+  type FeedbackReaction,
   type FeedbackSort,
   type FeedbackStatus,
   type FeedbackStats,
   type FeedbackTag,
   type FeedbackVoter,
+  type SimilarPost,
 } from '../api/feedbackClient';
 import { getAnonymousId } from '../api/feedbackClient';
 
-const STATUS_OPTIONS: FeedbackStatus[] = ['open', 'planned', 'started', 'completed', 'declined'];
-const SORT_OPTIONS: FeedbackSort[] = ['top', 'newest', 'recent'];
+const STATUS_OPTIONS: FeedbackStatus[] = ['open', 'planned', 'started', 'completed', 'declined', 'duplicate'];
+const SORT_OPTIONS: FeedbackSort[] = ['top', 'trending', 'newest', 'recent', 'most-discussed'];
+const NO_VOTE_STATUSES: FeedbackStatus[] = ['completed', 'declined', 'duplicate'];
 
 function statusKey(status: FeedbackStatus): TranslationKey {
   return ('feedback.status' + status[0].toUpperCase() + status.slice(1)) as TranslationKey;
@@ -53,6 +60,8 @@ function statusBadgeClass(status: FeedbackStatus): string {
       return 'badge badge-success badge-sm';
     case 'declined':
       return 'badge badge-error badge-sm';
+    case 'duplicate':
+      return 'badge badge-ghost badge-sm';
   }
 }
 
@@ -79,8 +88,7 @@ function commentAuthorLabel(c: FeedbackComment): string {
   return t('feedback.anonymous');
 }
 
-// ===== 簡易安全 Markdown 渲染器 =====
-// 先 escape HTML 防 XSS，再替換 Markdown 語法。
+// ===== 安全 Markdown 渲染器（擴展版）=====
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -93,33 +101,86 @@ function escapeHtml(s: string): string {
 function renderMarkdown(text: string): string {
   if (!text) return '';
   let html = escapeHtml(text);
+  // 圍欄程式碼 ```code```
+  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
   // 標題
   html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
-  // 連結 [text](url) — 只允許 http/https
+  // 圖片 ![alt](feedback-image:<bkey>) → 替換為實際 URL
+  html = html.replace(
+    /!\[([^\]]*)\]\(feedback-image:([^)]+)\)/g,
+    '<img src="/api/feedback/images/$2" alt="$1" class="feedback-image" />',
+  );
+  // 一般圖片 ![alt](url)
   html = html.replace(
     /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
     '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
   );
-  // 行內程式碼 `code`
+  // 行內程式碼
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // 粗體 **text**
+  // 刪除線 ~~text~~
+  html = html.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  // 粗體
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  // 斜體 *text*
+  // 斜體
   html = html.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
-  // 列表項 - item 或 * item
+  // 表格（簡易）
+  html = html.replace(/^\|(.+)\|$/gm, (match) => {
+    const cells = match.split('|').filter((c) => c.trim());
+    if (cells.every((c) => /^[\s-:]+$/.test(c))) return ''; // 分隔行
+    return '<tr>' + cells.map((c) => '<td>' + c.trim() + '</td>').join('') + '</tr>';
+  });
+  html = html.replace(/(<tr>.*<\/tr>\n?)+/g, '<table class="md-table">$&</table>');
+  // 列表
   html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>\n?)/g, '<ul>$1</ul>');
+  html = html.replace(/<\/ul><br\/><ul>/g, '');
   // 換行
   html = html.replace(/\n/g, '<br/>');
-  // 清理 ul 重複
-  html = html.replace(/<\/ul><br\/><ul>/g, '');
   return html;
 }
 
 function Markdown({ text }: { text: string }) {
   return <span dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />;
+}
+
+// ===== 圖片上傳 hook =====
+function useImageUpload(onInserted: (markdown: string) => void) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  const upload = useCallback(
+    async (file: File) => {
+      if (!file.type.startsWith('image/')) {
+        setError(t('feedback.imageError'));
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        setError(t('feedback.imageTooLarge'));
+        return;
+      }
+      setUploading(true);
+      setError('');
+      try {
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const result = await uploadFeedbackImage(dataUrl, { fileName: file.name });
+        onInserted(`![${file.name}](feedback-image:${result.bkey})`);
+      } catch {
+        setError(t('feedback.imageError'));
+      } finally {
+        setUploading(false);
+      }
+    },
+    [onInserted],
+  );
+
+  return { uploading, error, upload, setError };
 }
 
 export function FeedbackPage() {
@@ -162,7 +223,8 @@ export function FeedbackPage() {
     void reload();
   }, [reload]);
 
-  const handleVote = async (postId: string) => {
+  const handleVote = async (postId: string, status: FeedbackStatus) => {
+    if (NO_VOTE_STATUSES.includes(status)) return;
     const prev = posts;
     setPosts((cur) =>
       cur.map((p) =>
@@ -207,7 +269,7 @@ export function FeedbackPage() {
           </div>
           {STATUS_OPTIONS.map((s) => (
             <div key={s} className="stat-cell">
-              <span className="stat-num font-mono">{Number(stats[s]) || 0}</span>
+              <span className="stat-num font-mono">{Number(stats[s as keyof FeedbackStats]) || 0}</span>
               <span className="stat-label">{t(statusKey(s))}</span>
             </div>
           ))}
@@ -315,11 +377,16 @@ export function FeedbackPage() {
           >
             <button
               type="button"
-              className={'vote-column' + (post.hasVoted ? ' voted' : '')}
+              className={
+                'vote-column' +
+                (post.hasVoted ? ' voted' : '') +
+                (NO_VOTE_STATUSES.includes(post.status) ? ' disabled' : '')
+              }
               onClick={(e) => {
                 e.stopPropagation();
-                void handleVote(post.id);
+                void handleVote(post.id, post.status);
               }}
+              disabled={NO_VOTE_STATUSES.includes(post.status)}
               aria-pressed={post.hasVoted}
             >
               <span className="vote-arrow">{post.hasVoted ? '▲' : '△'}</span>
@@ -369,6 +436,7 @@ export function FeedbackPage() {
           onChanged={() => {
             void reload();
           }}
+          onNavigate={(id) => setSelectedId(id)}
         />
       )}
     </main>
@@ -380,6 +448,76 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [similar, setSimilar] = useState<SimilarPost[]>([]);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // debounce 相似文章查詢
+  useEffect(() => {
+    if (title.trim().length < 2) {
+      setSimilar([]);
+      return;
+    }
+    setSimilarLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await findSimilarPosts(title.trim(), 5);
+        setSimilar(results);
+      } catch {
+        setSimilar([]);
+      } finally {
+        setSimilarLoading(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [title]);
+
+  const insertText = (text: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newText = description.slice(0, start) + text + description.slice(end);
+    setDescription(newText);
+    const newPos = start + text.length;
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(newPos, newPos);
+    }, 0);
+  };
+
+  const { uploading: imageUploading, error: imageError, upload: uploadImage } = useImageUpload(insertText);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) void uploadImage(file);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          void uploadImage(file);
+          return;
+        }
+      }
+    }
+  };
+
+  const handleFileSelect = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (file) void uploadImage(file);
+    };
+    input.click();
+  };
 
   const submit = async () => {
     if (!title.trim()) {
@@ -410,15 +548,46 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
         maxLength={120}
         onChange={(e) => setTitle(e.target.value)}
       />
+      {/* 相似文章提示 */}
+      {similarLoading && title.trim().length >= 2 && <p className="similar-loading">{t('feedback.loading')}</p>}
+      {similar.length > 0 && (
+        <div className="similar-posts-hint">
+          <p className="similar-hint-text">{t('feedback.similarFound')}</p>
+          <ul className="similar-list">
+            {similar.map((sp) => (
+              <li key={sp.id} className="similar-item">
+                <span className={statusBadgeClass(sp.status)}>{t(statusKey(sp.status))}</span>
+                <span className="similar-title">{sp.title}</span>
+                <span className="similar-votes font-mono">{sp.voteCount}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {title.trim().length >= 2 && !similarLoading && similar.length === 0 && (
+        <p className="similar-no-results">{t('feedback.noSimilar')}</p>
+      )}
       <label className="field-label">{t('feedback.descriptionLabel')}</label>
       <textarea
+        ref={textareaRef}
         className="textarea textarea-bordered textarea-sm"
         placeholder={t('feedback.descriptionPlaceholder')}
         value={description}
         maxLength={2000}
-        rows={3}
+        rows={4}
         onChange={(e) => setDescription(e.target.value)}
+        onDrop={handleDrop}
+        onPaste={handlePaste}
       />
+      <div className="upload-bar">
+        <button type="button" className="upload-btn" onClick={handleFileSelect} disabled={imageUploading}>
+          {imageUploading ? t('feedback.submitting') : t('feedback.uploadImage')}
+        </button>
+        <span className="upload-hint">
+          {t('feedback.dragDrop')} · {t('feedback.pasteImage')}
+        </span>
+      </div>
+      {imageError && <p className="feedback-error">{imageError}</p>}
       <p className="feedback-md-hint">{t('feedback.markdownHint')}</p>
       <p className="feedback-identity-hint">
         {isLoggedIn() ? t('feedback.commentingAs') : t('feedback.anonymousNotice')}
@@ -505,11 +674,13 @@ function PostDetailModal({
   adminMode,
   onClose,
   onChanged,
+  onNavigate,
 }: {
   postId: string;
   adminMode: boolean;
   onClose: () => void;
   onChanged: () => void;
+  onNavigate: (id: string) => void;
 }) {
   const locale = useLocale();
   const [post, setPost] = useState<FeedbackPost | null>(null);
@@ -526,6 +697,10 @@ function PostDetailModal({
   const [editDesc, setEditDesc] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
+  const [showDupPanel, setShowDupPanel] = useState(false);
+  const [dupSearch, setDupSearch] = useState('');
+  const [dupResults, setDupResults] = useState<SimilarPost[]>([]);
+  const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -555,6 +730,7 @@ function PostDetailModal({
 
   const handleVote = async () => {
     if (!post) return;
+    if (NO_VOTE_STATUSES.includes(post.status)) return;
     const prev = post;
     setPost({ ...post, hasVoted: !post.hasVoted, voteCount: post.voteCount + (post.hasVoted ? -1 : 1) });
     try {
@@ -583,7 +759,6 @@ function PostDetailModal({
 
   const handleCommentVote = async (commentId: string) => {
     if (!post) return;
-    // 樂觀更新
     setPost({
       ...post,
       comments: (post.comments ?? []).map((c) =>
@@ -592,6 +767,41 @@ function PostDetailModal({
     });
     try {
       await toggleFeedbackCommentVote(commentId);
+    } catch {
+      await load();
+    }
+  };
+
+  const handleReaction = async (commentId: string, emoji: string) => {
+    if (!post) return;
+    // 樂觀更新
+    setPost({
+      ...post,
+      comments: (post.comments ?? []).map((c) => {
+        if (c.id !== commentId) return c;
+        const existing = c.reactions.find((r) => r.emoji === emoji);
+        if (existing) {
+          return {
+            ...c,
+            reactions: c.reactions.map((r) =>
+              r.emoji === emoji
+                ? {
+                    ...r,
+                    includesMe: !r.includesMe,
+                    count: r.count + (r.includesMe ? -1 : 1),
+                  }
+                : r,
+            ),
+          };
+        }
+        return {
+          ...c,
+          reactions: [...c.reactions, { emoji, count: 1, includesMe: true }],
+        };
+      }),
+    });
+    try {
+      await toggleFeedbackCommentReaction(commentId, emoji);
     } catch {
       await load();
     }
@@ -627,6 +837,34 @@ function PostDetailModal({
       /* ignore */
     }
   };
+
+  const handleMarkDuplicate = async (originalId: string) => {
+    try {
+      await adminMarkAsDuplicate(postId, originalId);
+      setShowDupPanel(false);
+      await load();
+      onChanged();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // 搜尋原文章
+  useEffect(() => {
+    if (!showDupPanel || dupSearch.trim().length < 2) {
+      setDupResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const results = await findSimilarPosts(dupSearch.trim(), 10);
+        setDupResults(results.filter((r) => r.id !== postId));
+      } catch {
+        setDupResults([]);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [showDupPanel, dupSearch, postId]);
 
   const handleEditPost = async () => {
     if (!editTitle.trim()) return;
@@ -683,11 +921,63 @@ function PostDetailModal({
     }
   };
 
+  const insertCommentText = (text: string) => {
+    const textarea = commentTextareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newText = comment.slice(0, start) + text + comment.slice(end);
+    setComment(newText);
+    const newPos = start + text.length;
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(newPos, newPos);
+    }, 0);
+  };
+
+  const {
+    uploading: commentImgUploading,
+    error: commentImgError,
+    upload: uploadCommentImage,
+  } = useImageUpload(insertCommentText);
+
+  const handleCommentDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file) void uploadCommentImage(file);
+  };
+
+  const handleCommentPaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          void uploadCommentImage(file);
+          return;
+        }
+      }
+    }
+  };
+
+  const handleCommentFileSelect = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (file) void uploadCommentImage(file);
+    };
+    input.click();
+  };
+
   const isPostAuthor =
     post &&
     ((post.authorUserId && post.authorUserId === currentUserId) ||
       (!isLoggedIn() && post.anonymousId && post.anonymousId === getAnonymousId()));
 
+  const canVote = post && !NO_VOTE_STATUSES.includes(post.status);
   const comments = post?.comments ?? [];
 
   return (
@@ -741,6 +1031,15 @@ function PostDetailModal({
                 )}
               </div>
             )}
+            {/* Duplicate 提示 */}
+            {post.status === 'duplicate' && post.originalPostId && (
+              <div className="duplicate-notice">
+                <p>{t('feedback.duplicateNotice')}</p>
+                <button type="button" className="original-post-link" onClick={() => onNavigate(post.originalPostId!)}>
+                  {t('feedback.originalPost')}: {post.originalPostTitle || post.originalPostId}
+                </button>
+              </div>
+            )}
             {!editingPost && post.description && (
               <p className="post-desc-full">
                 <Markdown text={post.description} />
@@ -757,8 +1056,9 @@ function PostDetailModal({
             <div className="modal-actions">
               <button
                 type="button"
-                className={'vote-button' + (post.hasVoted ? ' voted' : '')}
+                className={'vote-button' + (post.hasVoted ? ' voted' : '') + (!canVote ? ' disabled' : '')}
                 onClick={handleVote}
+                disabled={!canVote}
                 aria-pressed={post.hasVoted}
               >
                 <span>{post.hasVoted ? '▲' : '△'}</span>
@@ -811,6 +1111,38 @@ function PostDetailModal({
                     {t('feedback.save')}
                   </button>
                 </div>
+                {/* Duplicate 標記 */}
+                <button type="button" className="secondary-action" onClick={() => setShowDupPanel((v) => !v)}>
+                  {t('feedback.markDuplicate')}
+                </button>
+                {showDupPanel && (
+                  <div className="dup-search-panel">
+                    <input
+                      className="input input-bordered input-xs"
+                      placeholder={t('feedback.searchPlaceholder')}
+                      value={dupSearch}
+                      onChange={(e) => setDupSearch(e.target.value)}
+                    />
+                    {dupResults.length > 0 && (
+                      <ul className="dup-results">
+                        {dupResults.map((dp) => (
+                          <li key={dp.id} className="dup-result-item">
+                            <span className={statusBadgeClass(dp.status)}>{t(statusKey(dp.status))}</span>
+                            <span className="dup-title">{dp.title}</span>
+                            <span className="dup-votes font-mono">{dp.voteCount}</span>
+                            <button
+                              type="button"
+                              className="primary-action"
+                              onClick={() => void handleMarkDuplicate(dp.id)}
+                            >
+                              ✓
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 <button type="button" className="danger-action" onClick={handleDelete}>
                   {t('feedback.delete')}
                 </button>
@@ -863,6 +1195,31 @@ function PostDetailModal({
                           >
                             {c.hasVoted ? '▲' : '△'} {c.voteCount}
                           </button>
+                          {/* Emoji 反應 */}
+                          <div className="reaction-group">
+                            {c.reactions.map((r: FeedbackReaction) => (
+                              <button
+                                key={r.emoji}
+                                type="button"
+                                className={'reaction-chip' + (r.includesMe ? ' includes-me' : '')}
+                                onClick={() => void handleReaction(c.id, r.emoji)}
+                              >
+                                {r.emoji} <span className="font-mono">{r.count}</span>
+                              </button>
+                            ))}
+                            <div className="reaction-picker">
+                              {(['👍', '❤️', '🎉', '😄', '😕', '👎'] as const).map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  className="reaction-picker-btn"
+                                  onClick={() => void handleReaction(c.id, emoji)}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                           {((c.authorUserId && c.authorUserId === currentUserId) ||
                             (!isLoggedIn() && c.anonymousId && c.anonymousId === getAnonymousId())) && (
                             <>
@@ -902,13 +1259,30 @@ function PostDetailModal({
               </ul>
               <div className="comment-form">
                 <textarea
+                  ref={commentTextareaRef}
                   className="textarea textarea-bordered textarea-sm"
                   placeholder={t('feedback.commentPlaceholder')}
                   value={comment}
                   maxLength={1000}
                   rows={2}
                   onChange={(e) => setComment(e.target.value)}
+                  onDrop={handleCommentDrop}
+                  onPaste={handleCommentPaste}
                 />
+                <div className="upload-bar">
+                  <button
+                    type="button"
+                    className="upload-btn"
+                    onClick={handleCommentFileSelect}
+                    disabled={commentImgUploading}
+                  >
+                    {commentImgUploading ? t('feedback.submitting') : t('feedback.uploadImage')}
+                  </button>
+                  <span className="upload-hint">
+                    {t('feedback.dragDrop')} · {t('feedback.pasteImage')}
+                  </span>
+                </div>
+                {commentImgError && <p className="feedback-error">{commentImgError}</p>}
                 <p className="feedback-md-hint">{t('feedback.markdownHint')}</p>
                 <p className="feedback-identity-hint">
                   {isLoggedIn() ? t('feedback.commentingAs') : t('feedback.anonymousNotice')}

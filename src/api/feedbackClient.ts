@@ -3,8 +3,8 @@ import { ApiError } from './client';
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ANON_ID_KEY = 'zutomayo_feedback_anon_id';
 
-export type FeedbackStatus = 'open' | 'planned' | 'started' | 'completed' | 'declined';
-export type FeedbackSort = 'top' | 'newest' | 'recent';
+export type FeedbackStatus = 'open' | 'planned' | 'started' | 'completed' | 'declined' | 'duplicate';
+export type FeedbackSort = 'top' | 'newest' | 'recent' | 'trending' | 'most-discussed';
 
 export interface FeedbackPost {
   id: string;
@@ -21,7 +21,16 @@ export interface FeedbackPost {
   createdAt: string;
   updatedAt: string;
   editedAt: string | null;
+  originalPostId: string | null;
+  originalPostTitle: string | null;
+  originalPostStatus: FeedbackStatus | null;
   comments?: FeedbackComment[];
+}
+
+export interface FeedbackReaction {
+  emoji: string;
+  count: number;
+  includesMe: boolean;
 }
 
 export interface FeedbackComment {
@@ -36,6 +45,7 @@ export interface FeedbackComment {
   hasVoted: boolean;
   createdAt: string;
   editedAt: string | null;
+  reactions: FeedbackReaction[];
 }
 
 export interface FeedbackVoter {
@@ -58,6 +68,7 @@ export interface FeedbackStats {
   started: string;
   completed: string;
   declined: string;
+  duplicate: string;
   total: string;
   total_votes: string;
 }
@@ -267,4 +278,53 @@ export async function adminDeleteFeedbackTag(tagId: string): Promise<{ deleted: 
     method: 'DELETE',
     headers: adminHeaders(),
   });
+}
+
+// ===== 相似文章提示 =====
+export interface SimilarPost {
+  id: string;
+  title: string;
+  status: FeedbackStatus;
+  tag: string;
+  voteCount: number;
+}
+
+export async function findSimilarPosts(query: string, limit = 5): Promise<SimilarPost[]> {
+  const q = new URLSearchParams({ q: query, limit: String(limit) });
+  const data = await request<{ posts: SimilarPost[] }>(`/feedback/similar?${q.toString()}`);
+  return data.posts;
+}
+
+// ===== Duplicate 文章（管理員）=====
+export async function adminMarkAsDuplicate(postId: string, originalPostId: string): Promise<FeedbackPost> {
+  return request<FeedbackPost>(`/feedback/admin/posts/${encodeURIComponent(postId)}/duplicate`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({ originalPostId }),
+  });
+}
+
+// ===== Emoji 反應 =====
+export const FEEDBACK_EMOJIS = ['👍', '❤️', '🎉', '😄', '😕', '👎'] as const;
+
+export async function toggleFeedbackCommentReaction(commentId: string, emoji: string): Promise<{ reacted: boolean }> {
+  return request<{ reacted: boolean }>(
+    `/feedback/comments/${encodeURIComponent(commentId)}/reactions/${encodeURIComponent(emoji)}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(withVoter({})),
+    },
+  );
+}
+
+// ===== 圖片上傳 =====
+export async function uploadFeedbackImage(
+  image: string,
+  options: { postId?: string; commentId?: string; fileName?: string } = {},
+): Promise<{ bkey: string; url: string }> {
+  const data = await request<{ bkey: string; url: string }>('/feedback/uploads', {
+    method: 'POST',
+    body: JSON.stringify(withVoter({ image, ...options })),
+  });
+  return data;
 }

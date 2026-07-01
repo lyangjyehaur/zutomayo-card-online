@@ -41,6 +41,9 @@ const {
   listTags: listFeedbackTags,
   createTag: createFeedbackTag,
   deleteTag: deleteFeedbackTag,
+  markAsDuplicate: markFeedbackAsDuplicate,
+  findSimilarPosts: findFeedbackSimilarPosts,
+  toggleCommentReaction: toggleFeedbackCommentReaction,
 } = require('./feedbackService.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
@@ -271,6 +274,34 @@ async function initSchema() {
       name TEXT NOT NULL UNIQUE,
       color TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+
+    // ===== 反饋功能擴展 schema（Duplicate/Emoji 反應/圖片附件）=====
+    `ALTER TABLE feedback_posts ADD COLUMN IF NOT EXISTS original_post_id TEXT REFERENCES feedback_posts(id) ON DELETE SET NULL`,
+    // 留言 emoji 反應表
+    `CREATE TABLE IF NOT EXISTS feedback_comment_reactions (
+      comment_id TEXT NOT NULL REFERENCES feedback_comments(id) ON DELETE CASCADE,
+      voter_user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      anonymous_id TEXT,
+      emoji TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (voter_user_id IS NOT NULL OR anonymous_id IS NOT NULL),
+      CHECK (NOT (voter_user_id IS NOT NULL AND anonymous_id IS NOT NULL))
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_feedback_comment_reactions_user
+      ON feedback_comment_reactions(comment_id, voter_user_id, emoji) WHERE voter_user_id IS NOT NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_feedback_comment_reactions_anon
+      ON feedback_comment_reactions(comment_id, anonymous_id, emoji) WHERE anonymous_id IS NOT NULL`,
+    // 圖片附件表
+    `CREATE TABLE IF NOT EXISTS feedback_attachments (
+      id TEXT PRIMARY KEY,
+      post_id TEXT REFERENCES feedback_posts(id) ON DELETE CASCADE,
+      comment_id TEXT REFERENCES feedback_comments(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL DEFAULT '',
+      content_type TEXT NOT NULL DEFAULT 'image/png',
+      file_size INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (post_id IS NOT NULL OR comment_id IS NOT NULL)
     )`,
   ];
 
@@ -1159,6 +1190,82 @@ function handleRequest(req, res) {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const tagId = decodeURIComponent(feedbackTagDeleteRoute[1]);
       json(await deleteFeedbackTag({ pool, tagId }));
+      return;
+    }
+
+    // GET /api/feedback/similar — 相似文章查詢（建立時提示重複）
+    if (pathname === '/api/feedback/similar' && method === 'GET') {
+      const q = url.searchParams.get('q') || '';
+      const limit = url.searchParams.get('limit') || '5';
+      json(await findFeedbackSimilarPosts({ pool, q, limit }));
+      return;
+    }
+
+    // POST /api/feedback/comments/:id/reactions/:emoji — 切換留言 emoji 反應
+    const commentReactionRoute = pathname.match(/^\/api\/feedback\/comments\/([^/]+)\/reactions\/([^/]+)$/);
+    if (commentReactionRoute && (method === 'POST' || method === 'DELETE')) {
+      const commentId = decodeURIComponent(commentReactionRoute[1]);
+      const emoji = decodeURIComponent(commentReactionRoute[2]);
+      const body = await readBody();
+      const voter = extractFeedbackVoter(req, body);
+      json(await toggleFeedbackCommentReaction({ pool, voter, commentId, emoji }));
+      return;
+    }
+
+    // POST /api/feedback/admin/posts/:id/duplicate — 標記為重複文章
+    const feedbackDuplicateRoute = pathname.match(/^\/api\/feedback\/admin\/posts\/([^/]+)\/duplicate$/);
+    if (feedbackDuplicateRoute && method === 'POST') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const postId = decodeURIComponent(feedbackDuplicateRoute[1]);
+      const body = await readBody();
+      json(await markFeedbackAsDuplicate({ pool, postId, originalPostId: body.originalPostId }));
+      return;
+    }
+
+    // POST /api/feedback/uploads — 圖片上傳（base64）
+    if (pathname === '/api/feedback/uploads' && method === 'POST') {
+      const body = await readBody();
+      const voter = extractFeedbackVoter(req, body);
+      if (!voter) return json({ error: 'Identity is required' }, 400);
+      // 解析 data URL: data:image/png;base64,xxxx
+      const dataUrl = body.image || '';
+      const match = dataUrl.match(/^data:(image\/(png|jpeg|jpg|gif|webp));base64,(.+)$/);
+      if (!match) return json({ error: 'Invalid image format' }, 400);
+      const contentType = match[1];
+      const ext = match[2] === 'jpeg' ? 'jpg' : match[2];
+      const buffer = Buffer.from(match[3], 'base64');
+      // 限制 2MB
+      if (buffer.length > 2 * 1024 * 1024) {
+        return json({ error: 'Image too large (max 2MB)' }, 400);
+      }
+      const bkey = generateFeedbackId('fa_') + '.' + ext;
+      const uploadDir = process.env.FEEDBACK_UPLOAD_DIR || '/tmp/feedback-uploads';
+      try { require('fs').mkdirSync(uploadDir, { recursive: true }); } catch (e) { /* exists */ }
+      require('fs').writeFileSync(uploadDir + '/' + bkey, buffer);
+      // 記錄到 DB（post_id/comment_id 可選，後續綁定）
+      await pool.query(
+        'INSERT INTO feedback_attachments (id, post_id, comment_id, file_name, content_type, file_size) VALUES ($1, $2, $3, $4, $5, $6)',
+        [bkey, body.postId || null, body.commentId || null, body.fileName || bkey, contentType, buffer.length],
+      );
+      return json({ ok: true, body: { bkey, url: '/api/feedback/images/' + bkey } }, 200);
+    }
+
+    // GET /api/feedback/images/:bkey — 圖片服務
+    const feedbackImageRoute = pathname.match(/^\/api\/feedback\/images\/([^/]+)$/);
+    if (feedbackImageRoute && method === 'GET') {
+      const bkey = decodeURIComponent(feedbackImageRoute[1]);
+      const uploadDir = process.env.FEEDBACK_UPLOAD_DIR || '/tmp/feedback-uploads';
+      const filePath = uploadDir + '/' + bkey;
+      try {
+        const buffer = require('fs').readFileSync(filePath);
+        const ext = bkey.split('.').pop().toLowerCase();
+        const ct = ext === 'jpg' ? 'image/jpeg' : ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/png';
+        res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'public, max-age=86400' });
+        res.end(buffer);
+      } catch (e) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Image not found' }));
+      }
       return;
     }
 

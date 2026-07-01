@@ -4,11 +4,13 @@
 // 支援匿名（anonymousId，前端 localStorage 產生）與登入用戶（JWT userId）雙軌。
 // 投票/留言/發文皆以「用戶或匿名擇一」作為身份識別，避免重複投票。
 
-const VALID_STATUSES = ['open', 'planned', 'started', 'completed', 'declined'];
-const VALID_SORTS = ['top', 'newest', 'recent'];
+const VALID_STATUSES = ['open', 'planned', 'started', 'completed', 'declined', 'duplicate'];
+const VALID_SORTS = ['top', 'newest', 'recent', 'trending', 'most-discussed'];
+
+// 不可投票的狀態（與 Fider 一致：已完成/拒絕/重複的文章不可投票）
+const NO_VOTE_STATUSES = ['completed', 'declined', 'duplicate'];
 
 // 投票者身份：userId 與 anonymousId 恰一者非空。
-// 回傳 { column, value } 或 null。column 為 'voter_user_id' 或 'anonymous_id'。
 function voterRef(voter) {
   if (voter && voter.userId) return { column: 'voter_user_id', value: voter.userId };
   if (voter && voter.anonymousId) return { column: 'anonymous_id', value: voter.anonymousId };
@@ -31,6 +33,9 @@ function mapPost(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     editedAt: row.edited_at || null,
+    originalPostId: row.original_post_id || null,
+    originalPostTitle: row.original_post_title || null,
+    originalPostStatus: row.original_post_status || null,
   };
 }
 
@@ -47,6 +52,7 @@ function mapComment(row) {
     hasVoted: Boolean(row.has_voted),
     createdAt: row.created_at,
     editedAt: row.edited_at || null,
+    reactions: row.reactions || [],
   };
 }
 
@@ -68,11 +74,19 @@ function mapTag(row) {
   };
 }
 
-// 列出反饋文章（含投票數、留言數、是否已投票）。
+// 列出反饋文章。
 async function listPosts({ pool, voter, status, tag, sort, q, limit, offset }) {
   const conditions = [];
   const params = [];
   let idx = 1;
+
+  // 預設不顯示 duplicate 和 deleted
+  const excludeStatuses = status ? [] : ['duplicate', 'deleted'];
+  if (excludeStatuses.length > 0) {
+    conditions.push('p.status NOT IN (' + excludeStatuses.map((_, i) => '$' + (idx + i)).join(', ') + ')');
+    excludeStatuses.forEach((s) => params.push(s));
+    idx += excludeStatuses.length;
+  }
 
   if (status && VALID_STATUSES.includes(status)) {
     conditions.push('p.status = $' + idx++);
@@ -90,12 +104,27 @@ async function listPosts({ pool, voter, status, tag, sort, q, limit, offset }) {
 
   const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
-  const orderBy =
-    sort === 'newest'
-      ? 'p.created_at DESC'
-      : sort === 'recent'
-        ? 'p.updated_at DESC'
-        : 'vote_count DESC, p.created_at DESC'; // 'top'（預設）
+  let orderBy;
+  switch (sort) {
+    case 'newest':
+      orderBy = 'p.created_at DESC';
+      break;
+    case 'recent':
+      orderBy = 'p.updated_at DESC';
+      break;
+    case 'trending':
+      // 熱度算法：(近30天投票×5 + 近30天留言×3) / (小時數+2)^1.4（HN 風格）
+      orderBy =
+        "((SELECT COUNT(*) FROM feedback_votes v WHERE v.post_id = p.id AND v.created_at > NOW() - INTERVAL '30 days') * 5 + " +
+        "(SELECT COUNT(*) FROM feedback_comments c WHERE c.post_id = p.id AND c.created_at > NOW() - INTERVAL '30 days') * 3) " +
+        '/ POWER(EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600 + 2, 1.4) DESC';
+      break;
+    case 'most-discussed':
+      orderBy = 'comment_count DESC, p.created_at DESC';
+      break;
+    default: // 'top'
+      orderBy = 'vote_count DESC, p.created_at DESC';
+  }
 
   const lim = Math.min(Math.max(Number(limit) || 50, 1), 100);
   const off = Math.max(Number(offset) || 0, 0);
@@ -113,6 +142,7 @@ async function listPosts({ pool, voter, status, tag, sort, q, limit, offset }) {
   const sql =
     'SELECT p.id, p.title, p.description, p.status, p.tag, ' +
     'p.author_user_id, p.anonymous_id, p.created_at, p.updated_at, p.edited_at, ' +
+    'p.original_post_id, ' +
     'u.nickname AS author_nickname, ' +
     '(SELECT COUNT(*) FROM feedback_votes v WHERE v.post_id = p.id) AS vote_count, ' +
     '(SELECT COUNT(*) FROM feedback_comments c WHERE c.post_id = p.id) AS comment_count, ' +
@@ -132,7 +162,7 @@ async function listPosts({ pool, voter, status, tag, sort, q, limit, offset }) {
   return { ok: true, body: { posts: rows.map(mapPost) } };
 }
 
-// 取得單一文章（含留言列表，留言含按讚數與是否已按讚）。
+// 取得單一文章（含留言列表，留言含按讚數、emoji 反應、是否已按讚）。
 async function getPost({ pool, voter, postId }) {
   const ref = voterRef(voter);
   const postParams = [postId];
@@ -145,20 +175,23 @@ async function getPost({ pool, voter, postId }) {
   const postSql =
     'SELECT p.id, p.title, p.description, p.status, p.tag, ' +
     'p.author_user_id, p.anonymous_id, p.created_at, p.updated_at, p.edited_at, ' +
+    'p.original_post_id, ' +
     'u.nickname AS author_nickname, ' +
+    'op.title AS original_post_title, op.status AS original_post_status, ' +
     '(SELECT COUNT(*) FROM feedback_votes v WHERE v.post_id = p.id) AS vote_count, ' +
     '(SELECT COUNT(*) FROM feedback_comments c WHERE c.post_id = p.id) AS comment_count, ' +
     hasVotedExpr +
     ' AS has_voted ' +
     'FROM feedback_posts p ' +
     'LEFT JOIN users u ON u.id = p.author_user_id ' +
+    'LEFT JOIN feedback_posts op ON op.id = p.original_post_id ' +
     'WHERE p.id = $1';
 
   const postRes = await pool.query(postSql, postParams);
   if (postRes.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
   const post = mapPost(postRes.rows[0]);
 
-  // 留言查詢：含按讚數、是否已按讚、是否官方回應、編輯時間
+  // 留言查詢
   const commentParams = [postId];
   let commentHasVotedExpr = 'FALSE';
   if (ref) {
@@ -179,11 +212,42 @@ async function getPost({ pool, voter, postId }) {
       'ORDER BY c.is_official DESC, vote_count DESC, c.created_at ASC',
     commentParams,
   );
-  post.comments = commentsRes.rows.map(mapComment);
+
+  // 取所有留言的 emoji 反應
+  const commentIds = commentsRes.rows.map((r) => r.id);
+  let reactionsMap = {};
+  if (commentIds.length > 0) {
+    const reactionsRes = await pool.query(
+      'SELECT comment_id, emoji, COUNT(*) as count, ' +
+        'BOOL_OR(' +
+        (ref ? 'cr.' + ref.column + ' = $1' : 'FALSE') +
+        ') AS includes_me ' +
+        'FROM feedback_comment_reactions cr ' +
+        'WHERE cr.comment_id = ANY($2' +
+        (ref ? '$3' : '') +
+        ') ' +
+        'GROUP BY comment_id, emoji',
+      ref ? [ref.value, commentIds] : [commentIds],
+    );
+    for (const r of reactionsRes.rows) {
+      if (!reactionsMap[r.comment_id]) reactionsMap[r.comment_id] = [];
+      reactionsMap[r.comment_id].push({
+        emoji: r.emoji,
+        count: Number(r.count),
+        includesMe: Boolean(r.includes_me),
+      });
+    }
+  }
+
+  post.comments = commentsRes.rows.map((row) => {
+    const c = mapComment(row);
+    c.reactions = reactionsMap[row.id] || [];
+    return c;
+  });
   return { ok: true, body: post };
 }
 
-// 建立反饋文章。身份：userId 或 anonymousId 擇一。
+// 建立反饋文章。
 async function createPost({ pool, voter, body, sanitizeText, generateId }) {
   const title = sanitizeText(body.title, 120);
   const description = sanitizeText(body.description, 2000);
@@ -200,6 +264,8 @@ async function createPost({ pool, voter, body, sanitizeText, generateId }) {
       "VALUES ($1, $2, $3, $4, $5, 'open', '') RETURNING *",
     [id, title, description, authorUserId, anonymousId],
   );
+  // 作者自動 +1 票
+  await pool.query('INSERT INTO feedback_votes (post_id, ' + ref.column + ') VALUES ($1, $2)', [id, ref.value]);
   const row = rows[0];
   return {
     ok: true,
@@ -212,24 +278,31 @@ async function createPost({ pool, voter, body, sanitizeText, generateId }) {
       authorUserId: row.author_user_id || null,
       authorNickname: null,
       anonymousId: row.anonymous_id || null,
-      voteCount: 0,
+      voteCount: 1,
       commentCount: 0,
-      hasVoted: false,
+      hasVoted: true,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       editedAt: null,
+      originalPostId: null,
+      originalPostTitle: null,
+      originalPostStatus: null,
       comments: [],
     },
   };
 }
 
-// 切換投票：已投則撤銷，未投則新增（toggle 語意）。
+// 切換投票。completed/declined/duplicate 狀態不可投票。
 async function toggleVote({ pool, voter, postId }) {
   const ref = voterRef(voter);
   if (!ref) return { ok: false, status: 400, error: 'Identity is required' };
 
-  const exists = await pool.query('SELECT id FROM feedback_posts WHERE id = $1', [postId]);
-  if (exists.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
+  const postRes = await pool.query('SELECT id, status FROM feedback_posts WHERE id = $1', [postId]);
+  if (postRes.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
+  const status = postRes.rows[0].status;
+  if (NO_VOTE_STATUSES.includes(status)) {
+    return { ok: false, status: 400, error: 'Cannot vote on posts with status: ' + status };
+  }
 
   const cur = await pool.query('SELECT 1 FROM feedback_votes WHERE post_id = $1 AND ' + ref.column + ' = $2', [
     postId,
@@ -277,11 +350,12 @@ async function addComment({ pool, voter, postId, body, sanitizeText, generateId,
       hasVoted: false,
       createdAt: row.created_at,
       editedAt: null,
+      reactions: [],
     },
   };
 }
 
-// 切換留言按讚（toggle）。
+// 切換留言按讚。
 async function toggleCommentVote({ pool, voter, commentId }) {
   const ref = voterRef(voter);
   if (!ref) return { ok: false, status: 400, error: 'Identity is required' };
@@ -307,7 +381,39 @@ async function toggleCommentVote({ pool, voter, commentId }) {
   return { ok: true, body: { voted: true } };
 }
 
-// 取得文章的投票者列表。
+// 切換留言 emoji 反應。
+async function toggleCommentReaction({ pool, voter, commentId, emoji }) {
+  const ref = voterRef(voter);
+  if (!ref) return { ok: false, status: 400, error: 'Identity is required' };
+
+  // emoji 白名單（常見表情）
+  const VALID_EMOJIS = ['👍', '❤️', '🎉', '😄', '😕', '👎'];
+  if (!VALID_EMOJIS.includes(emoji)) {
+    return { ok: false, status: 400, error: 'Invalid emoji' };
+  }
+
+  const exists = await pool.query('SELECT id FROM feedback_comments WHERE id = $1', [commentId]);
+  if (exists.rows.length === 0) return { ok: false, status: 404, error: 'Comment not found' };
+
+  const cur = await pool.query(
+    'SELECT 1 FROM feedback_comment_reactions WHERE comment_id = $1 AND ' + ref.column + ' = $2 AND emoji = $3',
+    [commentId, ref.value, emoji],
+  );
+  if (cur.rows.length > 0) {
+    await pool.query(
+      'DELETE FROM feedback_comment_reactions WHERE comment_id = $1 AND ' + ref.column + ' = $2 AND emoji = $3',
+      [commentId, ref.value, emoji],
+    );
+    return { ok: true, body: { reacted: false } };
+  }
+  await pool.query(
+    'INSERT INTO feedback_comment_reactions (comment_id, ' + ref.column + ', emoji) VALUES ($1, $2, $3)',
+    [commentId, ref.value, emoji],
+  );
+  return { ok: true, body: { reacted: true } };
+}
+
+// 取得文章投票者列表。
 async function listVoters({ pool, postId }) {
   const exists = await pool.query('SELECT id FROM feedback_posts WHERE id = $1', [postId]);
   if (exists.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
@@ -322,7 +428,7 @@ async function listVoters({ pool, postId }) {
   return { ok: true, body: { voters: rows.map(mapVoter) } };
 }
 
-// 編輯文章（作者或管理員）。
+// 編輯文章（作者）。
 async function editPost({ pool, voter, postId, body, sanitizeText }) {
   const title = sanitizeText(body.title, 120);
   const description = sanitizeText(body.description, 2000);
@@ -333,7 +439,6 @@ async function editPost({ pool, voter, postId, body, sanitizeText }) {
   const post = await pool.query('SELECT author_user_id, anonymous_id FROM feedback_posts WHERE id = $1', [postId]);
   if (post.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
   const row = post.rows[0];
-  // 只有作者可編輯
   if (ref.column === 'voter_user_id' && row.author_user_id !== ref.value) {
     return { ok: false, status: 403, error: 'Only author can edit' };
   }
@@ -349,7 +454,7 @@ async function editPost({ pool, voter, postId, body, sanitizeText }) {
   return { ok: true, body: mapPost(rows[0]) };
 }
 
-// 編輯留言（僅作者）。
+// 編輯留言（作者）。
 async function editComment({ pool, voter, commentId, body, sanitizeText }) {
   const content = sanitizeText(body.content, 1000);
   if (!content) return { ok: false, status: 400, error: 'Content is required' };
@@ -412,6 +517,26 @@ async function updatePostStatus({ pool, postId, status }) {
   return { ok: true, body: mapPost(rows[0]) };
 }
 
+// 管理員：標記為重複文章（指向原文章）。
+async function markAsDuplicate({ pool, postId, originalPostId }) {
+  if (postId === originalPostId) {
+    return { ok: false, status: 400, error: 'Cannot mark post as duplicate of itself' };
+  }
+  // 確認原文章存在
+  const orig = await pool.query('SELECT id, title, status FROM feedback_posts WHERE id = $1', [originalPostId]);
+  if (orig.rows.length === 0) return { ok: false, status: 404, error: 'Original post not found' };
+
+  const { rows } = await pool.query(
+    "UPDATE feedback_posts SET status = 'duplicate', original_post_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+    [originalPostId, postId],
+  );
+  if (rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
+  const post = mapPost(rows[0]);
+  post.originalPostTitle = orig.rows[0].title;
+  post.originalPostStatus = orig.rows[0].status;
+  return { ok: true, body: post };
+}
+
 // 管理員：更新文章標籤。
 async function updatePostTag({ pool, postId, tag, sanitizeText }) {
   const clean = sanitizeText(tag, 30);
@@ -423,14 +548,14 @@ async function updatePostTag({ pool, postId, tag, sanitizeText }) {
   return { ok: true, body: mapPost(rows[0]) };
 }
 
-// 管理員：刪除文章（含關聯投票/留言一併刪除）。
+// 管理員：刪除文章。
 async function deletePost({ pool, postId }) {
   const { rowCount } = await pool.query('DELETE FROM feedback_posts WHERE id = $1', [postId]);
   if (rowCount === 0) return { ok: false, status: 404, error: 'Post not found' };
   return { ok: true, body: { deleted: true } };
 }
 
-// 統計資料（首頁用）。
+// 統計資料。
 async function getStats({ pool }) {
   const { rows } = await pool.query(
     'SELECT ' +
@@ -439,6 +564,7 @@ async function getStats({ pool }) {
       "COUNT(*) FILTER (WHERE status = 'started') AS started, " +
       "COUNT(*) FILTER (WHERE status = 'completed') AS completed, " +
       "COUNT(*) FILTER (WHERE status = 'declined') AS declined, " +
+      "COUNT(*) FILTER (WHERE status = 'duplicate') AS duplicate, " +
       'COUNT(*) AS total, ' +
       '(SELECT COUNT(*) FROM feedback_votes) AS total_votes ' +
       'FROM feedback_posts',
@@ -446,7 +572,35 @@ async function getStats({ pool }) {
   return { ok: true, body: rows[0] };
 }
 
-// 標籤管理：列出所有預定義標籤。
+// 相似文章查詢（建立時提示重複）。
+async function findSimilarPosts({ pool, q, limit }) {
+  if (!q || q.trim().length < 2) return { ok: true, body: { posts: [] } };
+  const lim = Math.min(Math.max(Number(limit) || 5, 1), 10);
+  const { rows } = await pool.query(
+    'SELECT id, title, status, tag, ' +
+      '(SELECT COUNT(*) FROM feedback_votes v WHERE v.post_id = p.id) AS vote_count ' +
+      'FROM feedback_posts p ' +
+      "WHERE status NOT IN ('deleted', 'duplicate') " +
+      'AND (title ILIKE $1 OR description ILIKE $1) ' +
+      'ORDER BY vote_count DESC ' +
+      'LIMIT $2',
+    ['%' + q.trim() + '%', lim],
+  );
+  return {
+    ok: true,
+    body: {
+      posts: rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        status: r.status,
+        tag: r.tag || '',
+        voteCount: Number(r.vote_count) || 0,
+      })),
+    },
+  };
+}
+
+// 標籤管理：列出所有標籤。
 async function listTags({ pool }) {
   const { rows } = await pool.query(
     'SELECT t.id, t.name, t.color, t.created_at, ' +
@@ -480,20 +634,24 @@ async function deleteTag({ pool, tagId }) {
 module.exports = {
   VALID_STATUSES,
   VALID_SORTS,
+  NO_VOTE_STATUSES,
   listPosts,
   getPost,
   createPost,
   toggleVote,
   addComment,
   toggleCommentVote,
+  toggleCommentReaction,
   listVoters,
   editPost,
   editComment,
   deleteComment,
   updatePostStatus,
+  markAsDuplicate,
   updatePostTag,
   deletePost,
   getStats,
+  findSimilarPosts,
   listTags,
   createTag,
   deleteTag,
