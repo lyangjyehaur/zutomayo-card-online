@@ -168,10 +168,23 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       </section>
 
       {/* 底部 Footer */}
-      <footer className="absolute inset-x-0 bottom-0 z-20 flex h-10 items-center justify-between px-8 text-[10px] uppercase tracking-[0.3em] text-bone/30">
-        <VersionUpdateTrigger />
-        <span className="hidden md:inline">{t('app.footerAlpha')}</span>
-        <span className="font-mono">{t('app.footerCopyright')}</span>
+      <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4 md:px-8">
+        {/* 教學入口 */}
+        <button
+          type="button"
+          onClick={() => navigate('/tutorial')}
+          className="group flex w-full max-w-md items-center justify-center gap-3 rounded-sm border border-gold/30 bg-gradient-to-r from-gold/8 via-gold/5 to-gold/8 px-6 py-3 text-gold transition-all hover:border-gold/50 hover:bg-gold/10 hover:shadow-[0_8px_32px_-8px] hover:shadow-gold/30"
+        >
+          <span className="text-[10px] uppercase tracking-[0.3em]">{t('lobby.tutorial')}</span>
+          <span className="font-display text-xl italic transition-transform group-hover:translate-x-1">→</span>
+        </button>
+
+        {/* 原有的 footer 信息 */}
+        <div className="flex w-full items-center justify-between text-[10px] uppercase tracking-[0.3em] text-bone/30">
+          <VersionUpdateTrigger />
+          <span className="hidden md:inline">{t('app.footerAlpha')}</span>
+          <span className="font-mono">{t('app.footerCopyright')}</span>
+        </div>
       </footer>
 
       {/* 首次訪問引導彈窗 */}

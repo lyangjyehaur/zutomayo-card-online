@@ -36,13 +36,16 @@ export function useAIMoves(
   moves: ZutomayoMoveDispatchers,
   playerID: string,
   difficulty: AIDifficulty,
+  tutorialMode?: boolean,
 ) {
   const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = playerID === '1' && !!ctx && !ctx.gameover;
 
   useEffect(() => {
     if (!active || !G || G.step === 'gameOver') return;
-    const delay = difficulty === 'easy' ? 700 : difficulty === 'normal' ? 450 : 250;
+    // Tutorial mode: longer delays to give user time to read
+    const baseDelay = difficulty === 'easy' ? 700 : difficulty === 'normal' ? 450 : 250;
+    const delay = tutorialMode ? Math.max(baseDelay, 2000) : baseDelay;
     timeout.current = setTimeout(() => {
       const player = G.players[1];
       if (G.step === 'janken') {
@@ -90,7 +93,7 @@ export function useAIMoves(
     return () => {
       if (timeout.current) clearTimeout(timeout.current);
     };
-  }, [G, ctx, moves, active, difficulty]);
+  }, [G, ctx, moves, active, difficulty, tutorialMode]);
 
   return active;
 }

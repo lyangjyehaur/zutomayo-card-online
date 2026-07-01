@@ -29,6 +29,7 @@ const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ def
 const I18nManager = lazy(() => import('./pages/I18nManager').then((module) => ({ default: module.I18nManager })));
 const AIGamePage = lazy(() => import('./pages/AIGamePage').then((module) => ({ default: module.AIGamePage })));
 const AILobbyPage = lazy(() => import('./pages/AILobbyPage').then((module) => ({ default: module.AILobbyPage })));
+const TutorialGamePage = lazy(() => import('./pages/TutorialGamePage').then((module) => ({ default: module.TutorialGamePage })));
 const DeckEditorPage = lazy(() =>
   import('./pages/DeckEditorPage').then((module) => ({ default: module.DeckEditorPage })),
 );
@@ -439,6 +440,7 @@ function RouterShell() {
               }
             />
             <Route path="/play/ai" element={<AIGamePage deck0Name={deck0} deck1Name={deck1} />} />
+            <Route path="/tutorial" element={<TutorialGamePage />} />
             <Route
               path="/play/online/:matchID"
               element={

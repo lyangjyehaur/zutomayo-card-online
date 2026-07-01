@@ -1,0 +1,119 @@
+/* Tutorial Game Overlay Styles */
+
+.tutorial-game-overlay {
+  pointer-events: none; /* 默認不攔截點擊，只有遮罩區域攔截 */
+  user-select: none;
+}
+
+/* SVG 遮罩層可以攔截點擊 */
+.tutorial-game-overlay > svg {
+  pointer-events: auto;
+}
+
+/* Tooltip 卡片可以點擊 */
+.tutorial-game-overlay > div[style*="left"] {
+  pointer-events: auto;
+}
+
+/* Ensure highlighted elements are interactive */
+.tutorial-game-overlay [data-tutorial-interactive] {
+  pointer-events: auto;
+  position: relative;
+  z-index: 1001;
+}
+
+/* Smooth transitions for all tutorial elements */
+.tutorial-game-overlay * {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Progress dots animation */
+.tutorial-game-overlay .h-1 {
+  border-radius: 999px;
+  transition: background-color 200ms ease;
+}
+
+/* Button hover effects */
+.tutorial-game-overlay button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.tutorial-game-overlay button:not(:disabled):active {
+  transform: translateY(0);
+}
+
+/* Tooltip entrance animation */
+@keyframes tutorial-tooltip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tutorial-game-overlay > div[style*="left"] {
+  animation: tutorial-tooltip-enter 300ms ease-out;
+}
+
+/* SVG mask smooth transitions */
+.tutorial-game-overlay svg rect {
+  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Highlight pulse effect */
+@keyframes tutorial-highlight-pulse {
+  0%, 100% {
+    stroke-opacity: 0.8;
+    filter: drop-shadow(0 0 8px oklch(0.74 0.09 80 / 0.4));
+  }
+  50% {
+    stroke-opacity: 1;
+    filter: drop-shadow(0 0 16px oklch(0.74 0.09 80 / 0.6));
+  }
+}
+
+.tutorial-game-overlay svg rect[stroke] {
+  animation: tutorial-highlight-pulse 2s ease-in-out infinite;
+}
+
+/* Mobile optimization */
+@media (max-width: 640px) {
+  .tutorial-game-overlay > div[style*="left"] {
+    width: calc(100vw - 32px) !important;
+    left: 16px !important;
+    max-width: none;
+  }
+}
+
+/* Prevent text selection in tutorial overlay */
+.tutorial-game-overlay {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Ensure buttons remain clickable */
+.tutorial-game-overlay button {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* Loading state for dynamic elements */
+.tutorial-game-overlay[data-measuring="true"] svg rect[stroke] {
+  animation: none;
+  stroke-dasharray: 4 4;
+  stroke-dashoffset: 0;
+}
+
+@keyframes tutorial-dash {
+  to {
+    stroke-dashoffset: -8;
+  }
+}
+
+.tutorial-game-overlay[data-measuring="true"] svg rect[stroke] {
+  animation: tutorial-dash 400ms linear infinite;
+}

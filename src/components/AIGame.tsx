@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
 import type { BoardProps } from 'boardgame.io/react';
@@ -14,10 +14,12 @@ interface AIGameProps {
   onBack: () => void;
   deck0Name?: string;
   deck1Name?: string;
+  onGameStateChange?: (state: GameState) => void;
+  tutorialMode?: boolean;
 }
 
-function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
-  const { difficulty, ...boardProps } = props;
+function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty; onGameStateChange?: (state: GameState) => void; tutorialMode?: boolean }) {
+  const { difficulty, onGameStateChange, tutorialMode, ...boardProps } = props;
   const aiMoves = useMemo<ZutomayoMoveDispatchers>(
     () => ({
       janken: boardProps.moves.janken,
@@ -31,16 +33,24 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
     [boardProps.moves],
   );
 
-  useAIMoves(boardProps.G, boardProps.ctx, aiMoves, boardProps.playerID || '0', difficulty);
+  useAIMoves(boardProps.G, boardProps.ctx, aiMoves, boardProps.playerID || '0', difficulty, tutorialMode);
+
+  // Notify parent of game state changes (for tutorial)
+  useEffect(() => {
+    if (onGameStateChange) {
+      onGameStateChange(boardProps.G);
+    }
+  }, [boardProps.G, onGameStateChange]);
+
   // AI 對戰時我方顯示為「玩家」、對手顯示為「電腦」。
   return <Board {...boardProps} selfLabel={t('player.self' as never)} opponentLabel={t('player.ai' as never)} />;
 }
 
-export function AIGame({ difficulty, deck0Name, deck1Name }: AIGameProps) {
+export function AIGame({ difficulty, deck0Name, deck1Name, onGameStateChange, tutorialMode }: AIGameProps) {
   const [AIClient] = useState(() =>
     Client({
       game: createZutomayoCard({ deck0Name, deck1Name }),
-      board: (props: BoardProps<GameState>) => <AIBoard {...props} difficulty={difficulty} />,
+      board: (props: BoardProps<GameState>) => <AIBoard {...props} difficulty={difficulty} onGameStateChange={onGameStateChange} tutorialMode={tutorialMode} />,
       numPlayers: 2,
       multiplayer: Local(),
       debug: false,
