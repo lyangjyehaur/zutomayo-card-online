@@ -182,7 +182,13 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
         {/* 原有的 footer 信息 */}
         <div className="flex w-full items-center justify-between text-[10px] uppercase tracking-[0.3em] text-bone/30">
           <VersionUpdateTrigger />
-          <span className="hidden md:inline">{t('app.footerAlpha')}</span>
+          <button
+            type="button"
+            className="hidden md:inline text-bone/30 hover:text-gold transition-colors cursor-pointer"
+            onClick={() => navigate('/feedback')}
+          >
+            {t('app.footerAlpha')}
+          </button>
           <span className="font-mono">{t('app.footerCopyright')}</span>
         </div>
       </footer>
