@@ -127,8 +127,11 @@ function redactActionLogForViewer(G: GameState, viewer: PlayerIndex | null, both
 function playerView({ G, playerID }: { G: GameState; playerID: string | null }): GameState {
   const viewer = playerIndex(playerID);
   const bothChose = G.jankenChoices[0] !== null && G.jankenChoices[1] !== null;
+  // 教學模式（skipShuffle）下 AI 需看到玩家出拳才能出會輸的拳，
+  // 且 AI 非真人不存在資訊不公平。非教學模式維持原資訊隱藏邏輯。
+  const revealJankenForAI = G.tutorialSkipShuffle === true && viewer === 1;
   const jankenChoices = G.jankenChoices.map((choice, index) => {
-    if (bothChose || viewer === index) return choice;
+    if (bothChose || viewer === index || revealJankenForAI) return choice;
     return null;
   }) as GameState['jankenChoices'];
   const pendingChoice =
