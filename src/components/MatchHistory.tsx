@@ -71,9 +71,7 @@ function TraceEntry({ entry, locale }: { entry: ActionLogEntry; locale: string }
         </strong>
         <span>{entry.step}</span>
         {payload && <p>{payload}</p>}
-        {resultMessage && (
-          <p className={entry.result?.ok ? 'text-success' : 'text-error'}>{resultMessage}</p>
-        )}
+        {resultMessage && <p className={entry.result?.ok ? 'text-success' : 'text-error'}>{resultMessage}</p>}
         {context.length > 0 && <small>{context.join(' · ')}</small>}
       </div>
     </li>

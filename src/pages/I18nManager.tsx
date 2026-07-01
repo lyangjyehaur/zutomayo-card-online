@@ -176,9 +176,7 @@ export function I18nManager() {
             <tr>
               <th>{t('admin.i18nColKey')}</th>
               <th>{t('admin.i18nColBase')}</th>
-              <th>
-                {getLocaleLabel(selectedLocale)}
-              </th>
+              <th>{getLocaleLabel(selectedLocale)}</th>
               <th>{t('admin.i18nColStatus')}</th>
             </tr>
           </thead>

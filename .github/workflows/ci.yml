@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck (app)
+        run: npm run typecheck
+
+      - name: Typecheck (scripts)
+        run: npm run typecheck:scripts
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: zutomayo
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: zutomayo
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Game logic smoke test
+        run: npm run smoke
+
+      - name: Seed cards to PostgreSQL
+        env:
+          PG_HOST: localhost
+          PG_PORT: 5432
+          PG_USER: zutomayo
+          PG_PASSWORD: test_password
+          PG_DATABASE: zutomayo
+          REDIS_URL: redis://localhost:6379
+          REDIS_DB: 0
+        run: npm run seed:cards
+
+      - name: Effect parsing audit
+        env:
+          PG_HOST: localhost
+          PG_PORT: 5432
+          PG_USER: zutomayo
+          PG_PASSWORD: test_password
+          PG_DATABASE: zutomayo
+        run: npm run rule:audit
+
+      - name: API smoke test
+        env:
+          PG_HOST: localhost
+          PG_PORT: 5432
+          PG_USER: zutomayo
+          PG_PASSWORD: test_password
+          PG_DATABASE: zutomayo
+          REDIS_URL: redis://localhost:6379
+          REDIS_DB: 0
+          JWT_SECRET: test_jwt_secret_for_ci
+          ADMIN_PASSWORD: test_admin_password
+        run: npm run smoke:api
+
+      - name: Online smoke test
+        env:
+          PG_HOST: localhost
+          PG_PORT: 5432
+          PG_USER: zutomayo
+          PG_PASSWORD: test_password
+          PG_DATABASE: zutomayo
+          REDIS_URL: redis://localhost:6379
+          REDIS_DB: 0
+          JWT_SECRET: test_jwt_secret_for_ci
+        run: npm run smoke:online

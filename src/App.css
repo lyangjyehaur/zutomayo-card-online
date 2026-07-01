@@ -1392,7 +1392,7 @@ input:focus {
     var(--shadow);
 }
 
-.board > *:not([data-zone="hand"]):not(header) {
+.board > *:not([data-zone='hand']):not(header) {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -3115,7 +3115,7 @@ input:focus {
     0 1rem 2.4rem rgba(0, 0, 0, 0.34);
 }
 
-.board > *:not([data-zone="hand"]):not(header) {
+.board > *:not([data-zone='hand']):not(header) {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -4676,7 +4676,7 @@ button.zone:focus-visible {
     0 1rem 2.4rem rgba(0, 0, 0, 0.34);
 }
 
-.board > *:not([data-zone="hand"]):not(header) {
+.board > *:not([data-zone='hand']):not(header) {
   min-width: 0;
   min-height: 0;
 }
@@ -7337,18 +7337,33 @@ button.zone:focus-visible {
 
 /* ---------- 動畫 keyframes ---------- */
 @keyframes damage-flash {
-  0% { background-color: color-mix(in oklch, var(--vermilion) 30%, transparent); }
-  100% { background-color: transparent; }
+  0% {
+    background-color: color-mix(in oklch, var(--vermilion) 30%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 
 @keyframes damage-float-up {
-  0% { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(-20px); }
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
 }
 
 @keyframes timer-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* ---------- 1. Board 根容器與佈局 ---------- */
@@ -7381,7 +7396,7 @@ button.zone:focus-visible {
   z-index: 0;
 }
 
-.board > *:not([data-zone="hand"]):not(header) {
+.board > *:not([data-zone='hand']):not(header) {
   position: relative;
   z-index: 1;
 }
@@ -7574,7 +7589,9 @@ button.zone:focus-visible {
 
 .zone-clickable {
   cursor: pointer;
-  transition: border-color 150ms, transform 150ms;
+  transition:
+    border-color 150ms,
+    transform 150ms;
 }
 
 .zone-clickable:not(:disabled):hover {
@@ -7625,7 +7642,9 @@ button.zone:focus-visible {
   position: relative;
   transform-style: preserve-3d;
   transform-origin: center center;
-  transition: transform 180ms ease, filter 180ms ease;
+  transition:
+    transform 180ms ease,
+    filter 180ms ease;
 }
 
 .battlefield-depth-row::before {
@@ -8049,7 +8068,9 @@ button.zone:focus-visible {
   border-radius: 2px;
   padding: 0.6rem 1rem;
   cursor: pointer;
-  transition: background 150ms, transform 120ms;
+  transition:
+    background 150ms,
+    transform 120ms;
 }
 
 .secondary-action:hover {
@@ -8121,7 +8142,9 @@ button.zone:focus-visible {
   border: 1px solid color-mix(in oklch, var(--bone) 5%, transparent);
   border-radius: 2px;
   cursor: pointer;
-  transition: border-color 150ms, transform 150ms;
+  transition:
+    border-color 150ms,
+    transform 150ms;
   text-align: left;
 }
 
@@ -8268,7 +8291,10 @@ button.zone:focus-visible {
   border: 1px solid color-mix(in oklch, var(--bone) 8%, transparent);
   border-radius: 2px;
   cursor: pointer;
-  transition: border-color 150ms, transform 150ms, color 150ms;
+  transition:
+    border-color 150ms,
+    transform 150ms,
+    color 150ms;
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
@@ -8591,15 +8617,15 @@ button.zone:focus-visible {
 }
 
 /* 手牌區域：徹底清除 Card 組件的邊框和背景 */
-[data-zone="hand"] .game-card,
-[data-zone="hand"] .game-card .card-frame,
-[data-zone="hand"] .game-card .card-art {
+[data-zone='hand'] .game-card,
+[data-zone='hand'] .game-card .card-frame,
+[data-zone='hand'] .game-card .card-art {
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
   border-radius: 0 !important;
 }
 
-[data-zone="hand"] .game-card .card-art img {
+[data-zone='hand'] .game-card .card-art img {
   border-radius: 0.25rem;
 }

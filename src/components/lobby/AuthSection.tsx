@@ -114,7 +114,10 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
   if (user) {
     const stats = profileStats(user);
     return (
-      <section className="rounded-sm bg-lacquer p-2 ring-1 ring-bone/10 sm:p-4" aria-label={user.nickname || t('auth.guest')}>
+      <section
+        className="rounded-sm bg-lacquer p-2 ring-1 ring-bone/10 sm:p-4"
+        aria-label={user.nickname || t('auth.guest')}
+      >
         <div className="flex flex-col gap-3">
           <p className="font-display text-sm italic text-bone">{user.nickname || t('auth.guest')}</p>
           <div className="flex flex-wrap gap-x-4 gap-y-1">

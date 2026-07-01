@@ -105,7 +105,10 @@ export function DeckEditor({
     setPopoverPos({ top, left });
   };
 
-  const handleCardEnter = (card: CardDef, event: React.MouseEvent<HTMLButtonElement> | React.FocusEvent<HTMLButtonElement>) => {
+  const handleCardEnter = (
+    card: CardDef,
+    event: React.MouseEvent<HTMLButtonElement> | React.FocusEvent<HTMLButtonElement>,
+  ) => {
     hoveredRef.current = event.currentTarget;
     setPreviewCard(card);
     requestAnimationFrame(updatePopoverPosition);
@@ -267,10 +270,7 @@ export function DeckEditor({
       </header>
 
       {errorMessage && (
-        <div
-          className="relative z-30 bg-vermilion/10 px-4 py-1.5 text-[10px] text-vermilion/80 md:px-6"
-          role="alert"
-        >
+        <div className="relative z-30 bg-vermilion/10 px-4 py-1.5 text-[10px] text-vermilion/80 md:px-6" role="alert">
           {errorMessage}
         </div>
       )}
@@ -417,49 +417,54 @@ export function DeckEditor({
         </section>
 
         {/* hover 浮層：透過 portal 渲染到 document.body，避免被 overflow 裁切 */}
-        {previewCard && popoverPos && createPortal(
-          <aside
-            aria-hidden="true"
-            className="pointer-events-none fixed z-50 w-72 rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/95 to-lacquer p-4 shadow-2xl ring-1 ring-gold/30 backdrop-blur"
-            style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` as CSSProperties['left'] }}
-          >
-            <div className="truncate font-display text-sm font-bold text-bone/90">{previewCard.name}</div>
-            <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">
-              {elementLabel(previewCard.element)} · {typeLabel(previewCard.type)} · {previewCard.rarity}
-            </div>
-            <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
-              <span className="text-bone/60">
-                <span className="text-gold/70">{t('card.energy')}</span> {previewCard.powerCost}
-              </span>
-              {previewCard.attack && (
-                <span className="text-bone/60">
-                  <span className="text-gold/70">{t('card.night')}/{t('card.day')}</span> {previewCard.attack.night}/{previewCard.attack.day}
-                </span>
-              )}
-              <span className="text-bone/60">
-                <span className="text-gold/70">{t('card.clock')}</span> {previewCard.clock}
-              </span>
-              {previewCard.sendToPower > 0 && (
-                <span className="text-bone/60">
-                  <span className="text-gold/70">{t('card.charge')}</span> {previewCard.sendToPower}
-                </span>
-              )}
-            </div>
-            {previewCard.effect && (
-              <p className="mt-2.5 text-[12px] leading-relaxed text-bone/80">
-                {getTranslatedEffect(previewCard.id, locale) ?? previewCard.effect}
-              </p>
-            )}
-            {(previewCard.song || previewCard.illustrator) && (
-              <div className="mt-2 font-mono text-[9px] text-bone/30">
-                {previewCard.song && <span>{previewCard.song}</span>}
-                {previewCard.song && previewCard.illustrator && <span> · </span>}
-                {previewCard.illustrator && <span>illust. {previewCard.illustrator}</span>}
+        {previewCard &&
+          popoverPos &&
+          createPortal(
+            <aside
+              aria-hidden="true"
+              className="pointer-events-none fixed z-50 w-72 rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/95 to-lacquer p-4 shadow-2xl ring-1 ring-gold/30 backdrop-blur"
+              style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` as CSSProperties['left'] }}
+            >
+              <div className="truncate font-display text-sm font-bold text-bone/90">{previewCard.name}</div>
+              <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">
+                {elementLabel(previewCard.element)} · {typeLabel(previewCard.type)} · {previewCard.rarity}
               </div>
-            )}
-          </aside>,
-          document.body,
-        )}
+              <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
+                <span className="text-bone/60">
+                  <span className="text-gold/70">{t('card.energy')}</span> {previewCard.powerCost}
+                </span>
+                {previewCard.attack && (
+                  <span className="text-bone/60">
+                    <span className="text-gold/70">
+                      {t('card.night')}/{t('card.day')}
+                    </span>{' '}
+                    {previewCard.attack.night}/{previewCard.attack.day}
+                  </span>
+                )}
+                <span className="text-bone/60">
+                  <span className="text-gold/70">{t('card.clock')}</span> {previewCard.clock}
+                </span>
+                {previewCard.sendToPower > 0 && (
+                  <span className="text-bone/60">
+                    <span className="text-gold/70">{t('card.charge')}</span> {previewCard.sendToPower}
+                  </span>
+                )}
+              </div>
+              {previewCard.effect && (
+                <p className="mt-2.5 text-[12px] leading-relaxed text-bone/80">
+                  {getTranslatedEffect(previewCard.id, locale) ?? previewCard.effect}
+                </p>
+              )}
+              {(previewCard.song || previewCard.illustrator) && (
+                <div className="mt-2 font-mono text-[9px] text-bone/30">
+                  {previewCard.song && <span>{previewCard.song}</span>}
+                  {previewCard.song && previewCard.illustrator && <span> · </span>}
+                  {previewCard.illustrator && <span>illust. {previewCard.illustrator}</span>}
+                </div>
+              )}
+            </aside>,
+            document.body,
+          )}
 
         <aside className="flex min-h-[24rem] flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 md:p-5 lg:min-h-0">
           <div className="mb-3 flex items-end justify-between border-b border-bone/10 pb-3">

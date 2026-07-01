@@ -50,7 +50,18 @@ docker compose down
 ## Environment / 環境變數
 
 Variables are passed through `docker-compose.yml` from the host environment (e.g. via a `.env` file or shell export).
-`PG_PASSWORD` is required; Compose exits early if it is missing.
+
+**REQUIRED:** `PG_PASSWORD` and `JWT_SECRET` are mandatory. Compose exits early if either is missing.
+
+Create a `.env` file from the template:
+
+```bash
+cp .env.example .env
+# Edit .env and set secure values for:
+# - PG_PASSWORD
+# - JWT_SECRET (generate with: openssl rand -hex 32)
+# - ADMIN_PASSWORD (optional, but recommended)
+```
 
 ### `game`
 
@@ -66,7 +77,7 @@ Variables are passed through `docker-compose.yml` from the host environment (e.g
 | `REDIS_URL`          | `redis://redis:6379`    | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Use `redis://localhost:6379` for local dev.                                               |
 | `REDIS_DB`           | `0`                     | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
 | `ALLOWED_ORIGINS`    | empty                   | Comma-separated extra origins allowed by boardgame.io CORS.                                                                                                      |
-| `JWT_SECRET`         | empty                   | Shared HMAC secret. The `game` service forwards it so the same key signs/verifies across services; set the same value as `api`.                                  |
+| `JWT_SECRET`         | **required**            | Shared HMAC secret for JWT signing/verification. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set the same value for both `game` and `api` services. |
 | `APP_VERSION`        | `0.1.0`                 | App release version exposed by `/api/app-version` and baked into the frontend bundle.                                                                            |
 | `APP_BUILD_ID`       | `0.1.0`                 | Build identifier used for client/server version checks. Set this to a git SHA, image tag, or release number and change it on every deploy.                       |
 | `GAME_RULES_VERSION` | `0.1.0`                 | Rules/calculation compatibility version. Bump when online matches must not mix old and new game logic.                                                           |
@@ -100,8 +111,8 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `PG_DATABASE`        | `zutomayo`           | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                            |
 | `REDIS_URL`          | `redis://redis:6379` | Redis connection URL for the matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                                                       |
 | `REDIS_DB`           | `0`                  | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis). |
-| `JWT_SECRET`         | random per process   | HMAC key for signed user/admin tokens. Set a stable secret in production or all tokens become invalid when the API process restarts.                             |
-| `ADMIN_PASSWORD`     | empty                | Password checked by `POST /api/admin/login`. When empty, admin login returns `503` and admin endpoints are effectively disabled.                                 |
+| `JWT_SECRET`         | **required**         | HMAC key for signed user/admin tokens. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set a stable secret in production or all tokens become invalid when the API process restarts. |
+| `ADMIN_PASSWORD`     | empty                | Password checked by `POST /api/admin/login`. **Recommended: at least 8 characters.** When empty, admin login returns `503` and admin endpoints are effectively disabled. |
 | `ALLOWED_ORIGINS`    | empty                | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                 |
 | `APP_VERSION`        | `0.1.0`              | App release version returned by `/api/version` and `/api/app-version`.                                                                                           |
 | `APP_BUILD_ID`       | `0.1.0`              | Build identifier; keep it aligned with the `game` service.                                                                                                       |

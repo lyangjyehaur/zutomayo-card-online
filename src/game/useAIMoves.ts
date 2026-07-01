@@ -46,7 +46,8 @@ export function useAIMoves(
     timeout.current = setTimeout(() => {
       const player = G.players[1];
       if (G.step === 'janken') {
-        const choices: JankenChoice[] = ['rock', 'paper', 'scissors']; if (!G.jankenChoices[1]) moves.janken(choices[Math.floor(Math.random() * 3)]);
+        const choices: JankenChoice[] = ['rock', 'paper', 'scissors'];
+        if (!G.jankenChoices[1]) moves.janken(choices[Math.floor(Math.random() * 3)]);
         return;
       }
       if (G.step === 'mulligan') {

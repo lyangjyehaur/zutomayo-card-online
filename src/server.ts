@@ -442,6 +442,19 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 const PORT = Number(process.env.PORT) || 3000;
 const STALE_MATCH_TTL_MS = Number(process.env.STALE_MATCH_TTL_MS) || 30 * 60 * 1000; // 30 minutes
 const CLEANUP_INTERVAL_MS = Number(process.env.CLEANUP_INTERVAL_MS) || 5 * 60 * 1000; // every 5 min
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// 安全性驗證：JWT_SECRET 必須在生產環境設定
+function validateSecurityConfig(): void {
+  if (!JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET environment variable is required');
+    console.error('Generate one with: openssl rand -hex 32');
+    process.exit(1);
+  }
+  if (JWT_SECRET.length < 32) {
+    console.warn('WARNING: JWT_SECRET should be at least 32 characters for security');
+  }
+}
 
 // Stale room cleanup — 直接使用 PostgresAdapter instance（server.db 型別因斷言後不夠精確）。
 async function cleanupStaleMatches() {
@@ -496,6 +509,8 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 // 啟動流程：先從 PG 載入卡牌資料（boardgame.io setup 需要卡牌定義），再啟動伺服器。
 // PG 不可用時重試 5 次（間隔 2 秒），仍失敗則退出 — 卡牌未載入時 createMatch 會崩潰。
 async function bootstrap(): Promise<void> {
+  validateSecurityConfig();
+
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
       await loadCardsFromPG();

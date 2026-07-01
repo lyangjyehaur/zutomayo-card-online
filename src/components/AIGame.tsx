@@ -9,14 +9,12 @@ import type { AIDifficulty } from '../game/ai';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
 
-
 interface AIGameProps {
   difficulty: AIDifficulty;
   onBack: () => void;
   deck0Name?: string;
   deck1Name?: string;
 }
-
 
 function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty }) {
   const { difficulty, ...boardProps } = props;

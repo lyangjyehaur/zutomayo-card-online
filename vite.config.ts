@@ -18,6 +18,22 @@ export default defineConfig({
     __APP_BUILD_ID__: JSON.stringify(versionEnv('APP_BUILD_ID', fallbackVersion)),
     __GAME_RULES_VERSION__: JSON.stringify(versionEnv('GAME_RULES_VERSION', fallbackVersion)),
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // 核心框架單獨打包
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // boardgame.io 框架
+          'vendor-game': ['boardgame.io/react', 'boardgame.io/client'],
+          // UI 組件庫
+          'vendor-ui': ['lucide-react'],
+        },
+      },
+    },
+    // 提高 chunk 大小警告門檻（遊戲邏輯較複雜）
+    chunkSizeWarningLimit: 800,
+  },
   plugins: [
     tailwindcss(),
     react(),

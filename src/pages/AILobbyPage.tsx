@@ -71,7 +71,12 @@ export function AILobbyPage({
       <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 py-4 md:grid-cols-[minmax(0,1fr)_24rem] md:overflow-hidden md:px-6 md:py-6">
         <div className="flex min-h-0 flex-col gap-6 md:overflow-y-auto md:pr-2">
           {serverDeckError && <p className="text-[10px] text-vermilion/80">{serverDeckError}</p>}
-          <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={playerDeckOptions} onChange={setDeck0Name} />
+          <DeckSelector
+            label={t('lobby.myDeck')}
+            value={deck0Name}
+            options={playerDeckOptions}
+            onChange={setDeck0Name}
+          />
           <div className="border-t border-bone/10 pt-6">
             <DeckSelector
               label={t('lobby.opponentDeck')}

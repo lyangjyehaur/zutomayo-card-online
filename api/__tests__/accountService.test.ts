@@ -6,38 +6,37 @@ type Queryable = {
 };
 
 const require = createRequire(import.meta.url);
-const { getAccountProfile, loginAccount, mapAccountProfile, registerAccount, updateAccountProfile } = require(
-  '../accountService.cjs',
-) as {
-  getAccountProfile: (
-    pool: Queryable,
-    userId: string,
-  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-  loginAccount: (input: {
-    pool: Queryable;
-    body: Record<string, unknown>;
-    hashPassword: (password: unknown, salt: string, iterations?: number) => Promise<string>;
-    createToken: (userId: string) => string;
-    currentIterations: number;
-    legacyIterations: number;
-  }) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-  mapAccountProfile: (user: Record<string, unknown>) => Record<string, unknown>;
-  registerAccount: (input: {
-    pool: Queryable;
-    body: Record<string, unknown>;
-    sanitizeText: (value: unknown, maxLen?: number) => string;
-    hashPassword: (password: unknown, salt: string) => Promise<string>;
-    createToken: (userId: string) => string;
-    generateUserId: () => string;
-    generateSalt: () => string;
-  }) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-  updateAccountProfile: (input: {
-    pool: Queryable;
-    userId: string;
-    body: Record<string, unknown>;
-    sanitizeText: (value: unknown, maxLen?: number) => string;
-  }) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-};
+const { getAccountProfile, loginAccount, mapAccountProfile, registerAccount, updateAccountProfile } =
+  require('../accountService.cjs') as {
+    getAccountProfile: (
+      pool: Queryable,
+      userId: string,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+    loginAccount: (input: {
+      pool: Queryable;
+      body: Record<string, unknown>;
+      hashPassword: (password: unknown, salt: string, iterations?: number) => Promise<string>;
+      createToken: (userId: string) => string;
+      currentIterations: number;
+      legacyIterations: number;
+    }) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+    mapAccountProfile: (user: Record<string, unknown>) => Record<string, unknown>;
+    registerAccount: (input: {
+      pool: Queryable;
+      body: Record<string, unknown>;
+      sanitizeText: (value: unknown, maxLen?: number) => string;
+      hashPassword: (password: unknown, salt: string) => Promise<string>;
+      createToken: (userId: string) => string;
+      generateUserId: () => string;
+      generateSalt: () => string;
+    }) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+    updateAccountProfile: (input: {
+      pool: Queryable;
+      userId: string;
+      body: Record<string, unknown>;
+      sanitizeText: (value: unknown, maxLen?: number) => string;
+    }) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  };
 
 const userRow = {
   id: 'u_1',
@@ -88,7 +87,10 @@ describe('account service', () => {
       }),
     ).resolves.toEqual({
       ok: true,
-      body: { token: 'token:u_fixed', user: { id: 'u_fixed', email: 'user@example.com', nickname: 'Alice', elo: 1000 } },
+      body: {
+        token: 'token:u_fixed',
+        user: { id: 'u_fixed', email: 'user@example.com', nickname: 'Alice', elo: 1000 },
+      },
     });
 
     expect(sanitizeText).toHaveBeenCalledWith('<Alice>', 30);
@@ -100,7 +102,9 @@ describe('account service', () => {
   });
 
   it('rejects invalid and duplicate registrations before inserting', async () => {
-    const duplicatePool = poolWithHandler((sql) => (sql.startsWith('SELECT') ? { rows: [{ id: 'u_existing' }] } : { rows: [] }));
+    const duplicatePool = poolWithHandler((sql) =>
+      sql.startsWith('SELECT') ? { rows: [{ id: 'u_existing' }] } : { rows: [] },
+    );
     const deps = {
       pool: duplicatePool,
       sanitizeText: () => 'User',
@@ -126,7 +130,9 @@ describe('account service', () => {
 
   it('logs in current-hash users without rehashing', async () => {
     const pool = poolWithHandler((sql) => (sql.startsWith('SELECT') ? { rows: [userRow] } : { rows: [] }));
-    const hashPassword = vi.fn(async (_password, _salt, iterations) => (iterations === 100000 ? 'current-hash' : 'legacy-hash'));
+    const hashPassword = vi.fn(async (_password, _salt, iterations) =>
+      iterations === 100000 ? 'current-hash' : 'legacy-hash',
+    );
 
     await expect(
       loginAccount({
@@ -144,7 +150,9 @@ describe('account service', () => {
   it('upgrades legacy password hashes after successful login', async () => {
     const legacyUser = { ...userRow, password_hash: 'legacy-hash' };
     const pool = poolWithHandler((sql) => (sql.startsWith('SELECT') ? { rows: [legacyUser] } : { rows: [] }));
-    const hashPassword = vi.fn(async (_password, _salt, iterations) => (iterations === 100000 ? 'current-hash' : 'legacy-hash'));
+    const hashPassword = vi.fn(async (_password, _salt, iterations) =>
+      iterations === 100000 ? 'current-hash' : 'legacy-hash',
+    );
 
     await expect(
       loginAccount({
@@ -156,7 +164,10 @@ describe('account service', () => {
         legacyIterations: 10000,
       }),
     ).resolves.toMatchObject({ ok: true });
-    expect(pool.query).toHaveBeenCalledWith('UPDATE users SET password_hash = $1 WHERE id = $2', ['current-hash', 'u_1']);
+    expect(pool.query).toHaveBeenCalledWith('UPDATE users SET password_hash = $1 WHERE id = $2', [
+      'current-hash',
+      'u_1',
+    ]);
   });
 
   it('gets and updates profile data', async () => {
@@ -176,7 +187,11 @@ describe('account service', () => {
 
   it('returns explicit errors for missing users and blank nicknames', async () => {
     const pool = poolWithHandler(() => ({ rows: [] }));
-    await expect(getAccountProfile(pool, 'missing')).resolves.toEqual({ ok: false, status: 404, error: 'User not found' });
+    await expect(getAccountProfile(pool, 'missing')).resolves.toEqual({
+      ok: false,
+      status: 404,
+      error: 'User not found',
+    });
     await expect(
       updateAccountProfile({ pool, userId: 'u_1', body: { nickname: '' }, sanitizeText: () => '' }),
     ).resolves.toEqual({ ok: false, status: 400, error: 'Nickname required' });

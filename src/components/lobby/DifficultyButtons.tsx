@@ -21,9 +21,7 @@ export function DifficultyButtons({
         <h3 className="font-display text-lg italic text-bone">{t('lobby.aiBattle')}</h3>
         <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('lobby.difficulty')}</span>
       </div>
-      {disabled && (
-        <p className="text-[10px] text-vermilion/70">{t('lobby.selectDeckFirst')}</p>
-      )}
+      {disabled && <p className="text-[10px] text-vermilion/70">{t('lobby.selectDeckFirst')}</p>}
       <div className="flex flex-col gap-2">
         {levels.map((level) => (
           <button

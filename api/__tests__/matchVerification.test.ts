@@ -128,7 +128,9 @@ describe('verifyBoardgameMatchResult', () => {
 
   it('treats a missing boardgame table as a missing source match', async () => {
     const pool = {
-      query: vi.fn().mockRejectedValue(Object.assign(new Error('relation "bjg_matches" does not exist'), { code: '42P01' })),
+      query: vi
+        .fn()
+        .mockRejectedValue(Object.assign(new Error('relation "bjg_matches" does not exist'), { code: '42P01' })),
     };
 
     await expect(verifyBoardgameMatchResult(pool, 'match_1', 0, 'u_0')).resolves.toMatchObject({

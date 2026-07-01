@@ -28,7 +28,7 @@ const pbkdf2 = util.promisify(crypto.pbkdf2);
 
 // ===== Config =====
 const PORT = Number(process.env.API_PORT) || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+const JWT_SECRET = process.env.JWT_SECRET;
 // P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const APP_VERSION = process.env.APP_VERSION || '0.1.0';
@@ -39,6 +39,23 @@ const APP_VERSION_INFO = Object.freeze({
   buildId: APP_BUILD_ID,
   rulesVersion: GAME_RULES_VERSION,
 });
+
+// 安全性驗證：JWT_SECRET 必須在生產環境設定
+function validateSecurityConfig() {
+  if (!JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET environment variable is required');
+    console.error('Generate one with: openssl rand -hex 32');
+    process.exit(1);
+  }
+  if (JWT_SECRET.length < 32) {
+    console.warn('WARNING: JWT_SECRET should be at least 32 characters for security');
+  }
+  if (!ADMIN_PASSWORD) {
+    console.warn('WARNING: ADMIN_PASSWORD not set - admin login will be disabled');
+  } else if (ADMIN_PASSWORD.length < 8) {
+    console.warn('WARNING: ADMIN_PASSWORD should be at least 8 characters');
+  }
+}
 
 // PostgreSQL 設定（水平擴展：以 PG 取代 SQLite）
 const PG_HOST = process.env.PG_HOST || 'localhost';
@@ -893,6 +910,7 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 if (require.main === module) {
+  validateSecurityConfig();
   initSchema()
     .then(() => {
       server.listen(PORT, () => {

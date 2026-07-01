@@ -78,10 +78,7 @@ export function Chronos({ chronos, currentTime, nightSidePlayer, currentPlayer }
         <circle className="chronos-outer" cx={center} cy={center} r={outerRadius} />
         <circle className="chronos-face" cx={center} cy={center} r={faceRadius} />
 
-        <g
-          className="chronos-face-group"
-          style={{ transform: `rotate(${rotation}deg)` }}
-        >
+        <g className="chronos-face-group" style={{ transform: `rotate(${rotation}deg)` }}>
           <path className="chronos-night-arc" d={topSemiCircle(center, arcRadius)} />
           <path className="chronos-day-arc" d={bottomSemiCircle(center, arcRadius)} />
           <line className="chronos-divider" x1={center} y1="26" x2={center} y2="66" />

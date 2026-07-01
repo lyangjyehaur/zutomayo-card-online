@@ -13,15 +13,7 @@ function mapAccountProfile(user) {
   };
 }
 
-async function registerAccount({
-  pool,
-  body,
-  sanitizeText,
-  hashPassword,
-  createToken,
-  generateUserId,
-  generateSalt,
-}) {
+async function registerAccount({ pool, body, sanitizeText, hashPassword, createToken, generateUserId, generateSalt }) {
   const { email, password, nickname } = body;
   if (!email || !password) return { ok: false, status: 400, error: 'Email and password required' };
   if (password.length < 6) return { ok: false, status: 400, error: 'Password must be at least 6 characters' };
