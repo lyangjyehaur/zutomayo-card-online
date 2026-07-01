@@ -86,6 +86,14 @@ jobs:
         run: npm ci
 
       - name: Game logic smoke test
+        env:
+          PG_HOST: localhost
+          PG_PORT: 5432
+          PG_USER: zutomayo
+          PG_PASSWORD: test_password
+          PG_DATABASE: zutomayo
+          REDIS_URL: redis://localhost:6379
+          REDIS_DB: 0
         run: npm run smoke
 
       - name: Seed cards to PostgreSQL
