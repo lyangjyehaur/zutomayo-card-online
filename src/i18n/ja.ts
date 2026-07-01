@@ -534,42 +534,7 @@ export const ja: Record<TranslationKey, string> = {
   'history.traceChoice': '選択',
   'history.draw': '引き分け',
 
-  'tutorial.title': 'チュートリアル',
-  'tutorial.skip': 'スキップ',
-  'tutorial.actionHint': '指示に従って操作してください',
-  'tutorial.startPractice': 'CPU練習を開始',
-  'tutorial.prev': '前へ',
-  'tutorial.stepIndicator': 'ステップ',
-  'tutorial.finishTitle': 'チュートリアル完了',
-  'tutorial.finishBody': '基本の流れを理解しました。やさしい難易度で1戦練習できます。',
-  'tutorial.stepWelcomeTitle': '対戦場へようこそ',
-  'tutorial.stepWelcomeBody':
-    '各ターンに手札からカードをセットゾーンへ置き、双方が確定したら同時に公開してバトルを解決します。',
-  'tutorial.stepZonesTitle': 'フィールドゾーン',
-  'tutorial.stepZonesBody':
-    'バトルゾーンには現在のキャラクター、セットゾーンにはこのターンのカードを置きます。エリアエンチャントは継続効果として残ります。',
-  'tutorial.stepChronosTitle': 'Chronos 時計',
-  'tutorial.stepChronosBody': 'カードの時計でChronosが進み、現在が夜か昼かによってキャラクターの攻撃値が変わります。',
-  'tutorial.stepResourcesTitle': 'エネルギーとアビス',
-  'tutorial.stepResourcesBody':
-    '一部のカードは場を離れるとエネルギーゾーンに置かれ、エネルギーを生まないカードはアビスに置かれます。',
-  'tutorial.stepCatchupTitle': '追いつきルール',
-  'tutorial.stepCatchupBody':
-    '前ターンの敗者は2枚、勝者は通常1枚だけカードを出せます。これによりゲーム展開が拮抗します。',
-  'tutorial.stepJankenTitle': 'じゃんけんで夜側決定',
-  'tutorial.stepJankenBody':
-    'じゃんけんで夜側プレイヤーを決めます。夜側は夜時間に先に効果を処理し、昼側は昼時間に先に効果を処理します。',
-  'tutorial.stepMulliganTitle': '手札引き直し',
-  'tutorial.stepMulliganBody': '序盤に任意の手札を1回引き直せます。戦闘前に初期手札を整えましょう。',
-  'tutorial.stepEffectOrderTitle': '効果順序の選択',
-  'tutorial.stepEffectOrderBody':
-    '同じターンに複数の効果が発動する場合、解決順序を選べます。工夫次第で戦況を変えられます。',
-  'tutorial.stepPendingChoiceTitle': 'カード選択の送信',
-  'tutorial.stepPendingChoiceBody':
-    '一部の効果は手札、アビス、デッキからカードを指定します。選んで送信すると効果が解決します。',
-
   // Tutorial Game Mode
-  'tutorial.complete': 'チュートリアル完了',
   'tutorial.game.intro.title': 'ZUTOMAYO CARDへようこそ',
   'tutorial.game.intro.body': 'これから実際の対戦を通じて、ゲームの全ての仕組みを順番に案内します。',
   'tutorial.game.janken.intro.title': 'じゃんけんで先攻・後攻を決める',
@@ -583,7 +548,7 @@ export const ja: Record<TranslationKey, string> = {
     '結果が出ました！夜側プレイヤーは夜時間に先に効果を処理し、昼側プレイヤーは昼時間に先に効果を処理します。',
   'tutorial.game.mulligan.intro.title': '手札引き直しフェーズ',
   'tutorial.game.mulligan.intro.body':
-    'あなたの初期手札には高い Power Cost のキャラクターカードが含まれています。パワーチャージャーのエネルギーが Power Cost を支払うのに不足している場合、そのキャラクターの攻撃力は 0 になり、ダメージを与えられません。交換したいカードをクリックして裏向きで置き、「重抽」ボタンでデッキから同数を引いて入れ替えます。旧カードはデッキに戻ります。手札に満足している場合は「手札を保持」ボタンでスキップできます。1試合に1回のみ可能です。',
+    '最初の手札に高Power Costのキャラクターカードがあります。チャージゾーンのPowerがPower Costに満たない場合、そのキャラクターの攻撃力は0になり、ダメージを与えられません。入れ替えたいカードをクリックして裏向きに（任意の枚数を選択可）、「引き直す」を押すとデッキから同枚数の新しいカードを引き、古いカードはデッキに戻ります。手札に満足なら「手札をキープ」でスキップできます。各対戦で引き直しは1回のみです。',
   'tutorial.game.mulligan.action.title': '引き直すカードを選択',
   'tutorial.game.mulligan.action.body':
     '入れ替えたいカードをクリックして裏向きにし（例：高い Power Cost のキャラクターカード）、「確認」を押してデッキから同数の新しいカードを引きます。手札に満足なら「手札を保持」でスキップできます。',
@@ -601,7 +566,7 @@ export const ja: Record<TranslationKey, string> = {
     'あなたの手札です。カードをクリックしてバトルゾーンまたはセットゾーンに配置し、カード効果で相手を倒しましょう。',
   'tutorial.game.zone.set.title': 'セットゾーン',
   'tutorial.game.zone.set.body':
-    'A/Bゾーンには手札から打ち出したカードを置きます：キャラクターカードはバトルゾーンの旧キャラクターを置き換え、Enchantカードはキャラクターやプレイヤーに付着して一度きりの効果を発揮し処理後に離場します。CゾーンにはArea Enchantを置き、ターンを超えて持続するフィールド効果となります。',
+    'A/B ゾーンには手札から出したカードを裏向きで配置します：キャラクターカードは公開後にバトルゾーンの旧キャラクターと入れ替わり、エンチャントカードは一度きりの効果を処理後に離場します。エリアエンチャントは公開されて効果が発動した後にSet Zone Cに移動し、ターンを跨いで持続するフィールド効果となります。キャラクター2枚またはエリアエンチャント2枚を出した場合、Aゾーンのカードが優先してバトルゾーン/Cゾーンに入ります。',
   'tutorial.game.zone.abyss.title': 'アビス',
   'tutorial.game.zone.abyss.body':
     'SEND TO POWER を持たないカードが場を離れるとここに入ります。一部のカード効果はアビスと相互作用する場合があります。',
@@ -631,7 +596,7 @@ export const ja: Record<TranslationKey, string> = {
     '新しいターン開始！前ターンの勝敗により配置枚数が決まります。1枚目はSet Zone A、2枚目はSet Zone Bに入ります。',
   'tutorial.game.turnSet.intro.loser.title': '配置フェーズ：追い上げの好機',
   'tutorial.game.turnSet.intro.loser.body':
-    '新しいターン開始！前ターンの敗者として、2枚配置できます：1枚目はSet Zone A、2枚目はSet Zone Bで戦況を覆せます。',
+    '新ターン開始！前回のターンの敗者として、2枚のカードを出せます：1枚目はSet Zone A、2枚目はSet Zone Bに入り、戦局を覆します。キャラクター2枚を出した場合、Aゾーンのカードが優先してバトルゾーンに入ります。エリアエンチャント2枚の場合、Aゾーンのカードが優先してCゾーンに移動します。',
   'tutorial.game.turnSet.intro.winner.title': '配置フェーズ：優勢維持',
   'tutorial.game.turnSet.intro.winner.body':
     '新しいターン開始！前ターンの勝者として、今ターンは1枚のみSet Zone Aに配置できます。相手は2枚配置できます。',
@@ -651,7 +616,7 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.game.turnSet.action.draw.body': '手札から1枚をSet Zone Aに配置します。',
   'tutorial.game.effectOrder.intro.title': '効果順序フェーズ',
   'tutorial.game.effectOrder.intro.body':
-    '複数の効果カードが同時に発動した場合、解決順序を選べます。順序を巧みに配置することで戦況を変えられます。',
+    '効果処理時、クロノスのメダルがある時間帯のプレイヤー（優先プレイヤー）が自分のすべての効果を先に処理し、その後もう一方のプレイヤーが処理します。Power Costは「効果処理時点」で再確認し、不足なら発動しません。手札やアビスなどの枚数も処理時点のものを数えます。キャラクターの効果は、発動タイミングの指定がない限り、手札から使用したターンの効果処理時に発動します。効果処理フェーズ以外のタイミングで発動した効果（カードがゾーンに入るなど）は即座に処理され、優先プレイヤーの順序には従いません。',
   'tutorial.game.effectOrder.action.title': '効果解決順序を選択',
   'tutorial.game.effectOrder.action.body':
     '効果カードをクリックして解決順序を選びます。先に解決される効果が先に発動し、後続の効果の結果に影響を与える可能性があります。',
@@ -667,15 +632,36 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.game.battle.result.title': '戦闘結果',
   'tutorial.game.battle.result.body':
     '今ターンの戦闘が終了しました。HP変化とフィールド状況を観察し、次のターンの戦略を準備しましょう。',
+  'tutorial.game.battle.result.win.title': '戦闘勝利',
+  'tutorial.game.battle.result.win.body':
+    'あなたの攻撃力が相手より高く、ダメージを与えました。HP変化を確認し、優位を保ちましょう。',
+  'tutorial.game.battle.result.lose.title': '戦闘敗北',
+  'tutorial.game.battle.result.lose.body':
+    '相手の攻撃力があなたより高く、ダメージを受けました。落ち込まず、次のターンに巻き返すチャンスがあります。',
+  'tutorial.game.battle.result.draw.title': '戦闘引き分け',
+  'tutorial.game.battle.result.draw.body':
+    '双方の攻撃力が同じで、ダメージはありません。戦略を調整して次のターンの勝利を目指しましょう。',
+  'tutorial.game.turnEndDraw.title': 'ターン終了ドロー',
+  'tutorial.game.turnEndDraw.body':
+    'ターン終了時、このターンに手札から出したカードの枚数分だけデッキからカードを引きます。1枚出したら1枚引き、2枚出したら2枚引き、手札枚数を保ちます。デッキが尽きて引けない場合は敗北条件が発動します。',
   'tutorial.game.complete.title': 'チュートリアル完了おめでとうございます！',
   'tutorial.game.complete.body':
     'ZUTOMAYO CARDの全ての基本メカニズムを習得しました。さあ、AIに挑戦するか、他のプレイヤーと対戦しましょう！',
   'tutorial.game.clockAdvance.title': '時計推進',
   'tutorial.game.clockAdvance.body':
-    '双方のカードが表になった後、両カードの時計値の合計でChronosが進みます。medalが新しい位置に移動し、現在が夜か昼かが決まります——これにより、キャラクターが夜攻撃力か昼攻撃力のどちらを使うかが決まります。',
+    '双方のカードが公開された後、2枚のカードの時計値の合計でクロノスが進みます。メダルが新しい位置に移動し、現在が夜か昼かが決まります——これによりキャラクターが夜攻撃力か昼攻撃力かを使うかが決まります。最初のターンのクロノス推移には、準備フェーズでチャージゾーン/アビスに置かれたカードの時計値も含まれます。',
   'tutorial.game.hpCalc.title': 'HP計算',
   'tutorial.game.hpCalc.body':
     '効果の処理が終わった後、双方のキャラクターの攻撃力を比較し、攻撃力が低い方が差額分のダメージを受けます。Power Costが不足している場合、攻撃力は0として扱われ、効果は発動しません。',
+  'tutorial.game.powerCharging.title': 'チャージゾーン',
+  'tutorial.game.powerCharging.body':
+    'SEND TO POWERを持つキャラクターカードは、バトルゾーンを離れる時にチャージゾーンに入り、Powerを蓄積します。蓄積したPowerは他のカードのPower Cost支払いに使用します。Power総数は効果処理時点で再確認されます。次ターンでキャラクターを交代すると、古いカードがチャージゾーンに送られます。',
+  'tutorial.game.areaEnchant.title': 'エリアエンチャント',
+  'tutorial.game.areaEnchant.body':
+    'エリアエンチャントは手札から出す時、まずSet Zone AまたはBに裏向きで配置されます。カードが公開されて効果が発動した後、Set Zone Cに移動し、フィールド全体に継続して影響します。あなたが出した2nd_86は夜側の時、キャラクターに+20攻撃力を付与します。',
+  'tutorial.game.abyss.title': 'アビス',
+  'tutorial.game.abyss.body':
+    '効果が処理されたエンチャントカードはアビスに送られます。アビスのカードはもう効果を発揮しませんが、一部のカード効果でアビスからカードを取り出して再利用できます。',
 
   'lobby.tutorial': 'First Ritual · 新手チュートリアル',
   'feedback.title': 'フィードバック',

@@ -4,7 +4,6 @@ import { identifyAnalytics, trackPageView } from './analytics';
 import { formatAnonymousDisplayName } from './anonymousIdentity';
 import { getDecks, getProfile, isLoggedIn, type DeckResponse } from './api/client';
 import { ensureCompatibleAppVersion } from './clientVersion';
-import { InteractiveTutorial } from './components/InteractiveTutorial';
 import { NetworkStatusNotifier } from './components/NetworkStatusNotifier';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PwaStatusPrompt } from './components/PwaStatusPrompt';
@@ -23,7 +22,6 @@ import {
 } from './onlineSession';
 import { APP_VERSION_INFO } from './version';
 import './App.css';
-import './components/InteractiveTutorial.css';
 
 const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })));
 const I18nManager = lazy(() => import('./pages/I18nManager').then((module) => ({ default: module.I18nManager })));
@@ -113,7 +111,7 @@ async function joinMatch(
   return response.json();
 }
 
-function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
+function NavBar() {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -154,7 +152,7 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
           {t('nav.feedback')}
         </button>
       </div>
-      <button className={buttonClass('')} type="button" onClick={onShowTutorial}>
+      <button className={buttonClass('/tutorial')} type="button" onClick={() => navigate('/tutorial')}>
         {t('nav.tutorial')}
       </button>
     </nav>
@@ -249,7 +247,6 @@ function RouterShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const locale = useLocale();
-  const [tutorial, setTutorial] = useState(() => !localStorage.getItem('zutomayo_tutorial_seen'));
   const [customDeckAvailable, setCustomDeckAvailable] = useState(hasStoredCustomDeck);
   const [serverDecks, setServerDecks] = useState<DeckResponse[]>([]);
   const [serverDeckError, setServerDeckError] = useState('');
@@ -294,11 +291,6 @@ function RouterShell() {
       clearTimeout(timer);
     };
   }, [locale]);
-
-  const closeTutorial = () => {
-    localStorage.setItem('zutomayo_tutorial_seen', '1');
-    setTutorial(false);
-  };
 
   const refreshServerDecks = useCallback(async () => {
     if (!isLoggedIn()) {
@@ -407,13 +399,13 @@ function RouterShell() {
 
   return (
     <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
-      {!hideNav && <NavBar onShowTutorial={() => setTutorial(true)} />}
+      {!hideNav && <NavBar />}
       <div className="route-content">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route
               path="/"
-              element={<LobbyPage onAuthChanged={refreshServerDecks} onShowTutorial={() => setTutorial(true)} />}
+              element={<LobbyPage onAuthChanged={refreshServerDecks} />}
             />
             <Route
               path="/online"
@@ -495,15 +487,6 @@ function RouterShell() {
       <NetworkStatusNotifier />
       <PwaInstallPrompt />
       <PwaStatusPrompt />
-      {tutorial && (
-        <InteractiveTutorial
-          onComplete={closeTutorial}
-          onStartPractice={() => {
-            closeTutorial();
-            navigate('/play/ai', { state: { difficulty: 'easy', autoStart: true } });
-          }}
-        />
-      )}
     </div>
   );
 }

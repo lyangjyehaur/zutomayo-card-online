@@ -12,18 +12,26 @@ import type { TutorialStep } from '../components/GameTutorialOverlay';
  * 2. 場地導覽（時鐘、戰鬥區、能量、深淵、HP）—— 開戰前先認識介面
  * 3. 猜拳（操作）—— 玩家贏成為夜側玩家
  * 4. 重抽（操作）—— 引導重抽高費卡，說明 powerCost 不足攻擊力為 0
- * 5. 初始放置（操作）—— 引導出低費角色卡
- * 5b. 時鐘推進說明
- * 6.（效果順序·條件式操作）
- * 6c. HP 計算說明
- * 7. 戰鬥結算結果 —— T1 玩家輸
- * 8. 追趕機制說明 —— 敗者可出 2 張卡
- * 9. 第二回合放置（操作）—— 引導出角色卡 + Area Enchant
- * 10. 勝利條件與完成
+ * 5. T1 初始放置（操作）—— 引導出低費角色卡
+ * 5b. T1 時鐘推進說明
+ * 5c. T1 HP 計算說明
+ * 6. T1 戰鬥結算結果 —— 玩家輸
+ * 6b. 充能區教學 —— SEND TO POWER 機制，為 T2 powerCost 支付做鋪墊
+ * 7. 追趕機制說明 —— 敗者可出 2 張卡
+ * 8. T2 第二回合放置（操作）—— 引導出角色卡 + Area Enchant
+ * 8b. T2 時鐘推進說明
+ * 8c. 區域附魔教學 —— Area Enchant 放置於 Set Zone C，持續影響全場
+ * 9.（效果順序·條件式操作）—— T2 才有效果卡
+ * 9b.（待選卡牌·條件式操作）
+ * 9c. T2 HP 計算說明
+ * 10. T2 戰鬥結算結果 —— 玩家贏
+ * 10b. 深淵教學 —— 附魔卡效果結算後送入深淵
+ * 11. 勝利條件與完成
  *
  * - 無 completeWhen：導覽步驟，用戶手動點 Next。
  * - 有 completeWhen：操作步驟，偵測遊戲狀態達成後自動推進，隱藏 Next 並高亮可操作區。
  * - 有 skipWhen：條件式步驟，進入時若為 true 自動跳過（如該回合無效果卡）。
+ * - 有 advanceOnNoticeDismiss：由 GameNotice 彈窗確認按鈕推進（如時鐘/HP 彈窗）。
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   // 1. 歡迎
@@ -126,7 +134,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     completeWhen: (G) => G.mulliganUsed[0],
   },
 
-  // 5. 初始放置（合併為操作步驟：高亮劇本指定卡 + 確認按鈕，操作後自動推進）
+  // === T1（initialSet，無效果卡）===
+  // 5. T1 初始放置（合併為操作步驟：高亮劇本指定卡 + 確認按鈕，操作後自動推進）
   {
     phase: 'initialSet',
     target: ['[data-tut-card="1st_70"]', '[data-tut="confirm-set"]'],
@@ -138,7 +147,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     completeWhen: (G, entry) => entry?.step === 'initialSet' && G.step !== 'initialSet',
   },
 
-  // 5b. 時鐘推進說明（高亮時鐘推進彈窗，點彈窗確認按鈕推進）
+  // 5b. T1 時鐘推進說明（高亮時鐘推進彈窗，點彈窗確認按鈕推進）
   {
     phase: 'clock-advance',
     target: '[data-tut="game-notice-panel"]',
@@ -147,53 +156,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     placement: 'bottom',
     padding: 12,
     hideNext: true,
+    advanceOnNoticeDismiss: true,
   },
 
-  // 6. 效果順序（條件式：僅 initialSet 後有效果卡才出現）
-  {
-    phase: 'effectOrder-intro',
-    target: null,
-    title: 'tutorial.game.effectOrder.intro.title',
-    body: 'tutorial.game.effectOrder.intro.body',
-    placement: 'center',
-    // 若已離開 effectOrder（該回合無效果卡），跳過本段
-    skipWhen: (G) => G.step !== 'effectOrder',
-  },
-  {
-    phase: 'effectOrder-action',
-    target: '.effect-order-panel',
-    title: 'tutorial.game.effectOrder.action.title',
-    body: 'tutorial.game.effectOrder.action.body',
-    placement: 'center',
-    padding: 16,
-    skipWhen: (G) => G.step !== 'effectOrder',
-    // 用戶結算完所有待處理效果後，遊戲離開 effectOrder
-    completeWhen: (G, entry) => entry?.step === 'effectOrder' && G.step !== 'effectOrder',
-  },
-
-  // 6b. 待選卡牌提交（條件式：僅有效果產生 pendingChoice 才出現）
-  {
-    phase: 'pendingChoice-intro',
-    target: null,
-    title: 'tutorial.game.pendingChoice.intro.title',
-    body: 'tutorial.game.pendingChoice.intro.body',
-    placement: 'center',
-    // 無 pendingChoice 時跳過
-    skipWhen: (G) => !G.pendingChoice,
-  },
-  {
-    phase: 'pendingChoice-action',
-    target: '.pending-choice-panel',
-    title: 'tutorial.game.pendingChoice.action.title',
-    body: 'tutorial.game.pendingChoice.action.body',
-    placement: 'center',
-    padding: 16,
-    skipWhen: (G) => !G.pendingChoice,
-    // pendingChoice 被清空（用戶提交選擇）後推進
-    completeWhen: (G) => !G.pendingChoice,
-  },
-
-  // 6c. HP 計算說明（高亮 HP 計算彈窗，點彈窗確認按鈕推進）
+  // 5c. T1 HP 計算說明（高亮 HP 計算彈窗，點彈窗確認按鈕推進）
   {
     phase: 'hp-calc',
     target: '[data-tut="game-notice-panel"]',
@@ -202,18 +168,59 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     placement: 'bottom',
     padding: 12,
     hideNext: true,
+    advanceOnNoticeDismiss: true,
   },
 
-  // 7. 戰鬥結算結果
+  // 6. T1 戰鬥結算結果（依勝負分支：T1 玩家輸）
   {
     phase: 'battle-result',
     target: null,
     title: 'tutorial.game.battle.result.title',
     body: 'tutorial.game.battle.result.body',
     placement: 'center',
+    resolveKeys: (G) => {
+      const winner = G.lastBattleResult.winner;
+      if (winner === null) {
+        return {
+          title: 'tutorial.game.battle.result.draw.title',
+          body: 'tutorial.game.battle.result.draw.body',
+        };
+      }
+      // 玩家是 player 0；winner === 1 表示 AI 贏（玩家輸）
+      if (winner === 1) {
+        return {
+          title: 'tutorial.game.battle.result.lose.title',
+          body: 'tutorial.game.battle.result.lose.body',
+        };
+      }
+      return {
+        title: 'tutorial.game.battle.result.win.title',
+        body: 'tutorial.game.battle.result.win.body',
+      };
+    },
   },
 
-  // 8. 追趕機制說明（戰鬥後、第二回合前）—— 依上回合勝負分支
+  // 6a. 回合結束抽牌教學（T1 戰鬥後說明抽牌規則）
+  {
+    phase: 'turn-end-draw',
+    target: '[data-zone="hand"]',
+    title: 'tutorial.game.turnEndDraw.title',
+    body: 'tutorial.game.turnEndDraw.body',
+    placement: 'top',
+    padding: 12,
+  },
+
+  // 6b. 充能區教學（T1 戰鬥後說明 SEND TO POWER 機制，為 T2 powerCost 支付做鋪墊）
+  {
+    phase: 'power-charging',
+    target: '[data-tut="player-power"]',
+    title: 'tutorial.game.powerCharging.title',
+    body: 'tutorial.game.powerCharging.body',
+    placement: 'top',
+    padding: 12,
+  },
+
+  // 7. 追趕機制說明（戰鬥後、第二回合前）—— 依上回合勝負分支
   {
     phase: 'catchup-explain',
     target: null,
@@ -242,7 +249,8 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     },
   },
 
-  // 9. 第二回合放置（合併為操作步驟：高亮劇本指定卡 + 確認按鈕，操作後自動推進）
+  // === T2（turnSet，有效果卡：2nd_86 Area Enchant + 1st_98 Enchant）===
+  // 8. T2 第二回合放置（合併為操作步驟：高亮劇本指定卡 + 確認按鈕，操作後自動推進）
   //    依上回合勝負分支：敗者出 2 張（1st_34 + 2nd_86），勝者出 1 張
   {
     phase: 'turnSet',
@@ -273,7 +281,123 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     },
   },
 
-  // 10. 完成
+  // 8b. T2 時鐘推進說明（高亮時鐘推進彈窗，點彈窗確認按鈕推進）
+  {
+    phase: 'clock-advance',
+    target: '[data-tut="game-notice-panel"]',
+    title: 'tutorial.game.clockAdvance.title',
+    body: 'tutorial.game.clockAdvance.body',
+    placement: 'bottom',
+    padding: 12,
+    hideNext: true,
+    advanceOnNoticeDismiss: true,
+  },
+
+  // 8c. 區域附魔教學（T2 卡牌翻開後，說明 Area Enchant 機制）
+  {
+    phase: 'area-enchant',
+    target: '[data-tut="player-set-zones"]',
+    title: 'tutorial.game.areaEnchant.title',
+    body: 'tutorial.game.areaEnchant.body',
+    placement: 'top',
+    padding: 12,
+  },
+
+  // 9. 效果順序（條件式：僅 T2 後有效果卡才出現）
+  {
+    phase: 'effectOrder-intro',
+    target: null,
+    title: 'tutorial.game.effectOrder.intro.title',
+    body: 'tutorial.game.effectOrder.intro.body',
+    placement: 'center',
+    // 若已離開 effectOrder（該回合無效果卡），跳過本段
+    skipWhen: (G) => G.step !== 'effectOrder',
+  },
+  {
+    phase: 'effectOrder-action',
+    target: '.effect-order-panel',
+    title: 'tutorial.game.effectOrder.action.title',
+    body: 'tutorial.game.effectOrder.action.body',
+    placement: 'center',
+    padding: 16,
+    skipWhen: (G) => G.step !== 'effectOrder',
+    // 用戶結算完所有待處理效果後，遊戲離開 effectOrder
+    completeWhen: (G, entry) => entry?.step === 'effectOrder' && G.step !== 'effectOrder',
+  },
+
+  // 9b. 待選卡牌提交（條件式：僅有效果產生 pendingChoice 才出現）
+  {
+    phase: 'pendingChoice-intro',
+    target: null,
+    title: 'tutorial.game.pendingChoice.intro.title',
+    body: 'tutorial.game.pendingChoice.intro.body',
+    placement: 'center',
+    // 無 pendingChoice 時跳過
+    skipWhen: (G) => !G.pendingChoice,
+  },
+  {
+    phase: 'pendingChoice-action',
+    target: '.pending-choice-panel',
+    title: 'tutorial.game.pendingChoice.action.title',
+    body: 'tutorial.game.pendingChoice.action.body',
+    placement: 'center',
+    padding: 16,
+    skipWhen: (G) => !G.pendingChoice,
+    // pendingChoice 被清空（用戶提交選擇）後推進
+    completeWhen: (G) => !G.pendingChoice,
+  },
+
+  // 9c. T2 HP 計算說明（高亮 HP 計算彈窗，點彈窗確認按鈕推進）
+  {
+    phase: 'hp-calc',
+    target: '[data-tut="game-notice-panel"]',
+    title: 'tutorial.game.hpCalc.title',
+    body: 'tutorial.game.hpCalc.body',
+    placement: 'bottom',
+    padding: 12,
+    hideNext: true,
+    advanceOnNoticeDismiss: true,
+  },
+
+  // 10. T2 戰鬥結算結果（依勝負分支：T2 玩家贏）
+  {
+    phase: 'battle-result',
+    target: null,
+    title: 'tutorial.game.battle.result.title',
+    body: 'tutorial.game.battle.result.body',
+    placement: 'center',
+    resolveKeys: (G) => {
+      const winner = G.lastBattleResult.winner;
+      if (winner === null) {
+        return {
+          title: 'tutorial.game.battle.result.draw.title',
+          body: 'tutorial.game.battle.result.draw.body',
+        };
+      }
+      if (winner === 1) {
+        return {
+          title: 'tutorial.game.battle.result.lose.title',
+          body: 'tutorial.game.battle.result.lose.body',
+        };
+      }
+      return {
+        title: 'tutorial.game.battle.result.win.title',
+        body: 'tutorial.game.battle.result.win.body',
+      };
+    },
+  },
+
+  // 10b. 深淵教學（T2 戰鬥後說明附魔卡送深淵機制）
+  {
+    phase: 'abyss-explain',
+    target: '[data-tut="player-abyss"]',
+    title: 'tutorial.game.abyss.title',
+    body: 'tutorial.game.abyss.body',
+    placement: 'top',
+    padding: 12,
+  },
+
+  // 11. 完成
   {
     phase: 'complete',
     target: null,

@@ -534,44 +534,7 @@ export const en: Record<TranslationKey, string> = {
   'history.traceChoice': 'Choice',
   'history.draw': 'Draw',
 
-  'tutorial.title': 'Tutorial',
-  'tutorial.skip': 'Skip Tutorial',
-  'tutorial.actionHint': 'Follow the prompt',
-  'tutorial.startPractice': 'Start AI Practice',
-  'tutorial.prev': 'Previous',
-  'tutorial.stepIndicator': 'Step',
-  'tutorial.finishTitle': 'Tutorial Complete',
-  'tutorial.finishBody': 'You understand the basics. Try an Easy AI match to practice.',
-  'tutorial.stepWelcomeTitle': 'Welcome to the Arena',
-  'tutorial.stepWelcomeBody':
-    'Each turn, choose cards from your hand to set. Both players reveal simultaneously and battle resolves.',
-  'tutorial.stepZonesTitle': 'Field Zones',
-  'tutorial.stepZonesBody':
-    'Battle Zone holds your active character. Set Zones hold cards for this turn. Area Enchant persists across turns.',
-  'tutorial.stepChronosTitle': 'Chronos Clock',
-  'tutorial.stepChronosBody':
-    'Card clocks advance Chronos. Whether it is Night or Day changes character attack values.',
-  'tutorial.stepResourcesTitle': 'Power and Abyss',
-  'tutorial.stepResourcesBody':
-    'Some cards enter the Power Charger when leaving the field. Cards without power go to the Abyss.',
-  'tutorial.stepCatchupTitle': 'Catch-Up Mechanic',
-  'tutorial.stepCatchupBody':
-    'The loser of the last battle can set 2 cards next turn, while the winner sets 1. This keeps the game competitive.',
-  'tutorial.stepJankenTitle': 'Rock-Paper-Scissors for Night Side',
-  'tutorial.stepJankenBody':
-    'A rock-paper-scissors game decides who becomes the Night-side player. The Night-side player resolves effects first during Night phases; the Day-side player resolves effects first during Day phases.',
-  'tutorial.stepMulliganTitle': 'Mulligan',
-  'tutorial.stepMulliganBody':
-    'At the start, you may redraw any of your hand cards once to shape your opening hand before battle.',
-  'tutorial.stepEffectOrderTitle': 'Effect Order',
-  'tutorial.stepEffectOrderBody':
-    'When multiple effect cards trigger in the same turn, you can choose the resolution order. Smart ordering can swing the battle.',
-  'tutorial.stepPendingChoiceTitle': 'Pending Card Choice',
-  'tutorial.stepPendingChoiceBody':
-    'Some effects require choosing cards from hand, abyss, or deck. Submit your selection to resolve the effect.',
-
   // Tutorial Game Mode
-  'tutorial.complete': 'Complete Tutorial',
   'tutorial.game.intro.title': 'Welcome to ZUTOMAYO CARD',
   'tutorial.game.intro.body': 'This tutorial will guide you through all game mechanics via a real match against AI.',
   'tutorial.game.janken.intro.title': 'Rock-Paper-Scissors Determines Turn Order',
@@ -585,7 +548,7 @@ export const en: Record<TranslationKey, string> = {
     'The result is in! The Night-side player resolves effects first during Night phases; the Day-side player resolves effects first during Day phases.',
   'tutorial.game.mulligan.intro.title': 'Mulligan Phase',
   'tutorial.game.mulligan.intro.body':
-    "Your starting hand contains a high Power Cost character card. When the Power Charger cannot provide enough power to pay the Power Cost, that character's attack becomes 0 and cannot deal damage. Click the cards you want to replace to set them aside, then press \"Redraw\" to draw replacements from the deck; the set-aside cards are shuffled back. If you're satisfied with your hand, press \"Keep Hand\" to skip. You can only mulligan once per match.",
+    'Your starting hand has a high Power Cost character card. When the charger zone has insufficient Power to pay the Power Cost, that character\'s attack power becomes 0 and cannot deal damage. Click cards to set them face-down (you may select any number), then press Redraw to draw the same number of new cards; old cards are shuffled back. If satisfied, press Keep Hand to skip. Each match allows only one redraw.',
   'tutorial.game.mulligan.action.title': 'Select Cards to Redraw',
   'tutorial.game.mulligan.action.body':
     'Click the cards you want to replace to set them face-down (e.g., the high Power Cost character card), then press Confirm to draw the same number of new cards. If you are satisfied with your hand, press "Keep Hand" to skip.',
@@ -603,7 +566,7 @@ export const en: Record<TranslationKey, string> = {
     'Your hand of cards. Click a card to place it into the Battle Zone or Set Zone, and use card effects to defeat your opponent.',
   'tutorial.game.zone.set.title': 'Set Zone',
   'tutorial.game.zone.set.body':
-    'Zones A/B hold cards played from your hand: Character cards replace the old character in the Battle Zone, while Enchant cards attach to a character or player for a one-time effect and leave after resolving. Zone C holds Area Enchants, which persist across turns as ongoing field effects.',
+    'Zones A/B hold cards played from hand (face-down): Character cards replace the old character in the battle zone when revealed, Enchant cards provide one-time effects then leave. Area Enchants move to Zone C only after being revealed and their effects activated, providing persistent field effects. When playing 2 Character cards or 2 Area Enchants, the one in Zone A takes priority for entering the battle zone/Zone C.',
   'tutorial.game.zone.abyss.title': 'Abyss',
   'tutorial.game.zone.abyss.body':
     'Cards without SEND TO POWER end up here when they leave the field. Some card effects may interact with the Abyss.',
@@ -633,7 +596,7 @@ export const en: Record<TranslationKey, string> = {
     'A new turn begins! Based on the catch-up mechanic, you can place one or two cards. The 1st card goes to Set Zone A, the 2nd to Set Zone B.',
   'tutorial.game.turnSet.intro.loser.title': 'Set Phase: Catch-Up Chance',
   'tutorial.game.turnSet.intro.loser.body':
-    "A new turn begins! As last turn's loser, you may play 2 cards: the 1st goes to Set Zone A, the 2nd to Set Zone B, to turn the tide.",
+    'New turn! As the loser of the last round, you can play 2 cards: the 1st goes to Set Zone A, the 2nd to Set Zone B, to turn the tide. If you play 2 Character cards, the one in Zone A takes priority for entering the battle zone; if you play 2 Area Enchants, the one in Zone A takes priority for moving to Zone C.',
   'tutorial.game.turnSet.intro.winner.title': 'Set Phase: Hold the Lead',
   'tutorial.game.turnSet.intro.winner.body':
     "A new turn begins! As last turn's winner, you may play only 1 card to Set Zone A this turn; your opponent may play 2.",
@@ -653,7 +616,7 @@ export const en: Record<TranslationKey, string> = {
   'tutorial.game.turnSet.action.draw.body': 'Play 1 card from your hand to Set Zone A.',
   'tutorial.game.effectOrder.intro.title': 'Effect Order Phase',
   'tutorial.game.effectOrder.intro.body':
-    'When multiple effect cards trigger simultaneously, you can choose the resolution order. Clever arrangement can turn the tide of battle.',
+    'During effect resolution, the player on whose side the Chronos medal sits (priority player) resolves all their effects first, then the other player. Power Cost is rechecked at the moment of effect resolution; if insufficient, the effect does not activate. Counts of hand, abyss, etc. are also based on the resolution timing. Character effects activate during the effect resolution of the turn they are played, unless a specific timing is specified. Effects triggered outside the effect resolution phase (such as a card entering a zone) are processed immediately, without following the priority player order.',
   'tutorial.game.effectOrder.action.title': 'Choose Effect Resolution Order',
   'tutorial.game.effectOrder.action.body':
     'Click effect cards to choose the resolution order. Effects resolved first take effect first and may influence subsequent effect results.',
@@ -669,15 +632,36 @@ export const en: Record<TranslationKey, string> = {
   'tutorial.game.battle.result.title': 'Battle Result',
   'tutorial.game.battle.result.body':
     "This turn's battle has concluded. Observe the HP changes and field situation, then prepare your strategy for the next turn.",
+  'tutorial.game.battle.result.win.title': 'Battle Victory',
+  'tutorial.game.battle.result.win.body':
+    'Your attack power exceeded your opponent’s, dealing damage. Observe the HP changes and maintain your advantage.',
+  'tutorial.game.battle.result.lose.title': 'Battle Defeat',
+  'tutorial.game.battle.result.lose.body':
+    'Your opponent’s attack power was higher, and you took damage. Don’t lose heart — the catch-up mechanic gives you a chance next turn.',
+  'tutorial.game.battle.result.draw.title': 'Battle Draw',
+  'tutorial.game.battle.result.draw.body':
+    'Both sides had equal attack power, so no damage was dealt. Adjust your strategy and aim for victory next turn.',
+  'tutorial.game.turnEndDraw.title': 'End-of-Turn Draw',
+  'tutorial.game.turnEndDraw.body':
+    'At the end of each turn, draw from the deck the same number of cards you played this turn. Play 1 card, draw 1; play 2 cards, draw 2, keeping your hand size stable. If the deck runs out and you cannot draw, it triggers a loss condition.',
   'tutorial.game.complete.title': 'Congratulations on Completing the Tutorial!',
   'tutorial.game.complete.body':
     'You have mastered all the basic mechanics of ZUTOMAYO CARD. Now you can challenge the AI or battle other players!',
   'tutorial.game.clockAdvance.title': 'Clock Advance',
   'tutorial.game.clockAdvance.body':
-    "After both cards are revealed, the Chronos advances by the sum of both cards' clock values. The medal moves to its new position, determining whether it is Night or Day — this decides whether characters use their Night or Day attack power.",
+    'After both cards are revealed, the combined clock values of both cards advance Chronos. The medal moves to its new position, determining whether it is currently night or day — this determines whether characters use their night or day attack power. In the first turn, the clock advance also includes clock values of cards sent to the charger/abyss during the setup phase.',
   'tutorial.game.hpCalc.title': 'HP Calculation',
   'tutorial.game.hpCalc.body':
     'After effects resolve, the character with the lower attack power takes damage equal to the difference. If Power Cost is insufficient, attack power is treated as 0 and effects do not activate.',
+  'tutorial.game.powerCharging.title': 'Power Charger',
+  'tutorial.game.powerCharging.body':
+    'Character cards with SEND TO POWER enter the charger zone when they leave the battle zone, accumulating Power to pay for other cards\' Power Cost. The total Power is rechecked at the moment of effect resolution. When you replace a character next turn, the old card goes to the charger.',
+  'tutorial.game.areaEnchant.title': 'Area Enchant',
+  'tutorial.game.areaEnchant.body':
+    'Area Enchants are first placed face-down in Set Zone A or B when played from hand. After being revealed and their effects activated, they move to Set Zone C and continuously affect the entire field. The 2nd_86 you played grants your character +20 attack power during the night side.',
+  'tutorial.game.abyss.title': 'Abyss',
+  'tutorial.game.abyss.body':
+    'Enchant cards are sent to the Abyss after their effects resolve. Cards in the Abyss no longer take effect, but certain card effects can retrieve cards from the Abyss for reuse.',
 
   'lobby.tutorial': 'First Ritual · Tutorial',
   'feedback.title': 'Feedback',

@@ -526,34 +526,6 @@ export const zhTW = {
   'history.traceChoice': '選擇',
   'history.draw': '平手',
 
-  'tutorial.title': '教學',
-  'tutorial.skip': '跳過教學',
-  'tutorial.actionHint': '請依照指示操作',
-  'tutorial.complete': '完成教學',
-  'tutorial.startPractice': '開始電腦練習',
-  'tutorial.prev': '上一步',
-  'tutorial.stepIndicator': '步驟',
-  'tutorial.finishTitle': '教學完成',
-  'tutorial.finishBody': '你已了解基本流程，可以進入簡單難度練習一局。',
-  'tutorial.stepWelcomeTitle': '歡迎來到對戰場',
-  'tutorial.stepWelcomeBody': '每回合選擇手牌放入設置區，雙方確認後同時翻開並結算戰鬥。',
-  'tutorial.stepZonesTitle': '場地區域',
-  'tutorial.stepZonesBody': '戰鬥區放置目前角色，設置區準備本回合的牌，區域附魔會留下持續效果。',
-  'tutorial.stepChronosTitle': 'Chronos 時鐘',
-  'tutorial.stepChronosBody': '卡牌的時計會推進 Chronos，當前是夜或晝會改變角色攻擊值。',
-  'tutorial.stepResourcesTitle': '能量與深淵',
-  'tutorial.stepResourcesBody': '部分卡離場後進入能量區，不產生能量的牌會落入深淵。',
-  'tutorial.stepCatchupTitle': '追趕機制',
-  'tutorial.stepCatchupBody': '上回合敗者可以出兩張牌，勝者通常只能出一張，讓局勢保持拉扯。',
-  'tutorial.stepJankenTitle': '猜拳決定夜側',
-  'tutorial.stepJankenBody': '開局用猜拳決定誰是夜側玩家。夜側在夜時段優先處理效果，晝側在晝時段優先處理效果。',
-  'tutorial.stepMulliganTitle': '手牌重抽',
-  'tutorial.stepMulliganBody': '開局可選擇任意手牌重抽一次，調整起手牌型再進入戰鬥。',
-  'tutorial.stepEffectOrderTitle': '效果順序選擇',
-  'tutorial.stepEffectOrderBody': '同回合多張效果卡觸發時，可選擇結算順序，巧妙安排能扭轉戰局。',
-  'tutorial.stepPendingChoiceTitle': '待選卡牌提交',
-  'tutorial.stepPendingChoiceBody': '部分效果需要從手牌、深淵或牌庫指定卡牌，選好後送出即完成結算。',
-
   // Tutorial Game Mode (實戰教學)
   'tutorial.game.intro.title': '歡迎來到 ZUTOMAYO CARD',
   'tutorial.game.intro.body': '接下來將透過一場真實對戰，逐步引導你認識遊戲的所有機制。',
@@ -566,7 +538,7 @@ export const zhTW = {
   'tutorial.game.janken.result.body': '結果已出爐！夜側玩家在夜時段優先處理效果，晝側玩家在晝時段優先處理效果。',
   'tutorial.game.mulligan.intro.title': '手牌重抽階段',
   'tutorial.game.mulligan.intro.body':
-    '你的起手牌中有一張高 Power Cost 的角色卡。當充能區的能量不足以支付 Power Cost 時，該角色的攻擊力會變成 0，無法造成傷害。點擊想替換的卡牌蓋放，再按「重抽」從牌組抽等量新卡，舊卡洗回牌組；若滿意手牌也可直接按「保留手牌」跳過。每場對戰僅能重抽一次。',
+    '你的起手牌中有一張高 Power Cost 的角色卡。當充能區的能量不足以支付 Power Cost 時，該角色的攻擊力會變成 0，無法造成傷害。點擊想替換的卡牌蓋放（可選任意數量），再按「重抽」從牌組抽等量新卡，舊卡洗回牌組；若滿意手牌也可直接按「保留手牌」跳過。每場對戰僅能重抽一次。',
   'tutorial.game.mulligan.action.title': '選擇要重抽的卡牌',
   'tutorial.game.mulligan.action.body':
     '點擊想要替換的卡牌將其蓋放（例如高 Power Cost 的角色卡），再按下確認從牌組抽等量新卡。若對手牌滿意，直接按「保留手牌」跳過。',
@@ -582,7 +554,7 @@ export const zhTW = {
   'tutorial.game.zone.hand.body': '你的手牌。點擊手牌可將其放置到戰鬥區或設置區，運用卡片效果擊敗對手。',
   'tutorial.game.zone.set.title': '設置區',
   'tutorial.game.zone.set.body':
-    'A/B 區放置從手牌打出的卡：角色卡替換戰鬥區舊角色，Enchant 卡附在角色或玩家上提供一次性效果，處理後離場。C 區放置 Area Enchant，為跨回合持續生效的場地效果。',
+    'A/B 區放置從手牌打出的卡（覆蓋狀態）：角色卡翻開後替換戰鬥區舊角色，Enchant 卡提供一次性效果後離場。Area Enchant 翻開發動效果後才移動到 C 區，為跨回合持續生效的場地效果。出 2 張角色卡或 2 張 Area Enchant 時，A 區的優先進入戰鬥區/C 區。',
   'tutorial.game.zone.abyss.title': '深淵',
   'tutorial.game.zone.abyss.body': '沒有 SEND TO POWER 的卡牌離場後落入此處。某些卡牌效果可能會與深淵互動。',
   'tutorial.game.chronos.title': 'Chronos 時鐘系統',
@@ -626,7 +598,8 @@ export const zhTW = {
   'tutorial.game.turnSet.action.draw.title': '放置本回合的卡片',
   'tutorial.game.turnSet.action.draw.body': '從手牌打出 1 張卡進入 Set Zone A。',
   'tutorial.game.effectOrder.intro.title': '效果順序階段',
-  'tutorial.game.effectOrder.intro.body': '當多張效果卡同時觸發時，你可以選擇結算順序。巧妙安排順序可以扭轉戰局。',
+  'tutorial.game.effectOrder.intro.body':
+    '效果處理時，由 Chronos メダル所在時段的玩家（優先玩家）先處理自己所有效果，再換另一方。Power Cost 在「效果處理時點」重新確認，不足則不發動。手牌、深淵等枚數計算也以處理時點為準。角色效果除非指定時機，否則在打出的當回合效果處理時發動。效果處理階段以外觸發的效果（如卡牌進入區域）則立即處理，不遵循優先玩家順序。',
   'tutorial.game.effectOrder.action.title': '選擇效果結算順序',
   'tutorial.game.effectOrder.action.body': '點擊效果卡選擇結算順序。先結算的效果會先生效，可能影響後續效果的結果。',
   'tutorial.game.pendingChoice.intro.title': '指定卡牌效果',
@@ -639,14 +612,35 @@ export const zhTW = {
     '雙方卡片翻開後，進入戰鬥結算。角色卡會相互攻擊，附魔卡會觸發效果，最終計算 HP 變化。',
   'tutorial.game.battle.result.title': '戰鬥結果',
   'tutorial.game.battle.result.body': '本回合的戰鬥已結束。觀察 HP 變化和場地狀況，準備下一回合的策略。',
+  'tutorial.game.battle.result.win.title': '戰鬥勝利',
+  'tutorial.game.battle.result.win.body':
+    '你的攻擊力高於對手，成功造成傷害。觀察 HP 變化，繼續保持優勢。',
+  'tutorial.game.battle.result.lose.title': '戰鬥敗北',
+  'tutorial.game.battle.result.lose.body':
+    '對手的攻擊力高於你，你受到了傷害。別氣餒，下回合還有追趕機會。',
+  'tutorial.game.battle.result.draw.title': '戰鬥平手',
+  'tutorial.game.battle.result.draw.body':
+    '雙方攻擊力相同，都沒有受到傷害。調整策略，爭取下回合的勝利。',
+  'tutorial.game.turnEndDraw.title': '回合結束抽牌',
+  'tutorial.game.turnEndDraw.body':
+    '回合結束時，從牌組抽出本回合打出的卡牌數量。打出 1 張抽 1 張，打出 2 張抽 2 張，保持手牌數量穩定。若牌組耗盡無法抽牌，將觸發敗北條件。',
   'tutorial.game.complete.title': '恭喜完成教學！',
   'tutorial.game.complete.body': '你已經掌握了 ZUTOMAYO CARD 的所有基礎機制。現在可以挑戰 AI 或與其他玩家對戰了！',
   'tutorial.game.clockAdvance.title': '時鐘推進',
   'tutorial.game.clockAdvance.body':
-    '雙方卡片翻開後，合計兩張卡的時計值推進 Chronos。medal 移動到新的位置，決定目前是夜或晝——這決定了角色使用夜攻擊力還是晝攻擊力。',
+    '雙方卡片翻開後，合計兩張卡的時計值推進 Chronos。medal 移動到新的位置，決定目前是夜或晝——這決定了角色使用夜攻擊力還是晝攻擊力。首回合的時計推進也包含準備階段送入充能區/深淵的卡牌時計值。',
   'tutorial.game.hpCalc.title': 'HP 計算',
   'tutorial.game.hpCalc.body':
     '效果處理完畢後，比較雙方角色的攻擊力，攻擊力較低的一方承受差值的傷害。若 Power Cost 不足，攻擊力視為 0 且效果不發動。',
+  'tutorial.game.powerCharging.title': '充能區',
+  'tutorial.game.powerCharging.body':
+    '擁有 SEND TO POWER 的角色卡離開戰鬥區時會進入充能區，累積的 Power 用於支付其他卡牌的 Power Cost。Power 總數在效果處理時點重新確認。下回合你替換角色卡時，舊卡會送入充能區。',
+  'tutorial.game.areaEnchant.title': '區域附魔',
+  'tutorial.game.areaEnchant.body':
+    'Area Enchant 從手牌打出時先覆蓋在 Set Zone A 或 B，翻開發動效果後才移動到 Set Zone C，並持續影響全場。你打出的 2nd_86 在夜側時為你的角色提供 +20 攻擊力加成。',
+  'tutorial.game.abyss.title': '深淵',
+  'tutorial.game.abyss.body':
+    '效果結算完畢的附魔卡會送入深淵。深淵中的卡牌不再生效，但某些卡牌效果可以從深淵中取出卡牌重新使用。',
 
   'lobby.tutorial': 'First Ritual · 新手教學',
   'feedback.title': '反饋中心',

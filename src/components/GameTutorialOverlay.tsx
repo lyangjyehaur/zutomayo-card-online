@@ -24,6 +24,9 @@ export interface TutorialStep {
   resolveKeys?: (G: GameState) => { title: string; body: string };
   /** 導覽步驟但隱藏 Next/Prev：只能透過特定操作（如點擊彈窗確認按鈕）推進 */
   hideNext?: boolean;
+  /** 標記此步驟可由 GameNotice 彈窗的確認按鈕推進（如時鐘推進、HP 計算彈窗）。
+   *  解決多回合場景中同類步驟（clock-advance/hp-calc）重複出現時的 findIndex 問題。 */
+  advanceOnNoticeDismiss?: boolean;
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -289,7 +292,7 @@ export function GameTutorialOverlay({
             className="text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-vermilion"
             type="button"
           >
-            {t('tutorial.skip')}
+            {t('common.close')}
           </button>
         </div>
 
@@ -303,7 +306,7 @@ export function GameTutorialOverlay({
           {isActionStep || current.hideNext ? (
             <div className="flex justify-center">
               <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/60">
-                {t('tutorial.actionHint')}
+                {t('common.continue')}
               </span>
             </div>
           ) : (
@@ -313,7 +316,7 @@ export function GameTutorialOverlay({
                 className="bg-gold px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-bone active:scale-95"
                 type="button"
               >
-                {isLast ? t('tutorial.complete') : t('common.next')}
+                {isLast ? t('common.confirm') : t('common.next')}
               </button>
             </div>
           )}

@@ -51,14 +51,14 @@ export function TutorialGamePage() {
     }
   }, [currentStep, jankenResultStepIndex, goNext]);
 
-  // 時鐘推進/HP 計算彈窗的確認按鈕點擊時，若教學正在對應步驟，自動推進到下一步
-  const clockAdvanceStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'clock-advance');
-  const hpCalcStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'hp-calc');
+  // 時鐘推進/HP 計算彈窗的確認按鈕點擊時，若教學正在對應步驟，自動推進到下一步。
+  // 用 advanceOnNoticeDismiss 旗標判斷，支援多回合重複步驟（T1/T2 各一次 clock-advance/hp-calc）。
   const handleNoticeDismiss = useCallback(() => {
-    if (currentStep === clockAdvanceStepIndex || currentStep === hpCalcStepIndex) {
+    const step = TUTORIAL_STEPS[currentStep];
+    if (step?.advanceOnNoticeDismiss) {
       goNext();
     }
-  }, [currentStep, clockAdvanceStepIndex, hpCalcStepIndex, goNext]);
+  }, [currentStep, goNext]);
 
   const handleSkip = () => {
     if (window.confirm(t('tutorial.skipConfirm' as never) || '確定要跳過教學嗎？')) {

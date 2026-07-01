@@ -12,7 +12,6 @@ export { DEFAULT_DECK_NAME, aiOpponentDeckName, onlineDeckName, selectedDeckName
 
 interface LobbyPageProps {
   onAuthChanged: () => void | Promise<void>;
-  onShowTutorial: () => void;
 }
 
 type Entry = {
