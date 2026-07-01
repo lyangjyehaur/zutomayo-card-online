@@ -794,7 +794,7 @@ function MulliganScreen({
               }`}
               type="button"
               disabled={done}
-              data-tut-card={card.defId}
+              data-tut-mulligan-card={card.defId}
               onClick={() => toggle(index)}
             >
               <Card card={card} size="small" selected={selected.includes(index)} showPopover />

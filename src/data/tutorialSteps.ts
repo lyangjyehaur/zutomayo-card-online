@@ -115,10 +115,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     hideNext: true,
   },
 
-  // 4. 重抽（合併為操作步驟：高亮高費卡 + 重抽按鈕，操作後自動推進）
+  // 4. 重抽（合併為操作步驟：高亮重抽彈框內的高費卡 + 重抽按鈕，操作後自動推進）
   {
     phase: 'mulligan',
-    target: ['[data-tut-card="1st_2"]', '[data-tut="mulligan-redraw"]'],
+    target: ['[data-tut-mulligan-card="1st_2"]', '[data-tut="mulligan-redraw"]'],
     title: 'tutorial.game.mulligan.intro.title',
     body: 'tutorial.game.mulligan.intro.body',
     placement: 'bottom',
