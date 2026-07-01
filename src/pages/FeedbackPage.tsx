@@ -1,23 +1,35 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t, useLocale, type TranslationKey } from '../i18n';
-import { isLoggedIn } from '../api/client';
+import { getProfile, isLoggedIn } from '../api/client';
 import {
   addFeedbackComment,
+  adminCreateFeedbackTag,
   adminDeleteFeedbackPost,
+  adminDeleteFeedbackTag,
   adminUpdatePostStatus,
   adminUpdatePostTag,
   createFeedbackPost,
+  deleteFeedbackComment,
+  editFeedbackComment,
+  editFeedbackPost,
   getFeedbackPost,
   getFeedbackStats,
   isAdminMode,
   listFeedbackPosts,
+  listFeedbackTags,
+  listFeedbackVoters,
+  toggleFeedbackCommentVote,
   toggleFeedbackVote,
+  type FeedbackComment,
   type FeedbackPost,
   type FeedbackSort,
   type FeedbackStatus,
   type FeedbackStats,
+  type FeedbackTag,
+  type FeedbackVoter,
 } from '../api/feedbackClient';
+import { getAnonymousId } from '../api/feedbackClient';
 
 const STATUS_OPTIONS: FeedbackStatus[] = ['open', 'planned', 'started', 'completed', 'declined'];
 const SORT_OPTIONS: FeedbackSort[] = ['top', 'newest', 'recent'];
@@ -25,7 +37,6 @@ const SORT_OPTIONS: FeedbackSort[] = ['top', 'newest', 'recent'];
 function statusKey(status: FeedbackStatus): TranslationKey {
   return ('feedback.status' + status[0].toUpperCase() + status.slice(1)) as TranslationKey;
 }
-
 function sortKey(sort: FeedbackSort): TranslationKey {
   return ('feedback.sort' + sort[0].toUpperCase() + sort.slice(1)) as TranslationKey;
 }
@@ -63,10 +74,52 @@ function authorLabel(post: FeedbackPost): string {
   if (post.authorNickname) return post.authorNickname;
   return t('feedback.anonymous');
 }
-
-function commentAuthorLabel(authorNickname: string | null): string {
-  if (authorNickname) return authorNickname;
+function commentAuthorLabel(c: FeedbackComment): string {
+  if (c.authorNickname) return c.authorNickname;
   return t('feedback.anonymous');
+}
+
+// ===== 簡易安全 Markdown 渲染器 =====
+// 先 escape HTML 防 XSS，再替換 Markdown 語法。
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderMarkdown(text: string): string {
+  if (!text) return '';
+  let html = escapeHtml(text);
+  // 標題
+  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+  // 連結 [text](url) — 只允許 http/https
+  html = html.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+  );
+  // 行內程式碼 `code`
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // 粗體 **text**
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // 斜體 *text*
+  html = html.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+  // 列表項 - item 或 * item
+  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)/g, '<ul>$1</ul>');
+  // 換行
+  html = html.replace(/\n/g, '<br/>');
+  // 清理 ul 重複
+  html = html.replace(/<\/ul><br\/><ul>/g, '');
+  return html;
+}
+
+function Markdown({ text }: { text: string }) {
+  return <span dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />;
 }
 
 export function FeedbackPage() {
@@ -74,12 +127,15 @@ export function FeedbackPage() {
   const locale = useLocale();
   const [posts, setPosts] = useState<FeedbackPost[]>([]);
   const [stats, setStats] = useState<FeedbackStats | null>(null);
+  const [tags, setTags] = useState<FeedbackTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sort, setSort] = useState<FeedbackSort>('top');
   const [statusFilter, setStatusFilter] = useState<FeedbackStatus | ''>('');
+  const [tagFilter, setTagFilter] = useState('');
   const [search, setSearch] = useState('');
   const [showSubmit, setShowSubmit] = useState(false);
+  const [showTagPanel, setShowTagPanel] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const adminMode = isAdminMode();
 
@@ -87,18 +143,20 @@ export function FeedbackPage() {
     setLoading(true);
     setError('');
     try {
-      const [list, st] = await Promise.all([
-        listFeedbackPosts({ sort, status: statusFilter, q: search }),
+      const [list, st, tagList] = await Promise.all([
+        listFeedbackPosts({ sort, status: statusFilter, tag: tagFilter, q: search }),
         getFeedbackStats(),
+        listFeedbackTags(),
       ]);
       setPosts(list);
       setStats(st);
+      setTags(tagList);
     } catch {
       setError(t('feedback.loadError'));
     } finally {
       setLoading(false);
     }
-  }, [sort, statusFilter, search]);
+  }, [sort, statusFilter, tagFilter, search]);
 
   useEffect(() => {
     void reload();
@@ -106,7 +164,6 @@ export function FeedbackPage() {
 
   const handleVote = async (postId: string) => {
     const prev = posts;
-    // 樂觀更新：切換 hasVoted 並調整 voteCount
     setPosts((cur) =>
       cur.map((p) =>
         p.id === postId ? { ...p, hasVoted: !p.hasVoted, voteCount: p.voteCount + (p.hasVoted ? -1 : 1) } : p,
@@ -115,7 +172,7 @@ export function FeedbackPage() {
     try {
       await toggleFeedbackVote(postId);
     } catch {
-      setPosts(prev); // 還原
+      setPosts(prev);
     }
   };
 
@@ -182,6 +239,20 @@ export function FeedbackPage() {
             </option>
           ))}
         </select>
+        {tags.length > 0 && (
+          <select
+            className="status-filter select select-bordered select-xs"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+          >
+            <option value="">{t('feedback.filterAllTags')}</option>
+            {tags.map((tg) => (
+              <option key={tg.id} value={tg.name}>
+                #{tg.name}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           className="search-input input input-bordered input-sm"
           placeholder={t('feedback.searchPlaceholder')}
@@ -191,7 +262,23 @@ export function FeedbackPage() {
         <button type="button" className="primary-action" onClick={() => setShowSubmit((v) => !v)}>
           {t('feedback.submitNew')}
         </button>
+        {adminMode && (
+          <button type="button" className="secondary-action" onClick={() => setShowTagPanel((v) => !v)}>
+            {t('feedback.tagManage')}
+          </button>
+        )}
       </section>
+
+      {tagFilter && (
+        <p className="feedback-tag-active">
+          {t('feedback.filteringTag')}: <span className="post-tag">#{tagFilter}</span>
+          <button type="button" onClick={() => setTagFilter('')}>
+            ✕
+          </button>
+        </p>
+      )}
+
+      {showTagPanel && adminMode && <TagManagePanel tags={tags} onChanged={() => void reload()} />}
 
       {showSubmit && (
         <SubmitForm
@@ -241,10 +328,25 @@ export function FeedbackPage() {
             <div className="post-body">
               <div className="post-title-row">
                 <span className={statusBadgeClass(post.status)}>{t(statusKey(post.status))}</span>
-                {post.tag && <span className="post-tag">#{post.tag}</span>}
+                {post.tag && (
+                  <span
+                    className="post-tag"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTagFilter(post.tag);
+                    }}
+                  >
+                    #{post.tag}
+                  </span>
+                )}
                 <h3 className="post-title font-display">{post.title}</h3>
+                {post.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
               </div>
-              {post.description && <p className="post-desc">{post.description}</p>}
+              {post.description && (
+                <p className="post-desc">
+                  <Markdown text={post.description} />
+                </p>
+              )}
               <div className="post-meta">
                 <span>{authorLabel(post)}</span>
                 <span>·</span>
@@ -317,6 +419,7 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
         rows={3}
         onChange={(e) => setDescription(e.target.value)}
       />
+      <p className="feedback-md-hint">{t('feedback.markdownHint')}</p>
       <p className="feedback-identity-hint">
         {isLoggedIn() ? t('feedback.commentingAs') : t('feedback.anonymousNotice')}
       </p>
@@ -329,6 +432,70 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
           {submitting ? t('feedback.submitting') : t('feedback.submitAction')}
         </button>
       </div>
+    </section>
+  );
+}
+
+function TagManagePanel({ tags, onChanged }: { tags: FeedbackTag[]; onChanged: () => void }) {
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('');
+  const [error, setError] = useState('');
+
+  const create = async () => {
+    if (!name.trim()) return;
+    try {
+      await adminCreateFeedbackTag(name.trim(), color.trim());
+      setName('');
+      setColor('');
+      onChanged();
+    } catch {
+      setError(t('feedback.tagCreateError'));
+    }
+  };
+
+  const remove = async (id: string) => {
+    try {
+      await adminDeleteFeedbackTag(id);
+      onChanged();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <section className="tag-manage-panel">
+      <h4 className="moderation-title">{t('feedback.tagManage')}</h4>
+      <div className="tag-create-row">
+        <input
+          className="input input-bordered input-xs"
+          placeholder={t('feedback.tagNamePlaceholder')}
+          value={name}
+          maxLength={30}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input
+          className="input input-bordered input-xs"
+          placeholder={t('feedback.tagColorPlaceholder')}
+          value={color}
+          maxLength={20}
+          onChange={(e) => setColor(e.target.value)}
+        />
+        <button type="button" className="primary-action" onClick={create}>
+          {t('feedback.tagCreate')}
+        </button>
+      </div>
+      {error && <p className="feedback-error">{error}</p>}
+      <ul className="tag-list">
+        {tags.map((tg) => (
+          <li key={tg.id} className="tag-list-item">
+            <span className="post-tag">#{tg.name}</span>
+            {tg.color && <span className="tag-color-chip" style={{ background: tg.color }} />}
+            <button type="button" className="danger-action" onClick={() => void remove(tg.id)}>
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -350,7 +517,15 @@ function PostDetailModal({
   const [error, setError] = useState('');
   const [comment, setComment] = useState('');
   const [commenting, setCommenting] = useState(false);
+  const [isOfficial, setIsOfficial] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [voters, setVoters] = useState<FeedbackVoter[] | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [editingPost, setEditingPost] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -370,6 +545,14 @@ function PostDetailModal({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (isLoggedIn()) {
+      getProfile()
+        .then((p) => setCurrentUserId(p.id))
+        .catch(() => setCurrentUserId(null));
+    }
+  }, []);
+
   const handleVote = async () => {
     if (!post) return;
     const prev = post;
@@ -386,14 +569,31 @@ function PostDetailModal({
     if (!comment.trim()) return;
     setCommenting(true);
     try {
-      await addFeedbackComment(postId, comment.trim());
+      await addFeedbackComment(postId, comment.trim(), isOfficial);
       setComment('');
+      setIsOfficial(false);
       await load();
       onChanged();
     } catch {
-      // 留言失敗：保留輸入內容讓使用者重試
+      /* keep input for retry */
     } finally {
       setCommenting(false);
+    }
+  };
+
+  const handleCommentVote = async (commentId: string) => {
+    if (!post) return;
+    // 樂觀更新
+    setPost({
+      ...post,
+      comments: (post.comments ?? []).map((c) =>
+        c.id === commentId ? { ...c, hasVoted: !c.hasVoted, voteCount: c.voteCount + (c.hasVoted ? -1 : 1) } : c,
+      ),
+    });
+    try {
+      await toggleFeedbackCommentVote(commentId);
+    } catch {
+      await load();
     }
   };
 
@@ -428,6 +628,68 @@ function PostDetailModal({
     }
   };
 
+  const handleEditPost = async () => {
+    if (!editTitle.trim()) return;
+    try {
+      await editFeedbackPost(postId, editTitle.trim(), editDesc.trim());
+      setEditingPost(false);
+      await load();
+      onChanged();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const startEditPost = () => {
+    if (!post) return;
+    setEditTitle(post.title);
+    setEditDesc(post.description);
+    setEditingPost(true);
+  };
+
+  const handleEditComment = async (commentId: string) => {
+    if (!editCommentText.trim()) return;
+    try {
+      await editFeedbackComment(commentId, editCommentText.trim());
+      setEditingCommentId(null);
+      setEditCommentText('');
+      await load();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!confirm(t('feedback.deleteCommentConfirm'))) return;
+    try {
+      await deleteFeedbackComment(commentId);
+      await load();
+      onChanged();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const loadVoters = async () => {
+    if (voters) {
+      setVoters(null);
+      return;
+    }
+    try {
+      const v = await listFeedbackVoters(postId);
+      setVoters(v);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const isPostAuthor =
+    post &&
+    ((post.authorUserId && post.authorUserId === currentUserId) ||
+      (!isLoggedIn() && post.anonymousId && post.anonymousId === getAnonymousId()));
+
+  const comments = post?.comments ?? [];
+
   return (
     <div className="feedback-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="feedback-modal" onClick={(e) => e.stopPropagation()}>
@@ -440,12 +702,50 @@ function PostDetailModal({
         {error && <p className="feedback-error">{error}</p>}
         {post && (
           <div className="modal-body">
-            <div className="post-head">
-              <div className={statusBadgeClass(post.status)}>{t(statusKey(post.status))}</div>
-              {post.tag && <span className="post-tag">#{post.tag}</span>}
-              <h2 className="font-display text-2xl text-bone">{post.title}</h2>
-            </div>
-            {post.description && <p className="post-desc-full">{post.description}</p>}
+            {editingPost ? (
+              <section className="edit-post-form">
+                <label className="field-label">{t('feedback.titleLabel')}</label>
+                <input
+                  className="input input-bordered input-sm"
+                  value={editTitle}
+                  maxLength={120}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                />
+                <label className="field-label">{t('feedback.descriptionLabel')}</label>
+                <textarea
+                  className="textarea textarea-bordered textarea-sm"
+                  value={editDesc}
+                  maxLength={2000}
+                  rows={3}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                />
+                <div className="form-actions">
+                  <button type="button" className="secondary-action" onClick={() => setEditingPost(false)}>
+                    {t('feedback.cancel')}
+                  </button>
+                  <button type="button" className="primary-action" onClick={handleEditPost}>
+                    {t('feedback.save')}
+                  </button>
+                </div>
+              </section>
+            ) : (
+              <div className="post-head">
+                <div className={statusBadgeClass(post.status)}>{t(statusKey(post.status))}</div>
+                {post.tag && <span className="post-tag">#{post.tag}</span>}
+                <h2 className="font-display text-2xl text-bone">{post.title}</h2>
+                {post.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
+                {isPostAuthor && (
+                  <button type="button" className="edit-btn" onClick={startEditPost}>
+                    {t('feedback.edit')}
+                  </button>
+                )}
+              </div>
+            )}
+            {!editingPost && post.description && (
+              <p className="post-desc-full">
+                <Markdown text={post.description} />
+              </p>
+            )}
             <div className="post-meta">
               <span>
                 {t('feedback.postedBy')}: {authorLabel(post)}
@@ -465,7 +765,21 @@ function PostDetailModal({
                 <span className="font-mono">{post.voteCount}</span>
                 <span>{t(post.hasVoted ? 'feedback.voted' : 'feedback.vote')}</span>
               </button>
+              <button type="button" className="voters-toggle" onClick={loadVoters}>
+                {t('feedback.voters')} ({post.voteCount})
+              </button>
             </div>
+
+            {voters && (
+              <section className="voters-list">
+                {voters.length === 0 && <p className="feedback-empty">{t('feedback.noVoters')}</p>}
+                {voters.map((v, i) => (
+                  <span key={i} className="voter-chip">
+                    {v.nickname || t('feedback.anonymous')}
+                  </span>
+                ))}
+              </section>
+            )}
 
             {adminMode && (
               <section className="moderation-panel">
@@ -507,17 +821,82 @@ function PostDetailModal({
               <h4 className="comments-title">
                 {t('feedback.comments')} ({post.commentCount})
               </h4>
-              {(!post.comments || post.comments.length === 0) && (
-                <p className="feedback-empty">{t('feedback.noComments')}</p>
-              )}
+              {comments.length === 0 && <p className="feedback-empty">{t('feedback.noComments')}</p>}
               <ul className="comment-list">
-                {(post.comments ?? []).map((c) => (
-                  <li key={c.id} className="comment-item">
+                {comments.map((c) => (
+                  <li key={c.id} className={'comment-item' + (c.isOfficial ? ' official' : '')}>
                     <div className="comment-head">
-                      <span className="comment-author">{commentAuthorLabel(c.authorNickname)}</span>
+                      {c.isOfficial && <span className="official-badge">{t('feedback.officialResponse')}</span>}
+                      <span className="comment-author">{commentAuthorLabel(c)}</span>
                       <span className="comment-time">{relativeTime(c.createdAt, locale)}</span>
+                      {c.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
                     </div>
-                    <p className="comment-content">{c.content}</p>
+                    {editingCommentId === c.id ? (
+                      <div className="comment-edit-form">
+                        <textarea
+                          className="textarea textarea-bordered textarea-xs"
+                          value={editCommentText}
+                          maxLength={1000}
+                          rows={2}
+                          onChange={(e) => setEditCommentText(e.target.value)}
+                        />
+                        <div className="form-actions">
+                          <button type="button" className="secondary-action" onClick={() => setEditingCommentId(null)}>
+                            {t('feedback.cancel')}
+                          </button>
+                          <button type="button" className="primary-action" onClick={() => void handleEditComment(c.id)}>
+                            {t('feedback.save')}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="comment-content">
+                          <Markdown text={c.content} />
+                        </p>
+                        <div className="comment-actions">
+                          <button
+                            type="button"
+                            className={'comment-vote-btn' + (c.hasVoted ? ' voted' : '')}
+                            onClick={() => void handleCommentVote(c.id)}
+                            aria-pressed={c.hasVoted}
+                          >
+                            {c.hasVoted ? '▲' : '△'} {c.voteCount}
+                          </button>
+                          {((c.authorUserId && c.authorUserId === currentUserId) ||
+                            (!isLoggedIn() && c.anonymousId && c.anonymousId === getAnonymousId())) && (
+                            <>
+                              <button
+                                type="button"
+                                className="edit-btn"
+                                onClick={() => {
+                                  setEditingCommentId(c.id);
+                                  setEditCommentText(c.content);
+                                }}
+                              >
+                                {t('feedback.edit')}
+                              </button>
+                              <button
+                                type="button"
+                                className="danger-action"
+                                onClick={() => void handleDeleteComment(c.id)}
+                              >
+                                {t('feedback.delete')}
+                              </button>
+                            </>
+                          )}
+                          {adminMode && !c.isOfficial && (
+                            <button
+                              type="button"
+                              className="secondary-action"
+                              onClick={() => void handleDeleteComment(c.id)}
+                            >
+                              {t('feedback.delete')}
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -530,9 +909,16 @@ function PostDetailModal({
                   rows={2}
                   onChange={(e) => setComment(e.target.value)}
                 />
+                <p className="feedback-md-hint">{t('feedback.markdownHint')}</p>
                 <p className="feedback-identity-hint">
                   {isLoggedIn() ? t('feedback.commentingAs') : t('feedback.anonymousNotice')}
                 </p>
+                {adminMode && (
+                  <label className="official-toggle">
+                    <input type="checkbox" checked={isOfficial} onChange={(e) => setIsOfficial(e.target.checked)} />
+                    {t('feedback.officialResponse')}
+                  </label>
+                )}
                 <button
                   type="button"
                   className="primary-action"

@@ -9102,3 +9102,178 @@ button.zone:focus-visible {
   gap: 0.4rem;
   align-items: flex-end;
 }
+
+/* ===== Feedback 擴充樣式（標籤管理/編輯/Voters/官方回應/留言按讚）===== */
+.feedback-tag-active {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--bone, #e8dcc8);
+  padding: 0.25rem 0.5rem;
+}
+.feedback-tag-active button {
+  background: none;
+  border: none;
+  color: var(--danger, #c5453b);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.feedback-md-hint {
+  font-size: 0.65rem;
+  color: var(--bone-soft, rgba(232, 220, 200, 0.4));
+  align-self: flex-start;
+}
+.tag-manage-panel {
+  border: 1px solid var(--line-soft, rgba(232, 220, 200, 0.15));
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: var(--panel, rgba(20, 18, 24, 0.6));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.tag-create-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.tag-create-row .input {
+  flex: 1;
+  min-width: 0;
+}
+.tag-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.tag-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.3rem;
+  background: var(--panel, rgba(20, 18, 24, 0.4));
+}
+.tag-color-chip {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+.tag-list-item .danger-action {
+  background: none;
+  border: none;
+  color: var(--danger, #c5453b);
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 0;
+}
+.edit-post-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0;
+}
+.edit-btn {
+  background: none;
+  border: 1px solid var(--line-soft, rgba(232, 220, 200, 0.2));
+  color: var(--bone-soft, rgba(232, 220, 200, 0.6));
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.edit-btn:hover {
+  color: var(--gold, #c9a96e);
+  border-color: var(--gold, #c9a96e);
+}
+.edited-mark {
+  font-size: 0.6rem;
+  color: var(--bone-soft, rgba(232, 220, 200, 0.35));
+  font-style: italic;
+}
+.voters-toggle {
+  background: none;
+  border: 1px solid var(--line-soft, rgba(232, 220, 200, 0.15));
+  color: var(--bone-soft, rgba(232, 220, 200, 0.6));
+  font-size: 0.65rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.voters-toggle:hover {
+  color: var(--gold, #c9a96e);
+}
+.voters-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.5rem 0;
+}
+.voter-chip {
+  font-size: 0.65rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 1rem;
+  background: var(--panel, rgba(20, 18, 24, 0.4));
+  color: var(--bone-soft, rgba(232, 220, 200, 0.7));
+  border: 1px solid var(--line-soft, rgba(232, 220, 200, 0.1));
+}
+.official-badge {
+  display: inline-block;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.2rem;
+  background: var(--gold, #c9a96e);
+  color: var(--bg, #14121a);
+  font-weight: 600;
+}
+.comment-item.official {
+  border-left: 2px solid var(--gold, #c9a96e);
+  padding-left: 0.5rem;
+  background: rgba(201, 169, 110, 0.05);
+}
+.comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.comment-vote-btn {
+  background: none;
+  border: none;
+  color: var(--bone-soft, rgba(232, 220, 200, 0.5));
+  font-size: 0.65rem;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.2rem;
+}
+.comment-vote-btn.voted {
+  color: var(--gold, #c9a96e);
+}
+.comment-vote-btn:hover {
+  color: var(--gold, #c9a96e);
+}
+.comment-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+.official-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--gold, #c9a96e);
+  align-self: flex-start;
+  cursor: pointer;
+}
+.official-toggle input {
+  accent-color: var(--gold, #c9a96e);
+}

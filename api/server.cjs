@@ -33,6 +33,14 @@ const {
   updatePostTag: updateFeedbackPostTag,
   deletePost: deleteFeedbackPost,
   getStats: getFeedbackStats,
+  toggleCommentVote: toggleFeedbackCommentVote,
+  listVoters: listFeedbackVoters,
+  editPost: editFeedbackPost,
+  editComment: editFeedbackComment,
+  deleteComment: deleteFeedbackComment,
+  listTags: listFeedbackTags,
+  createTag: createFeedbackTag,
+  deleteTag: deleteFeedbackTag,
 } = require('./feedbackService.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
@@ -238,6 +246,32 @@ async function initSchema() {
       CHECK (author_user_id IS NOT NULL OR anonymous_id IS NOT NULL)
     )`,
     `CREATE INDEX IF NOT EXISTS idx_feedback_comments_post ON feedback_comments(post_id, created_at)`,
+
+    // ===== 反饋功能擴展 schema（標籤管理/留言按讚/編輯/官方回應）=====
+    // ALTER TABLE IF NOT EXISTS ADD COLUMN IF NOT EXISTS（PG 9.6+）
+    `ALTER TABLE feedback_posts ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ`,
+    `ALTER TABLE feedback_comments ADD COLUMN IF NOT EXISTS is_official BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE feedback_comments ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ`,
+    // 留言按讚表
+    `CREATE TABLE IF NOT EXISTS feedback_comment_votes (
+      comment_id TEXT NOT NULL REFERENCES feedback_comments(id) ON DELETE CASCADE,
+      voter_user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      anonymous_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (voter_user_id IS NOT NULL OR anonymous_id IS NOT NULL),
+      CHECK (NOT (voter_user_id IS NOT NULL AND anonymous_id IS NOT NULL))
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_feedback_comment_votes_user
+      ON feedback_comment_votes(comment_id, voter_user_id) WHERE voter_user_id IS NOT NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_feedback_comment_votes_anon
+      ON feedback_comment_votes(comment_id, anonymous_id) WHERE anonymous_id IS NOT NULL`,
+    // 標籤管理表
+    `CREATE TABLE IF NOT EXISTS feedback_tags (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      color TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
   ];
 
   for (const statement of schemaStatements) {
@@ -1006,16 +1040,71 @@ function handleRequest(req, res) {
       const postId = decodeURIComponent(feedbackCommentRoute[1]);
       const body = await readBody();
       const voter = extractFeedbackVoter(req, body);
+      const commentBody = await readBody();
       json(
         await addFeedbackComment({
           pool,
           voter,
           postId,
-          body,
+          body: commentBody,
           sanitizeText,
           generateId: () => generateFeedbackId('fc_'),
+          isOfficial: Boolean(commentBody.isOfficial) && verifyAdminToken(req),
         }),
       );
+      return;
+    }
+
+    // GET /api/feedback/posts/:id/voters — 投票者列表
+    const feedbackVotersRoute = pathname.match(/^\/api\/feedback\/posts\/([^/]+)\/voters$/);
+    if (feedbackVotersRoute && method === 'GET') {
+      const postId = decodeURIComponent(feedbackVotersRoute[1]);
+      json(await listFeedbackVoters({ pool, postId }));
+      return;
+    }
+
+    // POST /api/feedback/comments/:id/votes — 留言按讚 toggle
+    const commentVoteRoute = pathname.match(/^\/api\/feedback\/comments\/([^/]+)\/votes$/);
+    if (commentVoteRoute && method === 'POST') {
+      const commentId = decodeURIComponent(commentVoteRoute[1]);
+      const body = await readBody();
+      const voter = extractFeedbackVoter(req, body);
+      json(await toggleFeedbackCommentVote({ pool, voter, commentId }));
+      return;
+    }
+
+    // PUT /api/feedback/posts/:id — 編輯文章（作者）
+    const feedbackEditPostRoute = pathname.match(/^\/api\/feedback\/posts\/([^/]+)$/);
+    if (feedbackEditPostRoute && method === 'PUT') {
+      const postId = decodeURIComponent(feedbackEditPostRoute[1]);
+      const body = await readBody();
+      const voter = extractFeedbackVoter(req, body);
+      json(await editFeedbackPost({ pool, voter, postId, body, sanitizeText }));
+      return;
+    }
+
+    // PUT /api/feedback/comments/:id — 編輯留言（作者）
+    const commentEditRoute = pathname.match(/^\/api\/feedback\/comments\/([^/]+)$/);
+    if (commentEditRoute && method === 'PUT') {
+      const commentId = decodeURIComponent(commentEditRoute[1]);
+      const body = await readBody();
+      const voter = extractFeedbackVoter(req, body);
+      json(await editFeedbackComment({ pool, voter, commentId, body, sanitizeText }));
+      return;
+    }
+
+    // DELETE /api/feedback/comments/:id — 刪除留言（作者或管理員）
+    if (commentEditRoute && method === 'DELETE') {
+      const commentId = decodeURIComponent(commentEditRoute[1]);
+      const isAdmin = verifyAdminToken(req);
+      const voter = extractFeedbackVoter(req, {});
+      json(await deleteFeedbackComment({ pool, voter, commentId, isAdmin }));
+      return;
+    }
+
+    // GET /api/feedback/tags — 列出標籤
+    if (pathname === '/api/feedback/tags' && method === 'GET') {
+      json(await listFeedbackTags({ pool }));
       return;
     }
 
@@ -1046,6 +1135,30 @@ function handleRequest(req, res) {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackDeleteRoute[1]);
       json(await deleteFeedbackPost({ pool, postId }));
+      return;
+    }
+
+    // POST /api/feedback/admin/tags — 建立標籤
+    if (pathname === '/api/feedback/admin/tags' && method === 'POST') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody();
+      json(
+        await createFeedbackTag({
+          pool,
+          body,
+          sanitizeText,
+          generateId: () => generateFeedbackId('ft_'),
+        }),
+      );
+      return;
+    }
+
+    // DELETE /api/feedback/admin/tags/:id — 刪除標籤
+    const feedbackTagDeleteRoute = pathname.match(/^\/api\/feedback\/admin\/tags\/([^/]+)$/);
+    if (feedbackTagDeleteRoute && method === 'DELETE') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const tagId = decodeURIComponent(feedbackTagDeleteRoute[1]);
+      json(await deleteFeedbackTag({ pool, tagId }));
       return;
     }
 

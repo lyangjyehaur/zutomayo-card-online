@@ -20,6 +20,7 @@ export interface FeedbackPost {
   hasVoted: boolean;
   createdAt: string;
   updatedAt: string;
+  editedAt: string | null;
   comments?: FeedbackComment[];
 }
 
@@ -30,6 +31,24 @@ export interface FeedbackComment {
   authorUserId: string | null;
   authorNickname: string | null;
   anonymousId: string | null;
+  isOfficial: boolean;
+  voteCount: number;
+  hasVoted: boolean;
+  createdAt: string;
+  editedAt: string | null;
+}
+
+export interface FeedbackVoter {
+  userId: string | null;
+  nickname: string | null;
+  anonymousId: string | null;
+  createdAt: string;
+}
+
+export interface FeedbackTag {
+  id: string;
+  name: string;
+  color: string;
   createdAt: string;
 }
 
@@ -144,11 +163,56 @@ export async function toggleFeedbackVote(postId: string): Promise<{ voted: boole
   });
 }
 
-export async function addFeedbackComment(postId: string, content: string): Promise<FeedbackComment> {
+export async function addFeedbackComment(
+  postId: string,
+  content: string,
+  isOfficial = false,
+): Promise<FeedbackComment> {
   return request<FeedbackComment>(`/feedback/posts/${encodeURIComponent(postId)}/comments`, {
     method: 'POST',
+    body: JSON.stringify(withVoter({ content, isOfficial })),
+  });
+}
+
+// ===== 留言按讚 / 投票者列表 =====
+export async function toggleFeedbackCommentVote(commentId: string): Promise<{ voted: boolean }> {
+  return request<{ voted: boolean }>(`/feedback/comments/${encodeURIComponent(commentId)}/votes`, {
+    method: 'POST',
+    body: JSON.stringify(withVoter({})),
+  });
+}
+
+export async function listFeedbackVoters(postId: string): Promise<FeedbackVoter[]> {
+  const data = await request<{ voters: FeedbackVoter[] }>(`/feedback/posts/${encodeURIComponent(postId)}/voters`);
+  return data.voters;
+}
+
+// ===== 編輯 / 刪除 =====
+export async function editFeedbackPost(postId: string, title: string, description: string): Promise<FeedbackPost> {
+  return request<FeedbackPost>(`/feedback/posts/${encodeURIComponent(postId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(withVoter({ title, description })),
+  });
+}
+
+export async function editFeedbackComment(commentId: string, content: string): Promise<FeedbackComment> {
+  return request<FeedbackComment>(`/feedback/comments/${encodeURIComponent(commentId)}`, {
+    method: 'PUT',
     body: JSON.stringify(withVoter({ content })),
   });
+}
+
+export async function deleteFeedbackComment(commentId: string): Promise<{ deleted: boolean }> {
+  return request<{ deleted: boolean }>(`/feedback/comments/${encodeURIComponent(commentId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify(withVoter({})),
+  });
+}
+
+// ===== 標籤管理 =====
+export async function listFeedbackTags(): Promise<FeedbackTag[]> {
+  const data = await request<{ tags: FeedbackTag[] }>('/feedback/tags');
+  return data.tags;
 }
 
 // ===== 管理員審核 =====
@@ -185,6 +249,21 @@ export async function adminUpdatePostTag(postId: string, tag: string): Promise<F
 
 export async function adminDeleteFeedbackPost(postId: string): Promise<{ deleted: boolean }> {
   return request<{ deleted: boolean }>(`/feedback/admin/posts/${encodeURIComponent(postId)}`, {
+    method: 'DELETE',
+    headers: adminHeaders(),
+  });
+}
+
+export async function adminCreateFeedbackTag(name: string, color: string): Promise<FeedbackTag> {
+  return request<FeedbackTag>('/feedback/admin/tags', {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({ name, color }),
+  });
+}
+
+export async function adminDeleteFeedbackTag(tagId: string): Promise<{ deleted: boolean }> {
+  return request<{ deleted: boolean }>(`/feedback/admin/tags/${encodeURIComponent(tagId)}`, {
     method: 'DELETE',
     headers: adminHeaders(),
   });
