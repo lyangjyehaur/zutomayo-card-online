@@ -587,7 +587,7 @@ export const ko: Record<TranslationKey, string> = {
     '교체할 카드를 클릭하여 뒷면으로 놓고(예: 높은 Power Cost의 캐릭터 카드), "확인"을 눌러 같은 수의 새 카드를 뽑습니다. 핸드가 만족스러우면 "핸드 유지"로 건너뛸 수 있습니다.',
   'tutorial.game.initialSet.intro.title': '초기 배치 단계',
   'tutorial.game.initialSet.intro.body':
-    '이제 핸드에서 1장을 선택해 배틀 존에 뒷면으로 놓습니다. 이것이 초기 캐릭터입니다. 공격력이 정상적으로 발휘되도록 Power Cost가 낮은 카드를 선택하는 것을 권장합니다. 양측이 동시에 공개하여 대결을 시작합니다.',
+    '핸드에서 캐릭터 카드 1장을 선택해 배틀 존에 뒷면으로 놓습니다. 반드시 캐릭터 카드를 선택해야 합니다: 캐릭터 이외의 카드는 공개되면 즉시 파워 차저 또는 심연으로 보내지며, 배틀 존이 비어있으면 직접 피해를 받습니다.',
   'tutorial.game.initialSet.action.title': '카드 한 장 배치',
   'tutorial.game.initialSet.action.body': '핸드에서 1장을 선택해 배틀 존에 놓습니다. 준비되면 "확인"을 누르세요.',
   'tutorial.game.zone.battle.title': '배틀 존',

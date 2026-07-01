@@ -115,38 +115,23 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     hideNext: true,
   },
 
-  // 4. 重抽
+  // 4. 重抽（合併為操作步驟：高亮高費卡 + 重抽按鈕，操作後自動推進）
   {
-    phase: 'mulligan-intro',
-    target: '[data-tut="mulligan-panel"]',
+    phase: 'mulligan',
+    target: ['[data-tut-card="1st_2"]', '[data-tut="mulligan-redraw"]'],
     title: 'tutorial.game.mulligan.intro.title',
     body: 'tutorial.game.mulligan.intro.body',
-    placement: 'top',
-    padding: 16,
-  },
-  {
-    phase: 'mulligan-action',
-    target: '[data-tut="mulligan-panel"]',
-    title: 'tutorial.game.mulligan.action.title',
-    body: 'tutorial.game.mulligan.action.body',
     placement: 'bottom',
     padding: 16,
     completeWhen: (G) => G.mulliganUsed[0],
   },
 
-  // 5. 初始放置
+  // 5. 初始放置（合併為操作步驟：高亮劇本指定卡，操作後自動推進）
   {
-    phase: 'initialSet-intro',
-    target: null,
+    phase: 'initialSet',
+    target: '[data-tut-card="1st_70"]',
     title: 'tutorial.game.initialSet.intro.title',
     body: 'tutorial.game.initialSet.intro.body',
-    placement: 'center',
-  },
-  {
-    phase: 'initialSet-action',
-    target: '[data-tut="player-actions"]',
-    title: 'tutorial.game.initialSet.action.title',
-    body: 'tutorial.game.initialSet.action.body',
     placement: 'top',
     padding: 12,
     // 用戶放置卡牌並確認後，遊戲會離開 initialSet 階段
@@ -255,13 +240,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     },
   },
 
-  // 9. 第二回合放置（追趕實作）—— 同樣依上回合勝負分支
+  // 9. 第二回合放置（合併為操作步驟：高亮劇本指定卡，操作後自動推進）
+  //    依上回合勝負分支：敗者出 2 張（1st_34 + 2nd_86），勝者出 1 張
   {
-    phase: 'turnSet-intro',
-    target: null,
+    phase: 'turnSet',
+    target: ['[data-tut-card="1st_34"]', '[data-tut-card="2nd_86"]'],
     title: 'tutorial.game.turnSet.intro.title',
     body: 'tutorial.game.turnSet.intro.body',
-    placement: 'center',
+    placement: 'top',
+    padding: 12,
+    completeWhen: (G, entry) => entry?.step === 'turnSet' && G.step !== 'turnSet',
     resolveKeys: (G) => {
       const winner = G.lastBattleResult.winner;
       if (winner === null) {
@@ -279,34 +267,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
       return {
         title: 'tutorial.game.turnSet.intro.winner.title',
         body: 'tutorial.game.turnSet.intro.winner.body',
-      };
-    },
-  },
-  {
-    phase: 'turnSet-action',
-    target: '[data-tut="player-actions"]',
-    title: 'tutorial.game.turnSet.action.title',
-    body: 'tutorial.game.turnSet.action.body',
-    placement: 'top',
-    padding: 12,
-    completeWhen: (G, entry) => entry?.step === 'turnSet' && G.step !== 'turnSet',
-    resolveKeys: (G) => {
-      const winner = G.lastBattleResult.winner;
-      if (winner === null) {
-        return {
-          title: 'tutorial.game.turnSet.action.draw.title',
-          body: 'tutorial.game.turnSet.action.draw.body',
-        };
-      }
-      if (winner === 1) {
-        return {
-          title: 'tutorial.game.turnSet.action.loser.title',
-          body: 'tutorial.game.turnSet.action.loser.body',
-        };
-      }
-      return {
-        title: 'tutorial.game.turnSet.action.winner.title',
-        body: 'tutorial.game.turnSet.action.winner.body',
       };
     },
   },

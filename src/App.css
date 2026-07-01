@@ -7001,6 +7001,40 @@ button.zone:focus-visible {
   }
 }
 
+/* 需手動確認的 notice（時鐘推進、HP 計算明細）：
+   全屏遮罩聚焦彈框，入場動畫後保持顯示，點確定按鈕才關閉 */
+.game-notice-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 8, 12, 0.82);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+  z-index: -1;
+}
+
+@keyframes hp-change-confirm {
+  0% {
+    opacity: 0;
+    transform: translateY(0.4rem) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.hp-change-confirm {
+  pointer-events: auto;
+  animation: hp-change-confirm 250ms ease-out forwards;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-change-confirm {
+    animation-duration: 120ms;
+  }
+}
+
 .effect-order-panel {
   position: absolute;
   right: clamp(0.7rem, 2vw, 1.2rem);

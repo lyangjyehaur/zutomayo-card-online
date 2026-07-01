@@ -591,7 +591,7 @@ export const en: Record<TranslationKey, string> = {
     'Click the cards you want to replace to set them face-down (e.g., the high Power Cost character card), then press Confirm to draw the same number of new cards. If you are satisfied with your hand, press "Keep Hand" to skip.',
   'tutorial.game.initialSet.intro.title': 'Initial Set Phase',
   'tutorial.game.initialSet.intro.body':
-    'Now select 1 card from your hand and place it face-down in the Battle Zone — this is your starting character. It is recommended to choose a card with a lower Power Cost to ensure its attack power works normally. Both players reveal simultaneously to begin the battle.',
+    'Select 1 Character card from your hand and place it face-down in the Battle Zone as your starting character. You must choose a Character card: non-character cards are immediately sent to the Power Charger or Abyss when revealed, and an empty Battle Zone means you take damage directly.',
   'tutorial.game.initialSet.action.title': 'Place One Card',
   'tutorial.game.initialSet.action.body':
     'Select 1 card from your hand and place it in the Battle Zone. Press "Confirm" when ready.',

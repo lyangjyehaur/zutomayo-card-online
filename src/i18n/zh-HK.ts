@@ -574,7 +574,7 @@ export const zhHK: Record<TranslationKey, string> = {
     '撳想替換嘅卡牌將佢蓋放（例如高 Power Cost 嘅角色卡），再撳確認由牌組抽等量新卡。若對手牌滿意，直接撳「保留手牌」跳過。',
   'tutorial.game.initialSet.intro.title': '初始放置階段',
   'tutorial.game.initialSet.intro.body':
-    '而家由手牌揀 1 張卡蓋放至戰鬥區，呢個係你嘅初始角色。建議揀 Power Cost 較低嘅卡，確保攻擊力能正常發揮。雙方同時翻開後進入對決。',
+    '由手牌揀 1 張角色卡蓋放至戰鬥區作為初始角色。必須揀角色卡：若放置非角色卡，翻開後立即送入充能區或深淵，戰鬥區為空時將直接承受傷害。',
   'tutorial.game.initialSet.action.title': '揀一張卡片放置',
   'tutorial.game.initialSet.action.body': '由手牌中揀 1 張卡放入戰鬥區。揀好後撳「確認」。',
   'tutorial.game.zone.battle.title': '戰鬥區',

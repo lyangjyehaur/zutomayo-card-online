@@ -599,6 +599,14 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
   }
 }
 
+/** 判斷 notice 是否需要手動確認（時鐘推進、HP 計算等含明細的彈框）。
+ *  這些 notice 點擊確定按鈕才關閉，方便玩家看清資訊；其餘 notice 維持自動消失。 */
+function noticeNeedsConfirm(notice: GameNotice): boolean {
+  if (notice.kind === 'chronosChange') return true;
+  if (notice.kind === 'hpChange' && notice.breakdown) return true;
+  return false;
+}
+
 function GameNoticeOverlay({ G, me }: { G: GameState; me?: PlayerIndex }) {
   const lastSeenIdRef = useRef<number>(-1);
   const [queue, setQueue] = useState<GameNotice[]>([]);
@@ -630,8 +638,18 @@ function GameNoticeOverlay({ G, me }: { G: GameState; me?: PlayerIndex }) {
     const next = queue[0];
     setCurrent(next);
     setQueue((prev) => prev.slice(1));
+    // 需要手動確認的 notice 不設自動消失 timer，等玩家點確定按鈕
+    if (noticeNeedsConfirm(next)) return;
     timerRef.current = setTimeout(() => setCurrent(null), noticeDuration(next));
   }, [current, queue]);
+
+  const dismissCurrent = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setCurrent(null);
+  };
 
   useEffect(() => {
     return () => {
@@ -648,13 +666,27 @@ function GameNoticeOverlay({ G, me }: { G: GameState; me?: PlayerIndex }) {
     content = <strong>Notice render error</strong>;
   }
 
+  const needsConfirm = noticeNeedsConfirm(current);
+
   return (
     <div
       className={`phase-message-overlay game-notice-overlay phase-message-${current.tone}`}
       role="status"
       aria-live="polite"
     >
-      <div className="phase-message-panel hp-change-float">{content}</div>
+      {needsConfirm && <div className="game-notice-backdrop" />}
+      <div className={`phase-message-panel ${needsConfirm ? 'hp-change-confirm' : 'hp-change-float'}`}>
+        {content}
+        {needsConfirm && (
+          <button
+            className="mt-3 bg-bone px-6 py-2 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold active:scale-95"
+            type="button"
+            onClick={dismissCurrent}
+          >
+            {t('common.confirm' as never)}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -761,6 +793,7 @@ function MulliganScreen({
               }`}
               type="button"
               disabled={done}
+              data-tut-card={card.defId}
               onClick={() => toggle(index)}
             >
               <Card card={card} size="small" selected={selected.includes(index)} showPopover />
@@ -776,6 +809,7 @@ function MulliganScreen({
             <button
               className={primaryActionClass()}
               type="button"
+              data-tut="mulligan-redraw"
               onClick={() => {
                 onMulliganFeedback(selected.length);
                 moves.mulligan(selected);
@@ -786,6 +820,7 @@ function MulliganScreen({
             <button
               className={secondaryActionClass()}
               type="button"
+              data-tut="mulligan-keep"
               onClick={() => {
                 onMulliganFeedback(0);
                 moves.keepHand();
@@ -2334,6 +2369,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                       key={card.instanceId}
                       className="h-28 w-[4.75rem] shrink-0 cursor-pointer transition-all duration-300 hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-gold hover:shadow-[0_20px_40px_-10px] hover:shadow-gold/30 sm:h-32 sm:w-20 lg:h-36 lg:w-24"
                       style={{ transform: `rotate(${rotate}deg) translateY(${translateY}px)` }}
+                      data-tut-card={card.defId}
                       onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined}
                       onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
                       onMouseLeave={() => setFocusedCard(null)}

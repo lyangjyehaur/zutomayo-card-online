@@ -574,7 +574,7 @@ export const zhCN: Record<TranslationKey, string> = {
     '点击想要替换的卡牌将其盖放（例如高 Power Cost 的角色卡），再按下确认从牌组抽等量新卡。若对手牌满意，直接按"保留手牌"跳过。',
   'tutorial.game.initialSet.intro.title': '初始放置阶段',
   'tutorial.game.initialSet.intro.body':
-    '现在从手牌选择 1 张卡盖放至战斗区，这是你的初始角色。建议选择 Power Cost 较低的卡，确保攻击力能正常发挥。双方同时翻开后进入对决。',
+    '从手牌选择 1 张角色卡盖放至战斗区作为初始角色。必须选角色卡：若放置非角色卡，翻开后立即送入充能区或深渊，战斗区为空时将直接承受伤害。',
   'tutorial.game.initialSet.action.title': '选择一张卡片放置',
   'tutorial.game.initialSet.action.body': '从手牌中选择 1 张卡放入战斗区。选好后按"确认"。',
   'tutorial.game.zone.battle.title': '战斗区',
