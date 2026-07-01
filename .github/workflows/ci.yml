@@ -85,19 +85,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Seed cards to PostgreSQL
-        env:
-          PG_HOST: localhost
-          PG_PORT: 5432
-          PG_USER: zutomayo
-          PG_PASSWORD: test_password
-          PG_DATABASE: zutomayo
-          REDIS_URL: redis://localhost:6379
-          REDIS_DB: 0
-        run: npm run seed:cards
-
       - name: Game logic smoke test
         env:
+          CI: true
           PG_HOST: localhost
           PG_PORT: 5432
           PG_USER: zutomayo
@@ -107,14 +97,8 @@ jobs:
           REDIS_DB: 0
         run: npm run smoke
 
-      - name: Effect parsing audit
-        env:
-          PG_HOST: localhost
-          PG_PORT: 5432
-          PG_USER: zutomayo
-          PG_PASSWORD: test_password
-          PG_DATABASE: zutomayo
-        run: npm run rule:audit
+      - name: Skip seed and audit (no public card data)
+        run: echo "⏭️  Skipping seed:cards and rule:audit - card data not public"
 
       - name: API smoke test
         env:

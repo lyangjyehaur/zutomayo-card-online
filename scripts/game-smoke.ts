@@ -37,8 +37,67 @@ import { ZutomayoCard, resetParsedEffects } from '../src/game/Game';
 import { aiSelectCards } from '../src/game/ai';
 import type { Ctx } from 'boardgame.io';
 import { loadCardsForScript } from './cardSource';
+import type { CardDef } from '../src/game/types';
 
-initCards(await loadCardsForScript());
+// CI 模式：使用最小測試數據集
+function getTestCards(): CardDef[] {
+  const testCards: CardDef[] = [
+    // 15 張測試角色卡
+    ...Array.from({ length: 15 }, (_, i) => {
+      const card: CardDef = {
+        id: `test-char-${i + 1}`,
+        name: `測試角色${i + 1}`,
+        pack: 'test',
+        song: 'test',
+        illustrator: 'test',
+        rarity: 'N',
+        element: '闇',
+        type: 'Character',
+        clock: 0,
+        attack: { night: 10 + i, day: 10 + i },
+        powerCost: 0,
+        sendToPower: 0,
+        effect: '',
+        image: '',
+        errata: '',
+      };
+      return card;
+    }),
+    // 5 張測試附魔卡
+    ...Array.from({ length: 5 }, (_, i) => {
+      const card: CardDef = {
+        id: `test-enchant-${i + 1}`,
+        name: `測試附魔${i + 1}`,
+        pack: 'test',
+        song: 'test',
+        illustrator: 'test',
+        rarity: 'N',
+        element: '炎',
+        type: 'Enchant',
+        clock: 0,
+        attack: null,
+        powerCost: 0,
+        sendToPower: 1,
+        effect: '',
+        image: '',
+        errata: '',
+      };
+      return card;
+    }),
+  ];
+  return testCards;
+}
+
+async function loadCards(): Promise<CardDef[]> {
+  // 如果在 CI 環境且沒有數據源，使用測試數據
+  if (process.env.CI && !process.env.SEED_CARDS_URL && !process.env.SEED_CARD_API_URL && !process.env.CARD_API_URL) {
+    console.log('[CI mode] Using minimal test card data');
+    return getTestCards();
+  }
+  return loadCardsForScript();
+}
+
+initCards(await loadCards());
 resetParsedEffects();
 
 const require = createRequire(import.meta.url);
