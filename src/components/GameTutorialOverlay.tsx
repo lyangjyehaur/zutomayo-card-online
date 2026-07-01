@@ -1,39 +1,27 @@
-import { useEffect, useLayoutEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
 
-export type TutorialPhase =
-  | 'intro'
-  | 'janken-intro'
-  | 'janken-action'
-  | 'janken-result'
-  | 'mulligan-intro'
-  | 'mulligan-action'
-  | 'initial-set-intro'
-  | 'initial-set-action'
-  | 'zones-explain'
-  | 'chronos-explain'
-  | 'resources-explain'
-  | 'turn-set-intro'
-  | 'turn-set-action'
-  | 'effect-order-intro'
-  | 'effect-order-action'
-  | 'battle-intro'
-  | 'battle-result'
-  | 'catchup-explain'
-  | 'victory-explain'
-  | 'complete';
+/** 進入某教學步驟時的遊戲狀態快照，供 completeWhen 比對變化 */
+export interface TutorialEntrySnapshot {
+  step: string;
+  turnNumber: number;
+}
 
 export interface TutorialStep {
-  phase: TutorialPhase;
+  phase: string;
+  /** css selector of element to highlight; null => centered modal */
   target: string | null;
   title: string;
   body: string;
   placement?: 'top' | 'bottom' | 'left' | 'right' | 'center';
   padding?: number;
-  waitForGamePhase?: string;
-  waitForUserAction?: boolean;
-  allowedInteractions?: string[];
+  /** 操作步驟：條件達成時自動推進（取代手動 Next）。未定義即為導覽步驟。 */
+  completeWhen?: (G: GameState, entry: TutorialEntrySnapshot | null) => boolean;
+  /** 條件式步驟：進入時若回傳 true 則自動跳過（例如該回合無效果卡） */
+  skipWhen?: (G: GameState) => boolean;
+  /** 動態文案分支：根據遊戲狀態回傳 title/body 的 i18n key，覆蓋靜態 title/body。 */
+  resolveKeys?: (G: GameState) => { title: string; body: string };
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -79,7 +67,7 @@ function useTargetRect(selector: string | null, pad: number, stepKey: number): R
 interface GameTutorialOverlayProps {
   steps: TutorialStep[];
   currentStep: number;
-  gameState: GameState | null; // eslint-disable-line @typescript-eslint/no-unused-vars
+  gameState: GameState | null;
   onNext: () => void;
   onPrev: () => void;
   onComplete: () => void;
@@ -89,12 +77,16 @@ interface GameTutorialOverlayProps {
 export function GameTutorialOverlay({
   steps,
   currentStep,
+  gameState,
   onNext,
   onPrev,
   onComplete,
   onSkip,
 }: GameTutorialOverlayProps) {
   const current = steps[currentStep];
+  const resolved = current.resolveKeys && gameState ? current.resolveKeys(gameState) : null;
+  const titleKey = resolved?.title ?? current.title;
+  const bodyKey = resolved?.body ?? current.body;
   const rect = useTargetRect(current.target, current.padding ?? 12, currentStep);
   const [vp, setVp] = useState({ w: 0, h: 0 });
 
@@ -107,6 +99,8 @@ export function GameTutorialOverlay({
 
   const isLast = currentStep === steps.length - 1;
   const isFirst = currentStep === 0;
+  // 操作步驟：有 completeWhen，需用戶在遊戲中實際操作才會推進，故隱藏 Next/Prev
+  const isActionStep = Boolean(current.completeWhen);
 
   // Tooltip placement calculation
   const tipW = 380;
@@ -136,31 +130,19 @@ export function GameTutorialOverlay({
     }
   }
 
-  // Click interception handler
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (!current.waitForUserAction) return;
-
-    const target = e.target as HTMLElement;
-    const allowed = current.allowedInteractions?.some((selector) => target.closest(selector));
-
-    if (!allowed) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  };
+  // 邊界防呆：tooltip 不得超出視窗
+  tipX = Math.min(Math.max(tipX, 8), Math.max(8, vp.w - tipW - 8));
+  tipY = Math.min(Math.max(tipY, 8), Math.max(8, vp.h - tipH - 8));
 
   return (
-    <div
-      className="tutorial-game-overlay fixed inset-0 z-[1000]"
-    >
-      {/* SVG mask: dark overlay with rounded cutout around target */}
+    <div className="tutorial-game-overlay fixed inset-0 z-[1000]">
+      {/* 視覺遮罩：SVG mask 挖洞，pointer-events: none 不攔截點擊 */}
       <svg
-        className="absolute inset-0 h-full w-full pointer-events-auto"
+        className="absolute inset-0 h-full w-full"
         width={vp.w}
         height={vp.h}
         aria-hidden="true"
-        onClick={handleOverlayClick}
-        onMouseDown={handleOverlayClick}
+        style={{ pointerEvents: 'none' }}
       >
         <defs>
           <mask id="tutorial-game-mask">
@@ -173,9 +155,9 @@ export function GameTutorialOverlay({
           y="0"
           width="100%"
           height="100%"
-          fill="rgba(8,8,12,0.85)"
+          fill="rgba(8,8,12,0.82)"
           mask="url(#tutorial-game-mask)"
-          style={{ transition: 'all 250ms ease' } as CSSProperties}
+          style={{ transition: 'all 250ms ease' }}
         />
         {rect && (
           <rect
@@ -188,14 +170,40 @@ export function GameTutorialOverlay({
             fill="none"
             stroke="oklch(0.74 0.09 80)"
             strokeWidth="2"
-            style={{ transition: 'all 250ms ease' } as CSSProperties}
+            style={{ transition: 'all 250ms ease' }}
           />
         )}
       </svg>
 
+      {/* 點擊攔截層：
+          - 操作步驟（有 completeWhen）：用 4 個 div 包圍高亮區域，外部被攔截、高亮區可點擊穿透到下方遊戲
+          - 導覽步驟：單一全屏 div 攔截所有點擊，僅 tooltip 可互動 */}
+      {isActionStep && rect ? (
+        <>
+          <div
+            className="tutorial-click-blocker"
+            style={{ left: 0, top: 0, width: vp.w, height: Math.max(0, rect.y) }}
+          />
+          <div
+            className="tutorial-click-blocker"
+            style={{ left: 0, top: rect.y + rect.h, width: vp.w, height: Math.max(0, vp.h - (rect.y + rect.h)) }}
+          />
+          <div
+            className="tutorial-click-blocker"
+            style={{ left: 0, top: rect.y, width: Math.max(0, rect.x), height: rect.h }}
+          />
+          <div
+            className="tutorial-click-blocker"
+            style={{ left: rect.x + rect.w, top: rect.y, width: Math.max(0, vp.w - (rect.x + rect.w)), height: rect.h }}
+          />
+        </>
+      ) : (
+        <div className="tutorial-click-blocker" style={{ left: 0, top: 0, width: vp.w, height: vp.h }} />
+      )}
+
       {/* Tutorial tooltip card */}
       <div
-        className="absolute rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer p-5 text-bone shadow-[0_30px_80px_-20px] shadow-black/90 ring-1 ring-gold/40 backdrop-blur"
+        className="tutorial-tooltip absolute rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer p-5 text-bone shadow-[0_30px_80px_-20px] shadow-black/90 ring-1 ring-gold/40 backdrop-blur"
         style={{
           width: `${tipW}px`,
           left: `${tipX}px`,
@@ -206,7 +214,7 @@ export function GameTutorialOverlay({
         {/* Header */}
         <div className="mb-3 flex items-center justify-between">
           <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">
-            Step {String(currentStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')}
+            {String(currentStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')}
           </span>
           <button
             onClick={onSkip}
@@ -218,42 +226,38 @@ export function GameTutorialOverlay({
         </div>
 
         {/* Content */}
-        <h3 className="font-display text-2xl italic leading-tight text-bone">{t(current.title as any)}</h3>
-        <p className="mt-3 text-[13px] leading-relaxed text-bone/75">{t(current.body as any)}</p>
+        <h3 className="font-display text-2xl italic leading-tight text-bone">{t(titleKey as never)}</h3>
+        <p className="mt-3 text-[13px] leading-relaxed text-bone/75">{t(bodyKey as never)}</p>
 
-        {/* Footer */}
-        <div className="mt-5 flex items-center justify-between">
-          {/* Progress dots */}
-          <div className="flex gap-1">
-            {steps.map((_, i) => (
-              <span
-                key={i}
-                className={`h-1 w-4 transition ${
-                  i === currentStep ? 'bg-gold' : i < currentStep ? 'bg-bone/30' : 'bg-bone/10'
-                }`}
-              />
-            ))}
-          </div>
-
-          {/* Navigation buttons */}
-          <div className="flex gap-2">
-            {!isFirst && (
+        {/* Footer：操作按鈕與提示 */}
+        <div className="mt-5 flex flex-col gap-3">
+          {/* Navigation / action hint */}
+          {isActionStep ? (
+            <div className="flex justify-center">
+              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/60">
+                {t('tutorial.actionHint')}
+              </span>
+            </div>
+          ) : (
+            <div className="flex justify-end gap-2">
+              {!isFirst && (
+                <button
+                  onClick={onPrev}
+                  className="border border-bone/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5"
+                  type="button"
+                >
+                  {t('common.prev')}
+                </button>
+              )}
               <button
-                onClick={onPrev}
-                className="border border-bone/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5"
+                onClick={isLast ? onComplete : onNext}
+                className="bg-gold px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-bone active:scale-95"
                 type="button"
               >
-                {t('common.prev')}
+                {isLast ? t('tutorial.complete') : t('common.next')}
               </button>
-            )}
-            <button
-              onClick={isLast ? onComplete : onNext}
-              className="bg-bone px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95"
-              type="button"
-            >
-              {isLast ? t('tutorial.complete') : t('common.next')}
-            </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

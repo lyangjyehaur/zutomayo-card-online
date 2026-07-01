@@ -1,44 +1,41 @@
 /* Tutorial Game Overlay Styles */
 
 .tutorial-game-overlay {
-  pointer-events: none; /* 默認不攔截點擊，只有遮罩區域攔截 */
+  pointer-events: none; /* 容器本身不攔截，由內部 blocker 與 tooltip 各自控制 */
   user-select: none;
+  -webkit-user-select: none;
 }
 
-/* SVG 遮罩層可以攔截點擊 */
+/* 點擊攔截層：攔截高亮區域外的點擊，導覽步驟時為全屏 */
+.tutorial-click-blocker {
+  pointer-events: auto;
+  position: absolute;
+  z-index: 1;
+}
+
+/* Tooltip 卡片可互動 */
+.tutorial-tooltip {
+  pointer-events: auto;
+  z-index: 2;
+}
+
+/* SVG 視覺遮罩不攔截點擊 */
 .tutorial-game-overlay > svg {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
-/* Tooltip 卡片可以點擊 */
-.tutorial-game-overlay > div[style*="left"] {
-  pointer-events: auto;
-}
-
-/* Ensure highlighted elements are interactive */
-.tutorial-game-overlay [data-tutorial-interactive] {
-  pointer-events: auto;
-  position: relative;
-  z-index: 1001;
-}
-
-/* Smooth transitions for all tutorial elements */
-.tutorial-game-overlay * {
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Progress dots animation */
+/* Progress dots */
 .tutorial-game-overlay .h-1 {
   border-radius: 999px;
   transition: background-color 200ms ease;
 }
 
 /* Button hover effects */
-.tutorial-game-overlay button:not(:disabled):hover {
+.tutorial-tooltip button:not(:disabled):hover {
   transform: translateY(-1px);
 }
 
-.tutorial-game-overlay button:not(:disabled):active {
+.tutorial-tooltip button:not(:disabled):active {
   transform: translateY(0);
 }
 
@@ -54,7 +51,7 @@
   }
 }
 
-.tutorial-game-overlay > div[style*="left"] {
+.tutorial-tooltip {
   animation: tutorial-tooltip-enter 300ms ease-out;
 }
 
@@ -65,7 +62,8 @@
 
 /* Highlight pulse effect */
 @keyframes tutorial-highlight-pulse {
-  0%, 100% {
+  0%,
+  100% {
     stroke-opacity: 0.8;
     filter: drop-shadow(0 0 8px oklch(0.74 0.09 80 / 0.4));
   }
@@ -81,39 +79,9 @@
 
 /* Mobile optimization */
 @media (max-width: 640px) {
-  .tutorial-game-overlay > div[style*="left"] {
+  .tutorial-tooltip {
     width: calc(100vw - 32px) !important;
     left: 16px !important;
     max-width: none;
   }
-}
-
-/* Prevent text selection in tutorial overlay */
-.tutorial-game-overlay {
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-}
-
-/* Ensure buttons remain clickable */
-.tutorial-game-overlay button {
-  pointer-events: auto;
-  cursor: pointer;
-}
-
-/* Loading state for dynamic elements */
-.tutorial-game-overlay[data-measuring="true"] svg rect[stroke] {
-  animation: none;
-  stroke-dasharray: 4 4;
-  stroke-dashoffset: 0;
-}
-
-@keyframes tutorial-dash {
-  to {
-    stroke-dashoffset: -8;
-  }
-}
-
-.tutorial-game-overlay[data-measuring="true"] svg rect[stroke] {
-  animation: tutorial-dash 400ms linear infinite;
 }

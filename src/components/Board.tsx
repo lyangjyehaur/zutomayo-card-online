@@ -57,6 +57,8 @@ type Props = BoardProps<GameState> & {
   opponentLabel?: string;
   // 我方顯示名稱 override（如 AI 對戰時傳入「玩家」），未傳則用 player.zero i18n key。
   selfLabel?: string;
+  // 教學模式：隱藏 janken/mulligan 浮層，等教學進度到了才顯示
+  hideSetupOverlay?: boolean;
 };
 
 type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
@@ -655,7 +657,7 @@ function GameNoticeOverlay({ G, me }: { G: GameState; me?: PlayerIndex }) {
   );
 }
 
-function JankenScreen({ G, moves, playerID }: Props) {
+function JankenScreen({ G, moves, playerID, floating = false }: Props & { floating?: boolean }) {
   const me = Number(playerID ?? '0') as PlayerIndex;
   const choice = G.jankenChoices[me];
   const choices: { value: JankenChoice; mark: string }[] = [
@@ -665,11 +667,22 @@ function JankenScreen({ G, moves, playerID }: Props) {
   ];
 
   return (
-    <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
-      </div>
-      <div className="relative z-10 w-full max-w-lg rounded-sm bg-lacquer p-6 text-center ring-1 ring-bone/10">
+    <div
+      className={`${
+        floating
+          ? 'absolute inset-0 z-40 flex items-center justify-center bg-lacquer-deep/80 backdrop-blur-sm'
+          : 'relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep'
+      } px-4 font-sans text-bone`}
+    >
+      {!floating && (
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
+        </div>
+      )}
+      <div
+        className="relative z-10 w-full max-w-lg rounded-sm bg-lacquer p-6 text-center ring-1 ring-bone/10"
+        data-tut="janken-panel"
+      >
         <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('board.janken')}</div>
         <h2 className="mt-3 font-display text-3xl italic">{t('board.jankenHint')}</h2>
         {choice ? (
@@ -705,8 +718,10 @@ function MulliganScreen({
   moves,
   playerID,
   onMulliganFeedback,
+  floating = false,
 }: Props & {
   onMulliganFeedback: (redrawCount: number) => void;
+  floating?: boolean;
 }) {
   const me = Number(playerID ?? '0') as PlayerIndex;
   const [selected, setSelected] = useState<number[]>([]);
@@ -717,11 +732,22 @@ function MulliganScreen({
     );
 
   return (
-    <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep px-6 font-sans text-bone">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
-      </div>
-      <div className="relative z-10 flex w-full max-w-5xl flex-col items-center rounded-sm bg-lacquer p-6 ring-1 ring-bone/10">
+    <div
+      className={`${
+        floating
+          ? 'absolute inset-0 z-40 flex items-center justify-center bg-lacquer-deep/80 backdrop-blur-sm'
+          : 'relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep'
+      } px-6 font-sans text-bone`}
+    >
+      {!floating && (
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
+        </div>
+      )}
+      <div
+        className="relative z-10 flex w-full max-w-5xl flex-col items-center rounded-sm bg-lacquer p-6 ring-1 ring-bone/10"
+        data-tut="mulligan-panel"
+      >
         <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('board.mulligan')}</div>
         <h2 className="mt-3 text-center font-display text-3xl italic">{t('board.mulliganHint')}</h2>
         <div className="mt-6 flex w-full justify-center gap-3 overflow-x-auto pb-4">
@@ -2030,7 +2056,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                 <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('player.opponent')}</div>
                 <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
               </div>
-              <div className="relative w-56 sm:w-72">
+              <div className="relative w-56 sm:w-72" data-tut="opponent-hp">
                 <div className="relative h-1 w-full bg-bone/10">
                   <div className="absolute inset-y-0 left-0 bg-vermilion" style={{ width: `${opponent.hp}%` }} />
                 </div>
@@ -2144,7 +2170,10 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
           </div>
 
           {/* Chronos + 戰鬥區 */}
-          <div className="battle-perspective-stage battlefield-depth-row battlefield-depth-mid my-2 flex min-h-[10rem] items-center justify-center lg:flex-1 lg:min-h-0">
+          <div
+            className="battle-perspective-stage battlefield-depth-row battlefield-depth-mid my-2 flex min-h-[10rem] items-center justify-center lg:flex-1 lg:min-h-0"
+            data-tut="central-arena"
+          >
             <FieldZone
               label={t('board.battleZone')}
               shortLabel={t('board.battleZoneShort')}
@@ -2181,7 +2210,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
             {/* 玩家設置區 + 充能/牌組 */}
             <div className="battlefield-depth-row battlefield-depth-near flex max-w-full items-end gap-2 overflow-x-auto pb-1 lg:gap-3">
               {/* 充能區 — 左邊 */}
-              <div className="flex flex-col items-center gap-1">
+              <div className="flex flex-col items-center gap-1" data-tut="player-power">
                 {me.powerCharger.length > 0 ? (
                   <div className="relative flex size-[88px] items-end justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
                     {me.powerCharger.slice(-3).map((card, i) => {
@@ -2215,34 +2244,36 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                 )}
                 <span className="font-mono text-[9px] text-bone/30">⚡ {t('board.powerCharger')}</span>
               </div>
-              <Slot
-                card={me.setZoneA}
-                label="A"
-                size="small"
-                owner={meIndex}
-                onFocusCard={setFocusedCard}
-                onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
-              />
-              <Slot
-                card={me.setZoneB}
-                label="B"
-                size="small"
-                owner={meIndex}
-                onFocusCard={setFocusedCard}
-                onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
-              />
-              <Slot
-                card={me.setZoneC}
-                label="C"
-                size="small"
-                owner={meIndex}
-                onFocusCard={setFocusedCard}
-                onClick={
-                  wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex]
-                    ? () => moves.undoSetCard('C')
-                    : undefined
-                }
-              />
+              <div className="flex gap-1.5 lg:gap-2" data-tut="player-set-zones">
+                <Slot
+                  card={me.setZoneA}
+                  label="A"
+                  size="small"
+                  owner={meIndex}
+                  onFocusCard={setFocusedCard}
+                  onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
+                />
+                <Slot
+                  card={me.setZoneB}
+                  label="B"
+                  size="small"
+                  owner={meIndex}
+                  onFocusCard={setFocusedCard}
+                  onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
+                />
+                <Slot
+                  card={me.setZoneC}
+                  label="C"
+                  size="small"
+                  owner={meIndex}
+                  onFocusCard={setFocusedCard}
+                  onClick={
+                    wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex]
+                      ? () => moves.undoSetCard('C')
+                      : undefined
+                  }
+                />
+              </div>
               {/* 牌組 — 右邊 — 根據數量堆疊 */}
               <div className="flex flex-col items-center gap-1">
                 <div className="relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
@@ -2261,7 +2292,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                 <span className="font-mono text-[9px] text-bone/30">🃏</span>
               </div>
               {/* 深淵 */}
-              <div className="flex flex-col items-center gap-1">
+              <div className="flex flex-col items-center gap-1" data-tut="player-abyss">
                 <div className="flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
                   <span className="font-mono text-sm text-bone/30">🕳️ {me.abyss.length}</span>
                 </div>
@@ -2269,9 +2300,12 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               </div>
             </div>
             {/* 玩家資訊列 — 照搬 demo 底部排列 */}
-            <div className="flex w-full flex-col items-stretch justify-between gap-3 px-2 lg:flex-row lg:items-end">
+            <div
+              className="flex w-full flex-col items-stretch justify-between gap-3 px-2 lg:flex-row lg:items-end"
+              data-tut="player-actions"
+            >
               {/* 左：LP bar */}
-              <div className="relative w-full lg:w-72">
+              <div className="relative w-full lg:w-72" data-tut="player-hp">
                 <div className="relative h-1 w-full bg-bone/10">
                   <div className="absolute inset-y-0 left-0 bg-gold" style={{ width: `${me.hp}%` }} />
                 </div>
@@ -2317,6 +2351,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                   <button
                     className="flex-1 bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 lg:flex-none"
                     type="button"
+                    data-tut="confirm-set"
                     disabled={!canConfirm}
                     onClick={() => {
                       showTransientPhaseMessage({ title: t('board.setConfirmed'), tone: 'neutral' });
@@ -2625,12 +2660,22 @@ export function Board(props: Props) {
     </div>
   );
 
-  if (props.G.step === 'janken') return renderWithSetupFeedback(<JankenScreen {...props} />);
-  if (props.G.step === 'mulligan') {
-    return renderWithSetupFeedback(<MulliganScreen {...props} onMulliganFeedback={showMulliganFeedback} />);
-  }
   if (props.G.step === 'gameOver' && !gameOverDelayed) {
     return <GameOverScreen {...props} matchStartedAt={matchStartedAt.current} />;
   }
-  return renderWithSetupFeedback(<BattleBoard {...props} />);
+  // janken/mulligan 階段也渲染 BattleBoard 場地，操作面板作為浮層疊加
+  // 教學模式時，若 hideSetupOverlay=true 則隱藏浮層（等教學進度到了才顯示）
+  const setupOverlay = props.hideSetupOverlay
+    ? null
+    : props.G.step === 'janken'
+      ? <JankenScreen {...props} floating />
+      : props.G.step === 'mulligan'
+        ? <MulliganScreen {...props} onMulliganFeedback={showMulliganFeedback} floating />
+        : null;
+  return renderWithSetupFeedback(
+    <>
+      <BattleBoard {...props} />
+      {setupOverlay}
+    </>,
+  );
 }

@@ -3,8 +3,9 @@ import type { TranslationKey } from './zh-TW';
 export const ja: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜と白昼が交差するオンライン対戦カードゲーム',
-    'app.footerAlpha': 'Alpha 開発初期段階 · フィードバックページでご意見やアイデアをお寄せください',
-  'app.footerCopyright': 'Card assets © zutomayocard.net',
+  'app.footerAlpha': 'Alpha 開発初期段階 · フィードバックページでご意見やアイデアをお寄せください',
+  'app.footerCopyright': '非公式ファン作品 · カード画像の権利は ',
+  'app.footerCopyrightSuffix': ' に帰属します',
 
   'intro.deckTitle': 'ZUTOMAYO CARD へようこそ',
   'intro.deckDescription':
@@ -535,6 +536,7 @@ export const ja: Record<TranslationKey, string> = {
 
   'tutorial.title': 'チュートリアル',
   'tutorial.skip': 'スキップ',
+  'tutorial.actionHint': '指示に従って操作してください',
   'tutorial.startPractice': 'CPU練習を開始',
   'tutorial.prev': '前へ',
   'tutorial.stepIndicator': 'ステップ',
@@ -555,7 +557,7 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.stepCatchupBody':
     '前ターンの敗者は2枚、勝者は通常1枚だけカードを出せます。これによりゲーム展開が拮抗します。',
   'tutorial.stepJankenTitle': 'じゃんけんで夜側決定',
-  'tutorial.stepJankenBody': 'じゃんけんで夜側プレイヤーを決めます。夜側は最初のターンに主導権を持ちます。',
+  'tutorial.stepJankenBody': 'じゃんけんで夜側プレイヤーを決めます。夜側は夜時間に先に効果を処理し、昼側は昼時間に先に効果を処理します。',
   'tutorial.stepMulliganTitle': '手札引き直し',
   'tutorial.stepMulliganBody': '序盤に任意の手札を1回引き直せます。戦闘前に初期手札を整えましょう。',
   'tutorial.stepEffectOrderTitle': '効果順序の選択',
@@ -570,43 +572,104 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.game.intro.title': 'ZUTOMAYO CARDへようこそ',
   'tutorial.game.intro.body': 'これから実際の対戦を通じて、ゲームの全ての仕組みを順番に案内します。',
   'tutorial.game.janken.intro.title': 'じゃんけんで先攻・後攻を決める',
-  'tutorial.game.janken.intro.body': 'ゲーム開始前に、じゃんけんで誰が先に行動するかを決めます。勝者は夜側（先攻）か昼側（後攻）を選べます。',
+  'tutorial.game.janken.intro.body':
+    'ゲーム開始前、じゃんけんで夜側プレイヤーを決めます。勝者が夜側、敗者が昼側となります。',
   'tutorial.game.janken.action.title': '手を選択してください',
-  'tutorial.game.janken.action.body': 'グー、チョキ、パーをクリックして選びます。じゃんけんの結果があなたの初期位置を決定します。',
+  'tutorial.game.janken.action.body':
+    'グー、チョキ、パーをクリックして選びます。じゃんけんの結果があなたの初期位置を決定します。',
   'tutorial.game.janken.result.title': 'じゃんけんの結果',
-  'tutorial.game.janken.result.body': '結果が出ました！夜側プレイヤーは最初のターンに主導権を持ちますが、昼側プレイヤーはエネルギー補償を受けます。',
+  'tutorial.game.janken.result.body':
+    '結果が出ました！夜側プレイヤーは夜時間に先に効果を処理し、昼側プレイヤーは昼時間に先に効果を処理します。',
   'tutorial.game.mulligan.intro.title': '手札引き直しフェーズ',
-  'tutorial.game.mulligan.intro.body': 'ゲーム開始時、任意の手札を一度だけ引き直すことができます。現在の手札に満足していれば、そのまま保持できます。',
+  'tutorial.game.mulligan.intro.body':
+    'ゲーム開始時、任意の手札を一度だけ引き直すことができます。現在の手札に満足していれば、そのまま保持できます。',
   'tutorial.game.mulligan.action.title': '引き直すカードを選択',
-  'tutorial.game.mulligan.action.body': '引き直したいカードをクリックし、選んだら「確認」を押します。引き直さない場合は「手札を保持」を直接押してください。',
+  'tutorial.game.mulligan.action.body':
+    '引き直したいカードをクリックし、選んだら「確認」を押します。引き直さない場合は「手札を保持」を直接押してください。',
   'tutorial.game.initialSet.intro.title': '初期配置フェーズ',
-  'tutorial.game.initialSet.intro.body': 'さあ、カードを配置しましょう！最初のターンでは、手札から1枚を選んでセットゾーンに配置し、戦闘に備えます。',
+  'tutorial.game.initialSet.intro.body':
+    'さあ、カードを配置しましょう！最初のターンでは、手札から1枚を選んでセットゾーンに配置し、戦闘に備えます。',
   'tutorial.game.initialSet.action.title': 'カードを1枚配置',
-  'tutorial.game.initialSet.action.body': '手札から1枚カードを選び、あなたのセットゾーンに配置します。選んだら「確認」を押してください。',
-  'tutorial.game.zones.title': 'フィールドゾーンの説明',
-  'tutorial.game.zones.body': '戦場は4つの主要エリアに分かれています：手札（あなたのカード）、バトルゾーン（現在のキャラクター）、セットゾーン（出すカードの準備）、アビス（捨て札エリア）。',
+  'tutorial.game.initialSet.action.body':
+    '手札から1枚カードを選び、あなたのセットゾーンに配置します。選んだら「確認」を押してください。',
+  'tutorial.game.zone.battle.title': 'バトルゾーン',
+  'tutorial.game.zone.battle.body':
+    '中央のバトルゾーンは現在のキャラクターが対決する場所です。双方がキャラクターカードを1枚ずつ置き、攻撃力が高い方が勝利して相手にダメージを与えます。',
+  'tutorial.game.zone.hand.title': '手札',
+  'tutorial.game.zone.hand.body':
+    'あなたの手札です。カードをクリックしてバトルゾーンまたはセットゾーンに配置し、カード効果で相手を倒しましょう。',
+  'tutorial.game.zone.set.title': 'セットゾーン',
+  'tutorial.game.zone.set.body':
+    'セットゾーンは次の戦闘に向けてキャラクターを準備する場所です。ここに置いたカードは次のターンにバトルゾーンに入ります。',
+  'tutorial.game.zone.abyss.title': 'アビス',
+  'tutorial.game.zone.abyss.body':
+    'アビスは捨て札エリアです。エネルギーを生成しないカードは場を離れるとここに入り、一部のカード効果はアビスと相互作用する場合があります。',
   'tutorial.game.chronos.title': 'Chronos時計システム',
-  'tutorial.game.chronos.body': '中央のChronosは現在の時間帯を示します。各カードの「時計」値が時計を進め、夜か昼かがキャラクターの攻撃力に影響します。',
+  'tutorial.game.chronos.body':
+    '中央のChronosは現在の時間帯を示します。各カードの「時計」値が時計を進め、夜か昼かがキャラクターの攻撃力に影響します。',
   'tutorial.game.resources.title': 'エネルギーシステム',
-  'tutorial.game.resources.body': '一部のカードは場を離れるとエネルギーゾーンに入り、蓄積されたエネルギーはカードのコスト支払いに使えます。エネルギーを生まないカードはアビスに落ちます。',
+  'tutorial.game.resources.body':
+    '一部のカードは場を離れるとエネルギーゾーンに入り、蓄積されたエネルギーはカードのコスト支払いに使えます。エネルギーを生まないカードはアビスに落ちます。',
   'tutorial.game.catchup.title': '追いつきメカニズム',
-  'tutorial.game.catchup.body': '前ターンの戦闘で敗北した側は、次のターンで2枚のカードを配置できます；勝った側は通常1枚しか配置できません。これにより双方が拮抗し、一方的な展開を避けます。',
+  'tutorial.game.catchup.body':
+    '前ターンの戦闘で敗北した側は、次のターンで2枚のカードを配置できます；勝った側は通常1枚しか配置できません。これにより双方が拮抗し、一方的な展開を避けます。',
+  'tutorial.game.catchup.loser.title': '追趕機制：あなたの反撃',
+  'tutorial.game.catchup.loser.body':
+    '前ターンの戦闘に敗れたため、今ターンはカードを2枚配置して追い上げることができます。この機会を活かして戦略を調整しましょう。',
+  'tutorial.game.catchup.winner.title': '追趕機制：相手の反撃',
+  'tutorial.game.catchup.winner.body':
+    '前ターンの戦闘に勝利したため、相手は今ターン2枚配置して追い上げできます。あなたは1枚しか配置できません。',
+  'tutorial.game.catchup.draw.title': '追趕機制：引き分け',
+  'tutorial.game.catchup.draw.body':
+    '前ターンは引き分けで、追趕機制は発動しません。双方とも今ターンは1枚しか配置できません。',
   'tutorial.game.victory.title': '勝利条件',
-  'tutorial.game.victory.body': 'どちらかのHPが0になるか、カードを出し続けられなくなったらゲーム終了です。カード効果を適切に使い、相手のHPを減らせば勝利できます。',
+  'tutorial.game.victory.body':
+    'どちらかのHPが0になるか、カードを出し続けられなくなったらゲーム終了です。カード効果を適切に使い、相手のHPを減らせば勝利できます。',
   'tutorial.game.turnSet.intro.title': 'ターン配置フェーズ',
-  'tutorial.game.turnSet.intro.body': '新しいターンが始まりました！追いつきメカニズムにより、1枚または2枚のカードを配置できます。',
+  'tutorial.game.turnSet.intro.body':
+    '新しいターンが始まりました！追いつきメカニズムにより、1枚または2枚のカードを配置できます。',
+  'tutorial.game.turnSet.intro.loser.title': '配置フェーズ：追い上げの好機',
+  'tutorial.game.turnSet.intro.loser.body':
+    '新しいターン開始！前ターンの敗者として、2枚配置して戦況を覆せます。',
+  'tutorial.game.turnSet.intro.winner.title': '配置フェーズ：優勢維持',
+  'tutorial.game.turnSet.intro.winner.body':
+    '新しいターン開始！前ターンの勝者として、今ターンは1枚しか配置できません。相手は2枚配置できます。',
+  'tutorial.game.turnSet.intro.draw.title': '配置フェーズ',
+  'tutorial.game.turnSet.intro.draw.body':
+    '新しいターン開始！前ターンは引き分けのため、双方1枚ずつ配置します。',
   'tutorial.game.turnSet.action.title': '今ターンのカードを配置',
-  'tutorial.game.turnSet.action.body': '手札からカードを選んでセットゾーンに配置します。AゾーンまたはBゾーンに配置でき、2つのゾーンは別々に解決されます。',
+  'tutorial.game.turnSet.action.body':
+    '手札からカードを選んでセットゾーンに配置します。AゾーンまたはBゾーンに配置でき、2つのゾーンは別々に解決されます。',
+  'tutorial.game.turnSet.action.loser.title': '2枚配置して追い上げ',
+  'tutorial.game.turnSet.action.loser.body':
+    '手札から設置エリアに配置します。敗者は2枚配置可能。A区とB区に分けて配置し攻撃を分散させましょう。',
+  'tutorial.game.turnSet.action.winner.title': '1枚配置',
+  'tutorial.game.turnSet.action.winner.body':
+    '手札から1枚を設置エリアに配置します。1枚しか配置できないため、A区かB区を慎重に選んでください。',
+  'tutorial.game.turnSet.action.draw.title': '今ターンのカードを配置',
+  'tutorial.game.turnSet.action.draw.body':
+    '手札から設置エリアに配置します。A区またはB区に配置でき、2つの区は別々に解決されます。',
   'tutorial.game.effectOrder.intro.title': '効果順序フェーズ',
-  'tutorial.game.effectOrder.intro.body': '複数の効果カードが同時に発動した場合、解決順序を選べます。順序を巧みに配置することで戦況を変えられます。',
+  'tutorial.game.effectOrder.intro.body':
+    '複数の効果カードが同時に発動した場合、解決順序を選べます。順序を巧みに配置することで戦況を変えられます。',
   'tutorial.game.effectOrder.action.title': '効果解決順序を選択',
-  'tutorial.game.effectOrder.action.body': '効果カードをクリックして解決順序を選びます。先に解決される効果が先に発動し、後続の効果の結果に影響を与える可能性があります。',
+  'tutorial.game.effectOrder.action.body':
+    '効果カードをクリックして解決順序を選びます。先に解決される効果が先に発動し、後続の効果の結果に影響を与える可能性があります。',
+  'tutorial.game.pendingChoice.intro.title': 'カード指定効果',
+  'tutorial.game.pendingChoice.intro.body':
+    '一部のカード効果は、手札・深淵・デッキの中から対象カードを指定しないと解決を完了できません。',
+  'tutorial.game.pendingChoice.action.title': '対象カードを選ぶ',
+  'tutorial.game.pendingChoice.action.body':
+    'リスト内のカードをクリックして選択します。必要枚数を選んだら「選択を送信」を押して解決を完了します。必要枚数はヒントで確認できます。',
   'tutorial.game.battle.intro.title': '戦闘解決',
-  'tutorial.game.battle.intro.body': '双方のカードが公開されると、戦闘解決に入ります。キャラクターカードは互いに攻撃し、エンチャントカードは効果を発動し、最終的にHP変化を計算します。',
+  'tutorial.game.battle.intro.body':
+    '双方のカードが公開されると、戦闘解決に入ります。キャラクターカードは互いに攻撃し、エンチャントカードは効果を発動し、最終的にHP変化を計算します。',
   'tutorial.game.battle.result.title': '戦闘結果',
-  'tutorial.game.battle.result.body': '今ターンの戦闘が終了しました。HP変化とフィールド状況を観察し、次のターンの戦略を準備しましょう。',
+  'tutorial.game.battle.result.body':
+    '今ターンの戦闘が終了しました。HP変化とフィールド状況を観察し、次のターンの戦略を準備しましょう。',
   'tutorial.game.complete.title': 'チュートリアル完了おめでとうございます！',
-  'tutorial.game.complete.body': 'ZUTOMAYO CARDの全ての基本メカニズムを習得しました。さあ、AIに挑戦するか、他のプレイヤーと対戦しましょう！',
+  'tutorial.game.complete.body':
+    'ZUTOMAYO CARDの全ての基本メカニズムを習得しました。さあ、AIに挑戦するか、他のプレイヤーと対戦しましょう！',
 
   'lobby.tutorial': 'First Ritual · 新手チュートリアル',
   'feedback.title': 'フィードバック',

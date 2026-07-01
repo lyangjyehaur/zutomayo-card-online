@@ -3,8 +3,9 @@ import type { TranslationKey } from './zh-TW';
 export const en: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': 'Online Card Battle Where Night and Day Collide',
-    'app.footerAlpha': 'Alpha early development stage · Visit our feedback page to share ideas and suggestions',
-  'app.footerCopyright': 'Card assets © zutomayocard.net',
+  'app.footerAlpha': 'Alpha early development stage · Visit our feedback page to share ideas and suggestions',
+  'app.footerCopyright': 'Unofficial fan project · Card image rights belong to ',
+  'app.footerCopyrightSuffix': '',
 
   'intro.deckTitle': 'Welcome to ZUTOMAYO CARD',
   'intro.deckDescription':
@@ -535,6 +536,7 @@ export const en: Record<TranslationKey, string> = {
 
   'tutorial.title': 'Tutorial',
   'tutorial.skip': 'Skip Tutorial',
+  'tutorial.actionHint': 'Follow the prompt',
   'tutorial.startPractice': 'Start AI Practice',
   'tutorial.prev': 'Previous',
   'tutorial.stepIndicator': 'Step',
@@ -557,7 +559,7 @@ export const en: Record<TranslationKey, string> = {
     'The loser of the last battle can set 2 cards next turn, while the winner sets 1. This keeps the game competitive.',
   'tutorial.stepJankenTitle': 'Rock-Paper-Scissors for Night Side',
   'tutorial.stepJankenBody':
-    'A rock-paper-scissors game decides who becomes the Night-side player, who gets the initiative in the first turn.',
+    'A rock-paper-scissors game decides who becomes the Night-side player. The Night-side player resolves effects first during Night phases; the Day-side player resolves effects first during Day phases.',
   'tutorial.stepMulliganTitle': 'Mulligan',
   'tutorial.stepMulliganBody':
     'At the start, you may redraw any of your hand cards once to shape your opening hand before battle.',
@@ -573,43 +575,104 @@ export const en: Record<TranslationKey, string> = {
   'tutorial.game.intro.title': 'Welcome to ZUTOMAYO CARD',
   'tutorial.game.intro.body': 'This tutorial will guide you through all game mechanics via a real match against AI.',
   'tutorial.game.janken.intro.title': 'Rock-Paper-Scissors Determines Turn Order',
-  'tutorial.game.janken.intro.body': 'Before the game starts, a rock-paper-scissors game decides who acts first. The winner chooses Night side (first) or Day side (second).',
+  'tutorial.game.janken.intro.body':
+    'Before the game begins, both players play rock-paper-scissors to decide the Night-side player. The winner becomes the Night-side; the loser becomes the Day-side.',
   'tutorial.game.janken.action.title': 'Choose Your Hand',
-  'tutorial.game.janken.action.body': 'Click to select rock, paper, or scissors. The result will determine your starting position.',
+  'tutorial.game.janken.action.body':
+    'Click to select rock, paper, or scissors. The result will determine your starting position.',
   'tutorial.game.janken.result.title': 'Janken Result',
-  'tutorial.game.janken.result.body': 'The result is in! The Night-side player has initiative in the first turn, but the Day-side player receives energy compensation.',
+  'tutorial.game.janken.result.body':
+    'The result is in! The Night-side player resolves effects first during Night phases; the Day-side player resolves effects first during Day phases.',
   'tutorial.game.mulligan.intro.title': 'Mulligan Phase',
-  'tutorial.game.mulligan.intro.body': 'At the start, you can redraw any cards from your hand once. If you are satisfied with your current hand, you can keep it as is.',
+  'tutorial.game.mulligan.intro.body':
+    'At the start, you can redraw any cards from your hand once. If you are satisfied with your current hand, you can keep it as is.',
   'tutorial.game.mulligan.action.title': 'Select Cards to Redraw',
-  'tutorial.game.mulligan.action.body': 'Click the cards you want to redraw, then press "Confirm". If you do not want to redraw, press "Keep Hand" directly.',
+  'tutorial.game.mulligan.action.body':
+    'Click the cards you want to redraw, then press "Confirm". If you do not want to redraw, press "Keep Hand" directly.',
   'tutorial.game.initialSet.intro.title': 'Initial Set Phase',
-  'tutorial.game.initialSet.intro.body': 'Now let\'s place cards! In the first turn, you can select one card from your hand to place in your set zone, preparing for battle.',
+  'tutorial.game.initialSet.intro.body':
+    "Now let's place cards! In the first turn, you can select one card from your hand to place in your set zone, preparing for battle.",
   'tutorial.game.initialSet.action.title': 'Place One Card',
-  'tutorial.game.initialSet.action.body': 'Select one card from your hand and place it in your set zone. Press "Confirm" when ready.',
-  'tutorial.game.zones.title': 'Field Zones Explained',
-  'tutorial.game.zones.body': 'The battlefield has four main areas: Hand (your cards), Battle Zone (active character), Set Zone (preparing cards), and Abyss (discard pile).',
+  'tutorial.game.initialSet.action.body':
+    'Select one card from your hand and place it in your set zone. Press "Confirm" when ready.',
+  'tutorial.game.zone.battle.title': 'Battle Zone',
+  'tutorial.game.zone.battle.body':
+    'The central Battle Zone is where active characters clash. Each side places a character card here; the higher attack power wins and deals damage to the opponent.',
+  'tutorial.game.zone.hand.title': 'Hand',
+  'tutorial.game.zone.hand.body':
+    'Your hand of cards. Click a card to place it into the Battle Zone or Set Zone, and use card effects to defeat your opponent.',
+  'tutorial.game.zone.set.title': 'Set Zone',
+  'tutorial.game.zone.set.body':
+    'The Set Zone is used to prepare characters for upcoming battles. Cards placed here will enter the Battle Zone next turn.',
+  'tutorial.game.zone.abyss.title': 'Abyss',
+  'tutorial.game.zone.abyss.body':
+    "The Abyss is the discard pile. Cards that don't generate power end up here when they leave the field; some card effects may interact with the Abyss.",
   'tutorial.game.chronos.title': 'Chronos Clock System',
-  'tutorial.game.chronos.body': 'The central Chronos shows the current time period. Each card\'s "clock" value advances the clock, and Night or Day affects character attack power.',
+  'tutorial.game.chronos.body':
+    'The central Chronos shows the current time period. Each card\'s "clock" value advances the clock, and Night or Day affects character attack power.',
   'tutorial.game.resources.title': 'Energy System',
-  'tutorial.game.resources.body': 'Some cards enter the Power Charger when leaving the field. Accumulated energy can be used to pay card costs. Cards that don\'t generate power go to the Abyss.',
+  'tutorial.game.resources.body':
+    "Some cards enter the Power Charger when leaving the field. Accumulated energy can be used to pay card costs. Cards that don't generate power go to the Abyss.",
   'tutorial.game.catchup.title': 'Catch-Up Mechanic',
-  'tutorial.game.catchup.body': 'The side that lost the last battle can place two cards next turn; the winner can usually only place one. This keeps both sides competitive and prevents one-sided games.',
+  'tutorial.game.catchup.body':
+    'The side that lost the last battle can place two cards next turn; the winner can usually only place one. This keeps both sides competitive and prevents one-sided games.',
+  'tutorial.game.catchup.loser.title': 'Catch-Up: Your Comeback',
+  'tutorial.game.catchup.loser.body':
+    'You lost last turn\'s battle, so you may set two cards this turn to catch up. Use this chance to adjust your strategy.',
+  'tutorial.game.catchup.winner.title': 'Catch-Up: Opponent\'s Comeback',
+  'tutorial.game.catchup.winner.body':
+    'You won last turn\'s battle, so your opponent may set two cards this turn to catch up. You can only set one.',
+  'tutorial.game.catchup.draw.title': 'Catch-Up: Draw',
+  'tutorial.game.catchup.draw.body':
+    'Last turn was a draw, so no catch-up triggers. Both players may set only one card this turn.',
   'tutorial.game.victory.title': 'Victory Condition',
-  'tutorial.game.victory.body': 'When either player\'s HP reaches 0, or they cannot continue playing cards, the game ends. Use card effects wisely to reduce your opponent\'s HP and win.',
+  'tutorial.game.victory.body':
+    "When either player's HP reaches 0, or they cannot continue playing cards, the game ends. Use card effects wisely to reduce your opponent's HP and win.",
   'tutorial.game.turnSet.intro.title': 'Turn Set Phase',
-  'tutorial.game.turnSet.intro.body': 'A new turn begins! Based on the catch-up mechanic, you can place one or two cards.',
+  'tutorial.game.turnSet.intro.body':
+    'A new turn begins! Based on the catch-up mechanic, you can place one or two cards.',
+  'tutorial.game.turnSet.intro.loser.title': 'Set Phase: Catch-Up Chance',
+  'tutorial.game.turnSet.intro.loser.body':
+    'A new turn begins! As last turn\'s loser, you may set two cards to turn the tide.',
+  'tutorial.game.turnSet.intro.winner.title': 'Set Phase: Hold the Lead',
+  'tutorial.game.turnSet.intro.winner.body':
+    'A new turn begins! As last turn\'s winner, you may set only one card this turn; your opponent may set two.',
+  'tutorial.game.turnSet.intro.draw.title': 'Set Phase',
+  'tutorial.game.turnSet.intro.draw.body':
+    'A new turn begins! Last turn was a draw, so both players set one card this turn.',
   'tutorial.game.turnSet.action.title': 'Place Cards This Turn',
-  'tutorial.game.turnSet.action.body': 'Select cards from your hand to place in your set zone. You can place them in Zone A or Zone B, and the two zones resolve separately.',
+  'tutorial.game.turnSet.action.body':
+    'Select cards from your hand to place in your set zone. You can place them in Zone A or Zone B, and the two zones resolve separately.',
+  'tutorial.game.turnSet.action.loser.title': 'Set Two Cards to Catch Up',
+  'tutorial.game.turnSet.action.loser.body':
+    'Choose cards from your hand into the set zone. As the loser you may set two; consider placing one in Zone A and one in Zone B to spread attacks.',
+  'tutorial.game.turnSet.action.winner.title': 'Set One Card',
+  'tutorial.game.turnSet.action.winner.body':
+    'Choose one card from your hand into the set zone. You may set only one, so choose Zone A or B carefully.',
+  'tutorial.game.turnSet.action.draw.title': 'Set This Turn\'s Card',
+  'tutorial.game.turnSet.action.draw.body':
+    'Choose cards from your hand into the set zone. You may place into Zone A or B; the two zones resolve separately.',
   'tutorial.game.effectOrder.intro.title': 'Effect Order Phase',
-  'tutorial.game.effectOrder.intro.body': 'When multiple effect cards trigger simultaneously, you can choose the resolution order. Clever arrangement can turn the tide of battle.',
+  'tutorial.game.effectOrder.intro.body':
+    'When multiple effect cards trigger simultaneously, you can choose the resolution order. Clever arrangement can turn the tide of battle.',
   'tutorial.game.effectOrder.action.title': 'Choose Effect Resolution Order',
-  'tutorial.game.effectOrder.action.body': 'Click effect cards to choose the resolution order. Effects resolved first take effect first and may influence subsequent effect results.',
+  'tutorial.game.effectOrder.action.body':
+    'Click effect cards to choose the resolution order. Effects resolved first take effect first and may influence subsequent effect results.',
+  'tutorial.game.pendingChoice.intro.title': 'Card Selection Effects',
+  'tutorial.game.pendingChoice.intro.body':
+    'Some card effects require you to designate a card from your hand, abyss, or deck as a target before resolution can complete.',
+  'tutorial.game.pendingChoice.action.title': 'Choose the Target Card',
+  'tutorial.game.pendingChoice.action.body':
+    'Click cards in the list to select them. Once you have chosen enough, press Submit to complete resolution. The prompt shows how many are needed.',
   'tutorial.game.battle.intro.title': 'Battle Resolution',
-  'tutorial.game.battle.intro.body': 'Once both players\' cards are revealed, battle resolution begins. Character cards attack each other, enchant cards trigger effects, and finally HP changes are calculated.',
+  'tutorial.game.battle.intro.body':
+    "Once both players' cards are revealed, battle resolution begins. Character cards attack each other, enchant cards trigger effects, and finally HP changes are calculated.",
   'tutorial.game.battle.result.title': 'Battle Result',
-  'tutorial.game.battle.result.body': 'This turn\'s battle has concluded. Observe the HP changes and field situation, then prepare your strategy for the next turn.',
+  'tutorial.game.battle.result.body':
+    "This turn's battle has concluded. Observe the HP changes and field situation, then prepare your strategy for the next turn.",
   'tutorial.game.complete.title': 'Congratulations on Completing the Tutorial!',
-  'tutorial.game.complete.body': 'You have mastered all the basic mechanics of ZUTOMAYO CARD. Now you can challenge the AI or battle other players!',
+  'tutorial.game.complete.body':
+    'You have mastered all the basic mechanics of ZUTOMAYO CARD. Now you can challenge the AI or battle other players!',
 
   'lobby.tutorial': 'First Ritual · Tutorial',
   'feedback.title': 'Feedback',

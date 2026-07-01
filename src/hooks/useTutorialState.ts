@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GameState } from '../game/types';
-import type { TutorialStep } from '../components/GameTutorialOverlay';
+import type { TutorialEntrySnapshot, TutorialStep } from '../components/GameTutorialOverlay';
 
 interface UseTutorialStateOptions {
   steps: TutorialStep[];
@@ -8,81 +8,94 @@ interface UseTutorialStateOptions {
   onComplete: () => void;
 }
 
-interface TutorialState {
-  currentStep: number;
-  userHasActed: boolean;
-  isWaitingForGame: boolean;
+function snapshot(G: GameState | null): TutorialEntrySnapshot | null {
+  if (!G) return null;
+  return {
+    step: G.step,
+    turnNumber: G.turnNumber,
+  };
 }
 
+/**
+ * 教學狀態引擎：以「完成條件」驅動推進。
+ * - 導覽步驟（無 completeWhen）：由用戶手動點 Next 推進。
+ * - 操作步驟（有 completeWhen）：偵測遊戲狀態變化，條件達成時自動推進。
+ * - 條件式步驟（有 skipWhen）：進入時若 skipWhen 為 true 則自動跳過。
+ *
+ * 進入每個步驟時記錄遊戲狀態快照（entry），供 completeWhen 比對前後變化。
+ */
 export function useTutorialState({ steps, gameState, onComplete }: UseTutorialStateOptions) {
-  const [state, setState] = useState<TutorialState>({
-    currentStep: 0,
-    userHasActed: false,
-    isWaitingForGame: false,
-  });
+  const [currentStep, setCurrentStep] = useState(0);
+  // 持續追蹤最新遊戲狀態，供步驟切換時立即取快照
+  const gameRef = useRef<GameState | null>(gameState);
+  // 進入當前步驟時的遊戲狀態快照
+  const entryRef = useRef<TutorialEntrySnapshot | null>(snapshot(gameState));
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const current = steps[state.currentStep];
-
-  // Auto-advance when game phase matches expected phase
   useEffect(() => {
-    if (!gameState || !current.waitForGamePhase) return;
+    gameRef.current = gameState;
+  }, [gameState]);
 
-    if (gameState.step === current.waitForGamePhase && !current.waitForUserAction) {
-      setState((prev) => ({ ...prev, isWaitingForGame: false }));
-      // Auto-advance after a short delay to let user see the transition
-      const timer = setTimeout(() => {
-        if (state.currentStep < steps.length - 1) {
-          setState((prev) => ({
-            currentStep: prev.currentStep + 1,
-            userHasActed: false,
-            isWaitingForGame: true,
-          }));
-        }
-      }, 1200);
-      return () => clearTimeout(timer);
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
-  }, [gameState?.step, current.waitForGamePhase, current.waitForUserAction, state.currentStep, steps.length]);
-
-  // Mark when waiting for specific game phase
-  useEffect(() => {
-    if (current.waitForGamePhase && gameState?.step !== current.waitForGamePhase) {
-      setState((prev) => ({ ...prev, isWaitingForGame: true }));
-    }
-  }, [current.waitForGamePhase, gameState?.step]);
-
-  const goNext = useCallback(() => {
-    if (state.currentStep >= steps.length - 1) {
-      onComplete();
-      return;
-    }
-
-    setState((prev) => ({
-      currentStep: prev.currentStep + 1,
-      userHasActed: false,
-      isWaitingForGame: !!steps[prev.currentStep + 1]?.waitForGamePhase,
-    }));
-  }, [state.currentStep, steps.length, steps, onComplete]);
-
-  const goPrev = useCallback(() => {
-    if (state.currentStep <= 0) return;
-
-    setState((prev) => ({
-      currentStep: prev.currentStep - 1,
-      userHasActed: false,
-      isWaitingForGame: !!steps[prev.currentStep - 1]?.waitForGamePhase,
-    }));
-  }, [state.currentStep, steps]);
-
-  const markUserAction = useCallback(() => {
-    setState((prev) => ({ ...prev, userHasActed: true }));
   }, []);
 
+  const advance = useCallback(() => {
+    clearTimer();
+    setCurrentStep((prev) => {
+      if (prev >= steps.length - 1) {
+        onComplete();
+        return prev;
+      }
+      // 切換步驟時立即以當下遊戲狀態建立新快照
+      entryRef.current = snapshot(gameRef.current);
+      return prev + 1;
+    });
+  }, [steps.length, onComplete, clearTimer]);
+
+  const current = steps[currentStep];
+
+  // 進入新步驟時：檢查 skipWhen（條件式步驟跳過）
+  useEffect(() => {
+    if (!current?.skipWhen) return;
+    const G = gameRef.current;
+    if (G && current.skipWhen(G)) {
+      timerRef.current = setTimeout(() => advance(), 120);
+      return () => clearTimer();
+    }
+    return undefined;
+  }, [currentStep, current, advance, clearTimer]);
+
+  // 偵測操作步驟完成條件
+  useEffect(() => {
+    if (!current?.completeWhen || !gameState) return;
+    if (current.completeWhen(gameState, entryRef.current)) {
+      // 短暫延遲讓用戶看到操作結果後再推進
+      timerRef.current = setTimeout(() => advance(), 700);
+      return () => clearTimer();
+    }
+    return undefined;
+  }, [gameState, currentStep, current, advance, clearTimer]);
+
+  const goNext = useCallback(() => {
+    advance();
+  }, [advance]);
+
+  const goPrev = useCallback(() => {
+    clearTimer();
+    setCurrentStep((prev) => {
+      const next = Math.max(0, prev - 1);
+      entryRef.current = snapshot(gameRef.current);
+      return next;
+    });
+  }, [clearTimer]);
+
   return {
-    currentStep: state.currentStep,
-    isWaitingForGame: state.isWaitingForGame,
-    userHasActed: state.userHasActed,
+    currentStep,
     goNext,
     goPrev,
-    markUserAction,
   };
 }

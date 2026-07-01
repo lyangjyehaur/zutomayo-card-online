@@ -37,12 +37,14 @@ export function useAIMoves(
   playerID: string,
   difficulty: AIDifficulty,
   tutorialMode?: boolean,
+  aiPaused?: boolean,
 ) {
   const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = playerID === '1' && !!ctx && !ctx.gameover;
 
   useEffect(() => {
-    if (!active || !G || G.step === 'gameOver') return;
+    // 教學導覽階段（aiPaused=true）暫停 AI，避免場地導覽時 AI 自動出拳/放置卡牌
+    if (!active || !G || G.step === 'gameOver' || aiPaused) return;
     // Tutorial mode: longer delays to give user time to read
     const baseDelay = difficulty === 'easy' ? 700 : difficulty === 'normal' ? 450 : 250;
     const delay = tutorialMode ? Math.max(baseDelay, 2000) : baseDelay;
@@ -93,7 +95,7 @@ export function useAIMoves(
     return () => {
       if (timeout.current) clearTimeout(timeout.current);
     };
-  }, [G, ctx, moves, active, difficulty, tutorialMode]);
+  }, [G, ctx, moves, active, difficulty, tutorialMode, aiPaused]);
 
   return active;
 }

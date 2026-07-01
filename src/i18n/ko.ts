@@ -3,8 +3,9 @@ import type { TranslationKey } from './zh-TW';
 export const ko: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '밤과 낮이 교차하는 온라인 카드 대전',
-    'app.footerAlpha': 'Alpha 초기 개발 단계 · 피드백 페이지에서 아이디어와 제안을 공유해 주세요',
-  'app.footerCopyright': 'Card assets © zutomayocard.net',
+  'app.footerAlpha': 'Alpha 초기 개발 단계 · 피드백 페이지에서 아이디어와 제안을 공유해 주세요',
+  'app.footerCopyright': '비공식 팬 프로젝트 · 카드 이미지 권리는 ',
+  'app.footerCopyrightSuffix': '에 있습니다',
 
   'intro.deckTitle': 'ZUTOMAYO CARD 에 오신 것을 환영합니다',
   'intro.deckDescription':
@@ -534,6 +535,7 @@ export const ko: Record<TranslationKey, string> = {
 
   'tutorial.title': '튜토리얼',
   'tutorial.skip': '튜토리얼 건너뛰기',
+  'tutorial.actionHint': '지시에 따라 조작하세요',
   'tutorial.startPractice': 'AI 연습 시작',
   'tutorial.prev': '이전',
   'tutorial.stepIndicator': '단계',
@@ -554,7 +556,7 @@ export const ko: Record<TranslationKey, string> = {
   'tutorial.stepCatchupBody':
     '지난 턴 패배자는 다음 턴에 2장을 낼 수 있고, 승자는 1장만 냅니다. 이로써 게임이 긴장감을 유지합니다.',
   'tutorial.stepJankenTitle': '가위바위보로 야간 결정',
-  'tutorial.stepJankenBody': '가위바위보로 야간 플레이어를 정합니다. 야간 측은 첫 턴에 주도권을 가집니다.',
+  'tutorial.stepJankenBody': '가위바위보로 야간 플레이어를 정합니다. 야간 측은 야간 시간대에 먼저 효과를 처리하고, 주간 측은 주간 시간대에 먼저 효과를 처리합니다.',
   'tutorial.stepMulliganTitle': '핸드 리드로우',
   'tutorial.stepMulliganBody': '시작 시 원하는 핸드를 한 번 다시 뽑을 수 있습니다. 전투 전에 시작 핸드를 다듬으세요.',
   'tutorial.stepEffectOrderTitle': '효과 순서 선택',
@@ -569,43 +571,103 @@ export const ko: Record<TranslationKey, string> = {
   'tutorial.game.intro.title': 'ZUTOMAYO CARD에 오신 것을 환영합니다',
   'tutorial.game.intro.body': '실제 AI 대전을 통해 게임의 모든 메커니즘을 단계별로 안내해 드립니다.',
   'tutorial.game.janken.intro.title': '가위바위보로 선후공 결정',
-  'tutorial.game.janken.intro.body': '게임 시작 전 가위바위보로 누가 먼저 행동할지 결정합니다. 승자는 야간 측(선공) 또는 주간 측(후공)을 선택할 수 있습니다.',
+  'tutorial.game.janken.intro.body':
+    '게임 시작 전, 가위바위보로 야간 플레이어를 정합니다. 승자가 야간 측, 패자가 주간 측이 됩니다.',
   'tutorial.game.janken.action.title': '손 모양을 선택하세요',
   'tutorial.game.janken.action.body': '가위, 바위, 보를 클릭하여 선택합니다. 결과가 당신의 시작 위치를 결정합니다.',
   'tutorial.game.janken.result.title': '가위바위보 결과',
-  'tutorial.game.janken.result.body': '결과가 나왔습니다! 야간 측 플레이어는 첫 턴에 주도권을 가지지만, 주간 측 플레이어는 에너지 보상을 받습니다.',
+  'tutorial.game.janken.result.body':
+    '결과가 나왔습니다! 야간 측 플레이어는 야간 시간대에 먼저 효과를 처리하고, 주간 측 플레이어는 주간 시간대에 먼저 효과를 처리합니다.',
   'tutorial.game.mulligan.intro.title': '멀리건 단계',
-  'tutorial.game.mulligan.intro.body': '게임 시작 시 원하는 핸드를 한 번 다시 뽑을 수 있습니다. 현재 핸드에 만족하면 그대로 유지할 수 있습니다.',
+  'tutorial.game.mulligan.intro.body':
+    '게임 시작 시 원하는 핸드를 한 번 다시 뽑을 수 있습니다. 현재 핸드에 만족하면 그대로 유지할 수 있습니다.',
   'tutorial.game.mulligan.action.title': '다시 뽑을 카드 선택',
-  'tutorial.game.mulligan.action.body': '다시 뽑고 싶은 카드를 클릭한 후 "확인"을 누릅니다. 다시 뽑지 않으려면 "핸드 유지"를 바로 누르세요.',
+  'tutorial.game.mulligan.action.body':
+    '다시 뽑고 싶은 카드를 클릭한 후 "확인"을 누릅니다. 다시 뽑지 않으려면 "핸드 유지"를 바로 누르세요.',
   'tutorial.game.initialSet.intro.title': '초기 배치 단계',
-  'tutorial.game.initialSet.intro.body': '이제 카드를 배치하겠습니다! 첫 턴에서는 핸드에서 카드 한 장을 선택해 세트 존에 놓고 전투를 준비합니다.',
+  'tutorial.game.initialSet.intro.body':
+    '이제 카드를 배치하겠습니다! 첫 턴에서는 핸드에서 카드 한 장을 선택해 세트 존에 놓고 전투를 준비합니다.',
   'tutorial.game.initialSet.action.title': '카드 한 장 배치',
-  'tutorial.game.initialSet.action.body': '핸드에서 카드 한 장을 선택해 세트 존에 놓습니다. 준비되면 "확인"을 누르세요.',
-  'tutorial.game.zones.title': '필드 존 설명',
-  'tutorial.game.zones.body': '전장은 네 개의 주요 영역으로 나뉩니다: 핸드(당신의 카드), 배틀 존(현재 캐릭터), 세트 존(카드 준비), 어비스(버린 카드 영역).',
+  'tutorial.game.initialSet.action.body':
+    '핸드에서 카드 한 장을 선택해 세트 존에 놓습니다. 준비되면 "확인"을 누르세요.',
+  'tutorial.game.zone.battle.title': '배틀 존',
+  'tutorial.game.zone.battle.body':
+    '중앙의 배틀 존은 현재 캐릭터가 대결하는 곳입니다. 양측이 각각 캐릭터 카드를 놓으며, 공격력이 높은 쪽이 승리하여 상대에게 피해를 줍니다.',
+  'tutorial.game.zone.hand.title': '핸드',
+  'tutorial.game.zone.hand.body':
+    '당신의 핸드입니다. 카드를 클릭하여 배틀 존 또는 세트 존에 배치하고, 카드 효과를 활용해 상대를 물리치세요.',
+  'tutorial.game.zone.set.title': '세트 존',
+  'tutorial.game.zone.set.body':
+    '세트 존은 다음 전투를 위해 캐릭터를 준비하는 곳입니다. 여기에 놓인 카드는 다음 턴에 배틀 존으로 들어갑니다.',
+  'tutorial.game.zone.abyss.title': '어비스',
+  'tutorial.game.zone.abyss.body':
+    '어비스는 버린 카드 영역입니다. 에너지를 생성하지 않는 카드는 필드를 떠나면 이곳에 들어가며, 일부 카드 효과는 어비스와 상호작용할 수 있습니다.',
   'tutorial.game.chronos.title': '크로노스 시계 시스템',
-  'tutorial.game.chronos.body': '중앙의 크로노스는 현재 시간대를 표시합니다. 각 카드의 "시계" 값이 시계를 진행시키며, 밤인지 낮인지가 캐릭터의 공격력에 영향을 미칩니다.',
+  'tutorial.game.chronos.body':
+    '중앙의 크로노스는 현재 시간대를 표시합니다. 각 카드의 "시계" 값이 시계를 진행시키며, 밤인지 낮인지가 캐릭터의 공격력에 영향을 미칩니다.',
   'tutorial.game.resources.title': '에너지 시스템',
-  'tutorial.game.resources.body': '일부 카드는 필드를 떠날 때 파워 차저로 이동하며, 축적된 에너지는 카드 비용을 지불하는 데 사용할 수 있습니다. 에너지를 생성하지 않는 카드는 어비스로 갑니다.',
+  'tutorial.game.resources.body':
+    '일부 카드는 필드를 떠날 때 파워 차저로 이동하며, 축적된 에너지는 카드 비용을 지불하는 데 사용할 수 있습니다. 에너지를 생성하지 않는 카드는 어비스로 갑니다.',
   'tutorial.game.catchup.title': '추격 메커니즘',
-  'tutorial.game.catchup.body': '지난 턴 전투에서 패배한 쪽은 다음 턴에 두 장의 카드를 배치할 수 있습니다; 승리한 쪽은 보통 한 장만 배치할 수 있습니다. 이로써 양쪽이 균형을 유지하고 일방적인 게임을 피할 수 있습니다.',
+  'tutorial.game.catchup.body':
+    '지난 턴 전투에서 패배한 쪽은 다음 턴에 두 장의 카드를 배치할 수 있습니다; 승리한 쪽은 보통 한 장만 배치할 수 있습니다. 이로써 양쪽이 균형을 유지하고 일방적인 게임을 피할 수 있습니다.',
+  'tutorial.game.catchup.loser.title': '추격 메커니즘: 당신의 반격',
+  'tutorial.game.catchup.loser.body':
+    '이전 턴 전투에서 패배하여 이번 턴 카드 2장을 배치해 추격할 수 있습니다. 이 기회로 전략을 조정하세요.',
+  'tutorial.game.catchup.winner.title': '추격 메커니즘: 상대의 반격',
+  'tutorial.game.catchup.winner.body':
+    '이전 턴 전투에서 승리하여 상대가 이번 턴 2장을 배치해 추격할 수 있습니다. 당신은 1장만 배치할 수 있습니다.',
+  'tutorial.game.catchup.draw.title': '추격 메커니즘: 무승부',
+  'tutorial.game.catchup.draw.body':
+    '이전 턴은 무승부라 추격 메커니즘이 발동하지 않습니다. 양쪽 모두 이번 턴 1장만 배치할 수 있습니다.',
   'tutorial.game.victory.title': '승리 조건',
-  'tutorial.game.victory.body': '어느 한 쪽의 HP가 0이 되거나 더 이상 카드를 낼 수 없게 되면 게임이 종료됩니다. 카드 효과를 적절히 사용해 상대의 HP를 줄이면 승리할 수 있습니다.',
+  'tutorial.game.victory.body':
+    '어느 한 쪽의 HP가 0이 되거나 더 이상 카드를 낼 수 없게 되면 게임이 종료됩니다. 카드 효과를 적절히 사용해 상대의 HP를 줄이면 승리할 수 있습니다.',
   'tutorial.game.turnSet.intro.title': '턴 배치 단계',
-  'tutorial.game.turnSet.intro.body': '새로운 턴이 시작되었습니다! 추격 메커니즘에 따라 한 장 또는 두 장의 카드를 배치할 수 있습니다.',
+  'tutorial.game.turnSet.intro.body':
+    '새로운 턴이 시작되었습니다! 추격 메커니즘에 따라 한 장 또는 두 장의 카드를 배치할 수 있습니다.',
+  'tutorial.game.turnSet.intro.loser.title': '배치 단계: 추격 기회',
+  'tutorial.game.turnSet.intro.loser.body':
+    '새 턴이 시작되었습니다! 이전 턴 패자로서 2장을 배치해 전황을 뒤집을 수 있습니다.',
+  'tutorial.game.turnSet.intro.winner.title': '배치 단계: 우위 유지',
+  'tutorial.game.turnSet.intro.winner.body':
+    '새 턴이 시작되었습니다! 이전 턴 승자로서 이번 턴 1장만 배치할 수 있고, 상대는 2장을 배치할 수 있습니다.',
+  'tutorial.game.turnSet.intro.draw.title': '배치 단계',
+  'tutorial.game.turnSet.intro.draw.body':
+    '새 턴이 시작되었습니다! 이전 턴 무승부라 양쪽 모두 1장씩 배치합니다.',
   'tutorial.game.turnSet.action.title': '이번 턴 카드 배치',
-  'tutorial.game.turnSet.action.body': '핸드에서 카드를 선택해 세트 존에 놓습니다. A 존 또는 B 존에 놓을 수 있으며, 두 존은 별도로 해결됩니다.',
+  'tutorial.game.turnSet.action.body':
+    '핸드에서 카드를 선택해 세트 존에 놓습니다. A 존 또는 B 존에 놓을 수 있으며, 두 존은 별도로 해결됩니다.',
+  'tutorial.game.turnSet.action.loser.title': '2장 배치하여 추격',
+  'tutorial.game.turnSet.action.loser.body':
+    '패에서 설치 영역에 배치합니다. 패자는 2장 배치 가능. A구역과 B구역에 나누어 배치해 공격을 분산시키세요.',
+  'tutorial.game.turnSet.action.winner.title': '1장 배치',
+  'tutorial.game.turnSet.action.winner.body':
+    '패에서 1장을 설치 영역에 배치합니다. 1장만 배치할 수 있으니 A구역이나 B구역을 신중히 선택하세요.',
+  'tutorial.game.turnSet.action.draw.title': '이번 턴 카드 배치',
+  'tutorial.game.turnSet.action.draw.body':
+    '패에서 설치 영역에 배치합니다. A구역 또는 B구역에 배치할 수 있으며, 두 구역은 따로 해결됩니다.',
   'tutorial.game.effectOrder.intro.title': '효과 순서 단계',
-  'tutorial.game.effectOrder.intro.body': '여러 효과 카드가 동시에 발동하면 해결 순서를 선택할 수 있습니다. 순서를 잘 배치하면 전황을 바꿀 수 있습니다.',
+  'tutorial.game.effectOrder.intro.body':
+    '여러 효과 카드가 동시에 발동하면 해결 순서를 선택할 수 있습니다. 순서를 잘 배치하면 전황을 바꿀 수 있습니다.',
   'tutorial.game.effectOrder.action.title': '효과 해결 순서 선택',
-  'tutorial.game.effectOrder.action.body': '효과 카드를 클릭해 해결 순서를 선택합니다. 먼저 해결되는 효과가 먼저 발동하며, 후속 효과 결과에 영향을 줄 수 있습니다.',
+  'tutorial.game.effectOrder.action.body':
+    '효과 카드를 클릭해 해결 순서를 선택합니다. 먼저 해결되는 효과가 먼저 발동하며, 후속 효과 결과에 영향을 줄 수 있습니다.',
+  'tutorial.game.pendingChoice.intro.title': '카드 지정 효과',
+  'tutorial.game.pendingChoice.intro.body':
+    '일부 카드 효과는 패·심연·덱에서 대상 카드를 지정해야 해결을 완료할 수 있습니다.',
+  'tutorial.game.pendingChoice.action.title': '대상 카드 선택',
+  'tutorial.game.pendingChoice.action.body':
+    '목록의 카드를 클릭해 선택하세요. 필요 장수를 선택한 뒤 「선택 제출」을 눌러 해결을 완료합니다. 필요 장수는 안내문으로 확인할 수 있습니다.',
   'tutorial.game.battle.intro.title': '전투 해결',
-  'tutorial.game.battle.intro.body': '양쪽 카드가 공개되면 전투 해결에 들어갑니다. 캐릭터 카드는 서로 공격하고, 인챈트 카드는 효과를 발동하며, 최종적으로 HP 변화를 계산합니다.',
+  'tutorial.game.battle.intro.body':
+    '양쪽 카드가 공개되면 전투 해결에 들어갑니다. 캐릭터 카드는 서로 공격하고, 인챈트 카드는 효과를 발동하며, 최종적으로 HP 변화를 계산합니다.',
   'tutorial.game.battle.result.title': '전투 결과',
-  'tutorial.game.battle.result.body': '이번 턴 전투가 종료되었습니다. HP 변화와 필드 상황을 확인하고 다음 턴 전략을 준비하세요.',
+  'tutorial.game.battle.result.body':
+    '이번 턴 전투가 종료되었습니다. HP 변화와 필드 상황을 확인하고 다음 턴 전략을 준비하세요.',
   'tutorial.game.complete.title': '튜토리얼 완료를 축하합니다!',
-  'tutorial.game.complete.body': 'ZUTOMAYO CARD의 모든 기본 메커니즘을 마스터했습니다. 이제 AI에 도전하거나 다른 플레이어와 대전할 수 있습니다!',
+  'tutorial.game.complete.body':
+    'ZUTOMAYO CARD의 모든 기본 메커니즘을 마스터했습니다. 이제 AI에 도전하거나 다른 플레이어와 대전할 수 있습니다!',
 
   'lobby.tutorial': 'First Ritual · 튜토리얼',
   'feedback.title': '피드백',

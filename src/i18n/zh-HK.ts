@@ -3,8 +3,9 @@ import type { TranslationKey } from './zh-TW';
 export const zhHK: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜同白晝交錯嘅綫上卡牌遊戲',
-    'app.footerAlpha': 'Alpha 開發初期階段 · 歡迎前往反饋頁面提交建議與想法',
-  'app.footerCopyright': 'Card assets © zutomayocard.net',
+  'app.footerAlpha': 'Alpha 開發初期階段 · 歡迎前往反饋頁面提交建議與想法',
+  'app.footerCopyright': '非官方粉絲作品 · 卡牌圖片版權屬於 ',
+  'app.footerCopyrightSuffix': '',
 
   'intro.deckTitle': '歡迎嚟到 ZUTOMAYO CARD',
   'intro.deckDescription': '開始遊戲之前，你需要揀一副牌組。可以用預設牌組，或者去牌組編輯器整自己嘅牌組。',
@@ -529,6 +530,7 @@ export const zhHK: Record<TranslationKey, string> = {
 
   'tutorial.title': '教學',
   'tutorial.skip': '跳過教學',
+  'tutorial.actionHint': '請依照指示操作',
   'tutorial.startPractice': '啟動電腦練習',
   'tutorial.prev': '上一步',
   'tutorial.stepIndicator': '步驟',
@@ -545,7 +547,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'tutorial.stepCatchupTitle': '追趕機制',
   'tutorial.stepCatchupBody': '上回合輸家可以出兩張牌，贏家通常只可以出一張，令局勢保持拉扯。',
   'tutorial.stepJankenTitle': '猜拳決定夜側',
-  'tutorial.stepJankenBody': '開局用猜拳決定邊個係夜側玩家，夜側喺第一回合擁有主動權。',
+  'tutorial.stepJankenBody': '開局用猜拳決定邊個係夜側玩家。夜側喺夜時段優先處理效果，晝側喺晝時段優先處理效果。',
   'tutorial.stepMulliganTitle': '手牌重抽',
   'tutorial.stepMulliganBody': '開局可揀任意手牌重抽一次，調整起手牌型再進入戰鬥。',
   'tutorial.stepEffectOrderTitle': '效果順序選擇',
@@ -558,39 +560,86 @@ export const zhHK: Record<TranslationKey, string> = {
   'tutorial.game.intro.title': '歡迎嚟到 ZUTOMAYO CARD',
   'tutorial.game.intro.body': '接落嚟會透過一場真實對戰，逐步引導你認識遊戲嘅所有機制。',
   'tutorial.game.janken.intro.title': '猜拳決定先後手',
-  'tutorial.game.janken.intro.body': '遊戲開始前，雙方透過猜拳決定邊個先行動。獲勝方可以揀夜側（先手）或晝側（後手）。',
+  'tutorial.game.janken.intro.body': '遊戲開始前，雙方透過猜拳決定邊個係夜側玩家。勝者直接成為夜側，敗者為晝側。',
   'tutorial.game.janken.action.title': '揀你嘅手勢',
   'tutorial.game.janken.action.body': '撳嚟揀石頭、剪刀或布。猜拳結果將決定你嘅初始位置。',
   'tutorial.game.janken.result.title': '猜拳結果',
-  'tutorial.game.janken.result.body': '結果已出爐！夜側玩家喺第一回合擁有主動權，但晝側玩家會獲得能量補償。',
+  'tutorial.game.janken.result.body': '結果已出爐！夜側玩家喺夜時段優先處理效果，晝側玩家喺晝時段優先處理效果。',
   'tutorial.game.mulligan.intro.title': '手牌重抽階段',
-  'tutorial.game.mulligan.intro.body': '開局時，你可以揀任意手牌重抽一次，調整起手牌型。如果對當前手牌滿意，可以直接保留。',
+  'tutorial.game.mulligan.intro.body':
+    '開局時，你可以揀任意手牌重抽一次，調整起手牌型。如果對當前手牌滿意，可以直接保留。',
   'tutorial.game.mulligan.action.title': '揀要重抽嘅卡牌',
   'tutorial.game.mulligan.action.body': '撳想重抽嘅卡牌，揀好後撳「確認」。如果唔想重抽，直接撳「保留手牌」即可。',
   'tutorial.game.initialSet.intro.title': '初始放置階段',
   'tutorial.game.initialSet.intro.body': '而家開始放置卡牌！第一回合你可以由手牌揀一張卡放入設置區，準備進入戰鬥。',
   'tutorial.game.initialSet.action.title': '揀一張卡片放置',
   'tutorial.game.initialSet.action.body': '由手牌中揀一張卡片，放入你嘅設置區。揀好後撳「確認」。',
-  'tutorial.game.zones.title': '場地區域說明',
-  'tutorial.game.zones.body': '戰場分為四個主要區域：手牌（你嘅卡片）、戰鬥區（當前角色）、設置區（準備出牌）、深淵（棄牌區）。',
+  'tutorial.game.zone.battle.title': '戰鬥區',
+  'tutorial.game.zone.battle.body':
+    '中央嘅戰鬥區係當前角色對決嘅地方。雙方各放一張角色卡，攻擊力較高者獲勝並對對手造成傷害。',
+  'tutorial.game.zone.hand.title': '手牌',
+  'tutorial.game.zone.hand.body':
+    '你嘅手牌。點擊手牌可將其放置到戰鬥區或設置區，運用卡片效果擊敗對手。',
+  'tutorial.game.zone.set.title': '設置區',
+  'tutorial.game.zone.set.body':
+    '設置區用於準備即將出戰嘅角色。放置喺度嘅卡片會喺下一回合進入戰鬥區。',
+  'tutorial.game.zone.abyss.title': '深淵',
+  'tutorial.game.zone.abyss.body':
+    '深淵係棄牌區。唔產生能量嘅卡片離場後會落入此處，某些卡牌效果可能會與深淵互動。',
   'tutorial.game.chronos.title': 'Chronos 時鐘系統',
-  'tutorial.game.chronos.body': '中央嘅 Chronos 顯示當前時段。每張卡牌嘅「時計」值會推進時鐘，夜或晝會影響角色嘅攻擊力。',
+  'tutorial.game.chronos.body':
+    '中央嘅 Chronos 顯示當前時段。每張卡牌嘅「時計」值會推進時鐘，夜或晝會影響角色嘅攻擊力。',
   'tutorial.game.resources.title': '能量系統',
-  'tutorial.game.resources.body': '部分卡牌離場後會進入能量區，累積嘅能量可用於支付卡牌費用。唔產生能量嘅卡會落入深淵。',
+  'tutorial.game.resources.body':
+    '部分卡牌離場後會進入能量區，累積嘅能量可用於支付卡牌費用。唔產生能量嘅卡會落入深淵。',
   'tutorial.game.catchup.title': '追趕機制',
-  'tutorial.game.catchup.body': '上回合戰鬥失敗嘅一方，下回合可以放置兩張卡；獲勝方通常只可以放一張。呢個令雙方保持拉鋸，避免一面倒。',
+  'tutorial.game.catchup.body':
+    '上回合戰鬥失敗嘅一方，下回合可以放置兩張卡；獲勝方通常只可以放一張。呢個令雙方保持拉鋸，避免一面倒。',
+  'tutorial.game.catchup.loser.title': '追趕機制：你嘅反擊',
+  'tutorial.game.catchup.loser.body':
+    '你輸咗上一回合嘅戰鬥，因此本回合可以放兩張卡，藉此追回劣勢。善用呢個機會調整策略。',
+  'tutorial.game.catchup.winner.title': '追趕機制：對手嘅反擊',
+  'tutorial.game.catchup.winner.body':
+    '你贏咗上一回合嘅戰鬥，因此對手本回合可以放兩張卡追趕。你只可以放一張，要小心揀。',
+  'tutorial.game.catchup.draw.title': '追趕機制：打和',
+  'tutorial.game.catchup.draw.body':
+    '上一回合打和，冇觸發追趕機制。雙方本回合都只可以放一張卡。',
   'tutorial.game.victory.title': '勝利條件',
-  'tutorial.game.victory.body': '當任一方嘅 HP 降到 0，或無法繼續出牌時，遊戲結束。合理運用卡牌效果，降低對手 HP 即可獲勝。',
+  'tutorial.game.victory.body':
+    '當任一方嘅 HP 降到 0，或無法繼續出牌時，遊戲結束。合理運用卡牌效果，降低對手 HP 即可獲勝。',
   'tutorial.game.turnSet.intro.title': '回合放置階段',
   'tutorial.game.turnSet.intro.body': '新嘅回合開始咗！根據追趕機制，你可以放置一張或兩張卡片。',
+  'tutorial.game.turnSet.intro.loser.title': '回合放置階段：追趕機會',
+  'tutorial.game.turnSet.intro.loser.body':
+    '新嘅回合開始喇！身為上回合嘅輸家，你可以放兩張卡嚟扭轉戰局。',
+  'tutorial.game.turnSet.intro.winner.title': '回合放置階段：守成',
+  'tutorial.game.turnSet.intro.winner.body':
+    '新嘅回合開始喇！身為上回合嘅贏家，你本回合只可以放一張卡，對手就可以放兩張。',
+  'tutorial.game.turnSet.intro.draw.title': '回合放置階段',
+  'tutorial.game.turnSet.intro.draw.body':
+    '新嘅回合開始喇！上回合打和，雙方本回合都放一張卡。',
   'tutorial.game.turnSet.action.title': '放置本回合嘅卡片',
   'tutorial.game.turnSet.action.body': '由手牌揀卡片放入設置區。你可以揀放入 A 區或 B 區，兩個區域分開結算。',
+  'tutorial.game.turnSet.action.loser.title': '放兩張卡追趕',
+  'tutorial.game.turnSet.action.loser.body':
+    '由手牌揀卡放入設置區。身為輸家你可以放兩張，建議分別放入 A 區同 B 區以分散攻擊。',
+  'tutorial.game.turnSet.action.winner.title': '放一張卡',
+  'tutorial.game.turnSet.action.winner.body':
+    '由手牌揀一張卡放入設置區。你只可以放一張，請小心揀要放 A 區定 B 區。',
+  'tutorial.game.turnSet.action.draw.title': '放置本回合嘅卡',
+  'tutorial.game.turnSet.action.draw.body':
+    '由手牌揀卡放入設置區。你可以揀放入 A 區或 B 區，兩個區域分開結算。',
   'tutorial.game.effectOrder.intro.title': '效果順序階段',
   'tutorial.game.effectOrder.intro.body': '當多張效果卡同時觸發時，你可以揀結算順序。巧妙安排順序可以扭轉戰局。',
   'tutorial.game.effectOrder.action.title': '揀效果結算順序',
   'tutorial.game.effectOrder.action.body': '撳效果卡揀結算順序。先結算嘅效果會先生效，可能影響後續效果嘅結果。',
+  'tutorial.game.pendingChoice.intro.title': '指定卡牌效果',
+  'tutorial.game.pendingChoice.intro.body': '部分卡牌效果需要你喺手牌、深淵或牌庫中指定卡牌作為對象，先可以完成結算。',
+  'tutorial.game.pendingChoice.action.title': '揀指定嘅卡牌',
+  'tutorial.game.pendingChoice.action.body': '撳列表中嘅卡牌進行選取，揀夠數量後㩒「送出選擇」完成結算。可依提示判斷需要揀幾張。',
   'tutorial.game.battle.intro.title': '戰鬥結算',
-  'tutorial.game.battle.intro.body': '雙方卡片翻開後，進入戰鬥結算。角色卡會互相攻擊，附魔卡會觸發效果，最終計算 HP 變化。',
+  'tutorial.game.battle.intro.body':
+    '雙方卡片翻開後，進入戰鬥結算。角色卡會互相攻擊，附魔卡會觸發效果，最終計算 HP 變化。',
   'tutorial.game.battle.result.title': '戰鬥結果',
   'tutorial.game.battle.result.body': '本回合嘅戰鬥已結束。觀察 HP 變化同場地狀況，準備下一回合嘅策略。',
   'tutorial.game.complete.title': '恭喜完成教學！',
