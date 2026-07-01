@@ -3,7 +3,7 @@ import type { TranslationKey } from './zh-TW';
 export const ko: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '밤과 낮이 교차하는 온라인 카드 대전',
-  'app.footerAlpha': 'Alpha · 피드백 환영',
+    'app.footerAlpha': 'Alpha 초기 개발 단계 · 피드백 페이지에서 아이디어와 제안을 공유해 주세요',
   'app.footerCopyright': 'Card assets © zutomayocard.net',
 
   'intro.deckTitle': 'ZUTOMAYO CARD 에 오신 것을 환영합니다',

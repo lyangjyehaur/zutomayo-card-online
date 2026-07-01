@@ -1,7 +1,7 @@
 export const zhTW = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜與白晝交錯的線上對戰卡牌',
-  'app.footerAlpha': 'Alpha · 歡迎反饋',
+    'app.footerAlpha': 'Alpha 開發初期階段 · 歡迎前往反饋頁面提交建議與想法',
   'app.footerCopyright': 'Card assets © zutomayocard.net',
 
   'intro.deckTitle': '歡迎來到 ZUTOMAYO CARD',

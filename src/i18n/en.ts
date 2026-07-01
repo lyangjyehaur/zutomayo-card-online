@@ -3,7 +3,7 @@ import type { TranslationKey } from './zh-TW';
 export const en: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': 'Online Card Battle Where Night and Day Collide',
-  'app.footerAlpha': 'Alpha · Feedback Welcome',
+    'app.footerAlpha': 'Alpha early development stage · Visit our feedback page to share ideas and suggestions',
   'app.footerCopyright': 'Card assets © zutomayocard.net',
 
   'intro.deckTitle': 'Welcome to ZUTOMAYO CARD',

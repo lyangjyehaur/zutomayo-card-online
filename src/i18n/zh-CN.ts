@@ -3,7 +3,7 @@ import type { TranslationKey } from './zh-TW';
 export const zhCN: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜与白昼交错的在线对战卡牌',
-  'app.footerAlpha': 'Alpha · 欢迎反馈',
+    'app.footerAlpha': 'Alpha 开发初期阶段 · 欢迎前往反馈页面提交建议与想法',
   'app.footerCopyright': 'Card assets © zutomayocard.net',
 
   'intro.deckTitle': '欢迎来到 ZUTOMAYO CARD',

@@ -3,7 +3,7 @@ import type { TranslationKey } from './zh-TW';
 export const ja: Record<TranslationKey, string> = {
   'app.title': 'ZUTOMAYO CARD',
   'app.subtitle': '永夜と白昼が交差するオンライン対戦カードゲーム',
-  'app.footerAlpha': 'Alpha · フィードバック歓迎',
+    'app.footerAlpha': 'Alpha 開発初期段階 · フィードバックページでご意見やアイデアをお寄せください',
   'app.footerCopyright': 'Card assets © zutomayocard.net',
 
   'intro.deckTitle': 'ZUTOMAYO CARD へようこそ',
