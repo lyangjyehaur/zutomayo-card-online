@@ -60,7 +60,8 @@ function mapVoter(row) {
   return {
     userId: row.voter_user_id || null,
     nickname: row.nickname || null,
-    anonymousId: row.anonymous_id || null,
+    // 不公開 anonymousId，避免被冒充
+    isAnonymous: !row.voter_user_id && Boolean(row.anonymous_id),
     createdAt: row.created_at,
   };
 }
@@ -80,15 +81,16 @@ async function listPosts({ pool, voter, status, tag, sort, q, limit, offset }) {
   const params = [];
   let idx = 1;
 
-  // 預設不顯示 duplicate 和 deleted
-  const excludeStatuses = status ? [] : ['duplicate', 'deleted'];
+  // 預設不顯示 duplicate 和 deleted；即使傳入無效 status 也套用排除
+  const isValidStatus = status && VALID_STATUSES.includes(status);
+  const excludeStatuses = isValidStatus ? [] : ['duplicate', 'deleted'];
   if (excludeStatuses.length > 0) {
     conditions.push('p.status NOT IN (' + excludeStatuses.map((_, i) => '$' + (idx + i)).join(', ') + ')');
     excludeStatuses.forEach((s) => params.push(s));
     idx += excludeStatuses.length;
   }
 
-  if (status && VALID_STATUSES.includes(status)) {
+  if (isValidStatus) {
     conditions.push('p.status = $' + idx++);
     params.push(status);
   }
@@ -217,18 +219,25 @@ async function getPost({ pool, voter, postId }) {
   const commentIds = commentsRes.rows.map((r) => r.id);
   let reactionsMap = {};
   if (commentIds.length > 0) {
-    const reactionsRes = await pool.query(
-      'SELECT comment_id, emoji, COUNT(*) as count, ' +
-        'BOOL_OR(' +
-        (ref ? 'cr.' + ref.column + ' = $1' : 'FALSE') +
-        ') AS includes_me ' +
-        'FROM feedback_comment_reactions cr ' +
-        'WHERE cr.comment_id = ANY($2' +
-        (ref ? '$3' : '') +
-        ') ' +
-        'GROUP BY comment_id, emoji',
-      ref ? [ref.value, commentIds] : [commentIds],
-    );
+    const reactionsRes = ref
+      ? await pool.query(
+          'SELECT comment_id, emoji, COUNT(*) as count, ' +
+            'BOOL_OR(cr.' +
+            ref.column +
+            ' = $1) AS includes_me ' +
+            'FROM feedback_comment_reactions cr ' +
+            'WHERE cr.comment_id = ANY($2) ' +
+            'GROUP BY comment_id, emoji',
+          [ref.value, commentIds],
+        )
+      : await pool.query(
+          'SELECT comment_id, emoji, COUNT(*) as count, ' +
+            'FALSE AS includes_me ' +
+            'FROM feedback_comment_reactions cr ' +
+            'WHERE cr.comment_id = ANY($1) ' +
+            'GROUP BY comment_id, emoji',
+          [commentIds],
+        );
     for (const r of reactionsRes.rows) {
       if (!reactionsMap[r.comment_id]) reactionsMap[r.comment_id] = [];
       reactionsMap[r.comment_id].push({

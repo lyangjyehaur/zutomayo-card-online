@@ -51,7 +51,7 @@ export interface FeedbackComment {
 export interface FeedbackVoter {
   userId: string | null;
   nickname: string | null;
-  anonymousId: string | null;
+  isAnonymous: boolean;
   createdAt: string;
 }
 

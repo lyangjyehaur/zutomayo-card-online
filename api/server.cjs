@@ -223,7 +223,8 @@ async function initSchema() {
       tag TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CHECK (author_user_id IS NOT NULL OR anonymous_id IS NOT NULL)
+      CHECK (author_user_id IS NOT NULL OR anonymous_id IS NOT NULL),
+      CHECK (NOT (author_user_id IS NOT NULL AND anonymous_id IS NOT NULL))
     )`,
     `CREATE INDEX IF NOT EXISTS idx_feedback_posts_status ON feedback_posts(status)`,
     `CREATE INDEX IF NOT EXISTS idx_feedback_posts_created_at ON feedback_posts(created_at DESC)`,
@@ -246,7 +247,8 @@ async function initSchema() {
       author_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
       anonymous_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CHECK (author_user_id IS NOT NULL OR anonymous_id IS NOT NULL)
+      CHECK (author_user_id IS NOT NULL OR anonymous_id IS NOT NULL),
+      CHECK (NOT (author_user_id IS NOT NULL AND anonymous_id IS NOT NULL))
     )`,
     `CREATE INDEX IF NOT EXISTS idx_feedback_comments_post ON feedback_comments(post_id, created_at)`,
 
@@ -664,11 +666,20 @@ function handleRequest(req, res) {
     res.end(JSON.stringify(data));
   };
 
-  const readBody = () =>
+  const readBody = (maxBytes = 3 * 1024 * 1024) =>
     new Promise((resolve) => {
       let body = '';
-      req.on('data', (chunk) => (body += chunk));
+      let tooLarge = false;
+      req.on('data', (chunk) => {
+        if (tooLarge) return;
+        body += chunk;
+        if (body.length > maxBytes) {
+          tooLarge = true;
+          resolve({});
+        }
+      });
       req.on('end', () => {
+        if (tooLarge) return;
         try {
           resolve(JSON.parse(body));
         } catch {
@@ -1071,16 +1082,15 @@ function handleRequest(req, res) {
       const postId = decodeURIComponent(feedbackCommentRoute[1]);
       const body = await readBody();
       const voter = extractFeedbackVoter(req, body);
-      const commentBody = await readBody();
       json(
         await addFeedbackComment({
           pool,
           voter,
           postId,
-          body: commentBody,
+          body,
           sanitizeText,
           generateId: () => generateFeedbackId('fc_'),
-          isOfficial: Boolean(commentBody.isOfficial) && verifyAdminToken(req),
+          isOfficial: Boolean(body.isOfficial) && verifyAdminToken(req),
         }),
       );
       return;
@@ -1222,19 +1232,24 @@ function handleRequest(req, res) {
       return;
     }
 
-    // POST /api/feedback/uploads — 圖片上傳（base64）
+    // POST /api/feedback/uploads — 圖片上傳（base64，限制 3MB body）
     if (pathname === '/api/feedback/uploads' && method === 'POST') {
-      const body = await readBody();
+      const body = await readBody(3 * 1024 * 1024);
       const voter = extractFeedbackVoter(req, body);
-      if (!voter) return json({ error: 'Identity is required' }, 400);
+      if (!voter.userId && !voter.anonymousId) return json({ error: 'Identity is required' }, 400);
       // 解析 data URL: data:image/png;base64,xxxx
       const dataUrl = body.image || '';
       const match = dataUrl.match(/^data:(image\/(png|jpeg|jpg|gif|webp));base64,(.+)$/);
       if (!match) return json({ error: 'Invalid image format' }, 400);
+      // 先檢查 base64 字串長度（避免 OOM），base64 長度 × 3/4 ≈ 解碼後大小
+      const base64Data = match[3];
+      if (base64Data.length * 0.75 > 2 * 1024 * 1024) {
+        return json({ error: 'Image too large (max 2MB)' }, 400);
+      }
       const contentType = match[1];
       const ext = match[2] === 'jpeg' ? 'jpg' : match[2];
-      const buffer = Buffer.from(match[3], 'base64');
-      // 限制 2MB
+      const buffer = Buffer.from(base64Data, 'base64');
+      // 二次驗證實際大小
       if (buffer.length > 2 * 1024 * 1024) {
         return json({ error: 'Image too large (max 2MB)' }, 400);
       }
@@ -1250,16 +1265,38 @@ function handleRequest(req, res) {
       return json({ ok: true, body: { bkey, url: '/api/feedback/images/' + bkey } }, 200);
     }
 
-    // GET /api/feedback/images/:bkey — 圖片服務
+    // GET /api/feedback/images/:bkey — 圖片服務（嚴格驗證 bkey 防路徑穿越）
     const feedbackImageRoute = pathname.match(/^\/api\/feedback\/images\/([^/]+)$/);
     if (feedbackImageRoute && method === 'GET') {
       const bkey = decodeURIComponent(feedbackImageRoute[1]);
+      // 嚴格白名單：只允許 fa_<hex>.<ext> 格式，阻擋路徑穿越
+      if (!/^fa_[a-f0-9]{16}\.(png|jpg|gif|webp)$/.test(bkey)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid image key' }));
+        return;
+      }
       const uploadDir = process.env.FEEDBACK_UPLOAD_DIR || '/tmp/feedback-uploads';
-      const filePath = uploadDir + '/' + bkey;
+      const path = require('path');
+      const resolvedPath = path.resolve(uploadDir, bkey);
+      const resolvedDir = path.resolve(uploadDir);
+      if (!resolvedPath.startsWith(resolvedDir + path.sep)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid image key' }));
+        return;
+      }
       try {
-        const buffer = require('fs').readFileSync(filePath);
+        const buffer = require('fs').readFileSync(resolvedPath);
         const ext = bkey.split('.').pop().toLowerCase();
-        const ct = ext === 'jpg' ? 'image/jpeg' : ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/png';
+        const ct =
+          ext === 'jpg'
+            ? 'image/jpeg'
+            : ext === 'png'
+              ? 'image/png'
+              : ext === 'gif'
+                ? 'image/gif'
+                : ext === 'webp'
+                  ? 'image/webp'
+                  : 'image/png';
         res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'public, max-age=86400' });
         res.end(buffer);
       } catch (e) {
