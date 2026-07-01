@@ -91,6 +91,11 @@ export const zhTW = {
   'lobby.customRooms': '自訂房間',
   'lobby.noDeckSelected': '尚未選擇牌組',
   'lobby.loginRequired': '登入後方可配對',
+  'anonymous.identity': '匿名身份',
+  'anonymous.editName': '編輯匿名名稱',
+  'anonymous.nameInput': '匿名名稱',
+  'anonymous.firstStartPrompt': '要換個名字再進房嗎？也可以直接再按一次略過。',
+  'anonymous.registerHint': '註冊正式帳號時會沿用這個名稱。',
 
   'difficulty.easy': '簡單',
   'difficulty.normal': '普通',

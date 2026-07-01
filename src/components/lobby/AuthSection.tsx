@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { LogOut, AlertCircle } from 'lucide-react';
 import { ApiError, getProfile, isLoggedIn, login, logout as logoutAccount, register } from '../../api/client';
+import { getRegistrationNickname } from '../../anonymousIdentity';
 import { t } from '../../i18n';
 
 export type AuthMode = 'login' | 'register';
@@ -71,6 +72,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
 
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
+    if (nextMode === 'register' && !nickname) setNickname(getRegistrationNickname());
     setError('');
     setStatus('');
   };

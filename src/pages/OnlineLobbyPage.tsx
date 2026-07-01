@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Radio } from 'lucide-react';
+import { ArrowLeft, Check, Pencil, Radio, X } from 'lucide-react';
+import {
+  ANONYMOUS_PLAYER_DEFAULT_NAME,
+  formatAnonymousDisplayName,
+  loadAnonymousIdentity,
+  renameAnonymousIdentity,
+  sanitizeAnonymousBaseName,
+  type AnonymousIdentity,
+} from '../anonymousIdentity';
 import {
   getProfile,
   isLoggedIn,
@@ -25,12 +33,13 @@ interface OnlineLobbyPageProps {
   customDeckAvailable: boolean;
   serverDecks: DeckResponse[];
   setDeck0Name: (deckName: string) => void;
-  onStartOnline: (matchID?: string) => Promise<OnlineSession>;
+  onStartOnline: (matchID?: string, playerName?: string) => Promise<OnlineSession>;
   serverDeckError?: string;
   cardsReady: boolean;
 }
 
 type MatchmakingPhase = 'idle' | 'polling' | 'host-starting' | 'guest-joining' | 'done';
+const ANONYMOUS_NAME_PROMPT_STORAGE_KEY = 'zutomayo_anonymous_name_prompt_seen';
 
 // 段位定義：依 ELO 劃分漆面塔羅風格的段位名（專有名詞，不 i18n）。
 const RANKS = [
@@ -84,6 +93,10 @@ export function OnlineLobbyPage({
 
   // 帳號資料：用於 Header 與段位顯示。
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
+  const [editingAnonymousName, setEditingAnonymousName] = useState(false);
+  const [anonymousNameDraft, setAnonymousNameDraft] = useState(() => anonymousIdentity.baseName);
+  const [showAnonymousNamePrompt, setShowAnonymousNamePrompt] = useState(false);
   useEffect(() => {
     if (!isLoggedIn()) return;
     let cancelled = false;
@@ -96,6 +109,42 @@ export function OnlineLobbyPage({
       cancelled = true;
     };
   }, []);
+
+  const anonymousDisplayName = formatAnonymousDisplayName(anonymousIdentity);
+  const effectivePlayerName = profile?.nickname || anonymousDisplayName;
+  const shouldPromptForAnonymousName =
+    !profile &&
+    anonymousIdentity.baseName === ANONYMOUS_PLAYER_DEFAULT_NAME &&
+    sessionStorage.getItem(ANONYMOUS_NAME_PROMPT_STORAGE_KEY) !== 'true';
+
+  const startEditingAnonymousName = () => {
+    setAnonymousNameDraft(anonymousIdentity.baseName);
+    setEditingAnonymousName(true);
+    setShowAnonymousNamePrompt(false);
+  };
+
+  const saveAnonymousName = () => {
+    const nextIdentity = renameAnonymousIdentity(anonymousNameDraft);
+    setAnonymousIdentity(nextIdentity);
+    setAnonymousNameDraft(nextIdentity.baseName);
+    setEditingAnonymousName(false);
+    setShowAnonymousNamePrompt(false);
+    sessionStorage.setItem(ANONYMOUS_NAME_PROMPT_STORAGE_KEY, 'true');
+  };
+
+  const cancelAnonymousNameEdit = () => {
+    setAnonymousNameDraft(anonymousIdentity.baseName);
+    setEditingAnonymousName(false);
+  };
+
+  const requestAnonymousNameBeforeStart = () => {
+    if (!shouldPromptForAnonymousName) return false;
+    setShowAnonymousNamePrompt(true);
+    setEditingAnonymousName(true);
+    setAnonymousNameDraft(anonymousIdentity.baseName);
+    sessionStorage.setItem(ANONYMOUS_NAME_PROMPT_STORAGE_KEY, 'true');
+    return true;
+  };
 
   // 牌組選擇後 Toast 提示（首次選擇時顯示）
   const handleDeckChange = (newDeck: string) => {
@@ -153,9 +202,10 @@ export function OnlineLobbyPage({
   }, [createdMatchID]);
 
   const runOnline = async (id?: string) => {
+    if (requestAnonymousNameBeforeStart()) return;
     setError('');
     try {
-      const nextSession = await onStartOnline(id);
+      const nextSession = await onStartOnline(id, effectivePlayerName);
       setCreatedMatchID(id ? '' : nextSession.matchID);
     } catch (err) {
       setError(onlineErrorMessage(err));
@@ -220,6 +270,7 @@ export function OnlineLobbyPage({
       setError(t('lobby.loginRequired'));
       return;
     }
+    if (requestAnonymousNameBeforeStart()) return;
     setError('');
     setMatchmakingActive(true);
     cancelRef.current = false;
@@ -267,6 +318,10 @@ export function OnlineLobbyPage({
 
   const canStart = cardsReady && !!deck0Name;
   const rank = profile ? eloToRank(profile.elo) : null;
+  const draftPreview = formatAnonymousDisplayName({
+    baseName: sanitizeAnonymousBaseName(anonymousNameDraft),
+    suffix: anonymousIdentity.suffix,
+  });
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
@@ -290,7 +345,7 @@ export function OnlineLobbyPage({
         </div>
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
           <Radio className="size-3 animate-pulse text-vermilion" />
-          {profile ? `${profile.nickname} · ELO ${profile.elo}` : t('lobby.guestRank')}
+          {profile ? `${profile.nickname} · ELO ${profile.elo}` : anonymousDisplayName}
         </div>
       </header>
 
@@ -301,6 +356,68 @@ export function OnlineLobbyPage({
           <div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.quickMatch')}</div>
             <h2 className="mt-1 font-display text-3xl italic">{t('lobby.onlineTitle')}</h2>
+          </div>
+
+          {/* 匿名身份 */}
+          <div className="rounded-sm bg-lacquer-deep/60 p-4 ring-1 ring-bone/5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-widest text-bone/40">{t('anonymous.identity')}</div>
+                <div className="mt-1 truncate font-mono text-sm text-gold">
+                  {profile ? profile.nickname : editingAnonymousName ? draftPreview : anonymousDisplayName}
+                </div>
+              </div>
+              {!profile && (
+                <button
+                  className="grid size-8 shrink-0 place-items-center border border-bone/20 text-bone/60 transition hover:bg-bone/5 hover:text-bone focus-visible:ring-2 focus-visible:ring-gold/60"
+                  type="button"
+                  onClick={startEditingAnonymousName}
+                  aria-label={t('anonymous.editName')}
+                  title={t('anonymous.editName')}
+                >
+                  <Pencil strokeWidth={1.25} className="size-3.5" />
+                </button>
+              )}
+            </div>
+            {!profile && editingAnonymousName && (
+              <div className="mt-3 flex gap-2">
+                <input
+                  className="min-w-0 flex-1 border border-bone/10 bg-lacquer-deep px-3 py-2 text-sm text-bone placeholder:text-bone/30 focus:outline-none focus:ring-1 focus:ring-gold/40"
+                  value={anonymousNameDraft}
+                  maxLength={30}
+                  onChange={(event) => setAnonymousNameDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') saveAnonymousName();
+                    if (event.key === 'Escape') cancelAnonymousNameEdit();
+                  }}
+                  aria-label={t('anonymous.nameInput')}
+                />
+                <button
+                  className="grid size-9 shrink-0 place-items-center border border-gold/40 text-gold transition hover:bg-gold/10 focus-visible:ring-2 focus-visible:ring-gold/60"
+                  type="button"
+                  onClick={saveAnonymousName}
+                  aria-label={t('common.save')}
+                  title={t('common.save')}
+                >
+                  <Check strokeWidth={1.25} className="size-4" />
+                </button>
+                <button
+                  className="grid size-9 shrink-0 place-items-center border border-bone/20 text-bone/50 transition hover:bg-bone/5 hover:text-bone focus-visible:ring-2 focus-visible:ring-gold/60"
+                  type="button"
+                  onClick={cancelAnonymousNameEdit}
+                  aria-label={t('common.cancel')}
+                  title={t('common.cancel')}
+                >
+                  <X strokeWidth={1.25} className="size-4" />
+                </button>
+              </div>
+            )}
+            {!profile && showAnonymousNamePrompt && (
+              <p className="mt-3 text-[10px] leading-relaxed text-gold/70">{t('anonymous.firstStartPrompt')}</p>
+            )}
+            {!profile && !editingAnonymousName && (
+              <p className="mt-2 text-[10px] leading-relaxed text-bone/40">{t('anonymous.registerHint')}</p>
+            )}
           </div>
 
           {/* 當前牌組摘要 */}
@@ -372,7 +489,12 @@ export function OnlineLobbyPage({
         <section className="flex min-h-0 flex-col gap-6 md:overflow-y-auto md:pr-2">
           {/* 牌組選擇 */}
           <div className="rounded-sm bg-lacquer/60 p-5 ring-1 ring-bone/10">
-            <DeckSelector label={t('lobby.myDeck')} value={deck0Name} options={deckOptions} onChange={handleDeckChange} />
+            <DeckSelector
+              label={t('lobby.myDeck')}
+              value={deck0Name}
+              options={deckOptions}
+              onChange={handleDeckChange}
+            />
           </div>
 
           {/* 自訂房間 */}

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { identifyAnalytics, trackPageView } from './analytics';
+import { formatAnonymousDisplayName } from './anonymousIdentity';
 import { getDecks, getProfile, isLoggedIn, type DeckResponse } from './api/client';
 import { ensureCompatibleAppVersion } from './clientVersion';
 import { InteractiveTutorial } from './components/InteractiveTutorial';
@@ -67,26 +68,35 @@ async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
   return data.matchID;
 }
 
-async function currentAccountSeatData(): Promise<{ userId: string } | undefined> {
+async function currentAccountSeatProfile(): Promise<{ data?: { userId: string }; playerName?: string } | undefined> {
   if (!isLoggedIn()) return undefined;
   try {
     const profile = await getProfile();
-    return { userId: profile.id };
+    return { data: { userId: profile.id }, playerName: profile.nickname };
   } catch {
     return undefined;
   }
 }
 
-async function joinMatch(matchID: string, playerID: '0' | '1'): Promise<{ playerCredentials: string }> {
+async function joinMatch(
+  matchID: string,
+  playerID: '0' | '1',
+  requestedPlayerName?: string,
+): Promise<{ playerCredentials: string }> {
   await ensureCompatibleAppVersion();
-  const data = await currentAccountSeatData();
+  const account = await currentAccountSeatProfile();
+  const playerName =
+    requestedPlayerName ||
+    account?.playerName ||
+    formatAnonymousDisplayName() ||
+    (playerID === '0' ? t('player.zero') : t('player.one'));
   const response = await fetch(`/games/zutomayo-card/${matchID}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       playerID,
-      playerName: playerID === '0' ? t('player.zero') : t('player.one'),
-      data: { ...(data ?? {}), clientVersion: APP_VERSION_INFO },
+      playerName,
+      data: { ...(account?.data ?? {}), clientVersion: APP_VERSION_INFO },
       clientVersion: APP_VERSION_INFO,
     }),
   });
@@ -328,14 +338,14 @@ function RouterShell() {
     return session;
   }, []);
 
-  const startOnline = async (existingID?: string): Promise<OnlineSession> => {
+  const startOnline = async (existingID?: string, playerName?: string): Promise<OnlineSession> => {
     const setupData = {
       ...onlineDeckName(0, deck0Name, serverDecks),
       ...onlineDeckName(1, deck1Name, serverDecks),
     };
     const matchID = existingID || (await createMatch(setupData));
     const playerID: '0' | '1' = existingID ? '1' : '0';
-    const { playerCredentials } = await joinMatch(matchID, playerID);
+    const { playerCredentials } = await joinMatch(matchID, playerID, playerName);
     const session = { matchID, playerID, playerCredentials };
     setOnlineSession(session);
     setResumePromptSession(null);

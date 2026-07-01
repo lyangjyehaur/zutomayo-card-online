@@ -7,7 +7,8 @@ export const ja: Record<TranslationKey, string> = {
   'app.footerCopyright': 'Card assets © zutomayocard.net',
 
   'intro.deckTitle': 'ZUTOMAYO CARD へようこそ',
-  'intro.deckDescription': 'ゲームを始める前に、デッキを選択する必要があります。プリセットデッキを使うか、デッキエディタで自分のデッキを作成できます。',
+  'intro.deckDescription':
+    'ゲームを始める前に、デッキを選択する必要があります。プリセットデッキを使うか、デッキエディタで自分のデッキを作成できます。',
   'intro.goToDeckBuilder': 'デッキエディタへ',
   'intro.exploreLater': '後で見る',
 
@@ -93,6 +94,11 @@ export const ja: Record<TranslationKey, string> = {
   'lobby.customRooms': 'カスタムルーム',
   'lobby.noDeckSelected': 'デッキ未選択',
   'lobby.loginRequired': 'ログインが必要です',
+  'anonymous.identity': '匿名アイデンティティ',
+  'anonymous.editName': '匿名名を編集',
+  'anonymous.nameInput': '匿名名',
+  'anonymous.firstStartPrompt': '入室前に名前を変えますか？もう一度押すとスキップできます。',
+  'anonymous.registerHint': 'アカウント登録時にこの名前を引き継げます。',
 
   'difficulty.easy': 'やさしい',
   'difficulty.normal': 'ふつう',

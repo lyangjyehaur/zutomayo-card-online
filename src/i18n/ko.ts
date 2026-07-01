@@ -7,7 +7,8 @@ export const ko: Record<TranslationKey, string> = {
   'app.footerCopyright': 'Card assets © zutomayocard.net',
 
   'intro.deckTitle': 'ZUTOMAYO CARD 에 오신 것을 환영합니다',
-  'intro.deckDescription': '게임을 시작하기 전에 덱을 선택해야 합니다. 프리셋 덱을 사용하거나 덱 에디터에서 직접 만들 수 있습니다.',
+  'intro.deckDescription':
+    '게임을 시작하기 전에 덱을 선택해야 합니다. 프리셋 덱을 사용하거나 덱 에디터에서 직접 만들 수 있습니다.',
   'intro.goToDeckBuilder': '덱 에디터로 이동',
   'intro.exploreLater': '나중에 둘러보기',
 
@@ -93,6 +94,11 @@ export const ko: Record<TranslationKey, string> = {
   'lobby.customRooms': '커스텀 방',
   'lobby.noDeckSelected': '덱 미선택',
   'lobby.loginRequired': '로그인이 필요합니다',
+  'anonymous.identity': '익명 ID',
+  'anonymous.editName': '익명 이름 편집',
+  'anonymous.nameInput': '익명 이름',
+  'anonymous.firstStartPrompt': '입장 전에 이름을 바꿀까요? 다시 누르면 건너뜁니다.',
+  'anonymous.registerHint': '계정을 등록할 때 이 이름을 이어서 사용할 수 있습니다.',
 
   'difficulty.easy': '쉬움',
   'difficulty.normal': '보통',

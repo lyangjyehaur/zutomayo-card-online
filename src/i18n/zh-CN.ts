@@ -93,6 +93,11 @@ export const zhCN: Record<TranslationKey, string> = {
   'lobby.customRooms': '自定义房间',
   'lobby.noDeckSelected': '尚未选择牌组',
   'lobby.loginRequired': '登录后方可匹配',
+  'anonymous.identity': '匿名身份',
+  'anonymous.editName': '编辑匿名名称',
+  'anonymous.nameInput': '匿名名称',
+  'anonymous.firstStartPrompt': '要换个名字再进房吗？也可以直接再按一次跳过。',
+  'anonymous.registerHint': '注册正式账号时会沿用这个名称。',
 
   'difficulty.easy': '简单',
   'difficulty.normal': '普通',

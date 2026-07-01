@@ -7,7 +7,8 @@ export const en: Record<TranslationKey, string> = {
   'app.footerCopyright': 'Card assets © zutomayocard.net',
 
   'intro.deckTitle': 'Welcome to ZUTOMAYO CARD',
-  'intro.deckDescription': 'Before starting a game, you need to select a deck. You can use a preset deck or create your own in the Deck Editor.',
+  'intro.deckDescription':
+    'Before starting a game, you need to select a deck. You can use a preset deck or create your own in the Deck Editor.',
   'intro.goToDeckBuilder': 'Go to Deck Editor',
   'intro.exploreLater': 'Explore Later',
 
@@ -93,6 +94,11 @@ export const en: Record<TranslationKey, string> = {
   'lobby.customRooms': 'Custom Rooms',
   'lobby.noDeckSelected': 'No deck selected',
   'lobby.loginRequired': 'Login required to match',
+  'anonymous.identity': 'Anonymous Identity',
+  'anonymous.editName': 'Edit anonymous name',
+  'anonymous.nameInput': 'Anonymous name',
+  'anonymous.firstStartPrompt': 'Want to change your name before entering? Press again to skip.',
+  'anonymous.registerHint': 'This name will be reused when you register an account.',
 
   'difficulty.easy': 'Easy',
   'difficulty.normal': 'Normal',
