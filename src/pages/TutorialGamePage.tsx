@@ -51,6 +51,15 @@ export function TutorialGamePage() {
     }
   }, [currentStep, jankenResultStepIndex, goNext]);
 
+  // 時鐘推進/HP 計算彈窗的確認按鈕點擊時，若教學正在對應步驟，自動推進到下一步
+  const clockAdvanceStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'clock-advance');
+  const hpCalcStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'hp-calc');
+  const handleNoticeDismiss = useCallback(() => {
+    if (currentStep === clockAdvanceStepIndex || currentStep === hpCalcStepIndex) {
+      goNext();
+    }
+  }, [currentStep, clockAdvanceStepIndex, hpCalcStepIndex, goNext]);
+
   const handleSkip = () => {
     if (window.confirm(t('tutorial.skipConfirm' as never) || '確定要跳過教學嗎？')) {
       navigate('/');
@@ -84,6 +93,7 @@ export function TutorialGamePage() {
         hideSetupOverlay={hideSetupOverlay}
         aiPaused={aiPaused}
         onSetupFeedbackDismiss={handleSetupFeedbackDismiss}
+        onNoticeDismiss={handleNoticeDismiss}
       />
 
       <GameTutorialOverlay

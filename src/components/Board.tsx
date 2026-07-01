@@ -61,6 +61,8 @@ type Props = BoardProps<GameState> & {
   hideSetupOverlay?: boolean;
   // 教學模式：setupFeedback 彈窗（如猜拳結果）確認按鈕點擊時的通知
   onSetupFeedbackDismiss?: () => void;
+  // 教學模式：GameNoticeOverlay 彈窗（時鐘推進、HP 計算）確認按鈕點擊時的通知
+  onNoticeDismiss?: () => void;
 };
 
 type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
@@ -607,7 +609,15 @@ function noticeNeedsConfirm(notice: GameNotice): boolean {
   return false;
 }
 
-function GameNoticeOverlay({ G, me }: { G: GameState; me?: PlayerIndex }) {
+function GameNoticeOverlay({
+  G,
+  me,
+  onNoticeDismiss,
+}: {
+  G: GameState;
+  me?: PlayerIndex;
+  onNoticeDismiss?: () => void;
+}) {
   const lastSeenIdRef = useRef<number>(-1);
   const [queue, setQueue] = useState<GameNotice[]>([]);
   const [current, setCurrent] = useState<GameNotice | null>(null);
@@ -649,6 +659,10 @@ function GameNoticeOverlay({ G, me }: { G: GameState; me?: PlayerIndex }) {
       timerRef.current = null;
     }
     setCurrent(null);
+    // 教學模式：通知教學引擎彈窗已確認關閉（用於 clock-advance/hp-calc 步驟推進）
+    if (current && noticeNeedsConfirm(current)) {
+      onNoticeDismiss?.();
+    }
   };
 
   useEffect(() => {
@@ -1900,7 +1914,15 @@ export function BattleLogPanel({ G }: { G: GameState }) {
   );
 }
 
-function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel, selfLabel }: Props) {
+function BattleBoard({
+  G,
+  moves,
+  playerID,
+  useServerTimer = false,
+  opponentLabel,
+  selfLabel,
+  onNoticeDismiss,
+}: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
@@ -2576,7 +2598,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
       )}
 
       <FeedbackOverlay message={phaseMessage} />
-      <GameNoticeOverlay G={G} me={meIndex} />
+      <GameNoticeOverlay G={G} me={meIndex} onNoticeDismiss={onNoticeDismiss} />
     </div>
   );
 }

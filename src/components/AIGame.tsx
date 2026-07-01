@@ -26,6 +26,7 @@ interface AIGameProps {
   hideSetupOverlay?: boolean;
   aiPaused?: boolean;
   onSetupFeedbackDismiss?: () => void;
+  onNoticeDismiss?: () => void;
 }
 
 function AIBoard(
@@ -37,6 +38,7 @@ function AIBoard(
     aiPaused?: boolean;
     aiScript?: TutorialAIScript;
     onSetupFeedbackDismiss?: () => void;
+    onNoticeDismiss?: () => void;
   },
 ) {
   const {
@@ -47,6 +49,7 @@ function AIBoard(
     aiPaused,
     aiScript,
     onSetupFeedbackDismiss,
+    onNoticeDismiss,
     ...boardProps
   } = props;
   const aiMoves = useMemo<ZutomayoMoveDispatchers>(
@@ -88,6 +91,7 @@ function AIBoard(
       opponentLabel={t('player.ai' as never)}
       hideSetupOverlay={hideSetupOverlay}
       onSetupFeedbackDismiss={onSetupFeedbackDismiss}
+      onNoticeDismiss={onNoticeDismiss}
     />
   );
 }
@@ -105,6 +109,7 @@ export function AIGame({
   hideSetupOverlay,
   aiPaused,
   onSetupFeedbackDismiss,
+  onNoticeDismiss,
 }: AIGameProps) {
   // 動態 props 用 ref 持有，board 回調從 ref 讀取最新值。
   // Client 只建立一次（useState 初始化），若直接在 board 回調閉包中捕獲 props，
@@ -117,6 +122,7 @@ export function AIGame({
     aiPaused,
     aiScript,
     onSetupFeedbackDismiss,
+    onNoticeDismiss,
   });
   dynamicPropsRef.current = {
     difficulty,
@@ -126,6 +132,7 @@ export function AIGame({
     aiPaused,
     aiScript,
     onSetupFeedbackDismiss,
+    onNoticeDismiss,
   };
 
   const [AIClient] = useState(() =>
@@ -143,6 +150,7 @@ export function AIGame({
             aiPaused={dp.aiPaused}
             aiScript={dp.aiScript}
             onSetupFeedbackDismiss={dp.onSetupFeedbackDismiss}
+            onNoticeDismiss={dp.onNoticeDismiss}
           />
         );
       },

@@ -138,7 +138,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     completeWhen: (G, entry) => entry?.step === 'initialSet' && G.step !== 'initialSet',
   },
 
-  // 5b. 時鐘推進說明（高亮時鐘推進彈窗）
+  // 5b. 時鐘推進說明（高亮時鐘推進彈窗，點彈窗確認按鈕推進）
   {
     phase: 'clock-advance',
     target: '[data-tut="game-notice-panel"]',
@@ -146,6 +146,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     body: 'tutorial.game.clockAdvance.body',
     placement: 'bottom',
     padding: 12,
+    hideNext: true,
   },
 
   // 6. 效果順序（條件式：僅 initialSet 後有效果卡才出現）
@@ -192,7 +193,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     completeWhen: (G) => !G.pendingChoice,
   },
 
-  // 6c. HP 計算說明（高亮 HP 計算彈窗）
+  // 6c. HP 計算說明（高亮 HP 計算彈窗，點彈窗確認按鈕推進）
   {
     phase: 'hp-calc',
     target: '[data-tut="game-notice-panel"]',
@@ -200,6 +201,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     body: 'tutorial.game.hpCalc.body',
     placement: 'bottom',
     padding: 12,
+    hideNext: true,
   },
 
   // 7. 戰鬥結算結果
