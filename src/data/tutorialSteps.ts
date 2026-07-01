@@ -115,10 +115,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     hideNext: true,
   },
 
-  // 4. 重抽（合併為操作步驟：高亮重抽彈框內的高費卡 + 重抽按鈕，操作後自動推進）
+  // 4. 重抽（合併為操作步驟：高亮重抽彈框內的高費卡 + 重抽/保留按鈕，操作後自動推進）
   {
     phase: 'mulligan',
-    target: ['[data-tut-mulligan-card="1st_2"]', '[data-tut="mulligan-redraw"]'],
+    target: ['[data-tut-mulligan-card="1st_2"]', '[data-tut="mulligan-redraw"]', '[data-tut="mulligan-keep"]'],
     title: 'tutorial.game.mulligan.intro.title',
     body: 'tutorial.game.mulligan.intro.body',
     placement: 'bottom',
@@ -126,10 +126,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     completeWhen: (G) => G.mulliganUsed[0],
   },
 
-  // 5. 初始放置（合併為操作步驟：高亮劇本指定卡，操作後自動推進）
+  // 5. 初始放置（合併為操作步驟：高亮劇本指定卡 + 確認按鈕，操作後自動推進）
   {
     phase: 'initialSet',
-    target: '[data-tut-card="1st_70"]',
+    target: ['[data-tut-card="1st_70"]', '[data-tut="confirm-set"]'],
     title: 'tutorial.game.initialSet.intro.title',
     body: 'tutorial.game.initialSet.intro.body',
     placement: 'top',
@@ -240,11 +240,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     },
   },
 
-  // 9. 第二回合放置（合併為操作步驟：高亮劇本指定卡，操作後自動推進）
+  // 9. 第二回合放置（合併為操作步驟：高亮劇本指定卡 + 確認按鈕，操作後自動推進）
   //    依上回合勝負分支：敗者出 2 張（1st_34 + 2nd_86），勝者出 1 張
   {
     phase: 'turnSet',
-    target: ['[data-tut-card="1st_34"]', '[data-tut-card="2nd_86"]'],
+    target: ['[data-tut-card="1st_34"]', '[data-tut-card="2nd_86"]', '[data-tut="confirm-set"]'],
     title: 'tutorial.game.turnSet.intro.title',
     body: 'tutorial.game.turnSet.intro.body',
     placement: 'top',
