@@ -730,6 +730,7 @@ function JankenScreen({ G, moves, playerID, floating = false }: Props & { floati
                 key={value}
                 className="group flex flex-col items-center gap-3 rounded-sm bg-lacquer-deep/60 px-4 py-5 ring-1 ring-bone/10 transition hover:-translate-y-1 hover:ring-gold/40"
                 type="button"
+                data-tut={`janken-${value}`}
                 onClick={() => moves.janken(value)}
               >
                 <span className="text-3xl" aria-hidden="true">

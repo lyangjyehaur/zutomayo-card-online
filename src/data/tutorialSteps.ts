@@ -94,10 +94,10 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     padding: 12,
   },
 
-  // 3. 猜拳（規則說明 + 操作合併為單一步驟，玩家出拳後自動推進）
+  // 3. 猜拳（規則說明 + 操作合併為單一步驟，高亮石頭按鈕確保玩家贏得猜拳）
   {
     phase: 'janken',
-    target: '[data-tut="janken-panel"]',
+    target: '[data-tut="janken-rock"]',
     title: 'tutorial.game.janken.intro.title',
     body: 'tutorial.game.janken.intro.body',
     placement: 'bottom',
