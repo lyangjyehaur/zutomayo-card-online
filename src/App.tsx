@@ -45,6 +45,7 @@ const OnlineLobbyPage = lazy(() =>
 const LeaderboardPage = lazy(() =>
   import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
 );
+const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((module) => ({ default: module.FeedbackPage })));
 
 type OnlineRoomErrorKey =
   | 'online.roomFull'
@@ -146,6 +147,9 @@ function NavBar({ onShowTutorial }: { onShowTutorial: () => void }) {
         </button>
         <button className={buttonClass('/deck-builder')} type="button" onClick={() => navigate('/deck-builder')}>
           {t('nav.deckBuilder')}
+        </button>
+        <button className={buttonClass('/feedback')} type="button" onClick={() => navigate('/feedback')}>
+          {t('nav.feedback')}
         </button>
       </div>
       <button className={buttonClass('')} type="button" onClick={onShowTutorial}>
@@ -470,6 +474,7 @@ function RouterShell() {
             />
             <Route path="/history" element={<MatchHistoryPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/admin/i18n" element={<I18nManager />} />
             <Route path="*" element={<NotFoundPage />} />

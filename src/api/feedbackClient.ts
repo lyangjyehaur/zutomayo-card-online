@@ -1,0 +1,191 @@
+import { ApiError } from './client';
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const ANON_ID_KEY = 'zutomayo_feedback_anon_id';
+
+export type FeedbackStatus = 'open' | 'planned' | 'started' | 'completed' | 'declined';
+export type FeedbackSort = 'top' | 'newest' | 'recent';
+
+export interface FeedbackPost {
+  id: string;
+  title: string;
+  description: string;
+  status: FeedbackStatus;
+  tag: string;
+  authorUserId: string | null;
+  authorNickname: string | null;
+  anonymousId: string | null;
+  voteCount: number;
+  commentCount: number;
+  hasVoted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  comments?: FeedbackComment[];
+}
+
+export interface FeedbackComment {
+  id: string;
+  postId: string;
+  content: string;
+  authorUserId: string | null;
+  authorNickname: string | null;
+  anonymousId: string | null;
+  createdAt: string;
+}
+
+export interface FeedbackStats {
+  open: string;
+  planned: string;
+  started: string;
+  completed: string;
+  declined: string;
+  total: string;
+  total_votes: string;
+}
+
+// 匿名身份：從 localStorage 取得或產生固定 UUID（用於匿名投票/發文追蹤，避免重複投票）。
+export function getAnonymousId(): string {
+  try {
+    let id = localStorage.getItem(ANON_ID_KEY);
+    if (!id) {
+      // 產生符合後端正則 /^[a-zA-Z0-9_-]{8,64}$/ 的隨機 ID
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      id = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem(ANON_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    // localStorage 不可用時回退隨機 ID（無法跨頁持久，但仍允許單次操作）
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+}
+
+// 投票者身份查詢參數（登入用戶不需要，匿名用戶附帶 anonymousId）。
+function voterQuery(): string {
+  const token = localStorage.getItem('zutomayo_token');
+  if (token) return '';
+  return `?anonymousId=${encodeURIComponent(getAnonymousId())}`;
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem('zutomayo_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string>) || {}),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const text = await res.text();
+  let data: Record<string, unknown> = {};
+  if (text) {
+    try {
+      data = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      data = { error: text };
+    }
+  }
+  if (!res.ok) throw new ApiError((data.error as string) || 'Request failed', res.status);
+  return data as T;
+}
+
+// 匿名身份附帶於 body（登入時由 JWT 識別，無需附加）。
+function withVoter(body: Record<string, unknown>): Record<string, unknown> {
+  const token = localStorage.getItem('zutomayo_token');
+  if (token) return body;
+  return { ...body, anonymousId: getAnonymousId() };
+}
+
+// ===== 列表與詳情 =====
+export async function listFeedbackPosts(
+  params: {
+    status?: FeedbackStatus | '';
+    tag?: string;
+    sort?: FeedbackSort;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
+): Promise<FeedbackPost[]> {
+  const query = new URLSearchParams();
+  const token = localStorage.getItem('zutomayo_token');
+  if (!token) query.set('anonymousId', getAnonymousId());
+  if (params.status) query.set('status', params.status);
+  if (params.tag) query.set('tag', params.tag);
+  if (params.sort) query.set('sort', params.sort);
+  if (params.q) query.set('q', params.q);
+  if (params.limit) query.set('limit', String(params.limit));
+  if (params.offset) query.set('offset', String(params.offset));
+  const data = await request<{ posts: FeedbackPost[] }>(`/feedback/posts?${query.toString()}`);
+  return data.posts;
+}
+
+export async function getFeedbackPost(id: string): Promise<FeedbackPost> {
+  return request<FeedbackPost>(`/feedback/posts/${encodeURIComponent(id)}${voterQuery()}`);
+}
+
+export async function getFeedbackStats(): Promise<FeedbackStats> {
+  return request<FeedbackStats>('/feedback/stats');
+}
+
+// ===== 發文 / 投票 / 留言 =====
+export async function createFeedbackPost(title: string, description: string): Promise<FeedbackPost> {
+  return request<FeedbackPost>('/feedback/posts', {
+    method: 'POST',
+    body: JSON.stringify(withVoter({ title, description })),
+  });
+}
+
+export async function toggleFeedbackVote(postId: string): Promise<{ voted: boolean }> {
+  return request<{ voted: boolean }>(`/feedback/posts/${encodeURIComponent(postId)}/votes`, {
+    method: 'POST',
+    body: JSON.stringify(withVoter({})),
+  });
+}
+
+export async function addFeedbackComment(postId: string, content: string): Promise<FeedbackComment> {
+  return request<FeedbackComment>(`/feedback/posts/${encodeURIComponent(postId)}/comments`, {
+    method: 'POST',
+    body: JSON.stringify(withVoter({ content })),
+  });
+}
+
+// ===== 管理員審核 =====
+function adminHeaders(): Record<string, string> {
+  const token =
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('zutomayo_admin_token')) ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('zutomayo_admin_token')) ||
+    '';
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function isAdminMode(): boolean {
+  return Boolean(
+    (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('zutomayo_admin_token')) ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('zutomayo_admin_token')),
+  );
+}
+
+export async function adminUpdatePostStatus(postId: string, status: FeedbackStatus): Promise<FeedbackPost> {
+  return request<FeedbackPost>(`/feedback/admin/posts/${encodeURIComponent(postId)}/status`, {
+    method: 'PUT',
+    headers: adminHeaders(),
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function adminUpdatePostTag(postId: string, tag: string): Promise<FeedbackPost> {
+  return request<FeedbackPost>(`/feedback/admin/posts/${encodeURIComponent(postId)}/tag`, {
+    method: 'PUT',
+    headers: adminHeaders(),
+    body: JSON.stringify({ tag }),
+  });
+}
+
+export async function adminDeleteFeedbackPost(postId: string): Promise<{ deleted: boolean }> {
+  return request<{ deleted: boolean }>(`/feedback/admin/posts/${encodeURIComponent(postId)}`, {
+    method: 'DELETE',
+    headers: adminHeaders(),
+  });
+}

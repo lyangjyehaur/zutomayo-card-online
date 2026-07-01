@@ -23,6 +23,17 @@ const {
 } = require('./matchmakingService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
+const {
+  listPosts: listFeedbackPosts,
+  getPost: getFeedbackPost,
+  createPost: createFeedbackPost,
+  toggleVote: toggleFeedbackVote,
+  addComment: addFeedbackComment,
+  updatePostStatus: updateFeedbackPostStatus,
+  updatePostTag: updateFeedbackPostTag,
+  deletePost: deleteFeedbackPost,
+  getStats: getFeedbackStats,
+} = require('./feedbackService.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 
@@ -189,6 +200,44 @@ async function initSchema() {
       details JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+
+    // ===== 反饋功能 schema（參考 Fider）=====
+    `CREATE TABLE IF NOT EXISTS feedback_posts (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      author_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      anonymous_id TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      tag TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (author_user_id IS NOT NULL OR anonymous_id IS NOT NULL)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_feedback_posts_status ON feedback_posts(status)`,
+    `CREATE INDEX IF NOT EXISTS idx_feedback_posts_created_at ON feedback_posts(created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS feedback_votes (
+      post_id TEXT NOT NULL REFERENCES feedback_posts(id) ON DELETE CASCADE,
+      voter_user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      anonymous_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (voter_user_id IS NOT NULL OR anonymous_id IS NOT NULL),
+      CHECK (NOT (voter_user_id IS NOT NULL AND anonymous_id IS NOT NULL))
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_feedback_votes_user
+      ON feedback_votes(post_id, voter_user_id) WHERE voter_user_id IS NOT NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_feedback_votes_anon
+      ON feedback_votes(post_id, anonymous_id) WHERE anonymous_id IS NOT NULL`,
+    `CREATE TABLE IF NOT EXISTS feedback_comments (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL REFERENCES feedback_posts(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      author_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      anonymous_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (author_user_id IS NOT NULL OR anonymous_id IS NOT NULL)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_feedback_comments_post ON feedback_comments(post_id, created_at)`,
   ];
 
   for (const statement of schemaStatements) {
@@ -878,6 +927,125 @@ function handleRequest(req, res) {
       const result = await reportRealMatch(redis, userId, matchId);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
+      return;
+    }
+
+    // ===== Feedback Routes（反饋功能，參考 Fider）=====
+    // 投票者身份：登入用戶優先，否則用匿名 ID（前端 localStorage 產生）。
+    function extractFeedbackVoter(req, body) {
+      const userId = getAuthUserId(req);
+      if (userId) return { userId };
+      const raw = body && body.anonymousId !== undefined ? body.anonymousId : url.searchParams.get('anonymousId');
+      if (typeof raw === 'string' && /^[a-zA-Z0-9_-]{8,64}$/.test(raw)) return { anonymousId: raw };
+      return {};
+    }
+    const generateFeedbackId = (prefix) => prefix + crypto.randomBytes(8).toString('hex');
+
+    // GET /api/feedback/posts — 列出反饋
+    if (pathname === '/api/feedback/posts' && method === 'GET') {
+      const voter = extractFeedbackVoter(req, {});
+      json(
+        await listFeedbackPosts({
+          pool,
+          voter,
+          status: url.searchParams.get('status'),
+          tag: url.searchParams.get('tag'),
+          sort: url.searchParams.get('sort'),
+          q: url.searchParams.get('q'),
+          limit: url.searchParams.get('limit'),
+          offset: url.searchParams.get('offset'),
+        }),
+      );
+      return;
+    }
+
+    // GET /api/feedback/stats — 統計資料
+    if (pathname === '/api/feedback/stats' && method === 'GET') {
+      json(await getFeedbackStats({ pool }));
+      return;
+    }
+
+    // GET /api/feedback/posts/:id — 取得單一文章含留言
+    const feedbackPostRoute = pathname.match(/^\/api\/feedback\/posts\/([^/]+)$/);
+    if (feedbackPostRoute && method === 'GET') {
+      const postId = decodeURIComponent(feedbackPostRoute[1]);
+      const voter = extractFeedbackVoter(req, {});
+      json(await getFeedbackPost({ pool, voter, postId }));
+      return;
+    }
+
+    // POST /api/feedback/posts — 建立反饋（匿名或登入）
+    if (pathname === '/api/feedback/posts' && method === 'POST') {
+      const body = await readBody();
+      const voter = extractFeedbackVoter(req, body);
+      json(
+        await createFeedbackPost({
+          pool,
+          voter,
+          body,
+          sanitizeText,
+          generateId: () => generateFeedbackId('fb_'),
+        }),
+      );
+      return;
+    }
+
+    // POST /api/feedback/posts/:id/votes — 切換投票
+    const feedbackVoteRoute = pathname.match(/^\/api\/feedback\/posts\/([^/]+)\/votes$/);
+    if (feedbackVoteRoute && method === 'POST') {
+      const postId = decodeURIComponent(feedbackVoteRoute[1]);
+      const body = await readBody();
+      const voter = extractFeedbackVoter(req, body);
+      json(await toggleFeedbackVote({ pool, voter, postId }));
+      return;
+    }
+
+    // POST /api/feedback/posts/:id/comments — 新增留言
+    const feedbackCommentRoute = pathname.match(/^\/api\/feedback\/posts\/([^/]+)\/comments$/);
+    if (feedbackCommentRoute && method === 'POST') {
+      const postId = decodeURIComponent(feedbackCommentRoute[1]);
+      const body = await readBody();
+      const voter = extractFeedbackVoter(req, body);
+      json(
+        await addFeedbackComment({
+          pool,
+          voter,
+          postId,
+          body,
+          sanitizeText,
+          generateId: () => generateFeedbackId('fc_'),
+        }),
+      );
+      return;
+    }
+
+    // ===== Feedback Admin Routes（管理員審核）=====
+    // PUT /api/feedback/admin/posts/:id/status — 變更狀態
+    const feedbackStatusRoute = pathname.match(/^\/api\/feedback\/admin\/posts\/([^/]+)\/status$/);
+    if (feedbackStatusRoute && method === 'PUT') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const postId = decodeURIComponent(feedbackStatusRoute[1]);
+      const { status } = await readBody();
+      json(await updateFeedbackPostStatus({ pool, postId, status }));
+      return;
+    }
+
+    // PUT /api/feedback/admin/posts/:id/tag — 變更標籤
+    const feedbackTagRoute = pathname.match(/^\/api\/feedback\/admin\/posts\/([^/]+)\/tag$/);
+    if (feedbackTagRoute && method === 'PUT') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const postId = decodeURIComponent(feedbackTagRoute[1]);
+      const { tag } = await readBody();
+      json(await updateFeedbackPostTag({ pool, postId, tag, sanitizeText }));
+      return;
+    }
+
+    // DELETE /api/feedback/admin/posts/:id — 刪除文章（審核）
+    const feedbackDeleteRoute = pathname.match(/^\/api\/feedback\/admin\/posts\/([^/]+)$/);
+    if (feedbackDeleteRoute && method === 'DELETE') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const postId = decodeURIComponent(feedbackDeleteRoute[1]);
+      json(await deleteFeedbackPost({ pool, postId }));
       return;
     }
 
