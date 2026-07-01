@@ -3,16 +3,22 @@ import type { TutorialStep } from '../components/GameTutorialOverlay';
 /**
  * 教學步驟定義（半操作式）。
  *
+ * 搭配固定劇本（tutorialScenario.ts），玩家會經歷兩回合對戰：
+ * - T1（initialSet）：玩家出低費角色卡，AI 出較強角色卡，玩家輸（受傷）
+ * - T2（turnSet）：玩家為敗者可出 2 張卡（角色+Area Enchant），透過效果逆轉獲勝
+ *
  * 流程順序：
  * 1. 歡迎
  * 2. 場地導覽（時鐘、戰鬥區、能量、深淵、HP）—— 開戰前先認識介面
- * 3. 猜拳（操作）
- * 4. 重抽（操作）
- * 5. 初始放置（操作）
+ * 3. 猜拳（操作）—— 玩家贏成為夜側玩家
+ * 4. 重抽（操作）—— 引導重抽高費卡，說明 powerCost 不足攻擊力為 0
+ * 5. 初始放置（操作）—— 引導出低費角色卡
+ * 5b. 時鐘推進說明
  * 6.（效果順序·條件式操作）
- * 7. 戰鬥結算結果
- * 8. 追趕機制說明
- * 9. 第二回合放置（操作）
+ * 6c. HP 計算說明
+ * 7. 戰鬥結算結果 —— T1 玩家輸
+ * 8. 追趕機制說明 —— 敗者可出 2 張卡
+ * 9. 第二回合放置（操作）—— 引導出角色卡 + Area Enchant
  * 10. 勝利條件與完成
  *
  * - 無 completeWhen：導覽步驟，用戶手動點 Next。
@@ -33,11 +39,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   //    拆成獨立步驟，每個區域分別介紹
   {
     phase: 'zone-battle',
-    target: '[data-tut="central-arena"]',
+    target: ['.opponent-battle-zone', '.player-battle-zone'],
     title: 'tutorial.game.zone.battle.title',
     body: 'tutorial.game.zone.battle.body',
-    placement: 'center',
-    padding: 20,
+    placement: 'right',
+    padding: 12,
   },
   {
     phase: 'zone-hand',
@@ -65,11 +71,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   },
   {
     phase: 'chronos-explain',
-    target: '[data-tut="central-arena"]',
+    target: '[data-tut="chronos-clock"]',
     title: 'tutorial.game.chronos.title',
     body: 'tutorial.game.chronos.body',
-    placement: 'center',
-    padding: 20,
+    placement: 'bottom',
+    padding: 12,
   },
   {
     phase: 'resources-explain',
@@ -91,10 +97,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   // 3. 猜拳
   {
     phase: 'janken-intro',
-    target: null,
+    target: '[data-tut="janken-panel"]',
     title: 'tutorial.game.janken.intro.title',
     body: 'tutorial.game.janken.intro.body',
-    placement: 'center',
+    placement: 'top',
+    padding: 16,
   },
   {
     phase: 'janken-action',
@@ -107,19 +114,23 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   },
   {
     phase: 'janken-result',
-    target: null,
+    target: '[data-tut="setup-feedback"]',
     title: 'tutorial.game.janken.result.title',
     body: 'tutorial.game.janken.result.body',
-    placement: 'center',
+    placement: 'top',
+    padding: 16,
+    // 隱藏 Next/Prev，只能點擊猜拳結果彈窗的確認按鈕推進
+    hideNext: true,
   },
 
   // 4. 重抽
   {
     phase: 'mulligan-intro',
-    target: null,
+    target: '[data-tut="mulligan-panel"]',
     title: 'tutorial.game.mulligan.intro.title',
     body: 'tutorial.game.mulligan.intro.body',
-    placement: 'center',
+    placement: 'top',
+    padding: 16,
   },
   {
     phase: 'mulligan-action',
@@ -148,6 +159,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     padding: 12,
     // 用戶放置卡牌並確認後，遊戲會離開 initialSet 階段
     completeWhen: (G, entry) => entry?.step === 'initialSet' && G.step !== 'initialSet',
+  },
+
+  // 5b. 時鐘推進說明（初始放置翻開後、效果處理前）
+  {
+    phase: 'clock-advance',
+    target: '[data-tut="chronos-clock"]',
+    title: 'tutorial.game.clockAdvance.title',
+    body: 'tutorial.game.clockAdvance.body',
+    placement: 'bottom',
+    padding: 12,
   },
 
   // 6. 效果順序（條件式：僅 initialSet 後有效果卡才出現）
@@ -192,6 +213,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     skipWhen: (G) => !G.pendingChoice,
     // pendingChoice 被清空（用戶提交選擇）後推進
     completeWhen: (G) => !G.pendingChoice,
+  },
+
+  // 6c. HP 計算說明（效果處理後、戰鬥結果前）
+  {
+    phase: 'hp-calc',
+    target: '[data-tut="player-hp"]',
+    title: 'tutorial.game.hpCalc.title',
+    body: 'tutorial.game.hpCalc.body',
+    placement: 'top',
+    padding: 12,
   },
 
   // 7. 戰鬥結算結果

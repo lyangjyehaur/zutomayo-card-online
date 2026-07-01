@@ -565,32 +565,31 @@ export const zhTW = {
   'tutorial.game.janken.result.body': '結果已出爐！夜側玩家在夜時段優先處理效果，晝側玩家在晝時段優先處理效果。',
   'tutorial.game.mulligan.intro.title': '手牌重抽階段',
   'tutorial.game.mulligan.intro.body':
-    '開局時，你可以選擇任意手牌重抽一次，調整起手牌型。如果對當前手牌滿意，可以直接保留。',
+    '你的起手牌中有一張高 Power Cost 的角色卡。當充能區的能量不足以支付 Power Cost 時，該角色的攻擊力會變成 0，無法造成傷害。若起手牌含高費卡或時計分布不理想，可選擇任意張數蓋放重抽，舊卡洗回牌組。每場對戰僅能重抽一次。',
   'tutorial.game.mulligan.action.title': '選擇要重抽的卡牌',
   'tutorial.game.mulligan.action.body':
-    '點擊想要重抽的卡牌，選好後按下「確認」。如果不想重抽，直接按「保留手牌」即可。',
+    '點擊想要替換的卡牌將其蓋放（例如高 Power Cost 的角色卡），再按下確認從牌組抽等量新卡。若對手牌滿意，直接按「保留手牌」跳過。',
   'tutorial.game.initialSet.intro.title': '初始放置階段',
-  'tutorial.game.initialSet.intro.body': '現在開始放置卡牌！第一回合你可以從手牌選擇一張卡放入設置區，準備進入戰鬥。',
+  'tutorial.game.initialSet.intro.body':
+    '現在從手牌選擇 1 張卡蓋放至戰鬥區，這是你的初始角色。建議選擇 Power Cost 較低的卡，確保攻擊力能正常發揮。雙方同時翻開後進入對決。',
   'tutorial.game.initialSet.action.title': '選擇一張卡片放置',
-  'tutorial.game.initialSet.action.body': '從手牌中選擇一張卡片，放入你的設置區。選好後按「確認」。',
+  'tutorial.game.initialSet.action.body': '從手牌中選擇 1 張卡放入戰鬥區。選好後按「確認」。',
   'tutorial.game.zone.battle.title': '戰鬥區',
   'tutorial.game.zone.battle.body':
-    '中央的戰鬥區是當前角色對決的地方。雙方各放一張角色卡，攻擊力較高者獲勝並對對手造成傷害。',
+    '中央的戰鬥區是當前角色對決的地方。雙方各放一張角色卡，依 Chronos 時段決定攻擊力，攻擊力較低者承受差值的傷害。',
   'tutorial.game.zone.hand.title': '手牌',
-  'tutorial.game.zone.hand.body':
-    '你的手牌。點擊手牌可將其放置到戰鬥區或設置區，運用卡片效果擊敗對手。',
+  'tutorial.game.zone.hand.body': '你的手牌。點擊手牌可將其放置到戰鬥區或設置區，運用卡片效果擊敗對手。',
   'tutorial.game.zone.set.title': '設置區',
   'tutorial.game.zone.set.body':
-    '設置區用於準備即將出戰的角色。放置在此的卡片會在下一回合進入戰鬥區。',
+    'A/B 區放置從手牌打出的卡：角色卡替換戰鬥區舊角色，Enchant 卡附在角色或玩家上提供一次性效果，處理後離場。C 區放置 Area Enchant，為跨回合持續生效的場地效果。',
   'tutorial.game.zone.abyss.title': '深淵',
-  'tutorial.game.zone.abyss.body':
-    '深淵是棄牌區。不產生能量的卡片離場後會落入此處，某些卡牌效果可能會與深淵互動。',
+  'tutorial.game.zone.abyss.body': '沒有 SEND TO POWER 的卡牌離場後落入此處。某些卡牌效果可能會與深淵互動。',
   'tutorial.game.chronos.title': 'Chronos 時鐘系統',
   'tutorial.game.chronos.body':
-    '中央的 Chronos 顯示當前時段。每張卡牌的「時計」值會推進時鐘，夜或晝會影響角色的攻擊力。',
-  'tutorial.game.resources.title': '能量系統',
+    'Chronos 是晝夜時鐘，從真夜中開始順時針推進。推進量為雙方出牌的時計總和；位於夜側時使用夜攻擊力，晝側時使用晝攻擊力。',
+  'tutorial.game.resources.title': '充能系統',
   'tutorial.game.resources.body':
-    '部分卡牌離場後會進入能量區，累積的能量可用於支付卡牌費用。不產生能量的卡會落入深淵。',
+    '擁有 SEND TO POWER 的卡牌離場後進入充能區，累積的 Power 用於支付效果發動的 Power Cost。',
   'tutorial.game.catchup.title': '追趕機制',
   'tutorial.game.catchup.body':
     '上回合戰鬥失敗的一方，下回合可以放置兩張卡；獲勝方通常只能放一張。這讓雙方保持拉鋸，避免一面倒。',
@@ -601,33 +600,30 @@ export const zhTW = {
   'tutorial.game.catchup.winner.body':
     '你贏了上一回合的戰鬥，因此對手本回合可以放置兩張卡片追趕。你只能放置一張，需謹慎選擇。',
   'tutorial.game.catchup.draw.title': '追趕機制：平手',
-  'tutorial.game.catchup.draw.body':
-    '上一回合平手，沒有觸發追趕機制。雙方本回合都只能放置一張卡片。',
+  'tutorial.game.catchup.draw.body': '上一回合平手，沒有觸發追趕機制。雙方本回合都只能放置一張卡片。',
   'tutorial.game.victory.title': '勝利條件',
   'tutorial.game.victory.body':
     '當任一方的 HP 降到 0，或無法繼續出牌時，遊戲結束。合理運用卡牌效果，降低對手 HP 即可獲勝。',
   'tutorial.game.turnSet.intro.title': '回合放置階段',
-  'tutorial.game.turnSet.intro.body': '新的回合開始了！根據追趕機制，你可以放置一張或兩張卡片。',
+  'tutorial.game.turnSet.intro.body':
+    '新回合開始！根據上回合勝負決定放置數量，打出的第 1 張卡進入 Set Zone A，第 2 張進入 Set Zone B。',
   'tutorial.game.turnSet.intro.loser.title': '回合放置階段：追趕機會',
   'tutorial.game.turnSet.intro.loser.body':
-    '新的回合開始了！身為上回合的輸家，你可以放置兩張卡片來扭轉戰局。',
+    '新回合開始！身為上回合輸家，你可打出 2 張卡：第 1 張進 Set Zone A，第 2 張進 Set Zone B，藉此扭轉戰局。',
   'tutorial.game.turnSet.intro.winner.title': '回合放置階段：守成',
   'tutorial.game.turnSet.intro.winner.body':
-    '新的回合開始了！身為上回合的贏家，你本回合只能放置一張卡片，對手則可放兩張。',
+    '新回合開始！身為上回合贏家，你本回合只能打出 1 張卡進入 Set Zone A，對手則可打 2 張。',
   'tutorial.game.turnSet.intro.draw.title': '回合放置階段',
-  'tutorial.game.turnSet.intro.draw.body':
-    '新的回合開始了！上回合平手，雙方本回合都放置一張卡片。',
+  'tutorial.game.turnSet.intro.draw.body': '新回合開始！上回合平手，雙方本回合各打出 1 張卡進入 Set Zone A。',
   'tutorial.game.turnSet.action.title': '放置本回合的卡片',
-  'tutorial.game.turnSet.action.body': '從手牌選擇卡片放入設置區。你可以選擇放入 A 區或 B 區，兩個區域分開結算。',
+  'tutorial.game.turnSet.action.body': '從手牌打出卡牌，第 1 張進入 Set Zone A，若可打第 2 張則進入 Set Zone B。',
   'tutorial.game.turnSet.action.loser.title': '放置兩張卡片追趕',
   'tutorial.game.turnSet.action.loser.body':
-    '從手牌選擇卡片放入設置區。身為輸家你可放兩張，建議分別放入 A 區與 B 區以分散攻擊。',
+    '從手牌打出 2 張卡：第 1 張進 Set Zone A，第 2 張進 Set Zone B，分散攻擊提升勝算。',
   'tutorial.game.turnSet.action.winner.title': '放置一張卡片',
-  'tutorial.game.turnSet.action.winner.body':
-    '從手牌選擇一張卡片放入設置區。你只能放一張，請謹慎選擇要放入 A 區或 B 區。',
+  'tutorial.game.turnSet.action.winner.body': '從手牌打出 1 張卡進入 Set Zone A。你只能放 1 張，請謹慎選擇。',
   'tutorial.game.turnSet.action.draw.title': '放置本回合的卡片',
-  'tutorial.game.turnSet.action.draw.body':
-    '從手牌選擇卡片放入設置區。你可以選擇放入 A 區或 B 區，兩個區域分開結算。',
+  'tutorial.game.turnSet.action.draw.body': '從手牌打出 1 張卡進入 Set Zone A。',
   'tutorial.game.effectOrder.intro.title': '效果順序階段',
   'tutorial.game.effectOrder.intro.body': '當多張效果卡同時觸發時，你可以選擇結算順序。巧妙安排順序可以扭轉戰局。',
   'tutorial.game.effectOrder.action.title': '選擇效果結算順序',
@@ -635,7 +631,8 @@ export const zhTW = {
   'tutorial.game.pendingChoice.intro.title': '指定卡牌效果',
   'tutorial.game.pendingChoice.intro.body': '部分卡牌效果需要你從手牌、深淵或牌庫中指定卡牌作為對象，才能完成結算。',
   'tutorial.game.pendingChoice.action.title': '選擇指定的卡牌',
-  'tutorial.game.pendingChoice.action.body': '點擊列表中的卡牌進行選取，選夠數量後按下「送出選擇」完成結算。可依提示判斷需要選幾張。',
+  'tutorial.game.pendingChoice.action.body':
+    '點擊列表中的卡牌進行選取，選夠數量後按下「送出選擇」完成結算。可依提示判斷需要選幾張。',
   'tutorial.game.battle.intro.title': '戰鬥結算',
   'tutorial.game.battle.intro.body':
     '雙方卡片翻開後，進入戰鬥結算。角色卡會相互攻擊，附魔卡會觸發效果，最終計算 HP 變化。',
@@ -643,6 +640,12 @@ export const zhTW = {
   'tutorial.game.battle.result.body': '本回合的戰鬥已結束。觀察 HP 變化和場地狀況，準備下一回合的策略。',
   'tutorial.game.complete.title': '恭喜完成教學！',
   'tutorial.game.complete.body': '你已經掌握了 ZUTOMAYO CARD 的所有基礎機制。現在可以挑戰 AI 或與其他玩家對戰了！',
+  'tutorial.game.clockAdvance.title': '時鐘推進',
+  'tutorial.game.clockAdvance.body':
+    '雙方卡片翻開後，合計兩張卡的時計值推進 Chronos。medal 移動到新的位置，決定目前是夜或晝——這決定了角色使用夜攻擊力還是晝攻擊力。',
+  'tutorial.game.hpCalc.title': 'HP 計算',
+  'tutorial.game.hpCalc.body':
+    '效果處理完畢後，比較雙方角色的攻擊力，攻擊力較低的一方承受差值的傷害。若 Power Cost 不足，攻擊力視為 0 且效果不發動。',
 
   'lobby.tutorial': 'First Ritual · 新手教學',
   'feedback.title': '反饋中心',

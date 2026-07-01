@@ -59,6 +59,8 @@ type Props = BoardProps<GameState> & {
   selfLabel?: string;
   // 教學模式：隱藏 janken/mulligan 浮層，等教學進度到了才顯示
   hideSetupOverlay?: boolean;
+  // 教學模式：setupFeedback 彈窗（如猜拳結果）確認按鈕點擊時的通知
+  onSetupFeedbackDismiss?: () => void;
 };
 
 type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
@@ -412,7 +414,7 @@ function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | nul
       role="status"
       aria-live="polite"
     >
-      <div className="phase-message-panel pointer-events-auto">
+      <div className="phase-message-panel pointer-events-auto" data-tut="setup-feedback">
         {message.kicker && <div className="phase-message-kicker">{message.kicker}</div>}
         <strong className="phase-message-title">{message.title}</strong>
         {message.lines?.map((line) => (
@@ -2184,12 +2186,14 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               owner={opponentIndex}
               onFocusCard={setFocusedCard}
             />
-            <Chronos
-              chronos={G.chronos}
-              currentTime={time}
-              nightSidePlayer={G.chronos.nightSidePlayer}
-              currentPlayer={meIndex}
-            />
+            <div data-tut="chronos-clock">
+              <Chronos
+                chronos={G.chronos}
+                currentTime={time}
+                nightSidePlayer={G.chronos.nightSidePlayer}
+                currentPlayer={meIndex}
+              />
+            </div>
             <FieldZone
               label={t('board.battleZone')}
               shortLabel={t('board.battleZoneShort')}
@@ -2622,7 +2626,13 @@ export function Board(props: Props) {
   const renderWithSetupFeedback = (node: ReactNode) => (
     <div className="board-feedback-root">
       {node}
-      <FeedbackOverlay message={setupFeedback} onAction={() => setSetupFeedback(null)} />
+      <FeedbackOverlay
+        message={setupFeedback}
+        onAction={() => {
+          setSetupFeedback(null);
+          props.onSetupFeedbackDismiss?.();
+        }}
+      />
 
       {/* 暫停/離開按鈕 */}
       {props.G.step !== 'gameOver' && (
@@ -2665,13 +2675,11 @@ export function Board(props: Props) {
   }
   // janken/mulligan 階段也渲染 BattleBoard 場地，操作面板作為浮層疊加
   // 教學模式時，若 hideSetupOverlay=true 則隱藏浮層（等教學進度到了才顯示）
-  const setupOverlay = props.hideSetupOverlay
-    ? null
-    : props.G.step === 'janken'
-      ? <JankenScreen {...props} floating />
-      : props.G.step === 'mulligan'
-        ? <MulliganScreen {...props} onMulliganFeedback={showMulliganFeedback} floating />
-        : null;
+  const setupOverlay = props.hideSetupOverlay ? null : props.G.step === 'janken' ? (
+    <JankenScreen {...props} floating />
+  ) : props.G.step === 'mulligan' ? (
+    <MulliganScreen {...props} onMulliganFeedback={showMulliganFeedback} floating />
+  ) : null;
   return renderWithSetupFeedback(
     <>
       <BattleBoard {...props} />

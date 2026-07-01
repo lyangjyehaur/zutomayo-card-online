@@ -148,6 +148,12 @@ export interface ZutomayoSetupData {
   deck0Ids?: string[];
   deck1Ids?: string[];
   clientVersion?: AppVersionInfo;
+  /**
+   * 教學模式專用：跳過 setupGame 與 finishMulligan 的洗牌，
+   * 讓固定牌組依陣列順序進入牌庫與手牌，確保劇本可預測。
+   * 一般對戰不要設定此旗標。
+   */
+  skipShuffle?: boolean;
 }
 
 export interface CardDef {
@@ -411,4 +417,10 @@ export interface GameState {
   actionLog: ActionLogEntry[];
   recentHpChanges: HpChangeEntry[];
   recentGameNotices: GameNotice[];
+  /**
+   * 教學模式內部旗標：由 setupGame 依 setupData.skipShuffle 設定。
+   * finishMulligan 等後續流程據此跳過洗牌，確保教學劇本牌序可預測。
+   * 非教學模式為 undefined，行為不變。
+   */
+  tutorialSkipShuffle?: boolean;
 }

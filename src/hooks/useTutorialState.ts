@@ -84,18 +84,8 @@ export function useTutorialState({ steps, gameState, onComplete }: UseTutorialSt
     advance();
   }, [advance]);
 
-  const goPrev = useCallback(() => {
-    clearTimer();
-    setCurrentStep((prev) => {
-      const next = Math.max(0, prev - 1);
-      entryRef.current = snapshot(gameRef.current);
-      return next;
-    });
-  }, [clearTimer]);
-
   return {
     currentStep,
     goNext,
-    goPrev,
   };
 }

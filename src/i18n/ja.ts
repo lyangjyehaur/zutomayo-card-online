@@ -557,7 +557,8 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.stepCatchupBody':
     '前ターンの敗者は2枚、勝者は通常1枚だけカードを出せます。これによりゲーム展開が拮抗します。',
   'tutorial.stepJankenTitle': 'じゃんけんで夜側決定',
-  'tutorial.stepJankenBody': 'じゃんけんで夜側プレイヤーを決めます。夜側は夜時間に先に効果を処理し、昼側は昼時間に先に効果を処理します。',
+  'tutorial.stepJankenBody':
+    'じゃんけんで夜側プレイヤーを決めます。夜側は夜時間に先に効果を処理し、昼側は昼時間に先に効果を処理します。',
   'tutorial.stepMulliganTitle': '手札引き直し',
   'tutorial.stepMulliganBody': '序盤に任意の手札を1回引き直せます。戦闘前に初期手札を整えましょう。',
   'tutorial.stepEffectOrderTitle': '効果順序の選択',
@@ -582,34 +583,34 @@ export const ja: Record<TranslationKey, string> = {
     '結果が出ました！夜側プレイヤーは夜時間に先に効果を処理し、昼側プレイヤーは昼時間に先に効果を処理します。',
   'tutorial.game.mulligan.intro.title': '手札引き直しフェーズ',
   'tutorial.game.mulligan.intro.body':
-    'ゲーム開始時、任意の手札を一度だけ引き直すことができます。現在の手札に満足していれば、そのまま保持できます。',
+    'あなたの初期手札には高い Power Cost のキャラクターカードが含まれています。パワーチャージャーのエネルギーが Power Cost を支払うのに不足している場合、そのキャラクターの攻撃力は 0 になり、ダメージを与えられません。初期手札に高コストカードが含まれる場合や時計の分布が良くない場合、任意の枚数を裏向きで置き、デッキから同数を引いて入れ替えます。旧カードはデッキに戻します。1試合に1回のみ可能です。',
   'tutorial.game.mulligan.action.title': '引き直すカードを選択',
   'tutorial.game.mulligan.action.body':
-    '引き直したいカードをクリックし、選んだら「確認」を押します。引き直さない場合は「手札を保持」を直接押してください。',
+    '入れ替えたいカードをクリックして裏向きにし（例：高い Power Cost のキャラクターカード）、「確認」を押してデッキから同数の新しいカードを引きます。手札に満足なら「手札を保持」でスキップできます。',
   'tutorial.game.initialSet.intro.title': '初期配置フェーズ',
   'tutorial.game.initialSet.intro.body':
-    'さあ、カードを配置しましょう！最初のターンでは、手札から1枚を選んでセットゾーンに配置し、戦闘に備えます。',
+    '手札から1枚を選んでバトルゾーンに裏向きで配置します。これがあなたの初期キャラクターです。攻撃力が正常に発揮できるよう、Power Cost が低めのカードを選ぶことをお勧めします。双方同時に表にして対決に入ります。',
   'tutorial.game.initialSet.action.title': 'カードを1枚配置',
   'tutorial.game.initialSet.action.body':
-    '手札から1枚カードを選び、あなたのセットゾーンに配置します。選んだら「確認」を押してください。',
+    '手札から1枚を選んでバトルゾーンに配置します。選んだら「確認」を押してください。',
   'tutorial.game.zone.battle.title': 'バトルゾーン',
   'tutorial.game.zone.battle.body':
-    '中央のバトルゾーンは現在のキャラクターが対決する場所です。双方がキャラクターカードを1枚ずつ置き、攻撃力が高い方が勝利して相手にダメージを与えます。',
+    '中央のバトルゾーンは現在のキャラクターが対決する場所です。双方がキャラクターカードを1枚ずつ置き、Chronosの時間帯で攻撃力を決定し、攻撃力が低い方が差額分のダメージを受けます。',
   'tutorial.game.zone.hand.title': '手札',
   'tutorial.game.zone.hand.body':
     'あなたの手札です。カードをクリックしてバトルゾーンまたはセットゾーンに配置し、カード効果で相手を倒しましょう。',
   'tutorial.game.zone.set.title': 'セットゾーン',
   'tutorial.game.zone.set.body':
-    'セットゾーンは次の戦闘に向けてキャラクターを準備する場所です。ここに置いたカードは次のターンにバトルゾーンに入ります。',
+    'A/Bゾーンには手札から打ち出したカードを置きます：キャラクターカードはバトルゾーンの旧キャラクターを置き換え、Enchantカードはキャラクターやプレイヤーに付着して一度きりの効果を発揮し処理後に離場します。CゾーンにはArea Enchantを置き、ターンを超えて持続するフィールド効果となります。',
   'tutorial.game.zone.abyss.title': 'アビス',
   'tutorial.game.zone.abyss.body':
-    'アビスは捨て札エリアです。エネルギーを生成しないカードは場を離れるとここに入り、一部のカード効果はアビスと相互作用する場合があります。',
+    'SEND TO POWER を持たないカードが場を離れるとここに入ります。一部のカード効果はアビスと相互作用する場合があります。',
   'tutorial.game.chronos.title': 'Chronos時計システム',
   'tutorial.game.chronos.body':
-    '中央のChronosは現在の時間帯を示します。各カードの「時計」値が時計を進め、夜か昼かがキャラクターの攻撃力に影響します。',
-  'tutorial.game.resources.title': 'エネルギーシステム',
+    'Chronosは昼夜時計です。真夜中から時計回りに進み、推進量は双方の出したカードの時計値の合計です。夜側では夜攻撃力、昼側では昼攻撃力を使用します。',
+  'tutorial.game.resources.title': 'パワーチャージャー',
   'tutorial.game.resources.body':
-    '一部のカードは場を離れるとエネルギーゾーンに入り、蓄積されたエネルギーはカードのコスト支払いに使えます。エネルギーを生まないカードはアビスに落ちます。',
+    'SEND TO POWER を持つカードが場を離れるとパワーチャージャーに入り、溜まった Power は効果発動の Power Cost 支払いに使われます。',
   'tutorial.game.catchup.title': '追いつきメカニズム',
   'tutorial.game.catchup.body':
     '前ターンの戦闘で敗北した側は、次のターンで2枚のカードを配置できます；勝った側は通常1枚しか配置できません。これにより双方が拮抗し、一方的な展開を避けます。',
@@ -627,28 +628,27 @@ export const ja: Record<TranslationKey, string> = {
     'どちらかのHPが0になるか、カードを出し続けられなくなったらゲーム終了です。カード効果を適切に使い、相手のHPを減らせば勝利できます。',
   'tutorial.game.turnSet.intro.title': 'ターン配置フェーズ',
   'tutorial.game.turnSet.intro.body':
-    '新しいターンが始まりました！追いつきメカニズムにより、1枚または2枚のカードを配置できます。',
+    '新しいターン開始！前ターンの勝敗により配置枚数が決まります。1枚目はSet Zone A、2枚目はSet Zone Bに入ります。',
   'tutorial.game.turnSet.intro.loser.title': '配置フェーズ：追い上げの好機',
   'tutorial.game.turnSet.intro.loser.body':
-    '新しいターン開始！前ターンの敗者として、2枚配置して戦況を覆せます。',
+    '新しいターン開始！前ターンの敗者として、2枚配置できます：1枚目はSet Zone A、2枚目はSet Zone Bで戦況を覆せます。',
   'tutorial.game.turnSet.intro.winner.title': '配置フェーズ：優勢維持',
   'tutorial.game.turnSet.intro.winner.body':
-    '新しいターン開始！前ターンの勝者として、今ターンは1枚しか配置できません。相手は2枚配置できます。',
+    '新しいターン開始！前ターンの勝者として、今ターンは1枚のみSet Zone Aに配置できます。相手は2枚配置できます。',
   'tutorial.game.turnSet.intro.draw.title': '配置フェーズ',
   'tutorial.game.turnSet.intro.draw.body':
-    '新しいターン開始！前ターンは引き分けのため、双方1枚ずつ配置します。',
+    '新しいターン開始！前ターンは引き分けのため、双方1枚ずつSet Zone Aに配置します。',
   'tutorial.game.turnSet.action.title': '今ターンのカードを配置',
   'tutorial.game.turnSet.action.body':
-    '手札からカードを選んでセットゾーンに配置します。AゾーンまたはBゾーンに配置でき、2つのゾーンは別々に解決されます。',
+    '手札からカードを配置します。1枚目はSet Zone A、2枚目（ある場合）はSet Zone Bに入ります。',
   'tutorial.game.turnSet.action.loser.title': '2枚配置して追い上げ',
   'tutorial.game.turnSet.action.loser.body':
-    '手札から設置エリアに配置します。敗者は2枚配置可能。A区とB区に分けて配置し攻撃を分散させましょう。',
+    '手札から2枚配置：1枚目はSet Zone A、2枚目はSet Zone B。攻撃を分散させて勝率を上げましょう。',
   'tutorial.game.turnSet.action.winner.title': '1枚配置',
   'tutorial.game.turnSet.action.winner.body':
-    '手札から1枚を設置エリアに配置します。1枚しか配置できないため、A区かB区を慎重に選んでください。',
+    '手札から1枚をSet Zone Aに配置します。1枚しか配置できないので慎重に選んでください。',
   'tutorial.game.turnSet.action.draw.title': '今ターンのカードを配置',
-  'tutorial.game.turnSet.action.draw.body':
-    '手札から設置エリアに配置します。A区またはB区に配置でき、2つの区は別々に解決されます。',
+  'tutorial.game.turnSet.action.draw.body': '手札から1枚をSet Zone Aに配置します。',
   'tutorial.game.effectOrder.intro.title': '効果順序フェーズ',
   'tutorial.game.effectOrder.intro.body':
     '複数の効果カードが同時に発動した場合、解決順序を選べます。順序を巧みに配置することで戦況を変えられます。',
@@ -670,6 +670,12 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.game.complete.title': 'チュートリアル完了おめでとうございます！',
   'tutorial.game.complete.body':
     'ZUTOMAYO CARDの全ての基本メカニズムを習得しました。さあ、AIに挑戦するか、他のプレイヤーと対戦しましょう！',
+  'tutorial.game.clockAdvance.title': '時計推進',
+  'tutorial.game.clockAdvance.body':
+    '双方のカードが表になった後、両カードの時計値の合計でChronosが進みます。medalが新しい位置に移動し、現在が夜か昼かが決まります——これにより、キャラクターが夜攻撃力か昼攻撃力のどちらを使うかが決まります。',
+  'tutorial.game.hpCalc.title': 'HP計算',
+  'tutorial.game.hpCalc.body':
+    '効果の処理が終わった後、双方のキャラクターの攻撃力を比較し、攻撃力が低い方が差額分のダメージを受けます。Power Costが不足している場合、攻撃力は0として扱われ、効果は発動しません。',
 
   'lobby.tutorial': 'First Ritual · 新手チュートリアル',
   'feedback.title': 'フィードバック',

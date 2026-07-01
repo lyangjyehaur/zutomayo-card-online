@@ -49,6 +49,9 @@ export const TURN_TIMER_MS = 60_000;
 interface SetupGameOptions {
   allowBrowserCustomDeckName?: boolean;
   requireClientVersion?: boolean;
+  /** 允許 setupData.skipShuffle=true。僅本地 AI 對戰/教學模式應啟用；
+   *  線上對戰預設不允許，防止惡意客戶端固定牌序作弊。 */
+  allowSkipShuffle?: boolean;
 }
 
 function validateSetupDeck(
@@ -74,6 +77,10 @@ export function validateZutomayoSetupData(
   const data = setupData || {};
   if (options.requireClientVersion === true && !isCompatibleVersion(data.clientVersion, APP_VERSION_INFO)) {
     return 'Client version does not match server game version';
+  }
+  // 線上對戰不允許 skipShuffle，防止惡意客戶端固定牌序作弊
+  if (options.allowSkipShuffle !== true && data.skipShuffle === true) {
+    return 'skipShuffle is not allowed in this game mode';
   }
   return (
     validateSetupDeck(0, data.deck0Ids, data.deck0Name, options) ??
@@ -372,12 +379,15 @@ export function setupGame(
   // 先組玩家牌組（deck0），再組 AI/對手牌組（deck1）。
   // 若 deck1 指定克制牌組（COUNTER_DECK_NAME），需參考 deck0 內容來組克制牌組。
   const player0Deck = setupDeck(0, setupData.deck0Ids, setupData.deck0Name, allowBrowserCustomDeckName);
-  G.players[0].deck = shuffleDeck(player0Deck);
+  // 教學模式：跳過洗牌，讓固定牌組依陣列順序進入牌庫，確保劇本可預測。
+  const skipShuffle = setupData.skipShuffle === true;
+  G.tutorialSkipShuffle = skipShuffle;
+  G.players[0].deck = skipShuffle ? player0Deck : shuffleDeck(player0Deck);
   const isCounterDeck1 = !setupData.deck1Ids && setupData.deck1Name === COUNTER_DECK_NAME;
   const player1Deck = isCounterDeck1
     ? buildCounterDeck(player0Deck)
     : setupDeck(1, setupData.deck1Ids, setupData.deck1Name, allowBrowserCustomDeckName);
-  G.players[1].deck = shuffleDeck(player1Deck);
+  G.players[1].deck = skipShuffle ? player1Deck : shuffleDeck(player1Deck);
   drawUnchecked(G.players[0], 5);
   drawUnchecked(G.players[1], 5);
   return G;
@@ -429,7 +439,8 @@ export function finishMulligan(G: GameState, player: PlayerIndex, indices: numbe
   drawUnchecked(state, aside.length);
   // mulligan 伏示牌回牌庫前重設 faceUp，保持牌庫狀態衛生（官方牌庫為裡向）。
   for (const card of aside) card.faceUp = false;
-  state.deck = shuffleDeck([...state.deck, ...aside]);
+  const combined = [...state.deck, ...aside];
+  state.deck = G.tutorialSkipShuffle ? combined : shuffleDeck(combined);
   G.mulliganUsed[player] = true;
   G.ready[player] = true;
   recordAction(G, player, 'mulligan', { redrawnCount: aside.length });

@@ -194,7 +194,9 @@ const moves: Record<string, Move<GameState>> = {
 export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetupData> = {
   name: 'zutomayo-card',
   validateSetupData: (setupData) => validateZutomayoSetupData(setupData),
-  setup: (_context, setupData) => setupGame(setupData),
+  // 防禦深度：即使 validate 被繞過，setup 也強制剝離 skipShuffle，
+  // 確保線上對戰牌序必定隨機、無法被惡意客戶端固定。
+  setup: (_context, setupData) => setupGame({ ...setupData, skipShuffle: false }),
   playerView,
   moves,
   turn: {
@@ -231,8 +233,9 @@ export function createZutomayoCard(
           deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
           deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
           clientVersion: setupData?.clientVersion ?? defaultSetupData.clientVersion,
+          skipShuffle: setupData?.skipShuffle ?? defaultSetupData.skipShuffle,
         },
-        { allowBrowserCustomDeckName: true, requireClientVersion: false },
+        { allowBrowserCustomDeckName: true, requireClientVersion: false, allowSkipShuffle: true },
       ),
     setup: (_context, setupData) =>
       setupGame(
@@ -242,6 +245,7 @@ export function createZutomayoCard(
           deck0Ids: setupData?.deck0Ids ?? defaultSetupData.deck0Ids,
           deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
           clientVersion: setupData?.clientVersion ?? defaultSetupData.clientVersion,
+          skipShuffle: setupData?.skipShuffle ?? defaultSetupData.skipShuffle,
         },
         { allowBrowserCustomDeckName: true },
       ),

@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AIGame } from '../components/AIGame';
 import { GameTutorialOverlay } from '../components/GameTutorialOverlay';
 import { useTutorialState } from '../hooks/useTutorialState';
 import { TUTORIAL_STEPS } from '../data/tutorialSteps';
+import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS, TUTORIAL_AI_SCRIPT } from '../data/tutorialScenario';
 import { isCardsInitialized, refreshCards } from '../game/cards/loader';
-import { RANDOM_DECK_NAME } from '../game/cards/deckBuilder';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
 import '../components/GameTutorialOverlay.css';
@@ -27,7 +27,7 @@ export function TutorialGamePage() {
     };
   }, [cardsReady]);
 
-  const { currentStep, goNext, goPrev } = useTutorialState({
+  const { currentStep, goNext } = useTutorialState({
     steps: TUTORIAL_STEPS,
     gameState,
     onComplete: () => {
@@ -37,8 +37,20 @@ export function TutorialGamePage() {
 
   // 教學進度在 janken-intro 之前（場地導覽階段）時隱藏 janken/mulligan 浮層，
   // 等教學進度到了才顯示，避免猜拳面板一開始就彈出。
-  const jankenStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'janken-intro');
-  const hideSetupOverlay = jankenStepIndex === -1 || currentStep < jankenStepIndex;
+  const jankenIntroStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'janken-intro');
+  const hideSetupOverlay = jankenIntroStepIndex === -1 || currentStep < jankenIntroStepIndex;
+  // AI 在 janken-intro（導覽步驟）時仍暫停，避免使用者還在讀文案時 AI 就出拳；
+  // 進到 janken-action 才恢復 AI 讓使用者實際操作。
+  const jankenActionStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'janken-action');
+  const aiPaused = jankenActionStepIndex === -1 || currentStep < jankenActionStepIndex;
+
+  // 猜拳結果彈窗的確認按鈕點擊時，若教學正在 janken-result 步驟，自動推進到下一步
+  const jankenResultStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'janken-result');
+  const handleSetupFeedbackDismiss = useCallback(() => {
+    if (currentStep === jankenResultStepIndex) {
+      goNext();
+    }
+  }, [currentStep, jankenResultStepIndex, goNext]);
 
   const handleSkip = () => {
     if (window.confirm(t('tutorial.skipConfirm' as never) || '確定要跳過教學嗎？')) {
@@ -63,12 +75,16 @@ export function TutorialGamePage() {
     <>
       <AIGame
         difficulty="easy"
-        deck0Name={RANDOM_DECK_NAME}
-        deck1Name={RANDOM_DECK_NAME}
+        deck0Ids={TUTORIAL_DECK0_IDS}
+        deck1Ids={TUTORIAL_DECK1_IDS}
+        skipShuffle
+        aiScript={TUTORIAL_AI_SCRIPT}
         onBack={() => navigate('/')}
         onGameStateChange={setGameState}
         tutorialMode
         hideSetupOverlay={hideSetupOverlay}
+        aiPaused={aiPaused}
+        onSetupFeedbackDismiss={handleSetupFeedbackDismiss}
       />
 
       <GameTutorialOverlay
@@ -76,7 +92,6 @@ export function TutorialGamePage() {
         currentStep={currentStep}
         gameState={gameState}
         onNext={goNext}
-        onPrev={goPrev}
         onComplete={handleComplete}
         onSkip={handleSkip}
       />

@@ -567,31 +567,31 @@ export const zhHK: Record<TranslationKey, string> = {
   'tutorial.game.janken.result.body': '結果已出爐！夜側玩家喺夜時段優先處理效果，晝側玩家喺晝時段優先處理效果。',
   'tutorial.game.mulligan.intro.title': '手牌重抽階段',
   'tutorial.game.mulligan.intro.body':
-    '開局時，你可以揀任意手牌重抽一次，調整起手牌型。如果對當前手牌滿意，可以直接保留。',
+    '你嘅起手牌中有一張高 Power Cost 嘅角色卡。當充能區嘅能量不足以支付 Power Cost 時，該角色嘅攻擊力會變成 0，無法造成傷害。若起手牌含高費卡或時鐘分布唔理想，可揀任意張數蓋放重抽，舊卡洗回牌組。每場對戰淨係可以重抽一次。',
   'tutorial.game.mulligan.action.title': '揀要重抽嘅卡牌',
-  'tutorial.game.mulligan.action.body': '撳想重抽嘅卡牌，揀好後撳「確認」。如果唔想重抽，直接撳「保留手牌」即可。',
+  'tutorial.game.mulligan.action.body':
+    '撳想替換嘅卡牌將佢蓋放（例如高 Power Cost 嘅角色卡），再撳確認由牌組抽等量新卡。若對手牌滿意，直接撳「保留手牌」跳過。',
   'tutorial.game.initialSet.intro.title': '初始放置階段',
-  'tutorial.game.initialSet.intro.body': '而家開始放置卡牌！第一回合你可以由手牌揀一張卡放入設置區，準備進入戰鬥。',
+  'tutorial.game.initialSet.intro.body':
+    '而家由手牌揀 1 張卡蓋放至戰鬥區，呢個係你嘅初始角色。建議揀 Power Cost 較低嘅卡，確保攻擊力能正常發揮。雙方同時翻開後進入對決。',
   'tutorial.game.initialSet.action.title': '揀一張卡片放置',
-  'tutorial.game.initialSet.action.body': '由手牌中揀一張卡片，放入你嘅設置區。揀好後撳「確認」。',
+  'tutorial.game.initialSet.action.body': '由手牌中揀 1 張卡放入戰鬥區。揀好後撳「確認」。',
   'tutorial.game.zone.battle.title': '戰鬥區',
   'tutorial.game.zone.battle.body':
-    '中央嘅戰鬥區係當前角色對決嘅地方。雙方各放一張角色卡，攻擊力較高者獲勝並對對手造成傷害。',
+    '中央嘅戰鬥區係當前角色對決嘅地方。雙方各放一張角色卡，依 Chronos 時段決定攻擊力，攻擊力較低者承受差值嘅傷害。',
   'tutorial.game.zone.hand.title': '手牌',
-  'tutorial.game.zone.hand.body':
-    '你嘅手牌。點擊手牌可將其放置到戰鬥區或設置區，運用卡片效果擊敗對手。',
+  'tutorial.game.zone.hand.body': '你嘅手牌。點擊手牌可將其放置到戰鬥區或設置區，運用卡片效果擊敗對手。',
   'tutorial.game.zone.set.title': '設置區',
   'tutorial.game.zone.set.body':
-    '設置區用於準備即將出戰嘅角色。放置喺度嘅卡片會喺下一回合進入戰鬥區。',
+    'A/B 區放置從手牌打出嘅卡：角色卡替換戰鬥區舊角色，Enchant 卡附喺角色或玩家上提供一次性效果，處理後離場。C 區放置 Area Enchant，為跨回合持續生效嘅場地效果。',
   'tutorial.game.zone.abyss.title': '深淵',
-  'tutorial.game.zone.abyss.body':
-    '深淵係棄牌區。唔產生能量嘅卡片離場後會落入此處，某些卡牌效果可能會與深淵互動。',
+  'tutorial.game.zone.abyss.body': '冇 SEND TO POWER 嘅卡牌離場後落入此處。某些卡牌效果可能會與深淵互動。',
   'tutorial.game.chronos.title': 'Chronos 時鐘系統',
   'tutorial.game.chronos.body':
-    '中央嘅 Chronos 顯示當前時段。每張卡牌嘅「時計」值會推進時鐘，夜或晝會影響角色嘅攻擊力。',
-  'tutorial.game.resources.title': '能量系統',
+    'Chronos 係晝夜時鐘，從真夜中開始順時針推進。推進量為雙方出牌嘅時計總和；位於夜側時使用夜攻擊力，晝側時使用晝攻擊力。',
+  'tutorial.game.resources.title': '充能系統',
   'tutorial.game.resources.body':
-    '部分卡牌離場後會進入能量區，累積嘅能量可用於支付卡牌費用。唔產生能量嘅卡會落入深淵。',
+    '擁有 SEND TO POWER 嘅卡牌離場後進入充能區，累積嘅 Power 用於支付效果發動嘅 Power Cost。',
   'tutorial.game.catchup.title': '追趕機制',
   'tutorial.game.catchup.body':
     '上回合戰鬥失敗嘅一方，下回合可以放置兩張卡；獲勝方通常只可以放一張。呢個令雙方保持拉鋸，避免一面倒。',
@@ -602,33 +602,30 @@ export const zhHK: Record<TranslationKey, string> = {
   'tutorial.game.catchup.winner.body':
     '你贏咗上一回合嘅戰鬥，因此對手本回合可以放兩張卡追趕。你只可以放一張，要小心揀。',
   'tutorial.game.catchup.draw.title': '追趕機制：打和',
-  'tutorial.game.catchup.draw.body':
-    '上一回合打和，冇觸發追趕機制。雙方本回合都只可以放一張卡。',
+  'tutorial.game.catchup.draw.body': '上一回合打和，冇觸發追趕機制。雙方本回合都只可以放一張卡。',
   'tutorial.game.victory.title': '勝利條件',
   'tutorial.game.victory.body':
     '當任一方嘅 HP 降到 0，或無法繼續出牌時，遊戲結束。合理運用卡牌效果，降低對手 HP 即可獲勝。',
   'tutorial.game.turnSet.intro.title': '回合放置階段',
-  'tutorial.game.turnSet.intro.body': '新嘅回合開始咗！根據追趕機制，你可以放置一張或兩張卡片。',
+  'tutorial.game.turnSet.intro.body':
+    '新回合開始喇！根據上回合勝負決定放置數量，打出去嘅第 1 張卡進入 Set Zone A，第 2 張進入 Set Zone B。',
   'tutorial.game.turnSet.intro.loser.title': '回合放置階段：追趕機會',
   'tutorial.game.turnSet.intro.loser.body':
-    '新嘅回合開始喇！身為上回合嘅輸家，你可以放兩張卡嚟扭轉戰局。',
+    '新回合開始喇！身為上回合輸家，你可以打 2 張卡：第 1 張進 Set Zone A，第 2 張進 Set Zone B，藉此扭轉戰局。',
   'tutorial.game.turnSet.intro.winner.title': '回合放置階段：守成',
   'tutorial.game.turnSet.intro.winner.body':
-    '新嘅回合開始喇！身為上回合嘅贏家，你本回合只可以放一張卡，對手就可以放兩張。',
+    '新回合開始喇！身為上回合贏家，你本回合淨係可以打 1 張卡進入 Set Zone A，對手就可以打 2 張。',
   'tutorial.game.turnSet.intro.draw.title': '回合放置階段',
-  'tutorial.game.turnSet.intro.draw.body':
-    '新嘅回合開始喇！上回合打和，雙方本回合都放一張卡。',
+  'tutorial.game.turnSet.intro.draw.body': '新回合開始喇！上回合打和，雙方本回合各打 1 張卡進入 Set Zone A。',
   'tutorial.game.turnSet.action.title': '放置本回合嘅卡片',
-  'tutorial.game.turnSet.action.body': '由手牌揀卡片放入設置區。你可以揀放入 A 區或 B 區，兩個區域分開結算。',
+  'tutorial.game.turnSet.action.body': '由手牌打出卡牌，第 1 張進入 Set Zone A，若可以打第 2 張就進入 Set Zone B。',
   'tutorial.game.turnSet.action.loser.title': '放兩張卡追趕',
   'tutorial.game.turnSet.action.loser.body':
-    '由手牌揀卡放入設置區。身為輸家你可以放兩張，建議分別放入 A 區同 B 區以分散攻擊。',
+    '由手牌打 2 張卡：第 1 張進 Set Zone A，第 2 張進 Set Zone B，分散攻擊提升勝算。',
   'tutorial.game.turnSet.action.winner.title': '放一張卡',
-  'tutorial.game.turnSet.action.winner.body':
-    '由手牌揀一張卡放入設置區。你只可以放一張，請小心揀要放 A 區定 B 區。',
+  'tutorial.game.turnSet.action.winner.body': '由手牌打 1 張卡進入 Set Zone A。你只可以放 1 張，請小心揀。',
   'tutorial.game.turnSet.action.draw.title': '放置本回合嘅卡',
-  'tutorial.game.turnSet.action.draw.body':
-    '由手牌揀卡放入設置區。你可以揀放入 A 區或 B 區，兩個區域分開結算。',
+  'tutorial.game.turnSet.action.draw.body': '由手牌打 1 張卡進入 Set Zone A。',
   'tutorial.game.effectOrder.intro.title': '效果順序階段',
   'tutorial.game.effectOrder.intro.body': '當多張效果卡同時觸發時，你可以揀結算順序。巧妙安排順序可以扭轉戰局。',
   'tutorial.game.effectOrder.action.title': '揀效果結算順序',
@@ -636,7 +633,8 @@ export const zhHK: Record<TranslationKey, string> = {
   'tutorial.game.pendingChoice.intro.title': '指定卡牌效果',
   'tutorial.game.pendingChoice.intro.body': '部分卡牌效果需要你喺手牌、深淵或牌庫中指定卡牌作為對象，先可以完成結算。',
   'tutorial.game.pendingChoice.action.title': '揀指定嘅卡牌',
-  'tutorial.game.pendingChoice.action.body': '撳列表中嘅卡牌進行選取，揀夠數量後㩒「送出選擇」完成結算。可依提示判斷需要揀幾張。',
+  'tutorial.game.pendingChoice.action.body':
+    '撳列表中嘅卡牌進行選取，揀夠數量後㩒「送出選擇」完成結算。可依提示判斷需要揀幾張。',
   'tutorial.game.battle.intro.title': '戰鬥結算',
   'tutorial.game.battle.intro.body':
     '雙方卡片翻開後，進入戰鬥結算。角色卡會互相攻擊，附魔卡會觸發效果，最終計算 HP 變化。',
@@ -644,6 +642,12 @@ export const zhHK: Record<TranslationKey, string> = {
   'tutorial.game.battle.result.body': '本回合嘅戰鬥已結束。觀察 HP 變化同場地狀況，準備下一回合嘅策略。',
   'tutorial.game.complete.title': '恭喜完成教學！',
   'tutorial.game.complete.body': '你已經掌握咗 ZUTOMAYO CARD 嘅所有基礎機制。而家可以挑戰 AI 或與其他玩家對戰啦！',
+  'tutorial.game.clockAdvance.title': '時鐘推進',
+  'tutorial.game.clockAdvance.body':
+    '雙方卡片翻開後，合計兩張卡嘅時鐘值推進 Chronos。medal 移去新嘅位置，決定目前係夜定晝——呢個決定咗角色用夜攻擊力定晝攻擊力。',
+  'tutorial.game.hpCalc.title': 'HP 計算',
+  'tutorial.game.hpCalc.body':
+    '效果處理完畢後，比較雙方角色嘅攻擊力，攻擊力較低嘅一方承受差值嘅傷害。若 Power Cost 不足，攻擊力視為 0 且效果唔發動。',
 
   'lobby.tutorial': 'First Ritual · 新手教學',
   'feedback.title': '反饋中心',

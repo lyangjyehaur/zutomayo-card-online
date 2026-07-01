@@ -1,10 +1,10 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
 import type { BoardProps } from 'boardgame.io/react';
 import { createZutomayoCard } from '../game/Game';
 import { Board } from './Board';
-import { useAIMoves, type ZutomayoMoveDispatchers } from '../game/useAIMoves';
+import { useAIMoves, type ZutomayoMoveDispatchers, type TutorialAIScript } from '../game/useAIMoves';
 import type { AIDifficulty } from '../game/ai';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
@@ -14,13 +14,41 @@ interface AIGameProps {
   onBack: () => void;
   deck0Name?: string;
   deck1Name?: string;
+  /** 固定牌組（教學模式）：優先於 deck0Name/deck1Name */
+  deck0Ids?: string[];
+  deck1Ids?: string[];
+  /** 教學模式：跳過洗牌，讓固定牌組依陣列順序進入牌庫 */
+  skipShuffle?: boolean;
+  /** 教學模式：AI 腳本，覆寫 AI 隨機決策確保劇本可預測 */
+  aiScript?: TutorialAIScript;
   onGameStateChange?: (state: GameState) => void;
   tutorialMode?: boolean;
   hideSetupOverlay?: boolean;
+  aiPaused?: boolean;
+  onSetupFeedbackDismiss?: () => void;
 }
 
-function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty; onGameStateChange?: (state: GameState) => void; tutorialMode?: boolean; hideSetupOverlay?: boolean }) {
-  const { difficulty, onGameStateChange, tutorialMode, hideSetupOverlay, ...boardProps } = props;
+function AIBoard(
+  props: BoardProps<GameState> & {
+    difficulty: AIDifficulty;
+    onGameStateChange?: (state: GameState) => void;
+    tutorialMode?: boolean;
+    hideSetupOverlay?: boolean;
+    aiPaused?: boolean;
+    aiScript?: TutorialAIScript;
+    onSetupFeedbackDismiss?: () => void;
+  },
+) {
+  const {
+    difficulty,
+    onGameStateChange,
+    tutorialMode,
+    hideSetupOverlay,
+    aiPaused,
+    aiScript,
+    onSetupFeedbackDismiss,
+    ...boardProps
+  } = props;
   const aiMoves = useMemo<ZutomayoMoveDispatchers>(
     () => ({
       janken: boardProps.moves.janken,
@@ -34,7 +62,16 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty; onGa
     [boardProps.moves],
   );
 
-  useAIMoves(boardProps.G, boardProps.ctx, aiMoves, boardProps.playerID || '0', difficulty, tutorialMode, hideSetupOverlay);
+  useAIMoves(
+    boardProps.G,
+    boardProps.ctx,
+    aiMoves,
+    boardProps.playerID || '0',
+    difficulty,
+    tutorialMode,
+    aiPaused,
+    aiScript,
+  );
 
   // Notify parent of game state changes (for tutorial)
   useEffect(() => {
@@ -44,14 +81,71 @@ function AIBoard(props: BoardProps<GameState> & { difficulty: AIDifficulty; onGa
   }, [boardProps.G, onGameStateChange]);
 
   // AI 對戰時我方顯示為「玩家」、對手顯示為「電腦」。
-  return <Board {...boardProps} selfLabel={t('player.self' as never)} opponentLabel={t('player.ai' as never)} hideSetupOverlay={hideSetupOverlay} />;
+  return (
+    <Board
+      {...boardProps}
+      selfLabel={t('player.self' as never)}
+      opponentLabel={t('player.ai' as never)}
+      hideSetupOverlay={hideSetupOverlay}
+      onSetupFeedbackDismiss={onSetupFeedbackDismiss}
+    />
+  );
 }
 
-export function AIGame({ difficulty, deck0Name, deck1Name, onGameStateChange, tutorialMode, hideSetupOverlay }: AIGameProps) {
+export function AIGame({
+  difficulty,
+  deck0Name,
+  deck1Name,
+  deck0Ids,
+  deck1Ids,
+  skipShuffle,
+  aiScript,
+  onGameStateChange,
+  tutorialMode,
+  hideSetupOverlay,
+  aiPaused,
+  onSetupFeedbackDismiss,
+}: AIGameProps) {
+  // 動態 props 用 ref 持有，board 回調從 ref 讀取最新值。
+  // Client 只建立一次（useState 初始化），若直接在 board 回調閉包中捕獲 props，
+  // 會永遠拿到初始值（如 hideSetupOverlay=true），prop 變化後不會更新。
+  const dynamicPropsRef = useRef({
+    difficulty,
+    onGameStateChange,
+    tutorialMode,
+    hideSetupOverlay,
+    aiPaused,
+    aiScript,
+    onSetupFeedbackDismiss,
+  });
+  dynamicPropsRef.current = {
+    difficulty,
+    onGameStateChange,
+    tutorialMode,
+    hideSetupOverlay,
+    aiPaused,
+    aiScript,
+    onSetupFeedbackDismiss,
+  };
+
   const [AIClient] = useState(() =>
     Client({
-      game: createZutomayoCard({ deck0Name, deck1Name }),
-      board: (props: BoardProps<GameState>) => <AIBoard {...props} difficulty={difficulty} onGameStateChange={onGameStateChange} tutorialMode={tutorialMode} hideSetupOverlay={hideSetupOverlay} />,
+      game: createZutomayoCard({ deck0Name, deck1Name, deck0Ids, deck1Ids, skipShuffle }),
+      board: (props: BoardProps<GameState>) => {
+        const dp = dynamicPropsRef.current;
+        return (
+          <AIBoard
+            {...props}
+            difficulty={dp.difficulty}
+            onGameStateChange={dp.onGameStateChange}
+            tutorialMode={dp.tutorialMode}
+            hideSetupOverlay={dp.hideSetupOverlay}
+            aiPaused={dp.aiPaused}
+            aiScript={dp.aiScript}
+            onSetupFeedbackDismiss={dp.onSetupFeedbackDismiss}
+          />
+        );
+      },
       numPlayers: 2,
       multiplayer: Local(),
       debug: false,
