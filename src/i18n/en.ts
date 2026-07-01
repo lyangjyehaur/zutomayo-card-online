@@ -585,7 +585,7 @@ export const en: Record<TranslationKey, string> = {
     'The result is in! The Night-side player resolves effects first during Night phases; the Day-side player resolves effects first during Day phases.',
   'tutorial.game.mulligan.intro.title': 'Mulligan Phase',
   'tutorial.game.mulligan.intro.body':
-    "Your starting hand contains a high Power Cost character card. When the Power Charger cannot provide enough power to pay the Power Cost, that character's attack becomes 0 and cannot deal damage. If your hand contains high-cost cards or has an uneven clock distribution, you may set aside any number of cards face-down and draw replacements from the deck. The set-aside cards are shuffled back. You can only mulligan once per match.",
+    "Your starting hand contains a high Power Cost character card. When the Power Charger cannot provide enough power to pay the Power Cost, that character's attack becomes 0 and cannot deal damage. Click the cards you want to replace to set them aside, then press \"Redraw\" to draw replacements from the deck; the set-aside cards are shuffled back. If you're satisfied with your hand, press \"Keep Hand\" to skip. You can only mulligan once per match.",
   'tutorial.game.mulligan.action.title': 'Select Cards to Redraw',
   'tutorial.game.mulligan.action.body':
     'Click the cards you want to replace to set them face-down (e.g., the high Power Cost character card), then press Confirm to draw the same number of new cards. If you are satisfied with your hand, press "Keep Hand" to skip.',

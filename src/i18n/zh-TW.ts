@@ -566,7 +566,7 @@ export const zhTW = {
   'tutorial.game.janken.result.body': '結果已出爐！夜側玩家在夜時段優先處理效果，晝側玩家在晝時段優先處理效果。',
   'tutorial.game.mulligan.intro.title': '手牌重抽階段',
   'tutorial.game.mulligan.intro.body':
-    '你的起手牌中有一張高 Power Cost 的角色卡。當充能區的能量不足以支付 Power Cost 時，該角色的攻擊力會變成 0，無法造成傷害。若起手牌含高費卡或時計分布不理想，可選擇任意張數蓋放重抽，舊卡洗回牌組。每場對戰僅能重抽一次。',
+    '你的起手牌中有一張高 Power Cost 的角色卡。當充能區的能量不足以支付 Power Cost 時，該角色的攻擊力會變成 0，無法造成傷害。點擊想替換的卡牌蓋放，再按「重抽」從牌組抽等量新卡，舊卡洗回牌組；若滿意手牌也可直接按「保留手牌」跳過。每場對戰僅能重抽一次。',
   'tutorial.game.mulligan.action.title': '選擇要重抽的卡牌',
   'tutorial.game.mulligan.action.body':
     '點擊想要替換的卡牌將其蓋放（例如高 Power Cost 的角色卡），再按下確認從牌組抽等量新卡。若對手牌滿意，直接按「保留手牌」跳過。',
