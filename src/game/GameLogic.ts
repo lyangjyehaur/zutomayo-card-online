@@ -476,7 +476,9 @@ function setCard(G: GameState, player: PlayerIndex, handIndex: number, slot: Set
   if (state.cardsSetThisTurn >= getRequiredSetCount(G, player)) return false;
   const def = getCardDef(state.hand[handIndex].defId);
   if (def?.type === 'Area Enchant' && G.areaEnchantSetLocked?.[player]) return false;
-  const zone = def?.type === 'Area Enchant' && !state.setZoneC ? 'setZoneC' : slot === 'A' ? 'setZoneA' : 'setZoneB';
+  // Area Enchant 從手牌打出時先放入 setZoneA 或 setZoneB（覆蓋狀態），
+  // 翻開發動效果時才由 placeRevealedCards 移動到 setZoneC（官方規則）。
+  const zone = slot === 'A' ? 'setZoneA' : 'setZoneB';
   if (state[zone]) return false;
   const card = state.hand.splice(handIndex, 1)[0];
   card.faceUp = false;
@@ -783,16 +785,8 @@ export function placeRevealedCards(
       continue;
     }
     const characters = slots.filter((card) => getCardDef(card.defId)?.type === 'Character');
-    const directArea =
-      player.setZoneC &&
-      G.setCardsThisTurn[index].some((card) => card.instanceId === player.setZoneC?.instanceId) &&
-      getCardDef(player.setZoneC.defId)?.type === 'Area Enchant'
-        ? player.setZoneC
-        : null;
-    const areas = [
-      ...slots.filter((card) => getCardDef(card.defId)?.type === 'Area Enchant'),
-      ...(directArea ? [directArea] : []),
-    ];
+    // Area Enchant 從手牌打出時先放 setZoneA/B，翻開後才移到 setZoneC（官方規則）。
+    const areas = slots.filter((card) => getCardDef(card.defId)?.type === 'Area Enchant');
     // 官方 QA Q11/Q13：只進第一張卡到 destination，多餘的卡保留在 setZoneB，
     // 由 finishTurn 在回合結束時送 ownerZone（QA 規定「ターンの終了時に」送）。
     if (characters.length > 0) {
@@ -811,9 +805,6 @@ export function placeRevealedCards(
       // QA 規定「ターンの終了時」指定がないため「すぐに」移動，且效果不発動。
       const immediateMove = getImmediateMoveOnSetHpCondition(areas[0], timingEffects);
       if (immediateMove && G.players[index].hp <= immediateMove.hpThreshold) {
-        if (directArea && areas[0].instanceId === directArea.instanceId) {
-          G.players[index].setZoneC = null;
-        }
         sendToOwnerZone(areas[0], G.players[index], G, index, timingEffects);
         if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
         if (!G.suppressedEffectCardIdsThisTurn.includes(areas[0].instanceId)) {
@@ -822,13 +813,6 @@ export function placeRevealedCards(
         G.log.push(
           `Player ${index}: ${areas[0].defId} HP<=${immediateMove.hpThreshold} at set, immediate move to ${immediateMove.destination}.`,
         );
-      } else if (directArea && areas[0].instanceId === directArea.instanceId) {
-        resolveTimingEvent(G, timingEffects, {
-          type: 'zoneEntered',
-          player: index,
-          zone: 'setZoneC',
-          cardDefId: directArea.defId,
-        });
       } else {
         replaceDestination(G, index, [areas[0]], 'setZoneC', false, timingEffects);
       }
