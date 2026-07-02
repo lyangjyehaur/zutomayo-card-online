@@ -487,6 +487,8 @@ Completed in the current responsive pass:
 - `OnlineLobbyPage`: disabled quick-match/create-room guidance is visible on touch layouts instead of relying on hover-only tooltips.
 - `AILobbyPage`: stacked tablet/phone layout uses tighter vertical rhythm before the desktop split activates.
 - `FeedbackPage`: mobile toolbar uses a compact sort rail and full-width primary action; comment reactions now have an explicit tap target instead of hover-only access.
+- `LeaderboardPage`: desktop keeps the full rank table, while phone/tablet portrait layouts switch to rank cards so leaderboard stats no longer require horizontal scrolling.
+- `MatchHistory`: phone headers, pagination, and record actions now wrap into compact two-column controls instead of crowding one row.
 
 ## Acceptance Criteria
 

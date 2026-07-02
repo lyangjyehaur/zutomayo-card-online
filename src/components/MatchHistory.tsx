@@ -179,16 +179,27 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
   return (
     <PageShell className="overflow-y-auto px-4 py-4 md:px-6">
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
-        <header className="flex items-center justify-between border-b border-bone/5 pb-4">
-          <div className="flex-1">
+        <header className="flex flex-col gap-3 border-b border-bone/5 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
             <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.menu')}</span>
-            <h1 className="font-display text-3xl italic text-gold">{t('history.title')}</h1>
+            <h1 className="font-display text-2xl italic text-gold sm:text-3xl">{t('history.title')}</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <BackButton type="button" onClick={onBack}>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <BackButton
+              className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+              type="button"
+              onClick={onBack}
+            >
               {t('common.backToLobby')}
             </BackButton>
-            <Button variant="danger" size="sm" type="button" disabled={records.length === 0} onClick={clearHistory}>
+            <Button
+              className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+              variant="danger"
+              size="sm"
+              type="button"
+              disabled={records.length === 0}
+              onClick={clearHistory}
+            >
               {t('history.clear')}
             </Button>
           </div>
@@ -214,13 +225,14 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
         </section>
 
         <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2>{t('history.title')}</h2>
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:flex">
               <Button
                 size="sm"
                 variant="secondary"
                 type="button"
+                className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
                 disabled={currentPage === 0}
                 onClick={() => setPage((value) => Math.max(0, value - 1))}
               >
@@ -233,6 +245,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                 size="sm"
                 variant="secondary"
                 type="button"
+                className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
                 disabled={currentPage >= totalPages - 1}
                 onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
               >
@@ -275,11 +288,23 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                       {t('history.traceCount')} {(record.actionLog ?? []).length}
                     </span>
                   </div>
-                  <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="ghost" type="button" onClick={() => setSelectedRecord(record)}>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+                      onClick={() => setSelectedRecord(record)}
+                    >
                       {t('history.viewTrace')}
                     </Button>
-                    <Button size="sm" variant="secondary" type="button" onClick={() => downloadMatchActionLog(record)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      type="button"
+                      className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+                      onClick={() => downloadMatchActionLog(record)}
+                    >
                       {t('history.downloadTrace')}
                     </Button>
                   </div>
