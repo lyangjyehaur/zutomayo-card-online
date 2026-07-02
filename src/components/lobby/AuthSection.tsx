@@ -15,6 +15,8 @@ export type AuthUser = {
   winRate?: number;
 };
 
+export const PUBLIC_AUTH_ENTRYPOINTS_ENABLED = false;
+
 function authErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   if (
@@ -175,10 +177,17 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
     <section className="max-w-sm rounded-sm bg-gradient-to-br from-lacquer via-lacquer to-lacquer-deep p-3 ring-1 ring-bone/10 shadow-[0_8px_32px_-8px] shadow-black/40 sm:max-w-md sm:p-4 md:p-5">
       <div className="flex flex-col gap-3">
         <button
-          className="whitespace-nowrap border border-bone/20 px-2.5 py-1.5 text-[9px] uppercase tracking-[0.12em] text-bone/60 transition hover:bg-bone/5 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer sm:px-4 sm:text-[10px] sm:tracking-[0.3em]"
+          className={`whitespace-nowrap border border-bone/20 px-2.5 py-1.5 text-[9px] uppercase tracking-[0.12em] text-bone/60 transition focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer sm:px-4 sm:text-[10px] sm:tracking-[0.3em] ${
+            PUBLIC_AUTH_ENTRYPOINTS_ENABLED ? 'hover:bg-bone/5' : 'cursor-not-allowed opacity-45'
+          }`}
           type="button"
           aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
+          aria-disabled={!PUBLIC_AUTH_ENTRYPOINTS_ENABLED}
+          disabled={!PUBLIC_AUTH_ENTRYPOINTS_ENABLED}
+          onClick={() => {
+            if (!PUBLIC_AUTH_ENTRYPOINTS_ENABLED) return;
+            setExpanded((value) => !value);
+          }}
         >
           <span className="sm:hidden">{t('auth.login')}</span>
           <span className="hidden sm:inline">

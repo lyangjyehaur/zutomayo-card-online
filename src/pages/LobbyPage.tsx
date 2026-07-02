@@ -4,7 +4,6 @@ import { Swords, Bot, LayoutGrid } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
-import { AppDrawer } from '../components/AppDrawer';
 import { t, type TranslationKey } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
@@ -203,27 +202,44 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
         </div>
       </footer>
 
-      {/* 首次訪問引導彈窗 */}
-      <AppDrawer
-        open={showDeckIntro}
-        title={t('intro.deckTitle')}
-        description={t('intro.deckDescription')}
-        kicker="Welcome"
-        actions={[
-          {
-            label: t('intro.goToDeckBuilder'),
-            onClick: handleGoToDeckBuilder,
-            tone: 'primary',
-            eventName: 'deck-intro-go-to-builder',
-          },
-          {
-            label: t('intro.exploreLater'),
-            onClick: handleDismissIntro,
-            tone: 'secondary',
-            eventName: 'deck-intro-dismiss',
-          },
-        ]}
-      />
+      {/* 首次訪問引導——頂部橫幅卡片，不遮罩背景 */}
+      {showDeckIntro && (
+        <div className="fixed inset-x-0 top-0 z-[900] flex justify-center px-4 pt-4">
+          <div className="w-full max-w-[640px] rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer p-5 text-bone shadow-[0_20px_60px_-15px] shadow-black/80 ring-1 ring-gold/40 backdrop-blur">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">Welcome</span>
+              <button
+                type="button"
+                aria-label={t('common.close')}
+                className="text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-vermilion"
+                onClick={handleDismissIntro}
+                data-umami-event="deck-intro-dismiss"
+              >
+                {t('common.close')}
+              </button>
+            </div>
+            <h2 className="font-display text-2xl italic leading-tight text-bone">{t('intro.deckTitle')}</h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-bone/75">{t('intro.deckDescription')}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="bg-gold px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-bone active:scale-95"
+                onClick={handleGoToDeckBuilder}
+                data-umami-event="deck-intro-go-to-builder"
+              >
+                {t('intro.goToDeckBuilder')}
+              </button>
+              <button
+                type="button"
+                className="border border-bone/30 px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-bone/70 transition hover:border-bone/60 hover:text-bone active:scale-95"
+                onClick={handleDismissIntro}
+              >
+                {t('intro.exploreLater')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
