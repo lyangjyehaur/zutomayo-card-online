@@ -1,15 +1,36 @@
 /* i18n Manager */
+.i18n-page {
+  display: flex !important;
+  grid-template-rows: none !important;
+  flex-direction: column;
+  gap: 0.75rem !important;
+  min-height: 0;
+}
+
+.i18n-header {
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.i18n-heading {
+  min-width: 0;
+  text-align: center;
+}
+
 .i18n-controls {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
   padding: 0.5rem 0;
+  min-height: max-content;
 }
 
 .i18n-locale-tabs {
   display: flex;
   gap: 0.3rem;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .locale-tab {
@@ -33,6 +54,7 @@
   display: flex;
   gap: 1rem;
   font-size: 0.8rem;
+  flex-wrap: wrap;
 }
 
 .stat-warn {
@@ -46,6 +68,7 @@
   display: flex;
   gap: 0.8rem;
   align-items: center;
+  min-width: 0;
 }
 
 .i18n-search {
@@ -55,25 +78,41 @@
   background: #16213e;
   color: #e0e0e0;
   font-size: 0.8rem;
-  width: 300px;
+  width: min(100%, 300px);
 }
 
 .i18n-checkbox {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.3rem;
   font-size: 0.8rem;
   color: #aaa;
   cursor: pointer;
+  width: max-content;
+  max-width: 100%;
+}
+
+.i18n-checkbox input {
+  flex: 0 0 auto;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0;
+  accent-color: var(--gold);
 }
 
 .i18n-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
-  max-height: calc(100vh - 280px);
+  max-height: none;
+  margin-top: 0.1rem;
+  overscroll-behavior: contain;
 }
 
 .i18n-table {
   width: 100%;
+  min-width: 760px;
   border-collapse: collapse;
   font-size: 0.8rem;
 }
@@ -157,4 +196,118 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.75rem;
+}
+
+@media (max-width: 767px) {
+  .i18n-page {
+    padding: 0.75rem !important;
+  }
+
+  .i18n-header {
+    flex-wrap: wrap;
+    align-items: flex-start !important;
+    padding-bottom: 0.75rem !important;
+  }
+
+  .i18n-heading {
+    order: 3;
+    width: 100%;
+    text-align: left;
+    font-size: 1.5rem !important;
+    line-height: 1.15;
+  }
+
+  .i18n-locale-tabs {
+    flex-wrap: nowrap;
+    margin-inline: -0.75rem;
+    overflow-x: auto;
+    padding-inline: 0.75rem;
+    padding-bottom: 0.1rem;
+    overscroll-behavior-x: contain;
+  }
+
+  .i18n-locale-tabs > button {
+    flex: 0 0 auto;
+  }
+
+  .i18n-stats {
+    gap: 0.4rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .i18n-filters {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .i18n-checkbox {
+    align-self: flex-start;
+  }
+
+  .i18n-search {
+    width: 100% !important;
+  }
+
+  .i18n-table {
+    min-width: 0;
+    border-collapse: separate !important;
+    border-spacing: 0 0.65rem;
+  }
+
+  .i18n-responsive-table thead {
+    display: none;
+  }
+
+  .i18n-responsive-table tbody,
+  .i18n-responsive-table tr,
+  .i18n-responsive-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .i18n-responsive-table tr {
+    border: 1px solid color-mix(in oklch, var(--bone) 10%, transparent);
+    border-radius: 2px;
+    background: color-mix(in oklch, var(--lacquer) 80%, transparent);
+    padding: 0.7rem;
+  }
+
+  .i18n-responsive-table td {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 0.75rem;
+    max-width: none;
+    border: 0;
+    padding: 0.35rem 0 !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .i18n-responsive-table td::before {
+    content: attr(data-label);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: color-mix(in oklch, var(--bone) 42%, transparent);
+  }
+
+  .i18n-key,
+  .i18n-base,
+  .i18n-translated {
+    max-width: none;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .i18n-status {
+    text-align: left;
+  }
+
+  .i18n-edit {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }

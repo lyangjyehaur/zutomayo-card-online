@@ -24,7 +24,7 @@ import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
-import { BackButton, Button, Input, Panel, PageShell } from '../components/ui';
+import { BackButton, Button, Input, PageHeader, Panel, PageShell } from '../components/ui';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
 import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
@@ -325,25 +325,31 @@ export function OnlineLobbyPage({
   });
 
   return (
-    <PageShell glow={{ color: 'vermilion', size: 'sm', className: 'left-0 top-0 translate-x-0 translate-y-0' }}>
-      {/* Header */}
-      <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
-        <BackButton type="button" onClick={() => navigate('/')}>
-          {t('common.backToLobby')}
-        </BackButton>
-        <div className="pointer-events-none font-display text-sm italic">
-          {t('lobby.onlineTitle')} · {t('lobby.onlineLobbySubtitle')}
-        </div>
-        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
-          <Radio className="size-3 animate-pulse text-vermilion" />
-          {profile ? `${profile.nickname} · ELO ${profile.elo}` : anonymousDisplayName}
-        </div>
-      </header>
+    <PageShell
+      variant="workspace"
+      className="flex flex-col"
+      glow={{ color: 'vermilion', size: 'sm', className: 'left-0 top-0 translate-x-0 translate-y-0' }}
+    >
+      <PageHeader
+        leading={
+          <BackButton type="button" onClick={() => navigate('/')}>
+            <span className="hidden sm:inline">{t('common.backToLobby')}</span>
+          </BackButton>
+        }
+        title={t('lobby.onlineTitle')}
+        subtitle={t('lobby.onlineLobbySubtitle')}
+        actions={
+          <div className="hidden items-center gap-2 font-mono text-[10px] uppercase tracking-[0.24em] text-bone/40 md:flex">
+            <Radio className="size-3 animate-pulse text-vermilion" />
+            {profile ? `${profile.nickname} · ELO ${profile.elo}` : anonymousDisplayName}
+          </div>
+        }
+      />
 
       {/* 雙欄內容 */}
-      <div className="relative z-10 grid h-full grid-cols-1 gap-4 overflow-y-auto px-4 pb-6 pt-16 md:grid-cols-[340px_minmax(0,1fr)] md:overflow-hidden md:px-6">
+      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 py-4 lg:grid-cols-[340px_minmax(0,1fr)] lg:overflow-hidden lg:px-6">
         {/* 左側：Quick Match */}
-        <Panel as="aside" className="flex flex-col gap-4 md:overflow-y-auto" size="xl">
+        <Panel as="aside" className="flex flex-col gap-4 lg:overflow-y-auto" size="xl">
           <div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.quickMatch')}</div>
             <h2 className="mt-1 font-display text-3xl italic">{t('lobby.onlineTitle')}</h2>
@@ -476,7 +482,7 @@ export function OnlineLobbyPage({
         </Panel>
 
         {/* 右側：牌組選擇 + 自訂房間 */}
-        <section className="flex min-h-0 flex-col gap-6 md:overflow-y-auto md:pr-2">
+        <section className="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
           {/* 牌組選擇 */}
           <Panel variant="ghost" size="lg">
             <DeckSelector
@@ -489,7 +495,7 @@ export function OnlineLobbyPage({
 
           {/* 自訂房間 */}
           <Panel className="flex flex-col gap-4" variant="ghost" size="lg">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.customRooms')}</div>
                 <h2 className="font-display text-2xl italic">{t('lobby.createRoom')}</h2>
@@ -516,7 +522,7 @@ export function OnlineLobbyPage({
             </div>
 
             {/* 加入房間 */}
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 className="min-w-0 flex-1"
                 value={matchID}

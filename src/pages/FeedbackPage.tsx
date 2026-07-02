@@ -41,12 +41,19 @@ import { Badge, Button, Input, Select, Textarea, type BadgeTone } from '../compo
 const STATUS_OPTIONS: FeedbackStatus[] = ['open', 'planned', 'started', 'completed', 'declined', 'duplicate'];
 const SORT_OPTIONS: FeedbackSort[] = ['top', 'trending', 'newest', 'recent', 'most-discussed'];
 const NO_VOTE_STATUSES: FeedbackStatus[] = ['completed', 'declined', 'duplicate'];
+const SORT_KEYS: Record<FeedbackSort, TranslationKey> = {
+  top: 'feedback.sortTop',
+  trending: 'feedback.sortTrending',
+  newest: 'feedback.sortNewest',
+  recent: 'feedback.sortRecent',
+  'most-discussed': 'feedback.sortMostDiscussed',
+};
 
 function statusKey(status: FeedbackStatus): TranslationKey {
   return ('feedback.status' + status[0].toUpperCase() + status.slice(1)) as TranslationKey;
 }
 function sortKey(sort: FeedbackSort): TranslationKey {
-  return ('feedback.sort' + sort[0].toUpperCase() + sort.slice(1)) as TranslationKey;
+  return SORT_KEYS[sort];
 }
 
 function statusBadgeTone(status: FeedbackStatus): BadgeTone {

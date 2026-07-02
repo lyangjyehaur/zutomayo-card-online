@@ -1,0 +1,214 @@
+# UI/UX Audit — ZUTOMAYO CARD Online
+
+> 本輪僅做分析與文檔，**不修改任何業務邏輯與現有 UI**。
+> 分析對象：`src/pages/*`、`src/components/*`、`src/App.css`（9551 行 / ~181KB）。
+> 嚴重程度：🔴 高（跨頁面斷層 / 級聯失控） · 🟡 中（頁面內重複或局部不一致） · 🟢 低（魔法數字 / 細節）。
+
+---
+
+## 0. 全域結論（先看這段）
+
+整個前端同時存在**三套互不相容的樣式系統**，且沒有邊界規範，是混亂的根源：
+
+| 樣式系統 | 代表頁面/組件 | 證據 |
+|---|---|---|
+| **A. 舊版自訂 CSS class + daisyUI** | AdminPage、I18nManager、AIGamePage、LeaderboardPage、FeedbackPage、MatchHistory、OnlineRoomInfo | `app-screen`、`primary-action`、`feedback-*`、`i18n-*`、`btn`、`card bg-base-200`、`modal modal-open` |
+| **B. 新版 Tailwind utility + 設計 token** | LobbyPage、AILobbyPage、OnlineLobbyPage、OnlineGamePage、Board、DeckEditor、AuthSection、DeckSelector、DifficultyButtons、GameTutorialOverlay | `bg-lacquer-deep`、`text-bone`、`ring-bone/10`、`text-gold/70`、`bg-vermilion/8` |
+| **C. 純 daisyUI** | LeaderboardPage、MatchHistory、OnlineRoomInfo | `bg-base-200`、`text-primary`、`rounded-box`、`shadow-xl`、`stats`、`join` |
+
+外加 `App.css` 這個 9551 行巨檔，內含 **6 層「final 重構」地層堆疊**（L3130 起每層都把 board/zone/card/chronos/hand-drawer 整套再寫一遍卻不刪舊的），最後靠原始碼順序 + `!important` 決定誰贏。
+
+**量化指標**：
+
+| 指標 | 數值 | 評價 |
+|---|---|---|
+| App.css 總行數 | 9551 行 / 181KB | 過大，應拆分 |
+| `@layer` 使用 | 僅 1 處 base | **未分層**，級聯靠順序 |
+| 重複定義 class | `.board` ×7、`.hand-area` ×7、`.hand-drawer` ×6、`.zone` ×4 | 極嚴重 |
+| 重複 `@keyframes` | `battle-zone-glow` ×3、`damage-flash` ×2 | 冗餘 |
+| 硬編碼 hex | 204 處 | 應全數提升為 token |
+| `!important` | 65 處（~45 處為覆蓋舊定義） | 級聯失控 |
+| z-index 魔法數字 | 50 處、21 種不同值 | 無規範 |
+| 重複 `border-radius: var(--radius)` | 45 處 | 可抽 utility |
+| 重複 `color: var(--gold)` | 57 處 | 可抽 utility |
+
+---
+
+## 1. 頁面層問題（`src/pages/`）
+
+| 頁面 | 問題 | 嚴重 | 建議處理方式 |
+|---|---|---|---|
+| **LobbyPage**（首頁） | 紫光暈 `h-[80vh] w-[80vh] blur-[140px]` 與其他頁參數皆不同；`tracking-[0.3em]` 與 `tracking-[0.35em]` 兩種近似值混用；`text-[10px] uppercase tracking-[0.3em]` 標籤散落 8+ 處；兩種 primary 按鈕並存（`bg-gold` vs 邊框樣） | 🔴 | 抽 `<AmbientGlow>` 參數化、`<EyebrowLabel>` 統一標籤、統一 primary 按鈕 |
+| **AILobbyPage** | 紫光暈 `h-[60vh] w-[120vh] blur-[120px]`（變體 2）；返回按鈕 `text-[10px] uppercase tracking-[0.3em] text-bone/50` 與其他頁逐字相同卻複製貼上；**首次選牌 Toast 邏輯與 OnlineLobbyPage 完全重複**（含 `sessionStorage.getItem('zutomayo_deck_selected_toast')` 整段） | 🔴 | 抽 `<PageShell>`+`<LobbyHeader>`+`<BackButton>`、抽 `useFirstDeckSelectionToast` hook |
+| **OnlineLobbyPage** | 紫光暈 `h-[50vh] w-[50vh] blur-[140px]`（變體 3，第三種尺寸）；`tracking-[0.3em]` 與 `tracking-widest` 混用；Tooltip 區塊在 QuickMatch 與 CreateRoom 各一份**逐字相同**；輸入框樣式重複 3+ 次；primary 按鈕用漸層 `from-vermilion to-gold` 與 OnlineGamePage 的 `bg-bone` 完全不同系統 | 🔴 | 抽 `<Tooltip>`、`<TextInput>`、統一 primary 按鈕、複用 `useFirstDeckSelectionToast` |
+| **OnlineGamePage** | 紫光暈 `bg-vermilion/8 blur-[120px]`（變體 2）；主按鈕 `bg-bone px-5 py-2.5 ... hover:bg-gold` 在 `renderStatusPanel` 與 `LeaveConfirmDialog` 重複 3+ 次逐字相同；`panelTone` 字串拼接條件色 | 🔴 | 抽 `<PrimaryButton>`、`<SecondaryButton>`、`<StatusPanel>`、`<ConfirmDialog>` |
+| **AIGamePage** | 與 AILobbyPage 同屬 AI 流程但風格完全斷層：仍用舊版 `app-screen` + `bg-base-200` + `btn btn-ghost`，未跟隨新版 token | 🔴 | 統一改用新版 token + `<PageShell>` |
+| **AdminPage** | 幾乎純 daisyUI，與新版 token 完全斷層；`filterChipClass`/`tabClass` 字串拼接函式；硬編碼中文未走 i18n（`'管理員面板'`、`'儲存中…'`）；emoji 直接寫 JSX（`📝`、`⚙️`、`🌐`）；`alert alert-info` loading 與 `alert alert-success` 儲存成功在 users/matches/CardEditForm/I18nEditor 多處重複；表單欄位 `<label className="label grid gap-1 p-0">` 重複十多次 | 🟡 | 抽 `<FormField>`、`<SaveButton>`+`<SuccessAlert>`、`<FilterChip>`、`<StatCard>`、`<AdminLoginShell>`；i18n 化 |
+| **I18nManager** | 與 AdminPage 同屬管理類卻用自訂 `i18n-*` class（AdminPage 用 daisyUI）—兩者風格不一致；Admin 登入流程與 AdminPage 邏輯重複但樣式不同（`card bg-base-200 w-96 shadow-xl` vs `admin-login`）；用原生 `alert()` 提示儲存成功（與 Toast 系統不一致） | 🟡 | 與 AdminPage 共用 `<AdminLoginShell>`、改用 Toast、統一 `<DataTable>` |
+| **LeaderboardPage** | 純 daisyUI（`bg-base-200`、`text-primary`、`rounded-box`、`shadow-xl`），與新版 token 完全斷層；標題 `text-2xl font-bold text-primary` 與其他頁 `font-display text-3xl italic` 字體風格不同；loading/error/empty 用三種不同 alert 變體 | 🔴 | 統一改用新版 token；抽 `<PageShell>`（loading+error+empty+content） |
+| **FeedbackPage** | **三系混用最嚴重**：自訂 `feedback-*` class 60+ 個 + daisyUI `badge/input/select/textarea` + Tailwind utility；`statusBadgeClass` 字串拼接；inline style `style={{ background: tg.color }}`；emoji 字元直接寫 JSX（`▲△✕✓👍❤️🎉😄😕👎`）；頁面內 `feedback-empty` 重複 5+ 處、`feedback-error` 重複 6+ 處、`primary-action`/`secondary-action`/`danger-action` 十多次；`form-actions`、`field-label`+input、`upload-bar`+`upload-btn`+`upload-hint`、`feedback-md-hint`+`feedback-identity-hint` 在 SubmitForm 與 comment-form 完全相同區塊重複 | 🔴 | 抽 `<EmptyState>`/`<ErrorState>`、`<PrimaryButton>`/`<SecondaryButton>`/`<DangerButton>`、`<FormActions>`、`<FormField>`、`<UploadBar>`、`<StatusBadge>`、`<ModalOverlay>`+`<Modal>`；emoji 改用 lucide-react icon |
+| **TutorialGamePage** | `app-screen`（舊版）與 `bg-lacquer-deep`（新版）混用；loading 樣式 `font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50` 與其他頁完全不同；用原生 `window.confirm()` 跳過教學（與 OnlineGamePage 自訂 `LeaveConfirmDialog` 不一致）；硬編碼 fallback 中文 `'確定要跳過教學嗎？'` | 🟡 | 統一 `<LoadingState>`、`<ConfirmDialog>`（與 OnlineGamePage 共用） |
+| **DeckEditorPage** | 頁面層完全委派給 `<DeckEditor>`，無頁面層樣式問題 | 🟢 | N/A |
+| **MatchHistoryPage** | 頁面層完全委派給 `<MatchHistory>`，無頁面層樣式問題 | 🟢 | N/A |
+
+---
+
+## 2. 組件層問題（`src/components/`）
+
+| 組件 | 問題 | 嚴重 | 建議處理方式 |
+|---|---|---|---|
+| **Board.tsx**（核心，問題最多） | `!important` 濫用：`!block`、`hand-card !h-full !w-full`、`!h-full !w-full !aspect-auto !border-0 !bg-transparent !shadow-none !rounded-none`（6 連發覆蓋 Card 內部樣式）；`primaryActionClass()`/`secondaryActionClass()` 函式生成 Tailwind 字串，與 AppDrawer 的 `primary-action` class 兩套；**HP 條重複實作 3 次**（`LpBar` 元件存在卻沒用，對手/玩家區直接 inline 寫）；卡背 `<img src="/card-back.jpg">` inline 重複 4 次；kicker 樣式 `font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70` 散落十餘次；背景光暈重複 4 處（Janken/Mulligan/BattleBoard/GameOver 尺寸模糊值各異）；focus ring 完全缺席（hand card/Slot/FieldZone 有 onClick 卻無 focus 樣式）；inline style 大量混用；面板 `rounded-sm bg-lacquer p-4 ring-1 ring-bone/10` 重複 4 次；EffectOrderPanel 與 PendingChoicePanel 視覺重複 | 🔴 | 抽 `<PrimaryButton>`/`<SecondaryButton>`、`<Panel>`、`<HpBar>`（強制全用）、`<CardBack>`、`<Kicker>`、`<AmbientGlow>`、`<ListItemButton>`；補 focus-visible |
+| **Card.tsx** | `computePopoverPosition` 與 DeckEditor 的 `updatePopoverPosition` 平行實作（magic numbers 不同：184-248 vs 320,240）；`card-back.jpg` 路徑硬編碼；`ELEMENT_CLASS` 用日文 key（`闇`/`炎`/`電気`/`風`/`カオス`）當程式識別字；size 系統與 Board 的 `zone-${size}` 耦合卻無共享型別 | 🟡 | 抽 `usePopoverPosition` hook、`<CardBack>`、統一 `cardMetadata.ts` |
+| **Chronos.tsx** | SVG 內硬編碼 hex（`#242839`、`#111827`、`#fff3a6`、`#d9a93d`）；magic numbers 連發（`size=420`、`radius=160`、`outerRadius=196`…）；`CHRONOS_LABELS` 寫死日文未走 i18n | 🟡 | SVG 漸層改用 CSS 變數、CHRONOS_LABELS 移到 i18n |
+| **DeckEditor.tsx** | popover 定位與 Card 重複；篩選按鈕樣式重複 3 次逐字相同；分頁按鈕重複 2 次；primary 按鈕又一個變體（`bg-bone px-4 py-1.5`，與 Board 的 `px-8 py-3` 不同）；kicker 重複；面板 `bg-lacquer/60` 與 Board 的 `bg-lacquer` 不一致；hover popover inline 又一個變體；背景光暈 `bg-gold/8 blur-[140px]`（顏色與 Board 的 vermilion 不同） | 🟡 | 抽 `<FilterButton>`、`<Pagination>`、`<PrimaryButton>`、`<Panel>`、`usePopoverPosition`、`<AmbientGlow>` |
+| **MatchHistory.tsx** | **唯一大量用 daisyUI 的組件**（`btn`、`modal modal-open`、`stats`、`badge badge-warning`），與 Board/DeckEditor 系統完全脫節；彈窗 `modal modal-box` 與 AppDrawer `app-drawer-overlay`、Board `phase-message-overlay` 三套並存；`PAGE_SIZE=6` 與 DeckEditor `PAGE_SIZE=12` 不一致；`formatDuration` 與 Board 重複定義 | 🔴 | 決定 daisyUI 去留（見 §5）；抽 `<Pagination>`、`<Modal>`、`<Badge>`、`<Stat>`、共用 `formatDuration` |
+| **OnlineRoomInfo.tsx** | 純 daisyUI（`alert alert-info`、`input input-bordered`、`btn btn-sm`），與 Board 系統衝突；input 是第 4 套樣式 | 🔴 | 同 MatchHistory；抽 `<Input>`、`<Button>`、`<Alert>` |
+| **AppDrawer.tsx** | 按鈕 tone 用 `primary-action`/`secondary-action`/`danger-action`，與 Board 的 `primaryActionClass()`、MatchHistory 的 `btn` 三套並存；已是抽象元件但未成為唯一彈窗實作 | 🟡 | 成為唯一彈窗實作；統一 tone 為專案按鈕來源 |
+| **ErrorBoundary.tsx** | 用 `primary-action`/`secondary-action`/`danger-action`（與 AppDrawer 一致，少數一致處）；`empty-route-panel` 跨檔追蹤困難 | 🟢 | 改用 `<FullScreenError>` 或 AppDrawer |
+| **GameTutorialOverlay.tsx** | SVG 內硬編碼 `fill="rgba(8,8,12,0.82)"`、`stroke="oklch(0.74 0.09 80)"`；tooltip 位置全用 inline style；magic numbers 密集（`tipW=380`、`tipH=220`、`gap=20`、`z-[1000]`）；tooltip 漸層與 Card/DeckEditor popover 視覺相近但樣式不同；Next 按鈕 `bg-gold` 又一個變體 | 🟡 | 抽 `<PopoverPanel>` 共用漸層；按鈕統一 |
+| **AuthSection.tsx** | input 樣式重複 3 次逐字相同（超長字串）；label 重複 3 次；tab 按鈕重複 2 次；submit 按鈕 `bg-gradient-to-b from-bone to-bone/95` 是 primary 第 4 變體；滑動指示條硬編碼像素 `left-[76px] w-[80px]`；winRate 進度條與 Board HP 條重複模式但用漸層；focus ring 用 `focus-visible:ring-2`（較完整但與其他組件不一致） | 🟡 | 抽 `<Input>`、`<FieldLabel>`、`<Tabs>`、`<PrimaryButton>`、`<ProgressBar>`、`<Alert>` |
+| **DeckSelector.tsx** | 硬編碼 hex 元素色（`from-[#7771a8]`、`from-[#e2624a]`…）與 Card 的 `ELEMENT_CLASS` 重複定義；selected ring `ring-2 ring-gold` 與 Board 的 `ring-2 ring-gold shadow-...`、DeckEditor 的 `ring-gold/30` 規格不一 | 🟡 | 元素色統一到 `cardMetadata.ts`；抽 `<ListItemButton selected>` |
+| **DifficultyButtons.tsx** | 與 DeckSelector 同為 lobby 列表按鈕卻兩套樣式（`border border-bone/10` vs `rounded-sm bg-lacquer-deep/60 ring-1`）；`disabled:` 變體冗長與 DeckSelector 重複但參數不同 | 🟡 | 抽 `<ListItemButton>`、`<SectionHeader>` |
+| **AIGame.tsx / OnlineGame.tsx** | 外層容器 `relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone` + `board-client-frame` 兩處逐字相同；`OnlineLoading` 用 kicker 變體 `text-bone/50` | 🟡 | 抽 `<GameClientFrame>` |
+| **LanguageSwitcher.tsx** | focus ring `focus:ring-1` 與 AuthSection `focus-visible:ring-2` 規格不一；`text-[9px]` 與全專案 `text-[10px]` 慣例不一致 | 🟢 | 統一 `<Select>` 與 focus ring |
+| **ToastProvider.tsx** | 關閉鈕 `×` 與 AppDrawer 一致（好）但按鈕無 class 依賴 CSS；`durationMs ?? 4200` 與各處 magic numbers 散落 | 🟢 | 抽 `<CloseButton>`；toast duration 常數集中 |
+| **PwaInstallPrompt / PwaStatusPrompt** | `app-drawer-list` 與 `pwa-version-list` 語意相近未統一；時間常數 magic numbers | 🟢 | 抽 `<AppDrawerList>` |
+| **VersionUpdateTrigger.tsx** | `REQUIRED_TAPS=7`、`TAP_WINDOW_MS=1500` magic numbers | 🟢 | 常數集中 |
+| **NetworkStatusNotifier.tsx** | 純邏輯無樣式；`durationMs: 3200/6200` magic numbers | 🟢 | 常數集中 |
+
+---
+
+## 3. 跨頁面 / 跨組件重複但不一致（最該優先抽象）
+
+| 重複元素 | 變體數 | 各處證據（簡） | 嚴重 | 建議共用元件 |
+|---|---|---|---|---|
+| **Primary 按鈕** | 4+ | Board `bg-bone px-8 py-3 text-[11px]`；DeckEditor `bg-bone px-4 py-1.5 text-[10px]`；GameTutorialOverlay `bg-gold px-4 py-1.5`；AuthSection `bg-gradient-to-b from-bone to-bone/95`；AppDrawer/ErrorBoundary `primary-action`；MatchHistory/OnlineRoomInfo `btn`；LobbyPage `bg-gold` | 🔴 | `<PrimaryButton>` |
+| **Secondary 按鈕** | 3+ | Board `border border-bone/20 px-8 py-3`；AppDrawer `secondary-action`；MatchHistory `btn btn-ghost`/`btn btn-outline` | 🔴 | `<SecondaryButton>` |
+| **返回大廳按鈕** | 3 | `btn btn-ghost`（Admin/Leaderboard/AIGame）；`text-[10px] uppercase tracking-[0.3em] text-bone/50 hover:text-bone`（AI/OnlineLobby/OnlineGame/Feedback）；`btn btn-ghost btn-sm`（I18nManager） | 🔴 | `<BackButton>` |
+| **彈窗/面板** | 3 | AppDrawer `app-drawer-overlay`/`app-drawer-panel`；Board `phase-message-overlay`/`phase-message-panel`；MatchHistory `modal modal-open`/`modal-box` | 🔴 | `<Modal>`/`<Drawer>` 統一 |
+| **共用面板容器** | 4+ | Board `rounded-sm bg-lacquer p-4 ring-1 ring-bone/10`×4；DeckEditor `rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10`（差 `/60`） | 🟡 | `<Panel>` |
+| **HP/進度條** | 3 | Board `LpBar`（存在卻沒用）；Board 內嵌對手/玩家 HP（`relative h-1 w-full bg-bone/10` + `absolute inset-y-0 left-0 bg-vermilion/gold`）；AuthSection winRate（`h-1 rounded-full` + 漸層） | 🔴 | `<HpBar>`/`<ProgressBar>` |
+| **Kicker 小標** | 10+ | `font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70`（Board/DeckEditor/Tutorial/DeckSelector/Difficulty）；變體 `text-gold/60`、`text-bone/40`、`text-bone/45`、`text-bone/50` | 🔴 | `<Kicker>`/`<SectionHeader>` |
+| **背景光暈** | 4 | Lobby `h-[80vh] w-[80vh] bg-vermilion/10 blur-[140px]`；AI/OnlineGame `h-[60vh] w-[120vh] bg-vermilion/8 blur-[120px]`；OnlineLobby `h-[50vh] w-[50vh] bg-vermilion/8 blur-[140px]`；DeckEditor `bg-gold/8 blur-[140px]`；Board GameOver `h-[90vh] w-[90vh] blur-[160px]` | 🟡 | `<AmbientGlow>` 參數化 |
+| **Popover 定位** | 2 | Card `computePopoverPosition`（184-248）；DeckEditor `updatePopoverPosition`（320,240） | 🟡 | `usePopoverPosition` hook |
+| **Popover 面板** | 3 | Card `card-popover`（自訂）；DeckEditor `pointer-events-none fixed z-50 w-72 rounded-sm bg-gradient-to-br ... ring-gold/30`；GameTutorialOverlay `tutorial-tooltip ... ring-gold/40` | 🟡 | `<PopoverPanel>` |
+| **Input** | 4 | DeckEditor `border border-bone/10 bg-transparent px-3 py-1.5 text-xs`；AuthSection `border border-bone/10 bg-gradient-to-b from-lacquer-deep/80 ... px-3 py-2 text-sm`；LanguageSwitcher `border border-bone/10 bg-lacquer-deep px-1.5 py-1 text-[9px]`；OnlineRoomInfo `input input-bordered` | 🔴 | `<Input>` |
+| **列表項按鈕** | 4 | DeckSelector `rounded-sm bg-lacquer-deep/60 ring-1 hover:-translate-y-0.5`；DifficultyButtons `border border-bone/10 hover:border-gold/30`；Board `effect-order-item`；Board `effect-order-item pending-choice-option` | 🟡 | `<ListItemButton>` |
+| **Badge** | 2 | MatchHistory `badge badge-warning`/`badge badge-success`（daisyUI）；Board `rounded-sm border border-jade/40 bg-jade/10 px-2 py-1 font-mono text-[9px]`（Tailwind） | 🟡 | `<Badge>` |
+| **Card back 圖** | 5+ | Board Slot/對手手牌/對手牌組×2 + Card.tsx，皆 `<img src="/card-back.jpg" className="h-full w-full object-cover" loading="lazy">` | 🟡 | `<CardBack>` |
+| **Focus ring** | 3 | AuthSection `focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2`；LanguageSwitcher `focus:ring-1 focus:ring-gold/40`；DeckEditor `focus:ring-gold/40`（無 ring-1/2） | 🟡 | 統一 focus-visible 規格 |
+| **loading 狀態** | 4 | `alert alert-info`（Admin/Leaderboard）；`feedback-empty`（Feedback）；`text-[10px] text-vermilion/70`（OnlineLobby）；`font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50`（Tutorial） | 🔴 | `<LoadingState>` |
+| **error 狀態** | 3 | `alert alert-error`（Admin/Leaderboard/I18n）；`feedback-error`（Feedback）；`text-[10px] text-vermilion/80`（AI/OnlineLobby/OnlineGame） | 🔴 | `<ErrorState>` |
+| **empty 狀態** | 3 | `alert`（Leaderboard）；`feedback-empty`（Feedback）；無明確元件（Admin） | 🟡 | `<EmptyState>` |
+| **表格** | 3 | Admin/Leaderboard/I18n 都用 `table table-zebra table-sm` 但無共用元件 | 🟢 | `<DataTable>` |
+| **首次選牌 Toast** | 2 | AILobbyPage `handlePlayerDeckChange` 與 OnlineLobbyPage `handleDeckChange` 邏輯+sessionStorage key 完全相同 | 🟡 | `useFirstDeckSelectionToast` hook |
+| **Admin 登入** | 2 | AdminPage `card bg-base-200 w-96 shadow-xl` vs I18nManager `admin-login`，邏輯相同 | 🟡 | `<AdminLoginShell>` |
+| **ConfirmDialog** | 2 | OnlineGamePage 自訂 `LeaveConfirmDialog`；TutorialGamePage 退化為 `window.confirm` | 🟡 | `<ConfirmDialog>` |
+| **formatDuration** | 2 | Board line 889 與 MatchHistory line 32 幾乎相同 | 🟢 | 共用 util |
+
+---
+
+## 4. App.css 結構問題
+
+| 問題 | 證據 | 嚴重 | 建議 |
+|---|---|---|---|
+| **6 層重構地層堆疊** | L3130「Field and card redesign」、L4168「Final active field layout overrides」、L4701「Active field layout: Chronos arena」、L5199「Field layout fixes」、L6393「Field layout final cascade lock」、L7417「漆器塔羅 Board 重構（覆蓋舊遊戲樣式）」—每層都把 board/zone/card/chronos/hand-drawer 整套再寫一遍卻不刪舊的 | 🔴 | 保留最後一層實際生效版本，刪除前 5 層死碼 |
+| **未分層** | 整份檔案只有 1 處 `@layer base`（L142），後面 9400+ 行元件 CSS 完全沒有 `@layer components`，級聯靠原始碼順序 | 🔴 | 用 `@layer components` 包住元件 class |
+| **class 重複定義** | `.board` ×7（L1416/3141/4169/4702/5210/6394/7451）、`.hand-area` ×7、`.hand-drawer` ×6、`.field-layout` ×4、`.zone` ×4、`.actions-bar` ×4、`.game-app` ×3、`.game-card` ×3、`.chronos` ×3；5 種 `.element-*` 各 ×3 | 🔴 | 刪除重複定義，僅保留一份 |
+| **`@keyframes` 重複** | `battle-zone-glow` ×3（L1626/3422/5734）、`damage-flash` ×2（L6961/7420）、`damage-float` 與 `damage-float-up` 近似 | 🟡 | 合併為一份 |
+| **硬編碼 hex** | 204 處（`#f5d368`、`#050712`、`#e8bd4f`、`#130d21`、`#444`…）；元素色票在 L1963/L3635/L5798 三度以硬編碼 hex 重複定義 `--element-color`（`#aaa4e8`、`#ff8a8e`、`#f5d368`、`#42d7c6`、`#d8a5ff`） | 🔴 | 全數提升為 `:root` token |
+| **`!important` 氾濫** | 65 處，其中 ~45 處為覆蓋舊定義（L7451-7521「漆器塔羅 Board 重構」用 17 個 `!important` 強制覆寫前 6 次舊定義；L8506-8508 註解自承「針對 `.phase-message-overlay` 的多處衝突定義用 `!important` 確保覆蓋」） | 🔴 | 刪舊定義後即可移除 `!important` |
+| **z-index 魔法數字** | 50 處、21 種值（`-1,0,1,2,3,4,5,10,11,20,30,40,50,60,64,80,90,100,180,200,9999`），同為「浮層」卻散落不同層級 | 🟡 | 建立 z-index scale token |
+| **斷點不一致** | 767px 與 768px 並存；680px、480px 散落；無統一斷點 scale | 🟡 | 統一為 2-3 個（768/1024） |
+| **雙套色彩 token 並存** | `:root` 同時有「新漆器色票」（`--lacquer`/`--bone`/`--gold`）與「舊遊戲變數映射」（`--bg-0/1/2`/`--panel`/`--text`/`--muted`/`--gold-old`/`--gold-deep`），下游混用 | 🟡 | 統一為單一 token 來源 |
+| **重複樣式 pattern** | `border-radius: var(--radius)` ×45、`border: 1px solid var(--line-soft)` ×30、`color: var(--gold)` ×57、`color: var(--muted)` ×44、`background: var(--panel*)` ×17、`box-shadow: var(--shadow*)` ×11 | 🟡 | 提取為 utility class |
+| **position absolute 偏多** | `position: absolute` ×46、`fixed` ×15，常伴隨 `inset: 0` + z-index 疊層 | 🟢 | 評估改用 flex/grid |
+
+---
+
+## 5. 全域決策建議（重構前需先定）
+
+1. **daisyUI 去留**：目前只有 MatchHistory、OnlineRoomInfo、LeaderboardPage、AdminPage、AIGamePage 用 daisyUI。建議**移除 daisyUI**，全專案統一走「Tailwind v4 + 自訂 token」系統（B 系統），移除成本相對低。
+2. **自訂 CSS class vs Tailwind**：原則「Tailwind 為主，自訂 class 僅用於無法用 Tailwind 表達的（SVG 漸層、複雜 keyframes、boardgame.io 容器）」。
+3. **App.css 拆分**：拆成 `tokens.css`（設計 token）、`base.css`（reset + base）、`tailwind-theme.css`（@theme inline）、各元件專屬 CSS（或改用 Tailwind 直接寫在組件）。
+4. **focus ring 統一**：全專案統一 `focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer`（採 AuthSection 較完整那套）。
+5. **字體尺寸限制**：`text-[8px]`/`text-[9px]`/`text-[10px]` 僅用於特定 mono 小字（kicker/label），主要文字用 Tailwind 標準級距（`text-xs`/`text-sm`/`text-base`）。
+
+---
+
+## 6. 分階段重構計劃
+
+> 本輪僅規劃，**不執行**。每階段皆應獨立可驗證、可回滾，且不觸碰業務邏輯。
+
+### Phase 1 — 建立共用 UI 基礎組件（地基）
+
+**目標**：建立統一設計 token 與共用組件庫，作為後續重構的替代品。**不動現有頁面**。
+
+- 拆分 `App.css` → `src/styles/tokens.css` + `base.css` + `tailwind-theme.css`（內容搬移，不改值）。
+- 在 `:root` 補齊缺失 token：`--z-base/dropdown/sticky/overlay/modal/toast`、元素色票（`--element-dark/flame/electric/wind/chaos` 取代硬編碼 hex）、`--radius-sm/md/lg`。
+- 新增 `src/components/ui/` 目錄，建立以下共用組件（**全新檔案，不修改既有組件**）：
+  - `<Button>` 家族：`PrimaryButton`/`SecondaryButton`/`DangerButton`/`GhostButton`/`BackButton`
+  - `<Panel>`、`<CardSurface>`、`<Badge>`、`<Kicker>`、`<SectionHeader>`
+  - `<Modal>`/`<Drawer>`/`<ConfirmDialog>`（以 AppDrawer 為基底統一）
+  - `<Input>`/`<Select>`/`<FieldLabel>`/`<FormField>`/`<FormActions>`
+  - `<HpBar>`/`<ProgressBar>`
+  - `<AmbientGlow>`、`<CardBack>`、`<ListItemButton>`
+  - `<LoadingState>`/`<ErrorState>`/`<EmptyState>`
+  - `<DataTable>`、`<Pagination>`、`<Tooltip>`、`<PopoverPanel>`
+- 抽 `usePopoverPosition` hook、`useFirstDeckSelectionToast` hook、`cardMetadata.ts`、共用 `formatDuration`/`PAGE_SIZE` 常數。
+- 產出 `docs/ui-style-guide.md`（已產出）作為組件 API 與視覺規範依據。
+- **驗證**：新增 storybook 或簡易 demo 頁面（可選），Typecheck + lint + test 全綠。
+
+### Phase 2 — 重構 lobby / room / game 頁（高流量頁面）
+
+**目標**：把使用者最常見的頁面統一到新組件庫。**逐頁替換，每頁一個 commit**。
+
+- **LobbyPage** → `<PageShell>` + `<AmbientGlow>` + `<EyebrowLabel>` + `<PrimaryButton>`/`<SecondaryButton>`。
+- **AILobbyPage / OnlineLobbyPage** → `<PageShell>` + `<LobbyHeader>` + `<BackButton>` + `useFirstDeckSelectionToast` + `<ListItemButton>`（DeckSelector/DifficultyButtons）+ `<TextInput>` + `<Tooltip>` + `<PrimaryButton>`（統一漸層或純色）。
+- **OnlineGamePage** → `<StatusPanel>` + `<ConfirmDialog>` + `<PrimaryButton>`/`<SecondaryButton>`。
+- **Board.tsx**（最複雜，單獨成子階段）：
+  - 移除 `primaryActionClass()`/`secondaryActionClass()`，改用 `<Button>` 家族。
+  - 對手/玩家 HP 強制改用 `<HpBar>`，刪除內嵌 inline HP。
+  - 卡背改用 `<CardBack>`，kicker 改用 `<Kicker>`，背景光暈改用 `<AmbientGlow>`，面板改用 `<Panel>`。
+  - EffectOrderPanel/PendingChoicePanel 改用 `<ListItemButton>`。
+  - 補齊所有可點擊元素的 `focus-visible` 樣式。
+  - **保留 Chronos 時鐘元素**（硬性約束，不可移除）。
+- **驗證**：每頁替換後人工 smoke test（猜拳/換牌/設卡/戰鬥/HP/時鐘/效果結算/教學流程），Typecheck + test 全綠。
+
+### Phase 3 — 清理舊樣式與重複 class（債務清理）
+
+**目標**：Phase 2 完成後，舊樣式已無引用，安全刪除。
+
+- 刪除 `App.css` 中 6 層重構地層的死碼（保留最後一層生效版本）。
+- 合併重複 class 定義（`.board`/`.hand-area`/`.hand-drawer`/`.zone`/`.actions-bar` 各保留 1 份）。
+- 合併重複 `@keyframes`。
+- 移除覆蓋用的 `!important`（舊定義刪除後即不需要）。
+- 把硬編碼 hex 全數替換為 `:root` token。
+- 套用 z-index scale token 到所有 z-index 宣告。
+- 統一斷點為 768/1024。
+- 移除 daisyUI plugin（`@plugin "daisyui"`）與所有 daisyUI class（MatchHistory、OnlineRoomInfo、LeaderboardPage、AdminPage、AIGamePage 已在 Phase 2/3 改寫）。
+- 刪除 `AdminPanel.css`、`I18nManager.css` 中已無引用的 class。
+- **驗證**：grep 確認無殘留 daisyUI class、無殘留 `!important`（除 `prefers-reduced-motion` 合理使用）、無殘留硬編碼 hex；Typecheck + lint + test 全綠。
+
+### Phase 4 — 響應式與細節 polish（收尾）
+
+**目標**：補齊響應式、無障礙、與視覺細節。
+
+- 全專案補齊 `focus-visible` 樣式（Phase 2 已開始，此階段收尾）。
+- 統一斷點行為：手機（<768）/ 平板（768-1024）/ 桌面（>1024），每頁檢查關鍵流程在手機版可用性。
+- 補齊 `prefers-reduced-motion` 對所有動畫的處理。
+- 補齊 `aria-label`/`role`/`aria-live`（彈窗、Toast、loading、error）。
+- emoji 字元（`📝⚙️🌐▲△✕✓👍❤️`）改用 `lucide-react` icon。
+- 硬編碼中文 fallback 改走 i18n。
+- magic numbers（`PAGE_SIZE`、`durationMs`、`REQUIRED_TAPS`…）集中到常數檔。
+- 視覺細節：陰影、漸層、ring 規格全專案一致化。
+- **驗證**：跨裝置手動測試（手機/平板/桌面）、Lighthouse 無障礙分數檢查、Typecheck + lint + test 全綠。
+
+---
+
+## 附錄：本輪分析未涵蓋
+
+- `src/components/board/` 子目錄僅 `useOnlineMatchSubmission.ts`（邏輯檔，無 UI）。
+- `api/`、`src/game/`、`src/server/` 為後端/遊戲邏輯，非 UI 範疇。
+- `scripts/` 為工具腳本，非 UI 範疇。
+- 未實際執行視覺截圖比對（建議 Phase 2 起每頁加 visual regression test）。

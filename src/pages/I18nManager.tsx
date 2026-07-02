@@ -78,10 +78,10 @@ export function I18nManager() {
 
   if (!authenticated) {
     return (
-      <PageShell className="admin-page flex flex-col px-4 py-4 md:px-6">
-        <header className="flex items-center justify-between border-b border-bone/5 pb-4">
+      <PageShell variant="scroll" className="admin-page i18n-page flex flex-col px-4 py-4 md:px-6">
+        <header className="i18n-header flex items-center justify-between border-b border-bone/5 pb-4">
           <BackButton onClick={() => navigate('/')}>{t('common.backToLobby')}</BackButton>
-          <h1 className="font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
+          <h1 className="i18n-heading font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
           <div />
         </header>
         <Panel className="admin-login mx-auto mt-6 w-full max-w-md" size="lg">
@@ -124,10 +124,10 @@ export function I18nManager() {
   };
 
   return (
-    <PageShell className="admin-page flex flex-col px-4 py-4 md:px-6">
-      <header className="flex items-center justify-between border-b border-bone/5 pb-4">
+    <PageShell variant="workspace" className="admin-page i18n-page flex flex-col px-4 py-4 md:px-6">
+      <header className="i18n-header flex items-center justify-between border-b border-bone/5 pb-4">
         <BackButton onClick={() => navigate('/')}>{t('common.backToLobby')}</BackButton>
-        <h1 className="font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
+        <h1 className="i18n-heading font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
         <Button size="sm" variant="secondary" onClick={handleLogout}>
           {t('admin.logout')}
         </Button>
@@ -174,8 +174,8 @@ export function I18nManager() {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-left text-sm">
+      <div className="i18n-table-wrapper">
+        <table className="i18n-table i18n-responsive-table w-full border-collapse text-left text-sm">
           <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
             <tr className="border-b border-bone/10">
               <th className="px-3 py-2">{t('admin.i18nColKey')}</th>
@@ -193,9 +193,14 @@ export function I18nManager() {
 
               return (
                 <tr key={key} className={isMissing ? 'row-missing' : isSame ? 'row-same' : ''}>
-                  <td className="i18n-key px-3 py-2">{key}</td>
-                  <td className="i18n-base px-3 py-2">{baseValue}</td>
+                  <td data-label={t('admin.i18nColKey')} className="i18n-key px-3 py-2">
+                    {key}
+                  </td>
+                  <td data-label={t('admin.i18nColBase')} className="i18n-base px-3 py-2">
+                    {baseValue}
+                  </td>
                   <td
+                    data-label={getLocaleLabel(selectedLocale)}
                     className="i18n-translated px-3 py-2"
                     onClick={() => {
                       if (!isMissing) {
@@ -227,7 +232,7 @@ export function I18nManager() {
                       </span>
                     )}
                   </td>
-                  <td className="i18n-status px-3 py-2">
+                  <td data-label={t('admin.i18nColStatus')} className="i18n-status px-3 py-2">
                     {isMissing ? (
                       <Badge tone="vermilion">{t('admin.i18nMissingBadge')}</Badge>
                     ) : isSame ? (

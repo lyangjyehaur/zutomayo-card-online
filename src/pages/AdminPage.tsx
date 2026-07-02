@@ -695,7 +695,7 @@ export function AdminPage() {
               </Button>
             ))}
           </div>
-          <div className="mt-4 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="admin-card-modal-body mt-4 max-h-[60vh] overflow-y-auto pr-1">
             {modalTab === 'basic' && (
               <CardEditForm
                 card={selectedCard}
@@ -719,18 +719,18 @@ export function AdminPage() {
     ) : null;
 
   return (
-    <PageShell className="flex flex-col">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur md:px-6">
-        <div className="flex items-center gap-2">
+    <PageShell className="card-admin-page admin-page flex flex-col">
+      <header className="admin-header flex h-14 shrink-0 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur md:px-6">
+        <div className="admin-title-row flex items-center gap-2">
           <BackButton onClick={() => navigate('/')}>{t('common.backToLobby')}</BackButton>
-          <h1 className="font-display text-xl italic text-gold">管理員面板</h1>
+          <h1 className="admin-heading font-display text-xl italic text-gold">管理員面板</h1>
           {activeTab === 'cards' && (
             <Badge>
               {filtered.length} / {allCards.length} 張
             </Badge>
           )}
         </div>
-        <div role="tablist" className="flex items-center gap-2">
+        <div role="tablist" className="admin-tablist flex items-center gap-2">
           <Button
             role="tab"
             size="sm"
@@ -756,7 +756,7 @@ export function AdminPage() {
             對戰
           </Button>
         </div>
-        <div>
+        <div className="admin-header-actions">
           <Button variant="secondary" size="sm" onClick={handleLogout}>
             登出
           </Button>
@@ -764,8 +764,8 @@ export function AdminPage() {
       </header>
 
       {activeTab === 'cards' && (
-        <div className="flex-1 overflow-y-auto p-4">
-          <section className="grid gap-3 lg:grid-cols-5">
+        <div className="admin-main flex-1 overflow-y-auto p-4">
+          <section className="admin-stats-grid grid gap-3 lg:grid-cols-5">
             <Panel>
               <div className="text-xs text-bone/50">總卡</div>
               <div className="font-mono text-2xl text-gold">{audit.totalCards}</div>
@@ -789,16 +789,16 @@ export function AdminPage() {
               <div className="font-mono text-2xl text-gold">{audit.runtimeParsedEffects}</div>
             </Panel>
           </section>
-          <div className="grid gap-3 py-4">
+          <div className="admin-filter-panel grid gap-3 py-4">
             <Input
               type="text"
               placeholder="搜尋卡名/效果/ID..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              className="max-w-md"
+              className="admin-search-input max-w-md"
             />
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-12 text-xs text-bone/50">屬性</span>
+            <div className="admin-filter-row flex flex-wrap items-center gap-2">
+              <span className="admin-filter-label w-12 text-xs text-bone/50">屬性</span>
               {ELEMENTS.map((el) => (
                 <Button
                   key={el}
@@ -810,8 +810,8 @@ export function AdminPage() {
                 </Button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-12 text-xs text-bone/50">類型</span>
+            <div className="admin-filter-row flex flex-wrap items-center gap-2">
+              <span className="admin-filter-label w-12 text-xs text-bone/50">類型</span>
               {TYPES.map((type) => (
                 <Button
                   key={type}
@@ -823,8 +823,8 @@ export function AdminPage() {
                 </Button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-12 text-xs text-bone/50">Trigger</span>
+            <div className="admin-filter-row flex flex-wrap items-center gap-2">
+              <span className="admin-filter-label w-12 text-xs text-bone/50">Trigger</span>
               {TRIGGERS.map((trigger) => (
                 <Button
                   key={trigger}
@@ -836,8 +836,8 @@ export function AdminPage() {
                 </Button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-12 text-xs text-bone/50">引擎</span>
+            <div className="admin-filter-row flex flex-wrap items-center gap-2">
+              <span className="admin-filter-label w-12 text-xs text-bone/50">引擎</span>
               <Input
                 className="w-36"
                 placeholder="Action type"
@@ -861,8 +861,8 @@ export function AdminPage() {
                 Area expiry
               </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-12 text-xs text-bone/50">卡包</span>
+            <div className="admin-filter-row flex flex-wrap items-center gap-2">
+              <span className="admin-filter-label w-12 text-xs text-bone/50">卡包</span>
               {FALLBACK_PACKS.map((pack) => (
                 <Button
                   key={pack}
@@ -874,8 +874,8 @@ export function AdminPage() {
                 </Button>
               ))}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-12 text-xs text-bone/50">排序</span>
+            <div className="admin-filter-row flex flex-wrap items-center gap-2">
+              <span className="admin-filter-label w-12 text-xs text-bone/50">排序</span>
               {(['id', 'name', 'cost', 'attack'] as const).map((sort) => (
                 <Button
                   key={sort}
@@ -888,7 +888,7 @@ export function AdminPage() {
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+          <div className="admin-card-grid grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
             {filtered.map((card) => {
               const meta = metaById.get(card.id);
               return (
@@ -929,14 +929,14 @@ export function AdminPage() {
       )}
 
       {activeTab === 'users' && (
-        <section className="flex-1 overflow-auto p-4">
+        <section className="admin-table-section flex-1 overflow-auto p-4">
           {adminLoading && <Panel className="mb-3 text-sm text-bone/60">載入中…</Panel>}
           {adminError && (
             <Panel className="mb-3 border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80">
               {adminError}
             </Panel>
           )}
-          <table className="w-full border-collapse text-left text-sm">
+          <table className="admin-responsive-table w-full border-collapse text-left text-sm">
             <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
               <tr className="border-b border-bone/10">
                 <th className="px-3 py-2">ID</th>
@@ -951,10 +951,16 @@ export function AdminPage() {
             <tbody>
               {users.map((u) => (
                 <tr key={u.id} className="odd:bg-lacquer/50">
-                  <td className="max-w-32 truncate px-3 py-2 font-mono text-xs opacity-70">{u.id}</td>
-                  <td className="px-3 py-2">{u.email}</td>
-                  <td className="px-3 py-2">{u.nickname}</td>
-                  <td className="px-3 py-2">
+                  <td data-label="ID" className="max-w-32 truncate px-3 py-2 font-mono text-xs opacity-70">
+                    {u.id}
+                  </td>
+                  <td data-label="Email" className="px-3 py-2">
+                    {u.email}
+                  </td>
+                  <td data-label="暱稱" className="px-3 py-2">
+                    {u.nickname}
+                  </td>
+                  <td data-label="ELO" className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       {eloEdits[u.id] ?? u.elo}
                       <Input
@@ -965,9 +971,13 @@ export function AdminPage() {
                       />
                     </div>
                   </td>
-                  <td className="px-3 py-2">{u.matchCount}</td>
-                  <td className="px-3 py-2">{u.winRate}%</td>
-                  <td className="px-3 py-2">
+                  <td data-label="場次" className="px-3 py-2">
+                    {u.matchCount}
+                  </td>
+                  <td data-label="勝率" className="px-3 py-2">
+                    {u.winRate}%
+                  </td>
+                  <td data-label="操作" className="px-3 py-2">
                     <Button
                       size="sm"
                       variant="ghost"
@@ -999,14 +1009,14 @@ export function AdminPage() {
       )}
 
       {activeTab === 'matches' && (
-        <section className="flex-1 overflow-auto p-4">
+        <section className="admin-table-section flex-1 overflow-auto p-4">
           {adminLoading && <Panel className="mb-3 text-sm text-bone/60">載入中…</Panel>}
           {adminError && (
             <Panel className="mb-3 border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80">
               {adminError}
             </Panel>
           )}
-          <table className="w-full border-collapse text-left text-sm">
+          <table className="admin-responsive-table w-full border-collapse text-left text-sm">
             <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
               <tr className="border-b border-bone/10">
                 <th className="px-3 py-2">ID</th>
@@ -1021,16 +1031,28 @@ export function AdminPage() {
             <tbody>
               {matches.map((m) => (
                 <tr key={m.id} className="odd:bg-lacquer/50">
-                  <td className="max-w-32 truncate px-3 py-2 font-mono text-xs opacity-70">{m.id}</td>
-                  <td className="px-3 py-2">{m.winnerNickname ?? m.winnerId}</td>
-                  <td className="px-3 py-2">{m.loserNickname ?? m.loserId}</td>
-                  <td className="px-3 py-2">
+                  <td data-label="ID" className="max-w-32 truncate px-3 py-2 font-mono text-xs opacity-70">
+                    {m.id}
+                  </td>
+                  <td data-label="勝者" className="px-3 py-2">
+                    {m.winnerNickname ?? m.winnerId}
+                  </td>
+                  <td data-label="敗者" className="px-3 py-2">
+                    {m.loserNickname ?? m.loserId}
+                  </td>
+                  <td data-label="ELO Δ" className="px-3 py-2">
                     {m.winnerEloChange >= 0 ? '+' : ''}
                     {m.winnerEloChange} / {m.loserEloChange}
                   </td>
-                  <td className="px-3 py-2">{m.turns ?? '—'}</td>
-                  <td className="px-3 py-2">{m.duration != null ? `${Math.round(m.duration / 60)}m` : '—'}</td>
-                  <td className="px-3 py-2">{new Date(m.createdAt).toLocaleString()}</td>
+                  <td data-label="回合" className="px-3 py-2">
+                    {m.turns ?? '—'}
+                  </td>
+                  <td data-label="時長" className="px-3 py-2">
+                    {m.duration != null ? `${Math.round(m.duration / 60)}m` : '—'}
+                  </td>
+                  <td data-label="時間" className="px-3 py-2">
+                    {new Date(m.createdAt).toLocaleString()}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -4,7 +4,7 @@ import type { DeckResponse } from '../api/client';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { DifficultyButtons } from '../components/lobby/DifficultyButtons';
 import { useToast } from '../components/ToastProvider';
-import { BackButton, PageShell } from '../components/ui';
+import { BackButton, PageHeader, PageShell } from '../components/ui';
 import {
   buildAIOpponentDeckOptions,
   buildDeckOptions,
@@ -75,18 +75,18 @@ export function AILobbyPage({
   };
 
   return (
-    <PageShell className="flex flex-col" glow={{ color: 'vermilion', size: 'md' }}>
-      <header className="relative z-30 flex h-12 shrink-0 items-center border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur md:px-6">
-        <BackButton type="button" onClick={() => navigate('/')}>
-          {t('common.backToLobby')}
-        </BackButton>
-        <h1 className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-display text-sm italic">
-          {t('lobby.aiBattle')}
-        </h1>
-      </header>
+    <PageShell variant="workspace" className="flex flex-col" glow={{ color: 'vermilion', size: 'md' }}>
+      <PageHeader
+        leading={
+          <BackButton type="button" onClick={() => navigate('/')}>
+            <span className="hidden sm:inline">{t('common.backToLobby')}</span>
+          </BackButton>
+        }
+        title={t('lobby.aiBattle')}
+      />
 
-      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 py-4 md:grid-cols-[minmax(0,1fr)_24rem] md:overflow-hidden md:px-6 md:py-6">
-        <div className="flex min-h-0 flex-col gap-6 md:overflow-y-auto md:pr-2">
+      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-8 overflow-y-auto px-4 py-4 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-4 lg:overflow-hidden lg:px-6 lg:py-6">
+        <div className="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
           {serverDeckError && <p className="text-[10px] text-vermilion/80">{serverDeckError}</p>}
           <DeckSelector
             label={t('lobby.myDeck')}
@@ -103,7 +103,7 @@ export function AILobbyPage({
             />
           </div>
         </div>
-        <div className="flex min-h-0 flex-col gap-4 md:overflow-y-auto md:pr-2">
+        <div className="flex flex-col gap-4 border-t border-bone/10 pt-6 lg:min-h-0 lg:border-t-0 lg:pt-0 lg:overflow-y-auto lg:pr-2">
           <DifficultyButtons onStart={onStartAI} disabled={!canStartAI({ cardsReady, deck0Name, deck1Name })} />
         </div>
       </div>

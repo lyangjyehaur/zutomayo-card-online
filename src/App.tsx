@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { Menu, X } from 'lucide-react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { identifyAnalytics, trackPageView } from './analytics';
 import { formatAnonymousDisplayName } from './anonymousIdentity';
@@ -115,6 +116,7 @@ async function joinMatch(
 function NavBar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [open, setOpen] = useState(false);
 
   // 全螢幕單屏頁面有自己的 Header，不需要 NavBar
   if (
@@ -126,36 +128,78 @@ function NavBar() {
     return null;
   }
 
+  const navItems = [
+    { path: '/', label: t('nav.lobby') },
+    { path: '/online', label: t('lobby.onlineTitle') },
+    { path: '/ai', label: t('lobby.aiBattle') },
+    { path: '/deck-builder', label: t('nav.deckBuilder') },
+    { path: '/feedback', label: t('nav.feedback') },
+    { path: '/tutorial', label: t('nav.tutorial') },
+  ];
+
+  const activeItem = navItems.find((item) => item.path === location.pathname) ?? navItems[0];
   const buttonClass = (path: string) =>
-    `text-[10px] uppercase tracking-[0.3em] transition-colors ${
+    `rounded-sm px-2 py-2 text-[10px] uppercase tracking-[0.24em] transition-colors md:px-0 md:py-0 md:tracking-[0.3em] ${
       location.pathname === path ? 'text-gold' : 'text-bone/50 hover:text-bone'
     }`;
 
+  const goTo = (path: string) => {
+    setOpen(false);
+    navigate(path);
+  };
+
   return (
     <nav
-      className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur"
+      className="relative z-30 border-b border-bone/5 bg-lacquer-deep/90 px-4 backdrop-blur md:px-6"
       aria-label={t('nav.primary')}
     >
-      <div className="flex items-center gap-6">
-        <button className={buttonClass('/')} type="button" onClick={() => navigate('/')}>
-          {t('nav.lobby')}
-        </button>
-        <button className={buttonClass('/online')} type="button" onClick={() => navigate('/online')}>
-          {t('lobby.onlineTitle')}
-        </button>
-        <button className={buttonClass('/ai')} type="button" onClick={() => navigate('/ai')}>
-          {t('lobby.aiBattle')}
-        </button>
-        <button className={buttonClass('/deck-builder')} type="button" onClick={() => navigate('/deck-builder')}>
-          {t('nav.deckBuilder')}
-        </button>
-        <button className={buttonClass('/feedback')} type="button" onClick={() => navigate('/feedback')}>
-          {t('nav.feedback')}
+      <div className="hidden h-12 items-center justify-between md:flex">
+        <div className="flex items-center gap-6">
+          {navItems.slice(0, 5).map((item) => (
+            <button key={item.path} className={buttonClass(item.path)} type="button" onClick={() => goTo(item.path)}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <button className={buttonClass('/tutorial')} type="button" onClick={() => goTo('/tutorial')}>
+          {t('nav.tutorial')}
         </button>
       </div>
-      <button className={buttonClass('/tutorial')} type="button" onClick={() => navigate('/tutorial')}>
-        {t('nav.tutorial')}
-      </button>
+      <div className="flex h-12 items-center justify-between gap-3 md:hidden">
+        <button className="font-display text-base italic text-bone" type="button" onClick={() => goTo('/')}>
+          ZUTOMAYO
+        </button>
+        <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.24em] text-gold">
+          {activeItem.label}
+        </span>
+        <button
+          className="inline-flex size-9 items-center justify-center rounded-sm text-bone/60 ring-1 ring-bone/10 transition hover:text-bone focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+          type="button"
+          aria-label={open ? t('common.close') : t('nav.primary')}
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          {open ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
+        </button>
+      </div>
+      {open && (
+        <div className="fixed inset-0 top-12 z-[--z-modal] bg-lacquer-deep/80 p-4 backdrop-blur md:hidden">
+          <div className="grid gap-2 rounded-md bg-lacquer p-3 ring-1 ring-bone/10 shadow-[--shadow]">
+            {navItems.map((item) => (
+              <button
+                key={item.path}
+                className={`flex min-h-11 items-center justify-between rounded-sm px-3 text-left font-mono text-[11px] uppercase tracking-[0.18em] transition ${
+                  location.pathname === item.path ? 'bg-gold text-lacquer' : 'text-bone/70 hover:bg-bone/5 hover:text-bone'
+                }`}
+                type="button"
+                onClick={() => goTo(item.path)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

@@ -37,21 +37,42 @@ export function AmbientGlow({ color = 'vermilion', size = 'md', className, ...pr
 
 export interface PageShellProps extends HTMLAttributes<HTMLDivElement> {
   glow?: boolean | AmbientGlowProps | AmbientGlowProps[];
+  variant?: 'screen' | 'scroll' | 'workspace' | 'status';
 }
 
 function renderGlow(glow: PageShellProps['glow']) {
   if (!glow) return null;
-  if (glow === true) return <AmbientGlow />;
-  if (Array.isArray(glow)) {
-    return glow.map((props, index) => <AmbientGlow key={index} {...props} />);
-  }
-  return <AmbientGlow {...glow} />;
+  const content =
+    glow === true ? (
+      <AmbientGlow />
+    ) : Array.isArray(glow) ? (
+      glow.map((props, index) => <AmbientGlow key={index} {...props} />)
+    ) : (
+      <AmbientGlow {...glow} />
+    );
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+      {content}
+    </div>
+  );
 }
 
-export function PageShell({ glow = false, className, children, ...props }: PageShellProps) {
+const shellVariantClass: Record<NonNullable<PageShellProps['variant']>, string> = {
+  screen: 'h-dvh min-h-dvh overflow-hidden',
+  scroll: 'min-h-dvh overflow-y-auto overflow-x-hidden',
+  workspace: 'h-dvh min-h-dvh overflow-hidden',
+  status: 'min-h-dvh overflow-y-auto overflow-x-hidden',
+};
+
+export function PageShell({ glow = false, variant = 'screen', className, children, ...props }: PageShellProps) {
   return (
     <main
-      className={cn('relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone', className)}
+      className={cn(
+        'relative w-full bg-lacquer-deep font-sans text-bone',
+        shellVariantClass[variant],
+        className,
+      )}
       {...props}
     >
       {renderGlow(glow)}

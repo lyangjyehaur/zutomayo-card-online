@@ -228,14 +228,14 @@ export function DeckEditor({
   const emptySlotCount = Math.max(0, DECK_SIZE - deck.length);
 
   return (
-    <PageShell className="flex flex-col">
-      <div className="pointer-events-none absolute inset-0">
+    <PageShell variant="workspace" className="flex flex-col">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -left-40 top-0 h-[60vh] w-[60vh] rounded-full bg-gold/8 blur-[140px]" />
       </div>
 
       <header className="relative z-30 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-bone/5 bg-lacquer-deep/80 px-3 py-2 backdrop-blur md:h-12 md:flex-nowrap md:px-6 md:py-0">
         <BackButton type="button" onClick={onCancel} aria-label={t('common.backToLobby')}>
-          {t('common.backToLobby')}
+          <span className="hidden sm:inline">{t('common.backToLobby')}</span>
         </BackButton>
         <h1 className="hidden font-display text-sm italic md:block">Deck Editor · 牌組編輯</h1>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 md:flex-nowrap md:gap-3">
@@ -275,24 +275,24 @@ export function DeckEditor({
         </div>
       )}
 
-      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-3 py-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden lg:px-6 lg:py-6">
+      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-3 py-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:overflow-hidden xl:px-6 xl:py-6">
         <section
-          className="flex min-h-[32rem] flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10 md:p-5 lg:min-h-0"
+          className="flex min-h-[24rem] flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10 md:min-h-[28rem] md:p-5 xl:min-h-0"
           aria-label="Card Pool"
         >
-          <div className="mb-4 flex items-center justify-between gap-4">
+          <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Archive</div>
               <h2 className="font-display text-2xl italic">Card Pool</h2>
             </div>
-            <div className="relative flex items-center gap-2 border border-bone/10 px-3 py-1.5">
+            <div className="relative flex w-full items-center gap-2 border border-bone/10 px-3 py-2 sm:w-auto sm:py-1.5">
               <Search className="size-3.5 text-bone/40" aria-hidden="true" />
               <input
                 type="search"
                 placeholder={t('deckEditor.search')}
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                className="w-56 bg-transparent text-xs text-bone placeholder:text-bone/30 focus:outline-none"
+                className="w-full bg-transparent text-xs text-bone placeholder:text-bone/30 focus:outline-none sm:w-56"
                 aria-label={t('deckEditor.search')}
               />
               {searchText && (
@@ -318,7 +318,7 @@ export function DeckEditor({
                   key={element}
                   type="button"
                   onClick={() => setFilterElement(element)}
-                  className={`text-[10px] uppercase tracking-[0.3em] transition ${
+                  className={`text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
                     filterElement === element ? 'text-gold' : 'text-bone/40 hover:text-bone'
                   }`}
                   aria-pressed={filterElement === element}
@@ -336,7 +336,7 @@ export function DeckEditor({
                   key={type}
                   type="button"
                   onClick={() => setFilterType(type)}
-                  className={`text-[10px] uppercase tracking-[0.3em] transition ${
+                  className={`text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
                     filterType === type ? 'text-gold' : 'text-bone/40 hover:text-bone'
                   }`}
                   aria-pressed={filterType === type}
@@ -352,7 +352,7 @@ export function DeckEditor({
                   key={option}
                   type="button"
                   onClick={() => setSortBy(option)}
-                  className={`text-[10px] uppercase tracking-[0.3em] transition ${
+                  className={`text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
                     sortBy === option ? 'text-gold' : 'text-bone/40 hover:text-bone'
                   }`}
                   aria-pressed={sortBy === option}
@@ -367,8 +367,8 @@ export function DeckEditor({
             </fieldset>
           </div>
 
-          <div className="mb-3 flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40" aria-live="polite">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-bone/40 md:tracking-[0.3em]" aria-live="polite">
               {t('deck.foundCards').replace('{count}', String(filteredCards.length))} · {currentPage + 1}/{totalPages}
             </span>
             <nav className="flex items-center gap-3" aria-label="Pagination">
@@ -376,7 +376,7 @@ export function DeckEditor({
                 type="button"
                 disabled={currentPage === 0}
                 onClick={() => setPage((value) => Math.max(0, value - 1))}
-                className="flex items-center gap-1 text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40"
+                className="flex min-h-9 items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40 md:tracking-[0.3em]"
                 aria-label={t('common.prev')}
               >
                 <ChevronLeft className="size-3.5" aria-hidden="true" /> {t('common.prev')}
@@ -385,7 +385,7 @@ export function DeckEditor({
                 type="button"
                 disabled={currentPage >= totalPages - 1}
                 onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
-                className="flex items-center gap-1 text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40"
+                className="flex min-h-9 items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40 md:tracking-[0.3em]"
                 aria-label={t('common.next')}
               >
                 {t('common.next')} <ChevronRight className="size-3.5" aria-hidden="true" />
@@ -393,7 +393,7 @@ export function DeckEditor({
             </nav>
           </div>
 
-          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-3 content-start gap-3 overflow-y-auto p-1 pr-2 md:grid-cols-4 lg:grid-cols-5">
+          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-2 content-start gap-3 overflow-y-auto p-1 pr-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
             {visibleCards.map((card) => {
               const count = deckCounts.get(card.id) ?? 0;
               const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
@@ -488,7 +488,7 @@ export function DeckEditor({
           )}
 
         <aside
-          className="flex min-h-[24rem] flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 md:p-5 lg:min-h-0"
+          className="flex min-h-[18rem] flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 md:min-h-[22rem] md:p-5 xl:min-h-0"
           aria-label="Active Deck"
         >
           <div className="mb-3 flex items-end justify-between border-b border-bone/10 pb-3">

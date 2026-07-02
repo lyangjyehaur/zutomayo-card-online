@@ -93,7 +93,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   return (
     <PageShell>
       {/* 環境層：隨機卡牌模糊背景 + 紫光暈 + 點陣紋理 */}
-      <div className="pointer-events-none absolute inset-0">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {bgImage && (
           <img
             src={bgImage}
@@ -110,22 +110,26 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       </div>
 
       {/* 頂部 Header */}
-      <header className="absolute inset-x-0 top-0 z-20 flex h-16 items-center justify-between gap-3 px-4 md:px-8">
-        <div className="flex items-center gap-3">
+      <header className="absolute inset-x-0 top-0 z-20 flex min-h-16 flex-col items-stretch justify-center gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-8">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="size-2 rounded-full bg-vermilion shadow-[0_0_12px] shadow-vermilion/60" />
-          <span className="font-display text-xl italic tracking-tight">{t('app.title')}</span>
+          <span className="truncate font-display text-[clamp(1.1rem,5vw,1.25rem)] italic leading-none tracking-tight md:text-xl">
+            {t('app.title')}
+          </span>
           <span className="ml-3 hidden text-[10px] uppercase tracking-[0.3em] text-bone/40 md:inline">
             {t('app.subtitle')}
           </span>
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2 md:gap-4">
           <LanguageSwitcher />
-          <AuthSection onAuthChanged={onAuthChanged} />
+          <div className="hidden sm:block">
+            <AuthSection onAuthChanged={onAuthChanged} />
+          </div>
         </div>
       </header>
 
       {/* 中央三聯幅卡 */}
-      <section className="relative z-10 h-full overflow-y-auto px-4 pb-14 pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
+      <section className="relative z-10 h-full overflow-y-auto px-4 pb-10 pt-32 sm:pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
         <div className="grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
           {ENTRIES.map(({ to, titleKey, subtitle, captionKey, Icon }, i) => (
             <Card
@@ -133,7 +137,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               key={to}
               type="button"
               onClick={() => navigate(to)}
-              className="group relative flex min-h-[11rem] flex-col justify-between overflow-hidden rounded-sm bg-lacquer p-5 text-left ring-1 ring-bone/10 transition-all duration-500 hover:-translate-y-1 hover:ring-gold/50 hover:shadow-[0_30px_80px_-20px] hover:shadow-vermilion/30 md:h-[460px] md:p-8"
+              className="group relative flex min-h-[11rem] flex-col justify-between overflow-hidden rounded-sm bg-lacquer p-5 text-left ring-1 ring-bone/10 transition-all duration-500 hover:-translate-y-1 hover:ring-gold/50 hover:shadow-[0_30px_80px_-20px] hover:shadow-vermilion/30 md:h-[60dvh] md:p-8 xl:h-[460px]"
             >
               {/* 卡內裝飾：內框線 */}
               <div className="pointer-events-none absolute inset-3 rounded-sm ring-1 ring-bone/5 transition-all duration-500 group-hover:ring-gold/20" />
@@ -148,8 +152,12 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
 
               {/* 中：副標 + 主標 + 說明 */}
               <div className="relative">
-                <div className="mb-2 text-[10px] uppercase tracking-[0.35em] text-bone/40">{subtitle}</div>
-                <h2 className="font-display text-5xl font-extrabold leading-none tracking-tight">{t(titleKey)}</h2>
+                <div className="mb-2 text-[10px] uppercase tracking-[0.24em] text-bone/40 md:tracking-[0.35em]">
+                  {subtitle}
+                </div>
+                <h2 className="font-display text-[clamp(2.35rem,13vw,3rem)] font-extrabold leading-none tracking-tight md:text-5xl">
+                  {t(titleKey)}
+                </h2>
                 <p className="mt-4 max-w-[22ch] text-sm leading-relaxed text-bone/50">{t(captionKey)}</p>
               </div>
 
@@ -164,16 +172,25 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               </div>
             </Card>
           ))}
+          <Button
+            type="button"
+            onClick={() => navigate('/tutorial')}
+            className="mt-1 flex w-full items-center justify-center gap-3 border-gold/30 bg-gold/10 text-gold sm:hidden"
+            variant="secondary"
+          >
+            <span className="text-[10px] uppercase tracking-[0.18em]">{t('lobby.tutorial')}</span>
+            <span className="font-display text-xl italic">→</span>
+          </Button>
         </div>
       </section>
 
       {/* 底部 Footer */}
-      <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4 md:px-8">
+      <footer className="pointer-events-none absolute inset-x-0 bottom-0 z-20 hidden flex-col items-center gap-3 px-4 pb-4 sm:flex md:px-8">
         {/* 教學入口 */}
         <Button
           type="button"
           onClick={() => navigate('/tutorial')}
-          className="group flex w-full max-w-md items-center justify-center gap-3 rounded-sm border border-gold/30 bg-gradient-to-r from-gold/8 via-gold/5 to-gold/8 px-6 py-3 text-gold transition-all hover:border-gold/50 hover:bg-gold/10 hover:shadow-[0_8px_32px_-8px] hover:shadow-gold/30"
+          className="pointer-events-auto group flex w-full max-w-md items-center justify-center gap-3 rounded-sm border border-gold/30 bg-gradient-to-r from-gold/8 via-gold/5 to-gold/8 px-6 py-3 text-gold transition-all hover:border-gold/50 hover:bg-gold/10 hover:shadow-[0_8px_32px_-8px] hover:shadow-gold/30"
           variant="secondary"
         >
           <span className="text-[10px] uppercase tracking-[0.3em]">{t('lobby.tutorial')}</span>
@@ -181,7 +198,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
         </Button>
 
         {/* 原有的 footer 信息 */}
-        <div className="flex w-full items-center justify-between text-[10px] uppercase tracking-[0.3em] text-bone/30">
+        <div className="pointer-events-auto flex w-full items-center justify-between text-[10px] uppercase tracking-[0.3em] text-bone/30">
           <VersionUpdateTrigger />
           <button
             type="button"
@@ -207,9 +224,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
 
       {/* 首次訪問引導——頂部橫幅卡片，不遮罩背景 */}
       {showDeckIntro && (
-        <div className="fixed inset-x-0 top-0 z-[--z-overlay] flex justify-center px-4 pt-4">
+        <div className="fixed inset-x-0 bottom-0 z-[--z-overlay] flex justify-center px-4 pb-4 sm:bottom-auto sm:top-0 sm:pb-0 sm:pt-4">
           <Panel
-            className="w-full max-w-[640px] bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer text-bone ring-gold/40 backdrop-blur"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-[640px] overflow-y-auto bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer text-bone ring-gold/40 backdrop-blur"
             size="lg"
           >
             <div className="mb-2 flex items-center justify-between">
@@ -225,9 +242,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
                 {t('common.close')}
               </Button>
             </div>
-            <h2 className="font-display text-2xl italic leading-tight text-bone">{t('intro.deckTitle')}</h2>
+            <h2 className="font-display text-xl italic leading-tight text-bone sm:text-2xl">{t('intro.deckTitle')}</h2>
             <p className="mt-2 text-sm leading-relaxed text-bone/70">{t('intro.deckDescription')}</p>
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-4 flex flex-col justify-end gap-2 sm:flex-row">
               <Button
                 type="button"
                 size="sm"

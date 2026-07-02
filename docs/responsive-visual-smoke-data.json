@@ -1,0 +1,1077 @@
+{
+  "generatedAt": "2026-07-02T09:02:00.279Z",
+  "results": [
+    {
+      "viewport": "1280x720",
+      "route": "/",
+      "routeName": "lobby",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/1280x720__lobby.png",
+      "metrics": {
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "select.w-full.rounded-sm.border",
+            "text": "繁體中文 粵語 简体中文 日本語 English 한국어",
+            "width": 115,
+            "height": 33
+          },
+          {
+            "selector": "button.whitespace-nowrap.border.border-bone/20",
+            "text": "登入 / 註冊",
+            "width": 104,
+            "height": 29
+          },
+          {
+            "selector": "button.version-update-trigger",
+            "text": "V0.1.0 · 0.1.0 · 2607021441",
+            "width": 204,
+            "height": 15
+          },
+          {
+            "selector": "button.hidden.md:inline.text-bone/30",
+            "text": "Alpha 開發初期階段 · 歡迎前往反饋頁面提交建議與想法",
+            "width": 338,
+            "height": 15
+          },
+          {
+            "selector": "a.text-bone/40.underline-offset-4.transition-colors",
+            "text": "ZUTOMAYO",
+            "width": 72,
+            "height": 13
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "關閉",
+            "width": 58,
+            "height": 27
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "前往牌組編輯器",
+            "width": 123,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "稍後探索",
+            "width": 86,
+            "height": 29
+          }
+        ],
+        "bodyText": "ZUTOMAYO CARD 永夜與白晝交錯的線上對戰卡牌 語言 繁體中文 粵語 简体中文 日本語 English 한국어 登入 / 註冊 01 / 03 ONLINE DUEL 線上房間 展開 2 人對戰，先將對手 HP 歸零即可取勝 ENTER → 02 / 03 VS. CPU 與電腦對戰 在 Chronos 的夜晝流轉中練習攻防判斷 ENTER → 03 / 03 DECK EDITOR 牌組編輯器 組成 20 張牌組，迎接夜與晝"
+      }
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/online",
+      "routeName": "online",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/1280x720__online.png",
+      "metrics": {
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "返回大廳",
+            "width": 108,
+            "height": 28
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "編輯匿名名稱",
+            "width": 42,
+            "height": 32
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "+ 創建房間",
+            "width": 104,
+            "height": 29
+          },
+          {
+            "selector": "input.w-full.rounded-sm.border",
+            "text": "房間代碼",
+            "width": 726,
+            "height": 40
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "加入房間",
+            "width": 94,
+            "height": 40
+          }
+        ],
+        "bodyText": "返回大廳 線上房間 Online Lobby PLAYER#1650 快速配對 線上房間 匿名身份 Player#1650 註冊正式帳號時會沿用這個名稱。 當前牌組 尚未選擇牌組 段位 訪客 登入後方可配對 開始匹配 載入對戰中... 我方牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 闇影牌組 夜側高壓與穩定交換 炎爆牌組 爆發傷害與主動進攻 電閃牌組 晝側節奏與高速推進 疾風牌組 "
+      }
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/ai",
+      "routeName": "ai-lobby",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/1280x720__ai-lobby.png",
+      "metrics": {
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "返回大廳",
+            "width": 108,
+            "height": 28
+          }
+        ],
+        "bodyText": "返回大廳 與電腦對戰 我方牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 闇影牌組 夜側高壓與穩定交換 炎爆牌組 爆發傷害與主動進攻 電閃牌組 晝側節奏與高速推進 疾風牌組 低費靈活與場面調度 自訂牌組 請先在牌組編輯器建立自訂牌組 對手牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 克制牌組 分析玩家牌組特性，從卡池組出克制牌組 闇"
+      }
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/history",
+      "routeName": "history",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/1280x720__history.png",
+      "metrics": {
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "大廳",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "線上房間",
+            "width": 52,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "與電腦對戰",
+            "width": 65,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "牌組",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "反饋",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "教學",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "返回大廳",
+            "width": 108,
+            "height": 28
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "清除紀錄",
+            "width": 84,
+            "height": 27
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "上一頁",
+            "width": 73,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "下一頁",
+            "width": 73,
+            "height": 29
+          }
+        ],
+        "bodyText": "大廳 線上房間 與電腦對戰 牌組 反饋 教學 主選單 對戰紀錄 返回大廳 清除紀錄 總場次0 玩家一勝0 玩家二勝0 平均回合0 對戰紀錄 上一頁 1/1 頁 下一頁 尚無對戰紀錄"
+      }
+    },
+    {
+      "viewport": "1280x720",
+      "route": "/feedback",
+      "routeName": "feedback",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/1280x720__feedback.png",
+      "metrics": {
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "大廳",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "線上房間",
+            "width": 52,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "與電腦對戰",
+            "width": 65,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "牌組",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "反饋",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "教學",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.text-[10px].uppercase.tracking-[0.3em]",
+            "text": "返回大廳",
+            "width": 840,
+            "height": 15
+          },
+          {
+            "selector": "button.sort-tab.active",
+            "text": "最多投票",
+            "width": 72,
+            "height": 25
+          },
+          {
+            "selector": "button.sort-tab",
+            "text": "FEEDBACK.SORTTRENDING",
+            "width": 205,
+            "height": 25
+          },
+          {
+            "selector": "button.sort-tab",
+            "text": "最新",
+            "width": 47,
+            "height": 25
+          }
+        ],
+        "bodyText": "大廳 線上房間 與電腦對戰 牌組 反饋 教學 返回大廳 反饋中心 提交你的想法與建議，讓遊戲變得更好 未登入將以匿名身份發布，登入可追蹤你的反饋 最多投票 FEEDBACK.SORTTRENDING 最新 最近活動 FEEDBACK.SORTMOST-DISCUSSED 全部狀態 待處理 已規劃 進行中 已完成 已婉拒 重複 新增反饋 載入中..."
+      }
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/",
+      "routeName": "lobby",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/768x1024__lobby.png",
+      "metrics": {
+        "scrollWidth": 768,
+        "scrollHeight": 1024,
+        "horizontalOverflow": true,
+        "hOverflowEls": [
+          {
+            "selector": "div.absolute.left-1/2.top-1/2",
+            "text": "DIV",
+            "left": -26,
+            "right": 794,
+            "width": 819
+          }
+        ],
+        "smallTargets": [
+          {
+            "selector": "select.w-full.rounded-sm.border",
+            "text": "繁體中文 粵語 简体中文 日本語 English 한국어",
+            "width": 115,
+            "height": 33
+          },
+          {
+            "selector": "button.whitespace-nowrap.border.border-bone/20",
+            "text": "登入 / 註冊",
+            "width": 99,
+            "height": 29
+          },
+          {
+            "selector": "button.version-update-trigger",
+            "text": "V0.1.0 · 0.1.0 · 2607021441",
+            "width": 170,
+            "height": 30
+          },
+          {
+            "selector": "button.hidden.md:inline.text-bone/30",
+            "text": "Alpha 開發初期階段 · 歡迎前往反饋頁面提交建議與想法",
+            "width": 282,
+            "height": 30
+          },
+          {
+            "selector": "a.text-bone/40.underline-offset-4.transition-colors",
+            "text": "ZUTOMAYO",
+            "width": 72,
+            "height": 13
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "關閉",
+            "width": 58,
+            "height": 27
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "前往牌組編輯器",
+            "width": 123,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "稍後探索",
+            "width": 86,
+            "height": 29
+          }
+        ],
+        "bodyText": "ZUTOMAYO CARD 永夜與白晝交錯的線上對戰卡牌 語言 繁體中文 粵語 简体中文 日本語 English 한국어 登入 / 註冊 01 / 03 ONLINE DUEL 線上房間 展開 2 人對戰，先將對手 HP 歸零即可取勝 ENTER → 02 / 03 VS. CPU 與電腦對戰 在 Chronos 的夜晝流轉中練習攻防判斷 ENTER → 03 / 03 DECK EDITOR 牌組編輯器 組成 20 張牌組，迎接夜與晝"
+      }
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/online",
+      "routeName": "online",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/768x1024__online.png",
+      "metrics": {
+        "scrollWidth": 768,
+        "scrollHeight": 1024,
+        "horizontalOverflow": true,
+        "hOverflowEls": [
+          {
+            "selector": "div.pointer-events-none.absolute.left-1/2",
+            "text": "DIV",
+            "left": 384,
+            "right": 896,
+            "width": 512
+          }
+        ],
+        "smallTargets": [
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "返回大廳",
+            "width": 108,
+            "height": 28
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "編輯匿名名稱",
+            "width": 42,
+            "height": 32
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "+ 創建房間",
+            "width": 104,
+            "height": 29
+          },
+          {
+            "selector": "input.w-full.rounded-sm.border",
+            "text": "房間代碼",
+            "width": 594,
+            "height": 40
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "加入房間",
+            "width": 94,
+            "height": 40
+          }
+        ],
+        "bodyText": "返回大廳 線上房間 Online Lobby PLAYER#1650 快速配對 線上房間 匿名身份 Player#1650 註冊正式帳號時會沿用這個名稱。 當前牌組 尚未選擇牌組 段位 訪客 登入後方可配對 開始匹配 載入對戰中... 我方牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 闇影牌組 夜側高壓與穩定交換 炎爆牌組 爆發傷害與主動進攻 電閃牌組 晝側節奏與高速推進 疾風牌組 "
+      }
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/ai",
+      "routeName": "ai-lobby",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/768x1024__ai-lobby.png",
+      "metrics": {
+        "scrollWidth": 768,
+        "scrollHeight": 1024,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "返回大廳",
+            "width": 108,
+            "height": 28
+          }
+        ],
+        "bodyText": "返回大廳 與電腦對戰 我方牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 闇影牌組 夜側高壓與穩定交換 炎爆牌組 爆發傷害與主動進攻 電閃牌組 晝側節奏與高速推進 疾風牌組 低費靈活與場面調度 自訂牌組 請先在牌組編輯器建立自訂牌組 對手牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 克制牌組 分析玩家牌組特性，從卡池組出克制牌組 闇"
+      }
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/history",
+      "routeName": "history",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/768x1024__history.png",
+      "metrics": {
+        "scrollWidth": 768,
+        "scrollHeight": 1024,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "大廳",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "線上房間",
+            "width": 52,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "與電腦對戰",
+            "width": 65,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "牌組",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "反饋",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "教學",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "返回大廳",
+            "width": 108,
+            "height": 28
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "清除紀錄",
+            "width": 84,
+            "height": 27
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "上一頁",
+            "width": 73,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "下一頁",
+            "width": 73,
+            "height": 29
+          }
+        ],
+        "bodyText": "大廳 線上房間 與電腦對戰 牌組 反饋 教學 主選單 對戰紀錄 返回大廳 清除紀錄 總場次0 玩家一勝0 玩家二勝0 平均回合0 對戰紀錄 上一頁 1/1 頁 下一頁 尚無對戰紀錄"
+      }
+    },
+    {
+      "viewport": "768x1024",
+      "route": "/feedback",
+      "routeName": "feedback",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/768x1024__feedback.png",
+      "metrics": {
+        "scrollWidth": 768,
+        "scrollHeight": 1024,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "大廳",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "線上房間",
+            "width": 52,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "與電腦對戰",
+            "width": 65,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "牌組",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "反饋",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.rounded-sm.px-2.py-2",
+            "text": "教學",
+            "width": 26,
+            "height": 15
+          },
+          {
+            "selector": "button.text-[10px].uppercase.tracking-[0.3em]",
+            "text": "返回大廳",
+            "width": 728,
+            "height": 15
+          },
+          {
+            "selector": "button.sort-tab.active",
+            "text": "最多投票",
+            "width": 72,
+            "height": 25
+          },
+          {
+            "selector": "button.sort-tab",
+            "text": "FEEDBACK.SORTTRENDING",
+            "width": 205,
+            "height": 25
+          },
+          {
+            "selector": "button.sort-tab",
+            "text": "最新",
+            "width": 47,
+            "height": 25
+          }
+        ],
+        "bodyText": "大廳 線上房間 與電腦對戰 牌組 反饋 教學 返回大廳 反饋中心 提交你的想法與建議，讓遊戲變得更好 未登入將以匿名身份發布，登入可追蹤你的反饋 最多投票 FEEDBACK.SORTTRENDING 最新 最近活動 FEEDBACK.SORTMOST-DISCUSSED 全部狀態 待處理 已規劃 進行中 已完成 已婉拒 重複 新增反饋 載入中..."
+      }
+    },
+    {
+      "viewport": "390x844",
+      "route": "/",
+      "routeName": "lobby",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/390x844__lobby.png",
+      "metrics": {
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": true,
+        "hOverflowEls": [
+          {
+            "selector": "div.absolute.left-1/2.top-1/2",
+            "text": "DIV",
+            "left": -143,
+            "right": 533,
+            "width": 675
+          }
+        ],
+        "smallTargets": [
+          {
+            "selector": "select.w-full.rounded-sm.border",
+            "text": "繁體中文 粵語 简体中文 日本語 English 한국어",
+            "width": 109,
+            "height": 33
+          },
+          {
+            "selector": "button.whitespace-nowrap.border.border-bone/20",
+            "text": "登入 / 註冊",
+            "width": 104,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "關閉",
+            "width": 58,
+            "height": 27
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "前往牌組編輯器",
+            "width": 123,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "稍後探索",
+            "width": 86,
+            "height": 29
+          }
+        ],
+        "bodyText": "ZUTOMAYO CARD 繁體中文 粵語 简体中文 日本語 English 한국어 登入 / 註冊 01 / 03 ONLINE DUEL 線上房間 展開 2 人對戰，先將對手 HP 歸零即可取勝 ENTER → 02 / 03 VS. CPU 與電腦對戰 在 Chronos 的夜晝流轉中練習攻防判斷 ENTER → 03 / 03 DECK EDITOR 牌組編輯器 組成 20 張牌組，迎接夜與晝改寫效果的戰鬥 ENTER → FI"
+      }
+    },
+    {
+      "viewport": "390x844",
+      "route": "/online",
+      "routeName": "online",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/390x844__online.png",
+      "metrics": {
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": true,
+        "hOverflowEls": [
+          {
+            "selector": "div.pointer-events-none.absolute.left-1/2",
+            "text": "DIV",
+            "left": 195,
+            "right": 617,
+            "width": 422
+          }
+        ],
+        "smallTargets": [
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "BUTTON",
+            "width": 48,
+            "height": 28
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "編輯匿名名稱",
+            "width": 42,
+            "height": 32
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "+ 創建房間",
+            "width": 104,
+            "height": 29
+          },
+          {
+            "selector": "input.w-full.rounded-sm.border",
+            "text": "房間代碼",
+            "width": 318,
+            "height": 40
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "加入房間",
+            "width": 318,
+            "height": 37
+          }
+        ],
+        "bodyText": "線上房間 Online Lobby 快速配對 線上房間 匿名身份 Player#1650 註冊正式帳號時會沿用這個名稱。 當前牌組 尚未選擇牌組 段位 訪客 登入後方可配對 開始匹配 載入對戰中... 我方牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 闇影牌組 夜側高壓與穩定交換 炎爆牌組 爆發傷害與主動進攻 電閃牌組 晝側節奏與高速推進 疾風牌組 低費靈活與場面調度 自訂牌組 請先"
+      }
+    },
+    {
+      "viewport": "390x844",
+      "route": "/ai",
+      "routeName": "ai-lobby",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/390x844__ai-lobby.png",
+      "metrics": {
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": true,
+        "hOverflowEls": [
+          {
+            "selector": "div.pointer-events-none.absolute.left-1/2",
+            "text": "DIV",
+            "left": -58,
+            "right": 448,
+            "width": 506
+          }
+        ],
+        "smallTargets": [
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "BUTTON",
+            "width": 48,
+            "height": 28
+          }
+        ],
+        "bodyText": "與電腦對戰 我方牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 闇影牌組 夜側高壓與穩定交換 炎爆牌組 爆發傷害與主動進攻 電閃牌組 晝側節奏與高速推進 疾風牌組 低費靈活與場面調度 自訂牌組 請先在牌組編輯器建立自訂牌組 對手牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 克制牌組 分析玩家牌組特性，從卡池組出克制牌組 闇影牌組 夜"
+      }
+    },
+    {
+      "viewport": "390x844",
+      "route": "/history",
+      "routeName": "history",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/390x844__history.png",
+      "metrics": {
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.font-display.text-base.italic",
+            "text": "ZUTOMAYO",
+            "width": 98,
+            "height": 24
+          },
+          {
+            "selector": "button.inline-flex.size-9.items-center",
+            "text": "主要導覽",
+            "width": 36,
+            "height": 36
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "返回大廳",
+            "width": 108,
+            "height": 28
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "清除紀錄",
+            "width": 84,
+            "height": 27
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "上一頁",
+            "width": 73,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "下一頁",
+            "width": 73,
+            "height": 29
+          }
+        ],
+        "bodyText": "ZUTOMAYO 大廳 主選單 對戰紀錄 返回大廳 清除紀錄 總場次0 玩家一勝0 玩家二勝0 平均回合0 對戰紀錄 上一頁 1/1 頁 下一頁 尚無對戰紀錄"
+      }
+    },
+    {
+      "viewport": "390x844",
+      "route": "/feedback",
+      "routeName": "feedback",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/390x844__feedback.png",
+      "metrics": {
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.font-display.text-base.italic",
+            "text": "ZUTOMAYO",
+            "width": 98,
+            "height": 24
+          },
+          {
+            "selector": "button.inline-flex.size-9.items-center",
+            "text": "主要導覽",
+            "width": 36,
+            "height": 36
+          },
+          {
+            "selector": "button.text-[10px].uppercase.tracking-[0.3em]",
+            "text": "返回大廳",
+            "width": 350,
+            "height": 15
+          },
+          {
+            "selector": "button.sort-tab",
+            "text": "最新",
+            "width": 32,
+            "height": 72
+          },
+          {
+            "selector": "select.w-full.rounded-sm.border",
+            "text": "全部狀態 待處理 已規劃 進行中 已完成 已婉拒 重複",
+            "width": 350,
+            "height": 35
+          },
+          {
+            "selector": "input.w-full.rounded-sm.border",
+            "text": "搜尋反饋...",
+            "width": 350,
+            "height": 40
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "新增反饋",
+            "width": 94,
+            "height": 37
+          }
+        ],
+        "bodyText": "ZUTOMAYO 反饋 返回大廳 反饋中心 提交你的想法與建議，讓遊戲變得更好 未登入將以匿名身份發布，登入可追蹤你的反饋 最多投票 FEEDBACK.SORTTRENDING 最新 最近活動 FEEDBACK.SORTMOST-DISCUSSED 全部狀態 待處理 已規劃 進行中 已完成 已婉拒 重複 新增反饋 載入中..."
+      }
+    },
+    {
+      "viewport": "360x740",
+      "route": "/",
+      "routeName": "lobby",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/360x740__lobby.png",
+      "metrics": {
+        "scrollWidth": 360,
+        "scrollHeight": 740,
+        "horizontalOverflow": true,
+        "hOverflowEls": [
+          {
+            "selector": "div.absolute.left-1/2.top-1/2",
+            "text": "DIV",
+            "left": -116,
+            "right": 476,
+            "width": 592
+          }
+        ],
+        "smallTargets": [
+          {
+            "selector": "select.w-full.rounded-sm.border",
+            "text": "繁體中文 粵語 简体中文 日本語 English 한국어",
+            "width": 109,
+            "height": 33
+          },
+          {
+            "selector": "button.whitespace-nowrap.border.border-bone/20",
+            "text": "登入 / 註冊",
+            "width": 104,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "關閉",
+            "width": 58,
+            "height": 27
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "前往牌組編輯器",
+            "width": 123,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "稍後探索",
+            "width": 86,
+            "height": 29
+          }
+        ],
+        "bodyText": "ZUTOMAYO CARD 繁體中文 粵語 简体中文 日本語 English 한국어 登入 / 註冊 01 / 03 ONLINE DUEL 線上房間 展開 2 人對戰，先將對手 HP 歸零即可取勝 ENTER → 02 / 03 VS. CPU 與電腦對戰 在 Chronos 的夜晝流轉中練習攻防判斷 ENTER → 03 / 03 DECK EDITOR 牌組編輯器 組成 20 張牌組，迎接夜與晝改寫效果的戰鬥 ENTER → FI"
+      }
+    },
+    {
+      "viewport": "360x740",
+      "route": "/online",
+      "routeName": "online",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/360x740__online.png",
+      "metrics": {
+        "scrollWidth": 360,
+        "scrollHeight": 740,
+        "horizontalOverflow": true,
+        "hOverflowEls": [
+          {
+            "selector": "div.pointer-events-none.absolute.left-1/2",
+            "text": "DIV",
+            "left": 180,
+            "right": 550,
+            "width": 370
+          }
+        ],
+        "smallTargets": [
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "BUTTON",
+            "width": 48,
+            "height": 28
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "編輯匿名名稱",
+            "width": 42,
+            "height": 32
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "+ 創建房間",
+            "width": 104,
+            "height": 29
+          },
+          {
+            "selector": "input.w-full.rounded-sm.border",
+            "text": "房間代碼",
+            "width": 288,
+            "height": 40
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "加入房間",
+            "width": 288,
+            "height": 37
+          }
+        ],
+        "bodyText": "線上房間 Online Lobby 快速配對 線上房間 匿名身份 Player#1650 註冊正式帳號時會沿用這個名稱。 當前牌組 尚未選擇牌組 段位 訪客 登入後方可配對 開始匹配 載入對戰中... 我方牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 闇影牌組 夜側高壓與穩定交換 炎爆牌組 爆發傷害與主動進攻 電閃牌組 晝側節奏與高速推進 疾風牌組 低費靈活與場面調度 自訂牌組 請先"
+      }
+    },
+    {
+      "viewport": "360x740",
+      "route": "/ai",
+      "routeName": "ai-lobby",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/360x740__ai-lobby.png",
+      "metrics": {
+        "scrollWidth": 360,
+        "scrollHeight": 740,
+        "horizontalOverflow": true,
+        "hOverflowEls": [
+          {
+            "selector": "div.pointer-events-none.absolute.left-1/2",
+            "text": "DIV",
+            "left": -42,
+            "right": 402,
+            "width": 444
+          }
+        ],
+        "smallTargets": [
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "BUTTON",
+            "width": 48,
+            "height": 28
+          }
+        ],
+        "bodyText": "與電腦對戰 我方牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 闇影牌組 夜側高壓與穩定交換 炎爆牌組 爆發傷害與主動進攻 電閃牌組 晝側節奏與高速推進 疾風牌組 低費靈活與場面調度 自訂牌組 請先在牌組編輯器建立自訂牌組 對手牌組 選擇本局使用的 20 張牌牌組 本地牌組 隨機牌組 從完整 422 張卡池隨機抽取 20 張 克制牌組 分析玩家牌組特性，從卡池組出克制牌組 闇影牌組 夜"
+      }
+    },
+    {
+      "viewport": "360x740",
+      "route": "/history",
+      "routeName": "history",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/360x740__history.png",
+      "metrics": {
+        "scrollWidth": 360,
+        "scrollHeight": 740,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.font-display.text-base.italic",
+            "text": "ZUTOMAYO",
+            "width": 98,
+            "height": 24
+          },
+          {
+            "selector": "button.inline-flex.size-9.items-center",
+            "text": "主要導覽",
+            "width": 36,
+            "height": 36
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "返回大廳",
+            "width": 108,
+            "height": 28
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "清除紀錄",
+            "width": 84,
+            "height": 27
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "上一頁",
+            "width": 73,
+            "height": 29
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "下一頁",
+            "width": 73,
+            "height": 29
+          }
+        ],
+        "bodyText": "ZUTOMAYO 大廳 主選單 對戰紀錄 返回大廳 清除紀錄 總場次0 玩家一勝0 玩家二勝0 平均回合0 對戰紀錄 上一頁 1/1 頁 下一頁 尚無對戰紀錄"
+      }
+    },
+    {
+      "viewport": "360x740",
+      "route": "/feedback",
+      "routeName": "feedback",
+      "screenshot": "docs/responsive-visual-smoke-screenshots/360x740__feedback.png",
+      "metrics": {
+        "scrollWidth": 360,
+        "scrollHeight": 740,
+        "horizontalOverflow": false,
+        "hOverflowEls": [],
+        "smallTargets": [
+          {
+            "selector": "button.font-display.text-base.italic",
+            "text": "ZUTOMAYO",
+            "width": 98,
+            "height": 24
+          },
+          {
+            "selector": "button.inline-flex.size-9.items-center",
+            "text": "主要導覽",
+            "width": 36,
+            "height": 36
+          },
+          {
+            "selector": "button.text-[10px].uppercase.tracking-[0.3em]",
+            "text": "返回大廳",
+            "width": 320,
+            "height": 15
+          },
+          {
+            "selector": "button.sort-tab.active",
+            "text": "最多投票",
+            "width": 39,
+            "height": 72
+          },
+          {
+            "selector": "button.sort-tab",
+            "text": "最新",
+            "width": 31,
+            "height": 72
+          },
+          {
+            "selector": "button.sort-tab",
+            "text": "最近活動",
+            "width": 39,
+            "height": 72
+          },
+          {
+            "selector": "select.w-full.rounded-sm.border",
+            "text": "全部狀態 待處理 已規劃 進行中 已完成 已婉拒 重複",
+            "width": 320,
+            "height": 35
+          },
+          {
+            "selector": "input.w-full.rounded-sm.border",
+            "text": "搜尋反饋...",
+            "width": 320,
+            "height": 40
+          },
+          {
+            "selector": "button.inline-flex.items-center.justify-center",
+            "text": "新增反饋",
+            "width": 94,
+            "height": 37
+          }
+        ],
+        "bodyText": "ZUTOMAYO 反饋 返回大廳 反饋中心 提交你的想法與建議，讓遊戲變得更好 未登入將以匿名身份發布，登入可追蹤你的反饋 最多投票 FEEDBACK.SORTTRENDING 最新 最近活動 FEEDBACK.SORTMOST-DISCUSSED 全部狀態 待處理 已規劃 進行中 已完成 已婉拒 重複 新增反饋 載入中..."
+      }
+    }
+  ]
+}

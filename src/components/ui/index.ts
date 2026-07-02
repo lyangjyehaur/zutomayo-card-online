@@ -1,5 +1,7 @@
 export { BackButton, Button } from './Button';
 export type { BackButtonProps, ButtonProps, ButtonSize, ButtonVariant } from './Button';
+export { ActionBar } from './ActionBar';
+export type { ActionBarProps } from './ActionBar';
 export { Badge } from './Badge';
 export type { BadgeProps, BadgeTone } from './Badge';
 export { Card } from './Card';
@@ -10,7 +12,13 @@ export { FieldLabel, FormActions, FormField, Input, Select, Textarea } from './I
 export type { FieldLabelProps, FormFieldProps, InputProps, SelectProps, TextareaProps } from './Input';
 export { AmbientGlow, PageShell } from './PageShell';
 export type { AmbientGlowColor, AmbientGlowProps, AmbientGlowSize, PageShellProps } from './PageShell';
+export { PageHeader } from './PageHeader';
+export type { PageHeaderProps } from './PageHeader';
 export { Panel } from './Panel';
 export type { PanelProps, PanelSize, PanelVariant } from './Panel';
+export { ResponsiveToolbar } from './ResponsiveToolbar';
+export type { ResponsiveToolbarProps } from './ResponsiveToolbar';
+export { Sheet } from './Sheet';
+export type { SheetProps } from './Sheet';
 export { cn } from './utils';
 export type { ClassValue } from './utils';
