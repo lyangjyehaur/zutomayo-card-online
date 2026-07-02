@@ -139,23 +139,24 @@ body {
   font-family: var(--font-sans);
 }
 
-button,
-input {
-  font: inherit;
-}
+@layer base {
+  button,
+  input {
+    font: inherit;
+  }
 
-button {
-  color: inherit;
-  cursor: pointer;
-}
+  button {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+  }
 
-button:not([class]) {
-  color: ButtonText;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 }
 
 .app,
