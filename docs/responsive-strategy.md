@@ -490,6 +490,7 @@ Completed in the current responsive pass:
 - `LeaderboardPage`: desktop keeps the full rank table, while phone/tablet portrait layouts switch to rank cards so leaderboard stats no longer require horizontal scrolling.
 - `MatchHistory`: phone headers, pagination, and record actions now wrap into compact two-column controls instead of crowding one row.
 - `AdminPage`: card-management filters now collapse behind a phone/tablet filter toggle below desktop width while wider desktop keeps the full filter panel visible.
+- `FeedbackPage`: post detail uses a phone sheet with sticky close affordance and internal scrolling instead of a tall page-scrolling modal.
 
 ## Acceptance Criteria
 

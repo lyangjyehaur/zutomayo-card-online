@@ -9732,7 +9732,7 @@ button.zone:focus-visible {
 .feedback-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-modal, 100);
   background: oklch(0.08 0.005 270 / 0.82);
   backdrop-filter: blur(6px);
   display: flex;
@@ -9745,11 +9745,13 @@ button.zone:focus-visible {
 .feedback-modal {
   width: 100%;
   max-width: 640px;
+  max-height: calc(100dvh - 5rem);
   background: var(--panel-strong);
   border: 1px solid var(--line);
   border-radius: calc(var(--radius) * 1.5);
   box-shadow: var(--shadow);
   padding: 1.25rem 1.5rem 1.75rem;
+  overflow-y: auto;
 }
 
 .modal-header {
@@ -10208,7 +10210,105 @@ button.zone:focus-visible {
   color: var(--bone-soft, rgba(232, 220, 200, 0.3));
 }
 
+@media (max-width: 1179px) {
+  .feedback-header > button,
+  .feedback-toolbar .sort-tab,
+  .feedback-toolbar > button {
+    min-height: 2.5rem;
+  }
+
+  .feedback-modal .modal-close {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .feedback-modal .vote-button,
+  .feedback-modal .voters-toggle,
+  .feedback-modal .moderation-row > *,
+  .feedback-modal .moderation-panel > button,
+  .feedback-modal .form-actions button,
+  .feedback-modal .comment-actions button,
+  .feedback-modal .comment-form button,
+  .feedback-modal .upload-bar button,
+  .feedback-modal .comment-vote-button,
+  .feedback-modal .reaction-chip,
+  .feedback-modal .reaction-add-button,
+  .feedback-modal .reaction-picker-button {
+    min-height: 2.5rem;
+  }
+
+  .feedback-modal .comment-vote-button,
+  .feedback-modal .reaction-chip,
+  .feedback-modal .reaction-add-button,
+  .feedback-modal .reaction-picker-button {
+    min-width: 2.5rem;
+  }
+}
+
 @media (max-width: 767px) {
+  .feedback-modal-overlay {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0.75rem 0.5rem max(0.75rem, env(safe-area-inset-bottom));
+    overflow: hidden;
+  }
+
+  .feedback-modal {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 1.5rem);
+    max-width: none;
+    min-height: min(34rem, calc(100dvh - 1.5rem));
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .feedback-modal > .feedback-empty,
+  .feedback-modal > .feedback-error {
+    padding-inline: 1rem;
+  }
+
+  .modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    flex: 0 0 auto;
+    margin: 0;
+    border-bottom: 1px solid var(--line-soft);
+    padding: 0.65rem 0.75rem;
+    background: var(--panel-strong);
+  }
+
+  .modal-close {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .modal-body {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.85rem 1rem 1rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .post-head {
+    align-items: flex-start;
+  }
+
+  .post-head h2 {
+    width: 100%;
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+
+  .modal-actions,
+  .moderation-row,
+  .comment-actions {
+    flex-wrap: wrap;
+  }
+
   .vote-column {
     min-width: 2.5rem;
     padding: 0.35rem;
@@ -10230,7 +10330,7 @@ button.zone:focus-visible {
 
   .reaction-chip,
   .reaction-add-button {
-    min-height: 2rem;
+    min-height: 2.5rem;
   }
 
   .reaction-picker {
