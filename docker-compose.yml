@@ -55,6 +55,7 @@ services:
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - REDIS_URL=redis://redis:6379
       - REDIS_DB=${REDIS_DB:-0}
+      - API_URL=${API_URL:-http://api:3001}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
       - JWT_SECRET=${JWT_SECRET:-}

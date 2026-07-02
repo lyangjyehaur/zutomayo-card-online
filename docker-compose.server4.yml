@@ -25,6 +25,7 @@ services:
       - PG_HOST=postgresql
       - PG_PORT=5432
       - REDIS_DB=0
+      - API_URL=${API_URL:-http://api:3001}
     networks:
       - default
       - 1panel-network
