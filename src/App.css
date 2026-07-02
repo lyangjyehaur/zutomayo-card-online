@@ -6932,7 +6932,15 @@ button.zone:focus-visible {
 }
 
 .mulligan-hand {
-  overflow: visible;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.mulligan-hand > button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  scroll-snap-align: center;
 }
 
 @keyframes card-place {
@@ -8403,11 +8411,9 @@ button.zone:focus-visible {
 }
 
 .mulligan-hand {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin: 1rem 0;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
 }
 
 .mulligan-card {
@@ -8822,6 +8828,9 @@ button.zone:focus-visible {
   }
 
   .board .battle-perspective-field {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
     overflow: visible !important;
   }
 
@@ -8841,6 +8850,67 @@ button.zone:focus-visible {
 @media (max-width: 767px) {
   .board::before {
     filter: blur(80px);
+  }
+
+  [data-tut='mulligan-panel'] {
+    width: min(100%, calc(100vw - 1rem)) !important;
+    max-width: calc(100vw - 1rem) !important;
+    max-height: calc(100dvh - 1.5rem);
+    overflow: hidden;
+    padding: 1rem !important;
+  }
+
+  [data-tut='mulligan-panel'] h2 {
+    margin-top: 0.5rem !important;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: clamp(1.05rem, 5vw, 1.32rem) !important;
+    line-height: 1.18 !important;
+    text-wrap: balance;
+  }
+
+  [data-tut='mulligan-panel'] button {
+    min-height: 2.75rem;
+  }
+
+  .mulligan-hand {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 4.25rem));
+    justify-content: center !important;
+    width: 100% !important;
+    margin-inline: 0;
+    margin-top: 1rem !important;
+    gap: 0.625rem !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    mask-image: none;
+  }
+
+  .mulligan-hand > button {
+    flex: 0 0 auto;
+    width: 4.25rem;
+    min-width: 0;
+    padding: 0.2rem !important;
+  }
+
+  .mulligan-hand .game-card {
+    width: 100% !important;
+  }
+
+  .mulligan-actions {
+    display: grid !important;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem !important;
+  }
+
+  .mulligan-actions button {
+    min-width: 0 !important;
+    padding-inline: 0.75rem !important;
+    font-size: 0.6875rem !important;
+    line-height: 1.15 !important;
+    white-space: normal;
+    letter-spacing: 0.12em !important;
   }
 
   .board .battle-topbar {
@@ -8896,24 +8966,35 @@ button.zone:focus-visible {
   }
 
   .board .battle-opponent-area {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
     min-height: 9.5rem !important;
     gap: 0.45rem !important;
     padding-top: 0.15rem !important;
+    overflow-x: hidden !important;
   }
 
   .board .battle-player-area {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
     min-height: 15.5rem !important;
     gap: 0.55rem !important;
     justify-content: flex-start !important;
     padding-bottom: 0.15rem !important;
+    overflow-x: hidden !important;
   }
 
   .board .battle-zone-strip {
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     justify-content: flex-start;
     overscroll-behavior-x: contain;
     padding-inline: 0.25rem;
     scroll-snap-type: x proximity;
+    mask-image: linear-gradient(90deg, transparent, #000 0.6rem, #000 calc(100% - 0.6rem), transparent);
   }
 
   .board .battle-zone-strip > * {
@@ -8955,25 +9036,33 @@ button.zone:focus-visible {
   .board .battle-perspective-stage {
     display: flex !important;
     width: 100% !important;
+    max-width: 100% !important;
     min-height: 7.25rem !important;
-    gap: 0.45rem !important;
+    gap: 0.35rem !important;
     justify-content: center !important;
     padding: 0.35rem 0 !important;
+    overflow: hidden !important;
   }
 
   .board .battle-perspective-stage .battle-zone {
+    flex: 0 1 4.65rem !important;
     position: relative !important;
     left: auto !important;
     top: auto !important;
+    width: 4.65rem !important;
+    min-width: 0 !important;
+    min-height: 5.75rem !important;
+    padding: 0.25rem !important;
     transform: none !important;
   }
 
   .board .battle-perspective-stage [data-tut='chronos-clock'] {
-    flex: 0 0 auto;
+    flex: 0 1 5.25rem;
+    min-width: 0;
   }
 
   .board .chronos {
-    width: clamp(5.5rem, 27vw, 7.25rem) !important;
+    width: clamp(4.75rem, 24vw, 5.5rem) !important;
   }
 
   .board .battle-opponent-card-back {
@@ -8983,9 +9072,18 @@ button.zone:focus-visible {
 
   .board .battle-hand-row {
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
     justify-content: flex-start !important;
     gap: 0.45rem !important;
     padding-bottom: 0.25rem !important;
+  }
+
+  .board [data-tut='player-actions'] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
   }
 
   .board .battle-hand-card {
@@ -8995,13 +9093,22 @@ button.zone:focus-visible {
   }
 
   .board .battle-action-stack {
-    flex-direction: column !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    overflow: hidden;
   }
 
   .board .battle-action-stack button {
-    min-height: 2.5rem;
+    min-width: 0 !important;
+    min-height: 2.75rem;
     padding-inline: 0.75rem !important;
-    letter-spacing: 0.16em !important;
+    font-size: 0.6875rem !important;
+    line-height: 1.15 !important;
+    white-space: normal;
+    letter-spacing: 0.12em !important;
   }
 
   .board .battle-sidebar {
@@ -9020,9 +9127,27 @@ button.zone:focus-visible {
   .board-pause-button {
     right: 0.75rem !important;
     top: 0.55rem !important;
-    padding: 0.45rem 0.55rem !important;
-    font-size: 9px !important;
-    letter-spacing: 0.14em !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .board-pause-button .board-pause-icon {
+    display: block !important;
+  }
+
+  .board-pause-button .board-pause-label {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
   }
 }
 
@@ -9033,20 +9158,38 @@ button.zone:focus-visible {
 
   .board .battle-slot,
   .board .battle-stack-zone {
-    width: 4.15rem !important;
-    height: 4.15rem !important;
-    min-width: 4.15rem !important;
-    min-height: 4.15rem !important;
+    width: 4rem !important;
+    height: 4rem !important;
+    min-width: 4rem !important;
+    min-height: 4rem !important;
   }
 
   .board .battle-slot-card {
-    width: 2.55rem !important;
-    height: 3.65rem !important;
+    width: 2.45rem !important;
+    height: 3.45rem !important;
+  }
+
+  .board .battle-perspective-stage {
+    gap: 0.25rem !important;
+  }
+
+  .board .battle-perspective-stage .battle-zone {
+    flex-basis: 4.25rem !important;
+    width: 4.25rem !important;
+    min-height: 5.25rem !important;
+  }
+
+  .board .battle-perspective-stage [data-tut='chronos-clock'] {
+    flex-basis: 4.6rem;
+  }
+
+  .board .chronos {
+    width: 4.6rem !important;
   }
 
   .board .battle-hand-card {
     width: 3.95rem !important;
-    height: 5.55rem !important;
+    height: 5.25rem !important;
   }
 }
 
@@ -9126,10 +9269,13 @@ button.zone:focus-visible {
 
   .board .effect-order-panel {
     display: flex !important;
+    width: calc(100vw - 2rem) !important;
+    max-width: calc(100vw - 2rem) !important;
     max-height: min(72dvh, 34rem) !important;
     flex-direction: column !important;
     overflow: hidden !important;
     border-radius: 8px 8px 2px 2px !important;
+    margin-inline: auto !important;
     padding: 1rem !important;
   }
 
@@ -9159,11 +9305,11 @@ button.zone:focus-visible {
 
   .board .pending-choice-footer {
     position: sticky;
-    bottom: -1rem;
+    bottom: 0;
     flex: 0 0 auto;
-    margin-inline: -1rem;
-    margin-bottom: -1rem;
-    padding: 0.75rem 1rem 1rem;
+    margin-inline: 0;
+    margin-bottom: 0;
+    padding: 0.75rem 0 0;
     background: color-mix(in oklch, var(--lacquer-deep) 96%, transparent);
   }
 

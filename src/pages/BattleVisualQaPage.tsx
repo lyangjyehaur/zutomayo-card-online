@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, type ComponentProps } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Board } from '../components/Board';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS } from '../data/tutorialScenario';
@@ -16,11 +16,9 @@ import {
   getCardDef,
   initCards,
   isCardsInitialized,
-  refreshCards,
   resetInstanceCounter,
 } from '../game/cards/loader';
 import type { CardDef, CardInstance, GameState, PendingChoice, PendingEffect, PlayerIndex, SetSlot } from '../game/types';
-import { t } from '../i18n';
 
 type BoardComponentProps = ComponentProps<typeof Board>;
 
@@ -215,10 +213,7 @@ function hasRequiredQaCards(): boolean {
   return REQUIRED_QA_CARD_IDS.every((id) => Boolean(getCardDef(id)));
 }
 
-async function ensureBattleQaCards(): Promise<void> {
-  if (!isCardsInitialized()) {
-    await refreshCards();
-  }
+function ensureBattleQaCards(): void {
   if (!isCardsInitialized() || !hasRequiredQaCards()) {
     initCards(BATTLE_QA_FALLBACK_CARDS);
   }
@@ -490,31 +485,15 @@ export function BattleVisualQaPage() {
   const [searchParams] = useSearchParams();
   const selectedState = normalizeStateId(searchParams.get('state'));
   const showControls = searchParams.get('controls') !== '0';
-  const [cardsReady, setCardsReady] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void ensureBattleQaCards()
-      .then(() => {
-        if (!cancelled) setCardsReady(true);
-      })
-      .catch((error) => {
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const fixture = useMemo(() => {
-    if (!cardsReady) return { G: null, error: null };
     try {
+      ensureBattleQaCards();
       return { G: createBattleQaState(selectedState), error: null };
     } catch (error) {
       return { G: null, error: error instanceof Error ? error.message : String(error) };
     }
-  }, [cardsReady, selectedState]);
+  }, [selectedState]);
 
   useEffect(() => {
     document.documentElement.dataset.battleQaState = fixture.G ? selectedState : '';
@@ -523,25 +502,19 @@ export function BattleVisualQaPage() {
     };
   }, [fixture.G, selectedState]);
 
-  if (loadError || fixture.error) {
+  if (fixture.error) {
     return (
       <main className="grid h-full w-full place-items-center bg-lacquer-deep px-6 text-center text-bone">
         <section className="max-w-xl rounded-sm border border-vermilion/30 bg-lacquer p-5 shadow-[--shadow]">
           <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-vermilion">Battle QA</div>
           <h1 className="mt-3 font-display text-2xl italic">Fixture Error</h1>
-          <p className="mt-3 text-sm leading-relaxed text-bone/60">{loadError ?? fixture.error}</p>
+          <p className="mt-3 text-sm leading-relaxed text-bone/60">{fixture.error}</p>
         </section>
       </main>
     );
   }
 
-  if (!cardsReady || !fixture.G) {
-    return (
-      <main className="grid h-full w-full place-items-center bg-lacquer-deep font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
-        {t('game.loading')}
-      </main>
-    );
-  }
+  if (!fixture.G) return null;
 
   return (
     <main className="relative h-full min-h-0 w-full overflow-hidden bg-lacquer-deep" data-battle-qa-state={selectedState}>

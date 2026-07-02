@@ -1,5 +1,5 @@
 import type { BoardProps } from 'boardgame.io/react';
-import { BookOpen, Info, X } from 'lucide-react';
+import { BookOpen, Info, Pause, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type {
@@ -804,7 +804,7 @@ function MulliganScreen({
       >
         <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('board.mulligan')}</div>
         <h2 className="mt-3 text-center font-display text-3xl italic">{t('board.mulliganHint')}</h2>
-        <div className="mt-6 flex w-full justify-center gap-3 overflow-x-auto pb-4">
+        <div className="mulligan-hand mt-6 flex w-full justify-center gap-3 overflow-x-auto pb-4">
           {G.players[me].hand.map((card, index) => (
             <button
               key={card.instanceId}
@@ -825,7 +825,7 @@ function MulliganScreen({
             {t('board.handConfirmed')}。{t('board.waitingOpponent')}
           </p>
         ) : (
-          <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <div className="mulligan-actions mt-4 flex flex-wrap justify-center gap-3">
             <button
               className={primaryActionClass()}
               type="button"
@@ -2910,7 +2910,8 @@ export function Board(props: Props) {
           onClick={() => setShowExitConfirm(true)}
           aria-label={t('game.pause')}
         >
-          {t('game.pause')}
+          <Pause className="board-pause-icon hidden size-4" aria-hidden="true" />
+          <span className="board-pause-label">{t('game.pause')}</span>
         </button>
       )}
 

@@ -46,6 +46,37 @@ Battle 沒有 document-level 水平溢出，主問題不是整頁撐寬，而是
 3. 360x740 / 390x844：戰場可用但密度極高，pending-choice 面板內容高度超出自身可視區，且多個操作目標低於 44px。
 4. Battle 的 card focus 主要依賴 hover，觸屏上不可作為主要資訊入口。
 
+## Post-fix 狀態
+
+本輪已完成 Battle responsive 收斂，範圍仍限於 UI layout 與 hidden QA route，不改正式對戰業務邏輯。
+
+已修正：
+
+- `1280x720` / `1366x768` 低高度桌面：手牌與 action bar 不再被 viewport 底部裁切。
+- `1024x768` / `768x1024`：Focus / Log 不再常駐擠壓內容流，改由 topbar icon 開啟 sheet。
+- `360x740` / `390x844` / `430x932`：Battle 主畫面無 document-level overflow，action buttons 與 pause button 達到 44px touch target。
+- `360x740` mulligan：手機改為兩列 card grid，5 張起手牌直接可見，不再依賴隱性水平滑動。
+- `360x740` effect-order / pending-choice：改為 mobile sheet，內容內滾、footer 不溢出、選項 row 達 44px。
+- 觸屏 Focus：手牌、場地 slot、戰鬥區可用 pointer/tap 更新 Focus，手機由 sheet 查看詳情。
+- hidden QA route `/qa/battle` 改為同步 fixture cards，避免 headless screenshot 只截到 loading state。
+
+最終 targeted smoke：
+
+- `1280x720__turn-set`
+- `1024x768__turn-set`
+- `768x1024__turn-set`
+- `430x932__turn-set`
+- `390x844__turn-set`
+- `360x740__turn-set`
+- `360x740__mulligan`
+- `360x740__effect-order`
+- `360x740__pending-choice`
+- `360x740__game-over`
+- `360x740__focus-sheet`
+- `1024x768__log-sheet`
+
+結果：以上全部 PASS，未偵測到 document overflow、關鍵 panel offscreen、或手機主要操作目標低於 44px。
+
 ## 發現
 
 ### P1：低高度桌面底部操作區被裁切
