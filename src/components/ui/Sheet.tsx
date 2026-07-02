@@ -80,7 +80,7 @@ export function Sheet({
             <button
               type="button"
               aria-label={closeLabel}
-              className="inline-flex size-9 shrink-0 items-center justify-center rounded-sm text-bone/50 transition hover:text-vermilion focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-bone/50 transition hover:text-vermilion focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer"
               onClick={() => onOpenChange?.(false)}
             >
               <X className="size-4" aria-hidden="true" />

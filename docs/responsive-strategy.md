@@ -492,6 +492,7 @@ Completed in the current responsive pass:
 - `AdminPage`: card-management filters now collapse behind a phone/tablet filter toggle below desktop width while wider desktop keeps the full filter panel visible.
 - `FeedbackPage`: post detail uses a phone sheet with sticky close affordance and internal scrolling instead of a tall page-scrolling modal.
 - `Board`: below desktop width, the secondary side surface is now a tabbed sheet with Focus, Status, and Log panels instead of separate one-off drawers.
+- `I18nManager`: phone translation editing now opens a shared Sheet with textarea and sticky actions, while desktop keeps inline table editing.
 
 ## Acceptance Criteria
 

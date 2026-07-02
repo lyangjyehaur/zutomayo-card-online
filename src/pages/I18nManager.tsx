@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t, availableLocales, getLocaleLabel, type Locale } from '../i18n';
 import { zhTW } from '../i18n/zh-TW';
@@ -8,7 +8,19 @@ import { ja } from '../i18n/ja';
 import { en } from '../i18n/en';
 import { ko } from '../i18n/ko';
 import { ApiError, adminLogin } from '../api/client';
-import { BackButton, Badge, Button, Dialog, Input, PageShell, Panel } from '../components/ui';
+import {
+  BackButton,
+  Badge,
+  Button,
+  Dialog,
+  FormActions,
+  FormField,
+  Input,
+  PageShell,
+  Panel,
+  Sheet,
+  Textarea,
+} from '../components/ui';
 import '../components/I18nManager.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -24,6 +36,22 @@ const allDictionaries: Record<string, Record<string, string>> = {
 
 const allKeys = Object.keys(zhTW as Record<string, string>);
 
+function useCompactI18nEditing() {
+  const [isCompact, setIsCompact] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsCompact(media.matches);
+
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  return isCompact;
+}
+
 export function I18nManager() {
   const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(() => Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY)));
@@ -36,6 +64,7 @@ export function I18nManager() {
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [saveNotice, setSaveNotice] = useState('');
+  const useSheetEdit = useCompactI18nEditing();
 
   const filteredKeys = useMemo(() => {
     const dict = allDictionaries[selectedLocale] || {};
@@ -74,6 +103,16 @@ export function I18nManager() {
   const handleLogout = useCallback(() => {
     sessionStorage.removeItem(ADMIN_TOKEN_KEY);
     setAuthenticated(false);
+  }, []);
+
+  const startEdit = useCallback((key: string, value: string) => {
+    setEditKey(key);
+    setEditValue(value);
+  }, []);
+
+  const closeEdit = useCallback(() => {
+    setEditKey(null);
+    setEditValue('');
   }, []);
 
   if (!authenticated) {
@@ -118,10 +157,11 @@ export function I18nManager() {
       setSaveNotice(
         `${t('admin.i18nSaved')}: ${editKey}\n${t('admin.i18nNewValue')}: ${editValue}\n\n${t('admin.i18nSaveNotice')}src/i18n/${selectedLocale}.ts`,
       );
-      setEditKey(null);
-      setEditValue('');
+      closeEdit();
     }
   };
+
+  const activeEditBaseValue = editKey ? ((zhTW as Record<string, string>)[editKey] ?? '') : '';
 
   return (
     <PageShell variant="workspace" className="admin-page i18n-page flex flex-col px-4 py-4 md:px-6">
@@ -202,14 +242,21 @@ export function I18nManager() {
                   <td
                     data-label={getLocaleLabel(selectedLocale)}
                     className="i18n-translated px-3 py-2"
+                    role={!isMissing ? 'button' : undefined}
+                    tabIndex={!isMissing ? 0 : undefined}
                     onClick={() => {
                       if (!isMissing) {
-                        setEditKey(key);
-                        setEditValue(translated);
+                        startEdit(key, translated);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (!isMissing && (event.key === 'Enter' || event.key === ' ')) {
+                        event.preventDefault();
+                        startEdit(key, translated);
                       }
                     }}
                   >
-                    {editKey === key ? (
+                    {editKey === key && !useSheetEdit ? (
                       <div className="i18n-edit">
                         <Input
                           value={editValue}
@@ -222,7 +269,7 @@ export function I18nManager() {
                         <Button size="sm" onClick={handleSaveEdit}>
                           {t('common.save')}
                         </Button>
-                        <Button size="sm" variant="secondary" onClick={() => setEditKey(null)}>
+                        <Button size="sm" variant="secondary" onClick={closeEdit}>
                           {t('common.cancel')}
                         </Button>
                       </div>
@@ -247,6 +294,43 @@ export function I18nManager() {
           </tbody>
         </table>
       </div>
+      <Sheet
+        open={useSheetEdit && Boolean(editKey)}
+        onOpenChange={(open) => !open && closeEdit()}
+        title={getLocaleLabel(selectedLocale)}
+        description={editKey}
+        closeLabel={t('common.close')}
+        footer={
+          <FormActions className="grid grid-cols-2 gap-2">
+            <Button type="button" size="md" variant="secondary" fullWidth className="min-h-11" onClick={closeEdit}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              size="md"
+              variant="primary"
+              fullWidth
+              className="min-h-11"
+              onClick={handleSaveEdit}
+              disabled={!editValue.trim()}
+            >
+              {t('common.save')}
+            </Button>
+          </FormActions>
+        }
+      >
+        <div className="i18n-edit-sheet grid gap-4">
+          <FormField label={t('admin.i18nColKey')}>
+            <p className="i18n-edit-sheet-key">{editKey}</p>
+          </FormField>
+          <FormField label={t('admin.i18nColBase')}>
+            <p className="i18n-edit-sheet-copy">{activeEditBaseValue}</p>
+          </FormField>
+          <FormField label={getLocaleLabel(selectedLocale)}>
+            <Textarea value={editValue} onChange={(event) => setEditValue(event.target.value)} autoFocus />
+          </FormField>
+        </div>
+      </Sheet>
       <Dialog
         open={Boolean(saveNotice)}
         onOpenChange={(open) => !open && setSaveNotice('')}
