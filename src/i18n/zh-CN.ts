@@ -486,6 +486,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'deckEditor.search': '搜索卡名、歌曲或效果',
   'deckEditor.cardPool': '卡池',
   'deckEditor.currentDeck': '当前牌组',
+  'deckEditor.filters': '筛选',
+  'deckEditor.openDeck': '查看牌组',
   'deckEditor.deckCount': '牌组张数',
   'deckEditor.characterCount': '角色张数',
   'deckEditor.valid': '可保存',

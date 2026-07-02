@@ -491,6 +491,8 @@ export const ko: Record<TranslationKey, string> = {
   'deckEditor.search': '카드명, 곡명, 효과 검색',
   'deckEditor.cardPool': '카드 풀',
   'deckEditor.currentDeck': '현재 덱',
+  'deckEditor.filters': '필터',
+  'deckEditor.openDeck': '덱 열기',
   'deckEditor.deckCount': '덱 장수',
   'deckEditor.characterCount': '캐릭터 수',
   'deckEditor.valid': '저장 가능',

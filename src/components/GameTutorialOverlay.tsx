@@ -107,6 +107,7 @@ export function GameTutorialOverlay({
   // 操作步驟：有 completeWhen，需用戶在遊戲中實際操作才會推進，故隱藏 Next/Prev
   const isActionStep = Boolean(current.completeWhen);
   const hasRects = rects.length > 0;
+  const isMobileViewport = vp.w > 0 && vp.w <= 768;
 
   // Tooltip placement calculation
   const tipW = 380;
@@ -195,6 +196,23 @@ export function GameTutorialOverlay({
   tipX = Math.min(Math.max(tipX, 8), Math.max(8, vp.w - tipW - 8));
   tipY = Math.min(Math.max(tipY, 8), Math.max(8, vp.h - tipH - 8));
 
+  const mobileSheetAtTop = Boolean(isMobileViewport && union && union.maxY > vp.h * 0.55);
+  const tooltipStyle = isMobileViewport
+    ? {
+        left: '12px',
+        right: '12px',
+        width: 'auto',
+        top: mobileSheetAtTop ? 'calc(env(safe-area-inset-top) + 10px)' : 'auto',
+        bottom: mobileSheetAtTop ? 'auto' : 'calc(env(safe-area-inset-bottom) + 10px)',
+        transition: 'transform 250ms ease',
+      }
+    : {
+        width: `${tipW}px`,
+        left: `${tipX}px`,
+        top: `${tipY}px`,
+        transition: 'left 250ms ease, top 250ms ease',
+      };
+
   // 點擊攔截：有 rects 時用 4-div 包圍法包圍所有 rects 的聯集 bbox
   // 聯集 bbox 外的四個區域各放一個攔截 div，聯集 bbox 內部（含所有高亮區）可點擊穿透到下方遊戲
   // 無 rects 時用單一全屏 blocker 攔截所有點擊
@@ -274,16 +292,13 @@ export function GameTutorialOverlay({
 
       {/* Tutorial tooltip card */}
       <div
-        className="tutorial-tooltip absolute rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer p-5 text-bone shadow-[0_30px_80px_-20px] shadow-black/90 ring-1 ring-gold/40 backdrop-blur"
-        style={{
-          width: `${tipW}px`,
-          left: `${tipX}px`,
-          top: `${tipY}px`,
-          transition: 'left 250ms ease, top 250ms ease',
-        }}
+        className={`tutorial-tooltip absolute rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer p-5 text-bone shadow-[0_30px_80px_-20px] shadow-black/90 ring-1 ring-gold/40 backdrop-blur ${
+          mobileSheetAtTop ? 'tutorial-tooltip--mobile-top' : ''
+        }`}
+        style={tooltipStyle}
       >
         {/* Header */}
-        <div className="mb-3 flex items-center justify-between">
+        <div className="tutorial-tooltip-header mb-3 flex items-center justify-between">
           <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">
             {String(currentStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')}
           </span>
@@ -297,11 +312,13 @@ export function GameTutorialOverlay({
         </div>
 
         {/* Content */}
-        <h3 className="font-display text-2xl italic leading-tight text-bone">{t(titleKey as never)}</h3>
-        <p className="mt-3 text-[13px] leading-relaxed text-bone/75">{t(bodyKey as never)}</p>
+        <div className="tutorial-tooltip-body">
+          <h3 className="font-display text-2xl italic leading-tight text-bone">{t(titleKey as never)}</h3>
+          <p className="mt-3 text-[13px] leading-relaxed text-bone/75">{t(bodyKey as never)}</p>
+        </div>
 
         {/* Footer：操作按鈕與提示 */}
-        <div className="mt-5 flex flex-col gap-3">
+        <div className="tutorial-tooltip-footer mt-5 flex flex-col gap-3">
           {/* Navigation / action hint */}
           {isActionStep || current.hideNext ? (
             <div className="flex justify-center">

@@ -19,6 +19,10 @@
   z-index: 2;
 }
 
+.tutorial-tooltip-body {
+  min-height: 0;
+}
+
 /* SVG 視覺遮罩不攔截點擊 */
 .tutorial-game-overlay > svg {
   pointer-events: none;
@@ -77,11 +81,67 @@
   animation: tutorial-highlight-pulse 2s ease-in-out infinite;
 }
 
-/* Mobile optimization */
-@media (max-width: 640px) {
+/* Mobile sheet presentation */
+@media (max-width: 768px) {
   .tutorial-tooltip {
-    width: calc(100vw - 32px) !important;
-    left: 16px !important;
-    max-width: none;
+    position: fixed !important;
+    display: flex;
+    max-height: min(38dvh, 17rem);
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 0.45rem;
+    padding: 1rem;
+    box-shadow: 0 24px 72px -24px rgba(0, 0, 0, 0.95);
+  }
+
+  .tutorial-tooltip--mobile-top {
+    max-height: min(34dvh, 15rem);
+  }
+
+  .tutorial-tooltip-header,
+  .tutorial-tooltip-footer {
+    flex-shrink: 0;
+  }
+
+  .tutorial-tooltip-header {
+    margin-bottom: 0.65rem;
+  }
+
+  .tutorial-tooltip-body {
+    overflow-y: auto;
+    padding-right: 0.2rem;
+  }
+
+  .tutorial-tooltip-body h3 {
+    font-size: 1.25rem;
+  }
+
+  .tutorial-tooltip-footer {
+    margin-top: 0.8rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(244, 240, 222, 0.1);
+  }
+
+  .tutorial-tooltip button {
+    min-height: 2rem;
+  }
+}
+
+@media (max-width: 380px), (max-height: 760px) {
+  .tutorial-tooltip {
+    max-height: min(34dvh, 14.5rem);
+  }
+
+  .tutorial-tooltip--mobile-top {
+    max-height: min(32dvh, 13.5rem);
+  }
+
+  .tutorial-tooltip-body h3 {
+    font-size: 1.12rem;
+  }
+
+  .tutorial-tooltip-body p {
+    font-size: 0.76rem;
+    line-height: 1.55;
   }
 }

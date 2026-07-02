@@ -492,6 +492,8 @@ export const en: Record<TranslationKey, string> = {
   'deckEditor.search': 'Search card name, song, or effect',
   'deckEditor.cardPool': 'Card Pool',
   'deckEditor.currentDeck': 'Current Deck',
+  'deckEditor.filters': 'Filters',
+  'deckEditor.openDeck': 'Open Deck',
   'deckEditor.deckCount': 'Deck Size',
   'deckEditor.characterCount': 'Characters',
   'deckEditor.valid': 'Saveable',

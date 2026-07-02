@@ -476,6 +476,14 @@ Phone strategy:
 - Add `DataList` card variants for Admin/I18n/Leaderboard where needed.
 - Add sheet editing for mobile forms.
 
+## Implementation Status
+
+Completed in the current responsive pass:
+
+- `TutorialGamePage`: tutorial tooltip uses a mobile sheet at `<=768px`; when the highlighted target is in the lower half of the viewport, the sheet moves to the top so the target remains visible and tappable.
+- `DeckEditor`: filters collapse into a sheet below `lg`; active deck moves into a sheet below `xl`; desktop keeps the original inline filters and right-side active deck panel.
+- `Sheet`: shared sheet surface now uses a stable modal layer and opaque panel sections so sheet content remains visually separated from the underlying page.
+
 ## Acceptance Criteria
 
 For each changed surface:

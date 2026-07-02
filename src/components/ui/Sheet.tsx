@@ -44,7 +44,7 @@ export function Sheet({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-[--z-modal] flex bg-lacquer-deep/80 p-3 backdrop-blur',
+        'fixed inset-0 z-[100] flex bg-lacquer-deep/90 p-3 backdrop-blur',
         side === 'right' ? 'items-stretch justify-end' : 'items-end justify-center',
       )}
       onMouseDown={(event) => {
@@ -57,13 +57,13 @@ export function Sheet({
         aria-labelledby={title ? titleId : undefined}
         aria-describedby={description ? descriptionId : undefined}
         className={cn(
-          'flex min-h-0 w-full flex-col rounded-md bg-lacquer ring-1 ring-gold/30 shadow-[--shadow]',
+          'relative isolate flex min-h-0 w-full flex-col overflow-hidden rounded-md border border-gold/30 bg-lacquer-deep shadow-[0_32px_96px_-32px_rgba(0,0,0,0.95)]',
           side === 'right' ? 'max-w-md' : 'max-h-[calc(100dvh-1.5rem)] max-w-2xl',
           className,
         )}
         {...props}
       >
-        <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-bone/10 bg-lacquer p-4">
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-bone/10 bg-lacquer-deep p-4">
           <div className="min-w-0">
             {title && (
               <h2 id={titleId} className="font-display text-xl italic text-bone">
@@ -87,8 +87,8 @@ export function Sheet({
             </button>
           )}
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
-        {footer && <footer className="sticky bottom-0 border-t border-bone/10 bg-lacquer p-4">{footer}</footer>}
+        <div className="min-h-0 flex-1 overflow-y-auto bg-lacquer-deep p-4">{children}</div>
+        {footer && <footer className="sticky bottom-0 border-t border-bone/10 bg-lacquer-deep p-4">{footer}</footer>}
       </section>
     </div>
   );

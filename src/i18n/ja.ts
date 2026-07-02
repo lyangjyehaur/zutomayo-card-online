@@ -492,6 +492,8 @@ export const ja: Record<TranslationKey, string> = {
   'deckEditor.search': 'カード名、楽曲、効果を検索',
   'deckEditor.cardPool': 'カードプール',
   'deckEditor.currentDeck': '現在のデッキ',
+  'deckEditor.filters': 'フィルター',
+  'deckEditor.openDeck': 'デッキを開く',
   'deckEditor.deckCount': 'デッキ枚数',
   'deckEditor.characterCount': 'キャラクター枚数',
   'deckEditor.valid': '保存可能',
