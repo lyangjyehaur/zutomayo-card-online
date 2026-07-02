@@ -10277,3 +10277,35 @@ button.zone:focus-visible {
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
 }
+
+@media (min-width: 768px) and (max-height: 780px) {
+  .lobby-home-content {
+    align-items: flex-start;
+    padding-top: 4.25rem;
+    padding-bottom: 4.75rem;
+  }
+
+  .lobby-entry-card {
+    height: min(52dvh, 22.5rem) !important;
+    padding: 1.35rem !important;
+  }
+
+  .lobby-entry-caption {
+    display: -webkit-box;
+    max-width: 24ch;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .lobby-home-footer {
+    gap: 0.45rem;
+    padding-bottom: 0.7rem;
+  }
+
+  .lobby-tutorial-button {
+    max-width: 22rem;
+    padding-top: 0.6rem !important;
+    padding-bottom: 0.6rem !important;
+  }
+}

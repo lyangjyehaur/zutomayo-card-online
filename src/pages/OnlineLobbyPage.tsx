@@ -318,6 +318,7 @@ export function OnlineLobbyPage({
   };
 
   const canStart = cardsReady && !!deck0Name;
+  const startDisabledReason = !cardsReady ? t('game.loading') : !deck0Name ? t('lobby.selectDeckFirst') : '';
   const rank = profile ? eloToRank(profile.elo) : null;
   const draftPreview = formatAnonymousDisplayName({
     baseName: sanitizeAnonymousBaseName(anonymousNameDraft),
@@ -446,22 +447,21 @@ export function OnlineLobbyPage({
           </Panel>
 
           {/* 開始匹配 */}
-          <div className="relative group">
+          <div className="grid gap-2">
             <Button
               className="w-full bg-gradient-to-r from-vermilion to-gold py-4 font-display text-lg italic tracking-wide text-lacquer-deep transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
               type="button"
               onClick={handleQuickMatch}
               disabled={matchmakingActive || !canStart}
+              aria-describedby={!canStart ? 'online-quick-match-helper' : undefined}
             >
               {t('lobby.beginMatch')}
             </Button>
 
-            {/* Tooltip 提示 */}
             {!canStart && (
-              <div className="pointer-events-none absolute -top-14 left-1/2 z-50 hidden -translate-x-1/2 whitespace-nowrap rounded bg-lacquer-deep px-3 py-2 text-xs text-gold shadow-lg ring-1 ring-gold/20 opacity-0 transition-opacity group-hover:block group-hover:opacity-100">
-                {!cardsReady ? t('game.loading') : t('lobby.selectDeckFirst')}
-                <div className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-lacquer-deep ring-1 ring-gold/20" />
-              </div>
+              <p id="online-quick-match-helper" className="text-[10px] leading-relaxed text-vermilion/70">
+                {startDisabledReason}
+              </p>
             )}
           </div>
 
@@ -476,9 +476,6 @@ export function OnlineLobbyPage({
               </Button>
             </div>
           )}
-
-          {!cardsReady && <p className="text-[10px] text-vermilion/70">{t('game.loading')}</p>}
-          {cardsReady && !deck0Name && <p className="text-[10px] text-vermilion/70">{t('lobby.selectDeckFirst')}</p>}
         </Panel>
 
         {/* 右側：牌組選擇 + 自訂房間 */}
@@ -500,23 +497,25 @@ export function OnlineLobbyPage({
                 <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.customRooms')}</div>
                 <h2 className="font-display text-2xl italic">{t('lobby.createRoom')}</h2>
               </div>
-              <div className="relative group">
+              <div className="grid gap-2 sm:justify-items-end">
                 <Button
                   size="sm"
                   variant="secondary"
                   type="button"
                   onClick={() => runOnline()}
                   disabled={matchmakingActive || !canStart}
+                  aria-describedby={!canStart ? 'online-create-room-helper' : undefined}
                 >
                   + {t('lobby.createRoom')}
                 </Button>
 
-                {/* Tooltip 提示 */}
                 {!canStart && (
-                  <div className="pointer-events-none absolute -top-14 left-1/2 z-50 hidden -translate-x-1/2 whitespace-nowrap rounded bg-lacquer-deep px-3 py-2 text-xs text-gold shadow-lg ring-1 ring-gold/20 opacity-0 transition-opacity group-hover:block group-hover:opacity-100">
-                    {!cardsReady ? t('game.loading') : t('lobby.selectDeckFirst')}
-                    <div className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-lacquer-deep ring-1 ring-gold/20" />
-                  </div>
+                  <p
+                    id="online-create-room-helper"
+                    className="max-w-[18rem] text-left text-[10px] leading-relaxed text-vermilion/70 sm:text-right"
+                  >
+                    {startDisabledReason}
+                  </p>
                 )}
               </div>
             </div>

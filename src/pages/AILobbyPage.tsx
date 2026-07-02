@@ -85,8 +85,8 @@ export function AILobbyPage({
         title={t('lobby.aiBattle')}
       />
 
-      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-8 overflow-y-auto px-4 py-4 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-4 lg:overflow-hidden lg:px-6 lg:py-6">
-        <div className="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
+      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-y-auto px-4 py-4 md:gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-4 lg:overflow-hidden lg:px-6 lg:py-6">
+        <div className="flex flex-col gap-5 md:gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
           {serverDeckError && <p className="text-[10px] text-vermilion/80">{serverDeckError}</p>}
           <DeckSelector
             label={t('lobby.myDeck')}

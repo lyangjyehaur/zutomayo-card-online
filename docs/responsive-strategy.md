@@ -483,6 +483,9 @@ Completed in the current responsive pass:
 - `TutorialGamePage`: tutorial tooltip uses a mobile sheet at `<=768px`; when the highlighted target is in the lower half of the viewport, the sheet moves to the top so the target remains visible and tappable.
 - `DeckEditor`: filters collapse into a sheet below `lg`; active deck moves into a sheet below `xl`; desktop keeps the original inline filters and right-side active deck panel.
 - `Sheet`: shared sheet surface now uses a stable modal layer and opaque panel sections so sheet content remains visually separated from the underlying page.
+- `LobbyPage`: low-height desktop uses compact entry cards and footer spacing so the first screen no longer crowds the primary entry cards.
+- `OnlineLobbyPage`: disabled quick-match/create-room guidance is visible on touch layouts instead of relying on hover-only tooltips.
+- `AILobbyPage`: stacked tablet/phone layout uses tighter vertical rhythm before the desktop split activates.
 
 ## Acceptance Criteria
 

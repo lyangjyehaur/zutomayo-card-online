@@ -129,7 +129,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       </header>
 
       {/* 中央三聯幅卡 */}
-      <section className="relative z-10 h-full overflow-y-auto px-4 pb-10 pt-32 sm:pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
+      <section className="lobby-home-content relative z-10 h-full overflow-y-auto px-4 pb-10 pt-32 sm:pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
         <div className="grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
           {ENTRIES.map(({ to, titleKey, subtitle, captionKey, Icon }, i) => (
             <Card
@@ -137,7 +137,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               key={to}
               type="button"
               onClick={() => navigate(to)}
-              className="group relative flex min-h-[11rem] flex-col justify-between overflow-hidden rounded-sm bg-lacquer p-5 text-left ring-1 ring-bone/10 transition-all duration-500 hover:-translate-y-1 hover:ring-gold/50 hover:shadow-[0_30px_80px_-20px] hover:shadow-vermilion/30 md:h-[60dvh] md:p-8 xl:h-[460px]"
+              className="lobby-entry-card group relative flex min-h-[11rem] flex-col justify-between overflow-hidden rounded-sm bg-lacquer p-5 text-left ring-1 ring-bone/10 transition-all duration-500 hover:-translate-y-1 hover:ring-gold/50 hover:shadow-[0_30px_80px_-20px] hover:shadow-vermilion/30 md:h-[60dvh] md:p-8 xl:h-[460px]"
             >
               {/* 卡內裝飾：內框線 */}
               <div className="pointer-events-none absolute inset-3 rounded-sm ring-1 ring-bone/5 transition-all duration-500 group-hover:ring-gold/20" />
@@ -158,7 +158,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
                 <h2 className="font-display text-[clamp(2.35rem,13vw,3rem)] font-extrabold leading-none tracking-tight md:text-5xl">
                   {t(titleKey)}
                 </h2>
-                <p className="mt-4 max-w-[22ch] text-sm leading-relaxed text-bone/50">{t(captionKey)}</p>
+                <p className="lobby-entry-caption mt-4 max-w-[22ch] text-sm leading-relaxed text-bone/50">
+                  {t(captionKey)}
+                </p>
               </div>
 
               {/* 底：Enter + 箭頭 */}
@@ -185,12 +187,12 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       </section>
 
       {/* 底部 Footer */}
-      <footer className="pointer-events-none absolute inset-x-0 bottom-0 z-20 hidden flex-col items-center gap-3 px-4 pb-4 sm:flex md:px-8">
+      <footer className="lobby-home-footer pointer-events-none absolute inset-x-0 bottom-0 z-20 hidden flex-col items-center gap-3 px-4 pb-4 sm:flex md:px-8">
         {/* 教學入口 */}
         <Button
           type="button"
           onClick={() => navigate('/tutorial')}
-          className="pointer-events-auto group flex w-full max-w-md items-center justify-center gap-3 rounded-sm border border-gold/30 bg-gradient-to-r from-gold/8 via-gold/5 to-gold/8 px-6 py-3 text-gold transition-all hover:border-gold/50 hover:bg-gold/10 hover:shadow-[0_8px_32px_-8px] hover:shadow-gold/30"
+          className="lobby-tutorial-button pointer-events-auto group flex w-full max-w-md items-center justify-center gap-3 rounded-sm border border-gold/30 bg-gradient-to-r from-gold/8 via-gold/5 to-gold/8 px-6 py-3 text-gold transition-all hover:border-gold/50 hover:bg-gold/10 hover:shadow-[0_8px_32px_-8px] hover:shadow-gold/30"
           variant="secondary"
         >
           <span className="text-[10px] uppercase tracking-[0.3em]">{t('lobby.tutorial')}</span>
