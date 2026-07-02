@@ -489,6 +489,7 @@ Completed in the current responsive pass:
 - `FeedbackPage`: mobile toolbar uses a compact sort rail and full-width primary action; comment reactions now have an explicit tap target instead of hover-only access.
 - `LeaderboardPage`: desktop keeps the full rank table, while phone/tablet portrait layouts switch to rank cards so leaderboard stats no longer require horizontal scrolling.
 - `MatchHistory`: phone headers, pagination, and record actions now wrap into compact two-column controls instead of crowding one row.
+- `AdminPage`: card-management filters now collapse behind a phone/tablet filter toggle below desktop width while wider desktop keeps the full filter panel visible.
 
 ## Acceptance Criteria
 

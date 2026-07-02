@@ -30,6 +30,15 @@
   flex: 0 0 auto;
 }
 
+.admin-mobile-filter-summary {
+  display: none;
+}
+
+.admin-filter-advanced {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .admin-search-input {
   width: min(100%, 28rem);
 }
@@ -42,9 +51,39 @@
   min-width: 48rem;
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1179px) {
   .admin-stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .admin-header button {
+    min-height: 2.5rem;
+  }
+
+  .admin-mobile-filter-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  .admin-mobile-filter-summary > button {
+    min-height: 2.5rem;
+    flex: 0 0 auto;
+  }
+
+  .admin-filter-advanced {
+    display: none;
+    gap: 0.65rem;
+  }
+
+  .admin-filter-advanced.admin-filter-advanced-open {
+    display: grid;
+  }
+
+  .admin-filter-row > button {
+    min-height: 2.5rem;
   }
 }
 
@@ -126,6 +165,10 @@
   .admin-card-grid {
     grid-template-columns: repeat(auto-fill, minmax(8.25rem, 1fr)) !important;
     gap: 0.625rem !important;
+  }
+
+  .admin-card-grid > button:hover {
+    transform: none !important;
   }
 
   .admin-responsive-table {

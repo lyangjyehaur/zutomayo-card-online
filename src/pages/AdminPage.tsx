@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 import { getAllCardDefs, refreshCards } from '../game/cards/loader';
@@ -503,6 +504,7 @@ export function AdminPage() {
   const [sortBy, setSortBy] = useState<'id' | 'name' | 'cost' | 'attack'>('id');
   const [selectedCard, setSelectedCard] = useState<CardDef | null>(null);
   const [modalTab, setModalTab] = useState<ModalTab>('basic');
+  const [showMobileCardFilters, setShowMobileCardFilters] = useState(false);
   const [allCards, setAllCards] = useState(() => getAllCardDefs());
   const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
 
@@ -573,6 +575,18 @@ export function AdminPage() {
     sortBy,
     metaById,
   ]);
+
+  const activeCardFilterCount = [
+    filterElement !== 'all',
+    filterType !== 'all',
+    filterPack !== 'all',
+    filterTrigger !== 'all',
+    Boolean(filterAction),
+    Boolean(filterCondition),
+    pendingOnly,
+    areaExpiryOnly,
+    sortBy !== 'id',
+  ].filter(Boolean).length;
 
   const handleLogin = useCallback(async () => {
     setLoggingIn(true);
@@ -797,95 +811,112 @@ export function AdminPage() {
               onChange={(e) => setSearchText(e.target.value)}
               className="admin-search-input max-w-md"
             />
-            <div className="admin-filter-row flex flex-wrap items-center gap-2">
-              <span className="admin-filter-label w-12 text-xs text-bone/50">屬性</span>
-              {ELEMENTS.map((el) => (
-                <Button
-                  key={el}
-                  size="sm"
-                  variant={filterElement === el ? 'primary' : 'ghost'}
-                  onClick={() => setFilterElement(el)}
-                >
-                  {el === 'all' ? '全部' : el}
-                </Button>
-              ))}
-            </div>
-            <div className="admin-filter-row flex flex-wrap items-center gap-2">
-              <span className="admin-filter-label w-12 text-xs text-bone/50">類型</span>
-              {TYPES.map((type) => (
-                <Button
-                  key={type}
-                  size="sm"
-                  variant={filterType === type ? 'primary' : 'ghost'}
-                  onClick={() => setFilterType(type)}
-                >
-                  {type === 'all' ? '全部' : type === 'Character' ? '角色' : type === 'Enchant' ? '附魔' : '區域'}
-                </Button>
-              ))}
-            </div>
-            <div className="admin-filter-row flex flex-wrap items-center gap-2">
-              <span className="admin-filter-label w-12 text-xs text-bone/50">Trigger</span>
-              {TRIGGERS.map((trigger) => (
-                <Button
-                  key={trigger}
-                  size="sm"
-                  variant={filterTrigger === trigger ? 'primary' : 'ghost'}
-                  onClick={() => setFilterTrigger(trigger)}
-                >
-                  {trigger === 'all' ? '全部' : trigger}
-                </Button>
-              ))}
-            </div>
-            <div className="admin-filter-row flex flex-wrap items-center gap-2">
-              <span className="admin-filter-label w-12 text-xs text-bone/50">引擎</span>
-              <Input
-                className="w-36"
-                placeholder="Action type"
-                value={filterAction}
-                onChange={(e) => setFilterAction(e.target.value)}
-              />
-              <Input
-                className="w-36"
-                placeholder="Condition type"
-                value={filterCondition}
-                onChange={(e) => setFilterCondition(e.target.value)}
-              />
-              <Button size="sm" variant={pendingOnly ? 'primary' : 'ghost'} onClick={() => setPendingOnly((v) => !v)}>
-                待選卡
-              </Button>
+            <div className="admin-mobile-filter-summary">
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-bone/50">
+                {filtered.length} results
+                {activeCardFilterCount > 0 ? ` / ${activeCardFilterCount} filters` : ''}
+              </span>
               <Button
                 size="sm"
-                variant={areaExpiryOnly ? 'primary' : 'ghost'}
-                onClick={() => setAreaExpiryOnly((v) => !v)}
+                variant={showMobileCardFilters ? 'primary' : 'secondary'}
+                leftIcon={<SlidersHorizontal className="size-3.5" aria-hidden="true" />}
+                aria-expanded={showMobileCardFilters}
+                onClick={() => setShowMobileCardFilters((value) => !value)}
               >
-                Area expiry
+                篩選
               </Button>
             </div>
-            <div className="admin-filter-row flex flex-wrap items-center gap-2">
-              <span className="admin-filter-label w-12 text-xs text-bone/50">卡包</span>
-              {FALLBACK_PACKS.map((pack) => (
-                <Button
-                  key={pack}
-                  size="sm"
-                  variant={filterPack === pack ? 'primary' : 'ghost'}
-                  onClick={() => setFilterPack(pack)}
-                >
-                  {pack === 'all' ? '全部' : pack}
+            <div className={`admin-filter-advanced${showMobileCardFilters ? ' admin-filter-advanced-open' : ''}`}>
+              <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                <span className="admin-filter-label w-12 text-xs text-bone/50">屬性</span>
+                {ELEMENTS.map((el) => (
+                  <Button
+                    key={el}
+                    size="sm"
+                    variant={filterElement === el ? 'primary' : 'ghost'}
+                    onClick={() => setFilterElement(el)}
+                  >
+                    {el === 'all' ? '全部' : el}
+                  </Button>
+                ))}
+              </div>
+              <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                <span className="admin-filter-label w-12 text-xs text-bone/50">類型</span>
+                {TYPES.map((type) => (
+                  <Button
+                    key={type}
+                    size="sm"
+                    variant={filterType === type ? 'primary' : 'ghost'}
+                    onClick={() => setFilterType(type)}
+                  >
+                    {type === 'all' ? '全部' : type === 'Character' ? '角色' : type === 'Enchant' ? '附魔' : '區域'}
+                  </Button>
+                ))}
+              </div>
+              <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                <span className="admin-filter-label w-12 text-xs text-bone/50">Trigger</span>
+                {TRIGGERS.map((trigger) => (
+                  <Button
+                    key={trigger}
+                    size="sm"
+                    variant={filterTrigger === trigger ? 'primary' : 'ghost'}
+                    onClick={() => setFilterTrigger(trigger)}
+                  >
+                    {trigger === 'all' ? '全部' : trigger}
+                  </Button>
+                ))}
+              </div>
+              <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                <span className="admin-filter-label w-12 text-xs text-bone/50">引擎</span>
+                <Input
+                  className="w-36"
+                  placeholder="Action type"
+                  value={filterAction}
+                  onChange={(e) => setFilterAction(e.target.value)}
+                />
+                <Input
+                  className="w-36"
+                  placeholder="Condition type"
+                  value={filterCondition}
+                  onChange={(e) => setFilterCondition(e.target.value)}
+                />
+                <Button size="sm" variant={pendingOnly ? 'primary' : 'ghost'} onClick={() => setPendingOnly((v) => !v)}>
+                  待選卡
                 </Button>
-              ))}
-            </div>
-            <div className="admin-filter-row flex flex-wrap items-center gap-2">
-              <span className="admin-filter-label w-12 text-xs text-bone/50">排序</span>
-              {(['id', 'name', 'cost', 'attack'] as const).map((sort) => (
                 <Button
-                  key={sort}
                   size="sm"
-                  variant={sortBy === sort ? 'primary' : 'ghost'}
-                  onClick={() => setSortBy(sort)}
+                  variant={areaExpiryOnly ? 'primary' : 'ghost'}
+                  onClick={() => setAreaExpiryOnly((v) => !v)}
                 >
-                  {sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '能量' : '攻擊'}
+                  Area expiry
                 </Button>
-              ))}
+              </div>
+              <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                <span className="admin-filter-label w-12 text-xs text-bone/50">卡包</span>
+                {FALLBACK_PACKS.map((pack) => (
+                  <Button
+                    key={pack}
+                    size="sm"
+                    variant={filterPack === pack ? 'primary' : 'ghost'}
+                    onClick={() => setFilterPack(pack)}
+                  >
+                    {pack === 'all' ? '全部' : pack}
+                  </Button>
+                ))}
+              </div>
+              <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                <span className="admin-filter-label w-12 text-xs text-bone/50">排序</span>
+                {(['id', 'name', 'cost', 'attack'] as const).map((sort) => (
+                  <Button
+                    key={sort}
+                    size="sm"
+                    variant={sortBy === sort ? 'primary' : 'ghost'}
+                    onClick={() => setSortBy(sort)}
+                  >
+                    {sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '能量' : '攻擊'}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
           <div className="admin-card-grid grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
