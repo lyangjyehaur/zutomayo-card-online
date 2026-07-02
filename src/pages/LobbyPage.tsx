@@ -5,7 +5,7 @@ import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
 import { AppDrawer } from '../components/AppDrawer';
-import { t } from '../i18n';
+import { t, type TranslationKey } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
 export { DEFAULT_DECK_NAME, aiOpponentDeckName, onlineDeckName, selectedDeckName } from '../components/lobby/shared';
@@ -16,9 +16,9 @@ interface LobbyPageProps {
 
 type Entry = {
   to: '/online' | '/ai' | '/deck-builder';
-  titleKey: 'lobby.onlineTitle' | 'lobby.aiBattle' | 'lobby.deckEditor';
+  titleKey: TranslationKey;
   subtitle: string;
-  caption: string;
+  captionKey: TranslationKey;
   Icon: typeof Swords;
 };
 
@@ -27,21 +27,21 @@ const ENTRIES: Entry[] = [
     to: '/online',
     titleKey: 'lobby.onlineTitle',
     subtitle: 'Online Duel',
-    caption: '與遠方的對手進行儀式',
+    captionKey: 'lobby.homeOnlineCaption',
     Icon: Swords,
   },
   {
     to: '/ai',
     titleKey: 'lobby.aiBattle',
     subtitle: 'VS. CPU',
-    caption: '於靜室中獨自演練',
+    captionKey: 'lobby.homeAiCaption',
     Icon: Bot,
   },
   {
     to: '/deck-builder',
     titleKey: 'lobby.deckEditor',
     subtitle: 'Deck Editor',
-    caption: '編織你的命運序列',
+    captionKey: 'lobby.homeDeckCaption',
     Icon: LayoutGrid,
   },
 ];
@@ -127,7 +127,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       {/* 中央三聯幅卡 */}
       <section className="relative z-10 h-full overflow-y-auto px-4 pb-14 pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
         <div className="grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-          {ENTRIES.map(({ to, titleKey, subtitle, caption, Icon }, i) => (
+          {ENTRIES.map(({ to, titleKey, subtitle, captionKey, Icon }, i) => (
             <button
               key={to}
               type="button"
@@ -149,7 +149,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               <div className="relative">
                 <div className="mb-2 text-[10px] uppercase tracking-[0.35em] text-bone/40">{subtitle}</div>
                 <h2 className="font-display text-5xl font-extrabold leading-none tracking-tight">{t(titleKey)}</h2>
-                <p className="mt-4 max-w-[22ch] text-sm leading-relaxed text-bone/50">{caption}</p>
+                <p className="mt-4 max-w-[22ch] text-sm leading-relaxed text-bone/50">{t(captionKey)}</p>
               </div>
 
               {/* 底：Enter + 箭頭 */}

@@ -3,6 +3,22 @@
   themes: dark --default;
 }
 
+@font-face {
+  font-family: 'Jiangcheng Jiexing';
+  src: url('/fonts/jiangcheng-jiexing-v1.3.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Uoq Mun Then Khung';
+  src: url('/fonts/uoq-mun-then-khung-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /*
  * 漆器塔羅設計系統（Lacquered Tarot Design System）
  * 靈感來自 card-bloom-tapestry demo
@@ -70,6 +86,21 @@
   --card-tiny-h: calc(var(--card-tiny-w) * 1.4);
   --card-micro-w: 50px;
   --card-micro-h: calc(var(--card-micro-w) * 1.4);
+}
+
+html[lang='zh-CN'] {
+  --font-display: 'Jiangcheng Jiexing', 'Songti SC', 'STSong', serif;
+}
+
+html[lang='zh-TW'],
+html[lang='zh-HK'] {
+  --font-display: 'Uoq Mun Then Khung', 'PingFang TC', 'Songti TC', serif;
+}
+
+html[lang='zh-CN'] .font-display,
+html[lang='zh-TW'] .font-display,
+html[lang='zh-HK'] .font-display {
+  font-synthesis-weight: none;
 }
 
 /* 登錄按鈕加載動畫 */
