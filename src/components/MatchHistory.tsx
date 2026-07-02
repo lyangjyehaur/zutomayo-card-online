@@ -11,6 +11,7 @@ import type { ActionLogEntry } from '../game/types';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
+import { BackButton, Badge, Button, Card, Dialog, Panel, PageShell } from './ui';
 
 interface MatchHistoryProps {
   onBack: () => void;
@@ -24,9 +25,9 @@ function winnerLabel(record: MatchRecord): string {
   return t('history.draw');
 }
 
-function resultBadgeClass(record: MatchRecord): string {
-  if (record.winner === null) return 'badge badge-warning';
-  return 'badge badge-success';
+function resultBadgeTone(record: MatchRecord): 'gold' | 'jade' {
+  if (record.winner === null) return 'gold';
+  return 'jade';
 }
 
 function formatDuration(seconds: number): string {
@@ -64,16 +65,16 @@ function TraceEntry({ entry, locale }: { entry: ActionLogEntry; locale: string }
   const context = traceContext(entry);
   const resultMessage = traceResultMessage(entry, locale);
   return (
-    <li className="card bg-base-200 shadow">
-      <div className="card-body gap-2">
+    <li>
+      <Card className="grid gap-2">
         <strong>
           #{entry.id ?? '-'} T{entry.turn} · P{entry.player + 1} · {entry.action}
         </strong>
         <span>{entry.step}</span>
         {payload && <p>{payload}</p>}
-        {resultMessage && <p className={entry.result?.ok ? 'text-success' : 'text-error'}>{resultMessage}</p>}
-        {context.length > 0 && <small>{context.join(' · ')}</small>}
-      </div>
+        {resultMessage && <p className={entry.result?.ok ? 'text-jade' : 'text-vermilion'}>{resultMessage}</p>}
+        {context.length > 0 && <small className="text-bone/50">{context.join(' · ')}</small>}
+      </Card>
     </li>
   );
 }
@@ -82,60 +83,58 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
   const locale = useLocale();
   const trace = record.actionLog ?? [];
   return (
-    <div className="modal modal-open" role="presentation">
-      <section className="modal-box max-w-4xl" role="dialog" aria-modal="true" aria-labelledby="match-detail-title">
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={<span id="match-detail-title">{winnerLabel(record)}</span>}
+      size="lg"
+    >
+      <div className="grid gap-4">
         <header className="flex items-start justify-between gap-3">
           <div className="space-y-1">
-            <span>{new Date(record.date).toLocaleString(locale)}</span>
-            <h2 id="match-detail-title">
-              <span className={resultBadgeClass(record)}>{winnerLabel(record)}</span>
-            </h2>
+            <span className="text-sm text-bone/60">{new Date(record.date).toLocaleString(locale)}</span>
+            <Badge tone={resultBadgeTone(record)}>{winnerLabel(record)}</Badge>
           </div>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={onClose}>
-            {t('common.close')}
-          </button>
         </header>
-        <div className="stats shadow w-full">
-          <div className="stat">
-            <span>{t('history.turns')}</span>
+        <div className="grid gap-3 md:grid-cols-4">
+          <Panel variant="ghost">
+            <span className="text-xs text-bone/50">{t('history.turns')}</span>
             <strong>{record.turns}</strong>
-          </div>
-          <div className="stat">
-            <span>{t('history.duration')}</span>
+          </Panel>
+          <Panel variant="ghost">
+            <span className="text-xs text-bone/50">{t('history.duration')}</span>
             <strong>{formatDuration(record.duration)}</strong>
-          </div>
-          <div className="stat">
-            <span>{t('history.finalHp')}</span>
+          </Panel>
+          <Panel variant="ghost">
+            <span className="text-xs text-bone/50">{t('history.finalHp')}</span>
             <strong>
               {record.players[0].hp}/{record.players[1].hp}
             </strong>
-          </div>
-          <div className="stat">
-            <span>{t('history.finalChronos')}</span>
+          </Panel>
+          <Panel variant="ghost">
+            <span className="text-xs text-bone/50">{t('history.finalChronos')}</span>
             <strong>{record.chronos.finalPosition}/12</strong>
-          </div>
+          </Panel>
         </div>
-        <div className="card-actions justify-start">
-          <button className="btn btn-sm btn-outline" type="button" onClick={() => downloadMatchActionLog(record)}>
+        <div>
+          <Button size="sm" variant="secondary" type="button" onClick={() => downloadMatchActionLog(record)}>
             {t('history.downloadTrace')}
-          </button>
+          </Button>
         </div>
-        <section className="mt-4">
-          <h3>{t('history.traceTitle')}</h3>
+        <section>
+          <h3 className="font-display text-lg italic">{t('history.traceTitle')}</h3>
           {trace.length === 0 ? (
-            <div className="alert">
-              <span>{t('history.traceEmpty')}</span>
-            </div>
+            <Panel className="mt-3 text-sm text-bone/60">{t('history.traceEmpty')}</Panel>
           ) : (
-            <ol className="flex flex-col gap-3">
+            <ol className="mt-3 flex flex-col gap-3">
               {trace.map((entry, index) => (
                 <TraceEntry key={`${entry.id ?? index}-${entry.timestamp}`} entry={entry} locale={locale} />
               ))}
             </ol>
           )}
         </section>
-      </section>
-    </div>
+      </div>
+    </Dialog>
   );
 }
 
@@ -178,79 +177,79 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
   };
 
   return (
-    <main className="min-h-screen container mx-auto flex flex-col gap-4 p-4">
-      <header className="navbar rounded-box bg-base-200 shadow-xl">
-        <div className="flex-1">
-          <span>{t('lobby.menu')}</span>
-          <h1 className="text-2xl font-bold text-primary">{t('history.title')}</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="btn btn-ghost" type="button" onClick={onBack}>
-            {t('common.backToLobby')}
-          </button>
-          <button className="btn btn-error btn-sm" type="button" disabled={records.length === 0} onClick={clearHistory}>
-            {t('history.clear')}
-          </button>
-        </div>
-      </header>
-
-      <section className="stats shadow">
-        <div className="stat">
-          <span>{t('history.total')}</span>
-          <strong>{stats.totalMatches}</strong>
-        </div>
-        <div className="stat">
-          <span>{t('history.p0Wins')}</span>
-          <strong>{stats.wins[0]}</strong>
-        </div>
-        <div className="stat">
-          <span>{t('history.p1Wins')}</span>
-          <strong>{stats.wins[1]}</strong>
-        </div>
-        <div className="stat">
-          <span>{t('history.avgTurns')}</span>
-          <strong>{stats.avgTurns}</strong>
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2>{t('history.title')}</h2>
-          <div className="join">
-            <button
-              className="btn btn-sm join-item"
-              type="button"
-              disabled={currentPage === 0}
-              onClick={() => setPage((value) => Math.max(0, value - 1))}
-            >
-              {t('common.prev')}
-            </button>
-            <span className="btn btn-sm join-item btn-disabled">
-              {currentPage + 1}/{totalPages} {t('common.page')}
-            </span>
-            <button
-              className="btn btn-sm join-item"
-              type="button"
-              disabled={currentPage >= totalPages - 1}
-              onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
-            >
-              {t('common.next')}
-            </button>
+    <PageShell className="overflow-y-auto px-4 py-4 md:px-6">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4">
+        <header className="flex items-center justify-between border-b border-bone/5 pb-4">
+          <div className="flex-1">
+            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.menu')}</span>
+            <h1 className="font-display text-3xl italic text-gold">{t('history.title')}</h1>
           </div>
-        </div>
-
-        {records.length === 0 ? (
-          <div className="alert">
-            <span>{t('history.noRecords')}</span>
+          <div className="flex items-center gap-2">
+            <BackButton type="button" onClick={onBack}>
+              {t('common.backToLobby')}
+            </BackButton>
+            <Button variant="danger" size="sm" type="button" disabled={records.length === 0} onClick={clearHistory}>
+              {t('history.clear')}
+            </Button>
           </div>
-        ) : (
-          <div className="grid gap-3">
-            {visibleRecords.map((record) => (
-              <article key={record.id} className="card bg-base-200 shadow">
-                <div className="card-body gap-3">
+        </header>
+
+        <section className="grid gap-3 md:grid-cols-4">
+          <Panel>
+            <span className="text-xs text-bone/50">{t('history.total')}</span>
+            <strong>{stats.totalMatches}</strong>
+          </Panel>
+          <Panel>
+            <span className="text-xs text-bone/50">{t('history.p0Wins')}</span>
+            <strong>{stats.wins[0]}</strong>
+          </Panel>
+          <Panel>
+            <span className="text-xs text-bone/50">{t('history.p1Wins')}</span>
+            <strong>{stats.wins[1]}</strong>
+          </Panel>
+          <Panel>
+            <span className="text-xs text-bone/50">{t('history.avgTurns')}</span>
+            <strong>{stats.avgTurns}</strong>
+          </Panel>
+        </section>
+
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2>{t('history.title')}</h2>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                type="button"
+                disabled={currentPage === 0}
+                onClick={() => setPage((value) => Math.max(0, value - 1))}
+              >
+                {t('common.prev')}
+              </Button>
+              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
+                {currentPage + 1}/{totalPages} {t('common.page')}
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                type="button"
+                disabled={currentPage >= totalPages - 1}
+                onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+              >
+                {t('common.next')}
+              </Button>
+            </div>
+          </div>
+
+          {records.length === 0 ? (
+            <Panel className="text-sm text-bone/60">{t('history.noRecords')}</Panel>
+          ) : (
+            <div className="grid gap-3">
+              {visibleRecords.map((record) => (
+                <Card key={record.id} as="article" className="grid gap-3">
                   <div className="flex items-start justify-between gap-3">
-                    <span className={resultBadgeClass(record)}>{winnerLabel(record)}</span>
-                    <span>
+                    <Badge tone={resultBadgeTone(record)}>{winnerLabel(record)}</Badge>
+                    <span className="text-sm text-bone/50">
                       {new Date(record.date).toLocaleString(locale, {
                         month: '2-digit',
                         day: '2-digit',
@@ -276,25 +275,21 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                       {t('history.traceCount')} {(record.actionLog ?? []).length}
                     </span>
                   </div>
-                  <div className="card-actions justify-end">
-                    <button className="btn btn-sm btn-ghost" type="button" onClick={() => setSelectedRecord(record)}>
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" type="button" onClick={() => setSelectedRecord(record)}>
                       {t('history.viewTrace')}
-                    </button>
-                    <button
-                      className="btn btn-sm btn-outline"
-                      type="button"
-                      onClick={() => downloadMatchActionLog(record)}
-                    >
+                    </Button>
+                    <Button size="sm" variant="secondary" type="button" onClick={() => downloadMatchActionLog(record)}>
                       {t('history.downloadTrace')}
-                    </button>
+                    </Button>
                   </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-      {selectedRecord && <MatchDetail record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
-    </main>
+                </Card>
+              ))}
+            </div>
+          )}
+        </section>
+        {selectedRecord && <MatchDetail record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
+      </div>
+    </PageShell>
   );
 }

@@ -36,6 +36,7 @@ import {
   type SimilarPost,
 } from '../api/feedbackClient';
 import { getAnonymousId } from '../api/feedbackClient';
+import { Badge, Button, Input, Select, Textarea, type BadgeTone } from '../components/ui';
 
 const STATUS_OPTIONS: FeedbackStatus[] = ['open', 'planned', 'started', 'completed', 'declined', 'duplicate'];
 const SORT_OPTIONS: FeedbackSort[] = ['top', 'trending', 'newest', 'recent', 'most-discussed'];
@@ -48,20 +49,20 @@ function sortKey(sort: FeedbackSort): TranslationKey {
   return ('feedback.sort' + sort[0].toUpperCase() + sort.slice(1)) as TranslationKey;
 }
 
-function statusBadgeClass(status: FeedbackStatus): string {
+function statusBadgeTone(status: FeedbackStatus): BadgeTone {
   switch (status) {
     case 'open':
-      return 'badge badge-warning badge-sm';
+      return 'gold';
     case 'planned':
-      return 'badge badge-info badge-sm';
+      return 'neutral';
     case 'started':
-      return 'badge badge-primary badge-sm';
+      return 'gold';
     case 'completed':
-      return 'badge badge-success badge-sm';
+      return 'jade';
     case 'declined':
-      return 'badge badge-error badge-sm';
+      return 'vermilion';
     case 'duplicate':
-      return 'badge badge-ghost badge-sm';
+      return 'neutral';
   }
 }
 
@@ -289,8 +290,8 @@ export function FeedbackPage() {
             </button>
           ))}
         </div>
-        <select
-          className="status-filter select select-bordered select-xs"
+        <Select
+          className="status-filter text-xs"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as FeedbackStatus | '')}
         >
@@ -300,34 +301,30 @@ export function FeedbackPage() {
               {t(statusKey(s))}
             </option>
           ))}
-        </select>
+        </Select>
         {tags.length > 0 && (
-          <select
-            className="status-filter select select-bordered select-xs"
-            value={tagFilter}
-            onChange={(e) => setTagFilter(e.target.value)}
-          >
+          <Select className="status-filter text-xs" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
             <option value="">{t('feedback.filterAllTags')}</option>
             {tags.map((tg) => (
               <option key={tg.id} value={tg.name}>
                 #{tg.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
-        <input
-          className="search-input input input-bordered input-sm"
+        <Input
+          className="search-input"
           placeholder={t('feedback.searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <button type="button" className="primary-action" onClick={() => setShowSubmit((v) => !v)}>
+        <Button type="button" onClick={() => setShowSubmit((v) => !v)}>
           {t('feedback.submitNew')}
-        </button>
+        </Button>
         {adminMode && (
-          <button type="button" className="secondary-action" onClick={() => setShowTagPanel((v) => !v)}>
+          <Button type="button" variant="secondary" onClick={() => setShowTagPanel((v) => !v)}>
             {t('feedback.tagManage')}
-          </button>
+          </Button>
         )}
       </section>
 
@@ -394,7 +391,7 @@ export function FeedbackPage() {
             </button>
             <div className="post-body">
               <div className="post-title-row">
-                <span className={statusBadgeClass(post.status)}>{t(statusKey(post.status))}</span>
+                <Badge tone={statusBadgeTone(post.status)}>{t(statusKey(post.status))}</Badge>
                 {post.tag && (
                   <span
                     className="post-tag"
@@ -541,8 +538,7 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
   return (
     <section className="feedback-submit-form">
       <label className="field-label">{t('feedback.titleLabel')}</label>
-      <input
-        className="input input-bordered input-sm"
+      <Input
         placeholder={t('feedback.titlePlaceholder')}
         value={title}
         maxLength={120}
@@ -556,7 +552,7 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
           <ul className="similar-list">
             {similar.map((sp) => (
               <li key={sp.id} className="similar-item">
-                <span className={statusBadgeClass(sp.status)}>{t(statusKey(sp.status))}</span>
+                <Badge tone={statusBadgeTone(sp.status)}>{t(statusKey(sp.status))}</Badge>
                 <span className="similar-title">{sp.title}</span>
                 <span className="similar-votes font-mono">{sp.voteCount}</span>
               </li>
@@ -568,9 +564,8 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
         <p className="similar-no-results">{t('feedback.noSimilar')}</p>
       )}
       <label className="field-label">{t('feedback.descriptionLabel')}</label>
-      <textarea
+      <Textarea
         ref={textareaRef}
-        className="textarea textarea-bordered textarea-sm"
         placeholder={t('feedback.descriptionPlaceholder')}
         value={description}
         maxLength={2000}
@@ -580,9 +575,9 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
         onPaste={handlePaste}
       />
       <div className="upload-bar">
-        <button type="button" className="upload-btn" onClick={handleFileSelect} disabled={imageUploading}>
+        <Button type="button" variant="secondary" size="sm" onClick={handleFileSelect} disabled={imageUploading}>
           {imageUploading ? t('feedback.submitting') : t('feedback.uploadImage')}
-        </button>
+        </Button>
         <span className="upload-hint">
           {t('feedback.dragDrop')} · {t('feedback.pasteImage')}
         </span>
@@ -594,12 +589,12 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
       </p>
       {error && <p className="feedback-error">{error}</p>}
       <div className="form-actions">
-        <button type="button" className="secondary-action" onClick={onCancel} disabled={submitting}>
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={submitting}>
           {t('feedback.cancel')}
-        </button>
-        <button type="button" className="primary-action" onClick={submit} disabled={submitting}>
+        </Button>
+        <Button type="button" onClick={submit} disabled={submitting}>
           {submitting ? t('feedback.submitting') : t('feedback.submitAction')}
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -635,23 +630,21 @@ function TagManagePanel({ tags, onChanged }: { tags: FeedbackTag[]; onChanged: (
     <section className="tag-manage-panel">
       <h4 className="moderation-title">{t('feedback.tagManage')}</h4>
       <div className="tag-create-row">
-        <input
-          className="input input-bordered input-xs"
+        <Input
           placeholder={t('feedback.tagNamePlaceholder')}
           value={name}
           maxLength={30}
           onChange={(e) => setName(e.target.value)}
         />
-        <input
-          className="input input-bordered input-xs"
+        <Input
           placeholder={t('feedback.tagColorPlaceholder')}
           value={color}
           maxLength={20}
           onChange={(e) => setColor(e.target.value)}
         />
-        <button type="button" className="primary-action" onClick={create}>
+        <Button type="button" size="sm" onClick={create}>
           {t('feedback.tagCreate')}
-        </button>
+        </Button>
       </div>
       {error && <p className="feedback-error">{error}</p>}
       <ul className="tag-list">
@@ -659,9 +652,16 @@ function TagManagePanel({ tags, onChanged }: { tags: FeedbackTag[]; onChanged: (
           <li key={tg.id} className="tag-list-item">
             <span className="post-tag">#{tg.name}</span>
             {tg.color && <span className="tag-color-chip" style={{ background: tg.color }} />}
-            <button type="button" className="danger-action" onClick={() => void remove(tg.id)}>
+            <Button
+              type="button"
+              className="size-8 p-0 tracking-normal"
+              variant="danger"
+              size="sm"
+              onClick={() => void remove(tg.id)}
+              aria-label={t('feedback.delete')}
+            >
               ✕
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
@@ -995,39 +995,28 @@ function PostDetailModal({
             {editingPost ? (
               <section className="edit-post-form">
                 <label className="field-label">{t('feedback.titleLabel')}</label>
-                <input
-                  className="input input-bordered input-sm"
-                  value={editTitle}
-                  maxLength={120}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                />
+                <Input value={editTitle} maxLength={120} onChange={(e) => setEditTitle(e.target.value)} />
                 <label className="field-label">{t('feedback.descriptionLabel')}</label>
-                <textarea
-                  className="textarea textarea-bordered textarea-sm"
-                  value={editDesc}
-                  maxLength={2000}
-                  rows={3}
-                  onChange={(e) => setEditDesc(e.target.value)}
-                />
+                <Textarea value={editDesc} maxLength={2000} rows={3} onChange={(e) => setEditDesc(e.target.value)} />
                 <div className="form-actions">
-                  <button type="button" className="secondary-action" onClick={() => setEditingPost(false)}>
+                  <Button type="button" variant="secondary" onClick={() => setEditingPost(false)}>
                     {t('feedback.cancel')}
-                  </button>
-                  <button type="button" className="primary-action" onClick={handleEditPost}>
+                  </Button>
+                  <Button type="button" onClick={handleEditPost}>
                     {t('feedback.save')}
-                  </button>
+                  </Button>
                 </div>
               </section>
             ) : (
               <div className="post-head">
-                <div className={statusBadgeClass(post.status)}>{t(statusKey(post.status))}</div>
+                <Badge tone={statusBadgeTone(post.status)}>{t(statusKey(post.status))}</Badge>
                 {post.tag && <span className="post-tag">#{post.tag}</span>}
                 <h2 className="font-display text-2xl text-bone">{post.title}</h2>
                 {post.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
                 {isPostAuthor && (
-                  <button type="button" className="edit-btn" onClick={startEditPost}>
+                  <Button type="button" size="sm" variant="ghost" onClick={startEditPost}>
                     {t('feedback.edit')}
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -1086,8 +1075,8 @@ function PostDetailModal({
                 <h4 className="moderation-title">{t('feedback.moderation')}</h4>
                 <div className="moderation-row">
                   <label className="field-label">{t('feedback.statusLabel')}</label>
-                  <select
-                    className="select select-bordered select-xs"
+                  <Select
+                    className="text-xs"
                     value={post.status}
                     onChange={(e) => void handleStatus(e.target.value as FeedbackStatus)}
                   >
@@ -1096,29 +1085,27 @@ function PostDetailModal({
                         {t(statusKey(s))}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <div className="moderation-row">
                   <label className="field-label">{t('feedback.tagLabel')}</label>
-                  <input
-                    className="input input-bordered input-xs"
+                  <Input
                     placeholder={t('feedback.tagPlaceholder')}
                     value={tagInput}
                     maxLength={30}
                     onChange={(e) => setTagInput(e.target.value)}
                   />
-                  <button type="button" className="secondary-action" onClick={handleTag}>
+                  <Button type="button" size="sm" variant="secondary" onClick={handleTag}>
                     {t('feedback.save')}
-                  </button>
+                  </Button>
                 </div>
                 {/* Duplicate 標記 */}
-                <button type="button" className="secondary-action" onClick={() => setShowDupPanel((v) => !v)}>
+                <Button type="button" size="sm" variant="secondary" onClick={() => setShowDupPanel((v) => !v)}>
                   {t('feedback.markDuplicate')}
-                </button>
+                </Button>
                 {showDupPanel && (
                   <div className="dup-search-panel">
-                    <input
-                      className="input input-bordered input-xs"
+                    <Input
                       placeholder={t('feedback.searchPlaceholder')}
                       value={dupSearch}
                       onChange={(e) => setDupSearch(e.target.value)}
@@ -1127,25 +1114,21 @@ function PostDetailModal({
                       <ul className="dup-results">
                         {dupResults.map((dp) => (
                           <li key={dp.id} className="dup-result-item">
-                            <span className={statusBadgeClass(dp.status)}>{t(statusKey(dp.status))}</span>
+                            <Badge tone={statusBadgeTone(dp.status)}>{t(statusKey(dp.status))}</Badge>
                             <span className="dup-title">{dp.title}</span>
                             <span className="dup-votes font-mono">{dp.voteCount}</span>
-                            <button
-                              type="button"
-                              className="primary-action"
-                              onClick={() => void handleMarkDuplicate(dp.id)}
-                            >
+                            <Button type="button" size="sm" onClick={() => void handleMarkDuplicate(dp.id)}>
                               ✓
-                            </button>
+                            </Button>
                           </li>
                         ))}
                       </ul>
                     )}
                   </div>
                 )}
-                <button type="button" className="danger-action" onClick={handleDelete}>
+                <Button type="button" size="sm" variant="danger" onClick={handleDelete}>
                   {t('feedback.delete')}
-                </button>
+                </Button>
               </section>
             )}
 
@@ -1158,27 +1141,26 @@ function PostDetailModal({
                 {comments.map((c) => (
                   <li key={c.id} className={'comment-item' + (c.isOfficial ? ' official' : '')}>
                     <div className="comment-head">
-                      {c.isOfficial && <span className="official-badge">{t('feedback.officialResponse')}</span>}
+                      {c.isOfficial && <Badge tone="gold">{t('feedback.officialResponse')}</Badge>}
                       <span className="comment-author">{commentAuthorLabel(c)}</span>
                       <span className="comment-time">{relativeTime(c.createdAt, locale)}</span>
                       {c.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
                     </div>
                     {editingCommentId === c.id ? (
                       <div className="comment-edit-form">
-                        <textarea
-                          className="textarea textarea-bordered textarea-xs"
+                        <Textarea
                           value={editCommentText}
                           maxLength={1000}
                           rows={2}
                           onChange={(e) => setEditCommentText(e.target.value)}
                         />
                         <div className="form-actions">
-                          <button type="button" className="secondary-action" onClick={() => setEditingCommentId(null)}>
+                          <Button type="button" variant="secondary" onClick={() => setEditingCommentId(null)}>
                             {t('feedback.cancel')}
-                          </button>
-                          <button type="button" className="primary-action" onClick={() => void handleEditComment(c.id)}>
+                          </Button>
+                          <Button type="button" onClick={() => void handleEditComment(c.id)}>
                             {t('feedback.save')}
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     ) : (
@@ -1189,7 +1171,7 @@ function PostDetailModal({
                         <div className="comment-actions">
                           <button
                             type="button"
-                            className={'comment-vote-btn' + (c.hasVoted ? ' voted' : '')}
+                            className={'comment-vote-button' + (c.hasVoted ? ' voted' : '')}
                             onClick={() => void handleCommentVote(c.id)}
                             aria-pressed={c.hasVoted}
                           >
@@ -1212,7 +1194,7 @@ function PostDetailModal({
                                 <button
                                   key={emoji}
                                   type="button"
-                                  className="reaction-picker-btn"
+                                  className="reaction-picker-button"
                                   onClick={() => void handleReaction(c.id, emoji)}
                                 >
                                   {emoji}
@@ -1223,33 +1205,36 @@ function PostDetailModal({
                           {((c.authorUserId && c.authorUserId === currentUserId) ||
                             (!isLoggedIn() && c.anonymousId && c.anonymousId === getAnonymousId())) && (
                             <>
-                              <button
+                              <Button
                                 type="button"
-                                className="edit-btn"
+                                size="sm"
+                                variant="ghost"
                                 onClick={() => {
                                   setEditingCommentId(c.id);
                                   setEditCommentText(c.content);
                                 }}
                               >
                                 {t('feedback.edit')}
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 type="button"
-                                className="danger-action"
+                                variant="danger"
+                                size="sm"
                                 onClick={() => void handleDeleteComment(c.id)}
                               >
                                 {t('feedback.delete')}
-                              </button>
+                              </Button>
                             </>
                           )}
                           {adminMode && !c.isOfficial && (
-                            <button
+                            <Button
                               type="button"
-                              className="secondary-action"
+                              variant="secondary"
+                              size="sm"
                               onClick={() => void handleDeleteComment(c.id)}
                             >
                               {t('feedback.delete')}
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </>
@@ -1258,9 +1243,8 @@ function PostDetailModal({
                 ))}
               </ul>
               <div className="comment-form">
-                <textarea
+                <Textarea
                   ref={commentTextareaRef}
-                  className="textarea textarea-bordered textarea-sm"
                   placeholder={t('feedback.commentPlaceholder')}
                   value={comment}
                   maxLength={1000}
@@ -1270,14 +1254,15 @@ function PostDetailModal({
                   onPaste={handleCommentPaste}
                 />
                 <div className="upload-bar">
-                  <button
+                  <Button
                     type="button"
-                    className="upload-btn"
+                    variant="secondary"
+                    size="sm"
                     onClick={handleCommentFileSelect}
                     disabled={commentImgUploading}
                   >
                     {commentImgUploading ? t('feedback.submitting') : t('feedback.uploadImage')}
-                  </button>
+                  </Button>
                   <span className="upload-hint">
                     {t('feedback.dragDrop')} · {t('feedback.pasteImage')}
                   </span>
@@ -1293,14 +1278,9 @@ function PostDetailModal({
                     {t('feedback.officialResponse')}
                   </label>
                 )}
-                <button
-                  type="button"
-                  className="primary-action"
-                  onClick={handleComment}
-                  disabled={commenting || !comment.trim()}
-                >
+                <Button type="button" onClick={handleComment} disabled={commenting || !comment.trim()}>
                   {commenting ? t('feedback.submitting') : t('feedback.commentSubmit')}
-                </button>
+                </Button>
               </div>
             </section>
           </div>

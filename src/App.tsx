@@ -7,6 +7,7 @@ import { ensureCompatibleAppVersion } from './clientVersion';
 import { NetworkStatusNotifier } from './components/NetworkStatusNotifier';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PwaStatusPrompt } from './components/PwaStatusPrompt';
+import { Button } from './components/ui';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
@@ -206,13 +207,13 @@ function OnlineResumePrompt({
       </div>
       <div className="online-resume-actions">
         {!isError && (
-          <button className="primary-action" type="button" disabled={status === 'reconnecting'} onClick={onResume}>
+          <Button variant="primary" type="button" disabled={status === 'reconnecting'} onClick={onResume}>
             {status === 'reconnecting' ? t('onlineSession.reconnecting') : t('onlineSession.resumeAction')}
-          </button>
+          </Button>
         )}
-        <button className="secondary-action" type="button" onClick={onDismiss}>
+        <Button variant="secondary" type="button" onClick={onDismiss}>
           {t('onlineSession.dismissAction')}
-        </button>
+        </Button>
       </div>
     </aside>
   );
@@ -227,9 +228,9 @@ function NotFoundPage() {
         <span>{t('notFound.kicker')}</span>
         <h1>{t('notFound.title')}</h1>
         <p>{t('notFound.body')}</p>
-        <button className="primary-action" type="button" onClick={() => navigate('/')}>
+        <Button variant="primary" type="button" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
-        </button>
+        </Button>
       </section>
     </main>
   );
@@ -403,10 +404,7 @@ function RouterShell() {
       <div className="route-content">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            <Route
-              path="/"
-              element={<LobbyPage onAuthChanged={refreshServerDecks} />}
-            />
+            <Route path="/" element={<LobbyPage onAuthChanged={refreshServerDecks} />} />
             <Route
               path="/online"
               element={

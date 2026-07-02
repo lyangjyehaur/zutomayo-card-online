@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { recoverPwaAndReload, reloadForAppUpdate } from '../clientVersion';
 import { t } from '../i18n';
+import { Button } from './ui';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -76,19 +77,19 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           <p>{t('appError.body')}</p>
           {this.state.errorName && <code>{this.state.errorName}</code>}
           <div className="error-boundary-actions">
-            <button className="primary-action" type="button" onClick={this.retry} data-umami-event="C_App_Crash_Retry">
+            <Button variant="primary" type="button" onClick={this.retry} data-umami-event="C_App_Crash_Retry">
               {t('appError.retryAction')}
-            </button>
-            <button
-              className="secondary-action"
+            </Button>
+            <Button
+              variant="secondary"
               type="button"
               onClick={reloadForAppUpdate}
               data-umami-event="C_App_Crash_Reload"
             >
               {t('online.reloadAction')}
-            </button>
-            <button
-              className="danger-action"
+            </Button>
+            <Button
+              variant="danger"
               type="button"
               disabled={this.state.isRecovering}
               onClick={() => void this.recover()}
@@ -96,15 +97,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               data-umami-event-source="error_boundary"
             >
               {this.state.isRecovering ? t('pwa.recoveringAction') : t('pwa.clearCacheAction')}
-            </button>
-            <button
-              className="secondary-action"
+            </Button>
+            <Button
+              variant="secondary"
               type="button"
               onClick={this.goToLobby}
               data-umami-event="C_App_Crash_BackToLobby"
             >
               {t('common.backToLobby')}
-            </button>
+            </Button>
           </div>
         </section>
       </main>

@@ -15,6 +15,7 @@ import { getCardDef } from '../game/cards/loader';
 import { Card, CardPopover, computePopoverPosition, type CardSize, type PopoverPosition } from './Card';
 import { Chronos } from './Chronos';
 import { AppDrawer } from './AppDrawer';
+import { Button } from './ui';
 import {
   getBaseAttack,
   getChronosTime,
@@ -953,7 +954,7 @@ function GameOverScreen({
           {t('board.result.concluded')}
         </div>
         <h1
-          className={`mt-4 font-display text-[6rem] italic leading-none sm:text-[10rem] ${win ? 'text-bone' : 'text-bone/70'}`}
+          className={`mt-4 font-display text-[6rem] italic leading-none md:text-[10rem] ${win ? 'text-bone' : 'text-bone/70'}`}
         >
           {t(glyphKey)}
         </h1>
@@ -961,7 +962,7 @@ function GameOverScreen({
           {t(titleKey)} · {t('board.turn')} {G.turnNumber}
         </div>
 
-        <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-bone/10 py-6 sm:grid-cols-4">
+        <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-bone/10 py-6 md:grid-cols-4">
           <ResultCell label={t('auth.eloChange')} value={eloNotice || '-'} accent={win} />
           <ResultCell label={t('board.result.duration')} value={formatDuration(durationSeconds)} />
           <ResultCell label={t('board.result.turns')} value={String(G.turnNumber)} />
@@ -970,7 +971,7 @@ function GameOverScreen({
 
         {ctx.gameover &&
           (gameOverActions ? (
-            <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:gap-3">
+            <div className="mt-10 flex flex-col items-center gap-3 md:flex-row">
               {gameOverActions.helperText && <p className="text-xs text-bone/45">{gameOverActions.helperText}</p>}
               <button
                 className={gameOverActionClass(gameOverActions.primary)}
@@ -1808,14 +1809,14 @@ function PendingChoicePanel({
             <span>
               {t('board.choiceCount')} {selected.length}/{choice.max}
             </span>
-            <button
-              className="primary-action"
+            <Button
+              variant="primary"
               type="button"
               disabled={!canSubmit}
               onClick={() => moves.submitPendingChoice(selected)}
             >
               {t('board.submitChoice')}
-            </button>
+            </Button>
           </div>
         </>
       ) : (
@@ -1914,15 +1915,7 @@ export function BattleLogPanel({ G }: { G: GameState }) {
   );
 }
 
-function BattleBoard({
-  G,
-  moves,
-  playerID,
-  useServerTimer = false,
-  opponentLabel,
-  selfLabel,
-  onNoticeDismiss,
-}: Props) {
+function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel, selfLabel, onNoticeDismiss }: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
@@ -2119,7 +2112,7 @@ function BattleBoard({
                 <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('player.opponent')}</div>
                 <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
               </div>
-              <div className="relative w-56 sm:w-72" data-tut="opponent-hp">
+              <div className="relative w-56 md:w-72" data-tut="opponent-hp">
                 <div className="relative h-1 w-full bg-bone/10">
                   <div className="absolute inset-y-0 left-0 bg-vermilion" style={{ width: `${opponent.hp}%` }} />
                 </div>
@@ -2393,7 +2386,7 @@ function BattleBoard({
                   return (
                     <div
                       key={card.instanceId}
-                      className="h-28 w-[4.75rem] shrink-0 cursor-pointer transition-all duration-300 hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-gold hover:shadow-[0_20px_40px_-10px] hover:shadow-gold/30 sm:h-32 sm:w-20 lg:h-36 lg:w-24"
+                      className="h-28 w-[4.75rem] shrink-0 cursor-pointer transition-all duration-300 hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-gold hover:shadow-[0_20px_40px_-10px] hover:shadow-gold/30 md:h-32 md:w-20 lg:h-36 lg:w-24"
                       style={{ transform: `rotate(${rotate}deg) translateY(${translateY}px)` }}
                       data-tut-card={card.defId}
                       onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined}

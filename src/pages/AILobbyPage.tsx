@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
 import type { DeckResponse } from '../api/client';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { DifficultyButtons } from '../components/lobby/DifficultyButtons';
 import { useToast } from '../components/ToastProvider';
+import { BackButton, PageShell } from '../components/ui';
 import {
   buildAIOpponentDeckOptions,
   buildDeckOptions,
@@ -75,20 +75,11 @@ export function AILobbyPage({
   };
 
   return (
-    <main className="relative flex h-screen w-screen flex-col overflow-hidden bg-lacquer-deep font-sans text-bone">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
-      </div>
-
+    <PageShell className="flex flex-col" glow={{ color: 'vermilion', size: 'md' }}>
       <header className="relative z-30 flex h-12 shrink-0 items-center border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur md:px-6">
-        <button
-          className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-bone/50 transition hover:text-bone"
-          type="button"
-          onClick={() => navigate('/')}
-        >
-          <ArrowLeft strokeWidth={1.25} className="size-3.5" />
+        <BackButton type="button" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
-        </button>
+        </BackButton>
         <h1 className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-display text-sm italic">
           {t('lobby.aiBattle')}
         </h1>
@@ -116,6 +107,6 @@ export function AILobbyPage({
           <DifficultyButtons onStart={onStartAI} disabled={!canStartAI({ cardsReady, deck0Name, deck1Name })} />
         </div>
       </div>
-    </main>
+    </PageShell>
   );
 }

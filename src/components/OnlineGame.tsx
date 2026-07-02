@@ -5,6 +5,7 @@ import { ZutomayoCard } from '../game/Game';
 import type { GameState } from '../game/types';
 import { Board, type BoardGameOverActions } from './Board';
 import { t } from '../i18n';
+import { PageShell } from './ui';
 
 interface OnlineGameProps {
   matchID: string;
@@ -23,12 +24,12 @@ type MatchDataMember = { id: number; name?: string } | undefined;
 
 function OnlineLoading() {
   return (
-    <div
-      className="flex h-screen w-screen items-center justify-center bg-lacquer-deep font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50"
+    <PageShell
+      className="flex items-center justify-center font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50"
       role="status"
     >
       {t('onlineSession.reconnecting')}
-    </div>
+    </PageShell>
   );
 }
 
@@ -143,7 +144,7 @@ export function OnlineGame({
   );
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
+    <PageShell>
       {connectionStatus && (
         <div className="absolute right-6 top-1.5 z-50">
           <span
@@ -162,6 +163,6 @@ export function OnlineGame({
       <div className="board-client-frame h-full w-full">
         <OnlineClient playerID={playerID} matchID={matchID} credentials={playerCredentials} />
       </div>
-    </div>
+    </PageShell>
   );
 }

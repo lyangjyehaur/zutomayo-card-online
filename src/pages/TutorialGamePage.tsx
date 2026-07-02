@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AIGame } from '../components/AIGame';
 import { GameTutorialOverlay } from '../components/GameTutorialOverlay';
+import { Button, Dialog, PageShell } from '../components/ui';
 import { useTutorialState } from '../hooks/useTutorialState';
 import { TUTORIAL_STEPS } from '../data/tutorialSteps';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS, TUTORIAL_AI_SCRIPT } from '../data/tutorialScenario';
@@ -15,6 +16,7 @@ export function TutorialGamePage() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   // 卡牌必須載入完成才能建立對戰，否則空牌組會導致開局崩潰
   const [cardsReady, setCardsReady] = useState(isCardsInitialized());
+  const [skipPromptOpen, setSkipPromptOpen] = useState(false);
 
   useEffect(() => {
     if (cardsReady) return;
@@ -61,9 +63,7 @@ export function TutorialGamePage() {
   }, [currentStep, goNext]);
 
   const handleSkip = () => {
-    if (window.confirm(t('tutorial.skipConfirm' as never) || '確定要跳過教學嗎？')) {
-      navigate('/');
-    }
+    setSkipPromptOpen(true);
   };
 
   const handleComplete = () => {
@@ -73,9 +73,9 @@ export function TutorialGamePage() {
   // 卡牌未載入時顯示 loading，避免 AIGame 用空牌組崩潰
   if (!cardsReady) {
     return (
-      <main className="app-screen grid place-items-center bg-lacquer-deep font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
+      <PageShell className="grid place-items-center font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
         {t('game.loading')}
-      </main>
+      </PageShell>
     );
   }
 
@@ -103,6 +103,22 @@ export function TutorialGamePage() {
         onNext={goNext}
         onComplete={handleComplete}
         onSkip={handleSkip}
+      />
+      <Dialog
+        open={skipPromptOpen}
+        onOpenChange={setSkipPromptOpen}
+        title={t('common.confirm')}
+        description={t('tutorial.skipConfirm' as never)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setSkipPromptOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="primary" onClick={() => navigate('/')}>
+              {t('common.confirm')}
+            </Button>
+          </>
+        }
       />
     </>
   );

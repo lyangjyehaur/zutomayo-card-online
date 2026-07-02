@@ -1,7 +1,4 @@
 @import 'tailwindcss';
-@plugin "daisyui" {
-  themes: dark --default;
-}
 
 @font-face {
   font-family: 'Jiangcheng Jiexing';
@@ -75,7 +72,19 @@
   --abyss: oklch(0.55 0.05 290);
 
   --radius: 0.375rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-full: 9999px;
   --shadow: 0 1rem 3rem rgba(0, 0, 0, 0.38);
+  --shadow-soft: 0 8px 32px -8px rgba(0, 0, 0, 0.4);
+
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-overlay: 50;
+  --z-modal: 100;
+  --z-toast: 200;
+  --z-max: 9999;
 
   /* 卡牌尺寸 */
   --card-normal-w: 130px;
@@ -234,10 +243,10 @@ body {
   color: var(--gold);
 }
 
-.primary-action,
-.secondary-action,
-.danger-action,
-.back-btn,
+.legacy-primary,
+.legacy-secondary,
+.legacy-danger,
+.back-button,
 .menu-action,
 .confirm-button,
 .pager button {
@@ -255,7 +264,7 @@ body {
     box-shadow 160ms ease;
 }
 
-.primary-action,
+.legacy-primary,
 .menu-action.featured,
 .confirm-button {
   border-color: rgba(245, 211, 104, 0.7);
@@ -265,20 +274,20 @@ body {
   box-shadow: 0 0 1.4rem rgba(245, 211, 104, 0.28);
 }
 
-.secondary-action,
-.back-btn {
+.legacy-secondary,
+.back-button {
   border-color: rgba(245, 211, 104, 0.26);
 }
 
-.danger-action {
+.legacy-danger {
   border-color: rgba(255, 92, 122, 0.5);
   color: #ffd7df;
 }
 
-.primary-action:not(:disabled):hover,
-.secondary-action:not(:disabled):hover,
-.danger-action:not(:disabled):hover,
-.back-btn:not(:disabled):hover,
+.legacy-primary:not(:disabled):hover,
+.legacy-secondary:not(:disabled):hover,
+.legacy-danger:not(:disabled):hover,
+.back-button:not(:disabled):hover,
 .menu-action:not(:disabled):hover,
 .confirm-button:not(:disabled):hover,
 .pager button:not(:disabled):hover {
@@ -440,14 +449,14 @@ body {
   font-weight: 800;
 }
 
-.auth-user-badge {
+.auth-user-chip {
   display: grid;
   min-width: 0;
   gap: 0.12rem;
   padding-inline: 0.25rem;
 }
 
-.auth-user-badge strong {
+.auth-user-chip strong {
   overflow: hidden;
   color: var(--text);
   text-overflow: ellipsis;
@@ -1182,7 +1191,7 @@ input:focus {
   font-weight: 900;
 }
 
-.back-btn {
+.back-button {
   min-height: 2.25rem;
   background: rgba(255, 255, 255, 0.04);
 }
@@ -1776,7 +1785,7 @@ input:focus {
 }
 
 .info-bar span,
-.time-badge {
+.time-chip {
   border: 1px solid var(--line-soft);
   border-radius: 999rem;
   padding: 0.2rem 0.65rem;
@@ -1789,12 +1798,12 @@ input:focus {
   white-space: nowrap;
 }
 
-.time-badge.night {
+.time-chip.night {
   color: #dce1ff;
   border-color: rgba(127, 140, 255, 0.45);
 }
 
-.time-badge.day {
+.time-chip.day {
   color: #ffe1b5;
   border-color: rgba(255, 182, 94, 0.45);
 }
@@ -1855,7 +1864,7 @@ input:focus {
   flex-wrap: wrap;
 }
 
-.janken-btn {
+.janken-button {
   display: grid;
   place-items: center;
   gap: 0.35rem;
@@ -1872,11 +1881,11 @@ input:focus {
     border-color 160ms ease;
 }
 
-.janken-btn span {
+.janken-button span {
   font-size: 2rem;
 }
 
-.janken-btn:hover {
+.janken-button:hover {
   transform: translateY(-0.2rem);
   border-color: var(--gold);
 }
@@ -2006,8 +2015,8 @@ input:focus {
   overflow-wrap: anywhere;
 }
 
-.card-cost-badge,
-.card-type-badge {
+.card-cost-chip,
+.card-type-chip {
   position: absolute;
   z-index: 3;
   display: grid;
@@ -2019,7 +2028,7 @@ input:focus {
   box-shadow: 0 0.25rem 0.7rem rgba(0, 0, 0, 0.34);
 }
 
-.card-cost-badge {
+.card-cost-chip {
   top: 0.25rem;
   left: 0.25rem;
   width: 1.35rem;
@@ -2029,7 +2038,7 @@ input:focus {
   color: #130d21;
 }
 
-.card-type-badge {
+.card-type-chip {
   top: 0.3rem;
   right: 0.3rem;
   min-width: 1.45rem;
@@ -2537,7 +2546,7 @@ input:focus {
   filter: saturate(0.9);
 }
 
-.copy-badge {
+.copy-chip {
   position: absolute;
   right: -0.1rem;
   top: -0.15rem;
@@ -3686,7 +3695,7 @@ button.zone:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.card-cost-badge {
+.card-cost-chip {
   position: absolute;
   top: 0.22rem;
   left: 0.22rem;
@@ -3970,7 +3979,7 @@ button.zone:focus-visible {
 }
 
 .info-bar span,
-.time-badge {
+.time-chip {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999rem;
@@ -3984,12 +3993,12 @@ button.zone:focus-visible {
   white-space: nowrap;
 }
 
-.time-badge.night {
+.time-chip.night {
   color: #dce6ff;
   border-color: rgba(83, 125, 223, 0.44);
 }
 
-.time-badge.day {
+.time-chip.day {
   color: #ffd5cf;
   border-color: rgba(207, 86, 74, 0.44);
 }
@@ -4043,7 +4052,7 @@ button.zone:focus-visible {
     font-size: 0.68rem;
   }
 
-  .back-btn {
+  .back-button {
     min-height: 2rem;
     padding: 0.36rem 0.58rem;
   }
@@ -4961,12 +4970,12 @@ button.zone:focus-visible {
   max-width: 12rem;
 }
 
-.status-bar .time-badge.night {
+.status-bar .time-chip.night {
   color: #dce6ff;
   border-color: rgba(83, 125, 223, 0.44);
 }
 
-.status-bar .time-badge.day {
+.status-bar .time-chip.day {
   color: #ffd5cf;
   border-color: rgba(207, 86, 74, 0.44);
 }
@@ -6077,7 +6086,7 @@ button.zone:focus-visible {
 }
 
 .info-bar span,
-.time-badge {
+.time-chip {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999rem;
@@ -6091,12 +6100,12 @@ button.zone:focus-visible {
   white-space: nowrap;
 }
 
-.time-badge.night {
+.time-chip.night {
   color: #dce6ff;
   border-color: rgba(83, 125, 223, 0.44);
 }
 
-.time-badge.day {
+.time-chip.day {
   color: #ffd5cf;
   border-color: rgba(207, 86, 74, 0.44);
 }
@@ -6227,7 +6236,7 @@ button.zone:focus-visible {
     font-size: 0.68rem;
   }
 
-  .back-btn {
+  .back-button {
     min-height: 2rem;
     padding: 0.36rem 0.58rem;
   }
@@ -6374,7 +6383,7 @@ button.zone:focus-visible {
   }
 
   .info-bar span,
-  .time-badge {
+  .time-chip {
     padding: 0.15rem 0.36rem;
     font-size: 0.58rem;
   }
@@ -7172,7 +7181,7 @@ button.zone:focus-visible {
   font-weight: 800;
 }
 
-.pending-choice-footer .primary-action {
+.pending-choice-footer .legacy-primary {
   min-height: 2rem;
   padding: 0.45rem 0.75rem;
   font-size: 0.78rem;
@@ -8018,11 +8027,11 @@ button.zone:focus-visible {
   color: color-mix(in oklch, var(--bone) 60%, transparent);
 }
 
-.time-badge.night {
+.time-chip.night {
   color: color-mix(in oklch, var(--night) 80%, var(--bone));
 }
 
-.time-badge.day {
+.time-chip.day {
   color: color-mix(in oklch, var(--day) 80%, var(--bone));
 }
 
@@ -8109,7 +8118,7 @@ button.zone:focus-visible {
 }
 
 .actions-bar button,
-.primary-action,
+.legacy-primary,
 .confirm-button {
   background: var(--bone);
   color: var(--lacquer-deep);
@@ -8126,18 +8135,18 @@ button.zone:focus-visible {
 }
 
 .actions-bar button:hover,
-.primary-action:hover,
+.legacy-primary:hover,
 .confirm-button:hover {
   transform: scale(0.95);
 }
 
 .actions-bar button:active,
-.primary-action:active,
+.legacy-primary:active,
 .confirm-button:active {
   transform: scale(0.95);
 }
 
-.secondary-action {
+.legacy-secondary {
   background: transparent;
   border: 1px solid color-mix(in oklch, var(--bone) 20%, transparent);
   color: color-mix(in oklch, var(--bone) 60%, transparent);
@@ -8154,11 +8163,11 @@ button.zone:focus-visible {
     transform 120ms;
 }
 
-.secondary-action:hover {
+.legacy-secondary:hover {
   background: color-mix(in oklch, var(--bone) 5%, transparent);
 }
 
-.secondary-action:active {
+.legacy-secondary:active {
   transform: scale(0.95);
 }
 
@@ -8362,7 +8371,7 @@ button.zone:focus-visible {
   flex-wrap: wrap;
 }
 
-.janken-btn {
+.janken-button {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -8383,11 +8392,11 @@ button.zone:focus-visible {
   color: color-mix(in oklch, var(--bone) 60%, transparent);
 }
 
-.janken-btn span {
+.janken-button span {
   font-size: 2rem;
 }
 
-.janken-btn:hover {
+.janken-button:hover {
   border-color: color-mix(in oklch, var(--gold) 40%, transparent);
   transform: translateY(-2px);
   color: var(--bone);
@@ -9089,7 +9098,7 @@ button.zone:focus-visible {
   flex-wrap: wrap;
 }
 
-.danger-action {
+.legacy-danger {
   align-self: flex-start;
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -9103,7 +9112,7 @@ button.zone:focus-visible {
   transition: background 0.15s;
 }
 
-.danger-action:hover {
+.legacy-danger:hover {
   background: oklch(0.58 0.19 25 / 0.12);
 }
 
@@ -9234,7 +9243,7 @@ button.zone:focus-visible {
   height: 0.7rem;
   border-radius: 50%;
 }
-.tag-list-item .danger-action {
+.tag-list-item .legacy-danger {
   background: none;
   border: none;
   color: var(--danger, #c5453b);
@@ -9247,19 +9256,6 @@ button.zone:focus-visible {
   flex-direction: column;
   gap: 0.4rem;
   padding: 0.5rem 0;
-}
-.edit-btn {
-  background: none;
-  border: 1px solid var(--line-soft, rgba(232, 220, 200, 0.2));
-  color: var(--bone-soft, rgba(232, 220, 200, 0.6));
-  font-size: 0.65rem;
-  padding: 0.15rem 0.4rem;
-  border-radius: 0.25rem;
-  cursor: pointer;
-}
-.edit-btn:hover {
-  color: var(--gold, #c9a96e);
-  border-color: var(--gold, #c9a96e);
 }
 .edited-mark {
   font-size: 0.6rem;
@@ -9292,17 +9288,6 @@ button.zone:focus-visible {
   color: var(--bone-soft, rgba(232, 220, 200, 0.7));
   border: 1px solid var(--line-soft, rgba(232, 220, 200, 0.1));
 }
-.official-badge {
-  display: inline-block;
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 0.2rem;
-  background: var(--gold, #c9a96e);
-  color: var(--bg, #14121a);
-  font-weight: 600;
-}
 .comment-item.official {
   border-left: 2px solid var(--gold, #c9a96e);
   padding-left: 0.5rem;
@@ -9314,7 +9299,7 @@ button.zone:focus-visible {
   gap: 0.5rem;
   margin-top: 0.25rem;
 }
-.comment-vote-btn {
+.comment-vote-button {
   background: none;
   border: none;
   color: var(--bone-soft, rgba(232, 220, 200, 0.5));
@@ -9323,10 +9308,10 @@ button.zone:focus-visible {
   padding: 0.1rem 0.3rem;
   border-radius: 0.2rem;
 }
-.comment-vote-btn.voted {
+.comment-vote-button.voted {
   color: var(--gold, #c9a96e);
 }
-.comment-vote-btn:hover {
+.comment-vote-button:hover {
   color: var(--gold, #c9a96e);
 }
 .comment-edit-form {
@@ -9460,23 +9445,6 @@ button.zone:focus-visible {
   gap: 0.5rem;
   margin-top: 0.25rem;
 }
-.upload-btn {
-  background: none;
-  border: 1px solid var(--line-soft, rgba(232, 220, 200, 0.2));
-  color: var(--bone-soft, rgba(232, 220, 200, 0.6));
-  font-size: 0.65rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 0.25rem;
-  cursor: pointer;
-}
-.upload-btn:hover:not(:disabled) {
-  color: var(--gold, #c9a96e);
-  border-color: var(--gold, #c9a96e);
-}
-.upload-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 .upload-hint {
   font-size: 0.6rem;
   color: var(--bone-soft, rgba(232, 220, 200, 0.3));
@@ -9522,7 +9490,7 @@ button.zone:focus-visible {
 .reaction-group:hover .reaction-picker {
   display: flex;
 }
-.reaction-picker-btn {
+.reaction-picker-button {
   background: none;
   border: none;
   font-size: 1rem;
@@ -9530,7 +9498,7 @@ button.zone:focus-visible {
   padding: 0.15rem;
   border-radius: 0.25rem;
 }
-.reaction-picker-btn:hover {
+.reaction-picker-button:hover {
   background: var(--panel, rgba(20, 18, 24, 0.6));
 }
 .feedback-image {

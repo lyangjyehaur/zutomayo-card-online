@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Pencil, Radio, X } from 'lucide-react';
+import { Check, Pencil, Radio, X } from 'lucide-react';
 import {
   ANONYMOUS_PLAYER_DEFAULT_NAME,
   formatAnonymousDisplayName,
@@ -24,6 +24,7 @@ import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
+import { BackButton, Button, Input, Panel, PageShell } from '../components/ui';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
 import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
@@ -324,22 +325,12 @@ export function OnlineLobbyPage({
   });
 
   return (
-    <main className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
-      {/* 環境光暈 */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-0 top-0 h-[50vh] w-[50vh] rounded-full bg-vermilion/8 blur-[140px]" />
-      </div>
-
+    <PageShell glow={{ color: 'vermilion', size: 'sm', className: 'left-0 top-0 translate-x-0 translate-y-0' }}>
       {/* Header */}
       <header className="absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-6 backdrop-blur">
-        <button
-          className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-bone/50 transition hover:text-bone"
-          type="button"
-          onClick={() => navigate('/')}
-        >
-          <ArrowLeft strokeWidth={1.25} className="size-3.5" />
+        <BackButton type="button" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
-        </button>
+        </BackButton>
         <div className="pointer-events-none font-display text-sm italic">
           {t('lobby.onlineTitle')} · {t('lobby.onlineLobbySubtitle')}
         </div>
@@ -352,37 +343,38 @@ export function OnlineLobbyPage({
       {/* 雙欄內容 */}
       <div className="relative z-10 grid h-full grid-cols-1 gap-4 overflow-y-auto px-4 pb-6 pt-16 md:grid-cols-[340px_minmax(0,1fr)] md:overflow-hidden md:px-6">
         {/* 左側：Quick Match */}
-        <aside className="flex flex-col gap-4 rounded-sm bg-lacquer p-6 ring-1 ring-bone/10 md:overflow-y-auto">
+        <Panel as="aside" className="flex flex-col gap-4 md:overflow-y-auto" size="xl">
           <div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.quickMatch')}</div>
             <h2 className="mt-1 font-display text-3xl italic">{t('lobby.onlineTitle')}</h2>
           </div>
 
           {/* 匿名身份 */}
-          <div className="rounded-sm bg-lacquer-deep/60 p-4 ring-1 ring-bone/5">
+          <Panel variant="ghost">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-widest text-bone/40">{t('anonymous.identity')}</div>
+                <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('anonymous.identity')}</div>
                 <div className="mt-1 truncate font-mono text-sm text-gold">
                   {profile ? profile.nickname : editingAnonymousName ? draftPreview : anonymousDisplayName}
                 </div>
               </div>
               {!profile && (
-                <button
-                  className="grid size-8 shrink-0 place-items-center border border-bone/20 text-bone/60 transition hover:bg-bone/5 hover:text-bone focus-visible:ring-2 focus-visible:ring-gold/60"
+                <Button
+                  className="size-8 shrink-0 p-0 tracking-normal"
+                  variant="secondary"
                   type="button"
                   onClick={startEditingAnonymousName}
                   aria-label={t('anonymous.editName')}
                   title={t('anonymous.editName')}
                 >
                   <Pencil strokeWidth={1.25} className="size-3.5" />
-                </button>
+                </Button>
               )}
             </div>
             {!profile && editingAnonymousName && (
               <div className="mt-3 flex gap-2">
-                <input
-                  className="min-w-0 flex-1 border border-bone/10 bg-lacquer-deep px-3 py-2 text-sm text-bone placeholder:text-bone/30 focus:outline-none focus:ring-1 focus:ring-gold/40"
+                <Input
+                  className="min-w-0 flex-1"
                   value={anonymousNameDraft}
                   maxLength={30}
                   onChange={(event) => setAnonymousNameDraft(event.target.value)}
@@ -392,24 +384,26 @@ export function OnlineLobbyPage({
                   }}
                   aria-label={t('anonymous.nameInput')}
                 />
-                <button
-                  className="grid size-9 shrink-0 place-items-center border border-gold/40 text-gold transition hover:bg-gold/10 focus-visible:ring-2 focus-visible:ring-gold/60"
+                <Button
+                  className="size-9 shrink-0 p-0 tracking-normal"
+                  variant="primary"
                   type="button"
                   onClick={saveAnonymousName}
                   aria-label={t('common.save')}
                   title={t('common.save')}
                 >
                   <Check strokeWidth={1.25} className="size-4" />
-                </button>
-                <button
-                  className="grid size-9 shrink-0 place-items-center border border-bone/20 text-bone/50 transition hover:bg-bone/5 hover:text-bone focus-visible:ring-2 focus-visible:ring-gold/60"
+                </Button>
+                <Button
+                  className="size-9 shrink-0 p-0 tracking-normal"
+                  variant="secondary"
                   type="button"
                   onClick={cancelAnonymousNameEdit}
                   aria-label={t('common.cancel')}
                   title={t('common.cancel')}
                 >
                   <X strokeWidth={1.25} className="size-4" />
-                </button>
+                </Button>
               </div>
             )}
             {!profile && showAnonymousNamePrompt && (
@@ -418,19 +412,19 @@ export function OnlineLobbyPage({
             {!profile && !editingAnonymousName && (
               <p className="mt-2 text-[10px] leading-relaxed text-bone/40">{t('anonymous.registerHint')}</p>
             )}
-          </div>
+          </Panel>
 
           {/* 當前牌組摘要 */}
-          <div className="rounded-sm bg-lacquer-deep/60 p-4 ring-1 ring-bone/5">
-            <div className="text-[10px] uppercase tracking-widest text-bone/40">{t('lobby.currentDeck')}</div>
+          <Panel variant="ghost">
+            <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('lobby.currentDeck')}</div>
             <div className="mt-1 truncate font-display text-lg italic">
               {deck0Name ? resolveDeckLabel(deck0Name, deckOptions) : t('lobby.noDeckSelected')}
             </div>
-          </div>
+          </Panel>
 
           {/* 段位卡 */}
-          <div className="rounded-sm bg-lacquer-deep/60 p-4 ring-1 ring-bone/5">
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-bone/40">
+          <Panel variant="ghost">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-bone/40">
               <span>{t('lobby.rank')}</span>
               <span className="text-gold">{rank ? rank.name : t('lobby.guestRank')}</span>
             </div>
@@ -443,18 +437,18 @@ export function OnlineLobbyPage({
             <div className="mt-1 font-mono text-[9px] text-bone/40">
               {profile ? `ELO ${profile.elo} · ${profile.wins}/${profile.matchCount}` : t('lobby.loginRequired')}
             </div>
-          </div>
+          </Panel>
 
           {/* 開始匹配 */}
           <div className="relative group">
-            <button
+            <Button
               className="w-full bg-gradient-to-r from-vermilion to-gold py-4 font-display text-lg italic tracking-wide text-lacquer-deep transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
               type="button"
               onClick={handleQuickMatch}
               disabled={matchmakingActive || !canStart}
             >
               {t('lobby.beginMatch')}
-            </button>
+            </Button>
 
             {/* Tooltip 提示 */}
             {!canStart && (
@@ -471,48 +465,45 @@ export function OnlineLobbyPage({
                 <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
                 {t('lobby.matchmakingSearching')}
               </span>
-              <button
-                className="text-[10px] uppercase tracking-[0.3em] text-vermilion/70 transition hover:text-vermilion"
-                type="button"
-                onClick={handleCancelMatchmaking}
-              >
+              <Button variant="ghost" size="sm" type="button" onClick={handleCancelMatchmaking}>
                 {t('lobby.matchmakingCancel')}
-              </button>
+              </Button>
             </div>
           )}
 
           {!cardsReady && <p className="text-[10px] text-vermilion/70">{t('game.loading')}</p>}
           {cardsReady && !deck0Name && <p className="text-[10px] text-vermilion/70">{t('lobby.selectDeckFirst')}</p>}
-        </aside>
+        </Panel>
 
         {/* 右側：牌組選擇 + 自訂房間 */}
         <section className="flex min-h-0 flex-col gap-6 md:overflow-y-auto md:pr-2">
           {/* 牌組選擇 */}
-          <div className="rounded-sm bg-lacquer/60 p-5 ring-1 ring-bone/10">
+          <Panel variant="ghost" size="lg">
             <DeckSelector
               label={t('lobby.myDeck')}
               value={deck0Name}
               options={deckOptions}
               onChange={handleDeckChange}
             />
-          </div>
+          </Panel>
 
           {/* 自訂房間 */}
-          <div className="flex flex-col gap-4 rounded-sm bg-lacquer/60 p-5 ring-1 ring-bone/10">
+          <Panel className="flex flex-col gap-4" variant="ghost" size="lg">
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.customRooms')}</div>
                 <h2 className="font-display text-2xl italic">{t('lobby.createRoom')}</h2>
               </div>
               <div className="relative group">
-                <button
-                  className="border border-bone/20 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/70 transition hover:bg-bone/5 disabled:cursor-not-allowed disabled:opacity-40"
+                <Button
+                  size="sm"
+                  variant="secondary"
                   type="button"
                   onClick={() => runOnline()}
                   disabled={matchmakingActive || !canStart}
                 >
                   + {t('lobby.createRoom')}
-                </button>
+                </Button>
 
                 {/* Tooltip 提示 */}
                 {!canStart && (
@@ -526,59 +517,55 @@ export function OnlineLobbyPage({
 
             {/* 加入房間 */}
             <div className="flex gap-2">
-              <input
-                className="min-w-0 flex-1 border border-bone/10 bg-lacquer-deep px-3 py-2 text-sm text-bone placeholder:text-bone/30 focus:outline-none focus:ring-1 focus:ring-gold/40 disabled:opacity-50"
+              <Input
+                className="min-w-0 flex-1"
                 value={matchID}
                 onChange={(event) => setMatchID(event.target.value.trim())}
                 placeholder={t('lobby.roomCodePlaceholder')}
                 aria-label={t('lobby.roomCode')}
                 disabled={matchmakingActive}
               />
-              <button
-                className="border border-bone/20 px-4 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 disabled:opacity-50"
+              <Button
+                variant="secondary"
                 type="button"
                 disabled={!matchID || matchmakingActive}
                 onClick={() => runOnline(matchID)}
               >
                 {t('lobby.joinRoom')}
-              </button>
+              </Button>
             </div>
 
             {serverDeckError && <p className="text-[10px] text-vermilion/80">{serverDeckError}</p>}
 
             {/* 已建立房間資訊 */}
             {createdMatchID && (
-              <div className="flex flex-col gap-3 rounded-sm bg-lacquer-deep/60 p-4 ring-1 ring-bone/5">
+              <Panel className="flex flex-col gap-3" variant="ghost">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('online.roomCode')}</span>
                   <span className="font-mono text-xs text-gold">{createdMatchID}</span>
                 </div>
                 <label className="flex flex-col gap-1">
                   <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('online.shareLink')}</span>
-                  <input
-                    className="min-w-0 border border-bone/10 bg-lacquer-deep px-3 py-2 font-mono text-[11px] text-bone/70 focus:outline-none"
+                  <Input
+                    className="min-w-0 font-mono text-xs text-bone/70"
                     value={buildOnlineRoomUrl(createdMatchID)}
                     readOnly
                     aria-label={t('online.shareLink')}
                   />
                 </label>
                 <div className="flex items-center gap-3">
-                  <button
-                    className="border border-bone/20 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/70 transition hover:bg-bone/5"
-                    type="button"
-                    onClick={handleCopyShareLink}
-                  >
+                  <Button size="sm" variant="secondary" type="button" onClick={handleCopyShareLink}>
                     {copied ? t('online.copied') : t('online.copyLink')}
-                  </button>
+                  </Button>
                   <span className="text-[10px] text-bone/40">{t('online.hostWaitingHelper')}</span>
                 </div>
-              </div>
+              </Panel>
             )}
 
             {error && <p className="text-[10px] text-vermilion/80">{error}</p>}
-          </div>
+          </Panel>
         </section>
       </div>
-    </main>
+    </PageShell>
   );
 }

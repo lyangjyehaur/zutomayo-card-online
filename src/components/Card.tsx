@@ -349,7 +349,7 @@ export function Card({
           )}
           {showBadges && (
             <>
-              <div className="card-cost-badge">{def.powerCost}</div>
+              <div className="card-cost-chip">{def.powerCost}</div>
               <div className="card-element-dot" aria-label={elementLabel(def.element)} />
             </>
           )}

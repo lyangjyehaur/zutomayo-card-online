@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { copyText } from '../clipboard';
 import { t } from '../i18n';
 import { useToast } from './ToastProvider';
+import { Button, FieldLabel, Input, Panel, cn } from './ui';
 
 interface OnlineRoomInfoProps {
   matchID: string;
@@ -35,22 +36,24 @@ export function OnlineRoomInfo({ matchID, helperText, className = '' }: OnlineRo
   };
 
   return (
-    <div className={`alert alert-info flex-col items-stretch gap-3 ${className}`} role="status" aria-live="polite">
+    <Panel className={cn('flex flex-col items-stretch gap-3', className)} role="status" aria-live="polite">
       <div className="flex items-center justify-between gap-2">
-        <span>{t('online.roomCode')}</span>
+        <span className="text-sm text-bone/70">{t('online.roomCode')}</span>
         <strong className="font-mono text-lg">{matchID}</strong>
       </div>
-      {helperText && <p className="online-room-helper">{helperText}</p>}
+      {helperText && <p className="text-sm text-bone/70">{helperText}</p>}
       <label className="flex flex-col gap-2">
-        <span>{t('online.shareLink')}</span>
-        <input className="input input-bordered w-full" value={shareLink} readOnly aria-label={t('online.shareLink')} />
+        <FieldLabel>{t('online.shareLink')}</FieldLabel>
+        <Input value={shareLink} readOnly aria-label={t('online.shareLink')} />
       </label>
       <div className="flex items-center gap-3">
-        <button className="btn btn-sm" type="button" onClick={copyShareLink}>
+        <Button size="sm" type="button" onClick={copyShareLink}>
           {copied ? t('online.copied') : t('online.copyLink')}
-        </button>
-        <small>{copied ? t('online.copySuccessHelp') : t('online.shareReconnectHint')}</small>
+        </Button>
+        <small className="text-xs text-bone/50">
+          {copied ? t('online.copySuccessHelp') : t('online.shareReconnectHint')}
+        </small>
       </div>
-    </div>
+    </Panel>
   );
 }

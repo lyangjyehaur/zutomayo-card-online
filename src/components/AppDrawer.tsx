@@ -1,5 +1,7 @@
 import { useId, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { t } from '../i18n';
+import { Button, type ButtonVariant } from './ui';
 
 interface AppDrawerAction {
   label: string;
@@ -20,10 +22,10 @@ interface AppDrawerProps {
   tone?: 'default' | 'danger';
 }
 
-function actionClass(tone: AppDrawerAction['tone']): string {
-  if (tone === 'danger') return 'danger-action';
-  if (tone === 'secondary') return 'secondary-action';
-  return 'primary-action';
+function actionVariant(tone: AppDrawerAction['tone']): ButtonVariant {
+  if (tone === 'danger') return 'danger';
+  if (tone === 'secondary') return 'secondary';
+  return 'primary';
 }
 
 export function AppDrawer({
@@ -51,26 +53,27 @@ export function AppDrawer({
         {children}
         <div className="app-drawer-actions">
           {actions.map((action) => (
-            <button
+            <Button
               key={action.label}
-              className={actionClass(action.tone)}
+              variant={actionVariant(action.tone)}
               type="button"
               disabled={action.disabled}
               onClick={action.onClick}
               data-umami-event={action.eventName}
             >
               {action.label}
-            </button>
+            </Button>
           ))}
           {onClose && (
-            <button
-              className="secondary-action app-drawer-close"
+            <Button
+              className="app-drawer-close size-9 p-0 tracking-normal"
+              variant="secondary"
               type="button"
               aria-label={t('common.close')}
               onClick={onClose}
             >
-              ×
-            </button>
+              <X className="size-4" aria-hidden="true" />
+            </Button>
           )}
         </div>
       </section>

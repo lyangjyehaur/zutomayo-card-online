@@ -16,6 +16,18 @@ import {
   fetchCardI18n,
 } from '../api/client';
 import type { AdminMatch, AdminUser } from '../api/client';
+import {
+  Badge,
+  BackButton,
+  Button,
+  Card as UiCard,
+  Dialog,
+  Input,
+  PageShell,
+  Panel,
+  Select,
+  Textarea,
+} from '../components/ui';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -44,9 +56,6 @@ const I18N_LANGS = [
   { code: 'en', label: 'English' },
   { code: 'ko', label: '한국어' },
 ] as const;
-
-const filterChipClass = (active: boolean) => `btn btn-sm ${active ? 'btn-accent' : 'btn-ghost'}`;
-const tabClass = (active: boolean) => `tab ${active ? 'tab-active' : ''}`;
 
 type ModalTab = 'basic' | 'engine' | 'i18n';
 type ParsedCardMeta = {
@@ -174,11 +183,11 @@ function parseCardMeta(card: CardDef): ParsedCardMeta {
 }
 
 function badgeList(items: string[], empty = '—') {
-  if (items.length === 0) return <span className="badge badge-ghost">{empty}</span>;
+  if (items.length === 0) return <Badge>{empty}</Badge>;
   return items.map((item) => (
-    <span className="badge badge-accent mr-1 mb-1" key={item}>
+    <Badge className="mr-1 mb-1" tone="gold" key={item}>
       {item}
-    </span>
+    </Badge>
   ));
 }
 
@@ -202,12 +211,12 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
             {meta.unparsedLines.length ? `，未解析 ${meta.unparsedLines.length} 行` : ''}
           </p>
         </div>
-        <button className="btn btn-sm btn-ghost" type="button" onClick={() => navigator.clipboard?.writeText(astJson)}>
+        <Button size="sm" variant="ghost" type="button" onClick={() => navigator.clipboard?.writeText(astJson)}>
           複製 AST
-        </button>
+        </Button>
       </div>
-      <div className="card bg-base-200 shadow">
-        <div className="card-body p-4">
+      <UiCard>
+        <div className="grid gap-2">
           <strong>原文</strong>
           {meta.lines.map((l) => (
             <p className="whitespace-pre-wrap" key={l}>
@@ -215,7 +224,7 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
             </p>
           ))}
         </div>
-      </div>
+      </UiCard>
       <div className="grid gap-2 md:grid-cols-3">
         <div>
           <span className="text-sm opacity-70">Trigger</span>
@@ -231,8 +240,8 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
         </div>
       </div>
       {meta.parsed.map((effect, i) => (
-        <article className="card bg-base-200 shadow" key={`${effect.rawText}-${i}`}>
-          <div className="card-body p-4">
+        <UiCard as="article" key={`${effect.rawText}-${i}`}>
+          <div className="grid gap-2">
             <div>{badgeList([effect.trigger, effect.action.type])}</div>
             <p className="my-2">{effect.rawText}</p>
             {effect.conditions.length > 0 && (
@@ -244,14 +253,14 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
               </small>
             )}
           </div>
-        </article>
+        </UiCard>
       ))}
-      <details className="collapse collapse-arrow bg-base-200 shadow">
-        <summary className="collapse-title font-bold">查看完整 AST JSON</summary>
-        <pre className="collapse-content max-h-72 overflow-auto whitespace-pre-wrap text-xs">{astJson}</pre>
+      <details className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+        <summary className="cursor-pointer font-bold">查看完整 AST JSON</summary>
+        <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-xs">{astJson}</pre>
       </details>
       {meta.unparsedLines.length > 0 && (
-        <div className="alert alert-warning items-start">
+        <Panel className="border-l-2 border-gold/40 bg-gold/10 text-xs text-gold">
           <span>
             <strong>未解析行</strong>
             {meta.unparsedLines.map((l) => (
@@ -260,7 +269,7 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
               </p>
             ))}
           </span>
-        </div>
+        </Panel>
       )}
     </section>
   );
@@ -303,173 +312,98 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
 
   return (
     <div className="grid gap-3">
-      <label className="label grid gap-1 p-0">
-        <span className="label-text">名稱</span>
-        <input
-          className="input input-bordered w-full"
-          value={draft.name}
-          onChange={(e) => set('name', e.target.value)}
-        />
+      <label className="grid gap-1">
+        <span className="text-xs text-bone/50">名稱</span>
+        <Input value={draft.name} onChange={(e) => set('name', e.target.value)} />
       </label>
       <div className="grid gap-3 md:grid-cols-3">
-        <label className="label grid gap-1 p-0">
-          <span className="label-text">屬性</span>
-          <select
-            className="select select-bordered w-full"
-            value={draft.element}
-            onChange={(e) => set('element', e.target.value)}
-          >
+        <label className="grid gap-1">
+          <span className="text-xs text-bone/50">屬性</span>
+          <Select value={draft.element} onChange={(e) => set('element', e.target.value)}>
             {ELEMENT_OPTIONS.map((el) => (
               <option key={el}>{el}</option>
             ))}
-          </select>
+          </Select>
         </label>
-        <label className="label grid gap-1 p-0">
-          <span className="label-text">類型</span>
-          <select
-            className="select select-bordered w-full"
-            value={draft.type}
-            onChange={(e) => set('type', e.target.value)}
-          >
+        <label className="grid gap-1">
+          <span className="text-xs text-bone/50">類型</span>
+          <Select value={draft.type} onChange={(e) => set('type', e.target.value)}>
             {TYPE_OPTIONS.map((tp) => (
               <option key={tp}>{tp}</option>
             ))}
-          </select>
+          </Select>
         </label>
-        <label className="label grid gap-1 p-0">
-          <span className="label-text">稀有度</span>
-          <select
-            className="select select-bordered w-full"
-            value={draft.rarity}
-            onChange={(e) => set('rarity', e.target.value)}
-          >
+        <label className="grid gap-1">
+          <span className="text-xs text-bone/50">稀有度</span>
+          <Select value={draft.rarity} onChange={(e) => set('rarity', e.target.value)}>
             {RARITY_OPTIONS.map((r) => (
               <option key={r}>{r}</option>
             ))}
-          </select>
+          </Select>
         </label>
       </div>
       <div className="grid gap-3 md:grid-cols-3">
-        <label className="label grid gap-1 p-0">
-          <span className="label-text">時計</span>
-          <input
-            className="input input-bordered w-full"
-            type="number"
-            value={draft.clock}
-            onChange={(e) => set('clock', e.target.value)}
-          />
+        <label className="grid gap-1">
+          <span className="text-xs text-bone/50">時計</span>
+          <Input type="number" value={draft.clock} onChange={(e) => set('clock', e.target.value)} />
         </label>
-        <label className="label grid gap-1 p-0">
-          <span className="label-text">Power Cost</span>
-          <input
-            className="input input-bordered w-full"
-            type="number"
-            value={draft.powerCost}
-            onChange={(e) => set('powerCost', e.target.value)}
-          />
+        <label className="grid gap-1">
+          <span className="text-xs text-bone/50">Power Cost</span>
+          <Input type="number" value={draft.powerCost} onChange={(e) => set('powerCost', e.target.value)} />
         </label>
-        <label className="label grid gap-1 p-0">
-          <span className="label-text">SEND TO POWER</span>
-          <input
-            className="input input-bordered w-full"
-            type="number"
-            value={draft.sendToPower}
-            onChange={(e) => set('sendToPower', e.target.value)}
-          />
+        <label className="grid gap-1">
+          <span className="text-xs text-bone/50">SEND TO POWER</span>
+          <Input type="number" value={draft.sendToPower} onChange={(e) => set('sendToPower', e.target.value)} />
         </label>
       </div>
       {draft.type === 'Character' && (
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="label grid gap-1 p-0">
-            <span className="label-text">🌙 夜間攻擊</span>
-            <input
-              className="input input-bordered w-full"
-              type="number"
-              value={draft.attackNight}
-              onChange={(e) => set('attackNight', e.target.value)}
-            />
+          <label className="grid gap-1">
+            <span className="text-xs text-bone/50">夜間攻擊</span>
+            <Input type="number" value={draft.attackNight} onChange={(e) => set('attackNight', e.target.value)} />
           </label>
-          <label className="label grid gap-1 p-0">
-            <span className="label-text">☀️ 日間攻擊</span>
-            <input
-              className="input input-bordered w-full"
-              type="number"
-              value={draft.attackDay}
-              onChange={(e) => set('attackDay', e.target.value)}
-            />
+          <label className="grid gap-1">
+            <span className="text-xs text-bone/50">日間攻擊</span>
+            <Input type="number" value={draft.attackDay} onChange={(e) => set('attackDay', e.target.value)} />
           </label>
         </div>
       )}
-      <label className="label grid gap-1 p-0">
-        <span className="label-text">效果原文</span>
-        <textarea
-          className="textarea textarea-bordered w-full"
-          value={draft.effect}
-          onChange={(e) => set('effect', e.target.value)}
-          rows={4}
-        />
+      <label className="grid gap-1">
+        <span className="text-xs text-bone/50">效果原文</span>
+        <Textarea value={draft.effect} onChange={(e) => set('effect', e.target.value)} rows={4} />
       </label>
-      <label className="label grid gap-1 p-0">
-        <span className="label-text">圖片 URL</span>
-        <input
-          className="input input-bordered w-full"
-          value={draft.image}
-          onChange={(e) => set('image', e.target.value)}
-        />
+      <label className="grid gap-1">
+        <span className="text-xs text-bone/50">圖片 URL</span>
+        <Input value={draft.image} onChange={(e) => set('image', e.target.value)} />
       </label>
       <div className="grid gap-3 md:grid-cols-2">
-        <label className="label grid gap-1 p-0">
-          <span className="label-text">歌曲</span>
-          <input
-            className="input input-bordered w-full"
-            value={draft.song}
-            onChange={(e) => set('song', e.target.value)}
-          />
+        <label className="grid gap-1">
+          <span className="text-xs text-bone/50">歌曲</span>
+          <Input value={draft.song} onChange={(e) => set('song', e.target.value)} />
         </label>
-        <label className="label grid gap-1 p-0">
-          <span className="label-text">畫師</span>
-          <input
-            className="input input-bordered w-full"
-            value={draft.illustrator}
-            onChange={(e) => set('illustrator', e.target.value)}
-          />
+        <label className="grid gap-1">
+          <span className="text-xs text-bone/50">畫師</span>
+          <Input value={draft.illustrator} onChange={(e) => set('illustrator', e.target.value)} />
         </label>
       </div>
-      <label className="label grid gap-1 p-0">
-        <span className="label-text">卡包</span>
-        <select
-          className="select select-bordered w-full"
-          value={draft.pack}
-          onChange={(e) => set('pack', e.target.value)}
-        >
+      <label className="grid gap-1">
+        <span className="text-xs text-bone/50">卡包</span>
+        <Select value={draft.pack} onChange={(e) => set('pack', e.target.value)}>
           {FALLBACK_PACKS.map((p) => (
             <option key={p}>{p}</option>
           ))}
-        </select>
+        </Select>
       </label>
-      <label className="label grid gap-1 p-0">
-        <span className="label-text">勘誤</span>
-        <textarea
-          className="textarea textarea-bordered w-full"
-          value={draft.errata}
-          onChange={(e) => set('errata', e.target.value)}
-          rows={2}
-        />
+      <label className="grid gap-1">
+        <span className="text-xs text-bone/50">勘誤</span>
+        <Textarea value={draft.errata} onChange={(e) => set('errata', e.target.value)} rows={2} />
       </label>
       <div className="flex flex-wrap items-center gap-3">
-        <button className="btn btn-primary" type="button" disabled={saving} onClick={() => void handleSave()}>
+        <Button type="button" disabled={saving} onClick={() => void handleSave()}>
           {saving ? '儲存中…' : '儲存'}
-        </button>
-        {success && (
-          <div className="alert alert-success w-auto py-2">
-            <span>已儲存</span>
-          </div>
-        )}
-        {error && (
-          <div className="alert alert-error w-auto py-2">
-            <span>{error}</span>
-          </div>
-        )}
+        </Button>
+        {success && <Badge tone="jade">已儲存</Badge>}
+        {error && <Badge tone="vermilion">{error}</Badge>}
       </div>
     </div>
   );
@@ -520,12 +454,11 @@ function I18nEditor({ cardId }: { cardId: string }) {
   return (
     <div className="grid gap-3">
       {I18N_LANGS.map((lang) => (
-        <label className="label grid gap-1 p-0" key={lang.code}>
-          <span className="label-text">
+        <label className="grid gap-1" key={lang.code}>
+          <span className="text-xs text-bone/50">
             {lang.label} <span className="opacity-60">({lang.code})</span>
           </span>
-          <textarea
-            className="textarea textarea-bordered w-full"
+          <Textarea
             value={draft[lang.code] ?? ''}
             onChange={(e) => setDraft((d) => ({ ...d, [lang.code]: e.target.value }))}
             rows={3}
@@ -534,19 +467,11 @@ function I18nEditor({ cardId }: { cardId: string }) {
         </label>
       ))}
       <div className="flex flex-wrap items-center gap-3">
-        <button className="btn btn-primary" type="button" disabled={saving} onClick={() => void handleSave()}>
+        <Button type="button" disabled={saving} onClick={() => void handleSave()}>
           {saving ? '儲存中…' : '儲存翻譯'}
-        </button>
-        {success && (
-          <div className="alert alert-success w-auto py-2">
-            <span>已儲存</span>
-          </div>
-        )}
-        {error && (
-          <div className="alert alert-error w-auto py-2">
-            <span>{error}</span>
-          </div>
-        )}
+        </Button>
+        {success && <Badge tone="jade">已儲存</Badge>}
+        {error && <Badge tone="vermilion">{error}</Badge>}
       </div>
     </div>
   );
@@ -703,15 +628,14 @@ export function AdminPage() {
 
   if (!authenticated) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        <button className="btn btn-ghost absolute left-4 top-4" onClick={() => navigate('/')}>
+      <PageShell className="flex items-center justify-center p-4">
+        <BackButton className="absolute left-4 top-4" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
-        </button>
-        <section className="card bg-base-200 w-96 max-w-full shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title">管理員驗證</h2>
-            <input
-              className="input input-bordered w-full"
+        </BackButton>
+        <Panel className="w-96 max-w-full" size="lg">
+          <div className="grid gap-4">
+            <h2 className="font-display text-xl italic">管理員驗證</h2>
+            <Input
               type="password"
               placeholder="輸入管理密碼"
               value={password}
@@ -721,29 +645,25 @@ export function AdminPage() {
               }}
               disabled={loggingIn}
             />
-            <button
-              className="btn btn-primary w-full"
-              onClick={() => void handleLogin()}
-              disabled={loggingIn || !password}
-            >
+            <Button fullWidth onClick={() => void handleLogin()} disabled={loggingIn || !password}>
               {loggingIn ? '驗證中…' : '登入'}
-            </button>
+            </Button>
             {error && (
-              <div className="alert alert-error">
-                <span>{error}</span>
-              </div>
+              <Panel className="border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80">
+                {error}
+              </Panel>
             )}
           </div>
-        </section>
-      </main>
+        </Panel>
+      </PageShell>
     );
   }
 
   const selectedMeta = selectedCard ? metaById.get(selectedCard.id) : null;
   const CardModal =
     selectedCard && selectedMeta ? (
-      <dialog className="modal modal-open" onClick={() => setSelectedCard(null)}>
-        <div className="modal-box max-w-4xl" onClick={(e) => e.stopPropagation()}>
+      <Dialog open onOpenChange={(open) => !open && setSelectedCard(null)} title={selectedCard.name} size="lg">
+        <div className="grid gap-4">
           <div className="flex items-center gap-3">
             <img
               src={selectedCard.image}
@@ -756,17 +676,23 @@ export function AdminPage() {
               <p className="font-mono text-xs opacity-70">{selectedCard.id}</p>
             </div>
           </div>
-          <div role="tablist" className="tabs tabs-bordered mt-4">
+          <div role="tablist" className="mt-4 flex flex-wrap gap-2">
             {(
               [
-                ['basic', '📝 基本資訊'],
-                ['engine', '⚙️ 效果引擎'],
-                ['i18n', '🌐 多語言'],
+                ['basic', '基本資訊'],
+                ['engine', '效果引擎'],
+                ['i18n', '多語言'],
               ] as const
             ).map(([key, label]) => (
-              <a key={key} role="tab" className={tabClass(modalTab === key)} onClick={() => setModalTab(key)}>
+              <Button
+                key={key}
+                role="tab"
+                variant={modalTab === key ? 'primary' : 'secondary'}
+                size="sm"
+                onClick={() => setModalTab(key)}
+              >
                 {label}
-              </a>
+              </Button>
             ))}
           </div>
           <div className="mt-4 max-h-[60vh] overflow-y-auto pr-1">
@@ -783,148 +709,182 @@ export function AdminPage() {
             {modalTab === 'engine' && <EffectInspector meta={selectedMeta} />}
             {modalTab === 'i18n' && <I18nEditor cardId={selectedCard.id} />}
           </div>
-          <div className="modal-action">
-            <form method="dialog">
-              <button className="btn" type="button" onClick={() => setSelectedCard(null)}>
-                關閉
-              </button>
-            </form>
+          <div className="flex justify-end">
+            <Button variant="secondary" type="button" onClick={() => setSelectedCard(null)}>
+              關閉
+            </Button>
           </div>
         </div>
-      </dialog>
+      </Dialog>
     ) : null;
 
   return (
-    <main className="flex h-screen flex-col overflow-hidden bg-base-100">
-      <header className="navbar shrink-0 bg-base-200 shadow">
-        <div className="navbar-start gap-2">
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
-            {t('common.backToLobby')}
-          </button>
-          <h1 className="text-xl font-bold">管理員面板</h1>
+    <PageShell className="flex flex-col">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur md:px-6">
+        <div className="flex items-center gap-2">
+          <BackButton onClick={() => navigate('/')}>{t('common.backToLobby')}</BackButton>
+          <h1 className="font-display text-xl italic text-gold">管理員面板</h1>
           {activeTab === 'cards' && (
-            <span className="badge badge-ghost">
+            <Badge>
               {filtered.length} / {allCards.length} 張
-            </span>
+            </Badge>
           )}
         </div>
-        <div className="navbar-center">
-          <div role="tablist" className="tabs tabs-boxed">
-            <a role="tab" className={tabClass(activeTab === 'cards')} onClick={() => setActiveTab('cards')}>
-              卡牌資料
-            </a>
-            <a role="tab" className={tabClass(activeTab === 'users')} onClick={() => setActiveTab('users')}>
-              使用者
-            </a>
-            <a role="tab" className={tabClass(activeTab === 'matches')} onClick={() => setActiveTab('matches')}>
-              對戰
-            </a>
-          </div>
+        <div role="tablist" className="flex items-center gap-2">
+          <Button
+            role="tab"
+            size="sm"
+            variant={activeTab === 'cards' ? 'primary' : 'ghost'}
+            onClick={() => setActiveTab('cards')}
+          >
+            卡牌資料
+          </Button>
+          <Button
+            role="tab"
+            size="sm"
+            variant={activeTab === 'users' ? 'primary' : 'ghost'}
+            onClick={() => setActiveTab('users')}
+          >
+            使用者
+          </Button>
+          <Button
+            role="tab"
+            size="sm"
+            variant={activeTab === 'matches' ? 'primary' : 'ghost'}
+            onClick={() => setActiveTab('matches')}
+          >
+            對戰
+          </Button>
         </div>
-        <div className="navbar-end">
-          <button className="btn btn-ghost btn-sm" onClick={handleLogout}>
+        <div>
+          <Button variant="secondary" size="sm" onClick={handleLogout}>
             登出
-          </button>
+          </Button>
         </div>
       </header>
 
       {activeTab === 'cards' && (
         <div className="flex-1 overflow-y-auto p-4">
-          <section className="stats stats-vertical w-full shadow lg:stats-horizontal">
-            <div className="stat">
-              <div className="stat-title">總卡</div>
-              <div className="stat-value">{audit.totalCards}</div>
-            </div>
-            <div className="stat">
-              <div className="stat-title">效果卡</div>
-              <div className="stat-value">{audit.effectCards}</div>
-            </div>
-            <div className="stat">
-              <div className="stat-title">效果行</div>
-              <div className="stat-value">
+          <section className="grid gap-3 lg:grid-cols-5">
+            <Panel>
+              <div className="text-xs text-bone/50">總卡</div>
+              <div className="font-mono text-2xl text-gold">{audit.totalCards}</div>
+            </Panel>
+            <Panel>
+              <div className="text-xs text-bone/50">效果卡</div>
+              <div className="font-mono text-2xl text-gold">{audit.effectCards}</div>
+            </Panel>
+            <Panel>
+              <div className="text-xs text-bone/50">效果行</div>
+              <div className="font-mono text-2xl text-gold">
                 {audit.parsedLines}/{audit.effectLines}
               </div>
-            </div>
-            <div className="stat">
-              <div className="stat-title">未解析</div>
-              <div className="stat-value">{audit.unparsedLines}</div>
-            </div>
-            <div className="stat">
-              <div className="stat-title">Runtime effects</div>
-              <div className="stat-value">{audit.runtimeParsedEffects}</div>
-            </div>
+            </Panel>
+            <Panel>
+              <div className="text-xs text-bone/50">未解析</div>
+              <div className="font-mono text-2xl text-gold">{audit.unparsedLines}</div>
+            </Panel>
+            <Panel>
+              <div className="text-xs text-bone/50">Runtime effects</div>
+              <div className="font-mono text-2xl text-gold">{audit.runtimeParsedEffects}</div>
+            </Panel>
           </section>
           <div className="grid gap-3 py-4">
-            <input
+            <Input
               type="text"
               placeholder="搜尋卡名/效果/ID..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              className="input input-bordered w-full max-w-md"
+              className="max-w-md"
             />
             <div className="flex flex-wrap items-center gap-2">
-              <span className="label-text w-12">屬性</span>
+              <span className="w-12 text-xs text-bone/50">屬性</span>
               {ELEMENTS.map((el) => (
-                <button key={el} className={filterChipClass(filterElement === el)} onClick={() => setFilterElement(el)}>
+                <Button
+                  key={el}
+                  size="sm"
+                  variant={filterElement === el ? 'primary' : 'ghost'}
+                  onClick={() => setFilterElement(el)}
+                >
                   {el === 'all' ? '全部' : el}
-                </button>
+                </Button>
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="label-text w-12">類型</span>
+              <span className="w-12 text-xs text-bone/50">類型</span>
               {TYPES.map((type) => (
-                <button key={type} className={filterChipClass(filterType === type)} onClick={() => setFilterType(type)}>
+                <Button
+                  key={type}
+                  size="sm"
+                  variant={filterType === type ? 'primary' : 'ghost'}
+                  onClick={() => setFilterType(type)}
+                >
                   {type === 'all' ? '全部' : type === 'Character' ? '角色' : type === 'Enchant' ? '附魔' : '區域'}
-                </button>
+                </Button>
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="label-text w-12">Trigger</span>
+              <span className="w-12 text-xs text-bone/50">Trigger</span>
               {TRIGGERS.map((trigger) => (
-                <button
+                <Button
                   key={trigger}
-                  className={filterChipClass(filterTrigger === trigger)}
+                  size="sm"
+                  variant={filterTrigger === trigger ? 'primary' : 'ghost'}
                   onClick={() => setFilterTrigger(trigger)}
                 >
                   {trigger === 'all' ? '全部' : trigger}
-                </button>
+                </Button>
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="label-text w-12">引擎</span>
-              <input
-                className="input input-bordered input-sm w-36"
+              <span className="w-12 text-xs text-bone/50">引擎</span>
+              <Input
+                className="w-36"
                 placeholder="Action type"
                 value={filterAction}
                 onChange={(e) => setFilterAction(e.target.value)}
               />
-              <input
-                className="input input-bordered input-sm w-36"
+              <Input
+                className="w-36"
                 placeholder="Condition type"
                 value={filterCondition}
                 onChange={(e) => setFilterCondition(e.target.value)}
               />
-              <button className={filterChipClass(pendingOnly)} onClick={() => setPendingOnly((v) => !v)}>
+              <Button size="sm" variant={pendingOnly ? 'primary' : 'ghost'} onClick={() => setPendingOnly((v) => !v)}>
                 待選卡
-              </button>
-              <button className={filterChipClass(areaExpiryOnly)} onClick={() => setAreaExpiryOnly((v) => !v)}>
+              </Button>
+              <Button
+                size="sm"
+                variant={areaExpiryOnly ? 'primary' : 'ghost'}
+                onClick={() => setAreaExpiryOnly((v) => !v)}
+              >
                 Area expiry
-              </button>
+              </Button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="label-text w-12">卡包</span>
+              <span className="w-12 text-xs text-bone/50">卡包</span>
               {FALLBACK_PACKS.map((pack) => (
-                <button key={pack} className={filterChipClass(filterPack === pack)} onClick={() => setFilterPack(pack)}>
+                <Button
+                  key={pack}
+                  size="sm"
+                  variant={filterPack === pack ? 'primary' : 'ghost'}
+                  onClick={() => setFilterPack(pack)}
+                >
                   {pack === 'all' ? '全部' : pack}
-                </button>
+                </Button>
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="label-text w-12">排序</span>
+              <span className="w-12 text-xs text-bone/50">排序</span>
               {(['id', 'name', 'cost', 'attack'] as const).map((sort) => (
-                <button key={sort} className={filterChipClass(sortBy === sort)} onClick={() => setSortBy(sort)}>
+                <Button
+                  key={sort}
+                  size="sm"
+                  variant={sortBy === sort ? 'primary' : 'ghost'}
+                  onClick={() => setSortBy(sort)}
+                >
                   {sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '能量' : '攻擊'}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -934,36 +894,32 @@ export function AdminPage() {
               return (
                 <button
                   key={card.id}
-                  className="card image-full bg-base-200 shadow-xl transition hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-accent"
+                  className="group relative overflow-hidden rounded-sm bg-lacquer text-left ring-1 ring-bone/10 transition hover:-translate-y-1 hover:ring-gold/40 focus:outline-none focus:ring-2 focus:ring-gold/60"
                   onClick={() => {
                     setSelectedCard(card);
                     setModalTab('basic');
                   }}
                 >
-                  <figure>
-                    <img
-                      className="aspect-[5/7] w-full object-cover"
-                      src={card.image}
-                      alt={card.name}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                  </figure>
-                  <div className="card-body justify-end p-3 text-left">
-                    <h2 className="card-title block truncate text-sm">{card.name}</h2>
+                  <img
+                    className="aspect-[5/7] w-full object-cover opacity-80 transition group-hover:opacity-100"
+                    src={card.image}
+                    alt={card.name}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-lacquer-deep/80 p-3 backdrop-blur">
+                    <h2 className="block truncate text-sm font-bold">{card.name}</h2>
                     <p className="font-mono text-xs opacity-80">{card.id}</p>
                     <p className="text-xs opacity-80">
                       {card.element} • {card.type === 'Character' ? '角' : card.type === 'Enchant' ? '附' : '域'}
-                      {card.type === 'Character' && card.attack && ` • 🌙${card.attack.night}/☀️${card.attack.day}`}
-                      {card.powerCost > 0 && ` • ⚡${card.powerCost}`}
+                      {card.type === 'Character' && card.attack && ` • ${card.attack.night}/${card.attack.day}`}
+                      {card.powerCost > 0 && ` • ${card.powerCost}`}
                     </p>
                   </div>
                   {card.effect && (
-                    <div
-                      className={`badge absolute right-2 top-2 ${meta?.unparsedLines.length ? 'badge-error' : 'badge-primary'}`}
-                    >
+                    <Badge tone={meta?.unparsedLines.length ? 'vermilion' : 'gold'} className="absolute right-2 top-2">
                       {meta?.parsed.length ?? 0}
-                    </div>
+                    </Badge>
                   )}
                 </button>
               );
@@ -974,50 +930,47 @@ export function AdminPage() {
 
       {activeTab === 'users' && (
         <section className="flex-1 overflow-auto p-4">
-          {adminLoading && (
-            <div className="alert alert-info mb-3">
-              <span>載入中…</span>
-            </div>
-          )}
+          {adminLoading && <Panel className="mb-3 text-sm text-bone/60">載入中…</Panel>}
           {adminError && (
-            <div className="alert alert-error mb-3">
-              <span>{adminError}</span>
-            </div>
+            <Panel className="mb-3 border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80">
+              {adminError}
+            </Panel>
           )}
-          <table className="table table-zebra table-sm">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Email</th>
-                <th>暱稱</th>
-                <th>ELO</th>
-                <th>場次</th>
-                <th>勝率</th>
-                <th>操作</th>
+          <table className="w-full border-collapse text-left text-sm">
+            <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
+              <tr className="border-b border-bone/10">
+                <th className="px-3 py-2">ID</th>
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">暱稱</th>
+                <th className="px-3 py-2">ELO</th>
+                <th className="px-3 py-2">場次</th>
+                <th className="px-3 py-2">勝率</th>
+                <th className="px-3 py-2">操作</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id}>
-                  <td className="max-w-32 truncate font-mono text-xs opacity-70">{u.id}</td>
-                  <td>{u.email}</td>
-                  <td>{u.nickname}</td>
-                  <td>
-                    <div className="join">
+                <tr key={u.id} className="odd:bg-lacquer/50">
+                  <td className="max-w-32 truncate px-3 py-2 font-mono text-xs opacity-70">{u.id}</td>
+                  <td className="px-3 py-2">{u.email}</td>
+                  <td className="px-3 py-2">{u.nickname}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
                       {eloEdits[u.id] ?? u.elo}
-                      <input
-                        className="input input-bordered input-xs join-item ml-2 w-20"
+                      <Input
+                        className="w-20"
                         value={eloEdits[u.id] ?? ''}
                         placeholder={String(u.elo)}
                         onChange={(e) => setEloEdits((prev) => ({ ...prev, [u.id]: e.target.value }))}
                       />
                     </div>
                   </td>
-                  <td>{u.matchCount}</td>
-                  <td>{u.winRate}%</td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-ghost"
+                  <td className="px-3 py-2">{u.matchCount}</td>
+                  <td className="px-3 py-2">{u.winRate}%</td>
+                  <td className="px-3 py-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       disabled={eloSavingId === u.id}
                       onClick={() => {
                         const v = Number(eloEdits[u.id]);
@@ -1036,7 +989,7 @@ export function AdminPage() {
                       }}
                     >
                       {eloSavingId === u.id ? '已更新' : '更新 ELO'}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -1047,41 +1000,37 @@ export function AdminPage() {
 
       {activeTab === 'matches' && (
         <section className="flex-1 overflow-auto p-4">
-          {adminLoading && (
-            <div className="alert alert-info mb-3">
-              <span>載入中…</span>
-            </div>
-          )}
+          {adminLoading && <Panel className="mb-3 text-sm text-bone/60">載入中…</Panel>}
           {adminError && (
-            <div className="alert alert-error mb-3">
-              <span>{adminError}</span>
-            </div>
+            <Panel className="mb-3 border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80">
+              {adminError}
+            </Panel>
           )}
-          <table className="table table-zebra table-sm">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>勝者</th>
-                <th>敗者</th>
-                <th>ELO Δ</th>
-                <th>回合</th>
-                <th>時長</th>
-                <th>時間</th>
+          <table className="w-full border-collapse text-left text-sm">
+            <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
+              <tr className="border-b border-bone/10">
+                <th className="px-3 py-2">ID</th>
+                <th className="px-3 py-2">勝者</th>
+                <th className="px-3 py-2">敗者</th>
+                <th className="px-3 py-2">ELO Δ</th>
+                <th className="px-3 py-2">回合</th>
+                <th className="px-3 py-2">時長</th>
+                <th className="px-3 py-2">時間</th>
               </tr>
             </thead>
             <tbody>
               {matches.map((m) => (
-                <tr key={m.id}>
-                  <td className="max-w-32 truncate font-mono text-xs opacity-70">{m.id}</td>
-                  <td>{m.winnerNickname ?? m.winnerId}</td>
-                  <td>{m.loserNickname ?? m.loserId}</td>
-                  <td>
+                <tr key={m.id} className="odd:bg-lacquer/50">
+                  <td className="max-w-32 truncate px-3 py-2 font-mono text-xs opacity-70">{m.id}</td>
+                  <td className="px-3 py-2">{m.winnerNickname ?? m.winnerId}</td>
+                  <td className="px-3 py-2">{m.loserNickname ?? m.loserId}</td>
+                  <td className="px-3 py-2">
                     {m.winnerEloChange >= 0 ? '+' : ''}
                     {m.winnerEloChange} / {m.loserEloChange}
                   </td>
-                  <td>{m.turns ?? '—'}</td>
-                  <td>{m.duration != null ? `${Math.round(m.duration / 60)}m` : '—'}</td>
-                  <td>{new Date(m.createdAt).toLocaleString()}</td>
+                  <td className="px-3 py-2">{m.turns ?? '—'}</td>
+                  <td className="px-3 py-2">{m.duration != null ? `${Math.round(m.duration / 60)}m` : '—'}</td>
+                  <td className="px-3 py-2">{new Date(m.createdAt).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -1090,6 +1039,6 @@ export function AdminPage() {
       )}
 
       {CardModal}
-    </main>
+    </PageShell>
   );
 }

@@ -8,6 +8,7 @@ import { ja } from '../i18n/ja';
 import { en } from '../i18n/en';
 import { ko } from '../i18n/ko';
 import { ApiError, adminLogin } from '../api/client';
+import { BackButton, Badge, Button, Dialog, Input, PageShell, Panel } from '../components/ui';
 import '../components/I18nManager.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -34,6 +35,7 @@ export function I18nManager() {
   const [searchText, setSearchText] = useState('');
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [saveNotice, setSaveNotice] = useState('');
 
   const filteredKeys = useMemo(() => {
     const dict = allDictionaries[selectedLocale] || {};
@@ -76,16 +78,15 @@ export function I18nManager() {
 
   if (!authenticated) {
     return (
-      <main className="admin-page app-screen">
-        <header className="navbar">
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
-            {t('common.backToLobby')}
-          </button>
-          <h1>{t('admin.i18nTitle')}</h1>
+      <PageShell className="admin-page flex flex-col px-4 py-4 md:px-6">
+        <header className="flex items-center justify-between border-b border-bone/5 pb-4">
+          <BackButton onClick={() => navigate('/')}>{t('common.backToLobby')}</BackButton>
+          <h1 className="font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
+          <div />
         </header>
-        <section className="admin-login">
-          <h2>{t('admin.adminVerify')}</h2>
-          <input
+        <Panel className="admin-login mx-auto mt-6 w-full max-w-md" size="lg">
+          <h2 className="font-display text-xl italic">{t('admin.adminVerify')}</h2>
+          <Input
             type="password"
             placeholder={t('admin.passwordPlaceholder')}
             value={password}
@@ -95,12 +96,16 @@ export function I18nManager() {
             }}
             disabled={loggingIn}
           />
-          <button className="btn btn-sm" onClick={() => void handleLogin()} disabled={loggingIn || !password}>
+          <Button size="sm" onClick={() => void handleLogin()} disabled={loggingIn || !password}>
             {loggingIn ? t('admin.verifying') : t('admin.login')}
-          </button>
-          {error && <p className="alert alert-error">{error}</p>}
-        </section>
-      </main>
+          </Button>
+          {error && (
+            <Panel className="border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80" role="alert">
+              {error}
+            </Panel>
+          )}
+        </Panel>
+      </PageShell>
     );
   }
 
@@ -110,7 +115,7 @@ export function I18nManager() {
 
   const handleSaveEdit = () => {
     if (editKey && editValue.trim()) {
-      alert(
+      setSaveNotice(
         `${t('admin.i18nSaved')}: ${editKey}\n${t('admin.i18nNewValue')}: ${editValue}\n\n${t('admin.i18nSaveNotice')}src/i18n/${selectedLocale}.ts`,
       );
       setEditKey(null);
@@ -119,27 +124,26 @@ export function I18nManager() {
   };
 
   return (
-    <main className="admin-page app-screen">
-      <header className="navbar">
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/')}>
-          {t('common.backToLobby')}
-        </button>
-        <h1>{t('admin.i18nTitle')}</h1>
-        <button className="btn btn-sm" onClick={handleLogout}>
+    <PageShell className="admin-page flex flex-col px-4 py-4 md:px-6">
+      <header className="flex items-center justify-between border-b border-bone/5 pb-4">
+        <BackButton onClick={() => navigate('/')}>{t('common.backToLobby')}</BackButton>
+        <h1 className="font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
+        <Button size="sm" variant="secondary" onClick={handleLogout}>
           {t('admin.logout')}
-        </button>
+        </Button>
       </header>
 
       <div className="i18n-controls">
         <div className="i18n-locale-tabs">
           {availableLocales.map((locale) => (
-            <button
+            <Button
               key={locale}
-              className={`btn btn-sm ${selectedLocale === locale ? 'btn-active' : 'btn-ghost'}`}
+              size="sm"
+              variant={selectedLocale === locale ? 'primary' : 'ghost'}
               onClick={() => setSelectedLocale(locale)}
             >
               {getLocaleLabel(locale)}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -156,7 +160,7 @@ export function I18nManager() {
         </div>
 
         <div className="i18n-filters">
-          <input
+          <Input
             type="text"
             placeholder={t('admin.i18nSearchPlaceholder')}
             value={searchText}
@@ -171,13 +175,13 @@ export function I18nManager() {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="table table-zebra table-sm">
-          <thead>
-            <tr>
-              <th>{t('admin.i18nColKey')}</th>
-              <th>{t('admin.i18nColBase')}</th>
-              <th>{getLocaleLabel(selectedLocale)}</th>
-              <th>{t('admin.i18nColStatus')}</th>
+        <table className="w-full border-collapse text-left text-sm">
+          <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
+            <tr className="border-b border-bone/10">
+              <th className="px-3 py-2">{t('admin.i18nColKey')}</th>
+              <th className="px-3 py-2">{t('admin.i18nColBase')}</th>
+              <th className="px-3 py-2">{getLocaleLabel(selectedLocale)}</th>
+              <th className="px-3 py-2">{t('admin.i18nColStatus')}</th>
             </tr>
           </thead>
           <tbody>
@@ -189,10 +193,10 @@ export function I18nManager() {
 
               return (
                 <tr key={key} className={isMissing ? 'row-missing' : isSame ? 'row-same' : ''}>
-                  <td className="i18n-key">{key}</td>
-                  <td className="i18n-base">{baseValue}</td>
+                  <td className="i18n-key px-3 py-2">{key}</td>
+                  <td className="i18n-base px-3 py-2">{baseValue}</td>
                   <td
-                    className="i18n-translated"
+                    className="i18n-translated px-3 py-2"
                     onClick={() => {
                       if (!isMissing) {
                         setEditKey(key);
@@ -202,7 +206,7 @@ export function I18nManager() {
                   >
                     {editKey === key ? (
                       <div className="i18n-edit">
-                        <input
+                        <Input
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
                           onKeyDown={(e) => {
@@ -210,12 +214,12 @@ export function I18nManager() {
                           }}
                           autoFocus
                         />
-                        <button className="btn btn-sm" onClick={handleSaveEdit}>
-                          ✓
-                        </button>
-                        <button className="btn btn-sm" onClick={() => setEditKey(null)}>
-                          ✕
-                        </button>
+                        <Button size="sm" onClick={handleSaveEdit}>
+                          {t('common.save')}
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => setEditKey(null)}>
+                          {t('common.cancel')}
+                        </Button>
                       </div>
                     ) : (
                       <span className={isMissing ? 'text-missing' : ''}>
@@ -223,13 +227,28 @@ export function I18nManager() {
                       </span>
                     )}
                   </td>
-                  <td className="i18n-status">{isMissing ? '❌' : isSame ? '⚠️' : '✅'}</td>
+                  <td className="i18n-status px-3 py-2">
+                    {isMissing ? (
+                      <Badge tone="vermilion">{t('admin.i18nMissingBadge')}</Badge>
+                    ) : isSame ? (
+                      <Badge tone="gold">{t('admin.i18nColBase')}</Badge>
+                    ) : (
+                      <Badge tone="jade">{t('admin.i18nTranslated')}</Badge>
+                    )}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-    </main>
+      <Dialog
+        open={Boolean(saveNotice)}
+        onOpenChange={(open) => !open && setSaveNotice('')}
+        title={t('admin.i18nSaved')}
+      >
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-bone/70">{saveNotice}</p>
+      </Dialog>
+    </PageShell>
   );
 }

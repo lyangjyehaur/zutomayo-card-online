@@ -8,6 +8,7 @@ import { useAIMoves, type ZutomayoMoveDispatchers, type TutorialAIScript } from 
 import type { AIDifficulty } from '../game/ai';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
+import { PageShell } from './ui';
 
 interface AIGameProps {
   difficulty: AIDifficulty;
@@ -161,13 +162,13 @@ export function AIGame({
   );
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
+    <PageShell>
       <div className="board-client-frame h-full w-full">
         <AIClient playerID="0" />
         <div className="hidden-client">
           <AIClient playerID="1" />
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

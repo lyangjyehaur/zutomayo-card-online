@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { isVersionMismatchError, reloadForAppUpdate } from '../clientVersion';
 import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
+import { Button, Dialog, PageShell, Panel } from '../components/ui';
 import { t, translate, useLocale } from '../i18n';
 import {
   clearStoredOnlineSession,
@@ -67,41 +68,26 @@ function LeaveConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-lacquer-deep/70 px-4 backdrop-blur-sm"
-      role="presentation"
-    >
-      <section
-        className="w-full max-w-md rounded-sm bg-lacquer p-6 text-bone ring-1 ring-bone/10"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="leave-confirm-title"
-      >
-        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('game.onlineMode')}</span>
-        <h2 id="leave-confirm-title" className="mt-3 font-display text-2xl italic">
-          {t('online.leaveTitle')}
-        </h2>
-        <p className="mt-3 text-sm leading-relaxed text-bone/60">{t('online.leaveBody')}</p>
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold disabled:opacity-40"
-            type="button"
-            disabled={leaving}
-            onClick={onCancel}
-          >
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+      title={t('online.leaveTitle')}
+      description={t('online.leaveBody')}
+      footer={
+        <>
+          <Button variant="primary" type="button" disabled={leaving} onClick={onCancel}>
             {t('online.stayInRoom')}
-          </button>
-          <button
-            className="border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:border-vermilion/50 hover:text-vermilion disabled:opacity-40"
-            type="button"
-            disabled={leaving}
-            onClick={onConfirm}
-          >
+          </Button>
+          <Button variant="secondary" type="button" disabled={leaving} onClick={onConfirm}>
             {leaving ? t('online.leaving') : t('online.leaveRoom')}
-          </button>
-        </div>
-      </section>
-    </div>
+          </Button>
+        </>
+      }
+    >
+      <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('game.onlineMode')}</span>
+    </Dialog>
   );
 }
 
@@ -317,11 +303,8 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
       copy.tone === 'error' ? 'text-vermilion/80' : copy.tone === 'waiting' ? 'text-gold/70' : 'text-bone/45';
 
     return (
-      <main className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
-        </div>
-        <section className="relative z-10 w-full max-w-xl rounded-sm bg-lacquer p-6 ring-1 ring-bone/10">
+      <PageShell className="flex items-center justify-center px-4" glow={{ color: 'vermilion', size: 'md' }}>
+        <Panel className="relative z-10 w-full max-w-xl" size="xl">
           <span className={`font-mono text-[10px] uppercase tracking-[0.3em] ${panelTone}`}>
             {t('game.onlineMode')}
           </span>
@@ -329,43 +312,34 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
           <p className="mt-3 text-sm leading-relaxed text-bone/60">{t(copy.bodyKey)}</p>
           {showRoomInfo && <OnlineRoomInfo matchID={panelSession.matchID} helperText={roomInfoHelper(status)} />}
           <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              className={
-                canLeave
-                  ? 'border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:border-vermilion/50 hover:text-vermilion'
-                  : 'bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold'
-              }
+            <Button
+              variant={canLeave ? 'secondary' : 'primary'}
               type="button"
               onClick={() => backActionForStatus(status)}
             >
               {primaryLabel}
-            </button>
+            </Button>
             {canRetry && (
-              <button
-                className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold"
+              <Button
+                variant="primary"
                 type="button"
                 onClick={status === 'versionMismatch' ? reloadForAppUpdate : retryStatusCheck}
               >
                 {status === 'versionMismatch' ? t('online.reloadAction') : t('online.retryAction')}
-              </button>
+              </Button>
             )}
             {copy.canCreateNewRoom && (
-              <button
-                className="bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold disabled:opacity-40"
-                type="button"
-                disabled={creatingRoom}
-                onClick={() => void createNewRoom()}
-              >
+              <Button variant="primary" type="button" disabled={creatingRoom} onClick={() => void createNewRoom()}>
                 {creatingRoom ? t('online.creatingRoom') : t('online.createNewRoom')}
-              </button>
+              </Button>
             )}
           </div>
           {actionError && <p className="mt-4 text-[10px] text-vermilion/80">{actionError}</p>}
-        </section>
+        </Panel>
         {leavePromptOpen && (
           <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={() => void leaveAndReturn()} />
         )}
-      </main>
+      </PageShell>
     );
   };
 

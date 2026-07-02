@@ -4,6 +4,7 @@ import { Swords, Bot, LayoutGrid } from 'lucide-react';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
+import { Button, Card, PageShell, Panel } from '../components/ui';
 import { t, type TranslationKey } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
@@ -90,7 +91,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   };
 
   return (
-    <main className="relative h-screen w-screen overflow-hidden bg-lacquer-deep font-sans text-bone">
+    <PageShell>
       {/* 環境層：隨機卡牌模糊背景 + 紫光暈 + 點陣紋理 */}
       <div className="pointer-events-none absolute inset-0">
         {bgImage && (
@@ -104,7 +105,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
         )}
         {/* 暗化遮罩，確保文字可讀（漸層：中央較透、邊緣較暗） */}
         <div className="absolute inset-0 bg-lacquer-deep/55" />
-        <div className="absolute left-1/2 top-1/2 h-[80vh] w-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/10 blur-[140px]" />
+        <div className="absolute left-1/2 top-1/2 h-[80vh] w-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[140px]" />
         <div className="absolute inset-0 opacity-[0.04] [background-image:radial-gradient(rgba(255,255,255,0.6)_1px,transparent_1px)] [background-size:3px_3px]" />
       </div>
 
@@ -127,7 +128,8 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       <section className="relative z-10 h-full overflow-y-auto px-4 pb-14 pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
         <div className="grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
           {ENTRIES.map(({ to, titleKey, subtitle, captionKey, Icon }, i) => (
-            <button
+            <Card
+              as="button"
               key={to}
               type="button"
               onClick={() => navigate(to)}
@@ -160,7 +162,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
                   →
                 </span>
               </div>
-            </button>
+            </Card>
           ))}
         </div>
       </section>
@@ -168,14 +170,15 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       {/* 底部 Footer */}
       <footer className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 px-4 pb-4 md:px-8">
         {/* 教學入口 */}
-        <button
+        <Button
           type="button"
           onClick={() => navigate('/tutorial')}
           className="group flex w-full max-w-md items-center justify-center gap-3 rounded-sm border border-gold/30 bg-gradient-to-r from-gold/8 via-gold/5 to-gold/8 px-6 py-3 text-gold transition-all hover:border-gold/50 hover:bg-gold/10 hover:shadow-[0_8px_32px_-8px] hover:shadow-gold/30"
+          variant="secondary"
         >
           <span className="text-[10px] uppercase tracking-[0.3em]">{t('lobby.tutorial')}</span>
           <span className="font-display text-xl italic transition-transform group-hover:translate-x-1">→</span>
-        </button>
+        </Button>
 
         {/* 原有的 footer 信息 */}
         <div className="flex w-full items-center justify-between text-[10px] uppercase tracking-[0.3em] text-bone/30">
@@ -204,42 +207,43 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
 
       {/* 首次訪問引導——頂部橫幅卡片，不遮罩背景 */}
       {showDeckIntro && (
-        <div className="fixed inset-x-0 top-0 z-[900] flex justify-center px-4 pt-4">
-          <div className="w-full max-w-[640px] rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer p-5 text-bone shadow-[0_20px_60px_-15px] shadow-black/80 ring-1 ring-gold/40 backdrop-blur">
+        <div className="fixed inset-x-0 top-0 z-[--z-overlay] flex justify-center px-4 pt-4">
+          <Panel
+            className="w-full max-w-[640px] bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer text-bone ring-gold/40 backdrop-blur"
+            size="lg"
+          >
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">Welcome</span>
-              <button
+              <Button
                 type="button"
                 aria-label={t('common.close')}
-                className="text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-vermilion"
+                variant="ghost"
+                size="sm"
                 onClick={handleDismissIntro}
                 data-umami-event="deck-intro-dismiss"
               >
                 {t('common.close')}
-              </button>
+              </Button>
             </div>
             <h2 className="font-display text-2xl italic leading-tight text-bone">{t('intro.deckTitle')}</h2>
-            <p className="mt-2 text-[13px] leading-relaxed text-bone/75">{t('intro.deckDescription')}</p>
+            <p className="mt-2 text-sm leading-relaxed text-bone/70">{t('intro.deckDescription')}</p>
             <div className="mt-4 flex justify-end gap-2">
-              <button
+              <Button
                 type="button"
-                className="bg-gold px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-bone active:scale-95"
+                size="sm"
+                variant="primary"
                 onClick={handleGoToDeckBuilder}
                 data-umami-event="deck-intro-go-to-builder"
               >
                 {t('intro.goToDeckBuilder')}
-              </button>
-              <button
-                type="button"
-                className="border border-bone/30 px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-bone/70 transition hover:border-bone/60 hover:text-bone active:scale-95"
-                onClick={handleDismissIntro}
-              >
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={handleDismissIntro}>
                 {t('intro.exploreLater')}
-              </button>
+              </Button>
             </div>
-          </div>
+          </Panel>
         </div>
       )}
-    </main>
+    </PageShell>
   );
 }

@@ -5,7 +5,8 @@ import { getAllCardDefs } from '../game/cards/loader';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
-import { ArrowLeft, Search, Save, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Search, Save, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { BackButton, Button, Input, PageShell } from './ui';
 
 interface DeckEditorProps {
   onSave: (deckIds: string[]) => void | Promise<void>;
@@ -227,29 +228,24 @@ export function DeckEditor({
   const emptySlotCount = Math.max(0, DECK_SIZE - deck.length);
 
   return (
-    <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-lacquer-deep text-bone font-sans">
+    <PageShell className="flex flex-col">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -left-40 top-0 h-[60vh] w-[60vh] rounded-full bg-gold/8 blur-[140px]" />
       </div>
 
       <header className="relative z-30 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-bone/5 bg-lacquer-deep/80 px-3 py-2 backdrop-blur md:h-12 md:flex-nowrap md:px-6 md:py-0">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex items-center gap-2 text-[10px] uppercase tracking-[0.3em] text-bone/50 transition hover:text-bone"
-          aria-label={t('common.backToLobby')}
-        >
-          <ArrowLeft className="size-3.5" /> {t('common.backToLobby')}
-        </button>
-        <h1 className="hidden font-display text-sm italic sm:block">Deck Editor · 牌組編輯</h1>
+        <BackButton type="button" onClick={onCancel} aria-label={t('common.backToLobby')}>
+          {t('common.backToLobby')}
+        </BackButton>
+        <h1 className="hidden font-display text-sm italic md:block">Deck Editor · 牌組編輯</h1>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 md:flex-nowrap md:gap-3">
           {onDeckNameChange && (
-            <input
+            <Input
               value={deckName ?? ''}
               aria-label={t('deck.custom')}
               placeholder={t('deck.custom')}
               onChange={(event) => onDeckNameChange(event.target.value)}
-              className="w-32 border border-bone/10 bg-transparent px-3 py-1.5 text-xs text-bone placeholder:text-bone/30 focus:border-gold/40 focus:outline-none sm:w-40"
+              className="w-32 text-xs md:w-40"
             />
           )}
           {syncLabel && (
@@ -260,15 +256,16 @@ export function DeckEditor({
               {syncLabel}
             </span>
           )}
-          <button
+          <Button
             type="button"
             disabled={!isValid || saving}
             onClick={saveDeck}
-            className="flex items-center gap-2 bg-bone px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
+            size="sm"
+            variant="primary"
             aria-label={saveLabel ?? t('deckEditor.saveDeck')}
           >
             <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -279,7 +276,10 @@ export function DeckEditor({
       )}
 
       <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-3 py-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden lg:px-6 lg:py-6">
-        <section className="flex min-h-[32rem] flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10 md:p-5 lg:min-h-0" aria-label="Card Pool">
+        <section
+          className="flex min-h-[32rem] flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10 md:p-5 lg:min-h-0"
+          aria-label="Card Pool"
+        >
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
               <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Archive</div>
@@ -328,7 +328,9 @@ export function DeckEditor({
               ))}
             </fieldset>
             <fieldset className="flex flex-wrap items-center gap-3">
-              <legend className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('deckEditor.filterType')}</legend>
+              <legend className="text-[10px] uppercase tracking-[0.3em] text-bone/40">
+                {t('deckEditor.filterType')}
+              </legend>
               {TYPES.map((type) => (
                 <button
                   key={type}
@@ -391,7 +393,7 @@ export function DeckEditor({
             </nav>
           </div>
 
-          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-3 content-start gap-3 overflow-y-auto p-1 pr-2 sm:grid-cols-4 lg:grid-cols-5">
+          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-3 content-start gap-3 overflow-y-auto p-1 pr-2 md:grid-cols-4 lg:grid-cols-5">
             {visibleCards.map((card) => {
               const count = deckCounts.get(card.id) ?? 0;
               const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
@@ -485,7 +487,10 @@ export function DeckEditor({
             document.body,
           )}
 
-        <aside className="flex min-h-[24rem] flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 md:p-5 lg:min-h-0" aria-label="Active Deck">
+        <aside
+          className="flex min-h-[24rem] flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 md:p-5 lg:min-h-0"
+          aria-label="Active Deck"
+        >
           <div className="mb-3 flex items-end justify-between border-b border-bone/10 pb-3">
             <div className="min-w-0">
               <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Active Deck</div>
@@ -525,11 +530,18 @@ export function DeckEditor({
                 role="listitem"
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="font-mono text-[10px] text-gold" aria-label={`${t('card.energy')} ${card.powerCost}`}>{card.powerCost}</span>
+                  <span
+                    className="font-mono text-[10px] text-gold"
+                    aria-label={`${t('card.energy')} ${card.powerCost}`}
+                  >
+                    {card.powerCost}
+                  </span>
                   <span className="truncate font-display text-sm italic text-bone/80">{card.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-bone/40" aria-label={`${count} copies`}>×{count}</span>
+                  <span className="font-mono text-[10px] text-bone/40" aria-label={`${count} copies`}>
+                    ×{count}
+                  </span>
                   <button
                     type="button"
                     onClick={() => removeCard(firstIndex)}
@@ -562,6 +574,6 @@ export function DeckEditor({
           </div>
         </aside>
       </div>
-    </div>
+    </PageShell>
   );
 }

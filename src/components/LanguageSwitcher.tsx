@@ -1,4 +1,5 @@
 import { availableLocales, getLocaleLabel, setLocale, t, useLocale, type Locale } from '../i18n';
+import { Select } from './ui';
 
 export function LanguageSwitcher() {
   const locale = useLocale();
@@ -8,11 +9,11 @@ export function LanguageSwitcher() {
       className="inline-flex shrink-0 items-center gap-1.5"
       title={`${t('settings.language')}: ${getLocaleLabel(locale)}`}
     >
-      <span className="hidden text-[10px] uppercase tracking-[0.3em] text-bone/40 sm:inline">
+      <span className="hidden text-[10px] uppercase tracking-[0.3em] text-bone/40 md:inline">
         {t('settings.language')}
       </span>
-      <select
-        className="max-w-20 border border-bone/10 bg-lacquer-deep px-1.5 py-1 text-[9px] uppercase tracking-[0.12em] text-bone/60 focus:outline-none focus:ring-1 focus:ring-gold/40 sm:max-w-none sm:px-2 sm:text-[10px] sm:tracking-[0.3em]"
+      <Select
+        className="max-w-36 font-mono text-[10px] uppercase tracking-[0.3em] text-bone/60"
         value={locale}
         onChange={(event) => setLocale(event.target.value as Locale)}
         aria-label={t('settings.language')}
@@ -22,7 +23,7 @@ export function LanguageSwitcher() {
             {getLocaleLabel(option)}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }
