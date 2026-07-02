@@ -66,7 +66,7 @@ export function AppDrawer({
           ))}
           {onClose && (
             <Button
-              className="app-drawer-close size-9 p-0 tracking-normal"
+              className="app-drawer-close size-11 p-0 tracking-normal"
               variant="secondary"
               type="button"
               aria-label={t('common.close')}

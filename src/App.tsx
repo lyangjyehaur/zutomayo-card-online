@@ -169,15 +169,19 @@ function NavBar() {
           {t('nav.tutorial')}
         </button>
       </div>
-      <div className="flex h-12 items-center justify-between gap-3 md:hidden">
-        <button className="font-display text-base italic text-bone" type="button" onClick={() => goTo('/')}>
+      <div className="flex h-14 items-center justify-between gap-3 md:hidden">
+        <button
+          className="inline-flex min-h-11 items-center font-display text-base italic text-bone"
+          type="button"
+          onClick={() => goTo('/')}
+        >
           ZUTOMAYO
         </button>
         <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.24em] text-gold">
           {activeItem.label}
         </span>
         <button
-          className="inline-flex size-9 items-center justify-center rounded-sm text-bone/60 ring-1 ring-bone/10 transition hover:text-bone focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+          className="inline-flex size-11 items-center justify-center rounded-sm text-bone/60 ring-1 ring-bone/10 transition hover:text-bone focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
           type="button"
           aria-label={open ? t('common.close') : t('nav.primary')}
           aria-expanded={open}
@@ -187,13 +191,15 @@ function NavBar() {
         </button>
       </div>
       {open && (
-        <div className="fixed inset-0 top-12 z-[--z-modal] bg-lacquer-deep/80 p-4 backdrop-blur md:hidden">
+        <div className="fixed inset-0 top-14 z-[--z-modal] bg-lacquer-deep/80 p-4 backdrop-blur md:hidden">
           <div className="grid gap-2 rounded-md bg-lacquer p-3 ring-1 ring-bone/10 shadow-[--shadow]">
             {navItems.map((item) => (
               <button
                 key={item.path}
                 className={`flex min-h-11 items-center justify-between rounded-sm px-3 text-left font-mono text-[11px] uppercase tracking-[0.18em] transition ${
-                  location.pathname === item.path ? 'bg-gold text-lacquer' : 'text-bone/70 hover:bg-bone/5 hover:text-bone'
+                  location.pathname === item.path
+                    ? 'bg-gold text-lacquer'
+                    : 'text-bone/70 hover:bg-bone/5 hover:text-bone'
                 }`}
                 type="button"
                 onClick={() => goTo(item.path)}
