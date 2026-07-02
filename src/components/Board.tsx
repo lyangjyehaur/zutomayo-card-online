@@ -1,4 +1,5 @@
 import type { BoardProps } from 'boardgame.io/react';
+import { BookOpen, Info, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type {
@@ -1058,6 +1059,7 @@ function Slot({
     <div
       className={`battle-slot grid size-[88px] place-items-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)] ${onClick ? 'cursor-pointer transition hover:ring-gold/30' : ''}`}
       onClick={onClick}
+      onPointerDown={() => card && onFocusCard?.({ card, owner, zone: label ?? 'slot' })}
       onMouseEnter={() => card && onFocusCard?.({ card, owner, zone: label ?? 'slot' })}
       onMouseLeave={() => onFocusCard?.(null)}
     >
@@ -1140,6 +1142,7 @@ function FieldZone({
         className={slotClass}
         type="button"
         onClick={onClick}
+        onPointerDown={() => onFocusCard?.(focus)}
         onMouseEnter={() => onFocusCard?.(focus)}
         onFocus={() => onFocusCard?.(focus)}
       >
@@ -1149,7 +1152,12 @@ function FieldZone({
   }
 
   return (
-    <div className={slotClass} onMouseEnter={() => onFocusCard?.(focus)} onFocus={() => onFocusCard?.(focus)}>
+    <div
+      className={slotClass}
+      onPointerDown={() => onFocusCard?.(focus)}
+      onMouseEnter={() => onFocusCard?.(focus)}
+      onFocus={() => onFocusCard?.(focus)}
+    >
       {content}
     </div>
   );
@@ -1916,6 +1924,182 @@ export function BattleLogPanel({ G }: { G: GameState }) {
   );
 }
 
+type BattleSidePanel = 'focus' | 'log';
+
+function BattleFocusSidebarPanel({ focusedCard, G }: { focusedCard: FocusedCard; G: GameState }) {
+  const locale = useLocale();
+  const def = cardDefinition(focusedCard?.card ?? null);
+  const translatedEffect = getTranslatedEffect(def?.id ?? '', locale);
+
+  return (
+    <div className="battle-focus-panel rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Focus</span>
+        {focusedCard && (
+          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bone/35">
+            {playerName(focusedCard.owner)} · {focusedCard.zone}
+          </span>
+        )}
+      </div>
+      {focusedCard && def ? (
+        <>
+          <div className="aspect-[3/4] w-full overflow-hidden rounded-xs bg-gradient-to-br from-vermilion/30 via-lacquer-deep to-lacquer ring-1 ring-bone/10">
+            {def.image && (
+              <img
+                src={def.image}
+                alt=""
+                className="h-full w-full object-cover"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            )}
+          </div>
+          <div className="mt-3 font-display text-lg italic">{def.name}</div>
+          <div className="mt-1 font-mono text-[9px] uppercase tracking-widest text-bone/40">
+            {def.element} · {def.type}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px] text-bone/50">
+            <span>
+              ⚡ {t('card.energy')} <span className="text-gold">{def.powerCost}</span>
+            </span>
+            <span>
+              🕐 {t('card.clock')} <span className="text-gold">{def.clock}</span>
+            </span>
+            {def.attack && (
+              <>
+                <span>
+                  🌙 {t('card.night')} <span className="text-gold">{def.attack.night}</span>
+                </span>
+                <span>
+                  ☀️ {t('card.day')} <span className="text-gold">{def.attack.day}</span>
+                </span>
+              </>
+            )}
+            {focusedCard.zone === t('board.battleZone') && def.attack && (
+              <>
+                <span className="col-span-2 mt-1 border-t border-bone/10 pt-1">
+                  {t('board.hpChange.rawAttack' as never)}{' '}
+                  <span className="text-gold">{getBaseAttack(focusedCard.card, G, focusedCard.owner) ?? '—'}</span>
+                </span>
+                <span className="col-span-2">
+                  {t('board.hpChange.effectiveAttack' as never)}{' '}
+                  <span
+                    className={
+                      isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
+                        ? 'text-vermilion'
+                        : 'text-[var(--teal)]'
+                    }
+                  >
+                    {isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
+                      ? t('board.hpChange.insufficientPower' as never)
+                      : getEffectiveAttack(focusedCard.card, G, focusedCard.owner)}
+                  </span>
+                </span>
+              </>
+            )}
+            <span>
+              ⚡→ STP <span className="text-gold">{def.sendToPower ?? 0}</span>
+            </span>
+          </div>
+          {(translatedEffect || def.effect) && (
+            <p className="mt-3 text-[11px] leading-relaxed text-bone/50">{translatedEffect ?? def.effect}</p>
+          )}
+        </>
+      ) : (
+        <div className="aspect-[3/4] w-full rounded-xs bg-gradient-to-br from-vermilion/10 via-lacquer-deep to-lacquer ring-1 ring-bone/10" />
+      )}
+    </div>
+  );
+}
+
+function BattleLogSidebarPanel({ G }: { G: GameState }) {
+  const locale = useLocale();
+
+  return (
+    <div className="battle-log-panel flex min-h-0 flex-1 flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Log</span>
+        <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
+      </div>
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto font-mono text-[10px] leading-relaxed">
+        {(G.actionLog ?? [])
+          .slice(-20)
+          .reverse()
+          .map((entry) => {
+            const { segments, tone, breakdown } = formatLogEntry(entry, locale);
+            const toneClass =
+              tone === 'battle'
+                ? 'text-vermilion/80'
+                : tone === 'set'
+                  ? 'text-gold/60'
+                  : tone === 'effect'
+                    ? 'text-bone/70'
+                    : 'text-bone/40';
+            return (
+              <div key={entry.id}>
+                <p className={toneClass}>
+                  <span className="text-bone/20">T{entry.turn}</span> {renderLogSegments(segments)}
+                  {entry.hp && tone !== 'battle' && (
+                    <span className="text-bone/25">
+                      {' '}
+                      [{entry.hp[0]}/{entry.hp[1]}]
+                    </span>
+                  )}
+                  {typeof entry.chronosPosition === 'number' && (
+                    <span className="text-bone/25"> ⏱{entry.chronosPosition}/12</span>
+                  )}
+                </p>
+                {breakdown && <LogBreakdown breakdown={breakdown} />}
+              </div>
+            );
+          })}
+        {(!G.actionLog || G.actionLog.length === 0) && <p className="text-bone/20">{t('board.waitingOpponent')}</p>}
+      </div>
+    </div>
+  );
+}
+
+function BattleSideSheet({
+  activePanel,
+  focusedCard,
+  G,
+  onClose,
+}: {
+  activePanel: BattleSidePanel | null;
+  focusedCard: FocusedCard;
+  G: GameState;
+  onClose: () => void;
+}) {
+  if (!activePanel) return null;
+  const title = activePanel === 'focus' ? 'Focus' : 'Log';
+
+  return (
+    <div className="battle-side-sheet-overlay" role="presentation" onClick={onClose}>
+      <section
+        className="battle-side-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="battle-side-sheet-header">
+          <span>{title}</span>
+          <button className="battle-side-sheet-close" type="button" aria-label={t('common.close')} onClick={onClose}>
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </header>
+        <div className="battle-side-sheet-body">
+          {activePanel === 'focus' ? (
+            <BattleFocusSidebarPanel focusedCard={focusedCard} G={G} />
+          ) : (
+            <BattleLogSidebarPanel G={G} />
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel, selfLabel, onNoticeDismiss }: Props) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
@@ -1939,6 +2123,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
   const [handExpanded, setHandExpanded] = useState(true);
   const [phaseMessage, setPhaseMessage] = useState<FeedbackMessage | null>(null);
   const [focusedCard, setFocusedCard] = useState<FocusedCard>(null);
+  const [activeSidePanel, setActiveSidePanel] = useState<BattleSidePanel | null>(null);
   const [_damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -2094,6 +2279,26 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
         <div className="hidden shrink-0 items-center gap-3 font-mono text-[10px] uppercase tracking-[0.3em] lg:flex">
           <span className="text-bone/40">{currentInstruction.title}</span>
           <span className="text-gold">{currentInstruction.body}</span>
+        </div>
+        <div className="battle-side-panel-actions" aria-label="Battle panels">
+          <button
+            type="button"
+            aria-label="Focus"
+            aria-pressed={activeSidePanel === 'focus'}
+            onClick={() => setActiveSidePanel('focus')}
+          >
+            <Info className="size-4" aria-hidden="true" />
+            <span className="sr-only">Focus</span>
+          </button>
+          <button
+            type="button"
+            aria-label="Log"
+            aria-pressed={activeSidePanel === 'log'}
+            onClick={() => setActiveSidePanel('log')}
+          >
+            <BookOpen className="size-4" aria-hidden="true" />
+            <span className="sr-only">Log</span>
+          </button>
         </div>
       </header>
 
@@ -2391,6 +2596,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                       style={{ transform: `rotate(${rotate}deg) translateY(${translateY}px)` }}
                       data-tut-card={card.defId}
                       onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined}
+                      onPointerDown={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
                       onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
                       onMouseLeave={() => setFocusedCard(null)}
                     >
@@ -2591,6 +2797,12 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
         </div>
       )}
 
+      <BattleSideSheet
+        activePanel={activeSidePanel}
+        focusedCard={focusedCard}
+        G={G}
+        onClose={() => setActiveSidePanel(null)}
+      />
       <FeedbackOverlay message={phaseMessage} />
       <GameNoticeOverlay G={G} me={meIndex} onNoticeDismiss={onNoticeDismiss} />
     </div>

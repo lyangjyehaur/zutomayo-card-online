@@ -8592,6 +8592,111 @@ button.zone:focus-visible {
   min-height: 0;
 }
 
+.battle-side-panel-actions {
+  display: none;
+}
+
+.battle-side-panel-actions button,
+.battle-side-sheet-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid color-mix(in oklch, var(--bone) 12%, transparent);
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--lacquer-deep) 84%, transparent);
+  color: color-mix(in oklch, var(--bone) 72%, transparent);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.battle-side-panel-actions button:hover,
+.battle-side-panel-actions button:focus-visible,
+.battle-side-panel-actions button[aria-pressed='true'],
+.battle-side-sheet-close:hover,
+.battle-side-sheet-close:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklch, var(--gold) 50%, transparent);
+  background: color-mix(in oklch, var(--gold) 10%, var(--lacquer-deep));
+  color: var(--bone);
+}
+
+.battle-side-sheet-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 90 !important;
+  display: flex !important;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  background: rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(10px);
+}
+
+.battle-side-sheet {
+  display: flex;
+  width: min(100%, 42rem);
+  max-height: min(76dvh, 38rem);
+  min-height: min(22rem, 70dvh);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--bone) 12%, transparent);
+  border-radius: 8px 8px 2px 2px;
+  background: color-mix(in oklch, var(--lacquer-deep) 96%, transparent);
+  box-shadow: 0 -1.2rem 3rem rgba(0, 0, 0, 0.45);
+}
+
+.battle-side-sheet-header {
+  display: flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--bone) 8%, transparent);
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+}
+
+.battle-side-sheet-header span {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--gold) 72%, transparent);
+}
+
+.battle-side-sheet-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.battle-side-sheet .battle-focus-panel {
+  display: block;
+  width: 100%;
+}
+
+.battle-side-sheet .battle-log-panel {
+  min-height: min(56dvh, 24rem);
+  width: 100%;
+}
+
+.battle-side-sheet .battle-focus-panel,
+.battle-side-sheet .battle-log-panel {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.battle-side-sheet .battle-log-panel > div:first-child,
+.battle-side-sheet .battle-focus-panel > div:first-child > span:first-child {
+  display: none;
+}
+
 /* ---------- 18. 響應式 ---------- */
 @media (max-width: 768px) {
   .field-layout {
@@ -8721,8 +8826,15 @@ button.zone:focus-visible {
   }
 
   .board .battle-sidebar {
-    max-height: 18rem !important;
-    min-height: 12rem !important;
+    display: none !important;
+  }
+
+  .board .battle-side-panel-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.4rem;
+    margin-left: auto;
+    margin-right: 3.5rem;
   }
 }
 
@@ -8968,6 +9080,150 @@ button.zone:focus-visible {
   .board .legacy-secondary:hover {
     box-shadow: none !important;
     transform: none !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .board .battle-side-panel-actions {
+    margin-right: 3rem;
+  }
+
+  .board .battle-side-panel-actions button,
+  .board-pause-button,
+  .battle-side-sheet-close {
+    min-width: 2.75rem !important;
+    min-height: 2.75rem !important;
+  }
+
+  .battle-side-sheet-overlay {
+    padding-inline: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .battle-side-sheet {
+    width: 100%;
+    max-height: min(78dvh, 40rem);
+    border-radius: 8px 8px 0 0;
+  }
+
+  .battle-side-sheet .battle-focus-panel {
+    display: block !important;
+  }
+
+  .board > .board-effect-overlay {
+    align-items: flex-end !important;
+    pointer-events: auto !important;
+    justify-content: center !important;
+    padding: 0 0.5rem calc(0.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    background: rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(4px);
+  }
+
+  .board > .board-effect-overlay > div {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .board .effect-order-panel {
+    display: flex !important;
+    max-height: min(72dvh, 34rem) !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    border-radius: 8px 8px 2px 2px !important;
+    padding: 1rem !important;
+  }
+
+  .board .effect-order-heading {
+    flex: 0 0 auto;
+  }
+
+  .board .effect-order-panel > p,
+  .board .pending-choice-range {
+    flex: 0 0 auto;
+  }
+
+  .board .effect-order-list {
+    max-height: min(42dvh, 18rem) !important;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .board .pending-choice-panel .effect-order-list {
+    max-height: min(36dvh, 15rem) !important;
+  }
+
+  .board .effect-order-item {
+    min-height: 2.75rem;
+    padding: 0.7rem 0.75rem !important;
+  }
+
+  .board .pending-choice-footer {
+    position: sticky;
+    bottom: -1rem;
+    flex: 0 0 auto;
+    margin-inline: -1rem;
+    margin-bottom: -1rem;
+    padding: 0.75rem 1rem 1rem;
+    background: color-mix(in oklch, var(--lacquer-deep) 96%, transparent);
+  }
+
+  .board .pending-choice-footer button {
+    min-height: 2.75rem;
+  }
+}
+
+@media (max-height: 780px) and (min-width: 1024px) {
+  .board .battle-topbar {
+    height: 2.625rem !important;
+    min-height: 2.625rem !important;
+  }
+
+  .board .board-phase-instruction {
+    top: 3.2rem !important;
+  }
+
+  .board .board-phase-instruction > div {
+    padding-block: 0.45rem !important;
+  }
+
+  .board .battle-content-grid {
+    padding-top: 5.9rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+
+  .board .battle-opponent-area {
+    height: 10rem !important;
+    min-height: 9rem !important;
+    gap: 0.35rem !important;
+    padding-top: 0.15rem !important;
+  }
+
+  .board .battle-player-area {
+    height: 12.25rem !important;
+    min-height: 11.5rem !important;
+    gap: 0.35rem !important;
+    padding-bottom: 0 !important;
+  }
+
+  .board .battle-perspective-stage {
+    min-height: 6.75rem !important;
+    margin-block: 0 !important;
+    padding-block: 0.25rem !important;
+  }
+
+  .board .battle-hand-card {
+    width: 4.8rem !important;
+    height: 6.8rem !important;
+  }
+
+  .board .battle-action-stack button {
+    min-height: 2.35rem;
+    padding-block: 0.55rem !important;
+  }
+
+  .board .battle-focus-panel,
+  .board .battle-log-panel {
+    padding: 0.75rem !important;
   }
 }
 

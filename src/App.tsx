@@ -48,6 +48,9 @@ const LeaderboardPage = lazy(() =>
   import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
 );
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((module) => ({ default: module.FeedbackPage })));
+const BattleVisualQaPage = lazy(() =>
+  import('./pages/BattleVisualQaPage').then((module) => ({ default: module.BattleVisualQaPage })),
+);
 
 type OnlineRoomErrorKey =
   | 'online.roomFull'
@@ -121,6 +124,7 @@ function NavBar() {
   // 全螢幕單屏頁面有自己的 Header，不需要 NavBar
   if (
     location.pathname.startsWith('/play/') ||
+    location.pathname.startsWith('/qa/') ||
     location.pathname === '/' ||
     location.pathname === '/online' ||
     location.pathname === '/ai'
@@ -438,6 +442,7 @@ function RouterShell() {
   // 全螢幕單屏頁面（首頁/線上/電腦/對戰中）有自己的 Header，不需要 NavBar 和 padding
   const hideNav =
     location.pathname.startsWith('/play/') ||
+    location.pathname.startsWith('/qa/') ||
     location.pathname === '/' ||
     location.pathname === '/online' ||
     location.pathname === '/ai';
@@ -513,6 +518,7 @@ function RouterShell() {
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/admin/i18n" element={<I18nManager />} />
+            <Route path="/qa/battle" element={<BattleVisualQaPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>
