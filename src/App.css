@@ -8679,7 +8679,7 @@ button.zone:focus-visible {
 
 .battle-side-sheet-tab {
   display: inline-flex;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -8689,6 +8689,10 @@ button.zone:focus-visible {
   padding: 0.45rem 0.7rem;
   background: color-mix(in oklch, var(--lacquer-deep) 72%, transparent);
   color: color-mix(in oklch, var(--bone) 58%, transparent);
+}
+
+.battle-side-sheet-tab span {
+  color: inherit;
 }
 
 .battle-side-sheet-tab[aria-selected='true'] {
