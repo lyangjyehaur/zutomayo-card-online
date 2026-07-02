@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { SmilePlus } from 'lucide-react';
 import { t, useLocale, type TranslationKey } from '../i18n';
 import { getProfile, isLoggedIn } from '../api/client';
 import {
@@ -325,11 +326,16 @@ export function FeedbackPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <Button type="button" onClick={() => setShowSubmit((v) => !v)}>
+        <Button type="button" className="feedback-submit-toggle" onClick={() => setShowSubmit((v) => !v)}>
           {t('feedback.submitNew')}
         </Button>
         {adminMode && (
-          <Button type="button" variant="secondary" onClick={() => setShowTagPanel((v) => !v)}>
+          <Button
+            type="button"
+            className="feedback-tag-toggle"
+            variant="secondary"
+            onClick={() => setShowTagPanel((v) => !v)}
+          >
             {t('feedback.tagManage')}
           </Button>
         )}
@@ -707,6 +713,7 @@ function PostDetailModal({
   const [showDupPanel, setShowDupPanel] = useState(false);
   const [dupSearch, setDupSearch] = useState('');
   const [dupResults, setDupResults] = useState<SimilarPost[]>([]);
+  const [openReactionPickerCommentId, setOpenReactionPickerCommentId] = useState<string | null>(null);
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async () => {
@@ -809,6 +816,7 @@ function PostDetailModal({
     });
     try {
       await toggleFeedbackCommentReaction(commentId, emoji);
+      setOpenReactionPickerCommentId(null);
     } catch {
       await load();
     }
@@ -1196,7 +1204,24 @@ function PostDetailModal({
                                 {r.emoji} <span className="font-mono">{r.count}</span>
                               </button>
                             ))}
-                            <div className="reaction-picker">
+                            <button
+                              type="button"
+                              className="reaction-add-button"
+                              aria-label={t('feedback.addReaction')}
+                              aria-expanded={openReactionPickerCommentId === c.id}
+                              onClick={() =>
+                                setOpenReactionPickerCommentId((current) => (current === c.id ? null : c.id))
+                              }
+                              title={t('feedback.addReaction')}
+                            >
+                              <SmilePlus className="size-3.5" aria-hidden="true" />
+                            </button>
+                            <div
+                              className={
+                                'reaction-picker' +
+                                (openReactionPickerCommentId === c.id ? ' reaction-picker-open' : '')
+                              }
+                            >
                               {(['👍', '❤️', '🎉', '😄', '😕', '👎'] as const).map((emoji) => (
                                 <button
                                   key={emoji}

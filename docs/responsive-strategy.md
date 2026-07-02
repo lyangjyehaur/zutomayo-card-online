@@ -486,6 +486,7 @@ Completed in the current responsive pass:
 - `LobbyPage`: low-height desktop uses compact entry cards and footer spacing so the first screen no longer crowds the primary entry cards.
 - `OnlineLobbyPage`: disabled quick-match/create-room guidance is visible on touch layouts instead of relying on hover-only tooltips.
 - `AILobbyPage`: stacked tablet/phone layout uses tighter vertical rhythm before the desktop split activates.
+- `FeedbackPage`: mobile toolbar uses a compact sort rail and full-width primary action; comment reactions now have an explicit tap target instead of hover-only access.
 
 ## Acceptance Criteria
 

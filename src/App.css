@@ -9572,30 +9572,46 @@ button.zone:focus-visible {
 
   .feedback-toolbar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.55rem;
   }
 
   .sort-tabs {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-column: 1 / -1;
+    display: flex;
     width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .sort-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .sort-tab {
+    min-width: max-content;
     min-height: 2.5rem;
-    overflow: hidden;
-    padding: 0.45rem 0.25rem;
-    text-overflow: ellipsis;
+    padding: 0.45rem 0.65rem;
     white-space: nowrap;
     font-size: 0.66rem;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
   }
 
   .feedback-toolbar .status-filter,
-  .feedback-toolbar .search-input,
   .feedback-toolbar > button {
     width: 100%;
+  }
+
+  .feedback-toolbar .search-input {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .feedback-toolbar .feedback-submit-toggle,
+  .feedback-toolbar .feedback-tag-toggle {
+    grid-column: 1 / -1;
   }
 
   .feedback-card {
@@ -10207,6 +10223,21 @@ button.zone:focus-visible {
   .upload-hint {
     line-height: 1.5;
   }
+
+  .reaction-group {
+    gap: 0.3rem;
+  }
+
+  .reaction-chip,
+  .reaction-add-button {
+    min-height: 2rem;
+  }
+
+  .reaction-picker {
+    position: static;
+    width: 100%;
+    margin-top: 0.25rem;
+  }
 }
 
 .reaction-group {
@@ -10233,10 +10264,27 @@ button.zone:focus-visible {
 .reaction-chip:hover {
   border-color: var(--gold, #c9a96e);
 }
+.reaction-add-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border: 1px solid var(--line-soft, rgba(232, 220, 200, 0.15));
+  border-radius: 999rem;
+  background: var(--panel, rgba(20, 18, 24, 0.4));
+  color: var(--bone-soft, rgba(232, 220, 200, 0.55));
+  cursor: pointer;
+}
+.reaction-add-button:hover,
+.reaction-add-button[aria-expanded='true'] {
+  border-color: var(--gold, #c9a96e);
+  color: var(--gold, #c9a96e);
+}
 .reaction-picker {
   display: none;
   position: absolute;
-  top: 100%;
+  top: calc(100% + 0.3rem);
   left: 0;
   background: var(--panel, rgba(20, 18, 24, 0.95));
   border: 1px solid var(--line-soft, rgba(232, 220, 200, 0.15));
@@ -10250,11 +10298,16 @@ button.zone:focus-visible {
 .reaction-group:hover .reaction-picker {
   display: flex;
 }
+.reaction-picker.reaction-picker-open {
+  display: flex;
+}
 .reaction-picker-button {
   background: none;
   border: none;
   font-size: 1rem;
   cursor: pointer;
+  min-width: 2rem;
+  min-height: 2rem;
   padding: 0.15rem;
   border-radius: 0.25rem;
 }
