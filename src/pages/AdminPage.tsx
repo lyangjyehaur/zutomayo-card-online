@@ -676,9 +676,20 @@ export function AdminPage() {
   const selectedMeta = selectedCard ? metaById.get(selectedCard.id) : null;
   const CardModal =
     selectedCard && selectedMeta ? (
-      <Dialog open onOpenChange={(open) => !open && setSelectedCard(null)} title={selectedCard.name} size="lg">
+      <Dialog
+        open
+        onOpenChange={(open) => !open && setSelectedCard(null)}
+        title={selectedCard.name}
+        size="lg"
+        className="admin-card-dialog"
+        footer={
+          <Button variant="secondary" type="button" onClick={() => setSelectedCard(null)}>
+            關閉
+          </Button>
+        }
+      >
         <div className="grid gap-4">
-          <div className="flex items-center gap-3">
+          <div className="admin-card-modal-summary flex items-center gap-3">
             <img
               src={selectedCard.image}
               alt={selectedCard.name}
@@ -690,7 +701,7 @@ export function AdminPage() {
               <p className="font-mono text-xs opacity-70">{selectedCard.id}</p>
             </div>
           </div>
-          <div role="tablist" className="mt-4 flex flex-wrap gap-2">
+          <div role="tablist" className="admin-card-modal-tabs mt-4 flex flex-wrap gap-2">
             {(
               [
                 ['basic', '基本資訊'],
@@ -722,11 +733,6 @@ export function AdminPage() {
             )}
             {modalTab === 'engine' && <EffectInspector meta={selectedMeta} />}
             {modalTab === 'i18n' && <I18nEditor cardId={selectedCard.id} />}
-          </div>
-          <div className="flex justify-end">
-            <Button variant="secondary" type="button" onClick={() => setSelectedCard(null)}>
-              關閉
-            </Button>
           </div>
         </div>
       </Dialog>

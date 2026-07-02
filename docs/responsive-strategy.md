@@ -493,7 +493,8 @@ Completed in the current responsive pass:
 - `FeedbackPage`: post detail uses a phone sheet with sticky close affordance and internal scrolling instead of a tall page-scrolling modal.
 - `Board`: below desktop width, the secondary side surface is now a tabbed sheet with Focus, Status, and Log panels instead of separate one-off drawers.
 - `I18nManager`: phone translation editing now opens a shared Sheet with textarea and sticky actions, while desktop keeps inline table editing.
-- `NavBar`: phone header touch targets now meet the shared 44px floor, with the mobile Drawer offset matching the taller nav row.
+- `NavBar`: phone and tablet header touch targets now meet the shared 44px floor, with the mobile Drawer offset matching the taller nav row.
+- `AdminPage`: card edit dialog now uses a near full-height sheet layout below desktop width with sticky footer actions and 44px modal controls.
 
 ## Acceptance Criteria
 

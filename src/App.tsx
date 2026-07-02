@@ -143,7 +143,7 @@ function NavBar() {
 
   const activeItem = navItems.find((item) => item.path === location.pathname) ?? navItems[0];
   const buttonClass = (path: string) =>
-    `rounded-sm px-2 py-2 text-[10px] uppercase tracking-[0.24em] transition-colors md:px-0 md:py-0 md:tracking-[0.3em] ${
+    `rounded-sm px-2 py-2 text-[10px] uppercase tracking-[0.24em] transition-colors md:min-h-11 md:px-2 md:py-0 md:tracking-[0.3em] ${
       location.pathname === path ? 'text-gold' : 'text-bone/50 hover:text-bone'
     }`;
 
@@ -191,7 +191,7 @@ function NavBar() {
         </button>
       </div>
       {open && (
-        <div className="fixed inset-0 top-14 z-[--z-modal] bg-lacquer-deep/80 p-4 backdrop-blur md:hidden">
+        <div className="fixed inset-0 top-14 z-[var(--z-modal)] bg-lacquer-deep/80 p-4 backdrop-blur md:hidden">
           <div className="grid gap-2 rounded-md bg-lacquer p-3 ring-1 ring-bone/10 shadow-[--shadow]">
             {navItems.map((item) => (
               <button

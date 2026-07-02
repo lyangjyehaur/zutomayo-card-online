@@ -85,6 +85,38 @@
   .admin-filter-row > button {
     min-height: 2.5rem;
   }
+
+  .admin-card-dialog {
+    width: min(100%, 56rem) !important;
+    max-width: min(100%, 56rem) !important;
+    max-height: calc(100dvh - 1.5rem) !important;
+  }
+
+  .admin-card-dialog > header,
+  .admin-card-dialog > footer {
+    flex: 0 0 auto;
+  }
+
+  .admin-card-modal-tabs {
+    flex-wrap: nowrap !important;
+    margin-inline: -0.25rem;
+    overflow-x: auto;
+    padding-inline: 0.25rem;
+    padding-bottom: 0.2rem;
+    overscroll-behavior-x: contain;
+  }
+
+  .admin-card-modal-tabs > button,
+  .admin-card-dialog footer button,
+  .admin-card-modal-body button {
+    min-height: 2.75rem;
+  }
+
+  .admin-card-modal-body input,
+  .admin-card-modal-body select,
+  .admin-card-modal-body textarea {
+    min-height: 2.75rem;
+  }
 }
 
 @media (max-width: 767px) {
@@ -218,6 +250,37 @@
   .admin-responsive-table td .flex {
     flex-wrap: wrap;
     justify-content: flex-start;
+  }
+
+  .admin-card-dialog {
+    height: calc(100dvh - 2rem) !important;
+    max-height: calc(100dvh - 2rem) !important;
+    border-radius: 8px 8px 0 0 !important;
+  }
+
+  .admin-card-dialog > header {
+    padding: 1rem 3.75rem 0.85rem 1rem !important;
+  }
+
+  .admin-card-dialog > div {
+    padding: 1rem !important;
+  }
+
+  .admin-card-dialog > footer {
+    padding: 0.85rem 1rem calc(0.85rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .admin-card-dialog > footer button {
+    width: 100%;
+  }
+
+  .admin-card-modal-summary {
+    align-items: flex-start;
+  }
+
+  .admin-card-modal-summary img {
+    height: 4.25rem !important;
+    width: 3rem !important;
   }
 
   .admin-card-modal-body {

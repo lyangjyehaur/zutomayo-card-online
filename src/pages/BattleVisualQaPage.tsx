@@ -462,7 +462,7 @@ function createQaCtx(G: GameState): BoardComponentProps['ctx'] {
 
 function QaControls({ selectedState }: { selectedState: BattleQaStateId }) {
   return (
-    <aside className="fixed bottom-3 left-3 z-[--z-modal] max-w-[calc(100vw-1.5rem)] rounded-sm border border-bone/10 bg-lacquer-deep/90 p-2 font-mono text-[10px] uppercase tracking-[0.18em] text-bone/55 shadow-[--shadow] backdrop-blur">
+    <aside className="fixed bottom-3 left-3 z-[var(--z-modal)] max-w-[calc(100vw-1.5rem)] rounded-sm border border-bone/10 bg-lacquer-deep/90 p-2 font-mono text-[10px] uppercase tracking-[0.18em] text-bone/55 shadow-[--shadow] backdrop-blur">
       <div className="mb-1 text-gold/70">Battle QA</div>
       <div className="flex flex-wrap gap-1">
         {BATTLE_QA_STATES.map((state) => (

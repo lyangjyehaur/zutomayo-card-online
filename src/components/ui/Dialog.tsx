@@ -54,7 +54,7 @@ export function Dialog({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-[--z-modal] flex overflow-y-auto bg-lacquer-deep/80 p-4 backdrop-blur',
+        'fixed inset-0 z-[var(--z-modal)] flex overflow-y-auto bg-lacquer-deep/80 p-4 backdrop-blur',
         mobilePresentation === 'sheet' ? 'items-end justify-center md:items-center' : 'items-center justify-center',
       )}
       onMouseDown={(event) => {
@@ -77,7 +77,7 @@ export function Dialog({
           <button
             type="button"
             aria-label={closeLabel}
-            className="absolute right-3 top-3 inline-flex size-8 items-center justify-center rounded-sm text-bone/50 transition hover:text-vermilion focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer"
+            className="absolute right-3 top-3 inline-flex size-11 items-center justify-center rounded-sm text-bone/50 transition hover:text-vermilion focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer"
             onClick={() => onOpenChange?.(false)}
           >
             <X className="size-4" aria-hidden="true" />
@@ -97,7 +97,12 @@ export function Dialog({
             )}
           </header>
         )}
-        <div className={cn('min-h-0 flex-1 overflow-y-auto', title || description ? 'p-4 md:p-6' : 'p-4 pr-12 md:p-6 md:pr-12')}>
+        <div
+          className={cn(
+            'min-h-0 flex-1 overflow-y-auto',
+            title || description ? 'p-4 md:p-6' : 'p-4 pr-12 md:p-6 md:pr-12',
+          )}
+        >
           {children}
         </div>
         {footer && (
