@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   fetchServerVersion,
+  getPendingPwaUpdate,
   PWA_RECOVER_REQUESTED_EVENT,
   PWA_UPDATE_READY_EVENT,
   recoverPwaAndReload,
@@ -11,7 +12,7 @@ import { APP_VERSION_INFO, type AppVersionInfo } from '../version';
 import { AppDrawer } from './AppDrawer';
 
 export function PwaStatusPrompt() {
-  const [updateReady, setUpdateReady] = useState<PwaUpdateReadyDetail | null>(null);
+  const [updateReady, setUpdateReady] = useState<PwaUpdateReadyDetail | null>(() => getPendingPwaUpdate());
   const [latestVersion, setLatestVersion] = useState<AppVersionInfo | null>(null);
   const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
   const [isRecoverPromptOpen, setIsRecoverPromptOpen] = useState(false);

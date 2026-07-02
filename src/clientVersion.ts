@@ -9,16 +9,22 @@ export interface PwaUpdateReadyDetail {
 }
 
 let currentApplyUpdate: (() => void) | null = null;
+let pendingUpdateReady: PwaUpdateReadyDetail | null = null;
 
 function dispatchPwaUpdateReady(): void {
   if (typeof window === 'undefined') return;
+  pendingUpdateReady = {
+    applyUpdate: currentApplyUpdate ?? reloadForAppUpdate,
+  };
   window.dispatchEvent(
     new CustomEvent<PwaUpdateReadyDetail>(PWA_UPDATE_READY_EVENT, {
-      detail: {
-        applyUpdate: currentApplyUpdate ?? reloadForAppUpdate,
-      },
+      detail: pendingUpdateReady,
     }),
   );
+}
+
+export function getPendingPwaUpdate(): PwaUpdateReadyDetail | null {
+  return pendingUpdateReady;
 }
 
 export class VersionMismatchError extends Error {
@@ -91,6 +97,9 @@ export function registerPwaAutoUpdate(): void {
   const updateSW = registerSW({
     immediate: true,
     onNeedRefresh() {
+      currentApplyUpdate = () => {
+        void updateSW(true);
+      };
       dispatchPwaUpdateReady();
     },
     onRegisteredSW(_swUrl, registration) {
