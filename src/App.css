@@ -8665,6 +8665,38 @@ button.zone:focus-visible {
   padding: 0.5rem 0.75rem 0.5rem 1rem;
 }
 
+.battle-side-sheet-tabs {
+  display: flex;
+  min-width: 0;
+  gap: 0.35rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.battle-side-sheet-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.battle-side-sheet-tab {
+  display: inline-flex;
+  min-height: 2.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid color-mix(in oklch, var(--bone) 10%, transparent);
+  border-radius: 2px;
+  padding: 0.45rem 0.7rem;
+  background: color-mix(in oklch, var(--lacquer-deep) 72%, transparent);
+  color: color-mix(in oklch, var(--bone) 58%, transparent);
+}
+
+.battle-side-sheet-tab[aria-selected='true'] {
+  border-color: color-mix(in oklch, var(--gold) 52%, transparent);
+  background: color-mix(in oklch, var(--gold) 12%, var(--lacquer-deep));
+  color: var(--bone);
+}
+
 .battle-side-sheet-header span {
   font-family: var(--font-mono);
   font-size: 0.68rem;
@@ -8691,15 +8723,21 @@ button.zone:focus-visible {
   width: 100%;
 }
 
+.battle-side-sheet .battle-status-panel {
+  width: 100%;
+}
+
 .battle-side-sheet .battle-focus-panel,
-.battle-side-sheet .battle-log-panel {
+.battle-side-sheet .battle-log-panel,
+.battle-side-sheet .battle-status-panel {
   background: transparent !important;
   box-shadow: none !important;
   padding: 0 !important;
 }
 
 .battle-side-sheet .battle-log-panel > div:first-child,
-.battle-side-sheet .battle-focus-panel > div:first-child > span:first-child {
+.battle-side-sheet .battle-focus-panel > div:first-child > span:first-child,
+.battle-side-sheet .battle-status-panel > div:first-child {
   display: none;
 }
 

@@ -491,6 +491,7 @@ Completed in the current responsive pass:
 - `MatchHistory`: phone headers, pagination, and record actions now wrap into compact two-column controls instead of crowding one row.
 - `AdminPage`: card-management filters now collapse behind a phone/tablet filter toggle below desktop width while wider desktop keeps the full filter panel visible.
 - `FeedbackPage`: post detail uses a phone sheet with sticky close affordance and internal scrolling instead of a tall page-scrolling modal.
+- `Board`: below desktop width, the secondary side surface is now a tabbed sheet with Focus, Status, and Log panels instead of separate one-off drawers.
 
 ## Acceptance Criteria
 
