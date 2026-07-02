@@ -145,6 +145,9 @@ input {
 }
 
 button {
+  appearance: none;
+  background: transparent;
+  border: 0;
   color: inherit;
   cursor: pointer;
 }
