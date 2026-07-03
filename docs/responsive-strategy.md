@@ -522,7 +522,7 @@ Completed in the current responsive pass:
 - `CardBrowser`: Deck Builder preview controls now open a shared detail sheet on touch/small-screen layouts, while desktop hover/focus
   preview keeps the lightweight popover.
 - `AdminPage`: authenticated responsive visual QA now has a repo script (`npm run smoke:admin-responsive`) covering card admin filters,
-  mobile filter expansion, tablet portrait, tablet landscape, and low-width phone viewports.
+  mobile filter expansion, users/matches DataList tables, tablet portrait, tablet landscape, and low-width phone viewports.
 - `DataList`: shared `DataListTable` and `DataListCell` primitives now back Admin users/matches tables while preserving the existing
   mobile card-row presentation and table data flow.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,

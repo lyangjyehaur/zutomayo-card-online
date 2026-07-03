@@ -10,11 +10,16 @@ const port = Number(process.env.CDP_PORT ?? 9899);
 const profileDir = `/private/tmp/zutomayo-admin-responsive-profile-${process.pid}-${Date.now()}`;
 
 const cases = [
-  { name: 'admin-360x740', width: 360, height: 740 },
-  { name: 'admin-360x740-open-filters', width: 360, height: 740, openFilters: true },
-  { name: 'admin-390x844', width: 390, height: 844 },
-  { name: 'admin-768x1024', width: 768, height: 1024 },
-  { name: 'admin-1024x768', width: 1024, height: 768 },
+  { name: 'admin-360x740', width: 360, height: 740, surface: 'cards' },
+  { name: 'admin-360x740-open-filters', width: 360, height: 740, surface: 'cards', openFilters: true },
+  { name: 'admin-390x844', width: 390, height: 844, surface: 'cards' },
+  { name: 'admin-768x1024', width: 768, height: 1024, surface: 'cards' },
+  { name: 'admin-1024x768', width: 1024, height: 768, surface: 'cards' },
+  { name: 'admin-users-360x740', width: 360, height: 740, surface: 'table', tab: '使用者' },
+  { name: 'admin-matches-360x740', width: 360, height: 740, surface: 'table', tab: '對戰' },
+  { name: 'admin-users-390x844', width: 390, height: 844, surface: 'table', tab: '使用者' },
+  { name: 'admin-matches-768x1024', width: 768, height: 1024, surface: 'table', tab: '對戰' },
+  { name: 'admin-users-1024x768', width: 1024, height: 768, surface: 'table', tab: '使用者' },
 ];
 
 await fs.mkdir(outDir, { recursive: true });
@@ -139,6 +144,55 @@ async function waitForSelector(client, selector, timeoutMs = 12000) {
 const setupAuth = `
 (() => {
   sessionStorage.setItem('zutomayo_admin_token', 'responsive-smoke-admin');
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input.url;
+    if (url.includes('/api/admin/users')) {
+      return new Response(JSON.stringify({
+        users: [
+          {
+            id: 'user_very_long_identifier_0000000000001',
+            email: 'very.long.admin.visual.qa.user@example-card-online.test',
+            nickname: '觸控測試管理者',
+            elo: 1532,
+            matchCount: 128,
+            wins: 73,
+            winRate: 57,
+            createdAt: '2026-07-03T00:00:00.000Z',
+          },
+          {
+            id: 'user_mobile_layout_0002',
+            email: 'mobile@example.test',
+            nickname: 'Mobile QA',
+            elo: 989,
+            matchCount: 8,
+            wins: 2,
+            winRate: 25,
+            createdAt: '2026-07-03T00:00:00.000Z',
+          },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('/api/admin/matches')) {
+      return new Response(JSON.stringify({
+        matches: [
+          {
+            id: 'match_extremely_long_identifier_for_responsive_table_0001',
+            winnerId: 'winner_long_id',
+            winnerNickname: '勝者暱稱很長但應該換行',
+            loserId: 'loser_long_id',
+            loserNickname: '敗者暱稱',
+            winnerEloChange: 24,
+            loserEloChange: -24,
+            turns: 12,
+            duration: 731,
+            createdAt: '2026-07-03T01:23:45.000Z',
+          },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    return originalFetch(input, init);
+  };
 })()
 `;
 
@@ -190,6 +244,51 @@ const pageMetrics = `
 })()
 `;
 
+const tableMetrics = `
+(() => {
+  const isVisible = (el) => {
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+  };
+  const box = (el) => {
+    const rect = el.getBoundingClientRect();
+    return {
+      text: (el.textContent || el.getAttribute('aria-label') || '').trim().replace(/\\s+/g, ' ').slice(0, 90),
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      right: Math.round(rect.right),
+      bottom: Math.round(rect.bottom),
+      visible: isVisible(el),
+      overflowX: el.scrollWidth > el.clientWidth + 1,
+      offscreenX: rect.left < -1 || rect.right > innerWidth + 1,
+    };
+  };
+  const visible = (selector) => [...document.querySelectorAll(selector)].filter(isVisible).map(box);
+  const targets = visible('.admin-responsive-table button, .admin-responsive-table input');
+  return {
+    viewport: { width: innerWidth, height: innerHeight },
+    doc: {
+      width: document.documentElement.scrollWidth,
+      height: document.documentElement.scrollHeight,
+      overflowX: document.documentElement.scrollWidth > innerWidth + 1 || document.body.scrollWidth > innerWidth + 1,
+      overflowY: document.documentElement.scrollHeight > innerHeight + 1,
+    },
+    rows: visible('.admin-responsive-table tbody tr').slice(0, 5),
+    cells: visible('.admin-responsive-table td').slice(0, 14),
+    controls: targets,
+    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40),
+    offscreen: [...document.querySelectorAll('.admin-responsive-table, .admin-responsive-table *')]
+      .filter(isVisible)
+      .map(box)
+      .filter((item) => item.offscreenX)
+      .slice(0, 20),
+  };
+})()
+`;
+
 function failuresFor(testCase, metrics) {
   const failures = [];
   if (metrics.doc.overflowX) failures.push('document overflowX');
@@ -201,6 +300,22 @@ function failuresFor(testCase, metrics) {
     failures.push(
       `small touch targets: ${metrics.smallTargets
         .map((item) => item.text || `${item.width}x${item.height}`)
+        .slice(0, 8)
+        .join(', ')}`,
+    );
+  }
+  return [...new Set(failures)];
+}
+
+function tableFailuresFor(metrics) {
+  const failures = [];
+  if (metrics.doc.overflowX) failures.push('document overflowX');
+  if (!metrics.rows.length) failures.push('no visible table rows');
+  if (metrics.offscreen.length) failures.push(`offscreen table items: ${metrics.offscreen.length}`);
+  if (metrics.smallTargets.length) {
+    failures.push(
+      `small table controls: ${metrics.smallTargets
+        .map((item) => `${item.text || 'control'} ${item.width}x${item.height}`)
         .slice(0, 8)
         .join(', ')}`,
     );
@@ -237,19 +352,30 @@ try {
       client,
       `history.pushState({}, '', '/admin'); window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));`,
     );
-    await waitForSelector(client, '.admin-card-grid');
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    if (testCase.openFilters) {
-      await evalChecked(client, `document.querySelector('.admin-mobile-filter-summary button')?.click()`);
-      await new Promise((resolve) => setTimeout(resolve, 400));
+    if (testCase.surface === 'table') {
+      await waitForSelector(client, '[role="tab"]');
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      await evalChecked(
+        client,
+        `[...document.querySelectorAll('[role="tab"]')].find((button) => button.textContent.trim() === ${JSON.stringify(testCase.tab)})?.click()`,
+      );
+      await waitForSelector(client, '.admin-responsive-table tbody tr');
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    } else {
+      await waitForSelector(client, '.admin-card-grid');
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      if (testCase.openFilters) {
+        await evalChecked(client, `document.querySelector('.admin-mobile-filter-summary button')?.click()`);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
     }
 
-    const metricsResult = await evalChecked(client, pageMetrics);
+    const metricsResult = await evalChecked(client, testCase.surface === 'table' ? tableMetrics : pageMetrics);
     const metrics = metricsResult.result.value;
     const screenshot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     const screenshotPath = `${outDir}/${testCase.name}.png`;
     await fs.writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'));
-    const failures = failuresFor(testCase, metrics);
+    const failures = testCase.surface === 'table' ? tableFailuresFor(metrics) : failuresFor(testCase, metrics);
     if (failures.length) exitCode = 1;
     results.push({ ...testCase, screenshot: screenshotPath, metrics, failures });
   }
