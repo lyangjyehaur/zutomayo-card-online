@@ -8756,6 +8756,14 @@ button.zone:focus-visible {
   display: none;
 }
 
+.battle-layout-workspace,
+.battle-layout-field,
+.battle-opponent-hud,
+.battle-player-command-dock,
+.battle-layout-sidebar {
+  min-width: 0;
+}
+
 /* ---------- 18. 響應式 ---------- */
 @media (max-width: 768px) {
   .field-layout {
@@ -9028,6 +9036,39 @@ button.zone:focus-visible {
     overflow-x: hidden !important;
   }
 
+  .board .battle-opponent-hud {
+    width: 100%;
+    flex-wrap: nowrap !important;
+    justify-content: space-between !important;
+    gap: 0.75rem !important;
+    border: 1px solid color-mix(in oklch, var(--bone) 8%, transparent);
+    border-radius: 4px;
+    background: color-mix(in oklch, var(--lacquer-deep) 78%, transparent);
+    padding: 0.55rem 0.65rem;
+    backdrop-filter: blur(12px);
+  }
+
+  .board .battle-opponent-hud > .text-right {
+    min-width: 0;
+    flex: 0 1 auto;
+    text-align: left;
+  }
+
+  .board .battle-opponent-hud > .text-right > .font-display {
+    max-width: 9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: clamp(1rem, 4.5vw, 1.2rem);
+  }
+
+  .board .battle-opponent-hud [data-tut='opponent-hp'] {
+    width: auto !important;
+    min-width: 8rem;
+    max-width: 14rem;
+    flex: 1 1 8rem;
+  }
+
   .board .battle-player-area {
     width: 100% !important;
     min-width: 0 !important;
@@ -9037,6 +9078,32 @@ button.zone:focus-visible {
     justify-content: flex-start !important;
     padding-bottom: 0.15rem !important;
     overflow-x: hidden !important;
+  }
+
+  .board .battle-player-command-dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    width: calc(100% + 0.5rem) !important;
+    margin-inline: -0.25rem;
+    border: 1px solid color-mix(in oklch, var(--bone) 8%, transparent);
+    border-radius: 6px 6px 2px 2px;
+    background: color-mix(in oklch, var(--lacquer-deep) 90%, transparent);
+    padding: 0.55rem !important;
+    box-shadow: 0 -0.8rem 1.8rem rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(14px);
+  }
+
+  .board .battle-player-command-dock [data-tut='player-hp'] {
+    order: 1;
+  }
+
+  .board .battle-player-command-dock .battle-hand-row {
+    order: 2;
+  }
+
+  .board .battle-player-command-dock .battle-action-stack {
+    order: 3;
   }
 
   .board .battle-zone-strip {
@@ -9241,8 +9308,21 @@ button.zone:focus-visible {
   }
 
   .board .battle-hand-card {
-    width: 3.95rem !important;
-    height: 5.25rem !important;
+    width: 3.8rem !important;
+    height: 5rem !important;
+  }
+
+  .board .battle-player-area {
+    min-height: 14.75rem !important;
+    gap: 0.35rem !important;
+  }
+
+  .board .battle-player-command-dock {
+    padding: 0.45rem !important;
+  }
+
+  .board .battle-hand-row {
+    padding-bottom: 0 !important;
   }
 }
 

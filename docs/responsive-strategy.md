@@ -512,6 +512,7 @@ Completed in the current responsive pass:
 - `FeedbackPage`: tag management delete actions now use the shared 44px touch target floor inside the mobile sheet and desktop management panel.
 - `NavBar`: tablet and desktop nav labels now enforce both 44px height and width, so short labels no longer fall below the shared touch target floor.
 - `DeckEditor`: phone/tablet card browser controls now include a compact validation summary beside the filter summary, keeping deck validity reachable without opening the active deck sheet.
+- `Board`: battle view now has a presentational `BoardLayout` wrapper plus named compact HUD/command-dock regions, so phone layouts can keep opponent status and player hand/actions grouped without forking game logic.
 
 ## Acceptance Criteria
 

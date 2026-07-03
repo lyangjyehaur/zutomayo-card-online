@@ -2143,6 +2143,27 @@ const BATTLE_SIDE_PANELS: Array<{
   { id: 'log', label: 'Log', Icon: BookOpen },
 ];
 
+function BoardLayout({
+  time,
+  handExpanded,
+  children,
+}: {
+  time: ChronosTime;
+  handExpanded: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`board battle-layout chrono-${time} ${
+        handExpanded ? 'drawer-expanded' : 'drawer-collapsed'
+      } !block relative h-full min-h-0 w-full overflow-hidden bg-lacquer-deep text-bone font-sans`}
+      data-board-layout="responsive"
+    >
+      {children}
+    </div>
+  );
+}
+
 function BattleSideSheet({
   activePanel,
   focusedCard,
@@ -2341,9 +2362,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
   const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
 
   return (
-    <div
-      className={`board chrono-${time} ${handExpanded ? 'drawer-expanded' : 'drawer-collapsed'} !block relative h-full min-h-0 w-full overflow-hidden bg-lacquer-deep text-bone font-sans`}
-    >
+    <BoardLayout time={time} handExpanded={handExpanded}>
       {/* 環境光暈 — 完全照搬 demo */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
@@ -2398,15 +2417,15 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
       <PhaseInstructionBanner instruction={currentInstruction} />
 
       {/* 雙欄佈局 — header 與階段提示浮在上方，pt-28 撐開頂部空間 */}
-      <div className="battle-content-grid relative z-10 grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-28 lg:grid-cols-[minmax(0,1fr)_280px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6">
+      <div className="battle-content-grid battle-layout-workspace relative z-10 grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-28 lg:grid-cols-[minmax(0,1fr)_280px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6">
         {/* ===== 左欄：戰場 ===== */}
-        <div className="battle-perspective-field flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
+        <div className="battle-perspective-field battle-layout-field flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
           <BattlefieldCanvas />
 
           {/* 對手區域 — flex-1 justify-start（照搬 demo） */}
           <div className="battle-opponent-area flex h-auto min-h-[13rem] shrink-0 flex-col items-center justify-start gap-2 pt-2 lg:h-[240px] lg:gap-4 lg:pt-3">
             {/* 對手資訊：名字在右 + LP bar + 統計 */}
-            <div className="flex flex-wrap items-center justify-center gap-3 lg:gap-6">
+            <div className="battle-opponent-hud flex flex-wrap items-center justify-center gap-3 lg:gap-6">
               <div className="text-right">
                 <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('player.opponent')}</div>
                 <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
@@ -2658,7 +2677,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
             </div>
             {/* 玩家資訊列 — 照搬 demo 底部排列 */}
             <div
-              className="flex w-full flex-col items-stretch justify-between gap-3 px-2 lg:flex-row lg:items-end"
+              className="battle-player-command-dock flex w-full flex-col items-stretch justify-between gap-3 px-2 lg:flex-row lg:items-end"
               data-tut="player-actions"
             >
               {/* 左：LP bar */}
@@ -2741,7 +2760,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
         </div>
 
         {/* ===== 右欄：側欄 — 照搬 demo aside 結構 ===== */}
-        <aside className="battle-sidebar flex max-h-[22rem] min-h-[18rem] flex-col gap-3 overflow-hidden lg:max-h-none lg:min-h-0">
+        <aside className="battle-sidebar battle-layout-sidebar flex max-h-[22rem] min-h-[18rem] flex-col gap-3 overflow-hidden lg:max-h-none lg:min-h-0">
           <BattleFocusSidebarPanel focusedCard={focusedCard} G={G} />
 
           {/* Log — i18n 格式化 */}
@@ -2771,7 +2790,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
       />
       <FeedbackOverlay message={phaseMessage} />
       <GameNoticeOverlay G={G} me={meIndex} onNoticeDismiss={onNoticeDismiss} />
-    </div>
+    </BoardLayout>
   );
 }
 
