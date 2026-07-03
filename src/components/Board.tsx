@@ -246,12 +246,15 @@ function formatLogEntry(
  */
 function LogCardChip({ cardDefId }: { cardDefId: string }) {
   const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [tappedOpen, setTappedOpen] = useState(false);
   const [position, setPosition] = useState<PopoverPosition | null>(null);
-  const ref = useRef<HTMLSpanElement>(null);
+  const ref = useRef<HTMLButtonElement>(null);
   const def = getCardDef(cardDefId);
+  const visible = hovered || focused || tappedOpen;
 
   useEffect(() => {
-    if (!hovered) {
+    if (!visible) {
       setPosition(null);
       return;
     }
@@ -265,18 +268,39 @@ function LogCardChip({ cardDefId }: { cardDefId: string }) {
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
-  }, [hovered]);
+  }, [visible]);
+
+  useEffect(() => {
+    if (!tappedOpen) return;
+    const handleDocumentDown = (event: MouseEvent | TouchEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setTappedOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleDocumentDown);
+    document.addEventListener('touchstart', handleDocumentDown);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentDown);
+      document.removeEventListener('touchstart', handleDocumentDown);
+    };
+  }, [tappedOpen]);
 
   if (!def) return <span>[{cardDefId}]</span>;
   return (
-    <span
+    <button
+      type="button"
       ref={ref}
-      className="cursor-help text-gold-soft underline decoration-dotted underline-offset-2"
+      className="inline-flex min-h-10 cursor-help items-center rounded-sm bg-transparent p-0 text-left text-gold-soft underline decoration-dotted underline-offset-2 transition hover:text-gold focus:outline-none focus:ring-2 focus:ring-gold/50 focus:ring-offset-2 focus:ring-offset-lacquer"
+      aria-label={def.name}
+      aria-expanded={visible}
+      onClick={() => setTappedOpen((open) => !open)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
     >
-      [{def.name}]{hovered && position && <CardPopover def={def} position={position} />}
-    </span>
+      [{def.name}]{visible && position && <CardPopover def={def} position={position} />}
+    </button>
   );
 }
 

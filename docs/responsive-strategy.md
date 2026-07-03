@@ -496,6 +496,7 @@ Completed in the current responsive pass:
 - `NavBar`: phone and tablet header touch targets now meet the shared 44px floor, with the mobile Drawer offset matching the taller nav row.
 - `AdminPage`: card edit dialog now uses a near full-height sheet layout below desktop width with sticky footer actions and 44px modal controls.
 - `FeedbackPage`: submit form and tag management now move into shared mobile Sheets below `768px`, while desktop keeps the original inline panels.
+- `Board`: battle log card chips now expose the same card popover through focus/click/tap, so card details are no longer hover-only in log surfaces.
 
 ## Acceptance Criteria
 
