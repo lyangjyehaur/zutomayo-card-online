@@ -521,6 +521,8 @@ Completed in the current responsive pass:
   and save behavior in the editor while naming the aside/sheet layout variants.
 - `AdminPage`: authenticated responsive visual QA now has a repo script (`npm run smoke:admin-responsive`) covering card admin filters,
   mobile filter expansion, tablet portrait, tablet landscape, and low-width phone viewports.
+- `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
+  tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
 
 ## Acceptance Criteria
 
