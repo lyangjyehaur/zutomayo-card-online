@@ -503,6 +503,7 @@ Completed in the current responsive pass:
 - `TutorialGamePage`: tutorial sheet close and next/confirm controls now meet the shared touch target floor on phone layouts.
 - `Board`: tablet portrait battle actions, side panel toggles, and pause control now share the 44px touch target floor.
 - `Board`: low-height desktop battle actions, side panel toggles, sheet close, and pause control now meet the compact 40px target floor.
+- `OnlineLobbyPage`: back navigation, anonymous identity editing, custom room inputs, create/join/copy actions, and matchmaking cancel now meet the shared 44px touch target floor on phone/tablet layouts.
 
 ## Acceptance Criteria
 

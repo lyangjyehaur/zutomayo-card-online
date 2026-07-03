@@ -333,7 +333,7 @@ export function OnlineLobbyPage({
     >
       <PageHeader
         leading={
-          <BackButton type="button" onClick={() => navigate('/')}>
+          <BackButton className="min-h-11" type="button" onClick={() => navigate('/')}>
             <span className="hidden sm:inline">{t('common.backToLobby')}</span>
           </BackButton>
         }
@@ -367,7 +367,7 @@ export function OnlineLobbyPage({
               </div>
               {!profile && (
                 <Button
-                  className="size-8 shrink-0 p-0 tracking-normal"
+                  className="size-11 shrink-0 p-0 tracking-normal"
                   variant="secondary"
                   type="button"
                   onClick={startEditingAnonymousName}
@@ -381,7 +381,7 @@ export function OnlineLobbyPage({
             {!profile && editingAnonymousName && (
               <div className="mt-3 flex gap-2">
                 <Input
-                  className="min-w-0 flex-1"
+                  className="min-h-11 min-w-0 flex-1"
                   value={anonymousNameDraft}
                   maxLength={30}
                   onChange={(event) => setAnonymousNameDraft(event.target.value)}
@@ -392,7 +392,7 @@ export function OnlineLobbyPage({
                   aria-label={t('anonymous.nameInput')}
                 />
                 <Button
-                  className="size-9 shrink-0 p-0 tracking-normal"
+                  className="size-11 shrink-0 p-0 tracking-normal"
                   variant="primary"
                   type="button"
                   onClick={saveAnonymousName}
@@ -402,7 +402,7 @@ export function OnlineLobbyPage({
                   <Check strokeWidth={1.25} className="size-4" />
                 </Button>
                 <Button
-                  className="size-9 shrink-0 p-0 tracking-normal"
+                  className="size-11 shrink-0 p-0 tracking-normal"
                   variant="secondary"
                   type="button"
                   onClick={cancelAnonymousNameEdit}
@@ -471,7 +471,7 @@ export function OnlineLobbyPage({
                 <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
                 {t('lobby.matchmakingSearching')}
               </span>
-              <Button variant="ghost" size="sm" type="button" onClick={handleCancelMatchmaking}>
+              <Button className="min-h-11" variant="ghost" size="sm" type="button" onClick={handleCancelMatchmaking}>
                 {t('lobby.matchmakingCancel')}
               </Button>
             </div>
@@ -499,6 +499,7 @@ export function OnlineLobbyPage({
               </div>
               <div className="grid gap-2 sm:justify-items-end">
                 <Button
+                  className="min-h-11"
                   size="sm"
                   variant="secondary"
                   type="button"
@@ -523,7 +524,7 @@ export function OnlineLobbyPage({
             {/* 加入房間 */}
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
-                className="min-w-0 flex-1"
+                className="min-h-11 min-w-0 flex-1"
                 value={matchID}
                 onChange={(event) => setMatchID(event.target.value.trim())}
                 placeholder={t('lobby.roomCodePlaceholder')}
@@ -531,6 +532,7 @@ export function OnlineLobbyPage({
                 disabled={matchmakingActive}
               />
               <Button
+                className="min-h-11"
                 variant="secondary"
                 type="button"
                 disabled={!matchID || matchmakingActive}
@@ -552,14 +554,14 @@ export function OnlineLobbyPage({
                 <label className="flex flex-col gap-1">
                   <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('online.shareLink')}</span>
                   <Input
-                    className="min-w-0 font-mono text-xs text-bone/70"
+                    className="min-h-11 min-w-0 font-mono text-xs text-bone/70"
                     value={buildOnlineRoomUrl(createdMatchID)}
                     readOnly
                     aria-label={t('online.shareLink')}
                   />
                 </label>
-                <div className="flex items-center gap-3">
-                  <Button size="sm" variant="secondary" type="button" onClick={handleCopyShareLink}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <Button className="min-h-11" size="sm" variant="secondary" type="button" onClick={handleCopyShareLink}>
                     {copied ? t('online.copied') : t('online.copyLink')}
                   </Button>
                   <span className="text-[10px] text-bone/40">{t('online.hostWaitingHelper')}</span>
