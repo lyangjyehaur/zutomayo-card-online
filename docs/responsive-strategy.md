@@ -527,6 +527,8 @@ Completed in the current responsive pass:
   mobile card-row presentation and table data flow.
 - `I18nManager`: translation rows now use the shared `DataListTable` and `DataListCell` primitives while preserving the existing mobile
   card-row CSS and sheet editing behavior.
+- `LeaderboardPage`: desktop rank table now uses shared `DataListTable` and `DataListCell` primitives while preserving the existing
+  phone/tablet rank cards.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
   tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
 

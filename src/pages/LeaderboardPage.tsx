@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 import { getLeaderboard, getProfile, isLoggedIn, type LeaderboardEntry } from '../api/client';
-import { BackButton, Badge, Card, Panel, PageShell } from '../components/ui';
+import { BackButton, Badge, Card, DataListCell, DataListTable, Panel, PageShell } from '../components/ui';
 
 export function LeaderboardPage() {
   const navigate = useNavigate();
@@ -72,7 +72,7 @@ export function LeaderboardPage() {
         {!loading && !error && entries.length > 0 && (
           <>
             <Panel className="hidden overflow-x-auto lg:block" size="lg">
-              <table className="w-full border-collapse text-left text-sm">
+              <DataListTable>
                 <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
                   <tr className="border-b border-bone/10">
                     <th className="px-3 py-2">#</th>
@@ -86,21 +86,21 @@ export function LeaderboardPage() {
                 <tbody>
                   {entries.map((entry, i) => (
                     <tr key={entry.id} className={entry.id === currentUserId ? 'bg-gold/10' : 'odd:bg-lacquer-deep/30'}>
-                      <td className="px-3 py-2">{i < 3 ? <Badge tone="gold">{i + 1}</Badge> : i + 1}</td>
-                      <td className="px-3 py-2">
+                      <DataListCell label="#">{i < 3 ? <Badge tone="gold">{i + 1}</Badge> : i + 1}</DataListCell>
+                      <DataListCell label={t('leaderboard.nickname')}>
                         <div className="flex items-center gap-2">
                           <span>{entry.nickname}</span>
                           {entry.id === currentUserId && <Badge tone="jade">{t('leaderboard.currentUser')}</Badge>}
                         </div>
-                      </td>
-                      <td className="px-3 py-2">{entry.elo}</td>
-                      <td className="px-3 py-2">{entry.matchCount}</td>
-                      <td className="px-3 py-2">{entry.wins}</td>
-                      <td className="px-3 py-2">{entry.winRate}%</td>
+                      </DataListCell>
+                      <DataListCell label="ELO">{entry.elo}</DataListCell>
+                      <DataListCell label={t('leaderboard.matches')}>{entry.matchCount}</DataListCell>
+                      <DataListCell label={t('leaderboard.wins')}>{entry.wins}</DataListCell>
+                      <DataListCell label={t('leaderboard.winRate')}>{entry.winRate}%</DataListCell>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </DataListTable>
             </Panel>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:hidden">
