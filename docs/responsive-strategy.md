@@ -529,6 +529,8 @@ Completed in the current responsive pass:
   card-row CSS and sheet editing behavior.
 - `LeaderboardPage`: desktop rank table now uses shared `DataListTable` and `DataListCell` primitives while preserving the existing
   phone/tablet rank cards.
+- `ActionBar`: shared mobile layout variants now back Match History header actions, pagination, and record actions without changing
+  history pagination or download behavior.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
   tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
 

@@ -11,7 +11,7 @@ import type { ActionLogEntry } from '../game/types';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
-import { BackButton, Badge, Button, Card, Dialog, Panel, PageShell } from './ui';
+import { ActionBar, BackButton, Badge, Button, Card, Dialog, Panel, PageShell } from './ui';
 
 interface MatchHistoryProps {
   onBack: () => void;
@@ -184,7 +184,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
             <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.menu')}</span>
             <h1 className="font-display text-2xl italic text-gold sm:text-3xl">{t('history.title')}</h1>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+          <ActionBar mobileLayout="grid">
             <BackButton
               className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
               type="button"
@@ -202,7 +202,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
             >
               {t('history.clear')}
             </Button>
-          </div>
+          </ActionBar>
         </header>
 
         <section className="grid gap-3 md:grid-cols-4">
@@ -227,7 +227,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
         <section className="flex flex-col gap-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2>{t('history.title')}</h2>
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:flex">
+            <ActionBar mobileLayout="pagination">
               <Button
                 size="sm"
                 variant="secondary"
@@ -251,7 +251,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
               >
                 {t('common.next')}
               </Button>
-            </div>
+            </ActionBar>
           </div>
 
           {records.length === 0 ? (
@@ -288,7 +288,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                       {t('history.traceCount')} {(record.actionLog ?? []).length}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+                  <ActionBar mobileLayout="grid">
                     <Button
                       size="sm"
                       variant="ghost"
@@ -307,7 +307,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                     >
                       {t('history.downloadTrace')}
                     </Button>
-                  </div>
+                  </ActionBar>
                 </Card>
               ))}
             </div>
