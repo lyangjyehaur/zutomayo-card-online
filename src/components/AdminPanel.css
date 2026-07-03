@@ -119,6 +119,81 @@
   }
 }
 
+@media (max-width: 899px) {
+  .admin-responsive-table {
+    min-width: 0;
+    border-collapse: separate !important;
+    border-spacing: 0 0.65rem;
+  }
+
+  .admin-responsive-table thead {
+    display: none;
+  }
+
+  .admin-responsive-table tbody,
+  .admin-responsive-table tr,
+  .admin-responsive-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-responsive-table tr {
+    border: 1px solid color-mix(in oklch, var(--bone) 10%, transparent);
+    border-radius: 2px;
+    background: color-mix(in oklch, var(--lacquer) 80%, transparent);
+    padding: 0.7rem;
+  }
+
+  .admin-responsive-table td {
+    display: grid;
+    grid-template-columns: 5.25rem minmax(0, 1fr);
+    gap: 0.75rem;
+    max-width: none !important;
+    border: 0 !important;
+    padding: 0.35rem 0 !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-responsive-table td::before {
+    content: attr(data-label);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: color-mix(in oklch, var(--bone) 42%, transparent);
+  }
+
+  .admin-responsive-table td .flex {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .admin-responsive-table input,
+  .admin-responsive-table button {
+    min-height: 2.75rem;
+  }
+
+  .admin-responsive-table input {
+    min-width: 0;
+  }
+
+  .admin-elo-field {
+    display: grid !important;
+    grid-template-columns: minmax(3rem, auto) minmax(0, 1fr);
+    align-items: center;
+    width: 100%;
+  }
+
+  .admin-elo-field input {
+    width: 100% !important;
+  }
+
+  .admin-responsive-table td[data-label='操作'] button {
+    width: 100%;
+  }
+}
+
 @media (max-width: 767px) {
   .admin-header {
     display: grid !important;
@@ -201,55 +276,6 @@
 
   .admin-card-grid > button:hover {
     transform: none !important;
-  }
-
-  .admin-responsive-table {
-    min-width: 0;
-    border-collapse: separate !important;
-    border-spacing: 0 0.65rem;
-  }
-
-  .admin-responsive-table thead {
-    display: none;
-  }
-
-  .admin-responsive-table tbody,
-  .admin-responsive-table tr,
-  .admin-responsive-table td {
-    display: block;
-    width: 100%;
-  }
-
-  .admin-responsive-table tr {
-    border: 1px solid color-mix(in oklch, var(--bone) 10%, transparent);
-    border-radius: 2px;
-    background: color-mix(in oklch, var(--lacquer) 80%, transparent);
-    padding: 0.7rem;
-  }
-
-  .admin-responsive-table td {
-    display: grid;
-    grid-template-columns: 5.25rem minmax(0, 1fr);
-    gap: 0.75rem;
-    max-width: none !important;
-    border: 0 !important;
-    padding: 0.35rem 0 !important;
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-
-  .admin-responsive-table td::before {
-    content: attr(data-label);
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: color-mix(in oklch, var(--bone) 42%, transparent);
-  }
-
-  .admin-responsive-table td .flex {
-    flex-wrap: wrap;
-    justify-content: flex-start;
   }
 
   .admin-card-dialog {

@@ -998,7 +998,7 @@ export function AdminPage() {
                     {u.nickname}
                   </td>
                   <td data-label="ELO" className="px-3 py-2">
-                    <div className="flex items-center gap-2">
+                    <div className="admin-elo-field flex items-center gap-2">
                       {eloEdits[u.id] ?? u.elo}
                       <Input
                         className="w-20"

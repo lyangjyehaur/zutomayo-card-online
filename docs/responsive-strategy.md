@@ -498,6 +498,7 @@ Completed in the current responsive pass:
 - `FeedbackPage`: submit form and tag management now move into shared mobile Sheets below `768px`, while desktop keeps the original inline panels.
 - `Board`: battle log card chips now expose the same card popover through focus/click/tap, so card details are no longer hover-only in log surfaces.
 - `DeckEditor`: card pool cards keep their original add-card tap action, with a separate 44px preview button for touch/focus access to card details.
+- `AdminPage`: users and matches tables switch to labeled card rows through tablet portrait, with ELO editing controls sized for touch.
 
 ## Acceptance Criteria
 
