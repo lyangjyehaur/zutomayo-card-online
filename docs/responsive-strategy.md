@@ -501,6 +501,7 @@ Completed in the current responsive pass:
 - `AdminPage`: users and matches tables switch to labeled card rows through tablet portrait, with ELO editing controls sized for touch.
 - `DeckEditor`: header actions, filter chips, pagination, sheet toggles, and sheet footer actions now meet the shared touch target floor.
 - `TutorialGamePage`: tutorial sheet close and next/confirm controls now meet the shared touch target floor on phone layouts.
+- `Board`: tablet portrait battle actions, side panel toggles, and pause control now share the 44px touch target floor.
 
 ## Acceptance Criteria
 

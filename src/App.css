@@ -9273,6 +9273,44 @@ button.zone:focus-visible {
   }
 }
 
+@media (max-width: 768px) {
+  .board .battle-action-stack button,
+  .board .battle-side-panel-actions button,
+  .board-pause-button {
+    min-width: 2.75rem !important;
+    min-height: 2.75rem !important;
+  }
+
+  .board .battle-action-stack button {
+    padding-block: 0.65rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .board-pause-button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .board-pause-button .board-pause-icon {
+    display: block !important;
+  }
+
+  .board-pause-button .board-pause-label {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+  }
+}
+
 @media (max-width: 767px) {
   .board .battle-side-panel-actions {
     margin-right: 3rem;
