@@ -78,7 +78,7 @@ export function AILobbyPage({
     <PageShell variant="workspace" className="flex flex-col" glow={{ color: 'vermilion', size: 'md' }}>
       <PageHeader
         leading={
-          <BackButton type="button" onClick={() => navigate('/')}>
+          <BackButton className="min-h-11" type="button" onClick={() => navigate('/')}>
             <span className="hidden sm:inline">{t('common.backToLobby')}</span>
           </BackButton>
         }
