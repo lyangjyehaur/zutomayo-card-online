@@ -7,6 +7,7 @@ import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/custom
 import { t, useLocale } from '../i18n';
 import { ChevronLeft, ChevronRight, Eye, Layers, Save, Search, SlidersHorizontal, X } from 'lucide-react';
 import { BackButton, Button, Input, PageShell, Sheet } from './ui';
+import { CardBrowser, CardBrowserGrid, CardBrowserToolbar } from './CardBrowser';
 
 interface DeckEditorProps {
   onSave: (deckIds: string[]) => void | Promise<void>;
@@ -457,73 +458,73 @@ export function DeckEditor({
       )}
 
       <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-3 py-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:overflow-hidden xl:px-6 xl:py-6">
-        <section
-          className="flex min-h-[24rem] flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10 md:min-h-[28rem] md:p-5 xl:min-h-0"
-          aria-label="Card Pool"
-        >
-          <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Archive</div>
-              <h2 className="font-display text-2xl italic">Card Pool</h2>
-            </div>
-            <div className="relative flex w-full items-center gap-2 border border-bone/10 px-3 py-2 sm:w-auto sm:py-1.5">
-              <Search className="size-3.5 text-bone/40" aria-hidden="true" />
-              <input
-                type="search"
-                placeholder={t('deckEditor.search')}
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                className="w-full bg-transparent text-xs text-bone placeholder:text-bone/30 focus:outline-none sm:w-56"
-                aria-label={t('deckEditor.search')}
-              />
-              {searchText && (
-                <button
+        <CardBrowser label="Card Pool">
+          <CardBrowserToolbar
+            kicker="Archive"
+            title="Card Pool"
+            search={
+              <div className="relative flex w-full items-center gap-2 border border-bone/10 px-3 py-2 sm:w-auto sm:py-1.5">
+                <Search className="size-3.5 text-bone/40" aria-hidden="true" />
+                <input
+                  type="search"
+                  placeholder={t('deckEditor.search')}
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  className="w-full bg-transparent text-xs text-bone placeholder:text-bone/30 focus:outline-none sm:w-56"
+                  aria-label={t('deckEditor.search')}
+                />
+                {searchText && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchText('')}
+                    className="text-bone/40 transition hover:text-bone"
+                    aria-label={t('common.clear')}
+                  >
+                    <X className="size-3.5" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            }
+            actions={
+              <div className="grid grid-cols-2 gap-2 lg:flex lg:justify-end xl:hidden">
+                <Button
                   type="button"
-                  onClick={() => setSearchText('')}
-                  className="text-bone/40 transition hover:text-bone"
-                  aria-label={t('common.clear')}
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setFiltersOpen(true)}
+                  className="min-h-11 w-full justify-between px-3 tracking-[0.18em] lg:hidden"
+                  aria-label={t('deckEditor.filters')}
+                  data-deck-editor-control="filters"
                 >
-                  <X className="size-3.5" aria-hidden="true" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="mb-4 grid grid-cols-2 gap-2 lg:flex lg:justify-end xl:hidden">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setFiltersOpen(true)}
-              className="min-h-11 w-full justify-between px-3 tracking-[0.18em] lg:hidden"
-              aria-label={t('deckEditor.filters')}
-              data-deck-editor-control="filters"
-            >
-              <SlidersHorizontal className="size-3.5" aria-hidden="true" />
-              <span className="truncate">{t('deckEditor.filters')}</span>
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setDeckSheetOpen(true)}
-              className="min-h-11 w-full justify-between px-3 tracking-[0.18em] lg:w-auto"
-              aria-label={t('deckEditor.openDeck')}
-              data-deck-editor-control="active-deck"
-            >
-              <Layers className="size-3.5" aria-hidden="true" />
-              <span className="truncate">
-                {deck.length}/{DECK_SIZE}
-              </span>
-            </Button>
-            <div
-              className="col-span-2 flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[9px] uppercase tracking-[0.18em] lg:hidden"
-              aria-live="polite"
-            >
-              <span className={isValid ? 'text-gold/70' : 'text-vermilion/70'}>{deckStatusLabel}</span>
-              <span className="min-w-0 truncate text-bone/35">{filterSummary}</span>
-            </div>
-          </div>
+                  <SlidersHorizontal className="size-3.5" aria-hidden="true" />
+                  <span className="truncate">{t('deckEditor.filters')}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setDeckSheetOpen(true)}
+                  className="min-h-11 w-full justify-between px-3 tracking-[0.18em] lg:w-auto"
+                  aria-label={t('deckEditor.openDeck')}
+                  data-deck-editor-control="active-deck"
+                >
+                  <Layers className="size-3.5" aria-hidden="true" />
+                  <span className="truncate">
+                    {deck.length}/{DECK_SIZE}
+                  </span>
+                </Button>
+              </div>
+            }
+            summary={
+              <div
+                className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[9px] uppercase tracking-[0.18em] lg:hidden"
+                aria-live="polite"
+              >
+                <span className={isValid ? 'text-gold/70' : 'text-vermilion/70'}>{deckStatusLabel}</span>
+                <span className="min-w-0 truncate text-bone/35">{filterSummary}</span>
+              </div>
+            }
+          />
 
           <div className="mb-4 hidden lg:block">{renderFilterControls()}</div>
 
@@ -556,7 +557,7 @@ export function DeckEditor({
             </nav>
           </div>
 
-          <div className="deck-pool-grid grid min-h-0 flex-1 grid-cols-2 content-start gap-3 overflow-y-auto p-1 pr-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+          <CardBrowserGrid>
             {visibleCards.map((card) => {
               const count = deckCounts.get(card.id) ?? 0;
               const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
@@ -609,8 +610,8 @@ export function DeckEditor({
                 </div>
               );
             })}
-          </div>
-        </section>
+          </CardBrowserGrid>
+        </CardBrowser>
 
         {/* hover 浮層：透過 portal 渲染到 document.body，避免被 overflow 裁切 */}
         {previewCard &&

@@ -513,6 +513,8 @@ Completed in the current responsive pass:
 - `NavBar`: tablet and desktop nav labels now enforce both 44px height and width, so short labels no longer fall below the shared touch target floor.
 - `DeckEditor`: phone/tablet card browser controls now include a compact validation summary beside the filter summary, keeping deck validity reachable without opening the active deck sheet.
 - `Board`: battle view now has a presentational `BoardLayout` wrapper plus named compact HUD/command-dock regions, so phone layouts can keep opponent status and player hand/actions grouped without forking game logic.
+- `CardBrowser`: Deck Builder card pool now uses a shared presentational browser shell, toolbar, and grid wrapper while keeping filtering,
+  pagination, preview, and deck mutation logic inside `DeckEditor`.
 
 ## Acceptance Criteria
 
