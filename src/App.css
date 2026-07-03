@@ -9792,7 +9792,8 @@ button.zone:focus-visible {
   }
 
   .feedback-toolbar .status-filter,
-  .feedback-toolbar > button {
+  .feedback-toolbar .feedback-submit-toggle,
+  .feedback-toolbar .feedback-tag-toggle {
     width: 100%;
   }
 
@@ -10457,7 +10458,8 @@ button.zone:focus-visible {
 @media (max-width: 1179px) {
   .feedback-header > button,
   .feedback-toolbar .sort-tab,
-  .feedback-toolbar > button {
+  .feedback-toolbar .feedback-submit-toggle,
+  .feedback-toolbar .feedback-tag-toggle {
     min-height: 2.5rem;
   }
 

@@ -37,7 +37,7 @@ import {
   type SimilarPost,
 } from '../api/feedbackClient';
 import { getAnonymousId } from '../api/feedbackClient';
-import { Badge, Button, Input, Select, Sheet, Textarea, type BadgeTone } from '../components/ui';
+import { Badge, Button, Input, ResponsiveToolbar, Select, Sheet, Textarea, type BadgeTone } from '../components/ui';
 
 const STATUS_OPTIONS: FeedbackStatus[] = ['open', 'planned', 'started', 'completed', 'declined', 'duplicate'];
 const SORT_OPTIONS: FeedbackSort[] = ['top', 'trending', 'newest', 'recent', 'most-discussed'];
@@ -302,67 +302,83 @@ export function FeedbackPage() {
         </section>
       )}
 
-      <section className="feedback-toolbar">
-        <div className="sort-tabs">
-          {SORT_OPTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={sort === s ? 'sort-tab active' : 'sort-tab'}
-              onClick={() => setSort(s)}
+      <ResponsiveToolbar
+        as="section"
+        className="feedback-toolbar"
+        contentClassName="contents"
+        actionsClassName="contents"
+        primary={
+          <>
+            <div className="sort-tabs">
+              {SORT_OPTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={sort === s ? 'sort-tab active' : 'sort-tab'}
+                  onClick={() => setSort(s)}
+                >
+                  {t(sortKey(s))}
+                </button>
+              ))}
+            </div>
+            <Select
+              className="status-filter text-xs"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as FeedbackStatus | '')}
             >
-              {t(sortKey(s))}
-            </button>
-          ))}
-        </div>
-        <Select
-          className="status-filter text-xs"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as FeedbackStatus | '')}
-        >
-          <option value="">{t('feedback.filterAll')}</option>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {t(statusKey(s))}
-            </option>
-          ))}
-        </Select>
-        {tags.length > 0 && (
-          <Select className="status-filter text-xs" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
-            <option value="">{t('feedback.filterAllTags')}</option>
-            {tags.map((tg) => (
-              <option key={tg.id} value={tg.name}>
-                #{tg.name}
-              </option>
-            ))}
-          </Select>
-        )}
-        <Input
-          className="search-input"
-          placeholder={t('feedback.searchPlaceholder')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <Button
-          type="button"
-          className="feedback-submit-toggle"
-          aria-expanded={showSubmit}
-          onClick={() => setShowSubmit((v) => !v)}
-        >
-          {t('feedback.submitNew')}
-        </Button>
-        {adminMode && (
-          <Button
-            type="button"
-            className="feedback-tag-toggle"
-            variant="secondary"
-            aria-expanded={showTagPanel}
-            onClick={() => setShowTagPanel((v) => !v)}
-          >
-            {t('feedback.tagManage')}
-          </Button>
-        )}
-      </section>
+              <option value="">{t('feedback.filterAll')}</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {t(statusKey(s))}
+                </option>
+              ))}
+            </Select>
+            {tags.length > 0 && (
+              <Select
+                className="status-filter text-xs"
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+              >
+                <option value="">{t('feedback.filterAllTags')}</option>
+                {tags.map((tg) => (
+                  <option key={tg.id} value={tg.name}>
+                    #{tg.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+            <Input
+              className="search-input"
+              placeholder={t('feedback.searchPlaceholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </>
+        }
+        actions={
+          <>
+            <Button
+              type="button"
+              className="feedback-submit-toggle"
+              aria-expanded={showSubmit}
+              onClick={() => setShowSubmit((v) => !v)}
+            >
+              {t('feedback.submitNew')}
+            </Button>
+            {adminMode && (
+              <Button
+                type="button"
+                className="feedback-tag-toggle"
+                variant="secondary"
+                aria-expanded={showTagPanel}
+                onClick={() => setShowTagPanel((v) => !v)}
+              >
+                {t('feedback.tagManage')}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {tagFilter && (
         <p className="feedback-tag-active">

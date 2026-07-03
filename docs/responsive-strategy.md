@@ -533,6 +533,8 @@ Completed in the current responsive pass:
   history pagination or download behavior.
 - `ResponsiveToolbar`: Match History pagination now uses the shared toolbar wrapper for title/action alignment while keeping the same
   page controls and paging state.
+- `FeedbackPage`: sort, status/tag filters, search, and submit/tag actions now sit behind the shared `ResponsiveToolbar` while preserving
+  the existing compact mobile grid controls.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
   tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
 
