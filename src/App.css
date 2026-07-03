@@ -9536,6 +9536,20 @@ button.zone:focus-visible {
   padding: 1rem;
 }
 
+.feedback-submit-form input,
+.feedback-submit-form textarea,
+.feedback-submit-form button,
+.tag-manage-panel input,
+.tag-manage-panel button {
+  min-height: 2.75rem;
+}
+
+.feedback-submit-form input,
+.feedback-submit-form textarea,
+.tag-manage-panel input {
+  min-width: 0;
+}
+
 .field-label {
   font-size: 0.625rem;
   text-transform: uppercase;
@@ -10053,6 +10067,58 @@ button.zone:focus-visible {
   font-size: 0.7rem;
   padding: 0;
 }
+
+.feedback-panel-sheet .feedback-submit-form,
+.feedback-panel-sheet .tag-manage-panel {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.feedback-panel-sheet .feedback-submit-form input,
+.feedback-panel-sheet .feedback-submit-form textarea,
+.feedback-panel-sheet .tag-manage-panel input {
+  min-height: 2.75rem;
+}
+
+.feedback-panel-sheet .feedback-submit-form button,
+.feedback-panel-sheet .tag-manage-panel button {
+  min-height: 2.75rem;
+}
+
+.feedback-panel-sheet .form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-inline: 0;
+  margin-bottom: 0;
+  border-top: 1px solid var(--line-soft);
+  background: var(--lacquer-deep);
+  padding: 0.85rem 1rem 1rem;
+}
+
+.feedback-panel-sheet .tag-create-row {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.feedback-panel-sheet .tag-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.feedback-panel-sheet .tag-list-item {
+  min-width: 0;
+  justify-content: space-between;
+  padding: 0.45rem 0.6rem;
+}
+
+.feedback-panel-sheet .tag-list-item .legacy-danger {
+  min-width: 2.75rem;
+  border: 1px solid var(--danger, #c5453b);
+  padding: 0;
+}
+
 .edit-post-form {
   display: flex;
   flex-direction: column;

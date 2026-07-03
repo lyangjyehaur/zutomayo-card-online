@@ -37,7 +37,7 @@ import {
   type SimilarPost,
 } from '../api/feedbackClient';
 import { getAnonymousId } from '../api/feedbackClient';
-import { Badge, Button, Input, Select, Textarea, type BadgeTone } from '../components/ui';
+import { Badge, Button, Input, Select, Sheet, Textarea, type BadgeTone } from '../components/ui';
 
 const STATUS_OPTIONS: FeedbackStatus[] = ['open', 'planned', 'started', 'completed', 'declined', 'duplicate'];
 const SORT_OPTIONS: FeedbackSort[] = ['top', 'trending', 'newest', 'recent', 'most-discussed'];
@@ -154,6 +154,22 @@ function Markdown({ text }: { text: string }) {
   return <span dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />;
 }
 
+function useFeedbackPanelSheet() {
+  const [useSheet, setUseSheet] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => setUseSheet(media.matches);
+
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  return useSheet;
+}
+
 // ===== 圖片上傳 hook =====
 function useImageUpload(onInserted: (markdown: string) => void) {
   const [uploading, setUploading] = useState(false);
@@ -208,6 +224,7 @@ export function FeedbackPage() {
   const [showTagPanel, setShowTagPanel] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const adminMode = isAdminMode();
+  const usePanelSheet = useFeedbackPanelSheet();
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -326,7 +343,12 @@ export function FeedbackPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <Button type="button" className="feedback-submit-toggle" onClick={() => setShowSubmit((v) => !v)}>
+        <Button
+          type="button"
+          className="feedback-submit-toggle"
+          aria-expanded={showSubmit}
+          onClick={() => setShowSubmit((v) => !v)}
+        >
           {t('feedback.submitNew')}
         </Button>
         {adminMode && (
@@ -334,6 +356,7 @@ export function FeedbackPage() {
             type="button"
             className="feedback-tag-toggle"
             variant="secondary"
+            aria-expanded={showTagPanel}
             onClick={() => setShowTagPanel((v) => !v)}
           >
             {t('feedback.tagManage')}
@@ -350,9 +373,18 @@ export function FeedbackPage() {
         </p>
       )}
 
-      {showTagPanel && adminMode && <TagManagePanel tags={tags} onChanged={() => void reload()} />}
+      {showTagPanel && adminMode && !usePanelSheet && <TagManagePanel tags={tags} onChanged={() => void reload()} />}
+      <Sheet
+        open={showTagPanel && adminMode && usePanelSheet}
+        onOpenChange={(open) => setShowTagPanel(open)}
+        title={t('feedback.tagManage')}
+        closeLabel={t('common.close')}
+        className="feedback-panel-sheet"
+      >
+        <TagManagePanel tags={tags} onChanged={() => void reload()} />
+      </Sheet>
 
-      {showSubmit && (
+      {showSubmit && !usePanelSheet && (
         <SubmitForm
           onSubmitted={() => {
             setShowSubmit(false);
@@ -361,6 +393,21 @@ export function FeedbackPage() {
           onCancel={() => setShowSubmit(false)}
         />
       )}
+      <Sheet
+        open={showSubmit && usePanelSheet}
+        onOpenChange={(open) => setShowSubmit(open)}
+        title={t('feedback.submitNew')}
+        closeLabel={t('common.close')}
+        className="feedback-panel-sheet"
+      >
+        <SubmitForm
+          onSubmitted={() => {
+            setShowSubmit(false);
+            void reload();
+          }}
+          onCancel={() => setShowSubmit(false)}
+        />
+      </Sheet>
 
       {loading && <p className="feedback-empty">{t('feedback.loading')}</p>}
       {error && (

@@ -495,6 +495,7 @@ Completed in the current responsive pass:
 - `I18nManager`: phone translation editing now opens a shared Sheet with textarea and sticky actions, while desktop keeps inline table editing.
 - `NavBar`: phone and tablet header touch targets now meet the shared 44px floor, with the mobile Drawer offset matching the taller nav row.
 - `AdminPage`: card edit dialog now uses a near full-height sheet layout below desktop width with sticky footer actions and 44px modal controls.
+- `FeedbackPage`: submit form and tag management now move into shared mobile Sheets below `768px`, while desktop keeps the original inline panels.
 
 ## Acceptance Criteria
 
