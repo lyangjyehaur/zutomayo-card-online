@@ -232,7 +232,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           <VersionUpdateTrigger />
           <button
             type="button"
-            className="hidden md:inline text-bone/30 hover:text-gold transition-colors cursor-pointer"
+            className="hidden min-h-10 items-center text-bone/30 transition-colors hover:text-gold md:inline-flex"
             onClick={() => navigate('/feedback')}
           >
             {t('app.footerAlpha')}
@@ -240,7 +240,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           <span className="font-mono">
             {t('app.footerCopyright')}
             <a
-              className="text-bone/40 underline-offset-4 transition-colors hover:text-gold hover:underline focus-visible:text-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+              className="inline-flex min-h-10 items-center text-bone/40 underline-offset-4 transition-colors hover:text-gold hover:underline focus-visible:text-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
               href="https://zutomayocard.net"
               target="_blank"
               rel="noreferrer"

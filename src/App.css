@@ -839,7 +839,10 @@ input:focus {
 }
 
 .version-update-trigger {
+  display: inline-flex;
+  min-height: 2.5rem;
   min-width: 10.5rem;
+  align-items: center;
   border: 0;
   padding: 0;
   background: transparent;

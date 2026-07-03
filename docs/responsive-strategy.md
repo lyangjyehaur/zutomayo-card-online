@@ -506,6 +506,7 @@ Completed in the current responsive pass:
 - `OnlineLobbyPage`: back navigation, anonymous identity editing, custom room inputs, create/join/copy actions, and matchmaking cancel now meet the shared 44px touch target floor on phone/tablet layouts.
 - `LobbyPage`: phone header now keeps language/account settings behind a shared Drawer trigger, while tablet/desktop keep inline settings; `AppDrawer` also caps to `100dvh` with internal scrolling for small screens.
 - `AILobbyPage`: back navigation now meets the shared 44px touch target floor across phone and tablet lobby layouts.
+- `LobbyPage`: desktop footer version, feedback, and external-link controls now expose 40px click areas without changing the footer information hierarchy.
 
 ## Acceptance Criteria
 
