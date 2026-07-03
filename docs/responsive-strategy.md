@@ -507,6 +507,7 @@ Completed in the current responsive pass:
 - `LobbyPage`: phone header now keeps language/account settings behind a shared Drawer trigger, while tablet/desktop keep inline settings; `AppDrawer` also caps to `100dvh` with internal scrolling for small screens.
 - `AILobbyPage`: back navigation now meets the shared 44px touch target floor across phone and tablet lobby layouts.
 - `LobbyPage`: desktop footer version, feedback, and external-link controls now expose 40px click areas without changing the footer information hierarchy.
+- `AppDrawer`: shared drawer actions now meet the 44px touch target floor across PWA install/update/recover prompts and other drawer-based secondary flows.
 
 ## Acceptance Criteria
 

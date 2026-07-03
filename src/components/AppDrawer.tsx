@@ -54,6 +54,7 @@ export function AppDrawer({
         <div className="app-drawer-actions">
           {actions.map((action) => (
             <Button
+              className="min-h-11"
               key={action.label}
               variant={actionVariant(action.tone)}
               type="button"
