@@ -502,6 +502,7 @@ Completed in the current responsive pass:
 - `DeckEditor`: header actions, filter chips, pagination, sheet toggles, and sheet footer actions now meet the shared touch target floor.
 - `TutorialGamePage`: tutorial sheet close and next/confirm controls now meet the shared touch target floor on phone layouts.
 - `Board`: tablet portrait battle actions, side panel toggles, and pause control now share the 44px touch target floor.
+- `Board`: low-height desktop battle actions, side panel toggles, sheet close, and pause control now meet the compact 40px target floor.
 
 ## Acceptance Criteria
 

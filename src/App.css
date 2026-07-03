@@ -9448,8 +9448,15 @@ button.zone:focus-visible {
   }
 
   .board .battle-action-stack button {
-    min-height: 2.35rem;
+    min-height: 2.5rem !important;
     padding-block: 0.55rem !important;
+  }
+
+  .board .battle-side-panel-actions button,
+  .board-pause-button,
+  .battle-side-sheet-close {
+    min-width: 2.5rem !important;
+    min-height: 2.5rem !important;
   }
 
   .board .battle-focus-panel,
