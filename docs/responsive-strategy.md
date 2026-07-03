@@ -517,6 +517,8 @@ Completed in the current responsive pass:
   pagination, preview, and deck mutation logic inside `DeckEditor`.
 - `CardBrowser`: filter sheet and hover/tap detail popover surfaces are now shared presentational wrappers, so Deck Builder can keep the
   same state and handlers while moving toward reusable browser composition.
+- `DeckEditor`: active deck now uses shared `ActiveDeckPanel` and `ActiveDeckSheet` presentation wrappers, keeping validation, removal,
+  and save behavior in the editor while naming the aside/sheet layout variants.
 
 ## Acceptance Criteria
 

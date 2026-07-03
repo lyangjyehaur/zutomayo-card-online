@@ -6,7 +6,7 @@ import { getTranslatedEffect } from '../game/cards/i18n';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
 import { ChevronLeft, ChevronRight, Eye, Layers, Save, Search, SlidersHorizontal, X } from 'lucide-react';
-import { BackButton, Button, Input, PageShell, Sheet } from './ui';
+import { BackButton, Button, Input, PageShell } from './ui';
 import {
   CardBrowser,
   CardBrowserDetailPopover,
@@ -14,6 +14,7 @@ import {
   CardBrowserGrid,
   CardBrowserToolbar,
 } from './CardBrowser';
+import { ActiveDeckPanel, ActiveDeckSheet } from './DeckBuilderWorkspace';
 
 interface DeckEditorProps {
   onSave: (deckIds: string[]) => void | Promise<void>;
@@ -666,12 +667,7 @@ export function DeckEditor({
             document.body,
           )}
 
-        <aside
-          className="hidden min-h-[18rem] flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10 md:min-h-[22rem] md:p-5 xl:flex xl:min-h-0"
-          aria-label="Active Deck"
-        >
-          {renderActiveDeckContent()}
-        </aside>
+        <ActiveDeckPanel label="Active Deck">{renderActiveDeckContent()}</ActiveDeckPanel>
       </div>
 
       <CardBrowserFilterSheet
@@ -684,7 +680,7 @@ export function DeckEditor({
         {renderFilterControls()}
       </CardBrowserFilterSheet>
 
-      <Sheet
+      <ActiveDeckSheet
         open={deckSheetOpen}
         onOpenChange={setDeckSheetOpen}
         title={deckName?.trim() || t('deckEditor.currentDeck')}
@@ -702,8 +698,8 @@ export function DeckEditor({
           </Button>
         }
       >
-        <div className="flex max-h-[58dvh] min-h-0 flex-col">{renderActiveDeckContent()}</div>
-      </Sheet>
+        {renderActiveDeckContent()}
+      </ActiveDeckSheet>
     </PageShell>
   );
 }
