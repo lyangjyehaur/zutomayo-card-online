@@ -5,7 +5,7 @@ import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
-import { ChevronLeft, ChevronRight, Layers, Save, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, Layers, Save, Search, SlidersHorizontal, X } from 'lucide-react';
 import { BackButton, Button, Input, PageShell, Sheet } from './ui';
 
 interface DeckEditorProps {
@@ -96,7 +96,7 @@ export function DeckEditor({
     };
   }, []);
 
-  // hover 時計算浮層位置：優先顯示在卡牌右側，空間不足時顯示左側
+  // hover/focus 時計算浮層位置：優先顯示在卡牌右側，空間不足時顯示左側
   const updatePopoverPosition = () => {
     const el = hoveredRef.current;
     if (!el) {
@@ -125,13 +125,20 @@ export function DeckEditor({
     setPopoverPos({ top, left });
   };
 
+  const openCardPreview = (card: CardDef, element: HTMLButtonElement) => {
+    hoveredRef.current = element;
+    setPreviewCard(card);
+    requestAnimationFrame(updatePopoverPosition);
+  };
+
   const handleCardEnter = (
     card: CardDef,
     event: React.MouseEvent<HTMLButtonElement> | React.FocusEvent<HTMLButtonElement>,
-  ) => {
-    hoveredRef.current = event.currentTarget;
-    setPreviewCard(card);
-    requestAnimationFrame(updatePopoverPosition);
+  ) => openCardPreview(card, event.currentTarget);
+
+  const handlePreviewClick = (card: CardDef, event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    openCardPreview(card, event.currentTarget);
   };
 
   const handleCardLeave = () => {
@@ -580,6 +587,18 @@ export function DeckEditor({
                         ×{count}
                       </span>
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    className="absolute bottom-1 right-1 z-10 inline-flex size-11 items-center justify-center rounded-sm bg-lacquer-deep/90 text-bone/70 ring-1 ring-bone/20 backdrop-blur transition hover:text-gold focus:outline-none focus:ring-2 focus:ring-gold/60 focus:ring-offset-2 focus:ring-offset-lacquer"
+                    aria-label={`Preview ${card.name}`}
+                    onClick={(event) => handlePreviewClick(card, event)}
+                    onMouseEnter={(event) => handleCardEnter(card, event)}
+                    onMouseLeave={handleCardLeave}
+                    onFocus={(event) => handleCardEnter(card, event)}
+                    onBlur={handleCardLeave}
+                  >
+                    <Eye className="size-4" aria-hidden="true" />
                   </button>
                 </div>
               );
