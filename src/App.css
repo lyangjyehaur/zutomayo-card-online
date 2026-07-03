@@ -953,6 +953,8 @@ input:focus {
   display: grid;
   gap: 0.9rem;
   width: min(100%, 30rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
   border: 1px solid rgba(245, 211, 104, 0.28);
   border-radius: var(--radius);
   padding: 1rem;
@@ -1388,6 +1390,7 @@ input:focus {
 
   .app-drawer-panel {
     width: 100%;
+    max-height: calc(100dvh - 1.3rem);
   }
 
   .app-drawer-actions {

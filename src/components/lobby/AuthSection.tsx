@@ -168,7 +168,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
 
             <div className="flex items-center gap-3 border-t border-bone/10 pt-3">
               <button
-                className="inline-flex items-center gap-1.5 border border-bone/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer"
+                className="inline-flex min-h-11 items-center gap-1.5 border border-bone/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer"
                 type="button"
                 onClick={handleLogout}
               >
@@ -203,7 +203,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
     <section className="max-w-md rounded-sm bg-gradient-to-br from-lacquer via-lacquer to-lacquer-deep p-3 ring-1 ring-bone/10 shadow-[0_8px_32px_-8px] shadow-black/40 md:p-5">
       <div className="flex flex-col gap-3">
         <button
-          className={`whitespace-nowrap border border-bone/20 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer ${
+          className={`min-h-11 whitespace-nowrap border border-bone/20 px-4 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer ${
             PUBLIC_AUTH_ENTRYPOINTS_ENABLED ? 'hover:bg-bone/5' : 'cursor-not-allowed opacity-45'
           }`}
           type="button"
@@ -268,7 +268,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
                 {t('auth.email')}
               </span>
               <input
-                className="border border-bone/10 bg-gradient-to-b from-lacquer-deep/80 to-lacquer-deep px-3 py-2 text-sm text-bone shadow-inner shadow-black/20 placeholder:text-bone/30 transition-all duration-300 focus:border-gold/30 focus:shadow-[0_0_16px_-4px] focus:shadow-gold/20 focus:outline-none focus:ring-2 focus:ring-gold/40"
+                className="min-h-11 border border-bone/10 bg-gradient-to-b from-lacquer-deep/80 to-lacquer-deep px-3 py-2 text-sm text-bone shadow-inner shadow-black/20 placeholder:text-bone/30 transition-all duration-300 focus:border-gold/30 focus:shadow-[0_0_16px_-4px] focus:shadow-gold/20 focus:outline-none focus:ring-2 focus:ring-gold/40"
                 type="email"
                 value={email}
                 autoComplete="email"
@@ -282,7 +282,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
                   {t('auth.nickname')}
                 </span>
                 <input
-                  className="border border-bone/10 bg-gradient-to-b from-lacquer-deep/80 to-lacquer-deep px-3 py-2 text-sm text-bone shadow-inner shadow-black/20 placeholder:text-bone/30 transition-all duration-300 focus:border-gold/30 focus:shadow-[0_0_16px_-4px] focus:shadow-gold/20 focus:outline-none focus:ring-2 focus:ring-gold/40"
+                  className="min-h-11 border border-bone/10 bg-gradient-to-b from-lacquer-deep/80 to-lacquer-deep px-3 py-2 text-sm text-bone shadow-inner shadow-black/20 placeholder:text-bone/30 transition-all duration-300 focus:border-gold/30 focus:shadow-[0_0_16px_-4px] focus:shadow-gold/20 focus:outline-none focus:ring-2 focus:ring-gold/40"
                   type="text"
                   value={nickname}
                   autoComplete="nickname"
@@ -296,7 +296,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
                 {t('auth.password')}
               </span>
               <input
-                className="border border-bone/10 bg-gradient-to-b from-lacquer-deep/80 to-lacquer-deep px-3 py-2 text-sm text-bone shadow-inner shadow-black/20 placeholder:text-bone/30 transition-all duration-300 focus:border-gold/30 focus:shadow-[0_0_16px_-4px] focus:shadow-gold/20 focus:outline-none focus:ring-2 focus:ring-gold/40"
+                className="min-h-11 border border-bone/10 bg-gradient-to-b from-lacquer-deep/80 to-lacquer-deep px-3 py-2 text-sm text-bone shadow-inner shadow-black/20 placeholder:text-bone/30 transition-all duration-300 focus:border-gold/30 focus:shadow-[0_0_16px_-4px] focus:shadow-gold/20 focus:outline-none focus:ring-2 focus:ring-gold/40"
                 type="password"
                 value={password}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
@@ -315,7 +315,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
               </div>
             )}
             <button
-              className="relative overflow-hidden bg-gradient-to-b from-bone to-bone/95 px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer shadow-[0_4px_12px_-4px] shadow-bone/30 transition-all duration-300 hover:from-gold/90 hover:to-gold/80 hover:shadow-[0_6px_20px_-4px] hover:shadow-gold/40 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer active:scale-[0.98] disabled:opacity-50"
+              className="relative min-h-11 overflow-hidden bg-gradient-to-b from-bone to-bone/95 px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer shadow-[0_4px_12px_-4px] shadow-bone/30 transition-all duration-300 hover:from-gold/90 hover:to-gold/80 hover:shadow-[0_6px_20px_-4px] hover:shadow-gold/40 focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer active:scale-[0.98] disabled:opacity-50"
               type="submit"
               disabled={submitting}
               aria-busy={submitting}

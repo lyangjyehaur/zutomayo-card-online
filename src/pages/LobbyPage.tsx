@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Swords, Bot, LayoutGrid } from 'lucide-react';
+import { Swords, Bot, LayoutGrid, Menu } from 'lucide-react';
+import { AppDrawer } from '../components/AppDrawer';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
@@ -59,6 +60,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const [bgImage, setBgImage] = useState<string | null>(null);
   // 首次訪問引導彈窗
   const [showDeckIntro, setShowDeckIntro] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 每次 mount 時重新隨機取一張（確保返回首頁也有背景）
   useEffect(() => {
@@ -110,7 +112,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       </div>
 
       {/* 頂部 Header */}
-      <header className="absolute inset-x-0 top-0 z-20 flex min-h-16 flex-col items-stretch justify-center gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-8">
+      <header className="absolute inset-x-0 top-0 z-20 flex min-h-16 items-center justify-between gap-3 px-4 py-3 md:px-8">
         <div className="flex min-w-0 items-center gap-3">
           <div className="size-2 rounded-full bg-vermilion shadow-[0_0_12px] shadow-vermilion/60" />
           <span className="truncate font-display text-[clamp(1.1rem,5vw,1.25rem)] italic leading-none tracking-tight md:text-xl">
@@ -120,13 +122,39 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             {t('app.subtitle')}
           </span>
         </div>
-        <div className="flex min-w-0 items-center justify-end gap-2 md:gap-4">
+        <div className="hidden min-w-0 items-center justify-end gap-2 sm:flex md:gap-4">
           <LanguageSwitcher />
-          <div className="hidden sm:block">
-            <AuthSection onAuthChanged={onAuthChanged} />
-          </div>
+          <AuthSection onAuthChanged={onAuthChanged} />
         </div>
+        <Button
+          className="size-11 shrink-0 p-0 tracking-normal sm:hidden"
+          variant="secondary"
+          type="button"
+          aria-label={t('lobby.menu')}
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Menu className="size-4" strokeWidth={1.25} aria-hidden="true" />
+        </Button>
       </header>
+
+      <AppDrawer
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title={t('lobby.menu')}
+        kicker={t('settings.language')}
+        actions={[]}
+      >
+        <div className="grid gap-4">
+          <LanguageSwitcher
+            labelClassName="inline"
+            labelMode="always"
+            layout="stacked"
+            selectClassName="max-w-none"
+          />
+          <AuthSection onAuthChanged={onAuthChanged} />
+        </div>
+      </AppDrawer>
 
       {/* 中央三聯幅卡 */}
       <section className="lobby-home-content relative z-10 h-full overflow-y-auto px-4 pb-10 pt-32 sm:pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
