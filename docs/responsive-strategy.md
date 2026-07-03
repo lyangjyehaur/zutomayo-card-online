@@ -511,6 +511,7 @@ Completed in the current responsive pass:
 - `AIGamePage`, `AdminPage`, and `I18nManager`: tool-page back navigation now shares the 44px touch target floor without changing page flow or authorization behavior.
 - `FeedbackPage`: tag management delete actions now use the shared 44px touch target floor inside the mobile sheet and desktop management panel.
 - `NavBar`: tablet and desktop nav labels now enforce both 44px height and width, so short labels no longer fall below the shared touch target floor.
+- `DeckEditor`: phone/tablet card browser controls now include a compact validation summary beside the filter summary, keeping deck validity reachable without opening the active deck sheet.
 
 ## Acceptance Criteria
 

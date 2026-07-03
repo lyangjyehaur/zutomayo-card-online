@@ -261,6 +261,7 @@ export function DeckEditor({
         ? t('deckEditor.sortAttack')
         : t('deckEditor.sortName'),
   ].join(' · ');
+  const deckStatusLabel = `${isValid ? t('deckEditor.valid') : t('deckEditor.invalid')} · ${deck.length}/${DECK_SIZE}`;
 
   const renderFilterControls = () => (
     <div className="space-y-3 lg:space-y-2">
@@ -515,9 +516,13 @@ export function DeckEditor({
                 {deck.length}/{DECK_SIZE}
               </span>
             </Button>
-            <span className="col-span-2 truncate font-mono text-[9px] uppercase tracking-[0.18em] text-bone/35 lg:hidden">
-              {filterSummary}
-            </span>
+            <div
+              className="col-span-2 flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[9px] uppercase tracking-[0.18em] lg:hidden"
+              aria-live="polite"
+            >
+              <span className={isValid ? 'text-gold/70' : 'text-vermilion/70'}>{deckStatusLabel}</span>
+              <span className="min-w-0 truncate text-bone/35">{filterSummary}</span>
+            </div>
           </div>
 
           <div className="mb-4 hidden lg:block">{renderFilterControls()}</div>
