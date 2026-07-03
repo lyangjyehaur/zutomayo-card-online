@@ -541,6 +541,8 @@ Completed in the current responsive pass:
   tablet landscape widths with mocked room creation.
 - `Tool pages`: `npm run smoke:tools-responsive` now covers Feedback toolbar, Leaderboard DataList/cards, Match History actions, and
   I18n translation DataList at representative phone/tablet/desktop widths.
+- `Responsive QA`: `npm run smoke:responsive` now runs the Admin, Battle, Online Lobby, and tool-page responsive smoke suite as a single
+  acceptance gate.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
   tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
 
