@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/loader';
@@ -7,7 +7,13 @@ import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/custom
 import { t, useLocale } from '../i18n';
 import { ChevronLeft, ChevronRight, Eye, Layers, Save, Search, SlidersHorizontal, X } from 'lucide-react';
 import { BackButton, Button, Input, PageShell, Sheet } from './ui';
-import { CardBrowser, CardBrowserGrid, CardBrowserToolbar } from './CardBrowser';
+import {
+  CardBrowser,
+  CardBrowserDetailPopover,
+  CardBrowserFilterSheet,
+  CardBrowserGrid,
+  CardBrowserToolbar,
+} from './CardBrowser';
 
 interface DeckEditorProps {
   onSave: (deckIds: string[]) => void | Promise<void>;
@@ -617,49 +623,46 @@ export function DeckEditor({
         {previewCard &&
           popoverPos &&
           createPortal(
-            <aside
-              aria-hidden="true"
-              className="pointer-events-none fixed z-50 w-72 rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/95 to-lacquer p-4 shadow-2xl ring-1 ring-gold/30 backdrop-blur"
-              style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` as CSSProperties['left'] }}
-            >
-              <div className="truncate font-display text-sm font-bold text-bone/90">{previewCard.name}</div>
-              <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">
-                {elementLabel(previewCard.element)} · {typeLabel(previewCard.type)} · {previewCard.rarity}
-              </div>
-              <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
-                <span className="text-bone/60">
-                  <span className="text-gold/70">{t('card.energy')}</span> {previewCard.powerCost}
-                </span>
-                {previewCard.attack && (
+            <CardBrowserDetailPopover
+              title={previewCard.name}
+              meta={`${elementLabel(previewCard.element)} · ${typeLabel(previewCard.type)} · ${previewCard.rarity}`}
+              style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` }}
+              stats={
+                <>
                   <span className="text-bone/60">
-                    <span className="text-gold/70">
-                      {t('card.night')}/{t('card.day')}
-                    </span>{' '}
-                    {previewCard.attack.night}/{previewCard.attack.day}
+                    <span className="text-gold/70">{t('card.energy')}</span> {previewCard.powerCost}
                   </span>
-                )}
-                <span className="text-bone/60">
-                  <span className="text-gold/70">{t('card.clock')}</span> {previewCard.clock}
-                </span>
-                {previewCard.sendToPower > 0 && (
+                  {previewCard.attack && (
+                    <span className="text-bone/60">
+                      <span className="text-gold/70">
+                        {t('card.night')}/{t('card.day')}
+                      </span>{' '}
+                      {previewCard.attack.night}/{previewCard.attack.day}
+                    </span>
+                  )}
                   <span className="text-bone/60">
-                    <span className="text-gold/70">{t('card.charge')}</span> {previewCard.sendToPower}
+                    <span className="text-gold/70">{t('card.clock')}</span> {previewCard.clock}
                   </span>
-                )}
-              </div>
-              {previewCard.effect && (
-                <p className="mt-2.5 text-[12px] leading-relaxed text-bone/80">
-                  {getTranslatedEffect(previewCard.id, locale) ?? previewCard.effect}
-                </p>
-              )}
-              {(previewCard.song || previewCard.illustrator) && (
-                <div className="mt-2 font-mono text-[9px] text-bone/30">
-                  {previewCard.song && <span>{previewCard.song}</span>}
-                  {previewCard.song && previewCard.illustrator && <span> · </span>}
-                  {previewCard.illustrator && <span>illust. {previewCard.illustrator}</span>}
-                </div>
-              )}
-            </aside>,
+                  {previewCard.sendToPower > 0 && (
+                    <span className="text-bone/60">
+                      <span className="text-gold/70">{t('card.charge')}</span> {previewCard.sendToPower}
+                    </span>
+                  )}
+                </>
+              }
+              effect={
+                previewCard.effect ? (getTranslatedEffect(previewCard.id, locale) ?? previewCard.effect) : undefined
+              }
+              footer={
+                previewCard.song || previewCard.illustrator ? (
+                  <>
+                    {previewCard.song && <span>{previewCard.song}</span>}
+                    {previewCard.song && previewCard.illustrator && <span> · </span>}
+                    {previewCard.illustrator && <span>illust. {previewCard.illustrator}</span>}
+                  </>
+                ) : undefined
+              }
+            />,
             document.body,
           )}
 
@@ -671,19 +674,15 @@ export function DeckEditor({
         </aside>
       </div>
 
-      <Sheet
+      <CardBrowserFilterSheet
         open={filtersOpen}
         onOpenChange={setFiltersOpen}
         title={t('deckEditor.filters')}
         closeLabel={t('common.close')}
-        footer={
-          <Button type="button" variant="primary" fullWidth className="min-h-11" onClick={() => setFiltersOpen(false)}>
-            {t('common.confirm')}
-          </Button>
-        }
+        confirmLabel={t('common.confirm')}
       >
         {renderFilterControls()}
-      </Sheet>
+      </CardBrowserFilterSheet>
 
       <Sheet
         open={deckSheetOpen}

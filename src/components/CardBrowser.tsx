@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from 'react';
+import { Button, Sheet } from './ui';
 import { cn } from './ui/utils';
 
 interface CardBrowserProps extends HTMLAttributes<HTMLElement> {
@@ -69,5 +70,78 @@ export function CardBrowserGrid({ className, children, ...props }: HTMLAttribute
     >
       {children}
     </div>
+  );
+}
+
+interface CardBrowserFilterSheetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  closeLabel: string;
+  confirmLabel: string;
+  children: ReactNode;
+}
+
+export function CardBrowserFilterSheet({
+  open,
+  onOpenChange,
+  title,
+  closeLabel,
+  confirmLabel,
+  children,
+}: CardBrowserFilterSheetProps) {
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      closeLabel={closeLabel}
+      footer={
+        <Button type="button" variant="primary" fullWidth className="min-h-11" onClick={() => onOpenChange(false)}>
+          {confirmLabel}
+        </Button>
+      }
+    >
+      {children}
+    </Sheet>
+  );
+}
+
+interface CardBrowserDetailPopoverProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+  title: ReactNode;
+  meta?: ReactNode;
+  stats?: ReactNode;
+  effect?: ReactNode;
+  footer?: ReactNode;
+}
+
+export function CardBrowserDetailPopover({
+  title,
+  meta,
+  stats,
+  effect,
+  footer,
+  className,
+  ...props
+}: CardBrowserDetailPopoverProps) {
+  return (
+    <aside
+      aria-hidden="true"
+      className={cn(
+        'pointer-events-none fixed z-50 w-72 rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/95 to-lacquer p-4 shadow-2xl ring-1 ring-gold/30 backdrop-blur',
+        className,
+      )}
+      {...props}
+    >
+      <div className="truncate font-display text-sm font-bold text-bone/90">{title}</div>
+      {meta && <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">{meta}</div>}
+      {stats && (
+        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
+          {stats}
+        </div>
+      )}
+      {effect && <p className="mt-2.5 text-[12px] leading-relaxed text-bone/80">{effect}</p>}
+      {footer && <div className="mt-2 font-mono text-[9px] text-bone/30">{footer}</div>}
+    </aside>
   );
 }

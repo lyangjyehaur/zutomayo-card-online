@@ -515,6 +515,8 @@ Completed in the current responsive pass:
 - `Board`: battle view now has a presentational `BoardLayout` wrapper plus named compact HUD/command-dock regions, so phone layouts can keep opponent status and player hand/actions grouped without forking game logic.
 - `CardBrowser`: Deck Builder card pool now uses a shared presentational browser shell, toolbar, and grid wrapper while keeping filtering,
   pagination, preview, and deck mutation logic inside `DeckEditor`.
+- `CardBrowser`: filter sheet and hover/tap detail popover surfaces are now shared presentational wrappers, so Deck Builder can keep the
+  same state and handlers while moving toward reusable browser composition.
 
 ## Acceptance Criteria
 
