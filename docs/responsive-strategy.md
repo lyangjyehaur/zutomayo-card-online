@@ -531,6 +531,8 @@ Completed in the current responsive pass:
   phone/tablet rank cards.
 - `ActionBar`: shared mobile layout variants now back Match History header actions, pagination, and record actions without changing
   history pagination or download behavior.
+- `ResponsiveToolbar`: Match History pagination now uses the shared toolbar wrapper for title/action alignment while keeping the same
+  page controls and paging state.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
   tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
 

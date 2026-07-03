@@ -11,7 +11,7 @@ import type { ActionLogEntry } from '../game/types';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
-import { ActionBar, BackButton, Badge, Button, Card, Dialog, Panel, PageShell } from './ui';
+import { ActionBar, BackButton, Badge, Button, Card, Dialog, Panel, PageShell, ResponsiveToolbar } from './ui';
 
 interface MatchHistoryProps {
   onBack: () => void;
@@ -225,34 +225,37 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
         </section>
 
         <section className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2>{t('history.title')}</h2>
-            <ActionBar mobileLayout="pagination">
-              <Button
-                size="sm"
-                variant="secondary"
-                type="button"
-                className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
-                disabled={currentPage === 0}
-                onClick={() => setPage((value) => Math.max(0, value - 1))}
-              >
-                {t('common.prev')}
-              </Button>
-              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
-                {currentPage + 1}/{totalPages} {t('common.page')}
-              </span>
-              <Button
-                size="sm"
-                variant="secondary"
-                type="button"
-                className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
-                disabled={currentPage >= totalPages - 1}
-                onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
-              >
-                {t('common.next')}
-              </Button>
-            </ActionBar>
-          </div>
+          <ResponsiveToolbar
+            className="sm:flex-row sm:items-center sm:justify-between"
+            primary={<h2>{t('history.title')}</h2>}
+            actions={
+              <ActionBar mobileLayout="pagination">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  type="button"
+                  className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+                  disabled={currentPage === 0}
+                  onClick={() => setPage((value) => Math.max(0, value - 1))}
+                >
+                  {t('common.prev')}
+                </Button>
+                <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
+                  {currentPage + 1}/{totalPages} {t('common.page')}
+                </span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  type="button"
+                  className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+                  disabled={currentPage >= totalPages - 1}
+                  onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+                >
+                  {t('common.next')}
+                </Button>
+              </ActionBar>
+            }
+          />
 
           {records.length === 0 ? (
             <Panel className="text-sm text-bone/60">{t('history.noRecords')}</Panel>
