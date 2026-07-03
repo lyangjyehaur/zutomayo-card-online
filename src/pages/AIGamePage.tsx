@@ -64,7 +64,7 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
           <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.menu')}</span>
           <h1 className="font-display text-3xl italic">{t('aiSetup.title')}</h1>
         </div>
-        <BackButton type="button" onClick={() => navigate('/')}>
+        <BackButton className="min-h-11" type="button" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
         </BackButton>
       </header>

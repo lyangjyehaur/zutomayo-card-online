@@ -119,7 +119,9 @@ export function I18nManager() {
     return (
       <PageShell variant="scroll" className="admin-page i18n-page flex flex-col px-4 py-4 md:px-6">
         <header className="i18n-header flex items-center justify-between border-b border-bone/5 pb-4">
-          <BackButton onClick={() => navigate('/')}>{t('common.backToLobby')}</BackButton>
+          <BackButton className="min-h-11" onClick={() => navigate('/')}>
+            {t('common.backToLobby')}
+          </BackButton>
           <h1 className="i18n-heading font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
           <div />
         </header>
@@ -166,7 +168,9 @@ export function I18nManager() {
   return (
     <PageShell variant="workspace" className="admin-page i18n-page flex flex-col px-4 py-4 md:px-6">
       <header className="i18n-header flex items-center justify-between border-b border-bone/5 pb-4">
-        <BackButton onClick={() => navigate('/')}>{t('common.backToLobby')}</BackButton>
+        <BackButton className="min-h-11" onClick={() => navigate('/')}>
+          {t('common.backToLobby')}
+        </BackButton>
         <h1 className="i18n-heading font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
         <Button size="sm" variant="secondary" onClick={handleLogout}>
           {t('admin.logout')}

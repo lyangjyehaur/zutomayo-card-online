@@ -643,7 +643,7 @@ export function AdminPage() {
   if (!authenticated) {
     return (
       <PageShell className="flex items-center justify-center p-4">
-        <BackButton className="absolute left-4 top-4" onClick={() => navigate('/')}>
+        <BackButton className="absolute left-4 top-4 min-h-11" onClick={() => navigate('/')}>
           {t('common.backToLobby')}
         </BackButton>
         <Panel className="w-96 max-w-full" size="lg">
@@ -742,7 +742,9 @@ export function AdminPage() {
     <PageShell className="card-admin-page admin-page flex flex-col">
       <header className="admin-header flex h-14 shrink-0 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur md:px-6">
         <div className="admin-title-row flex items-center gap-2">
-          <BackButton onClick={() => navigate('/')}>{t('common.backToLobby')}</BackButton>
+          <BackButton className="min-h-11" onClick={() => navigate('/')}>
+            {t('common.backToLobby')}
+          </BackButton>
           <h1 className="admin-heading font-display text-xl italic text-gold">管理員面板</h1>
           {activeTab === 'cards' && (
             <Badge>
