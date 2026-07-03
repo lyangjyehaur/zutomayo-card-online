@@ -525,6 +525,8 @@ Completed in the current responsive pass:
   mobile filter expansion, users/matches DataList tables, tablet portrait, tablet landscape, and low-width phone viewports.
 - `DataList`: shared `DataListTable` and `DataListCell` primitives now back Admin users/matches tables while preserving the existing
   mobile card-row presentation and table data flow.
+- `I18nManager`: translation rows now use the shared `DataListTable` and `DataListCell` primitives while preserving the existing mobile
+  card-row CSS and sheet editing behavior.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
   tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
 

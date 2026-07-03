@@ -12,6 +12,8 @@ import {
   BackButton,
   Badge,
   Button,
+  DataListCell,
+  DataListTable,
   Dialog,
   FormActions,
   FormField,
@@ -219,7 +221,7 @@ export function I18nManager() {
       </div>
 
       <div className="i18n-table-wrapper">
-        <table className="i18n-table i18n-responsive-table w-full border-collapse text-left text-sm">
+        <DataListTable className="i18n-table i18n-responsive-table">
           <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
             <tr className="border-b border-bone/10">
               <th className="px-3 py-2">{t('admin.i18nColKey')}</th>
@@ -237,14 +239,14 @@ export function I18nManager() {
 
               return (
                 <tr key={key} className={isMissing ? 'row-missing' : isSame ? 'row-same' : ''}>
-                  <td data-label={t('admin.i18nColKey')} className="i18n-key px-3 py-2">
+                  <DataListCell label={t('admin.i18nColKey')} className="i18n-key">
                     {key}
-                  </td>
-                  <td data-label={t('admin.i18nColBase')} className="i18n-base px-3 py-2">
+                  </DataListCell>
+                  <DataListCell label={t('admin.i18nColBase')} className="i18n-base">
                     {baseValue}
-                  </td>
-                  <td
-                    data-label={getLocaleLabel(selectedLocale)}
+                  </DataListCell>
+                  <DataListCell
+                    label={getLocaleLabel(selectedLocale)}
                     className="i18n-translated px-3 py-2"
                     role={!isMissing ? 'button' : undefined}
                     tabIndex={!isMissing ? 0 : undefined}
@@ -282,8 +284,8 @@ export function I18nManager() {
                         {isMissing ? t('admin.i18nMissingBadge') : translated}
                       </span>
                     )}
-                  </td>
-                  <td data-label={t('admin.i18nColStatus')} className="i18n-status px-3 py-2">
+                  </DataListCell>
+                  <DataListCell label={t('admin.i18nColStatus')} className="i18n-status">
                     {isMissing ? (
                       <Badge tone="vermilion">{t('admin.i18nMissingBadge')}</Badge>
                     ) : isSame ? (
@@ -291,12 +293,12 @@ export function I18nManager() {
                     ) : (
                       <Badge tone="jade">{t('admin.i18nTranslated')}</Badge>
                     )}
-                  </td>
+                  </DataListCell>
                 </tr>
               );
             })}
           </tbody>
-        </table>
+        </DataListTable>
       </div>
       <Sheet
         open={useSheetEdit && Boolean(editKey)}
