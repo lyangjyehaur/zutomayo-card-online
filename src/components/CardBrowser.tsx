@@ -107,13 +107,39 @@ export function CardBrowserFilterSheet({
   );
 }
 
-interface CardBrowserDetailPopoverProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
+interface CardBrowserDetailContentProps {
   title: ReactNode;
   meta?: ReactNode;
   stats?: ReactNode;
   effect?: ReactNode;
   footer?: ReactNode;
 }
+
+function CardBrowserDetailContent({
+  title,
+  meta,
+  stats,
+  effect,
+  footer,
+  showTitle = true,
+}: CardBrowserDetailContentProps & { showTitle?: boolean }) {
+  return (
+    <>
+      {showTitle && <div className="truncate font-display text-sm font-bold text-bone/90">{title}</div>}
+      {meta && <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">{meta}</div>}
+      {stats && (
+        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
+          {stats}
+        </div>
+      )}
+      {effect && <p className="mt-2.5 text-[12px] leading-relaxed text-bone/80">{effect}</p>}
+      {footer && <div className="mt-2 font-mono text-[9px] text-bone/30">{footer}</div>}
+    </>
+  );
+}
+
+interface CardBrowserDetailPopoverProps
+  extends CardBrowserDetailContentProps, Omit<HTMLAttributes<HTMLElement>, 'title'> {}
 
 export function CardBrowserDetailPopover({
   title,
@@ -133,15 +159,37 @@ export function CardBrowserDetailPopover({
       )}
       {...props}
     >
-      <div className="truncate font-display text-sm font-bold text-bone/90">{title}</div>
-      {meta && <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">{meta}</div>}
-      {stats && (
-        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
-          {stats}
-        </div>
-      )}
-      {effect && <p className="mt-2.5 text-[12px] leading-relaxed text-bone/80">{effect}</p>}
-      {footer && <div className="mt-2 font-mono text-[9px] text-bone/30">{footer}</div>}
+      <CardBrowserDetailContent title={title} meta={meta} stats={stats} effect={effect} footer={footer} />
     </aside>
+  );
+}
+
+interface CardBrowserDetailSheetProps extends CardBrowserDetailContentProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  closeLabel: string;
+}
+
+export function CardBrowserDetailSheet({
+  open,
+  onOpenChange,
+  closeLabel,
+  title,
+  meta,
+  stats,
+  effect,
+  footer,
+}: CardBrowserDetailSheetProps) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={title} description={meta} closeLabel={closeLabel}>
+      <CardBrowserDetailContent
+        title={title}
+        meta={undefined}
+        stats={stats}
+        effect={effect}
+        footer={footer}
+        showTitle={false}
+      />
+    </Sheet>
   );
 }

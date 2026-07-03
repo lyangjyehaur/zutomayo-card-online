@@ -519,6 +519,8 @@ Completed in the current responsive pass:
   same state and handlers while moving toward reusable browser composition.
 - `DeckEditor`: active deck now uses shared `ActiveDeckPanel` and `ActiveDeckSheet` presentation wrappers, keeping validation, removal,
   and save behavior in the editor while naming the aside/sheet layout variants.
+- `CardBrowser`: Deck Builder preview controls now open a shared detail sheet on touch/small-screen layouts, while desktop hover/focus
+  preview keeps the lightweight popover.
 - `AdminPage`: authenticated responsive visual QA now has a repo script (`npm run smoke:admin-responsive`) covering card admin filters,
   mobile filter expansion, tablet portrait, tablet landscape, and low-width phone viewports.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,

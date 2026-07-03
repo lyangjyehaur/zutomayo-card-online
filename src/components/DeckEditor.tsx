@@ -10,6 +10,7 @@ import { BackButton, Button, Input, PageShell } from './ui';
 import {
   CardBrowser,
   CardBrowserDetailPopover,
+  CardBrowserDetailSheet,
   CardBrowserFilterSheet,
   CardBrowserGrid,
   CardBrowserToolbar,
@@ -82,6 +83,7 @@ export function DeckEditor({
   const [sortBy, setSortBy] = useState<'cost' | 'attack' | 'name'>('cost');
   const [page, setPage] = useState(0);
   const [previewCard, setPreviewCard] = useState<CardDef | null>(null);
+  const [detailSheetCard, setDetailSheetCard] = useState<CardDef | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [deckSheetOpen, setDeckSheetOpen] = useState(false);
@@ -146,6 +148,17 @@ export function DeckEditor({
 
   const handlePreviewClick = (card: CardDef, event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    if (
+      window.matchMedia('(hover: none)').matches ||
+      window.matchMedia('(pointer: coarse)').matches ||
+      window.matchMedia('(max-width: 767px)').matches
+    ) {
+      hoveredRef.current = null;
+      setPreviewCard(null);
+      setPopoverPos(null);
+      setDetailSheetCard(card);
+      return;
+    }
     openCardPreview(card, event.currentTarget);
   };
 
@@ -415,6 +428,43 @@ export function DeckEditor({
     </>
   );
 
+  const cardDetailProps = (card: CardDef) => ({
+    title: card.name,
+    meta: `${elementLabel(card.element)} · ${typeLabel(card.type)} · ${card.rarity}`,
+    stats: (
+      <>
+        <span className="text-bone/60">
+          <span className="text-gold/70">{t('card.energy')}</span> {card.powerCost}
+        </span>
+        {card.attack && (
+          <span className="text-bone/60">
+            <span className="text-gold/70">
+              {t('card.night')}/{t('card.day')}
+            </span>{' '}
+            {card.attack.night}/{card.attack.day}
+          </span>
+        )}
+        <span className="text-bone/60">
+          <span className="text-gold/70">{t('card.clock')}</span> {card.clock}
+        </span>
+        {card.sendToPower > 0 && (
+          <span className="text-bone/60">
+            <span className="text-gold/70">{t('card.charge')}</span> {card.sendToPower}
+          </span>
+        )}
+      </>
+    ),
+    effect: card.effect ? (getTranslatedEffect(card.id, locale) ?? card.effect) : undefined,
+    footer:
+      card.song || card.illustrator ? (
+        <>
+          {card.song && <span>{card.song}</span>}
+          {card.song && card.illustrator && <span> · </span>}
+          {card.illustrator && <span>illust. {card.illustrator}</span>}
+        </>
+      ) : undefined,
+  });
+
   return (
     <PageShell variant="workspace" className="flex flex-col">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -625,50 +675,25 @@ export function DeckEditor({
           popoverPos &&
           createPortal(
             <CardBrowserDetailPopover
-              title={previewCard.name}
-              meta={`${elementLabel(previewCard.element)} · ${typeLabel(previewCard.type)} · ${previewCard.rarity}`}
+              {...cardDetailProps(previewCard)}
               style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` }}
-              stats={
-                <>
-                  <span className="text-bone/60">
-                    <span className="text-gold/70">{t('card.energy')}</span> {previewCard.powerCost}
-                  </span>
-                  {previewCard.attack && (
-                    <span className="text-bone/60">
-                      <span className="text-gold/70">
-                        {t('card.night')}/{t('card.day')}
-                      </span>{' '}
-                      {previewCard.attack.night}/{previewCard.attack.day}
-                    </span>
-                  )}
-                  <span className="text-bone/60">
-                    <span className="text-gold/70">{t('card.clock')}</span> {previewCard.clock}
-                  </span>
-                  {previewCard.sendToPower > 0 && (
-                    <span className="text-bone/60">
-                      <span className="text-gold/70">{t('card.charge')}</span> {previewCard.sendToPower}
-                    </span>
-                  )}
-                </>
-              }
-              effect={
-                previewCard.effect ? (getTranslatedEffect(previewCard.id, locale) ?? previewCard.effect) : undefined
-              }
-              footer={
-                previewCard.song || previewCard.illustrator ? (
-                  <>
-                    {previewCard.song && <span>{previewCard.song}</span>}
-                    {previewCard.song && previewCard.illustrator && <span> · </span>}
-                    {previewCard.illustrator && <span>illust. {previewCard.illustrator}</span>}
-                  </>
-                ) : undefined
-              }
             />,
             document.body,
           )}
 
         <ActiveDeckPanel label="Active Deck">{renderActiveDeckContent()}</ActiveDeckPanel>
       </div>
+
+      {detailSheetCard && (
+        <CardBrowserDetailSheet
+          open={Boolean(detailSheetCard)}
+          onOpenChange={(open) => {
+            if (!open) setDetailSheetCard(null);
+          }}
+          closeLabel={t('common.close')}
+          {...cardDetailProps(detailSheetCard)}
+        />
+      )}
 
       <CardBrowserFilterSheet
         open={filtersOpen}
