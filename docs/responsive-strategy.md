@@ -509,6 +509,7 @@ Completed in the current responsive pass:
 - `LobbyPage`: desktop footer version, feedback, and external-link controls now expose 40px click areas without changing the footer information hierarchy.
 - `AppDrawer`: shared drawer actions now meet the 44px touch target floor across PWA install/update/recover prompts and other drawer-based secondary flows.
 - `AIGamePage`, `AdminPage`, and `I18nManager`: tool-page back navigation now shares the 44px touch target floor without changing page flow or authorization behavior.
+- `FeedbackPage`: tag management delete actions now use the shared 44px touch target floor inside the mobile sheet and desktop management panel.
 
 ## Acceptance Criteria
 

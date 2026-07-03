@@ -714,7 +714,7 @@ function TagManagePanel({ tags, onChanged }: { tags: FeedbackTag[]; onChanged: (
             {tg.color && <span className="tag-color-chip" style={{ background: tg.color }} />}
             <Button
               type="button"
-              className="size-8 p-0 tracking-normal"
+              className="size-11 p-0 tracking-normal"
               variant="danger"
               size="sm"
               onClick={() => void remove(tg.id)}
