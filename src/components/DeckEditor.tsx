@@ -273,7 +273,7 @@ export function DeckEditor({
             key={element}
             type="button"
             onClick={() => setFilterElement(element)}
-            className={`min-h-8 text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
+            className={`deck-filter-chip min-h-11 rounded-sm px-3 text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
               filterElement === element ? 'text-gold' : 'text-bone/40 hover:text-bone'
             }`}
             aria-pressed={filterElement === element}
@@ -291,7 +291,7 @@ export function DeckEditor({
             key={type}
             type="button"
             onClick={() => setFilterType(type)}
-            className={`min-h-8 text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
+            className={`deck-filter-chip min-h-11 rounded-sm px-3 text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
               filterType === type ? 'text-gold' : 'text-bone/40 hover:text-bone'
             }`}
             aria-pressed={filterType === type}
@@ -309,7 +309,7 @@ export function DeckEditor({
             key={option}
             type="button"
             onClick={() => setSortBy(option)}
-            className={`min-h-8 text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
+            className={`deck-filter-chip min-h-11 rounded-sm px-3 text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
               sortBy === option ? 'text-gold' : 'text-bone/40 hover:text-bone'
             }`}
             aria-pressed={sortBy === option}
@@ -413,7 +413,7 @@ export function DeckEditor({
       </div>
 
       <header className="relative z-30 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-bone/5 bg-lacquer-deep/80 px-3 py-2 backdrop-blur md:h-12 md:flex-nowrap md:px-6 md:py-0">
-        <BackButton type="button" onClick={onCancel} aria-label={t('common.backToLobby')}>
+        <BackButton className="min-h-11" type="button" onClick={onCancel} aria-label={t('common.backToLobby')}>
           <span className="hidden sm:inline">{t('common.backToLobby')}</span>
         </BackButton>
         <h1 className="hidden font-display text-sm italic md:block">Deck Editor · 牌組編輯</h1>
@@ -424,7 +424,7 @@ export function DeckEditor({
               aria-label={t('deck.custom')}
               placeholder={t('deck.custom')}
               onChange={(event) => onDeckNameChange(event.target.value)}
-              className="w-32 text-xs md:w-40"
+              className="min-h-11 w-32 text-xs md:w-40"
             />
           )}
           {syncLabel && (
@@ -441,6 +441,7 @@ export function DeckEditor({
             onClick={saveDeck}
             size="sm"
             variant="primary"
+            className="min-h-11"
             aria-label={saveLabel ?? t('deckEditor.saveDeck')}
           >
             <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
@@ -493,7 +494,7 @@ export function DeckEditor({
               variant="secondary"
               size="sm"
               onClick={() => setFiltersOpen(true)}
-              className="w-full justify-between px-3 tracking-[0.18em] lg:hidden"
+              className="min-h-11 w-full justify-between px-3 tracking-[0.18em] lg:hidden"
               aria-label={t('deckEditor.filters')}
               data-deck-editor-control="filters"
             >
@@ -505,7 +506,7 @@ export function DeckEditor({
               variant="secondary"
               size="sm"
               onClick={() => setDeckSheetOpen(true)}
-              className="w-full justify-between px-3 tracking-[0.18em] lg:w-auto"
+              className="min-h-11 w-full justify-between px-3 tracking-[0.18em] lg:w-auto"
               aria-label={t('deckEditor.openDeck')}
               data-deck-editor-control="active-deck"
             >
@@ -533,7 +534,7 @@ export function DeckEditor({
                 type="button"
                 disabled={currentPage === 0}
                 onClick={() => setPage((value) => Math.max(0, value - 1))}
-                className="flex min-h-9 items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40 md:tracking-[0.3em]"
+                className="flex min-h-11 items-center gap-1 px-2 text-[10px] uppercase tracking-[0.18em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40 md:tracking-[0.3em]"
                 aria-label={t('common.prev')}
               >
                 <ChevronLeft className="size-3.5" aria-hidden="true" /> {t('common.prev')}
@@ -542,7 +543,7 @@ export function DeckEditor({
                 type="button"
                 disabled={currentPage >= totalPages - 1}
                 onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
-                className="flex min-h-9 items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40 md:tracking-[0.3em]"
+                className="flex min-h-11 items-center gap-1 px-2 text-[10px] uppercase tracking-[0.18em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40 md:tracking-[0.3em]"
                 aria-label={t('common.next')}
               >
                 {t('common.next')} <ChevronRight className="size-3.5" aria-hidden="true" />
@@ -670,7 +671,7 @@ export function DeckEditor({
         title={t('deckEditor.filters')}
         closeLabel={t('common.close')}
         footer={
-          <Button type="button" variant="primary" fullWidth onClick={() => setFiltersOpen(false)}>
+          <Button type="button" variant="primary" fullWidth className="min-h-11" onClick={() => setFiltersOpen(false)}>
             {t('common.confirm')}
           </Button>
         }
@@ -690,6 +691,7 @@ export function DeckEditor({
             onClick={() => void saveDeck()}
             fullWidth
             variant="primary"
+            className="min-h-11"
           >
             <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
           </Button>

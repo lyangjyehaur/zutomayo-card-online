@@ -2508,6 +2508,11 @@ input:focus {
   background: rgba(245, 211, 104, 0.1);
 }
 
+.deck-filter-chip {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
 .panel-title-row {
   display: flex;
   align-items: center;
