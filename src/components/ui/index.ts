@@ -8,6 +8,8 @@ export { Card } from './Card';
 export type { CardProps, CardSize } from './Card';
 export { Dialog, Dialog as Modal } from './Dialog';
 export type { DialogProps, DialogSize } from './Dialog';
+export { DataListCell, DataListTable } from './DataList';
+export type { DataListCellProps, DataListTableProps } from './DataList';
 export { FieldLabel, FormActions, FormField, Input, Select, Textarea } from './Input';
 export type { FieldLabelProps, FormFieldProps, InputProps, SelectProps, TextareaProps } from './Input';
 export { AmbientGlow, PageShell } from './PageShell';

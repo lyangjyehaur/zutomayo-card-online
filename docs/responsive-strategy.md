@@ -24,14 +24,14 @@ Primary goals:
 
 Use these mental tiers:
 
-| Tier | Viewports | Meaning |
-| --- | --- | --- |
-| Small phone | `360x740`, `390x844` | 最嚴苛互動密度；只保留主任務與必要狀態。 |
-| Phone | `430x932` | 仍是單手觸控；避免雙欄與 hover-only。 |
-| Tablet portrait | `768x1024` | 可展示更多內容，但 secondary panel 不應常駐。 |
-| Tablet landscape | `1024x768` | 不等於 desktop；遊戲/編輯器/sidebar 不應過早啟用 desktop layout。 |
-| Low-height desktop | `1280x720`, `1366x768` | 寬度夠但高度不足；需要 compact vertical rhythm。 |
-| Desktop | `>= 1180px` 且高度足夠 | 可使用雙欄、常駐 sidebar、完整 toolbar。 |
+| Tier               | Viewports              | Meaning                                                           |
+| ------------------ | ---------------------- | ----------------------------------------------------------------- |
+| Small phone        | `360x740`, `390x844`   | 最嚴苛互動密度；只保留主任務與必要狀態。                          |
+| Phone              | `430x932`              | 仍是單手觸控；避免雙欄與 hover-only。                             |
+| Tablet portrait    | `768x1024`             | 可展示更多內容，但 secondary panel 不應常駐。                     |
+| Tablet landscape   | `1024x768`             | 不等於 desktop；遊戲/編輯器/sidebar 不應過早啟用 desktop layout。 |
+| Low-height desktop | `1280x720`, `1366x768` | 寬度夠但高度不足；需要 compact vertical rhythm。                  |
+| Desktop            | `>= 1180px` 且高度足夠 | 可使用雙欄、常駐 sidebar、完整 toolbar。                          |
 
 Rules:
 
@@ -62,17 +62,17 @@ Container query preferred cases:
 
 Responsive work should converge on these shared primitives:
 
-| Primitive | Responsive responsibility |
-| --- | --- |
-| `PageShell` | `screen` / `scroll` / `workspace` variants; use `dvh`; safe top/bottom inset; optional global nav offset. |
-| `PageHeader` | back/title/right-actions layout; collapse right actions to menu on phone; avoid centered title overlap. |
-| `ResponsiveToolbar` | inline on desktop, wrapped on tablet, Drawer/Popover/Sheet on phone. |
-| `Panel` | size variants `compact/default/roomy`; lower padding on small phone and low-height desktop. |
-| `Dialog` / `Sheet` | desktop modal, mobile full-height or bottom sheet; sticky header/actions; internal scroll body. |
-| `Drawer` | secondary panels: filters, active deck, logs, account/profile, room details. |
-| `DataList` | table on desktop, card/list rows on phone. |
-| `ActionBar` | sticky primary action on phone; inline action group on desktop. |
-| `SegmentedControl` | replaces dense tab/button rows; horizontal scroll only as fallback. |
+| Primitive           | Responsive responsibility                                                                                 |
+| ------------------- | --------------------------------------------------------------------------------------------------------- |
+| `PageShell`         | `screen` / `scroll` / `workspace` variants; use `dvh`; safe top/bottom inset; optional global nav offset. |
+| `PageHeader`        | back/title/right-actions layout; collapse right actions to menu on phone; avoid centered title overlap.   |
+| `ResponsiveToolbar` | inline on desktop, wrapped on tablet, Drawer/Popover/Sheet on phone.                                      |
+| `Panel`             | size variants `compact/default/roomy`; lower padding on small phone and low-height desktop.               |
+| `Dialog` / `Sheet`  | desktop modal, mobile full-height or bottom sheet; sticky header/actions; internal scroll body.           |
+| `Drawer`            | secondary panels: filters, active deck, logs, account/profile, room details.                              |
+| `DataList`          | table on desktop, card/list rows on phone.                                                                |
+| `ActionBar`         | sticky primary action on phone; inline action group on desktop.                                           |
+| `SegmentedControl`  | replaces dense tab/button rows; horizontal scroll only as fallback.                                       |
 
 ### Typography And Tap Targets
 
@@ -523,6 +523,8 @@ Completed in the current responsive pass:
   preview keeps the lightweight popover.
 - `AdminPage`: authenticated responsive visual QA now has a repo script (`npm run smoke:admin-responsive`) covering card admin filters,
   mobile filter expansion, tablet portrait, tablet landscape, and low-width phone viewports.
+- `DataList`: shared `DataListTable` and `DataListCell` primitives now back Admin users/matches tables while preserving the existing
+  mobile card-row presentation and table data flow.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
   tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
 

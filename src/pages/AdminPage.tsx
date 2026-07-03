@@ -22,6 +22,8 @@ import {
   BackButton,
   Button,
   Card as UiCard,
+  DataListCell,
+  DataListTable,
   Dialog,
   Input,
   PageShell,
@@ -975,7 +977,7 @@ export function AdminPage() {
               {adminError}
             </Panel>
           )}
-          <table className="admin-responsive-table w-full border-collapse text-left text-sm">
+          <DataListTable className="admin-responsive-table">
             <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
               <tr className="border-b border-bone/10">
                 <th className="px-3 py-2">ID</th>
@@ -990,16 +992,12 @@ export function AdminPage() {
             <tbody>
               {users.map((u) => (
                 <tr key={u.id} className="odd:bg-lacquer/50">
-                  <td data-label="ID" className="max-w-32 truncate px-3 py-2 font-mono text-xs opacity-70">
+                  <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
                     {u.id}
-                  </td>
-                  <td data-label="Email" className="px-3 py-2">
-                    {u.email}
-                  </td>
-                  <td data-label="暱稱" className="px-3 py-2">
-                    {u.nickname}
-                  </td>
-                  <td data-label="ELO" className="px-3 py-2">
+                  </DataListCell>
+                  <DataListCell label="Email">{u.email}</DataListCell>
+                  <DataListCell label="暱稱">{u.nickname}</DataListCell>
+                  <DataListCell label="ELO">
                     <div className="admin-elo-field flex items-center gap-2">
                       {eloEdits[u.id] ?? u.elo}
                       <Input
@@ -1009,14 +1007,10 @@ export function AdminPage() {
                         onChange={(e) => setEloEdits((prev) => ({ ...prev, [u.id]: e.target.value }))}
                       />
                     </div>
-                  </td>
-                  <td data-label="場次" className="px-3 py-2">
-                    {u.matchCount}
-                  </td>
-                  <td data-label="勝率" className="px-3 py-2">
-                    {u.winRate}%
-                  </td>
-                  <td data-label="操作" className="px-3 py-2">
+                  </DataListCell>
+                  <DataListCell label="場次">{u.matchCount}</DataListCell>
+                  <DataListCell label="勝率">{u.winRate}%</DataListCell>
+                  <DataListCell label="操作">
                     <Button
                       size="sm"
                       variant="ghost"
@@ -1039,11 +1033,11 @@ export function AdminPage() {
                     >
                       {eloSavingId === u.id ? '已更新' : '更新 ELO'}
                     </Button>
-                  </td>
+                  </DataListCell>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataListTable>
         </section>
       )}
 
@@ -1055,7 +1049,7 @@ export function AdminPage() {
               {adminError}
             </Panel>
           )}
-          <table className="admin-responsive-table w-full border-collapse text-left text-sm">
+          <DataListTable className="admin-responsive-table">
             <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
               <tr className="border-b border-bone/10">
                 <th className="px-3 py-2">ID</th>
@@ -1070,32 +1064,24 @@ export function AdminPage() {
             <tbody>
               {matches.map((m) => (
                 <tr key={m.id} className="odd:bg-lacquer/50">
-                  <td data-label="ID" className="max-w-32 truncate px-3 py-2 font-mono text-xs opacity-70">
+                  <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
                     {m.id}
-                  </td>
-                  <td data-label="勝者" className="px-3 py-2">
-                    {m.winnerNickname ?? m.winnerId}
-                  </td>
-                  <td data-label="敗者" className="px-3 py-2">
-                    {m.loserNickname ?? m.loserId}
-                  </td>
-                  <td data-label="ELO Δ" className="px-3 py-2">
+                  </DataListCell>
+                  <DataListCell label="勝者">{m.winnerNickname ?? m.winnerId}</DataListCell>
+                  <DataListCell label="敗者">{m.loserNickname ?? m.loserId}</DataListCell>
+                  <DataListCell label="ELO Δ">
                     {m.winnerEloChange >= 0 ? '+' : ''}
                     {m.winnerEloChange} / {m.loserEloChange}
-                  </td>
-                  <td data-label="回合" className="px-3 py-2">
-                    {m.turns ?? '—'}
-                  </td>
-                  <td data-label="時長" className="px-3 py-2">
+                  </DataListCell>
+                  <DataListCell label="回合">{m.turns ?? '—'}</DataListCell>
+                  <DataListCell label="時長">
                     {m.duration != null ? `${Math.round(m.duration / 60)}m` : '—'}
-                  </td>
-                  <td data-label="時間" className="px-3 py-2">
-                    {new Date(m.createdAt).toLocaleString()}
-                  </td>
+                  </DataListCell>
+                  <DataListCell label="時間">{new Date(m.createdAt).toLocaleString()}</DataListCell>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataListTable>
         </section>
       )}
 
