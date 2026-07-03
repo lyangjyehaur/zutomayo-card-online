@@ -519,6 +519,8 @@ Completed in the current responsive pass:
   same state and handlers while moving toward reusable browser composition.
 - `DeckEditor`: active deck now uses shared `ActiveDeckPanel` and `ActiveDeckSheet` presentation wrappers, keeping validation, removal,
   and save behavior in the editor while naming the aside/sheet layout variants.
+- `AdminPage`: authenticated responsive visual QA now has a repo script (`npm run smoke:admin-responsive`) covering card admin filters,
+  mobile filter expansion, tablet portrait, tablet landscape, and low-width phone viewports.
 
 ## Acceptance Criteria
 

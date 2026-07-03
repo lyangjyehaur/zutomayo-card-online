@@ -14,6 +14,7 @@
     "smoke": "node --import tsx scripts/game-smoke.ts",
     "smoke:api": "node --import tsx scripts/api-smoke.ts",
     "smoke:online": "node --import tsx scripts/online-smoke.ts",
+    "smoke:admin-responsive": "node scripts/admin-responsive-smoke.mjs",
     "rule:audit": "node --import tsx scripts/rule-audit.ts",
     "migrate:sqlite-to-pg": "node --import tsx scripts/migrate-sqlite-to-pg.ts",
     "seed:cards": "node --import tsx scripts/seed-cards-pg.ts",
