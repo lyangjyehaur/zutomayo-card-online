@@ -10,6 +10,16 @@ dist-server/
 # Test coverage
 coverage/
 
+# Generated responsive/visual QA artifacts
+docs/battle-responsive-smoke-data.json
+docs/battle-responsive-smoke-screenshots/
+docs/battle-visual-qa-data.json
+docs/battle-visual-qa-screenshots/
+docs/responsive-visual-qa-chrome-stderr.log
+docs/responsive-visual-qa-screenshots/
+docs/responsive-visual-smoke-chrome-stderr.log
+docs/responsive-visual-smoke-screenshots/
+
 # boardgame.io FlatFile local DB (dev)
 .data/
 
