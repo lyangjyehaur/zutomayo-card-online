@@ -500,6 +500,7 @@ Completed in the current responsive pass:
 - `DeckEditor`: card pool cards keep their original add-card tap action, with a separate 44px preview button for touch/focus access to card details.
 - `AdminPage`: users and matches tables switch to labeled card rows through tablet portrait, with ELO editing controls sized for touch.
 - `DeckEditor`: header actions, filter chips, pagination, sheet toggles, and sheet footer actions now meet the shared touch target floor.
+- `TutorialGamePage`: tutorial sheet close and next/confirm controls now meet the shared touch target floor on phone layouts.
 
 ## Acceptance Criteria
 

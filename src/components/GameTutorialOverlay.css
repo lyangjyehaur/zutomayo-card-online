@@ -23,6 +23,15 @@
   min-height: 0;
 }
 
+.tutorial-tooltip-action {
+  display: inline-flex;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.125rem;
+}
+
 /* SVG 視覺遮罩不攔截點擊 */
 .tutorial-game-overlay > svg {
   pointer-events: none;
@@ -122,8 +131,12 @@
     border-top: 1px solid rgba(244, 240, 222, 0.1);
   }
 
-  .tutorial-tooltip button {
-    min-height: 2rem;
+  .tutorial-tooltip-action {
+    min-height: 2.75rem;
+  }
+
+  .tutorial-tooltip-close {
+    padding-inline: 0.5rem;
   }
 }
 

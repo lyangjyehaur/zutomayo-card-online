@@ -304,7 +304,7 @@ export function GameTutorialOverlay({
           </span>
           <button
             onClick={onSkip}
-            className="text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-vermilion"
+            className="tutorial-tooltip-action tutorial-tooltip-close text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-vermilion"
             type="button"
           >
             {t('common.close')}
@@ -330,7 +330,7 @@ export function GameTutorialOverlay({
             <div className="flex justify-end gap-2">
               <button
                 onClick={isLast ? onComplete : onNext}
-                className="bg-gold px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-bone active:scale-95"
+                className="tutorial-tooltip-action bg-gold px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-bone active:scale-95"
                 type="button"
               >
                 {isLast ? t('common.confirm') : t('common.next')}
