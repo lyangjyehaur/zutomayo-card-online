@@ -142,6 +142,7 @@ function NavBar() {
   ];
 
   const activeItem = navItems.find((item) => item.path === location.pathname) ?? navItems[0];
+  const buttonStyle = { minWidth: '44px' };
   const buttonClass = (path: string) =>
     `rounded-sm px-2 py-2 text-[10px] uppercase tracking-[0.24em] transition-colors md:min-h-11 md:px-2 md:py-0 md:tracking-[0.3em] ${
       location.pathname === path ? 'text-gold' : 'text-bone/50 hover:text-bone'
@@ -160,12 +161,23 @@ function NavBar() {
       <div className="hidden h-12 items-center justify-between md:flex">
         <div className="flex items-center gap-6">
           {navItems.slice(0, 5).map((item) => (
-            <button key={item.path} className={buttonClass(item.path)} type="button" onClick={() => goTo(item.path)}>
+            <button
+              key={item.path}
+              className={buttonClass(item.path)}
+              style={buttonStyle}
+              type="button"
+              onClick={() => goTo(item.path)}
+            >
               {item.label}
             </button>
           ))}
         </div>
-        <button className={buttonClass('/tutorial')} type="button" onClick={() => goTo('/tutorial')}>
+        <button
+          className={buttonClass('/tutorial')}
+          style={buttonStyle}
+          type="button"
+          onClick={() => goTo('/tutorial')}
+        >
           {t('nav.tutorial')}
         </button>
       </div>
