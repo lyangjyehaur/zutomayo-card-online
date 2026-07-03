@@ -535,6 +535,8 @@ Completed in the current responsive pass:
   page controls and paging state.
 - `FeedbackPage`: sort, status/tag filters, search, and submit/tag actions now sit behind the shared `ResponsiveToolbar` while preserving
   the existing compact mobile grid controls.
+- `OnlineLobbyPage`: quick match, deck selection, custom room, and created-room status surfaces now use shared `RoomPanel`/`RoomDetails`
+  presentation wrappers without changing matchmaking or room join flow.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
   tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
 

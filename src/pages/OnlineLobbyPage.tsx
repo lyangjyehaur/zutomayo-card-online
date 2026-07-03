@@ -23,6 +23,7 @@ import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
 import { DeckSelector } from '../components/lobby/DeckSelector';
+import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
 import { BackButton, Button, Input, PageHeader, Panel, PageShell } from '../components/ui';
 import { t, translate, useLocale } from '../i18n';
@@ -350,7 +351,7 @@ export function OnlineLobbyPage({
       {/* 雙欄內容 */}
       <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 py-4 lg:grid-cols-[340px_minmax(0,1fr)] lg:overflow-hidden lg:px-6">
         {/* 左側：Quick Match */}
-        <Panel as="aside" className="flex flex-col gap-4 lg:overflow-y-auto" size="xl">
+        <RoomPanel as="aside" mode="quick">
           <div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.quickMatch')}</div>
             <h2 className="mt-1 font-display text-3xl italic">{t('lobby.onlineTitle')}</h2>
@@ -476,22 +477,22 @@ export function OnlineLobbyPage({
               </Button>
             </div>
           )}
-        </Panel>
+        </RoomPanel>
 
         {/* 右側：牌組選擇 + 自訂房間 */}
         <section className="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
           {/* 牌組選擇 */}
-          <Panel variant="ghost" size="lg">
+          <RoomPanel mode="deck">
             <DeckSelector
               label={t('lobby.myDeck')}
               value={deck0Name}
               options={deckOptions}
               onChange={handleDeckChange}
             />
-          </Panel>
+          </RoomPanel>
 
           {/* 自訂房間 */}
-          <Panel className="flex flex-col gap-4" variant="ghost" size="lg">
+          <RoomPanel mode="custom">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.customRooms')}</div>
@@ -546,7 +547,7 @@ export function OnlineLobbyPage({
 
             {/* 已建立房間資訊 */}
             {createdMatchID && (
-              <Panel className="flex flex-col gap-3" variant="ghost">
+              <RoomDetails>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('online.roomCode')}</span>
                   <span className="font-mono text-xs text-gold">{createdMatchID}</span>
@@ -561,16 +562,22 @@ export function OnlineLobbyPage({
                   />
                 </label>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                  <Button className="min-h-11" size="sm" variant="secondary" type="button" onClick={handleCopyShareLink}>
+                  <Button
+                    className="min-h-11"
+                    size="sm"
+                    variant="secondary"
+                    type="button"
+                    onClick={handleCopyShareLink}
+                  >
                     {copied ? t('online.copied') : t('online.copyLink')}
                   </Button>
                   <span className="text-[10px] text-bone/40">{t('online.hostWaitingHelper')}</span>
                 </div>
-              </Panel>
+              </RoomDetails>
             )}
 
             {error && <p className="text-[10px] text-vermilion/80">{error}</p>}
-          </Panel>
+          </RoomPanel>
         </section>
       </div>
     </PageShell>
