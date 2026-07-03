@@ -10458,6 +10458,7 @@ button.zone:focus-visible {
 @media (max-width: 1179px) {
   .feedback-header > button,
   .feedback-toolbar .sort-tab,
+  .feedback-toolbar .status-filter,
   .feedback-toolbar .feedback-submit-toggle,
   .feedback-toolbar .feedback-tag-toggle {
     min-height: 2.5rem;

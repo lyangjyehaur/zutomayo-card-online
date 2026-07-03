@@ -244,11 +244,11 @@
   }
 
   .i18n-locale-tabs {
-    flex-wrap: nowrap;
-    margin-inline: -0.75rem;
-    overflow-x: auto;
-    padding-inline: 0.75rem;
-    padding-bottom: 0.1rem;
+    flex-wrap: wrap;
+    margin-inline: 0;
+    overflow-x: visible;
+    padding-inline: 0;
+    padding-bottom: 0;
     overscroll-behavior-x: contain;
   }
 
