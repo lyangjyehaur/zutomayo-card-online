@@ -5,33 +5,29 @@ import { t } from '../../i18n';
 /**
  * ChronosDial — Chronos 的全新呈現（取代舊版擬真時鐘）。
  *
- * 設計：12 段分段環（segment ring）。夜位（青）與晝位（紅）各 6 段，
- * 非當前位置為暗段、當前位置滿亮＋光暈；環心只放三件事：
- * 當前時段大字（夜/晝）、位置讀數 n/12、時刻名。
+ * 設計：分段環（segment ring）。官方場地墊共 18 刻度，夜位（青）與晝位（紅）
+ * 各 9 段平分；非當前位置為暗段、當前位置滿亮＋光暈；環心只放三件事：
+ * 當前時段大字（夜/晝）、位置讀數 n/18、時刻名。
  * 沒有錶面、指針、獎章、羅馬刻度 — 它是狀態儀表，不是擬真時鐘。
  *
+ * 段數/夜晝歸屬完全由 CHRONOS_MAPPING 推導，改 mapping 不需改此元件。
  * 語義保留：位置 0=真夜中 在 12 點方向、順時針推進、
  * 夜側玩家視角旋轉 180°（夜半永遠朝向夜側玩家）。
  */
-const CHRONOS_LABELS = [
-  '真夜中',
-  '夜更け',
-  '丑三つ',
-  '未明',
-  '夜明け前',
-  '夜明け',
-  '正午',
-  '午後',
-  '夕暮れ',
-  '黄昏',
-  '宵',
-  '深夜',
-];
+const POSITIONS = CHRONOS_MAPPING.positions;
+const STEP = 360 / POSITIONS;
+
+/** 時刻名：僅標注官方語義錨點（真夜中/正午），其餘位置顯示夜/晝深淺描述 */
+function positionName(position: number, isNight: boolean): string {
+  if (position === CHRONOS_MAPPING.midnight) return '真夜中';
+  if (position === CHRONOS_MAPPING.noon) return '正午';
+  return isNight ? '夜' : '昼';
+}
 
 const SIZE = 200;
 const C = SIZE / 2;
 const RING_R = 82;
-const SEGMENT_SPAN = 24; // 每段弧度（度），段間留 6° 空隙
+const SEGMENT_SPAN = STEP * 0.72; // 每段弧度（度），段間留 28% 空隙
 const MARKER_R = 66;
 
 function polar(angleDeg: number, radius: number): [number, number] {
@@ -40,7 +36,7 @@ function polar(angleDeg: number, radius: number): [number, number] {
 }
 
 function segmentPath(index: number): string {
-  const centerAngle = index * 30;
+  const centerAngle = index * STEP;
   const a0 = centerAngle - SEGMENT_SPAN / 2;
   const a1 = centerAngle + SEGMENT_SPAN / 2;
   const [x0, y0] = polar(a0, RING_R);
@@ -59,14 +55,14 @@ export function ChronosDial({ chronos, currentTime, currentPlayer }: ChronosDial
   const nightPositions: readonly number[] = CHRONOS_MAPPING.nightPositions;
   // 夜側玩家視角：夜半朝向自己（與官方場地擺放一致）
   const rotation = chronos.nightSidePlayer === currentPlayer ? 180 : 0;
-  const [markerX, markerY] = polar(position * 30, MARKER_R);
+  const [markerX, markerY] = polar(position * STEP, MARKER_R);
   const timeLabel = currentTime === 'night' ? t('board.night') : t('board.day');
 
   return (
-    <div className="chronosdial" data-time={currentTime} aria-label={`${t('chronos.title')} ${position}/${CHRONOS_MAPPING.positions} · ${timeLabel}`}>
+    <div className="chronosdial" data-time={currentTime} aria-label={`${t('chronos.title')} ${position}/${POSITIONS} · ${timeLabel}`}>
       <svg viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-hidden="true">
         <g className="chronosdial-ring" style={{ transform: `rotate(${rotation}deg)` }}>
-          {Array.from({ length: CHRONOS_MAPPING.positions }, (_, index) => (
+          {Array.from({ length: POSITIONS }, (_, index) => (
             <path
               key={index}
               className="chronosdial-segment"
@@ -88,9 +84,9 @@ export function ChronosDial({ chronos, currentTime, currentPlayer }: ChronosDial
         <strong className="chronosdial-time">{timeLabel}</strong>
         <span className="chronosdial-position">
           {position}
-          <span className="chronosdial-position-total">/{CHRONOS_MAPPING.positions}</span>
+          <span className="chronosdial-position-total">/{POSITIONS}</span>
         </span>
-        <span className="chronosdial-name">{CHRONOS_LABELS[position] ?? CHRONOS_LABELS[0]}</span>
+        <span className="chronosdial-name">{positionName(position, nightPositions.includes(position))}</span>
       </div>
     </div>
   );

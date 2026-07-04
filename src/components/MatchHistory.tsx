@@ -7,7 +7,7 @@ import {
   replaceMatchRecords,
   type MatchRecord,
 } from '../game/matchHistory';
-import type { ActionLogEntry } from '../game/types';
+import { CHRONOS_MAPPING, type ActionLogEntry } from '../game/types';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
@@ -60,7 +60,7 @@ function formatTracePayload(payload: ActionLogEntry['payload']): string {
 function traceContext(entry: ActionLogEntry): string[] {
   const lines: string[] = [];
   if (entry.hp) lines.push(`${t('history.traceHp')} ${entry.hp[0]}/${entry.hp[1]}`);
-  if (typeof entry.chronosPosition === 'number') lines.push(`${t('history.traceChronos')} ${entry.chronosPosition}/12`);
+  if (typeof entry.chronosPosition === 'number') lines.push(`${t('history.traceChronos')} ${entry.chronosPosition}/${CHRONOS_MAPPING.positions}`);
   if (entry.pendingEffectCardDefId) lines.push(`${t('history.traceEffectCard')} ${entry.pendingEffectCardDefId}`);
   if (entry.pendingChoiceType) lines.push(`${t('history.traceChoice')} ${entry.pendingChoiceType}`);
   return lines;
@@ -126,7 +126,7 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
           </Panel>
           <Panel variant="ghost">
             <span className="text-xs text-content-primary/50">{t('history.finalChronos')}</span>
-            <strong>{record.chronos.finalPosition}/12</strong>
+            <strong>{record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}</strong>
           </Panel>
         </div>
         <div>
@@ -285,7 +285,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                       {t('history.finalHp')} {record.players[0].hp}/{record.players[1].hp}
                     </span>
                     <span>
-                      {t('history.finalChronos')} {record.chronos.finalPosition}/12
+                      {t('history.finalChronos')} {record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}
                     </span>
                     <span>
                       {t('history.traceCount')} {(record.actionLog ?? []).length}

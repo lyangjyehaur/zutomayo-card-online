@@ -21,7 +21,7 @@
 | 設置區 C | `players[i].setZoneC`（Area Enchant） | 跨回合持續的區域附魔，公開 | 顯示生效中的附魔；本回合設置的才能撤回 |
 | 充能區 Power Charger | `players[i].powerCharger` | 離場卡累積 Power（SEND TO POWER 總和） | 顯示 Power 總值（效果發動門檻）＋堆疊卡牌；可展開摘要 |
 | 深淵 Abyss | `players[i].abyss` | 無 SEND TO POWER 卡牌的最終去處 | 顯示張數；效果選擇時作為目標入口；可展開摘要 |
-| Chronos 時鐘 | `chronos.position`（0–11）、`nightSidePlayer` | 晝夜循環；決定用 night/day 攻擊力 | 全局中央顯示；位置、晝/夜、夜側玩家必須一眼可讀 |
+| Chronos 時鐘 | `chronos.position`（0–17，夜/晝各 9 刻度）、`nightSidePlayer` | 晝夜循環；決定用 night/day 攻擊力 | 全局中央顯示；位置、晝/夜、夜側玩家必須一眼可讀 |
 
 其他 UI 必須呈現的全局狀態：
 

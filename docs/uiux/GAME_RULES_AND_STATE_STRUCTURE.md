@@ -20,7 +20,7 @@
 | 6 | 設置區 C | Set Zone C | 各玩家 | `players[0/1].setZoneC: CardInstance \| null` | 公開可見（面朝上） | **最多 1 張 Area Enchant** | 生效中的區域附魔，跨回合持續；進場時舊卡離場；不計入戰鬥對比 |
 | 7 | 充能區 | Power Charger | 各玩家 | `players[0/1].powerCharger: CardInstance[]` | 公開可見 | 無限制 | 離場卡牌的 SEND TO POWER 值累積；部分效果可取用 |
 | 8 | 深淵 | Abyss | 各玩家 | `players[0/1].abyss: CardInstance[]` | 公開可見 | 無限制 | 無 SEND TO POWER 的卡牌最終送達地；部分效果可指定選取；隱喻「消失」 |
-| 9 | 時鐘 | Chronos | 全局 | `chronos: { position: number; nightSidePlayer: PlayerIndex }` | 公開可見 | 12 個位置 | 晝夜循環；position 0 = 午夜(NIGHT)，6 = 正午(DAY)；決定攻擊力計算時機 |
+| 9 | 時鐘 | Chronos | 全局 | `chronos: { position: number; nightSidePlayer: PlayerIndex }` | 公開可見 | 18 個刻度（夜/晝各 9） | 晝夜循環；position 0 = 真夜中(NIGHT)，9 = 正午(DAY)；決定攻擊力計算時機 |
 
 ### 區域進出規則流程
 
@@ -221,7 +221,7 @@ Set Zone A / Set Zone B (蓋牌)
 
 ### Chronos 時鐘系統
 
-- 12 個位置（0~11），位置 0 = 午夜，6 = 正午
+- 18 個刻度（0~17），夜/晝各 9 格平分；位置 0 = 真夜中、9 = 正午
 - 夜間位置：[0, 1, 2, 3, 10, 11]
 - 晝間位置：[4, 5, 6, 7, 8, 9]
 - 每回合推進量 = 雙方 Battle Zone 卡的 clock 值總和

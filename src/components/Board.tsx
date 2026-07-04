@@ -2,6 +2,7 @@ import type { BoardProps } from 'boardgame.io/react';
 import { Activity, BookOpen, Info, Pause, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CHRONOS_MAPPING } from '../game/types';
 import type {
   ActionLogEntry,
   CardInstance,
@@ -1273,7 +1274,7 @@ function BattleLogSidebarPanel({ G }: { G: GameState }) {
                     </span>
                   )}
                   {typeof entry.chronosPosition === 'number' && (
-                    <span className="text-content-primary/25"> ⏱{entry.chronosPosition}/12</span>
+                    <span className="text-content-primary/25"> ⏱{entry.chronosPosition}/{CHRONOS_MAPPING.positions}</span>
                   )}
                 </p>
                 {breakdown && <LogBreakdown breakdown={breakdown} />}
@@ -1291,7 +1292,7 @@ function BattleStatusSidebarPanel({ G }: { G: GameState }) {
   const statusRows = [
     { label: 'Step', value: G.step },
     { label: 'Turn', value: String(G.turnNumber) },
-    { label: 'Chronos', value: `${G.chronos.position}/12 · ${chronosTime}` },
+    { label: 'Chronos', value: `${G.chronos.position}/${CHRONOS_MAPPING.positions} · ${chronosTime}` },
     { label: 'Night', value: playerName(G.chronos.nightSidePlayer) },
   ];
 

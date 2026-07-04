@@ -1,4 +1,5 @@
 import type { ParsedEffect, Condition, EffectAction } from './types';
+import { CHRONOS_MAPPING } from '../types';
 
 // ===== Number parsing (handles both ASCII and fullwidth) =====
 
@@ -1169,7 +1170,7 @@ function parseAction(text: string): EffectAction | null {
   }
 
   if (text.includes('時計が正午になる') || text.includes('時計を真昼にする')) {
-    return { type: 'clockSet', params: { value: 6 } };
+    return { type: 'clockSet', params: { value: CHRONOS_MAPPING.noon } };
   }
 
   // "効果を無効"

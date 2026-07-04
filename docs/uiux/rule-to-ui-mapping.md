@@ -10,7 +10,7 @@
 | 引き直し / mulligan | MulliganScreen（浮層） | 「重抽 N 張」/「保留手牌」雙按鈕 | 已確認顯示等待態 | 手機全寬面板 |
 | HP 100 | `PlayerStatus` bar（雙方） | 唯讀 | ≤50 warning、≤25 danger 變色；受傷 `-n` 漂浮 | 所有斷點常駐可見 |
 | HP 0 敗北 | GameOverScreen | 結果頁主行動（再戰/回大廳） | VICTORY/DEFEAT + 原因（HP 歸零） | 全斷點 |
-| Chronos 起始位置（真夜中） | `ChronosPanel` 錶盤 medal 指針 | 唯讀 | 位置 n/12 + 時段名 | 桌面大錶盤→手機緊湊錶盤，位置永遠可讀 |
+| Chronos 起始位置（真夜中） | `ChronosDial` 18 段分段環＋游標 | 唯讀 | 位置 n/18 + 時段名 | 桌面大儀表→手機緊湊儀表，位置永遠可讀 |
 | Chronos 夜/晝 | 錶盤雙弧：夜=青 `--time-night`、晝=紅 `--time-day`（官方配色） | 唯讀 | 頂欄 🌙/☀️ + 全場晝夜色偏移（chrono-night/day） | 同上 |
 | 卡牌時計値推進 Chronos | GameNotice「時鐘推進」含明細（各卡貢獻） | 確認按鈕關閉 | from→to 位置與晝夜變化 | 置中面板，全斷點 |
 | Character NIGHT/DAY 攻擊力 | 卡面詳情（CardDetail）雙値 + `BattleZone` 生效値 | hover / tap 開詳情 | 生效側著色（夜青/晝紅） | 詳情桌面側欄 / 觸控 bottom sheet |
