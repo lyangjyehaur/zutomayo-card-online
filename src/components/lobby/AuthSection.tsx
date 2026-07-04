@@ -39,7 +39,7 @@ function profileStats(user: AuthUser): { matchCount: number; wins: number; winRa
   return { matchCount, wins, winRate };
 }
 
-export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Promise<void> }) {
+export function AuthSection({ onAuthChanged, compact }: { onAuthChanged: () => void | Promise<void>; compact?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
@@ -123,6 +123,52 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
 
   if (user) {
     const stats = profileStats(user);
+
+    // Compact mode: header 用的精簡樣式
+    if (compact) {
+      return (
+        <>
+          <div className="flex items-center gap-2">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-primary/20 to-accent-action/20 ring-1 ring-accent-primary/30">
+              <span className="font-display text-xs text-accent-primary">{user.nickname?.[0]?.toUpperCase() || 'G'}</span>
+            </div>
+            <div className="hidden min-w-0 lg:block">
+              <p className="truncate font-display text-sm font-bold leading-none text-content-primary">
+                {user.nickname || t('auth.guest')}
+              </p>
+              <p className="mt-0.5 font-mono text-[10px] text-accent-primary/60">ELO {user.elo}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              leftIcon={<LogOut strokeWidth={1.25} className="size-3" aria-hidden="true" />}
+              onClick={handleLogout}
+              className="h-8"
+            >
+              <span className="hidden lg:inline">{t('auth.logout')}</span>
+            </Button>
+          </div>
+          <Dialog
+            open={logoutPromptOpen}
+            onOpenChange={setLogoutPromptOpen}
+            title={t('auth.logout')}
+            description={t('auth.logoutConfirm')}
+            footer={
+              <>
+                <Button variant="secondary" onClick={() => setLogoutPromptOpen(false)}>
+                  {t('common.cancel')}
+                </Button>
+                <Button variant="danger" onClick={confirmLogout}>
+                  {t('auth.logout')}
+                </Button>
+              </>
+            }
+          />
+        </>
+      );
+    }
+
     return (
       <>
         <section
@@ -197,6 +243,22 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
           }
         />
       </>
+    );
+  }
+
+  // 未登入 compact 模式
+  if (compact) {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        type="button"
+        onClick={() => setExpanded(true)}
+        disabled={!PUBLIC_AUTH_ENTRYPOINTS_ENABLED}
+        className="h-8 whitespace-nowrap"
+      >
+        {t('auth.login')}
+      </Button>
     );
   }
 

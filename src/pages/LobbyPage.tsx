@@ -75,9 +75,14 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
         subtitle={t('app.subtitle')}
         actions={
           <>
-            <div className="hidden items-center gap-2 sm:flex">
-              <LanguageSwitcher />
-              <AuthSection onAuthChanged={onAuthChanged} />
+            <div className="hidden items-center gap-3 sm:flex">
+              <LanguageSwitcher
+                className="shrink-0"
+                labelMode="responsive"
+                selectClassName="min-h-8 max-w-24 text-[11px]"
+              />
+              <div className="h-5 w-px bg-border-soft" aria-hidden="true" />
+              <AuthSection onAuthChanged={onAuthChanged} compact />
             </div>
             <IconButton
               className="sm:hidden"
