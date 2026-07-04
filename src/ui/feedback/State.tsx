@@ -49,7 +49,7 @@ export function EmptyState({ title, description, actions, className, ...props }:
       )}
       {...props}
     >
-      {title && <strong className="font-display text-title-sm italic text-content-primary">{title}</strong>}
+      {title && <strong className="font-display text-title-sm font-bold text-content-primary">{title}</strong>}
       {description && <p className="max-w-prose text-body-sm leading-relaxed">{description}</p>}
       {actions}
     </div>

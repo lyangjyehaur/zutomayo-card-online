@@ -29,7 +29,7 @@ export function DeckSelector({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h3 className="font-display text-lg italic leading-tight text-content-primary">{label}</h3>
+        <h3 className="font-display text-lg font-bold leading-tight text-content-primary">{label}</h3>
         <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('lobby.deckSelectHint')}</span>
       </div>
       <div className="flex flex-col gap-4">
@@ -58,7 +58,7 @@ export function DeckSelector({
                       className={`h-9 w-7 shrink-0 rounded-xs bg-gradient-to-b ${accent} ring-1 ring-content-primary/10`}
                     />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate font-display text-body italic leading-tight text-content-primary/90">{option.name}</span>
+                      <span className="truncate font-display text-body font-bold leading-tight text-content-primary/90">{option.name}</span>
                       <span className="truncate text-caption text-content-primary/40">{option.description}</span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">

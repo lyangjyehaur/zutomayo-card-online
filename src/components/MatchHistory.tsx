@@ -134,7 +134,7 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
           </Button>
         </div>
         <section>
-          <h3 className="font-display text-lg italic">{t('history.traceTitle')}</h3>
+          <h3 className="font-display text-lg font-bold">{t('history.traceTitle')}</h3>
           {trace.length === 0 ? (
             <Panel className="mt-3 text-sm text-content-primary/60">{t('history.traceEmpty')}</Panel>
           ) : (

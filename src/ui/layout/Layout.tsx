@@ -88,7 +88,7 @@ export function PageSectionHeader({
         <div>{leading}</div>
         <div className="min-w-0 text-center">
           {kicker && <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{kicker}</span>}
-          <h1 className="truncate font-display text-2xl italic text-accent-primary sm:text-3xl">{title}</h1>
+          <h1 className="truncate font-display text-2xl font-bold text-accent-primary sm:text-3xl">{title}</h1>
           {subtitle && <p className="mt-1 text-body-sm text-content-dim">{subtitle}</p>}
         </div>
         <div className="flex min-w-0 items-center justify-end gap-2">{actions}</div>
@@ -104,7 +104,7 @@ export function PageSectionHeader({
       {leading && <div className="shrink-0">{leading}</div>}
       <div className="min-w-0 flex-1">
         {kicker && <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{kicker}</span>}
-        <h1 className="font-display text-2xl italic text-accent-primary sm:text-3xl">{title}</h1>
+        <h1 className="font-display text-2xl font-bold text-accent-primary sm:text-3xl">{title}</h1>
         {subtitle && <p className="mt-1 text-body-sm text-content-dim">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}

@@ -71,7 +71,7 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
 
       <Panel className="mt-4" size="lg">
         <div className="mb-4 grid gap-1">
-          <h3 className="font-display text-xl italic">{t('aiSetup.chooseDifficulty')}</h3>
+          <h3 className="font-display text-xl font-bold">{t('aiSetup.chooseDifficulty')}</h3>
           <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('lobby.difficulty')}</span>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
@@ -88,7 +88,7 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
                 setActiveDifficulty(level.id);
               }}
             >
-              <strong className="font-display text-lg italic">{level.label}</strong>
+              <strong className="font-display text-lg font-bold">{level.label}</strong>
               <span className="text-sm text-content-primary/70">{level.detail}</span>
             </Card>
           ))}

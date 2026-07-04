@@ -189,7 +189,7 @@ function NavBar() {
       </div>
       <div className="flex items-center justify-between gap-2 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md md:hidden">
         <Button
-          className="!min-h-11 font-display text-base italic normal-case tracking-normal text-content-primary"
+          className="!min-h-11 font-display text-base font-bold normal-case tracking-normal text-content-primary"
           variant="ghost"
           size="sm"
           type="button"

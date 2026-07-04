@@ -656,7 +656,7 @@ export function AdminPage() {
         </BackButton>
         <Panel className="w-96 max-w-full" size="lg">
           <div className="grid gap-4">
-            <h2 className="font-display text-xl italic">管理員驗證</h2>
+            <h2 className="font-display text-xl font-bold">管理員驗證</h2>
             <Input
               type="password"
               placeholder="輸入管理密碼"

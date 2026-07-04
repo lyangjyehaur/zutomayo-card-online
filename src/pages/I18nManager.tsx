@@ -134,7 +134,7 @@ export function I18nManager() {
           title={<span className="i18n-heading">{t('admin.i18nTitle')}</span>}
         />
         <Panel className="admin-login mx-auto mt-6 w-full max-w-md" size="lg">
-          <h2 className="font-display text-xl italic">{t('admin.adminVerify')}</h2>
+          <h2 className="font-display text-xl font-bold">{t('admin.adminVerify')}</h2>
           <Input
             type="password"
             placeholder={t('admin.passwordPlaceholder')}

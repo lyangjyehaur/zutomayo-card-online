@@ -338,7 +338,7 @@ export function DeckEditor({
       <div className="mb-3 flex items-end justify-between border-b border-content-primary/10 pb-3">
         <div className="min-w-0">
           <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Active Deck</div>
-          <h2 className="truncate font-display text-2xl italic">{deckName?.trim() || t('deckEditor.currentDeck')}</h2>
+          <h2 className="truncate font-display text-2xl font-bold">{deckName?.trim() || t('deckEditor.currentDeck')}</h2>
         </div>
         <div className="font-mono text-xs text-content-primary/50" aria-live="polite">
           <span className="text-accent-primary">{deck.length}</span> / {DECK_SIZE}
@@ -375,7 +375,7 @@ export function DeckEditor({
               <span className="font-mono text-caption text-accent-primary" aria-label={`${t('card.energy')} ${card.powerCost}`}>
                 {card.powerCost}
               </span>
-              <span className="truncate font-display text-sm italic text-content-primary/80">{card.name}</span>
+              <span className="truncate font-display text-sm font-bold text-content-primary/80">{card.name}</span>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span className="font-mono text-caption text-content-primary/40" aria-label={`${count} copies`}>

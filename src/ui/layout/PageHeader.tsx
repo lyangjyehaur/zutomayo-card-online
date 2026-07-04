@@ -28,7 +28,7 @@ export function PageHeader({
     >
       <div className="min-w-0">{leading}</div>
       <div className={cn('min-w-0', align === 'center' ? 'text-center' : 'text-left')}>
-        <h1 className="truncate font-display text-body-lg italic text-content-primary md:text-title-sm">{title}</h1>
+        <h1 className="truncate font-display text-body-lg font-bold text-content-primary md:text-title-sm">{title}</h1>
         {subtitle && <p className="mt-0.5 truncate text-body-sm text-content-dim">{subtitle}</p>}
       </div>
       <div className="flex min-w-0 items-center justify-end gap-2">{actions}</div>

@@ -317,7 +317,7 @@ export function GameTutorialOverlay({
 
         {/* Content */}
         <div className="tutorial-tooltip-body">
-          <h3 className="font-display text-2xl italic leading-tight text-content-primary">{t(titleKey as never)}</h3>
+          <h3 className="font-display text-2xl font-bold leading-tight text-content-primary">{t(titleKey as never)}</h3>
           <p className="mt-3 text-body leading-relaxed text-content-primary/75">{t(bodyKey as never)}</p>
         </div>
 

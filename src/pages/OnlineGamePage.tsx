@@ -308,7 +308,7 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
           <span className={`font-mono text-caption uppercase tracking-[var(--tracking-kicker)] ${panelTone}`}>
             {t('game.onlineMode')}
           </span>
-          <h1 className="mt-3 font-display text-3xl italic">{t(copy.titleKey)}</h1>
+          <h1 className="mt-3 font-display text-3xl font-bold">{t(copy.titleKey)}</h1>
           <p className="mt-3 text-sm leading-relaxed text-content-primary/60">{t(copy.bodyKey)}</p>
           {showRoomInfo && <OnlineRoomInfo matchID={panelSession.matchID} helperText={roomInfoHelper(status)} />}
           <div className="mt-6 flex flex-wrap gap-3">

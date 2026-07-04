@@ -507,7 +507,7 @@ export function BattleVisualQaPage() {
       <main className="grid h-full w-full place-items-center bg-surface-canvas px-6 text-center text-content-primary">
         <section className="max-w-xl rounded-sm border border-accent-action/30 bg-surface-base p-5 shadow-raised">
           <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-action">Battle QA</div>
-          <h1 className="mt-3 font-display text-2xl italic">Fixture Error</h1>
+          <h1 className="mt-3 font-display text-2xl font-bold">Fixture Error</h1>
           <p className="mt-3 text-sm leading-relaxed text-content-primary/60">{fixture.error}</p>
         </section>
       </main>

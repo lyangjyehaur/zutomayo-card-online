@@ -75,7 +75,7 @@ export function Sheet({
         <header className="sticky top-0 z-[var(--z-dropdown)] flex items-start justify-between gap-3 border-b border-border-soft bg-surface-panel-strong p-panel">
           <div className="min-w-0">
             {title && (
-              <h2 id={titleId} className="font-display text-title-sm italic text-content-primary">
+              <h2 id={titleId} className="font-display text-title-sm font-bold text-content-primary">
                 {title}
               </h2>
             )}

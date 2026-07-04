@@ -137,7 +137,7 @@ export function AuthSection({ onAuthChanged }: { onAuthChanged: () => void | Pro
                 <span className="font-display text-lg text-accent-primary">{user.nickname?.[0]?.toUpperCase() || 'G'}</span>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-display text-base italic leading-none text-content-primary">
+                <p className="font-display text-base font-bold leading-none text-content-primary">
                   {user.nickname || t('auth.guest')}
                 </p>
                 <p className="mt-1 font-mono text-caption text-accent-primary/60">ELO {user.elo}</p>

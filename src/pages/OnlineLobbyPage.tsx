@@ -369,7 +369,7 @@ export function OnlineLobbyPage({
           <RoomPanel mode="quick">
           <div>
             <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('lobby.quickMatch')}</div>
-            <h2 className="mt-1 font-display text-3xl italic">{t('lobby.onlineTitle')}</h2>
+            <h2 className="mt-1 font-display text-3xl font-bold">{t('lobby.onlineTitle')}</h2>
           </div>
 
           {/* 匿名身份 */}
@@ -449,7 +449,7 @@ export function OnlineLobbyPage({
           {/* 當前牌組摘要 */}
           <Panel variant="ghost">
             <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('lobby.currentDeck')}</div>
-            <div className="mt-1 truncate font-display text-lg italic">
+            <div className="mt-1 truncate font-display text-lg font-bold">
               {deck0Name ? resolveDeckLabel(deck0Name, deckOptions) : t('lobby.noDeckSelected')}
             </div>
           </Panel>
@@ -474,7 +474,7 @@ export function OnlineLobbyPage({
           {/* 開始匹配 */}
           <div className="grid gap-2">
             <Button
-              className="w-full bg-gradient-to-r from-accent-action to-accent-primary py-4 font-display text-lg italic tracking-wide text-surface-canvas transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
+              className="w-full bg-gradient-to-r from-accent-action to-accent-primary py-4 font-display text-lg font-bold tracking-wide text-surface-canvas transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
               type="button"
               onClick={handleQuickMatch}
               disabled={matchmakingActive || !canStart}
@@ -520,7 +520,7 @@ export function OnlineLobbyPage({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('lobby.customRooms')}</div>
-                <h2 className="font-display text-2xl italic">{t('lobby.createRoom')}</h2>
+                <h2 className="font-display text-2xl font-bold">{t('lobby.createRoom')}</h2>
               </div>
               <div className="grid gap-2 sm:justify-items-end">
                 <Button

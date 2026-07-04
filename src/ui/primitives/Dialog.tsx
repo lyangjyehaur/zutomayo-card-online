@@ -93,7 +93,7 @@ export function Dialog({
         {(title || description) && (
           <header className="grid gap-2 border-b border-border-soft p-4 pr-12 md:p-6 md:pr-12">
             {title && (
-              <h2 id={titleId} className="font-display text-title-sm italic text-content-primary">
+              <h2 id={titleId} className="font-display text-title-sm font-bold text-content-primary">
                 {title}
               </h2>
             )}

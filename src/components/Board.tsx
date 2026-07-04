@@ -1,10 +1,12 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { Activity, BookOpen, Info, Pause, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CHRONOS_MAPPING } from '../game/types';
 import type {
   ActionLogEntry,
+  CardDef,
   CardInstance,
   ChronosTime,
   GameState,
@@ -14,7 +16,6 @@ import type {
   PlayerIndex,
 } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
-import { Card, CardPopover, computePopoverPosition, type PopoverPosition } from './Card';
 import { AppDrawer } from './AppDrawer';
 import { Button, IconButton, SegmentedControl } from '../ui';
 import { useModalFocus } from '../ui';
@@ -25,6 +26,7 @@ import {
   CardDetailBody,
   CardDetailPanel,
   CardDetailSheet,
+  CardView,
   ChargeZone,
   ChronosPanel,
   DeckZone,
@@ -47,6 +49,112 @@ import {
 import { t, useLocale } from '../i18n';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { normalizeGameOverWinner, useOnlineMatchSubmission } from './board/useOnlineMatchSubmission';
+
+
+export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
+
+export type PopoverPosition = {
+  top: number;
+  left: number;
+  placement: PopoverPlacement;
+};
+
+/**
+ * 根據錨點元素的 DOMRect 計算 popover 顯示位置。
+ * 抽成獨立函數供 log 卡牌 chip 共用，避免重複實作定位邏輯。
+ */
+function computePopoverPosition(rect: DOMRect): PopoverPosition {
+  const popoverWidth = Math.min(Math.max(window.innerWidth * 0.16, 184), 248);
+  const popoverHeight = Math.min(Math.max(window.innerHeight * 0.2, 220), 288);
+  const gap = 12;
+  const margin = 8;
+  const centerY = rect.top + rect.height / 2;
+  const centerX = rect.left + rect.width / 2;
+
+  let placement: PopoverPlacement = 'right';
+  let top = centerY;
+  let left = rect.right + gap;
+
+  if (left + popoverWidth > window.innerWidth - margin) {
+    placement = 'left';
+    left = rect.left - gap;
+  }
+
+  if (placement === 'right' || placement === 'left') {
+    top = Math.min(Math.max(centerY, margin + popoverHeight / 2), window.innerHeight - margin - popoverHeight / 2);
+  }
+
+  if (placement === 'left' && left - popoverWidth < margin) {
+    placement = 'bottom';
+    left = Math.min(Math.max(centerX, margin + popoverWidth / 2), window.innerWidth - margin - popoverWidth / 2);
+    top = rect.bottom + gap;
+    if (top + popoverHeight > window.innerHeight - margin) {
+      placement = 'top';
+      top = rect.top - gap;
+      if (top - popoverHeight < margin) {
+        placement = 'bottom';
+        top = rect.bottom + gap;
+      }
+    }
+  }
+
+  return { top, left, placement };
+}
+
+function CardPopover({
+  def,
+  activeTime,
+  position,
+}: {
+  def: CardDef;
+  activeTime?: ChronosTime;
+  position: PopoverPosition;
+}) {
+  const locale = useLocale();
+  const translatedEffect = getTranslatedEffect(def.id, locale);
+  const style: CSSProperties = {
+    top: `${position.top}px`,
+    left: `${position.left}px`,
+  };
+
+  return createPortal(
+    <aside className={`card-popover popover-${position.placement}`} style={style} aria-hidden="true">
+      <strong>{def.name}</strong>
+      <span className="popover-meta">
+        {t(`card.element.${def.element}` as never)} • {t(`card.type.${def.type}` as never)}
+      </span>
+      <div className="popover-rule" />
+      {def.attack && (
+        <>
+          <span className={activeTime === 'night' ? 'active-stat' : ''}>
+            {t('card.night')}: {def.attack.night}
+          </span>
+          <span className={activeTime === 'day' ? 'active-stat' : ''}>
+            {t('card.day')}: {def.attack.day}
+          </span>
+        </>
+      )}
+      <span>
+        {t('card.energy')}: {def.powerCost}
+      </span>
+      <span>
+        {t('card.clock')}: {def.clock}
+      </span>
+      {def.sendToPower > 0 && (
+        <span>
+          {t('card.charge')}: {def.sendToPower}
+        </span>
+      )}
+      {def.effect && (
+        <>
+          <div className="popover-rule" />
+          <p className="popover-effect">{translatedEffect || def.effect}</p>
+        </>
+      )}
+    </aside>,
+    document.body,
+  );
+}
 
 const TURN_TIMER_SECONDS = 60;
 
@@ -504,7 +612,7 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
             {cardName ? ` · ${cardName}` : ''}
           </div>
           <strong
-            className={`phase-message-title font-display text-4xl italic ${isHeal ? 'text-accent-info' : 'text-accent-action'}`}
+            className={`phase-message-title font-display text-4xl font-bold ${isHeal ? 'text-accent-info' : 'text-accent-action'}`}
           >
             {isHeal ? '+' : ''}
             {notice.delta}
@@ -535,7 +643,7 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
             {sideLabel ? ` · ${sideLabel}` : ''}
             {sourceCardName ? ` · ${sourceCardName}` : ''}
           </div>
-          <strong className="phase-message-title font-display text-3xl italic">
+          <strong className="phase-message-title font-display text-3xl font-bold">
             {notice.chronosFrom} → {notice.chronosTo}
           </strong>
           <p className="mt-1 font-mono text-lg tracking-[var(--tracking-fine)] text-accent-primary-soft">{deltaStr}</p>
@@ -552,7 +660,7 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
       return (
         <>
           <div className="phase-message-kicker">{t('board.notice.battle' as never)}</div>
-          <strong className="phase-message-title font-display text-2xl italic">{t(notice.titleKey as never)}</strong>
+          <strong className="phase-message-title font-display text-2xl font-bold">{t(notice.titleKey as never)}</strong>
           <p className="mt-1 font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-primary/50">
             {notice.winnerAttack} vs {notice.loserAttack}
           </p>
@@ -564,7 +672,7 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
       return (
         <>
           <div className="phase-message-kicker">{t('board.notice.turnStart' as never)}</div>
-          <strong className="phase-message-title font-display text-3xl italic">
+          <strong className="phase-message-title font-display text-3xl font-bold">
             {notice.turn} {t('board.notice.turnUnit' as never)}
           </strong>
         </>
@@ -711,7 +819,7 @@ function JankenScreen({ G, moves, playerID, floating = false }: Props & { floati
         data-tut="janken-panel"
       >
         <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('board.janken')}</div>
-        <h2 className="mt-3 font-display text-3xl italic">{t('board.jankenHint')}</h2>
+        <h2 className="mt-3 font-display text-3xl font-bold">{t('board.jankenHint')}</h2>
         {choice ? (
           <p className="mt-4 text-sm leading-relaxed text-content-primary/60">
             {t('board.youChose')} {jankenLabel(choice)}。{t('board.waitingOpponent')}
@@ -777,7 +885,7 @@ function MulliganScreen({
         data-tut="mulligan-panel"
       >
         <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('board.mulligan')}</div>
-        <h2 className="mt-3 text-center font-display text-3xl italic">{t('board.mulliganHint')}</h2>
+        <h2 className="mt-3 text-center font-display text-3xl font-bold">{t('board.mulliganHint')}</h2>
         <div className="mulligan-hand mt-6 flex w-full justify-center gap-3 overflow-x-auto pb-4">
           {G.players[me].hand.map((card, index) => (
             <button
@@ -789,8 +897,9 @@ function MulliganScreen({
               disabled={done}
               data-tut-mulligan-card={card.defId}
               onClick={() => toggle(index)}
+              data-card-defid={card.defId}
             >
-              <Card card={card} size="small" selected={selected.includes(index)} showPopover />
+              <CardView card={card} size="md" state={selected.includes(index) ? 'selected' : 'idle'} />
             </button>
           ))}
         </div>
@@ -880,7 +989,7 @@ function ResultCell({ label, value, accent }: { label: string; value: string; ac
   return (
     <div className="min-w-0">
       <div className="text-caption uppercase tracking-widest text-content-primary/40">{label}</div>
-      <div className={`mt-1 truncate font-display text-xl italic ${accent ? 'text-accent-primary' : 'text-content-primary'}`}>{value}</div>
+      <div className={`mt-1 truncate font-display text-xl font-bold ${accent ? 'text-accent-primary' : 'text-content-primary'}`}>{value}</div>
     </div>
   );
 }
@@ -931,11 +1040,11 @@ function GameOverScreen({
           {t('board.result.concluded')}
         </div>
         <h1
-          className={`mt-4 font-display text-battle-result-title italic leading-none md:text-battle-result-title-lg ${win ? 'text-content-primary' : 'text-content-primary/70'}`}
+          className={`mt-4 font-display text-battle-result-title font-bold leading-none md:text-battle-result-title-lg ${win ? 'text-content-primary' : 'text-content-primary/70'}`}
         >
           {t(glyphKey)}
         </h1>
-        <div className="mt-2 font-display text-2xl italic tracking-wide">
+        <div className="mt-2 font-display text-2xl font-bold tracking-wide">
           {t(titleKey)} · {t('board.turn')} {G.turnNumber}
         </div>
 
@@ -1311,7 +1420,7 @@ function BattleStatusSidebarPanel({ G }: { G: GameState }) {
               <div className="font-mono text-minutia uppercase tracking-[var(--tracking-meta)] text-content-primary/35">
                 {playerName(index as PlayerIndex)}
               </div>
-              <div className="mt-2 font-display text-2xl italic text-accent-primary">{player.hp}</div>
+              <div className="mt-2 font-display text-2xl font-bold text-accent-primary">{player.hp}</div>
               <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-caption text-content-primary/45">
                 <span>Deck {player.deck.length}</span>
                 <span>Hand {player.hand.length}</span>
