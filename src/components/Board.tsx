@@ -380,96 +380,6 @@ function jankenLabel(choice: JankenChoice): string {
   return labels[choice];
 }
 
-/**
- * ChronosFieldCanvas — 「Chronos Projection」戰場底。
- * 整個戰場是一面從中央 Chronos 投影出來的巨大錶盤：
- * 同心圓刻度環 + 12 刻度輻射線 + 晝夜半場染色（上=對手側，下=己方側）。
- * 取代 v1 的梯形透視桌面 — 場地不再模擬實體桌，而是時間本身。
- */
-function ChronosFieldCanvas({ time }: { time: ChronosTime }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const parent = canvas?.parentElement;
-    if (!canvas || !parent) return;
-
-    const draw = () => {
-      const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      const width = Math.max(1, rect.width);
-      const height = Math.max(1, rect.height);
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-
-      const styles = getComputedStyle(document.documentElement);
-      const token = (name: string) => styles.getPropertyValue(name).trim();
-      const cx = width / 2;
-      const cy = height / 2;
-      const maxR = Math.hypot(width, height) / 2;
-
-      // 晝夜半場染色：夜色歸屬依 time 上下對調（己方在下）
-      const nightColor = token('--time-night');
-      const dayColor = token('--time-day');
-      const topGrad = ctx.createLinearGradient(0, 0, 0, cy);
-      const botGrad = ctx.createLinearGradient(0, height, 0, cy);
-      const topColor = time === 'night' ? dayColor : nightColor;
-      const botColor = time === 'night' ? nightColor : dayColor;
-      topGrad.addColorStop(0, `color-mix(in oklch, ${topColor} 7%, transparent)`);
-      topGrad.addColorStop(1, 'transparent');
-      botGrad.addColorStop(0, `color-mix(in oklch, ${botColor} 7%, transparent)`);
-      botGrad.addColorStop(1, 'transparent');
-      ctx.fillStyle = topGrad;
-      ctx.fillRect(0, 0, width, cy);
-      ctx.fillStyle = botGrad;
-      ctx.fillRect(0, cy, width, cy);
-
-      // 同心圓刻度環
-      const ringColor = token('--border-soft') || 'rgba(255,255,255,0.09)';
-      ctx.strokeStyle = ringColor;
-      ctx.lineWidth = 1;
-      const ringStep = Math.max(90, maxR / 6);
-      for (let r = ringStep; r < maxR; r += ringStep) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // 12 刻度輻射線（從第二環外開始，避免干擾中央 Chronos 錶盤）
-      const innerR = ringStep * 1.35;
-      for (let k = 0; k < 12; k += 1) {
-        const angle = (k / 12) * Math.PI * 2 - Math.PI / 2;
-        ctx.beginPath();
-        ctx.moveTo(cx + innerR * Math.cos(angle), cy + innerR * Math.sin(angle));
-        ctx.lineTo(cx + maxR * Math.cos(angle), cy + maxR * Math.sin(angle));
-        ctx.globalAlpha = k % 3 === 0 ? 0.55 : 0.28;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-
-      // 中線（晝夜分界）
-      ctx.strokeStyle = `color-mix(in oklch, ${token('--content-primary')} 14%, transparent)`;
-      ctx.setLineDash([2, 6]);
-      ctx.beginPath();
-      ctx.moveTo(0, cy);
-      ctx.lineTo(width, cy);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    };
-
-    const observer = new ResizeObserver(draw);
-    observer.observe(parent);
-    draw();
-    return () => observer.disconnect();
-  }, [time]);
-
-  return <canvas ref={canvasRef} className="battlefield-canvas" aria-hidden="true" />;
-}
-
 function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | null; onAction?: () => void }) {
   if (!message) return null;
 
@@ -1835,8 +1745,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
 
       <div className="bf-main">
         {/* ===== 戰場 ===== */}
-        <div className="bf-field">
-          {viewport.mode !== 'mobile' && <ChronosFieldCanvas time={time} />}
+        <div className="bf-field" data-time={time}>
 
           {/* 對手區 */}
           <section className="bf-opponent" aria-label={t('player.opponent')}>

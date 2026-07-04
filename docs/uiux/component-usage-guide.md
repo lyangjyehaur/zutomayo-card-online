@@ -95,8 +95,10 @@
 ### PlayerStatus / OpponentStatus
 - 名稱＋HP bar＋meta＋受傷漂浮。`side` 決定配色（me=volt / opponent=晝紅）。HP 永遠可見。
 
-### ChronosPanel
-- Chronos 錶盤容器，`size` md/sm；晝夜弧色=官方（token `--time-*`）。❌ 縮成角落小圖示。
+### ChronosPanel / ChronosDial
+- Chronos 儀表：12 段分段環（夜青/晝紅=官方配色 token `--time-*`），環心顯示時段/位置/時刻名。
+- `size` md/sm；夜側玩家視角自動旋轉 180°。
+- ❌ 縮成角落小圖示；❌ 復活舊版擬真時鐘（指針/獎章/錶面）。
 
 ### PhaseIndicator / ActionDock
 - 「現在該做什麼」唯一提示 ＋ 唯一主行動列（confirm-set data-tut 錨點）。❌ 在別處再放一個主行動按鈕。

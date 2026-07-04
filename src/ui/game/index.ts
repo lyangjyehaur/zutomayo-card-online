@@ -12,6 +12,8 @@ export { AbyssZone, ChargeZone, DeckZone, SetZone } from './zones';
 export type { AbyssZoneProps, ChargeZoneProps, DeckZoneProps, SetZoneProps } from './zones';
 export { PlayerStatus, PlayerStatus as OpponentStatus } from './PlayerStatus';
 export type { PlayerStatusProps } from './PlayerStatus';
+export { ChronosDial } from './ChronosDial';
+export type { ChronosDialProps } from './ChronosDial';
 export { ChronosPanel } from './ChronosPanel';
 export type { ChronosPanelProps } from './ChronosPanel';
 export { PhaseIndicator } from './PhaseIndicator';

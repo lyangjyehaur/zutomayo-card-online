@@ -68,10 +68,8 @@
   padding: var(--space-1) var(--space-3);
   background: oklch(from var(--color-bg-surface) l c h / 0.78);
   backdrop-filter: blur(10px);
-  clip-path: var(--chamfer-sm);
-  border: none;
-  outline: 1px solid var(--color-border-subtle);
-  outline-offset: -1px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .bf-hud-status {
@@ -189,9 +187,8 @@
   padding: var(--space-1) var(--space-4);
   background: oklch(from var(--color-bg-surface) l c h / 0.82);
   backdrop-filter: blur(10px);
-  clip-path: var(--chamfer-sm);
-  outline: 1px solid var(--color-border-subtle);
-  outline-offset: -1px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .phaseindicator-title {
@@ -256,7 +253,32 @@
   min-height: 0;
 }
 
-.battlefield-canvas ~ * {
+/* 戰場氛圍：安靜的中央光暈 + 晝夜微染，無圖案（取代 v2.1 的錶盤刻度背景） */
+.bf-field::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 60% 45% at 50% 50%,
+    oklch(from var(--color-bg-elevated) l c h / 0.55),
+    transparent 70%
+  );
+}
+
+.bf-field[data-time='night']::before {
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--time-night) l c h / 0.07), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--color-bg-elevated) l c h / 0.5), transparent 70%);
+}
+
+.bf-field[data-time='day']::before {
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--time-day) l c h / 0.06), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--color-bg-elevated) l c h / 0.5), transparent 70%);
+}
+
+.bf-field > * {
   position: relative;
   z-index: var(--z-base);
 }
@@ -461,12 +483,121 @@
   place-items: center;
 }
 
-.chronospanel .chronos {
-  width: clamp(8rem, min(26vw, 26vh), 16rem);
+/* ---------------------------------------------------------------- ChronosDial */
+.chronosdial {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(9rem, min(24vw, 26vh), 14rem);
+  aspect-ratio: 1;
 }
 
-.chronospanel-sm .chronos {
-  width: clamp(5.5rem, 26vw, 8.5rem);
+.chronospanel-sm .chronosdial {
+  width: clamp(6.5rem, 28vw, 9rem);
+}
+
+.chronosdial svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.chronosdial-ring {
+  transform-origin: center;
+  transition: transform var(--motion-slow) var(--ease-emphasized);
+}
+
+.chronosdial-segment {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+  opacity: 0.22;
+  transition:
+    opacity var(--motion-slow) var(--ease-standard),
+    stroke-width var(--motion-slow) var(--ease-standard);
+}
+
+.chronosdial-segment[data-time='night'] {
+  stroke: var(--time-night);
+}
+
+.chronosdial-segment[data-time='day'] {
+  stroke: var(--time-day);
+}
+
+.chronosdial-segment[data-active='true'] {
+  opacity: 1;
+  stroke-width: 10;
+  filter: drop-shadow(0 0 8px currentcolor);
+}
+
+.chronosdial-segment[data-active='true'][data-time='night'] {
+  color: var(--time-night);
+}
+
+.chronosdial-segment[data-active='true'][data-time='day'] {
+  color: var(--time-day);
+}
+
+.chronosdial-origin {
+  fill: oklch(from var(--color-text-primary) l c h / 0.35);
+}
+
+.chronosdial-marker {
+  fill: var(--color-text-primary);
+  filter: drop-shadow(0 0 6px oklch(from var(--color-text-primary) l c h / 0.8));
+}
+
+.chronosdial-core {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.chronosdial-time {
+  font-family: var(--font-display);
+  font-size: clamp(1.3rem, 3vh, 1.8rem);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
+.chronosdial[data-time='night'] .chronosdial-time {
+  color: var(--time-night);
+}
+
+.chronosdial[data-time='day'] .chronosdial-time {
+  color: var(--time-day);
+}
+
+.chronosdial-position {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.chronosdial-position-total {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text-muted);
+}
+
+.chronosdial-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-compact);
+  color: var(--color-text-muted);
+}
+
+.chronospanel-sm .chronosdial-name {
+  display: none;
 }
 
 /* ---------------------------------------------------------------- 玩家區 */
@@ -573,7 +704,7 @@
   min-height: var(--touch-target-min);
   padding: var(--space-2) var(--space-4);
   border: 1px solid transparent;
-  clip-path: var(--chamfer-sm);
+  border-radius: var(--radius-md);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
@@ -807,7 +938,7 @@ button.cardstack:focus-visible {
   position: relative;
   display: block;
   background: oklch(from var(--color-bg-surface) l c h / 0.35);
-  clip-path: var(--chamfer-sm);
+  border-radius: var(--radius-md);
   outline: 1px solid oklch(from var(--color-text-primary) l c h / 0.08);
   outline-offset: -1px;
   overflow: hidden;
@@ -953,9 +1084,8 @@ button.cardstack:focus-visible {
   padding: var(--space-4);
   background: oklch(from var(--color-bg-surface) l c h / 0.72);
   backdrop-filter: blur(8px);
-  clip-path: var(--chamfer-sm);
-  outline: 1px solid var(--color-border-subtle);
-  outline-offset: -1px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .battle-panel-heading {
@@ -1362,9 +1492,13 @@ button.cardstack:focus-visible {
     width: var(--card-width-md);
   }
 
-  .chronospanel .chronos,
-  .chronospanel-sm .chronos {
-    width: clamp(4rem, 16vh, 5.5rem);
+  .chronosdial,
+  .chronospanel-sm .chronosdial {
+    width: clamp(4.5rem, 17vh, 6rem);
+  }
+
+  .chronosdial-name {
+    display: none;
   }
 
   .bf-player {
@@ -1410,8 +1544,8 @@ button.cardstack:focus-visible {
     padding-block: calc(var(--space-1) / 2);
   }
 
-  .chronospanel .chronos {
-    width: clamp(6rem, 18vh, 9rem);
+  .chronosdial {
+    width: clamp(6.5rem, 19vh, 9.5rem);
   }
 
   .bf-hand-dock > .playerstatus {
