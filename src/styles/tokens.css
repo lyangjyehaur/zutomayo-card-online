@@ -1,0 +1,128 @@
+/*
+ * ============================================================================
+ * ZUTOMAYO CARD ONLINE — Design Tokens（正式 UI 標準）
+ * ============================================================================
+ * 這是整個產品的 token 單一事實來源（single source of truth）。
+ * 規範文件：docs/uiux/design-system.md
+ *
+ * 分層：
+ *   1. Primitive（--ds-*，定義於 App.css :root，勿在元件直接使用）
+ *   2. Semantic（本檔）— 元件與頁面一律引用這一層
+ *   3. Component（各元件 CSS 內，由 semantic 組合而成）
+ *
+ * 命名以 --color-* / --space-* / --font-* / --radius-* / --shadow-* /
+ * --motion-* / --card-* 為正式 API；App.css 既有的 --surface-* / --content-* /
+ * --accent-* 為底層實作，逐步遷移。
+ * ============================================================================
+ */
+
+:root {
+  /* --------------------------------------------------------------------
+   * Color Tokens — 背景 / 邊框 / 文字
+   * ------------------------------------------------------------------ */
+  --color-bg-base: var(--surface-canvas); /* 頁面最底層 */
+  --color-bg-surface: var(--surface-base); /* 面板底 */
+  --color-bg-elevated: var(--surface-raised); /* 浮起面板（modal、popover） */
+  --color-border-subtle: var(--border-soft);
+  --color-border-strong: var(--border-strong);
+  --color-text-primary: var(--content-primary);
+  --color-text-secondary: var(--content-muted);
+  --color-text-muted: var(--content-dim);
+
+  /* Accent / 語義訊息色 */
+  --color-accent-primary: var(--accent-primary); /* 金 — 主行動、強調 */
+  --color-accent-secondary: var(--accent-action); /* 朱紫 — 對手側、戰鬥張力 */
+  --color-danger: var(--accent-danger);
+  --color-warning: var(--ds-day-400);
+  --color-success: var(--accent-success);
+  --color-info: var(--accent-info);
+
+  /* --------------------------------------------------------------------
+   * 遊戲互動狀態色 — 可操作 / 已選中 / 可作為目標 / 不可操作
+   * 四種狀態必須一眼可分辨；只在卡牌與槽位上使用。
+   * ------------------------------------------------------------------ */
+  --color-playable: var(--accent-primary); /* 金框呼吸 — 現在可以操作 */
+  --color-selected: var(--ds-day-400); /* 亮琥珀實框 — 已選中 */
+  --color-targetable: var(--accent-info); /* 青綠虛框 — 可作為目標 */
+  --color-disabled: oklch(from var(--content-primary) l c h / 0.25); /* 降飽和 — 不可操作 */
+
+  --ring-playable: 0 0 0 2px oklch(from var(--color-playable) l c h / 0.55);
+  --ring-selected: 0 0 0 2px var(--color-selected), 0 10px 28px -10px oklch(from var(--color-selected) l c h / 0.5);
+  --ring-targetable: 0 0 0 2px oklch(from var(--color-targetable) l c h / 0.7);
+
+  /* --------------------------------------------------------------------
+   * Spacing Tokens（沿用 App.css 4px 基準 scale，此處確立正式 API）
+   * ------------------------------------------------------------------ */
+  /* --space-1 ~ --space-12 已於 App.css :root 定義（0.25rem 基準）。 */
+  --space-zone-gap: clamp(var(--space-1), 0.9vw, var(--space-3)); /* 區域之間 */
+  --space-slot-gap: clamp(var(--space-1), 0.6vw, var(--space-2)); /* 槽位之間 */
+
+  /* --------------------------------------------------------------------
+   * Typography Tokens
+   * ------------------------------------------------------------------ */
+  --font-size-xs: var(--type-caption); /* 0.625rem — meta、計數器 */
+  --font-size-sm: var(--type-body-sm); /* 0.75rem — 輔助文字、log */
+  --font-size-md: var(--type-body); /* 0.875rem — 正文 */
+  --font-size-lg: var(--type-body-lg); /* 1rem — 強調正文 */
+  --font-size-xl: var(--type-title-sm); /* 1.25rem — 面板標題 */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.55;
+
+  /* --------------------------------------------------------------------
+   * Radius / Shadow / Border（正式 API，映射既有 scale）
+   * ------------------------------------------------------------------ */
+  /* --radius-sm/md/lg/xl 已於 App.css 定義。 */
+  --shadow-card: var(--shadow-card-thumbnail);
+  --shadow-panel: var(--shadow-floating);
+  --border-panel: 1px solid var(--color-border-subtle);
+  --border-active: 2px solid var(--color-accent-primary);
+
+  /* --------------------------------------------------------------------
+   * Motion Tokens — 動效只服務狀態變化與操作回饋
+   * ------------------------------------------------------------------ */
+  --motion-fast: var(--motion-duration-fast); /* 120ms — hover/按壓回饋 */
+  --motion-normal: var(--motion-duration-base); /* 160ms — 狀態切換 */
+  --motion-slow: var(--motion-duration-slow); /* 300ms — 卡牌移動、面板進出 */
+  --ease-standard: var(--motion-ease-standard);
+  --ease-emphasized: var(--motion-ease-emphasized);
+
+  /* --------------------------------------------------------------------
+   * Card Sizing System — 唯一合法的卡牌尺寸來源
+   * 卡牌一律維持 5:7 直向比例；空間不足時換排列 / 改 stack，禁止壓扁。
+   * ------------------------------------------------------------------ */
+  --card-aspect-ratio: 5 / 7;
+  --card-width-mini: clamp(2rem, 4.5vw, 2.5rem); /* 32–40px — 對手手牌背、堆疊縮圖 */
+  --card-width-sm: clamp(2.75rem, 6vw, 3.5rem); /* 44–56px — 對手設置區、充能堆疊 */
+  --card-width-md: clamp(3.5rem, 8vw, 4.75rem); /* 56–76px — 己方設置區、緊湊手牌 */
+  --card-width-lg: clamp(4.5rem, 10vw, 6rem); /* 72–96px — 戰鬥區、桌面手牌 */
+  --card-width-xl: clamp(6rem, 24vw, 10rem); /* 96–160px — 詳情預覽 */
+  --card-height-mini: calc(var(--card-width-mini) * 7 / 5);
+  --card-height-sm: calc(var(--card-width-sm) * 7 / 5);
+  --card-height-md: calc(var(--card-width-md) * 7 / 5);
+  --card-height-lg: calc(var(--card-width-lg) * 7 / 5);
+  --card-height-xl: calc(var(--card-width-xl) * 7 / 5);
+
+  /* 槽位（CardSlot）= 卡牌 + 內距，永遠隨卡牌比例走 */
+  --slot-pad: var(--space-1);
+  --slot-width-sm: calc(var(--card-width-sm) + var(--slot-pad) * 2);
+  --slot-height-sm: calc(var(--card-height-sm) + var(--slot-pad) * 2);
+  --slot-width-md: calc(var(--card-width-md) + var(--slot-pad) * 2);
+  --slot-height-md: calc(var(--card-height-md) + var(--slot-pad) * 2);
+  --slot-width-lg: calc(var(--card-width-lg) + var(--slot-pad) * 2);
+  --slot-height-lg: calc(var(--card-height-lg) + var(--slot-pad) * 2);
+
+  /* 觸控目標下限 */
+  --touch-target-min: 2.75rem; /* 44px */
+}
+
+/* 低高度桌面（1024–1366 寬、600–768 高）：整體縮小卡牌 scale，保住不滾動 */
+@media (min-width: 64rem) and (max-height: 48.75rem) {
+  :root {
+    --card-width-lg: clamp(4rem, 8.5vh, 5.25rem);
+    --card-width-md: clamp(3rem, 6.5vh, 4rem);
+    --card-width-sm: clamp(2.5rem, 5vh, 3rem);
+  }
+}
