@@ -67,3 +67,4 @@ admin/
 .hermes/
 .worktrees/
 CARD_EFFECT_AUDIT_FINAL.md
+.claude/
