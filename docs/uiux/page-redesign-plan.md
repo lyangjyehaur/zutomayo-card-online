@@ -8,14 +8,16 @@
 | 頁面 | 換皮（token） | 結構遷移（src/ui） | 待辦 |
 |------|:---:|:---:|------|
 | 對戰頁（Board） | ✅ | ✅ 全語義元件（game/） | 移除殘留 Tailwind 即席 class（低優先） |
-| 首頁 LobbyPage | ✅ | ⚠️ 使用 ui primitives，但仍有頁內裝飾樣式 | 移除 className 中殘留 `italic`；hero 區塊抽 Section |
-| AI 大廳 / 線上大廳 | ✅ | ✅ PageShell + lobby/ 元件 | `italic` 清理 |
+| 首頁 LobbyPage | ✅ | ✅ **v2 從零重寫**（AppHeader＋wordmark×ChronosDial hero＋頻道列） | — |
+| AI 大廳 | ✅ | ✅ **v2 從零重寫**（三步設定台） | — |
+| 線上大廳 | ✅ | ✅ v2 殼層重排（AppHeader＋雙欄玻璃面板） | RoomPanel 內部樣式細修 |
+| 全域 NavBar | ✅ | ✅ v2 浮動膠囊列（服務 deck-builder/feedback/tutorial/404） | — |
+| Leaderboard / 對戰紀錄 | ✅ | ✅ v2 殼層（AppHeader） | — |
 | 房間等待（OnlineRoomInfo） | ✅ | ✅ | — |
 | DeckEditor / CardBrowser | ✅ | ⚠️ 舊 `Card`（components/Card.tsx）+ `.game-card` CSS | **遷移到 `CardView` grid**，退役 `.card-*` 樣式家族 |
 | Mulligan / Janken / GameOver（Board 內浮層） | ✅ | ⚠️ 沿用 Tailwind 即席佈局 + 舊 `Card` | Mulligan 手牌改 `CardView`；GameOver 抽 StatusPageLayout |
 | FeedbackPage | ✅ | ⚠️ 大量頁面孤島 CSS（App.css） | 表單改 `src/ui/forms`；孤島 CSS 收斂 |
 | AdminPage / I18nManager | ✅ | ⚠️ 專用 CSS 檔 | 低優先（內部工具），僅要求 token 化 |
-| MatchHistory / Leaderboard | ✅ | ✅ DataList/StatCard | — |
 | 教學（TutorialGamePage） | ✅ | ✅（對戰頁同源） | overlay 樣式 token 化 |
 
 ## 遷移優先序

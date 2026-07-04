@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Swords, Bot, LayoutGrid, Menu } from 'lucide-react';
+import { Swords, Bot, LayoutGrid, Trophy, ScrollText, Menu } from 'lucide-react';
 import { AppDrawer } from '../components/AppDrawer';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
-import { Button, Card, IconButton, PageShell, Panel } from '../ui';
+import { AppHeader, Button, IconButton, PageShell, Panel } from '../ui';
+import { ChronosDial } from '../ui/game';
 import { t, type TranslationKey } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
@@ -15,70 +16,40 @@ interface LobbyPageProps {
   onAuthChanged: () => void | Promise<void>;
 }
 
-type Entry = {
-  to: '/online' | '/ai' | '/deck-builder';
+/**
+ * 首頁「夜間放送 Night Broadcast」— Design System v2 從零設計。
+ *
+ * 構圖：浮動膠囊頁首（同對戰 HUD）＋ 主視覺（wordmark × ChronosDial 待機儀表）
+ * ＋ 底部頻道列（CH.01–05 模式入口）。沒有通欄 header、沒有滿版卡片牆、
+ * 沒有隨機卡圖模糊背景 — 卡牌彩度留給對戰。
+ */
+type Channel = {
+  to: string;
+  no: string;
   titleKey: TranslationKey;
-  subtitle: string;
   captionKey: TranslationKey;
   Icon: typeof Swords;
 };
 
-const ENTRIES: Entry[] = [
-  {
-    to: '/online',
-    titleKey: 'lobby.onlineTitle',
-    subtitle: 'Online Duel',
-    captionKey: 'lobby.homeOnlineCaption',
-    Icon: Swords,
-  },
-  {
-    to: '/ai',
-    titleKey: 'lobby.aiBattle',
-    subtitle: 'VS. CPU',
-    captionKey: 'lobby.homeAiCaption',
-    Icon: Bot,
-  },
-  {
-    to: '/deck-builder',
-    titleKey: 'lobby.deckEditor',
-    subtitle: 'Deck Editor',
-    captionKey: 'lobby.homeDeckCaption',
-    Icon: LayoutGrid,
-  },
+const CHANNELS: Channel[] = [
+  { to: '/online', no: '01', titleKey: 'lobby.onlineTitle', captionKey: 'lobby.homeOnlineCaption', Icon: Swords },
+  { to: '/ai', no: '02', titleKey: 'lobby.aiBattle', captionKey: 'lobby.homeAiCaption', Icon: Bot },
+  { to: '/deck-builder', no: '03', titleKey: 'lobby.deckEditor', captionKey: 'lobby.homeDeckCaption', Icon: LayoutGrid },
+  { to: '/leaderboard', no: '04', titleKey: 'leaderboard.title', captionKey: 'leaderboard.title', Icon: Trophy },
+  { to: '/history', no: '05', titleKey: 'lobby.matchHistory', captionKey: 'lobby.matchHistory', Icon: ScrollText },
 ];
 
-async function pickRandomCardImage(): Promise<string | null> {
-  const { getAllCardDefs } = await import('../game/cards/loader');
-  const cards = getAllCardDefs().filter((card) => typeof card.image === 'string' && card.image.length > 0);
-  if (cards.length === 0) return null;
-  return cards[Math.floor(Math.random() * cards.length)].image;
-}
+// 待機儀表的靜態 Chronos 狀態（真夜中・夜側）— 純裝飾，與對戰共用同一元件
+const IDLE_CHRONOS = { position: 0, nightSidePlayer: 1 as const };
 
 export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
-  // 每次進入首頁隨機取一張卡牌作為模糊背景
-  const [bgImage, setBgImage] = useState<string | null>(null);
-  // 首次訪問引導彈窗
   const [showDeckIntro, setShowDeckIntro] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // 每次 mount 時重新隨機取一張（確保返回首頁也有背景）
-  useEffect(() => {
-    let cancelled = false;
-    void pickRandomCardImage().then((next) => {
-      if (!cancelled && next) setBgImage(next);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // 檢測首次訪問
   useEffect(() => {
     const seen = localStorage.getItem('zutomayo_deck_intro_seen');
-    if (!seen) {
-      setShowDeckIntro(true);
-    }
+    if (!seen) setShowDeckIntro(true);
   }, []);
 
   const handleDismissIntro = () => {
@@ -94,47 +65,31 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
 
   return (
     <PageShell>
-      {/* 環境層：隨機卡牌模糊背景 + 紫光暈 + 點陣紋理 */}
+      {/* 環境層：安靜的中央光暈＋夜色微染＋點陣（與戰場同語言，無卡圖背景） */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        {bgImage && (
-          <img
-            src={bgImage}
-            alt=""
-            aria-hidden="true"
-            referrerPolicy="no-referrer"
-            className="absolute inset-0 size-full scale-125 object-cover opacity-30 blur-[4px] saturate-[1.2]"
-          />
-        )}
-        {/* 暗化遮罩，確保文字可讀（漸層：中央較透、邊緣較暗） */}
-        <div className="absolute inset-0 bg-surface-canvas/55" />
-        <div className="absolute left-1/2 top-1/2 h-[var(--ambient-glow-size-lg)] w-[var(--ambient-glow-size-lg)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-action/8 blur-[var(--ambient-glow-blur-md)]" />
+        <div className="absolute left-1/2 top-1/2 h-[70vh] w-[110vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(from_var(--time-night)_l_c_h_/_0.07)] blur-[var(--ambient-glow-blur-lg)]" />
         <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
       </div>
 
-      {/* 頂部 Header */}
-      <header className="absolute inset-x-0 top-0 z-[var(--z-sticky)] flex min-h-16 items-center justify-between gap-3 px-4 py-3 md:px-8">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="size-2 rounded-full bg-accent-action shadow-status-dot" />
-          <span className="truncate font-display text-title-sm italic leading-none tracking-tight md:text-xl">
-            {t('app.title')}
-          </span>
-          <span className="ml-3 hidden text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 md:inline">
-            {t('app.subtitle')}
-          </span>
-        </div>
-        <div className="hidden min-w-0 items-center justify-end gap-2 sm:flex md:gap-4">
-          <LanguageSwitcher />
-          <AuthSection onAuthChanged={onAuthChanged} />
-        </div>
-        <IconButton
-          className="sm:hidden"
-          variant="secondary"
-          label={t('lobby.menu')}
-          icon={<Menu className="size-4" strokeWidth={1.25} aria-hidden="true" />}
-          aria-expanded={settingsOpen}
-          onClick={() => setSettingsOpen(true)}
-        />
-      </header>
+      <AppHeader
+        subtitle={t('app.subtitle')}
+        actions={
+          <>
+            <div className="hidden items-center gap-2 sm:flex">
+              <LanguageSwitcher />
+              <AuthSection onAuthChanged={onAuthChanged} />
+            </div>
+            <IconButton
+              className="sm:hidden"
+              variant="ghost"
+              label={t('lobby.menu')}
+              icon={<Menu className="size-4" strokeWidth={1.25} aria-hidden="true" />}
+              aria-expanded={settingsOpen}
+              onClick={() => setSettingsOpen(true)}
+            />
+          </>
+        }
+      />
 
       <AppDrawer
         open={settingsOpen}
@@ -144,123 +99,145 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
         actions={[]}
       >
         <div className="grid gap-4">
-          <LanguageSwitcher
-            labelClassName="inline"
-            labelMode="always"
-            layout="stacked"
-            selectClassName="max-w-none"
-          />
+          <LanguageSwitcher labelClassName="inline" labelMode="always" layout="stacked" selectClassName="max-w-none" />
           <AuthSection onAuthChanged={onAuthChanged} />
         </div>
       </AppDrawer>
 
-      {/* 中央三聯幅卡 */}
-      <section className="lobby-home-content relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-32 sm:pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
-        <div className="grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
-          {ENTRIES.map(({ to, titleKey, subtitle, captionKey, Icon }, i) => (
-            <Card
-              as="button"
-              key={to}
-              type="button"
-              onClick={() => navigate(to)}
-              className="lobby-entry-card group relative flex min-h-[11rem] flex-col justify-between overflow-hidden rounded-sm bg-surface-base p-5 text-left ring-1 ring-content-primary/10 transition-all duration-[var(--motion-duration-page)] hover:-translate-y-1 hover:ring-accent-primary/50 hover:shadow-glow-action md:h-[60dvh] md:p-8 xl:h-[460px]"
-            >
-              {/* 卡內裝飾：內框線 */}
-              <div className="pointer-events-none absolute inset-3 rounded-sm ring-1 ring-content-primary/5 transition-all duration-[var(--motion-duration-page)] group-hover:ring-accent-primary/20" />
-              {/* 卡內裝飾：底部漸層 */}
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-accent-action/10 to-transparent opacity-0 transition-opacity duration-[var(--motion-duration-page)] group-hover:opacity-100" />
-
-              {/* 頂：編號 + 圖示 */}
-              <div className="relative flex items-start justify-between">
-                <span className="font-mono text-caption tracking-[var(--tracking-kicker)] text-accent-primary/70">0{i + 1} / 03</span>
-                <Icon className="size-5 text-content-primary/40 transition-colors group-hover:text-accent-primary" strokeWidth={1.25} />
-              </div>
-
-              {/* 中：副標 + 主標 + 說明 */}
-              <div className="relative">
-                <div className="mb-2 text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/40 md:tracking-[var(--tracking-kicker)]">
-                  {subtitle}
-                </div>
-                <h2 className="font-display text-lobby-card-title font-extrabold leading-none tracking-tight md:text-5xl">
-                  {t(titleKey)}
-                </h2>
-                <p className="lobby-entry-caption mt-4 max-w-[22ch] text-body leading-relaxed text-content-primary/50">
-                  {t(captionKey)}
-                </p>
-              </div>
-
-              {/* 底：Enter + 箭頭 */}
-              <div className="relative flex items-center justify-between border-t border-content-primary/10 pt-5">
-                <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors group-hover:text-content-primary/80">
-                  Enter
-                </span>
-                <span className="font-display text-xl italic text-accent-primary/60 transition-transform duration-[var(--motion-duration-page)] group-hover:translate-x-1 group-hover:text-accent-primary">
-                  →
-                </span>
-              </div>
-            </Card>
-          ))}
-          <Button
-            type="button"
-            onClick={() => navigate('/tutorial')}
-            className="mt-1 flex w-full items-center justify-center gap-3 border-accent-primary/30 bg-accent-primary/10 text-accent-primary sm:hidden"
-            variant="secondary"
-          >
-            <span className="text-caption uppercase tracking-[var(--tracking-control)]">{t('lobby.tutorial')}</span>
-            <span className="font-display text-xl italic">→</span>
-          </Button>
-        </div>
-      </section>
-
-      {/* 底部 Footer */}
-      <footer className="lobby-home-footer pointer-events-none absolute inset-x-0 bottom-0 z-[var(--z-sticky)] hidden flex-col items-center gap-3 px-4 pb-4 sm:flex md:px-8">
-        {/* 教學入口 */}
-        <Button
-          type="button"
-          onClick={() => navigate('/tutorial')}
-          className="lobby-tutorial-button pointer-events-auto group flex w-full max-w-md items-center justify-center gap-3 rounded-sm border border-accent-primary/30 bg-gradient-to-r from-accent-primary/8 via-accent-primary/5 to-accent-primary/8 px-6 py-3 text-accent-primary transition-all hover:border-accent-primary/50 hover:bg-accent-primary/10 hover:shadow-glow-primary"
-          variant="secondary"
-        >
-          <span className="text-caption uppercase tracking-[var(--tracking-kicker)]">{t('lobby.tutorial')}</span>
-          <span className="font-display text-xl italic transition-transform group-hover:translate-x-1">→</span>
-        </Button>
-
-        {/* 原有的 footer 信息 */}
-        <div className="pointer-events-auto flex w-full items-center justify-between text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/30">
-          <VersionUpdateTrigger />
-          <Button
-            type="button"
-            className="hidden min-h-10 items-center text-content-primary/30 transition-colors hover:text-accent-primary md:inline-flex"
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/feedback')}
-          >
-            {t('app.footerAlpha')}
-          </Button>
-          <span className="font-mono">
-            {t('app.footerCopyright')}
-            <a
-              className="inline-flex min-h-10 items-center text-content-primary/40 underline-offset-4 transition-colors hover:text-accent-primary hover:underline focus-visible:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
-              href="https://zutomayocard.net"
-              target="_blank"
-              rel="noreferrer"
-            >
+      {/* ===== 主視覺：wordmark × 待機儀表 ===== */}
+      <main className="relative z-[var(--z-dropdown)] flex h-full min-h-0 flex-col overflow-y-auto px-4 pt-20 md:px-10 md:pt-24">
+        <section className="flex flex-1 flex-col items-center justify-center gap-8 md:flex-row md:justify-between md:gap-12">
+          {/* 左：標語與主行動 */}
+          <div className="flex max-w-xl flex-col items-center text-center md:items-start md:text-left">
+            <span className="font-mono text-caption uppercase tracking-[var(--tracking-hero)] text-accent-primary/80">
+              The Battle Begins
+            </span>
+            <h1 className="mt-4 font-display text-[clamp(2.6rem,7vw,5rem)] font-extrabold leading-[0.95] tracking-tight">
               ZUTOMAYO
-            </a>
-            {t('app.footerCopyrightSuffix')}
-          </span>
-        </div>
-      </footer>
+              <br />
+              CARD
+            </h1>
+            <p className="mt-5 max-w-[30ch] text-body-lg leading-relaxed text-content-muted">{t('app.subtitle')}</p>
+            <div className="mt-8 flex w-full max-w-md flex-col gap-3 sm:flex-row">
+              <Button
+                type="button"
+                variant="primary"
+                size="lg"
+                className="flex-1"
+                onClick={() => navigate('/online')}
+                data-umami-event="home-hero-online"
+              >
+                {t('lobby.onlineTitle')} →
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                className="flex-1"
+                onClick={() => navigate('/tutorial')}
+                data-umami-event="home-hero-tutorial"
+              >
+                {t('lobby.tutorial')}
+              </Button>
+            </div>
+          </div>
 
-      {/* 首次訪問引導——頂部橫幅卡片，不遮罩背景 */}
+          {/* 右：待機中的 Chronos 儀表（純裝飾，與對戰共用元件） */}
+          <div
+            className="relative hidden shrink-0 scale-125 opacity-90 sm:block md:mr-8 md:scale-150 lg:mr-16"
+            aria-hidden="true"
+          >
+            <div className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(from_var(--time-night)_l_c_h_/_0.1)] blur-3xl" />
+            <ChronosDial chronos={IDLE_CHRONOS} currentTime="night" currentPlayer={0} />
+          </div>
+        </section>
+
+        {/* ===== 頻道列：模式入口 ===== */}
+        <nav className="shrink-0 pb-6 pt-8 md:pb-8" aria-label={t('lobby.menu')}>
+          <div className="mb-3 flex items-baseline gap-3">
+            <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-dim">
+              Channels
+            </span>
+            <span className="h-px flex-1 bg-border-soft" aria-hidden="true" />
+          </div>
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3">
+            {CHANNELS.map(({ to, no, titleKey, captionKey, Icon }) => (
+              <li key={to}>
+                <button
+                  type="button"
+                  onClick={() => navigate(to)}
+                  className="group flex min-h-[var(--size-touch-min)] w-full items-center gap-3 rounded-md border border-border-soft bg-surface-base/60 px-4 py-3 text-left backdrop-blur transition hover:border-accent-primary/50 hover:bg-surface-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] lg:flex-col lg:items-start lg:gap-2 lg:py-4"
+                >
+                  <span className="flex items-center gap-3 lg:w-full lg:justify-between">
+                    <span className="font-mono text-caption tracking-[var(--tracking-meta)] text-accent-primary/70">
+                      CH.{no}
+                    </span>
+                    <Icon
+                      className="size-4 text-content-dim transition-colors group-hover:text-accent-primary"
+                      strokeWidth={1.5}
+                      aria-hidden="true"
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-display text-body-lg font-bold leading-tight">
+                      {t(titleKey)}
+                    </span>
+                    {captionKey !== titleKey && (
+                      <span className="mt-1 hidden text-caption leading-snug text-content-dim lg:line-clamp-2">
+                        {t(captionKey)}
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className="font-mono text-body text-content-dim transition group-hover:translate-x-0.5 group-hover:text-accent-primary lg:hidden"
+                    aria-hidden="true"
+                  >
+                    →
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {/* footer 資訊行 */}
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-border-soft pt-4 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/30">
+            <VersionUpdateTrigger />
+            <Button
+              type="button"
+              className="min-h-10 text-content-primary/30 hover:text-accent-primary"
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/feedback')}
+            >
+              {t('app.footerAlpha')}
+            </Button>
+            <span className="font-mono normal-case">
+              {t('app.footerCopyright')}
+              <a
+                className="inline-flex min-h-10 items-center text-content-primary/40 underline-offset-4 transition-colors hover:text-accent-primary hover:underline focus-visible:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
+                href="https://zutomayocard.net"
+                target="_blank"
+                rel="noreferrer"
+              >
+                ZUTOMAYO
+              </a>
+              {t('app.footerCopyrightSuffix')}
+            </span>
+          </div>
+        </nav>
+      </main>
+
+      {/* 首次訪問引導 */}
       {showDeckIntro && (
         <div className="fixed inset-x-0 bottom-0 z-[var(--z-overlay)] flex justify-center px-4 pb-4 sm:bottom-auto sm:top-0 sm:pb-0 sm:pt-4">
           <Panel
-            className="max-h-[calc(100dvh-2rem)] w-full max-w-[640px] overflow-y-auto bg-gradient-to-br from-surface-canvas via-surface-canvas to-surface-base text-content-primary ring-accent-primary/40 backdrop-blur"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-[640px] overflow-y-auto bg-surface-panel-strong text-content-primary ring-accent-primary/40 backdrop-blur"
             size="lg"
           >
             <div className="mb-2 flex items-center justify-between">
-              <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Welcome</span>
+              <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                Welcome
+              </span>
               <Button
                 type="button"
                 aria-label={t('common.close')}
@@ -273,7 +250,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
                 {t('common.close')}
               </Button>
             </div>
-            <h2 className="font-display text-xl italic leading-tight text-content-primary sm:text-2xl">{t('intro.deckTitle')}</h2>
+            <h2 className="font-display text-xl font-bold leading-tight text-content-primary sm:text-2xl">
+              {t('intro.deckTitle')}
+            </h2>
             <p className="mt-2 text-body leading-relaxed text-content-primary/70">{t('intro.deckDescription')}</p>
             <div className="mt-4 flex flex-col justify-end gap-2 sm:flex-row">
               <Button

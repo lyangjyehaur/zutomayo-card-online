@@ -1,5 +1,7 @@
 export { AmbientGlow, PageShell } from './PageShell';
 export type { AmbientGlowColor, AmbientGlowProps, AmbientGlowSize, PageShellProps } from './PageShell';
+export { AppHeader } from './AppHeader';
+export type { AppHeaderProps } from './AppHeader';
 export { PageHeader } from './PageHeader';
 export type { PageHeaderProps } from './PageHeader';
 export {

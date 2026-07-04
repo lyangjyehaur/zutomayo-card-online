@@ -130,7 +130,9 @@ function NavBar() {
     location.pathname.startsWith('/qa/') ||
     location.pathname === '/' ||
     location.pathname === '/online' ||
-    location.pathname === '/ai'
+    location.pathname === '/ai' ||
+    location.pathname === '/history' ||
+    location.pathname === '/leaderboard'
   ) {
     return null;
   }
@@ -156,12 +158,10 @@ function NavBar() {
   };
 
   return (
-    <nav
-      className="relative z-[var(--z-header)] border-b border-content-primary/5 bg-surface-canvas/90 px-4 backdrop-blur md:px-6"
-      aria-label={t('nav.primary')}
-    >
-      <div className="hidden h-12 items-center justify-between md:flex">
-        <div className="flex items-center gap-6">
+    <nav className="relative z-[var(--z-header)] px-3 pt-3 md:px-4 md:pt-4" aria-label={t('nav.primary')}>
+      <div className="hidden items-center justify-between md:flex">
+        <div className="flex items-center gap-1 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">
+          <span className="mx-2 size-2 rounded-full bg-accent-primary shadow-status-dot" aria-hidden="true" />
           {navItems.slice(0, 5).map((item) => (
             <Button
               key={item.path}
@@ -175,17 +175,19 @@ function NavBar() {
             </Button>
           ))}
         </div>
-        <Button
-          className={navButtonClass('/tutorial')}
-          variant="ghost"
-          size="sm"
-          type="button"
-          onClick={() => goTo('/tutorial')}
-        >
-          {t('nav.tutorial')}
-        </Button>
+        <div className="rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">
+          <Button
+            className={navButtonClass('/tutorial')}
+            variant="ghost"
+            size="sm"
+            type="button"
+            onClick={() => goTo('/tutorial')}
+          >
+            {t('nav.tutorial')}
+          </Button>
+        </div>
       </div>
-      <div className="flex h-14 items-center justify-between gap-3 md:hidden">
+      <div className="flex items-center justify-between gap-2 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md md:hidden">
         <Button
           className="!min-h-11 font-display text-base italic normal-case tracking-normal text-content-primary"
           variant="ghost"
@@ -207,7 +209,7 @@ function NavBar() {
         />
       </div>
       {open && (
-        <div className="fixed inset-0 top-14 z-[var(--z-modal)] bg-surface-canvas/80 p-4 backdrop-blur md:hidden">
+        <div className="fixed inset-0 top-16 z-[var(--z-modal)] bg-surface-canvas/80 p-4 backdrop-blur md:hidden">
           <div className="grid gap-2 rounded-md bg-surface-base p-3 ring-1 ring-content-primary/10 shadow-raised">
             {navItems.map((item) => (
               <Button
@@ -465,7 +467,9 @@ function RouterShell() {
     location.pathname.startsWith('/qa/') ||
     location.pathname === '/' ||
     location.pathname === '/online' ||
-    location.pathname === '/ai';
+    location.pathname === '/ai' ||
+    location.pathname === '/history' ||
+    location.pathname === '/leaderboard';
 
   return (
     <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
