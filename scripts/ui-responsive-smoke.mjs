@@ -29,7 +29,7 @@ const pages = [
   { pageId: 'ai-lobby', path: '/ai', waitForText: '與電腦對戰' },
   { pageId: 'online-lobby', path: '/online', waitForText: '線上房間' },
   { pageId: 'deck-builder', path: '/deck-builder', waitForText: '牌組' },
-  { pageId: 'battle-turn-set', path: '/qa/battle?state=turn-set&controls=0', waitFor: '.board' },
+  { pageId: 'battle-turn-set', path: '/qa/battle?state=turn-set&controls=0', waitFor: '.bf-root' },
   { pageId: 'feedback', path: '/feedback', waitFor: '.feedback-toolbar' },
   { pageId: 'admin-cards', path: '/admin', waitFor: '.admin-page' },
   { pageId: 'i18n-manager', path: '/admin/i18n', waitFor: '.i18n-responsive-table' },
@@ -343,8 +343,8 @@ const metricsExpression = `
       overflowX: document.documentElement.scrollWidth > innerWidth + 1 || document.body.scrollWidth > innerWidth + 1,
       overflowY: document.documentElement.scrollHeight > innerHeight + 1,
     },
-    shell: visible('[data-page-shell], main, .app-shell, .board').slice(0, 3),
-    checkedSurface: visible('.lobby-entry-card, .battle-content-grid, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [aria-label="Card Pool"], article').slice(0, 8),
+    shell: visible('[data-page-shell], main, .app-shell, .bf-root').slice(0, 3),
+    checkedSurface: visible('.lobby-entry-card, .bf-main, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [aria-label="Card Pool"], article').slice(0, 8),
     smallTargets: targets.filter((item) => item.width < 40 || item.height < 40).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter(isVisible)

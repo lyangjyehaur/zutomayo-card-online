@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactNode } from 'react';
-import { Button, Sheet } from './ui';
-import { cn } from './ui/utils';
+import { Button, Sheet } from '../ui';
+import { cn } from '../ui';
 
 interface CardBrowserProps extends HTMLAttributes<HTMLElement> {
   label: string;

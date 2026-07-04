@@ -1,0 +1,45 @@
+/* Spacing / Size Tokens — 4px 基準 scale；layout 禁用 magic number */
+:root {
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* semantic spacing */
+  --space-page-x: clamp(var(--space-4), 2vw, var(--space-6));
+  --space-page-y: var(--space-6);
+  --space-panel: var(--space-4);
+  --space-section: var(--space-6);
+  --space-toolbar: var(--space-3);
+  --space-zone-gap: clamp(var(--space-1), 0.9vw, var(--space-3)); /* 戰場區域間 */
+  --space-slot-gap: clamp(var(--space-1), 0.6vw, var(--space-2)); /* 槽位間 */
+
+  /* 控制項 / 觸控 */
+  --size-touch-min: 2.75rem; /* 44px 觸控下限 */
+  --touch-target-min: var(--size-touch-min);
+  --control-height-sm: 2.25rem;
+  --control-height-md: var(--size-touch-min);
+  --control-height-lg: 3rem;
+
+  /* 環境光暈（僅桌面裝飾） */
+  --ambient-glow-size-sm: 50vh;
+  --ambient-glow-size-md: 60vh;
+  --ambient-glow-size-lg: 80vh;
+  --ambient-glow-blur-sm: 120px;
+  --ambient-glow-blur-md: 140px;
+  --ambient-glow-blur-lg: 160px;
+
+  /* viewport breakpoints（同 docs/uiux/responsive-layout-system.md） */
+  --breakpoint-phone: 360px;
+  --breakpoint-phone-lg: 430px;
+  --breakpoint-tablet: 768px;
+  --breakpoint-touch: 820px;
+  --breakpoint-desktop-sidebar: 1180px;
+  --breakpoint-low-height: 780px;
+}

@@ -7,24 +7,23 @@ import {
   replaceMatchRecords,
   type MatchRecord,
 } from '../game/matchHistory';
-import type { ActionLogEntry } from '../game/types';
+import { CHRONOS_MAPPING, type ActionLogEntry } from '../game/types';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
 import {
   ActionBar,
-  BackButton,
+  AppHeader,
   Badge,
   Button,
   Card,
   Dialog,
   FilterToolbar,
-  PageSectionHeader,
+  PageShell,
   Panel,
-  ScrollPageLayout,
   StatCard,
   StatsGrid,
-} from './ui';
+} from '../ui';
 
 interface MatchHistoryProps {
   onBack: () => void;
@@ -60,7 +59,7 @@ function formatTracePayload(payload: ActionLogEntry['payload']): string {
 function traceContext(entry: ActionLogEntry): string[] {
   const lines: string[] = [];
   if (entry.hp) lines.push(`${t('history.traceHp')} ${entry.hp[0]}/${entry.hp[1]}`);
-  if (typeof entry.chronosPosition === 'number') lines.push(`${t('history.traceChronos')} ${entry.chronosPosition}/12`);
+  if (typeof entry.chronosPosition === 'number') lines.push(`${t('history.traceChronos')} ${entry.chronosPosition}/${CHRONOS_MAPPING.positions}`);
   if (entry.pendingEffectCardDefId) lines.push(`${t('history.traceEffectCard')} ${entry.pendingEffectCardDefId}`);
   if (entry.pendingChoiceType) lines.push(`${t('history.traceChoice')} ${entry.pendingChoiceType}`);
   return lines;
@@ -126,7 +125,7 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
           </Panel>
           <Panel variant="ghost">
             <span className="text-xs text-content-primary/50">{t('history.finalChronos')}</span>
-            <strong>{record.chronos.finalPosition}/12</strong>
+            <strong>{record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}</strong>
           </Panel>
         </div>
         <div>
@@ -151,7 +150,7 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
   );
 }
 
-export function MatchHistory({ onBack }: MatchHistoryProps) {
+export function MatchHistory(_props: MatchHistoryProps) {
   const { showToast } = useToast();
   const [records, setRecords] = useState(() => getMatchRecords());
   const [page, setPage] = useState(0);
@@ -190,32 +189,28 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
   };
 
   return (
-    <ScrollPageLayout>
-      <PageSectionHeader
-        kicker={t('lobby.menu')}
+    <PageShell>
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
+      </div>
+      <AppHeader
         title={t('history.title')}
+        backTo="/"
         actions={
-          <ActionBar mobileLayout="grid">
-            <BackButton
-              className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-              type="button"
-              onClick={onBack}
-            >
-              {t('common.backToLobby')}
-            </BackButton>
-            <Button
-              className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-              variant="danger"
-              size="sm"
-              type="button"
-              disabled={records.length === 0}
-              onClick={clearHistory}
-            >
-              {t('history.clear')}
-            </Button>
-          </ActionBar>
+          <Button
+            className="!min-h-9"
+            variant="danger"
+            size="sm"
+            type="button"
+            disabled={records.length === 0}
+            onClick={clearHistory}
+          >
+            {t('history.clear')}
+          </Button>
         }
       />
+      <main className="relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-20 md:pt-24">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
 
       <StatsGrid>
         <StatCard label={t('history.total')} value={stats.totalMatches} />
@@ -285,7 +280,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                       {t('history.finalHp')} {record.players[0].hp}/{record.players[1].hp}
                     </span>
                     <span>
-                      {t('history.finalChronos')} {record.chronos.finalPosition}/12
+                      {t('history.finalChronos')} {record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}
                     </span>
                     <span>
                       {t('history.traceCount')} {(record.actionLog ?? []).length}
@@ -317,6 +312,8 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
           )}
         </section>
         {selectedRecord && <MatchDetail record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
-    </ScrollPageLayout>
+        </div>
+      </main>
+    </PageShell>
   );
 }

@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 import { getLeaderboard, getProfile, isLoggedIn, type LeaderboardEntry } from '../api/client';
-import { BackButton, Badge, Card, DataListCell, DataListTable, PageSectionHeader, Panel, ScrollPageLayout } from '../components/ui';
+import { AppHeader, Badge, Card, DataListCell, DataListTable, Panel, PageShell } from '../ui';
 
 export function LeaderboardPage() {
-  const navigate = useNavigate();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -42,16 +40,13 @@ export function LeaderboardPage() {
   }, []);
 
   return (
-    <ScrollPageLayout>
-      <PageSectionHeader
-        variant="centered"
-        leading={
-          <BackButton className="!min-h-11 self-start" type="button" onClick={() => navigate('/')}>
-            {t('common.backToLobby')}
-          </BackButton>
-        }
-        title={t('leaderboard.title')}
-      />
+    <PageShell>
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
+      </div>
+      <AppHeader title={t('leaderboard.title')} backTo="/" />
+      <main className="relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-20 md:pt-24">
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
 
       {loading && (
           <Panel className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/50">
@@ -149,6 +144,8 @@ export function LeaderboardPage() {
             </div>
           </>
         )}
-    </ScrollPageLayout>
+        </div>
+      </main>
+    </PageShell>
   );
 }

@@ -1,7 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 import type { AIDifficulty } from '../../game/ai';
 import { t } from '../../i18n';
-import { Button } from '../ui';
+import { Button } from '../../ui';
 
 export function DifficultyButtons({
   onStart,

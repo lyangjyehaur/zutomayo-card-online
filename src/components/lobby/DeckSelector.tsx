@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react';
 import { t } from '../../i18n';
-import { Button } from '../ui';
+import { Button } from '../../ui';
 import type { DeckOptionGroup } from './shared';
 
 const DECK_ACCENT: Record<string, string> = {

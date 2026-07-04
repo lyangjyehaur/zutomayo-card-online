@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Check, Pencil, Radio, X } from 'lucide-react';
 import {
   ANONYMOUS_PLAYER_DEFAULT_NAME,
@@ -26,7 +25,7 @@ import { AuthSection } from '../components/lobby/AuthSection';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
-import { Alert, BackButton, Button, Input, PageHeader, Panel, WorkspaceLayout } from '../components/ui';
+import { Alert, AppHeader, Button, Input, PageShell, Panel } from '../ui';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
 import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
@@ -84,7 +83,6 @@ export function OnlineLobbyPage({
   serverDeckError,
   cardsReady,
 }: OnlineLobbyPageProps) {
-  const navigate = useNavigate();
   const { showToast } = useToast();
   const locale = useLocale();
   const deckOptions = useMemo<DeckOptionGroup[]>(() => {
@@ -345,29 +343,30 @@ export function OnlineLobbyPage({
   });
 
   return (
-    <WorkspaceLayout
-      glow={{ color: 'vermilion', size: 'sm', className: 'left-0 top-0 translate-x-0 translate-y-0' }}
-      header={
-        <PageHeader
-          leading={
-            <BackButton className="!min-h-11" type="button" onClick={() => navigate('/')}>
-              <span className="hidden sm:inline">{t('common.backToLobby')}</span>
-            </BackButton>
-          }
-          title={t('lobby.onlineTitle')}
-          subtitle={t('lobby.onlineLobbySubtitle')}
-          actions={
-            <div className="hidden items-center gap-2 font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/40 md:flex">
-              <Radio className="size-3 animate-pulse text-accent-action" />
+    <PageShell>
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute left-1/3 top-1/4 h-[50vh] w-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(from_var(--time-night)_l_c_h_/_0.06)] blur-[var(--ambient-glow-blur-md)]" />
+        <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
+      </div>
+
+      <AppHeader
+        title={t('lobby.onlineTitle')}
+        subtitle={t('lobby.onlineLobbySubtitle')}
+        backTo="/"
+        actions={
+          <div className="hidden items-center gap-2 px-2 font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/50 sm:flex">
+            <Radio className="size-3 animate-pulse text-accent-action" aria-hidden="true" />
+            <span className="max-w-[14rem] truncate">
               {profile ? `${profile.nickname} · ELO ${profile.elo}` : anonymousDisplayName}
-            </div>
-          }
-        />
-      }
-      sidebarWidth="md"
-      mainClassName="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-2"
-      sidebar={
-        <RoomPanel mode="quick">
+            </span>
+          </div>
+        }
+      />
+
+      <main className="relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-20 md:pt-24">
+        <div className="mx-auto grid w-full max-w-5xl items-start gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+          {/* 左：快速配對操作台 */}
+          <RoomPanel mode="quick">
           <div>
             <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('lobby.quickMatch')}</div>
             <h2 className="mt-1 font-display text-3xl italic">{t('lobby.onlineTitle')}</h2>
@@ -502,12 +501,10 @@ export function OnlineLobbyPage({
               </Button>
             </div>
           )}
-        </RoomPanel>
-      }
-    >
+          </RoomPanel>
 
-        {/* 右側：牌組選擇 + 自訂房間 */}
-        <section className="contents">
+          {/* 右：牌組選擇 + 自訂房間 */}
+          <section className="flex min-w-0 flex-col gap-4">
           {/* 牌組選擇 */}
           <RoomPanel mode="deck">
             <DeckSelector
@@ -613,7 +610,9 @@ export function OnlineLobbyPage({
               </Alert>
             )}
           </RoomPanel>
-        </section>
-    </WorkspaceLayout>
+          </section>
+        </div>
+      </main>
+    </PageShell>
   );
 }

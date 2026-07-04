@@ -1,0 +1,12 @@
+/* Radius Tokens — Art Direction v2：銳利幾何（比舊版更小圓角） */
+:root {
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.1875rem; /* 3px — 卡牌/槽位/按鈕 */
+  --radius-control: 0.25rem;
+  --radius-md: 0.375rem; /* 面板 */
+  --radius-lg: 0.5rem; /* modal / sheet */
+  --radius-xl: 0.75rem;
+  --radius-pill: 9999px;
+  --radius: var(--radius-control); /* deprecated 別名 */
+  --radius-full: var(--radius-pill); /* deprecated 別名 */
+}

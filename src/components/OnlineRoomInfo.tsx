@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { copyText } from '../clipboard';
 import { t } from '../i18n';
 import { useToast } from './ToastProvider';
-import { Button, FieldLabel, Input, Panel, cn } from './ui';
+import { Button, FieldLabel, Input, Panel, cn } from '../ui';
 
 interface OnlineRoomInfoProps {
   matchID: string;

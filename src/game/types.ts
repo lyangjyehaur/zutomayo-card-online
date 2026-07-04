@@ -5,12 +5,14 @@ export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
 export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
 export type ChronosTime = 'night' | 'day';
 
+// 官方場地墊：クロノス共 18 刻度，夜（青）晝（赤）各 9 格平分；
+// 真夜中（0）為夜弧中心、正午（9）為晝弧中心，順時針推進。
 export const CHRONOS_MAPPING = {
-  positions: 12,
+  positions: 18,
   midnight: 0,
-  noon: 6,
-  nightPositions: [0, 1, 2, 3, 10, 11],
-  dayPositions: [4, 5, 6, 7, 8, 9],
+  noon: 9,
+  nightPositions: [0, 1, 2, 3, 4, 14, 15, 16, 17],
+  dayPositions: [5, 6, 7, 8, 9, 10, 11, 12, 13],
   direction: 'clockwise' as const,
 } as const;
 

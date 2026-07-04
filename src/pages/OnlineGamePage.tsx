@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { isVersionMismatchError, reloadForAppUpdate } from '../clientVersion';
 import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
-import { Alert, Button, Dialog, PageShell, Panel } from '../components/ui';
+import { Alert, Button, Dialog, PageShell, Panel } from '../ui';
 import { t, translate, useLocale } from '../i18n';
 import {
   clearStoredOnlineSession,

@@ -1,6 +1,9 @@
 # Design System
 
-狀態：Phase 1 foundation  
+> **⚠️ 本文件為 Phase 1 舊版。正式 UI 標準已遷移至 [`docs/uiux/design-system.md`](./uiux/design-system.md)**
+> （Design System v1：`src/styles/tokens.css` 為 semantic token 正式 API，`src/App.css :root` 降為 primitive 層）。
+
+狀態：Phase 1 foundation（已被 docs/uiux/design-system.md 取代）
 來源：`src/App.css` 的 `:root` token 與 `@theme inline` 是唯一 Design Token 來源。
 
 ## Design Principle

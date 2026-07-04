@@ -1,5 +1,5 @@
 import type { HTMLAttributes, ReactNode } from 'react';
-import { cn } from './utils';
+import { cn } from '../primitives/utils';
 
 export type AlertTone = 'info' | 'success' | 'warning' | 'danger';
 

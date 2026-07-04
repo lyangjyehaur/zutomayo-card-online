@@ -1,7 +1,7 @@
 import type { TdHTMLAttributes, TableHTMLAttributes } from 'react';
 import { cn } from './utils';
 
-export interface DataListTableProps extends TableHTMLAttributes<HTMLTableElement> {}
+export type DataListTableProps = TableHTMLAttributes<HTMLTableElement>;
 
 export function DataListTable({ className, children, ...props }: DataListTableProps) {
   return (

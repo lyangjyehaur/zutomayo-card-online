@@ -1,0 +1,24 @@
+/*
+ * ============================================================================
+ * Design Tokens — 唯一事實來源（single source of truth）
+ * ============================================================================
+ * Art Direction v2「深夜訊號 Midnight Signal」— docs/uiux/new-art-direction.md
+ *
+ * 分層：
+ *   primitive（--ink-* / --volt-* / --nocturne-* …，只在 colors.css 定義）
+ *   → semantic（--color-* / --surface-* / --space-* / --font-* …，元件唯一引用層）
+ *   → component（各元件 CSS 內組合）
+ *
+ * 規則：
+ *   - 頁面與元件禁止 hard-code 色值 / px 卡牌尺寸 / magic spacing
+ *   - 新增 token 前先讀 docs/uiux/how-to-add-new-feature.md §token
+ * ============================================================================
+ */
+@import './colors.css';
+@import './typography.css';
+@import './spacing.css';
+@import './radius.css';
+@import './shadow.css';
+@import './motion.css';
+@import './z-index.css';
+@import './cards.css';

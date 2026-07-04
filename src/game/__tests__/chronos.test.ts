@@ -3,33 +3,36 @@ import { normalizeChronosPosition, getChronosTimeForPosition } from '../chronos'
 import { CHRONOS_MAPPING } from '../types';
 
 describe('normalizeChronosPosition', () => {
-  it('保留 [0, 12) 範圍內的位置不變', () => {
+  it('保留 [0, positions) 範圍內的位置不變', () => {
     for (let i = 0; i < CHRONOS_MAPPING.positions; i++) {
       expect(normalizeChronosPosition(i)).toBe(i);
     }
   });
 
-  it('正數繞回：12 → 0, 13 → 1, 24 → 0', () => {
-    expect(normalizeChronosPosition(12)).toBe(0);
-    expect(normalizeChronosPosition(13)).toBe(1);
-    expect(normalizeChronosPosition(24)).toBe(0);
-    expect(normalizeChronosPosition(25)).toBe(1);
+  it('正數繞回：positions → 0, positions+1 → 1, 2×positions → 0', () => {
+    const P = CHRONOS_MAPPING.positions;
+    expect(normalizeChronosPosition(P)).toBe(0);
+    expect(normalizeChronosPosition(P + 1)).toBe(1);
+    expect(normalizeChronosPosition(2 * P)).toBe(0);
+    expect(normalizeChronosPosition(2 * P + 1)).toBe(1);
   });
 
-  it('負數繞回：-1 → 11, -12 → 0, -13 → 11', () => {
-    expect(normalizeChronosPosition(-1)).toBe(11);
-    expect(normalizeChronosPosition(-2)).toBe(10);
-    expect(normalizeChronosPosition(-12)).toBe(0);
-    expect(normalizeChronosPosition(-13)).toBe(11);
+  it('負數繞回：-1 → positions-1, -positions → 0', () => {
+    const P = CHRONOS_MAPPING.positions;
+    expect(normalizeChronosPosition(-1)).toBe(P - 1);
+    expect(normalizeChronosPosition(-2)).toBe(P - 2);
+    expect(normalizeChronosPosition(-P)).toBe(0);
+    expect(normalizeChronosPosition(-P - 1)).toBe(P - 1);
   });
 
   it('0 永遠正規化為 0', () => {
     expect(normalizeChronosPosition(0)).toBe(0);
   });
 
-  it('大正數與大負數仍落在 [0, 12)', () => {
-    expect(normalizeChronosPosition(100)).toBe(100 % 12);
-    expect(normalizeChronosPosition(-100)).toBe(((-100 % 12) + 12) % 12);
+  it('大正數與大負數仍落在 [0, positions)', () => {
+    const P = CHRONOS_MAPPING.positions;
+    expect(normalizeChronosPosition(100)).toBe(100 % P);
+    expect(normalizeChronosPosition(-100)).toBe(((-100 % P) + P) % P);
     const large = 123456;
     const result = normalizeChronosPosition(large);
     expect(result).toBeGreaterThanOrEqual(0);
@@ -54,41 +57,47 @@ describe('getChronosTimeForPosition', () => {
     }
   });
 
-  it('位置繞回仍正確：12 → 0 (night), 16 → 4 (day)', () => {
-    expect(getChronosTimeForPosition(12)).toBe('night'); // 0
-    expect(getChronosTimeForPosition(16)).toBe('day'); // 4
-    expect(getChronosTimeForPosition(-1)).toBe('night'); // 11
-    expect(getChronosTimeForPosition(-3)).toBe('day'); // 9
+  it('位置繞回仍正確：positions → 0 (night), noon+positions → noon (day)', () => {
+    const P = CHRONOS_MAPPING.positions;
+    expect(getChronosTimeForPosition(P)).toBe('night'); // 0
+    expect(getChronosTimeForPosition(CHRONOS_MAPPING.noon + P)).toBe('day');
+    expect(getChronosTimeForPosition(-1)).toBe('night'); // P-1
+    expect(getChronosTimeForPosition(-(P - CHRONOS_MAPPING.noon))).toBe('day'); // noon
   });
 
-  it('midnightRange=0 時邊界位置 4 與 9 為 day', () => {
-    expect(getChronosTimeForPosition(4, 0)).toBe('day');
-    expect(getChronosTimeForPosition(9, 0)).toBe('day');
+  it('midnightRange=0 時晝側邊界位置為 day', () => {
+    const firstDay = CHRONOS_MAPPING.dayPositions[0];
+    const lastDay = CHRONOS_MAPPING.dayPositions[CHRONOS_MAPPING.dayPositions.length - 1];
+    expect(getChronosTimeForPosition(firstDay, 0)).toBe('day');
+    expect(getChronosTimeForPosition(lastDay, 0)).toBe('day');
   });
 
   it('midnightRange 擴展使午夜附近的位置變成 night', () => {
-    // position 4 距離午夜(0) = min(4, 8) = 4
-    expect(getChronosTimeForPosition(4, 3)).toBe('day'); // 4 > 3
-    expect(getChronosTimeForPosition(4, 4)).toBe('night'); // 4 <= 4
-    expect(getChronosTimeForPosition(4, 5)).toBe('night'); // 4 <= 5
+    const firstDay = CHRONOS_MAPPING.dayPositions[0]; // 距午夜 = firstDay
+    expect(getChronosTimeForPosition(firstDay, firstDay - 1)).toBe('day');
+    expect(getChronosTimeForPosition(firstDay, firstDay)).toBe('night');
+    expect(getChronosTimeForPosition(firstDay, firstDay + 1)).toBe('night');
   });
 
   it('midnightRange 對稱擴展（另一側）', () => {
-    // position 9 距離午夜 = min(9, 3) = 3
-    expect(getChronosTimeForPosition(9, 2)).toBe('day'); // 3 > 2
-    expect(getChronosTimeForPosition(9, 3)).toBe('night'); // 3 <= 3
-    expect(getChronosTimeForPosition(9, 4)).toBe('night'); // 3 <= 4
+    const P = CHRONOS_MAPPING.positions;
+    const lastDay = CHRONOS_MAPPING.dayPositions[CHRONOS_MAPPING.dayPositions.length - 1];
+    const dist = P - lastDay; // 距午夜（逆向）
+    expect(getChronosTimeForPosition(lastDay, dist - 1)).toBe('day');
+    expect(getChronosTimeForPosition(lastDay, dist)).toBe('night');
+    expect(getChronosTimeForPosition(lastDay, dist + 1)).toBe('night');
   });
 
-  it('正午（position 6）不受 midnightRange 影響（除非極大範圍）', () => {
-    expect(getChronosTimeForPosition(6, 0)).toBe('day');
-    expect(getChronosTimeForPosition(6, 5)).toBe('day'); // 距離 = min(6, 6) = 6 > 5
-    expect(getChronosTimeForPosition(6, 6)).toBe('night'); // 6 <= 6
+  it('正午不受 midnightRange 影響（除非極大範圍）', () => {
+    const noon = CHRONOS_MAPPING.noon; // 距午夜 = noon
+    expect(getChronosTimeForPosition(noon, 0)).toBe('day');
+    expect(getChronosTimeForPosition(noon, noon - 1)).toBe('day');
+    expect(getChronosTimeForPosition(noon, noon)).toBe('night');
   });
 
   it('預設 midnightRange 為 0', () => {
     expect(getChronosTimeForPosition(0)).toBe('night');
-    expect(getChronosTimeForPosition(6)).toBe('day');
-    expect(getChronosTimeForPosition(4)).toBe('day');
+    expect(getChronosTimeForPosition(CHRONOS_MAPPING.noon)).toBe('day');
+    expect(getChronosTimeForPosition(CHRONOS_MAPPING.dayPositions[0])).toBe('day');
   });
 });

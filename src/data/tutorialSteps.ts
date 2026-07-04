@@ -47,7 +47,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   //    拆成獨立步驟，每個區域分別介紹
   {
     phase: 'zone-battle',
-    target: ['.opponent-battle-zone', '.player-battle-zone'],
+    target: ['[data-tut="opponent-battle-zone"]', '[data-tut="player-battle-zone"]'],
     title: 'tutorial.game.zone.battle.title',
     body: 'tutorial.game.zone.battle.body',
     placement: 'right',

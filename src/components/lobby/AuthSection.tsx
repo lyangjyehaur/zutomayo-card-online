@@ -3,7 +3,7 @@ import { LogOut, AlertCircle } from 'lucide-react';
 import { ApiError, getProfile, isLoggedIn, login, logout as logoutAccount, register } from '../../api/client';
 import { getRegistrationNickname } from '../../anonymousIdentity';
 import { t } from '../../i18n';
-import { Alert, Button, Dialog, Input, SegmentedControl } from '../ui';
+import { Alert, Button, Dialog, Input, SegmentedControl } from '../../ui';
 
 export type AuthMode = 'login' | 'register';
 export type AuthUser = {

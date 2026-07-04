@@ -6,7 +6,7 @@ import { getTranslatedEffect } from '../game/cards/i18n';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
 import { ChevronLeft, ChevronRight, Eye, Layers, Save, Search, SlidersHorizontal, X } from 'lucide-react';
-import { Alert, BackButton, Button, IconButton, Input, SearchInput, SegmentedControl, ToolHeader, WorkspaceLayout } from './ui';
+import { Alert, BackButton, Button, IconButton, Input, SearchInput, SegmentedControl, ToolHeader, WorkspaceLayout } from '../ui';
 import {
   CardBrowser,
   CardBrowserDetailPopover,

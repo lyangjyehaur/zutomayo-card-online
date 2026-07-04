@@ -10,9 +10,13 @@ const port = Number(process.env.CDP_PORT ?? 9666);
 const profileDir = `/private/tmp/zutomayo-battle-responsive-profile-${process.pid}-${Date.now()}`;
 
 const cases = [
+  { name: '1920x1080__turn-set', width: 1920, height: 1080, state: 'turn-set' },
+  { name: '1366x768__turn-set', width: 1366, height: 768, state: 'turn-set' },
   { name: '1280x720__turn-set', width: 1280, height: 720, state: 'turn-set' },
   { name: '1024x768__turn-set', width: 1024, height: 768, state: 'turn-set' },
   { name: '768x1024__turn-set', width: 768, height: 1024, state: 'turn-set' },
+  { name: '932x430__turn-set', width: 932, height: 430, state: 'turn-set' },
+  { name: '844x390__turn-set', width: 844, height: 390, state: 'turn-set' },
   { name: '430x932__turn-set', width: 430, height: 932, state: 'turn-set' },
   { name: '390x844__turn-set', width: 390, height: 844, state: 'turn-set' },
   { name: '360x740__turn-set', width: 360, height: 740, state: 'turn-set' },
@@ -142,14 +146,14 @@ function connect(wsUrl) {
 const expression = `
 (() => {
   const selectors = {
-    board: '.board',
-    content: '.battle-content-grid',
-    field: '.battle-perspective-field',
-    playerArea: '.battle-player-area',
-    stage: '.battle-perspective-stage',
-    hand: '.battle-hand-row',
-    action: '.battle-action-stack',
-    actionButtons: '.battle-action-stack button',
+    board: '.bf-root',
+    content: '.bf-main',
+    field: '.bf-field',
+    playerArea: '.bf-player',
+    stage: '.bf-stage',
+    hand: '.handzone',
+    action: '.actiondock',
+    actionButtons: '.actiondock button',
     pause: '.board-pause-button',
     sideActions: '.battle-side-panel-actions button',
     sideSheet: '.battle-side-sheet',
@@ -254,7 +258,7 @@ try {
     await client.send('Page.navigate', { url: `${baseUrl}/qa/battle?state=${testCase.state}&controls=0` });
     for (let attempt = 0; attempt < 25; attempt += 1) {
       const ready = await client.send('Runtime.evaluate', {
-        expression: `Boolean(document.querySelector('.board, [data-tut="mulligan-panel"], .game-over-panel'))`,
+        expression: `Boolean(document.querySelector('.bf-root, [data-tut="mulligan-panel"], .game-over-panel'))`,
         returnByValue: true,
       });
       if (ready.result.value === true) break;

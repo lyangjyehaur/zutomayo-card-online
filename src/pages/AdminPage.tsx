@@ -36,7 +36,7 @@ import {
   StatsGrid,
   Textarea,
   ToolHeader,
-} from '../components/ui';
+} from '../ui';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';

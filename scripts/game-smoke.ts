@@ -32,6 +32,7 @@ import {
 import { collectTurnEffects, executeEffect, processTurnEffects } from '../src/game/effects/executor';
 import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
 import { CHRONOS_MAPPING, type GameState, type TimingEvent } from '../src/game/types';
+import { normalizeChronosPosition } from '../src/game/chronos';
 import type { ParsedEffect } from '../src/game/effects';
 import { ZutomayoCard, resetParsedEffects } from '../src/game/Game';
 import { aiSelectCards } from '../src/game/ai';
@@ -2352,14 +2353,14 @@ function fivePowerCards() {
   });
   assert.deepEqual(parseEffect('アビスに風属性のカードが２枚以上あるなら、時計が正午になる')?.action, {
     type: 'clockSet',
-    params: { value: 6 },
+    params: { value: CHRONOS_MAPPING.noon },
   });
   assert.deepEqual(parseEffect('HPが相手のHPより少ないなら、時計を真夜中にする')?.conditions, [
     { type: 'hpLessThanOpponent', value: true },
   ]);
   assert.deepEqual(parseEffect('HPが相手のHPより少ないなら、時計を真昼にする')?.action, {
     type: 'clockSet',
-    params: { value: 6 },
+    params: { value: CHRONOS_MAPPING.noon },
   });
   const midnightState = preparedState();
   midnightState.chronos.position = 4;
@@ -2375,7 +2376,7 @@ function fivePowerCards() {
   assert.ok(anyChronos);
   assert.equal(executeEffect(anyChronos, anyChronosState, 0).success, true);
   assert.equal(anyChronosState.pendingChoice?.type, 'clockPosition');
-  assert.equal(anyChronosState.pendingChoice?.options.length, 12);
+  assert.equal(anyChronosState.pendingChoice?.options.length, CHRONOS_MAPPING.positions);
   assert.equal(submitPendingChoice(anyChronosState, 0, ['chronos-9'], noEffects), true);
   assert.equal(anyChronosState.chronos.position, 9);
 
@@ -2397,7 +2398,7 @@ function fivePowerCards() {
   );
   assert.equal(submitPendingChoice(clockRangeState, 0, ['advance-6'], noEffects), false);
   assert.equal(submitPendingChoice(clockRangeState, 0, ['advance-5'], noEffects), true);
-  assert.equal(clockRangeState.chronos.position, 3);
+  assert.equal(clockRangeState.chronos.position, normalizeChronosPosition(10 + 5));
 
   const millTop = parseEffect('相手のデッキの一番上のカードをパワーの有無に関わらずアビスに置く');
   assert.ok(millTop);

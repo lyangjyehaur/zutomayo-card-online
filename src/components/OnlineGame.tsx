@@ -5,7 +5,7 @@ import { ZutomayoCard } from '../game/Game';
 import type { GameState } from '../game/types';
 import { Board, type BoardGameOverActions } from './Board';
 import { t } from '../i18n';
-import { PageShell } from './ui';
+import { PageShell } from '../ui';
 
 interface OnlineGameProps {
   matchID: string;

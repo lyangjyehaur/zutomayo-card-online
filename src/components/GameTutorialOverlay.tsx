@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
-import { Button } from './ui';
+import { Button } from '../ui';
 
 /** 進入某教學步驟時的遊戲狀態快照，供 completeWhen 比對變化 */
 export interface TutorialEntrySnapshot {

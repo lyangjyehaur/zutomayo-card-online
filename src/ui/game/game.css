@@ -1,0 +1,1554 @@
+/*
+ * ============================================================================
+ * Battle UI — 對戰頁佈局與元件樣式（Design System v1）
+ * ============================================================================
+ * 規範：docs/uiux/design-system.md、docs/uiux/responsive-layout-system.md
+ * 佈局根為 .bf-root；所有尺寸引用 tokens.css，禁止 magic number。
+ *
+ * 佈局策略（單一語義 DOM、依斷點重排）：
+ *  - Desktop（>=1024 橫向）  ：對手上／中央 Chronos／玩家下，>=1180 右側資訊欄
+ *  - Tablet portrait（768–1023）：直向戰場、壓縮對手區、底部手牌工作列
+ *  - Mobile（<768）           ：手機專用 UI，手牌橫向滑動＋拇指區操作欄
+ * ============================================================================
+ */
+
+/* ---------------------------------------------------------------- 根容器 */
+.bf-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}
+
+/* 晝夜氛圍：Chronos 狀態驅動的極低調背景色偏移（不干擾卡牌辨識） */
+.bf-root.chrono-night {
+  background: color-mix(in oklch, var(--color-bg-base) 94%, oklch(0.3 0.05 270));
+}
+
+.bf-root.chrono-day {
+  background: color-mix(in oklch, var(--color-bg-base) 92%, oklch(0.3 0.04 70));
+}
+
+/* ---------------------------------------------------------------- 浮動 HUD */
+/* 「Chronos Projection」：無通欄。狀態/工具皆為懸浮切角膠囊。 */
+.bf-hud {
+  position: absolute;
+  top: var(--space-2);
+  z-index: var(--z-header);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  pointer-events: none;
+}
+
+.bf-hud > * {
+  pointer-events: auto;
+}
+
+.bf-hud-left {
+  left: var(--space-3);
+  align-items: flex-start;
+}
+
+.bf-hud-right {
+  right: var(--space-3);
+  align-items: flex-end;
+}
+
+.bf-hud-pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: oklch(from var(--color-bg-surface) l c h / 0.78);
+  backdrop-filter: blur(10px);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.bf-hud-status {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-compact);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  min-height: var(--control-height-sm);
+}
+
+.bf-hud-turn {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.bf-hud-turn-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.bf-hud-turn-value {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+.bf-hud-divider {
+  width: 1px;
+  height: 1rem;
+  background: var(--color-border-subtle);
+  transform: skewX(-12deg);
+}
+
+.bf-hud-time[data-time='night'] {
+  color: var(--time-night);
+}
+
+.bf-hud-time[data-time='day'] {
+  color: var(--time-day);
+}
+
+.bf-hud-timer {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.bf-hud-timer-unit {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text-muted);
+}
+
+.bf-hud-timer[data-urgent='true'] {
+  color: var(--color-danger);
+  animation: bf-pulse 1s infinite;
+}
+
+.bf-hud-phases {
+  display: flex;
+  gap: var(--space-2);
+  padding-inline: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-meta);
+  text-transform: uppercase;
+}
+
+.bf-hud-phases span {
+  position: relative;
+  padding-left: var(--space-2);
+  color: oklch(from var(--color-text-primary) l c h / 0.22);
+  transition: color var(--motion-normal) var(--ease-standard);
+}
+
+.bf-hud-phases span::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  transform: translateY(-50%) rotate(45deg);
+  background: currentcolor;
+}
+
+.bf-hud-phases span[data-active='true'] {
+  color: var(--color-accent-primary);
+}
+
+/* ---------------------------------------------------------------- 階段提示 */
+.phaseindicator {
+  position: absolute;
+  inset-inline: 0;
+  top: var(--space-2);
+  display: flex;
+  justify-content: center;
+  padding-inline: var(--space-3);
+  pointer-events: none;
+  z-index: var(--z-sticky);
+}
+
+.phaseindicator-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  max-width: 34rem;
+  padding: var(--space-1) var(--space-4);
+  background: oklch(from var(--color-bg-surface) l c h / 0.82);
+  backdrop-filter: blur(10px);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.phaseindicator-title {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: oklch(from var(--color-accent-primary) l c h / 0.7);
+}
+
+.phaseindicator-body {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-tight);
+  color: var(--color-text-secondary);
+}
+
+.phaseindicator-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.phaseindicator-chip {
+  padding: calc(var(--space-1) / 2) var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-control);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: oklch(from var(--color-text-primary) l c h / 0.05);
+}
+
+.phaseindicator-chip[data-done='true'] {
+  border-color: oklch(from var(--color-success) l c h / 0.4);
+  background: oklch(from var(--color-success) l c h / 0.1);
+  color: var(--color-success);
+}
+
+.phaseindicator-compact .phaseindicator-meta {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- 主格線 */
+.bf-main {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: var(--space-3);
+  padding: calc(var(--control-height-sm) + var(--space-4)) var(--space-3) var(--space-2);
+}
+
+.bf-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 戰場氛圍：安靜的中央光暈 + 晝夜微染，無圖案（取代 v2.1 的錶盤刻度背景） */
+.bf-field::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 60% 45% at 50% 50%,
+    oklch(from var(--color-bg-elevated) l c h / 0.55),
+    transparent 70%
+  );
+}
+
+.bf-field[data-time='night']::before {
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--time-night) l c h / 0.07), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--color-bg-elevated) l c h / 0.5), transparent 70%);
+}
+
+.bf-field[data-time='day']::before {
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--time-day) l c h / 0.06), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--color-bg-elevated) l c h / 0.5), transparent 70%);
+}
+
+.bf-field > * {
+  position: relative;
+  z-index: var(--z-base);
+}
+
+.bf-sidebar {
+  display: none;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 18rem;
+  min-height: 0;
+}
+
+@media (min-width: 73.75rem) {
+  .bf-sidebar {
+    display: flex;
+  }
+}
+
+/* ---------------------------------------------------------------- 對手區 */
+.bf-opponent {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2) var(--space-4);
+  padding-block: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.bf-opponent-handbacks {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.bf-opponent-handbacks img {
+  width: var(--card-width-mini);
+  height: var(--card-height-mini);
+  object-fit: cover;
+  border-radius: var(--radius-xs);
+  outline: 1px solid var(--color-border-subtle);
+  transform: rotate(180deg);
+}
+
+/* ---------------------------------------------------------------- 區域列 */
+.bf-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-slot-gap);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-block: var(--space-1);
+}
+
+.bf-strip > * {
+  flex: 0 0 auto;
+}
+
+.bf-slot-group {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-slot-gap);
+}
+
+/* ---------------------------------------------------------------- 區域容器 */
+.zonepanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--space-1) / 2);
+}
+
+.zonepanel-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: var(--line-height-tight);
+  max-width: calc(var(--slot-width-md) + var(--space-2));
+}
+
+.zonepanel-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-compact);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.zonepanel-hint {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.chargezone .zonepanel-hint {
+  color: var(--color-accent-primary);
+}
+
+/* ---------------------------------------------------------------- 設置區 A/B/C */
+.setzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--space-1) / 2);
+}
+
+.setzone-hint {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-compact);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* C 區 = 持續中的 Area Enchant：虛線框 + 青色提示，與 A/B（本回合出牌）明確區分 */
+.setzone-c .cardslot {
+  outline-style: dashed;
+  outline-color: oklch(from var(--color-info) l c h / 0.35);
+}
+
+.setzone-c .setzone-hint {
+  color: oklch(from var(--color-info) l c h / 0.8);
+}
+
+/* ---------------------------------------------------------------- 戰鬥區 */
+.battlezone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* 攻擊力讀數靠向中線：對手在下緣、己方在上緣 → 隔著 Chronos 形成對峙 */
+.battlezone-opponent {
+  flex-direction: column-reverse;
+}
+
+.battlezone-attack {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-height: 2.6rem;
+  font-family: var(--font-mono);
+}
+
+.battlezone-attack-value {
+  font-size: clamp(1.8rem, 4.2vh, 2.6rem);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 24px currentcolor;
+}
+
+.battlezone[data-time='night'] .battlezone-attack-value {
+  color: var(--time-night);
+}
+
+.battlezone[data-time='day'] .battlezone-attack-value {
+  color: var(--time-day);
+}
+
+.battlezone-attack[data-insufficient='true'] .battlezone-attack-value {
+  color: var(--color-danger);
+}
+
+.battlezone-attack-warn {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+  letter-spacing: var(--tracking-compact);
+  text-transform: uppercase;
+}
+
+.battlezone-attack-empty {
+  color: var(--color-text-muted);
+}
+
+/* 效果選擇 / 目標選擇：觸控目標下限（overlay 面板沿用 App.css 視覺） */
+.effect-order-item,
+.pending-choice-option {
+  min-height: var(--touch-target-min);
+}
+
+/* ---------------------------------------------------------------- 中央舞台 */
+.bf-stage {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: calc(var(--slot-height-lg) + var(--space-2));
+  align-items: center;
+  justify-content: center;
+  gap: clamp(var(--space-3), 5vw, var(--space-12));
+}
+
+.chronospanel {
+  display: grid;
+  place-items: center;
+}
+
+/* ---------------------------------------------------------------- ChronosDial */
+.chronosdial {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(9rem, min(24vw, 26vh), 14rem);
+  aspect-ratio: 1;
+}
+
+.chronospanel-sm .chronosdial {
+  width: clamp(6.5rem, 28vw, 9rem);
+}
+
+.chronosdial svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.chronosdial-ring {
+  transform-origin: center;
+  transition: transform var(--motion-slow) var(--ease-emphasized);
+}
+
+.chronosdial-segment {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+  opacity: 0.22;
+  transition:
+    opacity var(--motion-slow) var(--ease-standard),
+    stroke-width var(--motion-slow) var(--ease-standard);
+}
+
+.chronosdial-segment[data-time='night'] {
+  stroke: var(--time-night);
+}
+
+.chronosdial-segment[data-time='day'] {
+  stroke: var(--time-day);
+}
+
+.chronosdial-segment[data-active='true'] {
+  opacity: 1;
+  stroke-width: 10;
+  filter: drop-shadow(0 0 8px currentcolor);
+}
+
+.chronosdial-segment[data-active='true'][data-time='night'] {
+  color: var(--time-night);
+}
+
+.chronosdial-segment[data-active='true'][data-time='day'] {
+  color: var(--time-day);
+}
+
+.chronosdial-origin {
+  fill: oklch(from var(--color-text-primary) l c h / 0.35);
+}
+
+.chronosdial-marker {
+  fill: var(--color-text-primary);
+  filter: drop-shadow(0 0 6px oklch(from var(--color-text-primary) l c h / 0.8));
+}
+
+.chronosdial-core {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.chronosdial-time {
+  font-family: var(--font-display);
+  font-size: clamp(1.3rem, 3vh, 1.8rem);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  letter-spacing: 0.08em;
+}
+
+.chronosdial[data-time='night'] .chronosdial-time {
+  color: var(--time-night);
+}
+
+.chronosdial[data-time='day'] .chronosdial-time {
+  color: var(--time-day);
+}
+
+.chronosdial-position {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.chronosdial-position-total {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text-muted);
+}
+
+.chronosdial-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-compact);
+  color: var(--color-text-muted);
+}
+
+.chronospanel-sm .chronosdial-name {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- 玩家區 */
+.bf-player {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.bf-hand-dock {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.bf-hand-dock > .playerstatus {
+  flex: 0 0 auto;
+  width: 16rem;
+}
+
+/* ---------------------------------------------------------------- 手牌 */
+.handzone {
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+}
+
+.handzone-fan {
+  flex: 1 1 auto;
+  justify-content: center;
+  padding-inline: var(--space-2);
+  overflow: visible;
+}
+
+.handzone-fan .handzone-card {
+  margin-inline: calc(var(--space-1) * -1.5);
+  transform: rotate(var(--hand-rotate, 0deg)) translateY(var(--hand-y, 0));
+  transition: transform var(--motion-slow) var(--ease-emphasized);
+}
+
+.handzone-fan .handzone-card:hover,
+.handzone-fan .handzone-card:focus-within {
+  transform: translateY(calc(var(--space-6) * -1)) rotate(0deg);
+  z-index: var(--z-sticky);
+}
+
+.handzone-strip {
+  flex: 1 1 auto;
+  gap: var(--space-2);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  scroll-snap-type: x proximity;
+}
+
+.handzone-strip .handzone-card {
+  scroll-snap-align: center;
+}
+
+.handzone-empty {
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  padding: var(--space-3);
+}
+
+/* ---------------------------------------------------------------- 行動區 */
+.actiondock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  width: 12rem;
+}
+
+.actiondock-hint {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-1) / 2);
+}
+
+.actiondock-hint span {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: oklch(from var(--color-accent-primary) l c h / 0.75);
+}
+
+.actiondock-hint p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-tight);
+  color: var(--color-text-muted);
+}
+
+.actiondock-btn {
+  min-height: var(--touch-target-min);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: var(--tracking-control);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.actiondock-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.actiondock-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.actiondock-btn-primary {
+  background: var(--color-accent-primary);
+  color: var(--color-bg-base);
+}
+
+.actiondock-btn-primary:hover:not(:disabled) {
+  background: oklch(from var(--color-accent-primary) l c h / 0.85);
+}
+
+.actiondock-btn-set {
+  border-color: oklch(from var(--color-playable) l c h / 0.5);
+  background: oklch(from var(--color-playable) l c h / 0.12);
+  color: var(--color-playable);
+}
+
+.actiondock-btn-detail,
+.actiondock-btn-waiting {
+  border-color: var(--color-border-subtle);
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+/* ---------------------------------------------------------------- 卡牌 */
+.cardview {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  aspect-ratio: var(--card-aspect-ratio);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-bg-surface);
+  outline: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-card);
+  cursor: default;
+  transition:
+    outline-color var(--motion-normal) var(--ease-standard),
+    box-shadow var(--motion-normal) var(--ease-standard),
+    opacity var(--motion-normal) var(--ease-standard);
+}
+
+button.cardview {
+  cursor: pointer;
+}
+
+.cardview-mini {
+  width: var(--card-width-mini);
+}
+.cardview-sm {
+  width: var(--card-width-sm);
+}
+.cardview-md {
+  width: var(--card-width-md);
+}
+.cardview-lg {
+  width: var(--card-width-lg);
+}
+.cardview-xl {
+  width: var(--card-width-xl);
+}
+
+.cardview-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+}
+
+.cardview-cost {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  display: grid;
+  place-items: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding-inline: 0.2rem;
+  border-radius: var(--radius-pill);
+  background: oklch(from var(--color-bg-base) l c h / 0.85);
+  outline: 1px solid oklch(from var(--color-accent-primary) l c h / 0.5);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-accent-primary);
+}
+
+/* 卡牌互動狀態（docs/uiux/design-system.md §3.1） */
+.cardview[data-state='playable'] {
+  outline: 2px solid oklch(from var(--color-playable) l c h / 0.55);
+  animation: bf-breathe 2.4s var(--ease-standard) infinite;
+}
+
+.cardview[data-state='selected'] {
+  outline: var(--border-width-selected) solid var(--color-selected);
+  box-shadow: var(--ring-selected);
+  z-index: var(--z-dropdown);
+}
+
+.cardview[data-state='targetable'] {
+  outline: 2px dashed var(--color-targetable);
+  box-shadow: var(--ring-targetable);
+}
+
+.cardview[data-state='disabled'] {
+  opacity: 0.45;
+  filter: saturate(0.4);
+  cursor: not-allowed;
+}
+
+.cardview:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* ---------------------------------------------------------------- 卡槽 */
+.cardslot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: oklch(from var(--color-bg-surface) l c h / 0.35);
+  padding: var(--slot-pad);
+  transition: background var(--motion-normal) var(--ease-standard);
+  /* 瞄準括角：四角 L 形，取代整圈邊框 — 場上槽位像鎖定框而非牌墊 */
+  --bracket-color: oklch(from var(--color-text-primary) l c h / 0.22);
+}
+
+.cardslot::before,
+.cardslot::after {
+  content: '';
+  position: absolute;
+  width: var(--bracket-size);
+  height: var(--bracket-size);
+  pointer-events: none;
+  transition: border-color var(--motion-normal) var(--ease-standard);
+}
+
+.cardslot::before {
+  top: 0;
+  left: 0;
+  border-top: var(--bracket-weight) solid var(--bracket-color);
+  border-left: var(--bracket-weight) solid var(--bracket-color);
+}
+
+.cardslot::after {
+  bottom: 0;
+  right: 0;
+  border-bottom: var(--bracket-weight) solid var(--bracket-color);
+  border-right: var(--bracket-weight) solid var(--bracket-color);
+}
+
+.cardslot-sm {
+  width: var(--slot-width-sm);
+  height: var(--slot-height-sm);
+}
+.cardslot-md {
+  width: var(--slot-width-md);
+  height: var(--slot-height-md);
+}
+.cardslot-lg {
+  width: var(--slot-width-lg);
+  height: var(--slot-height-lg);
+}
+
+.cardslot-watermark {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--font-size-xl);
+  color: oklch(from var(--color-text-primary) l c h / 0.2);
+  user-select: none;
+}
+
+.cardslot[data-state='undoable'] {
+  --bracket-color: oklch(from var(--color-playable) l c h / 0.8);
+  background: oklch(from var(--color-playable) l c h / 0.06);
+}
+
+.cardslot[data-state='targetable'] {
+  --bracket-color: var(--color-targetable);
+  background: oklch(from var(--color-targetable) l c h / 0.07);
+}
+
+.cardslot[data-state='highlight'] {
+  --bracket-color: oklch(from var(--color-accent-primary) l c h / 0.8);
+}
+
+/* ---------------------------------------------------------------- 堆疊 */
+.cardstack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--space-1) / 2);
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+button.cardstack {
+  cursor: pointer;
+}
+
+button.cardstack:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-sm);
+}
+
+.cardstack-well {
+  position: relative;
+  display: block;
+  background: oklch(from var(--color-bg-surface) l c h / 0.35);
+  border-radius: var(--radius-md);
+  outline: 1px solid oklch(from var(--color-text-primary) l c h / 0.08);
+  outline-offset: -1px;
+  overflow: hidden;
+}
+
+.cardstack-md .cardstack-well {
+  width: var(--slot-width-md);
+  height: var(--slot-height-md);
+}
+
+.cardstack-sm .cardstack-well {
+  width: var(--slot-width-sm);
+  height: var(--slot-height-sm);
+}
+
+.cardstack-thumb {
+  position: absolute;
+  bottom: var(--space-1);
+  width: calc(100% - var(--space-4));
+  aspect-ratio: var(--card-aspect-ratio);
+  height: auto;
+  object-fit: cover;
+  border-radius: var(--radius-xs);
+  outline: 1px solid var(--color-border-subtle);
+  opacity: 0.85;
+}
+
+.cardstack-thumb[data-index='0'] {
+  left: var(--space-1);
+}
+.cardstack-thumb[data-index='1'] {
+  left: calc(var(--space-1) + 4px);
+  bottom: calc(var(--space-1) + 2px);
+}
+.cardstack-thumb[data-index='2'] {
+  left: calc(var(--space-1) + 8px);
+  bottom: calc(var(--space-1) + 4px);
+}
+
+.cardstack-count {
+  position: absolute;
+  right: var(--space-1);
+  bottom: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: oklch(from var(--color-bg-base) l c h / 0.8);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-accent-primary);
+}
+
+.cardstack-abyss .cardstack-count {
+  color: var(--color-text-secondary);
+}
+
+.cardstack-label {
+  max-width: calc(var(--slot-width-md) + var(--space-2));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-compact);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* ---------------------------------------------------------------- 玩家狀態 */
+.playerstatus {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-1) / 2);
+  min-width: 0;
+}
+
+.playerstatus-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.playerstatus-name {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--font-size-lg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playerstatus-damage {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--type-title-md);
+  color: var(--color-accent-secondary);
+  animation: bf-damage-float 0.9s var(--ease-standard) both;
+}
+
+.playerstatus-bar {
+  position: relative;
+  height: 4px;
+  width: 100%;
+  background: oklch(from var(--color-text-primary) l c h / 0.1);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.playerstatus-bar-fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  background: var(--color-accent-primary);
+  transition: width var(--motion-slow) var(--ease-emphasized);
+}
+
+.playerstatus-opponent .playerstatus-bar-fill {
+  background: var(--color-accent-secondary);
+}
+
+.playerstatus[data-hp='warning'] .playerstatus-bar-fill {
+  background: var(--color-warning);
+}
+
+.playerstatus[data-hp='danger'] .playerstatus-bar-fill {
+  background: var(--color-danger);
+}
+
+.playerstatus-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* ---------------------------------------------------------------- 詳情 */
+.carddetail-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-4);
+  background: oklch(from var(--color-bg-surface) l c h / 0.72);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.battle-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-kicker);
+  text-transform: uppercase;
+  color: oklch(from var(--color-accent-primary) l c h / 0.7);
+}
+
+.carddetail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: var(--space-2);
+  overflow-y: auto;
+}
+
+.carddetail-context {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-meta);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.carddetail-art {
+  width: min(100%, var(--card-width-xl));
+  aspect-ratio: var(--card-aspect-ratio);
+  align-self: center;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  outline: 1px solid var(--color-border-subtle);
+}
+
+.carddetail-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.carddetail-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: var(--font-size-xl);
+}
+
+.carddetail-taxonomy {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.carddetail-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.carddetail-stats div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.carddetail-stats .carddetail-stat-wide {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: var(--space-1);
+}
+
+.carddetail-stats dt {
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-compact);
+  font-size: var(--font-size-xs);
+}
+
+.carddetail-stats dd {
+  margin: 0;
+  color: var(--color-accent-primary);
+}
+
+.carddetail-stats dd[data-warn='true'] {
+  color: var(--color-danger);
+}
+
+.carddetail-effect {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-secondary);
+}
+
+.carddetail-empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.carddetail-empty-frame {
+  width: var(--card-width-lg);
+  aspect-ratio: var(--card-aspect-ratio);
+  border-radius: var(--radius-sm);
+  background: oklch(from var(--color-bg-surface) l c h / 0.8);
+  outline: 1px solid var(--color-border-subtle);
+}
+
+/* ---------------------------------------------------------------- 區域摘要 */
+.zonesummary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--card-width-md) + var(--space-6)), 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.zonesummary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  text-align: center;
+}
+
+.zonesummary-name {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.zonesummary-meta {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.zonesummary-empty {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  text-align: center;
+  padding: var(--space-6);
+}
+
+/* ---------------------------------------------------------------- 動畫 */
+@keyframes bf-breathe {
+  0%,
+  100% {
+    outline-color: oklch(from var(--color-playable) l c h / 0.55);
+  }
+  50% {
+    outline-color: oklch(from var(--color-playable) l c h / 0.2);
+  }
+}
+
+@keyframes bf-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes bf-damage-float {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(calc(var(--space-4) * -1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cardview,
+  .cardslot,
+  .handzone-fan .handzone-card,
+  .playerstatus-bar-fill {
+    transition: none;
+  }
+
+  .cardview[data-state='playable'],
+  .bf-hud-timer[data-urgent='true'] {
+    animation: none;
+  }
+}
+
+/* ============================================================================
+ * 響應式佈局（docs/uiux/responsive-layout-system.md）
+ * ==========================================================================*/
+
+/* ---- Tablet portrait + Mobile（<1024px）：直向戰場 ---- */
+@media (max-width: 63.9375rem) {
+  .bf-main {
+    padding: calc(var(--control-height-sm) + var(--space-3)) var(--space-2) var(--space-1);
+  }
+
+  .phaseindicator {
+    top: calc(var(--control-height-sm) + var(--space-3));
+  }
+
+  .bf-opponent {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .bf-opponent > .playerstatus {
+    width: 100%;
+  }
+
+  .bf-opponent-handbacks {
+    display: none;
+  }
+
+  .bf-stage {
+    gap: clamp(var(--space-2), 4vw, var(--space-8));
+    min-height: calc(var(--slot-height-md) + var(--space-2));
+  }
+
+  .bf-player {
+    gap: var(--space-1);
+  }
+
+  .bf-hand-dock {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+  }
+
+  .bf-hand-dock > .playerstatus {
+    width: 100%;
+  }
+
+  .actiondock {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    gap: var(--space-2);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .actiondock-hint {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .actiondock-hint p {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .actiondock-btn {
+    flex: 0 0 auto;
+  }
+
+  .phaseindicator-panel {
+    padding-block: calc(var(--space-1) / 2);
+  }
+
+  .phaseindicator-meta {
+    display: none;
+  }
+}
+
+/* ---- Mobile（<768px）：更緊湊 ---- */
+@media (max-width: 47.9375rem) {
+  /* HUD 膠囊內的面板按鈕維持觸控目標下限 */
+  .bf-hud .battle-side-panel-actions button {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+  }
+
+  .bf-hud-pill {
+    padding-block: calc(var(--space-1) / 2);
+  }
+
+  .bf-hud-left {
+    left: var(--space-2);
+  }
+
+  .bf-hud-right {
+    right: var(--space-2);
+  }
+
+  .bf-hud-phases {
+    display: none;
+  }
+
+  .phaseindicator {
+    position: static;
+    order: -1;
+    padding-top: calc(var(--control-height-sm) + var(--space-3));
+  }
+
+  .bf-main {
+    padding-top: var(--space-1);
+  }
+
+  .bf-stage {
+    min-height: calc(var(--slot-height-sm) + var(--space-2));
+  }
+
+  .bf-stage .cardslot-lg {
+    width: var(--slot-width-md);
+    height: var(--slot-height-md);
+  }
+
+  .bf-stage .cardslot-lg .cardview {
+    width: var(--card-width-md);
+  }
+}
+
+/* ---- 手機橫屏（<=932px 寬 × <=500px 高）：壓縮縱向 ---- */
+@media (max-height: 31.25rem) and (orientation: landscape) {
+  :root {
+    /* 橫屏以視高錨定卡牌尺寸，保住「不靠縱向滾動可玩」 */
+    --card-width-lg: clamp(2.6rem, 15vh, 3.4rem);
+    --card-width-md: clamp(2.4rem, 13vh, 3rem);
+    --card-width-sm: clamp(2rem, 10vh, 2.5rem);
+  }
+
+  .bf-hud {
+    top: var(--space-1);
+  }
+
+  .bf-hud-phases {
+    display: none;
+  }
+
+  .phaseindicator {
+    top: var(--space-1);
+  }
+
+  .phaseindicator-body {
+    display: none;
+  }
+
+  .bf-main {
+    padding-block: calc(var(--control-height-sm) + var(--space-2)) 0;
+  }
+
+  .bf-opponent {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    border-bottom: none;
+    padding-block: 0;
+  }
+
+  .bf-opponent > .playerstatus {
+    width: 11rem;
+    flex: 0 0 auto;
+  }
+
+  .bf-opponent .bf-strip,
+  .bf-player .bf-strip {
+    padding-block: 0;
+  }
+
+  .cardstack-label,
+  .zonepanel-label,
+  .setzone-hint {
+    display: none;
+  }
+
+  .bf-stage {
+    min-height: calc(var(--slot-height-sm) + var(--space-1));
+    gap: clamp(var(--space-2), 3vw, var(--space-6));
+  }
+
+  .bf-stage .cardslot-lg {
+    width: var(--slot-width-md);
+    height: var(--slot-height-md);
+  }
+
+  .bf-stage .cardslot-lg .cardview {
+    width: var(--card-width-md);
+  }
+
+  .chronosdial,
+  .chronospanel-sm .chronosdial {
+    width: clamp(4.5rem, 17vh, 6rem);
+  }
+
+  .chronosdial-name {
+    display: none;
+  }
+
+  .bf-player {
+    padding-top: var(--space-1);
+  }
+
+  .bf-hand-dock {
+    flex-direction: row;
+    align-items: flex-end;
+    gap: var(--space-2);
+  }
+
+  .bf-hand-dock > .playerstatus {
+    width: 9rem;
+  }
+
+  .handzone-strip {
+    padding-block: var(--space-1);
+  }
+
+  .actiondock {
+    flex-direction: column;
+    width: 11rem;
+    gap: var(--space-1);
+  }
+
+  .actiondock-hint {
+    display: none;
+  }
+}
+
+/* ---- 低高度桌面（>=1024px 寬 × <=780px 高）：壓縮裝飾 ---- */
+@media (min-width: 64rem) and (max-height: 48.75rem) {
+  .phaseindicator-panel {
+    padding-block: calc(var(--space-1) / 2);
+  }
+
+  .bf-main {
+    padding-block: calc(var(--control-height-sm) + var(--space-2)) var(--space-1);
+  }
+
+  .bf-opponent {
+    padding-block: calc(var(--space-1) / 2);
+  }
+
+  .chronosdial {
+    width: clamp(6.5rem, 19vh, 9.5rem);
+  }
+
+  .bf-hand-dock > .playerstatus {
+    width: 13rem;
+  }
+}

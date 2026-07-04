@@ -1,7 +1,7 @@
 import { X } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
-import { Button, IconButton } from './ui';
+import { Button, IconButton } from '../ui';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 

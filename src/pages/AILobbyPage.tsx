@@ -1,10 +1,9 @@
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import type { DeckResponse } from '../api/client';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { DifficultyButtons } from '../components/lobby/DifficultyButtons';
 import { useToast } from '../components/ToastProvider';
-import { Alert, BackButton, PageHeader, WorkspaceLayout } from '../components/ui';
+import { Alert, AppHeader, PageShell } from '../ui';
 import {
   buildAIOpponentDeckOptions,
   buildDeckOptions,
@@ -26,6 +25,26 @@ interface AILobbyPageProps {
   cardsReady: boolean;
 }
 
+/**
+ * AI 對戰大廳「設定台」— v2 從零設計。
+ * 單欄三步流程（01 我的牌組 → 02 對手牌組 → 03 難度・開戰），
+ * 每步是一塊玻璃面板；不再使用側欄工作區構圖。
+ */
+function Step({ no, title, children }: { no: string; title: string; children: React.ReactNode }) {
+  return (
+    <section
+      className="rounded-md border border-border-soft bg-surface-base/70 p-5 backdrop-blur md:p-6"
+      aria-label={`${no} ${title}`}
+    >
+      <div className="mb-3 flex items-center gap-3" aria-hidden="true">
+        <span className="font-mono text-caption tracking-[var(--tracking-meta)] text-accent-primary/80">STEP {no}</span>
+        <span className="h-px flex-1 bg-border-soft" />
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function AILobbyPage({
   deck0Name,
   deck1Name,
@@ -37,10 +56,8 @@ export function AILobbyPage({
   serverDeckError,
   cardsReady,
 }: AILobbyPageProps) {
-  const navigate = useNavigate();
   const { showToast } = useToast();
   const locale = useLocale();
-  // 玩家牌組用完整選項（含自訂牌組）；AI 對手牌組移除自訂牌組、改用克制牌組選項。
   const playerDeckOptions = useMemo(() => {
     const localOptions = buildDeckOptions(customDeckAvailable);
     const serverOptions = buildServerDeckOptions(serverDecks);
@@ -49,17 +66,14 @@ export function AILobbyPage({
       ...(serverOptions.length > 0 ? [{ label: translate(locale, 'deck.serverDecks'), options: serverOptions }] : []),
     ];
   }, [customDeckAvailable, locale, serverDecks]);
-  // AI 對手牌組移除自訂牌組與伺服器牌組（AI 不該用玩家自訂牌組），改用克制牌組選項。
   const opponentDeckOptions = useMemo(() => {
     const localOptions = buildAIOpponentDeckOptions();
     return [{ label: translate(locale, 'deck.localDecks'), options: localOptions }];
   }, [locale]);
 
-  // 牌組選擇後 Toast 提示（首次選擇時顯示）
   const handlePlayerDeckChange = (newDeck: string) => {
     const isFirstSelection = !deck0Name && newDeck;
     setDeck0Name(newDeck);
-
     if (isFirstSelection) {
       const hasShownToast = sessionStorage.getItem('zutomayo_deck_selected_toast');
       if (!hasShownToast) {
@@ -75,44 +89,49 @@ export function AILobbyPage({
   };
 
   return (
-    <WorkspaceLayout
-      glow={{ color: 'vermilion', size: 'md' }}
-      header={
-        <PageHeader
-          leading={
-            <BackButton className="min-h-11" type="button" onClick={() => navigate('/')}>
-              <span className="hidden sm:inline">{t('common.backToLobby')}</span>
-            </BackButton>
-          }
-          title={t('lobby.aiBattle')}
-        />
-      }
-      sidebarSide="right"
-      sidebarWidth="lg"
-      contentClassName="gap-5 md:gap-6 lg:gap-4 lg:py-6"
-      mainClassName="flex flex-col gap-5 md:gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-2"
-      sidebarClassName="flex flex-col gap-4 border-t border-content-primary/10 pt-6 lg:overflow-y-auto lg:border-t-0 lg:pt-0 lg:pr-2"
-      sidebar={<DifficultyButtons onStart={onStartAI} disabled={!canStartAI({ cardsReady, deck0Name, deck1Name })} />}
-    >
-      {serverDeckError && (
-        <Alert tone="danger" role="alert">
-          {serverDeckError}
-        </Alert>
-      )}
-      <DeckSelector
-        label={t('lobby.myDeck')}
-        value={deck0Name}
-        options={playerDeckOptions}
-        onChange={handlePlayerDeckChange}
-      />
-      <div className="border-t border-content-primary/10 pt-6">
-        <DeckSelector
-          label={t('lobby.opponentDeck')}
-          value={deck1Name}
-          options={opponentDeckOptions}
-          onChange={setDeck1Name}
-        />
+    <PageShell>
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute left-1/2 top-1/3 h-[50vh] w-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(from_var(--time-day)_l_c_h_/_0.05)] blur-[var(--ambient-glow-blur-md)]" />
+        <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
       </div>
-    </WorkspaceLayout>
+
+      <AppHeader title={t('lobby.aiBattle')} subtitle="VS. CPU" backTo="/" />
+
+      <main className="relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-20 md:pt-24">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+          {serverDeckError && (
+            <Alert tone="danger" role="alert">
+              {serverDeckError}
+            </Alert>
+          )}
+          <Step no="01" title={t('lobby.myDeck')}>
+            <DeckSelector
+              label={t('lobby.myDeck')}
+              value={deck0Name}
+              options={playerDeckOptions}
+              onChange={handlePlayerDeckChange}
+            />
+          </Step>
+          <Step no="02" title={t('lobby.opponentDeck')}>
+            <DeckSelector
+              label={t('lobby.opponentDeck')}
+              value={deck1Name}
+              options={opponentDeckOptions}
+              onChange={setDeck1Name}
+            />
+          </Step>
+          <Step no="03" title={t('lobby.difficulty')}>
+            <h2 className="mb-3 font-display text-lg font-bold leading-tight">{t('lobby.difficulty')}</h2>
+            <DifficultyButtons
+              onStart={onStartAI}
+              disabled={!canStartAI({ cardsReady, deck0Name, deck1Name })}
+            />
+          </Step>
+        </div>
+      </main>
+    </PageShell>
   );
 }
+
+// 保持既有 API：其他頁面經由此模組使用 navigate 型別（無實際輸出變更）
+export type { AILobbyPageProps };

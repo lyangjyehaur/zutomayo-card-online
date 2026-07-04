@@ -1,0 +1,133 @@
+/*
+ * Color Tokens — Art Direction v2「深夜訊號 Midnight Signal」
+ * 深夜靛墨底 × 電光黃主行動 × 官方晝夜雙色（夜=青、晝=紅，對齊官方 start-guide）。
+ * 舊「漆器塔羅」（暖黑+金+朱紫）已退役；--ds-* / --lacquer 等舊名僅作 deprecated 別名。
+ */
+:root {
+  color-scheme: dark;
+
+  /* ------------------------------------------------ primitives */
+  --ink-950: oklch(0.14 0.028 265); /* 深夜靛墨 — 畫布 */
+  --ink-900: oklch(0.185 0.03 265);
+  --ink-850: oklch(0.23 0.032 265);
+  --signal-50: oklch(0.97 0.008 240); /* 冷白 — 訊號 */
+  --volt-400: oklch(0.88 0.16 102); /* 電光黃 — 主行動 */
+  --volt-500: oklch(0.75 0.13 100);
+  --nocturne-500: oklch(0.63 0.17 278); /* 夜・青（官方 Chronos 夜側） */
+  --daybreak-500: oklch(0.66 0.2 32); /* 晝・緋紅（官方 Chronos 晝側） */
+  --cyan-400: oklch(0.8 0.12 215);
+  --rose-500: oklch(0.6 0.21 15);
+  --jade-400: oklch(0.72 0.14 155);
+  --abyss-500: oklch(0.5 0.06 300);
+  --element-dark: oklch(0.7 0.08 290);
+  --element-flame: oklch(0.68 0.16 25);
+  --element-electric: oklch(0.8 0.13 90);
+  --element-wind: oklch(0.72 0.12 155);
+  --element-chaos: oklch(0.75 0.13 315);
+
+  /* ------------------------------------------------ 背景 / 文字 / 邊框 */
+  --surface-canvas: var(--ink-950);
+  --surface-base: var(--ink-900);
+  --surface-raised: var(--ink-850);
+  --surface-panel: oklch(from var(--surface-base) l c h / 0.86);
+  --surface-panel-strong: oklch(from var(--surface-base) l c h / 0.94);
+  --surface-overlay: oklch(from var(--surface-canvas) l c h / 0.8);
+  --content-primary: var(--signal-50);
+  --content-muted: oklch(from var(--content-primary) l c h / 0.72);
+  --content-dim: oklch(from var(--content-primary) l c h / 0.5);
+  --content-inverse: var(--surface-canvas);
+  --border-default: oklch(from var(--content-primary) l c h / 0.14);
+  --border-soft: oklch(from var(--content-primary) l c h / 0.09);
+  --border-strong: oklch(from var(--volt-400) l c h / 0.5);
+
+  /* 正式 API 別名 */
+  --color-bg-base: var(--surface-canvas);
+  --color-bg-surface: var(--surface-base);
+  --color-bg-elevated: var(--surface-raised);
+  --color-border-subtle: var(--border-soft);
+  --color-border-strong: var(--border-strong);
+  --color-text-primary: var(--content-primary);
+  --color-text-secondary: var(--content-muted);
+  --color-text-muted: var(--content-dim);
+
+  /* ------------------------------------------------ accent / 訊息 */
+  --accent-primary: var(--volt-400); /* 電光黃 — 己方、主行動 */
+  --accent-primary-soft: var(--volt-500);
+  --accent-action: var(--daybreak-500); /* 緋紅 — 對手側、戰鬥張力 */
+  --accent-danger: var(--rose-500);
+  --accent-success: var(--jade-400);
+  --accent-info: var(--cyan-400);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-secondary: var(--accent-action);
+  --color-danger: var(--accent-danger);
+  --color-warning: var(--daybreak-500);
+  --color-success: var(--accent-success);
+  --color-info: var(--accent-info);
+
+  /* ------------------------------------------------ 官方晝夜雙色（Chronos 核心語義） */
+  --time-night: var(--nocturne-500); /* 夜 = 青（官方） */
+  --time-day: var(--daybreak-500); /* 晝 = 紅（官方） */
+
+  /* ------------------------------------------------ 遊戲互動狀態（四態一眼可辨） */
+  --color-playable: var(--volt-400); /* 電光黃呼吸框 — 可操作 */
+  --color-selected: var(--signal-50); /* 冷白實框＋光暈 — 已選中 */
+  --color-targetable: var(--cyan-400); /* 青虛框 — 可作為目標 */
+  --color-disabled: oklch(from var(--content-primary) l c h / 0.25);
+  --ring-playable: 0 0 0 2px oklch(from var(--color-playable) l c h / 0.55);
+  --ring-selected:
+    0 0 0 2px var(--color-selected), 0 10px 28px -10px oklch(from var(--color-selected) l c h / 0.5);
+  --ring-targetable: 0 0 0 2px oklch(from var(--color-targetable) l c h / 0.7);
+
+  /* ------------------------------------------------ 戰場氛圍 */
+  --battle-field-start: oklch(from var(--nocturne-500) l c h / 0.18);
+  --battle-field-mid: oklch(from var(--surface-base) l c h / 0.38);
+  --battle-field-end: oklch(from var(--surface-canvas) l c h / 0.76);
+  --battle-field-glow: oklch(from var(--nocturne-500) l c h / 0.14);
+  --battle-field-glow-transparent: oklch(from var(--nocturne-500) l c h / 0);
+  --pattern-dot: radial-gradient(oklch(from var(--content-primary) l c h / 0.6) 1px, transparent 1px);
+  --pattern-dot-size: 3px 3px;
+
+  /* ------------------------------------------------ deprecated 別名（禁止在新程式使用） */
+  --ds-lacquer-950: var(--ink-950);
+  --ds-lacquer-900: var(--ink-900);
+  --ds-lacquer-850: var(--ink-850);
+  --ds-bone-50: var(--signal-50);
+  --ds-gold-400: var(--volt-400);
+  --ds-gold-500: var(--volt-500);
+  --ds-vermilion-500: var(--daybreak-500);
+  --ds-danger-500: var(--rose-500);
+  --ds-jade-400: var(--jade-400);
+  --ds-teal-400: var(--cyan-400);
+  --ds-night-400: var(--nocturne-500);
+  --ds-day-400: var(--daybreak-500);
+  --ds-abyss-400: var(--abyss-500);
+  --ds-element-dark: var(--element-dark);
+  --ds-element-flame: var(--element-flame);
+  --ds-element-electric: var(--element-electric);
+  --ds-element-wind: var(--element-wind);
+  --ds-element-chaos: var(--element-chaos);
+  --lacquer: var(--surface-base);
+  --lacquer-deep: var(--surface-canvas);
+  --bone: var(--content-primary);
+  --gold: var(--accent-primary);
+  --gold-soft: var(--accent-primary-soft);
+  --vermilion: var(--accent-action);
+  --jade: var(--accent-success);
+  --bg-0: var(--surface-canvas);
+  --bg-1: var(--surface-base);
+  --bg-2: var(--surface-raised);
+  --panel: var(--surface-panel);
+  --panel-strong: var(--surface-panel-strong);
+  --line: var(--border-default);
+  --line-soft: var(--border-soft);
+  --gold-old: var(--accent-primary);
+  --gold-deep: var(--accent-primary-soft);
+  --text: var(--content-primary);
+  --muted: var(--content-muted);
+  --dim: var(--content-dim);
+  --danger: var(--accent-danger);
+  --teal: var(--accent-info);
+  --night: var(--time-night);
+  --day: var(--time-day);
+  --abyss: var(--ds-abyss-400);
+}
