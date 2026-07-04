@@ -1,7 +1,7 @@
 # 全終端響應式佈局系統（Responsive Layout System）
 
-> 實作：`src/styles/battle.css`（佈局）＋ `src/styles/tokens.css`（尺寸 token）＋
-> `src/components/battle/useViewportMode.ts`（行為切換）
+> 實作：`src/ui/game/game.css`（佈局）＋ `src/ui/tokens/cards.css`（尺寸 token）＋
+> `src/ui/game/useViewportMode.ts`（行為切換）
 > 驗證：`npm run smoke:battle-responsive`（16 案例全 PASS，含 1920×1080 ～ 360×740）
 
 ## 設計原則

@@ -1,22 +1,22 @@
 # ZUTOMAYO CARD ONLINE — UI Design System
 
-> 版本：1.0（uiux/design-system-redesign）
-> Token 實作：`src/styles/tokens.css`（正式 API）＋ `src/App.css :root`（primitive 層）
-> 對戰元件實作：`src/components/battle/`
-> 相關文件：`responsive-layout-system.md`、`interaction-flow.md`、`rule-and-layout-understanding.md`
+> 版本：**2.0**（Art Direction v2「深夜訊號」）
+> Token 唯一來源：`src/ui/tokens/`（colors / spacing / typography / radius / shadow / motion / z-index / cards）
+> 元件分層：`src/ui/{primitives, forms, layout, feedback, game}`（入口 `src/ui/index.ts`）
+> 視覺方向：`new-art-direction.md`｜規則校準：`../rules/official-start-guide-ui-analysis.md`
+> 開發流程：`how-to-add-new-feature.md`＋`ui-review-checklist.md`＋`component-usage-guide.md`
+> 相關：`responsive-layout-system.md`、`interaction-flow.md`、`battlefield-online-adaptation.md`、`rule-to-ui-mapping.md`
 
 ---
 
 ## 3.1 Visual Direction / 視覺方向
 
-### 風格關鍵詞
+### 風格關鍵詞（v2 —「深夜訊號 Midnight Signal」，詳見 new-art-direction.md）
 
-**漆器塔羅（Lacquered Tarot）× 儀式感對戰桌**
-
-- 深漆黑底（近黑非純黑）＋ 骨白文字 ＋ 金（己方/主行動）／朱紫（對手/戰鬥張力）雙色點綴
-- 襯線斜體標題（儀式感）＋ 等寬字數值（讀表精度）＋ 無襯線正文（可讀性）
-- 卡牌是畫面的絕對主角：介面元素一律低飽和、低對比，把彩度留給卡圖
-- ZUTOMAYO 的夜行、神祕氣質透過 Chronos 晝夜循環與深色氛圍體現，不靠貼裝飾
+- **深夜靛墨**畫布 ＋ 冷白文字 ＋ **電光黃**主行動 ＋ **官方晝夜雙色**（夜=青 / 晝=紅）敘事
+- **粗體幾何無襯線**標題（直立、加寬字距）＋ 等寬字數值 — v1 襯線斜體已退役
+- 卡牌是畫面的絕對主角：介面低飽和 hairline，彩度留給卡圖與規則語義色
+- Chronos 晝夜循環是規則核心，也是整套視覺的雙色來源
 
 ### 不採用的風格
 
@@ -64,7 +64,7 @@
 
 Token 分三層：**primitive**（`--ds-*`，只在 App.css 定義）→ **semantic**（`tokens.css`，元件唯一引用層）→ **component**（元件內組合）。禁止在元件/頁面中出現 hard-coded 色值、px 卡牌尺寸、magic spacing。
 
-### Color Tokens（`src/styles/tokens.css`）
+### Color Tokens（`src/ui/tokens/colors.css`）
 
 ```css
 --color-bg-base        /* 頁面底（= surface-canvas） */
@@ -184,15 +184,23 @@ Token 分三層：**primitive**（`--ds-*`，只在 App.css 定義）→ **seman
 | **Counter** | 張數/Power 數值 | mono | normal·warn | — | — | `aria-label` 含單位 | 只有數字無語境 |
 | **EmptyState**（`ui/State`) | 空區/無資料 | — | — | — | — | 描述性文字 | 純空白 |
 
-**元件檔案結構標準**
+**元件檔案結構標準（single source of truth）**
 
 ```text
-src/components/ui/       通用 primitives（跨頁）
-src/components/battle/   對戰專用（CardView、CardSlot、CardStack、ZonePanel、
-                         PlayerStatus、ChronosPanel、PhaseIndicator、ActionDock、
-                         HandZone、CardDetail、GameLogPanel、layouts/）
-src/styles/tokens.css    semantic token（唯一引用層）
-src/styles/battle.css    對戰版面 component 樣式
+src/ui/index.ts          唯一匯入入口
+src/ui/tokens/           design tokens（colors/spacing/typography/radius/shadow/motion/z-index/cards）
+src/ui/primitives/       Button・IconButton・Panel・Badge・Tabs・Modal・Sheet(BottomSheet)・DataList…
+src/ui/forms/            Input・Select・Checkbox・FormField・FormActions…
+src/ui/layout/           PageShell・PageHeader・Workspace/Scroll/Status layouts・StatsGrid…
+src/ui/feedback/         LoadingState・ErrorState・EmptyState（Toast＝ToastProvider）
+src/ui/game/             CardView・CardSlot・CardStack・ZonePanel・BattleZone・SetZone・
+                         ChargeZone・AbyssZone・DeckZone・HandZone・PlayerStatus/OpponentStatus・
+                         ChronosPanel・PhaseIndicator・ActionDock・CardDetailPanel/Sheet・
+                         ZoneSummarySheet・useViewportMode ＋ game.css
 ```
+
+**已廢棄（禁止再使用）**：`src/components/ui`、`src/components/battle`（已移除）；
+`--lacquer/--gold/--ds-*` 等 deprecated token 別名；`.board/.battle-*`（side-sheet 除外）舊 class；
+`src/components/Card.tsx`（僅圖鑑/牌組編輯器過渡使用，遷移計畫見 page-redesign-plan.md）。
 
 命名：layout 元件（`*Layout`、`*Grid`）不含遊戲邏輯；zone 元件收 props 不讀全域；UI 狀態（selected/inspected/sheet open）留在元件層，遊戲狀態（G.*）唯讀。

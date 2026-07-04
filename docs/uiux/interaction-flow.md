@@ -1,6 +1,6 @@
 # 互動流程（Interaction Flow）
 
-> 實作：`src/components/Board.tsx`（流程編排）＋ `src/components/battle/`（元件）
+> 實作：`src/components/Board.tsx`（流程編排）＋ `src/ui/game/`（元件）
 > 原則：玩家永遠知道「現在該做什麼」（PhaseIndicator + ActionDock 提示雙保險）；
 > 所有可操作狀態有明確視覺（design-system.md §3.1 四態）；觸控端零 hover 依賴。
 
