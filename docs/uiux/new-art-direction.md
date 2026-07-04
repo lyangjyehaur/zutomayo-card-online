@@ -1,13 +1,29 @@
-# Art Direction v2 —「深夜訊號 Midnight Signal」
+# Art Direction v2 —「深夜訊號 Midnight Signal」×「Chronos Projection」
 
-> Token 落地：`src/ui/tokens/`（colors / typography / radius …）
-> 取代：v1「漆器塔羅」（暖黑＋金＋朱紫＋襯線斜體）— 已全面退役。
+> Token 落地：`src/ui/tokens/`（colors / typography / radius / shadow〔切角・括角〕…）
+> 結構落地：`src/ui/game/game.css`（浮動 HUD、錶盤戰場、計分板、鎖定框）
+> 取代：v1「漆器塔羅」（暖黑＋金＋朱紫＋襯線斜體＋梯形桌面＋通欄頂欄）— 已全面退役。
 
 ## 概念
 
 ZUTOMAYO 的世界是**深夜的電波**：夜裡收到的訊號、霓虹儀表、時鐘的刻度。
 本作規則核心是 Chronos 晝夜循環 — 因此新視覺把**官方晝夜雙色（夜=青、晝=紅）**
 提升為整套 UI 的敘事色，再以**電光黃**作為玩家行動的訊號色。
+
+### 結構語言：Chronos Projection（戰場即時鐘）
+
+戰場不再模擬實體桌（v1 的梯形透視桌面），而是**從中央 Chronos 投影出來的巨大錶盤**：
+
+1. **放射狀戰場底**（ChronosFieldCanvas）：同心圓刻度環＋12 刻度輻射線從中央錶盤展開；
+   上下半場以晝夜色微染（對手側/己方側），中線為虛線晝夜分界。
+2. **浮動 HUD**（無通欄）：回合/晝夜/倒數是左上懸浮切角膠囊，工具按鈕是右上膠囊，
+   階段軌以菱形節點掛在膠囊下緣 — 戰場四角是儀表，不是網頁 header。
+3. **攻擊力計分板**：BattleZone 讀數放大為 clamp(1.8–2.6rem) 霓虹數字＋光暈，
+   對手讀數朝下、己方朝上，隔著 Chronos 形成 VS 對峙 — 傷害=攻擊力差的規則成為畫面主角。
+4. **鎖定框（corner brackets）**：卡槽以四角 L 形括角取代整圈邊框——場上位置是「目標鎖定框」
+   而非「牌墊」；undoable/targetable 改變括角顏色與底色。
+5. **切角膠囊（chamfer）**：HUD、階段提示、主按鈕、側欄面板一律 `--chamfer-sm` 斜切角
+   ＋半透明 blur — 全站形狀語言從「圓角卡片」換成「儀表切角」。
 
 ## 與 v1 的決裂點（為什麼看起來是另一套產品）
 

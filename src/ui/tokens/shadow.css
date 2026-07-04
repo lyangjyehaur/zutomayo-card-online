@@ -26,3 +26,19 @@
   --focus-ring-color: oklch(from var(--accent-primary) l c h / 0.6);
   --focus-ring-offset: 2px;
 }
+
+/* Art Direction v2.1「Chronos Projection」— 切角形狀語言 */
+:root {
+  --cut-sm: 0.5rem; /* HUD 膠囊、按鈕切角 */
+  --cut-md: 0.75rem; /* 面板切角 */
+  --chamfer-sm: polygon(
+    var(--cut-sm) 0,
+    100% 0,
+    100% calc(100% - var(--cut-sm)),
+    calc(100% - var(--cut-sm)) 100%,
+    0 100%,
+    0 var(--cut-sm)
+  );
+  --bracket-size: 0.75rem; /* 槽位瞄準括角長度 */
+  --bracket-weight: 1.5px;
+}

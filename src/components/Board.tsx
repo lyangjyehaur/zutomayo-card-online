@@ -380,7 +380,13 @@ function jankenLabel(choice: JankenChoice): string {
   return labels[choice];
 }
 
-function BattlefieldCanvas() {
+/**
+ * ChronosFieldCanvas — 「Chronos Projection」戰場底。
+ * 整個戰場是一面從中央 Chronos 投影出來的巨大錶盤：
+ * 同心圓刻度環 + 12 刻度輻射線 + 晝夜半場染色（上=對手側，下=己方側）。
+ * 取代 v1 的梯形透視桌面 — 場地不再模擬實體桌，而是時間本身。
+ */
+function ChronosFieldCanvas({ time }: { time: ChronosTime }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -395,60 +401,71 @@ function BattlefieldCanvas() {
       const height = Math.max(1, rect.height);
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
-
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
+
       const styles = getComputedStyle(document.documentElement);
       const token = (name: string) => styles.getPropertyValue(name).trim();
+      const cx = width / 2;
+      const cy = height / 2;
+      const maxR = Math.hypot(width, height) / 2;
 
-      const pathTrapezoid = (
-        leftTop: number,
-        rightTop: number,
-        leftBottom: number,
-        rightBottom: number,
-        yTop: number,
-        yBottom: number,
-      ) => {
+      // 晝夜半場染色：夜色歸屬依 time 上下對調（己方在下）
+      const nightColor = token('--time-night');
+      const dayColor = token('--time-day');
+      const topGrad = ctx.createLinearGradient(0, 0, 0, cy);
+      const botGrad = ctx.createLinearGradient(0, height, 0, cy);
+      const topColor = time === 'night' ? dayColor : nightColor;
+      const botColor = time === 'night' ? nightColor : dayColor;
+      topGrad.addColorStop(0, `color-mix(in oklch, ${topColor} 7%, transparent)`);
+      topGrad.addColorStop(1, 'transparent');
+      botGrad.addColorStop(0, `color-mix(in oklch, ${botColor} 7%, transparent)`);
+      botGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = topGrad;
+      ctx.fillRect(0, 0, width, cy);
+      ctx.fillStyle = botGrad;
+      ctx.fillRect(0, cy, width, cy);
+
+      // 同心圓刻度環
+      const ringColor = token('--border-soft') || 'rgba(255,255,255,0.09)';
+      ctx.strokeStyle = ringColor;
+      ctx.lineWidth = 1;
+      const ringStep = Math.max(90, maxR / 6);
+      for (let r = ringStep; r < maxR; r += ringStep) {
         ctx.beginPath();
-        ctx.moveTo(leftTop, yTop);
-        ctx.lineTo(rightTop, yTop);
-        ctx.lineTo(rightBottom, yBottom);
-        ctx.lineTo(leftBottom, yBottom);
-        ctx.closePath();
-      };
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
-      const topY = height * 0.16;
-      const bottomY = height * 0.96;
-      const leftTop = width * 0.16;
-      const rightTop = width * 0.84;
-      const leftBottom = width * -0.08;
-      const rightBottom = width * 1.08;
+      // 12 刻度輻射線（從第二環外開始，避免干擾中央 Chronos 錶盤）
+      const innerR = ringStep * 1.35;
+      for (let k = 0; k < 12; k += 1) {
+        const angle = (k / 12) * Math.PI * 2 - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx + innerR * Math.cos(angle), cy + innerR * Math.sin(angle));
+        ctx.lineTo(cx + maxR * Math.cos(angle), cy + maxR * Math.sin(angle));
+        ctx.globalAlpha = k % 3 === 0 ? 0.55 : 0.28;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
 
-      const fieldGradient = ctx.createLinearGradient(0, topY, 0, bottomY);
-      fieldGradient.addColorStop(0, token('--battle-field-start'));
-      fieldGradient.addColorStop(0.48, token('--battle-field-mid'));
-      fieldGradient.addColorStop(1, token('--battle-field-end'));
-
-      pathTrapezoid(leftTop, rightTop, leftBottom, rightBottom, topY, bottomY);
-      ctx.fillStyle = fieldGradient;
-      ctx.fill();
-
-      const glow = ctx.createRadialGradient(width * 0.5, height * 0.58, 0, width * 0.5, height * 0.58, width * 0.42);
-      glow.addColorStop(0, token('--battle-field-glow'));
-      glow.addColorStop(1, token('--battle-field-glow-transparent'));
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, width, height);
+      // 中線（晝夜分界）
+      ctx.strokeStyle = `color-mix(in oklch, ${token('--content-primary')} 14%, transparent)`;
+      ctx.setLineDash([2, 6]);
+      ctx.beginPath();
+      ctx.moveTo(0, cy);
+      ctx.lineTo(width, cy);
+      ctx.stroke();
+      ctx.setLineDash([]);
     };
 
     const observer = new ResizeObserver(draw);
     observer.observe(parent);
     draw();
-
     return () => observer.disconnect();
-  }, []);
+  }, [time]);
 
   return <canvas ref={canvasRef} className="battlefield-canvas" aria-hidden="true" />;
 }
@@ -1428,7 +1445,12 @@ function BoardLayout({ time, children }: { time: ChronosTime; children: ReactNod
   );
 }
 
-function BattleTopBar({
+/**
+ * BattleHud — 浮動 HUD（取代通欄頂欄）。
+ * 左上：回合/晝夜/倒數膠囊；右上：面板按鈕膠囊；
+ * 階段軌內嵌於狀態膠囊下緣。全部懸浮在錶盤戰場上，不佔通欄。
+ */
+function BattleHud({
   G,
   activePanel,
   time,
@@ -1451,37 +1473,45 @@ function BattleTopBar({
     { label: t('board.phaseTrack.end' as never), active: G.step === 'gameOver' },
   ];
   return (
-    <header className="bf-topbar">
-      <div className="bf-topbar-stats">
-        <span>
-          {t('board.turn')} {G.turnNumber}
-        </span>
-        <span>{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
-        <span className="bf-topbar-timer" data-urgent={timeLeft <= 10}>
-          {timeLeft}
-          {t('board.secondsUnit')}
-        </span>
-      </div>
-      <div className="bf-topbar-phases" aria-hidden="true">
-        {phases.map((phase) => (
-          <span key={phase.label} data-active={phase.active}>
-            {phase.label}
+    <>
+      <div className="bf-hud bf-hud-left" data-time={time}>
+        <div className="bf-hud-pill bf-hud-status">
+          <span className="bf-hud-turn">
+            <span className="bf-hud-turn-label">{t('board.turn')}</span>
+            <strong className="bf-hud-turn-value">{String(G.turnNumber).padStart(2, '0')}</strong>
           </span>
-        ))}
+          <span className="bf-hud-divider" aria-hidden="true" />
+          <span className="bf-hud-time" data-time={time}>
+            {time === 'night' ? '🌙' : '☀️'} {time === 'night' ? t('board.night') : t('board.day')}
+          </span>
+          <span className="bf-hud-divider" aria-hidden="true" />
+          <span className="bf-hud-timer" data-urgent={timeLeft <= 10}>
+            {String(timeLeft).padStart(2, '0')}
+            <span className="bf-hud-timer-unit">{t('board.secondsUnit')}</span>
+          </span>
+        </div>
+        <div className="bf-hud-phases" aria-hidden="true">
+          {phases.map((phase) => (
+            <span key={phase.label} data-active={phase.active}>
+              {phase.label}
+            </span>
+          ))}
+        </div>
       </div>
-      <div className="bf-topbar-spacer" />
-      <div className="battle-side-panel-actions" aria-label="Battle panels">
-        {BATTLE_SIDE_PANELS.map(({ id, label, Icon }) => (
-          <IconButton
-            key={id}
-            label={label}
-            icon={<Icon className="size-4" aria-hidden="true" />}
-            aria-pressed={activePanel === id}
-            onClick={() => onPanelChange(id)}
-          />
-        ))}
+      <div className="bf-hud bf-hud-right">
+        <div className="bf-hud-pill battle-side-panel-actions" aria-label="Battle panels">
+          {BATTLE_SIDE_PANELS.map(({ id, label, Icon }) => (
+            <IconButton
+              key={id}
+              label={label}
+              icon={<Icon className="size-4" aria-hidden="true" />}
+              aria-pressed={activePanel === id}
+              onClick={() => onPanelChange(id)}
+            />
+          ))}
+        </div>
       </div>
-    </header>
+    </>
   );
 }
 
@@ -1793,7 +1823,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
 
   return (
     <BoardLayout time={time}>
-      <BattleTopBar
+      <BattleHud
         G={G}
         activePanel={activeSidePanel}
         time={time}
@@ -1806,7 +1836,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
       <div className="bf-main">
         {/* ===== 戰場 ===== */}
         <div className="bf-field">
-          {viewport.mode === 'desktop' && <BattlefieldCanvas />}
+          {viewport.mode !== 'mobile' && <ChronosFieldCanvas time={time} />}
 
           {/* 對手區 */}
           <section className="bf-opponent" aria-label={t('player.opponent')}>

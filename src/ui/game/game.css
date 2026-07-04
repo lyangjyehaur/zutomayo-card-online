@@ -35,79 +35,147 @@
   background: color-mix(in oklch, var(--color-bg-base) 92%, oklch(0.3 0.04 70));
 }
 
-/* ---------------------------------------------------------------- 頂欄 */
-.bf-topbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex: 0 0 auto;
-  height: var(--control-height-lg);
-  padding-inline: var(--space-3);
-  border-bottom: var(--border-panel);
-  background: oklch(from var(--color-bg-base) l c h / 0.8);
-  backdrop-filter: blur(8px);
-  overflow-x: auto;
-  scrollbar-width: none;
+/* ---------------------------------------------------------------- 浮動 HUD */
+/* 「Chronos Projection」：無通欄。狀態/工具皆為懸浮切角膠囊。 */
+.bf-hud {
+  position: absolute;
+  top: var(--space-2);
   z-index: var(--z-header);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  pointer-events: none;
 }
 
-.bf-topbar-stats {
+.bf-hud > * {
+  pointer-events: auto;
+}
+
+.bf-hud-left {
+  left: var(--space-3);
+  align-items: flex-start;
+}
+
+.bf-hud-right {
+  right: var(--space-3);
+  align-items: flex-end;
+}
+
+.bf-hud-pill {
   display: flex;
-  flex: 0 0 auto;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: oklch(from var(--color-bg-surface) l c h / 0.78);
+  backdrop-filter: blur(10px);
+  clip-path: var(--chamfer-sm);
+  border: none;
+  outline: 1px solid var(--color-border-subtle);
+  outline-offset: -1px;
+}
+
+.bf-hud-status {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-  letter-spacing: var(--tracking-meta);
+  letter-spacing: var(--tracking-compact);
   text-transform: uppercase;
+  color: var(--color-text-muted);
+  min-height: var(--control-height-sm);
+}
+
+.bf-hud-turn {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.bf-hud-turn-label {
+  font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }
 
-.bf-topbar-timer[data-urgent='true'] {
+.bf-hud-turn-value {
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+.bf-hud-divider {
+  width: 1px;
+  height: 1rem;
+  background: var(--color-border-subtle);
+  transform: skewX(-12deg);
+}
+
+.bf-hud-time[data-time='night'] {
+  color: var(--time-night);
+}
+
+.bf-hud-time[data-time='day'] {
+  color: var(--time-day);
+}
+
+.bf-hud-timer {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.bf-hud-timer-unit {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text-muted);
+}
+
+.bf-hud-timer[data-urgent='true'] {
   color: var(--color-danger);
   animation: bf-pulse 1s infinite;
 }
 
-.bf-topbar-phases {
-  display: none;
-  flex: 1 1 auto;
-  justify-content: center;
-  gap: var(--space-4);
+.bf-hud-phases {
+  display: flex;
+  gap: var(--space-2);
+  padding-inline: var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   letter-spacing: var(--tracking-meta);
   text-transform: uppercase;
 }
 
-.bf-topbar-phases span {
-  color: oklch(from var(--color-text-primary) l c h / 0.2);
+.bf-hud-phases span {
+  position: relative;
+  padding-left: var(--space-2);
+  color: oklch(from var(--color-text-primary) l c h / 0.22);
   transition: color var(--motion-normal) var(--ease-standard);
 }
 
-.bf-topbar-phases span[data-active='true'] {
+.bf-hud-phases span::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  transform: translateY(-50%) rotate(45deg);
+  background: currentcolor;
+}
+
+.bf-hud-phases span[data-active='true'] {
   color: var(--color-accent-primary);
-}
-
-.bf-topbar-spacer {
-  flex: 1 1 auto;
-}
-
-@media (min-width: 48rem) {
-  .bf-topbar-phases {
-    display: flex;
-  }
-
-  .bf-topbar-spacer {
-    display: none;
-  }
 }
 
 /* ---------------------------------------------------------------- 階段提示 */
 .phaseindicator {
-  flex: 0 0 auto;
+  position: absolute;
+  inset-inline: 0;
+  top: var(--space-2);
   display: flex;
   justify-content: center;
-  padding: var(--space-1) var(--space-3);
+  padding-inline: var(--space-3);
   pointer-events: none;
   z-index: var(--z-sticky);
 }
@@ -117,13 +185,13 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  width: 100%;
-  max-width: 48rem;
-  padding: var(--space-1) var(--space-3);
-  border: var(--border-panel);
-  border-radius: var(--radius-sm);
+  max-width: 34rem;
+  padding: var(--space-1) var(--space-4);
   background: oklch(from var(--color-bg-surface) l c h / 0.82);
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(10px);
+  clip-path: var(--chamfer-sm);
+  outline: 1px solid var(--color-border-subtle);
+  outline-offset: -1px;
 }
 
 .phaseindicator-title {
@@ -176,7 +244,7 @@
   flex: 1 1 auto;
   min-height: 0;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3) var(--space-2);
+  padding: calc(var(--control-height-sm) + var(--space-4)) var(--space-3) var(--space-2);
 }
 
 .bf-field {
@@ -328,18 +396,25 @@
   gap: var(--space-1);
 }
 
+/* 攻擊力讀數靠向中線：對手在下緣、己方在上緣 → 隔著 Chronos 形成對峙 */
+.battlezone-opponent {
+  flex-direction: column-reverse;
+}
+
 .battlezone-attack {
   display: flex;
   align-items: baseline;
   gap: var(--space-1);
-  min-height: 1.5rem;
+  min-height: 2.6rem;
   font-family: var(--font-mono);
 }
 
 .battlezone-attack-value {
-  font-size: var(--type-title-sm);
+  font-size: clamp(1.8rem, 4.2vh, 2.6rem);
   font-weight: var(--font-weight-bold);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 24px currentcolor;
 }
 
 .battlezone[data-time='night'] .battlezone-attack-value {
@@ -498,7 +573,8 @@
   min-height: var(--touch-target-min);
   padding: var(--space-2) var(--space-4);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  clip-path: var(--chamfer-sm);
+  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   letter-spacing: var(--tracking-control);
@@ -519,12 +595,12 @@
 }
 
 .actiondock-btn-primary {
-  background: var(--color-text-primary);
+  background: var(--color-accent-primary);
   color: var(--color-bg-base);
 }
 
 .actiondock-btn-primary:hover:not(:disabled) {
-  background: var(--color-accent-primary);
+  background: oklch(from var(--color-accent-primary) l c h / 0.85);
 }
 
 .actiondock-btn-set {
@@ -640,12 +716,35 @@ button.cardview {
   display: grid;
   place-items: center;
   border: none;
-  border-radius: var(--radius-sm);
-  background: oklch(from var(--color-bg-surface) l c h / 0.6);
-  outline: 1px solid oklch(from var(--color-text-primary) l c h / 0.05);
-  box-shadow: var(--shadow-inset-slot);
+  background: oklch(from var(--color-bg-surface) l c h / 0.35);
   padding: var(--slot-pad);
-  transition: outline-color var(--motion-normal) var(--ease-standard);
+  transition: background var(--motion-normal) var(--ease-standard);
+  /* 瞄準括角：四角 L 形，取代整圈邊框 — 場上槽位像鎖定框而非牌墊 */
+  --bracket-color: oklch(from var(--color-text-primary) l c h / 0.22);
+}
+
+.cardslot::before,
+.cardslot::after {
+  content: '';
+  position: absolute;
+  width: var(--bracket-size);
+  height: var(--bracket-size);
+  pointer-events: none;
+  transition: border-color var(--motion-normal) var(--ease-standard);
+}
+
+.cardslot::before {
+  top: 0;
+  left: 0;
+  border-top: var(--bracket-weight) solid var(--bracket-color);
+  border-left: var(--bracket-weight) solid var(--bracket-color);
+}
+
+.cardslot::after {
+  bottom: 0;
+  right: 0;
+  border-bottom: var(--bracket-weight) solid var(--bracket-color);
+  border-right: var(--bracket-weight) solid var(--bracket-color);
 }
 
 .cardslot-sm {
@@ -670,15 +769,17 @@ button.cardview {
 }
 
 .cardslot[data-state='undoable'] {
-  outline: 1px solid oklch(from var(--color-playable) l c h / 0.35);
+  --bracket-color: oklch(from var(--color-playable) l c h / 0.8);
+  background: oklch(from var(--color-playable) l c h / 0.06);
 }
 
 .cardslot[data-state='targetable'] {
-  outline: 2px dashed var(--color-targetable);
+  --bracket-color: var(--color-targetable);
+  background: oklch(from var(--color-targetable) l c h / 0.07);
 }
 
 .cardslot[data-state='highlight'] {
-  outline: 2px solid oklch(from var(--color-accent-primary) l c h / 0.5);
+  --bracket-color: oklch(from var(--color-accent-primary) l c h / 0.8);
 }
 
 /* ---------------------------------------------------------------- 堆疊 */
@@ -705,10 +806,10 @@ button.cardstack:focus-visible {
 .cardstack-well {
   position: relative;
   display: block;
-  border-radius: var(--radius-sm);
-  background: oklch(from var(--color-bg-surface) l c h / 0.6);
-  outline: 1px solid oklch(from var(--color-text-primary) l c h / 0.05);
-  box-shadow: var(--shadow-inset-slot);
+  background: oklch(from var(--color-bg-surface) l c h / 0.35);
+  clip-path: var(--chamfer-sm);
+  outline: 1px solid oklch(from var(--color-text-primary) l c h / 0.08);
+  outline-offset: -1px;
   overflow: hidden;
 }
 
@@ -850,9 +951,11 @@ button.cardstack:focus-visible {
   flex-direction: column;
   min-height: 0;
   padding: var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-surface);
+  background: oklch(from var(--color-bg-surface) l c h / 0.72);
+  backdrop-filter: blur(8px);
+  clip-path: var(--chamfer-sm);
   outline: 1px solid var(--color-border-subtle);
+  outline-offset: -1px;
 }
 
 .battle-panel-heading {
@@ -1061,7 +1164,7 @@ button.cardstack:focus-visible {
   }
 
   .cardview[data-state='playable'],
-  .bf-topbar-timer[data-urgent='true'] {
+  .bf-hud-timer[data-urgent='true'] {
     animation: none;
   }
 }
@@ -1073,7 +1176,11 @@ button.cardstack:focus-visible {
 /* ---- Tablet portrait + Mobile（<1024px）：直向戰場 ---- */
 @media (max-width: 63.9375rem) {
   .bf-main {
-    padding: var(--space-1) var(--space-2);
+    padding: calc(var(--control-height-sm) + var(--space-3)) var(--space-2) var(--space-1);
+  }
+
+  .phaseindicator {
+    top: calc(var(--control-height-sm) + var(--space-3));
   }
 
   .bf-opponent {
@@ -1143,14 +1250,36 @@ button.cardstack:focus-visible {
 
 /* ---- Mobile（<768px）：更緊湊 ---- */
 @media (max-width: 47.9375rem) {
-  .bf-topbar {
-    height: var(--size-touch-min);
-    gap: var(--space-2);
-    padding-inline: var(--space-2);
+  /* HUD 膠囊內的面板按鈕維持觸控目標下限 */
+  .bf-hud .battle-side-panel-actions button {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
   }
 
-  .bf-topbar-stats {
-    gap: var(--space-2);
+  .bf-hud-pill {
+    padding-block: calc(var(--space-1) / 2);
+  }
+
+  .bf-hud-left {
+    left: var(--space-2);
+  }
+
+  .bf-hud-right {
+    right: var(--space-2);
+  }
+
+  .bf-hud-phases {
+    display: none;
+  }
+
+  .phaseindicator {
+    position: static;
+    order: -1;
+    padding-top: calc(var(--control-height-sm) + var(--space-3));
+  }
+
+  .bf-main {
+    padding-top: var(--space-1);
   }
 
   .bf-stage {
@@ -1176,12 +1305,16 @@ button.cardstack:focus-visible {
     --card-width-sm: clamp(2rem, 10vh, 2.5rem);
   }
 
-  .bf-topbar {
-    height: var(--control-height-sm);
+  .bf-hud {
+    top: var(--space-1);
+  }
+
+  .bf-hud-phases {
+    display: none;
   }
 
   .phaseindicator {
-    padding-block: 0;
+    top: var(--space-1);
   }
 
   .phaseindicator-body {
@@ -1189,7 +1322,7 @@ button.cardstack:focus-visible {
   }
 
   .bf-main {
-    padding-block: 0;
+    padding-block: calc(var(--control-height-sm) + var(--space-2)) 0;
   }
 
   .bf-opponent {
@@ -1265,20 +1398,12 @@ button.cardstack:focus-visible {
 
 /* ---- 低高度桌面（>=1024px 寬 × <=780px 高）：壓縮裝飾 ---- */
 @media (min-width: 64rem) and (max-height: 48.75rem) {
-  .bf-topbar {
-    height: var(--control-height-sm);
-  }
-
-  .phaseindicator {
-    padding-block: 0;
-  }
-
   .phaseindicator-panel {
     padding-block: calc(var(--space-1) / 2);
   }
 
   .bf-main {
-    padding-block: var(--space-1);
+    padding-block: calc(var(--control-height-sm) + var(--space-2)) var(--space-1);
   }
 
   .bf-opponent {
