@@ -1,25 +1,8 @@
 @import 'tailwindcss';
 
-@font-face {
-  font-family: 'Jiangcheng Jiexing';
-  src: url('/fonts/jiangcheng-jiexing-v1.3.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Uoq Mun Then Khung';
-  src: url('/fonts/uoq-mun-then-khung-regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
 /*
- * 漆器塔羅設計系統（Lacquered Tarot Design System）
- * 靈感來自 card-bloom-tapestry demo
- * 深漆黑背景 + 米白骨色文字 + 金紫雙色點綴 + 襯線斜體標題 + 等寬字數值
+ * Design Tokens 已遷移至 src/ui/tokens/（Art Direction v2「深夜訊號」）。
+ * 本檔僅保留 Tailwind @theme 映射與過渡期頁面樣式；新樣式禁止寫在這裡。
  */
 
 @theme inline {
@@ -113,223 +96,6 @@
   --breakpoint-tablet: 768px;
   --breakpoint-touch: 820px;
   --breakpoint-desktop-sidebar: 1180px;
-}
-
-:root {
-  color-scheme: dark;
-
-  /* Design System primitives */
-  --ds-lacquer-950: oklch(0.11 0.005 270);
-  --ds-lacquer-900: oklch(0.16 0.005 270);
-  --ds-lacquer-850: oklch(0.2 0.005 270);
-  --ds-bone-50: oklch(0.965 0.012 90);
-  --ds-gold-400: oklch(0.74 0.09 80);
-  --ds-gold-500: oklch(0.62 0.07 80);
-  --ds-vermilion-500: oklch(0.6 0.19 295);
-  --ds-danger-500: oklch(0.58 0.19 25);
-  --ds-jade-400: oklch(0.72 0.14 155);
-  --ds-teal-400: oklch(0.7 0.15 180);
-  --ds-night-400: oklch(0.65 0.12 260);
-  --ds-day-400: oklch(0.75 0.12 70);
-  --ds-abyss-400: oklch(0.55 0.05 290);
-  --ds-element-dark: oklch(0.7 0.08 290);
-  --ds-element-flame: oklch(0.68 0.16 25);
-  --ds-element-electric: oklch(0.8 0.13 90);
-  --ds-element-wind: oklch(0.72 0.12 155);
-  --ds-element-chaos: oklch(0.75 0.13 315);
-
-  /* Semantic color tokens */
-  --surface-canvas: var(--ds-lacquer-950);
-  --surface-base: var(--ds-lacquer-900);
-  --surface-raised: var(--ds-lacquer-850);
-  --surface-panel: oklch(from var(--surface-base) l c h / 0.86);
-  --surface-panel-strong: oklch(from var(--surface-base) l c h / 0.94);
-  --surface-overlay: oklch(from var(--surface-canvas) l c h / 0.8);
-  --content-primary: var(--ds-bone-50);
-  --content-muted: oklch(from var(--content-primary) l c h / 0.7);
-  --content-dim: oklch(from var(--content-primary) l c h / 0.5);
-  --content-inverse: var(--surface-canvas);
-  --accent-primary: var(--ds-gold-400);
-  --accent-primary-soft: var(--ds-gold-500);
-  --accent-danger: var(--ds-danger-500);
-  --accent-action: var(--ds-vermilion-500);
-  --accent-success: var(--ds-jade-400);
-  --accent-info: var(--ds-teal-400);
-  --border-default: oklch(from var(--accent-primary) l c h / 0.24);
-  --border-soft: oklch(from var(--content-primary) l c h / 0.11);
-  --border-strong: oklch(from var(--accent-primary) l c h / 0.4);
-  --element-dark: var(--ds-element-dark);
-  --element-flame: var(--ds-element-flame);
-  --element-electric: var(--ds-element-electric);
-  --element-wind: var(--ds-element-wind);
-  --element-chaos: var(--ds-element-chaos);
-  --battle-field-start: oklch(from var(--element-chaos) l c h / 0.2);
-  --battle-field-mid: oklch(from var(--surface-base) l c h / 0.38);
-  --battle-field-end: oklch(from var(--surface-canvas) l c h / 0.76);
-  --battle-field-glow: oklch(from var(--element-chaos) l c h / 0.13);
-  --battle-field-glow-transparent: oklch(from var(--element-chaos) l c h / 0);
-  --pattern-dot: radial-gradient(oklch(from var(--content-primary) l c h / 0.6) 1px, transparent 1px);
-  --pattern-dot-size: 3px 3px;
-
-  /* Typography tokens */
-  --font-display: 'Kaisei Tokumin', 'EB Garamond', 'Songti SC', 'STSong', serif;
-  --font-sans: 'Inter', 'PingFang TC', 'Noto Sans TC', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --type-micro: 0.5rem;
-  --type-minutia: 0.5625rem;
-  --type-caption: 0.625rem;
-  --type-control: 0.6875rem;
-  --type-body-sm: 0.75rem;
-  --type-body: 0.875rem;
-  --type-body-lg: 1rem;
-  --type-title-sm: 1.25rem;
-  --type-title-md: 1.5rem;
-  --type-title-lg: 2rem;
-  --type-lobby-card-title: clamp(2.35rem, 13vw, 3rem);
-  --type-battle-result-title: 6rem;
-  --type-battle-result-title-lg: 10rem;
-  --tracking-tight: 0;
-  --tracking-fine: 0.1em;
-  --tracking-compact: 0.16em;
-  --tracking-control: 0.18em;
-  --tracking-meta: 0.2em;
-  --tracking-label: 0.24em;
-  --tracking-kicker: 0.3em;
-  --tracking-hero: 0.6em;
-
-  /* Spacing and size tokens */
-  --space-0: 0;
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
-  --space-page-x: clamp(var(--space-4), 2vw, var(--space-6));
-  --space-page-y: var(--space-6);
-  --space-panel: var(--space-4);
-  --space-section: var(--space-6);
-  --space-toolbar: var(--space-3);
-  --size-touch-min: 2.75rem;
-  --control-height-sm: 2.25rem;
-  --control-height-md: var(--size-touch-min);
-  --control-height-lg: 3rem;
-  --ambient-glow-size-sm: 50vh;
-  --ambient-glow-size-md: 60vh;
-  --ambient-glow-size-lg: 80vh;
-  --ambient-glow-blur-sm: 120px;
-  --ambient-glow-blur-md: 140px;
-  --ambient-glow-blur-lg: 160px;
-
-  /* Radius tokens */
-  --radius-xs: 0.125rem;
-  --radius-sm: 0.25rem;
-  --radius-control: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --radius-pill: 9999px;
-
-  /* Border, shadow, interaction, and motion tokens */
-  --border-width-hairline: 1px;
-  --border-width-selected: 2px;
-  --shadow-raised: 0 1rem 3rem rgb(0 0 0 / 0.38);
-  --shadow-floating: 0 8px 32px -8px rgb(0 0 0 / 0.4);
-  --shadow-popover: 0 18px 56px -28px rgb(0 0 0 / 0.9);
-  --shadow-sheet: 0 32px 96px -32px rgb(0 0 0 / 0.95);
-  --shadow-focus: 0 0 0 0.14rem oklch(from var(--accent-primary) l c h / 0.22);
-  --shadow-selected: 0 20px 40px -10px oklch(from var(--accent-primary) l c h / 0.3);
-  --shadow-glow-primary: 0 8px 32px -8px oklch(from var(--accent-primary) l c h / 0.3);
-  --shadow-glow-action: 0 30px 80px -20px oklch(from var(--accent-action) l c h / 0.3);
-  --shadow-status-dot: 0 0 12px oklch(from var(--accent-action) l c h / 0.6);
-  --shadow-inset-slot: inset 0 2px 6px rgb(0 0 0 / 0.5);
-  --shadow-card-thumbnail: 0 12px 30px -18px rgb(0 0 0 / 0.9);
-  --shadow-instruction: 0 18px 50px -35px rgb(0 0 0 / 0.9);
-  --focus-ring-width: 2px;
-  --focus-ring-color: oklch(from var(--accent-primary) l c h / 0.6);
-  --focus-ring-offset: 2px;
-  --motion-duration-fast: 120ms;
-  --motion-duration-base: 160ms;
-  --motion-duration-slow: 300ms;
-  --motion-duration-page: 500ms;
-  --motion-ease-standard: ease;
-  --motion-ease-out: ease-out;
-  --motion-ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
-
-  /* Layer and breakpoint tokens */
-  --z-base: 0;
-  --z-dropdown: 10;
-  --z-sticky: 20;
-  --z-header: 30;
-  --z-overlay: 50;
-  --z-modal: 100;
-  --z-toast: 200;
-  --z-tour: 1000;
-  --z-max: 9999;
-  --breakpoint-phone: 360px;
-  --breakpoint-phone-lg: 430px;
-  --breakpoint-tablet: 768px;
-  --breakpoint-touch: 820px;
-  --breakpoint-desktop-sidebar: 1180px;
-  --breakpoint-low-height: 780px;
-
-  /* Deprecated aliases: keep old pages stable while migrating. */
-  --lacquer: var(--surface-base);
-  --lacquer-deep: var(--surface-canvas);
-  --bone: var(--content-primary);
-  --gold: var(--accent-primary);
-  --gold-soft: var(--accent-primary-soft);
-  --vermilion: var(--accent-action);
-  --jade: var(--accent-success);
-  --bg-0: var(--surface-canvas);
-  --bg-1: var(--surface-base);
-  --bg-2: var(--surface-raised);
-  --panel: var(--surface-panel);
-  --panel-strong: var(--surface-panel-strong);
-  --line: var(--border-default);
-  --line-soft: var(--border-soft);
-  --gold-old: var(--accent-primary);
-  --gold-deep: var(--accent-primary-soft);
-  --text: var(--content-primary);
-  --muted: var(--content-muted);
-  --dim: var(--content-dim);
-  --danger: var(--accent-danger);
-  --teal: var(--accent-info);
-  --night: var(--ds-night-400);
-  --day: var(--ds-day-400);
-  --abyss: var(--ds-abyss-400);
-  --radius: var(--radius-control);
-  --radius-full: var(--radius-pill);
-  --shadow: var(--shadow-raised);
-  --shadow-soft: var(--shadow-floating);
-
-  /* 卡牌尺寸 */
-  --card-normal-w: 130px;
-  --card-normal-h: calc(var(--card-normal-w) * 1.4);
-  --card-small-w: 100px;
-  --card-small-h: calc(var(--card-small-w) * 1.4);
-  --card-tiny-w: 75px;
-  --card-tiny-h: calc(var(--card-tiny-w) * 1.4);
-  --card-micro-w: 50px;
-  --card-micro-h: calc(var(--card-micro-w) * 1.4);
-}
-
-html[lang='zh-CN'] {
-  --font-display: 'Jiangcheng Jiexing', 'Songti SC', 'STSong', serif;
-}
-
-html[lang='zh-TW'],
-html[lang='zh-HK'] {
-  --font-display: 'Uoq Mun Then Khung', 'PingFang TC', 'Songti TC', serif;
-}
-
-html[lang='zh-CN'] .font-display,
-html[lang='zh-TW'] .font-display,
-html[lang='zh-HK'] .font-display {
-  font-synthesis-weight: none;
 }
 
 /* 登錄按鈕加載動畫 */
@@ -2223,10 +1989,10 @@ input:focus {
 }
 
 .chronos-night-arc {
-  stroke: #7f8cff;
+  stroke: var(--time-night);
 }
 .chronos-day-arc {
-  stroke: #ffb65e;
+  stroke: var(--time-day);
 }
 
 .chronos-tick circle {
@@ -2241,10 +2007,10 @@ input:focus {
 }
 
 .tick-night {
-  fill: #7f8cff;
+  fill: var(--time-night);
 }
 .tick-day {
-  fill: #ffb65e;
+  fill: var(--time-day);
 }
 
 .chronos-tick text {

@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { recoverPwaAndReload, reloadForAppUpdate } from '../clientVersion';
 import { t } from '../i18n';
-import { Button } from './ui';
+import { Button } from '../ui';
 
 interface ErrorBoundaryProps {
   children: ReactNode;

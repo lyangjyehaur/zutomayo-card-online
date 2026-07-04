@@ -1,0 +1,28 @@
+/* Border / Shadow / Focus Tokens */
+:root {
+  --border-width-hairline: 1px;
+  --border-width-selected: 2px;
+  --border-panel: 1px solid var(--color-border-subtle);
+  --border-active: 2px solid var(--color-accent-primary);
+
+  --shadow-raised: 0 1rem 3rem rgb(0 0 0 / 0.38);
+  --shadow-floating: 0 8px 32px -8px rgb(0 0 0 / 0.4);
+  --shadow-popover: 0 18px 56px -28px rgb(0 0 0 / 0.9);
+  --shadow-sheet: 0 32px 96px -32px rgb(0 0 0 / 0.95);
+  --shadow-focus: 0 0 0 0.14rem oklch(from var(--accent-primary) l c h / 0.22);
+  --shadow-selected: 0 20px 40px -10px oklch(from var(--accent-primary) l c h / 0.3);
+  --shadow-glow-primary: 0 8px 32px -8px oklch(from var(--accent-primary) l c h / 0.3);
+  --shadow-glow-action: 0 30px 80px -20px oklch(from var(--accent-action) l c h / 0.3);
+  --shadow-status-dot: 0 0 12px oklch(from var(--accent-action) l c h / 0.6);
+  --shadow-inset-slot: inset 0 2px 6px rgb(0 0 0 / 0.5);
+  --shadow-card-thumbnail: 0 12px 30px -18px rgb(0 0 0 / 0.9);
+  --shadow-instruction: 0 18px 50px -35px rgb(0 0 0 / 0.9);
+  --shadow-card: var(--shadow-card-thumbnail); /* 卡牌唯一陰影 */
+  --shadow-panel: var(--shadow-floating);
+  --shadow: var(--shadow-raised); /* deprecated 別名 */
+  --shadow-soft: var(--shadow-floating); /* deprecated 別名 */
+
+  --focus-ring-width: 2px;
+  --focus-ring-color: oklch(from var(--accent-primary) l c h / 0.6);
+  --focus-ring-offset: 2px;
+}

@@ -26,7 +26,7 @@ import {
   Sheet,
   Textarea,
   ToolHeader,
-} from '../components/ui';
+} from '../ui';
 import '../components/I18nManager.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';

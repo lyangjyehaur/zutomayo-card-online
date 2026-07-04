@@ -1,0 +1,16 @@
+/* Motion Tokens — 動效只服務狀態變化與操作回饋；禁止 idle 循環動畫 */
+:root {
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 160ms;
+  --motion-duration-slow: 300ms;
+  --motion-duration-page: 500ms;
+  --motion-ease-standard: ease;
+  --motion-ease-out: ease-out;
+  --motion-ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* 正式 API 別名 */
+  --motion-fast: var(--motion-duration-fast);
+  --motion-normal: var(--motion-duration-base);
+  --motion-slow: var(--motion-duration-slow);
+  --ease-standard: var(--motion-ease-standard);
+  --ease-emphasized: var(--motion-ease-emphasized);
+}

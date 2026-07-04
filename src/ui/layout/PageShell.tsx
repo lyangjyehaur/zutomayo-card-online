@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from 'react';
-import { cn } from './utils';
+import { cn } from '../primitives/utils';
 
 export type AmbientGlowColor = 'vermilion' | 'gold';
 export type AmbientGlowSize = 'sm' | 'md' | 'lg';

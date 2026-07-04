@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { requestPwaRecoveryPrompt } from '../clientVersion';
 import { t } from '../i18n';
 import { APP_BUILT_AT, APP_VERSION_INFO } from '../version';
-import { Button } from './ui';
+import { Button } from '../ui';
 
 const REQUIRED_TAPS = 7;
 const TAP_WINDOW_MS = 1500;

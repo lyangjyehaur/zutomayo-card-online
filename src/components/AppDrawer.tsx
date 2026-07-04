@@ -1,8 +1,8 @@
 import { useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { t } from '../i18n';
-import { Button, IconButton, type ButtonVariant } from './ui';
-import { useModalFocus } from './ui/useModalFocus';
+import { Button, IconButton, type ButtonVariant } from '../ui';
+import { useModalFocus } from '../ui';
 
 interface AppDrawerAction {
   label: string;

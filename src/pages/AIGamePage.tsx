@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AIGame } from '../components/AIGame';
-import { BackButton, Card, PageSectionHeader, Panel, ScrollPageLayout } from '../components/ui';
+import { BackButton, Card, PageSectionHeader, Panel, ScrollPageLayout } from '../ui';
 import type { AIDifficulty } from '../game/ai';
 import { t } from '../i18n';
 

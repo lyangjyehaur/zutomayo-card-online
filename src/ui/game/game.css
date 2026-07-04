@@ -255,6 +255,116 @@
   gap: var(--space-slot-gap);
 }
 
+/* ---------------------------------------------------------------- 區域容器 */
+.zonepanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--space-1) / 2);
+}
+
+.zonepanel-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: var(--line-height-tight);
+  max-width: calc(var(--slot-width-md) + var(--space-2));
+}
+
+.zonepanel-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-compact);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.zonepanel-hint {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.chargezone .zonepanel-hint {
+  color: var(--color-accent-primary);
+}
+
+/* ---------------------------------------------------------------- 設置區 A/B/C */
+.setzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--space-1) / 2);
+}
+
+.setzone-hint {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-compact);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* C 區 = 持續中的 Area Enchant：虛線框 + 青色提示，與 A/B（本回合出牌）明確區分 */
+.setzone-c .cardslot {
+  outline-style: dashed;
+  outline-color: oklch(from var(--color-info) l c h / 0.35);
+}
+
+.setzone-c .setzone-hint {
+  color: oklch(from var(--color-info) l c h / 0.8);
+}
+
+/* ---------------------------------------------------------------- 戰鬥區 */
+.battlezone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.battlezone-attack {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-height: 1.5rem;
+  font-family: var(--font-mono);
+}
+
+.battlezone-attack-value {
+  font-size: var(--type-title-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+}
+
+.battlezone[data-time='night'] .battlezone-attack-value {
+  color: var(--time-night);
+}
+
+.battlezone[data-time='day'] .battlezone-attack-value {
+  color: var(--time-day);
+}
+
+.battlezone-attack[data-insufficient='true'] .battlezone-attack-value {
+  color: var(--color-danger);
+}
+
+.battlezone-attack-warn {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+  letter-spacing: var(--tracking-compact);
+  text-transform: uppercase;
+}
+
+.battlezone-attack-empty {
+  color: var(--color-text-muted);
+}
+
 /* 效果選擇 / 目標選擇：觸控目標下限（overlay 面板沿用 App.css 視覺） */
 .effect-order-item,
 .pending-choice-option {
@@ -277,7 +387,7 @@
 }
 
 .chronospanel .chronos {
-  width: clamp(7rem, min(24vw, 22vh), 13.5rem);
+  width: clamp(8rem, min(26vw, 26vh), 16rem);
 }
 
 .chronospanel-sm .chronos {
@@ -1099,7 +1209,9 @@ button.cardstack:focus-visible {
     padding-block: 0;
   }
 
-  .cardstack-label {
+  .cardstack-label,
+  .zonepanel-label,
+  .setzone-hint {
     display: none;
   }
 

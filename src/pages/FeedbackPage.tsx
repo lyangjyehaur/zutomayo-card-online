@@ -57,7 +57,7 @@ import {
   TagButton,
   Textarea,
   type BadgeTone,
-} from '../components/ui';
+} from '../ui';
 
 const STATUS_OPTIONS: FeedbackStatus[] = ['open', 'planned', 'started', 'completed', 'declined', 'duplicate'];
 const SORT_OPTIONS: FeedbackSort[] = ['top', 'trending', 'newest', 'recent', 'most-discussed'];

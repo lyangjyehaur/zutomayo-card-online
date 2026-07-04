@@ -1,6 +1,6 @@
 import { availableLocales, getLocaleLabel, setLocale, t, useLocale, type Locale } from '../i18n';
-import { Select } from './ui';
-import { cn } from './ui/utils';
+import { Select } from '../ui';
+import { cn } from '../ui';
 
 interface LanguageSwitcherProps {
   className?: string;

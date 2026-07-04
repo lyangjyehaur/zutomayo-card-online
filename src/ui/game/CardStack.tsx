@@ -17,11 +17,24 @@ export interface CardStackProps {
   size?: 'sm' | 'md';
   /** 點擊開啟區域摘要（deck 不提供） */
   onOpen?: () => void;
+  /** ZonePanel 已提供 label 時關閉內建標籤，避免重複 */
+  showLabel?: boolean;
   tutId?: string;
   className?: string;
 }
 
-export function CardStack({ kind, label, count, value, cards, size = 'md', onOpen, tutId, className }: CardStackProps) {
+export function CardStack({
+  kind,
+  label,
+  count,
+  value,
+  cards,
+  size = 'md',
+  onOpen,
+  showLabel = true,
+  tutId,
+  className,
+}: CardStackProps) {
   const thumbs = kind === 'deck' ? [] : (cards ?? []).slice(-3);
   const primary = kind === 'power' ? (value ?? 0) : count;
   const aria = kind === 'power' ? `${label}: ${value ?? 0} (${count})` : `${label}: ${count}`;
@@ -54,10 +67,12 @@ export function CardStack({ kind, label, count, value, cards, size = 'md', onOpe
         {kind !== 'deck' && thumbs.length === 0 && <span className="cardstack-empty" />}
         <strong className="cardstack-count">{primary}</strong>
       </span>
-      <span className="cardstack-label" aria-hidden="true">
-        {label}
-        {kind === 'power' ? ` · ${count}` : ''}
-      </span>
+      {showLabel && (
+        <span className="cardstack-label" aria-hidden="true">
+          {label}
+          {kind === 'power' ? ` · ${count}` : ''}
+        </span>
+      )}
     </>
   );
 

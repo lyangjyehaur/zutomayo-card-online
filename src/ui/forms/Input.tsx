@@ -8,7 +8,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
-import { cn } from './utils';
+import { cn } from '../primitives/utils';
 
 const controlClass =
   'w-full rounded-sm border border-border-soft bg-surface-canvas px-3 py-2 text-body text-content-primary placeholder:text-content-dim transition disabled:cursor-not-allowed disabled:opacity-40 focus:border-border-strong focus:outline-none focus:ring-[length:var(--focus-ring-width)] focus:ring-[--focus-ring-color]';

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 import { getLeaderboard, getProfile, isLoggedIn, type LeaderboardEntry } from '../api/client';
-import { BackButton, Badge, Card, DataListCell, DataListTable, PageSectionHeader, Panel, ScrollPageLayout } from '../components/ui';
+import { BackButton, Badge, Card, DataListCell, DataListTable, PageSectionHeader, Panel, ScrollPageLayout } from '../ui';
 
 export function LeaderboardPage() {
   const navigate = useNavigate();

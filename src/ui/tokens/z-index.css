@@ -1,0 +1,12 @@
+/* Z-index Tokens — 浮層秩序唯一來源；禁止手寫 z-index 數字 */
+:root {
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-header: 30;
+  --z-overlay: 50;
+  --z-modal: 100;
+  --z-toast: 200;
+  --z-tour: 1000;
+  --z-max: 9999;
+}

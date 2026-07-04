@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { Panel, cn } from '../ui';
+import { Panel, cn } from '../../ui';
 
 type PanelProps = ComponentProps<typeof Panel>;
 

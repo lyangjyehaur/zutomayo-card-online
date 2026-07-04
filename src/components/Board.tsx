@@ -15,23 +15,34 @@ import type {
 import { getCardDef } from '../game/cards/loader';
 import { Card, CardPopover, computePopoverPosition, type PopoverPosition } from './Card';
 import { AppDrawer } from './AppDrawer';
-import { Button, IconButton, SegmentedControl, Sheet } from './ui';
-import { useModalFocus } from './ui/useModalFocus';
+import { Button, IconButton, SegmentedControl } from '../ui';
+import { useModalFocus } from '../ui';
 import {
+  AbyssZone,
   ActionDock,
+  BattleZone,
   CardDetailBody,
   CardDetailPanel,
-  CardSlot,
-  CardStack,
+  CardDetailSheet,
+  ChargeZone,
   ChronosPanel,
+  DeckZone,
   HandZone,
   PhaseIndicator,
   PlayerStatus,
+  SetZone,
   ZoneSummarySheet,
   useViewportMode,
+  type BattleZoneAttack,
   type FocusedCard,
-} from './battle';
-import { getChronosTime, getMinimumSetCount, getRequiredSetCount } from '../game/GameLogic';
+} from '../ui/game';
+import {
+  getChronosTime,
+  getEffectiveAttack,
+  getMinimumSetCount,
+  getRequiredSetCount,
+  isAttackPowerInsufficient,
+} from '../game/GameLogic';
 import { t, useLocale } from '../i18n';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { normalizeGameOverWinner, useOnlineMatchSubmission } from './board/useOnlineMatchSubmission';
@@ -1769,6 +1780,17 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
   const initialSetUndo =
     G.step === 'initialSet' && me.battleZone && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined;
 
+  // 官方規則：戰鬥區攻擊力（依晝夜、Power 不足時視為 0）必須常駐可見。
+  const battleAttack = (card: CardInstance | null, owner: PlayerIndex): BattleZoneAttack | null => {
+    if (!card || !card.faceUp || card.defId === '__hidden__') return null;
+    const def = getCardDef(card.defId);
+    if (!def?.attack) return null;
+    return {
+      value: getEffectiveAttack(card, G, owner),
+      insufficient: isAttackPowerInsufficient(card, G, owner),
+    };
+  };
+
   return (
     <BoardLayout time={time}>
       <BattleTopBar
@@ -1802,45 +1824,41 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               ))}
             </div>
             <div className="bf-strip">
-              <CardStack
-                kind="power"
+              <ChargeZone
+                side="opponent"
                 size="sm"
-                label={zoneNames.power}
-                count={opponent.powerCharger.length}
-                value={powerTotal(G, opponentIndex)}
                 cards={opponent.powerCharger}
+                totalPower={powerTotal(G, opponentIndex)}
                 onOpen={() => setZoneSheet({ kind: 'power', owner: opponentIndex })}
               />
-              <CardSlot
-                label="A"
-                ariaLabel={`${t('player.opponent')} ${zoneNames.A}`}
-                card={opponent.setZoneA}
+              <SetZone
+                slot="A"
+                side="opponent"
                 size="sm"
+                card={opponent.setZoneA}
                 onActivate={detailActivate(opponent.setZoneA, opponentIndex, zoneNames.A)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.A)}
               />
-              <CardSlot
-                label="B"
-                ariaLabel={`${t('player.opponent')} ${zoneNames.B}`}
-                card={opponent.setZoneB}
+              <SetZone
+                slot="B"
+                side="opponent"
                 size="sm"
+                card={opponent.setZoneB}
                 onActivate={detailActivate(opponent.setZoneB, opponentIndex, zoneNames.B)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.B)}
               />
-              <CardSlot
-                label="C"
-                ariaLabel={`${t('player.opponent')} ${zoneNames.C}`}
-                card={opponent.setZoneC}
+              <SetZone
+                slot="C"
+                side="opponent"
                 size="sm"
+                card={opponent.setZoneC}
                 onActivate={detailActivate(opponent.setZoneC, opponentIndex, zoneNames.C)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.C)}
               />
-              <CardStack kind="deck" size="sm" label={zoneNames.deck} count={opponent.deck.length} />
-              <CardStack
-                kind="abyss"
+              <DeckZone side="opponent" size="sm" count={opponent.deck.length} />
+              <AbyssZone
+                side="opponent"
                 size="sm"
-                label={zoneNames.abyss}
-                count={opponent.abyss.length}
                 cards={opponent.abyss}
                 onOpen={() => setZoneSheet({ kind: 'abyss', owner: opponentIndex })}
               />
@@ -1849,11 +1867,11 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
 
           {/* 中央：戰鬥區 + Chronos */}
           <section className="bf-stage" data-tut="central-arena" aria-label={t('chronos.title')}>
-            <CardSlot
-              label={t('board.battleZoneShort')}
-              ariaLabel={`${t('player.opponent')} ${zoneNames.battle}`}
+            <BattleZone
+              side="opponent"
               card={opponent.battleZone}
-              size="lg"
+              time={time}
+              attack={battleAttack(opponent.battleZone, opponentIndex)}
               onActivate={detailActivate(opponent.battleZone, opponentIndex, zoneNames.battle)}
               onInspect={(card) => inspect(card, opponentIndex, zoneNames.battle)}
               tutId="opponent-battle-zone"
@@ -1864,11 +1882,11 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               currentPlayer={meIndex}
               size={viewport.mode === 'mobile' ? 'sm' : 'md'}
             />
-            <CardSlot
-              label={t('board.battleZoneShort')}
-              ariaLabel={`${t('player.me')} ${zoneNames.battle}`}
+            <BattleZone
+              side="me"
               card={me.battleZone}
-              size="lg"
+              time={time}
+              attack={battleAttack(me.battleZone, meIndex)}
               state={initialSetUndo ? 'undoable' : 'idle'}
               onActivate={initialSetUndo ?? detailActivate(me.battleZone, meIndex, zoneNames.battle)}
               onInspect={(card) => inspect(card, meIndex, zoneNames.battle)}
@@ -1879,49 +1897,42 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
           {/* 玩家區 */}
           <section className="bf-player" aria-label={t('player.me')}>
             <div className="bf-strip">
-              <CardStack
-                kind="power"
-                label={zoneNames.power}
-                count={me.powerCharger.length}
-                value={powerTotal(G, meIndex)}
+              <ChargeZone
+                side="me"
                 cards={me.powerCharger}
+                totalPower={powerTotal(G, meIndex)}
                 onOpen={() => setZoneSheet({ kind: 'power', owner: meIndex })}
                 tutId="player-power"
               />
               <div className="bf-slot-group" data-tut="player-set-zones">
-                <CardSlot
-                  label="A"
-                  ariaLabel={zoneNames.A}
+                <SetZone
+                  slot="A"
+                  side="me"
                   card={me.setZoneA}
-                  size="md"
                   state={meSlotUndo('A', me.setZoneA) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('A', me.setZoneA) ?? detailActivate(me.setZoneA, meIndex, zoneNames.A)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.A)}
                 />
-                <CardSlot
-                  label="B"
-                  ariaLabel={zoneNames.B}
+                <SetZone
+                  slot="B"
+                  side="me"
                   card={me.setZoneB}
-                  size="md"
                   state={meSlotUndo('B', me.setZoneB) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('B', me.setZoneB) ?? detailActivate(me.setZoneB, meIndex, zoneNames.B)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.B)}
                 />
-                <CardSlot
-                  label="C"
-                  ariaLabel={zoneNames.C}
+                <SetZone
+                  slot="C"
+                  side="me"
                   card={me.setZoneC}
-                  size="md"
                   state={meSlotUndo('C', me.setZoneC) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('C', me.setZoneC) ?? detailActivate(me.setZoneC, meIndex, zoneNames.C)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.C)}
                 />
               </div>
-              <CardStack kind="deck" label={zoneNames.deck} count={me.deck.length} />
-              <CardStack
-                kind="abyss"
-                label={zoneNames.abyss}
-                count={me.abyss.length}
+              <DeckZone side="me" count={me.deck.length} />
+              <AbyssZone
+                side="me"
                 cards={me.abyss}
                 onOpen={() => setZoneSheet({ kind: 'abyss', owner: meIndex })}
                 tutId="player-abyss"
@@ -2000,18 +2011,13 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
       />
 
       {/* 觸控端卡牌詳情 bottom sheet */}
-      <Sheet
+      <CardDetailSheet
         open={detailSheetOpen}
         onOpenChange={setDetailSheetOpen}
-        title={
-          focusedCard && focusedCard.card.faceUp && focusedCard.card.defId !== '__hidden__'
-            ? (getCardDef(focusedCard.card.defId)?.name ?? t('card.unknown'))
-            : t('card.back')
-        }
-        closeLabel={t('common.close')}
-      >
-        <CardDetailBody focus={focusedCard} G={G} ownerName={focusedCard ? playerName(focusedCard.owner) : undefined} />
-      </Sheet>
+        focus={focusedCard}
+        G={G}
+        ownerName={focusedCard ? playerName(focusedCard.owner) : undefined}
+      />
 
       {/* 深淵 / 充能區摘要 */}
       {zoneSheet && (

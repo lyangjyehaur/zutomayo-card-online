@@ -26,7 +26,7 @@ import { AuthSection } from '../components/lobby/AuthSection';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
-import { Alert, BackButton, Button, Input, PageHeader, Panel, WorkspaceLayout } from '../components/ui';
+import { Alert, BackButton, Button, Input, PageHeader, Panel, WorkspaceLayout } from '../ui';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
 import { isOnlineRoomErrorKey } from '../onlineRoomStatus';

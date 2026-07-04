@@ -1,9 +1,9 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 import { PageHeader, type PageHeaderProps } from './PageHeader';
 import { PageShell, type PageShellProps } from './PageShell';
-import { Panel, type PanelProps } from './Panel';
-import { ResponsiveToolbar, type ResponsiveToolbarProps } from './ResponsiveToolbar';
-import { cn } from './utils';
+import { Panel, type PanelProps } from '../primitives/Panel';
+import { ResponsiveToolbar, type ResponsiveToolbarProps } from '../primitives/ResponsiveToolbar';
+import { cn } from '../primitives/utils';
 
 type LayoutGap = 'compact' | 'regular' | 'spacious';
 type ScrollMaxWidth = 'sm' | 'md' | 'lg' | 'xl' | 'full';

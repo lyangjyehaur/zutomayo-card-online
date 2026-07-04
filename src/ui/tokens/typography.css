@@ -1,0 +1,85 @@
+/*
+ * Typography Tokens — Art Direction v2
+ * 舊版襯線斜體（Kaisei Tokumin italic）退役；新版標題採粗體幾何無襯線，
+ * 等寬字保留給數值/meta。card 名等 display 文字一律直立、加寬字距。
+ */
+@font-face {
+  font-family: 'Jiangcheng Jiexing';
+  src: url('/fonts/jiangcheng-jiexing-v1.3.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Uoq Mun Then Khung';
+  src: url('/fonts/uoq-mun-then-khung-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-display: 'Inter', 'PingFang TC', 'Noto Sans TC', 'Hiragino Sans', sans-serif;
+  --font-sans: 'Inter', 'PingFang TC', 'Noto Sans TC', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* type scale */
+  --type-micro: 0.5rem; /* deprecated：新功能禁止使用 */
+  --type-minutia: 0.5625rem; /* deprecated：新功能禁止使用 */
+  --type-caption: 0.625rem;
+  --type-control: 0.6875rem;
+  --type-body-sm: 0.75rem;
+  --type-body: 0.875rem;
+  --type-body-lg: 1rem;
+  --type-title-sm: 1.25rem;
+  --type-title-md: 1.5rem;
+  --type-title-lg: 2rem;
+  --type-lobby-card-title: clamp(2.35rem, 13vw, 3rem);
+  --type-battle-result-title: 6rem;
+  --type-battle-result-title-lg: 10rem;
+
+  /* 正式 API 別名 */
+  --font-size-xs: var(--type-caption);
+  --font-size-sm: var(--type-body-sm);
+  --font-size-md: var(--type-body);
+  --font-size-lg: var(--type-body-lg);
+  --font-size-xl: var(--type-title-sm);
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.55;
+
+  /* tracking */
+  --tracking-tight: 0;
+  --tracking-fine: 0.1em;
+  --tracking-compact: 0.16em;
+  --tracking-control: 0.18em;
+  --tracking-meta: 0.2em;
+  --tracking-label: 0.24em;
+  --tracking-kicker: 0.3em;
+  --tracking-hero: 0.6em;
+}
+
+/* 中文語系：改用系統粗體無襯線（舊手寫/宋體 display 字型退役，僅保留 @font-face 供圖鑑等特殊場景） */
+html[lang='zh-CN'] {
+  --font-display: 'Inter', 'PingFang SC', 'Noto Sans SC', sans-serif;
+}
+
+html[lang='zh-TW'],
+html[lang='zh-HK'] {
+  --font-display: 'Inter', 'PingFang TC', 'Noto Sans TC', sans-serif;
+}
+
+/*
+ * Art Direction v2 全域校正：display 文字一律直立粗體。
+ * 舊頁面 className 內殘留的 `italic` 由此層統一中和，
+ * 待各頁逐步移除 class 後可刪除此規則（見 docs/uiux/page-redesign-plan.md）。
+ */
+.font-display {
+  font-style: normal;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  font-synthesis-weight: auto;
+}

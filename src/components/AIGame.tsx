@@ -8,7 +8,7 @@ import { useAIMoves, type ZutomayoMoveDispatchers, type TutorialAIScript } from 
 import type { AIDifficulty } from '../game/ai';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
-import { PageShell } from './ui';
+import { PageShell } from '../ui';
 
 interface AIGameProps {
   difficulty: AIDifficulty;

@@ -1,6 +1,6 @@
 import type { CardInstance } from '../../game/types';
 import { getCardDef } from '../../game/cards/loader';
-import { Sheet } from '../ui';
+import { Sheet } from '../primitives';
 import { CardView } from './CardView';
 import { t } from '../../i18n';
 

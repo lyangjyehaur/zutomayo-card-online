@@ -24,7 +24,7 @@ import {
   ScrollPageLayout,
   StatCard,
   StatsGrid,
-} from './ui';
+} from '../ui';
 
 interface MatchHistoryProps {
   onBack: () => void;

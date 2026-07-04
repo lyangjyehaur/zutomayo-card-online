@@ -5,7 +5,7 @@ import { AppDrawer } from '../components/AppDrawer';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
-import { Button, Card, IconButton, PageShell, Panel } from '../components/ui';
+import { Button, Card, IconButton, PageShell, Panel } from '../ui';
 import { t, type TranslationKey } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。

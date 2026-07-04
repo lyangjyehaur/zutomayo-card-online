@@ -1,6 +1,6 @@
 import type { HTMLAttributes, ReactNode } from 'react';
-import { Sheet } from './ui';
-import { cn } from './ui/utils';
+import { Sheet } from '../ui';
+import { cn } from '../ui';
 
 interface ActiveDeckPanelProps extends HTMLAttributes<HTMLElement> {
   label: string;

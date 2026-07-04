@@ -1,5 +1,5 @@
 import type { ChronosState, ChronosTime, PlayerIndex } from '../../game/types';
-import { Chronos } from '../Chronos';
+import { Chronos } from '../../components/Chronos';
 
 /**
  * ChronosPanel — Chronos 時鐘的佈局容器。

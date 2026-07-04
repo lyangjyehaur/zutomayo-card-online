@@ -1,0 +1,42 @@
+/* Card Sizing System — 卡牌唯一尺寸來源；5:7 直向比例，禁止壓扁 */
+:root {
+  --card-aspect-ratio: 5 / 7;
+  --card-width-mini: clamp(2rem, 4.5vw, 2.5rem); /* 對手手牌背、堆疊縮圖 */
+  --card-width-sm: clamp(2.75rem, 6vw, 3.5rem); /* 對手設置區、充能堆疊 */
+  --card-width-md: clamp(3.5rem, 8vw, 4.75rem); /* 己方設置區、行動端手牌 */
+  --card-width-lg: clamp(4.5rem, 10vw, 6rem); /* 戰鬥區、桌面手牌 */
+  --card-width-xl: clamp(6rem, 24vw, 10rem); /* 詳情預覽 */
+  --card-height-mini: calc(var(--card-width-mini) * 7 / 5);
+  --card-height-sm: calc(var(--card-width-sm) * 7 / 5);
+  --card-height-md: calc(var(--card-width-md) * 7 / 5);
+  --card-height-lg: calc(var(--card-width-lg) * 7 / 5);
+  --card-height-xl: calc(var(--card-width-xl) * 7 / 5);
+
+  /* 槽位 = 卡牌 + 內距 */
+  --slot-pad: var(--space-1);
+  --slot-width-sm: calc(var(--card-width-sm) + var(--slot-pad) * 2);
+  --slot-height-sm: calc(var(--card-height-sm) + var(--slot-pad) * 2);
+  --slot-width-md: calc(var(--card-width-md) + var(--slot-pad) * 2);
+  --slot-height-md: calc(var(--card-height-md) + var(--slot-pad) * 2);
+  --slot-width-lg: calc(var(--card-width-lg) + var(--slot-pad) * 2);
+  --slot-height-lg: calc(var(--card-height-lg) + var(--slot-pad) * 2);
+
+  /* 舊 Card 元件（圖鑑/牌組編輯器）過渡尺寸 — deprecated */
+  --card-normal-w: 130px;
+  --card-normal-h: calc(var(--card-normal-w) * 1.4);
+  --card-small-w: 100px;
+  --card-small-h: calc(var(--card-small-w) * 1.4);
+  --card-tiny-w: 75px;
+  --card-tiny-h: calc(var(--card-tiny-w) * 1.4);
+  --card-micro-w: 50px;
+  --card-micro-h: calc(var(--card-micro-w) * 1.4);
+}
+
+/* 低高度桌面（>=1024 寬 × <=780 高）：以視高錨定，保住不滾動 */
+@media (min-width: 64rem) and (max-height: 48.75rem) {
+  :root {
+    --card-width-lg: clamp(4rem, 8.5vh, 5.25rem);
+    --card-width-md: clamp(3rem, 6.5vh, 4rem);
+    --card-width-sm: clamp(2.5rem, 5vh, 3rem);
+  }
+}

@@ -4,7 +4,7 @@ import type { DeckResponse } from '../api/client';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { DifficultyButtons } from '../components/lobby/DifficultyButtons';
 import { useToast } from '../components/ToastProvider';
-import { Alert, BackButton, PageHeader, WorkspaceLayout } from '../components/ui';
+import { Alert, BackButton, PageHeader, WorkspaceLayout } from '../ui';
 import {
   buildAIOpponentDeckOptions,
   buildDeckOptions,
