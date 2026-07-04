@@ -480,6 +480,7 @@ function RouterShell() {
                   serverDecks={serverDecks}
                   setDeck0Name={setDeck0Name}
                   onStartOnline={startOnline}
+                  onAuthChanged={refreshServerDecks}
                   serverDeckError={serverDeckError}
                   cardsReady={cardsReady}
                 />

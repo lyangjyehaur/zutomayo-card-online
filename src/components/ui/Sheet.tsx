@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { useEffect, useId, useRef } from 'react';
 import { IconButton } from './Button';
+import { useModalFocus } from './useModalFocus';
 import { cn } from './utils';
 
 export interface SheetProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
@@ -30,18 +31,9 @@ export function Sheet({
 }: SheetProps) {
   const titleId = useId();
   const descriptionId = useId();
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const sheetRef = useRef<HTMLElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    window.requestAnimationFrame(() => sheetRef.current?.focus());
-    return () => {
-      previousFocusRef.current?.focus();
-      previousFocusRef.current = null;
-    };
-  }, [open]);
+  useModalFocus(open, sheetRef, overlayRef);
 
   useEffect(() => {
     if (!open || !dismissible) return;
@@ -56,6 +48,7 @@ export function Sheet({
 
   return (
     <div
+      ref={overlayRef}
       className={cn(
         'fixed inset-0 z-[var(--z-modal)] flex bg-surface-overlay p-3 backdrop-blur',
         side === 'right' ? 'items-stretch justify-end' : 'items-end justify-center',

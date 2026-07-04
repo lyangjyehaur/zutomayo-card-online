@@ -17,6 +17,7 @@ import { Card, CardPopover, computePopoverPosition, type CardSize, type PopoverP
 import { Chronos } from './Chronos';
 import { AppDrawer } from './AppDrawer';
 import { Button, IconButton, SegmentedControl } from './ui';
+import { useModalFocus } from './ui/useModalFocus';
 import {
   getBaseAttack,
   getChronosTime,
@@ -2270,17 +2271,23 @@ function BattleSideSheet({
   onClose: () => void;
   onPanelChange: (panel: BattleSidePanel) => void;
 }) {
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const sheetRef = useRef<HTMLElement | null>(null);
+  useModalFocus(Boolean(activePanel), sheetRef, overlayRef);
+
   if (!activePanel) return null;
   const activePanelMeta = BATTLE_SIDE_PANELS.find((panel) => panel.id === activePanel);
   const title = activePanelMeta?.label ?? 'Battle Panel';
 
   return (
-    <div className="battle-side-sheet-overlay" role="presentation" onClick={onClose}>
+    <div ref={overlayRef} className="battle-side-sheet-overlay" role="presentation" onClick={onClose}>
       <section
+        ref={sheetRef}
         className="battle-side-sheet"
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="battle-side-sheet-header">
@@ -2342,6 +2349,8 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
   const [phaseMessage, setPhaseMessage] = useState<FeedbackMessage | null>(null);
   const [focusedCard, setFocusedCard] = useState<FocusedCard>(null);
   const [activeSidePanel, setActiveSidePanel] = useState<BattleSidePanel | null>(null);
+  const [inspectedHandIndex, setInspectedHandIndex] = useState<number | null>(null);
+  const [touchInspectionMode, setTouchInspectionMode] = useState(false);
   const [_damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -2436,6 +2445,10 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
   }, [G.ready, meIndex]);
 
   useEffect(() => {
+    setInspectedHandIndex(null);
+  }, [G.step, G.turnNumber, G.ready, meIndex]);
+
+  useEffect(() => {
     if (G.turnNumber > previousTurnNumber.current) {
       playBattleFeedbackSequence(battleFeedback(G, meIndex, opponentIndex));
       const result = G.lastBattleResult;
@@ -2453,11 +2466,36 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
     if (G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
     if (G.step === 'initialSet') moves.setInitialCard(handIndex);
     else moves.setTurnCard(handIndex, me.setZoneA ? 'B' : 'A');
+    setInspectedHandIndex(null);
   };
 
   const time = getChronosTime(G);
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required;
   const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
+  const inspectedHandCard =
+    inspectedHandIndex !== null && inspectedHandIndex < me.hand.length ? me.hand[inspectedHandIndex] : null;
+  const canSetInspectedCard =
+    inspectedHandIndex !== null && !G.ready[meIndex] && me.cardsSetThisTurn < required && Boolean(inspectedHandCard);
+  const primaryActionTitle = G.ready[meIndex]
+    ? t('board.readyWaiting')
+    : G.pendingChoice
+      ? t('board.chooseCards')
+      : G.step === 'effectOrder'
+        ? t('board.chooseEffect')
+        : canConfirm
+          ? t('board.confirmSet')
+          : canSetInspectedCard
+            ? t('board.setInspectedCard')
+            : t('board.inspectHandCard');
+  const primaryActionBody = G.ready[meIndex]
+    ? t('board.phaseWaitingOpponentReady')
+    : G.pendingChoice || G.step === 'effectOrder'
+      ? currentInstruction.body
+      : canConfirm
+        ? `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/${required} · ${t('board.phaseMinimum')} ${minimum}`
+        : touchInspectionMode
+          ? t('board.touchInspectHint')
+          : currentInstruction.body;
 
   return (
     <BoardLayout time={time} handExpanded={handExpanded}>
@@ -2771,11 +2809,21 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                   return (
                     <div
                       key={card.instanceId}
-                      className="battle-hand-card h-28 w-[4.75rem] shrink-0 cursor-pointer transition-all duration-[var(--motion-duration-slow)] hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-accent-primary hover:shadow-selected md:h-32 md:w-20 lg:h-36 lg:w-24"
+                      className={`battle-hand-card h-28 w-[4.75rem] shrink-0 cursor-pointer transition-all duration-[var(--motion-duration-slow)] hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-accent-primary hover:shadow-selected md:h-32 md:w-20 lg:h-36 lg:w-24 ${
+                        inspectedHandIndex === index ? 'ring-2 ring-accent-primary shadow-selected' : ''
+                      }`}
                       style={{ transform: `rotate(${rotate}deg) translateY(${translateY}px)` }}
                       data-tut-card={card.defId}
-                      onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined}
-                      onPointerDown={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
+                      onClick={!G.ready[meIndex] && !touchInspectionMode ? () => setFromHand(index) : undefined}
+                      onPointerDown={(event) => {
+                        setFocusedCard({ card, owner: meIndex, zone: t('board.hand') });
+                        setInspectedHandIndex(index);
+                        if (event.pointerType === 'touch') {
+                          event.preventDefault();
+                          setTouchInspectionMode(true);
+                          setActiveSidePanel('focus');
+                        }
+                      }}
                       onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
                       onMouseLeave={() => setFocusedCard(null)}
                     >
@@ -2792,6 +2840,19 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               </div>
               {/* 右：操作按鈕 — 照搬 demo */}
               <div className="battle-action-stack flex w-full flex-row gap-2 lg:w-44 lg:flex-col">
+                <div className="battle-primary-action-hint">
+                  <span>{primaryActionTitle}</span>
+                  <p>{primaryActionBody}</p>
+                </div>
+                {canSetInspectedCard && (
+                  <button
+                    className="flex-1 border border-accent-primary/45 bg-accent-primary/10 px-5 py-2.5 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-accent-primary transition hover:bg-accent-primary/15 active:scale-95 lg:flex-none"
+                    type="button"
+                    onClick={() => setFromHand(inspectedHandIndex)}
+                  >
+                    {t('board.setInspectedCard')}
+                  </button>
+                )}
                 {!G.ready[meIndex] ? (
                   <button
                     className="flex-1 bg-content-primary px-5 py-2.5 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-content-inverse transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 lg:flex-none"
@@ -2815,7 +2876,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                   </button>
                 )}
                 <button
-                  className="flex-1 border border-content-primary/20 px-5 py-2 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60 transition hover:bg-content-primary/5 lg:flex-none"
+                  className="battle-power-summary-button flex-1 border border-content-primary/20 px-5 py-2 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60 transition hover:bg-content-primary/5 lg:flex-none"
                   type="button"
                   disabled
                 >

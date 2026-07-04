@@ -8891,6 +8891,10 @@ button.zone:focus-visible {
   box-shadow: 0 -1.2rem 3rem rgba(0, 0, 0, 0.45);
 }
 
+.battle-side-sheet:focus {
+  outline: none;
+}
+
 .battle-side-sheet-header {
   display: flex;
   min-height: 3rem;
@@ -8987,6 +8991,30 @@ button.zone:focus-visible {
 .battle-player-command-dock,
 .battle-layout-sidebar {
   min-width: 0;
+}
+
+.battle-primary-action-hint {
+  width: 100%;
+  border: 1px solid color-mix(in oklch, var(--gold) 24%, transparent);
+  border-radius: 2px;
+  background: color-mix(in oklch, var(--gold) 8%, var(--lacquer-deep));
+  padding: 0.55rem 0.65rem;
+}
+
+.battle-primary-action-hint span {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--gold) 82%, transparent);
+}
+
+.battle-primary-action-hint p {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: color-mix(in oklch, var(--bone) 62%, transparent);
 }
 
 /* ---------- 18. 響應式 ---------- */
@@ -9546,6 +9574,18 @@ button.zone:focus-visible {
     padding: 0.45rem !important;
   }
 
+  .board .battle-primary-action-hint {
+    padding: 0.45rem 0.55rem;
+  }
+
+  .board .battle-primary-action-hint p {
+    display: none;
+  }
+
+  .board .battle-power-summary-button {
+    display: none !important;
+  }
+
   .board .battle-hand-row {
     padding-bottom: 0 !important;
   }
@@ -9995,7 +10035,6 @@ button.zone:focus-visible {
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
   padding: 0.85rem 1rem;
-  cursor: pointer;
   transition:
     border-color 0.15s,
     transform 0.15s;
@@ -10087,6 +10126,11 @@ button.zone:focus-visible {
     padding: 0.75rem;
   }
 
+  .post-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .vote-column {
     min-width: 2.5rem;
     padding: 0.35rem;
@@ -10144,6 +10188,18 @@ button.zone:focus-visible {
   gap: 0.35rem;
   flex: 1;
   min-width: 0;
+}
+
+.post-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.post-detail-button {
+  min-height: 2.75rem;
+  flex-shrink: 0;
 }
 
 .post-title-row {

@@ -16,7 +16,7 @@ export type AuthUser = {
   winRate?: number;
 };
 
-export const PUBLIC_AUTH_ENTRYPOINTS_ENABLED = false;
+export const PUBLIC_AUTH_ENTRYPOINTS_ENABLED = true;
 
 function authErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : '';

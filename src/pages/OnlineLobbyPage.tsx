@@ -22,6 +22,7 @@ import {
 import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
+import { AuthSection } from '../components/lobby/AuthSection';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
@@ -36,6 +37,7 @@ interface OnlineLobbyPageProps {
   serverDecks: DeckResponse[];
   setDeck0Name: (deckName: string) => void;
   onStartOnline: (matchID?: string, playerName?: string) => Promise<OnlineSession>;
+  onAuthChanged: () => void | Promise<void>;
   serverDeckError?: string;
   cardsReady: boolean;
 }
@@ -78,6 +80,7 @@ export function OnlineLobbyPage({
   serverDecks,
   setDeck0Name,
   onStartOnline,
+  onAuthChanged,
   serverDeckError,
   cardsReady,
 }: OnlineLobbyPageProps) {
@@ -99,18 +102,33 @@ export function OnlineLobbyPage({
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
   const [anonymousNameDraft, setAnonymousNameDraft] = useState(() => anonymousIdentity.baseName);
   const [showAnonymousNamePrompt, setShowAnonymousNamePrompt] = useState(false);
+  const refreshProfile = useCallback(async () => {
+    if (!isLoggedIn()) {
+      setProfile(null);
+      return;
+    }
+    try {
+      setProfile(await getProfile());
+    } catch {
+      setProfile(null);
+    }
+  }, []);
+
   useEffect(() => {
-    if (!isLoggedIn()) return;
     let cancelled = false;
-    void getProfile()
-      .then((next) => {
-        if (!cancelled) setProfile(next);
-      })
-      .catch(() => {});
+    void refreshProfile().then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshProfile]);
+
+  const handleAuthChanged = useCallback(async () => {
+    await onAuthChanged();
+    await refreshProfile();
+    setError('');
+  }, [onAuthChanged, refreshProfile]);
 
   const anonymousDisplayName = formatAnonymousDisplayName(anonymousIdentity);
   const effectivePlayerName = profile?.nickname || anonymousDisplayName;
@@ -419,6 +437,15 @@ export function OnlineLobbyPage({
               <p className="mt-2 text-caption leading-relaxed text-content-primary/40">{t('anonymous.registerHint')}</p>
             )}
           </Panel>
+
+          {!profile && (
+            <Panel variant="ghost">
+              <div className="mb-3 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                {t('auth.login')} / {t('auth.register')}
+              </div>
+              <AuthSection onAuthChanged={handleAuthChanged} />
+            </Panel>
+          )}
 
           {/* 當前牌組摘要 */}
           <Panel variant="ghost">

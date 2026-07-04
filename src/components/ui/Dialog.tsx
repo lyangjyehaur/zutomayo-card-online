@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { useEffect, useId, useRef } from 'react';
 import { IconButton } from './Button';
+import { useModalFocus } from './useModalFocus';
 import { cn } from './utils';
 
 export type DialogSize = 'sm' | 'md' | 'lg';
@@ -40,18 +41,9 @@ export function Dialog({
 }: DialogProps) {
   const titleId = useId();
   const descriptionId = useId();
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    window.requestAnimationFrame(() => dialogRef.current?.focus());
-    return () => {
-      previousFocusRef.current?.focus();
-      previousFocusRef.current = null;
-    };
-  }, [open]);
+  useModalFocus(open, dialogRef, overlayRef);
 
   useEffect(() => {
     if (!open || !dismissible) return;
@@ -66,6 +58,7 @@ export function Dialog({
 
   return (
     <div
+      ref={overlayRef}
       className={cn(
         'fixed inset-0 z-[var(--z-modal)] flex overflow-y-auto bg-surface-overlay p-4 backdrop-blur',
         mobilePresentation === 'sheet' ? 'items-end justify-center md:items-center' : 'items-center justify-center',

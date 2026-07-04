@@ -1,7 +1,8 @@
-import { useId, type ReactNode } from 'react';
+import { useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { t } from '../i18n';
 import { Button, IconButton, type ButtonVariant } from './ui';
+import { useModalFocus } from './ui/useModalFocus';
 
 interface AppDrawerAction {
   label: string;
@@ -39,12 +40,15 @@ export function AppDrawer({
   tone = 'default',
 }: AppDrawerProps) {
   const titleId = useId();
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  useModalFocus(open, panelRef, overlayRef);
 
   if (!open) return null;
 
   return (
-    <div className={`app-drawer-overlay ${tone}`} role="presentation">
-      <section className="app-drawer-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <div ref={overlayRef} className={`app-drawer-overlay ${tone}`} role="presentation">
+      <section ref={panelRef} className="app-drawer-panel" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <div>
           {kicker && <span>{kicker}</span>}
           <h2 id={titleId}>{title}</h2>

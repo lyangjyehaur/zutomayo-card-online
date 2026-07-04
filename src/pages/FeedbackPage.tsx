@@ -452,68 +452,69 @@ export function FeedbackPage() {
 
       <ul className="feedback-list">
         {posts.map((post) => (
-          <li
-            key={post.id}
-            className="feedback-card"
-            onClick={() => setSelectedId(post.id)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                setSelectedId(post.id);
-              }
-            }}
-          >
-            <button
-              type="button"
-              className={
-                'vote-column' +
-                (post.hasVoted ? ' voted' : '') +
-                (NO_VOTE_STATUSES.includes(post.status) ? ' disabled' : '')
-              }
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleVote(post.id, post.status);
-              }}
-              disabled={NO_VOTE_STATUSES.includes(post.status)}
-              aria-pressed={post.hasVoted}
-            >
-              <span className="vote-arrow">{post.hasVoted ? '▲' : '△'}</span>
-              <span className="vote-count font-mono">{post.voteCount}</span>
-            </button>
-            <div className="post-body">
-              <div className="post-title-row">
-                <Badge tone={statusBadgeTone(post.status)}>{t(statusKey(post.status))}</Badge>
-                {post.tag && (
-                  <TagButton
-                    className="post-tag !min-h-11 !min-w-11"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTagFilter(post.tag);
-                    }}
-                  >
-                    #{post.tag}
-                  </TagButton>
+          <li key={post.id}>
+            <article className="feedback-card">
+              <button
+                type="button"
+                className={
+                  'vote-column' +
+                  (post.hasVoted ? ' voted' : '') +
+                  (NO_VOTE_STATUSES.includes(post.status) ? ' disabled' : '')
+                }
+                onClick={() => {
+                  void handleVote(post.id, post.status);
+                }}
+                disabled={NO_VOTE_STATUSES.includes(post.status)}
+                aria-pressed={post.hasVoted}
+                aria-label={`${post.hasVoted ? t('feedback.voted') : t('feedback.vote')}: ${post.title}`}
+              >
+                <span className="vote-arrow">{post.hasVoted ? '▲' : '△'}</span>
+                <span className="vote-count font-mono">{post.voteCount}</span>
+              </button>
+              <div className="post-body">
+                <div className="post-title-row">
+                  <Badge tone={statusBadgeTone(post.status)}>{t(statusKey(post.status))}</Badge>
+                  {post.tag && (
+                    <TagButton
+                      className="post-tag !min-h-11 !min-w-11"
+                      onClick={() => {
+                        setTagFilter(post.tag);
+                      }}
+                    >
+                      #{post.tag}
+                    </TagButton>
+                  )}
+                  <h3 className="post-title font-display">{post.title}</h3>
+                  {post.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
+                </div>
+                {post.description && (
+                  <p className="post-desc">
+                    <Markdown text={post.description} />
+                  </p>
                 )}
-                <h3 className="post-title font-display">{post.title}</h3>
-                {post.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
+                <div className="post-footer">
+                  <div className="post-meta">
+                    <span>{authorLabel(post)}</span>
+                    <span>·</span>
+                    <span>{relativeTime(post.createdAt, locale)}</span>
+                    <span>·</span>
+                    <span>
+                      {post.commentCount} {t('feedback.comments')}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    className="post-detail-button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedId(post.id)}
+                    aria-label={`${t('feedback.openDetail')}: ${post.title}`}
+                  >
+                    {t('feedback.openDetail')}
+                  </Button>
+                </div>
               </div>
-              {post.description && (
-                <p className="post-desc">
-                  <Markdown text={post.description} />
-                </p>
-              )}
-              <div className="post-meta">
-                <span>{authorLabel(post)}</span>
-                <span>·</span>
-                <span>{relativeTime(post.createdAt, locale)}</span>
-                <span>·</span>
-                <span>
-                  {post.commentCount} {t('feedback.comments')}
-                </span>
-              </div>
-            </div>
+            </article>
           </li>
         ))}
       </ul>
