@@ -1411,7 +1411,7 @@ const BATTLE_SIDE_PANELS: Array<{
 
 function BoardLayout({ time, children }: { time: ChronosTime; children: ReactNode }) {
   return (
-    <div className={`bf-root battle-layout chrono-${time}`} data-board-layout="responsive">
+    <div className={`bf-root chrono-${time}`} data-board-layout="responsive">
       {children}
     </div>
   );
@@ -1856,6 +1856,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               size="lg"
               onActivate={detailActivate(opponent.battleZone, opponentIndex, zoneNames.battle)}
               onInspect={(card) => inspect(card, opponentIndex, zoneNames.battle)}
+              tutId="opponent-battle-zone"
             />
             <ChronosPanel
               chronos={G.chronos}
@@ -1871,6 +1872,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               state={initialSetUndo ? 'undoable' : 'idle'}
               onActivate={initialSetUndo ?? detailActivate(me.battleZone, meIndex, zoneNames.battle)}
               onInspect={(card) => inspect(card, meIndex, zoneNames.battle)}
+              tutId="player-battle-zone"
             />
           </section>
 
