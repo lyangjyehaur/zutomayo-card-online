@@ -1,6 +1,6 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { Activity, BookOpen, Info, Pause, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type {
   ActionLogEntry,
@@ -13,19 +13,25 @@ import type {
   PlayerIndex,
 } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
-import { Card, CardPopover, computePopoverPosition, type CardSize, type PopoverPosition } from './Card';
-import { Chronos } from './Chronos';
+import { Card, CardPopover, computePopoverPosition, type PopoverPosition } from './Card';
 import { AppDrawer } from './AppDrawer';
-import { Button, IconButton, SegmentedControl } from './ui';
+import { Button, IconButton, SegmentedControl, Sheet } from './ui';
 import { useModalFocus } from './ui/useModalFocus';
 import {
-  getBaseAttack,
-  getChronosTime,
-  getEffectiveAttack,
-  getMinimumSetCount,
-  getRequiredSetCount,
-  isAttackPowerInsufficient,
-} from '../game/GameLogic';
+  ActionDock,
+  CardDetailBody,
+  CardDetailPanel,
+  CardSlot,
+  CardStack,
+  ChronosPanel,
+  HandZone,
+  PhaseIndicator,
+  PlayerStatus,
+  ZoneSummarySheet,
+  useViewportMode,
+  type FocusedCard,
+} from './battle';
+import { getChronosTime, getMinimumSetCount, getRequiredSetCount } from '../game/GameLogic';
 import { t, useLocale } from '../i18n';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { normalizeGameOverWinner, useOnlineMatchSubmission } from './board/useOnlineMatchSubmission';
@@ -1038,552 +1044,8 @@ function powerTotal(G: GameState, player: PlayerIndex): number {
   return G.players[player].powerCharger.reduce((sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0), 0);
 }
 
-function hpClass(hp: number): string {
-  if (hp <= 25) return 'danger';
-  if (hp <= 50) return 'warning';
-  return 'healthy';
-}
-
-type FocusedCard = { card: CardInstance; owner: PlayerIndex; zone: string } | null;
-
-function cardDefinition(card: CardInstance | null) {
-  if (!card || card.defId === '__hidden__') return undefined;
-  return getCardDef(card.defId);
-}
-
 function wasSetThisTurn(G: GameState, player: PlayerIndex, card: CardInstance | null): boolean {
   return !!card && G.setCardsThisTurn[player].some((item) => item.instanceId === card.instanceId);
-}
-
-function actionTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function LpBar({ hp, tone }: { hp: number; tone: 'gold' | 'vermilion' }) {
-  const hpPercent = Math.max(0, Math.min(100, hp));
-  return (
-    <div className="relative h-1 w-full bg-content-primary/10" aria-hidden="true">
-      <div
-        className={`absolute inset-y-0 left-0 ${tone === 'gold' ? 'bg-accent-primary' : 'bg-accent-action'}`}
-        style={{ width: `${hpPercent}%` }}
-      />
-    </div>
-  );
-}
-
-/* Slot — 照搬 demo 的卡槽設計 + 佔位文字 */
-function Slot({
-  card,
-  label,
-  size: _size = 'small',
-  owner,
-  onFocusCard,
-  onClick,
-}: {
-  card: CardInstance | null;
-  label?: string;
-  size?: CardSize;
-  owner: PlayerIndex;
-  onFocusCard?: (focus: FocusedCard) => void;
-  onClick?: () => void;
-}) {
-  const def = card?.faceUp ? getCardDef(card.defId) : undefined;
-  return (
-    <div
-      className={`battle-slot grid size-[88px] place-items-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5 shadow-inset-slot ${onClick ? 'cursor-pointer transition hover:ring-accent-primary/30' : ''}`}
-      onClick={onClick}
-      onPointerDown={() => card && onFocusCard?.({ card, owner, zone: label ?? 'slot' })}
-      onMouseEnter={() => card && onFocusCard?.({ card, owner, zone: label ?? 'slot' })}
-      onMouseLeave={() => onFocusCard?.(null)}
-    >
-      {card && def ? (
-        <div className="battle-slot-card h-[80px] w-[56px] overflow-hidden rounded-xs ring-1 ring-content-primary/10">
-          <img
-            src={def.image}
-            alt={def.name}
-            className="h-full w-full object-cover"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-          />
-        </div>
-      ) : card ? (
-        <div className="battle-slot-card h-[80px] w-[56px] rounded-xs bg-surface-base ring-1 ring-content-primary/10">
-          <img src="/card-back.jpg" alt="" className="h-full w-full rounded-xs object-cover" loading="lazy" />
-        </div>
-      ) : label ? (
-        <span className="font-display text-xl italic text-content-primary/20">{label}</span>
-      ) : null}
-    </div>
-  );
-}
-
-function FieldZone({
-  label,
-  shortLabel,
-  className,
-  card,
-  onClick,
-  size = 'small',
-  activeTime,
-  owner,
-  onFocusCard,
-}: {
-  label: string;
-  shortLabel?: string;
-  className: string;
-  card: CardInstance | null;
-  onClick?: () => void;
-  size?: CardSize;
-  activeTime?: ChronosTime;
-  owner?: PlayerIndex;
-  onFocusCard?: (focus: FocusedCard) => void;
-}) {
-  const focus = card && owner !== undefined ? { card, owner, zone: label } : null;
-  const content = (
-    <>
-      <span className="absolute left-2 top-1.5 z-[var(--z-dropdown)] font-mono text-micro uppercase tracking-[var(--tracking-meta)] text-content-primary/25">
-        {label}
-      </span>
-      {card ? (
-        <div
-          className="flex h-full w-full items-center justify-center pt-3"
-          onMouseEnter={() => onFocusCard?.(focus)}
-          onFocus={() => onFocusCard?.(focus)}
-        >
-          <Card card={card} size={size} activeTime={activeTime} showPopover />
-        </div>
-      ) : (
-        <span className="font-display text-xl italic text-content-primary/20">{shortLabel ?? label}</span>
-      )}
-    </>
-  );
-  const slotClass = [
-    'battle-slot',
-    'zone',
-    `zone-${size}`,
-    className,
-    'relative flex size-[88px] shrink-0 items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5',
-    'shadow-inset-slot transition hover:ring-accent-primary/30',
-    onClick ? 'cursor-pointer' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  if (onClick) {
-    return (
-      <button
-        className={slotClass}
-        type="button"
-        onClick={onClick}
-        onPointerDown={() => onFocusCard?.(focus)}
-        onMouseEnter={() => onFocusCard?.(focus)}
-        onFocus={() => onFocusCard?.(focus)}
-      >
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <div
-      className={slotClass}
-      onPointerDown={() => onFocusCard?.(focus)}
-      onMouseEnter={() => onFocusCard?.(focus)}
-      onFocus={() => onFocusCard?.(focus)}
-    >
-      {content}
-    </div>
-  );
-}
-
-function StackZone({
-  kind,
-  label,
-  value,
-  cards,
-}: {
-  kind: 'deck' | 'power';
-  label: string;
-  value: number;
-  cards?: CardInstance[];
-}) {
-  if (kind === 'deck') {
-    return (
-      <div className="flex flex-col items-center gap-2" aria-label={`${label}: ${value}`}>
-        <div
-          className="flex h-16 w-11 items-center justify-center rounded-xs bg-surface-base ring-1 ring-content-primary/10"
-          aria-hidden="true"
-        >
-          <div className="font-display text-sm italic text-accent-primary/60">ZC</div>
-        </div>
-        <span className="font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/40" aria-hidden="true">
-          {label} {value}
-        </span>
-      </div>
-    );
-  }
-
-  if (cards && cards.length > 0) {
-    return (
-      <div className="relative flex min-w-24 flex-col gap-2" aria-label={`${label}: ${value}`}>
-        <div className="relative h-16" aria-hidden="true">
-          {cards.map((card, i) => {
-            const def = getCardDef(card.defId);
-            return (
-              <div
-                key={card.instanceId}
-                className="absolute top-0 h-16 w-11 overflow-hidden rounded-xs bg-surface-canvas ring-1 ring-content-primary/10"
-                style={{ left: `${i * 12}px` }}
-              >
-                {def?.image && (
-                  <img
-                    className="h-full w-full object-cover opacity-70"
-                    src={def.image}
-                    alt={def.name}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <strong className="font-mono text-caption uppercase tracking-[var(--tracking-label)] text-accent-primary/70">
-          {label} {value}
-        </strong>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex min-w-24 flex-col gap-2 rounded-sm bg-surface-canvas/50 p-3 ring-1 ring-content-primary/5"
-      aria-label={`${label}: ${value}`}
-    >
-      <strong className="font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/45">
-        <span>{label}</span>
-      </strong>
-      <span className="font-display text-2xl italic text-accent-primary/70">{value}</span>
-    </div>
-  );
-}
-
-export function OpponentStatsBar({
-  G,
-  opponentIndex,
-  damageAmount,
-  onFocusCard,
-}: {
-  G: GameState;
-  opponentIndex: PlayerIndex;
-  damageAmount?: number;
-  onFocusCard?: (focus: FocusedCard) => void;
-}) {
-  const opponent = G.players[opponentIndex];
-
-  return (
-    <section
-      className={`relative flex flex-col items-center gap-2 border-b border-content-primary/5 pb-3 ${damageAmount ? 'damaged' : ''}`}
-      aria-label={t('player.opponent')}
-    >
-      {/* 名字 + LP 居中 */}
-      <div className="flex items-center gap-6">
-        <div className="text-right">
-          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('player.opponent')}</div>
-          <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
-        </div>
-        <div className="w-72">
-          <LpBar hp={opponent.hp} tone="vermilion" />
-          <div className="mt-1 flex justify-between font-mono text-caption text-content-primary/40">
-            <span>
-              {t('board.hp')} {opponent.hp}/100
-            </span>
-            <span>
-              {t('board.hand')} · {opponent.hand.length}
-            </span>
-          </div>
-        </div>
-      </div>
-      {/* 手牌背面 + 設置區 */}
-      <div className="flex items-center gap-4">
-        {/* 手牌背面居中 */}
-        <div className="flex items-end gap-1.5" aria-label={t('board.hand')}>
-          {opponent.hand.map((card, index) => (
-            <div
-              key={card.instanceId}
-              className="h-12 w-9 overflow-hidden rounded-xs ring-1 ring-content-primary/10 shadow-card-thumbnail"
-              style={{ transform: `translateY(${Math.abs(index - (opponent.hand.length - 1) / 2) * 2}px)` }}
-            >
-              <img src="/card-back.jpg" alt="card back" className="h-full w-full object-cover" loading="lazy" />
-            </div>
-          ))}
-        </div>
-        {/* 對手設置區 */}
-        <div className="flex gap-1.5">
-          <FieldZone
-            label={t('board.setZoneA')}
-            shortLabel="A"
-            className="set-zone set-zone-a"
-            card={opponent.setZoneA}
-            size="small"
-            owner={opponentIndex}
-            onFocusCard={onFocusCard}
-          />
-          <FieldZone
-            label={t('board.setZoneB')}
-            shortLabel="B"
-            className="set-zone set-zone-b"
-            card={opponent.setZoneB}
-            size="small"
-            owner={opponentIndex}
-            onFocusCard={onFocusCard}
-          />
-          <FieldZone
-            label={t('board.areaEnchant')}
-            shortLabel="C"
-            className="area-zone area-zone-c"
-            card={opponent.setZoneC}
-            size="small"
-            owner={opponentIndex}
-            onFocusCard={onFocusCard}
-          />
-        </div>
-      </div>
-      {damageAmount ? (
-        <span
-          className="damage-float absolute right-0 top-0 font-display text-3xl italic text-accent-action"
-          key={`opp-${damageAmount}`}
-        >
-          -{damageAmount}
-        </span>
-      ) : null}
-    </section>
-  );
-}
-
-export function BottomZones({
-  G,
-  meIndex,
-  moves,
-  damageAmount,
-  onFocusCard,
-}: {
-  G: GameState;
-  meIndex: PlayerIndex;
-  moves: Props['moves'];
-  damageAmount?: number;
-  onFocusCard?: (focus: FocusedCard) => void;
-}) {
-  const me = G.players[meIndex];
-
-  return (
-    <section
-      className="relative flex flex-1 flex-col items-center justify-end gap-3 border-t border-content-primary/5 pt-3"
-      aria-label={t('player.me')}
-    >
-      {/* 設置區 */}
-      <div className="flex items-center justify-center gap-3">
-        <StackZone
-          kind="power"
-          label={t('board.powerCharger')}
-          value={powerTotal(G, meIndex)}
-          cards={me.powerCharger}
-        />
-        <FieldZone
-          label={t('board.setZoneA')}
-          shortLabel="A"
-          className="set-zone set-zone-a"
-          card={me.setZoneA}
-          onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
-          size="normal"
-          owner={meIndex}
-          onFocusCard={onFocusCard}
-        />
-        <FieldZone
-          label={t('board.setZoneB')}
-          shortLabel="B"
-          className="set-zone set-zone-b"
-          card={me.setZoneB}
-          onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
-          size="normal"
-          owner={meIndex}
-          onFocusCard={onFocusCard}
-        />
-        <FieldZone
-          label={t('board.areaEnchant')}
-          shortLabel="C"
-          className="area-zone area-zone-c"
-          card={me.setZoneC}
-          onClick={
-            wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex] ? () => moves.undoSetCard('C') : undefined
-          }
-          size="normal"
-          owner={meIndex}
-          onFocusCard={onFocusCard}
-        />
-        <StackZone kind="deck" label={t('board.deckZone')} value={me.deck.length} />
-      </div>
-      {/* 玩家資訊列 */}
-      <div className="flex w-full items-end justify-between px-2">
-        <div className="w-72">
-          <div className="flex items-center gap-4">
-            <div className="font-display text-xl italic">{playerName(meIndex)}</div>
-          </div>
-          <LpBar hp={me.hp} tone="gold" />
-          <div className="mt-1 flex justify-between font-mono text-caption text-content-primary/40">
-            <span>
-              {t('board.hp')} {me.hp}/100
-            </span>
-            <span>
-              {t('board.deck')} · {me.deck.length}
-            </span>
-          </div>
-        </div>
-        <div className={`font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/40 ${hpClass(me.hp)}`}>
-          {t('board.powerCharger')} {powerTotal(G, meIndex)} · {t('board.abyss')} {me.abyss.length}
-        </div>
-      </div>
-      {damageAmount ? (
-        <span
-          className="damage-float absolute left-0 top-2 font-display text-3xl italic text-accent-action"
-          key={`me-${damageAmount}`}
-        >
-          -{damageAmount}
-        </span>
-      ) : null}
-    </section>
-  );
-}
-
-export function CentralArena({
-  G,
-  meIndex,
-  opponentIndex,
-  time,
-  onFocusCard,
-}: {
-  G: GameState;
-  meIndex: PlayerIndex;
-  opponentIndex: PlayerIndex;
-  time: ChronosTime;
-  onFocusCard?: (focus: FocusedCard) => void;
-}) {
-  const me = G.players[meIndex];
-  const opponent = G.players[opponentIndex];
-
-  return (
-    <section className="flex h-full items-center justify-center" aria-label={t('chronos.title')}>
-      {/* 對手戰鬥區 | Chronos | 我方戰鬥區 */}
-      <div className="flex items-center gap-8">
-        <FieldZone
-          label={`${t('player.opponent')} ${t('board.battleZone')}`}
-          shortLabel={t('board.battleZoneShort')}
-          className="battle-zone central-battle-zone opponent-battle-zone"
-          card={opponent.battleZone}
-          size="normal"
-          activeTime={time}
-          owner={opponentIndex}
-          onFocusCard={onFocusCard}
-        />
-
-        <Chronos
-          chronos={G.chronos}
-          currentTime={time}
-          nightSidePlayer={G.chronos.nightSidePlayer}
-          currentPlayer={meIndex}
-        />
-
-        <FieldZone
-          label={`${t('player.me')} ${t('board.battleZone')}`}
-          shortLabel={t('board.battleZoneShort')}
-          className="battle-zone central-battle-zone player-battle-zone"
-          card={me.battleZone}
-          size="normal"
-          activeTime={time}
-          owner={meIndex}
-          onFocusCard={onFocusCard}
-        />
-      </div>
-    </section>
-  );
-}
-
-export function HandDrawer({
-  cards,
-  owner,
-  onCardClick,
-  onFocusCard,
-  children,
-}: {
-  cards: CardInstance[];
-  owner: PlayerIndex;
-  expanded: boolean;
-  onToggle: () => void;
-  onCardClick?: (index: number) => void;
-  onFocusCard?: (focus: FocusedCard) => void;
-  children?: ReactNode;
-}) {
-  const center = (cards.length - 1) / 2;
-  return (
-    <section
-      className="pointer-events-none fixed bottom-0 left-4 z-[var(--z-header)] flex items-end justify-between gap-4 pb-4 [right:calc(280px+2rem)]"
-      aria-label={t('board.hand')}
-    >
-      <div className="pointer-events-auto min-w-48">{children}</div>
-      <div className="pointer-events-auto flex min-h-44 flex-1 items-end justify-center overflow-visible">
-        <div className="flex items-end justify-center">
-          {cards.map((card, index) => {
-            const rotate = (index - center) * 4;
-            const translateY = Math.abs(index - center) * 6;
-            const fanStyle = {
-              '--hand-rotate': `${rotate}deg`,
-              '--hand-y': `${translateY}px`,
-            } as CSSProperties;
-            return (
-              <div
-                key={card.instanceId}
-                className="-mx-2 h-36 w-24 shrink-0 rounded-sm bg-gradient-to-b from-content-primary/10 to-surface-canvas p-0.5 ring-1 ring-content-primary/10 transition duration-200 [transform:rotate(var(--hand-rotate))_translateY(var(--hand-y))] hover:z-[var(--z-sticky)] hover:ring-accent-primary/60 hover:[transform:translateY(-1.5rem)_rotate(0deg)] focus-within:z-[var(--z-sticky)] focus-within:ring-accent-primary/60 focus-within:[transform:translateY(-1.5rem)_rotate(0deg)]"
-                style={fanStyle}
-                onMouseEnter={() => onFocusCard?.({ card, owner, zone: t('board.hand') })}
-                onFocus={() => onFocusCard?.({ card, owner, zone: t('board.hand') })}
-              >
-                <Card
-                  card={card}
-                  size="normal"
-                  className="hand-card !h-full !w-full"
-                  showBadges={false}
-                  showPopover
-                  onClick={onCardClick ? () => onCardClick(index) : undefined}
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-export function ActionsBar({
-  ready,
-  canConfirm,
-  cardsSet,
-  required,
-  onConfirm,
-}: {
-  ready: boolean;
-  canConfirm: boolean;
-  cardsSet: number;
-  required: number;
-  onConfirm: () => void;
-}) {
-  return (
-    <section className="actions-bar flex flex-col items-start gap-2">
-      <Button className={primaryActionClass()} disabled={!canConfirm} type="button" variant="primary" onClick={onConfirm}>
-        {ready ? t('board.readyWaiting') : `${t('board.confirmSet')} (${cardsSet}/${required})`}
-      </Button>
-    </section>
-  );
 }
 
 function battleFeedback(G: GameState, meIndex: PlayerIndex, opponentIndex: PlayerIndex): FeedbackMessage {
@@ -1699,37 +1161,6 @@ function phaseInstruction(
     };
   }
   return { title: t('board.gameOver'), body: t('online.gameOverHelper'), meta: [] };
-}
-
-function PhaseInstructionBanner({ instruction }: { instruction: ReturnType<typeof phaseInstruction> }) {
-  return (
-    <section className="board-phase-instruction pointer-events-none absolute inset-x-3 top-14 z-[var(--z-header)] flex justify-center lg:inset-x-6">
-      <div className="w-full max-w-3xl rounded-sm border border-content-primary/10 bg-surface-canvas/82 px-3 py-2 text-content-primary shadow-instruction backdrop-blur md:px-4">
-        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-4">
-          <div className="min-w-0">
-            <div className="font-mono text-minutia uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{instruction.title}</div>
-            <p className="mt-1 text-xs leading-snug text-content-primary/70 md:text-sm">{instruction.body}</p>
-          </div>
-          {instruction.meta.length > 0 && (
-            <div className="flex shrink-0 flex-wrap gap-1.5">
-              {instruction.meta.map((item) => (
-                <span
-                  key={item.text}
-                  className={
-                    item.done
-                      ? 'rounded-sm border border-accent-success/40 bg-accent-success/10 px-2 py-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-accent-success'
-                      : 'rounded-sm border border-content-primary/10 bg-content-primary/5 px-2 py-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-primary/45'
-                  }
-                >
-                  {item.text}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
 }
 
 function EffectOrderPanel({
@@ -1868,182 +1299,7 @@ function PendingChoicePanel({
   );
 }
 
-export function FocusPanel({ focus }: { focus: FocusedCard }) {
-  const def = cardDefinition(focus?.card ?? null);
-  const locale = useLocale();
-  const translatedEffect = def ? getTranslatedEffect(def.id, locale) : null;
-  return (
-    <section className="flex flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10" style={{ height: '480px' }}>
-      <div className="flex-shrink-0 font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Focus</div>
-      {focus && def ? (
-        <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex-shrink-0 text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-            {playerName(focus.owner)} · {focus.zone}
-          </div>
-          {/* 卡圖 — 固定高度 */}
-          <div className="mt-2 flex-shrink-0 aspect-[3/4] w-full overflow-hidden rounded-sm ring-1 ring-content-primary/10">
-            <img
-              src={def.image}
-              alt={def.name}
-              className="h-full w-full object-cover"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <h2 className="mt-2 flex-shrink-0 font-display text-xl italic text-content-primary">{def.name}</h2>
-          <div className="mt-2 flex-shrink-0 grid grid-cols-2 gap-2 font-mono text-caption uppercase tracking-[var(--tracking-compact)] text-content-primary/45">
-            <span>
-              {t('card.energy')} <span className="text-accent-primary">{def.powerCost}</span>
-            </span>
-            <span>
-              {t('card.clock')} <span className="text-accent-primary">{def.clock}</span>
-            </span>
-            {def.attack && (
-              <>
-                <span>
-                  {t('card.night')} <span className="text-accent-primary">{def.attack.night}</span>
-                </span>
-                <span>
-                  {t('card.day')} <span className="text-accent-primary">{def.attack.day}</span>
-                </span>
-              </>
-            )}
-          </div>
-          {(translatedEffect || def.effect) && (
-            <p className="mt-2 min-h-0 flex-1 overflow-y-auto text-xs leading-relaxed text-content-primary/60">
-              {translatedEffect ?? def.effect}
-            </p>
-          )}
-        </div>
-      ) : (
-        /* 無焦點時佔位，保持同樣高度 */
-        <div className="mt-2 flex flex-1 flex-col items-center justify-center rounded-sm bg-surface-canvas/50 ring-1 ring-content-primary/5">
-          <div className="aspect-[3/4] w-32 rounded-sm bg-surface-canvas/80 ring-1 ring-content-primary/10" />
-          <p className="mt-4 font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/25">{t('card.unknown')}</p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-export function BattleLogPanel({ G }: { G: GameState }) {
-  const locale = useLocale();
-  const entries = (G.actionLog ?? []).slice(-14).reverse();
-  return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-sm bg-surface-base/60 p-4 ring-1 ring-content-primary/10">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Ritual Log</span>
-        <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
-      </div>
-      <div className="flex-1 space-y-2 overflow-y-auto font-mono text-caption leading-relaxed text-content-primary/40">
-        {entries.map((entry) => {
-          const { segments, breakdown } = formatLogEntry(entry, locale);
-          return (
-            <div key={`${entry.id ?? entry.timestamp}-${entry.action}`}>
-              <p>
-                <span className="text-content-primary/60">[{actionTime(entry.timestamp)}]</span>{' '}
-                <span className="text-accent-primary/50">
-                  {t('board.turn')} {entry.turn}
-                </span>{' '}
-                {renderLogSegments(segments)}
-              </p>
-              {breakdown && <LogBreakdown breakdown={breakdown} />}
-            </div>
-          );
-        })}
-        {entries.length === 0 && <p className="text-content-primary/30">{t('board.waitingOpponent')}</p>}
-      </div>
-    </section>
-  );
-}
-
 type BattleSidePanel = 'focus' | 'status' | 'log';
-
-function BattleFocusSidebarPanel({ focusedCard, G }: { focusedCard: FocusedCard; G: GameState }) {
-  const locale = useLocale();
-  const def = cardDefinition(focusedCard?.card ?? null);
-  const translatedEffect = getTranslatedEffect(def?.id ?? '', locale);
-
-  return (
-    <div className="battle-focus-panel rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
-      <div className="mb-3 flex items-center justify-between">
-        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Focus</span>
-        {focusedCard && (
-          <span className="font-mono text-minutia uppercase tracking-[var(--tracking-meta)] text-content-primary/35">
-            {playerName(focusedCard.owner)} · {focusedCard.zone}
-          </span>
-        )}
-      </div>
-      {focusedCard && def ? (
-        <>
-          <div className="aspect-[3/4] w-full overflow-hidden rounded-xs bg-gradient-to-br from-accent-action/30 via-surface-canvas to-surface-base ring-1 ring-content-primary/10">
-            {def.image && (
-              <img
-                src={def.image}
-                alt=""
-                className="h-full w-full object-cover"
-                loading="lazy"
-                referrerPolicy="no-referrer"
-              />
-            )}
-          </div>
-          <div className="mt-3 font-display text-lg italic">{def.name}</div>
-          <div className="mt-1 font-mono text-minutia uppercase tracking-widest text-content-primary/40">
-            {def.element} · {def.type}
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-caption text-content-primary/50">
-            <span>
-              ⚡ {t('card.energy')} <span className="text-accent-primary">{def.powerCost}</span>
-            </span>
-            <span>
-              🕐 {t('card.clock')} <span className="text-accent-primary">{def.clock}</span>
-            </span>
-            {def.attack && (
-              <>
-                <span>
-                  🌙 {t('card.night')} <span className="text-accent-primary">{def.attack.night}</span>
-                </span>
-                <span>
-                  ☀️ {t('card.day')} <span className="text-accent-primary">{def.attack.day}</span>
-                </span>
-              </>
-            )}
-            {focusedCard.zone === t('board.battleZone') && def.attack && (
-              <>
-                <span className="col-span-2 mt-1 border-t border-content-primary/10 pt-1">
-                  {t('board.hpChange.rawAttack' as never)}{' '}
-                  <span className="text-accent-primary">{getBaseAttack(focusedCard.card, G, focusedCard.owner) ?? '—'}</span>
-                </span>
-                <span className="col-span-2">
-                  {t('board.hpChange.effectiveAttack' as never)}{' '}
-                  <span
-                    className={
-                      isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
-                        ? 'text-accent-action'
-                        : 'text-accent-info'
-                    }
-                  >
-                    {isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
-                      ? t('board.hpChange.insufficientPower' as never)
-                      : getEffectiveAttack(focusedCard.card, G, focusedCard.owner)}
-                  </span>
-                </span>
-              </>
-            )}
-            <span>
-              ⚡→ STP <span className="text-accent-primary">{def.sendToPower ?? 0}</span>
-            </span>
-          </div>
-          {(translatedEffect || def.effect) && (
-            <p className="mt-3 text-control leading-relaxed text-content-primary/50">{translatedEffect ?? def.effect}</p>
-          )}
-        </>
-      ) : (
-        <div className="aspect-[3/4] w-full rounded-xs bg-gradient-to-br from-accent-action/10 via-surface-canvas to-surface-base ring-1 ring-content-primary/10" />
-      )}
-    </div>
-  );
-}
 
 function BattleLogSidebarPanel({ G }: { G: GameState }) {
   const locale = useLocale();
@@ -2152,22 +1408,10 @@ const BATTLE_SIDE_PANELS: Array<{
   { id: 'log', label: 'Log', Icon: BookOpen },
 ];
 
-function BoardLayout({
-  time,
-  handExpanded,
-  children,
-}: {
-  time: ChronosTime;
-  handExpanded: boolean;
-  children: ReactNode;
-}) {
+
+function BoardLayout({ time, children }: { time: ChronosTime; children: ReactNode }) {
   return (
-    <div
-      className={`board battle-layout chrono-${time} ${
-        handExpanded ? 'drawer-expanded' : 'drawer-collapsed'
-      } !block relative h-full min-h-0 w-full overflow-hidden bg-surface-canvas text-content-primary font-sans`}
-      data-board-layout="responsive"
-    >
+    <div className={`bf-root battle-layout chrono-${time}`} data-board-layout="responsive">
       {children}
     </div>
   );
@@ -2176,48 +1420,45 @@ function BoardLayout({
 function BattleTopBar({
   G,
   activePanel,
-  currentInstruction,
   time,
   timeLeft,
   onPanelChange,
 }: {
   G: GameState;
   activePanel: BattleSidePanel | null;
-  currentInstruction: ReturnType<typeof phaseInstruction>;
   time: ChronosTime;
   timeLeft: number;
   onPanelChange: (panel: BattleSidePanel) => void;
 }) {
+  const phases = [
+    { label: t('board.phaseTrack.set' as never), active: G.step === 'initialSet' || G.step === 'turnSet' },
+    { label: t('board.phaseTrack.effect' as never), active: G.step === 'effectOrder' || !!G.pendingChoice },
+    {
+      label: t('board.phaseTrack.battle' as never),
+      active: Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1,
+    },
+    { label: t('board.phaseTrack.end' as never), active: G.step === 'gameOver' },
+  ];
   return (
-    <header className="battle-topbar absolute inset-x-0 top-0 z-[var(--z-header)] flex h-12 items-center justify-between gap-3 overflow-x-auto border-b border-content-primary/5 bg-surface-canvas/80 px-3 backdrop-blur md:px-6">
-      <div className="flex shrink-0 items-center gap-4 font-mono text-caption uppercase tracking-[var(--tracking-kicker)] md:gap-8">
-        <span className="text-content-primary/40">
+    <header className="bf-topbar">
+      <div className="bf-topbar-stats">
+        <span>
           {t('board.turn')} {G.turnNumber}
         </span>
-        <span className="text-content-primary/40">{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
-        <span className={`text-content-primary/40 ${timeLeft <= 10 ? 'text-accent-action' : ''}`}>
+        <span>{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
+        <span className="bf-topbar-timer" data-urgent={timeLeft <= 10}>
           {timeLeft}
           {t('board.secondsUnit')}
         </span>
       </div>
-      <div className="hidden shrink-0 items-center gap-6 font-mono text-caption uppercase tracking-[var(--tracking-kicker)] md:flex">
-        {[
-          { label: '設置', active: G.step === 'initialSet' || G.step === 'turnSet' },
-          { label: '公開', active: false },
-          { label: '時間', active: false },
-          { label: '效果', active: G.step === 'effectOrder' || !!G.pendingChoice },
-          { label: '戰鬥', active: Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1 },
-          { label: '結算', active: G.step === 'gameOver' },
-        ].map((phase) => (
-          <span key={phase.label} className={phase.active ? 'text-accent-primary' : 'text-content-primary/20'}>
+      <div className="bf-topbar-phases" aria-hidden="true">
+        {phases.map((phase) => (
+          <span key={phase.label} data-active={phase.active}>
             {phase.label}
           </span>
         ))}
       </div>
-      <div className="hidden shrink-0 items-center gap-3 font-mono text-caption uppercase tracking-[var(--tracking-kicker)] lg:flex">
-        <span className="text-content-primary/40">{currentInstruction.title}</span>
-        <span className="text-accent-primary">{currentInstruction.body}</span>
-      </div>
+      <div className="bf-topbar-spacer" />
       <div className="battle-side-panel-actions" aria-label="Battle panels">
         {BATTLE_SIDE_PANELS.map(({ id, label, Icon }) => (
           <IconButton
@@ -2230,23 +1471,6 @@ function BattleTopBar({
         ))}
       </div>
     </header>
-  );
-}
-
-function BattleContentGrid({ children, sidebar }: { children: ReactNode; sidebar: ReactNode }) {
-  return (
-    <div className="battle-content-grid battle-layout-workspace relative z-[var(--z-dropdown)] grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-28 lg:grid-cols-[minmax(0,1fr)_280px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6">
-      {children}
-      {sidebar}
-    </div>
-  );
-}
-
-function BattleSidebar({ children }: { children: ReactNode }) {
-  return (
-    <aside className="battle-sidebar battle-layout-sidebar flex max-h-[22rem] min-h-[18rem] flex-col gap-3 overflow-hidden lg:max-h-none lg:min-h-0">
-      {children}
-    </aside>
   );
 }
 
@@ -2317,7 +1541,15 @@ function BattleSideSheet({
           />
         </header>
         <div className="battle-side-sheet-body">
-          {activePanel === 'focus' && <BattleFocusSidebarPanel focusedCard={focusedCard} G={G} />}
+          {activePanel === 'focus' && (
+            <div className="battle-focus-panel carddetail-panel">
+              <CardDetailBody
+                focus={focusedCard}
+                G={G}
+                ownerName={focusedCard ? playerName(focusedCard.owner) : undefined}
+              />
+            </div>
+          )}
           {activePanel === 'status' && <BattleStatusSidebarPanel G={G} />}
           {activePanel === 'log' && <BattleLogSidebarPanel G={G} />}
         </div>
@@ -2342,16 +1574,19 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
   }, [opponentLabel, selfLabel]);
   const minimum = getMinimumSetCount(G, meIndex);
   const required = getRequiredSetCount(G, meIndex);
+  const viewport = useViewportMode();
+  // 觸控互動模式：coarse pointer 或非桌面佈局。手牌 tap=選中、詳情走 sheet。
+  const touchLike = viewport.isTouch || viewport.mode !== 'desktop';
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
   // P3-16：伺服器權威計時器超時後，每秒遞增 retryTick 以重試 timeoutSkip（處理時鐘漂移）。
   const [retryTick, setRetryTick] = useState(0);
-  const [handExpanded, setHandExpanded] = useState(true);
   const [phaseMessage, setPhaseMessage] = useState<FeedbackMessage | null>(null);
   const [focusedCard, setFocusedCard] = useState<FocusedCard>(null);
   const [activeSidePanel, setActiveSidePanel] = useState<BattleSidePanel | null>(null);
-  const [inspectedHandIndex, setInspectedHandIndex] = useState<number | null>(null);
-  const [touchInspectionMode, setTouchInspectionMode] = useState(false);
-  const [_damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
+  const [selectedHandIndex, setSelectedHandIndex] = useState<number | null>(null);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [zoneSheet, setZoneSheet] = useState<{ kind: 'abyss' | 'power'; owner: PlayerIndex } | null>(null);
+  const [damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const previousTurnNumber = useRef(G.turnNumber);
@@ -2437,15 +1672,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
   }, [G.step, timeLeft, G.ready, me.cardsSetThisTurn, minimum, required, meIndex, moves, useServerTimer, retryTick]);
 
   useEffect(() => {
-    if ((G.step === 'initialSet' || G.step === 'turnSet') && !G.ready[meIndex]) setHandExpanded(true);
-  }, [G.step, G.turnNumber, G.ready, meIndex]);
-
-  useEffect(() => {
-    if (G.ready[meIndex]) setHandExpanded(false);
-  }, [G.ready, meIndex]);
-
-  useEffect(() => {
-    setInspectedHandIndex(null);
+    setSelectedHandIndex(null);
   }, [G.step, G.turnNumber, G.ready, meIndex]);
 
   useEffect(() => {
@@ -2466,16 +1693,17 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
     if (G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
     if (G.step === 'initialSet') moves.setInitialCard(handIndex);
     else moves.setTurnCard(handIndex, me.setZoneA ? 'B' : 'A');
-    setInspectedHandIndex(null);
+    setSelectedHandIndex(null);
   };
 
   const time = getChronosTime(G);
+  const canAct =
+    (G.step === 'initialSet' || G.step === 'turnSet') && !G.ready[meIndex] && me.cardsSetThisTurn < required;
   const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required;
   const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
-  const inspectedHandCard =
-    inspectedHandIndex !== null && inspectedHandIndex < me.hand.length ? me.hand[inspectedHandIndex] : null;
-  const canSetInspectedCard =
-    inspectedHandIndex !== null && !G.ready[meIndex] && me.cardsSetThisTurn < required && Boolean(inspectedHandCard);
+  const selectedHandCard =
+    selectedHandIndex !== null && selectedHandIndex < me.hand.length ? me.hand[selectedHandIndex] : null;
+  const canSetSelected = Boolean(selectedHandCard) && canAct;
   const primaryActionTitle = G.ready[meIndex]
     ? t('board.readyWaiting')
     : G.pendingChoice
@@ -2484,7 +1712,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
         ? t('board.chooseEffect')
         : canConfirm
           ? t('board.confirmSet')
-          : canSetInspectedCard
+          : canSetSelected
             ? t('board.setInspectedCard')
             : t('board.inspectHandCard');
   const primaryActionBody = G.ready[meIndex]
@@ -2493,401 +1721,262 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
       ? currentInstruction.body
       : canConfirm
         ? `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/${required} · ${t('board.phaseMinimum')} ${minimum}`
-        : touchInspectionMode
+        : touchLike
           ? t('board.touchInspectHint')
           : currentInstruction.body;
 
-  return (
-    <BoardLayout time={time} handExpanded={handExpanded}>
-      {/* 環境光暈 — 完全照搬 demo */}
-      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-action/8 blur-[120px]" />
-      </div>
+  const inspect = (card: CardInstance, owner: PlayerIndex, zone: string) => setFocusedCard({ card, owner, zone });
+  // 觸控端：點擊卡牌開啟詳情 sheet；桌面端 hover 已更新側欄，不攔截 click。
+  const openDetail = (card: CardInstance, owner: PlayerIndex, zone: string) => {
+    inspect(card, owner, zone);
+    if (touchLike) setDetailSheetOpen(true);
+  };
+  const detailActivate = (card: CardInstance | null, owner: PlayerIndex, zone: string) =>
+    touchLike && card ? () => openDetail(card, owner, zone) : undefined;
 
+  const handleHandTap = (index: number) => {
+    const card = me.hand[index];
+    if (!card) return;
+    inspect(card, meIndex, t('board.hand'));
+    if (touchLike) {
+      // 兩段式：第一次 tap 選中（ActionDock 顯示「設置這張」），再 tap 開詳情。
+      if (selectedHandIndex === index) {
+        setDetailSheetOpen(true);
+        return;
+      }
+      setSelectedHandIndex(index);
+      return;
+    }
+    if (canAct) setFromHand(index);
+  };
+
+  const zoneNames = {
+    A: t('board.setZoneA'),
+    B: t('board.setZoneB'),
+    C: t('board.areaEnchant'),
+    battle: t('board.battleZone'),
+    power: t('board.powerCharger'),
+    abyss: t('board.abyss'),
+    deck: t('board.deck'),
+  };
+
+  const meSlotUndo = (slot: 'A' | 'B' | 'C', card: CardInstance | null): (() => void) | undefined => {
+    if (!card || G.ready[meIndex]) return undefined;
+    if (slot === 'C' && !wasSetThisTurn(G, meIndex, card)) return undefined;
+    return () => moves.undoSetCard(slot);
+  };
+
+  const initialSetUndo =
+    G.step === 'initialSet' && me.battleZone && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined;
+
+  return (
+    <BoardLayout time={time}>
       <BattleTopBar
         G={G}
         activePanel={activeSidePanel}
-        currentInstruction={currentInstruction}
         time={time}
         timeLeft={timeLeft}
         onPanelChange={setActiveSidePanel}
       />
 
-      <PhaseInstructionBanner instruction={currentInstruction} />
+      <PhaseIndicator instruction={currentInstruction} compact={viewport.mode !== 'desktop'} />
 
-      <BattleContentGrid
-        sidebar={
-          <BattleSidebar>
-            <BattleFocusSidebarPanel focusedCard={focusedCard} G={G} />
-            <BattleLogSidebarPanel G={G} />
-          </BattleSidebar>
-        }
-      >
-        {/* ===== 左欄：戰場 ===== */}
-        <div className="battle-perspective-field battle-layout-field flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
-          <BattlefieldCanvas />
+      <div className="bf-main">
+        {/* ===== 戰場 ===== */}
+        <div className="bf-field">
+          {viewport.mode === 'desktop' && <BattlefieldCanvas />}
 
-          {/* 對手區域 — flex-1 justify-start（照搬 demo） */}
-          <div className="battle-opponent-area flex h-auto min-h-[13rem] shrink-0 flex-col items-center justify-start gap-2 pt-2 lg:h-[240px] lg:gap-4 lg:pt-3">
-            {/* 對手資訊：名字在右 + LP bar + 統計 */}
-            <div className="battle-opponent-hud flex flex-wrap items-center justify-center gap-3 lg:gap-6">
-              <div className="text-right">
-                <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('player.opponent')}</div>
-                <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
-              </div>
-              <div className="relative w-56 md:w-72" data-tut="opponent-hp">
-                <div className="relative h-1 w-full bg-content-primary/10">
-                  <div className="absolute inset-y-0 left-0 bg-accent-action" style={{ width: `${opponent.hp}%` }} />
-                </div>
-                <div className="mt-1 flex justify-between font-mono text-caption text-content-primary/40">
-                  <span>{opponent.hp} / 100</span>
-                  <span>
-                    {t('board.hand')} · {opponent.hand.length}
-                  </span>
-                </div>
-              </div>
-            </div>
-            {/* 對手手牌背 — 上下顛倒 */}
-            <div className="flex gap-1.5">
-              {opponent.hand.map((card, index) => (
-                <div
-                  key={card.instanceId}
-                  className="battle-opponent-card-back h-12 w-9 overflow-hidden rounded-xs ring-1 ring-content-primary/10 rotate-180"
-                  style={{
-                    transform: `translateY(${Math.abs(index - (opponent.hand.length - 1) / 2) * 2}px) rotate(180deg)`,
-                  }}
-                >
-                  <img src="/card-back.jpg" alt="" className="h-full w-full object-cover" loading="lazy" />
-                </div>
+          {/* 對手區 */}
+          <section className="bf-opponent" aria-label={t('player.opponent')}>
+            <PlayerStatus
+              side="opponent"
+              name={playerName(opponentIndex)}
+              hp={opponent.hp}
+              meta={`${t('board.hand')} · ${opponent.hand.length} / ${t('board.deck')} · ${opponent.deck.length}`}
+              damageAmount={damageFlash?.target === opponentIndex ? damageFlash.amount : undefined}
+              tutId="opponent-hp"
+            />
+            <div className="bf-opponent-handbacks" aria-label={`${t('board.hand')} ${opponent.hand.length}`}>
+              {opponent.hand.map((card) => (
+                <img key={card.instanceId} src="/card-back.jpg" alt="" loading="lazy" />
               ))}
             </div>
-            {/* 對手設置區 — CBA 從右到左 + 上下顛倒 + 充能/牌組/深淵 */}
-            <div className="battle-zone-strip battlefield-depth-row battlefield-depth-far flex max-w-full items-start gap-2 overflow-x-auto pb-1 lg:gap-3">
-              {/* 對手充能區 */}
-              <div className="flex flex-col items-center gap-1">
-                {opponent.powerCharger.length > 0 ? (
-                  <div className="battle-stack-zone relative flex size-[88px] items-end justify-center overflow-hidden rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
-                    {opponent.powerCharger.slice(-3).map((card, i) => {
-                      const def = getCardDef(card.defId);
-                      return (
-                        <div
-                          key={card.instanceId}
-                          className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-content-primary/10"
-                          style={{ left: `${12 + i * 14}px` }}
-                        >
-                          {def?.image && (
-                            <img
-                              src={def.image}
-                              alt=""
-                              className="h-full w-full object-cover opacity-70"
-                              loading="lazy"
-                              referrerPolicy="no-referrer"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                    <span className="absolute top-1 right-1 font-mono text-caption text-accent-primary/70">
-                      {opponent.powerCharger.reduce((s, c) => s + (getCardDef(c.defId)?.sendToPower ?? 0), 0)}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
-                    <span className="font-mono text-lg text-accent-primary/60">0</span>
-                  </div>
-                )}
-                <span className="font-mono text-minutia text-content-primary/30">⚡</span>
-              </div>
-              <Slot
-                card={opponent.setZoneA}
+            <div className="bf-strip">
+              <CardStack
+                kind="power"
+                size="sm"
+                label={zoneNames.power}
+                count={opponent.powerCharger.length}
+                value={powerTotal(G, opponentIndex)}
+                cards={opponent.powerCharger}
+                onOpen={() => setZoneSheet({ kind: 'power', owner: opponentIndex })}
+              />
+              <CardSlot
                 label="A"
-                size="small"
-                owner={opponentIndex}
-                onFocusCard={setFocusedCard}
+                ariaLabel={`${t('player.opponent')} ${zoneNames.A}`}
+                card={opponent.setZoneA}
+                size="sm"
+                onActivate={detailActivate(opponent.setZoneA, opponentIndex, zoneNames.A)}
+                onInspect={(card) => inspect(card, opponentIndex, zoneNames.A)}
               />
-              <Slot
-                card={opponent.setZoneB}
+              <CardSlot
                 label="B"
-                size="small"
-                owner={opponentIndex}
-                onFocusCard={setFocusedCard}
+                ariaLabel={`${t('player.opponent')} ${zoneNames.B}`}
+                card={opponent.setZoneB}
+                size="sm"
+                onActivate={detailActivate(opponent.setZoneB, opponentIndex, zoneNames.B)}
+                onInspect={(card) => inspect(card, opponentIndex, zoneNames.B)}
               />
-              <Slot
-                card={opponent.setZoneC}
+              <CardSlot
                 label="C"
-                size="small"
-                owner={opponentIndex}
-                onFocusCard={setFocusedCard}
+                ariaLabel={`${t('player.opponent')} ${zoneNames.C}`}
+                card={opponent.setZoneC}
+                size="sm"
+                onActivate={detailActivate(opponent.setZoneC, opponentIndex, zoneNames.C)}
+                onInspect={(card) => inspect(card, opponentIndex, zoneNames.C)}
               />
-              {/* 對手牌組 */}
-              <div className="flex flex-col items-center gap-1">
-                <div className="battle-stack-zone relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
-                  {Array.from({ length: Math.min(opponent.deck.length, 3) }).map((_, i) => (
-                    <img
-                      key={i}
-                      src="/card-back.jpg"
-                      alt=""
-                      className="absolute h-[72px] w-[48px] rounded-xs object-cover"
-                      style={{ top: `${4 - i * 2}px`, left: `${16 + i * 2}px`, opacity: 1 - i * 0.15 }}
-                      loading="lazy"
-                    />
-                  ))}
-                  <span className="absolute bottom-1 right-1 font-mono text-caption text-content-primary/50">
-                    {opponent.deck.length}
-                  </span>
-                </div>
-                <span className="font-mono text-minutia text-content-primary/30">🃏</span>
-              </div>
-              {/* 對手深淵 */}
-              <div className="flex flex-col items-center gap-1">
-                <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
-                  <span className="font-mono text-sm text-content-primary/30">🕳️ {opponent.abyss.length}</span>
-                </div>
-                <span className="font-mono text-minutia text-content-primary/30">{t('board.abyss')}</span>
-              </div>
+              <CardStack kind="deck" size="sm" label={zoneNames.deck} count={opponent.deck.length} />
+              <CardStack
+                kind="abyss"
+                size="sm"
+                label={zoneNames.abyss}
+                count={opponent.abyss.length}
+                cards={opponent.abyss}
+                onOpen={() => setZoneSheet({ kind: 'abyss', owner: opponentIndex })}
+              />
             </div>
-          </div>
+          </section>
 
-          {/* Chronos + 戰鬥區 */}
-          <div
-            className="battle-perspective-stage battlefield-depth-row battlefield-depth-mid my-2 flex min-h-[10rem] items-center justify-center lg:flex-1 lg:min-h-0"
-            data-tut="central-arena"
-          >
-            <FieldZone
-              label={t('board.battleZone')}
-              shortLabel={t('board.battleZoneShort')}
-              className="battle-zone opponent-battle-zone"
+          {/* 中央：戰鬥區 + Chronos */}
+          <section className="bf-stage" data-tut="central-arena" aria-label={t('chronos.title')}>
+            <CardSlot
+              label={t('board.battleZoneShort')}
+              ariaLabel={`${t('player.opponent')} ${zoneNames.battle}`}
               card={opponent.battleZone}
-              size="normal"
-              activeTime={time}
-              owner={opponentIndex}
-              onFocusCard={setFocusedCard}
+              size="lg"
+              onActivate={detailActivate(opponent.battleZone, opponentIndex, zoneNames.battle)}
+              onInspect={(card) => inspect(card, opponentIndex, zoneNames.battle)}
             />
-            <div data-tut="chronos-clock">
-              <Chronos
-                chronos={G.chronos}
-                currentTime={time}
-                nightSidePlayer={G.chronos.nightSidePlayer}
-                currentPlayer={meIndex}
+            <ChronosPanel
+              chronos={G.chronos}
+              currentTime={time}
+              currentPlayer={meIndex}
+              size={viewport.mode === 'mobile' ? 'sm' : 'md'}
+            />
+            <CardSlot
+              label={t('board.battleZoneShort')}
+              ariaLabel={`${t('player.me')} ${zoneNames.battle}`}
+              card={me.battleZone}
+              size="lg"
+              state={initialSetUndo ? 'undoable' : 'idle'}
+              onActivate={initialSetUndo ?? detailActivate(me.battleZone, meIndex, zoneNames.battle)}
+              onInspect={(card) => inspect(card, meIndex, zoneNames.battle)}
+            />
+          </section>
+
+          {/* 玩家區 */}
+          <section className="bf-player" aria-label={t('player.me')}>
+            <div className="bf-strip">
+              <CardStack
+                kind="power"
+                label={zoneNames.power}
+                count={me.powerCharger.length}
+                value={powerTotal(G, meIndex)}
+                cards={me.powerCharger}
+                onOpen={() => setZoneSheet({ kind: 'power', owner: meIndex })}
+                tutId="player-power"
+              />
+              <div className="bf-slot-group" data-tut="player-set-zones">
+                <CardSlot
+                  label="A"
+                  ariaLabel={zoneNames.A}
+                  card={me.setZoneA}
+                  size="md"
+                  state={meSlotUndo('A', me.setZoneA) ? 'undoable' : 'idle'}
+                  onActivate={meSlotUndo('A', me.setZoneA) ?? detailActivate(me.setZoneA, meIndex, zoneNames.A)}
+                  onInspect={(card) => inspect(card, meIndex, zoneNames.A)}
+                />
+                <CardSlot
+                  label="B"
+                  ariaLabel={zoneNames.B}
+                  card={me.setZoneB}
+                  size="md"
+                  state={meSlotUndo('B', me.setZoneB) ? 'undoable' : 'idle'}
+                  onActivate={meSlotUndo('B', me.setZoneB) ?? detailActivate(me.setZoneB, meIndex, zoneNames.B)}
+                  onInspect={(card) => inspect(card, meIndex, zoneNames.B)}
+                />
+                <CardSlot
+                  label="C"
+                  ariaLabel={zoneNames.C}
+                  card={me.setZoneC}
+                  size="md"
+                  state={meSlotUndo('C', me.setZoneC) ? 'undoable' : 'idle'}
+                  onActivate={meSlotUndo('C', me.setZoneC) ?? detailActivate(me.setZoneC, meIndex, zoneNames.C)}
+                  onInspect={(card) => inspect(card, meIndex, zoneNames.C)}
+                />
+              </div>
+              <CardStack kind="deck" label={zoneNames.deck} count={me.deck.length} />
+              <CardStack
+                kind="abyss"
+                label={zoneNames.abyss}
+                count={me.abyss.length}
+                cards={me.abyss}
+                onOpen={() => setZoneSheet({ kind: 'abyss', owner: meIndex })}
+                tutId="player-abyss"
               />
             </div>
-            <FieldZone
-              label={t('board.battleZone')}
-              shortLabel={t('board.battleZoneShort')}
-              className="battle-zone player-battle-zone"
-              card={me.battleZone}
-              size="normal"
-              activeTime={time}
-              owner={meIndex}
-              onFocusCard={setFocusedCard}
-              onClick={
-                G.step === 'initialSet' && me.battleZone && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined
-              }
-            />
-          </div>
-
-          {/* 玩家區域 — flex-1 justify-end（照搬 demo） */}
-          <div className="battle-player-area flex h-auto min-h-[18rem] shrink-0 flex-col items-center justify-end gap-3 pb-2 lg:h-[280px]">
-            {/* 玩家設置區 + 充能/牌組 */}
-            <div className="battle-zone-strip battlefield-depth-row battlefield-depth-near flex max-w-full items-end gap-2 overflow-x-auto pb-1 lg:gap-3">
-              {/* 充能區 — 左邊 */}
-              <div className="flex flex-col items-center gap-1" data-tut="player-power">
-                {me.powerCharger.length > 0 ? (
-                  <div className="battle-stack-zone relative flex size-[88px] items-end justify-center overflow-hidden rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
-                    {me.powerCharger.slice(-3).map((card, i) => {
-                      const def = getCardDef(card.defId);
-                      return (
-                        <div
-                          key={card.instanceId}
-                          className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-content-primary/10"
-                          style={{ left: `${12 + i * 14}px` }}
-                        >
-                          {def?.image && (
-                            <img
-                              src={def.image}
-                              alt=""
-                              className="h-full w-full object-cover opacity-70"
-                              loading="lazy"
-                              referrerPolicy="no-referrer"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                    <span className="absolute top-1 right-1 font-mono text-caption text-accent-primary/70">
-                      {powerTotal(G, meIndex)}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
-                    <span className="font-mono text-lg text-accent-primary/60">{powerTotal(G, meIndex)}</span>
-                  </div>
-                )}
-                <span className="font-mono text-minutia text-content-primary/30">⚡ {t('board.powerCharger')}</span>
-              </div>
-              <div className="flex gap-1.5 lg:gap-2" data-tut="player-set-zones">
-                <Slot
-                  card={me.setZoneA}
-                  label="A"
-                  size="small"
-                  owner={meIndex}
-                  onFocusCard={setFocusedCard}
-                  onClick={me.setZoneA && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined}
-                />
-                <Slot
-                  card={me.setZoneB}
-                  label="B"
-                  size="small"
-                  owner={meIndex}
-                  onFocusCard={setFocusedCard}
-                  onClick={me.setZoneB && !G.ready[meIndex] ? () => moves.undoSetCard('B') : undefined}
-                />
-                <Slot
-                  card={me.setZoneC}
-                  label="C"
-                  size="small"
-                  owner={meIndex}
-                  onFocusCard={setFocusedCard}
-                  onClick={
-                    wasSetThisTurn(G, meIndex, me.setZoneC) && !G.ready[meIndex]
-                      ? () => moves.undoSetCard('C')
-                      : undefined
-                  }
-                />
-              </div>
-              {/* 牌組 — 右邊 — 根據數量堆疊 */}
-              <div className="flex flex-col items-center gap-1">
-                <div className="battle-stack-zone relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
-                  {Array.from({ length: Math.min(me.deck.length, 3) }).map((_, i) => (
-                    <img
-                      key={i}
-                      src="/card-back.jpg"
-                      alt=""
-                      className="absolute h-[72px] w-[48px] rounded-xs object-cover"
-                      style={{ top: `${4 - i * 2}px`, left: `${16 + i * 2}px`, opacity: 1 - i * 0.15 }}
-                      loading="lazy"
-                    />
-                  ))}
-                  <span className="absolute bottom-1 right-1 font-mono text-caption text-content-primary/50">{me.deck.length}</span>
-                </div>
-                <span className="font-mono text-minutia text-content-primary/30">🃏</span>
-              </div>
-              {/* 深淵 */}
-              <div className="flex flex-col items-center gap-1" data-tut="player-abyss">
-                <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
-                  <span className="font-mono text-sm text-content-primary/30">🕳️ {me.abyss.length}</span>
-                </div>
-                <span className="font-mono text-minutia text-content-primary/30">{t('board.abyss')}</span>
-              </div>
+            <div className="bf-hand-dock" data-tut="player-actions">
+              <PlayerStatus
+                side="me"
+                name={playerName(meIndex)}
+                hp={me.hp}
+                meta={`${t('board.deck')} · ${me.deck.length}`}
+                damageAmount={damageFlash?.target === meIndex ? damageFlash.amount : undefined}
+                tutId="player-hp"
+              />
+              <HandZone
+                cards={me.hand}
+                variant={touchLike ? 'strip' : 'fan'}
+                selectedIndex={selectedHandIndex}
+                canAct={canAct}
+                onCardTap={handleHandTap}
+                onCardHover={
+                  touchLike
+                    ? undefined
+                    : (index) => {
+                        if (index === null) return;
+                        const card = me.hand[index];
+                        if (card) inspect(card, meIndex, t('board.hand'));
+                      }
+                }
+              />
+              <ActionDock
+                hintTitle={primaryActionTitle}
+                hintBody={primaryActionBody}
+                ready={G.ready[meIndex]}
+                canConfirm={canConfirm}
+                cardsSet={me.cardsSetThisTurn}
+                required={required}
+                canSetSelected={canSetSelected}
+                onSetSelected={() => {
+                  if (selectedHandIndex !== null) setFromHand(selectedHandIndex);
+                }}
+                onConfirm={() => {
+                  showTransientPhaseMessage({ title: t('board.setConfirmed'), tone: 'neutral' });
+                  moves.confirmReady();
+                }}
+                onShowDetail={touchLike && selectedHandCard ? () => setDetailSheetOpen(true) : undefined}
+              />
             </div>
-            {/* 玩家資訊列 — 照搬 demo 底部排列 */}
-            <div
-              className="battle-player-command-dock flex w-full flex-col items-stretch justify-between gap-3 px-2 lg:flex-row lg:items-end"
-              data-tut="player-actions"
-            >
-              {/* 左：LP bar */}
-              <div className="relative w-full lg:w-72" data-tut="player-hp">
-                <div className="relative h-1 w-full bg-content-primary/10">
-                  <div className="absolute inset-y-0 left-0 bg-accent-primary" style={{ width: `${me.hp}%` }} />
-                </div>
-                <div className="mt-1 flex justify-between font-mono text-caption text-content-primary/40">
-                  <span>{me.hp} / 100</span>
-                  <span>
-                    {t('board.deck')} · {me.deck.length}
-                  </span>
-                </div>
-              </div>
-              {/* 中：手牌扇形 */}
-              <div
-                className="battle-hand-row flex items-end gap-1 overflow-x-auto px-1 pb-2 lg:overflow-visible lg:px-4"
-                data-zone="hand"
-              >
-                {me.hand.map((card, index) => {
-                  const center = (me.hand.length - 1) / 2;
-                  const rotate = (index - center) * 4;
-                  const translateY = Math.abs(index - center) * 6;
-                  return (
-                    <div
-                      key={card.instanceId}
-                      className={`battle-hand-card h-28 w-[4.75rem] shrink-0 cursor-pointer transition-all duration-[var(--motion-duration-slow)] hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-accent-primary hover:shadow-selected md:h-32 md:w-20 lg:h-36 lg:w-24 ${
-                        inspectedHandIndex === index ? 'ring-2 ring-accent-primary shadow-selected' : ''
-                      }`}
-                      style={{ transform: `rotate(${rotate}deg) translateY(${translateY}px)` }}
-                      data-tut-card={card.defId}
-                      onClick={!G.ready[meIndex] && !touchInspectionMode ? () => setFromHand(index) : undefined}
-                      onPointerDown={(event) => {
-                        setFocusedCard({ card, owner: meIndex, zone: t('board.hand') });
-                        setInspectedHandIndex(index);
-                        if (event.pointerType === 'touch') {
-                          event.preventDefault();
-                          setTouchInspectionMode(true);
-                          setActiveSidePanel('focus');
-                        }
-                      }}
-                      onMouseEnter={() => setFocusedCard({ card, owner: meIndex, zone: t('board.hand') })}
-                      onMouseLeave={() => setFocusedCard(null)}
-                    >
-                      <Card
-                        card={card}
-                        size="normal"
-                        className="!h-full !w-full !aspect-auto !border-0 !bg-transparent !shadow-none !rounded-none"
-                        showBadges={false}
-                        showPopover
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              {/* 右：操作按鈕 — 照搬 demo */}
-              <div className="battle-action-stack flex w-full flex-row gap-2 lg:w-44 lg:flex-col">
-                <div className="battle-primary-action-hint">
-                  <span>{primaryActionTitle}</span>
-                  <p>{primaryActionBody}</p>
-                </div>
-                {canSetInspectedCard && (
-                  <button
-                    className="flex-1 border border-accent-primary/45 bg-accent-primary/10 px-5 py-2.5 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-accent-primary transition hover:bg-accent-primary/15 active:scale-95 lg:flex-none"
-                    type="button"
-                    onClick={() => setFromHand(inspectedHandIndex)}
-                  >
-                    {t('board.setInspectedCard')}
-                  </button>
-                )}
-                {!G.ready[meIndex] ? (
-                  <button
-                    className="flex-1 bg-content-primary px-5 py-2.5 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-content-inverse transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 lg:flex-none"
-                    type="button"
-                    data-tut="confirm-set"
-                    disabled={!canConfirm}
-                    onClick={() => {
-                      showTransientPhaseMessage({ title: t('board.setConfirmed'), tone: 'neutral' });
-                      moves.confirmReady();
-                    }}
-                  >
-                    {t('board.confirmSet')} ({me.cardsSetThisTurn}/{required})
-                  </button>
-                ) : (
-                  <button
-                    className="flex-1 border border-content-primary/20 px-5 py-2 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60 lg:flex-none"
-                    type="button"
-                    disabled
-                  >
-                    {t('board.readyWaiting')}
-                  </button>
-                )}
-                <button
-                  className="battle-power-summary-button flex-1 border border-content-primary/20 px-5 py-2 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60 transition hover:bg-content-primary/5 lg:flex-none"
-                  type="button"
-                  disabled
-                >
-                  {t('board.powerCharger')} {powerTotal(G, meIndex)}
-                </button>
-              </div>
-            </div>
-          </div>
+          </section>
         </div>
 
-      </BattleContentGrid>
+        {/* ===== 桌面側欄（>=1180px，CSS 控制顯示）===== */}
+        <aside className="bf-sidebar" aria-label="Battle info">
+          <CardDetailPanel focus={focusedCard} G={G} ownerName={focusedCard ? playerName(focusedCard.owner) : undefined} />
+          <BattleLogSidebarPanel G={G} />
+        </aside>
+      </div>
 
       {/* 效果結算 — 居中覆蓋層 */}
       {(G.step === 'effectOrder' || G.pendingChoice) && (
@@ -2907,6 +1996,40 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
         onClose={() => setActiveSidePanel(null)}
         onPanelChange={setActiveSidePanel}
       />
+
+      {/* 觸控端卡牌詳情 bottom sheet */}
+      <Sheet
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+        title={
+          focusedCard && focusedCard.card.faceUp && focusedCard.card.defId !== '__hidden__'
+            ? (getCardDef(focusedCard.card.defId)?.name ?? t('card.unknown'))
+            : t('card.back')
+        }
+        closeLabel={t('common.close')}
+      >
+        <CardDetailBody focus={focusedCard} G={G} ownerName={focusedCard ? playerName(focusedCard.owner) : undefined} />
+      </Sheet>
+
+      {/* 深淵 / 充能區摘要 */}
+      {zoneSheet && (
+        <ZoneSummarySheet
+          open
+          onOpenChange={(open) => {
+            if (!open) setZoneSheet(null);
+          }}
+          title={`${playerName(zoneSheet.owner)} · ${zoneSheet.kind === 'power' ? zoneNames.power : zoneNames.abyss}`}
+          totalValue={zoneSheet.kind === 'power' ? powerTotal(G, zoneSheet.owner) : undefined}
+          cards={
+            zoneSheet.kind === 'power' ? G.players[zoneSheet.owner].powerCharger : G.players[zoneSheet.owner].abyss
+          }
+          onInspectCard={(card) => {
+            inspect(card, zoneSheet.owner, zoneSheet.kind === 'power' ? zoneNames.power : zoneNames.abyss);
+            setDetailSheetOpen(true);
+          }}
+        />
+      )}
+
       <FeedbackOverlay message={phaseMessage} />
       <GameNoticeOverlay G={G} me={meIndex} onNoticeDismiss={onNoticeDismiss} />
     </BoardLayout>

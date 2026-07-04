@@ -24,6 +24,9 @@ import {
 } from './onlineSession';
 import { APP_VERSION_INFO } from './version';
 import './App.css';
+// Design System v1：semantic tokens 與對戰版面樣式（必須在 App.css 之後載入，覆寫舊層）
+import './styles/tokens.css';
+import './styles/battle.css';
 
 const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })));
 const I18nManager = lazy(() => import('./pages/I18nManager').then((module) => ({ default: module.I18nManager })));
