@@ -35,33 +35,33 @@
 
 .locale-tab {
   padding: 0.35rem 0.8rem;
-  border: 1px solid #333;
-  border-radius: 6px;
+  border: var(--border-width-hairline) solid var(--border-soft);
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: #888;
+  color: var(--content-dim);
   cursor: pointer;
-  font-size: 0.8rem;
-  transition: all 0.15s;
+  font-size: var(--type-body-sm);
+  transition: all var(--motion-duration-base) var(--motion-ease-standard);
 }
 
 .locale-tab.active {
-  border-color: #f4d35e;
-  color: #f4d35e;
-  background: #1a1a3e;
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--surface-raised);
 }
 
 .i18n-stats {
   display: flex;
   gap: 1rem;
-  font-size: 0.8rem;
+  font-size: var(--type-body-sm);
   flex-wrap: wrap;
 }
 
 .stat-warn {
-  color: #e63946;
+  color: var(--accent-danger);
 }
 .stat-ok {
-  color: #2ec4b6;
+  color: var(--accent-info);
 }
 
 .i18n-filters {
@@ -73,11 +73,11 @@
 
 .i18n-search {
   padding: 0.4rem 0.6rem;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #16213e;
-  color: #e0e0e0;
-  font-size: 0.8rem;
+  border: var(--border-width-hairline) solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--content-primary);
+  font-size: var(--type-body-sm);
   width: min(100%, 300px);
 }
 
@@ -86,8 +86,8 @@
   align-items: center;
   justify-content: flex-start;
   gap: 0.3rem;
-  font-size: 0.8rem;
-  color: #aaa;
+  font-size: var(--type-body-sm);
+  color: var(--content-muted);
   cursor: pointer;
   width: max-content;
   max-width: 100%;
@@ -98,7 +98,7 @@
   width: 0.95rem;
   height: 0.95rem;
   margin: 0;
-  accent-color: var(--gold);
+  accent-color: var(--accent-primary);
 }
 
 .i18n-table-wrapper {
@@ -114,45 +114,45 @@
   width: 100%;
   min-width: 760px;
   border-collapse: collapse;
-  font-size: 0.8rem;
+  font-size: var(--type-body-sm);
 }
 
 .i18n-table th {
   position: sticky;
   top: 0;
-  background: #0d0d1a;
+  background: var(--surface-canvas);
   padding: 0.4rem 0.6rem;
   text-align: left;
-  color: #888;
-  border-bottom: 1px solid #333;
+  color: var(--content-dim);
+  border-bottom: var(--border-width-hairline) solid var(--border-soft);
   z-index: 1;
 }
 
 .i18n-table td {
   padding: 0.35rem 0.6rem;
-  border-bottom: 1px solid #1a1a2e;
+  border-bottom: var(--border-width-hairline) solid var(--border-soft);
   vertical-align: top;
 }
 
 .i18n-table tr:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: oklch(from var(--content-primary) l c h / 0.03);
 }
 
 .row-missing {
-  background: rgba(230, 57, 70, 0.08);
+  background: oklch(from var(--accent-danger) l c h / 0.08);
 }
 .row-same {
-  background: rgba(244, 211, 94, 0.05);
+  background: oklch(from var(--accent-primary) l c h / 0.05);
 }
 
 .i18n-key {
-  color: #666;
+  color: var(--content-dim);
   font-family: monospace;
-  font-size: 0.75rem;
+  font-size: var(--type-body-sm);
   white-space: nowrap;
 }
 .i18n-base {
-  color: #ccc;
+  color: var(--content-muted);
   max-width: 250px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -164,10 +164,10 @@
   text-overflow: ellipsis;
 }
 .i18n-translated:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: oklch(from var(--content-primary) l c h / 0.05);
 }
 .text-missing {
-  color: #e63946;
+  color: var(--accent-danger);
   font-style: italic;
 }
 .i18n-status {
@@ -183,44 +183,44 @@
 .i18n-edit input {
   flex: 1;
   padding: 0.2rem 0.4rem;
-  border: 1px solid #f4d35e;
-  border-radius: 4px;
-  background: #1a1a3e;
-  color: #e0e0e0;
-  font-size: 0.8rem;
+  border: var(--border-width-hairline) solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--content-primary);
+  font-size: var(--type-body-sm);
 }
 
 .i18n-edit button {
   padding: 0.2rem 0.5rem;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.75rem;
+  font-size: var(--type-body-sm);
 }
 
 .i18n-edit-sheet-key,
 .i18n-edit-sheet-copy {
   min-width: 0;
   overflow-wrap: anywhere;
-  border: 1px solid color-mix(in oklch, var(--bone) 10%, transparent);
-  border-radius: 2px;
-  background: color-mix(in oklch, var(--lacquer) 70%, transparent);
+  border: var(--border-width-hairline) solid color-mix(in oklch, var(--content-primary) 10%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--surface-base) 70%, transparent);
   padding: 0.75rem;
-  color: color-mix(in oklch, var(--bone) 72%, transparent);
+  color: color-mix(in oklch, var(--content-primary) 72%, transparent);
 }
 
 .i18n-edit-sheet-key {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--type-body-sm);
   line-height: 1.55;
 }
 
 .i18n-edit-sheet-copy {
-  font-size: 0.9rem;
+  font-size: var(--type-body);
   line-height: 1.65;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 820px) {
   .i18n-page {
     padding: 0.75rem !important;
   }
@@ -235,7 +235,7 @@
     order: 3;
     width: 100%;
     text-align: left;
-    font-size: 1.5rem !important;
+    font-size: var(--type-title-md) !important;
     line-height: 1.15;
   }
 
@@ -259,7 +259,7 @@
 
   .i18n-stats {
     gap: 0.4rem 0.75rem;
-    font-size: 0.75rem;
+    font-size: var(--type-body-sm);
   }
 
   .i18n-filters {
@@ -296,9 +296,9 @@
   }
 
   .i18n-responsive-table tr {
-    border: 1px solid color-mix(in oklch, var(--bone) 10%, transparent);
-    border-radius: 2px;
-    background: color-mix(in oklch, var(--lacquer) 80%, transparent);
+    border: var(--border-width-hairline) solid color-mix(in oklch, var(--content-primary) 10%, transparent);
+    border-radius: var(--radius-xs);
+    background: color-mix(in oklch, var(--surface-base) 80%, transparent);
     padding: 0.7rem;
   }
 
@@ -316,10 +316,10 @@
   .i18n-responsive-table td::before {
     content: attr(data-label);
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: var(--type-minutia);
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: color-mix(in oklch, var(--bone) 42%, transparent);
+    color: color-mix(in oklch, var(--content-primary) 42%, transparent);
   }
 
   .i18n-key,
@@ -337,9 +337,9 @@
 
   .i18n-translated[role='button'] {
     min-height: 2.75rem;
-    border: 1px solid color-mix(in oklch, var(--gold) 14%, transparent);
-    border-radius: 2px;
-    background: color-mix(in oklch, var(--gold) 7%, transparent);
+    border: var(--border-width-hairline) solid color-mix(in oklch, var(--accent-primary) 14%, transparent);
+    border-radius: var(--radius-xs);
+    background: color-mix(in oklch, var(--accent-primary) 7%, transparent);
   }
 
   .i18n-edit {

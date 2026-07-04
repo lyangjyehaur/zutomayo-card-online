@@ -19,7 +19,7 @@ export function ActionBar({ sticky = false, mobileLayout = 'stack', className, .
         mobileLayoutClasses[mobileLayout],
         'sm:justify-end',
         sticky &&
-          'sticky bottom-0 z-[--z-sticky] -mx-4 border-t border-bone/10 bg-lacquer-deep/90 px-4 py-3 backdrop-blur md:mx-0 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none',
+          'sticky bottom-0 z-[var(--z-sticky)] -mx-4 border-t border-border-soft bg-surface-overlay px-4 py-3 backdrop-blur md:mx-0 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none',
         className,
       )}
       {...props}

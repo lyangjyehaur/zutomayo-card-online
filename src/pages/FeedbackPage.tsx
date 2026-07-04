@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SmilePlus } from 'lucide-react';
+import { SmilePlus, X } from 'lucide-react';
 import { t, useLocale, type TranslationKey } from '../i18n';
 import { getProfile, isLoggedIn } from '../api/client';
 import {
@@ -37,7 +37,27 @@ import {
   type SimilarPost,
 } from '../api/feedbackClient';
 import { getAnonymousId } from '../api/feedbackClient';
-import { Badge, Button, Input, ResponsiveToolbar, Select, Sheet, Textarea, type BadgeTone } from '../components/ui';
+import {
+  Alert,
+  BackButton,
+  Badge,
+  Button,
+  Checkbox,
+  EmptyState,
+  FilterToolbar,
+  IconButton,
+  Input,
+  LoadingState,
+  PageSectionHeader,
+  SegmentedControl,
+  Select,
+  Sheet,
+  StatsGrid,
+  Tag,
+  TagButton,
+  Textarea,
+  type BadgeTone,
+} from '../components/ui';
 
 const STATUS_OPTIONS: FeedbackStatus[] = ['open', 'planned', 'started', 'completed', 'declined', 'duplicate'];
 const SORT_OPTIONS: FeedbackSort[] = ['top', 'trending', 'newest', 'recent', 'most-discussed'];
@@ -266,25 +286,22 @@ export function FeedbackPage() {
 
   return (
     <main className="app-screen feedback-page min-h-screen">
-      <header className="feedback-header">
-        <button
-          className="text-[10px] uppercase tracking-[0.3em] text-bone/50 hover:text-bone"
-          type="button"
-          onClick={() => navigate('/')}
-        >
-          {t('feedback.back')}
-        </button>
-        <div className="feedback-title-block">
-          <h1 className="font-display text-3xl text-gold">{t('feedback.title')}</h1>
-          <p className="text-xs text-bone/60">{t('feedback.subtitle')}</p>
-        </div>
-        {!isLoggedIn() && (
-          <p className="feedback-anon-notice text-[10px] text-bone/40">{t('feedback.anonymousNotice')}</p>
-        )}
-      </header>
+      <PageSectionHeader
+        className="feedback-header"
+        leading={<BackButton className="!min-h-11" onClick={() => navigate('/')}>{t('feedback.back')}</BackButton>}
+        title={t('feedback.title')}
+        subtitle={
+          <>
+            <span>{t('feedback.subtitle')}</span>
+            {!isLoggedIn() && (
+              <span className="feedback-anon-notice block text-caption text-content-primary/40">{t('feedback.anonymousNotice')}</span>
+            )}
+          </>
+        }
+      />
 
       {stats && (
-        <section className="feedback-stats">
+        <StatsGrid className="feedback-stats">
           <div className="stat-cell">
             <span className="stat-num font-mono">{Number(stats.total) || 0}</span>
             <span className="stat-label">{t('feedback.statsTotal')}</span>
@@ -299,28 +316,25 @@ export function FeedbackPage() {
               <span className="stat-label">{t(statusKey(s))}</span>
             </div>
           ))}
-        </section>
+        </StatsGrid>
       )}
 
-      <ResponsiveToolbar
+      <FilterToolbar
         as="section"
-        className="feedback-toolbar"
+        className="feedback-toolbar border-0 bg-transparent p-0"
         contentClassName="contents"
         actionsClassName="contents"
         primary={
           <>
-            <div className="sort-tabs">
-              {SORT_OPTIONS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className={sort === s ? 'sort-tab active' : 'sort-tab'}
-                  onClick={() => setSort(s)}
-                >
-                  {t(sortKey(s))}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              className="sort-tabs"
+              options={SORT_OPTIONS.map((s) => ({ value: s, label: t(sortKey(s)) }))}
+              value={sort}
+              onChange={setSort}
+              ariaLabel={t('feedback.sortTop')}
+              size="sm"
+              optionClassName="!min-h-11"
+            />
             <Select
               className="status-filter text-xs"
               value={statusFilter}
@@ -382,10 +396,13 @@ export function FeedbackPage() {
 
       {tagFilter && (
         <p className="feedback-tag-active">
-          {t('feedback.filteringTag')}: <span className="post-tag">#{tagFilter}</span>
-          <button type="button" onClick={() => setTagFilter('')}>
-            ✕
-          </button>
+          {t('feedback.filteringTag')}: <Tag>#{tagFilter}</Tag>
+          <IconButton
+            size="sm"
+            label={t('common.close')}
+            icon={<X className="size-3" aria-hidden="true" />}
+            onClick={() => setTagFilter('')}
+          />
         </p>
       )}
 
@@ -425,13 +442,13 @@ export function FeedbackPage() {
         />
       </Sheet>
 
-      {loading && <p className="feedback-empty">{t('feedback.loading')}</p>}
+      {loading && <LoadingState className="feedback-empty" label={t('feedback.loading')} />}
       {error && (
-        <p className="feedback-error" role="alert">
+        <Alert className="feedback-error" tone="danger" role="alert">
           {error}
-        </p>
+        </Alert>
       )}
-      {!loading && !error && posts.length === 0 && <p className="feedback-empty">{t('feedback.empty')}</p>}
+      {!loading && !error && posts.length === 0 && <EmptyState className="feedback-empty" description={t('feedback.empty')} />}
 
       <ul className="feedback-list">
         {posts.map((post) => (
@@ -469,15 +486,15 @@ export function FeedbackPage() {
               <div className="post-title-row">
                 <Badge tone={statusBadgeTone(post.status)}>{t(statusKey(post.status))}</Badge>
                 {post.tag && (
-                  <span
-                    className="post-tag"
+                  <TagButton
+                    className="post-tag !min-h-11 !min-w-11"
                     onClick={(e) => {
                       e.stopPropagation();
                       setTagFilter(post.tag);
                     }}
                   >
                     #{post.tag}
-                  </span>
+                  </TagButton>
                 )}
                 <h3 className="post-title font-display">{post.title}</h3>
                 {post.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
@@ -726,8 +743,7 @@ function TagManagePanel({ tags, onChanged }: { tags: FeedbackTag[]; onChanged: (
       <ul className="tag-list">
         {tags.map((tg) => (
           <li key={tg.id} className="tag-list-item">
-            <span className="post-tag">#{tg.name}</span>
-            {tg.color && <span className="tag-color-chip" style={{ background: tg.color }} />}
+            <Tag swatch={tg.color}>#{tg.name}</Tag>
             <Button
               type="button"
               className="size-11 p-0 tracking-normal"
@@ -1062,12 +1078,15 @@ function PostDetailModal({
     <div className="feedback-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="feedback-modal" onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
-          <button type="button" className="modal-close" onClick={onClose} aria-label={t('feedback.detailBack')}>
-            ✕
-          </button>
+          <IconButton
+            className="modal-close"
+            label={t('feedback.detailBack')}
+            icon={<X className="size-4" aria-hidden="true" />}
+            onClick={onClose}
+          />
         </header>
-        {loading && <p className="feedback-empty">{t('feedback.loading')}</p>}
-        {error && <p className="feedback-error">{error}</p>}
+        {loading && <LoadingState className="feedback-empty" label={t('feedback.loading')} />}
+        {error && <Alert className="feedback-error" tone="danger">{error}</Alert>}
         {post && (
           <div className="modal-body">
             {editingPost ? (
@@ -1088,8 +1107,8 @@ function PostDetailModal({
             ) : (
               <div className="post-head">
                 <Badge tone={statusBadgeTone(post.status)}>{t(statusKey(post.status))}</Badge>
-                {post.tag && <span className="post-tag">#{post.tag}</span>}
-                <h2 className="font-display text-2xl text-bone">{post.title}</h2>
+                {post.tag && <Tag>#{post.tag}</Tag>}
+                <h2 className="font-display text-2xl text-content-primary">{post.title}</h2>
                 {post.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
                 {isPostAuthor && (
                   <Button type="button" size="sm" variant="ghost" onClick={startEditPost}>
@@ -1102,9 +1121,15 @@ function PostDetailModal({
             {post.status === 'duplicate' && post.originalPostId && (
               <div className="duplicate-notice">
                 <p>{t('feedback.duplicateNotice')}</p>
-                <button type="button" className="original-post-link" onClick={() => onNavigate(post.originalPostId!)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="original-post-link"
+                  onClick={() => onNavigate(post.originalPostId!)}
+                >
                   {t('feedback.originalPost')}: {post.originalPostTitle || post.originalPostId}
-                </button>
+                </Button>
               </div>
             )}
             {!editingPost && post.description && (
@@ -1121,8 +1146,10 @@ function PostDetailModal({
             </div>
 
             <div className="modal-actions">
-              <button
+              <Button
                 type="button"
+                variant={post.hasVoted ? 'primary' : 'secondary'}
+                size="sm"
                 className={'vote-button' + (post.hasVoted ? ' voted' : '') + (!canVote ? ' disabled' : '')}
                 onClick={handleVote}
                 disabled={!canVote}
@@ -1131,19 +1158,19 @@ function PostDetailModal({
                 <span>{post.hasVoted ? '▲' : '△'}</span>
                 <span className="font-mono">{post.voteCount}</span>
                 <span>{t(post.hasVoted ? 'feedback.voted' : 'feedback.vote')}</span>
-              </button>
-              <button type="button" className="voters-toggle" onClick={loadVoters}>
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="voters-toggle" onClick={loadVoters}>
                 {t('feedback.voters')} ({post.voteCount})
-              </button>
+              </Button>
             </div>
 
             {voters && (
               <section className="voters-list">
                 {voters.length === 0 && <p className="feedback-empty">{t('feedback.noVoters')}</p>}
                 {voters.map((v, i) => (
-                  <span key={i} className="voter-chip">
+                  <Tag key={i}>
                     {v.nickname || t('feedback.anonymous')}
-                  </span>
+                  </Tag>
                 ))}
               </section>
             )}
@@ -1247,38 +1274,39 @@ function PostDetailModal({
                           <Markdown text={c.content} />
                         </p>
                         <div className="comment-actions">
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="sm"
                             className={'comment-vote-button' + (c.hasVoted ? ' voted' : '')}
                             onClick={() => void handleCommentVote(c.id)}
                             aria-pressed={c.hasVoted}
                           >
                             {c.hasVoted ? '▲' : '△'} {c.voteCount}
-                          </button>
+                          </Button>
                           {/* Emoji 反應 */}
                           <div className="reaction-group">
                             {c.reactions.map((r: FeedbackReaction) => (
-                              <button
+                              <TagButton
                                 key={r.emoji}
                                 type="button"
-                                className={'reaction-chip' + (r.includesMe ? ' includes-me' : '')}
+                                className={'reaction-chip !min-h-11 !min-w-11' + (r.includesMe ? ' includes-me' : '')}
                                 onClick={() => void handleReaction(c.id, r.emoji)}
+                                aria-pressed={r.includesMe}
                               >
                                 {r.emoji} <span className="font-mono">{r.count}</span>
-                              </button>
+                              </TagButton>
                             ))}
-                            <button
-                              type="button"
+                            <IconButton
                               className="reaction-add-button"
-                              aria-label={t('feedback.addReaction')}
+                              label={t('feedback.addReaction')}
+                              icon={<SmilePlus className="size-3.5" aria-hidden="true" />}
                               aria-expanded={openReactionPickerCommentId === c.id}
                               onClick={() =>
                                 setOpenReactionPickerCommentId((current) => (current === c.id ? null : c.id))
                               }
                               title={t('feedback.addReaction')}
-                            >
-                              <SmilePlus className="size-3.5" aria-hidden="true" />
-                            </button>
+                            />
                             <div
                               className={
                                 'reaction-picker' +
@@ -1286,14 +1314,13 @@ function PostDetailModal({
                               }
                             >
                               {(['👍', '❤️', '🎉', '😄', '😕', '👎'] as const).map((emoji) => (
-                                <button
+                                <IconButton
                                   key={emoji}
-                                  type="button"
                                   className="reaction-picker-button"
+                                  label={`${t('feedback.addReaction')} ${emoji}`}
+                                  icon={<span aria-hidden="true">{emoji}</span>}
                                   onClick={() => void handleReaction(c.id, emoji)}
-                                >
-                                  {emoji}
-                                </button>
+                                />
                               ))}
                             </div>
                           </div>
@@ -1368,10 +1395,13 @@ function PostDetailModal({
                   {isLoggedIn() ? t('feedback.commentingAs') : t('feedback.anonymousNotice')}
                 </p>
                 {adminMode && (
-                  <label className="official-toggle">
-                    <input type="checkbox" checked={isOfficial} onChange={(e) => setIsOfficial(e.target.checked)} />
+                  <Checkbox
+                    className="official-toggle"
+                    checked={isOfficial}
+                    onChange={(e) => setIsOfficial(e.target.checked)}
+                  >
                     {t('feedback.officialResponse')}
-                  </label>
+                  </Checkbox>
                 )}
                 <Button type="button" onClick={handleComment} disabled={commenting || !comment.trim()}>
                   {commenting ? t('feedback.submitting') : t('feedback.commentSubmit')}

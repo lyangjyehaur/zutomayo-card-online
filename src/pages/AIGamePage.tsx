@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AIGame } from '../components/AIGame';
-import { BackButton, Card, PageShell, Panel } from '../components/ui';
+import { BackButton, Card, PageSectionHeader, Panel, ScrollPageLayout } from '../components/ui';
 import type { AIDifficulty } from '../game/ai';
 import { t } from '../i18n';
 
@@ -58,21 +58,21 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
   }
 
   return (
-    <PageShell className="flex flex-col px-4 py-4 md:px-6">
-      <header className="flex items-center justify-between border-b border-bone/5 pb-4">
-        <div className="flex flex-col items-start gap-1">
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.menu')}</span>
-          <h1 className="font-display text-3xl italic">{t('aiSetup.title')}</h1>
-        </div>
-        <BackButton className="min-h-11" type="button" onClick={() => navigate('/')}>
-          {t('common.backToLobby')}
-        </BackButton>
-      </header>
+    <ScrollPageLayout>
+      <PageSectionHeader
+        kicker={t('lobby.menu')}
+        title={t('aiSetup.title')}
+        actions={
+          <BackButton className="min-h-11" type="button" onClick={() => navigate('/')}>
+            {t('common.backToLobby')}
+          </BackButton>
+        }
+      />
 
       <Panel className="mt-4" size="lg">
         <div className="mb-4 grid gap-1">
           <h3 className="font-display text-xl italic">{t('aiSetup.chooseDifficulty')}</h3>
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('lobby.difficulty')}</span>
+          <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('lobby.difficulty')}</span>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           {levels.map((level) => (
@@ -89,11 +89,11 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
               }}
             >
               <strong className="font-display text-lg italic">{level.label}</strong>
-              <span className="text-sm text-bone/70">{level.detail}</span>
+              <span className="text-sm text-content-primary/70">{level.detail}</span>
             </Card>
           ))}
         </div>
       </Panel>
-    </PageShell>
+    </ScrollPageLayout>
   );
 }

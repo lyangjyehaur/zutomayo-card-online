@@ -10,14 +10,14 @@ export interface AmbientGlowProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const glowColorClass: Record<AmbientGlowColor, string> = {
-  vermilion: 'bg-vermilion/8',
-  gold: 'bg-gold/8',
+  vermilion: 'bg-accent-action/8',
+  gold: 'bg-accent-primary/8',
 };
 
 const glowSizeClass: Record<AmbientGlowSize, string> = {
-  sm: 'h-[50vh] w-[50vh] blur-[120px]',
-  md: 'h-[60vh] w-[60vh] blur-[140px]',
-  lg: 'h-[80vh] w-[80vh] blur-[160px]',
+  sm: 'h-[var(--ambient-glow-size-sm)] w-[var(--ambient-glow-size-sm)] blur-[var(--ambient-glow-blur-sm)]',
+  md: 'h-[var(--ambient-glow-size-md)] w-[var(--ambient-glow-size-md)] blur-[var(--ambient-glow-blur-md)]',
+  lg: 'h-[var(--ambient-glow-size-lg)] w-[var(--ambient-glow-size-lg)] blur-[var(--ambient-glow-blur-lg)]',
 };
 
 export function AmbientGlow({ color = 'vermilion', size = 'md', className, ...props }: AmbientGlowProps) {
@@ -69,10 +69,11 @@ export function PageShell({ glow = false, variant = 'screen', className, childre
   return (
     <main
       className={cn(
-        'relative w-full bg-lacquer-deep font-sans text-bone',
+        'relative w-full bg-surface-canvas font-sans text-content-primary',
         shellVariantClass[variant],
         className,
       )}
+      data-page-shell={variant}
       {...props}
     >
       {renderGlow(glow)}

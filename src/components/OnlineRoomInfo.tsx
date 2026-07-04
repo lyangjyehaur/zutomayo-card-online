@@ -38,10 +38,10 @@ export function OnlineRoomInfo({ matchID, helperText, className = '' }: OnlineRo
   return (
     <Panel className={cn('flex flex-col items-stretch gap-3', className)} role="status" aria-live="polite">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-bone/70">{t('online.roomCode')}</span>
+        <span className="text-sm text-content-primary/70">{t('online.roomCode')}</span>
         <strong className="font-mono text-lg">{matchID}</strong>
       </div>
-      {helperText && <p className="text-sm text-bone/70">{helperText}</p>}
+      {helperText && <p className="text-sm text-content-primary/70">{helperText}</p>}
       <label className="flex flex-col gap-2">
         <FieldLabel>{t('online.shareLink')}</FieldLabel>
         <Input value={shareLink} readOnly aria-label={t('online.shareLink')} />
@@ -50,7 +50,7 @@ export function OnlineRoomInfo({ matchID, helperText, className = '' }: OnlineRo
         <Button size="sm" type="button" onClick={copyShareLink}>
           {copied ? t('online.copied') : t('online.copyLink')}
         </Button>
-        <small className="text-xs text-bone/50">
+        <small className="text-xs text-content-primary/50">
           {copied ? t('online.copySuccessHelp') : t('online.shareReconnectHint')}
         </small>
       </div>

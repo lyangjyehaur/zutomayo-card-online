@@ -11,7 +11,20 @@ import type { ActionLogEntry } from '../game/types';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
-import { ActionBar, BackButton, Badge, Button, Card, Dialog, Panel, PageShell, ResponsiveToolbar } from './ui';
+import {
+  ActionBar,
+  BackButton,
+  Badge,
+  Button,
+  Card,
+  Dialog,
+  FilterToolbar,
+  PageSectionHeader,
+  Panel,
+  ScrollPageLayout,
+  StatCard,
+  StatsGrid,
+} from './ui';
 
 interface MatchHistoryProps {
   onBack: () => void;
@@ -72,8 +85,8 @@ function TraceEntry({ entry, locale }: { entry: ActionLogEntry; locale: string }
         </strong>
         <span>{entry.step}</span>
         {payload && <p>{payload}</p>}
-        {resultMessage && <p className={entry.result?.ok ? 'text-jade' : 'text-vermilion'}>{resultMessage}</p>}
-        {context.length > 0 && <small className="text-bone/50">{context.join(' · ')}</small>}
+        {resultMessage && <p className={entry.result?.ok ? 'text-accent-success' : 'text-accent-action'}>{resultMessage}</p>}
+        {context.length > 0 && <small className="text-content-primary/50">{context.join(' · ')}</small>}
       </Card>
     </li>
   );
@@ -92,27 +105,27 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
       <div className="grid gap-4">
         <header className="flex items-start justify-between gap-3">
           <div className="space-y-1">
-            <span className="text-sm text-bone/60">{new Date(record.date).toLocaleString(locale)}</span>
+            <span className="text-sm text-content-primary/60">{new Date(record.date).toLocaleString(locale)}</span>
             <Badge tone={resultBadgeTone(record)}>{winnerLabel(record)}</Badge>
           </div>
         </header>
         <div className="grid gap-3 md:grid-cols-4">
           <Panel variant="ghost">
-            <span className="text-xs text-bone/50">{t('history.turns')}</span>
+            <span className="text-xs text-content-primary/50">{t('history.turns')}</span>
             <strong>{record.turns}</strong>
           </Panel>
           <Panel variant="ghost">
-            <span className="text-xs text-bone/50">{t('history.duration')}</span>
+            <span className="text-xs text-content-primary/50">{t('history.duration')}</span>
             <strong>{formatDuration(record.duration)}</strong>
           </Panel>
           <Panel variant="ghost">
-            <span className="text-xs text-bone/50">{t('history.finalHp')}</span>
+            <span className="text-xs text-content-primary/50">{t('history.finalHp')}</span>
             <strong>
               {record.players[0].hp}/{record.players[1].hp}
             </strong>
           </Panel>
           <Panel variant="ghost">
-            <span className="text-xs text-bone/50">{t('history.finalChronos')}</span>
+            <span className="text-xs text-content-primary/50">{t('history.finalChronos')}</span>
             <strong>{record.chronos.finalPosition}/12</strong>
           </Panel>
         </div>
@@ -124,7 +137,7 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
         <section>
           <h3 className="font-display text-lg italic">{t('history.traceTitle')}</h3>
           {trace.length === 0 ? (
-            <Panel className="mt-3 text-sm text-bone/60">{t('history.traceEmpty')}</Panel>
+            <Panel className="mt-3 text-sm text-content-primary/60">{t('history.traceEmpty')}</Panel>
           ) : (
             <ol className="mt-3 flex flex-col gap-3">
               {trace.map((entry, index) => (
@@ -177,23 +190,21 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
   };
 
   return (
-    <PageShell className="overflow-y-auto px-4 py-4 md:px-6">
-      <div className="mx-auto flex max-w-5xl flex-col gap-4">
-        <header className="flex flex-col gap-3 border-b border-bone/5 pb-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.menu')}</span>
-            <h1 className="font-display text-2xl italic text-gold sm:text-3xl">{t('history.title')}</h1>
-          </div>
+    <ScrollPageLayout>
+      <PageSectionHeader
+        kicker={t('lobby.menu')}
+        title={t('history.title')}
+        actions={
           <ActionBar mobileLayout="grid">
             <BackButton
-              className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+              className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
               type="button"
               onClick={onBack}
             >
               {t('common.backToLobby')}
             </BackButton>
             <Button
-              className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+              className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
               variant="danger"
               size="sm"
               type="button"
@@ -203,29 +214,18 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
               {t('history.clear')}
             </Button>
           </ActionBar>
-        </header>
+        }
+      />
 
-        <section className="grid gap-3 md:grid-cols-4">
-          <Panel>
-            <span className="text-xs text-bone/50">{t('history.total')}</span>
-            <strong>{stats.totalMatches}</strong>
-          </Panel>
-          <Panel>
-            <span className="text-xs text-bone/50">{t('history.p0Wins')}</span>
-            <strong>{stats.wins[0]}</strong>
-          </Panel>
-          <Panel>
-            <span className="text-xs text-bone/50">{t('history.p1Wins')}</span>
-            <strong>{stats.wins[1]}</strong>
-          </Panel>
-          <Panel>
-            <span className="text-xs text-bone/50">{t('history.avgTurns')}</span>
-            <strong>{stats.avgTurns}</strong>
-          </Panel>
-        </section>
+      <StatsGrid>
+        <StatCard label={t('history.total')} value={stats.totalMatches} />
+        <StatCard label={t('history.p0Wins')} value={stats.wins[0]} />
+        <StatCard label={t('history.p1Wins')} value={stats.wins[1]} />
+        <StatCard label={t('history.avgTurns')} value={stats.avgTurns} />
+      </StatsGrid>
 
-        <section className="flex flex-col gap-3">
-          <ResponsiveToolbar
+      <section className="flex flex-col gap-3">
+          <FilterToolbar
             className="sm:flex-row sm:items-center sm:justify-between"
             primary={<h2>{t('history.title')}</h2>}
             actions={
@@ -234,20 +234,20 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                   size="sm"
                   variant="secondary"
                   type="button"
-                  className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+                  className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
                   disabled={currentPage === 0}
                   onClick={() => setPage((value) => Math.max(0, value - 1))}
                 >
                   {t('common.prev')}
                 </Button>
-                <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
+                <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/50">
                   {currentPage + 1}/{totalPages} {t('common.page')}
                 </span>
                 <Button
                   size="sm"
                   variant="secondary"
                   type="button"
-                  className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+                  className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
                   disabled={currentPage >= totalPages - 1}
                   onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
                 >
@@ -258,14 +258,14 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
           />
 
           {records.length === 0 ? (
-            <Panel className="text-sm text-bone/60">{t('history.noRecords')}</Panel>
+            <Panel className="text-sm text-content-primary/60">{t('history.noRecords')}</Panel>
           ) : (
             <div className="grid gap-3">
               {visibleRecords.map((record) => (
                 <Card key={record.id} as="article" className="grid gap-3">
                   <div className="flex items-start justify-between gap-3">
                     <Badge tone={resultBadgeTone(record)}>{winnerLabel(record)}</Badge>
-                    <span className="text-sm text-bone/50">
+                    <span className="text-sm text-content-primary/50">
                       {new Date(record.date).toLocaleString(locale, {
                         month: '2-digit',
                         day: '2-digit',
@@ -296,7 +296,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                       size="sm"
                       variant="ghost"
                       type="button"
-                      className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+                      className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
                       onClick={() => setSelectedRecord(record)}
                     >
                       {t('history.viewTrace')}
@@ -305,7 +305,7 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
                       size="sm"
                       variant="secondary"
                       type="button"
-                      className="min-h-10 tracking-[0.18em] xl:min-h-0 xl:tracking-[0.3em]"
+                      className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
                       onClick={() => downloadMatchActionLog(record)}
                     >
                       {t('history.downloadTrace')}
@@ -317,7 +317,6 @@ export function MatchHistory({ onBack }: MatchHistoryProps) {
           )}
         </section>
         {selectedRecord && <MatchDetail record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
-      </div>
-    </PageShell>
+    </ScrollPageLayout>
   );
 }

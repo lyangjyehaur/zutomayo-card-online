@@ -8,7 +8,7 @@ import { ensureCompatibleAppVersion } from './clientVersion';
 import { NetworkStatusNotifier } from './components/NetworkStatusNotifier';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PwaStatusPrompt } from './components/PwaStatusPrompt';
-import { Button } from './components/ui';
+import { Button, IconButton } from './components/ui';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
@@ -142,10 +142,9 @@ function NavBar() {
   ];
 
   const activeItem = navItems.find((item) => item.path === location.pathname) ?? navItems[0];
-  const buttonStyle = { minWidth: '44px' };
-  const buttonClass = (path: string) =>
-    `rounded-sm px-2 py-2 text-[10px] uppercase tracking-[0.24em] transition-colors md:min-h-11 md:px-2 md:py-0 md:tracking-[0.3em] ${
-      location.pathname === path ? 'text-gold' : 'text-bone/50 hover:text-bone'
+  const navButtonClass = (path: string) =>
+    `!min-h-11 min-w-touch px-2 py-0 tracking-[var(--tracking-label)] md:tracking-[var(--tracking-kicker)] ${
+      location.pathname === path ? 'text-accent-primary' : 'text-content-primary/50 hover:text-content-primary'
     }`;
 
   const goTo = (path: string) => {
@@ -155,69 +154,69 @@ function NavBar() {
 
   return (
     <nav
-      className="relative z-30 border-b border-bone/5 bg-lacquer-deep/90 px-4 backdrop-blur md:px-6"
+      className="relative z-[var(--z-header)] border-b border-content-primary/5 bg-surface-canvas/90 px-4 backdrop-blur md:px-6"
       aria-label={t('nav.primary')}
     >
       <div className="hidden h-12 items-center justify-between md:flex">
         <div className="flex items-center gap-6">
           {navItems.slice(0, 5).map((item) => (
-            <button
+            <Button
               key={item.path}
-              className={buttonClass(item.path)}
-              style={buttonStyle}
+              className={navButtonClass(item.path)}
+              variant="ghost"
+              size="sm"
               type="button"
               onClick={() => goTo(item.path)}
             >
               {item.label}
-            </button>
+            </Button>
           ))}
         </div>
-        <button
-          className={buttonClass('/tutorial')}
-          style={buttonStyle}
+        <Button
+          className={navButtonClass('/tutorial')}
+          variant="ghost"
+          size="sm"
           type="button"
           onClick={() => goTo('/tutorial')}
         >
           {t('nav.tutorial')}
-        </button>
+        </Button>
       </div>
       <div className="flex h-14 items-center justify-between gap-3 md:hidden">
-        <button
-          className="inline-flex min-h-11 items-center font-display text-base italic text-bone"
+        <Button
+          className="!min-h-11 font-display text-base italic normal-case tracking-normal text-content-primary"
+          variant="ghost"
+          size="sm"
           type="button"
           onClick={() => goTo('/')}
         >
           ZUTOMAYO
-        </button>
-        <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.24em] text-gold">
+        </Button>
+        <span className="min-w-0 truncate font-mono text-caption uppercase tracking-[var(--tracking-label)] text-accent-primary">
           {activeItem.label}
         </span>
-        <button
-          className="inline-flex size-11 items-center justify-center rounded-sm text-bone/60 ring-1 ring-bone/10 transition hover:text-bone focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
-          type="button"
-          aria-label={open ? t('common.close') : t('nav.primary')}
+        <IconButton
+          variant="secondary"
+          label={open ? t('common.close') : t('nav.primary')}
+          icon={open ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
-        >
-          {open ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
-        </button>
+        />
       </div>
       {open && (
-        <div className="fixed inset-0 top-14 z-[var(--z-modal)] bg-lacquer-deep/80 p-4 backdrop-blur md:hidden">
-          <div className="grid gap-2 rounded-md bg-lacquer p-3 ring-1 ring-bone/10 shadow-[--shadow]">
+        <div className="fixed inset-0 top-14 z-[var(--z-modal)] bg-surface-canvas/80 p-4 backdrop-blur md:hidden">
+          <div className="grid gap-2 rounded-md bg-surface-base p-3 ring-1 ring-content-primary/10 shadow-raised">
             {navItems.map((item) => (
-              <button
+              <Button
                 key={item.path}
-                className={`flex min-h-11 items-center justify-between rounded-sm px-3 text-left font-mono text-[11px] uppercase tracking-[0.18em] transition ${
-                  location.pathname === item.path
-                    ? 'bg-gold text-lacquer'
-                    : 'text-bone/70 hover:bg-bone/5 hover:text-bone'
-                }`}
+                className="justify-between text-left"
+                fullWidth
+                variant={location.pathname === item.path ? 'primary' : 'ghost'}
                 type="button"
                 onClick={() => goTo(item.path)}
               >
                 {item.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -304,7 +303,7 @@ function NotFoundPage() {
 
 function RouteFallback() {
   return (
-    <main className="app-screen grid place-items-center bg-lacquer-deep font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
+    <main className="app-screen grid place-items-center bg-surface-canvas font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/50">
       {t('game.loading')}
     </main>
   );

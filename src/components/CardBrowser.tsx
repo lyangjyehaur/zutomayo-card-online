@@ -10,7 +10,7 @@ export function CardBrowser({ label, className, children, ...props }: CardBrowse
   return (
     <section
       className={cn(
-        'flex min-h-[24rem] flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10 md:min-h-[28rem] md:p-5 xl:min-h-0',
+        'card-browser flex min-h-[24rem] flex-col rounded-sm bg-surface-base/60 p-4 ring-1 ring-content-primary/10 md:min-h-[28rem] md:p-5 xl:min-h-0',
         className,
       )}
       aria-label={label}
@@ -43,7 +43,7 @@ export function CardBrowserToolbar({
     <div className={cn('mb-4 space-y-4', className)} {...props}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          {kicker && <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{kicker}</div>}
+          {kicker && <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{kicker}</div>}
           <h2 className="truncate font-display text-2xl italic">{title}</h2>
         </div>
         {search}
@@ -125,15 +125,15 @@ function CardBrowserDetailContent({
 }: CardBrowserDetailContentProps & { showTitle?: boolean }) {
   return (
     <>
-      {showTitle && <div className="truncate font-display text-sm font-bold text-bone/90">{title}</div>}
-      {meta && <div className="mt-0.5 font-mono text-[9px] uppercase tracking-widest text-gold/50">{meta}</div>}
+      {showTitle && <div className="truncate font-display text-sm font-bold text-content-primary/90">{title}</div>}
+      {meta && <div className="mt-0.5 font-mono text-minutia uppercase tracking-widest text-accent-primary/50">{meta}</div>}
       {stats && (
-        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-widest">
+        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-caption uppercase tracking-widest">
           {stats}
         </div>
       )}
-      {effect && <p className="mt-2.5 text-[12px] leading-relaxed text-bone/80">{effect}</p>}
-      {footer && <div className="mt-2 font-mono text-[9px] text-bone/30">{footer}</div>}
+      {effect && <p className="mt-2.5 text-body-sm leading-relaxed text-content-primary/80">{effect}</p>}
+      {footer && <div className="mt-2 font-mono text-minutia text-content-primary/30">{footer}</div>}
     </>
   );
 }
@@ -154,7 +154,7 @@ export function CardBrowserDetailPopover({
     <aside
       aria-hidden="true"
       className={cn(
-        'pointer-events-none fixed z-50 w-72 rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep/95 to-lacquer p-4 shadow-2xl ring-1 ring-gold/30 backdrop-blur',
+        'pointer-events-none fixed z-[var(--z-modal)] w-72 rounded-sm bg-gradient-to-br from-surface-canvas via-surface-canvas/95 to-surface-base p-4 shadow-popover ring-1 ring-accent-primary/30 backdrop-blur',
         className,
       )}
       {...props}

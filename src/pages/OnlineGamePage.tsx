@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { isVersionMismatchError, reloadForAppUpdate } from '../clientVersion';
 import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
-import { Button, Dialog, PageShell, Panel } from '../components/ui';
+import { Alert, Button, Dialog, PageShell, Panel } from '../components/ui';
 import { t, translate, useLocale } from '../i18n';
 import {
   clearStoredOnlineSession,
@@ -86,7 +86,7 @@ function LeaveConfirmDialog({
         </>
       }
     >
-      <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('game.onlineMode')}</span>
+      <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('game.onlineMode')}</span>
     </Dialog>
   );
 }
@@ -300,16 +300,16 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
         ? t('online.leaveRoom')
         : t('common.backToLobby');
     const panelTone =
-      copy.tone === 'error' ? 'text-vermilion/80' : copy.tone === 'waiting' ? 'text-gold/70' : 'text-bone/45';
+      copy.tone === 'error' ? 'text-accent-action/80' : copy.tone === 'waiting' ? 'text-accent-primary/70' : 'text-content-primary/45';
 
     return (
       <PageShell className="flex items-center justify-center px-4" glow={{ color: 'vermilion', size: 'md' }}>
-        <Panel className="relative z-10 w-full max-w-xl" size="xl">
-          <span className={`font-mono text-[10px] uppercase tracking-[0.3em] ${panelTone}`}>
+        <Panel className="relative z-[var(--z-dropdown)] w-full max-w-xl" size="xl">
+          <span className={`font-mono text-caption uppercase tracking-[var(--tracking-kicker)] ${panelTone}`}>
             {t('game.onlineMode')}
           </span>
           <h1 className="mt-3 font-display text-3xl italic">{t(copy.titleKey)}</h1>
-          <p className="mt-3 text-sm leading-relaxed text-bone/60">{t(copy.bodyKey)}</p>
+          <p className="mt-3 text-sm leading-relaxed text-content-primary/60">{t(copy.bodyKey)}</p>
           {showRoomInfo && <OnlineRoomInfo matchID={panelSession.matchID} helperText={roomInfoHelper(status)} />}
           <div className="mt-6 flex flex-wrap gap-3">
             <Button
@@ -329,12 +329,22 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
               </Button>
             )}
             {copy.canCreateNewRoom && (
-              <Button variant="primary" type="button" disabled={creatingRoom} onClick={() => void createNewRoom()}>
+              <Button
+                variant="primary"
+                type="button"
+                disabled={creatingRoom}
+                aria-busy={creatingRoom}
+                onClick={() => void createNewRoom()}
+              >
                 {creatingRoom ? t('online.creatingRoom') : t('online.createNewRoom')}
               </Button>
             )}
           </div>
-          {actionError && <p className="mt-4 text-[10px] text-vermilion/80">{actionError}</p>}
+          {actionError && (
+            <Alert className="mt-4" tone="danger" role="alert">
+              {actionError}
+            </Alert>
+          )}
         </Panel>
         {leavePromptOpen && (
           <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={() => void leaveAndReturn()} />

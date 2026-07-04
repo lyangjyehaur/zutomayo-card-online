@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { t } from '../i18n';
-import { Button, type ButtonVariant } from './ui';
+import { Button, IconButton, type ButtonVariant } from './ui';
 
 interface AppDrawerAction {
   label: string;
@@ -66,15 +66,13 @@ export function AppDrawer({
             </Button>
           ))}
           {onClose && (
-            <Button
-              className="app-drawer-close size-11 p-0 tracking-normal"
+            <IconButton
+              className="app-drawer-close"
               variant="secondary"
-              type="button"
-              aria-label={t('common.close')}
+              label={t('common.close')}
+              icon={<X className="size-4" aria-hidden="true" />}
               onClick={onClose}
-            >
-              <X className="size-4" aria-hidden="true" />
-            </Button>
+            />
           )}
         </div>
       </section>

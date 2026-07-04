@@ -138,9 +138,9 @@
   }
 
   .admin-responsive-table tr {
-    border: 1px solid color-mix(in oklch, var(--bone) 10%, transparent);
-    border-radius: 2px;
-    background: color-mix(in oklch, var(--lacquer) 80%, transparent);
+    border: var(--border-width-hairline) solid color-mix(in oklch, var(--content-primary) 10%, transparent);
+    border-radius: var(--radius-xs);
+    background: color-mix(in oklch, var(--surface-base) 80%, transparent);
     padding: 0.7rem;
   }
 
@@ -158,10 +158,10 @@
   .admin-responsive-table td::before {
     content: attr(data-label);
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: var(--type-minutia);
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: color-mix(in oklch, var(--bone) 42%, transparent);
+    color: color-mix(in oklch, var(--content-primary) 42%, transparent);
   }
 
   .admin-responsive-table td .flex {

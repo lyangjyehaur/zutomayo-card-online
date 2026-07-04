@@ -25,7 +25,7 @@ type MatchDataMember = { id: number; name?: string } | undefined;
 function OnlineLoading() {
   return (
     <PageShell
-      className="flex items-center justify-center font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50"
+      className="flex items-center justify-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/50"
       role="status"
     >
       {t('onlineSession.reconnecting')}
@@ -146,10 +146,10 @@ export function OnlineGame({
   return (
     <PageShell>
       {connectionStatus && (
-        <div className="absolute right-6 top-1.5 z-50">
+        <div className="absolute right-6 top-1.5 z-[var(--z-modal)]">
           <span
-            className={`font-mono text-[10px] uppercase tracking-[0.3em] ${
-              connectionStatus === 'disconnected' ? 'text-vermilion/80' : 'text-gold/70'
+            className={`font-mono text-caption uppercase tracking-[var(--tracking-kicker)] ${
+              connectionStatus === 'disconnected' ? 'text-accent-action/80' : 'text-accent-primary/70'
             }`}
           >
             {connectionStatus === 'rejoined'

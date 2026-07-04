@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
+import { Button } from './ui';
 
 /** 進入某教學步驟時的遊戲狀態快照，供 completeWhen 比對變化 */
 export interface TutorialEntrySnapshot {
@@ -204,13 +205,14 @@ export function GameTutorialOverlay({
         width: 'auto',
         top: mobileSheetAtTop ? 'calc(env(safe-area-inset-top) + 10px)' : 'auto',
         bottom: mobileSheetAtTop ? 'auto' : 'calc(env(safe-area-inset-bottom) + 10px)',
-        transition: 'transform 250ms ease',
+        transition: 'transform var(--motion-duration-slow) var(--motion-ease-standard)',
       }
     : {
         width: `${tipW}px`,
         left: `${tipX}px`,
         top: `${tipY}px`,
-        transition: 'left 250ms ease, top 250ms ease',
+        transition:
+          'left var(--motion-duration-slow) var(--motion-ease-standard), top var(--motion-duration-slow) var(--motion-ease-standard)',
       };
 
   // 點擊攔截：有 rects 時用 4-div 包圍法包圍所有 rects 的聯集 bbox
@@ -245,7 +247,7 @@ export function GameTutorialOverlay({
   };
 
   return (
-    <div className="tutorial-game-overlay fixed inset-0 z-[1000]">
+    <div className="tutorial-game-overlay fixed inset-0 z-[var(--z-tour)]">
       {/* 視覺遮罩：SVG mask 挖洞，pointer-events: none 不攔截點擊 */}
       <svg
         className="absolute inset-0 h-full w-full"
@@ -267,9 +269,9 @@ export function GameTutorialOverlay({
           y="0"
           width="100%"
           height="100%"
-          fill="rgba(8,8,12,0.82)"
+          fill="var(--surface-overlay)"
           mask="url(#tutorial-game-mask)"
-          style={{ transition: 'all 250ms ease' }}
+          style={{ transition: 'all var(--motion-duration-slow) var(--motion-ease-standard)' }}
         />
         {rects.map((r, i) => (
           <rect
@@ -281,9 +283,9 @@ export function GameTutorialOverlay({
             rx="6"
             ry="6"
             fill="none"
-            stroke="oklch(0.74 0.09 80)"
+            stroke="var(--accent-primary)"
             strokeWidth="2"
-            style={{ transition: 'all 250ms ease' }}
+            style={{ transition: 'all var(--motion-duration-slow) var(--motion-ease-standard)' }}
           />
         ))}
       </svg>
@@ -292,29 +294,31 @@ export function GameTutorialOverlay({
 
       {/* Tutorial tooltip card */}
       <div
-        className={`tutorial-tooltip absolute rounded-sm bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer p-5 text-bone shadow-[0_30px_80px_-20px] shadow-black/90 ring-1 ring-gold/40 backdrop-blur ${
+        className={`tutorial-tooltip absolute rounded-sm bg-gradient-to-br from-surface-canvas via-surface-canvas to-surface-base p-5 text-content-primary shadow-sheet ring-1 ring-accent-primary/40 backdrop-blur ${
           mobileSheetAtTop ? 'tutorial-tooltip--mobile-top' : ''
         }`}
         style={tooltipStyle}
       >
         {/* Header */}
         <div className="tutorial-tooltip-header mb-3 flex items-center justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">
+          <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
             {String(currentStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')}
           </span>
-          <button
+          <Button
             onClick={onSkip}
-            className="tutorial-tooltip-action tutorial-tooltip-close text-[10px] uppercase tracking-[0.3em] text-bone/40 transition hover:text-vermilion"
+            className="tutorial-tooltip-action tutorial-tooltip-close text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition hover:text-accent-action"
+            variant="ghost"
+            size="sm"
             type="button"
           >
             {t('common.close')}
-          </button>
+          </Button>
         </div>
 
         {/* Content */}
         <div className="tutorial-tooltip-body">
-          <h3 className="font-display text-2xl italic leading-tight text-bone">{t(titleKey as never)}</h3>
-          <p className="mt-3 text-[13px] leading-relaxed text-bone/75">{t(bodyKey as never)}</p>
+          <h3 className="font-display text-2xl italic leading-tight text-content-primary">{t(titleKey as never)}</h3>
+          <p className="mt-3 text-body leading-relaxed text-content-primary/75">{t(bodyKey as never)}</p>
         </div>
 
         {/* Footer：操作按鈕與提示 */}
@@ -322,19 +326,21 @@ export function GameTutorialOverlay({
           {/* Navigation / action hint */}
           {isActionStep || current.hideNext ? (
             <div className="flex justify-center">
-              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/60">
+              <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/60">
                 {t('common.continue')}
               </span>
             </div>
           ) : (
             <div className="flex justify-end gap-2">
-              <button
+              <Button
                 onClick={isLast ? onComplete : onNext}
-                className="tutorial-tooltip-action bg-gold px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-bone active:scale-95"
+                className="tutorial-tooltip-action bg-accent-primary px-4 py-1.5 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-content-inverse transition hover:bg-content-primary active:scale-95"
+                variant="primary"
+                size="sm"
                 type="button"
               >
                 {isLast ? t('common.confirm') : t('common.next')}
-              </button>
+              </Button>
             </div>
           )}
         </div>

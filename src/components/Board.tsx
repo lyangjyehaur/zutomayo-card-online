@@ -16,7 +16,7 @@ import { getCardDef } from '../game/cards/loader';
 import { Card, CardPopover, computePopoverPosition, type CardSize, type PopoverPosition } from './Card';
 import { Chronos } from './Chronos';
 import { AppDrawer } from './AppDrawer';
-import { Button } from './ui';
+import { Button, IconButton, SegmentedControl } from './ui';
 import {
   getBaseAttack,
   getChronosTime,
@@ -290,7 +290,7 @@ function LogCardChip({ cardDefId }: { cardDefId: string }) {
     <button
       type="button"
       ref={ref}
-      className="inline-flex min-h-10 cursor-help items-center rounded-sm bg-transparent p-0 text-left text-gold-soft underline decoration-dotted underline-offset-2 transition hover:text-gold focus:outline-none focus:ring-2 focus:ring-gold/50 focus:ring-offset-2 focus:ring-offset-lacquer"
+      className="inline-flex min-h-10 cursor-help items-center rounded-sm bg-transparent p-0 text-left text-accent-primary-soft underline decoration-dotted underline-offset-2 transition hover:text-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/50 focus:ring-offset-2 focus:ring-offset-surface-base"
       aria-label={def.name}
       aria-expanded={visible}
       onClick={() => setTappedOpen((open) => !open)}
@@ -318,22 +318,22 @@ function renderLogSegments(segments: LogSegment[]): ReactNode {
  */
 function LogBreakdown({ breakdown }: { breakdown: HpChangeBreakdown }) {
   return (
-    <div className="ml-3 mt-0.5 flex flex-col gap-px border-l border-bone/10 pl-2">
+    <div className="ml-3 mt-0.5 flex flex-col gap-px border-l border-content-primary/10 pl-2">
       {breakdown.lines.map((line, idx) => {
         const valueDisplay = line.value.startsWith('board.') ? t(line.value as never) : line.value;
         return (
-          <div key={idx} className="flex items-baseline gap-1 text-[8px] text-bone/45">
-            <span className="text-bone/30">{t(line.label as never)}:</span>
+          <div key={idx} className="flex items-baseline gap-1 text-micro text-content-primary/45">
+            <span className="text-content-primary/30">{t(line.label as never)}:</span>
             {line.cardDefId ? (
               <LogCardChip cardDefId={line.cardDefId} />
             ) : (
               <span
                 className={
                   line.value.startsWith('-')
-                    ? 'text-vermilion/70'
+                    ? 'text-accent-action/70'
                     : line.value.startsWith('+')
-                      ? 'text-[var(--teal)]/70'
-                      : 'text-bone/55'
+                      ? 'text-accent-info/70'
+                      : 'text-content-primary/55'
                 }
               >
                 {valueDisplay}
@@ -383,6 +383,8 @@ function BattlefieldCanvas() {
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
+      const styles = getComputedStyle(document.documentElement);
+      const token = (name: string) => styles.getPropertyValue(name).trim();
 
       const pathTrapezoid = (
         leftTop: number,
@@ -408,17 +410,17 @@ function BattlefieldCanvas() {
       const rightBottom = width * 1.08;
 
       const fieldGradient = ctx.createLinearGradient(0, topY, 0, bottomY);
-      fieldGradient.addColorStop(0, 'rgba(38, 29, 54, 0.20)');
-      fieldGradient.addColorStop(0.48, 'rgba(28, 21, 42, 0.38)');
-      fieldGradient.addColorStop(1, 'rgba(8, 9, 18, 0.76)');
+      fieldGradient.addColorStop(0, token('--battle-field-start'));
+      fieldGradient.addColorStop(0.48, token('--battle-field-mid'));
+      fieldGradient.addColorStop(1, token('--battle-field-end'));
 
       pathTrapezoid(leftTop, rightTop, leftBottom, rightBottom, topY, bottomY);
       ctx.fillStyle = fieldGradient;
       ctx.fill();
 
       const glow = ctx.createRadialGradient(width * 0.5, height * 0.58, 0, width * 0.5, height * 0.58, width * 0.42);
-      glow.addColorStop(0, 'rgba(199, 83, 180, 0.13)');
-      glow.addColorStop(1, 'rgba(199, 83, 180, 0)');
+      glow.addColorStop(0, token('--battle-field-glow'));
+      glow.addColorStop(1, token('--battle-field-glow-transparent'));
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, width, height);
     };
@@ -449,9 +451,9 @@ function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | nul
           <p key={line}>{line}</p>
         ))}
         {message.actionLabel && onAction && (
-          <button className={`phase-message-action ${primaryActionClass()}`} type="button" onClick={onAction}>
+          <Button className={`phase-message-action ${primaryActionClass()}`} type="button" variant="primary" onClick={onAction}>
             {message.actionLabel}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -499,23 +501,23 @@ function BreakdownBlock({ breakdown }: { breakdown: HpChangeBreakdown }) {
     .map((id) => getCardDef(id)?.name)
     .filter((n): n is string => Boolean(n));
   return (
-    <div className="mt-1 min-w-[240px] max-w-[340px] border-t border-bone/10 pt-2">
-      <div className="mb-1 font-mono text-[8px] uppercase tracking-[0.22em] text-gold/70">
+    <div className="mt-1 min-w-[240px] max-w-[340px] border-t border-content-primary/10 pt-2">
+      <div className="mb-1 font-mono text-micro uppercase tracking-[var(--tracking-meta)] text-accent-primary/70">
         {t(breakdown.title as never)}
       </div>
       <div className="flex flex-col gap-0.5">
         {breakdown.lines.map((line, idx) => (
-          <div key={idx} className="flex items-baseline justify-between gap-2 font-mono text-[9px] text-bone/80">
-            <span className="text-bone/55">{t(line.label as never)}</span>
+          <div key={idx} className="flex items-baseline justify-between gap-2 font-mono text-minutia text-content-primary/80">
+            <span className="text-content-primary/55">{t(line.label as never)}</span>
             <span
               className={
                 line.cardDefId
-                  ? 'max-w-[220px] truncate text-gold-soft'
+                  ? 'max-w-[220px] truncate text-accent-primary-soft'
                   : line.value.startsWith('-')
-                    ? 'text-vermilion/85'
+                    ? 'text-accent-action/85'
                     : line.value.startsWith('+')
-                      ? 'text-[var(--teal)]/85'
-                      : 'text-bone/85'
+                      ? 'text-accent-info/85'
+                      : 'text-content-primary/85'
               }
               title={line.cardDefId ? formatBreakdownValue(line.value, line.cardDefId) : undefined}
             >
@@ -525,14 +527,14 @@ function BreakdownBlock({ breakdown }: { breakdown: HpChangeBreakdown }) {
         ))}
       </div>
       {participantNames.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1 border-t border-bone/10 pt-1">
-          <span className="font-mono text-[8px] uppercase tracking-[0.18em] text-bone/40">
+        <div className="mt-1 flex flex-wrap gap-1 border-t border-content-primary/10 pt-1">
+          <span className="font-mono text-micro uppercase tracking-[var(--tracking-control)] text-content-primary/40">
             {t('board.hpChange.participants' as never)}
           </span>
           {participantNames.map((n, i) => (
             <span
               key={`${n}-${i}`}
-              className="rounded-sm border border-jade/30 bg-jade/10 px-1 py-px font-mono text-[8px] text-jade"
+              className="rounded-sm border border-accent-success/30 bg-accent-success/10 px-1 py-px font-mono text-micro text-accent-success"
             >
               {n}
             </span>
@@ -556,7 +558,7 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
             {cardName ? ` · ${cardName}` : ''}
           </div>
           <strong
-            className={`phase-message-title font-display text-4xl italic ${isHeal ? 'text-[var(--teal)]' : 'text-vermilion'}`}
+            className={`phase-message-title font-display text-4xl italic ${isHeal ? 'text-accent-info' : 'text-accent-action'}`}
           >
             {isHeal ? '+' : ''}
             {notice.delta}
@@ -590,9 +592,9 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
           <strong className="phase-message-title font-display text-3xl italic">
             {notice.chronosFrom} → {notice.chronosTo}
           </strong>
-          <p className="mt-1 font-mono text-lg tracking-[0.1em] text-gold-soft">{deltaStr}</p>
+          <p className="mt-1 font-mono text-lg tracking-[var(--tracking-fine)] text-accent-primary-soft">{deltaStr}</p>
           {(fromTime || toTime) && (
-            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-bone/50">
+            <p className="mt-1 font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-primary/50">
               {fromTime} → {toTime}
             </p>
           )}
@@ -605,7 +607,7 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
         <>
           <div className="phase-message-kicker">{t('board.notice.battle' as never)}</div>
           <strong className="phase-message-title font-display text-2xl italic">{t(notice.titleKey as never)}</strong>
-          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-bone/50">
+          <p className="mt-1 font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-primary/50">
             {notice.winnerAttack} vs {notice.loserAttack}
           </p>
           {notice.breakdown && <BreakdownBlock breakdown={notice.breakdown} />}
@@ -721,13 +723,15 @@ function GameNoticeOverlay({
       >
         {content}
         {needsConfirm && (
-          <button
-            className="mt-3 bg-bone px-6 py-2 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition hover:bg-gold active:scale-95"
+          <Button
+            className="mt-3 bg-content-primary px-6 py-2 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-surface-base transition hover:bg-accent-primary active:scale-95"
             type="button"
+            variant="primary"
+            size="sm"
             onClick={dismissCurrent}
           >
             {t('common.confirm' as never)}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -747,23 +751,23 @@ function JankenScreen({ G, moves, playerID, floating = false }: Props & { floati
     <div
       className={`${
         floating
-          ? 'absolute inset-0 z-40 flex items-center justify-center bg-lacquer-deep/80 backdrop-blur-sm'
-          : 'relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep'
-      } px-4 font-sans text-bone`}
+          ? 'absolute inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-surface-canvas/80 backdrop-blur-sm'
+          : 'relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-surface-canvas'
+      } px-4 font-sans text-content-primary`}
     >
       {!floating && (
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-action/8 blur-[120px]" />
         </div>
       )}
       <div
-        className="relative z-10 w-full max-w-lg rounded-sm bg-lacquer p-6 text-center ring-1 ring-bone/10"
+        className="relative z-[var(--z-dropdown)] w-full max-w-lg rounded-sm bg-surface-base p-6 text-center ring-1 ring-content-primary/10"
         data-tut="janken-panel"
       >
-        <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('board.janken')}</div>
+        <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('board.janken')}</div>
         <h2 className="mt-3 font-display text-3xl italic">{t('board.jankenHint')}</h2>
         {choice ? (
-          <p className="mt-4 text-sm leading-relaxed text-bone/60">
+          <p className="mt-4 text-sm leading-relaxed text-content-primary/60">
             {t('board.youChose')} {jankenLabel(choice)}。{t('board.waitingOpponent')}
           </p>
         ) : (
@@ -771,7 +775,7 @@ function JankenScreen({ G, moves, playerID, floating = false }: Props & { floati
             {choices.map(({ value, mark }) => (
               <button
                 key={value}
-                className="group flex flex-col items-center gap-3 rounded-sm bg-lacquer-deep/60 px-4 py-5 ring-1 ring-bone/10 transition hover:-translate-y-1 hover:ring-gold/40"
+                className="group flex flex-col items-center gap-3 rounded-sm bg-surface-canvas/60 px-4 py-5 ring-1 ring-content-primary/10 transition hover:-translate-y-1 hover:ring-accent-primary/40"
                 type="button"
                 data-tut={`janken-${value}`}
                 onClick={() => moves.janken(value)}
@@ -779,7 +783,7 @@ function JankenScreen({ G, moves, playerID, floating = false }: Props & { floati
                 <span className="text-3xl" aria-hidden="true">
                   {mark}
                 </span>
-                <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/60 group-hover:text-gold">
+                <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60 group-hover:text-accent-primary">
                   {jankenLabel(value)}
                 </span>
               </button>
@@ -813,27 +817,27 @@ function MulliganScreen({
     <div
       className={`${
         floating
-          ? 'absolute inset-0 z-40 flex items-center justify-center bg-lacquer-deep/80 backdrop-blur-sm'
-          : 'relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep'
-      } px-6 font-sans text-bone`}
+          ? 'absolute inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-surface-canvas/80 backdrop-blur-sm'
+          : 'relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-surface-canvas'
+      } px-6 font-sans text-content-primary`}
     >
       {!floating && (
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-action/8 blur-[120px]" />
         </div>
       )}
       <div
-        className="relative z-10 flex w-full max-w-5xl flex-col items-center rounded-sm bg-lacquer p-6 ring-1 ring-bone/10"
+        className="relative z-[var(--z-dropdown)] flex w-full max-w-5xl flex-col items-center rounded-sm bg-surface-base p-6 ring-1 ring-content-primary/10"
         data-tut="mulligan-panel"
       >
-        <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('board.mulligan')}</div>
+        <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('board.mulligan')}</div>
         <h2 className="mt-3 text-center font-display text-3xl italic">{t('board.mulliganHint')}</h2>
         <div className="mulligan-hand mt-6 flex w-full justify-center gap-3 overflow-x-auto pb-4">
           {G.players[me].hand.map((card, index) => (
             <button
               key={card.instanceId}
-              className={`shrink-0 rounded-sm bg-lacquer-deep/60 p-1 ring-1 ring-bone/10 transition hover:-translate-y-2 hover:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-50 ${
-                selected.includes(index) ? 'ring-2 ring-gold shadow-[0_20px_40px_-10px] shadow-gold/30' : ''
+              className={`shrink-0 rounded-sm bg-surface-canvas/60 p-1 ring-1 ring-content-primary/10 transition hover:-translate-y-2 hover:ring-accent-primary/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+                selected.includes(index) ? 'ring-2 ring-accent-primary shadow-selected' : ''
               }`}
               type="button"
               disabled={done}
@@ -845,14 +849,15 @@ function MulliganScreen({
           ))}
         </div>
         {done ? (
-          <p className="mt-2 text-sm text-bone/60">
+          <p className="mt-2 text-sm text-content-primary/60">
             {t('board.handConfirmed')}。{t('board.waitingOpponent')}
           </p>
         ) : (
           <div className="mulligan-actions mt-4 flex flex-wrap justify-center gap-3">
-            <button
+            <Button
               className={primaryActionClass()}
               type="button"
+              variant="primary"
               data-tut="mulligan-redraw"
               onClick={() => {
                 onMulliganFeedback(selected.length);
@@ -860,10 +865,11 @@ function MulliganScreen({
               }}
             >
               {t('board.redraw')} {selected.length} {t('board.cardsUnit')}
-            </button>
-            <button
+            </Button>
+            <Button
               className={secondaryActionClass()}
               type="button"
+              variant="secondary"
               data-tut="mulligan-keep"
               onClick={() => {
                 onMulliganFeedback(0);
@@ -871,7 +877,7 @@ function MulliganScreen({
               }}
             >
               {t('board.keepHand')}
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -890,8 +896,8 @@ function translateGameOverReason(reason: string | null): string {
 
 function primaryActionClass(extra = ''): string {
   return [
-    'bg-bone px-8 py-3 text-[11px] font-medium uppercase tracking-[0.3em] text-lacquer transition',
-    'hover:bg-gold active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-bone',
+    'bg-content-primary px-8 py-3 text-control font-medium uppercase tracking-[var(--tracking-kicker)] text-surface-base transition',
+    'hover:bg-accent-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-content-primary',
     extra,
   ]
     .filter(Boolean)
@@ -900,8 +906,8 @@ function primaryActionClass(extra = ''): string {
 
 function secondaryActionClass(extra = ''): string {
   return [
-    'border border-bone/20 px-8 py-3 text-[11px] uppercase tracking-[0.3em] text-bone/70 transition',
-    'hover:bg-bone/5 hover:text-bone disabled:cursor-not-allowed disabled:opacity-40',
+    'border border-content-primary/20 px-8 py-3 text-control uppercase tracking-[var(--tracking-kicker)] text-content-primary/70 transition',
+    'hover:bg-content-primary/5 hover:text-content-primary disabled:cursor-not-allowed disabled:opacity-40',
     extra,
   ]
     .filter(Boolean)
@@ -927,8 +933,8 @@ function myPlayerIndex(playerID: string | null | undefined): PlayerIndex {
 function ResultCell({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] uppercase tracking-widest text-bone/40">{label}</div>
-      <div className={`mt-1 truncate font-display text-xl italic ${accent ? 'text-gold' : 'text-bone'}`}>{value}</div>
+      <div className="text-caption uppercase tracking-widest text-content-primary/40">{label}</div>
+      <div className={`mt-1 truncate font-display text-xl italic ${accent ? 'text-accent-primary' : 'text-content-primary'}`}>{value}</div>
     </div>
   );
 }
@@ -966,20 +972,20 @@ function GameOverScreen({
     outcome === 'victory' ? 'board.result.victory' : outcome === 'defeat' ? 'board.result.defeat' : 'board.result.draw';
 
   return (
-    <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-lacquer-deep px-4 font-sans text-bone">
-      <div className="pointer-events-none absolute inset-0">
+    <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-surface-canvas px-4 font-sans text-content-primary">
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div
-          className={`absolute left-1/2 top-1/2 h-[90vh] w-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[160px] ${win ? 'bg-gold/15' : 'bg-vermilion/15'}`}
+          className={`absolute left-1/2 top-1/2 h-[90vh] w-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[160px] ${win ? 'bg-accent-primary/15' : 'bg-accent-action/15'}`}
         />
-        <div className="absolute inset-0 opacity-[0.04] [background-image:radial-gradient(rgba(255,255,255,0.6)_1px,transparent_1px)] [background-size:3px_3px]" />
+        <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
       </div>
 
-      <main className="relative z-10 flex w-full max-w-3xl flex-col items-center justify-center px-8 text-center">
-        <div className={`font-mono text-[10px] uppercase tracking-[0.6em] ${win ? 'text-gold' : 'text-vermilion'}`}>
+      <main className="relative z-[var(--z-dropdown)] flex w-full max-w-3xl flex-col items-center justify-center px-8 text-center">
+        <div className={`font-mono text-caption uppercase tracking-[var(--tracking-hero)] ${win ? 'text-accent-primary' : 'text-accent-action'}`}>
           {t('board.result.concluded')}
         </div>
         <h1
-          className={`mt-4 font-display text-[6rem] italic leading-none md:text-[10rem] ${win ? 'text-bone' : 'text-bone/70'}`}
+          className={`mt-4 font-display text-battle-result-title italic leading-none md:text-battle-result-title-lg ${win ? 'text-content-primary' : 'text-content-primary/70'}`}
         >
           {t(glyphKey)}
         </h1>
@@ -987,7 +993,7 @@ function GameOverScreen({
           {t(titleKey)} · {t('board.turn')} {G.turnNumber}
         </div>
 
-        <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-bone/10 py-6 md:grid-cols-4">
+        <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-content-primary/10 py-6 md:grid-cols-4">
           <ResultCell label={t('auth.eloChange')} value={eloNotice || '-'} accent={win} />
           <ResultCell label={t('board.result.duration')} value={formatDuration(durationSeconds)} />
           <ResultCell label={t('board.result.turns')} value={String(G.turnNumber)} />
@@ -997,28 +1003,30 @@ function GameOverScreen({
         {ctx.gameover &&
           (gameOverActions ? (
             <div className="mt-10 flex flex-col items-center gap-3 md:flex-row">
-              {gameOverActions.helperText && <p className="text-xs text-bone/45">{gameOverActions.helperText}</p>}
-              <button
+              {gameOverActions.helperText && <p className="text-xs text-content-primary/45">{gameOverActions.helperText}</p>}
+              <Button
                 className={gameOverActionClass(gameOverActions.primary)}
                 type="button"
+                variant={gameOverActions.primary.variant === 'secondary' ? 'secondary' : 'primary'}
                 onClick={gameOverActions.primary.onClick}
               >
                 {gameOverActions.primary.label}
-              </button>
+              </Button>
               {gameOverActions.secondary && (
-                <button
+                <Button
                   className={gameOverActionClass(gameOverActions.secondary)}
                   type="button"
+                  variant={gameOverActions.secondary.variant === 'secondary' ? 'secondary' : 'primary'}
                   onClick={gameOverActions.secondary.onClick}
                 >
                   {gameOverActions.secondary.label}
-                </button>
+                </Button>
               )}
             </div>
           ) : (
-            <button className={primaryActionClass('mt-10')} type="button" onClick={() => window.location.reload()}>
+            <Button className={primaryActionClass('mt-10')} type="button" variant="primary" onClick={() => window.location.reload()}>
               {t('board.playAgain')}
-            </button>
+            </Button>
           ))}
       </main>
     </div>
@@ -1053,9 +1061,9 @@ function actionTime(timestamp: number): string {
 function LpBar({ hp, tone }: { hp: number; tone: 'gold' | 'vermilion' }) {
   const hpPercent = Math.max(0, Math.min(100, hp));
   return (
-    <div className="relative h-1 w-full bg-bone/10" aria-hidden="true">
+    <div className="relative h-1 w-full bg-content-primary/10" aria-hidden="true">
       <div
-        className={`absolute inset-y-0 left-0 ${tone === 'gold' ? 'bg-gold' : 'bg-vermilion'}`}
+        className={`absolute inset-y-0 left-0 ${tone === 'gold' ? 'bg-accent-primary' : 'bg-accent-action'}`}
         style={{ width: `${hpPercent}%` }}
       />
     </div>
@@ -1081,14 +1089,14 @@ function Slot({
   const def = card?.faceUp ? getCardDef(card.defId) : undefined;
   return (
     <div
-      className={`battle-slot grid size-[88px] place-items-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)] ${onClick ? 'cursor-pointer transition hover:ring-gold/30' : ''}`}
+      className={`battle-slot grid size-[88px] place-items-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5 shadow-inset-slot ${onClick ? 'cursor-pointer transition hover:ring-accent-primary/30' : ''}`}
       onClick={onClick}
       onPointerDown={() => card && onFocusCard?.({ card, owner, zone: label ?? 'slot' })}
       onMouseEnter={() => card && onFocusCard?.({ card, owner, zone: label ?? 'slot' })}
       onMouseLeave={() => onFocusCard?.(null)}
     >
       {card && def ? (
-        <div className="battle-slot-card h-[80px] w-[56px] overflow-hidden rounded-xs ring-1 ring-bone/10">
+        <div className="battle-slot-card h-[80px] w-[56px] overflow-hidden rounded-xs ring-1 ring-content-primary/10">
           <img
             src={def.image}
             alt={def.name}
@@ -1098,11 +1106,11 @@ function Slot({
           />
         </div>
       ) : card ? (
-        <div className="battle-slot-card h-[80px] w-[56px] rounded-xs bg-lacquer ring-1 ring-bone/10">
+        <div className="battle-slot-card h-[80px] w-[56px] rounded-xs bg-surface-base ring-1 ring-content-primary/10">
           <img src="/card-back.jpg" alt="" className="h-full w-full rounded-xs object-cover" loading="lazy" />
         </div>
       ) : label ? (
-        <span className="font-display text-xl italic text-bone/20">{label}</span>
+        <span className="font-display text-xl italic text-content-primary/20">{label}</span>
       ) : null}
     </div>
   );
@@ -1132,7 +1140,7 @@ function FieldZone({
   const focus = card && owner !== undefined ? { card, owner, zone: label } : null;
   const content = (
     <>
-      <span className="absolute left-2 top-1.5 z-10 font-mono text-[8px] uppercase tracking-[0.2em] text-bone/25">
+      <span className="absolute left-2 top-1.5 z-[var(--z-dropdown)] font-mono text-micro uppercase tracking-[var(--tracking-meta)] text-content-primary/25">
         {label}
       </span>
       {card ? (
@@ -1144,7 +1152,7 @@ function FieldZone({
           <Card card={card} size={size} activeTime={activeTime} showPopover />
         </div>
       ) : (
-        <span className="font-display text-xl italic text-bone/20">{shortLabel ?? label}</span>
+        <span className="font-display text-xl italic text-content-primary/20">{shortLabel ?? label}</span>
       )}
     </>
   );
@@ -1153,8 +1161,8 @@ function FieldZone({
     'zone',
     `zone-${size}`,
     className,
-    'relative flex size-[88px] shrink-0 items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5',
-    'shadow-[inset_0_2px_6px_rgba(0,0,0,0.5)] transition hover:ring-gold/30',
+    'relative flex size-[88px] shrink-0 items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5',
+    'shadow-inset-slot transition hover:ring-accent-primary/30',
     onClick ? 'cursor-pointer' : '',
   ]
     .filter(Boolean)
@@ -1202,12 +1210,12 @@ function StackZone({
     return (
       <div className="flex flex-col items-center gap-2" aria-label={`${label}: ${value}`}>
         <div
-          className="flex h-16 w-11 items-center justify-center rounded-xs bg-lacquer ring-1 ring-bone/10"
+          className="flex h-16 w-11 items-center justify-center rounded-xs bg-surface-base ring-1 ring-content-primary/10"
           aria-hidden="true"
         >
-          <div className="font-display text-sm italic text-gold/60">ZC</div>
+          <div className="font-display text-sm italic text-accent-primary/60">ZC</div>
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-bone/40" aria-hidden="true">
+        <span className="font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/40" aria-hidden="true">
           {label} {value}
         </span>
       </div>
@@ -1223,7 +1231,7 @@ function StackZone({
             return (
               <div
                 key={card.instanceId}
-                className="absolute top-0 h-16 w-11 overflow-hidden rounded-xs bg-lacquer-deep ring-1 ring-bone/10"
+                className="absolute top-0 h-16 w-11 overflow-hidden rounded-xs bg-surface-canvas ring-1 ring-content-primary/10"
                 style={{ left: `${i * 12}px` }}
               >
                 {def?.image && (
@@ -1239,7 +1247,7 @@ function StackZone({
             );
           })}
         </div>
-        <strong className="font-mono text-[10px] uppercase tracking-[0.25em] text-gold/70">
+        <strong className="font-mono text-caption uppercase tracking-[var(--tracking-label)] text-accent-primary/70">
           {label} {value}
         </strong>
       </div>
@@ -1248,13 +1256,13 @@ function StackZone({
 
   return (
     <div
-      className="flex min-w-24 flex-col gap-2 rounded-sm bg-lacquer-deep/50 p-3 ring-1 ring-bone/5"
+      className="flex min-w-24 flex-col gap-2 rounded-sm bg-surface-canvas/50 p-3 ring-1 ring-content-primary/5"
       aria-label={`${label}: ${value}`}
     >
-      <strong className="font-mono text-[10px] uppercase tracking-[0.25em] text-bone/45">
+      <strong className="font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/45">
         <span>{label}</span>
       </strong>
-      <span className="font-display text-2xl italic text-gold/70">{value}</span>
+      <span className="font-display text-2xl italic text-accent-primary/70">{value}</span>
     </div>
   );
 }
@@ -1274,18 +1282,18 @@ export function OpponentStatsBar({
 
   return (
     <section
-      className={`relative flex flex-col items-center gap-2 border-b border-bone/5 pb-3 ${damageAmount ? 'damaged' : ''}`}
+      className={`relative flex flex-col items-center gap-2 border-b border-content-primary/5 pb-3 ${damageAmount ? 'damaged' : ''}`}
       aria-label={t('player.opponent')}
     >
       {/* 名字 + LP 居中 */}
       <div className="flex items-center gap-6">
         <div className="text-right">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('player.opponent')}</div>
+          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('player.opponent')}</div>
           <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
         </div>
         <div className="w-72">
           <LpBar hp={opponent.hp} tone="vermilion" />
-          <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
+          <div className="mt-1 flex justify-between font-mono text-caption text-content-primary/40">
             <span>
               {t('board.hp')} {opponent.hp}/100
             </span>
@@ -1302,7 +1310,7 @@ export function OpponentStatsBar({
           {opponent.hand.map((card, index) => (
             <div
               key={card.instanceId}
-              className="h-12 w-9 overflow-hidden rounded-xs ring-1 ring-bone/10 shadow-[0_12px_30px_-18px_rgba(0,0,0,0.9)]"
+              className="h-12 w-9 overflow-hidden rounded-xs ring-1 ring-content-primary/10 shadow-card-thumbnail"
               style={{ transform: `translateY(${Math.abs(index - (opponent.hand.length - 1) / 2) * 2}px)` }}
             >
               <img src="/card-back.jpg" alt="card back" className="h-full w-full object-cover" loading="lazy" />
@@ -1342,7 +1350,7 @@ export function OpponentStatsBar({
       </div>
       {damageAmount ? (
         <span
-          className="damage-float absolute right-0 top-0 font-display text-3xl italic text-vermilion"
+          className="damage-float absolute right-0 top-0 font-display text-3xl italic text-accent-action"
           key={`opp-${damageAmount}`}
         >
           -{damageAmount}
@@ -1369,7 +1377,7 @@ export function BottomZones({
 
   return (
     <section
-      className="relative flex flex-1 flex-col items-center justify-end gap-3 border-t border-bone/5 pt-3"
+      className="relative flex flex-1 flex-col items-center justify-end gap-3 border-t border-content-primary/5 pt-3"
       aria-label={t('player.me')}
     >
       {/* 設置區 */}
@@ -1421,7 +1429,7 @@ export function BottomZones({
             <div className="font-display text-xl italic">{playerName(meIndex)}</div>
           </div>
           <LpBar hp={me.hp} tone="gold" />
-          <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
+          <div className="mt-1 flex justify-between font-mono text-caption text-content-primary/40">
             <span>
               {t('board.hp')} {me.hp}/100
             </span>
@@ -1430,13 +1438,13 @@ export function BottomZones({
             </span>
           </div>
         </div>
-        <div className={`font-mono text-[10px] uppercase tracking-[0.25em] text-bone/40 ${hpClass(me.hp)}`}>
+        <div className={`font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/40 ${hpClass(me.hp)}`}>
           {t('board.powerCharger')} {powerTotal(G, meIndex)} · {t('board.abyss')} {me.abyss.length}
         </div>
       </div>
       {damageAmount ? (
         <span
-          className="damage-float absolute left-0 top-2 font-display text-3xl italic text-vermilion"
+          className="damage-float absolute left-0 top-2 font-display text-3xl italic text-accent-action"
           key={`me-${damageAmount}`}
         >
           -{damageAmount}
@@ -1517,7 +1525,7 @@ export function HandDrawer({
   const center = (cards.length - 1) / 2;
   return (
     <section
-      className="pointer-events-none fixed bottom-0 left-4 z-30 flex items-end justify-between gap-4 pb-4 [right:calc(280px+2rem)]"
+      className="pointer-events-none fixed bottom-0 left-4 z-[var(--z-header)] flex items-end justify-between gap-4 pb-4 [right:calc(280px+2rem)]"
       aria-label={t('board.hand')}
     >
       <div className="pointer-events-auto min-w-48">{children}</div>
@@ -1533,7 +1541,7 @@ export function HandDrawer({
             return (
               <div
                 key={card.instanceId}
-                className="-mx-2 h-36 w-24 shrink-0 rounded-sm bg-gradient-to-b from-bone/10 to-lacquer-deep p-0.5 ring-1 ring-bone/10 transition duration-200 [transform:rotate(var(--hand-rotate))_translateY(var(--hand-y))] hover:z-20 hover:ring-gold/60 hover:[transform:translateY(-1.5rem)_rotate(0deg)] focus-within:z-20 focus-within:ring-gold/60 focus-within:[transform:translateY(-1.5rem)_rotate(0deg)]"
+                className="-mx-2 h-36 w-24 shrink-0 rounded-sm bg-gradient-to-b from-content-primary/10 to-surface-canvas p-0.5 ring-1 ring-content-primary/10 transition duration-200 [transform:rotate(var(--hand-rotate))_translateY(var(--hand-y))] hover:z-[var(--z-sticky)] hover:ring-accent-primary/60 hover:[transform:translateY(-1.5rem)_rotate(0deg)] focus-within:z-[var(--z-sticky)] focus-within:ring-accent-primary/60 focus-within:[transform:translateY(-1.5rem)_rotate(0deg)]"
                 style={fanStyle}
                 onMouseEnter={() => onFocusCard?.({ card, owner, zone: t('board.hand') })}
                 onFocus={() => onFocusCard?.({ card, owner, zone: t('board.hand') })}
@@ -1570,9 +1578,9 @@ export function ActionsBar({
 }) {
   return (
     <section className="actions-bar flex flex-col items-start gap-2">
-      <button className={primaryActionClass()} disabled={!canConfirm} type="button" onClick={onConfirm}>
+      <Button className={primaryActionClass()} disabled={!canConfirm} type="button" variant="primary" onClick={onConfirm}>
         {ready ? t('board.readyWaiting') : `${t('board.confirmSet')} (${cardsSet}/${required})`}
-      </button>
+      </Button>
     </section>
   );
 }
@@ -1694,12 +1702,12 @@ function phaseInstruction(
 
 function PhaseInstructionBanner({ instruction }: { instruction: ReturnType<typeof phaseInstruction> }) {
   return (
-    <section className="board-phase-instruction pointer-events-none absolute inset-x-3 top-14 z-30 flex justify-center lg:inset-x-6">
-      <div className="w-full max-w-3xl rounded-sm border border-bone/10 bg-lacquer-deep/82 px-3 py-2 text-bone shadow-[0_18px_50px_-35px_rgba(0,0,0,0.9)] backdrop-blur md:px-4">
+    <section className="board-phase-instruction pointer-events-none absolute inset-x-3 top-14 z-[var(--z-header)] flex justify-center lg:inset-x-6">
+      <div className="w-full max-w-3xl rounded-sm border border-content-primary/10 bg-surface-canvas/82 px-3 py-2 text-content-primary shadow-instruction backdrop-blur md:px-4">
         <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-4">
           <div className="min-w-0">
-            <div className="font-mono text-[9px] uppercase tracking-[0.28em] text-gold/70">{instruction.title}</div>
-            <p className="mt-1 text-xs leading-snug text-bone/70 md:text-sm">{instruction.body}</p>
+            <div className="font-mono text-minutia uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{instruction.title}</div>
+            <p className="mt-1 text-xs leading-snug text-content-primary/70 md:text-sm">{instruction.body}</p>
           </div>
           {instruction.meta.length > 0 && (
             <div className="flex shrink-0 flex-wrap gap-1.5">
@@ -1708,8 +1716,8 @@ function PhaseInstructionBanner({ instruction }: { instruction: ReturnType<typeo
                   key={item.text}
                   className={
                     item.done
-                      ? 'rounded-sm border border-jade/40 bg-jade/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-jade'
-                      : 'rounded-sm border border-bone/10 bg-bone/5 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-bone/45'
+                      ? 'rounded-sm border border-accent-success/40 bg-accent-success/10 px-2 py-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-accent-success'
+                      : 'rounded-sm border border-content-primary/10 bg-content-primary/5 px-2 py-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-primary/45'
                   }
                 >
                   {item.text}
@@ -1864,15 +1872,15 @@ export function FocusPanel({ focus }: { focus: FocusedCard }) {
   const locale = useLocale();
   const translatedEffect = def ? getTranslatedEffect(def.id, locale) : null;
   return (
-    <section className="flex flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10" style={{ height: '480px' }}>
-      <div className="flex-shrink-0 font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">Focus</div>
+    <section className="flex flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10" style={{ height: '480px' }}>
+      <div className="flex-shrink-0 font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Focus</div>
       {focus && def ? (
         <div className="mt-2 flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex-shrink-0 text-[10px] uppercase tracking-[0.25em] text-bone/35">
+          <div className="flex-shrink-0 text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/35">
             {playerName(focus.owner)} · {focus.zone}
           </div>
           {/* 卡圖 — 固定高度 */}
-          <div className="mt-2 flex-shrink-0 aspect-[3/4] w-full overflow-hidden rounded-sm ring-1 ring-bone/10">
+          <div className="mt-2 flex-shrink-0 aspect-[3/4] w-full overflow-hidden rounded-sm ring-1 ring-content-primary/10">
             <img
               src={def.image}
               alt={def.name}
@@ -1881,36 +1889,36 @@ export function FocusPanel({ focus }: { focus: FocusedCard }) {
               referrerPolicy="no-referrer"
             />
           </div>
-          <h2 className="mt-2 flex-shrink-0 font-display text-xl italic text-bone">{def.name}</h2>
-          <div className="mt-2 flex-shrink-0 grid grid-cols-2 gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-bone/45">
+          <h2 className="mt-2 flex-shrink-0 font-display text-xl italic text-content-primary">{def.name}</h2>
+          <div className="mt-2 flex-shrink-0 grid grid-cols-2 gap-2 font-mono text-caption uppercase tracking-[var(--tracking-compact)] text-content-primary/45">
             <span>
-              {t('card.energy')} <span className="text-gold">{def.powerCost}</span>
+              {t('card.energy')} <span className="text-accent-primary">{def.powerCost}</span>
             </span>
             <span>
-              {t('card.clock')} <span className="text-gold">{def.clock}</span>
+              {t('card.clock')} <span className="text-accent-primary">{def.clock}</span>
             </span>
             {def.attack && (
               <>
                 <span>
-                  {t('card.night')} <span className="text-gold">{def.attack.night}</span>
+                  {t('card.night')} <span className="text-accent-primary">{def.attack.night}</span>
                 </span>
                 <span>
-                  {t('card.day')} <span className="text-gold">{def.attack.day}</span>
+                  {t('card.day')} <span className="text-accent-primary">{def.attack.day}</span>
                 </span>
               </>
             )}
           </div>
           {(translatedEffect || def.effect) && (
-            <p className="mt-2 min-h-0 flex-1 overflow-y-auto text-xs leading-relaxed text-bone/60">
+            <p className="mt-2 min-h-0 flex-1 overflow-y-auto text-xs leading-relaxed text-content-primary/60">
               {translatedEffect ?? def.effect}
             </p>
           )}
         </div>
       ) : (
         /* 無焦點時佔位，保持同樣高度 */
-        <div className="mt-2 flex flex-1 flex-col items-center justify-center rounded-sm bg-lacquer-deep/50 ring-1 ring-bone/5">
-          <div className="aspect-[3/4] w-32 rounded-sm bg-lacquer-deep/80 ring-1 ring-bone/10" />
-          <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.25em] text-bone/25">{t('card.unknown')}</p>
+        <div className="mt-2 flex flex-1 flex-col items-center justify-center rounded-sm bg-surface-canvas/50 ring-1 ring-content-primary/5">
+          <div className="aspect-[3/4] w-32 rounded-sm bg-surface-canvas/80 ring-1 ring-content-primary/10" />
+          <p className="mt-4 font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/25">{t('card.unknown')}</p>
         </div>
       )}
     </section>
@@ -1921,19 +1929,19 @@ export function BattleLogPanel({ G }: { G: GameState }) {
   const locale = useLocale();
   const entries = (G.actionLog ?? []).slice(-14).reverse();
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-sm bg-lacquer/60 p-4 ring-1 ring-bone/10">
+    <section className="flex min-h-0 flex-1 flex-col rounded-sm bg-surface-base/60 p-4 ring-1 ring-content-primary/10">
       <div className="mb-3 flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">Ritual Log</span>
-        <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
+        <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Ritual Log</span>
+        <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto font-mono text-[10px] leading-relaxed text-bone/40">
+      <div className="flex-1 space-y-2 overflow-y-auto font-mono text-caption leading-relaxed text-content-primary/40">
         {entries.map((entry) => {
           const { segments, breakdown } = formatLogEntry(entry, locale);
           return (
             <div key={`${entry.id ?? entry.timestamp}-${entry.action}`}>
               <p>
-                <span className="text-bone/60">[{actionTime(entry.timestamp)}]</span>{' '}
-                <span className="text-gold/50">
+                <span className="text-content-primary/60">[{actionTime(entry.timestamp)}]</span>{' '}
+                <span className="text-accent-primary/50">
                   {t('board.turn')} {entry.turn}
                 </span>{' '}
                 {renderLogSegments(segments)}
@@ -1942,7 +1950,7 @@ export function BattleLogPanel({ G }: { G: GameState }) {
             </div>
           );
         })}
-        {entries.length === 0 && <p className="text-bone/30">{t('board.waitingOpponent')}</p>}
+        {entries.length === 0 && <p className="text-content-primary/30">{t('board.waitingOpponent')}</p>}
       </div>
     </section>
   );
@@ -1956,18 +1964,18 @@ function BattleFocusSidebarPanel({ focusedCard, G }: { focusedCard: FocusedCard;
   const translatedEffect = getTranslatedEffect(def?.id ?? '', locale);
 
   return (
-    <div className="battle-focus-panel rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+    <div className="battle-focus-panel rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Focus</span>
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Focus</span>
         {focusedCard && (
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bone/35">
+          <span className="font-mono text-minutia uppercase tracking-[var(--tracking-meta)] text-content-primary/35">
             {playerName(focusedCard.owner)} · {focusedCard.zone}
           </span>
         )}
       </div>
       {focusedCard && def ? (
         <>
-          <div className="aspect-[3/4] w-full overflow-hidden rounded-xs bg-gradient-to-br from-vermilion/30 via-lacquer-deep to-lacquer ring-1 ring-bone/10">
+          <div className="aspect-[3/4] w-full overflow-hidden rounded-xs bg-gradient-to-br from-accent-action/30 via-surface-canvas to-surface-base ring-1 ring-content-primary/10">
             {def.image && (
               <img
                 src={def.image}
@@ -1979,39 +1987,39 @@ function BattleFocusSidebarPanel({ focusedCard, G }: { focusedCard: FocusedCard;
             )}
           </div>
           <div className="mt-3 font-display text-lg italic">{def.name}</div>
-          <div className="mt-1 font-mono text-[9px] uppercase tracking-widest text-bone/40">
+          <div className="mt-1 font-mono text-minutia uppercase tracking-widest text-content-primary/40">
             {def.element} · {def.type}
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[10px] text-bone/50">
+          <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-caption text-content-primary/50">
             <span>
-              ⚡ {t('card.energy')} <span className="text-gold">{def.powerCost}</span>
+              ⚡ {t('card.energy')} <span className="text-accent-primary">{def.powerCost}</span>
             </span>
             <span>
-              🕐 {t('card.clock')} <span className="text-gold">{def.clock}</span>
+              🕐 {t('card.clock')} <span className="text-accent-primary">{def.clock}</span>
             </span>
             {def.attack && (
               <>
                 <span>
-                  🌙 {t('card.night')} <span className="text-gold">{def.attack.night}</span>
+                  🌙 {t('card.night')} <span className="text-accent-primary">{def.attack.night}</span>
                 </span>
                 <span>
-                  ☀️ {t('card.day')} <span className="text-gold">{def.attack.day}</span>
+                  ☀️ {t('card.day')} <span className="text-accent-primary">{def.attack.day}</span>
                 </span>
               </>
             )}
             {focusedCard.zone === t('board.battleZone') && def.attack && (
               <>
-                <span className="col-span-2 mt-1 border-t border-bone/10 pt-1">
+                <span className="col-span-2 mt-1 border-t border-content-primary/10 pt-1">
                   {t('board.hpChange.rawAttack' as never)}{' '}
-                  <span className="text-gold">{getBaseAttack(focusedCard.card, G, focusedCard.owner) ?? '—'}</span>
+                  <span className="text-accent-primary">{getBaseAttack(focusedCard.card, G, focusedCard.owner) ?? '—'}</span>
                 </span>
                 <span className="col-span-2">
                   {t('board.hpChange.effectiveAttack' as never)}{' '}
                   <span
                     className={
                       isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
-                        ? 'text-vermilion'
-                        : 'text-[var(--teal)]'
+                        ? 'text-accent-action'
+                        : 'text-accent-info'
                     }
                   >
                     {isAttackPowerInsufficient(focusedCard.card, G, focusedCard.owner)
@@ -2022,15 +2030,15 @@ function BattleFocusSidebarPanel({ focusedCard, G }: { focusedCard: FocusedCard;
               </>
             )}
             <span>
-              ⚡→ STP <span className="text-gold">{def.sendToPower ?? 0}</span>
+              ⚡→ STP <span className="text-accent-primary">{def.sendToPower ?? 0}</span>
             </span>
           </div>
           {(translatedEffect || def.effect) && (
-            <p className="mt-3 text-[11px] leading-relaxed text-bone/50">{translatedEffect ?? def.effect}</p>
+            <p className="mt-3 text-control leading-relaxed text-content-primary/50">{translatedEffect ?? def.effect}</p>
           )}
         </>
       ) : (
-        <div className="aspect-[3/4] w-full rounded-xs bg-gradient-to-br from-vermilion/10 via-lacquer-deep to-lacquer ring-1 ring-bone/10" />
+        <div className="aspect-[3/4] w-full rounded-xs bg-gradient-to-br from-accent-action/10 via-surface-canvas to-surface-base ring-1 ring-content-primary/10" />
       )}
     </div>
   );
@@ -2040,12 +2048,12 @@ function BattleLogSidebarPanel({ G }: { G: GameState }) {
   const locale = useLocale();
 
   return (
-    <div className="battle-log-panel flex min-h-0 flex-1 flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+    <div className="battle-log-panel flex min-h-0 flex-1 flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Log</span>
-        <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Log</span>
+        <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
       </div>
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto font-mono text-[10px] leading-relaxed">
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto font-mono text-caption leading-relaxed">
         {(G.actionLog ?? [])
           .slice(-20)
           .reverse()
@@ -2053,31 +2061,31 @@ function BattleLogSidebarPanel({ G }: { G: GameState }) {
             const { segments, tone, breakdown } = formatLogEntry(entry, locale);
             const toneClass =
               tone === 'battle'
-                ? 'text-vermilion/80'
+                ? 'text-accent-action/80'
                 : tone === 'set'
-                  ? 'text-gold/60'
+                  ? 'text-accent-primary/60'
                   : tone === 'effect'
-                    ? 'text-bone/70'
-                    : 'text-bone/40';
+                    ? 'text-content-primary/70'
+                    : 'text-content-primary/40';
             return (
               <div key={entry.id}>
                 <p className={toneClass}>
-                  <span className="text-bone/20">T{entry.turn}</span> {renderLogSegments(segments)}
+                  <span className="text-content-primary/20">T{entry.turn}</span> {renderLogSegments(segments)}
                   {entry.hp && tone !== 'battle' && (
-                    <span className="text-bone/25">
+                    <span className="text-content-primary/25">
                       {' '}
                       [{entry.hp[0]}/{entry.hp[1]}]
                     </span>
                   )}
                   {typeof entry.chronosPosition === 'number' && (
-                    <span className="text-bone/25"> ⏱{entry.chronosPosition}/12</span>
+                    <span className="text-content-primary/25"> ⏱{entry.chronosPosition}/12</span>
                   )}
                 </p>
                 {breakdown && <LogBreakdown breakdown={breakdown} />}
               </div>
             );
           })}
-        {(!G.actionLog || G.actionLog.length === 0) && <p className="text-bone/20">{t('board.waitingOpponent')}</p>}
+        {(!G.actionLog || G.actionLog.length === 0) && <p className="text-content-primary/20">{t('board.waitingOpponent')}</p>}
       </div>
     </div>
   );
@@ -2093,22 +2101,22 @@ function BattleStatusSidebarPanel({ G }: { G: GameState }) {
   ];
 
   return (
-    <div className="battle-status-panel flex min-h-0 flex-1 flex-col rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+    <div className="battle-status-panel flex min-h-0 flex-1 flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Status</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bone/35">
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Status</span>
+        <span className="font-mono text-minutia uppercase tracking-[var(--tracking-meta)] text-content-primary/35">
           {G.pendingChoice ? 'Choice' : G.pendingEffects.some((queue) => queue.length > 0) ? 'Effect' : 'Live'}
         </span>
       </div>
       <div className="grid gap-3">
         <div className="grid grid-cols-2 gap-2">
           {G.players.map((player, index) => (
-            <div key={index} className="rounded-sm bg-lacquer-deep/70 p-3 ring-1 ring-bone/10">
-              <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-bone/35">
+            <div key={index} className="rounded-sm bg-surface-canvas/70 p-3 ring-1 ring-content-primary/10">
+              <div className="font-mono text-minutia uppercase tracking-[var(--tracking-meta)] text-content-primary/35">
                 {playerName(index as PlayerIndex)}
               </div>
-              <div className="mt-2 font-display text-2xl italic text-gold">{player.hp}</div>
-              <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[10px] text-bone/45">
+              <div className="mt-2 font-display text-2xl italic text-accent-primary">{player.hp}</div>
+              <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-caption text-content-primary/45">
                 <span>Deck {player.deck.length}</span>
                 <span>Hand {player.hand.length}</span>
                 <span>Power {player.powerCharger.length}</span>
@@ -2121,10 +2129,10 @@ function BattleStatusSidebarPanel({ G }: { G: GameState }) {
           {statusRows.map((row) => (
             <div
               key={row.label}
-              className="flex items-center justify-between gap-3 rounded-sm bg-lacquer-deep/55 px-3 py-2 font-mono text-[10px] ring-1 ring-bone/10"
+              className="flex items-center justify-between gap-3 rounded-sm bg-surface-canvas/55 px-3 py-2 font-mono text-caption ring-1 ring-content-primary/10"
             >
-              <span className="uppercase tracking-[0.2em] text-bone/35">{row.label}</span>
-              <span className="text-right text-bone/70">{row.value}</span>
+              <span className="uppercase tracking-[var(--tracking-meta)] text-content-primary/35">{row.label}</span>
+              <span className="text-right text-content-primary/70">{row.value}</span>
             </div>
           ))}
         </div>
@@ -2156,10 +2164,95 @@ function BoardLayout({
     <div
       className={`board battle-layout chrono-${time} ${
         handExpanded ? 'drawer-expanded' : 'drawer-collapsed'
-      } !block relative h-full min-h-0 w-full overflow-hidden bg-lacquer-deep text-bone font-sans`}
+      } !block relative h-full min-h-0 w-full overflow-hidden bg-surface-canvas text-content-primary font-sans`}
       data-board-layout="responsive"
     >
       {children}
+    </div>
+  );
+}
+
+function BattleTopBar({
+  G,
+  activePanel,
+  currentInstruction,
+  time,
+  timeLeft,
+  onPanelChange,
+}: {
+  G: GameState;
+  activePanel: BattleSidePanel | null;
+  currentInstruction: ReturnType<typeof phaseInstruction>;
+  time: ChronosTime;
+  timeLeft: number;
+  onPanelChange: (panel: BattleSidePanel) => void;
+}) {
+  return (
+    <header className="battle-topbar absolute inset-x-0 top-0 z-[var(--z-header)] flex h-12 items-center justify-between gap-3 overflow-x-auto border-b border-content-primary/5 bg-surface-canvas/80 px-3 backdrop-blur md:px-6">
+      <div className="flex shrink-0 items-center gap-4 font-mono text-caption uppercase tracking-[var(--tracking-kicker)] md:gap-8">
+        <span className="text-content-primary/40">
+          {t('board.turn')} {G.turnNumber}
+        </span>
+        <span className="text-content-primary/40">{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
+        <span className={`text-content-primary/40 ${timeLeft <= 10 ? 'text-accent-action' : ''}`}>
+          {timeLeft}
+          {t('board.secondsUnit')}
+        </span>
+      </div>
+      <div className="hidden shrink-0 items-center gap-6 font-mono text-caption uppercase tracking-[var(--tracking-kicker)] md:flex">
+        {[
+          { label: '設置', active: G.step === 'initialSet' || G.step === 'turnSet' },
+          { label: '公開', active: false },
+          { label: '時間', active: false },
+          { label: '效果', active: G.step === 'effectOrder' || !!G.pendingChoice },
+          { label: '戰鬥', active: Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1 },
+          { label: '結算', active: G.step === 'gameOver' },
+        ].map((phase) => (
+          <span key={phase.label} className={phase.active ? 'text-accent-primary' : 'text-content-primary/20'}>
+            {phase.label}
+          </span>
+        ))}
+      </div>
+      <div className="hidden shrink-0 items-center gap-3 font-mono text-caption uppercase tracking-[var(--tracking-kicker)] lg:flex">
+        <span className="text-content-primary/40">{currentInstruction.title}</span>
+        <span className="text-accent-primary">{currentInstruction.body}</span>
+      </div>
+      <div className="battle-side-panel-actions" aria-label="Battle panels">
+        {BATTLE_SIDE_PANELS.map(({ id, label, Icon }) => (
+          <IconButton
+            key={id}
+            label={label}
+            icon={<Icon className="size-4" aria-hidden="true" />}
+            aria-pressed={activePanel === id}
+            onClick={() => onPanelChange(id)}
+          />
+        ))}
+      </div>
+    </header>
+  );
+}
+
+function BattleContentGrid({ children, sidebar }: { children: ReactNode; sidebar: ReactNode }) {
+  return (
+    <div className="battle-content-grid battle-layout-workspace relative z-[var(--z-dropdown)] grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-28 lg:grid-cols-[minmax(0,1fr)_280px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6">
+      {children}
+      {sidebar}
+    </div>
+  );
+}
+
+function BattleSidebar({ children }: { children: ReactNode }) {
+  return (
+    <aside className="battle-sidebar battle-layout-sidebar flex max-h-[22rem] min-h-[18rem] flex-col gap-3 overflow-hidden lg:max-h-none lg:min-h-0">
+      {children}
+    </aside>
+  );
+}
+
+function BattleOverlayLayer({ children }: { children: ReactNode }) {
+  return (
+    <div className="board-effect-overlay pointer-events-none absolute inset-0 z-[var(--z-overlay)] flex items-center justify-center">
+      <div className="pointer-events-auto w-full max-w-md px-4">{children}</div>
     </div>
   );
 }
@@ -2191,25 +2284,30 @@ function BattleSideSheet({
         onClick={(event) => event.stopPropagation()}
       >
         <header className="battle-side-sheet-header">
-          <div className="battle-side-sheet-tabs" role="tablist" aria-label="Battle panels">
-            {BATTLE_SIDE_PANELS.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={activePanel === id}
-                aria-label={label}
-                className="battle-side-sheet-tab"
-                onClick={() => onPanelChange(id)}
-              >
-                <Icon className="size-3.5" aria-hidden="true" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-          <button className="battle-side-sheet-close" type="button" aria-label={t('common.close')} onClick={onClose}>
-            <X className="size-4" aria-hidden="true" />
-          </button>
+          <SegmentedControl
+            className="battle-side-sheet-tabs"
+            optionClassName="battle-side-sheet-tab"
+            behavior="tabs"
+            size="sm"
+            ariaLabel="Battle panels"
+            options={BATTLE_SIDE_PANELS.map(({ id, label, Icon }) => ({
+              value: id,
+              label: (
+                <>
+                  <Icon className="size-3.5" aria-hidden="true" />
+                  <span>{label}</span>
+                </>
+              ),
+            }))}
+            value={activePanel}
+            onChange={onPanelChange}
+          />
+          <IconButton
+            className="battle-side-sheet-close"
+            label={t('common.close')}
+            icon={<X className="size-4" aria-hidden="true" />}
+            onClick={onClose}
+          />
         </header>
         <div className="battle-side-sheet-body">
           {activePanel === 'focus' && <BattleFocusSidebarPanel focusedCard={focusedCard} G={G} />}
@@ -2364,60 +2462,29 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
   return (
     <BoardLayout time={time} handExpanded={handExpanded}>
       {/* 環境光暈 — 完全照搬 demo */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[120px]" />
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+        <div className="absolute left-1/2 top-1/2 h-[60vh] w-[120vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-action/8 blur-[120px]" />
       </div>
 
-      {/* 頂欄 — demo 格式 + 階段指示器 */}
-      <header className="battle-topbar absolute inset-x-0 top-0 z-30 flex h-12 items-center justify-between gap-3 overflow-x-auto border-b border-bone/5 bg-lacquer-deep/80 px-3 backdrop-blur md:px-6">
-        <div className="flex shrink-0 items-center gap-4 font-mono text-[10px] uppercase tracking-[0.3em] md:gap-8">
-          <span className="text-bone/40">
-            {t('board.turn')} {G.turnNumber}
-          </span>
-          <span className="text-bone/40">{time === 'night' ? `🌙 ${t('board.night')}` : `☀️ ${t('board.day')}`}</span>
-          <span className={`text-bone/40 ${timeLeft <= 10 ? 'text-vermilion' : ''}`}>
-            {timeLeft}
-            {t('board.secondsUnit')}
-          </span>
-        </div>
-        <div className="hidden shrink-0 items-center gap-6 font-mono text-[10px] uppercase tracking-[0.3em] md:flex">
-          {[
-            { label: '設置', active: G.step === 'initialSet' || G.step === 'turnSet' },
-            { label: '公開', active: false },
-            { label: '時間', active: false },
-            { label: '效果', active: G.step === 'effectOrder' || !!G.pendingChoice },
-            { label: '戰鬥', active: Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1 },
-            { label: '結算', active: G.step === 'gameOver' },
-          ].map((phase) => (
-            <span key={phase.label} className={phase.active ? 'text-gold' : 'text-bone/20'}>
-              {phase.label}
-            </span>
-          ))}
-        </div>
-        <div className="hidden shrink-0 items-center gap-3 font-mono text-[10px] uppercase tracking-[0.3em] lg:flex">
-          <span className="text-bone/40">{currentInstruction.title}</span>
-          <span className="text-gold">{currentInstruction.body}</span>
-        </div>
-        <div className="battle-side-panel-actions" aria-label="Battle panels">
-          {BATTLE_SIDE_PANELS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              aria-label={label}
-              aria-pressed={activeSidePanel === id}
-              onClick={() => setActiveSidePanel(id)}
-            >
-              <Icon className="size-4" aria-hidden="true" />
-              <span className="sr-only">{label}</span>
-            </button>
-          ))}
-        </div>
-      </header>
+      <BattleTopBar
+        G={G}
+        activePanel={activeSidePanel}
+        currentInstruction={currentInstruction}
+        time={time}
+        timeLeft={timeLeft}
+        onPanelChange={setActiveSidePanel}
+      />
 
       <PhaseInstructionBanner instruction={currentInstruction} />
 
-      {/* 雙欄佈局 — header 與階段提示浮在上方，pt-28 撐開頂部空間 */}
-      <div className="battle-content-grid battle-layout-workspace relative z-10 grid h-full grid-cols-1 gap-3 overflow-y-auto px-3 pb-4 pt-28 lg:grid-cols-[minmax(0,1fr)_280px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6">
+      <BattleContentGrid
+        sidebar={
+          <BattleSidebar>
+            <BattleFocusSidebarPanel focusedCard={focusedCard} G={G} />
+            <BattleLogSidebarPanel G={G} />
+          </BattleSidebar>
+        }
+      >
         {/* ===== 左欄：戰場 ===== */}
         <div className="battle-perspective-field battle-layout-field flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
           <BattlefieldCanvas />
@@ -2427,14 +2494,14 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
             {/* 對手資訊：名字在右 + LP bar + 統計 */}
             <div className="battle-opponent-hud flex flex-wrap items-center justify-center gap-3 lg:gap-6">
               <div className="text-right">
-                <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('player.opponent')}</div>
+                <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('player.opponent')}</div>
                 <div className="font-display text-xl italic">{playerName(opponentIndex)}</div>
               </div>
               <div className="relative w-56 md:w-72" data-tut="opponent-hp">
-                <div className="relative h-1 w-full bg-bone/10">
-                  <div className="absolute inset-y-0 left-0 bg-vermilion" style={{ width: `${opponent.hp}%` }} />
+                <div className="relative h-1 w-full bg-content-primary/10">
+                  <div className="absolute inset-y-0 left-0 bg-accent-action" style={{ width: `${opponent.hp}%` }} />
                 </div>
-                <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
+                <div className="mt-1 flex justify-between font-mono text-caption text-content-primary/40">
                   <span>{opponent.hp} / 100</span>
                   <span>
                     {t('board.hand')} · {opponent.hand.length}
@@ -2447,7 +2514,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               {opponent.hand.map((card, index) => (
                 <div
                   key={card.instanceId}
-                  className="battle-opponent-card-back h-12 w-9 overflow-hidden rounded-xs ring-1 ring-bone/10 rotate-180"
+                  className="battle-opponent-card-back h-12 w-9 overflow-hidden rounded-xs ring-1 ring-content-primary/10 rotate-180"
                   style={{
                     transform: `translateY(${Math.abs(index - (opponent.hand.length - 1) / 2) * 2}px) rotate(180deg)`,
                   }}
@@ -2461,13 +2528,13 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               {/* 對手充能區 */}
               <div className="flex flex-col items-center gap-1">
                 {opponent.powerCharger.length > 0 ? (
-                  <div className="battle-stack-zone relative flex size-[88px] items-end justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                  <div className="battle-stack-zone relative flex size-[88px] items-end justify-center overflow-hidden rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
                     {opponent.powerCharger.slice(-3).map((card, i) => {
                       const def = getCardDef(card.defId);
                       return (
                         <div
                           key={card.instanceId}
-                          className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-bone/10"
+                          className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-content-primary/10"
                           style={{ left: `${12 + i * 14}px` }}
                         >
                           {def?.image && (
@@ -2482,16 +2549,16 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                         </div>
                       );
                     })}
-                    <span className="absolute top-1 right-1 font-mono text-[10px] text-gold/70">
+                    <span className="absolute top-1 right-1 font-mono text-caption text-accent-primary/70">
                       {opponent.powerCharger.reduce((s, c) => s + (getCardDef(c.defId)?.sendToPower ?? 0), 0)}
                     </span>
                   </div>
                 ) : (
-                  <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
-                    <span className="font-mono text-lg text-gold/60">0</span>
+                  <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
+                    <span className="font-mono text-lg text-accent-primary/60">0</span>
                   </div>
                 )}
-                <span className="font-mono text-[9px] text-bone/30">⚡</span>
+                <span className="font-mono text-minutia text-content-primary/30">⚡</span>
               </div>
               <Slot
                 card={opponent.setZoneA}
@@ -2516,7 +2583,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               />
               {/* 對手牌組 */}
               <div className="flex flex-col items-center gap-1">
-                <div className="battle-stack-zone relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                <div className="battle-stack-zone relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
                   {Array.from({ length: Math.min(opponent.deck.length, 3) }).map((_, i) => (
                     <img
                       key={i}
@@ -2527,18 +2594,18 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                       loading="lazy"
                     />
                   ))}
-                  <span className="absolute bottom-1 right-1 font-mono text-[10px] text-bone/50">
+                  <span className="absolute bottom-1 right-1 font-mono text-caption text-content-primary/50">
                     {opponent.deck.length}
                   </span>
                 </div>
-                <span className="font-mono text-[9px] text-bone/30">🃏</span>
+                <span className="font-mono text-minutia text-content-primary/30">🃏</span>
               </div>
               {/* 對手深淵 */}
               <div className="flex flex-col items-center gap-1">
-                <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
-                  <span className="font-mono text-sm text-bone/30">🕳️ {opponent.abyss.length}</span>
+                <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
+                  <span className="font-mono text-sm text-content-primary/30">🕳️ {opponent.abyss.length}</span>
                 </div>
-                <span className="font-mono text-[9px] text-bone/30">{t('board.abyss')}</span>
+                <span className="font-mono text-minutia text-content-primary/30">{t('board.abyss')}</span>
               </div>
             </div>
           </div>
@@ -2588,13 +2655,13 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               {/* 充能區 — 左邊 */}
               <div className="flex flex-col items-center gap-1" data-tut="player-power">
                 {me.powerCharger.length > 0 ? (
-                  <div className="battle-stack-zone relative flex size-[88px] items-end justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                  <div className="battle-stack-zone relative flex size-[88px] items-end justify-center overflow-hidden rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
                     {me.powerCharger.slice(-3).map((card, i) => {
                       const def = getCardDef(card.defId);
                       return (
                         <div
                           key={card.instanceId}
-                          className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-bone/10"
+                          className="absolute bottom-1 h-14 w-10 overflow-hidden rounded-xs ring-1 ring-content-primary/10"
                           style={{ left: `${12 + i * 14}px` }}
                         >
                           {def?.image && (
@@ -2609,16 +2676,16 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                         </div>
                       );
                     })}
-                    <span className="absolute top-1 right-1 font-mono text-[10px] text-gold/70">
+                    <span className="absolute top-1 right-1 font-mono text-caption text-accent-primary/70">
                       {powerTotal(G, meIndex)}
                     </span>
                   </div>
                 ) : (
-                  <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
-                    <span className="font-mono text-lg text-gold/60">{powerTotal(G, meIndex)}</span>
+                  <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
+                    <span className="font-mono text-lg text-accent-primary/60">{powerTotal(G, meIndex)}</span>
                   </div>
                 )}
-                <span className="font-mono text-[9px] text-bone/30">⚡ {t('board.powerCharger')}</span>
+                <span className="font-mono text-minutia text-content-primary/30">⚡ {t('board.powerCharger')}</span>
               </div>
               <div className="flex gap-1.5 lg:gap-2" data-tut="player-set-zones">
                 <Slot
@@ -2652,7 +2719,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               </div>
               {/* 牌組 — 右邊 — 根據數量堆疊 */}
               <div className="flex flex-col items-center gap-1">
-                <div className="battle-stack-zone relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
+                <div className="battle-stack-zone relative flex size-[88px] items-center justify-center overflow-hidden rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
                   {Array.from({ length: Math.min(me.deck.length, 3) }).map((_, i) => (
                     <img
                       key={i}
@@ -2663,16 +2730,16 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                       loading="lazy"
                     />
                   ))}
-                  <span className="absolute bottom-1 right-1 font-mono text-[10px] text-bone/50">{me.deck.length}</span>
+                  <span className="absolute bottom-1 right-1 font-mono text-caption text-content-primary/50">{me.deck.length}</span>
                 </div>
-                <span className="font-mono text-[9px] text-bone/30">🃏</span>
+                <span className="font-mono text-minutia text-content-primary/30">🃏</span>
               </div>
               {/* 深淵 */}
               <div className="flex flex-col items-center gap-1" data-tut="player-abyss">
-                <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-lacquer-deep/60 ring-1 ring-bone/5">
-                  <span className="font-mono text-sm text-bone/30">🕳️ {me.abyss.length}</span>
+                <div className="battle-stack-zone flex size-[88px] items-center justify-center rounded-sm bg-surface-canvas/60 ring-1 ring-content-primary/5">
+                  <span className="font-mono text-sm text-content-primary/30">🕳️ {me.abyss.length}</span>
                 </div>
-                <span className="font-mono text-[9px] text-bone/30">{t('board.abyss')}</span>
+                <span className="font-mono text-minutia text-content-primary/30">{t('board.abyss')}</span>
               </div>
             </div>
             {/* 玩家資訊列 — 照搬 demo 底部排列 */}
@@ -2682,10 +2749,10 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
             >
               {/* 左：LP bar */}
               <div className="relative w-full lg:w-72" data-tut="player-hp">
-                <div className="relative h-1 w-full bg-bone/10">
-                  <div className="absolute inset-y-0 left-0 bg-gold" style={{ width: `${me.hp}%` }} />
+                <div className="relative h-1 w-full bg-content-primary/10">
+                  <div className="absolute inset-y-0 left-0 bg-accent-primary" style={{ width: `${me.hp}%` }} />
                 </div>
-                <div className="mt-1 flex justify-between font-mono text-[10px] text-bone/40">
+                <div className="mt-1 flex justify-between font-mono text-caption text-content-primary/40">
                   <span>{me.hp} / 100</span>
                   <span>
                     {t('board.deck')} · {me.deck.length}
@@ -2704,7 +2771,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                   return (
                     <div
                       key={card.instanceId}
-                      className="battle-hand-card h-28 w-[4.75rem] shrink-0 cursor-pointer transition-all duration-300 hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-gold hover:shadow-[0_20px_40px_-10px] hover:shadow-gold/30 md:h-32 md:w-20 lg:h-36 lg:w-24"
+                      className="battle-hand-card h-28 w-[4.75rem] shrink-0 cursor-pointer transition-all duration-[var(--motion-duration-slow)] hover:-translate-y-6 hover:rotate-0 hover:ring-2 hover:ring-accent-primary hover:shadow-selected md:h-32 md:w-20 lg:h-36 lg:w-24"
                       style={{ transform: `rotate(${rotate}deg) translateY(${translateY}px)` }}
                       data-tut-card={card.defId}
                       onClick={!G.ready[meIndex] ? () => setFromHand(index) : undefined}
@@ -2727,7 +2794,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
               <div className="battle-action-stack flex w-full flex-row gap-2 lg:w-44 lg:flex-col">
                 {!G.ready[meIndex] ? (
                   <button
-                    className="flex-1 bg-bone px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.3em] text-lacquer transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 lg:flex-none"
+                    className="flex-1 bg-content-primary px-5 py-2.5 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-content-inverse transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 lg:flex-none"
                     type="button"
                     data-tut="confirm-set"
                     disabled={!canConfirm}
@@ -2740,7 +2807,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                   </button>
                 ) : (
                   <button
-                    className="flex-1 border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 lg:flex-none"
+                    className="flex-1 border border-content-primary/20 px-5 py-2 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60 lg:flex-none"
                     type="button"
                     disabled
                   >
@@ -2748,7 +2815,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                   </button>
                 )}
                 <button
-                  className="flex-1 border border-bone/20 px-5 py-2 text-[10px] uppercase tracking-[0.3em] text-bone/60 transition hover:bg-bone/5 lg:flex-none"
+                  className="flex-1 border border-content-primary/20 px-5 py-2 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60 transition hover:bg-content-primary/5 lg:flex-none"
                   type="button"
                   disabled
                 >
@@ -2759,26 +2826,17 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
           </div>
         </div>
 
-        {/* ===== 右欄：側欄 — 照搬 demo aside 結構 ===== */}
-        <aside className="battle-sidebar battle-layout-sidebar flex max-h-[22rem] min-h-[18rem] flex-col gap-3 overflow-hidden lg:max-h-none lg:min-h-0">
-          <BattleFocusSidebarPanel focusedCard={focusedCard} G={G} />
-
-          {/* Log — i18n 格式化 */}
-          <BattleLogSidebarPanel G={G} />
-        </aside>
-      </div>
+      </BattleContentGrid>
 
       {/* 效果結算 — 居中覆蓋層 */}
       {(G.step === 'effectOrder' || G.pendingChoice) && (
-        <div className="board-effect-overlay pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
-          <div className="pointer-events-auto w-full max-w-md px-4">
-            {G.pendingChoice ? (
-              <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
-            ) : (
-              <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
-            )}
-          </div>
-        </div>
+        <BattleOverlayLayer>
+          {G.pendingChoice ? (
+            <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
+          ) : (
+            <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
+          )}
+        </BattleOverlayLayer>
       )}
 
       <BattleSideSheet
@@ -2890,7 +2948,7 @@ export function Board(props: Props) {
       {/* 暫停/離開按鈕 */}
       {props.G.step !== 'gameOver' && (
         <button
-          className="board-pause-button fixed right-4 top-4 z-50 border border-bone/20 bg-lacquer-deep/90 px-3 py-1.5 text-[10px] uppercase tracking-[0.3em] text-bone/60 backdrop-blur transition hover:bg-bone/5 hover:text-bone"
+          className="board-pause-button fixed right-4 top-4 z-[var(--z-modal)] border border-content-primary/20 bg-surface-canvas/90 px-3 py-1.5 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60 backdrop-blur transition hover:bg-content-primary/5 hover:text-content-primary"
           type="button"
           onClick={() => setShowExitConfirm(true)}
           aria-label={t('game.pause')}

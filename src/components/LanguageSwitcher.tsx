@@ -29,7 +29,7 @@ export function LanguageSwitcher({
     >
       <span
         className={cn(
-          'text-[10px] uppercase tracking-[0.3em] text-bone/40',
+          'text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40',
           labelMode === 'responsive' && 'hidden md:inline',
           labelClassName,
         )}
@@ -37,13 +37,16 @@ export function LanguageSwitcher({
         {t('settings.language')}
       </span>
       <Select
-        className={cn('min-h-11 max-w-36 font-mono text-[10px] uppercase tracking-[0.3em] text-bone/60', selectClassName)}
+        className={cn(
+          'min-h-11 max-w-36 font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60',
+          selectClassName,
+        )}
         value={locale}
         onChange={(event) => setLocale(event.target.value as Locale)}
         aria-label={t('settings.language')}
       >
         {availableLocales.map((option) => (
-          <option key={option} value={option} className="bg-lacquer-deep text-bone">
+          <option key={option} value={option} className="bg-surface-canvas text-content-primary">
             {getLocaleLabel(option)}
           </option>
         ))}

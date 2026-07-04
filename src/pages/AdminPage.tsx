@@ -26,10 +26,16 @@ import {
   DataListTable,
   Dialog,
   Input,
+  Alert,
+  LoadingState,
   PageShell,
   Panel,
   Select,
+  SegmentedControl,
+  StatCard,
+  StatsGrid,
   Textarea,
+  ToolHeader,
 } from '../components/ui';
 import '../components/AdminPanel.css';
 
@@ -258,12 +264,12 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
           </div>
         </UiCard>
       ))}
-      <details className="rounded-sm bg-lacquer p-4 ring-1 ring-bone/10">
+      <details className="rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
         <summary className="cursor-pointer font-bold">查看完整 AST JSON</summary>
         <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-xs">{astJson}</pre>
       </details>
       {meta.unparsedLines.length > 0 && (
-        <Panel className="border-l-2 border-gold/40 bg-gold/10 text-xs text-gold">
+        <Panel className="border-l-2 border-accent-primary/40 bg-accent-primary/10 text-xs text-accent-primary">
           <span>
             <strong>未解析行</strong>
             {meta.unparsedLines.map((l) => (
@@ -316,12 +322,12 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
   return (
     <div className="grid gap-3">
       <label className="grid gap-1">
-        <span className="text-xs text-bone/50">名稱</span>
+        <span className="text-xs text-content-primary/50">名稱</span>
         <Input value={draft.name} onChange={(e) => set('name', e.target.value)} />
       </label>
       <div className="grid gap-3 md:grid-cols-3">
         <label className="grid gap-1">
-          <span className="text-xs text-bone/50">屬性</span>
+          <span className="text-xs text-content-primary/50">屬性</span>
           <Select value={draft.element} onChange={(e) => set('element', e.target.value)}>
             {ELEMENT_OPTIONS.map((el) => (
               <option key={el}>{el}</option>
@@ -329,7 +335,7 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
           </Select>
         </label>
         <label className="grid gap-1">
-          <span className="text-xs text-bone/50">類型</span>
+          <span className="text-xs text-content-primary/50">類型</span>
           <Select value={draft.type} onChange={(e) => set('type', e.target.value)}>
             {TYPE_OPTIONS.map((tp) => (
               <option key={tp}>{tp}</option>
@@ -337,7 +343,7 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
           </Select>
         </label>
         <label className="grid gap-1">
-          <span className="text-xs text-bone/50">稀有度</span>
+          <span className="text-xs text-content-primary/50">稀有度</span>
           <Select value={draft.rarity} onChange={(e) => set('rarity', e.target.value)}>
             {RARITY_OPTIONS.map((r) => (
               <option key={r}>{r}</option>
@@ -347,50 +353,50 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
       </div>
       <div className="grid gap-3 md:grid-cols-3">
         <label className="grid gap-1">
-          <span className="text-xs text-bone/50">時計</span>
+          <span className="text-xs text-content-primary/50">時計</span>
           <Input type="number" value={draft.clock} onChange={(e) => set('clock', e.target.value)} />
         </label>
         <label className="grid gap-1">
-          <span className="text-xs text-bone/50">Power Cost</span>
+          <span className="text-xs text-content-primary/50">Power Cost</span>
           <Input type="number" value={draft.powerCost} onChange={(e) => set('powerCost', e.target.value)} />
         </label>
         <label className="grid gap-1">
-          <span className="text-xs text-bone/50">SEND TO POWER</span>
+          <span className="text-xs text-content-primary/50">SEND TO POWER</span>
           <Input type="number" value={draft.sendToPower} onChange={(e) => set('sendToPower', e.target.value)} />
         </label>
       </div>
       {draft.type === 'Character' && (
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1">
-            <span className="text-xs text-bone/50">夜間攻擊</span>
+            <span className="text-xs text-content-primary/50">夜間攻擊</span>
             <Input type="number" value={draft.attackNight} onChange={(e) => set('attackNight', e.target.value)} />
           </label>
           <label className="grid gap-1">
-            <span className="text-xs text-bone/50">日間攻擊</span>
+            <span className="text-xs text-content-primary/50">日間攻擊</span>
             <Input type="number" value={draft.attackDay} onChange={(e) => set('attackDay', e.target.value)} />
           </label>
         </div>
       )}
       <label className="grid gap-1">
-        <span className="text-xs text-bone/50">效果原文</span>
+        <span className="text-xs text-content-primary/50">效果原文</span>
         <Textarea value={draft.effect} onChange={(e) => set('effect', e.target.value)} rows={4} />
       </label>
       <label className="grid gap-1">
-        <span className="text-xs text-bone/50">圖片 URL</span>
+        <span className="text-xs text-content-primary/50">圖片 URL</span>
         <Input value={draft.image} onChange={(e) => set('image', e.target.value)} />
       </label>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="grid gap-1">
-          <span className="text-xs text-bone/50">歌曲</span>
+          <span className="text-xs text-content-primary/50">歌曲</span>
           <Input value={draft.song} onChange={(e) => set('song', e.target.value)} />
         </label>
         <label className="grid gap-1">
-          <span className="text-xs text-bone/50">畫師</span>
+          <span className="text-xs text-content-primary/50">畫師</span>
           <Input value={draft.illustrator} onChange={(e) => set('illustrator', e.target.value)} />
         </label>
       </div>
       <label className="grid gap-1">
-        <span className="text-xs text-bone/50">卡包</span>
+        <span className="text-xs text-content-primary/50">卡包</span>
         <Select value={draft.pack} onChange={(e) => set('pack', e.target.value)}>
           {FALLBACK_PACKS.map((p) => (
             <option key={p}>{p}</option>
@@ -398,7 +404,7 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
         </Select>
       </label>
       <label className="grid gap-1">
-        <span className="text-xs text-bone/50">勘誤</span>
+        <span className="text-xs text-content-primary/50">勘誤</span>
         <Textarea value={draft.errata} onChange={(e) => set('errata', e.target.value)} rows={2} />
       </label>
       <div className="flex flex-wrap items-center gap-3">
@@ -452,13 +458,13 @@ function I18nEditor({ cardId }: { cardId: string }) {
     }
   };
 
-  if (loading) return <p className="opacity-70">載入翻譯中…</p>;
+  if (loading) return <LoadingState label="載入翻譯中…" />;
 
   return (
     <div className="grid gap-3">
       {I18N_LANGS.map((lang) => (
         <label className="grid gap-1" key={lang.code}>
-          <span className="text-xs text-bone/50">
+          <span className="text-xs text-content-primary/50">
             {lang.label} <span className="opacity-60">({lang.code})</span>
           </span>
           <Textarea
@@ -665,9 +671,9 @@ export function AdminPage() {
               {loggingIn ? '驗證中…' : '登入'}
             </Button>
             {error && (
-              <Panel className="border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80">
+              <Alert tone="danger" role="alert">
                 {error}
-              </Panel>
+              </Alert>
             )}
           </div>
         </Panel>
@@ -742,77 +748,54 @@ export function AdminPage() {
 
   return (
     <PageShell className="card-admin-page admin-page flex flex-col">
-      <header className="admin-header flex h-14 shrink-0 items-center justify-between border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur md:px-6">
-        <div className="admin-title-row flex items-center gap-2">
-          <BackButton className="min-h-11" onClick={() => navigate('/')}>
-            {t('common.backToLobby')}
-          </BackButton>
-          <h1 className="admin-heading font-display text-xl italic text-gold">管理員面板</h1>
-          {activeTab === 'cards' && (
-            <Badge>
-              {filtered.length} / {allCards.length} 張
-            </Badge>
-          )}
-        </div>
-        <div role="tablist" className="admin-tablist flex items-center gap-2">
-          <Button
-            role="tab"
-            size="sm"
-            variant={activeTab === 'cards' ? 'primary' : 'ghost'}
-            onClick={() => setActiveTab('cards')}
-          >
-            卡牌資料
-          </Button>
-          <Button
-            role="tab"
-            size="sm"
-            variant={activeTab === 'users' ? 'primary' : 'ghost'}
-            onClick={() => setActiveTab('users')}
-          >
-            使用者
-          </Button>
-          <Button
-            role="tab"
-            size="sm"
-            variant={activeTab === 'matches' ? 'primary' : 'ghost'}
-            onClick={() => setActiveTab('matches')}
-          >
-            對戰
-          </Button>
-        </div>
-        <div className="admin-header-actions">
-          <Button variant="secondary" size="sm" onClick={handleLogout}>
-            登出
-          </Button>
-        </div>
-      </header>
+      <ToolHeader
+        className="admin-header"
+        leading={
+          <div className="admin-title-row flex items-center gap-2">
+            <BackButton className="min-h-11" onClick={() => navigate('/')}>
+              {t('common.backToLobby')}
+            </BackButton>
+            {activeTab === 'cards' && (
+              <Badge>
+                {filtered.length} / {allCards.length} 張
+              </Badge>
+            )}
+          </div>
+        }
+        title={<span className="admin-heading">管理員面板</span>}
+        actions={
+          <>
+            <SegmentedControl
+              className="admin-tablist"
+              behavior="tabs"
+              size="sm"
+              ariaLabel="管理員分頁"
+              options={[
+                { value: 'cards', label: '卡牌資料' },
+                { value: 'users', label: '使用者' },
+                { value: 'matches', label: '對戰' },
+              ]}
+              value={activeTab}
+              onChange={setActiveTab}
+            />
+            <div className="admin-header-actions">
+              <Button variant="secondary" size="sm" onClick={handleLogout}>
+                登出
+              </Button>
+            </div>
+          </>
+        }
+      />
 
       {activeTab === 'cards' && (
         <div className="admin-main flex-1 overflow-y-auto p-4">
-          <section className="admin-stats-grid grid gap-3 lg:grid-cols-5">
-            <Panel>
-              <div className="text-xs text-bone/50">總卡</div>
-              <div className="font-mono text-2xl text-gold">{audit.totalCards}</div>
-            </Panel>
-            <Panel>
-              <div className="text-xs text-bone/50">效果卡</div>
-              <div className="font-mono text-2xl text-gold">{audit.effectCards}</div>
-            </Panel>
-            <Panel>
-              <div className="text-xs text-bone/50">效果行</div>
-              <div className="font-mono text-2xl text-gold">
-                {audit.parsedLines}/{audit.effectLines}
-              </div>
-            </Panel>
-            <Panel>
-              <div className="text-xs text-bone/50">未解析</div>
-              <div className="font-mono text-2xl text-gold">{audit.unparsedLines}</div>
-            </Panel>
-            <Panel>
-              <div className="text-xs text-bone/50">Runtime effects</div>
-              <div className="font-mono text-2xl text-gold">{audit.runtimeParsedEffects}</div>
-            </Panel>
-          </section>
+          <StatsGrid className="admin-stats-grid" columns={5}>
+            <StatCard label="總卡" value={audit.totalCards} />
+            <StatCard label="效果卡" value={audit.effectCards} />
+            <StatCard label="效果行" value={`${audit.parsedLines}/${audit.effectLines}`} />
+            <StatCard label="未解析" value={audit.unparsedLines} />
+            <StatCard label="Runtime effects" value={audit.runtimeParsedEffects} />
+          </StatsGrid>
           <div className="admin-filter-panel grid gap-3 py-4">
             <Input
               type="text"
@@ -822,7 +805,7 @@ export function AdminPage() {
               className="admin-search-input max-w-md"
             />
             <div className="admin-mobile-filter-summary">
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-bone/50">
+              <span className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/50">
                 {filtered.length} results
                 {activeCardFilterCount > 0 ? ` / ${activeCardFilterCount} filters` : ''}
               </span>
@@ -838,7 +821,7 @@ export function AdminPage() {
             </div>
             <div className={`admin-filter-advanced${showMobileCardFilters ? ' admin-filter-advanced-open' : ''}`}>
               <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-bone/50">屬性</span>
+                <span className="admin-filter-label w-12 text-xs text-content-primary/50">屬性</span>
                 {ELEMENTS.map((el) => (
                   <Button
                     key={el}
@@ -851,7 +834,7 @@ export function AdminPage() {
                 ))}
               </div>
               <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-bone/50">類型</span>
+                <span className="admin-filter-label w-12 text-xs text-content-primary/50">類型</span>
                 {TYPES.map((type) => (
                   <Button
                     key={type}
@@ -864,7 +847,7 @@ export function AdminPage() {
                 ))}
               </div>
               <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-bone/50">Trigger</span>
+                <span className="admin-filter-label w-12 text-xs text-content-primary/50">Trigger</span>
                 {TRIGGERS.map((trigger) => (
                   <Button
                     key={trigger}
@@ -877,7 +860,7 @@ export function AdminPage() {
                 ))}
               </div>
               <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-bone/50">引擎</span>
+                <span className="admin-filter-label w-12 text-xs text-content-primary/50">引擎</span>
                 <Input
                   className="w-36"
                   placeholder="Action type"
@@ -902,7 +885,7 @@ export function AdminPage() {
                 </Button>
               </div>
               <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-bone/50">卡包</span>
+                <span className="admin-filter-label w-12 text-xs text-content-primary/50">卡包</span>
                 {FALLBACK_PACKS.map((pack) => (
                   <Button
                     key={pack}
@@ -915,7 +898,7 @@ export function AdminPage() {
                 ))}
               </div>
               <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-bone/50">排序</span>
+                <span className="admin-filter-label w-12 text-xs text-content-primary/50">排序</span>
                 {(['id', 'name', 'cost', 'attack'] as const).map((sort) => (
                   <Button
                     key={sort}
@@ -935,7 +918,8 @@ export function AdminPage() {
               return (
                 <button
                   key={card.id}
-                  className="group relative overflow-hidden rounded-sm bg-lacquer text-left ring-1 ring-bone/10 transition hover:-translate-y-1 hover:ring-gold/40 focus:outline-none focus:ring-2 focus:ring-gold/60"
+                  type="button"
+                  className="group relative overflow-hidden rounded-sm bg-surface-base text-left ring-1 ring-content-primary/10 transition hover:-translate-y-1 hover:ring-accent-primary/40 focus:outline-none focus:ring-2 focus:ring-accent-primary/60"
                   onClick={() => {
                     setSelectedCard(card);
                     setModalTab('basic');
@@ -948,7 +932,7 @@ export function AdminPage() {
                     loading="lazy"
                     referrerPolicy="no-referrer"
                   />
-                  <div className="absolute inset-x-0 bottom-0 bg-lacquer-deep/80 p-3 backdrop-blur">
+                  <div className="absolute inset-x-0 bottom-0 bg-surface-canvas/80 p-3 backdrop-blur">
                     <h2 className="block truncate text-sm font-bold">{card.name}</h2>
                     <p className="font-mono text-xs opacity-80">{card.id}</p>
                     <p className="text-xs opacity-80">
@@ -971,15 +955,15 @@ export function AdminPage() {
 
       {activeTab === 'users' && (
         <section className="admin-table-section flex-1 overflow-auto p-4">
-          {adminLoading && <Panel className="mb-3 text-sm text-bone/60">載入中…</Panel>}
+          {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
           {adminError && (
-            <Panel className="mb-3 border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80">
+            <Alert className="mb-3" tone="danger" role="alert">
               {adminError}
-            </Panel>
+            </Alert>
           )}
           <DataListTable className="admin-responsive-table">
-            <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
-              <tr className="border-b border-bone/10">
+            <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+              <tr className="border-b border-content-primary/10">
                 <th className="px-3 py-2">ID</th>
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">暱稱</th>
@@ -991,7 +975,7 @@ export function AdminPage() {
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id} className="odd:bg-lacquer/50">
+                <tr key={u.id} className="odd:bg-surface-base/50">
                   <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
                     {u.id}
                   </DataListCell>
@@ -1043,15 +1027,15 @@ export function AdminPage() {
 
       {activeTab === 'matches' && (
         <section className="admin-table-section flex-1 overflow-auto p-4">
-          {adminLoading && <Panel className="mb-3 text-sm text-bone/60">載入中…</Panel>}
+          {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
           {adminError && (
-            <Panel className="mb-3 border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80">
+            <Alert className="mb-3" tone="danger" role="alert">
               {adminError}
-            </Panel>
+            </Alert>
           )}
           <DataListTable className="admin-responsive-table">
-            <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
-              <tr className="border-b border-bone/10">
+            <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+              <tr className="border-b border-content-primary/10">
                 <th className="px-3 py-2">ID</th>
                 <th className="px-3 py-2">勝者</th>
                 <th className="px-3 py-2">敗者</th>
@@ -1063,7 +1047,7 @@ export function AdminPage() {
             </thead>
             <tbody>
               {matches.map((m) => (
-                <tr key={m.id} className="odd:bg-lacquer/50">
+                <tr key={m.id} className="odd:bg-surface-base/50">
                   <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
                     {m.id}
                   </DataListCell>

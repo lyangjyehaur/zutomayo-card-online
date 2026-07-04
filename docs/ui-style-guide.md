@@ -237,7 +237,7 @@ p-4 shadow-2xl ring-1 ring-gold/30 backdrop-blur
 
 ### 10.1 `<Modal>`（中央彈窗）
 
-- 遮罩：`fixed inset-0 z-[--z-modal] bg-lacquer-deep/80 backdrop-blur`。
+- 遮罩：`fixed inset-0 z-[var(--z-modal)] bg-surface-overlay backdrop-blur`。
 - 面板：`rounded-md bg-lacquer p-6 ring-1 ring-gold/30 shadow-[--shadow]`。
 - 取代：MatchHistory `modal modal-open`、Board `phase-message-overlay`、FeedbackPage `feedback-modal-overlay`。
 

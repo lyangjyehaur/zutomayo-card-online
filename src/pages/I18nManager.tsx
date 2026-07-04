@@ -10,8 +10,10 @@ import { ko } from '../i18n/ko';
 import { ApiError, adminLogin } from '../api/client';
 import {
   BackButton,
+  Alert,
   Badge,
   Button,
+  Checkbox,
   DataListCell,
   DataListTable,
   Dialog,
@@ -20,8 +22,10 @@ import {
   Input,
   PageShell,
   Panel,
+  SegmentedControl,
   Sheet,
   Textarea,
+  ToolHeader,
 } from '../components/ui';
 import '../components/I18nManager.css';
 
@@ -43,7 +47,7 @@ function useCompactI18nEditing() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const media = window.matchMedia('(max-width: 767px)');
+    const media = window.matchMedia('(max-width: 820px)');
     const update = () => setIsCompact(media.matches);
 
     update();
@@ -120,13 +124,15 @@ export function I18nManager() {
   if (!authenticated) {
     return (
       <PageShell variant="scroll" className="admin-page i18n-page flex flex-col px-4 py-4 md:px-6">
-        <header className="i18n-header flex items-center justify-between border-b border-bone/5 pb-4">
-          <BackButton className="min-h-11" onClick={() => navigate('/')}>
-            {t('common.backToLobby')}
-          </BackButton>
-          <h1 className="i18n-heading font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
-          <div />
-        </header>
+        <ToolHeader
+          className="i18n-header"
+          leading={
+            <BackButton className="min-h-11" onClick={() => navigate('/')}>
+              {t('common.backToLobby')}
+            </BackButton>
+          }
+          title={<span className="i18n-heading">{t('admin.i18nTitle')}</span>}
+        />
         <Panel className="admin-login mx-auto mt-6 w-full max-w-md" size="lg">
           <h2 className="font-display text-xl italic">{t('admin.adminVerify')}</h2>
           <Input
@@ -143,9 +149,9 @@ export function I18nManager() {
             {loggingIn ? t('admin.verifying') : t('admin.login')}
           </Button>
           {error && (
-            <Panel className="border-l-2 border-vermilion/50 bg-vermilion/10 text-xs text-vermilion/80" role="alert">
+            <Alert tone="danger" role="alert">
               {error}
-            </Panel>
+            </Alert>
           )}
         </Panel>
       </PageShell>
@@ -169,29 +175,31 @@ export function I18nManager() {
 
   return (
     <PageShell variant="workspace" className="admin-page i18n-page flex flex-col px-4 py-4 md:px-6">
-      <header className="i18n-header flex items-center justify-between border-b border-bone/5 pb-4">
-        <BackButton className="min-h-11" onClick={() => navigate('/')}>
-          {t('common.backToLobby')}
-        </BackButton>
-        <h1 className="i18n-heading font-display text-3xl italic text-gold">{t('admin.i18nTitle')}</h1>
-        <Button size="sm" variant="secondary" onClick={handleLogout}>
-          {t('admin.logout')}
-        </Button>
-      </header>
+      <ToolHeader
+        className="i18n-header"
+        leading={
+          <BackButton className="min-h-11" onClick={() => navigate('/')}>
+            {t('common.backToLobby')}
+          </BackButton>
+        }
+        title={<span className="i18n-heading">{t('admin.i18nTitle')}</span>}
+        actions={
+          <Button size="sm" variant="secondary" onClick={handleLogout}>
+            {t('admin.logout')}
+          </Button>
+        }
+      />
 
       <div className="i18n-controls">
-        <div className="i18n-locale-tabs">
-          {availableLocales.map((locale) => (
-            <Button
-              key={locale}
-              size="sm"
-              variant={selectedLocale === locale ? 'primary' : 'ghost'}
-              onClick={() => setSelectedLocale(locale)}
-            >
-              {getLocaleLabel(locale)}
-            </Button>
-          ))}
-        </div>
+        <SegmentedControl
+          className="i18n-locale-tabs"
+          behavior="tabs"
+          size="sm"
+          ariaLabel={t('settings.language')}
+          options={availableLocales.map((locale) => ({ value: locale, label: getLocaleLabel(locale) }))}
+          value={selectedLocale}
+          onChange={setSelectedLocale}
+        />
 
         <div className="i18n-stats">
           <span>
@@ -213,17 +221,20 @@ export function I18nManager() {
             onChange={(e) => setSearchText(e.target.value)}
             className="i18n-search"
           />
-          <label className="i18n-checkbox">
-            <input type="checkbox" checked={filterMissing} onChange={(e) => setFilterMissing(e.target.checked)} />
+          <Checkbox
+            className="i18n-checkbox"
+            checked={filterMissing}
+            onChange={(e) => setFilterMissing(e.target.checked)}
+          >
             {t('admin.i18nFilterMissing')}
-          </label>
+          </Checkbox>
         </div>
       </div>
 
       <div className="i18n-table-wrapper">
         <DataListTable className="i18n-table i18n-responsive-table">
-          <thead className="font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40">
-            <tr className="border-b border-bone/10">
+          <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+            <tr className="border-b border-content-primary/10">
               <th className="px-3 py-2">{t('admin.i18nColKey')}</th>
               <th className="px-3 py-2">{t('admin.i18nColBase')}</th>
               <th className="px-3 py-2">{getLocaleLabel(selectedLocale)}</th>
@@ -342,7 +353,7 @@ export function I18nManager() {
         onOpenChange={(open) => !open && setSaveNotice('')}
         title={t('admin.i18nSaved')}
       >
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-bone/70">{saveNotice}</p>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-content-primary/70">{saveNotice}</p>
       </Dialog>
     </PageShell>
   );

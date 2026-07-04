@@ -5,7 +5,7 @@ import { AppDrawer } from '../components/AppDrawer';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
-import { Button, Card, PageShell, Panel } from '../components/ui';
+import { Button, Card, IconButton, PageShell, Panel } from '../components/ui';
 import { t, type TranslationKey } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
@@ -95,7 +95,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   return (
     <PageShell>
       {/* 環境層：隨機卡牌模糊背景 + 紫光暈 + 點陣紋理 */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         {bgImage && (
           <img
             src={bgImage}
@@ -106,19 +106,19 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           />
         )}
         {/* 暗化遮罩，確保文字可讀（漸層：中央較透、邊緣較暗） */}
-        <div className="absolute inset-0 bg-lacquer-deep/55" />
-        <div className="absolute left-1/2 top-1/2 h-[80vh] w-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-vermilion/8 blur-[140px]" />
-        <div className="absolute inset-0 opacity-[0.04] [background-image:radial-gradient(rgba(255,255,255,0.6)_1px,transparent_1px)] [background-size:3px_3px]" />
+        <div className="absolute inset-0 bg-surface-canvas/55" />
+        <div className="absolute left-1/2 top-1/2 h-[var(--ambient-glow-size-lg)] w-[var(--ambient-glow-size-lg)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-action/8 blur-[var(--ambient-glow-blur-md)]" />
+        <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
       </div>
 
       {/* 頂部 Header */}
-      <header className="absolute inset-x-0 top-0 z-20 flex min-h-16 items-center justify-between gap-3 px-4 py-3 md:px-8">
+      <header className="absolute inset-x-0 top-0 z-[var(--z-sticky)] flex min-h-16 items-center justify-between gap-3 px-4 py-3 md:px-8">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="size-2 rounded-full bg-vermilion shadow-[0_0_12px] shadow-vermilion/60" />
-          <span className="truncate font-display text-[clamp(1.1rem,5vw,1.25rem)] italic leading-none tracking-tight md:text-xl">
+          <div className="size-2 rounded-full bg-accent-action shadow-status-dot" />
+          <span className="truncate font-display text-title-sm italic leading-none tracking-tight md:text-xl">
             {t('app.title')}
           </span>
-          <span className="ml-3 hidden text-[10px] uppercase tracking-[0.3em] text-bone/40 md:inline">
+          <span className="ml-3 hidden text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 md:inline">
             {t('app.subtitle')}
           </span>
         </div>
@@ -126,16 +126,14 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           <LanguageSwitcher />
           <AuthSection onAuthChanged={onAuthChanged} />
         </div>
-        <Button
-          className="size-11 shrink-0 p-0 tracking-normal sm:hidden"
+        <IconButton
+          className="sm:hidden"
           variant="secondary"
-          type="button"
-          aria-label={t('lobby.menu')}
+          label={t('lobby.menu')}
+          icon={<Menu className="size-4" strokeWidth={1.25} aria-hidden="true" />}
           aria-expanded={settingsOpen}
           onClick={() => setSettingsOpen(true)}
-        >
-          <Menu className="size-4" strokeWidth={1.25} aria-hidden="true" />
-        </Button>
+        />
       </header>
 
       <AppDrawer
@@ -157,7 +155,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       </AppDrawer>
 
       {/* 中央三聯幅卡 */}
-      <section className="lobby-home-content relative z-10 h-full overflow-y-auto px-4 pb-10 pt-32 sm:pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
+      <section className="lobby-home-content relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-32 sm:pt-24 md:flex md:items-center md:justify-center md:px-8 md:pb-12 md:pt-20">
         <div className="grid w-full max-w-6xl grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">
           {ENTRIES.map(({ to, titleKey, subtitle, captionKey, Icon }, i) => (
             <Card
@@ -165,38 +163,38 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               key={to}
               type="button"
               onClick={() => navigate(to)}
-              className="lobby-entry-card group relative flex min-h-[11rem] flex-col justify-between overflow-hidden rounded-sm bg-lacquer p-5 text-left ring-1 ring-bone/10 transition-all duration-500 hover:-translate-y-1 hover:ring-gold/50 hover:shadow-[0_30px_80px_-20px] hover:shadow-vermilion/30 md:h-[60dvh] md:p-8 xl:h-[460px]"
+              className="lobby-entry-card group relative flex min-h-[11rem] flex-col justify-between overflow-hidden rounded-sm bg-surface-base p-5 text-left ring-1 ring-content-primary/10 transition-all duration-[var(--motion-duration-page)] hover:-translate-y-1 hover:ring-accent-primary/50 hover:shadow-glow-action md:h-[60dvh] md:p-8 xl:h-[460px]"
             >
               {/* 卡內裝飾：內框線 */}
-              <div className="pointer-events-none absolute inset-3 rounded-sm ring-1 ring-bone/5 transition-all duration-500 group-hover:ring-gold/20" />
+              <div className="pointer-events-none absolute inset-3 rounded-sm ring-1 ring-content-primary/5 transition-all duration-[var(--motion-duration-page)] group-hover:ring-accent-primary/20" />
               {/* 卡內裝飾：底部漸層 */}
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-vermilion/10 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-accent-action/10 to-transparent opacity-0 transition-opacity duration-[var(--motion-duration-page)] group-hover:opacity-100" />
 
               {/* 頂：編號 + 圖示 */}
               <div className="relative flex items-start justify-between">
-                <span className="font-mono text-[10px] tracking-[0.3em] text-gold/70">0{i + 1} / 03</span>
-                <Icon className="size-5 text-bone/40 transition-colors group-hover:text-gold" strokeWidth={1.25} />
+                <span className="font-mono text-caption tracking-[var(--tracking-kicker)] text-accent-primary/70">0{i + 1} / 03</span>
+                <Icon className="size-5 text-content-primary/40 transition-colors group-hover:text-accent-primary" strokeWidth={1.25} />
               </div>
 
               {/* 中：副標 + 主標 + 說明 */}
               <div className="relative">
-                <div className="mb-2 text-[10px] uppercase tracking-[0.24em] text-bone/40 md:tracking-[0.35em]">
+                <div className="mb-2 text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/40 md:tracking-[var(--tracking-kicker)]">
                   {subtitle}
                 </div>
-                <h2 className="font-display text-[clamp(2.35rem,13vw,3rem)] font-extrabold leading-none tracking-tight md:text-5xl">
+                <h2 className="font-display text-lobby-card-title font-extrabold leading-none tracking-tight md:text-5xl">
                   {t(titleKey)}
                 </h2>
-                <p className="lobby-entry-caption mt-4 max-w-[22ch] text-sm leading-relaxed text-bone/50">
+                <p className="lobby-entry-caption mt-4 max-w-[22ch] text-body leading-relaxed text-content-primary/50">
                   {t(captionKey)}
                 </p>
               </div>
 
               {/* 底：Enter + 箭頭 */}
-              <div className="relative flex items-center justify-between border-t border-bone/10 pt-5">
-                <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40 transition-colors group-hover:text-bone/80">
+              <div className="relative flex items-center justify-between border-t border-content-primary/10 pt-5">
+                <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors group-hover:text-content-primary/80">
                   Enter
                 </span>
-                <span className="font-display text-xl italic text-gold/60 transition-transform duration-500 group-hover:translate-x-1 group-hover:text-gold">
+                <span className="font-display text-xl italic text-accent-primary/60 transition-transform duration-[var(--motion-duration-page)] group-hover:translate-x-1 group-hover:text-accent-primary">
                   →
                 </span>
               </div>
@@ -205,42 +203,44 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           <Button
             type="button"
             onClick={() => navigate('/tutorial')}
-            className="mt-1 flex w-full items-center justify-center gap-3 border-gold/30 bg-gold/10 text-gold sm:hidden"
+            className="mt-1 flex w-full items-center justify-center gap-3 border-accent-primary/30 bg-accent-primary/10 text-accent-primary sm:hidden"
             variant="secondary"
           >
-            <span className="text-[10px] uppercase tracking-[0.18em]">{t('lobby.tutorial')}</span>
+            <span className="text-caption uppercase tracking-[var(--tracking-control)]">{t('lobby.tutorial')}</span>
             <span className="font-display text-xl italic">→</span>
           </Button>
         </div>
       </section>
 
       {/* 底部 Footer */}
-      <footer className="lobby-home-footer pointer-events-none absolute inset-x-0 bottom-0 z-20 hidden flex-col items-center gap-3 px-4 pb-4 sm:flex md:px-8">
+      <footer className="lobby-home-footer pointer-events-none absolute inset-x-0 bottom-0 z-[var(--z-sticky)] hidden flex-col items-center gap-3 px-4 pb-4 sm:flex md:px-8">
         {/* 教學入口 */}
         <Button
           type="button"
           onClick={() => navigate('/tutorial')}
-          className="lobby-tutorial-button pointer-events-auto group flex w-full max-w-md items-center justify-center gap-3 rounded-sm border border-gold/30 bg-gradient-to-r from-gold/8 via-gold/5 to-gold/8 px-6 py-3 text-gold transition-all hover:border-gold/50 hover:bg-gold/10 hover:shadow-[0_8px_32px_-8px] hover:shadow-gold/30"
+          className="lobby-tutorial-button pointer-events-auto group flex w-full max-w-md items-center justify-center gap-3 rounded-sm border border-accent-primary/30 bg-gradient-to-r from-accent-primary/8 via-accent-primary/5 to-accent-primary/8 px-6 py-3 text-accent-primary transition-all hover:border-accent-primary/50 hover:bg-accent-primary/10 hover:shadow-glow-primary"
           variant="secondary"
         >
-          <span className="text-[10px] uppercase tracking-[0.3em]">{t('lobby.tutorial')}</span>
+          <span className="text-caption uppercase tracking-[var(--tracking-kicker)]">{t('lobby.tutorial')}</span>
           <span className="font-display text-xl italic transition-transform group-hover:translate-x-1">→</span>
         </Button>
 
         {/* 原有的 footer 信息 */}
-        <div className="pointer-events-auto flex w-full items-center justify-between text-[10px] uppercase tracking-[0.3em] text-bone/30">
+        <div className="pointer-events-auto flex w-full items-center justify-between text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/30">
           <VersionUpdateTrigger />
-          <button
+          <Button
             type="button"
-            className="hidden min-h-10 items-center text-bone/30 transition-colors hover:text-gold md:inline-flex"
+            className="hidden min-h-10 items-center text-content-primary/30 transition-colors hover:text-accent-primary md:inline-flex"
+            variant="ghost"
+            size="sm"
             onClick={() => navigate('/feedback')}
           >
             {t('app.footerAlpha')}
-          </button>
+          </Button>
           <span className="font-mono">
             {t('app.footerCopyright')}
             <a
-              className="inline-flex min-h-10 items-center text-bone/40 underline-offset-4 transition-colors hover:text-gold hover:underline focus-visible:text-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+              className="inline-flex min-h-10 items-center text-content-primary/40 underline-offset-4 transition-colors hover:text-accent-primary hover:underline focus-visible:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
               href="https://zutomayocard.net"
               target="_blank"
               rel="noreferrer"
@@ -254,37 +254,39 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
 
       {/* 首次訪問引導——頂部橫幅卡片，不遮罩背景 */}
       {showDeckIntro && (
-        <div className="fixed inset-x-0 bottom-0 z-[--z-overlay] flex justify-center px-4 pb-4 sm:bottom-auto sm:top-0 sm:pb-0 sm:pt-4">
+        <div className="fixed inset-x-0 bottom-0 z-[var(--z-overlay)] flex justify-center px-4 pb-4 sm:bottom-auto sm:top-0 sm:pb-0 sm:pt-4">
           <Panel
-            className="max-h-[calc(100dvh-2rem)] w-full max-w-[640px] overflow-y-auto bg-gradient-to-br from-lacquer-deep via-lacquer-deep to-lacquer text-bone ring-gold/40 backdrop-blur"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-[640px] overflow-y-auto bg-gradient-to-br from-surface-canvas via-surface-canvas to-surface-base text-content-primary ring-accent-primary/40 backdrop-blur"
             size="lg"
           >
             <div className="mb-2 flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70">Welcome</span>
+              <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Welcome</span>
               <Button
                 type="button"
                 aria-label={t('common.close')}
                 variant="ghost"
                 size="sm"
+                className="min-h-11"
                 onClick={handleDismissIntro}
                 data-umami-event="deck-intro-dismiss"
               >
                 {t('common.close')}
               </Button>
             </div>
-            <h2 className="font-display text-xl italic leading-tight text-bone sm:text-2xl">{t('intro.deckTitle')}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-bone/70">{t('intro.deckDescription')}</p>
+            <h2 className="font-display text-xl italic leading-tight text-content-primary sm:text-2xl">{t('intro.deckTitle')}</h2>
+            <p className="mt-2 text-body leading-relaxed text-content-primary/70">{t('intro.deckDescription')}</p>
             <div className="mt-4 flex flex-col justify-end gap-2 sm:flex-row">
               <Button
                 type="button"
                 size="sm"
                 variant="primary"
+                className="min-h-11"
                 onClick={handleGoToDeckBuilder}
                 data-umami-event="deck-intro-go-to-builder"
               >
                 {t('intro.goToDeckBuilder')}
               </Button>
-              <Button type="button" size="sm" variant="secondary" onClick={handleDismissIntro}>
+              <Button type="button" size="sm" variant="secondary" className="min-h-11" onClick={handleDismissIntro}>
                 {t('intro.exploreLater')}
               </Button>
             </div>

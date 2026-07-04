@@ -462,14 +462,14 @@ function createQaCtx(G: GameState): BoardComponentProps['ctx'] {
 
 function QaControls({ selectedState }: { selectedState: BattleQaStateId }) {
   return (
-    <aside className="fixed bottom-3 left-3 z-[var(--z-modal)] max-w-[calc(100vw-1.5rem)] rounded-sm border border-bone/10 bg-lacquer-deep/90 p-2 font-mono text-[10px] uppercase tracking-[0.18em] text-bone/55 shadow-[--shadow] backdrop-blur">
-      <div className="mb-1 text-gold/70">Battle QA</div>
+    <aside className="fixed bottom-3 left-3 z-[var(--z-modal)] max-w-[calc(100vw-1.5rem)] rounded-sm border border-content-primary/10 bg-surface-canvas/90 p-2 font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/55 shadow-raised backdrop-blur">
+      <div className="mb-1 text-accent-primary/70">Battle QA</div>
       <div className="flex flex-wrap gap-1">
         {BATTLE_QA_STATES.map((state) => (
           <Link
             key={state.id}
             className={`rounded-xs px-2 py-1 transition ${
-              selectedState === state.id ? 'bg-gold text-lacquer' : 'bg-bone/5 text-bone/55 hover:text-bone'
+              selectedState === state.id ? 'bg-accent-primary text-surface-base' : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
             }`}
             to={`/qa/battle?state=${state.id}`}
           >
@@ -504,11 +504,11 @@ export function BattleVisualQaPage() {
 
   if (fixture.error) {
     return (
-      <main className="grid h-full w-full place-items-center bg-lacquer-deep px-6 text-center text-bone">
-        <section className="max-w-xl rounded-sm border border-vermilion/30 bg-lacquer p-5 shadow-[--shadow]">
-          <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-vermilion">Battle QA</div>
+      <main className="grid h-full w-full place-items-center bg-surface-canvas px-6 text-center text-content-primary">
+        <section className="max-w-xl rounded-sm border border-accent-action/30 bg-surface-base p-5 shadow-raised">
+          <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-action">Battle QA</div>
           <h1 className="mt-3 font-display text-2xl italic">Fixture Error</h1>
-          <p className="mt-3 text-sm leading-relaxed text-bone/60">{fixture.error}</p>
+          <p className="mt-3 text-sm leading-relaxed text-content-primary/60">{fixture.error}</p>
         </section>
       </main>
     );
@@ -517,7 +517,7 @@ export function BattleVisualQaPage() {
   if (!fixture.G) return null;
 
   return (
-    <main className="relative h-full min-h-0 w-full overflow-hidden bg-lacquer-deep" data-battle-qa-state={selectedState}>
+    <main className="relative h-full min-h-0 w-full overflow-hidden bg-surface-canvas" data-battle-qa-state={selectedState}>
       <Board
         G={fixture.G}
         ctx={createQaCtx(fixture.G)}

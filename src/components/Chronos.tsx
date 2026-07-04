@@ -57,14 +57,14 @@ export function Chronos({ chronos, currentTime, nightSidePlayer, currentPlayer }
       <svg viewBox={`0 0 ${size} ${size}`} role="img">
         <defs>
           <radialGradient id="chronos-face" cx="50%" cy="42%" r="68%">
-            <stop offset="0%" stopColor="#242839" />
-            <stop offset="58%" stopColor="#111827" />
-            <stop offset="100%" stopColor="#07090f" />
+            <stop offset="0%" stopColor="var(--surface-raised)" />
+            <stop offset="58%" stopColor="var(--surface-base)" />
+            <stop offset="100%" stopColor="var(--surface-canvas)" />
           </radialGradient>
           <radialGradient id="chronos-medal-fill" cx="35%" cy="28%" r="70%">
-            <stop offset="0%" stopColor="#fff3a6" />
-            <stop offset="48%" stopColor="#d9a93d" />
-            <stop offset="100%" stopColor="#7c5417" />
+            <stop offset="0%" stopColor="var(--content-primary)" />
+            <stop offset="48%" stopColor="var(--accent-primary)" />
+            <stop offset="100%" stopColor="var(--accent-primary-soft)" />
           </radialGradient>
           <filter id="chronos-glow" x="-40%" y="-40%" width="180%" height="180%">
             <feGaussianBlur stdDeviation="4" result="blur" />

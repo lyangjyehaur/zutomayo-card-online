@@ -27,11 +27,11 @@ export function Card({
   return (
     <Component
       className={cn(
-        'rounded-sm bg-lacquer ring-1 ring-bone/10',
+        'rounded-sm bg-surface-panel ring-1 ring-border-soft',
         sizeClass[size],
         interactive &&
-          'transition hover:-translate-y-0.5 hover:ring-gold/40 hover:shadow-[--shadow-soft] focus-within:ring-gold/40',
-        selected && 'ring-2 ring-gold',
+          'transition will-change-transform hover:-translate-y-0.5 hover:ring-border-strong hover:shadow-floating focus-within:ring-border-strong focus-within:shadow-focus',
+        selected && 'ring-2 ring-accent-primary',
         className,
       )}
       {...props}

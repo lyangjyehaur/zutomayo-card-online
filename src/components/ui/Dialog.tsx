@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import type { HTMLAttributes, ReactNode } from 'react';
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
+import { IconButton } from './Button';
 import { cn } from './utils';
 
 export type DialogSize = 'sm' | 'md' | 'lg';
@@ -39,6 +40,18 @@ export function Dialog({
 }: DialogProps) {
   const titleId = useId();
   const descriptionId = useId();
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    window.requestAnimationFrame(() => dialogRef.current?.focus());
+    return () => {
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open || !dismissible) return;
@@ -54,7 +67,7 @@ export function Dialog({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-[var(--z-modal)] flex overflow-y-auto bg-lacquer-deep/80 p-4 backdrop-blur',
+        'fixed inset-0 z-[var(--z-modal)] flex overflow-y-auto bg-surface-overlay p-4 backdrop-blur',
         mobilePresentation === 'sheet' ? 'items-end justify-center md:items-center' : 'items-center justify-center',
       )}
       onMouseDown={(event) => {
@@ -62,36 +75,37 @@ export function Dialog({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
         aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
         className={cn(
-          'relative flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-md bg-lacquer ring-1 ring-gold/30 shadow-[--shadow]',
+          'relative flex max-h-[calc(100dvh_-_var(--space-8))] w-full flex-col rounded-md bg-surface-panel-strong ring-1 ring-border-strong shadow-sheet',
+          'animate-in fade-in slide-in-from-bottom-2 duration-[var(--motion-duration-base)] focus:outline-none',
           sizeClass[size],
           className,
         )}
         {...props}
       >
         {dismissible && (
-          <button
-            type="button"
-            aria-label={closeLabel}
-            className="absolute right-3 top-3 inline-flex size-11 items-center justify-center rounded-sm text-bone/50 transition hover:text-vermilion focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer"
+          <IconButton
+            label={closeLabel}
+            icon={<X className="size-4" aria-hidden="true" />}
+            className="absolute right-3 top-3 focus-visible:ring-offset-surface-panel-strong"
             onClick={() => onOpenChange?.(false)}
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
+          />
         )}
         {(title || description) && (
-          <header className="grid gap-2 border-b border-bone/10 p-4 pr-12 md:p-6 md:pr-12">
+          <header className="grid gap-2 border-b border-border-soft p-4 pr-12 md:p-6 md:pr-12">
             {title && (
-              <h2 id={titleId} className="font-display text-xl italic text-bone">
+              <h2 id={titleId} className="font-display text-title-sm italic text-content-primary">
                 {title}
               </h2>
             )}
             {description && (
-              <p id={descriptionId} className="text-sm leading-relaxed text-bone/70">
+              <p id={descriptionId} className="text-body leading-relaxed text-content-muted">
                 {description}
               </p>
             )}
@@ -106,7 +120,7 @@ export function Dialog({
           {children}
         </div>
         {footer && (
-          <footer className="flex flex-col gap-2 border-t border-bone/10 p-4 sm:flex-row sm:items-center sm:justify-end md:p-6">
+          <footer className="flex flex-col gap-2 border-t border-border-soft p-4 sm:flex-row sm:items-center sm:justify-end md:p-6">
             {footer}
           </footer>
         )}

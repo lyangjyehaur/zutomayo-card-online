@@ -1,5 +1,7 @@
+import { X } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
+import { Button, IconButton } from './ui';
 
 type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
@@ -33,14 +35,20 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
   }, [onDismiss, toast.durationMs, toast.id]);
 
   return (
-    <article className={`toast-item ${toast.kind}`} role="status" aria-live="polite">
+    <article
+      className={`toast-item ${toast.kind}`}
+      role={toast.kind === 'error' ? 'alert' : 'status'}
+      aria-live={toast.kind === 'error' ? 'assertive' : 'polite'}
+    >
       <div>
         <strong>{toast.title}</strong>
         {toast.body && <p>{toast.body}</p>}
       </div>
       <div className="toast-actions">
         {toast.actionLabel && toast.onAction && (
-          <button
+          <Button
+            size="md"
+            variant="secondary"
             type="button"
             onClick={() => {
               toast.onAction?.();
@@ -48,11 +56,14 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
             }}
           >
             {toast.actionLabel}
-          </button>
+          </Button>
         )}
-        <button type="button" aria-label={t('common.close')} onClick={() => onDismiss(toast.id)}>
-          ×
-        </button>
+        <IconButton
+          label={t('common.close')}
+          icon={<X className="size-4" aria-hidden="true" />}
+          size="md"
+          onClick={() => onDismiss(toast.id)}
+        />
       </div>
     </article>
   );

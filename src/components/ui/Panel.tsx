@@ -11,8 +11,8 @@ const sizeClass: Record<PanelSize, string> = {
 };
 
 const variantClass: Record<PanelVariant, string> = {
-  solid: 'bg-lacquer',
-  ghost: 'bg-lacquer/60',
+  solid: 'bg-surface-panel',
+  ghost: 'bg-surface-panel/60',
 };
 
 export interface PanelProps extends HTMLAttributes<HTMLDivElement> {
@@ -24,7 +24,7 @@ export interface PanelProps extends HTMLAttributes<HTMLDivElement> {
 export function Panel({ as: Component = 'div', size = 'md', variant = 'solid', className, ...props }: PanelProps) {
   return (
     <Component
-      className={cn('rounded-sm ring-1 ring-bone/10', variantClass[variant], sizeClass[size], className)}
+      className={cn('rounded-sm ring-1 ring-border-soft', variantClass[variant], sizeClass[size], className)}
       {...props}
     />
   );

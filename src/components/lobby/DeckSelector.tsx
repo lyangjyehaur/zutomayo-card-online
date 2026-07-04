@@ -1,17 +1,18 @@
 import { Check } from 'lucide-react';
 import { t } from '../../i18n';
+import { Button } from '../ui';
 import type { DeckOptionGroup } from './shared';
 
 const DECK_ACCENT: Record<string, string> = {
-  dark: 'from-[#7771a8] to-[#3a3568]',
-  flame: 'from-[#e2624a] to-[#7a2a1c]',
-  electric: 'from-[#d8c44a] to-[#7a6818]',
-  wind: 'from-[#5fb58a] to-[#2a5e44]',
+  dark: 'from-element-dark/85 to-element-dark/35',
+  flame: 'from-element-flame/85 to-element-flame/35',
+  electric: 'from-element-electric/85 to-element-electric/35',
+  wind: 'from-element-wind/85 to-element-wind/35',
 };
 
 function accentFor(optionId: string, synced?: boolean): string {
-  if (synced) return 'from-gold/60 to-vermilion/40';
-  return DECK_ACCENT[optionId] ?? 'from-bone/30 to-bone/10';
+  if (synced) return 'from-accent-primary/60 to-accent-action/40';
+  return DECK_ACCENT[optionId] ?? 'from-content-primary/30 to-content-primary/10';
 }
 
 export function DeckSelector({
@@ -28,48 +29,51 @@ export function DeckSelector({
   return (
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <h3 className="font-display text-lg italic leading-tight text-bone">{label}</h3>
-        <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('lobby.deckSelectHint')}</span>
+        <h3 className="font-display text-lg italic leading-tight text-content-primary">{label}</h3>
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('lobby.deckSelectHint')}</span>
       </div>
       <div className="flex flex-col gap-4">
         {options.map((group) => (
           <div className="flex flex-col gap-2" key={group.label}>
-            <span className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{group.label}</span>
+            <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{group.label}</span>
             <div className="grid gap-1.5">
               {group.options.map((option) => {
                 const selected = value === option.id;
                 const accent = accentFor(option.id, option.synced);
                 return (
-                  <button
+                  <Button
                     key={option.id}
-                    className={`group flex items-center gap-3 rounded-sm bg-lacquer-deep/60 px-3 py-2.5 text-left ring-1 transition hover:-translate-y-0.5 hover:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10 ${
-                      selected ? 'ring-2 ring-gold' : 'ring-bone/10'
+                    className={`group justify-start bg-surface-canvas/60 px-3 py-2.5 text-left normal-case tracking-normal ring-1 hover:-translate-y-0.5 hover:ring-accent-primary/40 disabled:hover:translate-y-0 disabled:hover:ring-content-primary/10 ${
+                      selected ? 'ring-2 ring-accent-primary' : 'ring-content-primary/10'
                     }`}
+                    variant="ghost"
+                    size="md"
+                    fullWidth
                     type="button"
                     disabled={option.disabled}
                     onClick={() => onChange(option.id)}
                   >
                     <span
                       aria-hidden="true"
-                      className={`h-9 w-7 shrink-0 rounded-xs bg-gradient-to-b ${accent} ring-1 ring-bone/10`}
+                      className={`h-9 w-7 shrink-0 rounded-xs bg-gradient-to-b ${accent} ring-1 ring-content-primary/10`}
                     />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="truncate font-display text-sm italic leading-tight text-bone/90">{option.name}</span>
-                      <span className="truncate text-[10px] text-bone/40">{option.description}</span>
+                      <span className="truncate font-display text-body italic leading-tight text-content-primary/90">{option.name}</span>
+                      <span className="truncate text-caption text-content-primary/40">{option.description}</span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       {option.synced && (
-                        <span className="font-mono text-[9px] uppercase tracking-widest text-bone/40">
+                        <span className="font-mono text-minutia uppercase tracking-widest text-content-primary/40">
                           {t('deck.synced')}
                         </span>
                       )}
                       {selected && (
-                        <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest text-gold">
+                        <span className="inline-flex items-center gap-1 font-mono text-minutia uppercase tracking-widest text-accent-primary">
                           <Check strokeWidth={1.25} className="size-3" />
                         </span>
                       )}
                     </span>
-                  </button>
+                  </Button>
                 );
               })}
             </div>

@@ -25,7 +25,7 @@ import { useToast } from '../components/ToastProvider';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
-import { BackButton, Button, Input, PageHeader, Panel, PageShell } from '../components/ui';
+import { Alert, BackButton, Button, Input, PageHeader, Panel, WorkspaceLayout } from '../components/ui';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
 import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
@@ -327,33 +327,31 @@ export function OnlineLobbyPage({
   });
 
   return (
-    <PageShell
-      variant="workspace"
-      className="flex flex-col"
+    <WorkspaceLayout
       glow={{ color: 'vermilion', size: 'sm', className: 'left-0 top-0 translate-x-0 translate-y-0' }}
-    >
-      <PageHeader
-        leading={
-          <BackButton className="min-h-11" type="button" onClick={() => navigate('/')}>
-            <span className="hidden sm:inline">{t('common.backToLobby')}</span>
-          </BackButton>
-        }
-        title={t('lobby.onlineTitle')}
-        subtitle={t('lobby.onlineLobbySubtitle')}
-        actions={
-          <div className="hidden items-center gap-2 font-mono text-[10px] uppercase tracking-[0.24em] text-bone/40 md:flex">
-            <Radio className="size-3 animate-pulse text-vermilion" />
-            {profile ? `${profile.nickname} · ELO ${profile.elo}` : anonymousDisplayName}
-          </div>
-        }
-      />
-
-      {/* 雙欄內容 */}
-      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 py-4 lg:grid-cols-[340px_minmax(0,1fr)] lg:overflow-hidden lg:px-6">
-        {/* 左側：Quick Match */}
-        <RoomPanel as="aside" mode="quick">
+      header={
+        <PageHeader
+          leading={
+            <BackButton className="!min-h-11" type="button" onClick={() => navigate('/')}>
+              <span className="hidden sm:inline">{t('common.backToLobby')}</span>
+            </BackButton>
+          }
+          title={t('lobby.onlineTitle')}
+          subtitle={t('lobby.onlineLobbySubtitle')}
+          actions={
+            <div className="hidden items-center gap-2 font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/40 md:flex">
+              <Radio className="size-3 animate-pulse text-accent-action" />
+              {profile ? `${profile.nickname} · ELO ${profile.elo}` : anonymousDisplayName}
+            </div>
+          }
+        />
+      }
+      sidebarWidth="md"
+      mainClassName="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-2"
+      sidebar={
+        <RoomPanel mode="quick">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.quickMatch')}</div>
+            <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('lobby.quickMatch')}</div>
             <h2 className="mt-1 font-display text-3xl italic">{t('lobby.onlineTitle')}</h2>
           </div>
 
@@ -361,8 +359,8 @@ export function OnlineLobbyPage({
           <Panel variant="ghost">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('anonymous.identity')}</div>
-                <div className="mt-1 truncate font-mono text-sm text-gold">
+                <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('anonymous.identity')}</div>
+                <div className="mt-1 truncate font-mono text-sm text-accent-primary">
                   {profile ? profile.nickname : editingAnonymousName ? draftPreview : anonymousDisplayName}
                 </div>
               </div>
@@ -415,16 +413,16 @@ export function OnlineLobbyPage({
               </div>
             )}
             {!profile && showAnonymousNamePrompt && (
-              <p className="mt-3 text-[10px] leading-relaxed text-gold/70">{t('anonymous.firstStartPrompt')}</p>
+              <p className="mt-3 text-caption leading-relaxed text-accent-primary/70">{t('anonymous.firstStartPrompt')}</p>
             )}
             {!profile && !editingAnonymousName && (
-              <p className="mt-2 text-[10px] leading-relaxed text-bone/40">{t('anonymous.registerHint')}</p>
+              <p className="mt-2 text-caption leading-relaxed text-content-primary/40">{t('anonymous.registerHint')}</p>
             )}
           </Panel>
 
           {/* 當前牌組摘要 */}
           <Panel variant="ghost">
-            <div className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('lobby.currentDeck')}</div>
+            <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('lobby.currentDeck')}</div>
             <div className="mt-1 truncate font-display text-lg italic">
               {deck0Name ? resolveDeckLabel(deck0Name, deckOptions) : t('lobby.noDeckSelected')}
             </div>
@@ -432,17 +430,17 @@ export function OnlineLobbyPage({
 
           {/* 段位卡 */}
           <Panel variant="ghost">
-            <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-bone/40">
+            <div className="flex items-center justify-between text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
               <span>{t('lobby.rank')}</span>
-              <span className="text-gold">{rank ? rank.name : t('lobby.guestRank')}</span>
+              <span className="text-accent-primary">{rank ? rank.name : t('lobby.guestRank')}</span>
             </div>
-            <div className="mt-2 h-1 w-full bg-bone/10">
+            <div className="mt-2 h-1 w-full bg-content-primary/10">
               <div
-                className="h-full bg-gradient-to-r from-vermilion to-gold transition-all"
+                className="h-full bg-gradient-to-r from-accent-action to-accent-primary transition-all"
                 style={{ width: rank ? `${Math.round(rank.progress * 100)}%` : '0%' }}
               />
             </div>
-            <div className="mt-1 font-mono text-[9px] text-bone/40">
+            <div className="mt-1 font-mono text-minutia text-content-primary/40">
               {profile ? `ELO ${profile.elo} · ${profile.wins}/${profile.matchCount}` : t('lobby.loginRequired')}
             </div>
           </Panel>
@@ -450,7 +448,7 @@ export function OnlineLobbyPage({
           {/* 開始匹配 */}
           <div className="grid gap-2">
             <Button
-              className="w-full bg-gradient-to-r from-vermilion to-gold py-4 font-display text-lg italic tracking-wide text-lacquer-deep transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
+              className="w-full bg-gradient-to-r from-accent-action to-accent-primary py-4 font-display text-lg italic tracking-wide text-surface-canvas transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
               type="button"
               onClick={handleQuickMatch}
               disabled={matchmakingActive || !canStart}
@@ -460,7 +458,7 @@ export function OnlineLobbyPage({
             </Button>
 
             {!canStart && (
-              <p id="online-quick-match-helper" className="text-[10px] leading-relaxed text-vermilion/70">
+              <p id="online-quick-match-helper" className="text-caption leading-relaxed text-accent-action/70">
                 {startDisabledReason}
               </p>
             )}
@@ -468,8 +466,8 @@ export function OnlineLobbyPage({
 
           {matchmakingActive && (
             <div className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2 text-[10px] text-gold/70">
-                <span className="size-1.5 animate-pulse rounded-full bg-vermilion" />
+              <span className="flex items-center gap-2 text-caption text-accent-primary/70">
+                <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
                 {t('lobby.matchmakingSearching')}
               </span>
               <Button className="min-h-11" variant="ghost" size="sm" type="button" onClick={handleCancelMatchmaking}>
@@ -478,9 +476,11 @@ export function OnlineLobbyPage({
             </div>
           )}
         </RoomPanel>
+      }
+    >
 
         {/* 右側：牌組選擇 + 自訂房間 */}
-        <section className="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
+        <section className="contents">
           {/* 牌組選擇 */}
           <RoomPanel mode="deck">
             <DeckSelector
@@ -495,12 +495,12 @@ export function OnlineLobbyPage({
           <RoomPanel mode="custom">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">{t('lobby.customRooms')}</div>
+                <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('lobby.customRooms')}</div>
                 <h2 className="font-display text-2xl italic">{t('lobby.createRoom')}</h2>
               </div>
               <div className="grid gap-2 sm:justify-items-end">
                 <Button
-                  className="min-h-11"
+                  className="!min-h-11"
                   size="sm"
                   variant="secondary"
                   type="button"
@@ -514,7 +514,7 @@ export function OnlineLobbyPage({
                 {!canStart && (
                   <p
                     id="online-create-room-helper"
-                    className="max-w-[18rem] text-left text-[10px] leading-relaxed text-vermilion/70 sm:text-right"
+                    className="max-w-[18rem] text-left text-caption leading-relaxed text-accent-action/70 sm:text-right"
                   >
                     {startDisabledReason}
                   </p>
@@ -543,19 +543,23 @@ export function OnlineLobbyPage({
               </Button>
             </div>
 
-            {serverDeckError && <p className="text-[10px] text-vermilion/80">{serverDeckError}</p>}
+            {serverDeckError && (
+              <Alert tone="danger" role="alert">
+                {serverDeckError}
+              </Alert>
+            )}
 
             {/* 已建立房間資訊 */}
             {createdMatchID && (
               <RoomDetails>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('online.roomCode')}</span>
-                  <span className="font-mono text-xs text-gold">{createdMatchID}</span>
+                  <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('online.roomCode')}</span>
+                  <span className="font-mono text-xs text-accent-primary">{createdMatchID}</span>
                 </div>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-bone/40">{t('online.shareLink')}</span>
+                  <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('online.shareLink')}</span>
                   <Input
-                    className="min-h-11 min-w-0 font-mono text-xs text-bone/70"
+                    className="min-h-11 min-w-0 font-mono text-xs text-content-primary/70"
                     value={buildOnlineRoomUrl(createdMatchID)}
                     readOnly
                     aria-label={t('online.shareLink')}
@@ -563,7 +567,7 @@ export function OnlineLobbyPage({
                 </label>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                   <Button
-                    className="min-h-11"
+                    className="!min-h-11"
                     size="sm"
                     variant="secondary"
                     type="button"
@@ -571,15 +575,18 @@ export function OnlineLobbyPage({
                   >
                     {copied ? t('online.copied') : t('online.copyLink')}
                   </Button>
-                  <span className="text-[10px] text-bone/40">{t('online.hostWaitingHelper')}</span>
+                  <span className="text-caption text-content-primary/40">{t('online.hostWaitingHelper')}</span>
                 </div>
               </RoomDetails>
             )}
 
-            {error && <p className="text-[10px] text-vermilion/80">{error}</p>}
+            {error && (
+              <Alert tone="danger" role="alert">
+                {error}
+              </Alert>
+            )}
           </RoomPanel>
         </section>
-      </div>
-    </PageShell>
+    </WorkspaceLayout>
   );
 }

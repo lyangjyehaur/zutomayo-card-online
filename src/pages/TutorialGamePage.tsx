@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AIGame } from '../components/AIGame';
 import { GameTutorialOverlay } from '../components/GameTutorialOverlay';
-import { Button, Dialog, PageShell } from '../components/ui';
+import { Button, Dialog, LoadingState, PageShell } from '../components/ui';
 import { useTutorialState } from '../hooks/useTutorialState';
 import { TUTORIAL_STEPS } from '../data/tutorialSteps';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS, TUTORIAL_AI_SCRIPT } from '../data/tutorialScenario';
@@ -73,8 +73,8 @@ export function TutorialGamePage() {
   // 卡牌未載入時顯示 loading，避免 AIGame 用空牌組崩潰
   if (!cardsReady) {
     return (
-      <PageShell className="grid place-items-center font-mono text-[10px] uppercase tracking-[0.3em] text-bone/50">
-        {t('game.loading')}
+      <PageShell className="grid place-items-center px-4">
+        <LoadingState label={t('game.loading')} className="w-full max-w-sm" />
       </PageShell>
     );
   }

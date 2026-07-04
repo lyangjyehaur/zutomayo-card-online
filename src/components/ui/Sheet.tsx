@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import type { HTMLAttributes, ReactNode } from 'react';
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
+import { IconButton } from './Button';
 import { cn } from './utils';
 
 export interface SheetProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
@@ -29,6 +30,18 @@ export function Sheet({
 }: SheetProps) {
   const titleId = useId();
   const descriptionId = useId();
+  const sheetRef = useRef<HTMLElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    window.requestAnimationFrame(() => sheetRef.current?.focus());
+    return () => {
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open || !dismissible) return;
@@ -44,7 +57,7 @@ export function Sheet({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-[100] flex bg-lacquer-deep/90 p-3 backdrop-blur',
+        'fixed inset-0 z-[var(--z-modal)] flex bg-surface-overlay p-3 backdrop-blur',
         side === 'right' ? 'items-stretch justify-end' : 'items-end justify-center',
       )}
       onMouseDown={(event) => {
@@ -52,43 +65,46 @@ export function Sheet({
       }}
     >
       <section
+        ref={sheetRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
         aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
         className={cn(
-          'relative isolate flex min-h-0 w-full flex-col overflow-hidden rounded-md border border-gold/30 bg-lacquer-deep shadow-[0_32px_96px_-32px_rgba(0,0,0,0.95)]',
-          side === 'right' ? 'max-w-md' : 'max-h-[calc(100dvh-1.5rem)] max-w-2xl',
+          'relative isolate flex min-h-0 w-full flex-col overflow-hidden rounded-md border border-border-strong bg-surface-panel-strong shadow-sheet',
+          'animate-in fade-in slide-in-from-bottom-2 duration-[var(--motion-duration-base)] focus:outline-none',
+          side === 'right' ? 'max-w-md' : 'max-h-[calc(100dvh_-_var(--space-6))] max-w-2xl',
           className,
         )}
         {...props}
       >
-        <header className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-bone/10 bg-lacquer-deep p-4">
+        <header className="sticky top-0 z-[var(--z-dropdown)] flex items-start justify-between gap-3 border-b border-border-soft bg-surface-panel-strong p-panel">
           <div className="min-w-0">
             {title && (
-              <h2 id={titleId} className="font-display text-xl italic text-bone">
+              <h2 id={titleId} className="font-display text-title-sm italic text-content-primary">
                 {title}
               </h2>
             )}
             {description && (
-              <p id={descriptionId} className="mt-1 text-sm leading-relaxed text-bone/70">
+              <p id={descriptionId} className="mt-1 text-body leading-relaxed text-content-muted">
                 {description}
               </p>
             )}
           </div>
           {dismissible && (
-            <button
-              type="button"
-              aria-label={closeLabel}
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-bone/50 transition hover:text-vermilion focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-lacquer"
+            <IconButton
+              label={closeLabel}
+              icon={<X className="size-4" aria-hidden="true" />}
+              className="focus-visible:ring-offset-surface-panel-strong"
               onClick={() => onOpenChange?.(false)}
-            >
-              <X className="size-4" aria-hidden="true" />
-            </button>
+            />
           )}
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto bg-lacquer-deep p-4">{children}</div>
-        {footer && <footer className="sticky bottom-0 border-t border-bone/10 bg-lacquer-deep p-4">{footer}</footer>}
+        <div className="min-h-0 flex-1 overflow-y-auto bg-surface-canvas p-panel">{children}</div>
+        {footer && (
+          <footer className="sticky bottom-0 border-t border-border-soft bg-surface-panel-strong p-panel">{footer}</footer>
+        )}
       </section>
     </div>
   );

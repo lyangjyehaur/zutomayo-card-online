@@ -6,7 +6,7 @@ import { getTranslatedEffect } from '../game/cards/i18n';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
 import { ChevronLeft, ChevronRight, Eye, Layers, Save, Search, SlidersHorizontal, X } from 'lucide-react';
-import { BackButton, Button, Input, PageShell } from './ui';
+import { Alert, BackButton, Button, IconButton, Input, SearchInput, SegmentedControl, ToolHeader, WorkspaceLayout } from './ui';
 import {
   CardBrowser,
   CardBrowserDetailPopover,
@@ -287,92 +287,78 @@ export function DeckEditor({
   const renderFilterControls = () => (
     <div className="space-y-3 lg:space-y-2">
       <fieldset className="flex flex-wrap items-center gap-3">
-        <legend className="w-full text-[10px] uppercase tracking-[0.3em] text-bone/40 sm:w-auto">
+        <legend className="w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 sm:w-auto">
           {t('deckEditor.filterElement')}
         </legend>
-        {ELEMENTS.map((element) => (
-          <button
-            key={element}
-            type="button"
-            onClick={() => setFilterElement(element)}
-            className={`deck-filter-chip min-h-11 rounded-sm px-3 text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
-              filterElement === element ? 'text-gold' : 'text-bone/40 hover:text-bone'
-            }`}
-            aria-pressed={filterElement === element}
-          >
-            {elementLabel(element)}
-          </button>
-        ))}
+        <SegmentedControl
+          className="deck-filter-chip-group"
+          options={ELEMENTS.map((element) => ({ value: element, label: elementLabel(element) }))}
+          value={filterElement}
+          onChange={setFilterElement}
+          ariaLabel={t('deckEditor.filterElement')}
+        />
       </fieldset>
       <fieldset className="flex flex-wrap items-center gap-3">
-        <legend className="w-full text-[10px] uppercase tracking-[0.3em] text-bone/40 sm:w-auto">
+        <legend className="w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 sm:w-auto">
           {t('deckEditor.filterType')}
         </legend>
-        {TYPES.map((type) => (
-          <button
-            key={type}
-            type="button"
-            onClick={() => setFilterType(type)}
-            className={`deck-filter-chip min-h-11 rounded-sm px-3 text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
-              filterType === type ? 'text-gold' : 'text-bone/40 hover:text-bone'
-            }`}
-            aria-pressed={filterType === type}
-          >
-            {typeLabel(type)}
-          </button>
-        ))}
+        <SegmentedControl
+          className="deck-filter-chip-group"
+          options={TYPES.map((type) => ({ value: type, label: typeLabel(type) }))}
+          value={filterType}
+          onChange={setFilterType}
+          ariaLabel={t('deckEditor.filterType')}
+        />
       </fieldset>
       <fieldset className="flex flex-wrap items-center gap-3">
-        <legend className="w-full text-[10px] uppercase tracking-[0.3em] text-bone/40 sm:w-auto">
+        <legend className="w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 sm:w-auto">
           {t('deckEditor.sort')}
         </legend>
-        {(['cost', 'attack', 'name'] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setSortBy(option)}
-            className={`deck-filter-chip min-h-11 rounded-sm px-3 text-[10px] uppercase tracking-[0.18em] transition md:tracking-[0.3em] ${
-              sortBy === option ? 'text-gold' : 'text-bone/40 hover:text-bone'
-            }`}
-            aria-pressed={sortBy === option}
-          >
-            {option === 'cost'
-              ? t('deckEditor.sortCost')
-              : option === 'attack'
-                ? t('deckEditor.sortAttack')
-                : t('deckEditor.sortName')}
-          </button>
-        ))}
+        <SegmentedControl
+          className="deck-filter-chip-group"
+          options={(['cost', 'attack', 'name'] as const).map((option) => ({
+            value: option,
+            label:
+              option === 'cost'
+                ? t('deckEditor.sortCost')
+                : option === 'attack'
+                  ? t('deckEditor.sortAttack')
+                  : t('deckEditor.sortName'),
+          }))}
+          value={sortBy}
+          onChange={setSortBy}
+          ariaLabel={t('deckEditor.sort')}
+        />
       </fieldset>
     </div>
   );
 
   const renderActiveDeckContent = () => (
     <>
-      <div className="mb-3 flex items-end justify-between border-b border-bone/10 pb-3">
+      <div className="mb-3 flex items-end justify-between border-b border-content-primary/10 pb-3">
         <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.3em] text-gold/70">Active Deck</div>
+          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Active Deck</div>
           <h2 className="truncate font-display text-2xl italic">{deckName?.trim() || t('deckEditor.currentDeck')}</h2>
         </div>
-        <div className="font-mono text-xs text-bone/50" aria-live="polite">
-          <span className="text-gold">{deck.length}</span> / {DECK_SIZE}
+        <div className="font-mono text-xs text-content-primary/50" aria-live="polite">
+          <span className="text-accent-primary">{deck.length}</span> / {DECK_SIZE}
         </div>
       </div>
 
-      <div className="mb-3 space-y-1 font-mono text-[10px] uppercase tracking-widest text-bone/40">
+      <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-widest text-content-primary/40">
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleCharacters')}</span>
-          <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-gold' : 'text-vermilion/70'}>
+          <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-accent-action/70'}>
             {characterCount}
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleCopies')}</span>
-          <span className={copyLimitValid ? 'text-gold' : 'text-vermilion/70'}>×{MAX_COPIES}</span>
+          <span className={copyLimitValid ? 'text-accent-primary' : 'text-accent-action/70'}>×{MAX_COPIES}</span>
         </div>
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleSize')}</span>
-          <span className={deck.length === DECK_SIZE ? 'text-gold' : 'text-vermilion/70'}>
+          <span className={deck.length === DECK_SIZE ? 'text-accent-primary' : 'text-accent-action/70'}>
             {deck.length}/{DECK_SIZE}
           </span>
         </div>
@@ -382,34 +368,32 @@ export function DeckEditor({
         {deckEntries.map(({ card, count, firstIndex }) => (
           <div
             key={`${card.id}-${firstIndex}`}
-            className="flex items-center justify-between rounded-xs bg-lacquer-deep/60 px-3 py-2 ring-1 ring-bone/5 transition hover:ring-gold/30"
+            className="flex items-center justify-between rounded-xs bg-surface-canvas/60 px-3 py-2 ring-1 ring-content-primary/5 transition hover:ring-accent-primary/30"
             role="listitem"
           >
             <div className="flex min-w-0 items-center gap-2">
-              <span className="font-mono text-[10px] text-gold" aria-label={`${t('card.energy')} ${card.powerCost}`}>
+              <span className="font-mono text-caption text-accent-primary" aria-label={`${t('card.energy')} ${card.powerCost}`}>
                 {card.powerCost}
               </span>
-              <span className="truncate font-display text-sm italic text-bone/80">{card.name}</span>
+              <span className="truncate font-display text-sm italic text-content-primary/80">{card.name}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] text-bone/40" aria-label={`${count} copies`}>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="font-mono text-caption text-content-primary/40" aria-label={`${count} copies`}>
                 ×{count}
               </span>
-              <button
-                type="button"
+              <IconButton
                 onClick={() => removeCard(firstIndex)}
-                aria-label={`${t('deckEditor.removeCard')} ${card.name}`}
-                className="text-[10px] text-bone/30 transition hover:text-vermilion"
-              >
-                ✕
-              </button>
+                className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-content-primary/45 transition hover:bg-content-primary/5 hover:text-accent-action focus:outline-none focus:ring-2 focus:ring-accent-primary/60 focus:ring-offset-2 focus:ring-offset-surface-base"
+                label={`${t('deckEditor.removeCard')} ${card.name}`}
+                icon={<X className="size-4" aria-hidden="true" />}
+              />
             </div>
           </div>
         ))}
         {Array.from({ length: emptySlotCount }, (_, index) => (
           <div
             key={`empty-${index}`}
-            className="rounded-xs border border-dashed border-bone/10 px-3 py-2 text-[10px] text-bone/20"
+            className="rounded-xs border border-dashed border-content-primary/10 px-3 py-2 text-caption text-content-primary/20"
             role="listitem"
             aria-label="Empty slot"
           >
@@ -419,8 +403,8 @@ export function DeckEditor({
       </div>
 
       <div
-        className={`mt-3 border-t border-bone/10 pt-3 font-mono text-[10px] uppercase tracking-widest ${
-          isValid ? 'text-gold' : 'text-vermilion/70'
+        className={`mt-3 border-t border-content-primary/10 pt-3 font-mono text-caption uppercase tracking-widest ${
+          isValid ? 'text-accent-primary' : 'text-accent-action/70'
         }`}
       >
         {isValid ? t('deckEditor.valid') : t('deckEditor.invalid')} · {deck.length}/{DECK_SIZE}
@@ -433,23 +417,23 @@ export function DeckEditor({
     meta: `${elementLabel(card.element)} · ${typeLabel(card.type)} · ${card.rarity}`,
     stats: (
       <>
-        <span className="text-bone/60">
-          <span className="text-gold/70">{t('card.energy')}</span> {card.powerCost}
+        <span className="text-content-primary/60">
+          <span className="text-accent-primary/70">{t('card.energy')}</span> {card.powerCost}
         </span>
         {card.attack && (
-          <span className="text-bone/60">
-            <span className="text-gold/70">
+          <span className="text-content-primary/60">
+            <span className="text-accent-primary/70">
               {t('card.night')}/{t('card.day')}
             </span>{' '}
             {card.attack.night}/{card.attack.day}
           </span>
         )}
-        <span className="text-bone/60">
-          <span className="text-gold/70">{t('card.clock')}</span> {card.clock}
+        <span className="text-content-primary/60">
+          <span className="text-accent-primary/70">{t('card.clock')}</span> {card.clock}
         </span>
         {card.sendToPower > 0 && (
-          <span className="text-bone/60">
-            <span className="text-gold/70">{t('card.charge')}</span> {card.sendToPower}
+          <span className="text-content-primary/60">
+            <span className="text-accent-primary/70">{t('card.charge')}</span> {card.sendToPower}
           </span>
         )}
       </>
@@ -466,79 +450,83 @@ export function DeckEditor({
   });
 
   return (
-    <PageShell variant="workspace" className="flex flex-col">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-40 top-0 h-[60vh] w-[60vh] rounded-full bg-gold/8 blur-[140px]" />
-      </div>
-
-      <header className="relative z-30 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-bone/5 bg-lacquer-deep/80 px-3 py-2 backdrop-blur md:h-12 md:flex-nowrap md:px-6 md:py-0">
-        <BackButton className="min-h-11" type="button" onClick={onCancel} aria-label={t('common.backToLobby')}>
-          <span className="hidden sm:inline">{t('common.backToLobby')}</span>
-        </BackButton>
-        <h1 className="hidden font-display text-sm italic md:block">Deck Editor · 牌組編輯</h1>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 md:flex-nowrap md:gap-3">
-          {onDeckNameChange && (
-            <Input
-              value={deckName ?? ''}
-              aria-label={t('deck.custom')}
-              placeholder={t('deck.custom')}
-              onChange={(event) => onDeckNameChange(event.target.value)}
-              className="min-h-11 w-32 text-xs md:w-40"
-            />
+    <WorkspaceLayout
+      glow={{ color: 'gold', size: 'lg', className: '-left-40 top-0 translate-x-0 translate-y-0' }}
+      sidebarSide="right"
+      sidebarWidth="deck"
+      contentClassName="gap-4 !overflow-y-auto !px-3 py-4 xl:!overflow-hidden xl:!px-6 xl:py-6"
+      mainClassName="flex min-h-0 flex-col"
+      sidebar={<ActiveDeckPanel label="Active Deck">{renderActiveDeckContent()}</ActiveDeckPanel>}
+      header={
+        <>
+          <ToolHeader
+            leading={
+              <BackButton className="min-h-11" type="button" onClick={onCancel} aria-label={t('common.backToLobby')}>
+                <span className="hidden sm:inline">{t('common.backToLobby')}</span>
+              </BackButton>
+            }
+            title={<span className="hidden md:inline">Deck Editor · 牌組編輯</span>}
+            actions={
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 md:flex-nowrap md:gap-3">
+                {onDeckNameChange && (
+                  <Input
+                    value={deckName ?? ''}
+                    aria-label={t('deck.custom')}
+                    placeholder={t('deck.custom')}
+                    onChange={(event) => onDeckNameChange(event.target.value)}
+                    className="min-h-11 w-32 text-xs md:w-40"
+                  />
+                )}
+                {syncLabel && (
+                  <span
+                    className={`font-mono text-caption uppercase tracking-[var(--tracking-kicker)] ${synced ? 'text-accent-primary' : 'text-content-primary/40'}`}
+                    aria-live="polite"
+                  >
+                    {syncLabel}
+                  </span>
+                )}
+                <Button
+                  type="button"
+                  disabled={!isValid || saving}
+                  onClick={saveDeck}
+                  size="md"
+                  variant="primary"
+                  aria-label={saveLabel ?? t('deckEditor.saveDeck')}
+                >
+                  <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
+                </Button>
+              </div>
+            }
+          />
+          {errorMessage && (
+            <Alert className="relative z-[var(--z-header)]" tone="danger" role="alert">
+              {errorMessage}
+            </Alert>
           )}
-          {syncLabel && (
-            <span
-              className={`font-mono text-[10px] uppercase tracking-[0.3em] ${synced ? 'text-gold' : 'text-bone/40'}`}
-              aria-live="polite"
-            >
-              {syncLabel}
-            </span>
-          )}
-          <Button
-            type="button"
-            disabled={!isValid || saving}
-            onClick={saveDeck}
-            size="sm"
-            variant="primary"
-            className="min-h-11"
-            aria-label={saveLabel ?? t('deckEditor.saveDeck')}
-          >
-            <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
-          </Button>
-        </div>
-      </header>
-
-      {errorMessage && (
-        <div className="relative z-30 bg-vermilion/10 px-4 py-1.5 text-[10px] text-vermilion/80 md:px-6" role="alert">
-          {errorMessage}
-        </div>
-      )}
-
-      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-3 py-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:overflow-hidden xl:px-6 xl:py-6">
+        </>
+      }
+    >
         <CardBrowser label="Card Pool">
           <CardBrowserToolbar
             kicker="Archive"
             title="Card Pool"
             search={
-              <div className="relative flex w-full items-center gap-2 border border-bone/10 px-3 py-2 sm:w-auto sm:py-1.5">
-                <Search className="size-3.5 text-bone/40" aria-hidden="true" />
-                <input
-                  type="search"
+              <div className="relative flex w-full items-center gap-2 sm:w-auto">
+                <SearchInput
+                  containerClassName="sm:w-56"
+                  icon={<Search className="size-3.5 text-content-primary/40" aria-hidden="true" />}
                   placeholder={t('deckEditor.search')}
                   value={searchText}
                   onChange={(event) => setSearchText(event.target.value)}
-                  className="w-full bg-transparent text-xs text-bone placeholder:text-bone/30 focus:outline-none sm:w-56"
                   aria-label={t('deckEditor.search')}
                 />
                 {searchText && (
-                  <button
-                    type="button"
+                  <IconButton
                     onClick={() => setSearchText('')}
-                    className="text-bone/40 transition hover:text-bone"
-                    aria-label={t('common.clear')}
-                  >
-                    <X className="size-3.5" aria-hidden="true" />
-                  </button>
+                    size="sm"
+                    label={t('common.clear')}
+                    icon={<X className="size-3.5" aria-hidden="true" />}
+                  />
                 )}
               </div>
             }
@@ -547,9 +535,9 @@ export function DeckEditor({
                 <Button
                   type="button"
                   variant="secondary"
-                  size="sm"
+                  size="md"
                   onClick={() => setFiltersOpen(true)}
-                  className="min-h-11 w-full justify-between px-3 tracking-[0.18em] lg:hidden"
+                  className="w-full justify-between px-3 tracking-[var(--tracking-control)] lg:hidden"
                   aria-label={t('deckEditor.filters')}
                   data-deck-editor-control="filters"
                 >
@@ -559,9 +547,9 @@ export function DeckEditor({
                 <Button
                   type="button"
                   variant="secondary"
-                  size="sm"
+                  size="md"
                   onClick={() => setDeckSheetOpen(true)}
-                  className="min-h-11 w-full justify-between px-3 tracking-[0.18em] lg:w-auto"
+                  className="w-full justify-between px-3 tracking-[var(--tracking-control)] lg:w-auto"
                   aria-label={t('deckEditor.openDeck')}
                   data-deck-editor-control="active-deck"
                 >
@@ -574,11 +562,11 @@ export function DeckEditor({
             }
             summary={
               <div
-                className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[9px] uppercase tracking-[0.18em] lg:hidden"
+                className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] lg:hidden"
                 aria-live="polite"
               >
-                <span className={isValid ? 'text-gold/70' : 'text-vermilion/70'}>{deckStatusLabel}</span>
-                <span className="min-w-0 truncate text-bone/35">{filterSummary}</span>
+                <span className={isValid ? 'text-accent-primary/70' : 'text-accent-action/70'}>{deckStatusLabel}</span>
+                <span className="min-w-0 truncate text-content-primary/35">{filterSummary}</span>
               </div>
             }
           />
@@ -587,30 +575,34 @@ export function DeckEditor({
 
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span
-              className="font-mono text-[10px] uppercase tracking-[0.18em] text-bone/40 md:tracking-[0.3em]"
+              className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/40 md:tracking-[var(--tracking-kicker)]"
               aria-live="polite"
             >
               {t('deck.foundCards').replace('{count}', String(filteredCards.length))} · {currentPage + 1}/{totalPages}
             </span>
             <nav className="flex items-center gap-3" aria-label="Pagination">
-              <button
+              <Button
                 type="button"
                 disabled={currentPage === 0}
                 onClick={() => setPage((value) => Math.max(0, value - 1))}
-                className="flex min-h-11 items-center gap-1 px-2 text-[10px] uppercase tracking-[0.18em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40 md:tracking-[0.3em]"
+                variant="ghost"
+                size="md"
+                className="px-3"
                 aria-label={t('common.prev')}
               >
                 <ChevronLeft className="size-3.5" aria-hidden="true" /> {t('common.prev')}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 disabled={currentPage >= totalPages - 1}
                 onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
-                className="flex min-h-11 items-center gap-1 px-2 text-[10px] uppercase tracking-[0.18em] text-bone/40 transition hover:text-bone disabled:opacity-30 disabled:hover:text-bone/40 md:tracking-[0.3em]"
+                variant="ghost"
+                size="md"
+                className="px-3"
                 aria-label={t('common.next')}
               >
                 {t('common.next')} <ChevronRight className="size-3.5" aria-hidden="true" />
-              </button>
+              </Button>
             </nav>
           </div>
 
@@ -628,8 +620,8 @@ export function DeckEditor({
                     onMouseLeave={handleCardLeave}
                     onFocus={(e) => handleCardEnter(card, e)}
                     onBlur={handleCardLeave}
-                    className={`relative flex aspect-[5/7] w-full cursor-pointer flex-col rounded-sm bg-lacquer-deep ring-1 transition hover:-translate-y-1 hover:ring-gold/40 focus:outline-none focus:ring-gold/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-bone/10 ${
-                      count > 0 ? 'ring-gold/30' : 'ring-bone/10'
+                    className={`relative flex aspect-[5/7] w-full cursor-pointer flex-col rounded-sm bg-surface-canvas ring-1 transition hover:-translate-y-1 hover:ring-accent-primary/40 focus:outline-none focus:ring-accent-primary/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-content-primary/10 ${
+                      count > 0 ? 'ring-accent-primary/30' : 'ring-content-primary/10'
                     }`}
                   >
                     <div className="absolute inset-0 overflow-hidden rounded-sm">
@@ -642,28 +634,26 @@ export function DeckEditor({
                       />
                     </div>
                     {/* 費用角標 */}
-                    <span className="absolute left-1 top-1 rounded-full bg-lacquer-deep/85 px-1.5 py-0.5 font-mono text-[9px] leading-none text-gold ring-1 ring-gold/30">
+                    <span className="absolute left-1 top-1 rounded-full bg-surface-canvas/85 px-1.5 py-0.5 font-mono text-minutia leading-none text-accent-primary ring-1 ring-accent-primary/30">
                       {card.powerCost}
                     </span>
                     {/* 已加入數量 */}
                     {count > 0 && (
-                      <span className="absolute right-1 top-1 rounded-full bg-gold/30 px-1.5 py-0.5 font-mono text-[9px] leading-none text-gold ring-1 ring-gold/40">
+                      <span className="absolute right-1 top-1 rounded-full bg-accent-primary/30 px-1.5 py-0.5 font-mono text-minutia leading-none text-accent-primary ring-1 ring-accent-primary/40">
                         ×{count}
                       </span>
                     )}
                   </button>
-                  <button
-                    type="button"
-                    className="absolute bottom-1 right-1 z-10 inline-flex size-11 items-center justify-center rounded-sm bg-lacquer-deep/90 text-bone/70 ring-1 ring-bone/20 backdrop-blur transition hover:text-gold focus:outline-none focus:ring-2 focus:ring-gold/60 focus:ring-offset-2 focus:ring-offset-lacquer"
-                    aria-label={`Preview ${card.name}`}
+                  <IconButton
+                    className="absolute bottom-1 right-1 z-[var(--z-dropdown)] bg-surface-canvas/90 text-content-primary/70 ring-1 ring-content-primary/20 backdrop-blur hover:text-accent-primary"
+                    label={`Preview ${card.name}`}
+                    icon={<Eye className="size-4" aria-hidden="true" />}
                     onClick={(event) => handlePreviewClick(card, event)}
                     onMouseEnter={(event) => handleCardEnter(card, event)}
                     onMouseLeave={handleCardLeave}
                     onFocus={(event) => handleCardEnter(card, event)}
                     onBlur={handleCardLeave}
-                  >
-                    <Eye className="size-4" aria-hidden="true" />
-                  </button>
+                  />
                 </div>
               );
             })}
@@ -680,9 +670,6 @@ export function DeckEditor({
             />,
             document.body,
           )}
-
-        <ActiveDeckPanel label="Active Deck">{renderActiveDeckContent()}</ActiveDeckPanel>
-      </div>
 
       {detailSheetCard && (
         <CardBrowserDetailSheet
@@ -725,6 +712,6 @@ export function DeckEditor({
       >
         {renderActiveDeckContent()}
       </ActiveDeckSheet>
-    </PageShell>
+    </WorkspaceLayout>
   );
 }
