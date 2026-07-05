@@ -665,6 +665,13 @@ function handleRequest(req, res) {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(data));
   };
+  const serviceJson = (result, status = 200) => {
+    if (result && typeof result === 'object' && Object.prototype.hasOwnProperty.call(result, 'ok')) {
+      if (!result.ok) return json({ error: result.error || 'Request failed' }, result.status || 400);
+      return json(result.body ?? {}, status);
+    }
+    return json(result, status);
+  };
 
   const readBody = (maxBytes = 3 * 1024 * 1024) =>
     new Promise((resolve) => {
@@ -1020,7 +1027,7 @@ function handleRequest(req, res) {
     // GET /api/feedback/posts — 列出反饋
     if (pathname === '/api/feedback/posts' && method === 'GET') {
       const voter = extractFeedbackVoter(req, {});
-      json(
+      serviceJson(
         await listFeedbackPosts({
           pool,
           voter,
@@ -1037,7 +1044,7 @@ function handleRequest(req, res) {
 
     // GET /api/feedback/stats — 統計資料
     if (pathname === '/api/feedback/stats' && method === 'GET') {
-      json(await getFeedbackStats({ pool }));
+      serviceJson(await getFeedbackStats({ pool }));
       return;
     }
 
@@ -1046,7 +1053,7 @@ function handleRequest(req, res) {
     if (feedbackPostRoute && method === 'GET') {
       const postId = decodeURIComponent(feedbackPostRoute[1]);
       const voter = extractFeedbackVoter(req, {});
-      json(await getFeedbackPost({ pool, voter, postId }));
+      serviceJson(await getFeedbackPost({ pool, voter, postId }));
       return;
     }
 
@@ -1054,7 +1061,7 @@ function handleRequest(req, res) {
     if (pathname === '/api/feedback/posts' && method === 'POST') {
       const body = await readBody();
       const voter = extractFeedbackVoter(req, body);
-      json(
+      serviceJson(
         await createFeedbackPost({
           pool,
           voter,
@@ -1072,7 +1079,7 @@ function handleRequest(req, res) {
       const postId = decodeURIComponent(feedbackVoteRoute[1]);
       const body = await readBody();
       const voter = extractFeedbackVoter(req, body);
-      json(await toggleFeedbackVote({ pool, voter, postId }));
+      serviceJson(await toggleFeedbackVote({ pool, voter, postId }));
       return;
     }
 
@@ -1082,7 +1089,7 @@ function handleRequest(req, res) {
       const postId = decodeURIComponent(feedbackCommentRoute[1]);
       const body = await readBody();
       const voter = extractFeedbackVoter(req, body);
-      json(
+      serviceJson(
         await addFeedbackComment({
           pool,
           voter,
@@ -1100,7 +1107,7 @@ function handleRequest(req, res) {
     const feedbackVotersRoute = pathname.match(/^\/api\/feedback\/posts\/([^/]+)\/voters$/);
     if (feedbackVotersRoute && method === 'GET') {
       const postId = decodeURIComponent(feedbackVotersRoute[1]);
-      json(await listFeedbackVoters({ pool, postId }));
+      serviceJson(await listFeedbackVoters({ pool, postId }));
       return;
     }
 
@@ -1110,7 +1117,7 @@ function handleRequest(req, res) {
       const commentId = decodeURIComponent(commentVoteRoute[1]);
       const body = await readBody();
       const voter = extractFeedbackVoter(req, body);
-      json(await toggleFeedbackCommentVote({ pool, voter, commentId }));
+      serviceJson(await toggleFeedbackCommentVote({ pool, voter, commentId }));
       return;
     }
 
@@ -1120,7 +1127,7 @@ function handleRequest(req, res) {
       const postId = decodeURIComponent(feedbackEditPostRoute[1]);
       const body = await readBody();
       const voter = extractFeedbackVoter(req, body);
-      json(await editFeedbackPost({ pool, voter, postId, body, sanitizeText }));
+      serviceJson(await editFeedbackPost({ pool, voter, postId, body, sanitizeText }));
       return;
     }
 
@@ -1130,7 +1137,7 @@ function handleRequest(req, res) {
       const commentId = decodeURIComponent(commentEditRoute[1]);
       const body = await readBody();
       const voter = extractFeedbackVoter(req, body);
-      json(await editFeedbackComment({ pool, voter, commentId, body, sanitizeText }));
+      serviceJson(await editFeedbackComment({ pool, voter, commentId, body, sanitizeText }));
       return;
     }
 
@@ -1139,13 +1146,13 @@ function handleRequest(req, res) {
       const commentId = decodeURIComponent(commentEditRoute[1]);
       const isAdmin = verifyAdminToken(req);
       const voter = extractFeedbackVoter(req, {});
-      json(await deleteFeedbackComment({ pool, voter, commentId, isAdmin }));
+      serviceJson(await deleteFeedbackComment({ pool, voter, commentId, isAdmin }));
       return;
     }
 
     // GET /api/feedback/tags — 列出標籤
     if (pathname === '/api/feedback/tags' && method === 'GET') {
-      json(await listFeedbackTags({ pool }));
+      serviceJson(await listFeedbackTags({ pool }));
       return;
     }
 
@@ -1156,7 +1163,7 @@ function handleRequest(req, res) {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackStatusRoute[1]);
       const { status } = await readBody();
-      json(await updateFeedbackPostStatus({ pool, postId, status }));
+      serviceJson(await updateFeedbackPostStatus({ pool, postId, status }));
       return;
     }
 
@@ -1166,7 +1173,7 @@ function handleRequest(req, res) {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackTagRoute[1]);
       const { tag } = await readBody();
-      json(await updateFeedbackPostTag({ pool, postId, tag, sanitizeText }));
+      serviceJson(await updateFeedbackPostTag({ pool, postId, tag, sanitizeText }));
       return;
     }
 
@@ -1175,7 +1182,7 @@ function handleRequest(req, res) {
     if (feedbackDeleteRoute && method === 'DELETE') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackDeleteRoute[1]);
-      json(await deleteFeedbackPost({ pool, postId }));
+      serviceJson(await deleteFeedbackPost({ pool, postId }));
       return;
     }
 
@@ -1183,7 +1190,7 @@ function handleRequest(req, res) {
     if (pathname === '/api/feedback/admin/tags' && method === 'POST') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const body = await readBody();
-      json(
+      serviceJson(
         await createFeedbackTag({
           pool,
           body,
@@ -1199,7 +1206,7 @@ function handleRequest(req, res) {
     if (feedbackTagDeleteRoute && method === 'DELETE') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const tagId = decodeURIComponent(feedbackTagDeleteRoute[1]);
-      json(await deleteFeedbackTag({ pool, tagId }));
+      serviceJson(await deleteFeedbackTag({ pool, tagId }));
       return;
     }
 
@@ -1207,7 +1214,7 @@ function handleRequest(req, res) {
     if (pathname === '/api/feedback/similar' && method === 'GET') {
       const q = url.searchParams.get('q') || '';
       const limit = url.searchParams.get('limit') || '5';
-      json(await findFeedbackSimilarPosts({ pool, q, limit }));
+      serviceJson(await findFeedbackSimilarPosts({ pool, q, limit }));
       return;
     }
 
@@ -1218,7 +1225,7 @@ function handleRequest(req, res) {
       const emoji = decodeURIComponent(commentReactionRoute[2]);
       const body = await readBody();
       const voter = extractFeedbackVoter(req, body);
-      json(await toggleFeedbackCommentReaction({ pool, voter, commentId, emoji }));
+      serviceJson(await toggleFeedbackCommentReaction({ pool, voter, commentId, emoji }));
       return;
     }
 
@@ -1228,7 +1235,7 @@ function handleRequest(req, res) {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackDuplicateRoute[1]);
       const body = await readBody();
-      json(await markFeedbackAsDuplicate({ pool, postId, originalPostId: body.originalPostId }));
+      serviceJson(await markFeedbackAsDuplicate({ pool, postId, originalPostId: body.originalPostId }));
       return;
     }
 
@@ -1255,14 +1262,18 @@ function handleRequest(req, res) {
       }
       const bkey = generateFeedbackId('fa_') + '.' + ext;
       const uploadDir = process.env.FEEDBACK_UPLOAD_DIR || '/tmp/feedback-uploads';
-      try { require('fs').mkdirSync(uploadDir, { recursive: true }); } catch (e) { /* exists */ }
+      try {
+        require('fs').mkdirSync(uploadDir, { recursive: true });
+      } catch (e) {
+        /* exists */
+      }
       require('fs').writeFileSync(uploadDir + '/' + bkey, buffer);
       // 記錄到 DB（post_id/comment_id 可選，後續綁定）
       await pool.query(
         'INSERT INTO feedback_attachments (id, post_id, comment_id, file_name, content_type, file_size) VALUES ($1, $2, $3, $4, $5, $6)',
         [bkey, body.postId || null, body.commentId || null, body.fileName || bkey, contentType, buffer.length],
       );
-      return json({ ok: true, body: { bkey, url: '/api/feedback/images/' + bkey } }, 200);
+      return json({ bkey, url: '/api/feedback/images/' + bkey }, 200);
     }
 
     // GET /api/feedback/images/:bkey — 圖片服務（嚴格驗證 bkey 防路徑穿越）

@@ -98,6 +98,20 @@ function voterQuery(): string {
   return `?anonymousId=${encodeURIComponent(getAnonymousId())}`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  throw new ApiError(`Invalid ${label} response`);
+}
+
+function requireArray<T>(value: unknown, label: string): T[] {
+  if (Array.isArray(value)) return value as T[];
+  throw new ApiError(`Invalid ${label} response`);
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('zutomayo_token');
   const headers: Record<string, string> = {
@@ -108,15 +122,24 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const text = await res.text();
-  let data: Record<string, unknown> = {};
+  let data: unknown = {};
   if (text) {
     try {
-      data = JSON.parse(text) as Record<string, unknown>;
+      data = JSON.parse(text) as unknown;
     } catch {
+      if (res.ok) throw new ApiError('Invalid API response', res.status);
       data = { error: text };
     }
   }
-  if (!res.ok) throw new ApiError((data.error as string) || 'Request failed', res.status);
+  const errorMessage = isRecord(data) && typeof data.error === 'string' ? data.error : 'Request failed';
+  if (!res.ok) throw new ApiError(errorMessage, res.status);
+  if (isRecord(data) && typeof data.ok === 'boolean') {
+    if (!data.ok) {
+      const status = typeof data.status === 'number' ? data.status : res.status;
+      throw new ApiError(errorMessage, status);
+    }
+    return (Object.prototype.hasOwnProperty.call(data, 'body') ? data.body : data) as T;
+  }
   return data as T;
 }
 
@@ -147,16 +170,19 @@ export async function listFeedbackPosts(
   if (params.q) query.set('q', params.q);
   if (params.limit) query.set('limit', String(params.limit));
   if (params.offset) query.set('offset', String(params.offset));
-  const data = await request<{ posts: FeedbackPost[] }>(`/feedback/posts?${query.toString()}`);
-  return data.posts;
+  const data = requireRecord(await request<unknown>(`/feedback/posts?${query.toString()}`), 'feedback posts');
+  return requireArray<FeedbackPost>(data.posts, 'feedback posts');
 }
 
 export async function getFeedbackPost(id: string): Promise<FeedbackPost> {
-  return request<FeedbackPost>(`/feedback/posts/${encodeURIComponent(id)}${voterQuery()}`);
+  return requireRecord(
+    await request<unknown>(`/feedback/posts/${encodeURIComponent(id)}${voterQuery()}`),
+    'feedback post',
+  ) as unknown as FeedbackPost;
 }
 
 export async function getFeedbackStats(): Promise<FeedbackStats> {
-  return request<FeedbackStats>('/feedback/stats');
+  return requireRecord(await request<unknown>('/feedback/stats'), 'feedback stats') as unknown as FeedbackStats;
 }
 
 // ===== 發文 / 投票 / 留言 =====
@@ -194,8 +220,11 @@ export async function toggleFeedbackCommentVote(commentId: string): Promise<{ vo
 }
 
 export async function listFeedbackVoters(postId: string): Promise<FeedbackVoter[]> {
-  const data = await request<{ voters: FeedbackVoter[] }>(`/feedback/posts/${encodeURIComponent(postId)}/voters`);
-  return data.voters;
+  const data = requireRecord(
+    await request<unknown>(`/feedback/posts/${encodeURIComponent(postId)}/voters`),
+    'feedback voters',
+  );
+  return requireArray<FeedbackVoter>(data.voters, 'feedback voters');
 }
 
 // ===== 編輯 / 刪除 =====
@@ -222,8 +251,8 @@ export async function deleteFeedbackComment(commentId: string): Promise<{ delete
 
 // ===== 標籤管理 =====
 export async function listFeedbackTags(): Promise<FeedbackTag[]> {
-  const data = await request<{ tags: FeedbackTag[] }>('/feedback/tags');
-  return data.tags;
+  const data = requireRecord(await request<unknown>('/feedback/tags'), 'feedback tags');
+  return requireArray<FeedbackTag>(data.tags, 'feedback tags');
 }
 
 // ===== 管理員審核 =====
@@ -291,8 +320,8 @@ export interface SimilarPost {
 
 export async function findSimilarPosts(query: string, limit = 5): Promise<SimilarPost[]> {
   const q = new URLSearchParams({ q: query, limit: String(limit) });
-  const data = await request<{ posts: SimilarPost[] }>(`/feedback/similar?${q.toString()}`);
-  return data.posts;
+  const data = requireRecord(await request<unknown>(`/feedback/similar?${q.toString()}`), 'similar feedback posts');
+  return requireArray<SimilarPost>(data.posts, 'similar feedback posts');
 }
 
 // ===== Duplicate 文章（管理員）=====
