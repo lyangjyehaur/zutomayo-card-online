@@ -2,12 +2,23 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
+import globals from 'globals';
 import prettierConfig from 'eslint-config-prettier/flat';
 
 export default [
   // Ignored paths
   {
-    ignores: ['dist/', 'node_modules/', '.data/', 'public/cards/', 'api/server.cjs'],
+    ignores: [
+      'dist/',
+      'dist-server/',
+      'node_modules/',
+      '.data/',
+      'public/cards/',
+      'api/server.cjs',
+      '.claude/',
+      '.git/',
+      'coverage/',
+    ],
   },
   // Base recommended
   js.configs.recommended,
@@ -26,9 +37,15 @@ export default [
       },
     },
   },
-  // Custom rules scoped to src/ and scripts/
+  // Node + browser globals for source and scripts
   {
-    files: ['src/**/*.{js,jsx,ts,tsx}', 'scripts/**/*.{js,jsx,ts,tsx}'],
+    files: ['src/**/*.{js,jsx,ts,tsx}', 'scripts/**/*.{js,jsx,ts,tsx,mjs,cjs}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+      },
+    },
     rules: {
       '@typescript-eslint/no-unused-vars': [
         'error',
