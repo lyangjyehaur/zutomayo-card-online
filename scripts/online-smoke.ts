@@ -10,6 +10,7 @@ import { PostgresAdapter } from '../src/server/db/postgres-adapter';
 import { RedisPubSub } from '../src/server/transport/redis-pubsub';
 import type { CardInstance, GameState, ZutomayoSetupData } from '../src/game/types';
 import { APP_VERSION_INFO, isCompatibleVersion } from '../src/version';
+import { createOnlineStateSnapshot } from '../src/onlineStateGuard';
 import { loadCardsForScript } from './cardSource';
 
 const require = createRequire(import.meta.url);
@@ -52,14 +53,35 @@ const cleanupPool = new Pool({
 
 const port = 4199;
 const baseUrl = `http://127.0.0.1:${port}`;
+const smokeMode = process.env.ONLINE_SMOKE_MODE ?? 'all';
 
-type ClientState = { G: GameState; _stateID?: number } | null | undefined;
+type ClientState = { G: GameState; ctx?: unknown; _stateID?: number } | null | undefined;
+type StoredState = { G: GameState; ctx: unknown; _stateID: number };
 
 interface BoardgameClient {
   start: () => void;
   stop: () => void;
   getState: () => ClientState;
   moves: Record<string, (...args: unknown[]) => void>;
+}
+
+function createBoardgameClient(matchID: string, playerID: '0' | '1', credentials: string): BoardgameClient {
+  return Client({
+    game: ZutomayoCard,
+    numPlayers: 2,
+    multiplayer: SocketIO({ server: baseUrl }),
+    playerID,
+    matchID,
+    credentials,
+  }) as BoardgameClient;
+}
+
+function stopClient(client: BoardgameClient): void {
+  try {
+    client.stop();
+  } catch (err) {
+    if (!(err instanceof TypeError && String(err.message).includes('close'))) throw err;
+  }
 }
 
 function delay(ms: number): Promise<void> {
@@ -117,6 +139,75 @@ async function waitForSyncedStateID(
   return stateID(state0);
 }
 
+function stateSnapshot(state: NonNullable<ClientState>) {
+  assert.equal(typeof state._stateID, 'number', 'client state should have _stateID');
+  return createOnlineStateSnapshot({
+    stateID: state._stateID,
+    G: state.G,
+    ctx: state.ctx ?? {},
+  });
+}
+
+async function fetchStoredState(matchID: string): Promise<StoredState> {
+  const { rows } = await cleanupPool.query<{ state: StoredState }>(
+    'SELECT state FROM bjg_matches WHERE match_id = $1',
+    [matchID],
+  );
+  assert.equal(rows.length, 1, `stored match ${matchID} should exist`);
+  return rows[0].state;
+}
+
+async function waitForAuthoritativeConsistency(
+  label: string,
+  matchID: string,
+  client0: BoardgameClient,
+  client1: BoardgameClient,
+): Promise<StoredState> {
+  const started = Date.now();
+  let lastError: unknown;
+  let lastDebug = '';
+  while (Date.now() - started < 5000) {
+    try {
+      const [state0, state1] = await waitForStates(`${label} clients synced`, client0, client1, (next0, next1) => {
+        const id0 = stateID(next0);
+        const id1 = stateID(next1);
+        return id0 >= 0 && id0 === id1;
+      });
+      const stored = await fetchStoredState(matchID);
+      lastDebug = `${label}: client0=${stateID(state0)}/${state0.G.step}, client1=${stateID(state1)}/${state1.G.step}, db=${stored._stateID}/${stored.G.step}`;
+      if (stored._stateID !== stateID(state0)) {
+        await delay(50);
+        continue;
+      }
+
+      const expected0 = ZutomayoCard.playerView?.({ G: stored.G, ctx: stored.ctx as never, playerID: '0' }) ?? stored.G;
+      const expected1 = ZutomayoCard.playerView?.({ G: stored.G, ctx: stored.ctx as never, playerID: '1' }) ?? stored.G;
+      const expectedSnapshot0 = createOnlineStateSnapshot({
+        stateID: stored._stateID,
+        G: expected0,
+        ctx: stored.ctx,
+      });
+      const expectedSnapshot1 = createOnlineStateSnapshot({
+        stateID: stored._stateID,
+        G: expected1,
+        ctx: stored.ctx,
+      });
+
+      assert.deepEqual(stateSnapshot(state0), expectedSnapshot0, `${label}: player0 view should match DB playerView`);
+      assert.deepEqual(stateSnapshot(state1), expectedSnapshot1, `${label}: player1 view should match DB playerView`);
+      return stored;
+    } catch (err) {
+      lastError = err;
+      await delay(50);
+    }
+  }
+  if (lastError instanceof Error) {
+    lastError.message = `${lastError.message} (${lastDebug})`;
+    throw lastError;
+  }
+  throw new Error(`Timed out waiting for ${label} consistency (${lastDebug})`);
+}
+
 async function performOnlineMove(
   label: string,
   client0: BoardgameClient,
@@ -131,6 +222,26 @@ async function performOnlineMove(
     client1,
     (next0, next1) => stateID(next0) > previousStateID && stateID(next1) > previousStateID,
   );
+}
+
+async function performConcurrentOnlineMoves(
+  label: string,
+  matchID: string,
+  client0: BoardgameClient,
+  client1: BoardgameClient,
+  move0: () => void,
+  move1: () => void,
+): Promise<StoredState> {
+  const previousStateID = await waitForSyncedStateID(`${label} ready`, client0, client1);
+  move0();
+  move1();
+  await waitForStates(
+    `${label} accepted update`,
+    client0,
+    client1,
+    (next0, next1) => stateID(next0) > previousStateID && stateID(next0) === stateID(next1),
+  );
+  return waitForAuthoritativeConsistency(label, matchID, client0, client1);
 }
 
 async function drainPendingEffects(client0: BoardgameClient, client1: BoardgameClient): Promise<void> {
@@ -172,8 +283,11 @@ async function joinOnlineMatch(matchID: string, playerID: '0' | '1'): Promise<{ 
 }
 
 async function startJoinedClients(setupData: ZutomayoSetupData): Promise<{
+  matchID: string;
   client0: BoardgameClient;
   client1: BoardgameClient;
+  credentials0: string;
+  credentials1: string;
   state0: NonNullable<ClientState>;
   state1: NonNullable<ClientState>;
 }> {
@@ -181,22 +295,8 @@ async function startJoinedClients(setupData: ZutomayoSetupData): Promise<{
   const player0 = await joinOnlineMatch(matchID, '0');
   const player1 = await joinOnlineMatch(matchID, '1');
 
-  const client0 = Client({
-    game: ZutomayoCard,
-    numPlayers: 2,
-    multiplayer: SocketIO({ server: baseUrl }),
-    playerID: '0',
-    matchID,
-    credentials: player0.playerCredentials,
-  });
-  const client1 = Client({
-    game: ZutomayoCard,
-    numPlayers: 2,
-    multiplayer: SocketIO({ server: baseUrl }),
-    playerID: '1',
-    matchID,
-    credentials: player1.playerCredentials,
-  });
+  const client0 = createBoardgameClient(matchID, '0', player0.playerCredentials);
+  const client1 = createBoardgameClient(matchID, '1', player1.playerCredentials);
   clients.push(client0, client1);
 
   client0.start();
@@ -207,7 +307,15 @@ async function startJoinedClients(setupData: ZutomayoSetupData): Promise<{
     client1,
     (next0, next1) => next0?.G?.step === 'janken' && next1?.G?.step === 'janken',
   );
-  return { client0, client1, state0, state1 };
+  return {
+    matchID,
+    client0,
+    client1,
+    credentials0: player0.playerCredentials,
+    credentials1: player1.playerCredentials,
+    state0,
+    state1,
+  };
 }
 
 async function playToTurnSet(client0: BoardgameClient, client1: BoardgameClient): Promise<NonNullable<ClientState>> {
@@ -267,6 +375,138 @@ function assertVisibleDeckMatchesIds(
   assert.deepEqual(actualIds, [...expectedIds].sort());
 }
 
+async function runOnlineConsistencyScenario(): Promise<void> {
+  const match = await startJoinedClients({ deck0Name: 'dark', deck1Name: 'flame' });
+  const resyncClients = async (label: string) => {
+    stopClient(match.client0);
+    stopClient(match.client1);
+    match.client0 = createBoardgameClient(match.matchID, '0', match.credentials0);
+    match.client1 = createBoardgameClient(match.matchID, '1', match.credentials1);
+    clients.push(match.client0, match.client1);
+    match.client0.start();
+    match.client1.start();
+    await waitForAuthoritativeConsistency(label, match.matchID, match.client0, match.client1);
+  };
+
+  let stored = await performConcurrentOnlineMoves(
+    'race janken',
+    match.matchID,
+    match.client0,
+    match.client1,
+    () => match.client0.moves.janken('rock'),
+    () => match.client1.moves.janken('scissors'),
+  );
+  if (stored.G.step === 'janken') {
+    await resyncClients('resync after race janken');
+    stored = await fetchStoredState(match.matchID);
+    if (stored.G.jankenChoices[0] === null) {
+      await performOnlineMove('repair player0 janken', match.client0, match.client1, () =>
+        match.client0.moves.janken('rock'),
+      );
+    }
+    stored = await fetchStoredState(match.matchID);
+    if (stored.G.jankenChoices[1] === null) {
+      await performOnlineMove('repair player1 janken', match.client0, match.client1, () =>
+        match.client1.moves.janken('scissors'),
+      );
+    }
+  }
+  await waitForAuthoritativeConsistency('post-janken', match.matchID, match.client0, match.client1);
+  await waitForStates(
+    'mulligan after race janken',
+    match.client0,
+    match.client1,
+    (state0, state1) => state0?.G?.step === 'mulligan' && state1?.G?.step === 'mulligan',
+  );
+
+  stored = await performConcurrentOnlineMoves(
+    'race mulligan',
+    match.matchID,
+    match.client0,
+    match.client1,
+    () => match.client0.moves.keepHand(),
+    () => match.client1.moves.keepHand(),
+  );
+  if (stored.G.step === 'mulligan') {
+    await resyncClients('resync after race mulligan');
+    stored = await fetchStoredState(match.matchID);
+    if (!stored.G.mulliganUsed[0]) {
+      await performOnlineMove('repair player0 keepHand', match.client0, match.client1, () =>
+        match.client0.moves.keepHand(),
+      );
+    }
+    stored = await fetchStoredState(match.matchID);
+    if (!stored.G.mulliganUsed[1]) {
+      await performOnlineMove('repair player1 keepHand', match.client0, match.client1, () =>
+        match.client1.moves.keepHand(),
+      );
+    }
+  }
+  await waitForAuthoritativeConsistency('post-mulligan', match.matchID, match.client0, match.client1);
+  await waitForStates(
+    'initialSet after race mulligan',
+    match.client0,
+    match.client1,
+    (state0, state1) => state0?.G?.step === 'initialSet' && state1?.G?.step === 'initialSet',
+  );
+
+  stored = await performConcurrentOnlineMoves(
+    'race initial set',
+    match.matchID,
+    match.client0,
+    match.client1,
+    () => match.client0.moves.setInitialCard(0),
+    () => match.client1.moves.setInitialCard(0),
+  );
+  if (!stored.G.players[0].battleZone || !stored.G.players[1].battleZone) {
+    await resyncClients('resync after race initial set');
+    stored = await fetchStoredState(match.matchID);
+  }
+  if (!stored.G.players[0].battleZone) {
+    await performOnlineMove('repair player0 initial set', match.client0, match.client1, () =>
+      match.client0.moves.setInitialCard(0),
+    );
+  }
+  stored = await fetchStoredState(match.matchID);
+  if (!stored.G.players[1].battleZone) {
+    await performOnlineMove('repair player1 initial set', match.client0, match.client1, () =>
+      match.client1.moves.setInitialCard(0),
+    );
+  }
+
+  stored = await performConcurrentOnlineMoves(
+    'race initial confirm',
+    match.matchID,
+    match.client0,
+    match.client1,
+    () => match.client0.moves.confirmReady(),
+    () => match.client1.moves.confirmReady(),
+  );
+  if (stored.G.step === 'initialSet') {
+    await resyncClients('resync after race initial confirm');
+    stored = await fetchStoredState(match.matchID);
+    if (!stored.G.ready[0]) {
+      await performOnlineMove('repair player0 initial confirm', match.client0, match.client1, () =>
+        match.client0.moves.confirmReady(),
+      );
+    }
+    stored = await fetchStoredState(match.matchID);
+    if (!stored.G.ready[1]) {
+      await performOnlineMove('repair player1 initial confirm', match.client0, match.client1, () =>
+        match.client1.moves.confirmReady(),
+      );
+    }
+  }
+  await drainPendingEffects(match.client0, match.client1);
+  await waitForStates(
+    'turnSet after race initial turn',
+    match.client0,
+    match.client1,
+    (state0, state1) => state0?.G?.step === 'turnSet' && state1?.G?.step === 'turnSet',
+  );
+  await waitForAuthoritativeConsistency('final consistency', match.matchID, match.client0, match.client1);
+}
+
 // Duck-type 斷言注入（同 src/server.ts）：PostgresAdapter / RedisPubSub 因不繼承
 // boardgame.io 內部抽象類別 / 泛型不公開，TS 無法自動判定相容。
 type ServerOpts = NonNullable<Parameters<typeof Server>[0]>;
@@ -309,37 +549,43 @@ try {
   await db.connect();
   await cleanupPool.query('TRUNCATE TABLE bjg_matches RESTART IDENTITY CASCADE');
 
-  const presetMatch = await startJoinedClients({ deck0Name: 'dark', deck1Name: 'flame' });
-  const presetTurnSet = await playToTurnSet(presetMatch.client0, presetMatch.client1);
-  assertHiddenOpponentInfo(presetTurnSet, 1);
-  assert.ok(
-    presetTurnSet.G.players[0].hand.some((card: CardInstance) => card.defId !== '__hidden__'),
-    'player0 hand should be visible to player0',
-  );
+  if (smokeMode === 'consistency') {
+    await runOnlineConsistencyScenario();
+  } else {
+    const presetMatch = await startJoinedClients({ deck0Name: 'dark', deck1Name: 'flame' });
+    const presetTurnSet = await playToTurnSet(presetMatch.client0, presetMatch.client1);
+    assertHiddenOpponentInfo(presetTurnSet, 1);
+    assert.ok(
+      presetTurnSet.G.players[0].hand.some((card: CardInstance) => card.defId !== '__hidden__'),
+      'player0 hand should be visible to player0',
+    );
 
-  const customDeck0Ids = presetDeckIds('electric');
-  const customDeck1Ids = presetDeckIds('wind');
-  assert.equal(validateConstructedDeckIds(customDeck0Ids), null);
-  assert.equal(validateConstructedDeckIds(customDeck1Ids), null);
-  const customMatch = await startJoinedClients({ deck0Ids: customDeck0Ids, deck1Ids: customDeck1Ids });
-  assertVisibleDeckMatchesIds(customMatch.state0, 0, customDeck0Ids);
-  assertVisibleDeckMatchesIds(customMatch.state1, 1, customDeck1Ids);
-  assertHiddenOpponentInfo(customMatch.state0, 1);
-  assertHiddenOpponentInfo(customMatch.state1, 0);
-  const customTurnSet = await playToTurnSet(customMatch.client0, customMatch.client1);
-  assertHiddenOpponentInfo(customTurnSet, 1);
+    const customDeck0Ids = presetDeckIds('electric');
+    const customDeck1Ids = presetDeckIds('wind');
+    assert.equal(validateConstructedDeckIds(customDeck0Ids), null);
+    assert.equal(validateConstructedDeckIds(customDeck1Ids), null);
+    const customMatch = await startJoinedClients({ deck0Ids: customDeck0Ids, deck1Ids: customDeck1Ids });
+    assertVisibleDeckMatchesIds(customMatch.state0, 0, customDeck0Ids);
+    assertVisibleDeckMatchesIds(customMatch.state1, 1, customDeck1Ids);
+    assertHiddenOpponentInfo(customMatch.state0, 1);
+    assertHiddenOpponentInfo(customMatch.state1, 0);
+    const customTurnSet = await playToTurnSet(customMatch.client0, customMatch.client1);
+    assertHiddenOpponentInfo(customTurnSet, 1);
 
-  const invalidDeckIds = [...customDeck0Ids];
-  invalidDeckIds[0] = 'missing_card';
-  const invalidResponse = await postJsonResponse('/games/zutomayo-card/create', {
-    numPlayers: 2,
-    setupData: { deck0Ids: invalidDeckIds, deck1Ids: customDeck1Ids, clientVersion: APP_VERSION_INFO },
-  });
-  assert.equal(invalidResponse.ok, false, 'invalid custom deck payload should be rejected');
+    await runOnlineConsistencyScenario();
+
+    const invalidDeckIds = [...customDeck0Ids];
+    invalidDeckIds[0] = 'missing_card';
+    const invalidResponse = await postJsonResponse('/games/zutomayo-card/create', {
+      numPlayers: 2,
+      setupData: { deck0Ids: invalidDeckIds, deck1Ids: customDeck1Ids, clientVersion: APP_VERSION_INFO },
+    });
+    assert.equal(invalidResponse.ok, false, 'invalid custom deck payload should be rejected');
+  }
 
   console.log('online smoke: all assertions passed');
 } finally {
-  for (const client of clients) client.stop();
+  for (const client of clients) stopClient(client);
   if (runResult) await server.kill(runResult);
   // boardgame.io Master 在 socket disconnect 時 async 呼叫 db.fetch()
   // （onConnectionChange）。client.stop()/server.kill() 觸發 disconnect 後，

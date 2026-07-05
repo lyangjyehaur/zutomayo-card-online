@@ -12,8 +12,11 @@ import type { Server, State, LogEntry } from 'boardgame.io';
  *   bjg_matches(match_id PK, state JSONB, initial_state JSONB,
  *               metadata JSONB, log JSONB, updated_at TIMESTAMPTZ)
  *
- * deltalog append 使用 PG 的 `||` JSONB concat operator，單一 UPDATE 即原子完成，
- * 不需要 SELECT-then-UPDATE 也不會有 race condition。
+ * deltalog append 使用 PG 的 `||` JSONB concat operator，單一 UPDATE 即原子完成。
+ *
+ * boardgame.io 的 onUpdate 會先 fetch state、跑 reducer、廣播、最後 setState。
+ * 多個 server instance 若同時從同一個 _stateID 開始處理 move，舊實作會讓較晚寫入者覆蓋較新狀態。
+ * 這裡對 onUpdate 的 state fetch 取得 row lock，並在 setState 時檢查 _stateID 單調遞增。
  */
 
 const TYPE_ASYNC = 1;
@@ -57,11 +60,28 @@ interface CreateMatchOpts {
   metadata: Server.MatchData;
 }
 
+interface UpdateLockContext {
+  matchID: string;
+  client: PoolClient;
+  timeout: ReturnType<typeof setTimeout>;
+  released: boolean;
+}
+
+export class StaleStateWriteError extends Error {
+  constructor(matchID: string, expectedStateID: number, nextStateID: number) {
+    super(
+      `Stale state write rejected for match ${matchID}: expected current _stateID ${expectedStateID}, next _stateID ${nextStateID}`,
+    );
+    this.name = 'StaleStateWriteError';
+  }
+}
+
 export class PostgresAdapter {
   private pool: Pool;
   private createIndexes: boolean;
   private connected = false;
   private closed = false;
+  private updateLocks = new Map<string, UpdateLockContext>();
 
   constructor(opts: PostgresAdapterOptions = {}) {
     this.pool =
@@ -132,24 +152,20 @@ export class PostgresAdapter {
   async setState(matchID: string, state: State, deltalog?: LogEntry[]): Promise<void> {
     if (this.closed) return;
     await this.connect();
-    if (deltalog && deltalog.length > 0) {
-      // 原子 append：`log || $2::jsonb` 把 deltalog 接到既有 log 尾端。
-      await this.pool.query(
-        `UPDATE bjg_matches
-           SET state = $2,
-               log = COALESCE(log, '[]'::jsonb) || $3::jsonb,
-               updated_at = NOW()
-         WHERE match_id = $1`,
-        [matchID, JSON.stringify(state), JSON.stringify(deltalog)],
-      );
-    } else {
-      await this.pool.query(
-        `UPDATE bjg_matches
-            SET state = $2, updated_at = NOW()
-          WHERE match_id = $1`,
-        [matchID, JSON.stringify(state)],
-      );
+
+    const lock = this.updateLocks.get(matchID);
+    if (lock && !lock.released) {
+      try {
+        await this.writeState(lock.client, matchID, state, deltalog);
+        await this.releaseUpdateLock(lock, 'commit');
+      } catch (err) {
+        await this.releaseUpdateLock(lock, 'rollback');
+        throw err;
+      }
+      return;
     }
+
+    await this.writeState(this.pool, matchID, state, deltalog);
   }
 
   async setMetadata(matchID: string, metadata: Server.MatchData): Promise<void> {
@@ -175,6 +191,15 @@ export class PostgresAdapter {
   }> {
     if (this.closed) return {};
     await this.connect();
+    if (this.isUpdateStateFetch(opts)) {
+      return this.fetchStateForUpdate(matchID) as Promise<{
+        state?: State;
+        log?: LogEntry[];
+        metadata?: Server.MatchData;
+        initialState?: State;
+      }>;
+    }
+
     const cols: string[] = ['match_id'];
     if (opts.state) cols.push('state');
     if (opts.log) cols.push('log');
@@ -277,6 +302,103 @@ export class PostgresAdapter {
       throw err;
     } finally {
       client.release();
+    }
+  }
+
+  private isUpdateStateFetch(opts: FetchOpts): boolean {
+    return opts.state === true && !opts.log && !opts.metadata && !opts.initialState;
+  }
+
+  private async fetchStateForUpdate(matchID: string): Promise<{ state?: State }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query<MatchRow>(
+        `SELECT match_id, state FROM bjg_matches WHERE match_id = $1 FOR UPDATE`,
+        [matchID],
+      );
+      if (result.rows.length === 0) {
+        await client.query('COMMIT');
+        client.release();
+        return {};
+      }
+
+      const lock: UpdateLockContext = {
+        matchID,
+        client,
+        released: false,
+        timeout: setTimeout(() => {
+          this.releaseUpdateLock(lock, 'rollback').catch((err) => {
+            console.error(`[PostgresAdapter] timed-out update lock release failed for ${matchID}:`, err);
+          });
+        }, 5000),
+      };
+      lock.timeout.unref?.();
+      this.updateLocks.set(matchID, lock);
+      return { state: result.rows[0].state as State };
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {
+        /* ignore rollback failure from the original error path */
+      });
+      client.release();
+      throw err;
+    }
+  }
+
+  private async releaseUpdateLock(lock: UpdateLockContext, mode: 'commit' | 'rollback'): Promise<void> {
+    if (lock.released) return;
+    lock.released = true;
+    this.updateLocks.delete(lock.matchID);
+    clearTimeout(lock.timeout);
+    try {
+      await lock.client.query(mode === 'commit' ? 'COMMIT' : 'ROLLBACK');
+    } finally {
+      lock.client.release();
+    }
+  }
+
+  private expectedPreviousStateID(state: State): number | null {
+    return typeof state._stateID === 'number' ? state._stateID - 1 : null;
+  }
+
+  private async writeState(
+    queryable: Pick<Pool | PoolClient, 'query'>,
+    matchID: string,
+    state: State,
+    deltalog?: LogEntry[],
+  ): Promise<void> {
+    const nextStateID = typeof state._stateID === 'number' ? state._stateID : null;
+    const expectedStateID = this.expectedPreviousStateID(state);
+    const hasDeltalog = Boolean(deltalog && deltalog.length > 0);
+    const guardParamIndex = hasDeltalog ? 4 : 3;
+    const stateIDGuard =
+      expectedStateID === null ? '' : ` AND COALESCE((state->>'_stateID')::integer, -1) = $${guardParamIndex}`;
+
+    const paramsWithLog: unknown[] = [matchID, JSON.stringify(state), JSON.stringify(deltalog)];
+    const paramsWithoutLog: unknown[] = [matchID, JSON.stringify(state)];
+    if (expectedStateID !== null) {
+      paramsWithLog.push(expectedStateID);
+      paramsWithoutLog.push(expectedStateID);
+    }
+
+    const result = hasDeltalog
+      ? await queryable.query(
+          `UPDATE bjg_matches
+             SET state = $2,
+                 log = COALESCE(log, '[]'::jsonb) || $3::jsonb,
+                 updated_at = NOW()
+           WHERE match_id = $1${stateIDGuard}`,
+          paramsWithLog,
+        )
+      : await queryable.query(
+          `UPDATE bjg_matches
+              SET state = $2, updated_at = NOW()
+            WHERE match_id = $1${stateIDGuard}`,
+          paramsWithoutLog,
+        );
+
+    if (expectedStateID !== null && result.rowCount === 0) {
+      throw new StaleStateWriteError(matchID, expectedStateID, nextStateID ?? expectedStateID + 1);
     }
   }
 }

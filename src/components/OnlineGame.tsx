@@ -6,6 +6,12 @@ import type { GameState } from '../game/types';
 import { Board, type BoardGameOverActions } from './Board';
 import { t } from '../i18n';
 import { PageShell } from '../ui';
+import {
+  createOnlineStateSnapshot,
+  evaluateOnlineStateSnapshot,
+  type OnlineStateMismatchReason,
+  type OnlineStateSnapshot,
+} from '../onlineStateGuard';
 
 interface OnlineGameProps {
   matchID: string;
@@ -38,13 +44,31 @@ function OnlineBoard(
     gameOverActions: BoardGameOverActions;
     onConnectionStatusChange: (isConnected: boolean) => void;
     onOpponentDetected: () => void;
+    onStateMismatch: (reason: OnlineStateMismatchReason) => void;
   },
 ) {
-  const { gameOverActions, onConnectionStatusChange, onOpponentDetected, ...boardProps } = props;
+  const { gameOverActions, onConnectionStatusChange, onOpponentDetected, onStateMismatch, ...boardProps } = props;
+  const lastSnapshot = useRef<OnlineStateSnapshot | null>(null);
 
   useEffect(() => {
     onConnectionStatusChange(props.isConnected);
   }, [onConnectionStatusChange, props.isConnected]);
+
+  useEffect(() => {
+    if (typeof props._stateID !== 'number' || !props.G || !props.ctx) return;
+    const next = createOnlineStateSnapshot({
+      stateID: props._stateID,
+      G: props.G,
+      ctx: props.ctx,
+    });
+    const result = evaluateOnlineStateSnapshot(lastSnapshot.current, next);
+    if (!result.ok) {
+      lastSnapshot.current = null;
+      onStateMismatch(result.reason);
+      return;
+    }
+    lastSnapshot.current = result.snapshot;
+  }, [props._stateID, props.G, props.ctx, onStateMismatch]);
 
   // P2-13：改用 Socket.IO 推送的 matchData 變化偵測對手加入，取代 HTTP 輪詢。
   // boardgame.io client 連線後，當第二個玩家 join 時 server 會推送 matchData 更新。
@@ -71,14 +95,18 @@ export function OnlineGame({
 }: OnlineGameProps) {
   const connectedOnce = useRef(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onReturnToLobbyRef = useRef(onReturnToLobby);
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
   const opponentDetectedRef = useRef<(() => void) | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
+  const [clientSyncNonce, setClientSyncNonce] = useState(0);
+  const [resyncingState, setResyncingState] = useState(false);
 
   useEffect(
     () => () => {
       if (statusTimer.current) clearTimeout(statusTimer.current);
+      if (resyncTimer.current) clearTimeout(resyncTimer.current);
     },
     [],
   );
@@ -104,6 +132,8 @@ export function OnlineGame({
       if (isConnected) {
         const isReconnect = connectedOnce.current;
         connectedOnce.current = true;
+        setResyncingState(false);
+        if (resyncTimer.current) clearTimeout(resyncTimer.current);
         if (showRejoinedStatus || isReconnect) flashRejoined();
         else setConnectionStatus(null);
         return;
@@ -113,6 +143,16 @@ export function OnlineGame({
     },
     [flashRejoined, showRejoinedStatus],
   );
+
+  const handleStateMismatch = useCallback((reason: OnlineStateMismatchReason) => {
+    console.warn(`[online-sync] detected ${reason}; rebuilding client to resync authoritative state`);
+    if (statusTimer.current) clearTimeout(statusTimer.current);
+    if (resyncTimer.current) clearTimeout(resyncTimer.current);
+    setConnectionStatus('reconnecting');
+    setResyncingState(true);
+    setClientSyncNonce((nonce) => nonce + 1);
+    resyncTimer.current = setTimeout(() => setResyncingState(false), 5000);
+  }, []);
 
   const [OnlineClient] = useState(() =>
     Client({
@@ -134,6 +174,7 @@ export function OnlineGame({
           }}
           onConnectionStatusChange={handleConnectionStatusChange}
           onOpponentDetected={handleOpponentDetected}
+          onStateMismatch={handleStateMismatch}
         />
       ),
       loading: OnlineLoading,
@@ -143,25 +184,32 @@ export function OnlineGame({
     }),
   );
 
+  const visibleConnectionStatus = resyncingState ? 'reconnecting' : connectionStatus;
+
   return (
     <PageShell>
-      {connectionStatus && (
+      {visibleConnectionStatus && (
         <div className="absolute right-6 top-1.5 z-[var(--z-modal)]">
           <span
             className={`font-mono text-caption uppercase tracking-[var(--tracking-kicker)] ${
-              connectionStatus === 'disconnected' ? 'text-accent-action/80' : 'text-accent-primary/70'
+              visibleConnectionStatus === 'disconnected' ? 'text-accent-action/80' : 'text-accent-primary/70'
             }`}
           >
-            {connectionStatus === 'rejoined'
+            {visibleConnectionStatus === 'rejoined'
               ? t('onlineSession.rejoined')
-              : connectionStatus === 'disconnected'
+              : visibleConnectionStatus === 'disconnected'
                 ? t('onlineSession.disconnectedRetrying')
                 : t('onlineSession.reconnecting')}
           </span>
         </div>
       )}
       <div className="board-client-frame h-full w-full">
-        <OnlineClient playerID={playerID} matchID={matchID} credentials={playerCredentials} />
+        <OnlineClient
+          key={`${matchID}:${playerID}:${clientSyncNonce}`}
+          playerID={playerID}
+          matchID={matchID}
+          credentials={playerCredentials}
+        />
       </div>
     </PageShell>
   );
