@@ -61,6 +61,19 @@ type OnlineRoomErrorKey =
   | 'online.connectionFailed'
   | 'online.versionMismatch';
 
+function isFullscreenRoute(pathname: string): boolean {
+  return (
+    pathname.startsWith('/play/') ||
+    pathname.startsWith('/qa/') ||
+    pathname === '/' ||
+    pathname === '/online' ||
+    pathname === '/ai' ||
+    pathname === '/tutorial' ||
+    pathname === '/history' ||
+    pathname === '/leaderboard'
+  );
+}
+
 function onlineRoomError(key: OnlineRoomErrorKey): Error {
   return new Error(key);
 }
@@ -125,15 +138,7 @@ function NavBar() {
   const [open, setOpen] = useState(false);
 
   // 全螢幕單屏頁面有自己的 Header，不需要 NavBar
-  if (
-    location.pathname.startsWith('/play/') ||
-    location.pathname.startsWith('/qa/') ||
-    location.pathname === '/' ||
-    location.pathname === '/online' ||
-    location.pathname === '/ai' ||
-    location.pathname === '/history' ||
-    location.pathname === '/leaderboard'
-  ) {
+  if (isFullscreenRoute(location.pathname)) {
     return null;
   }
 
@@ -461,15 +466,8 @@ function RouterShell() {
 
   const deck0 = selectedDeckName(deck0Name, customDeckAvailable);
   const deck1 = aiOpponentDeckName(deck1Name);
-  // 全螢幕單屏頁面（首頁/線上/電腦/對戰中）有自己的 Header，不需要 NavBar 和 padding
-  const hideNav =
-    location.pathname.startsWith('/play/') ||
-    location.pathname.startsWith('/qa/') ||
-    location.pathname === '/' ||
-    location.pathname === '/online' ||
-    location.pathname === '/ai' ||
-    location.pathname === '/history' ||
-    location.pathname === '/leaderboard';
+  // 全螢幕單屏頁面（首頁/線上/電腦/教學/對戰中）有自己的 Header，不需要 NavBar 和 padding
+  const hideNav = isFullscreenRoute(location.pathname);
 
   return (
     <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
