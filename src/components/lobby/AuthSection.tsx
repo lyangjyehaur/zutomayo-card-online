@@ -39,7 +39,13 @@ function profileStats(user: AuthUser): { matchCount: number; wins: number; winRa
   return { matchCount, wins, winRate };
 }
 
-export function AuthSection({ onAuthChanged, compact }: { onAuthChanged: () => void | Promise<void>; compact?: boolean }) {
+export function AuthSection({
+  onAuthChanged,
+  compact,
+}: {
+  onAuthChanged: () => void | Promise<void>;
+  compact?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
@@ -121,6 +127,97 @@ export function AuthSection({ onAuthChanged, compact }: { onAuthChanged: () => v
     setLogoutPromptOpen(true);
   };
 
+  const authForm = (
+    <form
+      className="flex flex-col gap-3 animate-in slide-in-from-top-4 fade-in duration-[var(--motion-duration-slow)]"
+      onSubmit={handleSubmit}
+      aria-label={mode === 'login' ? t('auth.loginForm') : t('auth.registerForm')}
+    >
+      <SegmentedControl
+        className="border-b border-content-primary/10 pb-2"
+        behavior="tabs"
+        size="sm"
+        ariaLabel={`${t('auth.login')} / ${t('auth.register')}`}
+        options={[
+          { value: 'login', label: t('auth.login') },
+          { value: 'register', label: t('auth.register') },
+        ]}
+        value={mode}
+        onChange={switchMode}
+      />
+      <label className="group flex flex-col gap-1">
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary/70">
+          {t('auth.email')}
+        </span>
+        <Input
+          className="min-h-11"
+          type="email"
+          value={email}
+          autoComplete="email"
+          required
+          onChange={(event) => setEmail(event.target.value)}
+        />
+      </label>
+      {mode === 'register' && (
+        <label className="group flex flex-col gap-1">
+          <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary/70">
+            {t('auth.nickname')}
+          </span>
+          <Input
+            className="min-h-11"
+            type="text"
+            value={nickname}
+            autoComplete="nickname"
+            required
+            onChange={(event) => setNickname(event.target.value)}
+          />
+        </label>
+      )}
+      <label className="group flex flex-col gap-1">
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary/70">
+          {t('auth.password')}
+        </span>
+        <Input
+          className="min-h-11"
+          type="password"
+          value={password}
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+          required
+          onChange={(event) => setPassword(event.target.value)}
+        />
+      </label>
+      {error && (
+        <Alert
+          tone="danger"
+          role="alert"
+          aria-live="polite"
+          className="flex items-start gap-2 animate-in slide-in-from-top-2 fade-in duration-[var(--motion-duration-slow)]"
+        >
+          <AlertCircle className="mt-0.5 size-3 shrink-0 text-accent-action/80" />
+          <p className="text-caption leading-relaxed text-accent-action/90">{error}</p>
+        </Alert>
+      )}
+      <Button
+        className="relative overflow-hidden"
+        variant="primary"
+        type="submit"
+        disabled={submitting}
+        aria-busy={submitting}
+        aria-label={submitting ? t('auth.submitting') : undefined}
+      >
+        {submitting && (
+          <>
+            <span className="absolute inset-0 animate-pulse bg-accent-primary/10" />
+            <span className="absolute inset-x-0 bottom-0 h-0.5 animate-[shimmer_1.5s_ease-in-out_infinite] bg-accent-primary/40" />
+          </>
+        )}
+        <span className={submitting ? 'opacity-50' : ''}>
+          {submitting ? t('auth.submitting') : mode === 'login' ? t('auth.login') : t('auth.register')}
+        </span>
+      </Button>
+    </form>
+  );
+
   if (user) {
     const stats = profileStats(user);
 
@@ -130,7 +227,9 @@ export function AuthSection({ onAuthChanged, compact }: { onAuthChanged: () => v
         <>
           <div className="flex items-center gap-2">
             <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-primary/20 to-accent-action/20 ring-1 ring-accent-primary/30">
-              <span className="font-display text-xs text-accent-primary">{user.nickname?.[0]?.toUpperCase() || 'G'}</span>
+              <span className="font-display text-xs text-accent-primary">
+                {user.nickname?.[0]?.toUpperCase() || 'G'}
+              </span>
             </div>
             <div className="hidden min-w-0 lg:block">
               <p className="truncate font-display text-sm font-bold leading-none text-content-primary">
@@ -180,7 +279,9 @@ export function AuthSection({ onAuthChanged, compact }: { onAuthChanged: () => v
             <div className="flex items-center gap-3">
               {/* 用戶頭像（首字母） */}
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-primary/20 to-accent-action/20 ring-1 ring-accent-primary/30">
-                <span className="font-display text-lg text-accent-primary">{user.nickname?.[0]?.toUpperCase() || 'G'}</span>
+                <span className="font-display text-lg text-accent-primary">
+                  {user.nickname?.[0]?.toUpperCase() || 'G'}
+                </span>
               </div>
               <div className="min-w-0 flex-1">
                 <p className="font-display text-base font-bold leading-none text-content-primary">
@@ -249,16 +350,27 @@ export function AuthSection({ onAuthChanged, compact }: { onAuthChanged: () => v
   // 未登入 compact 模式
   if (compact) {
     return (
-      <Button
-        variant="secondary"
-        size="sm"
-        type="button"
-        onClick={() => setExpanded(true)}
-        disabled={!PUBLIC_AUTH_ENTRYPOINTS_ENABLED}
-        className="h-8 whitespace-nowrap"
-      >
-        {t('auth.login')}
-      </Button>
+      <>
+        <Button
+          variant="secondary"
+          size="sm"
+          type="button"
+          onClick={() => setExpanded(true)}
+          disabled={!PUBLIC_AUTH_ENTRYPOINTS_ENABLED}
+          className="h-8 whitespace-nowrap"
+        >
+          {t('auth.login')}
+        </Button>
+        <Dialog
+          open={expanded}
+          onOpenChange={setExpanded}
+          title={`${t('auth.login')} / ${t('auth.register')}`}
+          closeLabel={t('common.close')}
+          size="sm"
+        >
+          {authForm}
+        </Dialog>
+      </>
     );
   }
 
@@ -288,96 +400,7 @@ export function AuthSection({ onAuthChanged, compact }: { onAuthChanged: () => v
         )}
         {!expanded && status && <p className="font-mono text-caption text-accent-primary/70">{status}</p>}
 
-        {expanded && (
-          <form
-            className="flex flex-col gap-3 animate-in slide-in-from-top-4 fade-in duration-[var(--motion-duration-slow)]"
-            onSubmit={handleSubmit}
-            aria-label={mode === 'login' ? t('auth.loginForm') : t('auth.registerForm')}
-          >
-            <SegmentedControl
-              className="border-b border-content-primary/10 pb-2"
-              behavior="tabs"
-              size="sm"
-              ariaLabel={`${t('auth.login')} / ${t('auth.register')}`}
-              options={[
-                { value: 'login', label: t('auth.login') },
-                { value: 'register', label: t('auth.register') },
-              ]}
-              value={mode}
-              onChange={switchMode}
-            />
-            <label className="group flex flex-col gap-1">
-              <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary/70">
-                {t('auth.email')}
-              </span>
-              <Input
-                className="min-h-11"
-                type="email"
-                value={email}
-                autoComplete="email"
-                required
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
-            {mode === 'register' && (
-              <label className="group flex flex-col gap-1">
-                <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary/70">
-                  {t('auth.nickname')}
-                </span>
-                <Input
-                  className="min-h-11"
-                  type="text"
-                  value={nickname}
-                  autoComplete="nickname"
-                  required
-                  onChange={(event) => setNickname(event.target.value)}
-                />
-              </label>
-            )}
-            <label className="group flex flex-col gap-1">
-              <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary/70">
-                {t('auth.password')}
-              </span>
-              <Input
-                className="min-h-11"
-                type="password"
-                value={password}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                required
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
-            {error && (
-              <Alert
-                tone="danger"
-                role="alert"
-                aria-live="polite"
-                className="flex items-start gap-2 animate-in slide-in-from-top-2 fade-in duration-[var(--motion-duration-slow)]"
-              >
-                <AlertCircle className="mt-0.5 size-3 shrink-0 text-accent-action/80" />
-                <p className="text-caption leading-relaxed text-accent-action/90">{error}</p>
-              </Alert>
-            )}
-            <Button
-              className="relative overflow-hidden"
-              variant="primary"
-              type="submit"
-              disabled={submitting}
-              aria-busy={submitting}
-              aria-label={submitting ? t('auth.submitting') : undefined}
-            >
-              {submitting && (
-                <>
-                  <span className="absolute inset-0 animate-pulse bg-accent-primary/10" />
-                  <span className="absolute inset-x-0 bottom-0 h-0.5 animate-[shimmer_1.5s_ease-in-out_infinite] bg-accent-primary/40" />
-                </>
-              )}
-              <span className={submitting ? 'opacity-50' : ''}>
-                {submitting ? t('auth.submitting') : mode === 'login' ? t('auth.login') : t('auth.register')}
-              </span>
-            </Button>
-          </form>
-        )}
+        {expanded && authForm}
       </div>
     </section>
   );

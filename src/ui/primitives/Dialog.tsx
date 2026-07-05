@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { IconButton } from './Button';
 import { useModalFocus } from './useModalFocus';
 import { cn } from './utils';
@@ -56,7 +57,7 @@ export function Dialog({
 
   if (!open) return null;
 
-  return (
+  const dialog = (
     <div
       ref={overlayRef}
       className={cn(
@@ -120,4 +121,7 @@ export function Dialog({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return dialog;
+  return createPortal(dialog, document.body);
 }
