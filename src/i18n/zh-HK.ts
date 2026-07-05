@@ -546,6 +546,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'history.draw': '平手',
 
   // Tutorial Game Mode
+  'tutorial.skipConfirm': '確定要關閉教學模式並返回大廳嗎？',
   'tutorial.game.intro.title': '歡迎嚟到 ZUTOMAYO CARD',
   'tutorial.game.intro.body': '接落嚟會透過一場真實對戰，逐步引導你認識遊戲嘅所有機制。',
   'tutorial.game.janken.intro.title': '猜拳決定先後手',
@@ -617,7 +618,8 @@ export const zhHK: Record<TranslationKey, string> = {
   'tutorial.game.turnSet.action.draw.title': '放置本回合嘅卡',
   'tutorial.game.turnSet.action.draw.body': '由手牌打 1 張卡進入 Set Zone A。',
   'tutorial.game.effectOrder.intro.title': '效果順序階段',
-  'tutorial.game.effectOrder.intro.body': '效果處理時，由 Chronos メダル所在時段嘅玩家（優先玩家）先處理自己所有效果，再換另一方。Power Cost 喺「效果處理時點」重新確認，不足就唔發動。手牌、深淵等枚數計算都以處理時點為準。角色效果除非指定時機，否則喺打出嘅當回合效果處理時發動。效果處理階段以外觸發嘅效果（如卡牌進入區域）則立即處理，唔遵循優先玩家順序。',
+  'tutorial.game.effectOrder.intro.body':
+    '效果處理時，由 Chronos メダル所在時段嘅玩家（優先玩家）先處理自己所有效果，再換另一方。Power Cost 喺「效果處理時點」重新確認，不足就唔發動。手牌、深淵等枚數計算都以處理時點為準。角色效果除非指定時機，否則喺打出嘅當回合效果處理時發動。效果處理階段以外觸發嘅效果（如卡牌進入區域）則立即處理，唔遵循優先玩家順序。',
   'tutorial.game.effectOrder.action.title': '揀效果結算順序',
   'tutorial.game.effectOrder.action.body': '撳效果卡揀結算順序。先結算嘅效果會先生效，可能影響後續效果嘅結果。',
   'tutorial.game.pendingChoice.intro.title': '指定卡牌效果',
@@ -631,14 +633,11 @@ export const zhHK: Record<TranslationKey, string> = {
   'tutorial.game.battle.result.title': '戰鬥結果',
   'tutorial.game.battle.result.body': '本回合嘅戰鬥已結束。觀察 HP 變化同場地狀況，準備下一回合嘅策略。',
   'tutorial.game.battle.result.win.title': '戰鬥勝利',
-  'tutorial.game.battle.result.win.body':
-    '你嘅攻擊力高過對手，成功造成傷害。觀察 HP 變化，繼續保持優勢。',
+  'tutorial.game.battle.result.win.body': '你嘅攻擊力高過對手，成功造成傷害。觀察 HP 變化，繼續保持優勢。',
   'tutorial.game.battle.result.lose.title': '戰鬥敗北',
-  'tutorial.game.battle.result.lose.body':
-    '對手嘅攻擊力高過你，你受到咗傷害。唔好氣餒，下回合仲有追趕機會。',
+  'tutorial.game.battle.result.lose.body': '對手嘅攻擊力高過你，你受到咗傷害。唔好氣餒，下回合仲有追趕機會。',
   'tutorial.game.battle.result.draw.title': '戰鬥平手',
-  'tutorial.game.battle.result.draw.body':
-    '雙方攻擊力相同，都冇受到傷害。調整策略，爭取下回合嘅勝利。',
+  'tutorial.game.battle.result.draw.body': '雙方攻擊力相同，都冇受到傷害。調整策略，爭取下回合嘅勝利。',
   'tutorial.game.turnEndDraw.title': '回合結束抽牌',
   'tutorial.game.turnEndDraw.body':
     '回合結束時，從牌組抽出本回合打出嘅卡牌數量。打出 1 張抽 1 張，打出 2 張抽 2 張，保持手牌數量穩定。若牌組耗盡無法抽牌，將觸發敗北條件。',

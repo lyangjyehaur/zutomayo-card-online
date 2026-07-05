@@ -544,6 +544,7 @@ export const zhTW = {
   'history.draw': '平手',
 
   // Tutorial Game Mode (實戰教學)
+  'tutorial.skipConfirm': '確定要關閉教學模式並返回大廳嗎？',
   'tutorial.game.intro.title': '歡迎來到 ZUTOMAYO CARD',
   'tutorial.game.intro.body': '接下來將透過一場真實對戰，逐步引導你認識遊戲的所有機制。',
   'tutorial.game.janken.intro.title': '猜拳決定先後手',
@@ -630,14 +631,11 @@ export const zhTW = {
   'tutorial.game.battle.result.title': '戰鬥結果',
   'tutorial.game.battle.result.body': '本回合的戰鬥已結束。觀察 HP 變化和場地狀況，準備下一回合的策略。',
   'tutorial.game.battle.result.win.title': '戰鬥勝利',
-  'tutorial.game.battle.result.win.body':
-    '你的攻擊力高於對手，成功造成傷害。觀察 HP 變化，繼續保持優勢。',
+  'tutorial.game.battle.result.win.body': '你的攻擊力高於對手，成功造成傷害。觀察 HP 變化，繼續保持優勢。',
   'tutorial.game.battle.result.lose.title': '戰鬥敗北',
-  'tutorial.game.battle.result.lose.body':
-    '對手的攻擊力高於你，你受到了傷害。別氣餒，下回合還有追趕機會。',
+  'tutorial.game.battle.result.lose.body': '對手的攻擊力高於你，你受到了傷害。別氣餒，下回合還有追趕機會。',
   'tutorial.game.battle.result.draw.title': '戰鬥平手',
-  'tutorial.game.battle.result.draw.body':
-    '雙方攻擊力相同，都沒有受到傷害。調整策略，爭取下回合的勝利。',
+  'tutorial.game.battle.result.draw.body': '雙方攻擊力相同，都沒有受到傷害。調整策略，爭取下回合的勝利。',
   'tutorial.game.turnEndDraw.title': '回合結束抽牌',
   'tutorial.game.turnEndDraw.body':
     '回合結束時，從牌組抽出本回合打出的卡牌數量。打出 1 張抽 1 張，打出 2 張抽 2 張，保持手牌數量穩定。若牌組耗盡無法抽牌，將觸發敗北條件。',

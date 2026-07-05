@@ -550,6 +550,7 @@ export const ko: Record<TranslationKey, string> = {
   'history.traceChoice': '선택',
   'history.draw': '무승부',
 
+  'tutorial.skipConfirm': '튜토리얼 모드를 닫고 로비로 돌아갈까요?',
   'tutorial.game.intro.title': 'ZUTOMAYO CARD에 오신 것을 환영합니다',
   'tutorial.game.intro.body': '실제 AI 대전을 통해 게임의 모든 메커니즘을 단계별로 안내해 드립니다.',
   'tutorial.game.janken.intro.title': '가위바위보로 선후공 결정',

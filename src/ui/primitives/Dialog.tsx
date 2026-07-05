@@ -24,6 +24,7 @@ export interface DialogProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title
   dismissible?: boolean;
   size?: DialogSize;
   mobilePresentation?: 'modal' | 'sheet';
+  overlayClassName?: string;
 }
 
 export function Dialog({
@@ -36,6 +37,7 @@ export function Dialog({
   dismissible = true,
   size = 'md',
   mobilePresentation = 'sheet',
+  overlayClassName,
   className,
   children,
   ...props
@@ -63,6 +65,7 @@ export function Dialog({
       className={cn(
         'fixed inset-0 z-[var(--z-modal)] flex overflow-y-auto bg-surface-overlay p-4 backdrop-blur',
         mobilePresentation === 'sheet' ? 'items-end justify-center md:items-center' : 'items-center justify-center',
+        overlayClassName,
       )}
       onMouseDown={(event) => {
         if (dismissible && event.target === event.currentTarget) onOpenChange?.(false);

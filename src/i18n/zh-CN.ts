@@ -546,6 +546,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'history.draw': '平手',
 
   // Tutorial Game Mode
+  'tutorial.skipConfirm': '确定要关闭教学模式并返回大厅吗？',
   'tutorial.game.intro.title': '欢迎来到 ZUTOMAYO CARD',
   'tutorial.game.intro.body': '接下来将通过一场真实对战，逐步引导你认识游戏的所有机制。',
   'tutorial.game.janken.intro.title': '猜拳决定先后手',
@@ -617,7 +618,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'tutorial.game.turnSet.action.draw.title': '放置本回合的卡片',
   'tutorial.game.turnSet.action.draw.body': '从手牌打出 1 张卡进入 Set Zone A。',
   'tutorial.game.effectOrder.intro.title': '效果顺序阶段',
-  'tutorial.game.effectOrder.intro.body': '效果处理时，由 Chronos メダル所在时段的玩家（优先玩家）先处理自己所有效果，再换另一方。Power Cost 在「效果处理时点」重新确认，不足则不发动。手牌、深渊等枚数计算也以处理时点为准。角色效果除非指定时机，否则在打出的当回合效果处理时发动。效果处理阶段以外触发的效果（如卡牌进入区域）则立即处理，不遵循优先玩家顺序。',
+  'tutorial.game.effectOrder.intro.body':
+    '效果处理时，由 Chronos メダル所在时段的玩家（优先玩家）先处理自己所有效果，再换另一方。Power Cost 在「效果处理时点」重新确认，不足则不发动。手牌、深渊等枚数计算也以处理时点为准。角色效果除非指定时机，否则在打出的当回合效果处理时发动。效果处理阶段以外触发的效果（如卡牌进入区域）则立即处理，不遵循优先玩家顺序。',
   'tutorial.game.effectOrder.action.title': '选择效果结算顺序',
   'tutorial.game.effectOrder.action.body': '点击效果卡选择结算顺序。先结算的效果会先生效，可能影响后续效果的结果。',
   'tutorial.game.pendingChoice.intro.title': '指定卡牌效果',
@@ -631,14 +633,11 @@ export const zhCN: Record<TranslationKey, string> = {
   'tutorial.game.battle.result.title': '战斗结果',
   'tutorial.game.battle.result.body': '本回合的战斗已结束。观察 HP 变化和场地状况，准备下一回合的策略。',
   'tutorial.game.battle.result.win.title': '战斗胜利',
-  'tutorial.game.battle.result.win.body':
-    '你的攻击力高于对手，成功造成伤害。观察 HP 变化，继续保持优势。',
+  'tutorial.game.battle.result.win.body': '你的攻击力高于对手，成功造成伤害。观察 HP 变化，继续保持优势。',
   'tutorial.game.battle.result.lose.title': '战斗败北',
-  'tutorial.game.battle.result.lose.body':
-    '对手的攻击力高于你，你受到了伤害。别气馁，下回合还有追赶机会。',
+  'tutorial.game.battle.result.lose.body': '对手的攻击力高于你，你受到了伤害。别气馁，下回合还有追赶机会。',
   'tutorial.game.battle.result.draw.title': '战斗平手',
-  'tutorial.game.battle.result.draw.body':
-    '双方攻击力相同，都没有受到伤害。调整策略，争取下回合的胜利。',
+  'tutorial.game.battle.result.draw.body': '双方攻击力相同，都没有受到伤害。调整策略，争取下回合的胜利。',
   'tutorial.game.turnEndDraw.title': '回合结束抽牌',
   'tutorial.game.turnEndDraw.body':
     '回合结束时，从牌组抽出本回合打出的卡牌数量。打出 1 张抽 1 张，打出 2 张抽 2 张，保持手牌数量稳定。若牌组耗尽无法抽牌，将触发败北条件。',

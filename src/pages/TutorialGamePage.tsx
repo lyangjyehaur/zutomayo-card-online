@@ -107,8 +107,9 @@ export function TutorialGamePage() {
       <Dialog
         open={skipPromptOpen}
         onOpenChange={setSkipPromptOpen}
+        overlayClassName="tutorial-skip-dialog-overlay"
         title={t('common.confirm')}
-        description={t('tutorial.skipConfirm' as never)}
+        description={t('tutorial.skipConfirm')}
         footer={
           <>
             <Button variant="secondary" onClick={() => setSkipPromptOpen(false)}>

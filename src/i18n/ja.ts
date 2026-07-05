@@ -552,6 +552,7 @@ export const ja: Record<TranslationKey, string> = {
   'history.draw': '引き分け',
 
   // Tutorial Game Mode
+  'tutorial.skipConfirm': 'チュートリアルを閉じてロビーに戻りますか？',
   'tutorial.game.intro.title': 'ZUTOMAYO CARDへようこそ',
   'tutorial.game.intro.body': 'これから実際の対戦を通じて、ゲームの全ての仕組みを順番に案内します。',
   'tutorial.game.janken.intro.title': 'じゃんけんで先攻・後攻を決める',

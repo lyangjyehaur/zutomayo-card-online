@@ -552,6 +552,7 @@ export const en: Record<TranslationKey, string> = {
   'history.draw': 'Draw',
 
   // Tutorial Game Mode
+  'tutorial.skipConfirm': 'Close tutorial mode and return to the lobby?',
   'tutorial.game.intro.title': 'Welcome to ZUTOMAYO CARD',
   'tutorial.game.intro.body': 'This tutorial will guide you through all game mechanics via a real match against AI.',
   'tutorial.game.janken.intro.title': 'Rock-Paper-Scissors Determines Turn Order',
@@ -565,7 +566,7 @@ export const en: Record<TranslationKey, string> = {
     'The result is in! The Night-side player resolves effects first during Night phases; the Day-side player resolves effects first during Day phases.',
   'tutorial.game.mulligan.intro.title': 'Mulligan Phase',
   'tutorial.game.mulligan.intro.body':
-    'Your starting hand has a high Power Cost character card. When the charger zone has insufficient Power to pay the Power Cost, that character\'s attack power becomes 0 and cannot deal damage. Click cards to set them face-down (you may select any number), then press Redraw to draw the same number of new cards; old cards are shuffled back. If satisfied, press Keep Hand to skip. Each match allows only one redraw.',
+    "Your starting hand has a high Power Cost character card. When the charger zone has insufficient Power to pay the Power Cost, that character's attack power becomes 0 and cannot deal damage. Click cards to set them face-down (you may select any number), then press Redraw to draw the same number of new cards; old cards are shuffled back. If satisfied, press Keep Hand to skip. Each match allows only one redraw.",
   'tutorial.game.mulligan.action.title': 'Select Cards to Redraw',
   'tutorial.game.mulligan.action.body':
     'Click the cards you want to replace to set them face-down (e.g., the high Power Cost character card), then press Confirm to draw the same number of new cards. If you are satisfied with your hand, press "Keep Hand" to skip.',
@@ -672,7 +673,7 @@ export const en: Record<TranslationKey, string> = {
     'After effects resolve, the character with the lower attack power takes damage equal to the difference. If Power Cost is insufficient, attack power is treated as 0 and effects do not activate.',
   'tutorial.game.powerCharging.title': 'Power Charger',
   'tutorial.game.powerCharging.body':
-    'Character cards with SEND TO POWER enter the charger zone when they leave the battle zone, accumulating Power to pay for other cards\' Power Cost. The total Power is rechecked at the moment of effect resolution. When you replace a character next turn, the old card goes to the charger.',
+    "Character cards with SEND TO POWER enter the charger zone when they leave the battle zone, accumulating Power to pay for other cards' Power Cost. The total Power is rechecked at the moment of effect resolution. When you replace a character next turn, the old card goes to the charger.",
   'tutorial.game.areaEnchant.title': 'Area Enchant',
   'tutorial.game.areaEnchant.body':
     'Area Enchants are first placed face-down in Set Zone A or B when played from hand. After being revealed and their effects activated, they move to Set Zone C and continuously affect the entire field. The 2nd_86 you played grants your character +20 attack power during the night side.',
