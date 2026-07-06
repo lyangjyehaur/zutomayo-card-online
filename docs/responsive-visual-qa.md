@@ -49,33 +49,33 @@ Artifacts:
 
 Pages with horizontal overflow detected:
 
-| Page | Viewports |
-| --- | --- |
-| `/deck-builder` | `1366x768`, `1280x720`, `1024x768`, `768x1024`, `430x932`, `390x844`, `360x740` |
-| `/` | `768x1024`, `430x932`, `390x844`, `360x740` |
-| `/online` | `768x1024`, `430x932`, `390x844`, `360x740` |
-| `/ai` | `430x932`, `390x844`, `360x740` |
-| `/play/online/visual-qa` | `430x932`, `390x844`, `360x740` |
+| Page                     | Viewports                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------- |
+| `/deck-builder`          | `1366x768`, `1280x720`, `1024x768`, `768x1024`, `430x932`, `390x844`, `360x740` |
+| `/`                      | `768x1024`, `430x932`, `390x844`, `360x740`                                     |
+| `/online`                | `768x1024`, `430x932`, `390x844`, `360x740`                                     |
+| `/ai`                    | `430x932`, `390x844`, `360x740`                                                 |
+| `/play/online/visual-qa` | `430x932`, `390x844`, `360x740`                                                 |
 
 Highest small text counts:
 
-| Page | Max count |
-| --- | ---: |
-| `/deck-builder` | 65 |
-| `/online` | 34 |
-| `/` | 25 |
-| `/ai` | 24 |
-| `/feedback` | 14 |
+| Page            | Max count |
+| --------------- | --------: |
+| `/deck-builder` |        65 |
+| `/online`       |        34 |
+| `/`             |        25 |
+| `/ai`           |        24 |
+| `/feedback`     |        14 |
 
 Highest small tap target counts:
 
-| Page | Max count |
-| --- | ---: |
-| `/deck-builder` | 25 |
-| `/feedback` | 15 |
-| `/history` | 10 |
-| `/admin` | 9 |
-| `/` | 8 |
+| Page            | Max count |
+| --------------- | --------: |
+| `/deck-builder` |        25 |
+| `/feedback`     |        15 |
+| `/history`      |        10 |
+| `/admin`        |         9 |
+| `/`             |         8 |
 
 ## Visual Findings
 

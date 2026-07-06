@@ -61,15 +61,15 @@
 
 **App.css 11043 行總體組織**：
 
-| 行號 | 段落 | 規模 | 狀態 |
-|------|------|------|------|
-| 1-24 | @import + fonts | compact | ✓ |
-| 25-116 | @theme inline | ~100 行 | ✓ |
-| 118-310 | :root CSS variables | ~200 行 | ✓ 完整 |
-| 320-798 | Nav/Auth/Lobby | ~500 行 | ✓ |
-| 799-2500 | Battle board styles | ~1700 行 | ⚠️ 混亂 |
-| 2500-3200 | Responsive queries | ~700 行 | ⚠️ 多重 override |
-| 3200-11043 | 頁面-specific CSS | ~8000 行 | ⚠️ 孤島 |
+| 行號       | 段落                | 規模     | 狀態             |
+| ---------- | ------------------- | -------- | ---------------- |
+| 1-24       | @import + fonts     | compact  | ✓                |
+| 25-116     | @theme inline       | ~100 行  | ✓                |
+| 118-310    | :root CSS variables | ~200 行  | ✓ 完整           |
+| 320-798    | Nav/Auth/Lobby      | ~500 行  | ✓                |
+| 799-2500   | Battle board styles | ~1700 行 | ⚠️ 混亂          |
+| 2500-3200  | Responsive queries  | ~700 行  | ⚠️ 多重 override |
+| 3200-11043 | 頁面-specific CSS   | ~8000 行 | ⚠️ 孤島          |
 
 ### Token 現況
 
@@ -96,16 +96,16 @@
 
 根據 docs/ui-ux-audit.md：
 
-| 優先級 | 問題 | 嚴重度 | 檔案 |
-|--------|------|--------|------|
-| 1 | Battle 360/390px 手機 stack-zone 貼邊越界 | High | Board.tsx:2584 |
-| 2 | Battle 手機混用桌面佈局模型 | High | Board.tsx:2157-2680 |
-| 3 | 操作按鈕 35-40px (< 44px) | High | Board.tsx:2727, App.css:9362 |
-| 4 | 卡牌 focus 依賴 hover | Medium | Board.tsx:1087, 1538 |
-| 5 | 多套浮層 z-index 競爭 | High | Board.tsx:440, 2772 |
-| 6 | Landing 首頁按鈕 27-29px | High | LobbyPage.tsx:255 |
-| 7 | Feedback modal 無 focus trap | High | FeedbackPage.tsx:1062 |
-| 8 | App.css 11043 行混亂 | High | App.css 全檔 |
+| 優先級 | 問題                                      | 嚴重度 | 檔案                         |
+| ------ | ----------------------------------------- | ------ | ---------------------------- |
+| 1      | Battle 360/390px 手機 stack-zone 貼邊越界 | High   | Board.tsx:2584               |
+| 2      | Battle 手機混用桌面佈局模型               | High   | Board.tsx:2157-2680          |
+| 3      | 操作按鈕 35-40px (< 44px)                 | High   | Board.tsx:2727, App.css:9362 |
+| 4      | 卡牌 focus 依賴 hover                     | Medium | Board.tsx:1087, 1538         |
+| 5      | 多套浮層 z-index 競爭                     | High   | Board.tsx:440, 2772          |
+| 6      | Landing 首頁按鈕 27-29px                  | High   | LobbyPage.tsx:255            |
+| 7      | Feedback modal 無 focus trap              | High   | FeedbackPage.tsx:1062        |
+| 8      | App.css 11043 行混亂                      | High   | App.css 全檔                 |
 
 ---
 
@@ -113,24 +113,24 @@
 
 ### 已實現的 15 個元件
 
-| 名稱 | 尺寸 | 用途 | Variants |
-|------|------|------|----------|
-| Button | ~110 行 | Primary action | primary/secondary/danger/ghost |
-| IconButton | (Button 內) | Icon-only action | sm/md |
-| BackButton | (Button 內) | Back navigation | md/lg |
-| Panel | ~32 行 | Card container | md/lg/xl + solid/ghost |
-| Dialog | ~80 行 | Modal (desktop) | default/large |
-| Sheet | ~90 行 | Sheet (mobile) | top/bottom/left/right |
-| Input | ~60 行 | Text input | sm/md + default/filled |
-| Badge | ~40 行 | Status tag | default/accent/success/danger |
-| Card | ~40 行 | Card container | elevated/default |
-| SegmentedControl | ~80 行 | Tab-like selector | sm/md |
-| ActionBar | ~50 行 | Sticky actions | sticky/position |
-| ResponsiveToolbar | ~100 行 | Adaptive toolbar | breakpoint-based |
-| PageHeader | ~70 行 | Page title | default/floating |
-| PageShell | ~80 行 | Full-page | screen/scroll/workspace/landing |
-| DataList | ~150 行 | Table/cards | table/cards/compact |
-| State | ~60 行 | Loading/error | loading/empty/error |
+| 名稱              | 尺寸        | 用途              | Variants                        |
+| ----------------- | ----------- | ----------------- | ------------------------------- |
+| Button            | ~110 行     | Primary action    | primary/secondary/danger/ghost  |
+| IconButton        | (Button 內) | Icon-only action  | sm/md                           |
+| BackButton        | (Button 內) | Back navigation   | md/lg                           |
+| Panel             | ~32 行      | Card container    | md/lg/xl + solid/ghost          |
+| Dialog            | ~80 行      | Modal (desktop)   | default/large                   |
+| Sheet             | ~90 行      | Sheet (mobile)    | top/bottom/left/right           |
+| Input             | ~60 行      | Text input        | sm/md + default/filled          |
+| Badge             | ~40 行      | Status tag        | default/accent/success/danger   |
+| Card              | ~40 行      | Card container    | elevated/default                |
+| SegmentedControl  | ~80 行      | Tab-like selector | sm/md                           |
+| ActionBar         | ~50 行      | Sticky actions    | sticky/position                 |
+| ResponsiveToolbar | ~100 行     | Adaptive toolbar  | breakpoint-based                |
+| PageHeader        | ~70 行      | Page title        | default/floating                |
+| PageShell         | ~80 行      | Full-page         | screen/scroll/workspace/landing |
+| DataList          | ~150 行     | Table/cards       | table/cards/compact             |
+| State             | ~60 行      | Loading/error     | loading/empty/error             |
 
 ### 缺失的 Primitives
 
@@ -150,12 +150,9 @@
 ### 定義 (App.css 111-116, 272-277)
 
 ```css
---breakpoint-phone: 360px         /* 狹窄手機 */
---breakpoint-phone-lg: 430px      /* 大手機 */
---breakpoint-tablet: 768px        /* 平板豎屏 */
---breakpoint-touch: 820px         /* 觸控優先分界 */
---breakpoint-desktop-sidebar: 1180px
---breakpoint-low-height: 780px    /* 低高度桌面 */
+--breakpoint-phone: 360px /* 狹窄手機 */ --breakpoint-phone-lg: 430px /* 大手機 */ --breakpoint-tablet: 768px
+  /* 平板豎屏 */ --breakpoint-touch: 820px /* 觸控優先分界 */ --breakpoint-desktop-sidebar: 1180px
+  --breakpoint-low-height: 780px /* 低高度桌面 */;
 ```
 
 ### Smoke 測試
@@ -190,7 +187,7 @@
 
 **輸出**：
 
-- /tmp/zutomayo-battle-responsive-screenshots/*.png
+- /tmp/zutomayo-battle-responsive-screenshots/\*.png
 - /tmp/zutomayo-battle-responsive-report.json
 
 ---
@@ -216,16 +213,16 @@
 
 ### 風格一致性評分
 
-| 面向 | 評分 | 現狀 |
-|------|------|------|
-| Button 樣式 | 4/10 | legacy + new 混雜 |
-| Panel/Card | 7/10 | 基本一致 |
-| Typography | 5/10 | 多數用 token，手機 text-[9px] 不合規 |
-| Color | 7/10 | Token 完整 |
-| Spacing | 5/10 | 多處硬編 gap/padding |
-| Z-index | 3/10 | 多層競爭 |
-| Responsive | 5/10 | 基線 PASS，邊界情況多 |
-| Accessibility | 4/10 | 44px 缺失 + focus trap 缺失 |
+| 面向          | 評分 | 現狀                                 |
+| ------------- | ---- | ------------------------------------ |
+| Button 樣式   | 4/10 | legacy + new 混雜                    |
+| Panel/Card    | 7/10 | 基本一致                             |
+| Typography    | 5/10 | 多數用 token，手機 text-[9px] 不合規 |
+| Color         | 7/10 | Token 完整                           |
+| Spacing       | 5/10 | 多處硬編 gap/padding                 |
+| Z-index       | 3/10 | 多層競爭                             |
+| Responsive    | 5/10 | 基線 PASS，邊界情況多                |
+| Accessibility | 4/10 | 44px 缺失 + focus trap 缺失          |
 
 **整體：6/10**
 
@@ -236,11 +233,13 @@
 ### 選卡流程
 
 **手牌選卡** (Board.tsx 1819-1820)：
+
 - 點擊手牌 → moves.setCardToZone(index)
 - hover 彈出 popover
 - ⚠️ 手機無反饋
 
 **Mulligan 選卡** (MulliganScreen.tsx 836-851)：
+
 - 多選 + toggle
 - ✓ ring-2 + shadow-selected 視覺反饋
 - ⚠️ hover -translate-y-2 只能桌面用
@@ -248,26 +247,29 @@
 ### 卡牌詳情
 
 **CardPopover** (Card.tsx 64-100)：
+
 - computePopoverPosition 計算位置
 - Portal to document.body
 - ⚠️ 絕對定位在捲動時不跟隨
 - ⚠️ 多卡同時 hover 重疊
 
 **LogCardChip** (Board.tsx 248-306)：
+
 - 獨立 hover/focus/tap 邏輯
 - ⚠️ 與 Card popover 重複實裝
 
 ### 浮層堆棧
 
-| 層 | Z 值 | 用途 | 問題 |
-|----|------|------|------|
-| CardPopover | 10 | 卡詳情 | 可被 overlay 蓋住 |
-| BattleSidePanel | 50? | 側面板 | 自訂，無標準 |
-| phase-message | 50 | 遊戲通知 | 與 side 同層競爭 |
-| Dialog/Sheet | 100 | 模態 | ✓ 正確 |
-| Toast | 200 | 吐司 | ✓ 正確 |
+| 層              | Z 值 | 用途     | 問題              |
+| --------------- | ---- | -------- | ----------------- |
+| CardPopover     | 10   | 卡詳情   | 可被 overlay 蓋住 |
+| BattleSidePanel | 50?  | 側面板   | 自訂，無標準      |
+| phase-message   | 50   | 遊戲通知 | 與 side 同層競爭  |
+| Dialog/Sheet    | 100  | 模態     | ✓ 正確            |
+| Toast           | 200  | 吐司     | ✓ 正確            |
 
 **問題**：
+
 - ⚠️ 無 focus trap
 - ⚠️ 多套 backdrop 與 scroll lock 邏輯
 
@@ -277,14 +279,14 @@
 
 ### Phase 優先級 (建議執行順序)
 
-| Phase | 標題 | 時程 | 關鍵工作 |
-|-------|------|------|---------|
-| 1 | **理解與規劃** | ✓ 完成 | 本報告 + rule-and-layout.md |
-| 2 | **Design System** | 1-2 週 | Token 補齊 + App.css 精簡 |
-| 3 | **Battle UI 重構** | 2-3 週 | Desktop 佈局 + 44px 按鈕 + 統一浮層 |
-| 4 | **全終端響應式** | 2-3 週 | Mobile compact + 768px 過渡 + container query |
-| 5 | **頁面一致性** | 2-3 週 | Landing/Lobby 統一 + a11y 補完 |
-| 6 | **驗收與優化** | 1-2 週 | Smoke 100% + QA + 最終文檔 |
+| Phase | 標題               | 時程   | 關鍵工作                                      |
+| ----- | ------------------ | ------ | --------------------------------------------- |
+| 1     | **理解與規劃**     | ✓ 完成 | 本報告 + rule-and-layout.md                   |
+| 2     | **Design System**  | 1-2 週 | Token 補齊 + App.css 精簡                     |
+| 3     | **Battle UI 重構** | 2-3 週 | Desktop 佈局 + 44px 按鈕 + 統一浮層           |
+| 4     | **全終端響應式**   | 2-3 週 | Mobile compact + 768px 過渡 + container query |
+| 5     | **頁面一致性**     | 2-3 週 | Landing/Lobby 統一 + a11y 補完                |
+| 6     | **驗收與優化**     | 1-2 週 | Smoke 100% + QA + 最終文檔                    |
 
 ### 立即行動項
 

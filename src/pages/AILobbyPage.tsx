@@ -122,10 +122,7 @@ export function AILobbyPage({
           </Step>
           <Step no="03" title={t('lobby.difficulty')}>
             <h2 className="mb-3 font-display text-lg font-bold leading-tight">{t('lobby.difficulty')}</h2>
-            <DifficultyButtons
-              onStart={onStartAI}
-              disabled={!canStartAI({ cardsReady, deck0Name, deck1Name })}
-            />
+            <DifficultyButtons onStart={onStartAI} disabled={!canStartAI({ cardsReady, deck0Name, deck1Name })} />
           </Step>
         </div>
       </main>

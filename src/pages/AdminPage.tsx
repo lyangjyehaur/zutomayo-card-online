@@ -526,11 +526,7 @@ function AboutSettingsEditor() {
     updateCurrentDraft((current) => ({ ...current, [person]: { ...current[person], [field]: value } }));
   };
 
-  const setLinkField = (
-    link: 'github' | 'otherProjects',
-    field: keyof AboutPageConfig['github'],
-    value: string,
-  ) => {
+  const setLinkField = (link: 'github' | 'otherProjects', field: keyof AboutPageConfig['github'], value: string) => {
     updateCurrentDraft((current) => ({ ...current, [link]: { ...current[link], [field]: value } }));
   };
 
@@ -578,12 +574,19 @@ function AboutSettingsEditor() {
         </label>
         <label className="grid gap-1">
           <span className="text-xs text-content-primary/50">自述文本</span>
-          <Textarea value={currentDraft.description} onChange={(e) => setField('description', e.target.value)} rows={3} />
+          <Textarea
+            value={currentDraft.description}
+            onChange={(e) => setField('description', e.target.value)}
+            rows={3}
+          />
         </label>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">作者名稱</span>
-            <Input value={currentDraft.author.name} onChange={(e) => setPersonField('author', 'name', e.target.value)} />
+            <Input
+              value={currentDraft.author.name}
+              onChange={(e) => setPersonField('author', 'name', e.target.value)}
+            />
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">作者 URL</span>
@@ -591,7 +594,10 @@ function AboutSettingsEditor() {
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">畫師名稱</span>
-            <Input value={currentDraft.artist.name} onChange={(e) => setPersonField('artist', 'name', e.target.value)} />
+            <Input
+              value={currentDraft.artist.name}
+              onChange={(e) => setPersonField('artist', 'name', e.target.value)}
+            />
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">畫師 URL</span>

@@ -43,7 +43,11 @@ export function CardBrowserToolbar({
     <div className={cn('mb-4 space-y-4', className)} {...props}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          {kicker && <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{kicker}</div>}
+          {kicker && (
+            <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+              {kicker}
+            </div>
+          )}
           <h2 className="truncate font-display text-2xl font-bold">{title}</h2>
         </div>
         {search}
@@ -126,7 +130,9 @@ function CardBrowserDetailContent({
   return (
     <>
       {showTitle && <div className="truncate font-display text-sm font-bold text-content-primary/90">{title}</div>}
-      {meta && <div className="mt-0.5 font-mono text-minutia uppercase tracking-normal text-accent-primary/50">{meta}</div>}
+      {meta && (
+        <div className="mt-0.5 font-mono text-minutia uppercase tracking-normal text-accent-primary/50">{meta}</div>
+      )}
       {stats && (
         <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-caption uppercase tracking-normal">
           {stats}

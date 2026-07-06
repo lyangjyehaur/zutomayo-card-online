@@ -288,13 +288,19 @@ export function FeedbackPage() {
     <main className="app-screen feedback-page min-h-screen">
       <PageSectionHeader
         className="feedback-header"
-        leading={<BackButton className="!min-h-11" onClick={() => navigate('/')}>{t('feedback.back')}</BackButton>}
+        leading={
+          <BackButton className="!min-h-11" onClick={() => navigate('/')}>
+            {t('feedback.back')}
+          </BackButton>
+        }
         title={t('feedback.title')}
         subtitle={
           <>
             <span>{t('feedback.subtitle')}</span>
             {!isLoggedIn() && (
-              <span className="feedback-anon-notice block text-caption text-content-primary/40">{t('feedback.anonymousNotice')}</span>
+              <span className="feedback-anon-notice block text-caption text-content-primary/40">
+                {t('feedback.anonymousNotice')}
+              </span>
             )}
           </>
         }
@@ -448,7 +454,9 @@ export function FeedbackPage() {
           {error}
         </Alert>
       )}
-      {!loading && !error && posts.length === 0 && <EmptyState className="feedback-empty" description={t('feedback.empty')} />}
+      {!loading && !error && posts.length === 0 && (
+        <EmptyState className="feedback-empty" description={t('feedback.empty')} />
+      )}
 
       <ul className="feedback-list">
         {posts.map((post) => (
@@ -1087,7 +1095,11 @@ function PostDetailModal({
           />
         </header>
         {loading && <LoadingState className="feedback-empty" label={t('feedback.loading')} />}
-        {error && <Alert className="feedback-error" tone="danger">{error}</Alert>}
+        {error && (
+          <Alert className="feedback-error" tone="danger">
+            {error}
+          </Alert>
+        )}
         {post && (
           <div className="modal-body">
             {editingPost ? (
@@ -1169,9 +1181,7 @@ function PostDetailModal({
               <section className="voters-list">
                 {voters.length === 0 && <p className="feedback-empty">{t('feedback.noVoters')}</p>}
                 {voters.map((v, i) => (
-                  <Tag key={i}>
-                    {v.nickname || t('feedback.anonymous')}
-                  </Tag>
+                  <Tag key={i}>{v.nickname || t('feedback.anonymous')}</Tag>
                 ))}
               </section>
             )}

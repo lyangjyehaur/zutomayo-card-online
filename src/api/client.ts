@@ -65,8 +65,7 @@ export interface AboutPageConfig {
 
 const DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW: AboutPageConfig = {
   title: 'About ZUTOMAYO CARD ONLINE',
-  description:
-    '這是一個由玩家維護的非官方線上對戰項目，目標是讓更多人能方便體驗 ZUTOMAYO CARD 的夜晝攻防與牌組構築。',
+  description: '這是一個由玩家維護的非官方線上對戰項目，目標是讓更多人能方便體驗 ZUTOMAYO CARD 的夜晝攻防與牌組構築。',
   author: {
     name: 'lyangjyehaur',
     url: 'https://github.com/lyangjyehaur',
@@ -97,8 +96,7 @@ export const DEFAULT_ABOUT_PAGE_I18N_CONFIG: Record<AboutPageLocale, AboutPageCo
   'zh-TW': DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW,
   'zh-HK': {
     ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW,
-    description:
-      '呢個係由玩家維護嘅非官方綫上對戰項目，希望更多人可以方便體驗 ZUTOMAYO CARD 嘅夜晝攻防同牌組構築。',
+    description: '呢個係由玩家維護嘅非官方綫上對戰項目，希望更多人可以方便體驗 ZUTOMAYO CARD 嘅夜晝攻防同牌組構築。',
     artist: { name: '待補充', url: '' },
     github: {
       ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.github,
@@ -164,7 +162,8 @@ export const DEFAULT_ABOUT_PAGE_I18N_CONFIG: Record<AboutPageLocale, AboutPageCo
     },
     otherProjects: {
       ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.otherProjects,
-      description: 'A ZUTOMAYO MV database for organizing MV reference images, related metadata, and content maintenance workflows.',
+      description:
+        'A ZUTOMAYO MV database for organizing MV reference images, related metadata, and content maintenance workflows.',
     },
     community: {
       ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.community,

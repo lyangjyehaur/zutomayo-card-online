@@ -10,17 +10,17 @@
 
 遊戲棋盤分為雙方各自的區域和全局區域。下表詳列每個區域的規則含義、資料欄位名、可見性及容量限制。
 
-| # | 區域名稱 | 英文名 | 所有者 | 資料欄位 | 卡牌狀態 | 容量 | 規則含義 |
-|----|---------|--------|-------|---------|---------|------|---------|
-| 1 | 牌組 | Deck | 各玩家 | `players[0/1].deck: CardInstance[]` | 通常蓋牌（背面），必要時翻牌 | 無限制（初始 20 張） | 抽牌的來源；磨牌目標；部分效果指定目標 |
-| 2 | 手牌 | Hand | 各玩家 | `players[0/1].hand: CardInstance[]` | 己方可見，對方隱藏（除非特殊效果揭示） | 通常 5~8 張，受 `handSizeModifier` 影響 | 出牌選擇的來源；部分效果可從手牌移動卡牌 |
-| 3 | 戰鬥區 | Battle Zone | 各玩家 | `players[0/1].battleZone: CardInstance \| null` | 公開可見（面朝上） | **最多 1 張 Character** | 當前戰鬥的角色；決定攻擊力與攻擊時間；離場時進 Power Charger 或 Abyss |
-| 4 | 設置區 A | Set Zone A | 各玩家 | `players[0/1].setZoneA: CardInstance \| null` | 等待公開（初始蓋牌）| **最多 1 張** | 本回合設置的卡牌（通常是 Character 或 Enchant）；回合中攻擊力比較後若勝利進 Battle Zone；若敗負則進 Power Charger/Abyss |
-| 5 | 設置區 B | Set Zone B | 各玩家 | `players[0/1].setZoneB: CardInstance \| null` | 等待公開（初始蓋牌） | **最多 1 張** | 本回合設置的第二張卡牌（敗者回合可出 2 張牌，其中一張進 B）；優先度低於 A（同時有 Character 時 A 優先進場） |
-| 6 | 設置區 C | Set Zone C | 各玩家 | `players[0/1].setZoneC: CardInstance \| null` | 公開可見（面朝上） | **最多 1 張 Area Enchant** | 生效中的區域附魔，跨回合持續；進場時舊卡離場；不計入戰鬥對比 |
-| 7 | 充能區 | Power Charger | 各玩家 | `players[0/1].powerCharger: CardInstance[]` | 公開可見 | 無限制 | 離場卡牌的 SEND TO POWER 值累積；部分效果可取用 |
-| 8 | 深淵 | Abyss | 各玩家 | `players[0/1].abyss: CardInstance[]` | 公開可見 | 無限制 | 無 SEND TO POWER 的卡牌最終送達地；部分效果可指定選取；隱喻「消失」 |
-| 9 | 時鐘 | Chronos | 全局 | `chronos: { position: number; nightSidePlayer: PlayerIndex }` | 公開可見 | 18 個刻度（夜/晝各 9） | 晝夜循環；position 0 = 真夜中(NIGHT)，9 = 正午(DAY)；決定攻擊力計算時機 |
+| #   | 區域名稱 | 英文名        | 所有者 | 資料欄位                                                      | 卡牌狀態                               | 容量                                    | 規則含義                                                                                                                |
+| --- | -------- | ------------- | ------ | ------------------------------------------------------------- | -------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1   | 牌組     | Deck          | 各玩家 | `players[0/1].deck: CardInstance[]`                           | 通常蓋牌（背面），必要時翻牌           | 無限制（初始 20 張）                    | 抽牌的來源；磨牌目標；部分效果指定目標                                                                                  |
+| 2   | 手牌     | Hand          | 各玩家 | `players[0/1].hand: CardInstance[]`                           | 己方可見，對方隱藏（除非特殊效果揭示） | 通常 5~8 張，受 `handSizeModifier` 影響 | 出牌選擇的來源；部分效果可從手牌移動卡牌                                                                                |
+| 3   | 戰鬥區   | Battle Zone   | 各玩家 | `players[0/1].battleZone: CardInstance \| null`               | 公開可見（面朝上）                     | **最多 1 張 Character**                 | 當前戰鬥的角色；決定攻擊力與攻擊時間；離場時進 Power Charger 或 Abyss                                                   |
+| 4   | 設置區 A | Set Zone A    | 各玩家 | `players[0/1].setZoneA: CardInstance \| null`                 | 等待公開（初始蓋牌）                   | **最多 1 張**                           | 本回合設置的卡牌（通常是 Character 或 Enchant）；回合中攻擊力比較後若勝利進 Battle Zone；若敗負則進 Power Charger/Abyss |
+| 5   | 設置區 B | Set Zone B    | 各玩家 | `players[0/1].setZoneB: CardInstance \| null`                 | 等待公開（初始蓋牌）                   | **最多 1 張**                           | 本回合設置的第二張卡牌（敗者回合可出 2 張牌，其中一張進 B）；優先度低於 A（同時有 Character 時 A 優先進場）             |
+| 6   | 設置區 C | Set Zone C    | 各玩家 | `players[0/1].setZoneC: CardInstance \| null`                 | 公開可見（面朝上）                     | **最多 1 張 Area Enchant**              | 生效中的區域附魔，跨回合持續；進場時舊卡離場；不計入戰鬥對比                                                            |
+| 7   | 充能區   | Power Charger | 各玩家 | `players[0/1].powerCharger: CardInstance[]`                   | 公開可見                               | 無限制                                  | 離場卡牌的 SEND TO POWER 值累積；部分效果可取用                                                                         |
+| 8   | 深淵     | Abyss         | 各玩家 | `players[0/1].abyss: CardInstance[]`                          | 公開可見                               | 無限制                                  | 無 SEND TO POWER 的卡牌最終送達地；部分效果可指定選取；隱喻「消失」                                                     |
+| 9   | 時鐘     | Chronos       | 全局   | `chronos: { position: number; nightSidePlayer: PlayerIndex }` | 公開可見                               | 18 個刻度（夜/晝各 9）                  | 晝夜循環；position 0 = 真夜中(NIGHT)，9 = 正午(DAY)；決定攻擊力計算時機                                                 |
 
 ### 區域進出規則流程
 
@@ -87,18 +87,18 @@ Set Zone A / Set Zone B (蓋牌)
 
 ## C. Moves 完整清單
 
-| Move 名稱 | 參數 | 預期情境 | 語義 |
-|----------|------|---------|------|
-| `janken` | `choice: 'rock' \| 'paper' \| 'scissors'` | janken 階段 | 提交拳形；決出夜側玩家 |
-| `mulligan` | `indices: number[]` | mulligan 階段 | 選擇要重抽的卡牌 |
-| `keepHand` | 無 | mulligan 階段 | 選擇不重抽 |
-| `setInitialCard` | `handIndex: number` | initialSet 階段 | 從手牌選卡置入 Battle Zone（蓋牌） |
-| `setTurnCard` | `handIndex: number, slot: 'A' \| 'B' \| 'C'` | turnSet 階段 | 從手牌選卡置入 Set Zone |
-| `undoSetCard` | `slot: 'A' \| 'B' \| 'C'` | turnSet 階段 | 回收已放入的卡 |
-| `confirmReady` | 無 | turnSet 階段 | 確認出牌完成；進入效果處理 |
-| `timeoutSkip` | 無 | 超時時 | 強制進入下一階段 |
-| `resolvePendingEffect` | `index: number` | effectOrder 階段 | 接受待處理效果 |
-| `submitPendingChoice` | `optionIds: string[]` | 選擇掛起時 | 回應選擇；執行效果 |
+| Move 名稱              | 參數                                         | 預期情境         | 語義                               |
+| ---------------------- | -------------------------------------------- | ---------------- | ---------------------------------- |
+| `janken`               | `choice: 'rock' \| 'paper' \| 'scissors'`    | janken 階段      | 提交拳形；決出夜側玩家             |
+| `mulligan`             | `indices: number[]`                          | mulligan 階段    | 選擇要重抽的卡牌                   |
+| `keepHand`             | 無                                           | mulligan 階段    | 選擇不重抽                         |
+| `setInitialCard`       | `handIndex: number`                          | initialSet 階段  | 從手牌選卡置入 Battle Zone（蓋牌） |
+| `setTurnCard`          | `handIndex: number, slot: 'A' \| 'B' \| 'C'` | turnSet 階段     | 從手牌選卡置入 Set Zone            |
+| `undoSetCard`          | `slot: 'A' \| 'B' \| 'C'`                    | turnSet 階段     | 回收已放入的卡                     |
+| `confirmReady`         | 無                                           | turnSet 階段     | 確認出牌完成；進入效果處理         |
+| `timeoutSkip`          | 無                                           | 超時時           | 強制進入下一階段                   |
+| `resolvePendingEffect` | `index: number`                              | effectOrder 階段 | 接受待處理效果                     |
+| `submitPendingChoice`  | `optionIds: string[]`                        | 選擇掛起時       | 回應選擇；執行效果                 |
 
 **來源**：Game.ts:153–195、GameLogic.ts:422–1495
 
@@ -164,11 +164,11 @@ Set Zone A / Set Zone B (蓋牌)
 
 ### 勝利條件
 
-| 條件 | 觸發時機 |
-|-----|--------|
-| 對手 HP ≤ 0 | 戰鬥或效果傷害後 |
-| 對手需抽牌但牌組不足 | 回合結束抽牌時 |
-| 特定效果結束遊戲 | 卡牌效果觸發 |
+| 條件                 | 觸發時機         |
+| -------------------- | ---------------- |
+| 對手 HP ≤ 0          | 戰鬥或效果傷害後 |
+| 對手需抽牌但牌組不足 | 回合結束抽牌時   |
+| 特定效果結束遊戲     | 卡牌效果觸發     |
 
 ### 傷害計算流程
 

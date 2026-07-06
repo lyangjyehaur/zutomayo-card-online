@@ -59,7 +59,8 @@ function formatTracePayload(payload: ActionLogEntry['payload']): string {
 function traceContext(entry: ActionLogEntry): string[] {
   const lines: string[] = [];
   if (entry.hp) lines.push(`${t('history.traceHp')} ${entry.hp[0]}/${entry.hp[1]}`);
-  if (typeof entry.chronosPosition === 'number') lines.push(`${t('history.traceChronos')} ${entry.chronosPosition}/${CHRONOS_MAPPING.positions}`);
+  if (typeof entry.chronosPosition === 'number')
+    lines.push(`${t('history.traceChronos')} ${entry.chronosPosition}/${CHRONOS_MAPPING.positions}`);
   if (entry.pendingEffectCardDefId) lines.push(`${t('history.traceEffectCard')} ${entry.pendingEffectCardDefId}`);
   if (entry.pendingChoiceType) lines.push(`${t('history.traceChoice')} ${entry.pendingChoiceType}`);
   return lines;
@@ -84,7 +85,9 @@ function TraceEntry({ entry, locale }: { entry: ActionLogEntry; locale: string }
         </strong>
         <span>{entry.step}</span>
         {payload && <p>{payload}</p>}
-        {resultMessage && <p className={entry.result?.ok ? 'text-accent-success' : 'text-accent-action'}>{resultMessage}</p>}
+        {resultMessage && (
+          <p className={entry.result?.ok ? 'text-accent-success' : 'text-accent-action'}>{resultMessage}</p>
+        )}
         {context.length > 0 && <small className="text-content-primary/50">{context.join(' · ')}</small>}
       </Card>
     </li>
@@ -125,7 +128,9 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
           </Panel>
           <Panel variant="ghost">
             <span className="text-xs text-content-primary/50">{t('history.finalChronos')}</span>
-            <strong>{record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}</strong>
+            <strong>
+              {record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}
+            </strong>
           </Panel>
         </div>
         <div>
@@ -211,107 +216,106 @@ export function MatchHistory(_props: MatchHistoryProps) {
       />
       <main className="relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-20 md:pt-24">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+          <StatsGrid>
+            <StatCard label={t('history.total')} value={stats.totalMatches} />
+            <StatCard label={t('history.p0Wins')} value={stats.wins[0]} />
+            <StatCard label={t('history.p1Wins')} value={stats.wins[1]} />
+            <StatCard label={t('history.avgTurns')} value={stats.avgTurns} />
+          </StatsGrid>
 
-      <StatsGrid>
-        <StatCard label={t('history.total')} value={stats.totalMatches} />
-        <StatCard label={t('history.p0Wins')} value={stats.wins[0]} />
-        <StatCard label={t('history.p1Wins')} value={stats.wins[1]} />
-        <StatCard label={t('history.avgTurns')} value={stats.avgTurns} />
-      </StatsGrid>
+          <section className="flex flex-col gap-3">
+            <FilterToolbar
+              className="sm:flex-row sm:items-center sm:justify-between"
+              primary={<h2>{t('history.title')}</h2>}
+              actions={
+                <ActionBar mobileLayout="pagination">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    type="button"
+                    className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
+                    disabled={currentPage === 0}
+                    onClick={() => setPage((value) => Math.max(0, value - 1))}
+                  >
+                    {t('common.prev')}
+                  </Button>
+                  <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/50">
+                    {currentPage + 1}/{totalPages} {t('common.page')}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    type="button"
+                    className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
+                    disabled={currentPage >= totalPages - 1}
+                    onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+                  >
+                    {t('common.next')}
+                  </Button>
+                </ActionBar>
+              }
+            />
 
-      <section className="flex flex-col gap-3">
-          <FilterToolbar
-            className="sm:flex-row sm:items-center sm:justify-between"
-            primary={<h2>{t('history.title')}</h2>}
-            actions={
-              <ActionBar mobileLayout="pagination">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  type="button"
-                  className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-                  disabled={currentPage === 0}
-                  onClick={() => setPage((value) => Math.max(0, value - 1))}
-                >
-                  {t('common.prev')}
-                </Button>
-                <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/50">
-                  {currentPage + 1}/{totalPages} {t('common.page')}
-                </span>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  type="button"
-                  className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-                  disabled={currentPage >= totalPages - 1}
-                  onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
-                >
-                  {t('common.next')}
-                </Button>
-              </ActionBar>
-            }
-          />
-
-          {records.length === 0 ? (
-            <Panel className="text-sm text-content-primary/60">{t('history.noRecords')}</Panel>
-          ) : (
-            <div className="grid gap-3">
-              {visibleRecords.map((record) => (
-                <Card key={record.id} as="article" className="grid gap-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <Badge tone={resultBadgeTone(record)}>{winnerLabel(record)}</Badge>
-                    <span className="text-sm text-content-primary/50">
-                      {new Date(record.date).toLocaleString(locale, {
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-3">
-                    <span>
-                      {t('history.turns')} {record.turns}
-                    </span>
-                    <span>
-                      {t('history.duration')} {formatDuration(record.duration)}
-                    </span>
-                    <span>
-                      {t('history.finalHp')} {record.players[0].hp}/{record.players[1].hp}
-                    </span>
-                    <span>
-                      {t('history.finalChronos')} {record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}
-                    </span>
-                    <span>
-                      {t('history.traceCount')} {(record.actionLog ?? []).length}
-                    </span>
-                  </div>
-                  <ActionBar mobileLayout="grid">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      type="button"
-                      className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-                      onClick={() => setSelectedRecord(record)}
-                    >
-                      {t('history.viewTrace')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      type="button"
-                      className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-                      onClick={() => downloadMatchActionLog(record)}
-                    >
-                      {t('history.downloadTrace')}
-                    </Button>
-                  </ActionBar>
-                </Card>
-              ))}
-            </div>
-          )}
-        </section>
-        {selectedRecord && <MatchDetail record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
+            {records.length === 0 ? (
+              <Panel className="text-sm text-content-primary/60">{t('history.noRecords')}</Panel>
+            ) : (
+              <div className="grid gap-3">
+                {visibleRecords.map((record) => (
+                  <Card key={record.id} as="article" className="grid gap-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <Badge tone={resultBadgeTone(record)}>{winnerLabel(record)}</Badge>
+                      <span className="text-sm text-content-primary/50">
+                        {new Date(record.date).toLocaleString(locale, {
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <span>
+                        {t('history.turns')} {record.turns}
+                      </span>
+                      <span>
+                        {t('history.duration')} {formatDuration(record.duration)}
+                      </span>
+                      <span>
+                        {t('history.finalHp')} {record.players[0].hp}/{record.players[1].hp}
+                      </span>
+                      <span>
+                        {t('history.finalChronos')} {record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}
+                      </span>
+                      <span>
+                        {t('history.traceCount')} {(record.actionLog ?? []).length}
+                      </span>
+                    </div>
+                    <ActionBar mobileLayout="grid">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        type="button"
+                        className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
+                        onClick={() => setSelectedRecord(record)}
+                      >
+                        {t('history.viewTrace')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        type="button"
+                        className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
+                        onClick={() => downloadMatchActionLog(record)}
+                      >
+                        {t('history.downloadTrace')}
+                      </Button>
+                    </ActionBar>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </section>
+          {selectedRecord && <MatchDetail record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
         </div>
       </main>
     </PageShell>

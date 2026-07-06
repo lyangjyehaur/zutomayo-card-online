@@ -55,9 +55,27 @@ type Channel = {
 const CHANNELS: Channel[] = [
   { to: '/online', no: '01', titleKey: 'lobby.onlineTitle', captionKey: 'lobby.homeOnlineCaption', Icon: Swords },
   { to: '/ai', no: '02', titleKey: 'lobby.aiBattle', captionKey: 'lobby.homeAiCaption', Icon: Bot },
-  { to: '/deck-builder', no: '03', titleKey: 'lobby.deckEditor', captionKey: 'lobby.homeDeckCaption', Icon: LayoutGrid },
-  { to: '/leaderboard', no: '04', titleKey: 'leaderboard.title', captionKey: 'lobby.homeLeaderboardCaption', Icon: Trophy },
-  { to: '/history', no: '05', titleKey: 'lobby.matchHistory', captionKey: 'lobby.homeHistoryCaption', Icon: ScrollText },
+  {
+    to: '/deck-builder',
+    no: '03',
+    titleKey: 'lobby.deckEditor',
+    captionKey: 'lobby.homeDeckCaption',
+    Icon: LayoutGrid,
+  },
+  {
+    to: '/leaderboard',
+    no: '04',
+    titleKey: 'leaderboard.title',
+    captionKey: 'lobby.homeLeaderboardCaption',
+    Icon: Trophy,
+  },
+  {
+    to: '/history',
+    no: '05',
+    titleKey: 'lobby.matchHistory',
+    captionKey: 'lobby.homeHistoryCaption',
+    Icon: ScrollText,
+  },
 ];
 
 const PROJECT_CREDITS = [

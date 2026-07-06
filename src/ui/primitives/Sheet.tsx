@@ -96,7 +96,9 @@ export function Sheet({
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto bg-surface-canvas p-panel">{children}</div>
         {footer && (
-          <footer className="sticky bottom-0 border-t border-border-soft bg-surface-panel-strong p-panel">{footer}</footer>
+          <footer className="sticky bottom-0 border-t border-border-soft bg-surface-panel-strong p-panel">
+            {footer}
+          </footer>
         )}
       </section>
     </div>

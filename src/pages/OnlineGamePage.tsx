@@ -86,7 +86,9 @@ function LeaveConfirmDialog({
         </>
       }
     >
-      <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('game.onlineMode')}</span>
+      <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+        {t('game.onlineMode')}
+      </span>
     </Dialog>
   );
 }
@@ -300,7 +302,11 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
         ? t('online.leaveRoom')
         : t('common.backToLobby');
     const panelTone =
-      copy.tone === 'error' ? 'text-accent-action/80' : copy.tone === 'waiting' ? 'text-accent-primary/70' : 'text-content-primary/45';
+      copy.tone === 'error'
+        ? 'text-accent-action/80'
+        : copy.tone === 'waiting'
+          ? 'text-accent-primary/70'
+          : 'text-content-primary/45';
 
     return (
       <PageShell className="flex items-center justify-center px-4" glow={{ color: 'vermilion', size: 'md' }}>

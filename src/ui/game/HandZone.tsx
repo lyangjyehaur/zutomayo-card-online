@@ -22,12 +22,7 @@ export interface HandZoneProps {
 export function HandZone({ cards, variant, selectedIndex, canAct, onCardTap, onCardHover }: HandZoneProps) {
   const center = (cards.length - 1) / 2;
   return (
-    <div
-      className={`handzone handzone-${variant}`}
-      data-zone="hand"
-      role="group"
-      aria-label={`hand (${cards.length})`}
-    >
+    <div className={`handzone handzone-${variant}`} data-zone="hand" role="group" aria-label={`hand (${cards.length})`}>
       {cards.map((card, index) => {
         const state: CardViewState = selectedIndex === index ? 'selected' : canAct ? 'playable' : 'idle';
         const fanStyle =

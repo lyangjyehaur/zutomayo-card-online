@@ -59,7 +59,11 @@ export function ChronosDial({ chronos, currentTime, currentPlayer }: ChronosDial
   const timeLabel = currentTime === 'night' ? t('board.night') : t('board.day');
 
   return (
-    <div className="chronosdial" data-time={currentTime} aria-label={`${t('chronos.title')} ${position}/${POSITIONS} · ${timeLabel}`}>
+    <div
+      className="chronosdial"
+      data-time={currentTime}
+      aria-label={`${t('chronos.title')} ${position}/${POSITIONS} · ${timeLabel}`}
+    >
       <svg viewBox={`0 0 ${SIZE} ${SIZE}`} role="img" aria-hidden="true">
         <g className="chronosdial-ring" style={{ transform: `rotate(${rotation}deg)` }}>
           {Array.from({ length: POSITIONS }, (_, index) => (

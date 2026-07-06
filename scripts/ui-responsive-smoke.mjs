@@ -301,7 +301,9 @@ async function waitForPage(client, testCase, timeoutMs = 16000) {
     client,
     `({ href: location.href, text: document.body?.innerText?.slice(0, 1000) ?? '' })`,
   );
-  throw new Error(`Timed out waiting for ${testCase.waitFor ?? testCase.waitForText}\n${JSON.stringify(debug, null, 2)}`);
+  throw new Error(
+    `Timed out waiting for ${testCase.waitFor ?? testCase.waitForText}\n${JSON.stringify(debug, null, 2)}`,
+  );
 }
 
 const metricsExpression = `
@@ -362,7 +364,10 @@ function failuresFor(testCase, metrics) {
   if (!metrics.checkedSurface.length && testCase.pageId !== 'ai-lobby' && testCase.pageId !== 'online-lobby') {
     failures.push('missing checked surface');
   }
-  if (metrics.offscreen.length) failures.push(`offscreenX: ${metrics.offscreen.map((item) => item.text || `${item.width}x${item.height}`).join(', ')}`);
+  if (metrics.offscreen.length)
+    failures.push(
+      `offscreenX: ${metrics.offscreen.map((item) => item.text || `${item.width}x${item.height}`).join(', ')}`,
+    );
   if (testCase.width <= 820 && metrics.smallTargets.length) {
     failures.push(
       `small touch targets: ${metrics.smallTargets
@@ -379,7 +384,9 @@ const results = [];
 try {
   await waitForCdp();
   const tabs = await getJson('/json/list');
-  const tab = tabs.find((item) => item.type === 'page' && item.url === 'about:blank') ?? tabs.find((item) => item.type === 'page');
+  const tab =
+    tabs.find((item) => item.type === 'page' && item.url === 'about:blank') ??
+    tabs.find((item) => item.type === 'page');
   if (!tab) throw new Error(`No debuggable page target\n${JSON.stringify(tabs, null, 2)}`);
   client = await connect(tab.webSocketDebuggerUrl);
   await client.send('Page.enable');
@@ -415,7 +422,15 @@ try {
       const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       await fs.writeFile(screenshot, Buffer.from(shot.data, 'base64'));
     }
-    results.push({ name: testCase.name, path: testCase.path, width: testCase.width, height: testCase.height, screenshot: failures.length ? screenshot : null, metrics, failures });
+    results.push({
+      name: testCase.name,
+      path: testCase.path,
+      width: testCase.width,
+      height: testCase.height,
+      screenshot: failures.length ? screenshot : null,
+      metrics,
+      failures,
+    });
   }
 } finally {
   if (client) client.close();

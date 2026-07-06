@@ -6,7 +6,17 @@ import { getTranslatedEffect } from '../game/cards/i18n';
 import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
 import { ChevronLeft, ChevronRight, Eye, Layers, Save, Search, SlidersHorizontal, X } from 'lucide-react';
-import { Alert, BackButton, Button, IconButton, Input, SearchInput, SegmentedControl, ToolHeader, WorkspaceLayout } from '../ui';
+import {
+  Alert,
+  BackButton,
+  Button,
+  IconButton,
+  Input,
+  SearchInput,
+  SegmentedControl,
+  ToolHeader,
+  WorkspaceLayout,
+} from '../ui';
 import {
   CardBrowser,
   CardBrowserDetailPopover,
@@ -337,8 +347,12 @@ export function DeckEditor({
     <>
       <div className="mb-3 flex items-end justify-between border-b border-content-primary/10 pb-3">
         <div className="min-w-0">
-          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Active Deck</div>
-          <h2 className="truncate font-display text-2xl font-bold">{deckName?.trim() || t('deckEditor.currentDeck')}</h2>
+          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+            Active Deck
+          </div>
+          <h2 className="truncate font-display text-2xl font-bold">
+            {deckName?.trim() || t('deckEditor.currentDeck')}
+          </h2>
         </div>
         <div className="font-mono text-xs text-content-primary/50" aria-live="polite">
           <span className="text-accent-primary">{deck.length}</span> / {DECK_SIZE}
@@ -348,7 +362,9 @@ export function DeckEditor({
       <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-normal text-content-primary/40">
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleCharacters')}</span>
-          <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-accent-action/70'}>
+          <span
+            className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-accent-action/70'}
+          >
             {characterCount}
           </span>
         </div>
@@ -372,7 +388,10 @@ export function DeckEditor({
             role="listitem"
           >
             <div className="flex min-w-0 items-center gap-2">
-              <span className="font-mono text-caption text-accent-primary" aria-label={`${t('card.energy')} ${card.powerCost}`}>
+              <span
+                className="font-mono text-caption text-accent-primary"
+                aria-label={`${t('card.energy')} ${card.powerCost}`}
+              >
                 {card.powerCost}
               </span>
               <span className="truncate font-display text-sm font-bold text-content-primary/80">{card.name}</span>
@@ -506,170 +525,170 @@ export function DeckEditor({
         </>
       }
     >
-        <CardBrowser label="Card Pool">
-          <CardBrowserToolbar
-            kicker="Archive"
-            title="Card Pool"
-            search={
-              <div className="relative flex w-full items-center gap-2 sm:w-auto">
-                <SearchInput
-                  containerClassName="sm:w-56"
-                  icon={<Search className="size-3.5 text-content-primary/40" aria-hidden="true" />}
-                  placeholder={t('deckEditor.search')}
-                  value={searchText}
-                  onChange={(event) => setSearchText(event.target.value)}
-                  aria-label={t('deckEditor.search')}
+      <CardBrowser label="Card Pool">
+        <CardBrowserToolbar
+          kicker="Archive"
+          title="Card Pool"
+          search={
+            <div className="relative flex w-full items-center gap-2 sm:w-auto">
+              <SearchInput
+                containerClassName="sm:w-56"
+                icon={<Search className="size-3.5 text-content-primary/40" aria-hidden="true" />}
+                placeholder={t('deckEditor.search')}
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                aria-label={t('deckEditor.search')}
+              />
+              {searchText && (
+                <IconButton
+                  onClick={() => setSearchText('')}
+                  size="sm"
+                  label={t('common.clear')}
+                  icon={<X className="size-3.5" aria-hidden="true" />}
                 />
-                {searchText && (
-                  <IconButton
-                    onClick={() => setSearchText('')}
-                    size="sm"
-                    label={t('common.clear')}
-                    icon={<X className="size-3.5" aria-hidden="true" />}
-                  />
-                )}
-              </div>
-            }
-            actions={
-              <div className="grid grid-cols-2 gap-2 lg:flex lg:justify-end xl:hidden">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="md"
-                  onClick={() => setFiltersOpen(true)}
-                  className="w-full justify-between px-3 tracking-[var(--tracking-control)] lg:hidden"
-                  aria-label={t('deckEditor.filters')}
-                  data-deck-editor-control="filters"
-                >
-                  <SlidersHorizontal className="size-3.5" aria-hidden="true" />
-                  <span className="truncate">{t('deckEditor.filters')}</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="md"
-                  onClick={() => setDeckSheetOpen(true)}
-                  className="w-full justify-between px-3 tracking-[var(--tracking-control)] lg:w-auto"
-                  aria-label={t('deckEditor.openDeck')}
-                  data-deck-editor-control="active-deck"
-                >
-                  <Layers className="size-3.5" aria-hidden="true" />
-                  <span className="truncate">
-                    {deck.length}/{DECK_SIZE}
-                  </span>
-                </Button>
-              </div>
-            }
-            summary={
-              <div
-                className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] lg:hidden"
-                aria-live="polite"
+              )}
+            </div>
+          }
+          actions={
+            <div className="grid grid-cols-2 gap-2 lg:flex lg:justify-end xl:hidden">
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                onClick={() => setFiltersOpen(true)}
+                className="w-full justify-between px-3 tracking-[var(--tracking-control)] lg:hidden"
+                aria-label={t('deckEditor.filters')}
+                data-deck-editor-control="filters"
               >
-                <span className={isValid ? 'text-accent-primary/70' : 'text-accent-action/70'}>{deckStatusLabel}</span>
-                <span className="min-w-0 truncate text-content-primary/35">{filterSummary}</span>
-              </div>
-            }
-          />
-
-          <div className="mb-4 hidden lg:block">{renderFilterControls()}</div>
-
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <span
-              className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/40 md:tracking-[var(--tracking-kicker)]"
+                <SlidersHorizontal className="size-3.5" aria-hidden="true" />
+                <span className="truncate">{t('deckEditor.filters')}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                onClick={() => setDeckSheetOpen(true)}
+                className="w-full justify-between px-3 tracking-[var(--tracking-control)] lg:w-auto"
+                aria-label={t('deckEditor.openDeck')}
+                data-deck-editor-control="active-deck"
+              >
+                <Layers className="size-3.5" aria-hidden="true" />
+                <span className="truncate">
+                  {deck.length}/{DECK_SIZE}
+                </span>
+              </Button>
+            </div>
+          }
+          summary={
+            <div
+              className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] lg:hidden"
               aria-live="polite"
             >
-              {t('deck.foundCards').replace('{count}', String(filteredCards.length))} · {currentPage + 1}/{totalPages}
-            </span>
-            <nav className="flex items-center gap-3" aria-label="Pagination">
-              <Button
-                type="button"
-                disabled={currentPage === 0}
-                onClick={() => setPage((value) => Math.max(0, value - 1))}
-                variant="ghost"
-                size="md"
-                className="px-3"
-                aria-label={t('common.prev')}
-              >
-                <ChevronLeft className="size-3.5" aria-hidden="true" /> {t('common.prev')}
-              </Button>
-              <Button
-                type="button"
-                disabled={currentPage >= totalPages - 1}
-                onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
-                variant="ghost"
-                size="md"
-                className="px-3"
-                aria-label={t('common.next')}
-              >
-                {t('common.next')} <ChevronRight className="size-3.5" aria-hidden="true" />
-              </Button>
-            </nav>
-          </div>
+              <span className={isValid ? 'text-accent-primary/70' : 'text-accent-action/70'}>{deckStatusLabel}</span>
+              <span className="min-w-0 truncate text-content-primary/35">{filterSummary}</span>
+            </div>
+          }
+        />
 
-          <CardBrowserGrid>
-            {visibleCards.map((card) => {
-              const count = deckCounts.get(card.id) ?? 0;
-              const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
-              return (
-                <div key={card.id} className="group relative">
-                  <button
-                    type="button"
-                    disabled={!canAdd}
-                    onClick={() => addCard(card.id)}
-                    onMouseEnter={(e) => handleCardEnter(card, e)}
-                    onMouseLeave={handleCardLeave}
-                    onFocus={(e) => handleCardEnter(card, e)}
-                    onBlur={handleCardLeave}
-                    className={`relative flex aspect-[5/7] w-full cursor-pointer flex-col rounded-sm bg-surface-canvas ring-1 transition hover:-translate-y-1 hover:ring-accent-primary/40 focus:outline-none focus:ring-accent-primary/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-content-primary/10 ${
-                      count > 0 ? 'ring-accent-primary/30' : 'ring-content-primary/10'
-                    }`}
-                  >
-                    <div className="absolute inset-0 overflow-hidden rounded-sm">
-                      <img
-                        src={card.image}
-                        alt={card.name}
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                        className="absolute inset-0 size-full object-cover"
-                      />
-                    </div>
-                    {/* 費用角標 */}
-                    <span className="absolute left-1 top-1 rounded-full bg-surface-canvas/85 px-1.5 py-0.5 font-mono text-minutia leading-none text-accent-primary ring-1 ring-accent-primary/30">
-                      {card.powerCost}
+        <div className="mb-4 hidden lg:block">{renderFilterControls()}</div>
+
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <span
+            className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/40 md:tracking-[var(--tracking-kicker)]"
+            aria-live="polite"
+          >
+            {t('deck.foundCards').replace('{count}', String(filteredCards.length))} · {currentPage + 1}/{totalPages}
+          </span>
+          <nav className="flex items-center gap-3" aria-label="Pagination">
+            <Button
+              type="button"
+              disabled={currentPage === 0}
+              onClick={() => setPage((value) => Math.max(0, value - 1))}
+              variant="ghost"
+              size="md"
+              className="px-3"
+              aria-label={t('common.prev')}
+            >
+              <ChevronLeft className="size-3.5" aria-hidden="true" /> {t('common.prev')}
+            </Button>
+            <Button
+              type="button"
+              disabled={currentPage >= totalPages - 1}
+              onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+              variant="ghost"
+              size="md"
+              className="px-3"
+              aria-label={t('common.next')}
+            >
+              {t('common.next')} <ChevronRight className="size-3.5" aria-hidden="true" />
+            </Button>
+          </nav>
+        </div>
+
+        <CardBrowserGrid>
+          {visibleCards.map((card) => {
+            const count = deckCounts.get(card.id) ?? 0;
+            const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
+            return (
+              <div key={card.id} className="group relative">
+                <button
+                  type="button"
+                  disabled={!canAdd}
+                  onClick={() => addCard(card.id)}
+                  onMouseEnter={(e) => handleCardEnter(card, e)}
+                  onMouseLeave={handleCardLeave}
+                  onFocus={(e) => handleCardEnter(card, e)}
+                  onBlur={handleCardLeave}
+                  className={`relative flex aspect-[5/7] w-full cursor-pointer flex-col rounded-sm bg-surface-canvas ring-1 transition hover:-translate-y-1 hover:ring-accent-primary/40 focus:outline-none focus:ring-accent-primary/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:ring-content-primary/10 ${
+                    count > 0 ? 'ring-accent-primary/30' : 'ring-content-primary/10'
+                  }`}
+                >
+                  <div className="absolute inset-0 overflow-hidden rounded-sm">
+                    <img
+                      src={card.image}
+                      alt={card.name}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="absolute inset-0 size-full object-cover"
+                    />
+                  </div>
+                  {/* 費用角標 */}
+                  <span className="absolute left-1 top-1 rounded-full bg-surface-canvas/85 px-1.5 py-0.5 font-mono text-minutia leading-none text-accent-primary ring-1 ring-accent-primary/30">
+                    {card.powerCost}
+                  </span>
+                  {/* 已加入數量 */}
+                  {count > 0 && (
+                    <span className="absolute right-1 top-1 rounded-full bg-accent-primary/30 px-1.5 py-0.5 font-mono text-minutia leading-none text-accent-primary ring-1 ring-accent-primary/40">
+                      ×{count}
                     </span>
-                    {/* 已加入數量 */}
-                    {count > 0 && (
-                      <span className="absolute right-1 top-1 rounded-full bg-accent-primary/30 px-1.5 py-0.5 font-mono text-minutia leading-none text-accent-primary ring-1 ring-accent-primary/40">
-                        ×{count}
-                      </span>
-                    )}
-                  </button>
-                  <IconButton
-                    className="absolute bottom-1 right-1 z-[var(--z-dropdown)] bg-surface-canvas/90 text-content-primary/70 ring-1 ring-content-primary/20 backdrop-blur hover:text-accent-primary"
-                    label={`Preview ${card.name}`}
-                    icon={<Eye className="size-4" aria-hidden="true" />}
-                    onClick={(event) => handlePreviewClick(card, event)}
-                    onMouseEnter={(event) => handleCardEnter(card, event)}
-                    onMouseLeave={handleCardLeave}
-                    onFocus={(event) => handleCardEnter(card, event)}
-                    onBlur={handleCardLeave}
-                  />
-                </div>
-              );
-            })}
-          </CardBrowserGrid>
-        </CardBrowser>
+                  )}
+                </button>
+                <IconButton
+                  className="absolute bottom-1 right-1 z-[var(--z-dropdown)] bg-surface-canvas/90 text-content-primary/70 ring-1 ring-content-primary/20 backdrop-blur hover:text-accent-primary"
+                  label={`Preview ${card.name}`}
+                  icon={<Eye className="size-4" aria-hidden="true" />}
+                  onClick={(event) => handlePreviewClick(card, event)}
+                  onMouseEnter={(event) => handleCardEnter(card, event)}
+                  onMouseLeave={handleCardLeave}
+                  onFocus={(event) => handleCardEnter(card, event)}
+                  onBlur={handleCardLeave}
+                />
+              </div>
+            );
+          })}
+        </CardBrowserGrid>
+      </CardBrowser>
 
-        {/* hover 浮層：透過 portal 渲染到 document.body，避免被 overflow 裁切 */}
-        {previewCard &&
-          popoverPos &&
-          createPortal(
-            <CardBrowserDetailPopover
-              {...cardDetailProps(previewCard)}
-              style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` }}
-            />,
-            document.body,
-          )}
+      {/* hover 浮層：透過 portal 渲染到 document.body，避免被 overflow 裁切 */}
+      {previewCard &&
+        popoverPos &&
+        createPortal(
+          <CardBrowserDetailPopover
+            {...cardDetailProps(previewCard)}
+            style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` }}
+          />,
+          document.body,
+        )}
 
       {detailSheetCard && (
         <CardBrowserDetailSheet
