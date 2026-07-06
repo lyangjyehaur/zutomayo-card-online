@@ -21,14 +21,14 @@ import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
 import {
-  DEFAULT_ABOUT_PAGE_CONFIG,
+  DEFAULT_ABOUT_PAGE_I18N_CONFIG,
   fetchAboutPage,
   type AboutPageConfig,
   type AboutPageLink,
 } from '../api/client';
 import { AppHeader, Button, Dialog, IconButton, PageShell, Panel } from '../ui';
 import { ChronosDial } from '../ui/game';
-import { t, type TranslationKey } from '../i18n';
+import { t, useLocale, type TranslationKey } from '../i18n';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
 export { DEFAULT_DECK_NAME, aiOpponentDeckName, onlineDeckName, selectedDeckName } from '../components/lobby/shared';
@@ -98,10 +98,11 @@ function AboutFeatureLink({ link, Icon }: { link: AboutPageLink; Icon: typeof Gi
 
 export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
+  const locale = useLocale();
   const [showDeckIntro, setShowDeckIntro] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [aboutConfig, setAboutConfig] = useState<AboutPageConfig>(DEFAULT_ABOUT_PAGE_CONFIG);
+  const [aboutConfig, setAboutConfig] = useState<AboutPageConfig>(DEFAULT_ABOUT_PAGE_I18N_CONFIG[locale]);
 
   useEffect(() => {
     const seen = localStorage.getItem('zutomayo_deck_intro_seen');
@@ -110,13 +111,14 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
 
   useEffect(() => {
     let cancelled = false;
-    fetchAboutPage().then((config) => {
+    setAboutConfig(DEFAULT_ABOUT_PAGE_I18N_CONFIG[locale]);
+    fetchAboutPage(locale).then((config) => {
       if (!cancelled) setAboutConfig(config);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [locale]);
 
   const handleDismissIntro = () => {
     localStorage.setItem('zutomayo_deck_intro_seen', 'true');

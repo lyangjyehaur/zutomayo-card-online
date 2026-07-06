@@ -15,11 +15,11 @@ import {
   adminUpdateAboutPage,
   adminUpdateCard,
   adminUpdateCardI18n,
-  DEFAULT_ABOUT_PAGE_CONFIG,
-  fetchAboutPage,
+  DEFAULT_ABOUT_PAGE_I18N_CONFIG,
+  fetchAboutPageI18n,
   fetchCardI18n,
 } from '../api/client';
-import type { AboutPageConfig, AdminMatch, AdminUser } from '../api/client';
+import type { AboutPageConfig, AboutPageI18nConfig, AboutPageLocale, AdminMatch, AdminUser } from '../api/client';
 import {
   Badge,
   BackButton,
@@ -68,6 +68,11 @@ const I18N_LANGS = [
   { code: 'en', label: 'English' },
   { code: 'ko', label: '한국어' },
 ] as const;
+
+const ABOUT_LANGS: Array<{ code: AboutPageLocale; label: string }> = I18N_LANGS.map((lang) => ({
+  code: lang.code as AboutPageLocale,
+  label: lang.label,
+}));
 
 type AdminTab = 'cards' | 'users' | 'matches' | 'about';
 type ModalTab = 'basic' | 'engine' | 'i18n';
@@ -491,7 +496,8 @@ function I18nEditor({ cardId }: { cardId: string }) {
 }
 
 function AboutSettingsEditor() {
-  const [draft, setDraft] = useState<AboutPageConfig>(DEFAULT_ABOUT_PAGE_CONFIG);
+  const [draft, setDraft] = useState<AboutPageI18nConfig>(DEFAULT_ABOUT_PAGE_I18N_CONFIG);
+  const [activeLocale, setActiveLocale] = useState<AboutPageLocale>('zh-TW');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -499,20 +505,25 @@ function AboutSettingsEditor() {
 
   useEffect(() => {
     setLoading(true);
-    fetchAboutPage()
+    fetchAboutPageI18n()
       .then(setDraft)
-      .catch(() => setDraft(DEFAULT_ABOUT_PAGE_CONFIG))
+      .catch(() => setDraft(DEFAULT_ABOUT_PAGE_I18N_CONFIG))
       .finally(() => setLoading(false));
   }, []);
 
-  const setField = (field: keyof Pick<AboutPageConfig, 'title' | 'description'>, value: string) => {
-    setDraft((current) => ({ ...current, [field]: value }));
+  const currentDraft = draft[activeLocale];
+
+  const updateCurrentDraft = (update: (current: AboutPageConfig) => AboutPageConfig) => {
+    setDraft((current) => ({ ...current, [activeLocale]: update(current[activeLocale]) }));
     setSuccess(false);
   };
 
+  const setField = (field: keyof Pick<AboutPageConfig, 'title' | 'description'>, value: string) => {
+    updateCurrentDraft((current) => ({ ...current, [field]: value }));
+  };
+
   const setPersonField = (person: 'author' | 'artist', field: keyof AboutPageConfig['author'], value: string) => {
-    setDraft((current) => ({ ...current, [person]: { ...current[person], [field]: value } }));
-    setSuccess(false);
+    updateCurrentDraft((current) => ({ ...current, [person]: { ...current[person], [field]: value } }));
   };
 
   const setLinkField = (
@@ -520,13 +531,11 @@ function AboutSettingsEditor() {
     field: keyof AboutPageConfig['github'],
     value: string,
   ) => {
-    setDraft((current) => ({ ...current, [link]: { ...current[link], [field]: value } }));
-    setSuccess(false);
+    updateCurrentDraft((current) => ({ ...current, [link]: { ...current[link], [field]: value } }));
   };
 
   const setCommunityField = (field: keyof AboutPageConfig['community'], value: string) => {
-    setDraft((current) => ({ ...current, community: { ...current.community, [field]: value } }));
-    setSuccess(false);
+    updateCurrentDraft((current) => ({ ...current, community: { ...current.community, [field]: value } }));
   };
 
   const handleSave = async () => {
@@ -551,33 +560,42 @@ function AboutSettingsEditor() {
         <div>
           <h2 className="font-display text-xl font-bold text-content-primary">About 彈窗</h2>
           <p className="mt-1 text-body leading-relaxed text-content-muted">
-            這裡的內容會保存到資料庫，首頁 About 彈窗會讀取同一份設定。
+            這裡的內容會保存到資料庫，首頁 About 彈窗會依照目前語言讀取對應設定。
           </p>
         </div>
+        <SegmentedControl
+          className="admin-tablist"
+          behavior="tabs"
+          size="sm"
+          ariaLabel="About 語言"
+          options={ABOUT_LANGS.map((lang) => ({ value: lang.code, label: lang.label }))}
+          value={activeLocale}
+          onChange={setActiveLocale}
+        />
         <label className="grid gap-1">
           <span className="text-xs text-content-primary/50">標題</span>
-          <Input value={draft.title} onChange={(e) => setField('title', e.target.value)} />
+          <Input value={currentDraft.title} onChange={(e) => setField('title', e.target.value)} />
         </label>
         <label className="grid gap-1">
           <span className="text-xs text-content-primary/50">自述文本</span>
-          <Textarea value={draft.description} onChange={(e) => setField('description', e.target.value)} rows={3} />
+          <Textarea value={currentDraft.description} onChange={(e) => setField('description', e.target.value)} rows={3} />
         </label>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">作者名稱</span>
-            <Input value={draft.author.name} onChange={(e) => setPersonField('author', 'name', e.target.value)} />
+            <Input value={currentDraft.author.name} onChange={(e) => setPersonField('author', 'name', e.target.value)} />
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">作者 URL</span>
-            <Input value={draft.author.url} onChange={(e) => setPersonField('author', 'url', e.target.value)} />
+            <Input value={currentDraft.author.url} onChange={(e) => setPersonField('author', 'url', e.target.value)} />
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">畫師名稱</span>
-            <Input value={draft.artist.name} onChange={(e) => setPersonField('artist', 'name', e.target.value)} />
+            <Input value={currentDraft.artist.name} onChange={(e) => setPersonField('artist', 'name', e.target.value)} />
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">畫師 URL</span>
-            <Input value={draft.artist.url} onChange={(e) => setPersonField('artist', 'url', e.target.value)} />
+            <Input value={currentDraft.artist.url} onChange={(e) => setPersonField('artist', 'url', e.target.value)} />
           </label>
         </div>
       </Panel>
@@ -592,17 +610,20 @@ function AboutSettingsEditor() {
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">顯示標題</span>
-            <Input value={draft.github.title} onChange={(e) => setLinkField('github', 'title', e.target.value)} />
+            <Input
+              value={currentDraft.github.title}
+              onChange={(e) => setLinkField('github', 'title', e.target.value)}
+            />
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">URL</span>
-            <Input value={draft.github.url} onChange={(e) => setLinkField('github', 'url', e.target.value)} />
+            <Input value={currentDraft.github.url} onChange={(e) => setLinkField('github', 'url', e.target.value)} />
           </label>
         </div>
         <label className="grid gap-1">
           <span className="text-xs text-content-primary/50">描述</span>
           <Textarea
-            value={draft.github.description}
+            value={currentDraft.github.description}
             onChange={(e) => setLinkField('github', 'description', e.target.value)}
             rows={3}
           />
@@ -620,14 +641,14 @@ function AboutSettingsEditor() {
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">顯示標題</span>
             <Input
-              value={draft.otherProjects.title}
+              value={currentDraft.otherProjects.title}
               onChange={(e) => setLinkField('otherProjects', 'title', e.target.value)}
             />
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">URL</span>
             <Input
-              value={draft.otherProjects.url}
+              value={currentDraft.otherProjects.url}
               onChange={(e) => setLinkField('otherProjects', 'url', e.target.value)}
             />
           </label>
@@ -635,7 +656,7 @@ function AboutSettingsEditor() {
         <label className="grid gap-1">
           <span className="text-xs text-content-primary/50">描述</span>
           <Textarea
-            value={draft.otherProjects.description}
+            value={currentDraft.otherProjects.description}
             onChange={(e) => setLinkField('otherProjects', 'description', e.target.value)}
             rows={3}
           />
@@ -652,7 +673,7 @@ function AboutSettingsEditor() {
         <label className="grid gap-1">
           <span className="text-xs text-content-primary/50">社群描述</span>
           <Textarea
-            value={draft.community.description}
+            value={currentDraft.community.description}
             onChange={(e) => setCommunityField('description', e.target.value)}
             rows={3}
           />
@@ -660,19 +681,19 @@ function AboutSettingsEditor() {
         <div className="grid gap-3 md:grid-cols-3">
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">QQ群 URL</span>
-            <Input value={draft.community.qqUrl} onChange={(e) => setCommunityField('qqUrl', e.target.value)} />
+            <Input value={currentDraft.community.qqUrl} onChange={(e) => setCommunityField('qqUrl', e.target.value)} />
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">Telegram URL</span>
             <Input
-              value={draft.community.telegramUrl}
+              value={currentDraft.community.telegramUrl}
               onChange={(e) => setCommunityField('telegramUrl', e.target.value)}
             />
           </label>
           <label className="grid gap-1">
             <span className="text-xs text-content-primary/50">Discord URL</span>
             <Input
-              value={draft.community.discordUrl}
+              value={currentDraft.community.discordUrl}
               onChange={(e) => setCommunityField('discordUrl', e.target.value)}
             />
           </label>
