@@ -63,7 +63,7 @@ export function Dialog({
     <div
       ref={overlayRef}
       className={cn(
-        'fixed inset-0 z-[var(--z-modal)] flex overflow-y-auto bg-surface-overlay p-4 backdrop-blur',
+        'motion-overlay-enter fixed inset-0 z-[var(--z-modal)] flex overflow-y-auto bg-surface-overlay p-4 backdrop-blur',
         mobilePresentation === 'sheet' ? 'items-end justify-center md:items-center' : 'items-center justify-center',
         overlayClassName,
       )}
@@ -80,7 +80,7 @@ export function Dialog({
         tabIndex={-1}
         className={cn(
           'relative flex max-h-[calc(100dvh_-_var(--space-8))] w-full flex-col rounded-md bg-surface-panel-strong ring-1 ring-border-strong shadow-sheet',
-          'animate-in fade-in slide-in-from-bottom-2 duration-[var(--motion-duration-base)] focus:outline-none',
+          'motion-panel-enter focus:outline-none',
           sizeClass[size],
           className,
         )}

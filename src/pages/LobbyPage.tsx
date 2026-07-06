@@ -28,9 +28,11 @@ import {
   type AboutPageConfig,
   type AboutPageLink,
 } from '../api/client';
+import { getAllCardDefs, refreshCards } from '../game/cards/loader';
 import { AppHeader, Button, Dialog, IconButton, PageShell, Panel } from '../ui';
 import { ChronosDial } from '../ui/game';
 import { t, useLocale, type TranslationKey } from '../i18n';
+import type { CardDef } from '../game/types';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
 export { DEFAULT_DECK_NAME, aiOpponentDeckName, onlineDeckName, selectedDeckName } from '../components/lobby/shared';
@@ -42,9 +44,8 @@ interface LobbyPageProps {
 /**
  * 首頁「夜間放送 Night Broadcast」— Design System v2 從零設計。
  *
- * 構圖：浮動膠囊頁首（同對戰 HUD）＋ 主視覺（wordmark × ChronosDial 待機儀表）
- * ＋ 底部頻道列（CH.01–05 模式入口）。沒有通欄 header、沒有滿版卡片牆、
- * 沒有隨機卡圖模糊背景 — 卡牌彩度留給對戰。
+ * 構圖：浮動膠囊頁首（同對戰 HUD）＋ 模糊卡圖環境層 ＋ 主視覺（wordmark × ChronosDial 待機儀表）
+ * ＋ 底部頻道列（CH.01–05 模式入口）。沒有通欄 header、沒有滿版卡片牆。
  */
 type Channel = {
   to: string;
@@ -91,6 +92,15 @@ const PROJECT_CREDITS = [
 
 // 待機儀表的靜態 Chronos 狀態（真夜中・夜側）— 純裝飾，與對戰共用同一元件
 const IDLE_CHRONOS = { position: 0, nightSidePlayer: 1 as const };
+const LOBBY_BACKGROUND_FALLBACK_IMAGE = 'https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_1.jpg';
+
+function randomLobbyBackgroundImage(cards: CardDef[]): string | null {
+  const featuredCards = cards.filter((card) => card.rarity === 'UR' || card.rarity === 'SR' || card.rarity === 'SE');
+  const sourceCards = featuredCards.some((card) => card.image) ? featuredCards : cards;
+  const images = sourceCards.map((card) => card.image).filter((image): image is string => Boolean(image));
+  if (images.length === 0) return null;
+  return images[Math.floor(Math.random() * images.length)];
+}
 
 function AboutFeatureLink({ link, Icon }: { link: AboutPageLink; Icon: typeof Github }) {
   return (
@@ -124,6 +134,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const { onlineCount } = useOnlinePresence();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutConfig, setAboutConfig] = useState<AboutPageConfig>(DEFAULT_ABOUT_PAGE_I18N_CONFIG[locale]);
+  const [backgroundImage, setBackgroundImage] = useState(
+    () => randomLobbyBackgroundImage(getAllCardDefs()) ?? LOBBY_BACKGROUND_FALLBACK_IMAGE,
+  );
 
   useEffect(() => {
     const seen = localStorage.getItem('zutomayo_deck_intro_seen');
@@ -140,6 +153,17 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       cancelled = true;
     };
   }, [locale]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void refreshCards().then((cards) => {
+      const image = randomLobbyBackgroundImage(cards);
+      if (!cancelled && image) setBackgroundImage(image);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleDismissIntro = () => {
     localStorage.setItem('zutomayo_deck_intro_seen', 'true');
@@ -160,8 +184,23 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
 
   return (
     <PageShell>
-      {/* 環境層：安靜的中央光暈＋夜色微染＋點陣（與戰場同語言，無卡圖背景） */}
+      {/* 環境層：隨機卡牌模糊背景＋中央光暈＋夜色微染＋點陣（與戰場同語言） */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        {backgroundImage && (
+          <img
+            src={backgroundImage}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="absolute inset-[-7%] h-[114%] w-[114%] object-cover opacity-45 blur-[6px] brightness-[0.72] saturate-[1.35]"
+            onError={() =>
+              setBackgroundImage((current) =>
+                current === LOBBY_BACKGROUND_FALLBACK_IMAGE ? '' : LOBBY_BACKGROUND_FALLBACK_IMAGE,
+              )
+            }
+          />
+        )}
+        <div className="absolute inset-0 bg-surface-canvas/58" />
+        <div className="absolute inset-0 bg-gradient-to-r from-surface-canvas/82 via-surface-canvas/24 to-surface-canvas/62" />
         <div className="absolute left-1/2 top-1/2 h-[70vh] w-[110vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(from_var(--time-night)_l_c_h_/_0.07)] blur-[var(--ambient-glow-blur-lg)]" />
         <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
       </div>

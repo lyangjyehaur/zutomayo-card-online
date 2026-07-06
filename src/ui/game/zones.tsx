@@ -21,20 +21,15 @@ export interface SetZoneProps {
   onInspect?: (card: CardInstance) => void;
 }
 
-const HINT_KEY = {
-  A: 'board.zoneHint.A',
-  B: 'board.zoneHint.B',
-  C: 'board.zoneHint.C',
-} as const;
-
 export function SetZone({ slot, side, card, size = 'md', state = 'idle', onActivate, onInspect }: SetZoneProps) {
-  const zoneName = slot === 'C' ? t('board.areaEnchant') : slot === 'A' ? t('board.setZoneA') : t('board.setZoneB');
+  const visibleZoneName = slot === 'C' ? t('board.areaEnchant') : t('board.setZoneCompact' as never);
+  const ariaZoneName = slot === 'C' ? t('board.areaEnchant') : slot === 'A' ? t('board.setZoneA') : t('board.setZoneB');
   const sideName = side === 'me' ? t('player.me') : t('player.opponent');
   return (
     <div className={`setzone setzone-${slot.toLowerCase()} setzone-${side}`} data-slot={slot}>
       <CardSlot
         label={slot}
-        ariaLabel={`${sideName} ${zoneName}`}
+        ariaLabel={`${sideName} ${ariaZoneName}`}
         card={card}
         size={size}
         state={state}
@@ -42,10 +37,8 @@ export function SetZone({ slot, side, card, size = 'md', state = 'idle', onActiv
         onInspect={onInspect}
       />
       <span className="setzone-hint" aria-hidden="true">
-        <span className="setzone-hint-full">{t(HINT_KEY[slot] as never)}</span>
-        <span className="setzone-hint-compact">
-          {slot === 'C' ? t('board.areaEnchant') : t('board.setZoneCompact' as never)}
-        </span>
+        <span className="setzone-hint-full">{visibleZoneName}</span>
+        <span className="setzone-hint-compact">{visibleZoneName}</span>
       </span>
     </div>
   );

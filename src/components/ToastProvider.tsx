@@ -28,15 +28,23 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 let nextToastId = 1;
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
+  const [exiting, setExiting] = useState(false);
+
+  const dismiss = useCallback(() => {
+    if (exiting) return;
+    setExiting(true);
+    window.setTimeout(() => onDismiss(toast.id), 180);
+  }, [exiting, onDismiss, toast.id]);
+
   useEffect(() => {
     if (toast.durationMs === null) return;
-    const timeout = window.setTimeout(() => onDismiss(toast.id), toast.durationMs ?? 4200);
+    const timeout = window.setTimeout(dismiss, toast.durationMs ?? 4200);
     return () => window.clearTimeout(timeout);
-  }, [onDismiss, toast.durationMs, toast.id]);
+  }, [dismiss, toast.durationMs]);
 
   return (
     <article
-      className={`toast-item ${toast.kind}`}
+      className={`toast-item ${toast.kind}${exiting ? ' exiting' : ''}`}
       role={toast.kind === 'error' ? 'alert' : 'status'}
       aria-live={toast.kind === 'error' ? 'assertive' : 'polite'}
     >
@@ -52,7 +60,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
             type="button"
             onClick={() => {
               toast.onAction?.();
-              onDismiss(toast.id);
+              dismiss();
             }}
           >
             {toast.actionLabel}
@@ -62,7 +70,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
           label={t('common.close')}
           icon={<X className="size-4" aria-hidden="true" />}
           size="md"
-          onClick={() => onDismiss(toast.id)}
+          onClick={dismiss}
         />
       </div>
     </article>

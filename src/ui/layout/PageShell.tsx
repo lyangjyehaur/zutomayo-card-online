@@ -69,7 +69,7 @@ export function PageShell({ glow = false, variant = 'screen', className, childre
   return (
     <main
       className={cn(
-        'relative w-full bg-surface-canvas font-sans text-content-primary',
+        'page-transition-enter relative w-full bg-surface-canvas font-sans text-content-primary',
         shellVariantClass[variant],
         className,
       )}

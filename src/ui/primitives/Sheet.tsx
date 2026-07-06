@@ -50,7 +50,7 @@ export function Sheet({
     <div
       ref={overlayRef}
       className={cn(
-        'fixed inset-0 z-[var(--z-modal)] flex bg-surface-overlay p-3 backdrop-blur',
+        'motion-overlay-enter fixed inset-0 z-[var(--z-modal)] flex bg-surface-overlay p-3 backdrop-blur',
         side === 'right' ? 'items-stretch justify-end' : 'items-end justify-center',
       )}
       onMouseDown={(event) => {
@@ -66,7 +66,7 @@ export function Sheet({
         tabIndex={-1}
         className={cn(
           'relative isolate flex min-h-0 w-full flex-col overflow-hidden rounded-md border border-border-strong bg-surface-panel-strong shadow-sheet',
-          'animate-in fade-in slide-in-from-bottom-2 duration-[var(--motion-duration-base)] focus:outline-none',
+          side === 'right' ? 'motion-sheet-right-enter focus:outline-none' : 'motion-panel-enter focus:outline-none',
           side === 'right' ? 'max-w-md' : 'max-h-[calc(100dvh_-_var(--space-6))] max-w-2xl',
           className,
         )}
