@@ -94,6 +94,10 @@ export const ja: Record<TranslationKey, string> = {
   'lobby.customRooms': 'カスタムルーム',
   'lobby.noDeckSelected': 'デッキ未選択',
   'lobby.loginRequired': 'ログインが必要です',
+  'presence.currentOnline': '現在オンライン',
+  'presence.onlinePrefix': 'オンライン',
+  'presence.onlineSuffix': '人',
+  'presence.syncing': '同期中',
   'lobby.homeOnlineCaption': '2人対戦で、先に相手のHPを0にすれば勝利',
   'lobby.homeAiCaption': 'クロノスの夜と昼で変わる攻撃力や効果を練習',
   'lobby.homeDeckCaption': '20枚のカードを組み合わせて、時間を操る戦いへ',
@@ -685,7 +689,7 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.game.abyss.body':
     '効果が処理されたエンチャントカードはアビスに送られます。アビスのカードはもう効果を発揮しませんが、一部のカード効果でアビスからカードを取り出して再利用できます。',
 
-  'lobby.tutorial': 'はじまりの儀式 · チュートリアル',
+  'lobby.tutorial': 'チュートリアル',
   'feedback.title': 'フィードバック',
   'feedback.subtitle': 'あなたのアイデアや提案を投稿して、ゲームをより良くしましょう',
   'feedback.back': 'ロビーに戻る',

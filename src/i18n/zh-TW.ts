@@ -91,6 +91,10 @@ export const zhTW = {
   'lobby.customRooms': '自訂房間',
   'lobby.noDeckSelected': '尚未選擇牌組',
   'lobby.loginRequired': '登入後方可配對',
+  'presence.currentOnline': '當前在線人數',
+  'presence.onlinePrefix': '目前在線',
+  'presence.onlineSuffix': '人',
+  'presence.syncing': '同步中',
   'lobby.homeOnlineCaption': '展開 2 人對戰，先將對手 HP 歸零即可取勝',
   'lobby.homeAiCaption': '在 Chronos 的夜晝流轉中練習攻防判斷',
   'lobby.homeDeckCaption': '組成 20 張牌組，迎接夜與晝改寫效果的戰鬥',
@@ -660,7 +664,7 @@ export const zhTW = {
   'tutorial.game.abyss.body':
     '效果結算完畢的附魔卡會送入深淵。深淵中的卡牌不再生效，但某些卡牌效果可以從深淵中取出卡牌重新使用。',
 
-  'lobby.tutorial': '初始儀式 · 新手教學',
+  'lobby.tutorial': '新手教學',
   'feedback.title': '反饋中心',
   'feedback.subtitle': '提交你的想法與建議，讓遊戲變得更好',
   'feedback.back': '返回大廳',

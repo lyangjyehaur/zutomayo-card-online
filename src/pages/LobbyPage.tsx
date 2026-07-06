@@ -5,6 +5,8 @@ import { AppDrawer } from '../components/AppDrawer';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
+import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge';
+import { useOnlinePresence } from '../hooks/useOnlinePresence';
 import { AppHeader, Button, IconButton, PageShell, Panel } from '../ui';
 import { ChronosDial } from '../ui/game';
 import { t, type TranslationKey } from '../i18n';
@@ -34,9 +36,27 @@ type Channel = {
 const CHANNELS: Channel[] = [
   { to: '/online', no: '01', titleKey: 'lobby.onlineTitle', captionKey: 'lobby.homeOnlineCaption', Icon: Swords },
   { to: '/ai', no: '02', titleKey: 'lobby.aiBattle', captionKey: 'lobby.homeAiCaption', Icon: Bot },
-  { to: '/deck-builder', no: '03', titleKey: 'lobby.deckEditor', captionKey: 'lobby.homeDeckCaption', Icon: LayoutGrid },
-  { to: '/leaderboard', no: '04', titleKey: 'leaderboard.title', captionKey: 'lobby.homeLeaderboardCaption', Icon: Trophy },
-  { to: '/history', no: '05', titleKey: 'lobby.matchHistory', captionKey: 'lobby.homeHistoryCaption', Icon: ScrollText },
+  {
+    to: '/deck-builder',
+    no: '03',
+    titleKey: 'lobby.deckEditor',
+    captionKey: 'lobby.homeDeckCaption',
+    Icon: LayoutGrid,
+  },
+  {
+    to: '/leaderboard',
+    no: '04',
+    titleKey: 'leaderboard.title',
+    captionKey: 'lobby.homeLeaderboardCaption',
+    Icon: Trophy,
+  },
+  {
+    to: '/history',
+    no: '05',
+    titleKey: 'lobby.matchHistory',
+    captionKey: 'lobby.homeHistoryCaption',
+    Icon: ScrollText,
+  },
 ];
 
 // 待機儀表的靜態 Chronos 狀態（真夜中・夜側）— 純裝飾，與對戰共用同一元件
@@ -46,6 +66,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
   const [showDeckIntro, setShowDeckIntro] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { onlineCount } = useOnlinePresence();
 
   useEffect(() => {
     const seen = localStorage.getItem('zutomayo_deck_intro_seen');
@@ -73,6 +94,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
 
       <AppHeader
         subtitle={t('app.subtitle')}
+        leftMeta={<OnlinePresenceBadge onlineCount={onlineCount} />}
         actions={
           <>
             <div className="hidden items-center gap-3 sm:flex">

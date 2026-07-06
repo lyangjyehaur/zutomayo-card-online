@@ -21,6 +21,7 @@ const {
   leaveMatchmakingQueue,
   reportRealMatch,
 } = require('./matchmakingService.cjs');
+const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
 const {
@@ -575,6 +576,7 @@ const MATCHMAKING_TIMEOUT_MS = 60 * 1000;
 const MATCHMAKING_TIMEOUT_GRACE_MS = 10 * 1000;
 // entry TTL = timeout + grace（70 秒）
 const MM_TTL_SECONDS = Math.ceil((MATCHMAKING_TIMEOUT_MS + MATCHMAKING_TIMEOUT_GRACE_MS) / 1000);
+const PRESENCE_TTL_MS = Number(process.env.PRESENCE_TTL_MS) || 90 * 1000;
 
 function generateMatchmakingId() {
   return 'mm_' + crypto.randomBytes(8).toString('hex');
@@ -828,6 +830,21 @@ function handleRequest(req, res) {
     // Leaderboard
     if (pathname === '/api/leaderboard' && method === 'GET') {
       json(await getLeaderboard(pool, url.searchParams.get('limit'), sanitizeText));
+      return;
+    }
+
+    // GET /api/presence — 目前在線人數（最近有 heartbeat 的瀏覽器客戶端）
+    if (pathname === '/api/presence' && method === 'GET') {
+      json(await countOnlinePresence(redis, { ttlMs: PRESENCE_TTL_MS }));
+      return;
+    }
+
+    // POST /api/presence/heartbeat — 刷新目前客戶端在線狀態
+    if (pathname === '/api/presence/heartbeat' && method === 'POST') {
+      const { visitorId } = await readBody(32 * 1024);
+      const result = await heartbeatOnlinePresence(redis, { visitorId, ttlMs: PRESENCE_TTL_MS });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 

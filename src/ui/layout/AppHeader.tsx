@@ -18,11 +18,13 @@ export interface AppHeaderProps {
   subtitle?: string;
   /** 返回目的地（傳入即顯示返回鍵） */
   backTo?: string;
+  /** 左側標題膠囊中的額外狀態，例如在線人數 */
+  leftMeta?: ReactNode;
   actions?: ReactNode;
   className?: string;
 }
 
-export function AppHeader({ title, subtitle, backTo, actions, className }: AppHeaderProps) {
+export function AppHeader({ title, subtitle, backTo, leftMeta, actions, className }: AppHeaderProps) {
   const navigate = useNavigate();
   return (
     <header
@@ -35,7 +37,7 @@ export function AppHeader({ title, subtitle, backTo, actions, className }: AppHe
         {backTo ? (
           <button
             type="button"
-            className="flex min-h-8 min-w-8 items-center justify-center rounded-sm text-content-muted transition hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+            className="-my-1 -ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm text-content-muted transition hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
             aria-label="back"
             onClick={() => navigate(backTo)}
           >
@@ -52,6 +54,7 @@ export function AppHeader({ title, subtitle, backTo, actions, className }: AppHe
             {subtitle}
           </span>
         )}
+        {leftMeta && <span className="ml-1 inline-flex shrink-0">{leftMeta}</span>}
       </div>
       {actions && (
         <div className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">

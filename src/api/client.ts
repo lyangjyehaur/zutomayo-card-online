@@ -201,6 +201,23 @@ export async function getLeaderboard(limit = 100): Promise<LeaderboardEntry[]> {
   return data.leaderboard;
 }
 
+// ===== Presence =====
+export interface OnlinePresenceResponse {
+  onlineCount: number;
+  activeWindowSeconds: number;
+}
+
+export async function fetchOnlinePresence(): Promise<OnlinePresenceResponse> {
+  return request<OnlinePresenceResponse>('/presence');
+}
+
+export async function sendOnlinePresenceHeartbeat(visitorId: string): Promise<OnlinePresenceResponse> {
+  return request<OnlinePresenceResponse>('/presence/heartbeat', {
+    method: 'POST',
+    body: JSON.stringify({ visitorId }),
+  });
+}
+
 // ===== Admin =====
 export interface AdminUser {
   id: string;

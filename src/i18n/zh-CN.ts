@@ -93,6 +93,10 @@ export const zhCN: Record<TranslationKey, string> = {
   'lobby.customRooms': '自定义房间',
   'lobby.noDeckSelected': '尚未选择牌组',
   'lobby.loginRequired': '登录后方可匹配',
+  'presence.currentOnline': '当前在线人数',
+  'presence.onlinePrefix': '当前在线',
+  'presence.onlineSuffix': '人',
+  'presence.syncing': '同步中',
   'lobby.homeOnlineCaption': '展开 2 人对战，先将对手 HP 归零即可取胜',
   'lobby.homeAiCaption': '在 Chronos 的夜昼流转中练习攻防判断',
   'lobby.homeDeckCaption': '组成 20 张牌组，迎接夜与昼改写效果的战斗',
@@ -662,7 +666,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'tutorial.game.abyss.body':
     '效果结算完毕的附魔卡会送入深渊。深渊中的卡牌不再生效，但某些卡牌效果可以从深渊中取出卡牌重新使用。',
 
-  'lobby.tutorial': '初始仪式 · 新手教学',
+  'lobby.tutorial': '新手教学',
   'feedback.title': '反馈中心',
   'feedback.subtitle': '提交你的想法与建议，让游戏变得更好',
   'feedback.back': '返回大厅',

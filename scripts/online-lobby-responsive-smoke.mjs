@@ -169,6 +169,12 @@ const setup = `
     if (url.includes('/api/preset-decks')) {
       return new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json' } });
     }
+    if (url.includes('/api/presence')) {
+      return new Response(JSON.stringify({ onlineCount: 7, activeWindowSeconds: 90 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     if (url.includes('/api/decks')) {
       return new Response(JSON.stringify({ decks: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
     }

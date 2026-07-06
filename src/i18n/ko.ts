@@ -94,6 +94,10 @@ export const ko: Record<TranslationKey, string> = {
   'lobby.customRooms': '커스텀 방',
   'lobby.noDeckSelected': '덱 미선택',
   'lobby.loginRequired': '로그인이 필요합니다',
+  'presence.currentOnline': '현재 온라인',
+  'presence.onlinePrefix': '온라인',
+  'presence.onlineSuffix': '명',
+  'presence.syncing': '동기화 중',
   'lobby.homeOnlineCaption': '2인 대전에서 상대 HP를 먼저 0으로 만들면 승리',
   'lobby.homeAiCaption': '크로노스의 밤과 낮에 따라 바뀌는 공격과 효과를 연습',
   'lobby.homeDeckCaption': '20장 덱을 구성해 시간으로 뒤바뀌는 전투에 대비',
@@ -681,7 +685,7 @@ export const ko: Record<TranslationKey, string> = {
   'tutorial.game.abyss.body':
     '효과 처리가 끝난 인챈트 카드는 어비스로 보내집니다. 어비스의 카드는 더 이상 효과를 발휘하지 않지만, 일부 카드 효과로 어비스에서 카드를 꺼내 재사용할 수 있습니다.',
 
-  'lobby.tutorial': '첫 의식 · 튜토리얼',
+  'lobby.tutorial': '튜토리얼',
   'feedback.title': '피드백',
   'feedback.subtitle': '아이디어와 제안을 공유하여 게임을 더 좋게 만들어보세요',
   'feedback.back': '로비로 돌아가기',
