@@ -1,13 +1,13 @@
 import type { TranslationKey } from './zh-TW';
 
 export const en: Record<TranslationKey, string> = {
-  'app.title': 'ZUTOMAYO CARD',
+  'app.title': 'ZUTOMAYO CARD ONLINE',
   'app.subtitle': 'Online Card Battle Where Night and Day Collide',
   'app.footerAlpha': 'Alpha early development stage · Visit our feedback page to share ideas and suggestions',
   'app.footerCopyright': 'Unofficial fan project · Card image rights belong to ',
   'app.footerCopyrightSuffix': '',
 
-  'intro.deckTitle': 'Welcome to ZUTOMAYO CARD',
+  'intro.deckTitle': 'Welcome to ZUTOMAYO CARD ONLINE',
   'intro.deckDescription':
     'Before starting a game, you need to select a deck. You can use a preset deck or create your own in the Deck Editor.',
   'intro.goToDeckBuilder': 'Go to Deck Editor',
@@ -97,6 +97,8 @@ export const en: Record<TranslationKey, string> = {
   'lobby.homeOnlineCaption': 'Battle another player and reduce their HP to 0 first',
   'lobby.homeAiCaption': 'Practice attacks and effects as Chronos shifts night and day',
   'lobby.homeDeckCaption': 'Build a 20-card deck for battles rewritten by night and day',
+  'lobby.homeLeaderboardCaption': 'Check player rankings and ELO across recorded battles',
+  'lobby.homeHistoryCaption': 'Review recent match results, winners, and turn records',
   'anonymous.identity': 'Anonymous Identity',
   'anonymous.editName': 'Edit anonymous name',
   'anonymous.nameInput': 'Anonymous name',
@@ -452,7 +454,7 @@ export const en: Record<TranslationKey, string> = {
   'pwa.installAlreadyBody': 'This is already running like an installed app.',
   'pwa.installUnavailableTitle': 'Install unavailable',
   'pwa.installUnavailableBody': 'The browser has not offered installation yet. Try again later.',
-  'pwa.installTitle': 'Install ZUTOMAYO CARD',
+  'pwa.installTitle': 'Install ZUTOMAYO CARD ONLINE',
   'pwa.installBody': 'Keep online battles close at hand, with steadier room return and updates.',
   'pwa.installLaterAction': 'Later',
   'pwa.installFeatureFullscreen': 'Opens in a standalone window without browser chrome',
@@ -555,7 +557,7 @@ export const en: Record<TranslationKey, string> = {
 
   // Tutorial Game Mode
   'tutorial.skipConfirm': 'Close tutorial mode and return to the lobby?',
-  'tutorial.game.intro.title': 'Welcome to ZUTOMAYO CARD',
+  'tutorial.game.intro.title': 'Welcome to ZUTOMAYO CARD ONLINE',
   'tutorial.game.intro.body': 'This tutorial will guide you through all game mechanics via a real match against AI.',
   'tutorial.game.janken.intro.title': 'Rock-Paper-Scissors Determines Turn Order',
   'tutorial.game.janken.intro.body':
@@ -683,7 +685,7 @@ export const en: Record<TranslationKey, string> = {
   'tutorial.game.abyss.body':
     'Enchant cards are sent to the Abyss after their effects resolve. Cards in the Abyss no longer take effect, but certain card effects can retrieve cards from the Abyss for reuse.',
 
-  'lobby.tutorial': 'First Ritual · Tutorial',
+  'lobby.tutorial': 'Tutorial',
   'feedback.title': 'Feedback',
   'feedback.subtitle': 'Share your ideas and suggestions to improve the game',
   'feedback.back': 'Back to Lobby',

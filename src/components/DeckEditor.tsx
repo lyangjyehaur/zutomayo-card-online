@@ -345,7 +345,7 @@ export function DeckEditor({
         </div>
       </div>
 
-      <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-widest text-content-primary/40">
+      <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-normal text-content-primary/40">
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleCharacters')}</span>
           <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-accent-action/70'}>
@@ -403,7 +403,7 @@ export function DeckEditor({
       </div>
 
       <div
-        className={`mt-3 border-t border-content-primary/10 pt-3 font-mono text-caption uppercase tracking-widest ${
+        className={`mt-3 border-t border-content-primary/10 pt-3 font-mono text-caption uppercase tracking-normal ${
           isValid ? 'text-accent-primary' : 'text-accent-action/70'
         }`}
       >

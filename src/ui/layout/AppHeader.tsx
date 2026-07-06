@@ -45,7 +45,7 @@ export function AppHeader({ title, subtitle, backTo, actions, className }: AppHe
           <span className="size-2 shrink-0 rounded-full bg-accent-primary shadow-status-dot" aria-hidden="true" />
         )}
         <span className="truncate font-display text-body-lg font-bold leading-none tracking-wide">
-          {title ?? 'ZUTOMAYO CARD'}
+          {title ?? 'ZUTOMAYO CARD ONLINE'}
         </span>
         {subtitle && (
           <span className="ml-2 hidden truncate font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-dim lg:inline">

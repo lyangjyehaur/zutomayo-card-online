@@ -1,13 +1,13 @@
 import type { TranslationKey } from './zh-TW';
 
 export const zhHK: Record<TranslationKey, string> = {
-  'app.title': 'ZUTOMAYO CARD',
+  'app.title': 'ZUTOMAYO CARD ONLINE',
   'app.subtitle': '永夜同白晝交錯嘅綫上卡牌遊戲',
   'app.footerAlpha': 'Alpha 開發初期階段 · 歡迎前往反饋頁面提交建議與想法',
   'app.footerCopyright': '非官方粉絲作品 · 卡牌圖片版權屬於 ',
   'app.footerCopyrightSuffix': '',
 
-  'intro.deckTitle': '歡迎嚟到 ZUTOMAYO CARD',
+  'intro.deckTitle': '歡迎嚟到 ZUTOMAYO CARD ONLINE',
   'intro.deckDescription': '開始遊戲之前，你需要揀一副牌組。可以用預設牌組，或者去牌組編輯器整自己嘅牌組。',
   'intro.goToDeckBuilder': '去牌組編輯器',
   'intro.exploreLater': '遲啲再睇',
@@ -96,6 +96,8 @@ export const zhHK: Record<TranslationKey, string> = {
   'lobby.homeOnlineCaption': '展開 2 人對戰，先將對手 HP 歸零就勝出',
   'lobby.homeAiCaption': '喺 Chronos 嘅夜晝流轉中練習攻防判斷',
   'lobby.homeDeckCaption': '組成 20 張牌組，迎接夜與晝改寫效果嘅戰鬥',
+  'lobby.homeLeaderboardCaption': '查看玩家排名同 ELO，追蹤目前對戰表現',
+  'lobby.homeHistoryCaption': '回顧近期對局結果，整理每場勝負同回合紀錄',
   'anonymous.identity': '匿名身份',
   'anonymous.editName': '編輯匿名名稱',
   'anonymous.nameInput': '匿名名稱',
@@ -448,7 +450,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'pwa.installAlreadyBody': '目前已經似安裝版咁執行。',
   'pwa.installUnavailableTitle': '目前無法安裝',
   'pwa.installUnavailableBody': '瀏覽器尚未提供安裝入口，稍後可再試。',
-  'pwa.installTitle': '安裝 ZUTOMAYO CARD',
+  'pwa.installTitle': '安裝 ZUTOMAYO CARD ONLINE',
   'pwa.installBody': '將綫上對戰入口放到系統入面，開局、返房同更新會更穩。',
   'pwa.installLaterAction': '稍後',
   'pwa.installFeatureFullscreen': '獨立視窗開啟，不被瀏覽器介面擠壓',
@@ -549,7 +551,7 @@ export const zhHK: Record<TranslationKey, string> = {
 
   // Tutorial Game Mode
   'tutorial.skipConfirm': '確定要關閉教學模式並返回大廳嗎？',
-  'tutorial.game.intro.title': '歡迎嚟到 ZUTOMAYO CARD',
+  'tutorial.game.intro.title': '歡迎嚟到 ZUTOMAYO CARD ONLINE',
   'tutorial.game.intro.body': '接落嚟會透過一場真實對戰，逐步引導你認識遊戲嘅所有機制。',
   'tutorial.game.janken.intro.title': '猜拳決定先後手',
   'tutorial.game.janken.intro.body':

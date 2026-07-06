@@ -1,13 +1,13 @@
 import type { TranslationKey } from './zh-TW';
 
 export const ja: Record<TranslationKey, string> = {
-  'app.title': 'ZUTOMAYO CARD',
+  'app.title': 'ZUTOMAYO CARD ONLINE',
   'app.subtitle': '永夜と白昼が交差するオンライン対戦カードゲーム',
   'app.footerAlpha': 'Alpha 開発初期段階 · フィードバックページでご意見やアイデアをお寄せください',
   'app.footerCopyright': '非公式ファン作品 · カード画像の権利は ',
   'app.footerCopyrightSuffix': ' に帰属します',
 
-  'intro.deckTitle': 'ZUTOMAYO CARD へようこそ',
+  'intro.deckTitle': 'ZUTOMAYO CARD ONLINE へようこそ',
   'intro.deckDescription':
     'ゲームを始める前に、デッキを選択する必要があります。プリセットデッキを使うか、デッキエディタで自分のデッキを作成できます。',
   'intro.goToDeckBuilder': 'デッキエディタへ',
@@ -97,6 +97,8 @@ export const ja: Record<TranslationKey, string> = {
   'lobby.homeOnlineCaption': '2人対戦で、先に相手のHPを0にすれば勝利',
   'lobby.homeAiCaption': 'クロノスの夜と昼で変わる攻撃力や効果を練習',
   'lobby.homeDeckCaption': '20枚のカードを組み合わせて、時間を操る戦いへ',
+  'lobby.homeLeaderboardCaption': 'プレイヤー順位とELOを確認し、現在の成績を追跡',
+  'lobby.homeHistoryCaption': '最近の対戦結果を振り返り、勝敗とターンを確認',
   'anonymous.identity': '匿名アイデンティティ',
   'anonymous.editName': '匿名名を編集',
   'anonymous.nameInput': '匿名名',
@@ -452,7 +454,7 @@ export const ja: Record<TranslationKey, string> = {
   'pwa.installAlreadyBody': '現在はインストール版のように実行されています。',
   'pwa.installUnavailableTitle': '現在インストールできません',
   'pwa.installUnavailableBody': 'ブラウザがまだインストール入口を提供していません。あとでお試しください。',
-  'pwa.installTitle': 'ZUTOMAYO CARD をインストール',
+  'pwa.installTitle': 'ZUTOMAYO CARD ONLINE をインストール',
   'pwa.installBody': 'オンライン対戦をすぐ開けるようにし、ルーム復帰と更新を安定させます。',
   'pwa.installLaterAction': 'あとで',
   'pwa.installFeatureFullscreen': 'ブラウザUIに邪魔されない独立ウィンドウで開く',
@@ -555,7 +557,7 @@ export const ja: Record<TranslationKey, string> = {
 
   // Tutorial Game Mode
   'tutorial.skipConfirm': 'チュートリアルを閉じてロビーに戻りますか？',
-  'tutorial.game.intro.title': 'ZUTOMAYO CARDへようこそ',
+  'tutorial.game.intro.title': 'ZUTOMAYO CARD ONLINEへようこそ',
   'tutorial.game.intro.body': 'これから実際の対戦を通じて、ゲームの全ての仕組みを順番に案内します。',
   'tutorial.game.janken.intro.title': 'じゃんけんで先攻・後攻を決める',
   'tutorial.game.janken.intro.body':

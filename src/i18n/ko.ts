@@ -1,13 +1,13 @@
 import type { TranslationKey } from './zh-TW';
 
 export const ko: Record<TranslationKey, string> = {
-  'app.title': 'ZUTOMAYO CARD',
+  'app.title': 'ZUTOMAYO CARD ONLINE',
   'app.subtitle': '밤과 낮이 교차하는 온라인 카드 대전',
   'app.footerAlpha': 'Alpha 초기 개발 단계 · 피드백 페이지에서 아이디어와 제안을 공유해 주세요',
   'app.footerCopyright': '비공식 팬 프로젝트 · 카드 이미지 권리는 ',
   'app.footerCopyrightSuffix': '에 있습니다',
 
-  'intro.deckTitle': 'ZUTOMAYO CARD 에 오신 것을 환영합니다',
+  'intro.deckTitle': 'ZUTOMAYO CARD ONLINE 에 오신 것을 환영합니다',
   'intro.deckDescription':
     '게임을 시작하기 전에 덱을 선택해야 합니다. 프리셋 덱을 사용하거나 덱 에디터에서 직접 만들 수 있습니다.',
   'intro.goToDeckBuilder': '덱 에디터로 이동',
@@ -97,6 +97,8 @@ export const ko: Record<TranslationKey, string> = {
   'lobby.homeOnlineCaption': '2인 대전에서 상대 HP를 먼저 0으로 만들면 승리',
   'lobby.homeAiCaption': '크로노스의 밤과 낮에 따라 바뀌는 공격과 효과를 연습',
   'lobby.homeDeckCaption': '20장 덱을 구성해 시간으로 뒤바뀌는 전투에 대비',
+  'lobby.homeLeaderboardCaption': '플레이어 순위와 ELO를 확인하고 현재 성적 추적',
+  'lobby.homeHistoryCaption': '최근 대전 결과와 승패, 턴 기록을 다시 확인',
   'anonymous.identity': '익명 ID',
   'anonymous.editName': '익명 이름 편집',
   'anonymous.nameInput': '익명 이름',
@@ -451,7 +453,7 @@ export const ko: Record<TranslationKey, string> = {
   'pwa.installAlreadyBody': '현재 설치된 앱처럼 실행 중입니다.',
   'pwa.installUnavailableTitle': '현재 설치할 수 없음',
   'pwa.installUnavailableBody': '브라우저가 아직 설치 입구를 제공하지 않았습니다. 나중에 다시 시도하세요.',
-  'pwa.installTitle': 'ZUTOMAYO CARD 설치',
+  'pwa.installTitle': 'ZUTOMAYO CARD ONLINE 설치',
   'pwa.installBody': '온라인 대전을 시스템에 두고 방 복귀와 업데이트를 더 안정적으로 만듭니다.',
   'pwa.installLaterAction': '나중에',
   'pwa.installFeatureFullscreen': '브라우저 UI에 눌리지 않는 독립 창으로 열림',
@@ -553,7 +555,7 @@ export const ko: Record<TranslationKey, string> = {
   'history.draw': '무승부',
 
   'tutorial.skipConfirm': '튜토리얼 모드를 닫고 로비로 돌아갈까요?',
-  'tutorial.game.intro.title': 'ZUTOMAYO CARD에 오신 것을 환영합니다',
+  'tutorial.game.intro.title': 'ZUTOMAYO CARD ONLINE에 오신 것을 환영합니다',
   'tutorial.game.intro.body': '실제 AI 대전을 통해 게임의 모든 메커니즘을 단계별로 안내해 드립니다.',
   'tutorial.game.janken.intro.title': '가위바위보로 선후공 결정',
   'tutorial.game.janken.intro.body':
