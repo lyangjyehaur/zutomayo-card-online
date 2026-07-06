@@ -2,23 +2,18 @@ import { useEffect, useMemo, type ComponentProps } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Board } from '../components/Board';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS } from '../data/tutorialScenario';
-import {
-  confirmReady,
-  finishMulligan,
-  resolveJanken,
-  setInitialCard,
-  setTurnCard,
-  setupGame,
-} from '../game/GameLogic';
+import { confirmReady, finishMulligan, resolveJanken, setInitialCard, setTurnCard, setupGame } from '../game/GameLogic';
 import { parseAllEffects, type ParsedEffect } from '../game/effects';
-import {
-  getAllCardDefs,
-  getCardDef,
-  initCards,
-  isCardsInitialized,
-  resetInstanceCounter,
-} from '../game/cards/loader';
-import type { CardDef, CardInstance, GameState, PendingChoice, PendingEffect, PlayerIndex, SetSlot } from '../game/types';
+import { getAllCardDefs, getCardDef, initCards, isCardsInitialized, resetInstanceCounter } from '../game/cards/loader';
+import type {
+  CardDef,
+  CardInstance,
+  GameState,
+  PendingChoice,
+  PendingEffect,
+  PlayerIndex,
+  SetSlot,
+} from '../game/types';
 
 type BoardComponentProps = ComponentProps<typeof Board>;
 
@@ -451,12 +446,7 @@ function createQaCtx(G: GameState): BoardComponentProps['ctx'] {
     currentPlayer: '0',
     turn: G.turnNumber,
     phase: 'default',
-    gameover:
-      G.step === 'gameOver'
-        ? G.winner === null
-          ? { draw: true }
-          : { winner: String(G.winner) }
-        : undefined,
+    gameover: G.step === 'gameOver' ? (G.winner === null ? { draw: true } : { winner: String(G.winner) }) : undefined,
   } as BoardComponentProps['ctx'];
 }
 
@@ -469,7 +459,9 @@ function QaControls({ selectedState }: { selectedState: BattleQaStateId }) {
           <Link
             key={state.id}
             className={`rounded-xs px-2 py-1 transition ${
-              selectedState === state.id ? 'bg-accent-primary text-surface-base' : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
+              selectedState === state.id
+                ? 'bg-accent-primary text-surface-base'
+                : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
             }`}
             to={`/qa/battle?state=${state.id}`}
           >
@@ -506,7 +498,9 @@ export function BattleVisualQaPage() {
     return (
       <main className="grid h-full w-full place-items-center bg-surface-canvas px-6 text-center text-content-primary">
         <section className="max-w-xl rounded-sm border border-accent-action/30 bg-surface-base p-5 shadow-raised">
-          <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-action">Battle QA</div>
+          <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-action">
+            Battle QA
+          </div>
           <h1 className="mt-3 font-display text-2xl font-bold">Fixture Error</h1>
           <p className="mt-3 text-sm leading-relaxed text-content-primary/60">{fixture.error}</p>
         </section>
@@ -517,7 +511,10 @@ export function BattleVisualQaPage() {
   if (!fixture.G) return null;
 
   return (
-    <main className="relative h-full min-h-0 w-full overflow-hidden bg-surface-canvas" data-battle-qa-state={selectedState}>
+    <main
+      className="relative h-full min-h-0 w-full overflow-hidden bg-surface-canvas"
+      data-battle-qa-state={selectedState}
+    >
       <Board
         G={fixture.G}
         ctx={createQaCtx(fixture.G)}

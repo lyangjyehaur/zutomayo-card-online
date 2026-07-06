@@ -46,12 +46,12 @@
 
 ### 狀態提示設計原則（一眼分辨四態）
 
-| 狀態 | Token | 視覺 |
-|------|-------|------|
-| 可操作 playable | `--color-playable` | 金色 ring（`--ring-playable`）＋緩慢呼吸 |
-| 已選中 selected | `--color-selected` | 亮琥珀 2px 實框＋提起陰影（`--ring-selected`） |
+| 狀態                  | Token                | 視覺                                                    |
+| --------------------- | -------------------- | ------------------------------------------------------- |
+| 可操作 playable       | `--color-playable`   | 金色 ring（`--ring-playable`）＋緩慢呼吸                |
+| 已選中 selected       | `--color-selected`   | 亮琥珀 2px 實框＋提起陰影（`--ring-selected`）          |
 | 可作為目標 targetable | `--color-targetable` | 青綠 2px ring（`--ring-targetable`），與金/琥珀色相區隔 |
-| 不可操作 disabled | `--color-disabled` | 整體降飽和 + opacity .45，`cursor: not-allowed` |
+| 不可操作 disabled     | `--color-disabled`   | 整體降飽和 + opacity .45，`cursor: not-allowed`         |
 
 ### 裝飾元素使用邊界
 
@@ -79,6 +79,7 @@ Token 分三層：**primitive**（`--ds-*`，只在 App.css 定義）→ **seman
 ```
 
 規則：
+
 - 狀態色只用於卡牌/槽位互動狀態，不得挪作裝飾。
 - 訊息色（danger/warning/success/info）只用於 toast、提示、log tone。
 - 背景層永遠不使用 accent 色作為底色。
@@ -144,14 +145,14 @@ Token 分三層：**primitive**（`--ds-*`，只在 App.css 定義）→ **seman
 
 ### 元件對照
 
-| 元件 | 用途 |
-|------|------|
-| `CardView` | 唯一卡牌渲染元件（正面/牌背/隱藏、四種互動狀態、尺寸=token） |
-| `MiniCard` | `CardView size="mini"`：只有卡圖，無 badge |
-| `CompactCard` | `CardView size="sm|md"`：卡圖＋cost chip |
-| `FullCard` | `CardView size="xl"`：詳情用，含完整數值 |
-| `CardStack` | 牌組/深淵/充能堆疊：錯位縮圖 ≤3 張＋計數＋（可選）點擊開摘要 |
-| `CardSlot` | 空/占用槽位：label 水印、佔位虛框、undo 提示 |
+| 元件          | 用途                                                         |
+| ------------- | ------------------------------------------------------------ | --------------------- |
+| `CardView`    | 唯一卡牌渲染元件（正面/牌背/隱藏、四種互動狀態、尺寸=token） |
+| `MiniCard`    | `CardView size="mini"`：只有卡圖，無 badge                   |
+| `CompactCard` | `CardView size="sm                                           | md"`：卡圖＋cost chip |
+| `FullCard`    | `CardView size="xl"`：詳情用，含完整數值                     |
+| `CardStack`   | 牌組/深淵/充能堆疊：錯位縮圖 ≤3 張＋計數＋（可選）點擊開摘要 |
+| `CardSlot`    | 空/占用槽位：label 水印、佔位虛框、undo 提示                 |
 
 **禁止**：把直向卡牌塞進扁長區域。區域高度不足 `--card-height-sm` 時必須改為 `CardStack` 或 Counter＋入口，不得縮比例。
 
@@ -161,28 +162,28 @@ Token 分三層：**primitive**（`--ds-*`，只在 App.css 定義）→ **seman
 
 通則：所有互動元件觸控目標 ≥ `--touch-target-min`(44px)；可見 focus ring（`--focus-ring-*`）；行動端不得有 hover-only 功能。
 
-| 元件 | 使用場景 | 尺寸 | 狀態 | 桌面互動 | 行動端互動 | A11y | 禁止 |
-|------|---------|------|------|---------|-----------|------|------|
-| **Button**（`ui/Button`） | 主/次/危險行動 | h 36/44/48 | default·hover·active·disabled·loading | hover 變色 | ≥44px、active 按壓 | `aria-disabled`、focus ring | 一頁多個 primary |
-| **IconButton** | 工具列、關閉 | 44×44 | 同上＋pressed | tooltip | 直接點 | 必填 `label` | 無 label 圖示 |
-| **Panel**（`ui/Panel`） | 內容容器 | pad `--space-panel` | solid·ghost | — | — | landmark/heading | 巢狀 Panel 超過 2 層 |
-| **ZonePanel**（`battle/`） | 遊戲區域容器 | 依 slot token | idle·highlight | hover 提示 | 點擊開摘要 | `aria-label`=區名 | 用重底色分區 |
-| **CardView** | 一切卡牌 | `--card-width-*` | faceup·facedown·playable·selected·targetable·disabled | hover 詳情（浮窗/側欄） | tap 選中、再 tap 確認；詳情走 sheet | `aria-label`=卡名；蓋牌=「牌背」 | 壓扁、自訂尺寸 |
-| **CardSlot** | 空/占用槽位 | `--slot-*` | empty·occupied·undoable·targetable | click undo/選目標 | 同左（目標 ≥44px） | `aria-label`=區名+卡名 | 無 label 空槽 |
-| **CardStack** | 牌組/深淵/充能 | slot 尺寸 | empty·stacked | click 開摘要 | tap 開摘要 sheet | `aria-label`=區名+數量 | 展開全部卡佔版面 |
-| **PlayerStatus** | 雙方名+HP+計數 | bar h4px | healthy·warning·danger·damaged | — | — | `aria-live` HP 變化 | 遮擋戰場 |
-| **PhaseIndicator** | 當前階段/該做什麼 | 頂欄 h48 | 各 step·waiting | — | — | `role=status` | 一次顯示多個指令 |
-| **ActionBar**（battle） | 主行動按鈕組 | h ≥44 | confirm·waiting·choice | 按鈕 | 拇指區固定底部 | 主行動唯一 | 超過 3 個按鈕 |
-| **GameLog** | 歷史記錄 | drawer/sheet | open·closed | 側欄常駐（≥1440） | drawer | `aria-live=polite` | 蓋住手牌 |
-| **Toast**（ToastProvider） | 操作結果、網路 | 頂部 | info·success·danger | 自動消失 | 同左 | `role=status` | 用 toast 問問題 |
-| **Modal / Dialog**（`ui/Dialog`） | 危險確認、選擇 | max-w 32rem | open·closed | ESC/backdrop 關 | 同左 | focus trap 必備 | 巢狀 modal |
-| **Drawer**（AppDrawer） | 次要功能、退出確認 | 右/底 | — | — | — | focus trap | 放主流程 |
-| **BottomSheet**（`ui/Sheet`） | 行動端卡牌詳情、區域摘要 | ≤75vh | peek·open·closed | 不用 | 下滑/backdrop 關 | focus trap、handle | 蓋滿全屏 |
-| **Tabs**（SegmentedControl） | 側欄 Focus/Status/Log | h36+ | active·inactive | click | tap ≥44px | `role=tablist` | 超過 4 tab |
-| **Tooltip** | 桌面補充說明 | — | — | hover/focus | **不可用**（改 sheet） | `aria-describedby` | 放關鍵資訊 |
-| **Badge** | 屬性/類型標籤 | h20 | 語義色 | — | — | 文字非僅色 | 當按鈕用 |
-| **Counter** | 張數/Power 數值 | mono | normal·warn | — | — | `aria-label` 含單位 | 只有數字無語境 |
-| **EmptyState**（`ui/State`) | 空區/無資料 | — | — | — | — | 描述性文字 | 純空白 |
+| 元件                              | 使用場景                 | 尺寸                | 狀態                                                  | 桌面互動                | 行動端互動                          | A11y                             | 禁止                 |
+| --------------------------------- | ------------------------ | ------------------- | ----------------------------------------------------- | ----------------------- | ----------------------------------- | -------------------------------- | -------------------- |
+| **Button**（`ui/Button`）         | 主/次/危險行動           | h 36/44/48          | default·hover·active·disabled·loading                 | hover 變色              | ≥44px、active 按壓                  | `aria-disabled`、focus ring      | 一頁多個 primary     |
+| **IconButton**                    | 工具列、關閉             | 44×44               | 同上＋pressed                                         | tooltip                 | 直接點                              | 必填 `label`                     | 無 label 圖示        |
+| **Panel**（`ui/Panel`）           | 內容容器                 | pad `--space-panel` | solid·ghost                                           | —                       | —                                   | landmark/heading                 | 巢狀 Panel 超過 2 層 |
+| **ZonePanel**（`battle/`）        | 遊戲區域容器             | 依 slot token       | idle·highlight                                        | hover 提示              | 點擊開摘要                          | `aria-label`=區名                | 用重底色分區         |
+| **CardView**                      | 一切卡牌                 | `--card-width-*`    | faceup·facedown·playable·selected·targetable·disabled | hover 詳情（浮窗/側欄） | tap 選中、再 tap 確認；詳情走 sheet | `aria-label`=卡名；蓋牌=「牌背」 | 壓扁、自訂尺寸       |
+| **CardSlot**                      | 空/占用槽位              | `--slot-*`          | empty·occupied·undoable·targetable                    | click undo/選目標       | 同左（目標 ≥44px）                  | `aria-label`=區名+卡名           | 無 label 空槽        |
+| **CardStack**                     | 牌組/深淵/充能           | slot 尺寸           | empty·stacked                                         | click 開摘要            | tap 開摘要 sheet                    | `aria-label`=區名+數量           | 展開全部卡佔版面     |
+| **PlayerStatus**                  | 雙方名+HP+計數           | bar h4px            | healthy·warning·danger·damaged                        | —                       | —                                   | `aria-live` HP 變化              | 遮擋戰場             |
+| **PhaseIndicator**                | 當前階段/該做什麼        | 頂欄 h48            | 各 step·waiting                                       | —                       | —                                   | `role=status`                    | 一次顯示多個指令     |
+| **ActionBar**（battle）           | 主行動按鈕組             | h ≥44               | confirm·waiting·choice                                | 按鈕                    | 拇指區固定底部                      | 主行動唯一                       | 超過 3 個按鈕        |
+| **GameLog**                       | 歷史記錄                 | drawer/sheet        | open·closed                                           | 側欄常駐（≥1440）       | drawer                              | `aria-live=polite`               | 蓋住手牌             |
+| **Toast**（ToastProvider）        | 操作結果、網路           | 頂部                | info·success·danger                                   | 自動消失                | 同左                                | `role=status`                    | 用 toast 問問題      |
+| **Modal / Dialog**（`ui/Dialog`） | 危險確認、選擇           | max-w 32rem         | open·closed                                           | ESC/backdrop 關         | 同左                                | focus trap 必備                  | 巢狀 modal           |
+| **Drawer**（AppDrawer）           | 次要功能、退出確認       | 右/底               | —                                                     | —                       | —                                   | focus trap                       | 放主流程             |
+| **BottomSheet**（`ui/Sheet`）     | 行動端卡牌詳情、區域摘要 | ≤75vh               | peek·open·closed                                      | 不用                    | 下滑/backdrop 關                    | focus trap、handle               | 蓋滿全屏             |
+| **Tabs**（SegmentedControl）      | 側欄 Focus/Status/Log    | h36+                | active·inactive                                       | click                   | tap ≥44px                           | `role=tablist`                   | 超過 4 tab           |
+| **Tooltip**                       | 桌面補充說明             | —                   | —                                                     | hover/focus             | **不可用**（改 sheet）              | `aria-describedby`               | 放關鍵資訊           |
+| **Badge**                         | 屬性/類型標籤            | h20                 | 語義色                                                | —                       | —                                   | 文字非僅色                       | 當按鈕用             |
+| **Counter**                       | 張數/Power 數值          | mono                | normal·warn                                           | —                       | —                                   | `aria-label` 含單位              | 只有數字無語境       |
+| **EmptyState**（`ui/State`)       | 空區/無資料              | —                   | —                                                     | —                       | —                                   | 描述性文字                       | 純空白               |
 
 **元件檔案結構標準（single source of truth）**
 
@@ -203,4 +204,4 @@ src/ui/game/             CardView・CardSlot・CardStack・ZonePanel・BattleZon
 `--lacquer/--gold/--ds-*` 等 deprecated token 別名；`.board/.battle-*`（side-sheet 除外）舊 class；
 `src/components/Card.tsx`（僅圖鑑/牌組編輯器過渡使用，遷移計畫見 page-redesign-plan.md）。
 
-命名：layout 元件（`*Layout`、`*Grid`）不含遊戲邏輯；zone 元件收 props 不讀全域；UI 狀態（selected/inspected/sheet open）留在元件層，遊戲狀態（G.*）唯讀。
+命名：layout 元件（`*Layout`、`*Grid`）不含遊戲邏輯；zone 元件收 props 不讀全域；UI 狀態（selected/inspected/sheet open）留在元件層，遊戲狀態（G.\*）唯讀。

@@ -53,7 +53,9 @@ export function ScrollPageLayout({
 }: ScrollPageLayoutProps) {
   return (
     <PageShell variant="scroll" className={cn('px-4 py-4 md:px-6', className)} {...props}>
-      <div className={cn('mx-auto flex w-full flex-col', scrollMaxWidthClass[maxWidth], gapClass[gap], containerClassName)}>
+      <div
+        className={cn('mx-auto flex w-full flex-col', scrollMaxWidthClass[maxWidth], gapClass[gap], containerClassName)}
+      >
         {children}
       </div>
     </PageShell>
@@ -82,12 +84,19 @@ export function PageSectionHeader({
   if (variant === 'centered') {
     return (
       <header
-        className={cn('flex flex-col gap-3 border-b border-border-soft pb-4 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center', className)}
+        className={cn(
+          'flex flex-col gap-3 border-b border-border-soft pb-4 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center',
+          className,
+        )}
         {...props}
       >
         <div>{leading}</div>
         <div className="min-w-0 text-center">
-          {kicker && <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{kicker}</span>}
+          {kicker && (
+            <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+              {kicker}
+            </span>
+          )}
           <h1 className="truncate font-display text-2xl font-bold text-accent-primary sm:text-3xl">{title}</h1>
           {subtitle && <p className="mt-1 text-body-sm text-content-dim">{subtitle}</p>}
         </div>
@@ -98,12 +107,19 @@ export function PageSectionHeader({
 
   return (
     <header
-      className={cn('flex flex-col gap-3 border-b border-border-soft pb-4 sm:flex-row sm:items-center sm:justify-between', className)}
+      className={cn(
+        'flex flex-col gap-3 border-b border-border-soft pb-4 sm:flex-row sm:items-center sm:justify-between',
+        className,
+      )}
       {...props}
     >
       {leading && <div className="shrink-0">{leading}</div>}
       <div className="min-w-0 flex-1">
-        {kicker && <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{kicker}</span>}
+        {kicker && (
+          <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+            {kicker}
+          </span>
+        )}
         <h1 className="font-display text-2xl font-bold text-accent-primary sm:text-3xl">{title}</h1>
         {subtitle && <p className="mt-1 text-body-sm text-content-dim">{subtitle}</p>}
       </div>
@@ -144,7 +160,8 @@ export function WorkspaceLayout({
       <div
         className={cn(
           'relative z-[var(--z-dropdown)] grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto px-4 py-4 lg:overflow-hidden lg:px-6',
-          hasSidebar && (sidebarSide === 'left' ? workspaceLeftGridClass[sidebarWidth] : workspaceRightGridClass[sidebarWidth]),
+          hasSidebar &&
+            (sidebarSide === 'left' ? workspaceLeftGridClass[sidebarWidth] : workspaceRightGridClass[sidebarWidth]),
           contentClassName,
         )}
       >
@@ -169,16 +186,13 @@ export interface StatusPageLayoutProps extends Omit<PageShellProps, 'variant'> {
   panelProps?: PanelProps;
 }
 
-export function StatusPageLayout({
-  children,
-  className,
-  panelClassName,
-  panelProps,
-  ...props
-}: StatusPageLayoutProps) {
+export function StatusPageLayout({ children, className, panelClassName, panelProps, ...props }: StatusPageLayoutProps) {
   return (
     <PageShell variant="status" className={cn('flex items-center justify-center px-4', className)} {...props}>
-      <Panel {...panelProps} className={cn('relative z-[var(--z-dropdown)] w-full max-w-xl', panelProps?.className, panelClassName)}>
+      <Panel
+        {...panelProps}
+        className={cn('relative z-[var(--z-dropdown)] w-full max-w-xl', panelProps?.className, panelClassName)}
+      >
         {children}
       </Panel>
     </PageShell>
@@ -192,10 +206,7 @@ export interface ToolHeaderProps extends PageHeaderProps {
 export function ToolHeader({ className, density = 'compact', ...props }: ToolHeaderProps) {
   return (
     <PageHeader
-      className={cn(
-        density === 'compact' ? 'min-h-12 px-3 py-2 md:px-6' : 'min-h-14',
-        className,
-      )}
+      className={cn(density === 'compact' ? 'min-h-12 px-3 py-2 md:px-6' : 'min-h-14', className)}
       {...props}
     />
   );
@@ -204,7 +215,12 @@ export function ToolHeader({ className, density = 'compact', ...props }: ToolHea
 export type FilterToolbarProps = ResponsiveToolbarProps;
 
 export function FilterToolbar({ className, ...props }: FilterToolbarProps) {
-  return <ResponsiveToolbar className={cn('rounded-sm border border-border-soft bg-surface-panel/60 p-3', className)} {...props} />;
+  return (
+    <ResponsiveToolbar
+      className={cn('rounded-sm border border-border-soft bg-surface-panel/60 p-3', className)}
+      {...props}
+    />
+  );
 }
 
 export interface StatsGridProps extends HTMLAttributes<HTMLDivElement> {

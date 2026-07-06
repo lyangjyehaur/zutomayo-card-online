@@ -12,11 +12,14 @@ import {
   adminGetUsers,
   adminLogin,
   adminResetElo,
+  adminUpdateAboutPage,
   adminUpdateCard,
   adminUpdateCardI18n,
+  DEFAULT_ABOUT_PAGE_I18N_CONFIG,
+  fetchAboutPageI18n,
   fetchCardI18n,
 } from '../api/client';
-import type { AdminMatch, AdminUser } from '../api/client';
+import type { AboutPageConfig, AboutPageI18nConfig, AboutPageLocale, AdminMatch, AdminUser } from '../api/client';
 import {
   Badge,
   BackButton,
@@ -66,6 +69,12 @@ const I18N_LANGS = [
   { code: 'ko', label: '한국어' },
 ] as const;
 
+const ABOUT_LANGS: Array<{ code: AboutPageLocale; label: string }> = I18N_LANGS.map((lang) => ({
+  code: lang.code as AboutPageLocale,
+  label: lang.label,
+}));
+
+type AdminTab = 'cards' | 'users' | 'matches' | 'about';
 type ModalTab = 'basic' | 'engine' | 'i18n';
 type ParsedCardMeta = {
   card: CardDef;
@@ -486,6 +495,228 @@ function I18nEditor({ cardId }: { cardId: string }) {
   );
 }
 
+function AboutSettingsEditor() {
+  const [draft, setDraft] = useState<AboutPageI18nConfig>(DEFAULT_ABOUT_PAGE_I18N_CONFIG);
+  const [activeLocale, setActiveLocale] = useState<AboutPageLocale>('zh-TW');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchAboutPageI18n()
+      .then(setDraft)
+      .catch(() => setDraft(DEFAULT_ABOUT_PAGE_I18N_CONFIG))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const currentDraft = draft[activeLocale];
+
+  const updateCurrentDraft = (update: (current: AboutPageConfig) => AboutPageConfig) => {
+    setDraft((current) => ({ ...current, [activeLocale]: update(current[activeLocale]) }));
+    setSuccess(false);
+  };
+
+  const setField = (field: keyof Pick<AboutPageConfig, 'title' | 'description'>, value: string) => {
+    updateCurrentDraft((current) => ({ ...current, [field]: value }));
+  };
+
+  const setPersonField = (person: 'author' | 'artist', field: keyof AboutPageConfig['author'], value: string) => {
+    updateCurrentDraft((current) => ({ ...current, [person]: { ...current[person], [field]: value } }));
+  };
+
+  const setLinkField = (link: 'github' | 'otherProjects', field: keyof AboutPageConfig['github'], value: string) => {
+    updateCurrentDraft((current) => ({ ...current, [link]: { ...current[link], [field]: value } }));
+  };
+
+  const setCommunityField = (field: keyof AboutPageConfig['community'], value: string) => {
+    updateCurrentDraft((current) => ({ ...current, community: { ...current.community, [field]: value } }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    setSuccess(false);
+    try {
+      await adminUpdateAboutPage(draft);
+      setSuccess(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '儲存失敗');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <LoadingState label="載入 About 設定中…" />;
+
+  return (
+    <section className="admin-about-editor mx-auto grid w-full max-w-5xl gap-4">
+      <Panel size="lg" className="grid gap-4">
+        <div>
+          <h2 className="font-display text-xl font-bold text-content-primary">About 彈窗</h2>
+          <p className="mt-1 text-body leading-relaxed text-content-muted">
+            這裡的內容會保存到資料庫，首頁 About 彈窗會依照目前語言讀取對應設定。
+          </p>
+        </div>
+        <SegmentedControl
+          className="admin-tablist"
+          behavior="tabs"
+          size="sm"
+          ariaLabel="About 語言"
+          options={ABOUT_LANGS.map((lang) => ({ value: lang.code, label: lang.label }))}
+          value={activeLocale}
+          onChange={setActiveLocale}
+        />
+        <label className="grid gap-1">
+          <span className="text-xs text-content-primary/50">標題</span>
+          <Input value={currentDraft.title} onChange={(e) => setField('title', e.target.value)} />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-xs text-content-primary/50">自述文本</span>
+          <Textarea
+            value={currentDraft.description}
+            onChange={(e) => setField('description', e.target.value)}
+            rows={3}
+          />
+        </label>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">作者名稱</span>
+            <Input
+              value={currentDraft.author.name}
+              onChange={(e) => setPersonField('author', 'name', e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">作者 URL</span>
+            <Input value={currentDraft.author.url} onChange={(e) => setPersonField('author', 'url', e.target.value)} />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">畫師名稱</span>
+            <Input
+              value={currentDraft.artist.name}
+              onChange={(e) => setPersonField('artist', 'name', e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">畫師 URL</span>
+            <Input value={currentDraft.artist.url} onChange={(e) => setPersonField('artist', 'url', e.target.value)} />
+          </label>
+        </div>
+      </Panel>
+
+      <Panel size="lg" className="grid gap-4">
+        <div>
+          <h3 className="font-display text-lg font-bold text-content-primary">GitHub</h3>
+          <p className="mt-1 text-caption leading-relaxed text-content-muted">
+            單獨展示倉庫入口，可寫明歡迎貢獻 PR 的說明。
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">顯示標題</span>
+            <Input
+              value={currentDraft.github.title}
+              onChange={(e) => setLinkField('github', 'title', e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">URL</span>
+            <Input value={currentDraft.github.url} onChange={(e) => setLinkField('github', 'url', e.target.value)} />
+          </label>
+        </div>
+        <label className="grid gap-1">
+          <span className="text-xs text-content-primary/50">描述</span>
+          <Textarea
+            value={currentDraft.github.description}
+            onChange={(e) => setLinkField('github', 'description', e.target.value)}
+            rows={3}
+          />
+        </label>
+      </Panel>
+
+      <Panel size="lg" className="grid gap-4">
+        <div>
+          <h3 className="font-display text-lg font-bold text-content-primary">其他項目</h3>
+          <p className="mt-1 text-caption leading-relaxed text-content-muted">
+            指向你的其他 ZUTOMAYO 相關項目，可以用描述補充項目集合的內容。
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">顯示標題</span>
+            <Input
+              value={currentDraft.otherProjects.title}
+              onChange={(e) => setLinkField('otherProjects', 'title', e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">URL</span>
+            <Input
+              value={currentDraft.otherProjects.url}
+              onChange={(e) => setLinkField('otherProjects', 'url', e.target.value)}
+            />
+          </label>
+        </div>
+        <label className="grid gap-1">
+          <span className="text-xs text-content-primary/50">描述</span>
+          <Textarea
+            value={currentDraft.otherProjects.description}
+            onChange={(e) => setLinkField('otherProjects', 'description', e.target.value)}
+            rows={3}
+          />
+        </label>
+      </Panel>
+
+      <Panel size="lg" className="grid gap-4">
+        <div>
+          <h3 className="font-display text-lg font-bold text-content-primary">社群</h3>
+          <p className="mt-1 text-caption leading-relaxed text-content-muted">
+            用來說明可以反饋問題、提出建議以及組局對戰。
+          </p>
+        </div>
+        <label className="grid gap-1">
+          <span className="text-xs text-content-primary/50">社群描述</span>
+          <Textarea
+            value={currentDraft.community.description}
+            onChange={(e) => setCommunityField('description', e.target.value)}
+            rows={3}
+          />
+        </label>
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">QQ群 URL</span>
+            <Input value={currentDraft.community.qqUrl} onChange={(e) => setCommunityField('qqUrl', e.target.value)} />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">Telegram URL</span>
+            <Input
+              value={currentDraft.community.telegramUrl}
+              onChange={(e) => setCommunityField('telegramUrl', e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs text-content-primary/50">Discord URL</span>
+            <Input
+              value={currentDraft.community.discordUrl}
+              onChange={(e) => setCommunityField('discordUrl', e.target.value)}
+            />
+          </label>
+        </div>
+      </Panel>
+
+      <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-3 border-t border-border-soft bg-surface-panel-strong/95 p-3 backdrop-blur">
+        {success && <Badge tone="jade">已保存到資料庫</Badge>}
+        {error && <Badge tone="vermilion">{error}</Badge>}
+        <Button type="button" disabled={saving} onClick={() => void handleSave()}>
+          {saving ? '儲存中…' : '儲存 About 設定'}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 // ===== Main Component =====
 export function AdminPage() {
   const navigate = useNavigate();
@@ -493,7 +724,7 @@ export function AdminPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
-  const [activeTab, setActiveTab] = useState<'cards' | 'users' | 'matches'>('cards');
+  const [activeTab, setActiveTab] = useState<AdminTab>('cards');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [matches, setMatches] = useState<AdminMatch[]>([]);
   const [adminLoading, setAdminLoading] = useState(false);
@@ -774,6 +1005,7 @@ export function AdminPage() {
                 { value: 'cards', label: '卡牌資料' },
                 { value: 'users', label: '使用者' },
                 { value: 'matches', label: '對戰' },
+                { value: 'about', label: 'About' },
               ]}
               value={activeTab}
               onChange={setActiveTab}
@@ -1066,6 +1298,12 @@ export function AdminPage() {
               ))}
             </tbody>
           </DataListTable>
+        </section>
+      )}
+
+      {activeTab === 'about' && (
+        <section className="admin-main flex-1 overflow-y-auto p-4">
+          <AboutSettingsEditor />
         </section>
       )}
 

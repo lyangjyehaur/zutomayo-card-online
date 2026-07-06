@@ -10,6 +10,7 @@ export interface PwaUpdateReadyDetail {
 
 let currentApplyUpdate: (() => void) | null = null;
 let pendingUpdateReady: PwaUpdateReadyDetail | null = null;
+let currentRegistration: ServiceWorkerRegistration | null = null;
 
 function dispatchPwaUpdateReady(): void {
   if (typeof window === 'undefined') return;
@@ -53,7 +54,8 @@ export async function fetchServerVersion(): Promise<AppVersionInfo | null> {
     },
   });
   if (!response.ok) return null;
-  return normalizeVersionInfo(await response.json());
+  const data = await response.json();
+  return normalizeVersionInfo(data) ?? normalizeVersionInfo((data as { version?: unknown }).version);
 }
 
 export async function ensureCompatibleAppVersion(): Promise<void> {
@@ -92,6 +94,14 @@ export function requestPwaRecoveryPrompt(): void {
   window.dispatchEvent(new Event(PWA_RECOVER_REQUESTED_EVENT));
 }
 
+export async function requestPwaUpdateCheck(): Promise<PwaUpdateReadyDetail | null> {
+  if (typeof window === 'undefined') return pendingUpdateReady;
+  if (currentRegistration) {
+    await currentRegistration.update();
+  }
+  return pendingUpdateReady;
+}
+
 export function registerPwaAutoUpdate(): void {
   if (typeof window === 'undefined') return;
   const updateSW = registerSW({
@@ -104,6 +114,7 @@ export function registerPwaAutoUpdate(): void {
     },
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return;
+      currentRegistration = registration;
       currentApplyUpdate = () => {
         void updateSW(true);
       };

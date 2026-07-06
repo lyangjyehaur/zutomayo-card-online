@@ -27,7 +27,11 @@ export function Alert({ tone = 'info', title, children, className, role = 'statu
       role={role}
       {...props}
     >
-      {title && <strong className="mb-1 block font-mono text-caption uppercase tracking-[var(--tracking-control)]">{title}</strong>}
+      {title && (
+        <strong className="mb-1 block font-mono text-caption uppercase tracking-[var(--tracking-control)]">
+          {title}
+        </strong>
+      )}
       {children}
     </div>
   );
@@ -71,7 +75,10 @@ export function LoadingState({ label, className, ...props }: LoadingStateProps) 
       aria-live="polite"
       {...props}
     >
-      <span className="mb-2 size-2.5 animate-pulse rounded-full bg-accent-primary/70 shadow-status-dot" aria-hidden="true" />
+      <span
+        className="mb-2 size-2.5 animate-pulse rounded-full bg-accent-primary/70 shadow-status-dot"
+        aria-hidden="true"
+      />
       <span>{label}</span>
     </div>
   );

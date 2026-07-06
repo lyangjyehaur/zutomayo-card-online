@@ -169,6 +169,111 @@ body {
   overflow: hidden;
 }
 
+.app-boot-loader {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, oklch(from var(--time-night) l c h / 0.16), transparent 42rem),
+    var(--surface-canvas);
+  color: var(--content-primary);
+}
+
+.app-boot-loader::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image: var(--pattern-dot);
+  background-size: var(--pattern-dot-size);
+}
+
+.app-boot-loader__mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(42vw, 12rem);
+  aspect-ratio: 1;
+}
+
+.app-boot-loader__mark::before,
+.app-boot-loader__mark::after,
+.app-boot-loader__mark span {
+  content: '';
+  position: absolute;
+  border-radius: 999px;
+  border: var(--border-width-hairline) solid color-mix(in oklch, var(--accent-primary) 54%, transparent);
+}
+
+.app-boot-loader__mark::before {
+  inset: 0;
+  animation: boot-loader-spin 2.8s linear infinite;
+  border-top-color: var(--accent-primary);
+}
+
+.app-boot-loader__mark::after {
+  inset: 18%;
+  border-color: color-mix(in oklch, var(--content-primary) 22%, transparent);
+}
+
+.app-boot-loader__mark span:first-child {
+  inset: 37%;
+  background: color-mix(in oklch, var(--accent-primary) 72%, transparent);
+  border: 0;
+  box-shadow: 0 0 2rem color-mix(in oklch, var(--accent-primary) 44%, transparent);
+}
+
+.app-boot-loader__mark span:last-child {
+  inset: -9%;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  animation: boot-loader-spin 4.2s linear infinite reverse;
+}
+
+.app-boot-loader__copy {
+  position: absolute;
+  inset-inline: 1.5rem;
+  bottom: max(2rem, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  text-align: center;
+}
+
+.app-boot-loader__copy span,
+.app-boot-loader__copy p {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-caption);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--content-primary) 48%, transparent);
+}
+
+.app-boot-loader__copy strong {
+  font-family: var(--font-display);
+  font-size: clamp(1.65rem, 7vw, 3.2rem);
+  line-height: 0.95;
+  color: var(--content-primary);
+}
+
+@keyframes boot-loader-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-boot-loader__mark::before,
+  .app-boot-loader__mark span:last-child {
+    animation: none;
+  }
+}
+
 .app-shell.has-nav {
   grid-template-rows: auto minmax(0, 1fr);
 }
@@ -560,14 +665,12 @@ body {
   overflow: hidden;
 }
 
-
 .lobby-side {
   display: grid;
   grid-template-rows: minmax(0, 0.8fr) minmax(0, 1fr);
   gap: 0.7rem;
   min-height: 0;
 }
-
 
 .ai-panel,
 .online-panel {
@@ -593,7 +696,6 @@ body {
   color: var(--muted);
   font-size: 0.75rem;
 }
-
 
 .difficulty-grid {
   display: grid;
@@ -1342,9 +1444,7 @@ input:focus {
   font-weight: 800;
 }
 
-.player-status 
-
-.player-status .power,
+.player-status .player-status .power,
 .player-status .timer {
   color: var(--gold);
 }
@@ -1880,7 +1980,6 @@ input:focus {
   gap: 0.5rem;
 }
 
-
 .sync-indicator {
   border: 1px solid var(--line-soft);
   border-radius: 999rem;
@@ -1970,7 +2069,6 @@ input:focus {
   background: rgba(77, 219, 196, 0.1);
 }
 
-
 .rule,
 .stat {
   display: flex;
@@ -2004,7 +2102,6 @@ input:focus {
 .rule.strong {
   border-color: var(--gold);
 }
-
 
 .collection-panel,
 .current-deck-panel,
@@ -2062,7 +2159,6 @@ input:focus {
   background: rgba(245, 211, 104, 0.1);
 }
 
-
 .panel-title-row {
   display: flex;
   align-items: center;
@@ -2112,7 +2208,6 @@ input:focus {
   font-size: 0.62rem;
   font-weight: 900;
 }
-
 
 /* History */
 .match-history {
@@ -2309,8 +2404,6 @@ input:focus {
     grid-template-columns: 1fr;
   }
 
-  
-
   .card-pool-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -2345,8 +2438,6 @@ input:focus {
 
   .title-lockup p,
   .section-heading span,
-  
-
   .primary-menu {
     width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2377,16 +2468,6 @@ input:focus {
   .lobby-grid {
     grid-template-rows: minmax(0, 1fr) auto;
   }
-
-  
-
-  
-
-  
-
-  
-
-  
 
   .lobby-side {
     grid-template-columns: 1fr;
@@ -2474,16 +2555,10 @@ input:focus {
     gap: 0.35rem;
   }
 
-  
-
-  
-
   .rule,
   .stat {
     padding: 0.38rem 0.5rem;
   }
-
-  
 
   .collection-panel,
   .current-deck-panel,
@@ -2510,12 +2585,6 @@ input:focus {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.28rem;
   }
-
-  
-
-  
-
-  
 
   .records-list {
     grid-template-rows: repeat(6, minmax(0, 1fr));
@@ -2679,7 +2748,6 @@ button.zone:focus-visible {
 .power-stack {
   border-color: rgba(226, 189, 93, 0.34);
 }
-
 
 .stack-visual {
   position: relative;
@@ -3103,7 +3171,6 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 767px) {
-
   .back-button {
     min-height: 2rem;
     padding: 0.36rem 0.58rem;
@@ -3293,11 +3360,7 @@ button.zone:focus-visible {
   font-size: 0.66em;
 }
 
-.bottom-zones 
-
-.bottom-zones 
-
-.status-pill {
+.bottom-zones .bottom-zones .status-pill {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -3388,7 +3451,6 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 768px) {
-
   .opponent-stats-bar {
     min-height: 2rem;
     gap: 0.35rem;
@@ -3428,17 +3490,13 @@ button.zone:focus-visible {
     padding: 0.18rem;
   }
 
-  .bottom-zones 
-
-  .bottom-zones .power-charger-visual {
+  .bottom-zones .bottom-zones .power-charger-visual {
     width: 1.3rem;
     font-size: 0.82rem;
   }
 
   .bottom-zones .power-stack strong,
-  .bottom-zones 
-
-  .status-pill {
+  .bottom-zones .status-pill {
     gap: 0.12rem;
     padding: 0.16rem 0.34rem;
     font-size: 0.56rem;
@@ -3550,11 +3608,7 @@ button.zone:focus-visible {
   font-size: 0.66em;
 }
 
-.bottom-zones 
-
-.bottom-zones 
-
-.status-pill {
+.bottom-zones .bottom-zones .status-pill {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -3645,7 +3699,6 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 768px) {
-
   .opponent-stats-bar {
     min-height: 2rem;
     gap: 0.35rem;
@@ -3686,17 +3739,13 @@ button.zone:focus-visible {
     padding: 0.18rem;
   }
 
-  .bottom-zones 
-
-  .bottom-zones .power-charger-visual {
+  .bottom-zones .bottom-zones .power-charger-visual {
     width: 1.3rem;
     font-size: 0.82rem;
   }
 
   .bottom-zones .power-stack strong,
-  .bottom-zones 
-
-  .status-pill {
+  .bottom-zones .status-pill {
     gap: 0.12rem;
     padding: 0.16rem 0.34rem;
     font-size: 0.56rem;
@@ -3947,7 +3996,6 @@ button.zone:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 
 @keyframes battle-zone-glow {
   0%,
@@ -4287,9 +4335,7 @@ button.zone:focus-visible {
   padding: 0.18rem;
 }
 
-.player-view 
-
-.player-view .power-stack {
+.player-view .player-view .power-stack {
   min-height: 1.9rem;
   gap: 0.2rem;
   padding: 0.18rem 0.22rem;
@@ -4301,9 +4347,7 @@ button.zone:focus-visible {
 }
 
 .player-view .power-stack strong,
-.player-view 
-
-.player-view .hand-drawer {
+.player-view .player-view .hand-drawer {
   position: absolute;
   height: min(42%, 13rem);
   min-height: 9rem;
@@ -4318,7 +4362,6 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 767px) {
-
   .back-button {
     min-height: 2rem;
     padding: 0.36rem 0.58rem;
@@ -4357,10 +4400,6 @@ button.zone:focus-visible {
   .player-resource-row {
     gap: 0.22rem;
   }
-
-  
-
-  
 
   .power-stack {
     min-height: 1.9rem;
@@ -4494,9 +4533,7 @@ button.zone:focus-visible {
   text-align: center;
 }
 
-.bottom-zones 
-
-.status-pill {
+.bottom-zones .status-pill {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -4567,7 +4604,6 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 768px) {
-
   .opponent-stats-bar {
     min-height: 2rem;
     gap: 0.35rem;
@@ -4607,9 +4643,7 @@ button.zone:focus-visible {
     padding: 0.18rem;
   }
 
-  .bottom-zones 
-
-  .status-pill {
+  .bottom-zones .status-pill {
     gap: 0.12rem;
     padding: 0.16rem 0.34rem;
     font-size: 0.56rem;
@@ -5347,14 +5381,12 @@ button.zone:focus-visible {
   position: relative;
 }
 
-
 .card-back-design {
   font-family: var(--font-display);
   font-style: italic;
   font-size: 14px;
   color: color-mix(in oklch, var(--gold) 50%, transparent);
 }
-
 
 .power-stack,
 .power-charger-visual {
@@ -6176,9 +6208,8 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 480px) {
-
   .effect-order-panel,
-.game-over-panel {
+  .game-over-panel {
     padding: 1.25rem;
   }
 
@@ -6218,7 +6249,6 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 767px) {
-
   [data-tut='mulligan-panel'] {
     width: min(100%, calc(100vw - 1rem)) !important;
     max-width: calc(100vw - 1rem) !important;
@@ -6354,9 +6384,8 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 767px) {
-
   .board-pause-button,
-.battle-side-sheet-close {
+  .battle-side-sheet-close {
     min-width: 2.75rem !important;
     min-height: 2.75rem !important;
   }
@@ -6378,9 +6407,8 @@ button.zone:focus-visible {
 }
 
 @media (max-height: 780px) and (min-width: 1024px) {
-
   .board-pause-button,
-.battle-side-sheet-close {
+  .battle-side-sheet-close {
     min-width: 2.5rem !important;
     min-height: 2.5rem !important;
   }

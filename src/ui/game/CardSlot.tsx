@@ -64,7 +64,14 @@ export function CardSlot({
 
   if (!card && interactive) {
     return (
-      <button type="button" className={cls} data-state={state} data-tut={tutId} aria-label={ariaLabel} onClick={onActivate}>
+      <button
+        type="button"
+        className={cls}
+        data-state={state}
+        data-tut={tutId}
+        aria-label={ariaLabel}
+        onClick={onActivate}
+      >
         {inner}
       </button>
     );

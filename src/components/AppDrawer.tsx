@@ -48,7 +48,14 @@ export function AppDrawer({
 
   return (
     <div ref={overlayRef} className={`app-drawer-overlay ${tone}`} role="presentation">
-      <section ref={panelRef} className="app-drawer-panel" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+      <section
+        ref={panelRef}
+        className="app-drawer-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
         <div>
           {kicker && <span>{kicker}</span>}
           <h2 id={titleId}>{title}</h2>

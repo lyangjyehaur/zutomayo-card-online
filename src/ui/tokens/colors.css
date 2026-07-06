@@ -74,8 +74,7 @@
   --color-targetable: var(--cyan-400); /* 青虛框 — 可作為目標 */
   --color-disabled: oklch(from var(--content-primary) l c h / 0.25);
   --ring-playable: 0 0 0 2px oklch(from var(--color-playable) l c h / 0.55);
-  --ring-selected:
-    0 0 0 2px var(--color-selected), 0 10px 28px -10px oklch(from var(--color-selected) l c h / 0.5);
+  --ring-selected: 0 0 0 2px var(--color-selected), 0 10px 28px -10px oklch(from var(--color-selected) l c h / 0.5);
   --ring-targetable: 0 0 0 2px oklch(from var(--color-targetable) l c h / 0.7);
 
   /* ------------------------------------------------ 戰場氛圍 */

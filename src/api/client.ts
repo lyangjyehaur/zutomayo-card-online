@@ -34,6 +34,167 @@ export interface LeaderboardEntry {
   winRate: number;
 }
 
+export interface AboutPageLink {
+  title: string;
+  url: string;
+  description: string;
+}
+
+export interface AboutPagePerson {
+  name: string;
+  url: string;
+}
+
+export const ABOUT_PAGE_LOCALES = ['zh-TW', 'zh-HK', 'zh-CN', 'ja', 'en', 'ko'] as const;
+export type AboutPageLocale = (typeof ABOUT_PAGE_LOCALES)[number];
+
+export interface AboutPageConfig {
+  title: string;
+  description: string;
+  author: AboutPagePerson;
+  artist: AboutPagePerson;
+  github: AboutPageLink;
+  otherProjects: AboutPageLink;
+  community: {
+    description: string;
+    qqUrl: string;
+    telegramUrl: string;
+    discordUrl: string;
+  };
+}
+
+const DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW: AboutPageConfig = {
+  title: 'About ZUTOMAYO CARD ONLINE',
+  description: '這是一個由玩家維護的非官方線上對戰項目，目標是讓更多人能方便體驗 ZUTOMAYO CARD 的夜晝攻防與牌組構築。',
+  author: {
+    name: 'lyangjyehaur',
+    url: 'https://github.com/lyangjyehaur',
+  },
+  artist: {
+    name: '待補充',
+    url: '',
+  },
+  github: {
+    title: 'GitHub Repository',
+    url: 'https://github.com/lyangjyehaur/zutomayo-card-online',
+    description: '項目代碼與開發進度在 GitHub 公開。歡迎透過 Issue 或 Pull Request 參與規則校對、功能改進與介面優化。',
+  },
+  otherProjects: {
+    title: 'ZUTOMAYO Gallery',
+    url: 'https://ztmy.art',
+    description: '一個 ZUTOMAYO MV 資料庫，用於整理 MV 設定圖、相關資料與內容維護流程。',
+  },
+  community: {
+    description: '加入社群可以回報問題、提出建議，也可以找人組局對戰。',
+    qqUrl: 'https://qm.qq.com/',
+    telegramUrl: 'https://t.me/',
+    discordUrl: 'https://discord.gg/',
+  },
+};
+
+export const DEFAULT_ABOUT_PAGE_I18N_CONFIG: Record<AboutPageLocale, AboutPageConfig> = {
+  'zh-TW': DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW,
+  'zh-HK': {
+    ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW,
+    description: '呢個係由玩家維護嘅非官方綫上對戰項目，希望更多人可以方便體驗 ZUTOMAYO CARD 嘅夜晝攻防同牌組構築。',
+    artist: { name: '待補充', url: '' },
+    github: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.github,
+      description:
+        '項目代碼同開發進度喺 GitHub 公開。歡迎透過 Issue 或 Pull Request 參與規則校對、功能改進同介面優化。',
+    },
+    otherProjects: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.otherProjects,
+      description: '一個 ZUTOMAYO MV 資料庫，用嚟整理 MV 設定圖、相關資料同內容維護流程。',
+    },
+    community: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.community,
+      description: '加入社群可以回報問題、提出建議，亦可以搵人組局對戰。',
+    },
+  },
+  'zh-CN': {
+    ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW,
+    description:
+      '这是一个由玩家维护的非官方在线对战项目，目标是让更多人能方便体验 ZUTOMAYO CARD 的夜昼攻防与牌组构筑。',
+    artist: { name: '待补充', url: '' },
+    github: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.github,
+      description:
+        '项目代码与开发进度在 GitHub 公开。欢迎通过 Issue 或 Pull Request 参与规则校对、功能改进与界面优化。',
+    },
+    otherProjects: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.otherProjects,
+      description: '一个 ZUTOMAYO MV 数据库，用于整理 MV 设定图、相关资料与内容维护流程。',
+    },
+    community: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.community,
+      description: '加入社群可以反馈问题、提出建议，也可以找人组局对战。',
+    },
+  },
+  ja: {
+    ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW,
+    description:
+      'プレイヤーによって運営されている非公式オンライン対戦プロジェクトです。ZUTOMAYO CARD の夜昼の攻防とデッキ構築を、より手軽に楽しめる場を目指しています。',
+    artist: { name: '未設定', url: '' },
+    github: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.github,
+      description:
+        'プロジェクトのコードと開発状況は GitHub で公開されています。ルール確認、機能改善、UI 改善は Issue や Pull Request で参加できます。',
+    },
+    otherProjects: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.otherProjects,
+      description: 'ZUTOMAYO の MV 設定画、関連資料、コンテンツ管理フローを整理する MV データベースです。',
+    },
+    community: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.community,
+      description: 'コミュニティでは不具合報告や提案、対戦相手の募集ができます。',
+    },
+  },
+  en: {
+    ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW,
+    description:
+      'A player-maintained, unofficial online battle project built to make ZUTOMAYO CARD easier to play, test, and share with others.',
+    artist: { name: 'TBD', url: '' },
+    github: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.github,
+      description:
+        'Project code and development progress are public on GitHub. Issues and Pull Requests for rules review, feature work, and UI polish are welcome.',
+    },
+    otherProjects: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.otherProjects,
+      description:
+        'A ZUTOMAYO MV database for organizing MV reference images, related metadata, and content maintenance workflows.',
+    },
+    community: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.community,
+      description: 'Join the community to report issues, share suggestions, and find players for matches.',
+    },
+  },
+  ko: {
+    ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW,
+    description:
+      '플레이어가 운영하는 비공식 온라인 대전 프로젝트입니다. ZUTOMAYO CARD의 밤낮 전투와 덱 구성을 더 쉽게 즐기고 공유할 수 있도록 만들고 있습니다.',
+    artist: { name: '미정', url: '' },
+    github: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.github,
+      description:
+        '프로젝트 코드와 개발 진행 상황은 GitHub에 공개되어 있습니다. 규칙 검토, 기능 개선, UI 개선은 Issue 또는 Pull Request로 참여할 수 있습니다.',
+    },
+    otherProjects: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.otherProjects,
+      description: 'ZUTOMAYO MV 설정 이미지, 관련 자료, 콘텐츠 유지 관리 흐름을 정리하는 MV 데이터베이스입니다.',
+    },
+    community: {
+      ...DEFAULT_ABOUT_PAGE_CONFIG_ZH_TW.community,
+      description: '커뮤니티에서 문제를 제보하고 의견을 공유하며 함께 대전할 플레이어를 찾을 수 있습니다.',
+    },
+  },
+};
+
+export const DEFAULT_ABOUT_PAGE_CONFIG = DEFAULT_ABOUT_PAGE_I18N_CONFIG['zh-TW'];
+
+export type AboutPageI18nConfig = Record<AboutPageLocale, AboutPageConfig>;
+
 interface DeckListResponse {
   decks: DeckResponse[];
 }
@@ -86,6 +247,73 @@ function isFresh<T>(cache: { expiresAt: number; data: T } | null): cache is { ex
   return Boolean(cache && cache.expiresAt > Date.now());
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function readString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeAboutLink(value: unknown, fallback: AboutPageLink): AboutPageLink {
+  const record = asRecord(value);
+  return {
+    title: readString(record.title, fallback.title),
+    url: readString(record.url, fallback.url),
+    description: readString(record.description, fallback.description),
+  };
+}
+
+function normalizeAboutPerson(value: unknown, fallback: AboutPagePerson, legacyName?: unknown): AboutPagePerson {
+  const record = asRecord(value);
+  return {
+    name: readString(record.name, readString(legacyName, fallback.name)),
+    url: readString(record.url, fallback.url),
+  };
+}
+
+function isAboutPageLocale(value: string): value is AboutPageLocale {
+  return ABOUT_PAGE_LOCALES.includes(value as AboutPageLocale);
+}
+
+function normalizeAboutPageConfig(value: unknown, locale: AboutPageLocale = 'zh-TW'): AboutPageConfig {
+  const record = asRecord(value);
+  const fallback = DEFAULT_ABOUT_PAGE_I18N_CONFIG[locale];
+  const community = asRecord(record.community);
+  return {
+    title: readString(record.title, fallback.title),
+    description: readString(record.description, fallback.description),
+    author: normalizeAboutPerson(record.author, fallback.author, record.authorName),
+    artist: normalizeAboutPerson(record.artist, fallback.artist, record.artistName),
+    github: normalizeAboutLink(record.github, fallback.github),
+    otherProjects: normalizeAboutLink(record.otherProjects, fallback.otherProjects),
+    community: {
+      description: readString(community.description, fallback.community.description),
+      qqUrl: readString(community.qqUrl, fallback.community.qqUrl),
+      telegramUrl: readString(community.telegramUrl, fallback.community.telegramUrl),
+      discordUrl: readString(community.discordUrl, fallback.community.discordUrl),
+    },
+  };
+}
+
+function normalizeAboutPageI18nConfig(value: unknown): AboutPageI18nConfig {
+  const record = asRecord(value);
+  const hasLocaleKeys = Object.keys(record).some(isAboutPageLocale);
+  if (!hasLocaleKeys) {
+    if (Object.keys(record).length === 0) return DEFAULT_ABOUT_PAGE_I18N_CONFIG;
+    return Object.fromEntries(
+      ABOUT_PAGE_LOCALES.map((locale) => [locale, normalizeAboutPageConfig(value, locale)]),
+    ) as AboutPageI18nConfig;
+  }
+
+  return Object.fromEntries(
+    ABOUT_PAGE_LOCALES.map((locale) => {
+      const localeValue = record[locale] ?? record['zh-TW'] ?? record.en;
+      return [locale, normalizeAboutPageConfig(localeValue, locale)];
+    }),
+  ) as AboutPageI18nConfig;
+}
+
 // ===== Public Data =====
 export async function fetchCards(force = false): Promise<CardDef[]> {
   if (!force && PUBLIC_DATA_CACHE_MS > 0 && isFresh(cardsCache)) return cardsCache.data;
@@ -107,6 +335,25 @@ export async function fetchGameConfig(): Promise<Record<string, unknown>> {
   const data = await request<Record<string, unknown>>('/config');
   configCache = { data, expiresAt: Date.now() + PUBLIC_DATA_CACHE_MS };
   return data;
+}
+
+export async function fetchAboutPage(locale: string = 'zh-TW'): Promise<AboutPageConfig> {
+  try {
+    const config = await fetchGameConfig();
+    const aboutLocale = isAboutPageLocale(locale) ? locale : 'zh-TW';
+    return normalizeAboutPageI18nConfig(config.about_page)[aboutLocale];
+  } catch {
+    return DEFAULT_ABOUT_PAGE_I18N_CONFIG[isAboutPageLocale(locale) ? locale : 'zh-TW'];
+  }
+}
+
+export async function fetchAboutPageI18n(): Promise<AboutPageI18nConfig> {
+  try {
+    const config = await fetchGameConfig();
+    return normalizeAboutPageI18nConfig(config.about_page);
+  } catch {
+    return DEFAULT_ABOUT_PAGE_I18N_CONFIG;
+  }
 }
 
 export async function fetchPresetDecks(): Promise<Array<{ id: string; name: string; cardIds: string[] }>> {
@@ -290,6 +537,10 @@ export async function adminUpdateConfig(key: string, value: unknown): Promise<vo
     body: JSON.stringify({ value }),
   });
   configCache = null;
+}
+
+export async function adminUpdateAboutPage(value: AboutPageI18nConfig): Promise<void> {
+  await adminUpdateConfig('about_page', value);
 }
 
 export async function adminUpdateCardI18n(cardId: string, lang: string, effectText: string): Promise<void> {

@@ -20,7 +20,9 @@ export function DifficultyButtons({
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h3 className="font-display text-lg font-bold leading-tight text-content-primary">{t('lobby.aiBattle')}</h3>
-        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">{t('lobby.difficulty')}</span>
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+          {t('lobby.difficulty')}
+        </span>
       </div>
       {disabled && <p className="text-caption text-accent-action/70">{t('lobby.selectDeckFirst')}</p>}
       <div className="flex flex-col gap-2">

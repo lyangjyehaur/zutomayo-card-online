@@ -11,40 +11,40 @@
 
 ### 1.1 語意色票（全部 oklch，定義於 `:root`）
 
-| Token | 值 | 用途 | Tailwind class |
-|---|---|---|---|
-| `--lacquer-deep` | `oklch(0.11 0.005 270)` | 最深背景（全螢幕頁底色） | `bg-lacquer-deep` |
-| `--lacquer` | `oklch(0.16 0.005 270)` | 次深背景 / 面板底色 | `bg-lacquer` |
-| `--bg-2` | `oklch(0.2 0.005 270)` | 淺一階背景（hover/分層） | （自訂） |
-| `--bone` | `oklch(0.965 0.012 90)` | 主文字色 / 高對比前景 | `text-bone` |
-| `--gold` | `oklch(0.74 0.09 80)` | 主強調色（primary action、標題、focus） | `text-gold` / `bg-gold` |
-| `--gold-soft` | `oklch(0.62 0.07 80)` | 次強調、金色文字較暗處 | `text-gold-soft` |
-| `--vermilion` | `oklch(0.6 0.19 295)` | 危險/錯誤/對手/朱紅強調 | `text-vermilion` / `bg-vermilion` |
-| `--jade` | `oklch(0.72 0.14 155)` | 成功/玩家/翡翠強調 | `text-jade` / `bg-jade` |
+| Token            | 值                      | 用途                                    | Tailwind class                    |
+| ---------------- | ----------------------- | --------------------------------------- | --------------------------------- |
+| `--lacquer-deep` | `oklch(0.11 0.005 270)` | 最深背景（全螢幕頁底色）                | `bg-lacquer-deep`                 |
+| `--lacquer`      | `oklch(0.16 0.005 270)` | 次深背景 / 面板底色                     | `bg-lacquer`                      |
+| `--bg-2`         | `oklch(0.2 0.005 270)`  | 淺一階背景（hover/分層）                | （自訂）                          |
+| `--bone`         | `oklch(0.965 0.012 90)` | 主文字色 / 高對比前景                   | `text-bone`                       |
+| `--gold`         | `oklch(0.74 0.09 80)`   | 主強調色（primary action、標題、focus） | `text-gold` / `bg-gold`           |
+| `--gold-soft`    | `oklch(0.62 0.07 80)`   | 次強調、金色文字較暗處                  | `text-gold-soft`                  |
+| `--vermilion`    | `oklch(0.6 0.19 295)`   | 危險/錯誤/對手/朱紅強調                 | `text-vermilion` / `bg-vermilion` |
+| `--jade`         | `oklch(0.72 0.14 155)`  | 成功/玩家/翡翠強調                      | `text-jade` / `bg-jade`           |
 
 ### 1.2 元素色票（卡牌屬性，提升為 token，**禁止硬編碼 hex**）
 
-| Token | 值（hex 對應） | 用途 |
-|---|---|---|
-| `--element-dark` | `#aaa4e8` | 闇屬性 |
-| `--element-flame` | `#ff8a8e` | 炎屬性 |
-| `--element-electric` | `#f5d368` | 電気屬性 |
-| `--element-wind` | `#42d7c6` | 風屬性 |
-| `--element-chaos` | `#d8a5ff` | カオス屬性 |
+| Token                | 值（hex 對應） | 用途       |
+| -------------------- | -------------- | ---------- |
+| `--element-dark`     | `#aaa4e8`      | 闇屬性     |
+| `--element-flame`    | `#ff8a8e`      | 炎屬性     |
+| `--element-electric` | `#f5d368`      | 電気屬性   |
+| `--element-wind`     | `#42d7c6`      | 風屬性     |
+| `--element-chaos`    | `#d8a5ff`      | カオス屬性 |
 
 > 統一由 `src/data/cardMetadata.ts` 匯出，Card.tsx 與 DeckSelector.tsx 共用，禁止兩處重複定義。
 
 ### 1.3 透明度語意（取代隨意 `/60`、`/8`）
 
-| 語意 | 用途 | 範例 |
-|---|---|---|
-| `/5` | 極淡邊框/分隔線 | `border-bone/5` |
-| `/10` | 面板邊框、ring | `ring-bone/10`、`border-bone/10` |
-| `/30` | placeholder、disabled 文字 | `placeholder:text-bone/30` |
-| `/40` | 次要文字、kicker 較暗 | `text-bone/40` |
-| `/50` | 次要文字、返回按鈕 | `text-bone/50` |
-| `/70` | muted 文字 | `text-bone/70`（取代舊 `--muted`） |
-| `/8` | 背景光暈專用 | `bg-vermilion/8`（僅 `<AmbientGlow>`） |
+| 語意  | 用途                       | 範例                                   |
+| ----- | -------------------------- | -------------------------------------- |
+| `/5`  | 極淡邊框/分隔線            | `border-bone/5`                        |
+| `/10` | 面板邊框、ring             | `ring-bone/10`、`border-bone/10`       |
+| `/30` | placeholder、disabled 文字 | `placeholder:text-bone/30`             |
+| `/40` | 次要文字、kicker 較暗      | `text-bone/40`                         |
+| `/50` | 次要文字、返回按鈕         | `text-bone/50`                         |
+| `/70` | muted 文字                 | `text-bone/70`（取代舊 `--muted`）     |
+| `/8`  | 背景光暈專用               | `bg-vermilion/8`（僅 `<AmbientGlow>`） |
 
 ### 1.4 色彩使用規則
 
@@ -59,27 +59,28 @@
 
 ### 2.1 字體家族（定義於 `:root`，已透過 `@theme inline` 橋接 Tailwind）
 
-| Token | 字體 | Tailwind class | 用途 |
-|---|---|---|---|
+| Token            | 字體                                                  | Tailwind class | 用途                   |
+| ---------------- | ----------------------------------------------------- | -------------- | ---------------------- |
 | `--font-display` | `'Kaisei Tokumin', 'EB Garamond', 'Songti SC', serif` | `font-display` | 標題、卡牌名、戰鬥結果 |
-| `--font-sans` | `'Inter', 'PingFang TC', 'Noto Sans TC', sans-serif` | `font-sans` | 內文（預設 body） |
-| `--font-mono` | `'JetBrains Mono', ui-monospace, monospace` | `font-mono` | kicker、數字、代碼、ID |
+| `--font-sans`    | `'Inter', 'PingFang TC', 'Noto Sans TC', sans-serif`  | `font-sans`    | 內文（預設 body）      |
+| `--font-mono`    | `'JetBrains Mono', ui-monospace, monospace`           | `font-mono`    | kicker、數字、代碼、ID |
 
 > i18n 字體覆寫（`html[lang='zh-CN']` → `Jiangcheng Jiexing`；`zh-TW`/`zh-HK` → `Uoq Mun Then Khung`）保留於 `:root`。
 
 ### 2.2 字級階梯（禁止散落任意值）
 
-| 語意 | Tailwind class | 用途 |
-|---|---|---|
-| 顯示標題 | `font-display text-3xl italic` | 頁面主標（如 lobby 標題） |
-| 區塊標題 | `font-display text-xl italic` | 面板標題、modal 標題 |
-| 次標題 | `font-display text-lg italic` | 列表項標題（DeckSelector/Difficulty） |
-| 內文 | `text-sm` | 一般文字、表單 |
-| 小字 | `text-xs` | 輔助文字、meta |
-| Kicker / Label | `font-mono text-[10px] uppercase tracking-[0.3em]` | 章節小標、按鈕文字、label |
-| 極小字 | `font-mono text-[9px]` | badge、status（僅 badge 用） |
+| 語意           | Tailwind class                                     | 用途                                  |
+| -------------- | -------------------------------------------------- | ------------------------------------- |
+| 顯示標題       | `font-display text-3xl italic`                     | 頁面主標（如 lobby 標題）             |
+| 區塊標題       | `font-display text-xl italic`                      | 面板標題、modal 標題                  |
+| 次標題         | `font-display text-lg italic`                      | 列表項標題（DeckSelector/Difficulty） |
+| 內文           | `text-sm`                                          | 一般文字、表單                        |
+| 小字           | `text-xs`                                          | 輔助文字、meta                        |
+| Kicker / Label | `font-mono text-[10px] uppercase tracking-[0.3em]` | 章節小標、按鈕文字、label             |
+| 極小字         | `font-mono text-[9px]`                             | badge、status（僅 badge 用）          |
 
 **規則**：
+
 - `text-[10px] uppercase tracking-[0.3em]` 僅用於 kicker/label/按鈕，且**必須**透過 `<Kicker>` 或 `<PrimaryButton>` 等共用組件產出，禁止散落。
 - `tracking-[0.35em]`、`tracking-widest` **禁用**（與 `tracking-[0.3em]` 近似卻不一致，統一用 `tracking-[0.3em]`）。
 - 主要內文用 Tailwind 標準級距（`text-xs`/`text-sm`/`text-base`），禁止 `text-[13px]` 等任意值。
@@ -90,14 +91,14 @@
 
 使用 Tailwind 標準級距，**禁止任意值**（`px-[13px]`、`py-[7px]`）。
 
-| 語意 | Tailwind class | 用途 |
-|---|---|---|
-| 緊湊 | `p-1` / `px-1.5 py-1` | badge、極小控件 |
-| 控件內距 | `px-3 py-2` | input、select、小按鈕 |
-| 按鈕內距 | `px-4 py-1.5`（小）/ `px-5 py-2.5`（中）/ `px-8 py-3`（大） | 按鈕尺寸階梯 |
-| 面板內距 | `p-4`（緊湊）/ `p-5`（標準）/ `p-6`（寬鬆） | `<Panel>` |
-| 區塊間距 | `gap-2`（緊）/ `gap-4`（標準）/ `gap-6`（鬆） | flex/grid |
-| 頁面邊距 | `px-4 md:px-6` | header、頁面水平邊距 |
+| 語意     | Tailwind class                                              | 用途                  |
+| -------- | ----------------------------------------------------------- | --------------------- |
+| 緊湊     | `p-1` / `px-1.5 py-1`                                       | badge、極小控件       |
+| 控件內距 | `px-3 py-2`                                                 | input、select、小按鈕 |
+| 按鈕內距 | `px-4 py-1.5`（小）/ `px-5 py-2.5`（中）/ `px-8 py-3`（大） | 按鈕尺寸階梯          |
+| 面板內距 | `p-4`（緊湊）/ `p-5`（標準）/ `p-6`（寬鬆）                 | `<Panel>`             |
+| 區塊間距 | `gap-2`（緊）/ `gap-4`（標準）/ `gap-6`（鬆）               | flex/grid             |
+| 頁面邊距 | `px-4 md:px-6`                                              | header、頁面水平邊距  |
 
 **規則**：頁面水平邊距統一 `px-4 md:px-6`；面板統一 `p-4` 或 `p-5`；禁止 `px-3 py-1.5` 與 `px-3 py-2` 兩種近似值混用（input 統一 `px-3 py-2`）。
 
@@ -105,14 +106,15 @@
 
 ## 4. 圓角系統（Radius）
 
-| Token | 值 | Tailwind class | 用途 |
-|---|---|---|---|
-| `--radius-sm` | `0.25rem` | `rounded-xs` | badge、小控件 |
-| `--radius` | `0.375rem` | `rounded-sm` | **預設**：面板、按鈕、卡牌、input |
-| `--radius-md` | `0.5rem` | `rounded-md` | modal、大型面板 |
-| `--radius-full` | `9999px` | `rounded-full` | 頭像、小圓點、進度條 |
+| Token           | 值         | Tailwind class | 用途                              |
+| --------------- | ---------- | -------------- | --------------------------------- |
+| `--radius-sm`   | `0.25rem`  | `rounded-xs`   | badge、小控件                     |
+| `--radius`      | `0.375rem` | `rounded-sm`   | **預設**：面板、按鈕、卡牌、input |
+| `--radius-md`   | `0.5rem`   | `rounded-md`   | modal、大型面板                   |
+| `--radius-full` | `9999px`   | `rounded-full` | 頭像、小圓點、進度條              |
 
 **規則**：
+
 - 預設圓角統一 `rounded-sm`（取代散落 45 處的 `border-radius: var(--radius)`）。
 - 卡牌、面板、按鈕、input 皆 `rounded-sm`。
 - 僅頭像/圓點/進度條用 `rounded-full`。
@@ -122,14 +124,15 @@
 
 ## 5. 陰影系統（Shadow）
 
-| Token | 值 | 用途 |
-|---|---|---|
-| `--shadow` | `0 1rem 3rem rgba(0,0,0,0.38)` | 預設面板陰影 |
-| `--shadow-soft` | `0 8px 32px -8px rgba(0,0,0,0.4)` | 次要面板、卡片 hover |
-| `--shadow-glow-gold` | `0 0 12px rgba(gold,0.6)` | 金色強調（選中、focus glow） |
-| `--shadow-glow-vermilion` | `0 0 12px rgba(vermilion,0.6)` | 朱紅強調 |
+| Token                     | 值                                | 用途                         |
+| ------------------------- | --------------------------------- | ---------------------------- |
+| `--shadow`                | `0 1rem 3rem rgba(0,0,0,0.38)`    | 預設面板陰影                 |
+| `--shadow-soft`           | `0 8px 32px -8px rgba(0,0,0,0.4)` | 次要面板、卡片 hover         |
+| `--shadow-glow-gold`      | `0 0 12px rgba(gold,0.6)`         | 金色強調（選中、focus glow） |
+| `--shadow-glow-vermilion` | `0 0 12px rgba(vermilion,0.6)`    | 朱紅強調                     |
 
 **規則**：
+
 - 面板陰影統一用 `--shadow`，次要面板用 `--shadow-soft`。
 - 禁止散落 `shadow-[0_30px_80px_-20px]`、`shadow-[0_4px_12px_-4px]` 等任意值；若需特殊陰影須提升為 token。
 - `<AmbientGlow>` 背景光暈不屬陰影系統，另見 §12。
@@ -138,14 +141,15 @@
 
 ## 6. 邊框系統（Border）
 
-| 語意 | 值 | 用途 |
-|---|---|---|
-| 淡分隔線 | `1px solid var(--bone/5)` | header 底線、區塊分隔 |
-| 面板邊框 | `1px solid var(--bone/10)` | 預設面板邊框（搭配 `ring-1 ring-bone/10`） |
-| 強調邊框 | `1px solid var(--gold/40)` | focus、選中 |
-| 危險邊框 | `1px solid var(--vermilion/50)` | 錯誤、danger action |
+| 語意     | 值                              | 用途                                       |
+| -------- | ------------------------------- | ------------------------------------------ |
+| 淡分隔線 | `1px solid var(--bone/5)`       | header 底線、區塊分隔                      |
+| 面板邊框 | `1px solid var(--bone/10)`      | 預設面板邊框（搭配 `ring-1 ring-bone/10`） |
+| 強調邊框 | `1px solid var(--gold/40)`      | focus、選中                                |
+| 危險邊框 | `1px solid var(--vermilion/50)` | 錯誤、danger action                        |
 
 **規則**：
+
 - 面板邊框統一用 `ring-1 ring-bone/10`（取代散落 30 處的 `border: 1px solid var(--line-soft)`）。
 - 選中態用 `ring-2 ring-gold`（統一規格，禁止 Board `ring-2 ring-gold shadow-...` 與 DeckEditor `ring-gold/30` 兩種）。
 - 禁用 daisyUI `border`、`border-base-300`。
@@ -156,15 +160,15 @@
 
 **統一 scale，禁止魔法數字**（取代目前 21 種散落值）：
 
-| Token | 值 | 用途 |
-|---|---|---|
-| `--z-base` | `0` | 預設 |
-| `--z-dropdown` | `10` | 下拉選單、tooltip |
-| `--z-sticky` | `20` | sticky header |
-| `--z-overlay` | `50` | 教學覆蓋層、半透明遮罩 |
-| `--z-modal` | `100` | modal、drawer |
-| `--z-toast` | `200` | toast 通知 |
-| `--z-max` | `9999` | 唯一最高層（如繞過一切的全螢幕 loading） |
+| Token          | 值     | 用途                                     |
+| -------------- | ------ | ---------------------------------------- |
+| `--z-base`     | `0`    | 預設                                     |
+| `--z-dropdown` | `10`   | 下拉選單、tooltip                        |
+| `--z-sticky`   | `20`   | sticky header                            |
+| `--z-overlay`  | `50`   | 教學覆蓋層、半透明遮罩                   |
+| `--z-modal`    | `100`  | modal、drawer                            |
+| `--z-toast`    | `200`  | toast 通知                               |
+| `--z-max`      | `9999` | 唯一最高層（如繞過一切的全螢幕 loading） |
 
 **規則**：浮層一律走 scale，禁止 `z-[1000]`、`z-[900]`、`z-180` 等任意值。
 
@@ -176,20 +180,20 @@
 
 ### 8.1 變體（variant）
 
-| 變體 | 外觀 | 用途 |
-|---|---|---|
-| `primary` | `bg-gold text-lacquer`（純色，**唯一 primary**） | 主要動作（開始對戰、確認、儲存） |
-| `secondary` | `border border-bone/20 text-bone/60 hover:border-vermilion/50 hover:text-vermilion` | 次要動作（取消、返回） |
-| `danger` | `bg-vermilion text-bone` 或 `border border-vermilion/50 text-vermilion` | 危險動作（刪除、離開） |
-| `ghost` | `text-bone/50 hover:text-bone`（無背景） | 工具列、連結式按鈕 |
+| 變體        | 外觀                                                                                | 用途                             |
+| ----------- | ----------------------------------------------------------------------------------- | -------------------------------- |
+| `primary`   | `bg-gold text-lacquer`（純色，**唯一 primary**）                                    | 主要動作（開始對戰、確認、儲存） |
+| `secondary` | `border border-bone/20 text-bone/60 hover:border-vermilion/50 hover:text-vermilion` | 次要動作（取消、返回）           |
+| `danger`    | `bg-vermilion text-bone` 或 `border border-vermilion/50 text-vermilion`             | 危險動作（刪除、離開）           |
+| `ghost`     | `text-bone/50 hover:text-bone`（無背景）                                            | 工具列、連結式按鈕               |
 
 ### 8.2 尺寸（size）
 
-| 尺寸 | 內距 | 字級 |
-|---|---|---|
+| 尺寸 | 內距          | 字級          |
+| ---- | ------------- | ------------- |
 | `sm` | `px-4 py-1.5` | `text-[10px]` |
 | `md` | `px-5 py-2.5` | `text-[10px]` |
-| `lg` | `px-8 py-3` | `text-[11px]` |
+| `lg` | `px-8 py-3`   | `text-[11px]` |
 
 ### 8.3 通用規則
 
@@ -320,13 +324,14 @@ h-12 border-b border-bone/5 bg-lacquer-deep/80 px-4 backdrop-blur md:px-6
 
 ### 12.4 響應式斷點（統一）
 
-| 斷點 | Tailwind | 用途 |
-|---|---|---|
-| 手機 | 預設（無前綴） | <768px |
-| 平板 | `md:` | ≥768px |
-| 桌面 | `lg:` | ≥1024px |
+| 斷點 | Tailwind       | 用途    |
+| ---- | -------------- | ------- |
+| 手機 | 預設（無前綴） | <768px  |
+| 平板 | `md:`          | ≥768px  |
+| 桌面 | `lg:`          | ≥1024px |
 
 **規則**：
+
 - 僅使用 768 / 1024 兩個斷點。
 - **禁用** `sm:`（640px）、`767px`、`680px`、`480px` 等其他斷點。
 - media query 統一 `min-width`（mobile-first），禁止 `max-width: 767px` 與 `max-width: 768px` 並存。
@@ -369,19 +374,19 @@ font-mono text-[10px] uppercase tracking-[0.3em] text-bone/40
 
 ## 14. 其他共用元件
 
-| 元件 | 用途 | 取代 |
-|---|---|---|
-| `<Kicker>` | `font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70` | 散落 10+ 處 kicker |
-| `<SectionHeader>` | `<Kicker>` + 標題組合 | DeckSelector/Difficulty 標題 |
-| `<EyebrowLabel>` | 同 Kicker，用於首頁標籤 | LobbyPage 散落 8+ 處 |
-| `<Badge>` | `rounded-xs border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em]` | daisyUI `badge` 與 Board Tailwind badge |
-| `<HpBar>` | HP/進度條統一（`h-1 bg-bone/10` + `absolute inset-y-0 left-0` + tone） | Board LpBar/內嵌 HP/AuthSection winRate |
-| `<ListItemButton>` | 列表項按鈕（`selected` prop） | DeckSelector/Difficulty/EffectOrder/PendingChoice |
-| `<Tooltip>` | hover 提示 | OnlineLobby 重複 2 次的 tooltip 區塊 |
-| `<DataTable>` | `table` 殼層 | Admin/Leaderboard/I18n 重複 |
-| `<Pagination>` | 分頁按鈕 | DeckEditor/MatchHistory 重複 |
-| `<CardBack>` | 卡背圖 | 散落 5+ 處 |
-| `<GameClientFrame>` | boardgame.io 容器殼層 | AIGame/OnlineGame 重複 |
+| 元件                | 用途                                                                           | 取代                                              |
+| ------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `<Kicker>`          | `font-mono text-[10px] uppercase tracking-[0.3em] text-gold/70`                | 散落 10+ 處 kicker                                |
+| `<SectionHeader>`   | `<Kicker>` + 標題組合                                                          | DeckSelector/Difficulty 標題                      |
+| `<EyebrowLabel>`    | 同 Kicker，用於首頁標籤                                                        | LobbyPage 散落 8+ 處                              |
+| `<Badge>`           | `rounded-xs border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.18em]` | daisyUI `badge` 與 Board Tailwind badge           |
+| `<HpBar>`           | HP/進度條統一（`h-1 bg-bone/10` + `absolute inset-y-0 left-0` + tone）         | Board LpBar/內嵌 HP/AuthSection winRate           |
+| `<ListItemButton>`  | 列表項按鈕（`selected` prop）                                                  | DeckSelector/Difficulty/EffectOrder/PendingChoice |
+| `<Tooltip>`         | hover 提示                                                                     | OnlineLobby 重複 2 次的 tooltip 區塊              |
+| `<DataTable>`       | `table` 殼層                                                                   | Admin/Leaderboard/I18n 重複                       |
+| `<Pagination>`      | 分頁按鈕                                                                       | DeckEditor/MatchHistory 重複                      |
+| `<CardBack>`        | 卡背圖                                                                         | 散落 5+ 處                                        |
+| `<GameClientFrame>` | boardgame.io 容器殼層                                                          | AIGame/OnlineGame 重複                            |
 
 ---
 
@@ -434,6 +439,7 @@ src/
 ```
 
 **規則**：
+
 - `App.css` 拆分後，舊檔案僅保留無法用 Tailwind 表達的組件樣式（如 boardgame.io 容器），並以 `@layer components` 包住。
 - 共用組件一律放 `src/components/ui/`，業務組件放 `src/components/`。
 - 禁止在 `src/pages/` 直接寫樣式字串，頁面層僅組裝共用組件。
