@@ -1,11 +1,9 @@
-import { useRef } from 'react';
-import { requestPwaRecoveryPrompt } from '../clientVersion';
+import { useState } from 'react';
+import { fetchServerVersion, requestPwaUpdateCheck } from '../clientVersion';
+import { useToast } from './ToastProvider';
 import { t } from '../i18n';
-import { APP_BUILT_AT, APP_VERSION_INFO } from '../version';
+import { APP_BUILT_AT, APP_VERSION_INFO, isSameAppVersion } from '../version';
 import { Button } from '../ui';
-
-const REQUIRED_TAPS = 7;
-const TAP_WINDOW_MS = 1500;
 
 function formatBuildStamp(value: string): string {
   const date = new Date(value);
@@ -17,26 +15,55 @@ function formatBuildStamp(value: string): string {
 }
 
 export function VersionUpdateTrigger() {
-  const tapCountRef = useRef(0);
-  const resetTimerRef = useRef<number | null>(null);
+  const { showToast } = useToast();
+  const [isChecking, setIsChecking] = useState(false);
 
-  const resetTapCounter = () => {
-    tapCountRef.current = 0;
-    if (resetTimerRef.current) {
-      window.clearTimeout(resetTimerRef.current);
-      resetTimerRef.current = null;
-    }
-  };
+  const handleClick = async () => {
+    if (isChecking) return;
+    setIsChecking(true);
+    showToast({
+      title: t('pwa.checkingTitle'),
+      body: t('pwa.checkingBody'),
+      kind: 'info',
+      durationMs: 1800,
+    });
 
-  const handleClick = () => {
-    tapCountRef.current += 1;
-    if (resetTimerRef.current) window.clearTimeout(resetTimerRef.current);
-    resetTimerRef.current = window.setTimeout(resetTapCounter, TAP_WINDOW_MS);
+    try {
+      const updateReady = await requestPwaUpdateCheck();
+      const serverVersion = await fetchServerVersion();
+      const hasServerUpdate = Boolean(serverVersion && !isSameAppVersion(APP_VERSION_INFO, serverVersion));
 
-    if (tapCountRef.current >= REQUIRED_TAPS) {
-      resetTapCounter();
-      requestPwaRecoveryPrompt();
-      return;
+      if (updateReady || hasServerUpdate) {
+        showToast({
+          title: t('pwa.updateTitle'),
+          body: t('pwa.updateBody'),
+          kind: 'success',
+          durationMs: null,
+          actionLabel: t('pwa.updateAction'),
+          onAction: () => {
+            if (updateReady) {
+              updateReady.applyUpdate();
+              return;
+            }
+            window.location.reload();
+          },
+        });
+        return;
+      }
+
+      showToast({
+        title: t('pwa.upToDateTitle'),
+        body: t('pwa.upToDateBody'),
+        kind: 'success',
+      });
+    } catch {
+      showToast({
+        title: t('pwa.checkFailedTitle'),
+        body: t('pwa.checkFailedBody'),
+        kind: 'error',
+      });
+    } finally {
+      setIsChecking(false);
     }
   };
 
@@ -49,9 +76,10 @@ export function VersionUpdateTrigger() {
       size="sm"
       type="button"
       onClick={handleClick}
+      disabled={isChecking}
       aria-label={t('pwa.manualCheckLabel')}
-      title={t('pwa.recoverTitle')}
-      data-umami-event="C_PWA_Recover_Version_Tap"
+      title={t('pwa.manualCheckLabel')}
+      data-umami-event="C_PWA_Check_Version_Tap"
     >
       <span>{versionLabel}</span>
     </Button>
