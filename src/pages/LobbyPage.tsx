@@ -1,11 +1,32 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Swords, Bot, LayoutGrid, Trophy, ScrollText, Menu } from 'lucide-react';
+import {
+  Bot,
+  Code2,
+  ExternalLink,
+  Github,
+  LayoutGrid,
+  Menu,
+  MessageCircle,
+  Palette,
+  ScrollText,
+  Send,
+  Swords,
+  Trophy,
+  UserRound,
+  Users,
+} from 'lucide-react';
 import { AppDrawer } from '../components/AppDrawer';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
-import { AppHeader, Button, IconButton, PageShell, Panel } from '../ui';
+import {
+  DEFAULT_ABOUT_PAGE_CONFIG,
+  fetchAboutPage,
+  type AboutPageConfig,
+  type AboutPageLink,
+} from '../api/client';
+import { AppHeader, Button, Dialog, IconButton, PageShell, Panel } from '../ui';
 import { ChronosDial } from '../ui/game';
 import { t, type TranslationKey } from '../i18n';
 
@@ -39,17 +60,62 @@ const CHANNELS: Channel[] = [
   { to: '/history', no: '05', titleKey: 'lobby.matchHistory', captionKey: 'lobby.homeHistoryCaption', Icon: ScrollText },
 ];
 
+const PROJECT_CREDITS = [
+  { labelKey: 'lobby.projectAuthor', valueField: 'author', Icon: UserRound },
+  { labelKey: 'lobby.projectArtist', valueField: 'artist', Icon: Palette },
+] satisfies Array<{
+  labelKey: TranslationKey;
+  valueField: 'author' | 'artist';
+  Icon: typeof UserRound;
+}>;
+
 // 待機儀表的靜態 Chronos 狀態（真夜中・夜側）— 純裝飾，與對戰共用同一元件
 const IDLE_CHRONOS = { position: 0, nightSidePlayer: 1 as const };
+
+function AboutFeatureLink({ link, Icon }: { link: AboutPageLink; Icon: typeof Github }) {
+  return (
+    <a
+      className="group flex min-w-0 gap-3 rounded-sm border border-border-soft bg-surface-base/50 p-3 text-left transition hover:border-accent-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+      href={link.url}
+      target="_blank"
+      rel="noreferrer"
+    >
+      <Icon className="mt-0.5 size-4 shrink-0 text-accent-primary/75" strokeWidth={1.5} aria-hidden="true" />
+      <span className="min-w-0">
+        <span className="flex items-center gap-2 text-body font-semibold leading-tight text-content-primary">
+          {link.title}
+          <ExternalLink
+            className="size-3 shrink-0 text-content-dim transition group-hover:text-accent-primary"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          />
+        </span>
+        <span className="mt-1 block text-caption leading-relaxed text-content-muted">{link.description}</span>
+      </span>
+    </a>
+  );
+}
 
 export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
   const [showDeckIntro, setShowDeckIntro] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [aboutConfig, setAboutConfig] = useState<AboutPageConfig>(DEFAULT_ABOUT_PAGE_CONFIG);
 
   useEffect(() => {
     const seen = localStorage.getItem('zutomayo_deck_intro_seen');
     if (!seen) setShowDeckIntro(true);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAboutPage().then((config) => {
+      if (!cancelled) setAboutConfig(config);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleDismissIntro = () => {
@@ -62,6 +128,12 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
     setShowDeckIntro(false);
     navigate('/deck-builder');
   };
+
+  const communityLinks = [
+    { labelKey: 'lobby.projectQQ', href: aboutConfig.community.qqUrl, Icon: Users },
+    { labelKey: 'lobby.projectTelegram', href: aboutConfig.community.telegramUrl, Icon: Send },
+    { labelKey: 'lobby.projectDiscord', href: aboutConfig.community.discordUrl, Icon: MessageCircle },
+  ] satisfies Array<{ labelKey: TranslationKey; href: string; Icon: typeof Users }>;
 
   return (
     <PageShell>
@@ -108,6 +180,88 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           <AuthSection onAuthChanged={onAuthChanged} />
         </div>
       </AppDrawer>
+
+      <Dialog
+        open={aboutOpen}
+        onOpenChange={setAboutOpen}
+        mobilePresentation="modal"
+        size="lg"
+        title={aboutConfig.title}
+        description={aboutConfig.description}
+        closeLabel={t('common.close')}
+        className="max-w-3xl"
+      >
+        <div className="grid gap-6">
+          <section>
+            <h3 className="font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-dim">
+              {t('lobby.projectCredits')}
+            </h3>
+            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              {PROJECT_CREDITS.map(({ labelKey, valueField, Icon }) => (
+                <li
+                  key={labelKey}
+                  className="flex min-h-11 min-w-0 items-center gap-3 rounded-sm border border-border-soft bg-surface-base/50 px-3 text-body"
+                >
+                  <Icon className="size-4 shrink-0 text-accent-primary/75" strokeWidth={1.5} aria-hidden="true" />
+                  <span className="shrink-0 text-content-dim">{t(labelKey)}</span>
+                  {aboutConfig[valueField].url ? (
+                    <a
+                      className="inline-flex min-w-0 items-center gap-1 text-content-primary underline-offset-4 transition hover:text-accent-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+                      href={aboutConfig[valueField].url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span className="truncate">{aboutConfig[valueField].name}</span>
+                      <ExternalLink className="size-3 shrink-0 text-content-dim" strokeWidth={1.5} aria-hidden="true" />
+                    </a>
+                  ) : (
+                    <span className="min-w-0 truncate text-content-primary">{aboutConfig[valueField].name}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="grid gap-3">
+            <h3 className="font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-dim">
+              {t('lobby.projectGithub')}
+            </h3>
+            <AboutFeatureLink link={aboutConfig.github} Icon={Github} />
+          </section>
+
+          <section className="grid gap-3">
+            <h3 className="font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-dim">
+              {t('lobby.projectOtherProjects')}
+            </h3>
+            <AboutFeatureLink link={aboutConfig.otherProjects} Icon={Code2} />
+          </section>
+
+          <section>
+            <h3 className="font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-dim">
+              {t('lobby.projectCommunity')}
+            </h3>
+            <p className="mt-2 text-body leading-relaxed text-content-muted">{aboutConfig.community.description}</p>
+            <ul className="mt-3 grid gap-2 sm:grid-cols-3">
+              {communityLinks.map(({ labelKey, href, Icon }) => (
+                <li key={labelKey}>
+                  <a
+                    className="flex min-h-11 items-center justify-between gap-3 rounded-sm border border-border-soft bg-surface-base/50 px-3 text-control text-content-muted transition hover:border-accent-primary/50 hover:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Icon className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                      <span className="truncate">{t(labelKey)}</span>
+                    </span>
+                    <ExternalLink className="size-3 shrink-0 text-content-dim" strokeWidth={1.5} aria-hidden="true" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </Dialog>
 
       {/* ===== 主視覺：wordmark × 待機儀表 ===== */}
       <main className="relative z-[var(--z-dropdown)] flex h-full min-h-0 flex-col overflow-y-auto px-4 pt-20 md:px-10 md:pt-24">
@@ -209,15 +363,29 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             <div className="flex min-w-0 justify-center sm:justify-start">
               <VersionUpdateTrigger />
             </div>
-            <Button
-              type="button"
-              className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/feedback')}
-            >
-              {t('app.footerAlpha')}
-            </Button>
+            <div className="flex min-w-0 flex-wrap items-center justify-center gap-2">
+              <Button
+                type="button"
+                className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/feedback')}
+              >
+                {t('nav.feedback')}
+              </Button>
+              <span className="text-content-primary/20" aria-hidden="true">
+                /
+              </span>
+              <Button
+                type="button"
+                className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
+                variant="ghost"
+                size="sm"
+                onClick={() => setAboutOpen(true)}
+              >
+                {t('lobby.projectAboutAction')}
+              </Button>
+            </div>
             <span className="min-w-0 text-center font-sans leading-relaxed normal-case tracking-normal text-content-primary/35 sm:col-span-2 lg:col-span-1 lg:text-right">
               {t('app.footerCopyright')}
               <a

@@ -34,6 +34,62 @@ export interface LeaderboardEntry {
   winRate: number;
 }
 
+export interface AboutPageLink {
+  title: string;
+  url: string;
+  description: string;
+}
+
+export interface AboutPagePerson {
+  name: string;
+  url: string;
+}
+
+export interface AboutPageConfig {
+  title: string;
+  description: string;
+  author: AboutPagePerson;
+  artist: AboutPagePerson;
+  github: AboutPageLink;
+  otherProjects: AboutPageLink;
+  community: {
+    description: string;
+    qqUrl: string;
+    telegramUrl: string;
+    discordUrl: string;
+  };
+}
+
+export const DEFAULT_ABOUT_PAGE_CONFIG: AboutPageConfig = {
+  title: 'About ZUTOMAYO CARD ONLINE',
+  description:
+    '這是一個由玩家維護的非官方線上對戰項目，目標是讓更多人能方便體驗 ZUTOMAYO CARD 的夜晝攻防與牌組構築。',
+  author: {
+    name: 'lyangjyehaur',
+    url: 'https://github.com/lyangjyehaur',
+  },
+  artist: {
+    name: '待補充',
+    url: '',
+  },
+  github: {
+    title: 'GitHub Repository',
+    url: 'https://github.com/lyangjyehaur/zutomayo-card-online',
+    description: '項目代碼與開發進度在 GitHub 公開。歡迎透過 Issue 或 Pull Request 參與規則校對、功能改進與介面優化。',
+  },
+  otherProjects: {
+    title: 'ZUTOMAYO Gallery',
+    url: 'https://ztmy.art',
+    description: '一個 ZUTOMAYO MV 資料庫，用於整理 MV 設定圖、相關資料與內容維護流程。',
+  },
+  community: {
+    description: '加入社群可以回報問題、提出建議，也可以找人組局對戰。',
+    qqUrl: 'https://qm.qq.com/',
+    telegramUrl: 'https://t.me/',
+    discordUrl: 'https://discord.gg/',
+  },
+};
+
 interface DeckListResponse {
   decks: DeckResponse[];
 }
@@ -86,6 +142,50 @@ function isFresh<T>(cache: { expiresAt: number; data: T } | null): cache is { ex
   return Boolean(cache && cache.expiresAt > Date.now());
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function readString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeAboutLink(value: unknown, fallback: AboutPageLink): AboutPageLink {
+  const record = asRecord(value);
+  return {
+    title: readString(record.title, fallback.title),
+    url: readString(record.url, fallback.url),
+    description: readString(record.description, fallback.description),
+  };
+}
+
+function normalizeAboutPerson(value: unknown, fallback: AboutPagePerson, legacyName?: unknown): AboutPagePerson {
+  const record = asRecord(value);
+  return {
+    name: readString(record.name, readString(legacyName, fallback.name)),
+    url: readString(record.url, fallback.url),
+  };
+}
+
+function normalizeAboutPageConfig(value: unknown): AboutPageConfig {
+  const record = asRecord(value);
+  const community = asRecord(record.community);
+  return {
+    title: readString(record.title, DEFAULT_ABOUT_PAGE_CONFIG.title),
+    description: readString(record.description, DEFAULT_ABOUT_PAGE_CONFIG.description),
+    author: normalizeAboutPerson(record.author, DEFAULT_ABOUT_PAGE_CONFIG.author, record.authorName),
+    artist: normalizeAboutPerson(record.artist, DEFAULT_ABOUT_PAGE_CONFIG.artist, record.artistName),
+    github: normalizeAboutLink(record.github, DEFAULT_ABOUT_PAGE_CONFIG.github),
+    otherProjects: normalizeAboutLink(record.otherProjects, DEFAULT_ABOUT_PAGE_CONFIG.otherProjects),
+    community: {
+      description: readString(community.description, DEFAULT_ABOUT_PAGE_CONFIG.community.description),
+      qqUrl: readString(community.qqUrl, DEFAULT_ABOUT_PAGE_CONFIG.community.qqUrl),
+      telegramUrl: readString(community.telegramUrl, DEFAULT_ABOUT_PAGE_CONFIG.community.telegramUrl),
+      discordUrl: readString(community.discordUrl, DEFAULT_ABOUT_PAGE_CONFIG.community.discordUrl),
+    },
+  };
+}
+
 // ===== Public Data =====
 export async function fetchCards(force = false): Promise<CardDef[]> {
   if (!force && PUBLIC_DATA_CACHE_MS > 0 && isFresh(cardsCache)) return cardsCache.data;
@@ -107,6 +207,15 @@ export async function fetchGameConfig(): Promise<Record<string, unknown>> {
   const data = await request<Record<string, unknown>>('/config');
   configCache = { data, expiresAt: Date.now() + PUBLIC_DATA_CACHE_MS };
   return data;
+}
+
+export async function fetchAboutPage(): Promise<AboutPageConfig> {
+  try {
+    const config = await fetchGameConfig();
+    return normalizeAboutPageConfig(config.about_page);
+  } catch {
+    return DEFAULT_ABOUT_PAGE_CONFIG;
+  }
 }
 
 export async function fetchPresetDecks(): Promise<Array<{ id: string; name: string; cardIds: string[] }>> {
@@ -273,6 +382,10 @@ export async function adminUpdateConfig(key: string, value: unknown): Promise<vo
     body: JSON.stringify({ value }),
   });
   configCache = null;
+}
+
+export async function adminUpdateAboutPage(value: AboutPageConfig): Promise<void> {
+  await adminUpdateConfig('about_page', value);
 }
 
 export async function adminUpdateCardI18n(cardId: string, lang: string, effectText: string): Promise<void> {
