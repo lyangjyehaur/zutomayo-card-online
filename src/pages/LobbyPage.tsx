@@ -35,8 +35,8 @@ const CHANNELS: Channel[] = [
   { to: '/online', no: '01', titleKey: 'lobby.onlineTitle', captionKey: 'lobby.homeOnlineCaption', Icon: Swords },
   { to: '/ai', no: '02', titleKey: 'lobby.aiBattle', captionKey: 'lobby.homeAiCaption', Icon: Bot },
   { to: '/deck-builder', no: '03', titleKey: 'lobby.deckEditor', captionKey: 'lobby.homeDeckCaption', Icon: LayoutGrid },
-  { to: '/leaderboard', no: '04', titleKey: 'leaderboard.title', captionKey: 'leaderboard.title', Icon: Trophy },
-  { to: '/history', no: '05', titleKey: 'lobby.matchHistory', captionKey: 'lobby.matchHistory', Icon: ScrollText },
+  { to: '/leaderboard', no: '04', titleKey: 'leaderboard.title', captionKey: 'lobby.homeLeaderboardCaption', Icon: Trophy },
+  { to: '/history', no: '05', titleKey: 'lobby.matchHistory', captionKey: 'lobby.homeHistoryCaption', Icon: ScrollText },
 ];
 
 // 待機儀表的靜態 Chronos 狀態（真夜中・夜側）— 純裝飾，與對戰共用同一元件
@@ -114,13 +114,15 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
         <section className="flex flex-1 flex-col items-center justify-center gap-8 md:flex-row md:justify-between md:gap-12">
           {/* 左：標語與主行動 */}
           <div className="flex max-w-xl flex-col items-center text-center md:items-start md:text-left">
-            <span className="font-mono text-caption uppercase tracking-[var(--tracking-hero)] text-accent-primary/80">
+            <span className="font-mono text-caption uppercase tracking-[0.18em] text-accent-primary/80">
               The Battle Begins
             </span>
             <h1 className="mt-4 font-display text-[clamp(2.6rem,7vw,5rem)] font-extrabold leading-[0.95] tracking-tight">
               ZUTOMAYO
               <br />
               CARD
+              <br />
+              ONLINE
             </h1>
             <p className="mt-5 max-w-[30ch] text-body-lg leading-relaxed text-content-muted">{t('app.subtitle')}</p>
             <div className="mt-8 flex w-full max-w-md flex-col gap-3 sm:flex-row">
@@ -167,11 +169,11 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           </div>
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3">
             {CHANNELS.map(({ to, no, titleKey, captionKey, Icon }) => (
-              <li key={to}>
+              <li key={to} className="min-w-0">
                 <button
                   type="button"
                   onClick={() => navigate(to)}
-                  className="group flex min-h-[var(--size-touch-min)] w-full items-center gap-3 rounded-md border border-border-soft bg-surface-base/60 px-4 py-3 text-left backdrop-blur transition hover:border-accent-primary/50 hover:bg-surface-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] lg:flex-col lg:items-start lg:gap-2 lg:py-4"
+                  className="group flex min-h-[var(--size-touch-min)] w-full items-center gap-3 rounded-md border border-border-soft bg-surface-base/60 px-4 py-3 text-left backdrop-blur transition hover:border-accent-primary/50 hover:bg-surface-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] lg:h-full lg:flex-col lg:items-start lg:gap-2 lg:py-4"
                 >
                   <span className="flex items-center gap-3 lg:w-full lg:justify-between">
                     <span className="font-mono text-caption tracking-[var(--tracking-meta)] text-accent-primary/70">
@@ -187,11 +189,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
                     <span className="block truncate font-display text-body-lg font-bold leading-tight">
                       {t(titleKey)}
                     </span>
-                    {captionKey !== titleKey && (
-                      <span className="mt-1 hidden text-caption leading-snug text-content-dim lg:line-clamp-2">
-                        {t(captionKey)}
-                      </span>
-                    )}
+                    <span className="mt-1 hidden min-h-[2.25em] text-caption leading-snug text-content-dim lg:line-clamp-2">
+                      {t(captionKey)}
+                    </span>
                   </span>
                   <span
                     className="font-mono text-body text-content-dim transition group-hover:translate-x-0.5 group-hover:text-accent-primary lg:hidden"
@@ -205,21 +205,23 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           </ul>
 
           {/* footer 資訊行 */}
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-border-soft pt-4 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/30">
-            <VersionUpdateTrigger />
+          <div className="mt-6 grid gap-3 border-t border-border-soft pt-4 text-caption text-content-primary/35 sm:grid-cols-2 sm:items-center lg:grid-cols-[minmax(0,1fr)_minmax(16rem,1.25fr)_minmax(0,1fr)]">
+            <div className="flex min-w-0 justify-center sm:justify-start">
+              <VersionUpdateTrigger />
+            </div>
             <Button
               type="button"
-              className="min-h-10 text-content-primary/30 hover:text-accent-primary"
+              className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
               variant="ghost"
               size="sm"
               onClick={() => navigate('/feedback')}
             >
               {t('app.footerAlpha')}
             </Button>
-            <span className="font-mono normal-case">
+            <span className="min-w-0 text-center font-sans leading-relaxed normal-case tracking-normal text-content-primary/35 sm:col-span-2 lg:col-span-1 lg:text-right">
               {t('app.footerCopyright')}
               <a
-                className="inline-flex min-h-10 items-center text-content-primary/40 underline-offset-4 transition-colors hover:text-accent-primary hover:underline focus-visible:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
+                className="inline text-content-primary/45 underline-offset-4 transition-colors hover:text-accent-primary hover:underline focus-visible:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
                 href="https://zutomayocard.net"
                 target="_blank"
                 rel="noreferrer"

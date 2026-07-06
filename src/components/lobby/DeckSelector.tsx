@@ -63,12 +63,12 @@ export function DeckSelector({
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       {option.synced && (
-                        <span className="font-mono text-minutia uppercase tracking-widest text-content-primary/40">
+                        <span className="font-mono text-minutia uppercase tracking-normal text-content-primary/40">
                           {t('deck.synced')}
                         </span>
                       )}
                       {selected && (
-                        <span className="inline-flex items-center gap-1 font-mono text-minutia uppercase tracking-widest text-accent-primary">
+                        <span className="inline-flex items-center gap-1 font-mono text-minutia uppercase tracking-normal text-accent-primary">
                           <Check strokeWidth={1.25} className="size-3" />
                         </span>
                       )}

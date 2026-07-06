@@ -474,7 +474,7 @@ export function OnlineLobbyPage({
           {/* 開始匹配 */}
           <div className="grid gap-2">
             <Button
-              className="w-full bg-gradient-to-r from-accent-action to-accent-primary py-4 font-display text-lg font-bold tracking-wide text-surface-canvas transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
+              className="w-full bg-gradient-to-r from-accent-action to-accent-primary py-4 font-display text-lg font-bold tracking-normal text-surface-canvas transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
               type="button"
               onClick={handleQuickMatch}
               disabled={matchmakingActive || !canStart}

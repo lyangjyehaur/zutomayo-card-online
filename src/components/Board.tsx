@@ -988,7 +988,7 @@ function myPlayerIndex(playerID: string | null | undefined): PlayerIndex {
 function ResultCell({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="min-w-0">
-      <div className="text-caption uppercase tracking-widest text-content-primary/40">{label}</div>
+      <div className="text-caption uppercase tracking-normal text-content-primary/40">{label}</div>
       <div className={`mt-1 truncate font-display text-xl font-bold ${accent ? 'text-accent-primary' : 'text-content-primary'}`}>{value}</div>
     </div>
   );

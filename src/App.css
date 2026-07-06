@@ -721,10 +721,14 @@ input:focus {
   padding: 0;
   background: transparent;
   color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  font-style: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: 0;
   text-align: left;
-  text-transform: inherit;
+  text-transform: none;
   cursor: pointer;
 }
 
@@ -5243,7 +5247,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--bone) 40%, transparent);
 }
 
@@ -5268,7 +5272,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--vermilion) 80%, var(--bone));
   font-weight: 600;
 }
@@ -5360,7 +5364,7 @@ button.zone:focus-visible {
 .resource-label {
   font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--bone) 35%, transparent);
 }
 
@@ -5435,7 +5439,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0;
   padding: 0.25rem 0.5rem;
   background: color-mix(in oklch, var(--bone) 5%, transparent);
   border: 1px solid color-mix(in oklch, var(--bone) 8%, transparent);
@@ -5491,7 +5495,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.3em;
+  letter-spacing: 0;
   cursor: pointer;
   transition: color 150ms;
 }
@@ -5525,7 +5529,7 @@ button.zone:focus-visible {
   font-family: var(--font-sans);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.3em;
+  letter-spacing: 0;
   font-weight: 500;
   border: none;
   border-radius: 2px;
@@ -5583,7 +5587,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--gold) 60%, transparent);
 }
 
@@ -5637,7 +5641,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--gold) 60%, transparent);
 }
 
@@ -5645,7 +5649,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--bone) 40%, transparent);
   margin: 0.5rem 0;
 }
@@ -5665,7 +5669,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.3em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--gold) 70%, transparent);
   margin-bottom: 0.75rem;
 }
@@ -5708,7 +5712,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--bone) 60%, transparent);
 }
 
@@ -5857,7 +5861,7 @@ button.zone:focus-visible {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.3em;
+  letter-spacing: 0;
   color: color-mix(in oklch, var(--gold) 70%, transparent);
   margin-bottom: 0.5rem;
 }
@@ -6020,7 +6024,7 @@ button.zone:focus-visible {
 .battle-side-sheet-header span {
   font-family: var(--font-mono);
   font-size: 0.68rem;
-  letter-spacing: 0.28em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: color-mix(in oklch, var(--gold) 72%, transparent);
 }
@@ -6224,7 +6228,7 @@ button.zone:focus-visible {
     font-size: 0.6875rem !important;
     line-height: 1.15 !important;
     white-space: normal;
-    letter-spacing: 0.12em !important;
+    letter-spacing: 0 !important;
   }
 
   .board-pause-button {

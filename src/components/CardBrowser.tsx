@@ -126,9 +126,9 @@ function CardBrowserDetailContent({
   return (
     <>
       {showTitle && <div className="truncate font-display text-sm font-bold text-content-primary/90">{title}</div>}
-      {meta && <div className="mt-0.5 font-mono text-minutia uppercase tracking-widest text-accent-primary/50">{meta}</div>}
+      {meta && <div className="mt-0.5 font-mono text-minutia uppercase tracking-normal text-accent-primary/50">{meta}</div>}
       {stats && (
-        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-caption uppercase tracking-widest">
+        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-caption uppercase tracking-normal">
           {stats}
         </div>
       )}

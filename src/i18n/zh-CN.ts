@@ -1,13 +1,13 @@
 import type { TranslationKey } from './zh-TW';
 
 export const zhCN: Record<TranslationKey, string> = {
-  'app.title': 'ZUTOMAYO CARD',
+  'app.title': 'ZUTOMAYO CARD ONLINE',
   'app.subtitle': '永夜与白昼交错的在线对战卡牌',
   'app.footerAlpha': 'Alpha 开发初期阶段 · 欢迎前往反馈页面提交建议与想法',
   'app.footerCopyright': '非官方粉丝作品 · 卡牌图片版权归 ',
   'app.footerCopyrightSuffix': ' 所有',
 
-  'intro.deckTitle': '欢迎来到 ZUTOMAYO CARD',
+  'intro.deckTitle': '欢迎来到 ZUTOMAYO CARD ONLINE',
   'intro.deckDescription': '在开始游戏前，你需要选择一副牌组。可以使用预设牌组，或前往牌组编辑器建立自己的牌组。',
   'intro.goToDeckBuilder': '前往牌组编辑器',
   'intro.exploreLater': '稍后探索',
@@ -96,6 +96,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'lobby.homeOnlineCaption': '展开 2 人对战，先将对手 HP 归零即可取胜',
   'lobby.homeAiCaption': '在 Chronos 的夜昼流转中练习攻防判断',
   'lobby.homeDeckCaption': '组成 20 张牌组，迎接夜与昼改写效果的战斗',
+  'lobby.homeLeaderboardCaption': '查看玩家排名与 ELO，追踪当前对战表现',
+  'lobby.homeHistoryCaption': '回顾近期对局结果，整理每场胜负与回合记录',
   'anonymous.identity': '匿名身份',
   'anonymous.editName': '编辑匿名名称',
   'anonymous.nameInput': '匿名名称',
@@ -446,7 +448,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'pwa.installAlreadyBody': '目前已像安装版一样运行。',
   'pwa.installUnavailableTitle': '目前无法安装',
   'pwa.installUnavailableBody': '浏览器尚未提供安装入口，稍后可再试。',
-  'pwa.installTitle': '安装 ZUTOMAYO CARD',
+  'pwa.installTitle': '安装 ZUTOMAYO CARD ONLINE',
   'pwa.installBody': '把在线对战入口放到系统里，开局、回房与更新会更稳。',
   'pwa.installLaterAction': '稍后',
   'pwa.installFeatureFullscreen': '独立窗口打开，不被浏览器界面挤压',
@@ -547,7 +549,7 @@ export const zhCN: Record<TranslationKey, string> = {
 
   // Tutorial Game Mode
   'tutorial.skipConfirm': '确定要关闭教学模式并返回大厅吗？',
-  'tutorial.game.intro.title': '欢迎来到 ZUTOMAYO CARD',
+  'tutorial.game.intro.title': '欢迎来到 ZUTOMAYO CARD ONLINE',
   'tutorial.game.intro.body': '接下来将通过一场真实对战，逐步引导你认识游戏的所有机制。',
   'tutorial.game.janken.intro.title': '猜拳决定先后手',
   'tutorial.game.janken.intro.body':
@@ -659,7 +661,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'tutorial.game.abyss.body':
     '效果结算完毕的附魔卡会送入深渊。深渊中的卡牌不再生效，但某些卡牌效果可以从深渊中取出卡牌重新使用。',
 
-  'lobby.tutorial': 'First Ritual · 新手教学',
+  'lobby.tutorial': '新手教学',
   'feedback.title': '反馈中心',
   'feedback.subtitle': '提交你的想法与建议，让游戏变得更好',
   'feedback.back': '返回大厅',
