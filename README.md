@@ -1,5 +1,7 @@
 # ZUTOMAYO CARD Online — 線上對戰卡牌遊戲
 
+**語言 / Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
+
 > ZUTOMAYO CARD（ずっと真夜中でいいのに官方 TCG）的數位化線上對戰平台。
 > 支援本機雙人、AI 練習、線上即時對戰，完整實作官方規則。
 
@@ -149,27 +151,34 @@ npm run server
 
 ### 開發指令清單
 
-| 指令                           | 說明                                                                       |
-| ------------------------------ | -------------------------------------------------------------------------- |
-| `npm run dev`                  | 啟動 Vite dev server                                                       |
-| `npm run build`                | TypeScript 檢查（`typecheck` + `typecheck:scripts`）後執行 Vite 生產構建   |
-| `npm run typecheck`            | `tsc --noEmit` 檢查 app 程式碼                                             |
-| `npm run typecheck:scripts`    | `tsc --noEmit -p tsconfig.scripts.json` 檢查 scripts 程式碼                |
-| `npm run lint`                 | ESLint 檢查                                                                |
-| `npm run lint:fix`             | ESLint 自動修復                                                            |
-| `npm run format`               | Prettier 格式化寫入                                                        |
-| `npm run format:check`         | Prettier 格式檢查（CI 使用）                                               |
-| `npm test`                     | vitest 單元測試（單次執行）                                                |
-| `npm run test:watch`           | vitest 監控模式（自動重跑）                                                |
-| `npm run test:coverage`        | vitest 單元測試含覆蓋率報告                                                |
-| `npm run smoke`                | 遊戲邏輯 smoke 測試                                                        |
-| `npm run smoke:api`            | 帳號/牌組/對戰/排行榜 API loop                                             |
-| `npm run smoke:online`         | 線上對戰 smoke 測試                                                        |
-| `npm run rule:audit`           | 效果解析覆蓋率審計                                                         |
-| `npm run seed:cards`           | 從 `SEED_CARDS_URL` / `SEED_CARD_API_URL` 匯入卡牌資料到 PostgreSQL        |
-| `npm run migrate:sqlite-to-pg` | 將舊 SQLite 資料遷移至 PostgreSQL（`users`/`decks`/`matches`，可重複執行） |
-| `npm run server`               | 啟動 boardgame.io 遊戲伺服器                                               |
-| `npm run preview`              | 預覽 Vite 生產構建結果                                                     |
+| 指令                                    | 說明                                                                       |
+| --------------------------------------- | -------------------------------------------------------------------------- |
+| `npm run dev`                           | 啟動 Vite dev server                                                       |
+| `npm run build`                         | TypeScript 檢查（`typecheck` + `typecheck:scripts`）後執行 Vite 生產構建   |
+| `npm run typecheck`                     | `tsc --noEmit` 檢查 app 程式碼                                             |
+| `npm run typecheck:scripts`             | `tsc --noEmit -p tsconfig.scripts.json` 檢查 scripts 程式碼                |
+| `npm run lint`                          | ESLint 檢查                                                                |
+| `npm run lint:fix`                      | ESLint 自動修復                                                            |
+| `npm run format`                        | Prettier 格式化寫入                                                        |
+| `npm run format:check`                  | Prettier 格式檢查（CI 使用）                                               |
+| `npm test`                              | vitest 單元測試（單次執行）                                                |
+| `npm run test:watch`                    | vitest 監控模式（自動重跑）                                                |
+| `npm run test:coverage`                 | vitest 單元測試含覆蓋率報告                                                |
+| `npm run smoke`                         | 遊戲邏輯 smoke 測試                                                        |
+| `npm run smoke:api`                     | 帳號/牌組/對戰/排行榜 API loop                                             |
+| `npm run smoke:online`                  | 線上對戰 smoke 測試                                                        |
+| `npm run smoke:online-consistency`      | 線上對戰一致性 smoke 測試                                                  |
+| `npm run smoke:responsive`              | 執行所有響應式 UI smoke 測試                                               |
+| `npm run smoke:ui-responsive`           | 大廳/基礎 UI 響應式 smoke 測試                                             |
+| `npm run smoke:admin-responsive`        | 管理後台響應式 smoke 測試                                                  |
+| `npm run smoke:battle-responsive`       | 對戰畫面響應式 smoke 測試                                                  |
+| `npm run smoke:online-lobby-responsive` | 線上大廳響應式 smoke 測試                                                  |
+| `npm run smoke:tools-responsive`        | 工具頁面響應式 smoke 測試                                                  |
+| `npm run rule:audit`                    | 效果解析覆蓋率審計                                                         |
+| `npm run seed:cards`                    | 從 `SEED_CARDS_URL` / `SEED_CARD_API_URL` 匯入卡牌資料到 PostgreSQL        |
+| `npm run migrate:sqlite-to-pg`          | 將舊 SQLite 資料遷移至 PostgreSQL（`users`/`decks`/`matches`，可重複執行） |
+| `npm run server`                        | 啟動 boardgame.io 遊戲伺服器                                               |
+| `npm run preview`                       | 預覽 Vite 生產構建結果                                                     |
 
 ### 測試
 
@@ -177,6 +186,7 @@ npm run server
 npm run smoke          # 遊戲邏輯測試
 npm run smoke:api      # 帳號/牌組/對戰/排行榜 API loop
 npm run smoke:online   # 線上對戰測試
+npm run smoke:responsive # 響應式 UI smoke 測試
 npm run rule:audit     # 效果解析覆蓋率審計
 ```
 
@@ -444,7 +454,7 @@ zutomayo-card-online/
 
 - [遊戲規則](rules.md) — 完整官方規則
 - [官方 Q&A](qa.json) — 74 條官方問答
-- [開發計劃](PLAN.md) — Phase 完成狀態
+- [開發計劃](docs/PLAN.md) — Phase 完成狀態
 - [REST API](docs/API.md) — API 端點文檔
 - [部署指南](docs/DEPLOYMENT.md) — Docker 部署說明
 
