@@ -86,7 +86,7 @@ export const ja: Record<TranslationKey, string> = {
   'lobby.matchmakingCancel': 'キャンセル',
   'lobby.matchmakingTimeout': 'マッチングがタイムアウトしました。もう一度お試しください。',
   'lobby.matchmakingFailed': 'マッチングに失敗しました。もう一度お試しください。',
-  'lobby.onlineLobbySubtitle': 'Online Lobby',
+  'lobby.onlineLobbySubtitle': 'オンラインロビー',
   'lobby.currentDeck': '現在のデッキ',
   'lobby.rank': 'ランク',
   'lobby.guestRank': 'ゲスト',
@@ -149,7 +149,7 @@ export const ja: Record<TranslationKey, string> = {
   'board.jankenHint': '勝者が夜側プレイヤーになります',
   'board.jankenWin': '勝利',
   'board.battleDraw': '引き分け',
-  'board.effectFailed.powerCost': 'エネルギー不足、効果不発',
+  'board.effectFailed.powerCost': 'パワー不足、効果不発',
   'board.effectFailed.disabled': '効果無効化',
   'board.effectFailed.condition': '条件未満、効果不発',
   'board.rock': 'グー',
@@ -207,6 +207,7 @@ export const ja: Record<TranslationKey, string> = {
   'board.setZoneA': 'セットゾーンA',
   'board.setZoneB': 'セットゾーンB',
   'board.setZoneC': 'セットゾーンC',
+  'board.setZoneCompact': 'セットゾーン',
   'board.areaEnchant': 'エリアエンチャント',
   'board.powerCharger': 'パワーチャージャー',
   'board.deckZone': 'デッキゾーン',
@@ -214,7 +215,7 @@ export const ja: Record<TranslationKey, string> = {
   'board.hand': '手札',
   'board.opponentHand': '相手の手札',
   'board.hp': 'HP',
-  'board.energy': 'エネルギー',
+  'board.energy': 'パワーコスト',
   'board.deck': 'デッキ',
   'board.abyss': 'アビス',
   'board.damage': 'ダメージ',
@@ -258,7 +259,7 @@ export const ja: Record<TranslationKey, string> = {
   'board.hpChange.p0RawAttack': 'プレイヤー1元攻撃力',
   'board.hpChange.p1Attack': 'プレイヤー2攻撃力',
   'board.hpChange.p1RawAttack': 'プレイヤー2元攻撃力',
-  'board.hpChange.insufficientPower': 'エネルギー不足 (0)',
+  'board.hpChange.insufficientPower': 'パワー不足 (0)',
   'board.hpChange.rawAttack': '元攻撃力',
   'board.hpChange.effectiveAttack': '実攻撃力',
   'board.hpChange.clockContribution': 'クロノス貢献',
@@ -336,10 +337,11 @@ export const ja: Record<TranslationKey, string> = {
   'card.night': '夜',
   'card.day': '昼',
   'card.clock': '時計',
-  'card.energy': 'エネルギー',
-  'card.charge': 'チャージ',
+  'card.energy': 'パワーコスト',
+  'card.charge': 'チャージ値',
   'card.unknown': '不明なカード',
   'card.back': 'カード裏',
+  'card.noEffect': '効果なし',
 
   'chronos.title': 'Chronos 時計',
   'chronos.position': '目盛り',
@@ -515,7 +517,7 @@ export const ja: Record<TranslationKey, string> = {
   'deckEditor.filterType': 'タイプ',
   'deckEditor.sort': '並び替え',
   'deckEditor.all': 'すべて',
-  'deckEditor.sortCost': 'エネルギー',
+  'deckEditor.sortCost': 'パワーコスト',
   'deckEditor.sortAttack': '攻撃',
   'deckEditor.sortName': '名前',
   'deckEditor.copyCount': '投入済み',
@@ -566,10 +568,10 @@ export const ja: Record<TranslationKey, string> = {
     '結果が出ました！夜側プレイヤーは夜時間に先に効果を処理し、昼側プレイヤーは昼時間に先に効果を処理します。',
   'tutorial.game.mulligan.intro.title': '手札引き直しフェーズ',
   'tutorial.game.mulligan.intro.body':
-    '最初の手札に高Power Costのキャラクターカードがあります。チャージゾーンのPowerがPower Costに満たない場合、そのキャラクターの攻撃力は0になり、ダメージを与えられません。入れ替えたいカードをクリックして裏向きに（任意の枚数を選択可）、「引き直す」を押すとデッキから同枚数の新しいカードを引き、古いカードはデッキに戻ります。手札に満足なら「手札をキープ」でスキップできます。各対戦で引き直しは1回のみです。',
+    '最初の手札に高パワーコストのキャラクターカードがあります。チャージゾーンの総パワーがパワーコストに満たない場合、そのキャラクターの攻撃力は0になり、ダメージを与えられません。入れ替えたいカードをクリックして裏向きに（任意の枚数を選択可）、「引き直す」を押すとデッキから同枚数の新しいカードを引き、古いカードはデッキに戻ります。手札に満足なら「手札をキープ」でスキップできます。各対戦で引き直しは1回のみです。',
   'tutorial.game.mulligan.action.title': '引き直すカードを選択',
   'tutorial.game.mulligan.action.body':
-    '入れ替えたいカードをクリックして裏向きにし（例：高い Power Cost のキャラクターカード）、「確認」を押してデッキから同数の新しいカードを引きます。手札に満足なら「手札を保持」でスキップできます。',
+    '入れ替えたいカードをクリックして裏向きにし（例：高いパワーコストのキャラクターカード）、「確認」を押してデッキから同数の新しいカードを引きます。手札に満足なら「手札を保持」でスキップできます。',
   'tutorial.game.initialSet.intro.title': '初期配置フェーズ',
   'tutorial.game.initialSet.intro.body':
     '手札からキャラクターカードを1枚選び、バトルゾーンに裏向きで配置します。必ずキャラクターカードを選んでください：キャラクター以外のカードは公開されるとすぐにパワーチャージャーまたは深淵に送られ、バトルゾーンが空の状態では直接ダメージを受けます。',
@@ -584,7 +586,7 @@ export const ja: Record<TranslationKey, string> = {
     'あなたの手札です。カードをクリックしてバトルゾーンまたはセットゾーンに配置し、カード効果で相手を倒しましょう。',
   'tutorial.game.zone.set.title': 'セットゾーン',
   'tutorial.game.zone.set.body':
-    'A/B ゾーンには手札から出したカードを裏向きで配置します：キャラクターカードは公開後にバトルゾーンの旧キャラクターと入れ替わり、エンチャントカードは一度きりの効果を処理後に離場します。エリアエンチャントは公開されて効果が発動した後にSet Zone Cに移動し、ターンを跨いで持続するフィールド効果となります。キャラクター2枚またはエリアエンチャント2枚を出した場合、Aゾーンのカードが優先してバトルゾーン/Cゾーンに入ります。',
+    'A/B ゾーンには手札から出したカードを裏向きで配置します：キャラクターカードは公開後にバトルゾーンの旧キャラクターと入れ替わり、エンチャントカードは一度きりの効果を処理後に場を離れます。エリアエンチャントは公開されて効果が発動した後にセットゾーンCへ移動し、ターンを跨いで持続するフィールド効果となります。キャラクター2枚またはエリアエンチャント2枚を出した場合、Aゾーンのカードが優先してバトルゾーン/Cゾーンに入ります。',
   'tutorial.game.zone.abyss.title': 'アビス',
   'tutorial.game.zone.abyss.body':
     'SEND TO POWER を持たないカードが場を離れるとここに入ります。一部のカード効果はアビスと相互作用する場合があります。',
@@ -593,48 +595,48 @@ export const ja: Record<TranslationKey, string> = {
     'Chronosは昼夜時計です。真夜中から時計回りに進み、推進量は双方の出したカードの時計値の合計です。夜側では夜攻撃力、昼側では昼攻撃力を使用します。',
   'tutorial.game.resources.title': 'パワーチャージャー',
   'tutorial.game.resources.body':
-    'SEND TO POWER を持つカードが場を離れるとパワーチャージャーに入り、溜まった Power は効果発動の Power Cost 支払いに使われます。',
-  'tutorial.game.catchup.title': '追いつきメカニズム',
+    'SEND TO POWER を持つカードが場を離れるとパワーチャージャーに入り、溜まったパワーは効果発動のパワーコスト支払いに使われます。',
+  'tutorial.game.catchup.title': '追い上げメカニズム',
   'tutorial.game.catchup.body':
     '前ターンの戦闘で敗北した側は、次のターンで2枚のカードを配置できます；勝った側は通常1枚しか配置できません。これにより双方が拮抗し、一方的な展開を避けます。',
-  'tutorial.game.catchup.loser.title': '追趕機制：あなたの反撃',
+  'tutorial.game.catchup.loser.title': '追い上げメカニズム：あなたの反撃',
   'tutorial.game.catchup.loser.body':
     '前ターンの戦闘に敗れたため、今ターンはカードを2枚配置して追い上げることができます。この機会を活かして戦略を調整しましょう。',
-  'tutorial.game.catchup.winner.title': '追趕機制：相手の反撃',
+  'tutorial.game.catchup.winner.title': '追い上げメカニズム：相手の反撃',
   'tutorial.game.catchup.winner.body':
     '前ターンの戦闘に勝利したため、相手は今ターン2枚配置して追い上げできます。あなたは1枚しか配置できません。',
-  'tutorial.game.catchup.draw.title': '追趕機制：引き分け',
+  'tutorial.game.catchup.draw.title': '追い上げメカニズム：引き分け',
   'tutorial.game.catchup.draw.body':
-    '前ターンは引き分けで、追趕機制は発動しません。双方とも今ターンは1枚しか配置できません。',
+    '前ターンは引き分けで、追い上げメカニズムは発動しません。双方とも今ターンは1枚しか配置できません。',
   'tutorial.game.victory.title': '勝利条件',
   'tutorial.game.victory.body':
     'どちらかのHPが0になるか、カードを出し続けられなくなったらゲーム終了です。カード効果を適切に使い、相手のHPを減らせば勝利できます。',
   'tutorial.game.turnSet.intro.title': 'ターン配置フェーズ',
   'tutorial.game.turnSet.intro.body':
-    '新しいターン開始！前ターンの勝敗により配置枚数が決まります。1枚目はSet Zone A、2枚目はSet Zone Bに入ります。',
+    '新しいターン開始！前ターンの勝敗により配置枚数が決まります。1枚目はセットゾーンA、2枚目はセットゾーンBに入ります。',
   'tutorial.game.turnSet.intro.loser.title': '配置フェーズ：追い上げの好機',
   'tutorial.game.turnSet.intro.loser.body':
-    '新ターン開始！前回のターンの敗者として、2枚のカードを出せます：1枚目はSet Zone A、2枚目はSet Zone Bに入り、戦局を覆します。キャラクター2枚を出した場合、Aゾーンのカードが優先してバトルゾーンに入ります。エリアエンチャント2枚の場合、Aゾーンのカードが優先してCゾーンに移動します。',
+    '新ターン開始！前回のターンの敗者として、2枚のカードを出せます：1枚目はセットゾーンA、2枚目はセットゾーンBに入り、戦局を覆します。キャラクター2枚を出した場合、Aゾーンのカードが優先してバトルゾーンに入ります。エリアエンチャント2枚の場合、Aゾーンのカードが優先してCゾーンに移動します。',
   'tutorial.game.turnSet.intro.winner.title': '配置フェーズ：優勢維持',
   'tutorial.game.turnSet.intro.winner.body':
-    '新しいターン開始！前ターンの勝者として、今ターンは1枚のみSet Zone Aに配置できます。相手は2枚配置できます。',
+    '新しいターン開始！前ターンの勝者として、今ターンは1枚のみセットゾーンAに配置できます。相手は2枚配置できます。',
   'tutorial.game.turnSet.intro.draw.title': '配置フェーズ',
   'tutorial.game.turnSet.intro.draw.body':
-    '新しいターン開始！前ターンは引き分けのため、双方1枚ずつSet Zone Aに配置します。',
+    '新しいターン開始！前ターンは引き分けのため、双方1枚ずつセットゾーンAに配置します。',
   'tutorial.game.turnSet.action.title': '今ターンのカードを配置',
   'tutorial.game.turnSet.action.body':
-    '手札からカードを配置します。1枚目はSet Zone A、2枚目（ある場合）はSet Zone Bに入ります。',
+    '手札からカードを配置します。1枚目はセットゾーンA、2枚目（ある場合）はセットゾーンBに入ります。',
   'tutorial.game.turnSet.action.loser.title': '2枚配置して追い上げ',
   'tutorial.game.turnSet.action.loser.body':
-    '手札から2枚配置：1枚目はSet Zone A、2枚目はSet Zone B。攻撃を分散させて勝率を上げましょう。',
+    '手札から2枚配置：1枚目はセットゾーンA、2枚目はセットゾーンB。攻撃を分散させて勝率を上げましょう。',
   'tutorial.game.turnSet.action.winner.title': '1枚配置',
   'tutorial.game.turnSet.action.winner.body':
-    '手札から1枚をSet Zone Aに配置します。1枚しか配置できないので慎重に選んでください。',
+    '手札から1枚をセットゾーンAに配置します。1枚しか配置できないので慎重に選んでください。',
   'tutorial.game.turnSet.action.draw.title': '今ターンのカードを配置',
-  'tutorial.game.turnSet.action.draw.body': '手札から1枚をSet Zone Aに配置します。',
+  'tutorial.game.turnSet.action.draw.body': '手札から1枚をセットゾーンAに配置します。',
   'tutorial.game.effectOrder.intro.title': '効果順序フェーズ',
   'tutorial.game.effectOrder.intro.body':
-    '効果処理時、クロノスのメダルがある時間帯のプレイヤー（優先プレイヤー）が自分のすべての効果を先に処理し、その後もう一方のプレイヤーが処理します。Power Costは「効果処理時点」で再確認し、不足なら発動しません。手札やアビスなどの枚数も処理時点のものを数えます。キャラクターの効果は、発動タイミングの指定がない限り、手札から使用したターンの効果処理時に発動します。効果処理フェーズ以外のタイミングで発動した効果（カードがゾーンに入るなど）は即座に処理され、優先プレイヤーの順序には従いません。',
+    '効果処理時、クロノスのメダルがある時間帯のプレイヤー（優先プレイヤー）が自分のすべての効果を先に処理し、その後もう一方のプレイヤーが処理します。パワーコストは「効果処理時点」で再確認し、不足なら発動しません。手札やアビスなどの枚数も処理時点のものを数えます。キャラクターの効果は、発動タイミングの指定がない限り、手札から使用したターンの効果処理時に発動します。効果処理フェーズ以外のタイミングで発動した効果（カードがゾーンに入るなど）は即座に処理され、優先プレイヤーの順序には従いません。',
   'tutorial.game.effectOrder.action.title': '効果解決順序を選択',
   'tutorial.game.effectOrder.action.body':
     '効果カードをクリックして解決順序を選びます。先に解決される効果が先に発動し、後続の効果の結果に影響を与える可能性があります。',
@@ -670,18 +672,18 @@ export const ja: Record<TranslationKey, string> = {
     '双方のカードが公開された後、2枚のカードの時計値の合計でクロノスが進みます。メダルが新しい位置に移動し、現在が夜か昼かが決まります——これによりキャラクターが夜攻撃力か昼攻撃力かを使うかが決まります。最初のターンのクロノス推移には、準備フェーズでチャージゾーン/アビスに置かれたカードの時計値も含まれます。',
   'tutorial.game.hpCalc.title': 'HP計算',
   'tutorial.game.hpCalc.body':
-    '効果の処理が終わった後、双方のキャラクターの攻撃力を比較し、攻撃力が低い方が差額分のダメージを受けます。Power Costが不足している場合、攻撃力は0として扱われ、効果は発動しません。',
+    '効果の処理が終わった後、双方のキャラクターの攻撃力を比較し、攻撃力が低い方が差額分のダメージを受けます。パワーコストが不足している場合、攻撃力は0として扱われ、効果は発動しません。',
   'tutorial.game.powerCharging.title': 'チャージゾーン',
   'tutorial.game.powerCharging.body':
-    'SEND TO POWERを持つキャラクターカードは、バトルゾーンを離れる時にチャージゾーンに入り、Powerを蓄積します。蓄積したPowerは他のカードのPower Cost支払いに使用します。Power総数は効果処理時点で再確認されます。次ターンでキャラクターを交代すると、古いカードがチャージゾーンに送られます。',
+    'SEND TO POWERを持つキャラクターカードは、バトルゾーンを離れる時にチャージゾーンに入り、パワーを蓄積します。蓄積したパワーは他のカードのパワーコスト支払いに使用します。総パワーは効果処理時点で再確認されます。次ターンでキャラクターを交代すると、古いカードがチャージゾーンに送られます。',
   'tutorial.game.areaEnchant.title': 'エリアエンチャント',
   'tutorial.game.areaEnchant.body':
-    'エリアエンチャントは手札から出す時、まずSet Zone AまたはBに裏向きで配置されます。カードが公開されて効果が発動した後、Set Zone Cに移動し、フィールド全体に継続して影響します。あなたが出した2nd_86は夜側の時、キャラクターに+20攻撃力を付与します。',
+    'エリアエンチャントは手札から出す時、まずセットゾーンAまたはBに裏向きで配置されます。カードが公開されて効果が発動した後、セットゾーンCに移動し、フィールド全体に継続して影響します。あなたが出した2nd_86は夜側の時、キャラクターに+20攻撃力を付与します。',
   'tutorial.game.abyss.title': 'アビス',
   'tutorial.game.abyss.body':
     '効果が処理されたエンチャントカードはアビスに送られます。アビスのカードはもう効果を発揮しませんが、一部のカード効果でアビスからカードを取り出して再利用できます。',
 
-  'lobby.tutorial': 'First Ritual · 新手チュートリアル',
+  'lobby.tutorial': 'はじまりの儀式 · チュートリアル',
   'feedback.title': 'フィードバック',
   'feedback.subtitle': 'あなたのアイデアや提案を投稿して、ゲームをより良くしましょう',
   'feedback.back': 'ロビーに戻る',

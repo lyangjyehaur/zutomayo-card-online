@@ -19,7 +19,14 @@ export interface ZoneSummarySheetProps {
   onInspectCard?: (card: CardInstance) => void;
 }
 
-export function ZoneSummarySheet({ open, onOpenChange, title, totalValue, cards, onInspectCard }: ZoneSummarySheetProps) {
+export function ZoneSummarySheet({
+  open,
+  onOpenChange,
+  title,
+  totalValue,
+  cards,
+  onInspectCard,
+}: ZoneSummarySheetProps) {
   return (
     <Sheet
       open={open}
@@ -50,7 +57,7 @@ export function ZoneSummarySheet({ open, onOpenChange, title, totalValue, cards,
                 <span className="zonesummary-name">{def?.name ?? t('card.back')}</span>
                 {def && (
                   <span className="zonesummary-meta">
-                    ⚡{def.powerCost} · STP {def.sendToPower ?? 0}
+                    {t('card.energy')} {def.powerCost} · {t('card.charge')} {def.sendToPower ?? 0}
                   </span>
                 )}
               </li>

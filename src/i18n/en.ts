@@ -207,6 +207,7 @@ export const en: Record<TranslationKey, string> = {
   'board.setZoneA': 'Set Zone A',
   'board.setZoneB': 'Set Zone B',
   'board.setZoneC': 'Set Zone C',
+  'board.setZoneCompact': 'Set Zone',
   'board.areaEnchant': 'Area Enchant',
   'board.powerCharger': 'Power Charger',
   'board.deckZone': 'Deck Zone',
@@ -340,6 +341,7 @@ export const en: Record<TranslationKey, string> = {
   'card.charge': 'Charge',
   'card.unknown': 'Unknown Card',
   'card.back': 'Card Back',
+  'card.noEffect': 'No effect',
 
   'chronos.title': 'Chronos Clock',
   'chronos.position': 'Position',

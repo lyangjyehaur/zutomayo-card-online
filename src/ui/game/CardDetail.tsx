@@ -11,15 +11,7 @@ import { t, useLocale } from '../../i18n';
  */
 export type FocusedCard = { card: CardInstance; owner: PlayerIndex; zone: string } | null;
 
-export function CardDetailBody({
-  focus,
-  G,
-  ownerName,
-}: {
-  focus: FocusedCard;
-  G: GameState;
-  ownerName?: string;
-}) {
+export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G: GameState; ownerName?: string }) {
   const locale = useLocale();
   const card = focus?.card ?? null;
   const def = card && card.faceUp && card.defId !== '__hidden__' ? getCardDef(card.defId) : undefined;
@@ -84,21 +76,13 @@ export function CardDetailBody({
           </div>
         )}
       </dl>
-      {(translatedEffect || def.effect) && <p className="carddetail-effect">{translatedEffect ?? def.effect}</p>}
+      <p className="carddetail-effect">{translatedEffect || def.effect || t('card.noEffect' as never)}</p>
     </div>
   );
 }
 
 /** 桌面常駐側欄詳情面板 */
-export function CardDetailPanel({
-  focus,
-  G,
-  ownerName,
-}: {
-  focus: FocusedCard;
-  G: GameState;
-  ownerName?: string;
-}) {
+export function CardDetailPanel({ focus, G, ownerName }: { focus: FocusedCard; G: GameState; ownerName?: string }) {
   return (
     <section className="carddetail-panel battle-focus-panel" aria-label="Card detail">
       <header className="battle-panel-heading">

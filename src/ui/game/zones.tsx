@@ -42,7 +42,10 @@ export function SetZone({ slot, side, card, size = 'md', state = 'idle', onActiv
         onInspect={onInspect}
       />
       <span className="setzone-hint" aria-hidden="true">
-        {t(HINT_KEY[slot] as never)}
+        <span className="setzone-hint-full">{t(HINT_KEY[slot] as never)}</span>
+        <span className="setzone-hint-compact">
+          {slot === 'C' ? t('board.areaEnchant') : t('board.setZoneCompact' as never)}
+        </span>
       </span>
     </div>
   );
@@ -65,7 +68,13 @@ export interface ChargeZoneProps {
 
 export function ChargeZone({ side, cards, totalPower, size = 'md', onOpen, tutId }: ChargeZoneProps) {
   return (
-    <ZonePanel label={t('board.powerCharger')} hint={`${t('board.powerTotal')} ${totalPower}`} side={side} tutId={tutId} className="chargezone">
+    <ZonePanel
+      label={t('board.powerCharger')}
+      hint={`${t('board.powerTotal')} ${totalPower}`}
+      side={side}
+      tutId={tutId}
+      className="chargezone"
+    >
       <CardStack
         kind="power"
         size={size}
@@ -96,7 +105,15 @@ export interface AbyssZoneProps {
 export function AbyssZone({ side, cards, size = 'md', onOpen, tutId }: AbyssZoneProps) {
   return (
     <ZonePanel label={t('board.abyss')} side={side} tutId={tutId} className="abysszone">
-      <CardStack kind="abyss" size={size} label={t('board.abyss')} count={cards.length} cards={cards} onOpen={onOpen} showLabel={false} />
+      <CardStack
+        kind="abyss"
+        size={size}
+        label={t('board.abyss')}
+        count={cards.length}
+        cards={cards}
+        onOpen={onOpen}
+        showLabel={false}
+      />
     </ZonePanel>
   );
 }

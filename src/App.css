@@ -4769,10 +4769,59 @@ button.zone:focus-visible {
   scrollbar-width: thin;
 }
 
-.mulligan-hand > button {
+.mulligan-card-shell {
   min-width: 2.75rem;
   min-height: 2.75rem;
   scroll-snap-align: center;
+}
+
+.mulligan-detail-panel {
+  flex-direction: column;
+  align-self: start;
+  height: min(16rem, 42vh);
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .mulligan-detail-panel {
+    display: flex;
+  }
+}
+
+.mulligan-detail-panel .carddetail {
+  gap: 0.35rem;
+  max-height: 100%;
+  padding-right: 0.25rem;
+}
+
+.mulligan-detail-panel .carddetail-art {
+  flex: 0 0 auto;
+  width: min(4.25rem, 42%);
+}
+
+.mulligan-detail-panel .carddetail-art img {
+  object-fit: contain;
+  background: oklch(from var(--color-bg-surface) l c h / 0.65);
+}
+
+.mulligan-detail-panel .carddetail-name {
+  font-size: var(--font-size-lg);
+}
+
+.mulligan-detail-panel .carddetail-taxonomy,
+.mulligan-detail-panel .carddetail-stats {
+  font-size: var(--font-size-xs);
+}
+
+.mulligan-detail-panel .carddetail-stats {
+  gap: 0.15rem 0.6rem;
+}
+
+.mulligan-detail-panel .carddetail-effect {
+  margin-top: 0.15rem;
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
 }
 
 @keyframes card-place {
@@ -6200,7 +6249,7 @@ button.zone:focus-visible {
     mask-image: none;
   }
 
-  .mulligan-hand > button {
+  .mulligan-card-shell {
     flex: 0 0 auto;
     width: 4.25rem;
     min-width: 0;

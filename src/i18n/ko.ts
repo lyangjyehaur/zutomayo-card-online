@@ -86,7 +86,7 @@ export const ko: Record<TranslationKey, string> = {
   'lobby.matchmakingCancel': '취소',
   'lobby.matchmakingTimeout': '매칭 시간이 초과되었습니다. 다시 시도하세요.',
   'lobby.matchmakingFailed': '매칭에 실패했습니다. 다시 시도하세요.',
-  'lobby.onlineLobbySubtitle': 'Online Lobby',
+  'lobby.onlineLobbySubtitle': '온라인 로비',
   'lobby.currentDeck': '현재 덱',
   'lobby.rank': '랭크',
   'lobby.guestRank': '게스트',
@@ -149,7 +149,7 @@ export const ko: Record<TranslationKey, string> = {
   'board.jankenHint': '승리자가 야간 플레이어가 됩니다',
   'board.jankenWin': '승리',
   'board.battleDraw': '무승부',
-  'board.effectFailed.powerCost': '에너지 부족, 효과 미발동',
+  'board.effectFailed.powerCost': '파워 부족, 효과 미발동',
   'board.effectFailed.disabled': '효과 무효화',
   'board.effectFailed.condition': '조건 미충족, 효과 미발동',
   'board.rock': '바위',
@@ -184,8 +184,8 @@ export const ko: Record<TranslationKey, string> = {
   'board.setCards': '카드 배치',
   'board.opponentReady': '상대 준비 완료',
   'board.opponentChoosing': '상대 선택 중',
-  'board.confirmSet': '출牌 확인',
-  'board.setConfirmed': '출牌 완료, 상대 대기 중...',
+  'board.confirmSet': '배치 확정',
+  'board.setConfirmed': '배치 완료, 상대 대기 중...',
   'board.readyWaiting': '준비 완료, 상대 대기 중',
   'board.needCards': '카드를 배치해야 합니다',
   'board.inspectHandCard': '손패 확인',
@@ -207,6 +207,7 @@ export const ko: Record<TranslationKey, string> = {
   'board.setZoneA': '세트 존 A',
   'board.setZoneB': '세트 존 B',
   'board.setZoneC': '세트 존 C',
+  'board.setZoneCompact': '세트 존',
   'board.areaEnchant': '에리어 인챈트',
   'board.powerCharger': '파워 차저',
   'board.deckZone': '덱 존',
@@ -214,7 +215,7 @@ export const ko: Record<TranslationKey, string> = {
   'board.hand': '핸드',
   'board.opponentHand': '상대 핸드',
   'board.hp': 'HP',
-  'board.energy': '에너지',
+  'board.energy': '파워 코스트',
   'board.deck': '덱',
   'board.abyss': '어비스',
   'board.damage': '데미지',
@@ -258,7 +259,7 @@ export const ko: Record<TranslationKey, string> = {
   'board.hpChange.p0RawAttack': '플레이어1 원본 공격력',
   'board.hpChange.p1Attack': '플레이어2 공격력',
   'board.hpChange.p1RawAttack': '플레이어2 원본 공격력',
-  'board.hpChange.insufficientPower': '에너지 부족 (0)',
+  'board.hpChange.insufficientPower': '파워 부족 (0)',
   'board.hpChange.rawAttack': '원본 공격력',
   'board.hpChange.effectiveAttack': '실제 공격력',
   'board.hpChange.clockContribution': '시계 기여',
@@ -285,7 +286,7 @@ export const ko: Record<TranslationKey, string> = {
   'board.choiceHintDeckBottomDraw': '덱 맨 아래에 둘 카드를 고르고, 효과에 따라 카드를 뽑습니다.',
   'board.choiceHintReorder': '상대 덱 위에 되돌릴 순서를 고릅니다.',
   'board.choiceHintSwap': '교체할 캐릭터를 고릅니다.',
-  'board.choiceHintAbyss': '패배를 피하려면 심연에서 덱 아래로 돌릴 카드를 고릅니다.',
+  'board.choiceHintAbyss': '패배를 피하려면 어비스에서 덱 아래로 돌릴 카드를 고릅니다.',
   'board.choiceHintHand': '효과가 지정한 손패를 고릅니다.',
   'board.choiceHintDefault': '효과가 지정한 카드를 고릅니다.',
   'board.phaseChoiceTitle': '카드 선택 처리',
@@ -336,10 +337,11 @@ export const ko: Record<TranslationKey, string> = {
   'card.night': '밤',
   'card.day': '낮',
   'card.clock': '시계',
-  'card.energy': '에너지',
-  'card.charge': '충전',
+  'card.energy': '파워 코스트',
+  'card.charge': '충전값',
   'card.unknown': '알 수 없는 카드',
   'card.back': '카드 뒷면',
+  'card.noEffect': '효과 없음',
 
   'chronos.title': '크로노스 시계',
   'chronos.position': '위치',
@@ -514,7 +516,7 @@ export const ko: Record<TranslationKey, string> = {
   'deckEditor.filterType': '종류',
   'deckEditor.sort': '정렬',
   'deckEditor.all': '전체',
-  'deckEditor.sortCost': '에너지',
+  'deckEditor.sortCost': '파워 코스트',
   'deckEditor.sortAttack': '공격력',
   'deckEditor.sortName': '이름',
   'deckEditor.copyCount': '추가됨',
@@ -563,13 +565,13 @@ export const ko: Record<TranslationKey, string> = {
     '결과가 나왔습니다! 야간 측 플레이어는 야간 시간대에 먼저 효과를 처리하고, 주간 측 플레이어는 주간 시간대에 먼저 효과를 처리합니다.',
   'tutorial.game.mulligan.intro.title': '멀리건 단계',
   'tutorial.game.mulligan.intro.body':
-    '시작 패에 높은 Power Cost의 캐릭터 카드가 있습니다. 충전 구역의 Power가 Power Cost에 미치지 못하면 해당 캐릭터의 공격력이 0이 되어 피해를 줄 수 없습니다. 바꾸고 싶은 카드를 클릭하여 뒷면으로 (임의의 수 선택 가능) 놓고 "리드로우"를 누르면 덱에서 같은 수의 새 카드를 뽑고, 이전 카드는 덱으로 돌아갑니다. 패에 만족하면 "핸드 유지"로 건너뛸 수 있습니다. 각 대전에서 리드로우는 1회만 가능합니다.',
+    '시작 패에 높은 파워 코스트의 캐릭터 카드가 있습니다. 충전 구역의 총 파워가 파워 코스트에 미치지 못하면 해당 캐릭터의 공격력이 0이 되어 피해를 줄 수 없습니다. 바꾸고 싶은 카드를 클릭하여 뒷면으로 (임의의 수 선택 가능) 놓고 "리드로우"를 누르면 덱에서 같은 수의 새 카드를 뽑고, 이전 카드는 덱으로 돌아갑니다. 패에 만족하면 "핸드 유지"로 건너뛸 수 있습니다. 각 대전에서 리드로우는 1회만 가능합니다.',
   'tutorial.game.mulligan.action.title': '다시 뽑을 카드 선택',
   'tutorial.game.mulligan.action.body':
-    '교체할 카드를 클릭하여 뒷면으로 놓고(예: 높은 Power Cost의 캐릭터 카드), "확인"을 눌러 같은 수의 새 카드를 뽑습니다. 핸드가 만족스러우면 "핸드 유지"로 건너뛸 수 있습니다.',
+    '교체할 카드를 클릭하여 뒷면으로 놓고(예: 높은 파워 코스트의 캐릭터 카드), "확인"을 눌러 같은 수의 새 카드를 뽑습니다. 핸드가 만족스러우면 "핸드 유지"로 건너뛸 수 있습니다.',
   'tutorial.game.initialSet.intro.title': '초기 배치 단계',
   'tutorial.game.initialSet.intro.body':
-    '핸드에서 캐릭터 카드 1장을 선택해 배틀 존에 뒷면으로 놓습니다. 반드시 캐릭터 카드를 선택해야 합니다: 캐릭터 이외의 카드는 공개되면 즉시 파워 차저 또는 심연으로 보내지며, 배틀 존이 비어있으면 직접 피해를 받습니다.',
+    '핸드에서 캐릭터 카드 1장을 선택해 배틀 존에 뒷면으로 놓습니다. 반드시 캐릭터 카드를 선택해야 합니다: 캐릭터 이외의 카드는 공개되면 즉시 파워 차저 또는 어비스로 보내지며, 배틀 존이 비어있으면 직접 피해를 받습니다.',
   'tutorial.game.initialSet.action.title': '카드 한 장 배치',
   'tutorial.game.initialSet.action.body': '핸드에서 1장을 선택해 배틀 존에 놓습니다. 준비되면 "확인"을 누르세요.',
   'tutorial.game.zone.battle.title': '배틀 존',
@@ -580,7 +582,7 @@ export const ko: Record<TranslationKey, string> = {
     '당신의 핸드입니다. 카드를 클릭하여 배틀 존 또는 세트 존에 배치하고, 카드 효과를 활용해 상대를 물리치세요.',
   'tutorial.game.zone.set.title': '세트 존',
   'tutorial.game.zone.set.body':
-    'A/B 구역은 패에서 낸 카드를 뒷면으로 배치합니다: 캐릭터 카드는 공개 후 배틀 존의 이전 캐릭터를 교체하고, 인챈트 카드는 일회성 효과 후 퇴장합니다. 에리어 인챈트는 공개되어 효과가 발동된 후 Set Zone C로 이동하며, 턴을 넘어 지속되는 필드 효과가 됩니다. 캐릭터 2장 또는 에리어 인챈트 2장을 냈을 때, A 구역의 카드가 우선하여 배틀 존/C 구역에 들어갑니다.',
+    'A/B 구역은 패에서 낸 카드를 뒷면으로 배치합니다: 캐릭터 카드는 공개 후 배틀 존의 이전 캐릭터를 교체하고, 인챈트 카드는 일회성 효과 후 퇴장합니다. 에리어 인챈트는 공개되어 효과가 발동된 후 세트 존 C로 이동하며, 턴을 넘어 지속되는 필드 효과가 됩니다. 캐릭터 2장 또는 에리어 인챈트 2장을 냈을 때, A 구역의 카드가 우선하여 배틀 존/C 구역에 들어갑니다.',
   'tutorial.game.zone.abyss.title': '어비스',
   'tutorial.game.zone.abyss.body':
     'SEND TO POWER가 없는 카드가 필드를 떠나면 이곳에 들어갑니다. 일부 카드 효과는 어비스와 상호작용할 수 있습니다.',
@@ -589,7 +591,7 @@ export const ko: Record<TranslationKey, string> = {
     '크로노스는 주야 시계입니다. 진한 자정에서 시계방향으로 진행되며, 추진량은 양측이 낸 카드의 시계값 합계입니다. 밤 측에서는 밤 공격력, 낮 측에서는 낮 공격력을 사용합니다.',
   'tutorial.game.resources.title': '파워 차저',
   'tutorial.game.resources.body':
-    'SEND TO POWER를 가진 카드가 필드를 떠나면 파워 차저에 들어가며, 축적된 Power는 효과 발동의 Power Cost 지불에 사용됩니다.',
+    'SEND TO POWER를 가진 카드가 필드를 떠나면 파워 차저에 들어가며, 축적된 파워는 효과 발동의 파워 코스트 지불에 사용됩니다.',
   'tutorial.game.catchup.title': '추격 메커니즘',
   'tutorial.game.catchup.body':
     '지난 턴 전투에서 패배한 쪽은 다음 턴에 두 장의 카드를 배치할 수 있습니다; 승리한 쪽은 보통 한 장만 배치할 수 있습니다. 이로써 양쪽이 균형을 유지하고 일방적인 게임을 피할 수 있습니다.',
@@ -607,36 +609,36 @@ export const ko: Record<TranslationKey, string> = {
     '어느 한 쪽의 HP가 0이 되거나 더 이상 카드를 낼 수 없게 되면 게임이 종료됩니다. 카드 효과를 적절히 사용해 상대의 HP를 줄이면 승리할 수 있습니다.',
   'tutorial.game.turnSet.intro.title': '턴 배치 단계',
   'tutorial.game.turnSet.intro.body':
-    '새 턴이 시작되었습니다! 지난 턴 승패에 따라 배치 수가 결정됩니다. 1번째 카드는 Set Zone A, 2번째는 Set Zone B에 들어갑니다.',
+    '새 턴이 시작되었습니다! 지난 턴 승패에 따라 배치 수가 결정됩니다. 1번째 카드는 세트 존 A, 2번째는 세트 존 B에 들어갑니다.',
   'tutorial.game.turnSet.intro.loser.title': '배치 단계: 추격 기회',
   'tutorial.game.turnSet.intro.loser.body':
-    '새 턴 시작! 지난 턴의 패자로서 2장의 카드를 낼 수 있습니다: 1장째는 Set Zone A, 2장째는 Set Zone B에 들어가며, 전세를 뒤집을 수 있습니다. 캐릭터 2장을 낸 경우 A 구역의 카드가 우선하여 배틀 존에 들어가고, 에리어 인챈트 2장을 낸 경우 A 구역의 카드가 우선하여 C 구역으로 이동합니다.',
+    '새 턴 시작! 지난 턴의 패자로서 2장의 카드를 낼 수 있습니다: 1장째는 세트 존 A, 2장째는 세트 존 B에 들어가며, 전세를 뒤집을 수 있습니다. 캐릭터 2장을 낸 경우 A 구역의 카드가 우선하여 배틀 존에 들어가고, 에리어 인챈트 2장을 낸 경우 A 구역의 카드가 우선하여 C 구역으로 이동합니다.',
   'tutorial.game.turnSet.intro.winner.title': '배치 단계: 우위 유지',
   'tutorial.game.turnSet.intro.winner.body':
-    '새 턴이 시작되었습니다! 지난 턴 승자로서 이번 턴 1장만 Set Zone A에 배치할 수 있습니다. 상대는 2장을 배치할 수 있습니다.',
+    '새 턴이 시작되었습니다! 지난 턴 승자로서 이번 턴 1장만 세트 존 A에 배치할 수 있습니다. 상대는 2장을 배치할 수 있습니다.',
   'tutorial.game.turnSet.intro.draw.title': '배치 단계',
   'tutorial.game.turnSet.intro.draw.body':
-    '새 턴이 시작되었습니다! 이전 턴 무승부라 양쪽 모두 1장씩 Set Zone A에 배치합니다.',
+    '새 턴이 시작되었습니다! 이전 턴 무승부라 양쪽 모두 1장씩 세트 존 A에 배치합니다.',
   'tutorial.game.turnSet.action.title': '이번 턴 카드 배치',
   'tutorial.game.turnSet.action.body':
-    '핸드에서 카드를 배치합니다. 1번째는 Set Zone A, 2번째(해당 시)는 Set Zone B에 들어갑니다.',
+    '핸드에서 카드를 배치합니다. 1번째는 세트 존 A, 2번째(해당 시)는 세트 존 B에 들어갑니다.',
   'tutorial.game.turnSet.action.loser.title': '2장 배치하여 추격',
   'tutorial.game.turnSet.action.loser.body':
-    '핸드에서 2장 배치: 1번째는 Set Zone A, 2번째는 Set Zone B. 공격을 분산시켜 승률을 높이세요.',
+    '핸드에서 2장 배치: 1번째는 세트 존 A, 2번째는 세트 존 B. 공격을 분산시켜 승률을 높이세요.',
   'tutorial.game.turnSet.action.winner.title': '1장 배치',
   'tutorial.game.turnSet.action.winner.body':
-    '핸드에서 1장을 Set Zone A에 배치합니다. 1장만 배치할 수 있으니 신중히 선택하세요.',
+    '핸드에서 1장을 세트 존 A에 배치합니다. 1장만 배치할 수 있으니 신중히 선택하세요.',
   'tutorial.game.turnSet.action.draw.title': '이번 턴 카드 배치',
-  'tutorial.game.turnSet.action.draw.body': '핸드에서 1장을 Set Zone A에 배치합니다.',
+  'tutorial.game.turnSet.action.draw.body': '핸드에서 1장을 세트 존 A에 배치합니다.',
   'tutorial.game.effectOrder.intro.title': '효과 순서 단계',
   'tutorial.game.effectOrder.intro.body':
-    '효과 처리 시, 크로노스 메달이 있는 시간대의 플레이어(우선 플레이어)가 자신의 모든 효과를 먼저 처리하고, 그 후 상대방이 처리합니다. Power Cost는 "효과 처리 시점"에 재확인되며, 부족하면 발동하지 않습니다. 패, 어비스 등의 매수도 처리 시점 기준으로 셉니다. 캐릭터 효과는 발동 시점 지정이 없는 한, 낸 턴의 효과 처리 시에 발동합니다. 효과 처리 단계 이외의 타이밍에 발동한 효과(카드가 구역에 진입하는 등)는 즉시 처리되며, 우선 플레이어 순서를 따르지 않습니다.',
+    '효과 처리 시, 크로노스 메달이 있는 시간대의 플레이어(우선 플레이어)가 자신의 모든 효과를 먼저 처리하고, 그 후 상대방이 처리합니다. 파워 코스트는 "효과 처리 시점"에 재확인되며, 부족하면 발동하지 않습니다. 패, 어비스 등의 매수도 처리 시점 기준으로 셉니다. 캐릭터 효과는 발동 시점 지정이 없는 한, 낸 턴의 효과 처리 시에 발동합니다. 효과 처리 단계 이외의 타이밍에 발동한 효과(카드가 구역에 진입하는 등)는 즉시 처리되며, 우선 플레이어 순서를 따르지 않습니다.',
   'tutorial.game.effectOrder.action.title': '효과 해결 순서 선택',
   'tutorial.game.effectOrder.action.body':
     '효과 카드를 클릭해 해결 순서를 선택합니다. 먼저 해결되는 효과가 먼저 발동하며, 후속 효과 결과에 영향을 줄 수 있습니다.',
   'tutorial.game.pendingChoice.intro.title': '카드 지정 효과',
   'tutorial.game.pendingChoice.intro.body':
-    '일부 카드 효과는 패·심연·덱에서 대상 카드를 지정해야 해결을 완료할 수 있습니다.',
+    '일부 카드 효과는 패·어비스·덱에서 대상 카드를 지정해야 해결을 완료할 수 있습니다.',
   'tutorial.game.pendingChoice.action.title': '대상 카드 선택',
   'tutorial.game.pendingChoice.action.body':
     '목록의 카드를 클릭해 선택하세요. 필요 장수를 선택한 뒤 「선택 제출」을 눌러 해결을 완료합니다. 필요 장수는 안내문으로 확인할 수 있습니다.',
@@ -666,18 +668,18 @@ export const ko: Record<TranslationKey, string> = {
     '양측 카드가 공개된 후, 두 카드의 시계 값 합계만큼 크로노스가 진행됩니다. 메달이 새 위치로 이동하여 현재가 밤인지 낮인지 결정합니다 — 이는 캐릭터가 밤 공격력을 사용할지 낮 공격력을 사용할지 결정합니다. 첫 턴의 크로노스 진행에는 준비 단계에서 충전 구역/어비스로 보내진 카드의 시계 값도 포함됩니다.',
   'tutorial.game.hpCalc.title': 'HP 계산',
   'tutorial.game.hpCalc.body':
-    '효과 처리가 끝난 후, 양측 캐릭터의 공격력을 비교하여 공격력이 낮은 쪽이 차액만큼 피해를 받습니다. Power Cost가 부족하면 공격력은 0으로 간주되고 효과는 발동하지 않습니다.',
+    '효과 처리가 끝난 후, 양측 캐릭터의 공격력을 비교하여 공격력이 낮은 쪽이 차액만큼 피해를 받습니다. 파워 코스트가 부족하면 공격력은 0으로 간주되고 효과는 발동하지 않습니다.',
   'tutorial.game.powerCharging.title': '충전 구역',
   'tutorial.game.powerCharging.body':
-    'SEND TO POWER를 가진 캐릭터 카드는 배틀 존을 떠날 때 충전 구역에 들어가 Power를 축적합니다. 축적된 Power는 다른 카드의 Power Cost 지불에 사용됩니다. Power 총수는 효과 처리 시점에 재확인됩니다. 다음 턴에 캐릭터를 교체하면 이전 카드가 충전 구역으로 갑니다.',
+    'SEND TO POWER를 가진 캐릭터 카드는 배틀 존을 떠날 때 충전 구역에 들어가 파워를 축적합니다. 축적된 파워는 다른 카드의 파워 코스트 지불에 사용됩니다. 총 파워는 효과 처리 시점에 재확인됩니다. 다음 턴에 캐릭터를 교체하면 이전 카드가 충전 구역으로 갑니다.',
   'tutorial.game.areaEnchant.title': '에리어 인챈트',
   'tutorial.game.areaEnchant.body':
-    '에리어 인챈트는 패에서 낼 때 먼저 Set Zone A 또는 B에 뒷면으로 배치됩니다. 카드가 공개되어 효과가 발동된 후 Set Zone C로 이동하며, 전체 필드에 지속적으로 영향을 줍니다. 당신이 낸 2nd_86은 야간 측일 때 캐릭터에게 +20 공격력을 부여합니다.',
+    '에리어 인챈트는 패에서 낼 때 먼저 세트 존 A 또는 B에 뒷면으로 배치됩니다. 카드가 공개되어 효과가 발동된 후 세트 존 C로 이동하며, 전체 필드에 지속적으로 영향을 줍니다. 당신이 낸 2nd_86은 야간 측일 때 캐릭터에게 +20 공격력을 부여합니다.',
   'tutorial.game.abyss.title': '어비스',
   'tutorial.game.abyss.body':
     '효과 처리가 끝난 인챈트 카드는 어비스로 보내집니다. 어비스의 카드는 더 이상 효과를 발휘하지 않지만, 일부 카드 효과로 어비스에서 카드를 꺼내 재사용할 수 있습니다.',
 
-  'lobby.tutorial': 'First Ritual · 튜토리얼',
+  'lobby.tutorial': '첫 의식 · 튜토리얼',
   'feedback.title': '피드백',
   'feedback.subtitle': '아이디어와 제안을 공유하여 게임을 더 좋게 만들어보세요',
   'feedback.back': '로비로 돌아가기',

@@ -72,6 +72,87 @@
   border: 1px solid var(--color-border-subtle);
 }
 
+.bf-hud .battle-side-panel-actions {
+  display: flex;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.bf-hud .battle-side-panel-actions button,
+.board-pause-button {
+  display: inline-flex;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
+  min-width: var(--control-height-sm);
+  min-height: var(--control-height-sm);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: oklch(from var(--color-bg-surface) l c h / 0.78);
+  color: var(--color-text-secondary);
+  backdrop-filter: blur(10px);
+  box-shadow: none;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.bf-hud .battle-side-panel-actions button:hover,
+.bf-hud .battle-side-panel-actions button:focus-visible,
+.bf-hud .battle-side-panel-actions button[aria-pressed='true'],
+.board-pause-button:hover,
+.board-pause-button:focus-visible {
+  outline: none;
+  border-color: oklch(from var(--color-accent-primary) l c h / 0.55);
+  background: oklch(from var(--color-accent-primary) l c h / 0.12);
+  color: var(--color-text-primary);
+}
+
+.bf-hud .battle-side-panel-actions button:active,
+.board-pause-button:active {
+  transform: scale(0.96);
+}
+
+.board-pause-button {
+  position: fixed;
+  top: var(--space-2) !important;
+  right: var(--space-3) !important;
+  z-index: var(--z-modal);
+  width: var(--control-height-sm) !important;
+  height: var(--control-height-sm) !important;
+  min-width: var(--control-height-sm) !important;
+  min-height: var(--control-height-sm) !important;
+  font-size: 0;
+  letter-spacing: 0;
+}
+
+.board-pause-button .board-pause-icon {
+  display: block;
+}
+
+.board-pause-button .board-pause-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.board-pause-button-inline {
+  position: static;
+  top: auto !important;
+  right: auto !important;
+  z-index: auto;
+}
+
 .bf-hud-status {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
@@ -331,6 +412,7 @@
   gap: var(--space-slot-gap);
   max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: thin;
   padding-block: var(--space-1);
 }
@@ -400,12 +482,11 @@
   white-space: nowrap;
 }
 
-/* C 區 = 持續中的 Area Enchant：虛線框 + 青色提示，與 A/B（本回合出牌）明確區分 */
-.setzone-c .cardslot {
-  outline-style: dashed;
-  outline-color: oklch(from var(--color-info) l c h / 0.35);
+.setzone-hint-compact {
+  display: none;
 }
 
+/* C 區 = 持續中的區域附魔：以提示色與 A/B（本回合出牌）區分 */
 .setzone-c .setzone-hint {
   color: oklch(from var(--color-info) l c h / 0.8);
 }
@@ -622,6 +703,44 @@
 .bf-hand-dock > .playerstatus {
   flex: 0 0 auto;
   width: 16rem;
+}
+
+.mobile-zone-button {
+  display: inline-flex;
+  min-height: var(--touch-target-min);
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  background: oklch(from var(--color-bg-surface) l c h / 0.68);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-compact);
+  text-transform: uppercase;
+}
+
+.mobile-zone-button strong {
+  color: var(--color-accent-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-zone-button:focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 2px;
+}
+
+.mobile-status-row {
+  display: flex;
+  width: 100%;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.mobile-status-row > .playerstatus {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* ---------------------------------------------------------------- 手牌 */
@@ -1386,6 +1505,57 @@ button.cardstack:focus-visible {
     min-height: var(--touch-target-min);
   }
 
+  .bf-hud .battle-side-panel-actions button {
+    position: relative;
+    isolation: isolate;
+    border-color: transparent;
+    background: transparent;
+    backdrop-filter: none;
+  }
+
+  .bf-hud .battle-side-panel-actions button::before {
+    content: '';
+    position: absolute;
+    inset: calc((var(--touch-target-min) - var(--control-height-sm)) / 2) 0;
+    z-index: -1;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    background: oklch(from var(--color-bg-surface) l c h / 0.78);
+    backdrop-filter: blur(10px);
+    transition:
+      background var(--motion-fast) var(--ease-standard),
+      border-color var(--motion-fast) var(--ease-standard);
+  }
+
+  .bf-hud .battle-side-panel-actions button:hover::before,
+  .bf-hud .battle-side-panel-actions button:focus-visible::before,
+  .bf-hud .battle-side-panel-actions button[aria-pressed='true']::before {
+    border-color: oklch(from var(--color-accent-primary) l c h / 0.55);
+    background: oklch(from var(--color-accent-primary) l c h / 0.12);
+  }
+
+  .bf-hud-right {
+    top: calc(var(--space-2) - ((var(--touch-target-min) - var(--control-height-sm)) / 2));
+  }
+
+  .bf-hud .battle-side-panel-actions button[data-panel-id='focus'] {
+    display: none;
+  }
+
+  .board-pause-button {
+    top: var(--space-3) !important;
+    right: var(--space-2) !important;
+    width: var(--touch-target-min) !important;
+    height: var(--touch-target-min) !important;
+    min-width: var(--touch-target-min) !important;
+    min-height: var(--touch-target-min) !important;
+  }
+
+  .bf-hud .battle-side-panel-actions .board-pause-button-inline {
+    top: 0 !important;
+    right: auto !important;
+  }
+
   .bf-hud-pill {
     padding-block: calc(var(--space-1) / 2);
   }
@@ -1423,6 +1593,102 @@ button.cardstack:focus-visible {
 
   .bf-stage .cardslot-lg .cardview {
     width: var(--card-width-md);
+  }
+
+  .handzone-strip {
+    justify-content: center;
+  }
+
+  .setzone-hint-full {
+    display: none;
+  }
+
+  .setzone-hint-compact {
+    display: inline;
+  }
+
+  .mobile-zone-button {
+    flex: 0 0 auto;
+    min-width: 4.25rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .actiondock-hint {
+    display: none;
+  }
+}
+
+/* ---- 手機矮螢幕：壓縮中央區，避免戰鬥區與設置區互相覆蓋 ---- */
+@media (max-width: 47.9375rem) and (max-height: 43rem) {
+  .bf-field {
+    gap: var(--space-1);
+  }
+
+  .bf-opponent,
+  .bf-player {
+    padding-block: 0;
+  }
+
+  .bf-strip {
+    padding-block: 0;
+  }
+
+  .setzone {
+    gap: 0;
+  }
+
+  .bf-stage {
+    flex: 1 1 auto;
+    min-height: calc(var(--slot-height-sm) + var(--space-1));
+    gap: var(--space-2);
+  }
+
+  .chronospanel-sm .chronosdial {
+    width: clamp(4.75rem, 23vw, 6rem);
+  }
+
+  .battlezone {
+    gap: 0;
+  }
+
+  .battlezone-attack {
+    min-height: 1.55rem;
+  }
+
+  .battlezone-attack-value {
+    font-size: clamp(1.25rem, 4vh, 1.75rem);
+  }
+
+  .bf-hand-dock {
+    display: grid;
+    grid-template-areas:
+      'status'
+      'hand'
+      'action';
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: var(--space-1);
+  }
+
+  .bf-hand-dock .mobile-status-row {
+    grid-area: status;
+  }
+
+  .bf-hand-dock .handzone-strip {
+    grid-area: hand;
+    padding-block: 0;
+    justify-content: center;
+  }
+
+  .bf-hand-dock .actiondock {
+    grid-area: action;
+    width: auto;
+    justify-content: center;
+    gap: var(--space-1);
+  }
+
+  .handzone-strip .cardview-md {
+    width: clamp(2.25rem, 9vh, 2.85rem);
   }
 }
 

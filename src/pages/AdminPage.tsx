@@ -357,7 +357,7 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
           <Input type="number" value={draft.clock} onChange={(e) => set('clock', e.target.value)} />
         </label>
         <label className="grid gap-1">
-          <span className="text-xs text-content-primary/50">Power Cost</span>
+          <span className="text-xs text-content-primary/50">充能成本</span>
           <Input type="number" value={draft.powerCost} onChange={(e) => set('powerCost', e.target.value)} />
         </label>
         <label className="grid gap-1">
@@ -906,7 +906,7 @@ export function AdminPage() {
                     variant={sortBy === sort ? 'primary' : 'ghost'}
                     onClick={() => setSortBy(sort)}
                   >
-                    {sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '能量' : '攻擊'}
+                    {sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '充能成本' : '攻擊'}
                   </Button>
                 ))}
               </div>

@@ -26,7 +26,7 @@ export interface CardViewProps {
   card: CardInstance;
   size?: CardViewSize;
   state?: CardViewState;
-  /** 顯示左上 Power Cost chip（mini 尺寸一律隱藏） */
+  /** 顯示左上充能成本 chip（mini 尺寸一律隱藏） */
   showCost?: boolean;
   /** 點擊 / Enter / Space：執行動作（出牌、選目標、撤回…） */
   onActivate?: () => void;

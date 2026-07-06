@@ -17,7 +17,7 @@ import type {
 } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
 import { AppDrawer } from './AppDrawer';
-import { Button, IconButton, SegmentedControl } from '../ui';
+import { Button, IconButton, SegmentedControl, Sheet } from '../ui';
 import { useModalFocus } from '../ui';
 import {
   AbyssZone,
@@ -49,7 +49,6 @@ import {
 import { t, useLocale } from '../i18n';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { normalizeGameOverWinner, useOnlineMatchSubmission } from './board/useOnlineMatchSubmission';
-
 
 export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
@@ -505,7 +504,12 @@ function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | nul
           <p key={line}>{line}</p>
         ))}
         {message.actionLabel && onAction && (
-          <Button className={`phase-message-action ${primaryActionClass()}`} type="button" variant="primary" onClick={onAction}>
+          <Button
+            className={`phase-message-action ${primaryActionClass()}`}
+            type="button"
+            variant="primary"
+            onClick={onAction}
+          >
             {message.actionLabel}
           </Button>
         )}
@@ -561,7 +565,10 @@ function BreakdownBlock({ breakdown }: { breakdown: HpChangeBreakdown }) {
       </div>
       <div className="flex flex-col gap-0.5">
         {breakdown.lines.map((line, idx) => (
-          <div key={idx} className="flex items-baseline justify-between gap-2 font-mono text-minutia text-content-primary/80">
+          <div
+            key={idx}
+            className="flex items-baseline justify-between gap-2 font-mono text-minutia text-content-primary/80"
+          >
             <span className="text-content-primary/55">{t(line.label as never)}</span>
             <span
               className={
@@ -818,7 +825,9 @@ function JankenScreen({ G, moves, playerID, floating = false }: Props & { floati
         className="relative z-[var(--z-dropdown)] w-full max-w-lg rounded-sm bg-surface-base p-6 text-center ring-1 ring-content-primary/10"
         data-tut="janken-panel"
       >
-        <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('board.janken')}</div>
+        <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+          {t('board.janken')}
+        </div>
         <h2 className="mt-3 font-display text-3xl font-bold">{t('board.jankenHint')}</h2>
         {choice ? (
           <p className="mt-4 text-sm leading-relaxed text-content-primary/60">
@@ -854,18 +863,62 @@ function MulliganScreen({
   moves,
   playerID,
   onMulliganFeedback,
+  focusedCard,
+  onFocusCard,
   floating = false,
 }: Props & {
   onMulliganFeedback: (redrawCount: number) => void;
+  focusedCard?: FocusedCard;
+  onFocusCard?: (focus: NonNullable<FocusedCard>) => void;
   floating?: boolean;
 }) {
   const me = Number(playerID ?? '0') as PlayerIndex;
+  const viewport = useViewportMode();
+  const touchLike = viewport.isTouch || viewport.mode !== 'desktop';
   const [selected, setSelected] = useState<number[]>([]);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const done = G.mulliganUsed[me];
+  const firstHandCard = G.players[me].hand[0];
   const toggle = (index: number) =>
     setSelected((current) =>
       current.includes(index) ? current.filter((item) => item !== index) : [...current, index],
     );
+  const focusCard = (card: CardInstance) => {
+    const focus = { card, owner: me, zone: t('board.hand') };
+    onFocusCard?.(focus);
+    return focus;
+  };
+  const openCardDetail = (card: CardInstance) => {
+    focusCard(card);
+    setDetailSheetOpen(true);
+  };
+  const activateCard = (card: CardInstance, index: number) => {
+    if (done) return;
+    if (touchLike) {
+      openCardDetail(card);
+      return;
+    }
+    toggle(index);
+  };
+
+  useEffect(() => {
+    if (focusedCard || !firstHandCard) return;
+    onFocusCard?.({ card: firstHandCard, owner: me, zone: t('board.hand') });
+  }, [firstHandCard, focusedCard, me, onFocusCard]);
+
+  useEffect(() => {
+    if (!done) return;
+    setDetailSheetOpen(false);
+  }, [done]);
+
+  const focusedIndex = focusedCard
+    ? G.players[me].hand.findIndex((card) => card.instanceId === focusedCard.card.instanceId)
+    : -1;
+  const focusedSelected = focusedIndex >= 0 && selected.includes(focusedIndex);
+  const detailTitle =
+    focusedCard && focusedCard.card.faceUp && focusedCard.card.defId !== '__hidden__'
+      ? (getCardDef(focusedCard.card.defId)?.name ?? t('card.unknown'))
+      : t('card.back');
 
   return (
     <div
@@ -884,24 +937,38 @@ function MulliganScreen({
         className="relative z-[var(--z-dropdown)] flex w-full max-w-5xl flex-col items-center rounded-sm bg-surface-base p-6 ring-1 ring-content-primary/10"
         data-tut="mulligan-panel"
       >
-        <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">{t('board.mulligan')}</div>
+        <div className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+          {t('board.mulligan')}
+        </div>
         <h2 className="mt-3 text-center font-display text-3xl font-bold">{t('board.mulliganHint')}</h2>
-        <div className="mulligan-hand mt-6 flex w-full justify-center gap-3 overflow-x-auto pb-4">
-          {G.players[me].hand.map((card, index) => (
-            <button
-              key={card.instanceId}
-              className={`shrink-0 rounded-sm bg-surface-canvas/60 p-1 ring-1 ring-content-primary/10 transition hover:-translate-y-2 hover:ring-accent-primary/40 disabled:cursor-not-allowed disabled:opacity-50 ${
-                selected.includes(index) ? 'ring-2 ring-accent-primary shadow-selected' : ''
-              }`}
-              type="button"
-              disabled={done}
-              data-tut-mulligan-card={card.defId}
-              onClick={() => toggle(index)}
-              data-card-defid={card.defId}
-            >
-              <CardView card={card} size="md" state={selected.includes(index) ? 'selected' : 'idle'} />
-            </button>
-          ))}
+        <div className="mt-6 grid w-full items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="mulligan-hand flex min-w-0 self-start overflow-x-auto pb-4 lg:self-center lg:pb-0">
+            {G.players[me].hand.map((card, index) => (
+              <div
+                key={card.instanceId}
+                className={`mulligan-card-shell relative shrink-0 rounded-sm bg-surface-canvas/60 p-1 ring-1 ring-content-primary/10 transition hover:-translate-y-2 hover:ring-accent-primary/40 ${
+                  selected.includes(index) ? 'ring-2 ring-accent-primary shadow-selected' : ''
+                } ${done ? 'opacity-70' : ''}`}
+                data-tut-mulligan-card={card.defId}
+                data-card-defid={card.defId}
+              >
+                <CardView
+                  card={card}
+                  size="md"
+                  state={done ? 'disabled' : selected.includes(index) ? 'selected' : 'idle'}
+                  onActivate={done ? undefined : () => activateCard(card, index)}
+                  onInspect={() => focusCard(card)}
+                />
+              </div>
+            ))}
+          </div>
+          <aside className="mulligan-detail-panel hidden border-l border-content-primary/10 pl-4 lg:block">
+            <CardDetailBody
+              focus={focusedCard ?? null}
+              G={G}
+              ownerName={focusedCard ? playerName(focusedCard.owner) : undefined}
+            />
+          </aside>
         </div>
         {done ? (
           <p className="mt-2 text-sm text-content-primary/60">
@@ -934,6 +1001,34 @@ function MulliganScreen({
               {t('board.keepHand')}
             </Button>
           </div>
+        )}
+        {touchLike && (
+          <Sheet
+            open={detailSheetOpen}
+            onOpenChange={setDetailSheetOpen}
+            title={detailTitle}
+            closeLabel={t('common.close')}
+            footer={
+              !done && focusedIndex >= 0 ? (
+                <Button
+                  className={focusedSelected ? secondaryActionClass('w-full') : primaryActionClass('w-full')}
+                  type="button"
+                  variant={focusedSelected ? 'secondary' : 'primary'}
+                  onClick={() => toggle(focusedIndex)}
+                >
+                  {focusedSelected
+                    ? `${t('common.cancel')} ${t('board.redraw')}`
+                    : `${t('common.select')} ${t('board.redraw')}`}
+                </Button>
+              ) : null
+            }
+          >
+            <CardDetailBody
+              focus={focusedCard ?? null}
+              G={G}
+              ownerName={focusedCard ? playerName(focusedCard.owner) : undefined}
+            />
+          </Sheet>
         )}
       </div>
     </div>
@@ -989,7 +1084,11 @@ function ResultCell({ label, value, accent }: { label: string; value: string; ac
   return (
     <div className="min-w-0">
       <div className="text-caption uppercase tracking-widest text-content-primary/40">{label}</div>
-      <div className={`mt-1 truncate font-display text-xl font-bold ${accent ? 'text-accent-primary' : 'text-content-primary'}`}>{value}</div>
+      <div
+        className={`mt-1 truncate font-display text-xl font-bold ${accent ? 'text-accent-primary' : 'text-content-primary'}`}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -1036,7 +1135,9 @@ function GameOverScreen({
       </div>
 
       <main className="relative z-[var(--z-dropdown)] flex w-full max-w-3xl flex-col items-center justify-center px-8 text-center">
-        <div className={`font-mono text-caption uppercase tracking-[var(--tracking-hero)] ${win ? 'text-accent-primary' : 'text-accent-action'}`}>
+        <div
+          className={`font-mono text-caption uppercase tracking-[var(--tracking-hero)] ${win ? 'text-accent-primary' : 'text-accent-action'}`}
+        >
           {t('board.result.concluded')}
         </div>
         <h1
@@ -1058,7 +1159,9 @@ function GameOverScreen({
         {ctx.gameover &&
           (gameOverActions ? (
             <div className="mt-10 flex flex-col items-center gap-3 md:flex-row">
-              {gameOverActions.helperText && <p className="text-xs text-content-primary/45">{gameOverActions.helperText}</p>}
+              {gameOverActions.helperText && (
+                <p className="text-xs text-content-primary/45">{gameOverActions.helperText}</p>
+              )}
               <Button
                 className={gameOverActionClass(gameOverActions.primary)}
                 type="button"
@@ -1079,7 +1182,12 @@ function GameOverScreen({
               )}
             </div>
           ) : (
-            <Button className={primaryActionClass('mt-10')} type="button" variant="primary" onClick={() => window.location.reload()}>
+            <Button
+              className={primaryActionClass('mt-10')}
+              type="button"
+              variant="primary"
+              onClick={() => window.location.reload()}
+            >
               {t('board.playAgain')}
             </Button>
           ))}
@@ -1383,14 +1491,19 @@ function BattleLogSidebarPanel({ G }: { G: GameState }) {
                     </span>
                   )}
                   {typeof entry.chronosPosition === 'number' && (
-                    <span className="text-content-primary/25"> ⏱{entry.chronosPosition}/{CHRONOS_MAPPING.positions}</span>
+                    <span className="text-content-primary/25">
+                      {' '}
+                      ⏱{entry.chronosPosition}/{CHRONOS_MAPPING.positions}
+                    </span>
                   )}
                 </p>
                 {breakdown && <LogBreakdown breakdown={breakdown} />}
               </div>
             );
           })}
-        {(!G.actionLog || G.actionLog.length === 0) && <p className="text-content-primary/20">{t('board.waitingOpponent')}</p>}
+        {(!G.actionLog || G.actionLog.length === 0) && (
+          <p className="text-content-primary/20">{t('board.waitingOpponent')}</p>
+        )}
       </div>
     </div>
   );
@@ -1422,10 +1535,18 @@ function BattleStatusSidebarPanel({ G }: { G: GameState }) {
               </div>
               <div className="mt-2 font-display text-2xl font-bold text-accent-primary">{player.hp}</div>
               <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-caption text-content-primary/45">
-                <span>Deck {player.deck.length}</span>
-                <span>Hand {player.hand.length}</span>
-                <span>Power {player.powerCharger.length}</span>
-                <span>Abyss {player.abyss.length}</span>
+                <span>
+                  {t('board.deck')} {player.deck.length}
+                </span>
+                <span>
+                  {t('board.hand')} {player.hand.length}
+                </span>
+                <span>
+                  {t('board.powerCharger')} {player.powerCharger.length}
+                </span>
+                <span>
+                  {t('board.abyss')} {player.abyss.length}
+                </span>
               </div>
             </div>
           ))}
@@ -1456,7 +1577,6 @@ const BATTLE_SIDE_PANELS: Array<{
   { id: 'log', label: 'Log', Icon: BookOpen },
 ];
 
-
 function BoardLayout({ time, children }: { time: ChronosTime; children: ReactNode }) {
   return (
     <div className={`bf-root chrono-${time}`} data-board-layout="responsive">
@@ -1475,12 +1595,14 @@ function BattleHud({
   activePanel,
   time,
   timeLeft,
+  onPause,
   onPanelChange,
 }: {
   G: GameState;
   activePanel: BattleSidePanel | null;
   time: ChronosTime;
   timeLeft: number;
+  onPause: () => void;
   onPanelChange: (panel: BattleSidePanel) => void;
 }) {
   const phases = [
@@ -1525,10 +1647,20 @@ function BattleHud({
               key={id}
               label={label}
               icon={<Icon className="size-4" aria-hidden="true" />}
+              data-panel-id={id}
               aria-pressed={activePanel === id}
               onClick={() => onPanelChange(id)}
             />
           ))}
+          <button
+            className="board-pause-button board-pause-button-inline"
+            type="button"
+            onClick={onPause}
+            aria-label={t('game.pause')}
+          >
+            <Pause className="board-pause-icon size-4" aria-hidden="true" />
+            <span className="board-pause-label">{t('game.pause')}</span>
+          </button>
         </div>
       </div>
     </>
@@ -1619,7 +1751,16 @@ function BattleSideSheet({
   );
 }
 
-function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel, selfLabel, onNoticeDismiss }: Props) {
+function BattleBoard({
+  G,
+  moves,
+  playerID,
+  useServerTimer = false,
+  opponentLabel,
+  selfLabel,
+  onNoticeDismiss,
+  onPause,
+}: Props & { onPause: () => void }) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
@@ -1840,6 +1981,22 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
       insufficient: isAttackPowerInsufficient(card, G, owner),
     };
   };
+  const opponentMeta = touchLike
+    ? `${t('board.hand')} · ${opponent.hand.length} / ${t('board.deck')} · ${opponent.deck.length}`
+    : undefined;
+  const meMeta = touchLike ? `${t('board.deck')} · ${me.deck.length}` : undefined;
+  const mobileAbyssButton = (owner: PlayerIndex, count: number) =>
+    touchLike ? (
+      <button
+        className="mobile-zone-button mobile-zone-button-abyss"
+        type="button"
+        aria-label={`${playerName(owner)} ${zoneNames.abyss}: ${count}`}
+        onClick={() => setZoneSheet({ kind: 'abyss', owner })}
+      >
+        <span>{zoneNames.abyss}</span>
+        <strong>{count}</strong>
+      </button>
+    ) : null;
 
   return (
     <BoardLayout time={time}>
@@ -1848,6 +2005,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
         activePanel={activeSidePanel}
         time={time}
         timeLeft={timeLeft}
+        onPause={onPause}
         onPanelChange={setActiveSidePanel}
       />
 
@@ -1856,17 +2014,19 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
       <div className="bf-main">
         {/* ===== 戰場 ===== */}
         <div className="bf-field" data-time={time}>
-
           {/* 對手區 */}
           <section className="bf-opponent" aria-label={t('player.opponent')}>
-            <PlayerStatus
-              side="opponent"
-              name={playerName(opponentIndex)}
-              hp={opponent.hp}
-              meta={`${t('board.hand')} · ${opponent.hand.length} / ${t('board.deck')} · ${opponent.deck.length}`}
-              damageAmount={damageFlash?.target === opponentIndex ? damageFlash.amount : undefined}
-              tutId="opponent-hp"
-            />
+            <div className={touchLike ? 'mobile-status-row' : undefined}>
+              <PlayerStatus
+                side="opponent"
+                name={playerName(opponentIndex)}
+                hp={opponent.hp}
+                meta={opponentMeta}
+                damageAmount={damageFlash?.target === opponentIndex ? damageFlash.amount : undefined}
+                tutId="opponent-hp"
+              />
+              {mobileAbyssButton(opponentIndex, opponent.abyss.length)}
+            </div>
             <div className="bf-opponent-handbacks" aria-label={`${t('board.hand')} ${opponent.hand.length}`}>
               {opponent.hand.map((card) => (
                 <img key={card.instanceId} src="/card-back.jpg" alt="" loading="lazy" />
@@ -1904,13 +2064,17 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                 onActivate={detailActivate(opponent.setZoneC, opponentIndex, zoneNames.C)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.C)}
               />
-              <DeckZone side="opponent" size="sm" count={opponent.deck.length} />
-              <AbyssZone
-                side="opponent"
-                size="sm"
-                cards={opponent.abyss}
-                onOpen={() => setZoneSheet({ kind: 'abyss', owner: opponentIndex })}
-              />
+              {!touchLike && (
+                <>
+                  <DeckZone side="opponent" size="sm" count={opponent.deck.length} />
+                  <AbyssZone
+                    side="opponent"
+                    size="sm"
+                    cards={opponent.abyss}
+                    onOpen={() => setZoneSheet({ kind: 'abyss', owner: opponentIndex })}
+                  />
+                </>
+              )}
             </div>
           </section>
 
@@ -1979,23 +2143,30 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
                   onInspect={(card) => inspect(card, meIndex, zoneNames.C)}
                 />
               </div>
-              <DeckZone side="me" count={me.deck.length} />
-              <AbyssZone
-                side="me"
-                cards={me.abyss}
-                onOpen={() => setZoneSheet({ kind: 'abyss', owner: meIndex })}
-                tutId="player-abyss"
-              />
+              {!touchLike && (
+                <>
+                  <DeckZone side="me" count={me.deck.length} />
+                  <AbyssZone
+                    side="me"
+                    cards={me.abyss}
+                    onOpen={() => setZoneSheet({ kind: 'abyss', owner: meIndex })}
+                    tutId="player-abyss"
+                  />
+                </>
+              )}
             </div>
             <div className="bf-hand-dock" data-tut="player-actions">
-              <PlayerStatus
-                side="me"
-                name={playerName(meIndex)}
-                hp={me.hp}
-                meta={`${t('board.deck')} · ${me.deck.length}`}
-                damageAmount={damageFlash?.target === meIndex ? damageFlash.amount : undefined}
-                tutId="player-hp"
-              />
+              <div className={touchLike ? 'mobile-status-row' : undefined}>
+                <PlayerStatus
+                  side="me"
+                  name={playerName(meIndex)}
+                  hp={me.hp}
+                  meta={meMeta}
+                  damageAmount={damageFlash?.target === meIndex ? damageFlash.amount : undefined}
+                  tutId="player-hp"
+                />
+                {mobileAbyssButton(meIndex, me.abyss.length)}
+              </div>
               <HandZone
                 cards={me.hand}
                 variant={touchLike ? 'strip' : 'fan'}
@@ -2035,7 +2206,11 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
 
         {/* ===== 桌面側欄（>=1180px，CSS 控制顯示）===== */}
         <aside className="bf-sidebar" aria-label="Battle info">
-          <CardDetailPanel focus={focusedCard} G={G} ownerName={focusedCard ? playerName(focusedCard.owner) : undefined} />
+          <CardDetailPanel
+            focus={focusedCard}
+            G={G}
+            ownerName={focusedCard ? playerName(focusedCard.owner) : undefined}
+          />
           <BattleLogSidebarPanel G={G} />
         </aside>
       </div>
@@ -2082,6 +2257,7 @@ function BattleBoard({ G, moves, playerID, useServerTimer = false, opponentLabel
           }
           onInspectCard={(card) => {
             inspect(card, zoneSheet.owner, zoneSheet.kind === 'power' ? zoneNames.power : zoneNames.abyss);
+            setZoneSheet(null);
             setDetailSheetOpen(true);
           }}
         />
@@ -2100,6 +2276,7 @@ export function Board(props: Props) {
   const previousStep = useRef(props.G.step);
   const setupFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [setupFeedback, setSetupFeedback] = useState<FeedbackMessage | null>(null);
+  const [mulliganFocusedCard, setMulliganFocusedCard] = useState<FocusedCard>(null);
   // 戰敗延遲：step 變成 gameOver 時，延遲顯示 GameOverScreen，
   // 讓最後的 HP 變化 breakdown 等 notice 有時間播完。
   const [gameOverDelayed, setGameOverDelayed] = useState(false);
@@ -2113,6 +2290,11 @@ export function Board(props: Props) {
     },
     [],
   );
+
+  useEffect(() => {
+    if (props.G.step === 'mulligan') return;
+    setMulliganFocusedCard(null);
+  }, [props.G.step]);
 
   useEffect(() => {
     if (props.G.step === 'gameOver' && !gameOverTriggeredRef.current) {
@@ -2187,9 +2369,9 @@ export function Board(props: Props) {
       />
 
       {/* 暫停/離開按鈕 */}
-      {props.G.step !== 'gameOver' && (
+      {props.G.step !== 'gameOver' && (props.G.step === 'janken' || props.G.step === 'mulligan') && (
         <button
-          className="board-pause-button fixed right-4 top-4 z-[var(--z-modal)] border border-content-primary/20 bg-surface-canvas/90 px-3 py-1.5 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/60 backdrop-blur transition hover:bg-content-primary/5 hover:text-content-primary"
+          className="board-pause-button"
           type="button"
           onClick={() => setShowExitConfirm(true)}
           aria-label={t('game.pause')}
@@ -2231,11 +2413,17 @@ export function Board(props: Props) {
   const setupOverlay = props.hideSetupOverlay ? null : props.G.step === 'janken' ? (
     <JankenScreen {...props} floating />
   ) : props.G.step === 'mulligan' ? (
-    <MulliganScreen {...props} onMulliganFeedback={showMulliganFeedback} floating />
+    <MulliganScreen
+      {...props}
+      focusedCard={mulliganFocusedCard}
+      onFocusCard={setMulliganFocusedCard}
+      onMulliganFeedback={showMulliganFeedback}
+      floating
+    />
   ) : null;
   return renderWithSetupFeedback(
     <>
-      <BattleBoard {...props} />
+      <BattleBoard {...props} onPause={() => setShowExitConfirm(true)} />
       {setupOverlay}
     </>,
   );
