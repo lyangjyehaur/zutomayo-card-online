@@ -145,15 +145,34 @@ git log --oneline -3
 "
 ok "git reset 完成"
 
-# --- Step 3:更新 APP_BUILD_ID ---
+# --- Step 3:更新 APP_BUILD_ID / APP_VERSION / GAME_RULES_VERSION ---
+# 三個都要從 package.json 跟 HEAD 同步,不能只用預設值 0.1.0
 log ""
-log "Step 3/6: 更新 server4 .env 的 APP_BUILD_ID=$HEAD_SHORT"
+log "Step 3/6: 同步 server4 .env 的版本號(APP_BUILD_ID / APP_VERSION / GAME_RULES_VERSION)"
+PACKAGE_VERSION=$(python3 -c "import json; print(json.load(open('$PROJECT_DIR/package.json')).get('version','0.1.0'))")
 run_or_dry ssh_run "
 cd $REMOTE_DIR
+
+# APP_BUILD_ID = commit short SHA(部署時動態填)
 sed -i.bak \"s/^APP_BUILD_ID=.*/APP_BUILD_ID=$HEAD_SHORT/\" .env
-grep APP_BUILD_ID .env
+
+# APP_VERSION = package.json version(沒有的話新增)
+if grep -q '^APP_VERSION=' .env; then
+    sed -i 's/^APP_VERSION=.*/APP_VERSION=$PACKAGE_VERSION/' .env
+else
+    echo 'APP_VERSION=$PACKAGE_VERSION' >> .env
+fi
+
+# GAME_RULES_VERSION = package.json version(沒有的話新增;rules 改版時手動 bump)
+if grep -q '^GAME_RULES_VERSION=' .env; then
+    sed -i 's/^GAME_RULES_VERSION=.*/GAME_RULES_VERSION=$PACKAGE_VERSION/' .env
+else
+    echo 'GAME_RULES_VERSION=$PACKAGE_VERSION' >> .env
+fi
+
+grep -E '^(APP_|GAME_RULES)' .env
 "
-ok "APP_BUILD_ID 已更新"
+ok "版本號已同步"
 
 # --- Step 4:build ---
 log ""
