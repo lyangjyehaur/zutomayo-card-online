@@ -61,6 +61,8 @@ type OnlineRoomErrorKey =
   | 'online.connectionFailed'
   | 'online.versionMismatch';
 
+const APP_BOOT_TIMEOUT_MS = 4200;
+
 function isFullscreenRoute(pathname: string): boolean {
   return (
     pathname.startsWith('/play/') ||
@@ -319,6 +321,39 @@ function RouteFallback() {
   );
 }
 
+function waitForFonts(): Promise<void> {
+  if (typeof document === 'undefined' || !('fonts' in document)) return Promise.resolve();
+  return document.fonts.ready.then(() => undefined);
+}
+
+async function withBootTimeout<T>(promise: Promise<T>, timeoutMs = APP_BOOT_TIMEOUT_MS): Promise<T | null> {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timeoutId = window.setTimeout(() => resolve(null), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  }
+}
+
+function AppBootLoader() {
+  return (
+    <main className="app-boot-loader" role="status" aria-live="polite" aria-label={t('game.loading')}>
+      <div className="app-boot-loader__mark" aria-hidden="true">
+        <span />
+        <span />
+      </div>
+      <div className="app-boot-loader__copy">
+        <span>The Battle Begins</span>
+        <strong>ZUTOMAYO CARD ONLINE</strong>
+        <p>{t('game.loading')}</p>
+      </div>
+    </main>
+  );
+}
+
 function RouterShell() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -326,6 +361,7 @@ function RouterShell() {
   const [customDeckAvailable, setCustomDeckAvailable] = useState(hasStoredCustomDeck);
   const [serverDecks, setServerDecks] = useState<DeckResponse[]>([]);
   const [serverDeckError, setServerDeckError] = useState('');
+  const [appResourcesReady, setAppResourcesReady] = useState(false);
   // 卡牌資料是否已載入完成；未完成時禁用開局按鈕，避免空牌組崩潰。
   const [cardsReady, setCardsReady] = useState(false);
   // 預設不選中任何牌組，玩家每次必須主動選擇才能開始遊戲。
@@ -390,14 +426,30 @@ function RouterShell() {
   }, [refreshServerDecks]);
 
   useEffect(() => {
-    void import('./game/cards/loader').then(({ loadConfigFromAPI, refreshCards }) => {
-      void refreshCards().finally(() => setCardsReady(true));
-      void loadConfigFromAPI();
+    let cancelled = false;
+    const boot = async () => {
+      const [{ loadConfigFromAPI, refreshCards }, { loadEffectI18nFromAPI }] = await Promise.all([
+        import('./game/cards/loader'),
+        import('./game/cards/i18n'),
+      ]);
+      await Promise.allSettled([
+        withBootTimeout(refreshCards()),
+        withBootTimeout(loadConfigFromAPI()),
+        withBootTimeout(loadEffectI18nFromAPI()),
+        withBootTimeout(waitForFonts(), 2500),
+      ]);
+      if (cancelled) return;
+      setCardsReady(true);
+      setAppResourcesReady(true);
+    };
+    void boot().catch(() => {
+      if (cancelled) return;
+      setCardsReady(true);
+      setAppResourcesReady(true);
     });
-    // 同樣載入效果翻譯（API 優先，fallback 到靜態 JSON）
-    void import('./game/cards/i18n').then(({ loadEffectI18nFromAPI }) => {
-      void loadEffectI18nFromAPI();
-    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const startAI = (difficulty: AIDifficulty) => {
@@ -468,6 +520,8 @@ function RouterShell() {
   const deck1 = aiOpponentDeckName(deck1Name);
   // 全螢幕單屏頁面（首頁/線上/電腦/教學/對戰中）有自己的 Header，不需要 NavBar 和 padding
   const hideNav = isFullscreenRoute(location.pathname);
+
+  if (!appResourcesReady) return <AppBootLoader />;
 
   return (
     <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
