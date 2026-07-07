@@ -14,7 +14,7 @@ const {
   getPublicCard,
   getPublicCards,
 } = require('./cardDataService.cjs');
-const { createUserDeck, deleteUserDeck, listUserDecks } = require('./deckService.cjs');
+const { createUserDeck, deleteUserDeck, listUserDecks, updateUserDeck } = require('./deckService.cjs');
 const {
   getMatchmakingStatus,
   joinMatchmakingQueue,
@@ -781,6 +781,17 @@ function handleRequest(req, res) {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await createUserDeck(pool, userId, await readBody());
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // Update deck
+    if (pathname.match(/^\/api\/decks\/d_/) && method === 'PUT') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const deckId = pathname.split('/').pop();
+      const result = await updateUserDeck(pool, userId, deckId, await readBody());
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;

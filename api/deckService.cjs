@@ -50,6 +50,19 @@ async function createUserDeck(pool, userId, body, generateDeckId = () => 'd_' + 
   return { ok: true, body: { id, name, cardIds } };
 }
 
+async function updateUserDeck(pool, userId, deckId, body) {
+  const { name, cardIds } = body;
+  const validationError = await validateDeckInput(pool, name, cardIds);
+  if (validationError) return { ok: false, status: 400, error: validationError };
+
+  const result = await pool.query(
+    'UPDATE decks SET name = $3, card_ids = $4::jsonb, updated_at = NOW() WHERE id = $1 AND user_id = $2 RETURNING *',
+    [deckId, userId, name, JSON.stringify(cardIds)],
+  );
+  if (result.rowCount === 0) return { ok: false, status: 404, error: 'Deck not found' };
+  return { ok: true, body: mapDeckRow(result.rows[0]) };
+}
+
 async function deleteUserDeck(pool, userId, deckId) {
   const result = await pool.query('DELETE FROM decks WHERE id = $1 AND user_id = $2', [deckId, userId]);
   if (result.rowCount === 0) return { ok: false, status: 404, error: 'Deck not found' };
@@ -61,5 +74,6 @@ module.exports = {
   deleteUserDeck,
   listUserDecks,
   mapDeckRow,
+  updateUserDeck,
   validateDeckInput,
 };

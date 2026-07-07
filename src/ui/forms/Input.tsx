@@ -25,7 +25,7 @@ export interface SearchInputProps extends InputProps {
 }
 
 export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(function SearchInput(
-  { icon, containerClassName, className, type = 'search', ...props },
+  { icon, containerClassName, className, style, type = 'search', ...props },
   ref,
 ) {
   return (
@@ -41,10 +41,11 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
         ref={ref}
         type={type}
         className={cn(
-          'min-h-0 w-full bg-transparent py-2 text-body text-content-primary placeholder:text-content-dim focus:outline-none',
+          'min-h-0 w-full appearance-none border-0 bg-transparent py-2 text-body text-content-primary shadow-none placeholder:text-content-dim focus:outline-none',
           'disabled:cursor-not-allowed disabled:opacity-40',
           className,
         )}
+        style={{ appearance: 'none', background: 'transparent', border: 0, boxShadow: 'none', ...style }}
         {...props}
       />
     </div>

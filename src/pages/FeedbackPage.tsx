@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { SmilePlus, X } from 'lucide-react';
 import { t, useLocale, type TranslationKey } from '../i18n';
 import { getProfile, isLoggedIn } from '../api/client';
@@ -39,7 +38,7 @@ import {
 import { getAnonymousId } from '../api/feedbackClient';
 import {
   Alert,
-  BackButton,
+  AppHeader,
   Badge,
   Button,
   Checkbox,
@@ -48,7 +47,6 @@ import {
   IconButton,
   Input,
   LoadingState,
-  PageSectionHeader,
   SegmentedControl,
   Select,
   Sheet,
@@ -229,7 +227,6 @@ function useImageUpload(onInserted: (markdown: string) => void) {
 }
 
 export function FeedbackPage() {
-  const navigate = useNavigate();
   const locale = useLocale();
   const [posts, setPosts] = useState<FeedbackPost[]>([]);
   const [stats, setStats] = useState<FeedbackStats | null>(null);
@@ -285,26 +282,14 @@ export function FeedbackPage() {
   };
 
   return (
-    <main className="app-screen feedback-page min-h-screen">
-      <PageSectionHeader
-        className="feedback-header"
-        leading={
-          <BackButton className="!min-h-11" onClick={() => navigate('/')}>
-            {t('feedback.back')}
-          </BackButton>
-        }
-        title={t('feedback.title')}
-        subtitle={
-          <>
-            <span>{t('feedback.subtitle')}</span>
-            {!isLoggedIn() && (
-              <span className="feedback-anon-notice block text-caption text-content-primary/40">
-                {t('feedback.anonymousNotice')}
-              </span>
-            )}
-          </>
-        }
-      />
+    <main className="feedback-page relative flex min-h-screen flex-col gap-4 overflow-y-auto bg-surface-canvas px-4 pb-10 pt-20 md:px-6 md:pt-24">
+      <AppHeader title={t('feedback.title')} subtitle={t('feedback.subtitle')} backTo="/" />
+
+      {!isLoggedIn() && (
+        <p className="feedback-anon-notice text-caption text-content-primary/40">
+          {t('feedback.anonymousNotice')}
+        </p>
+      )}
 
       {stats && (
         <StatsGrid className="feedback-stats">

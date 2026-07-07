@@ -41,14 +41,14 @@ export function CardBrowserToolbar({
 }: CardBrowserToolbarProps) {
   return (
     <div className={cn('mb-4 space-y-4', className)} {...props}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           {kicker && (
             <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
               {kicker}
             </div>
           )}
-          <h2 className="truncate font-display text-2xl font-bold">{title}</h2>
+          <h2 className="truncate font-display text-xl font-bold text-content-primary/90">{title}</h2>
         </div>
         {search}
       </div>

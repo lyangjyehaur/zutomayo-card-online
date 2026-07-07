@@ -1,8 +1,14 @@
 import { type DeckResponse } from '../../api/client';
 import type { PlayerIndex, ZutomayoSetupData } from '../../game/types';
-import { CUSTOM_DECK_NAME } from '../../game/cards/customDeck';
+import {
+  CUSTOM_DECK_NAME,
+  customDeckIdFromOption,
+  customDeckOptionId,
+  loadCustomDeckIdsForOption,
+  loadSavedCustomDecks,
+} from '../../game/cards/customDeck';
 import { PRESET_DECKS } from '../../game/cards/presetDecks';
-import { COUNTER_DECK_NAME, RANDOM_DECK_NAME } from '../../game/cards/deckBuilder';
+import { COUNTER_DECK_NAME, isValidConstructedDeck, RANDOM_DECK_NAME } from '../../game/cards/deckBuilder';
 import { t } from '../../i18n';
 
 export type DeckOption = {
@@ -51,6 +57,7 @@ export function sanitizeDeckName(
 ): string | undefined {
   const { customDeckAvailable = true, allowCounter = false } = options;
   if (serverDeckIdFromOption(deckName)) return DEFAULT_DECK_NAME;
+  if (customDeckIdFromOption(deckName)) return customDeckAvailable ? deckName : undefined;
   if (deckName === CUSTOM_DECK_NAME && !customDeckAvailable) return undefined;
   if (deckName === COUNTER_DECK_NAME && !allowCounter) return RANDOM_DECK_NAME;
   return deckName || undefined;
@@ -84,7 +91,12 @@ export function onlineDeckName(player: PlayerIndex, deckName: string, serverDeck
     if (serverDeck) return player === 0 ? { deck0Ids: serverDeck.cardIds } : { deck1Ids: serverDeck.cardIds };
     return {};
   }
-  if (!safeName || safeName === CUSTOM_DECK_NAME) return {};
+  if (safeName === CUSTOM_DECK_NAME || customDeckIdFromOption(safeName ?? '')) {
+    const cardIds = loadCustomDeckIdsForOption(safeName ?? '');
+    if (cardIds) return player === 0 ? { deck0Ids: cardIds } : { deck1Ids: cardIds };
+    return {};
+  }
+  if (!safeName) return {};
   return player === 0 ? { deck0Name: safeName } : { deck1Name: safeName };
 }
 
@@ -98,6 +110,14 @@ export function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
     };
   });
 
+  const customDeckOptions = loadSavedCustomDecks()
+    .filter((deck) => isValidConstructedDeck(deck.cardIds))
+    .map((deck) => ({
+      id: customDeckOptionId(deck.id),
+      name: deck.name,
+      description: t('deck.customDesc'),
+    }));
+
   return [
     {
       id: RANDOM_DECK_NAME,
@@ -105,12 +125,16 @@ export function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
       description: t('deck.randomDesc'),
     },
     ...presetOptions,
-    {
-      id: CUSTOM_DECK_NAME,
-      name: t('deck.custom'),
-      description: customDeckAvailable ? t('deck.customDesc') : t('lobby.customDeckLocked'),
-      disabled: !customDeckAvailable,
-    },
+    ...(customDeckOptions.length > 0
+      ? customDeckOptions
+      : [
+          {
+            id: CUSTOM_DECK_NAME,
+            name: t('deck.custom'),
+            description: customDeckAvailable ? t('deck.customDesc') : t('lobby.customDeckLocked'),
+            disabled: !customDeckAvailable,
+          },
+        ]),
   ];
 }
 

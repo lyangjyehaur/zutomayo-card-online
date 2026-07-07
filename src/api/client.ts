@@ -417,6 +417,13 @@ export async function createDeck(name: string, cardIds: string[]): Promise<DeckR
   });
 }
 
+export async function updateDeck(deckId: string, name: string, cardIds: string[]): Promise<DeckResponse> {
+  return request<DeckResponse>(`/decks/${deckId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, cardIds }),
+  });
+}
+
 export async function deleteDeck(deckId: string): Promise<{ deleted: boolean }> {
   return request<{ deleted: boolean }>(`/decks/${deckId}`, { method: 'DELETE' });
 }

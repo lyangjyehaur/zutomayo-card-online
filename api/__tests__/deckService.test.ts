@@ -6,7 +6,7 @@ type Queryable = {
 };
 
 const require = createRequire(import.meta.url);
-const { createUserDeck, deleteUserDeck, listUserDecks, mapDeckRow, validateDeckInput } =
+const { createUserDeck, deleteUserDeck, listUserDecks, mapDeckRow, updateUserDeck, validateDeckInput } =
   require('../deckService.cjs') as {
     createUserDeck: (
       pool: Queryable,
@@ -21,6 +21,12 @@ const { createUserDeck, deleteUserDeck, listUserDecks, mapDeckRow, validateDeckI
     ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
     listUserDecks: (pool: Queryable, userId: string) => Promise<Record<string, unknown>>;
     mapDeckRow: (deck: Record<string, unknown>) => Record<string, unknown>;
+    updateUserDeck: (
+      pool: Queryable,
+      userId: string,
+      deckId: string,
+      body: Record<string, unknown>,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
     validateDeckInput: (pool: Queryable, name: unknown, cardIds: unknown) => Promise<string | null>;
   };
 
@@ -109,6 +115,45 @@ describe('deck service', () => {
       status: 400,
     });
     expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  it('updates decks owned by the user and returns the mapped deck row', async () => {
+    const cardIds = makeCardIds();
+    const pool: Queryable = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.startsWith('SELECT id FROM cards')) {
+          return { rows: [...new Set(cardIds)].map((id) => ({ id })), rowCount: cardIds.length };
+        }
+        return { rows: [{ id: 'd_1', name: 'Updated', card_ids: cardIds }], rowCount: 1 };
+      }),
+    };
+
+    await expect(updateUserDeck(pool, 'u_1', 'd_1', { name: 'Updated', cardIds })).resolves.toEqual({
+      ok: true,
+      body: { id: 'd_1', name: 'Updated', card_ids: cardIds, cardIds },
+    });
+    expect(pool.query).toHaveBeenLastCalledWith(
+      'UPDATE decks SET name = $3, card_ids = $4::jsonb, updated_at = NOW() WHERE id = $1 AND user_id = $2 RETURNING *',
+      ['d_1', 'u_1', 'Updated', JSON.stringify(cardIds)],
+    );
+  });
+
+  it('reports missing decks during update', async () => {
+    const cardIds = makeCardIds();
+    const pool: Queryable = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.startsWith('SELECT id FROM cards')) {
+          return { rows: [...new Set(cardIds)].map((id) => ({ id })), rowCount: cardIds.length };
+        }
+        return { rows: [], rowCount: 0 };
+      }),
+    };
+
+    await expect(updateUserDeck(pool, 'u_1', 'd_missing', { name: 'Updated', cardIds })).resolves.toEqual({
+      ok: false,
+      status: 404,
+      error: 'Deck not found',
+    });
   });
 
   it('deletes only decks owned by the user and reports missing decks', async () => {

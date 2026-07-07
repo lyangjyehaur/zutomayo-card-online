@@ -1,9 +1,15 @@
 import type { CardInstance, Element } from '../types';
 import { createInstance, getAllCardDefs, getCardDef, isCardsInitialized } from './loader';
 import { PRESET_DECKS } from './presetDecks';
-import { CUSTOM_DECK_NAME, loadCustomDeckIds } from './customDeck';
+import { CUSTOM_DECK_NAME, customDeckIdFromOption, loadCustomDeckIds, loadCustomDeckIdsForOption } from './customDeck';
 
-export { CUSTOM_DECK_NAME, CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from './customDeck';
+export {
+  CUSTOM_DECK_NAME,
+  CUSTOM_DECK_STORAGE_KEY,
+  customDeckIdFromOption,
+  customDeckOptionId,
+  loadCustomDeckIds,
+} from './customDeck';
 
 /**
  * 隨機牌組識別碼。lobby 預設選此選項，每次開局從完整 422 張卡池隨機抽取 20 張。
@@ -83,8 +89,8 @@ export function hasCustomDeck(): boolean {
 // Get a preset deck by name
 export function getPresetDeck(name: string): CardInstance[] {
   if (name === RANDOM_DECK_NAME) return randomDeck();
-  if (name === CUSTOM_DECK_NAME) {
-    const ids = loadCustomDeckIds();
+  if (name === CUSTOM_DECK_NAME || customDeckIdFromOption(name)) {
+    const ids = loadCustomDeckIdsForOption(name) ?? loadCustomDeckIds();
     if (!ids) throw new Error('No custom deck saved');
     const validationError = validateConstructedDeckIds(ids);
     if (validationError) throw new Error(`Custom deck is invalid: ${validationError}`);

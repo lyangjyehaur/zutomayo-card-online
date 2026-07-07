@@ -1,20 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/loader';
 import { getTranslatedEffect } from '../game/cards/i18n';
-import { CUSTOM_DECK_STORAGE_KEY, loadCustomDeckIds } from '../game/cards/customDeck';
+import { loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
-import { ChevronLeft, ChevronRight, Eye, Layers, Save, Search, SlidersHorizontal, X } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  Hash,
+  Layers,
+  Plus,
+  Save,
+  Search,
+  SlidersHorizontal,
+  Upload,
+  X,
+} from 'lucide-react';
 import {
   Alert,
-  BackButton,
+  AppHeader,
   Button,
   IconButton,
   Input,
   SearchInput,
+  Select,
   SegmentedControl,
-  ToolHeader,
   WorkspaceLayout,
 } from '../ui';
 import {
@@ -29,23 +43,45 @@ import { ActiveDeckPanel, ActiveDeckSheet } from './DeckBuilderWorkspace';
 
 interface DeckEditorProps {
   onSave: (deckIds: string[]) => void | Promise<void>;
-  onCancel: () => void;
   initialDeck?: string[];
   deckName?: string;
   onDeckNameChange?: (name: string) => void;
+  deckLibraryOptions?: DeckLibraryOption[];
+  selectedDeckLibraryId?: string;
+  onSelectDeckLibrary?: (deckId: string) => void;
+  onNewDeck?: () => void;
+  onImportDeck?: () => void;
+  onExportDeck?: (deckIds: string[]) => void;
+  onDeckChange?: () => void;
+  notice?: ReactNode;
   saveLabel?: string;
   saving?: boolean;
   synced?: boolean;
   syncLabel?: string;
   errorMessage?: string;
-  saveLocalDeck?: boolean;
+}
+
+interface DeckLibraryOption {
+  id: string;
+  name: string;
+  description?: string;
 }
 
 const ELEMENTS: (Element | 'all')[] = ['all', '闇', '炎', '電気', '風', 'カオス'];
 const TYPES: (CardType | 'all')[] = ['all', 'Character', 'Enchant', 'Area Enchant'];
+const SORT_OPTIONS = ['number', 'cost', 'attack', 'name'] as const;
+type DeckEditorSort = (typeof SORT_OPTIONS)[number];
 const DECK_SIZE = 20;
 const MAX_COPIES = 2;
 const PAGE_SIZE = 12;
+
+function normalizeCardNumber(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function compareCardNumber(a: CardDef, b: CardDef): number {
+  return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' });
+}
 
 function elementLabel(element: Element | 'all'): string {
   if (element === 'all') return t('deckEditor.all');
@@ -69,28 +105,46 @@ function typeLabel(type: CardType | 'all'): string {
   return labels[type];
 }
 
+function sortLabel(sort: DeckEditorSort): string {
+  const labels: Record<DeckEditorSort, string> = {
+    number: t('deckEditor.sortNumber'),
+    cost: t('deckEditor.sortCost'),
+    attack: t('deckEditor.sortAttack'),
+    name: t('deckEditor.sortName'),
+  };
+  return labels[sort];
+}
+
 export function DeckEditor({
   onSave,
-  onCancel,
-  initialDeck = [],
+  initialDeck,
   deckName,
   onDeckNameChange,
+  deckLibraryOptions = [],
+  selectedDeckLibraryId = '',
+  onSelectDeckLibrary,
+  onNewDeck,
+  onImportDeck,
+  onExportDeck,
+  onDeckChange,
+  notice,
   saveLabel,
   saving = false,
   synced = false,
   syncLabel,
   errorMessage,
-  saveLocalDeck = true,
 }: DeckEditorProps) {
   const [allCards, setAllCards] = useState<CardDef[]>(() => getAllCardDefs());
   const locale = useLocale();
   const [deck, setDeck] = useState<string[]>(() =>
-    initialDeck.length > 0 ? initialDeck : (loadCustomDeckIds() ?? []),
+    initialDeck !== undefined ? initialDeck : (loadCustomDeckIds() ?? []),
   );
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
+  const [filterPack, setFilterPack] = useState('all');
+  const [filterCardNumber, setFilterCardNumber] = useState('');
   const [searchText, setSearchText] = useState('');
-  const [sortBy, setSortBy] = useState<'cost' | 'attack' | 'name'>('cost');
+  const [sortBy, setSortBy] = useState<DeckEditorSort>('number');
   const [page, setPage] = useState(0);
   const [previewCard, setPreviewCard] = useState<CardDef | null>(null);
   const [detailSheetCard, setDetailSheetCard] = useState<CardDef | null>(null);
@@ -115,6 +169,14 @@ export function DeckEditor({
       cancelled = true;
     };
   }, []);
+
+  const packOptions = useMemo(
+    () =>
+      [...new Set(allCards.map((card) => card.pack).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+      ),
+    [allCards],
+  );
 
   // hover/focus 時計算浮層位置：優先顯示在卡牌右側，空間不足時顯示左側
   const updatePopoverPosition = () => {
@@ -195,12 +257,21 @@ export function DeckEditor({
 
     if (filterElement !== 'all') cards = cards.filter((card) => card.element === filterElement);
     if (filterType !== 'all') cards = cards.filter((card) => card.type === filterType);
+    if (filterPack !== 'all') cards = cards.filter((card) => card.pack === filterPack);
+    if (filterCardNumber.trim()) {
+      const cardNumberQuery = normalizeCardNumber(filterCardNumber);
+      cards = cards.filter((card) => normalizeCardNumber(card.id).includes(cardNumberQuery));
+    }
     if (searchText) {
       const query = searchText.toLowerCase();
+      const normalizedQuery = normalizeCardNumber(query);
       cards = cards.filter((card) => {
         const translatedEffect = getTranslatedEffect(card.id, locale);
         return (
           card.name.toLowerCase().includes(query) ||
+          card.id.toLowerCase().includes(query) ||
+          normalizeCardNumber(card.id).includes(normalizedQuery) ||
+          card.pack.toLowerCase().includes(query) ||
           card.effect.toLowerCase().includes(query) ||
           (translatedEffect?.toLowerCase().includes(query) ?? false) ||
           card.song.toLowerCase().includes(query)
@@ -209,6 +280,7 @@ export function DeckEditor({
     }
 
     return [...cards].sort((a, b) => {
+      if (sortBy === 'number') return compareCardNumber(a, b);
       if (sortBy === 'cost') return a.powerCost - b.powerCost;
       if (sortBy === 'attack') {
         const aAttack = a.attack ? Math.max(a.attack.night, a.attack.day) : 0;
@@ -217,14 +289,14 @@ export function DeckEditor({
       }
       return a.name.localeCompare(b.name);
     });
-  }, [allCards, filterElement, filterType, searchText, sortBy, locale]);
+  }, [allCards, filterElement, filterType, filterPack, filterCardNumber, searchText, sortBy, locale]);
 
   useEffect(() => {
     setPage(0);
-  }, [filterElement, filterType, searchText, sortBy]);
+  }, [filterElement, filterType, filterPack, filterCardNumber, searchText, sortBy]);
 
   useEffect(() => {
-    if (initialDeck.length > 0) setDeck(initialDeck);
+    if (initialDeck !== undefined) setDeck(initialDeck);
   }, [initialDeck]);
 
   const deckCounts = useMemo(() => {
@@ -271,14 +343,15 @@ export function DeckEditor({
     const count = deckCounts.get(cardId) ?? 0;
     if (count >= MAX_COPIES || deck.length >= DECK_SIZE) return;
     setDeck((current) => [...current, cardId]);
+    onDeckChange?.();
   };
 
   const removeCard = (index: number) => {
     setDeck((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    onDeckChange?.();
   };
 
   const saveDeck = async () => {
-    if (saveLocalDeck) localStorage.setItem(CUSTOM_DECK_STORAGE_KEY, JSON.stringify(deck));
     await onSave(deck);
   };
 
@@ -286,69 +359,185 @@ export function DeckEditor({
   const filterSummary = [
     elementLabel(filterElement),
     typeLabel(filterType),
-    sortBy === 'cost'
-      ? t('deckEditor.sortCost')
-      : sortBy === 'attack'
-        ? t('deckEditor.sortAttack')
-        : t('deckEditor.sortName'),
-  ].join(' · ');
+    filterPack === 'all' ? t('deckEditor.allPacks') : filterPack,
+    filterCardNumber.trim() ? `${t('deckEditor.cardNumberShort')} ${filterCardNumber.trim()}` : null,
+    sortLabel(sortBy),
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const deckStatusLabel = `${isValid ? t('deckEditor.valid') : t('deckEditor.invalid')} · ${deck.length}/${DECK_SIZE}`;
 
-  const renderFilterControls = () => (
-    <div className="space-y-3 lg:space-y-2">
-      <fieldset className="flex flex-wrap items-center gap-3">
-        <legend className="w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 sm:w-auto">
-          {t('deckEditor.filterElement')}
-        </legend>
-        <SegmentedControl
-          className="deck-filter-chip-group"
-          options={ELEMENTS.map((element) => ({ value: element, label: elementLabel(element) }))}
-          value={filterElement}
-          onChange={setFilterElement}
-          ariaLabel={t('deckEditor.filterElement')}
-        />
-      </fieldset>
-      <fieldset className="flex flex-wrap items-center gap-3">
-        <legend className="w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 sm:w-auto">
-          {t('deckEditor.filterType')}
-        </legend>
-        <SegmentedControl
-          className="deck-filter-chip-group"
-          options={TYPES.map((type) => ({ value: type, label: typeLabel(type) }))}
-          value={filterType}
-          onChange={setFilterType}
-          ariaLabel={t('deckEditor.filterType')}
-        />
-      </fieldset>
-      <fieldset className="flex flex-wrap items-center gap-3">
-        <legend className="w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 sm:w-auto">
-          {t('deckEditor.sort')}
-        </legend>
-        <SegmentedControl
-          className="deck-filter-chip-group"
-          options={(['cost', 'attack', 'name'] as const).map((option) => ({
-            value: option,
-            label:
-              option === 'cost'
-                ? t('deckEditor.sortCost')
-                : option === 'attack'
-                  ? t('deckEditor.sortAttack')
-                  : t('deckEditor.sortName'),
-          }))}
-          value={sortBy}
-          onChange={setSortBy}
-          ariaLabel={t('deckEditor.sort')}
-        />
-      </fieldset>
-    </div>
-  );
+  const renderDeckLibraryControls = () => {
+    const hasDeckLibraryActions = onNewDeck || onImportDeck || onExportDeck || deckLibraryOptions.length > 0;
+    if (!hasDeckLibraryActions) return null;
+
+    return (
+      <div className="mb-3 grid gap-2 rounded-sm border border-content-primary/10 bg-surface-base/55 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <label className="grid min-w-0 gap-1">
+          <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-primary/35">
+            {t('deckEditor.deckLibrary')}
+          </span>
+          <div className="relative min-w-0">
+            <Select
+              value={selectedDeckLibraryId}
+              disabled={!onSelectDeckLibrary || deckLibraryOptions.length === 0}
+              onChange={(event) => onSelectDeckLibrary?.(event.target.value)}
+              aria-label={t('deckEditor.selectDeck')}
+              className="min-h-9 appearance-none truncate border-border-soft bg-surface-canvas py-1.5 pl-3 pr-10 text-body-sm"
+            >
+              {deckLibraryOptions.length === 0 ? (
+                <option value="">{t('deckEditor.currentDraft')}</option>
+              ) : (
+                deckLibraryOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))
+              )}
+            </Select>
+            <ChevronDown
+              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-content-primary/35"
+              aria-hidden="true"
+            />
+          </div>
+        </label>
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:items-end">
+          {onNewDeck && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="min-w-0 px-3"
+              onClick={onNewDeck}
+              aria-label={t('deckEditor.newDeck')}
+            >
+              <Plus className="size-3.5" aria-hidden="true" />
+              <span className="hidden md:inline">{t('deckEditor.newDeck')}</span>
+            </Button>
+          )}
+          {onImportDeck && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="min-w-0 px-3"
+              onClick={onImportDeck}
+              aria-label={t('deckEditor.importDeck')}
+            >
+              <Upload className="size-3.5" aria-hidden="true" />
+              <span className="hidden md:inline">{t('deckEditor.importDeck')}</span>
+            </Button>
+          )}
+          {onExportDeck && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="min-w-0 px-3"
+              onClick={() => onExportDeck(deck)}
+              disabled={deck.length === 0}
+              aria-label={t('deckEditor.exportDeck')}
+            >
+              <Download className="size-3.5" aria-hidden="true" />
+              <span className="hidden md:inline">{t('deckEditor.exportDeck')}</span>
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderFilterControls = (mode: 'stacked' | 'compact' = 'stacked') => {
+    const compact = mode === 'compact';
+    const fieldsetClass = compact ? 'flex min-w-0 items-center gap-2' : 'flex flex-wrap items-center gap-3';
+    const legendClass = compact
+      ? 'shrink-0 text-minutia uppercase tracking-[var(--tracking-control)] text-content-primary/35'
+      : 'w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 sm:w-auto';
+    const chipGroupClass = compact ? 'deck-filter-chip-group gap-1' : 'deck-filter-chip-group';
+    const chipOptionClass = compact ? 'px-2' : undefined;
+    const chipSize = compact ? 'sm' : 'md';
+
+    return (
+      <div
+        className={
+          compact
+            ? 'flex flex-wrap items-center gap-x-4 gap-y-2 rounded-sm border border-content-primary/10 bg-surface-canvas/35 p-2'
+            : 'space-y-3 lg:space-y-2'
+        }
+      >
+        <fieldset className={compact ? 'flex min-w-[12rem] max-w-[18rem] flex-1 items-center gap-2' : fieldsetClass}>
+          <legend className={legendClass}>{t('deckEditor.filterPack')}</legend>
+          <div className="relative min-w-0 flex-1">
+            <Select
+              value={filterPack}
+              onChange={(event) => setFilterPack(event.target.value)}
+              aria-label={t('deckEditor.filterPack')}
+              className={`appearance-none truncate border-border-soft bg-surface-canvas py-2 pl-3 pr-10 font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/75 transition hover:border-accent-primary/40 hover:text-content-primary focus:border-accent-primary/60 ${
+                compact ? 'min-h-control-sm' : 'min-h-11'
+              }`}
+            >
+              <option value="all">{t('deckEditor.allPacks')}</option>
+              {packOptions.map((pack) => (
+                <option key={pack} value={pack}>
+                  {pack}
+                </option>
+              ))}
+            </Select>
+            <ChevronDown
+              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-content-primary/35"
+              aria-hidden="true"
+            />
+          </div>
+        </fieldset>
+        <fieldset className={fieldsetClass}>
+          <legend className={legendClass}>{t('deckEditor.filterElement')}</legend>
+          <SegmentedControl
+            className={chipGroupClass}
+            optionClassName={chipOptionClass}
+            size={chipSize}
+            options={ELEMENTS.map((element) => ({ value: element, label: elementLabel(element) }))}
+            value={filterElement}
+            onChange={setFilterElement}
+            ariaLabel={t('deckEditor.filterElement')}
+          />
+        </fieldset>
+        <fieldset className={fieldsetClass}>
+          <legend className={legendClass}>{t('deckEditor.filterType')}</legend>
+          <SegmentedControl
+            className={chipGroupClass}
+            optionClassName={chipOptionClass}
+            size={chipSize}
+            options={TYPES.map((type) => ({ value: type, label: typeLabel(type) }))}
+            value={filterType}
+            onChange={setFilterType}
+            ariaLabel={t('deckEditor.filterType')}
+          />
+        </fieldset>
+        <fieldset className={fieldsetClass}>
+          <legend className={legendClass}>{t('deckEditor.sort')}</legend>
+          <SegmentedControl
+            className={chipGroupClass}
+            optionClassName={chipOptionClass}
+            size={chipSize}
+            options={SORT_OPTIONS.map((option) => ({
+              value: option,
+              label: sortLabel(option),
+            }))}
+            value={sortBy}
+            onChange={setSortBy}
+            ariaLabel={t('deckEditor.sort')}
+          />
+        </fieldset>
+      </div>
+    );
+  };
 
   const renderActiveDeckContent = () => (
     <>
       <div className="mb-3 flex items-end justify-between border-b border-content-primary/10 pb-3">
         <div className="min-w-0">
           <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-            Active Deck
+            {t('deckEditor.currentDeck')}
           </div>
           <h2 className="truncate font-display text-2xl font-bold">
             {deckName?.trim() || t('deckEditor.currentDeck')}
@@ -380,7 +569,7 @@ export function DeckEditor({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto" role="list" aria-label="Deck Cards">
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto" role="list" aria-label={t('deckEditor.currentDeck')}>
         {deckEntries.map(({ card, count, firstIndex }) => (
           <div
             key={`${card.id}-${firstIndex}`}
@@ -397,7 +586,10 @@ export function DeckEditor({
               <span className="truncate font-display text-sm font-bold text-content-primary/80">{card.name}</span>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <span className="font-mono text-caption text-content-primary/40" aria-label={`${count} copies`}>
+              <span
+                className="font-mono text-caption text-content-primary/40"
+                aria-label={`${t('deckEditor.copyCount')} ${count}`}
+              >
                 ×{count}
               </span>
               <IconButton
@@ -414,7 +606,7 @@ export function DeckEditor({
             key={`empty-${index}`}
             className="rounded-xs border border-dashed border-content-primary/10 px-3 py-2 text-caption text-content-primary/20"
             role="listitem"
-            aria-label="Empty slot"
+            aria-label={t('deckEditor.emptySlot')}
           >
             {t('deckEditor.emptySlot')}
           </div>
@@ -473,75 +665,85 @@ export function DeckEditor({
       glow={{ color: 'gold', size: 'lg', className: '-left-40 top-0 translate-x-0 translate-y-0' }}
       sidebarSide="right"
       sidebarWidth="deck"
-      contentClassName="gap-4 !overflow-y-auto !px-3 py-4 xl:!overflow-hidden xl:!px-6 xl:py-6"
+      contentClassName="gap-3 !overflow-y-auto !px-2 pb-3 pt-20 sm:!px-3 sm:pb-4 md:pt-24 xl:gap-4 xl:!overflow-hidden xl:!px-6 xl:pb-6"
       mainClassName="flex min-h-0 flex-col"
-      sidebar={<ActiveDeckPanel label="Active Deck">{renderActiveDeckContent()}</ActiveDeckPanel>}
+      sidebar={<ActiveDeckPanel label={t('deckEditor.currentDeck')}>{renderActiveDeckContent()}</ActiveDeckPanel>}
       header={
-        <>
-          <ToolHeader
-            leading={
-              <BackButton className="min-h-11" type="button" onClick={onCancel} aria-label={t('common.backToLobby')}>
-                <span className="hidden sm:inline">{t('common.backToLobby')}</span>
-              </BackButton>
-            }
-            title={<span className="hidden md:inline">Deck Editor · 牌組編輯</span>}
-            actions={
-              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 md:flex-nowrap md:gap-3">
-                {onDeckNameChange && (
-                  <Input
-                    value={deckName ?? ''}
-                    aria-label={t('deck.custom')}
-                    placeholder={t('deck.custom')}
-                    onChange={(event) => onDeckNameChange(event.target.value)}
-                    className="min-h-11 w-32 text-xs md:w-40"
-                  />
-                )}
-                {syncLabel && (
-                  <span
-                    className={`font-mono text-caption uppercase tracking-[var(--tracking-kicker)] ${synced ? 'text-accent-primary' : 'text-content-primary/40'}`}
-                    aria-live="polite"
-                  >
-                    {syncLabel}
-                  </span>
-                )}
-                <Button
-                  type="button"
-                  disabled={!isValid || saving}
-                  onClick={saveDeck}
-                  size="md"
-                  variant="primary"
-                  aria-label={saveLabel ?? t('deckEditor.saveDeck')}
+        <AppHeader
+          title={t('nav.deckBuilder')}
+          backTo="/"
+          actions={
+            <>
+              {onDeckNameChange && (
+                <Input
+                  value={deckName ?? ''}
+                  aria-label={t('deck.custom')}
+                  placeholder={t('deck.custom')}
+                  onChange={(event) => onDeckNameChange(event.target.value)}
+                  className="min-h-9 w-28 px-2 py-1.5 text-xs sm:w-40"
+                />
+              )}
+              {syncLabel && (
+                <span
+                  className={`hidden font-mono text-caption uppercase tracking-[var(--tracking-kicker)] sm:inline ${synced ? 'text-accent-primary' : 'text-content-primary/40'}`}
+                  aria-live="polite"
                 >
-                  <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
-                </Button>
-              </div>
-            }
-          />
-          {errorMessage && (
-            <Alert className="relative z-[var(--z-header)]" tone="danger" role="alert">
-              {errorMessage}
-            </Alert>
-          )}
-        </>
+                  {syncLabel}
+                </span>
+              )}
+              <Button
+                type="button"
+                disabled={!isValid || saving}
+                onClick={saveDeck}
+                size="sm"
+                variant="primary"
+                aria-label={saveLabel ?? t('deckEditor.saveDeck')}
+                className="!min-h-9 px-3"
+              >
+                <Save className="size-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">{saveLabel ?? t('deckEditor.saveDeck')}</span>
+              </Button>
+            </>
+          }
+        />
       }
     >
-      <CardBrowser label="Card Pool">
+      {errorMessage && (
+        <Alert className="mb-3" tone="danger" role="alert">
+          {errorMessage}
+        </Alert>
+      )}
+      {notice}
+      {renderDeckLibraryControls()}
+      <CardBrowser label={t('deckEditor.cardPool')} className="min-h-[calc(100dvh-10rem)] p-3 sm:p-4 md:p-5 xl:min-h-0">
         <CardBrowserToolbar
-          kicker="Archive"
-          title="Card Pool"
+          title={t('deckEditor.cardPool')}
           search={
-            <div className="relative flex w-full items-center gap-2 sm:w-auto">
+            <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(6.75rem,0.42fr)_auto] items-center gap-2 sm:w-auto sm:grid-cols-[14rem_8.5rem_auto]">
               <SearchInput
-                containerClassName="sm:w-56"
+                containerClassName="min-w-0"
                 icon={<Search className="size-3.5 text-content-primary/40" aria-hidden="true" />}
                 placeholder={t('deckEditor.search')}
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
                 aria-label={t('deckEditor.search')}
               />
-              {searchText && (
+              <SearchInput
+                containerClassName="min-w-0"
+                icon={<Hash className="size-3.5 text-content-primary/40" aria-hidden="true" />}
+                value={filterCardNumber}
+                onChange={(event) => setFilterCardNumber(event.target.value)}
+                placeholder={t('deckEditor.cardNumberShort')}
+                aria-label={t('deckEditor.filterCardNumber')}
+                type="text"
+                className="appearance-none border-0 font-mono text-caption uppercase tracking-[var(--tracking-control)] shadow-none"
+              />
+              {(searchText || filterCardNumber) && (
                 <IconButton
-                  onClick={() => setSearchText('')}
+                  onClick={() => {
+                    setSearchText('');
+                    setFilterCardNumber('');
+                  }}
                   size="sm"
                   label={t('common.clear')}
                   icon={<X className="size-3.5" aria-hidden="true" />}
@@ -550,7 +752,7 @@ export function DeckEditor({
             </div>
           }
           actions={
-            <div className="grid grid-cols-2 gap-2 lg:flex lg:justify-end xl:hidden">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end xl:hidden">
               <Button
                 type="button"
                 variant="secondary"
@@ -590,7 +792,7 @@ export function DeckEditor({
           }
         />
 
-        <div className="mb-4 hidden lg:block">{renderFilterControls()}</div>
+        <div className="mb-3 hidden lg:block">{renderFilterControls('compact')}</div>
 
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span
@@ -599,14 +801,14 @@ export function DeckEditor({
           >
             {t('deck.foundCards').replace('{count}', String(filteredCards.length))} · {currentPage + 1}/{totalPages}
           </span>
-          <nav className="flex items-center gap-3" aria-label="Pagination">
+          <nav className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3" aria-label="Pagination">
             <Button
               type="button"
               disabled={currentPage === 0}
               onClick={() => setPage((value) => Math.max(0, value - 1))}
               variant="ghost"
               size="md"
-              className="px-3"
+              className="w-full px-3 sm:w-auto"
               aria-label={t('common.prev')}
             >
               <ChevronLeft className="size-3.5" aria-hidden="true" /> {t('common.prev')}
@@ -617,7 +819,7 @@ export function DeckEditor({
               onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
               variant="ghost"
               size="md"
-              className="px-3"
+              className="w-full px-3 sm:w-auto"
               aria-label={t('common.next')}
             >
               {t('common.next')} <ChevronRight className="size-3.5" aria-hidden="true" />
@@ -664,7 +866,7 @@ export function DeckEditor({
                   )}
                 </button>
                 <IconButton
-                  className="absolute bottom-1 right-1 z-[var(--z-dropdown)] bg-surface-canvas/90 text-content-primary/70 ring-1 ring-content-primary/20 backdrop-blur hover:text-accent-primary"
+                  className="absolute bottom-1 right-1 z-[var(--z-dropdown)] bg-surface-canvas/90 text-content-primary/70 ring-1 ring-content-primary/20 backdrop-blur hover:text-accent-primary md:hidden"
                   label={`Preview ${card.name}`}
                   icon={<Eye className="size-4" aria-hidden="true" />}
                   onClick={(event) => handlePreviewClick(card, event)}

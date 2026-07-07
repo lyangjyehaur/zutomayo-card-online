@@ -70,6 +70,8 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/' ||
     pathname === '/online' ||
     pathname === '/ai' ||
+    pathname === '/deck-builder' ||
+    pathname === '/feedback' ||
     pathname === '/tutorial' ||
     pathname === '/history' ||
     pathname === '/leaderboard'
@@ -518,7 +520,7 @@ function RouterShell() {
 
   const deck0 = selectedDeckName(deck0Name, customDeckAvailable);
   const deck1 = aiOpponentDeckName(deck1Name);
-  // 全螢幕單屏頁面（首頁/線上/電腦/教學/對戰中）有自己的 Header，不需要 NavBar 和 padding
+  // 新版沉浸頁面有自己的 AppHeader，不需要外層 NavBar 和 padding。
   const hideNav = isFullscreenRoute(location.pathname);
 
   if (!appResourcesReady) return <AppBootLoader />;
