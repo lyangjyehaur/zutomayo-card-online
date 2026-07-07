@@ -5,7 +5,9 @@ import App from './App';
 import { registerPwaAutoUpdate } from './clientVersion';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
+import { initSentry } from './sentry';
 
+initSentry();
 initAnalytics();
 registerPwaAutoUpdate();
 

@@ -1,4 +1,5 @@
 const http = require('http');
+const Sentry = require('@sentry/node');
 const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
@@ -62,6 +63,16 @@ const APP_VERSION_INFO = Object.freeze({
   buildId: APP_BUILD_ID,
   rulesVersion: GAME_RULES_VERSION,
 });
+
+// GlitchTip/Sentry error tracking — no-op when SENTRY_DSN is unset.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    release: `${APP_VERSION}@${APP_BUILD_ID}`,
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
+  });
+}
 
 // 安全性驗證：JWT_SECRET 必須在生產環境設定
 function validateSecurityConfig() {
@@ -653,6 +664,8 @@ function handleRequest(req, res) {
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
   if (method === 'OPTIONS') {
     res.writeHead(200);
     res.end();
@@ -701,7 +714,8 @@ function handleRequest(req, res) {
   const safe = (fn) => {
     Promise.resolve()
       .then(fn)
-      .catch(() => {
+      .catch((err) => {
+        Sentry.captureException(err);
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Internal server error' }));
@@ -714,6 +728,28 @@ function handleRequest(req, res) {
     if (!(await checkRateLimit(clientIp, isAuthEndpoint ? RATE_LIMIT_AUTH : RATE_LIMIT_DEFAULT))) {
       res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
       res.end(JSON.stringify({ error: 'Too many requests. Please try again later.' }));
+      return;
+    }
+
+    if (pathname === '/health' && method === 'GET') {
+      const checks = {};
+      let allOk = true;
+      try {
+        await pool.query('SELECT 1');
+        checks.postgres = 'up';
+      } catch {
+        checks.postgres = 'down';
+        allOk = false;
+      }
+      try {
+        await redis.ping();
+        checks.redis = 'up';
+      } catch {
+        checks.redis = 'down';
+        allOk = false;
+      }
+      res.writeHead(allOk ? 200 : 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ status: allOk ? 'ok' : 'degraded', checks }));
       return;
     }
 
@@ -1355,6 +1391,7 @@ async function shutdown() {
   shuttingDown = true;
   try {
     await closeDatabase();
+    await Sentry.close(2000);
   } catch {}
   server.close();
   process.exit(0);

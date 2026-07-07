@@ -1,4 +1,6 @@
-/* global module */
+/* global module, require, Buffer */
+/* eslint-disable @typescript-eslint/no-require-imports */
+const crypto = require('crypto');
 
 function clampLimit(value, fallback, max) {
   return Math.min(Number(value) || fallback, max);
@@ -19,7 +21,12 @@ function mapAdminUser(user) {
 
 async function adminLogin(body, adminPassword, createAdminToken) {
   if (!adminPassword) return { ok: false, status: 503, error: 'Admin not configured' };
-  if (body.password !== adminPassword) return { ok: false, status: 401, error: 'Invalid password' };
+  // constant-time comparison to prevent timing attacks
+  const received = Buffer.from(String(body.password ?? ''));
+  const expected = Buffer.from(String(adminPassword));
+  if (received.length !== expected.length || !crypto.timingSafeEqual(received, expected)) {
+    return { ok: false, status: 401, error: 'Invalid password' };
+  }
   return { ok: true, body: { token: createAdminToken() } };
 }
 

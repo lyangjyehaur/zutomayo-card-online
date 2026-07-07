@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { recoverPwaAndReload, reloadForAppUpdate } from '../clientVersion';
+import { Sentry } from '../sentry';
 import { t } from '../i18n';
 import { Button } from '../ui';
 
@@ -23,6 +24,11 @@ function trackCrash(error: Error, errorInfo: ErrorInfo): void {
     });
   } catch {
     // Crash telemetry must never block recovery UI.
+  }
+  try {
+    Sentry.captureException(error, { contexts: { react: { componentStack: errorInfo.componentStack } } });
+  } catch {
+    // GlitchTip reporting must never block recovery UI.
   }
 }
 

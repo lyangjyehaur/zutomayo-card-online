@@ -14,6 +14,8 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { Pool } from 'pg';
 import { PostgresAdapter } from './server/db/postgres-adapter';
 import { RedisPubSub } from './server/transport/redis-pubsub';
+import * as Sentry from '@sentry/node';
+import helmet from 'koa-helmet';
 
 const require = createRequire(import.meta.url);
 const { Server, SocketIO } = require('boardgame.io/server') as typeof import('boardgame.io/server');
@@ -63,6 +65,16 @@ function authenticateVersionedCredentials(
 ): boolean {
   if (!credentials || !playerMetadata?.credentials || credentials !== playerMetadata.credentials) return false;
   return Boolean(compatibleClientVersion(playerMetadata.data?.clientVersion));
+}
+
+// GlitchTip/Sentry error tracking — no-op when SENTRY_DSN is unset.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    release: `${APP_VERSION_INFO.appVersion}@${APP_VERSION_INFO.buildId}`,
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
+  });
 }
 
 const configuredOrigins =
@@ -213,6 +225,34 @@ function safeStaticFile(baseDir: string, requestPath: string, routePrefix: strin
   if (resolvedPath !== resolvedBase && !resolvedPath.startsWith(resolvedBase + path.sep)) return null;
   return resolvedPath;
 }
+
+server.app.use(helmet({ contentSecurityPolicy: false }));
+
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  if (ctx.path === '/health') {
+    const checks: Record<string, string> = {};
+    let allOk = true;
+    try {
+      await cardPool.query('SELECT 1');
+      checks.postgres = 'up';
+    } catch {
+      checks.postgres = 'down';
+      allOk = false;
+    }
+    try {
+      await redisPubClient.ping();
+      checks.redis = 'up';
+    } catch {
+      checks.redis = 'down';
+      allOk = false;
+    }
+    ctx.status = allOk ? 200 : 503;
+    ctx.set('Cache-Control', 'no-store');
+    ctx.body = { status: allOk ? 'ok' : 'degraded', checks };
+    return;
+  }
+  await next();
+});
 
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/api/app-version') {
@@ -480,6 +520,7 @@ async function cleanupStaleMatches() {
     if (cleaned > 0) console.log(`[cleanup] Removed ${cleaned} stale matches`);
   } catch (err) {
     console.error('[cleanup] Error:', err);
+    Sentry.captureException(err);
   }
 }
 
@@ -496,6 +537,7 @@ async function shutdown(signal: string): Promise<void> {
       redisPubSub.close(),
       redisPubClient.quit(),
       redisAdapterSubClient.quit(),
+      Sentry.close(2000),
     ]);
   } catch (err) {
     console.error('[shutdown] error:', err);
