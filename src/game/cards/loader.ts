@@ -1,4 +1,5 @@
 import type { CardDef, CardInstance } from '../types';
+import { Sentry } from '../../sentry';
 
 const cardMap = new Map<string, CardDef>();
 let currentCards: CardDef[] = [];
@@ -45,7 +46,14 @@ async function fetchJson<T>(
     const response = await fetch(path, { cache, signal: controller?.signal });
     if (!response.ok) return null;
     return (await response.json()) as T;
-  } catch {
+  } catch (err) {
+    // 卡牌載入失敗會導致空牌組崩潰，記錄 breadcrumb 以利追蹤載入問題。
+    Sentry.addBreadcrumb({
+      category: 'card-loader',
+      message: `fetchJson failed: ${path}`,
+      level: 'warning',
+      data: { path, error: err instanceof Error ? err.message : String(err) },
+    });
     return null;
   } finally {
     if (timeout !== null) globalThis.clearTimeout(timeout);

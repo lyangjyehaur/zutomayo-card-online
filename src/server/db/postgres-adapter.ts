@@ -1,5 +1,6 @@
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import type { Server, State, LogEntry } from 'boardgame.io';
+import * as Sentry from '@sentry/node';
 
 /**
  * boardgame.io StorageAPI.Async 的 Postgres 實作。
@@ -329,6 +330,9 @@ export class PostgresAdapter {
         released: false,
         timeout: setTimeout(() => {
           this.releaseUpdateLock(lock, 'rollback').catch((err) => {
+            Sentry.captureException(err, {
+              tags: { layer: 'postgres', op: 'lock-release-timeout', match_id: matchID },
+            });
             console.error(`[PostgresAdapter] timed-out update lock release failed for ${matchID}:`, err);
           });
         }, 5000),

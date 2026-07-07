@@ -19,6 +19,7 @@ import { getChronosTimeForPosition, normalizeChronosPosition } from '../chronos'
 import { pushHpChange } from '../hpChange';
 import { recordAction } from '../actionLog';
 import { handleRequestChoice } from './requestChoices';
+import { Sentry } from '../../sentry';
 
 export interface EffectExecutionContext {
   cardInstanceId?: string;
@@ -1272,7 +1273,20 @@ export function executeEffect(
   const valueParam = effect.action.params.value;
   const value = Number(effect.action.params.value ?? 0);
   const handler = effectHandlers[effect.action.type];
-  const result = handler({ effect, G, player, context, me, opponent, opponentIndex, valueParam, value });
+  let result: { success: boolean; message: string };
+  try {
+    result = handler({ effect, G, player, context, me, opponent, opponentIndex, valueParam, value });
+  } catch (err) {
+    // 效果執行拋出未預期例外時上報 Sentry，避免影響整局遊戲流程。
+    Sentry.captureException(err, {
+      tags: {
+        layer: 'game-effect',
+        action_type: effect.action.type,
+        card_def_id: context.cardDefId ?? 'unknown',
+      },
+    });
+    return { success: false, message: `Effect execution error: ${err instanceof Error ? err.message : String(err)}` };
+  }
   if (G.pendingChoice && context.cardDefId && !G.pendingChoice.sourceCardDefId) {
     G.pendingChoice.sourceCardDefId = context.cardDefId;
   }

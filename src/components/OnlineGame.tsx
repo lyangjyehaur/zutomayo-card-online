@@ -6,6 +6,7 @@ import type { GameState } from '../game/types';
 import { Board, type BoardGameOverActions } from './Board';
 import { t } from '../i18n';
 import { PageShell } from '../ui';
+import { Sentry } from '../sentry';
 import {
   createOnlineStateSnapshot,
   evaluateOnlineStateSnapshot,
@@ -56,6 +57,10 @@ function OnlineBoard(
 
   useEffect(() => {
     if (typeof props._stateID !== 'number' || !props.G || !props.ctx) return;
+    // 同步 game_phase tag 到 Sentry，便於後台依遊戲階段篩選錯誤。
+    if (props.G.step) {
+      Sentry.setTag('game_phase', props.G.step);
+    }
     const next = createOnlineStateSnapshot({
       stateID: props._stateID,
       G: props.G,
@@ -103,6 +108,15 @@ export function OnlineGame({
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
 
+  // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
+  useEffect(() => {
+    Sentry.setTag('match_mode', 'online');
+    return () => {
+      // 離開線上模式時清除 tag，避免 tag 殘留影響後續頁面的錯誤歸類。
+      Sentry.setTag('match_mode', undefined);
+    };
+  }, []);
+
   useEffect(
     () => () => {
       if (statusTimer.current) clearTimeout(statusTimer.current);
@@ -136,23 +150,42 @@ export function OnlineGame({
         if (resyncTimer.current) clearTimeout(resyncTimer.current);
         if (showRejoinedStatus || isReconnect) flashRejoined();
         else setConnectionStatus(null);
+        Sentry.addBreadcrumb({
+          category: 'connection',
+          message: isReconnect ? 'WebSocket reconnected' : 'WebSocket connected',
+          level: 'info',
+          data: { match_id: matchID },
+        });
         return;
       }
 
-      setConnectionStatus(connectedOnce.current ? 'disconnected' : 'reconnecting');
+      const wasConnected = connectedOnce.current;
+      setConnectionStatus(wasConnected ? 'disconnected' : 'reconnecting');
+      Sentry.addBreadcrumb({
+        category: 'connection',
+        message: wasConnected ? 'WebSocket disconnected, attempting reconnect' : 'WebSocket connecting',
+        level: wasConnected ? 'warning' : 'info',
+        data: { match_id: matchID },
+      });
     },
-    [flashRejoined, showRejoinedStatus],
+    [flashRejoined, matchID, showRejoinedStatus],
   );
 
-  const handleStateMismatch = useCallback((reason: OnlineStateMismatchReason) => {
-    console.warn(`[online-sync] detected ${reason}; rebuilding client to resync authoritative state`);
-    if (statusTimer.current) clearTimeout(statusTimer.current);
-    if (resyncTimer.current) clearTimeout(resyncTimer.current);
-    setConnectionStatus('reconnecting');
-    setResyncingState(true);
-    setClientSyncNonce((nonce) => nonce + 1);
-    resyncTimer.current = setTimeout(() => setResyncingState(false), 5000);
-  }, []);
+  const handleStateMismatch = useCallback(
+    (reason: OnlineStateMismatchReason) => {
+      console.warn(`[online-sync] detected ${reason}; rebuilding client to resync authoritative state`);
+      Sentry.captureException(new Error(`Online state mismatch: ${reason}`), {
+        tags: { layer: 'online-sync', reason, match_id: matchID },
+      });
+      if (statusTimer.current) clearTimeout(statusTimer.current);
+      if (resyncTimer.current) clearTimeout(resyncTimer.current);
+      setConnectionStatus('reconnecting');
+      setResyncingState(true);
+      setClientSyncNonce((nonce) => nonce + 1);
+      resyncTimer.current = setTimeout(() => setResyncingState(false), 5000);
+    },
+    [matchID],
+  );
 
   const [OnlineClient] = useState(() =>
     Client({

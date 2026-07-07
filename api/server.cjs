@@ -111,9 +111,28 @@ const LOGTO_ACCOUNT_CENTER_URL =
 if (process.env.SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || 'development',
+    // 支援 staging/preview 等環境：若顯式設定 SENTRY_ENVIRONMENT 則優先使用。
+    environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
     release: `${APP_VERSION}@${APP_BUILD_ID}`,
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
+    // GlitchTip 不支援 session replay；@sentry/node 10.x 不再支援 autoSessionTracking 選項。
+    normalizeDepth: 5,
+    sendDefaultPii: false,
+    beforeSend(event) {
+      // 移除 request 中的敏感 header / cookie / body，避免 token / 密碼外洩。
+      if (event.request) {
+        delete event.request.headers;
+        delete event.request.cookies;
+        delete event.request.data;
+      }
+      return event;
+    },
+    initialScope: {
+      tags: {
+        service: 'api',
+        app: 'zutomayo-card',
+      },
+    },
   });
 }
 
@@ -431,10 +450,7 @@ function decryptSecret(value) {
     if (!ivPart || !tagPart || !encryptedPart) return '';
     const decipher = crypto.createDecipheriv('aes-256-gcm', secretEncryptionKey(), Buffer.from(ivPart, 'base64url'));
     decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
-    return Buffer.concat([
-      decipher.update(Buffer.from(encryptedPart, 'base64url')),
-      decipher.final(),
-    ]).toString('utf8');
+    return Buffer.concat([decipher.update(Buffer.from(encryptedPart, 'base64url')), decipher.final()]).toString('utf8');
   } catch {
     return '';
   }
@@ -551,7 +567,11 @@ function hashEmailForAvatar(email) {
 }
 
 function mergeOAuthScopes(baseScope, requiredScopes) {
-  const scopes = new Set(String(baseScope || '').split(/\s+/).filter(Boolean));
+  const scopes = new Set(
+    String(baseScope || '')
+      .split(/\s+/)
+      .filter(Boolean),
+  );
   for (const scope of requiredScopes) scopes.add(scope);
   return Array.from(scopes).join(' ');
 }
@@ -1304,7 +1324,7 @@ function handleRequest(req, res) {
   }
 
   // Request observability: request id, structured logging, Prometheus metrics.
-  const { log: reqLog } = attachRequestObservability(req, res);
+  const { log: reqLog, requestId } = attachRequestObservability(req, res);
 
   // Rate limiting (P0-4, Redis)
   const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
@@ -1345,11 +1365,20 @@ function handleRequest(req, res) {
     });
 
   // 統一 async handler 錯誤處理：PG/Redis 丟錯時回 500，避免 unhandled rejection 崩潰。
+  // 使用 withScope 包裹單次 capture，避免 configureScope 污染 Node server 請求 scope。
   const safe = (fn) => {
     Promise.resolve()
       .then(fn)
       .catch((err) => {
-        Sentry.captureException(err);
+        Sentry.withScope((scope) => {
+          scope.setTag('request_id', requestId);
+          scope.setTag('route', pathname);
+          scope.setTag('method', method);
+          scope.setContext('client', { ip: clientIp });
+          const authUserId = getAuthUserId(req);
+          if (authUserId) scope.setUser({ id: authUserId });
+          Sentry.captureException(err);
+        });
         reqLog.error({ err }, 'handler error');
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -1466,6 +1495,9 @@ function handleRequest(req, res) {
     if (oauthCallbackRoute && method === 'GET') {
       const provider = decodeURIComponent(oauthCallbackRoute[1]);
       if (!isOAuthProviderAllowed(provider)) {
+        Sentry.captureException(new Error('OAuth callback: unknown provider'), {
+          tags: { action: 'oauth-callback', provider },
+        });
         res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(oauthReturnScript({ returnTo: '/', error: 'Unknown OAuth provider' }));
         return;
@@ -1473,12 +1505,18 @@ function handleRequest(req, res) {
       const providerConfig = await getResolvedOAuthProvider(provider);
       const state = verifyOAuthState(url.searchParams.get('state'));
       if (!providerConfig || !state || state.provider !== providerConfig.provider) {
+        Sentry.captureException(new Error('OAuth callback: invalid state'), {
+          tags: { action: 'oauth-callback', provider },
+        });
         res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(oauthReturnScript({ returnTo: state?.returnTo || '/', error: 'Invalid OAuth state' }));
         return;
       }
       const code = url.searchParams.get('code');
       if (!code) {
+        Sentry.captureException(new Error('OAuth callback: missing code'), {
+          tags: { action: 'oauth-callback', provider },
+        });
         res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(oauthReturnScript({ returnTo: state.returnTo, error: 'Missing OAuth code' }));
         return;

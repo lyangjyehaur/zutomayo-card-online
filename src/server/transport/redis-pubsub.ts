@@ -1,4 +1,5 @@
 import Redis from 'ioredis';
+import * as Sentry from '@sentry/node';
 
 /**
  * boardgame.io GenericPubSub 的 Redis 實作。
@@ -46,6 +47,7 @@ export class RedisPubSub<T = unknown> {
         cb(payload);
       } catch (err) {
         // 單一 callback 出錯不影響其他 callback。
+        Sentry.captureException(err, { tags: { layer: 'redis-pubsub', channel } });
         console.error(`[RedisPubSub] callback error on channel ${channel}:`, err);
       }
     }
@@ -72,6 +74,7 @@ export class RedisPubSub<T = unknown> {
     // publish 不 await：boardgame.io 的 GenericPubSub.publish 是同步簽名。
     // ioredis publish 回 Promise，這裡 fire-and-forget，錯誤由 reject handler 記錄。
     this.pubClient.publish(channelId, JSON.stringify(payload)).catch((err) => {
+      Sentry.captureException(err, { tags: { layer: 'redis-pubsub', op: 'publish', channel: channelId } });
       console.error(`[RedisPubSub] publish error on ${channelId}:`, err);
     });
   }
@@ -83,6 +86,7 @@ export class RedisPubSub<T = unknown> {
       this.callbacks.set(channelId, cbs);
       // 第一次訂閱該 channel 才呼叫 Redis subscribe（避免重複 subscribe）。
       this.subClient.subscribe(channelId).catch((err) => {
+        Sentry.captureException(err, { tags: { layer: 'redis-pubsub', op: 'subscribe', channel: channelId } });
         console.error(`[RedisPubSub] subscribe error on ${channelId}:`, err);
       });
     }
@@ -93,6 +97,7 @@ export class RedisPubSub<T = unknown> {
     const existed = this.callbacks.delete(channelId);
     if (existed) {
       this.subClient.unsubscribe(channelId).catch((err) => {
+        Sentry.captureException(err, { tags: { layer: 'redis-pubsub', op: 'unsubscribe', channel: channelId } });
         console.error(`[RedisPubSub] unsubscribe error on ${channelId}:`, err);
       });
     }

@@ -1,4 +1,5 @@
 import type { ActionLogEntry, CardDef } from '../game/types';
+import { Sentry } from '../sentry';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -284,7 +285,15 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
       data = { error: text };
     }
   }
-  if (!res.ok) throw new ApiError((data.error as string) || 'Request failed', res.status);
+  if (!res.ok) {
+    // 5xx 為伺服器錯誤，上報 Sentry 以利定位線上問題；4xx 為客戶端錯誤，不上報。
+    if (res.status >= 500) {
+      Sentry.captureException(new Error(`API ${res.status}: ${path}`), {
+        tags: { layer: 'api-client', http_status: String(res.status), route: path },
+      });
+    }
+    throw new ApiError((data.error as string) || 'Request failed', res.status);
+  }
   return data as T;
 }
 

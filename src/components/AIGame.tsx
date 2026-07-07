@@ -7,6 +7,7 @@ import { Board } from './Board';
 import { useAIMoves, type ZutomayoMoveDispatchers, type TutorialAIScript } from '../game/useAIMoves';
 import type { AIDifficulty } from '../game/ai';
 import type { GameState } from '../game/types';
+import { Sentry } from '../sentry';
 import { t } from '../i18n';
 import { PageShell } from '../ui';
 
@@ -135,6 +136,14 @@ export function AIGame({
     onSetupFeedbackDismiss,
     onNoticeDismiss,
   };
+
+  // 標記對戰模式（AI / tutorial），便於 Sentry 後台區分錯誤來源。
+  useEffect(() => {
+    Sentry.setTag('match_mode', tutorialMode ? 'tutorial' : 'ai');
+    return () => {
+      Sentry.setTag('match_mode', undefined);
+    };
+  }, [tutorialMode]);
 
   const [AIClient] = useState(() =>
     Client({

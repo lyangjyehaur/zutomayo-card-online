@@ -1,4 +1,5 @@
 import { APP_VERSION_INFO } from './version';
+import { Sentry } from './sentry';
 
 export interface OnlineSession {
   matchID: string;
@@ -57,8 +58,14 @@ export async function leaveOnlineSession(session: OnlineSession): Promise<void> 
         credentials: session.playerCredentials,
       }),
     });
-  } catch {
+  } catch (err) {
     // Local cleanup still happens; the server may already have dropped the room.
+    Sentry.addBreadcrumb({
+      category: 'online-session',
+      message: 'leaveOnlineSession failed (server may have dropped room)',
+      level: 'warning',
+      data: { match_id: session.matchID, error: err instanceof Error ? err.message : String(err) },
+    });
   }
 }
 
@@ -79,7 +86,13 @@ export async function validateOnlineSession(session: OnlineSession): Promise<Onl
     if (response.status === 404) return { ok: false, reason: 'roomGone' };
     if (response.status === 403 || response.status === 409) return { ok: false, reason: 'seatTaken' };
     return { ok: false, reason: 'network' };
-  } catch {
+  } catch (err) {
+    Sentry.addBreadcrumb({
+      category: 'online-session',
+      message: 'validateOnlineSession network error',
+      level: 'warning',
+      data: { match_id: session.matchID, error: err instanceof Error ? err.message : String(err) },
+    });
     return { ok: false, reason: 'network' };
   }
 }

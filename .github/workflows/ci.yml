@@ -40,6 +40,14 @@ jobs:
         run: npm test
 
       - name: Build
+        env:
+          # APP_BUILD_ID 設為 git commit hash，確保每次 CI build 有獨立 Sentry release。
+          APP_BUILD_ID: ${{ github.sha }}
+          # Source map 上傳到 GlitchTip（secrets 未設定時跳過上傳，僅產生 hidden source map）。
+          SENTRY_URL: ${{ secrets.SENTRY_URL }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: npm run build
 
   # Smoke tests 需要真實卡牌數據（422 張），CI 環境無法模擬
