@@ -77,6 +77,11 @@ if (process.env.SENTRY_DSN) {
     environment: process.env.NODE_ENV || 'development',
     release: `${APP_VERSION_INFO.appVersion}@${APP_VERSION_INFO.buildId}`,
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
+    initialScope: {
+      tags: {
+        service: 'game',
+      },
+    },
   });
 }
 
