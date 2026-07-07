@@ -622,6 +622,33 @@ function verifyOAuthState(state) {
   }
 }
 
+function createOAuthSessionTicket(userId) {
+  const now = Math.floor(Date.now() / 1000);
+  const body = base64urlJson({
+    sub: userId,
+    iat: now,
+    exp: now + 2 * 60,
+    nonce: crypto.randomBytes(12).toString('hex'),
+  });
+  return `${body}.${signTokenInput(`oauth-session.${body}`)}`;
+}
+
+function verifyOAuthSessionTicket(ticket) {
+  try {
+    const [body, signature] = String(ticket || '').split('.');
+    if (!body || !signature) return null;
+    const expected = signTokenInput(`oauth-session.${body}`);
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return typeof payload.sub === 'string' ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 function oauthErrorReason(error) {
   const reason = String(error || 'unknown_error')
     .trim()
@@ -631,12 +658,12 @@ function oauthErrorReason(error) {
   return reason || 'unknown_error';
 }
 
-function oauthReturnScript({ token, returnTo, error }) {
+function oauthReturnScript({ sessionTicket, returnTo, error }) {
   const safeReturnTo = typeof returnTo === 'string' && returnTo.startsWith('/') ? returnTo : '/';
   const url = new URL(`http://localhost${safeReturnTo}`);
   if (error) url.searchParams.set('oauth', 'error');
-  if (!error && token) url.searchParams.set('oauth', 'login');
-  if (!error && !token) url.searchParams.set('oauth', 'linked');
+  if (!error && sessionTicket) url.searchParams.set('oauth', 'login');
+  if (!error && !sessionTicket) url.searchParams.set('oauth', 'linked');
   const errorUrl = new URL(url.toString());
   errorUrl.searchParams.set('oauth', 'error');
   if (error) errorUrl.searchParams.set('oauth_error', oauthErrorReason(error));
@@ -648,17 +675,31 @@ function oauthReturnScript({ token, returnTo, error }) {
   const errorTarget = ${JSON.stringify(errorTarget)};
   try {
     localStorage.removeItem('zutomayo_token');
-    ${token ? "localStorage.setItem('zutomayo_session', '1');" : "localStorage.removeItem('zutomayo_session');"}
     ${
-      token
-        ? `const response = await fetch('/api/profile', { credentials: 'include', cache: 'no-store' });
+      sessionTicket
+        ? `const exchange = await fetch('/api/oauth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      cache: 'no-store',
+      body: JSON.stringify({ ticket: ${JSON.stringify(sessionTicket)} })
+    });
+    if (!exchange.ok) {
+      localStorage.removeItem('zutomayo_session');
+      const failedUrl = new URL(errorTarget, location.origin);
+      failedUrl.searchParams.set('oauth_error', 'session_exchange_failed_' + exchange.status);
+      location.replace(failedUrl.pathname + failedUrl.search + failedUrl.hash);
+      return;
+    }
+    const response = await fetch('/api/profile', { credentials: 'include', cache: 'no-store' });
     if (!response.ok) {
       localStorage.removeItem('zutomayo_session');
       const failedUrl = new URL(errorTarget, location.origin);
       failedUrl.searchParams.set('oauth_error', 'session_check_failed_' + response.status);
       location.replace(failedUrl.pathname + failedUrl.search + failedUrl.hash);
       return;
-    }`
+    }
+    localStorage.setItem('zutomayo_session', '1');`
         : ''
     }
     location.replace(target);
@@ -1145,6 +1186,15 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/oauth/session' && method === 'POST') {
+      const body = await readBody(32 * 1024);
+      const userId = verifyOAuthSessionTicket(body.ticket);
+      if (!userId) return json({ error: 'Invalid OAuth session ticket' }, 401);
+      setAuthCookie(req, res, createToken(userId));
+      json({ ok: true });
+      return;
+    }
+
     const oauthStartRoute = pathname.match(/^\/api\/oauth\/([^/]+)\/start$/);
     if (oauthStartRoute && method === 'GET') {
       const provider = decodeURIComponent(oauthStartRoute[1]);
@@ -1231,13 +1281,14 @@ function handleRequest(req, res) {
         hashEmail: hashEmailForAvatar,
         country: getClientCountry(req),
       });
-      if (result.ok) setAuthCookie(req, res, result.body.token);
-      res.writeHead(result.ok ? 200 : result.status || 400, { 'Content-Type': 'text/html; charset=utf-8' });
+      const localUserId = result.ok && typeof result.body?.user?.id === 'string' ? result.body.user.id : '';
+      const loginOk = result.ok && Boolean(localUserId);
+      res.writeHead(loginOk ? 200 : result.status || 400, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(
         oauthReturnScript({
-          token: result.ok ? result.body.token : '',
+          sessionTicket: loginOk ? createOAuthSessionTicket(localUserId) : '',
           returnTo: state.returnTo,
-          error: result.ok ? '' : result.error,
+          error: loginOk ? '' : result.error || 'Missing local account id',
         }),
       );
       return;
