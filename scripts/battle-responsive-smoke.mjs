@@ -15,6 +15,8 @@ const cases = [
   { name: '1280x720__turn-set', width: 1280, height: 720, state: 'turn-set' },
   { name: '1024x768__turn-set', width: 1024, height: 768, state: 'turn-set' },
   { name: '768x1024__turn-set', width: 768, height: 1024, state: 'turn-set' },
+  { name: '1366x768__turn-set__me-day', width: 1366, height: 768, state: 'turn-set', side: 'day' },
+  { name: '390x844__turn-set__me-day', width: 390, height: 844, state: 'turn-set', side: 'day' },
   { name: '932x430__turn-set', width: 932, height: 430, state: 'turn-set' },
   { name: '844x390__turn-set', width: 844, height: 390, state: 'turn-set' },
   { name: '430x932__turn-set', width: 430, height: 932, state: 'turn-set' },
@@ -255,7 +257,8 @@ try {
       screenWidth: testCase.width,
       screenHeight: testCase.height,
     });
-    await client.send('Page.navigate', { url: `${baseUrl}/qa/battle?state=${testCase.state}&controls=0` });
+    const sideParam = testCase.side ? `&side=${encodeURIComponent(testCase.side)}` : '';
+    await client.send('Page.navigate', { url: `${baseUrl}/qa/battle?state=${testCase.state}${sideParam}&controls=0` });
     for (let attempt = 0; attempt < 25; attempt += 1) {
       const ready = await client.send('Runtime.evaluate', {
         expression: `Boolean(document.querySelector('.bf-root, [data-tut="mulligan-panel"], .game-over-panel'))`,

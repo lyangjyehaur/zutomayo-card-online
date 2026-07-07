@@ -3,7 +3,7 @@ import { ChronosDial } from './ChronosDial';
 
 /**
  * ChronosPanel — Chronos 儀表的佈局容器。
- * 呈現為 ChronosDial（12 段分段環）；尺寸由 game.css 依斷點以 clamp 控制。
+ * 呈現為 ChronosDial（素材底圖 + 規則讀數）；尺寸由 game.css 依斷點以 clamp 控制。
  */
 export interface ChronosPanelProps {
   chronos: ChronosState;

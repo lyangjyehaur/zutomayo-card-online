@@ -1,4 +1,4 @@
-import type { CardInstance } from '../../game/types';
+import type { CardInstance, ChronosTime } from '../../game/types';
 import { t } from '../../i18n';
 import { CardSlot, type CardSlotState } from './CardSlot';
 import { CardStack } from './CardStack';
@@ -15,18 +15,32 @@ export interface SetZoneProps {
   slot: 'A' | 'B' | 'C';
   side: 'me' | 'opponent';
   card: CardInstance | null;
+  chronosSide?: ChronosTime;
   size?: 'sm' | 'md';
   state?: CardSlotState;
   onActivate?: () => void;
   onInspect?: (card: CardInstance) => void;
 }
 
-export function SetZone({ slot, side, card, size = 'md', state = 'idle', onActivate, onInspect }: SetZoneProps) {
+export function SetZone({
+  slot,
+  side,
+  card,
+  chronosSide,
+  size = 'md',
+  state = 'idle',
+  onActivate,
+  onInspect,
+}: SetZoneProps) {
   const visibleZoneName = slot === 'C' ? t('board.areaEnchant') : t('board.setZoneCompact' as never);
   const ariaZoneName = slot === 'C' ? t('board.areaEnchant') : slot === 'A' ? t('board.setZoneA') : t('board.setZoneB');
   const sideName = side === 'me' ? t('player.me') : t('player.opponent');
   return (
-    <div className={`setzone setzone-${slot.toLowerCase()} setzone-${side}`} data-slot={slot}>
+    <div
+      className={`setzone setzone-${slot.toLowerCase()} setzone-${side}`}
+      data-slot={slot}
+      data-chronos-side={chronosSide}
+    >
       <CardSlot
         label={slot}
         ariaLabel={`${sideName} ${ariaZoneName}`}

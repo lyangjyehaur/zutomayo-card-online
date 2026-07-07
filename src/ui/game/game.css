@@ -215,38 +215,6 @@
   animation: bf-pulse 1s infinite;
 }
 
-.bf-hud-phases {
-  display: flex;
-  gap: var(--space-2);
-  padding-inline: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  letter-spacing: var(--tracking-meta);
-  text-transform: uppercase;
-}
-
-.bf-hud-phases span {
-  position: relative;
-  padding-left: var(--space-2);
-  color: oklch(from var(--color-text-primary) l c h / 0.22);
-  transition: color var(--motion-normal) var(--ease-standard);
-}
-
-.bf-hud-phases span::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 4px;
-  height: 4px;
-  transform: translateY(-50%) rotate(45deg);
-  background: currentcolor;
-}
-
-.bf-hud-phases span[data-active='true'] {
-  color: var(--color-accent-primary);
-}
-
 /* ---------------------------------------------------------------- 階段提示 */
 .phaseindicator {
   position: absolute;
@@ -317,51 +285,132 @@
 
 /* ---------------------------------------------------------------- 主格線 */
 .bf-main {
+  --bf-main-night-ambient: rgb(62 49 121 / 0.22);
+  --bf-main-day-ambient: rgb(255 249 232 / 0.16);
+  --bf-main-twilight-ambient: rgb(117 102 161 / 0.1);
+  --bf-main-opponent-ambient: var(--bf-main-day-ambient);
+  --bf-main-player-ambient: var(--bf-main-night-ambient);
+
   position: relative;
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
   gap: var(--space-3);
   padding: calc(var(--control-height-sm) + var(--space-4)) var(--space-3) var(--space-2);
+  background:
+    radial-gradient(ellipse 75% 38% at 46% 14%, var(--bf-main-opponent-ambient), transparent 72%),
+    radial-gradient(ellipse 78% 44% at 46% 86%, var(--bf-main-player-ambient), transparent 74%),
+    radial-gradient(ellipse 58% 24% at 46% 50%, var(--bf-main-twilight-ambient), transparent 72%);
+}
+
+.bf-main[data-night-side='opponent'] {
+  --bf-main-opponent-ambient: var(--bf-main-night-ambient);
+  --bf-main-player-ambient: var(--bf-main-day-ambient);
+}
+
+.bf-main[data-night-side='me'] {
+  --bf-main-opponent-ambient: var(--bf-main-day-ambient);
+  --bf-main-player-ambient: var(--bf-main-night-ambient);
 }
 
 .bf-field {
+  --bf-edge-inset: clamp(var(--space-3), 1.6vw, var(--space-5));
+  --bf-night-bg: #3e3179;
+  --bf-day-bg: #ffffff;
+  --bf-table-bg: #090b13;
+  --bf-night-plane: color-mix(in srgb, var(--bf-night-bg) 46%, var(--bf-table-bg) 54%);
+  --bf-day-plane: #efe6d2;
+  --bf-twilight-plane: #6d5f9a;
+  --bf-night-surface:
+    radial-gradient(ellipse 80% 120% at 50% 0%, rgb(149 126 255 / 0.3), transparent 60%),
+    radial-gradient(ellipse 70% 110% at 50% 100%, rgb(149 126 255 / 0.08), transparent 70%),
+    linear-gradient(150deg, color-mix(in srgb, var(--bf-night-bg) 42%, var(--bf-table-bg) 58%), var(--bf-night-plane));
+  --bf-day-surface:
+    radial-gradient(ellipse 82% 112% at 50% -8%, rgb(255 250 240 / 0.4), transparent 58%),
+    radial-gradient(ellipse 84% 96% at 50% 100%, rgb(230 200 140 / 0.18), transparent 66%),
+    linear-gradient(180deg, #f5eedd, var(--bf-day-plane));
+  --bf-stage-blend: clamp(3rem, 9vh, 6rem);
+  --bf-stage-inner-blend: clamp(1.5rem, 4.5vh, 3rem);
+  --bf-stage-axis-glow: rgb(255 255 255 / 0.16);
+  --bf-night-text: #fffaff;
+  --bf-night-muted: rgb(255 250 255 / 0.78);
+  --bf-night-border: rgb(255 255 255 / 0.2);
+  --bf-night-shadow: 0 1px 10px rgb(0 0 0 / 0.32);
+  --bf-night-dot: rgb(255 255 255 / 0.05);
+  --bf-day-text: #17131f;
+  --bf-day-muted: rgb(23 19 31 / 0.66);
+  --bf-day-border: rgb(23 19 31 / 0.16);
+  --bf-day-shadow: 0 1px 8px rgb(255 255 255 / 0.22);
+  --bf-day-dot: rgb(62 49 121 / 0.052);
+
   position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.08),
+    inset 0 0 clamp(2rem, 7vw, 5.5rem) rgb(9 11 19 / 0.22),
+    0 1rem clamp(1.5rem, 4vw, 3.5rem) rgb(0 0 0 / 0.26),
+    0 0 0 1px rgb(255 255 255 / 0.05);
 }
 
-/* 戰場氛圍：安靜的中央光暈 + 晝夜微染，無圖案（取代 v2.1 的錶盤刻度背景） */
-.bf-field::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(
-    ellipse 60% 45% at 50% 50%,
-    oklch(from var(--color-bg-elevated) l c h / 0.55),
-    transparent 70%
-  );
+.bf-field[data-night-side='opponent'] {
+  --bf-opponent-bg: var(--bf-night-bg);
+  --bf-opponent-plane: var(--bf-night-plane);
+  --bf-opponent-surface: var(--bf-night-surface);
+  --bf-opponent-text: var(--bf-night-text);
+  --bf-opponent-muted: var(--bf-night-muted);
+  --bf-opponent-border: var(--bf-night-border);
+  --bf-opponent-shadow: var(--bf-night-shadow);
+  --bf-opponent-dot: var(--bf-night-dot);
+  --bf-player-bg: var(--bf-day-bg);
+  --bf-player-plane: var(--bf-day-plane);
+  --bf-player-surface: var(--bf-day-surface);
+  --bf-player-text: var(--bf-day-text);
+  --bf-player-muted: var(--bf-day-muted);
+  --bf-player-border: var(--bf-day-border);
+  --bf-player-shadow: var(--bf-day-shadow);
+  --bf-player-dot: var(--bf-day-dot);
+  --bf-player-character-art: url('/battle/set-zone-tvchany.svg');
 }
 
-.bf-field[data-time='night']::before {
-  background:
-    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--time-night) l c h / 0.07), transparent 70%),
-    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--color-bg-elevated) l c h / 0.5), transparent 70%);
-}
-
-.bf-field[data-time='day']::before {
-  background:
-    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--time-day) l c h / 0.06), transparent 70%),
-    radial-gradient(ellipse 60% 45% at 50% 50%, oklch(from var(--color-bg-elevated) l c h / 0.5), transparent 70%);
+.bf-field[data-night-side='me'] {
+  --bf-opponent-bg: var(--bf-day-bg);
+  --bf-opponent-plane: var(--bf-day-plane);
+  --bf-opponent-surface: var(--bf-day-surface);
+  --bf-opponent-text: var(--bf-day-text);
+  --bf-opponent-muted: var(--bf-day-muted);
+  --bf-opponent-border: var(--bf-day-border);
+  --bf-opponent-shadow: var(--bf-day-shadow);
+  --bf-opponent-dot: var(--bf-day-dot);
+  --bf-player-bg: var(--bf-night-bg);
+  --bf-player-plane: var(--bf-night-plane);
+  --bf-player-surface: var(--bf-night-surface);
+  --bf-player-text: var(--bf-night-text);
+  --bf-player-muted: var(--bf-night-muted);
+  --bf-player-border: var(--bf-night-border);
+  --bf-player-shadow: var(--bf-night-shadow);
+  --bf-player-dot: var(--bf-night-dot);
+  --bf-player-character-art: url('/battle/set-zone-acane.svg');
 }
 
 .bf-field > * {
   position: relative;
   z-index: var(--z-base);
+}
+
+/* 統一暗角：讓晝夜兩側在視覺上收斂為一體 */
+.bf-field::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 100% 80% at 50% 50%, transparent 50%, rgb(9 11 19 / 0.28) 100%);
 }
 
 .bf-sidebar {
@@ -380,14 +429,44 @@
 
 /* ---------------------------------------------------------------- 對手區 */
 .bf-opponent {
+  position: relative;
   display: flex;
   flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: var(--space-2) var(--space-4);
-  padding-block: var(--space-1) var(--space-2);
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding: var(--space-1) var(--bf-edge-inset) var(--space-2);
+  background: var(--bf-opponent-surface);
+  border-bottom: 1px solid var(--bf-opponent-border);
+  color: var(--bf-opponent-text);
+  --bf-side-muted: var(--bf-opponent-muted);
+  --bf-side-text: var(--bf-opponent-text);
+  --bf-side-border: var(--bf-opponent-border);
+  --bf-side-shadow: var(--bf-opponent-shadow);
+}
+
+.bf-opponent::before,
+.bf-player::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-size: var(--pattern-dot-size);
+}
+
+.bf-opponent::before {
+  background-image: radial-gradient(var(--bf-opponent-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px);
+}
+
+.bf-player::before {
+  background-image: radial-gradient(var(--bf-player-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px);
+}
+
+.bf-opponent > * {
+  position: relative;
+  z-index: 1;
 }
 
 .bf-opponent-handbacks {
@@ -461,6 +540,25 @@
   color: var(--color-text-muted);
 }
 
+.bf-opponent .zonepanel-name,
+.bf-opponent .zonepanel-hint,
+.bf-opponent .setzone-hint,
+.bf-opponent .cardstack-label,
+.bf-opponent .playerstatus-meta,
+.bf-player .zonepanel-name,
+.bf-player .zonepanel-hint,
+.bf-player .setzone-hint,
+.bf-player .cardstack-label,
+.bf-player .playerstatus-meta {
+  color: var(--bf-side-muted);
+}
+
+.bf-opponent .playerstatus-name,
+.bf-player .playerstatus-name {
+  color: var(--bf-side-text);
+  text-shadow: var(--bf-side-shadow);
+}
+
 .chargezone .zonepanel-hint {
   color: var(--color-accent-primary);
 }
@@ -471,6 +569,41 @@
   flex-direction: column;
   align-items: center;
   gap: calc(var(--space-1) / 2);
+}
+
+.setzone .cardslot[data-empty='true'] {
+  --setzone-art: url('/battle/set-zone-night.png');
+  --setzone-overlay: linear-gradient(
+    oklch(from var(--color-bg-base) l c h / 0.08),
+    oklch(from var(--color-bg-base) l c h / 0.08)
+  );
+
+  overflow: hidden;
+  background:
+    var(--setzone-overlay),
+    var(--setzone-art) center / cover no-repeat;
+  box-shadow: inset 0 0 0 1px oklch(from var(--color-accent-primary) l c h / 0.12);
+}
+
+.setzone[data-chronos-side='night'] .cardslot[data-empty='true'] {
+  --setzone-art: url('/battle/set-zone-night.png');
+}
+
+.setzone[data-chronos-side='day'] .cardslot[data-empty='true'] {
+  --setzone-art: url('/battle/set-zone-day.png');
+  --setzone-overlay: linear-gradient(
+    oklch(from var(--color-bg-elevated) l c h / 0.04),
+    oklch(from var(--color-bg-elevated) l c h / 0.04)
+  );
+}
+
+.setzone .cardslot[data-empty='true']::before,
+.setzone .cardslot[data-empty='true']::after {
+  z-index: 1;
+}
+
+.setzone .cardslot[data-empty='true'] .cardslot-watermark {
+  display: none;
 }
 
 .setzone-hint {
@@ -551,12 +684,58 @@
 
 /* ---------------------------------------------------------------- 中央舞台 */
 .bf-stage {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: 1 1 auto;
   min-height: calc(var(--slot-height-lg) + var(--space-2));
   align-items: center;
   justify-content: center;
   gap: clamp(var(--space-3), 5vw, var(--space-12));
+  background:
+    radial-gradient(ellipse 30rem 18rem at 50% 50%, rgb(255 255 255 / 0.08), transparent 62%),
+    radial-gradient(ellipse 120% 60% at 50% 0%, oklch(from var(--bf-opponent-bg) l c h / 0.12), transparent 70%),
+    radial-gradient(ellipse 120% 60% at 50% 100%, oklch(from var(--bf-player-bg) l c h / 0.1), transparent 70%),
+    linear-gradient(
+      to bottom,
+      var(--bf-opponent-plane) 0,
+      var(--bf-opponent-plane) calc(50% - var(--bf-stage-blend)),
+      color-mix(in srgb, var(--bf-opponent-plane) 70%, var(--bf-twilight-plane) 30%) calc(50% - var(--bf-stage-inner-blend)),
+      var(--bf-twilight-plane) 50%,
+      color-mix(in srgb, var(--bf-player-plane) 70%, var(--bf-twilight-plane) 30%) calc(50% + var(--bf-stage-inner-blend)),
+      var(--bf-player-plane) calc(50% + var(--bf-stage-blend)),
+      var(--bf-player-plane) 100%
+    );
+}
+
+.bf-stage::before {
+  content: '';
+  position: absolute;
+  inset: calc(50% - 1px) 0 auto;
+  z-index: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--bf-stage-axis-glow), transparent);
+  opacity: 0.5;
+}
+
+.bf-stage::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  bottom: 0;
+  left: 59%;
+  width: clamp(9rem, 20vw, 17rem);
+  aspect-ratio: 1.42;
+  pointer-events: none;
+  background: var(--bf-player-character-art) center / contain no-repeat;
+  opacity: 1;
+  transform: translate(-50%, 10%);
+}
+
+.bf-stage > * {
+  position: relative;
+  z-index: 1;
 }
 
 .chronospanel {
@@ -566,136 +745,145 @@
 
 /* ---------------------------------------------------------------- ChronosDial */
 .chronosdial {
+  --chronos-orbit-rotation: 0deg;
+  --chronos-slot-counter-rotation: 0deg;
+  --chronos-readout-color: var(--color-bg-elevated);
+  --chronos-readout-muted: oklch(from var(--color-bg-elevated) l c h / 0.72);
+  --chronos-readout-shadow: 0 1px 10px oklch(from var(--color-bg-base) l c h / 0.86);
+  --chronos-face-inset: 14.5%;
+  --chronos-slot-size: clamp(0.9rem, 9%, 1.32rem);
+
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(9rem, min(24vw, 26vh), 14rem);
+  width: clamp(11rem, min(30vw, 31vh), 17.25rem);
   aspect-ratio: 1;
+  isolation: isolate;
 }
 
 .chronospanel-sm .chronosdial {
-  width: clamp(6.5rem, 28vw, 9rem);
+  width: clamp(8.75rem, 30vw, 12rem);
+  --chronos-slot-size: clamp(0.72rem, 8.8%, 1.06rem);
 }
 
-.chronosdial svg {
+.chronosdial::before {
+  content: '';
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-.chronosdial-ring {
+  inset: var(--chronos-face-inset);
+  z-index: 0;
+  background: url('/battle/chronos.svg') center / contain no-repeat;
+  filter: drop-shadow(0 10px 28px oklch(from var(--color-bg-base) l c h / 0.48));
   transform-origin: center;
   transition: transform var(--motion-slow) var(--ease-emphasized);
 }
 
-.chronosdial-segment {
-  fill: none;
-  stroke-width: 7;
-  stroke-linecap: round;
-  opacity: 0.22;
+.chronosdial[data-night-side='opponent'] {
+  --chronos-orbit-rotation: 0deg;
+  --chronos-slot-counter-rotation: 0deg;
+}
+
+.chronosdial[data-night-side='me'] {
+  --chronos-orbit-rotation: 180deg;
+  --chronos-slot-counter-rotation: -180deg;
+}
+
+.chronosdial::before,
+.chronosdial-orbit {
+  transform: rotate(var(--chronos-orbit-rotation));
+}
+
+.chronosdial-orbit {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  transform-origin: center;
+  transition: transform var(--motion-slow) var(--ease-emphasized);
+}
+
+.chronosdial-slot {
+  position: absolute;
+  left: var(--slot-x);
+  top: var(--slot-y);
+  display: grid;
+  width: var(--chronos-slot-size);
+  aspect-ratio: 1;
+  place-items: center;
+  transform: translate(-50%, -50%);
+}
+
+.chronosdial-slot-inner {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: rotate(var(--chronos-slot-counter-rotation));
   transition:
-    opacity var(--motion-slow) var(--ease-standard),
-    stroke-width var(--motion-slow) var(--ease-standard);
+    transform var(--motion-slow) var(--ease-emphasized),
+    border-color var(--motion-normal) var(--ease-standard),
+    box-shadow var(--motion-normal) var(--ease-standard),
+    opacity var(--motion-normal) var(--ease-standard);
 }
 
-.chronosdial-segment[data-time='night'] {
-  stroke: var(--time-night);
+.chronosdial-slot[data-time='night'] .chronosdial-slot-inner {
+  background:
+    radial-gradient(circle at 35% 28%, rgb(255 255 255 / 0.3), transparent 34%),
+    linear-gradient(145deg, #6a5bc1, #3e3179 72%);
+  border: 1px solid rgb(255 255 255 / 0.34);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.12),
+    0 0 0 1px rgb(22 16 54 / 0.34),
+    0 0.18rem 0.55rem rgb(18 13 48 / 0.32);
 }
 
-.chronosdial-segment[data-time='day'] {
-  stroke: var(--time-day);
+.chronosdial-slot[data-time='day'] .chronosdial-slot-inner {
+  background:
+    radial-gradient(circle at 34% 28%, #ffffff, transparent 36%),
+    linear-gradient(145deg, #ffffff, #f2e3bc 76%);
+  border: 1px solid rgb(62 49 121 / 0.22);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.7),
+    0 0 0 1px rgb(255 255 255 / 0.28),
+    0 0.16rem 0.5rem rgb(62 49 121 / 0.16);
 }
 
-.chronosdial-segment[data-active='true'] {
-  opacity: 1;
-  stroke-width: 10;
-  filter: drop-shadow(0 0 8px currentcolor);
-}
-
-.chronosdial-segment[data-active='true'][data-time='night'] {
-  color: var(--time-night);
-}
-
-.chronosdial-segment[data-active='true'][data-time='day'] {
-  color: var(--time-day);
-}
-
-.chronosdial-origin {
-  fill: oklch(from var(--color-text-primary) l c h / 0.35);
-}
-
-.chronosdial-marker {
-  fill: var(--color-text-primary);
-  filter: drop-shadow(0 0 6px oklch(from var(--color-text-primary) l c h / 0.8));
-}
-
-.chronosdial-core {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  text-align: center;
-}
-
-.chronosdial-time {
-  font-family: var(--font-display);
-  font-size: clamp(1.3rem, 3vh, 1.8rem);
-  font-weight: var(--font-weight-bold);
-  line-height: 1;
-  letter-spacing: 0.08em;
-}
-
-.chronosdial[data-time='night'] .chronosdial-time {
-  color: var(--time-night);
-}
-
-.chronosdial[data-time='day'] .chronosdial-time {
-  color: var(--time-day);
-}
-
-.chronosdial-position {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.chronosdial-position-total {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-normal);
-  color: var(--color-text-muted);
-}
-
-.chronosdial-name {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  letter-spacing: var(--tracking-compact);
-  color: var(--color-text-muted);
-}
-
-.chronospanel-sm .chronosdial-name {
-  display: none;
+.chronosdial-slot[data-active='true'] .chronosdial-slot-inner {
+  border-color: rgb(255 255 255 / 0.78);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.35),
+    0 0 0 2px rgb(255 255 255 / 0.24),
+    0 0.24rem 0.72rem rgb(20 16 42 / 0.34);
 }
 
 /* ---------------------------------------------------------------- 玩家區 */
 .bf-player {
+  position: relative;
+  z-index: 0;
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--color-border-subtle);
+  padding: var(--space-2) var(--bf-edge-inset) var(--space-1);
+  background: var(--bf-player-surface);
+  border-top: 1px solid var(--bf-player-border);
+  color: var(--bf-player-text);
+  --bf-side-muted: var(--bf-player-muted);
+  --bf-side-text: var(--bf-player-text);
+  --bf-side-border: var(--bf-player-border);
+  --bf-side-shadow: var(--bf-player-shadow);
+}
+
+.bf-player > * {
+  position: relative;
+  z-index: 1;
 }
 
 .bf-hand-dock {
-  display: flex;
+  --bf-hand-side-width: clamp(18rem, 24vw, 24rem);
+
+  display: grid;
+  grid-template-columns: minmax(0, var(--bf-hand-side-width)) minmax(0, 1fr) minmax(0, var(--bf-hand-side-width));
   align-items: flex-end;
-  justify-content: space-between;
   gap: var(--space-3);
   width: 100%;
 }
@@ -703,6 +891,30 @@
 .bf-hand-dock > .playerstatus {
   flex: 0 0 auto;
   width: 16rem;
+}
+
+.playerstatus-row {
+  display: flex;
+  width: clamp(16rem, 19vw, 22rem);
+  min-width: 0;
+}
+
+.playerstatus-row > .playerstatus {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bf-hand-dock > .playerstatus-row {
+  width: 100%;
+}
+
+.bf-hand-dock > .handzone-fan {
+  justify-self: center;
+  width: min(100%, 32rem);
+}
+
+.bf-hand-dock > .actiondock {
+  justify-self: end;
 }
 
 .mobile-zone-button {
@@ -1424,6 +1636,10 @@ button.cardstack:focus-visible {
 
 /* ---- Tablet portrait + Mobile（<1024px）：直向戰場 ---- */
 @media (max-width: 63.9375rem) {
+  .bf-field {
+    --bf-edge-inset: var(--space-2);
+  }
+
   .bf-main {
     padding: calc(var(--control-height-sm) + var(--space-3)) var(--space-2) var(--space-1);
   }
@@ -1441,6 +1657,10 @@ button.cardstack:focus-visible {
     width: 100%;
   }
 
+  .bf-opponent > .playerstatus-row {
+    width: 100%;
+  }
+
   .bf-opponent-handbacks {
     display: none;
   }
@@ -1455,12 +1675,17 @@ button.cardstack:focus-visible {
   }
 
   .bf-hand-dock {
+    display: flex;
     flex-direction: column;
     align-items: stretch;
     gap: var(--space-1);
   }
 
   .bf-hand-dock > .playerstatus {
+    width: 100%;
+  }
+
+  .bf-hand-dock > .playerstatus-row {
     width: 100%;
   }
 
@@ -1568,10 +1793,6 @@ button.cardstack:focus-visible {
     right: var(--space-2);
   }
 
-  .bf-hud-phases {
-    display: none;
-  }
-
   .phaseindicator {
     position: static;
     order: -1;
@@ -1644,7 +1865,8 @@ button.cardstack:focus-visible {
   }
 
   .chronospanel-sm .chronosdial {
-    width: clamp(4.75rem, 23vw, 6rem);
+    width: clamp(8.25rem, 30vw, 10.5rem);
+    --chronos-slot-size: clamp(0.66rem, 8.4%, 0.92rem);
   }
 
   .battlezone {
@@ -1705,10 +1927,6 @@ button.cardstack:focus-visible {
     top: var(--space-1);
   }
 
-  .bf-hud-phases {
-    display: none;
-  }
-
   .phaseindicator {
     top: var(--space-1);
   }
@@ -1760,11 +1978,8 @@ button.cardstack:focus-visible {
 
   .chronosdial,
   .chronospanel-sm .chronosdial {
-    width: clamp(4.5rem, 17vh, 6rem);
-  }
-
-  .chronosdial-name {
-    display: none;
+    width: clamp(8rem, 30vh, 11.25rem);
+    --chronos-slot-size: clamp(0.64rem, 8.4%, 0.92rem);
   }
 
   .bf-player {
@@ -1811,7 +2026,12 @@ button.cardstack:focus-visible {
   }
 
   .chronosdial {
-    width: clamp(6.5rem, 19vh, 9.5rem);
+    width: clamp(10.5rem, 32vh, 15rem);
+    --chronos-slot-size: clamp(0.8rem, 8.8%, 1.12rem);
+  }
+
+  .bf-hand-dock {
+    --bf-hand-side-width: clamp(16rem, 22vw, 22rem);
   }
 
   .bf-hand-dock > .playerstatus {

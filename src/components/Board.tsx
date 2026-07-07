@@ -1605,15 +1605,6 @@ function BattleHud({
   onPause: () => void;
   onPanelChange: (panel: BattleSidePanel) => void;
 }) {
-  const phases = [
-    { label: t('board.phaseTrack.set' as never), active: G.step === 'initialSet' || G.step === 'turnSet' },
-    { label: t('board.phaseTrack.effect' as never), active: G.step === 'effectOrder' || !!G.pendingChoice },
-    {
-      label: t('board.phaseTrack.battle' as never),
-      active: Boolean(G.lastBattleResult?.damage) && G.turnNumber > 1,
-    },
-    { label: t('board.phaseTrack.end' as never), active: G.step === 'gameOver' },
-  ];
   return (
     <>
       <div className="bf-hud bf-hud-left" data-time={time}>
@@ -1631,13 +1622,6 @@ function BattleHud({
             {String(timeLeft).padStart(2, '0')}
             <span className="bf-hud-timer-unit">{t('board.secondsUnit')}</span>
           </span>
-        </div>
-        <div className="bf-hud-phases" aria-hidden="true">
-          {phases.map((phase) => (
-            <span key={phase.label} data-active={phase.active}>
-              {phase.label}
-            </span>
-          ))}
         </div>
       </div>
       <div className="bf-hud bf-hud-right">
@@ -1970,6 +1954,9 @@ function BattleBoard({
 
   const initialSetUndo =
     G.step === 'initialSet' && me.battleZone && !G.ready[meIndex] ? () => moves.undoSetCard('A') : undefined;
+  const fieldNightSide = G.chronos.nightSidePlayer === meIndex ? 'me' : 'opponent';
+  const setZoneChronosSide = (owner: PlayerIndex): ChronosTime =>
+    owner === G.chronos.nightSidePlayer ? 'night' : 'day';
 
   // 官方規則：戰鬥區攻擊力（依晝夜、Power 不足時視為 0）必須常駐可見。
   const battleAttack = (card: CardInstance | null, owner: PlayerIndex): BattleZoneAttack | null => {
@@ -2011,12 +1998,12 @@ function BattleBoard({
 
       <PhaseIndicator instruction={currentInstruction} compact={viewport.mode !== 'desktop'} />
 
-      <div className="bf-main">
+      <div className="bf-main" data-night-side={fieldNightSide}>
         {/* ===== 戰場 ===== */}
-        <div className="bf-field" data-time={time}>
+        <div className="bf-field" data-time={time} data-night-side={fieldNightSide}>
           {/* 對手區 */}
           <section className="bf-opponent" aria-label={t('player.opponent')}>
-            <div className={touchLike ? 'mobile-status-row' : undefined}>
+            <div className={touchLike ? 'mobile-status-row' : 'playerstatus-row'}>
               <PlayerStatus
                 side="opponent"
                 name={playerName(opponentIndex)}
@@ -2045,6 +2032,7 @@ function BattleBoard({
                 side="opponent"
                 size="sm"
                 card={opponent.setZoneA}
+                chronosSide={setZoneChronosSide(opponentIndex)}
                 onActivate={detailActivate(opponent.setZoneA, opponentIndex, zoneNames.A)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.A)}
               />
@@ -2053,6 +2041,7 @@ function BattleBoard({
                 side="opponent"
                 size="sm"
                 card={opponent.setZoneB}
+                chronosSide={setZoneChronosSide(opponentIndex)}
                 onActivate={detailActivate(opponent.setZoneB, opponentIndex, zoneNames.B)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.B)}
               />
@@ -2061,6 +2050,7 @@ function BattleBoard({
                 side="opponent"
                 size="sm"
                 card={opponent.setZoneC}
+                chronosSide={setZoneChronosSide(opponentIndex)}
                 onActivate={detailActivate(opponent.setZoneC, opponentIndex, zoneNames.C)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.C)}
               />
@@ -2122,6 +2112,7 @@ function BattleBoard({
                   slot="A"
                   side="me"
                   card={me.setZoneA}
+                  chronosSide={setZoneChronosSide(meIndex)}
                   state={meSlotUndo('A', me.setZoneA) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('A', me.setZoneA) ?? detailActivate(me.setZoneA, meIndex, zoneNames.A)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.A)}
@@ -2130,6 +2121,7 @@ function BattleBoard({
                   slot="B"
                   side="me"
                   card={me.setZoneB}
+                  chronosSide={setZoneChronosSide(meIndex)}
                   state={meSlotUndo('B', me.setZoneB) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('B', me.setZoneB) ?? detailActivate(me.setZoneB, meIndex, zoneNames.B)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.B)}
@@ -2138,6 +2130,7 @@ function BattleBoard({
                   slot="C"
                   side="me"
                   card={me.setZoneC}
+                  chronosSide={setZoneChronosSide(meIndex)}
                   state={meSlotUndo('C', me.setZoneC) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('C', me.setZoneC) ?? detailActivate(me.setZoneC, meIndex, zoneNames.C)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.C)}
@@ -2156,7 +2149,7 @@ function BattleBoard({
               )}
             </div>
             <div className="bf-hand-dock" data-tut="player-actions">
-              <div className={touchLike ? 'mobile-status-row' : undefined}>
+              <div className={touchLike ? 'mobile-status-row' : 'playerstatus-row'}>
                 <PlayerStatus
                   side="me"
                   name={playerName(meIndex)}

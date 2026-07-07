@@ -68,6 +68,7 @@ export function CardSlot({
         type="button"
         className={cls}
         data-state={state}
+        data-empty="true"
         data-tut={tutId}
         aria-label={ariaLabel}
         onClick={onActivate}
@@ -78,7 +79,14 @@ export function CardSlot({
   }
 
   return (
-    <div className={cls} data-state={state} data-tut={tutId} role="group" aria-label={ariaLabel}>
+    <div
+      className={cls}
+      data-state={state}
+      data-empty={card ? 'false' : 'true'}
+      data-tut={tutId}
+      role="group"
+      aria-label={ariaLabel}
+    >
       {inner}
     </div>
   );

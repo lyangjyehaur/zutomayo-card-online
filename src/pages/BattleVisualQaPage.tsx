@@ -27,7 +27,13 @@ const BATTLE_QA_STATES = [
   { id: 'game-over', label: 'Game Over' },
 ] as const;
 
+const BATTLE_QA_SIDES = [
+  { id: 'night', label: 'Me Night' },
+  { id: 'day', label: 'Me Day' },
+] as const;
+
 type BattleQaStateId = (typeof BATTLE_QA_STATES)[number]['id'];
+type BattleQaSideId = (typeof BATTLE_QA_SIDES)[number]['id'];
 
 const REQUIRED_QA_CARD_IDS = [...new Set([...TUTORIAL_DECK0_IDS, ...TUTORIAL_DECK1_IDS])];
 
@@ -249,27 +255,31 @@ function setTurnCardFromHand(G: GameState, player: PlayerIndex, defId: string, s
   }
 }
 
-function createMulliganState(): GameState {
+function createMulliganState(side: BattleQaSideId): GameState {
   const G = createTutorialGame();
-  resolveJanken(G, 'rock', 'scissors');
+  if (side === 'day') {
+    resolveJanken(G, 'scissors', 'rock');
+  } else {
+    resolveJanken(G, 'rock', 'scissors');
+  }
   return G;
 }
 
-function createInitialSetBase(): GameState {
-  const G = createMulliganState();
+function createInitialSetBase(side: BattleQaSideId): GameState {
+  const G = createMulliganState(side);
   finishMulligan(G, 0, [0]);
   finishMulligan(G, 1, []);
   return G;
 }
 
-function createInitialSetState(): GameState {
-  const G = createInitialSetBase();
+function createInitialSetState(side: BattleQaSideId): GameState {
+  const G = createInitialSetBase(side);
   setCardFromHand(G, 0, '1st_70', setInitialCard);
   return G;
 }
 
-function createTurnOneResolvedState(parsedEffects: Map<string, ParsedEffect[]>): GameState {
-  const G = createInitialSetBase();
+function createTurnOneResolvedState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createInitialSetBase(side);
   setCardFromHand(G, 0, '1st_70', setInitialCard);
   setCardFromHand(G, 1, '1st_67', setInitialCard);
   confirmReady(G, 0, parsedEffects);
@@ -280,8 +290,8 @@ function createTurnOneResolvedState(parsedEffects: Map<string, ParsedEffect[]>):
   return G;
 }
 
-function createTurnSetState(parsedEffects: Map<string, ParsedEffect[]>): GameState {
-  const G = createTurnOneResolvedState(parsedEffects);
+function createTurnSetState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createTurnOneResolvedState(parsedEffects, side);
   clearTransientQaOverlays(G);
   setTurnCardFromHand(G, 0, '1st_34', 'A');
   setTurnCardFromHand(G, 0, '2nd_86', 'B');
@@ -353,8 +363,8 @@ function createQaEffect(
   };
 }
 
-function createEffectOrderState(parsedEffects: Map<string, ParsedEffect[]>): GameState {
-  const G = prepareEffectField(createTurnSetState(parsedEffects));
+function createEffectOrderState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = prepareEffectField(createTurnSetState(parsedEffects, side));
   const playerArea = G.players[0].setZoneC;
   const opponentEnchant = G.players[1].setZoneA;
   if (!playerArea || !opponentEnchant) throw new Error('Unable to prepare QA pending effects');
@@ -366,8 +376,8 @@ function createEffectOrderState(parsedEffects: Map<string, ParsedEffect[]>): Gam
   return G;
 }
 
-function createPendingChoiceState(parsedEffects: Map<string, ParsedEffect[]>): GameState {
-  const G = createEffectOrderState(parsedEffects);
+function createPendingChoiceState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createEffectOrderState(parsedEffects, side);
   const options = G.players[0].hand.slice(0, 3).map((card) => ({
     id: card.instanceId,
     label: getCardDef(card.defId)?.name ?? card.defId,
@@ -394,8 +404,8 @@ function createPendingChoiceState(parsedEffects: Map<string, ParsedEffect[]>): G
   return G;
 }
 
-function createGameOverState(parsedEffects: Map<string, ParsedEffect[]>): GameState {
-  const G = prepareEffectField(createTurnSetState(parsedEffects));
+function createGameOverState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = prepareEffectField(createTurnSetState(parsedEffects, side));
   G.step = 'gameOver';
   G.ready = [true, true];
   G.winner = 0;
@@ -413,15 +423,19 @@ function normalizeStateId(value: string | null): BattleQaStateId {
   return BATTLE_QA_STATES.some((state) => state.id === value) ? (value as BattleQaStateId) : 'turn-set';
 }
 
-function createBattleQaState(id: BattleQaStateId): GameState {
+function normalizeSideId(value: string | null): BattleQaSideId {
+  return BATTLE_QA_SIDES.some((side) => side.id === value) ? (value as BattleQaSideId) : 'night';
+}
+
+function createBattleQaState(id: BattleQaStateId, side: BattleQaSideId): GameState {
   const parsedEffects = createParsedEffects();
   if (id === 'janken') return createTutorialGame();
-  if (id === 'mulligan') return createMulliganState();
-  if (id === 'initial-set') return createInitialSetState();
-  if (id === 'turn-set') return createTurnSetState(parsedEffects);
-  if (id === 'effect-order') return createEffectOrderState(parsedEffects);
-  if (id === 'pending-choice') return createPendingChoiceState(parsedEffects);
-  return createGameOverState(parsedEffects);
+  if (id === 'mulligan') return createMulliganState(side);
+  if (id === 'initial-set') return createInitialSetState(side);
+  if (id === 'turn-set') return createTurnSetState(parsedEffects, side);
+  if (id === 'effect-order') return createEffectOrderState(parsedEffects, side);
+  if (id === 'pending-choice') return createPendingChoiceState(parsedEffects, side);
+  return createGameOverState(parsedEffects, side);
 }
 
 const noopMoves: BoardComponentProps['moves'] = {
@@ -450,7 +464,7 @@ function createQaCtx(G: GameState): BoardComponentProps['ctx'] {
   } as BoardComponentProps['ctx'];
 }
 
-function QaControls({ selectedState }: { selectedState: BattleQaStateId }) {
+function QaControls({ selectedState, selectedSide }: { selectedState: BattleQaStateId; selectedSide: BattleQaSideId }) {
   return (
     <aside className="fixed bottom-3 left-3 z-[var(--z-modal)] max-w-[calc(100vw-1.5rem)] rounded-sm border border-content-primary/10 bg-surface-canvas/90 p-2 font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/55 shadow-raised backdrop-blur">
       <div className="mb-1 text-accent-primary/70">Battle QA</div>
@@ -463,9 +477,24 @@ function QaControls({ selectedState }: { selectedState: BattleQaStateId }) {
                 ? 'bg-accent-primary text-surface-base'
                 : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
             }`}
-            to={`/qa/battle?state=${state.id}`}
+            to={`/qa/battle?state=${state.id}&side=${selectedSide}`}
           >
             {state.label}
+          </Link>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {BATTLE_QA_SIDES.map((side) => (
+          <Link
+            key={side.id}
+            className={`rounded-xs px-2 py-1 transition ${
+              selectedSide === side.id
+                ? 'bg-accent-action text-surface-base'
+                : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
+            }`}
+            to={`/qa/battle?state=${selectedState}&side=${side.id}`}
+          >
+            {side.label}
           </Link>
         ))}
       </div>
@@ -476,23 +505,26 @@ function QaControls({ selectedState }: { selectedState: BattleQaStateId }) {
 export function BattleVisualQaPage() {
   const [searchParams] = useSearchParams();
   const selectedState = normalizeStateId(searchParams.get('state'));
+  const selectedSide = normalizeSideId(searchParams.get('side'));
   const showControls = searchParams.get('controls') !== '0';
 
   const fixture = useMemo(() => {
     try {
       ensureBattleQaCards();
-      return { G: createBattleQaState(selectedState), error: null };
+      return { G: createBattleQaState(selectedState, selectedSide), error: null };
     } catch (error) {
       return { G: null, error: error instanceof Error ? error.message : String(error) };
     }
-  }, [selectedState]);
+  }, [selectedState, selectedSide]);
 
   useEffect(() => {
     document.documentElement.dataset.battleQaState = fixture.G ? selectedState : '';
+    document.documentElement.dataset.battleQaSide = fixture.G ? selectedSide : '';
     return () => {
       delete document.documentElement.dataset.battleQaState;
+      delete document.documentElement.dataset.battleQaSide;
     };
-  }, [fixture.G, selectedState]);
+  }, [fixture.G, selectedState, selectedSide]);
 
   if (fixture.error) {
     return (
@@ -514,6 +546,7 @@ export function BattleVisualQaPage() {
     <main
       className="relative h-full min-h-0 w-full overflow-hidden bg-surface-canvas"
       data-battle-qa-state={selectedState}
+      data-battle-qa-side={selectedSide}
     >
       <Board
         G={fixture.G}
@@ -532,12 +565,12 @@ export function BattleVisualQaPage() {
         sendChatMessage={() => undefined}
         chatMessages={[]}
         playerID="0"
-        matchID={`qa-${selectedState}`}
+        matchID={`qa-${selectedState}-${selectedSide}`}
         isActive
         isConnected
         isMultiplayer={false}
       />
-      {showControls && <QaControls selectedState={selectedState} />}
+      {showControls && <QaControls selectedState={selectedState} selectedSide={selectedSide} />}
     </main>
   );
 }
