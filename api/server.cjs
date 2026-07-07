@@ -95,7 +95,13 @@ const LOGTO_DISCOVERY_URL =
     : LOGTO_ENDPOINT
       ? `${LOGTO_ENDPOINT}/oidc/.well-known/openid-configuration`
       : '');
-const LOGTO_ACCOUNT_CENTER_URL = process.env.LOGTO_ACCOUNT_CENTER_URL || '';
+const LOGTO_ACCOUNT_CENTER_URL =
+  process.env.LOGTO_ACCOUNT_CENTER_URL ||
+  (LOGTO_ENDPOINT
+    ? `${LOGTO_ENDPOINT}/account`
+    : LOGTO_ISSUER
+      ? `${LOGTO_ISSUER.replace(/\/oidc$/, '')}/account`
+      : '');
 
 // 安全性驗證：JWT_SECRET 必須在生產環境設定
 function validateSecurityConfig() {
