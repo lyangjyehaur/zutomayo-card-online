@@ -30,6 +30,8 @@ services:
       - REDIS_DB=0
       - API_URL=${API_URL:-http://api:3001}
       - SENTRY_DSN=${SENTRY_DSN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
     networks:
       - default
       - 1panel-network
@@ -60,6 +62,7 @@ services:
       - PG_PORT=5432
       - REDIS_DB=0
       - SENTRY_DSN=${SENTRY_DSN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     networks:
       - default
       - 1panel-network

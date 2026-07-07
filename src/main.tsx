@@ -6,9 +6,11 @@ import { registerPwaAutoUpdate } from './clientVersion';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastProvider } from './components/ToastProvider';
 import { initSentry } from './sentry';
+import { initWebVitals } from './webVitals';
 
 initSentry();
 initAnalytics();
+initWebVitals();
 registerPwaAutoUpdate();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

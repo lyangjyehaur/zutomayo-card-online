@@ -62,6 +62,8 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
       - SENTRY_DSN=${SENTRY_DSN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,6 +102,7 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy
