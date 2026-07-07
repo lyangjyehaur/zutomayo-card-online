@@ -15,6 +15,7 @@ import {
 import { getRegistrationNickname } from '../../anonymousIdentity';
 import { t } from '../../i18n';
 import { Alert, Button, Dialog, Input, SegmentedControl } from '../../ui';
+import { useOptionalToast } from '../ToastProvider';
 import { UserAvatar } from '../UserAvatar';
 
 export type AuthMode = 'login' | 'register';
@@ -31,6 +32,7 @@ export type AuthUser = {
 };
 
 export const PUBLIC_AUTH_ENTRYPOINTS_ENABLED = true;
+let lastHandledOAuthNotice = '';
 
 function authErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
@@ -53,6 +55,19 @@ function profileStats(user: AuthUser): { matchCount: number; wins: number; winRa
   return { matchCount, wins, winRate };
 }
 
+function cleanOAuthSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete('oauth');
+  params.delete('oauth_error');
+  const next = params.toString();
+  return next ? `?${next}` : '';
+}
+
+function oauthErrorBody(reason: string | null): string | undefined {
+  if (!reason) return undefined;
+  return reason.replace(/_/g, ' ');
+}
+
 export function AuthSection({
   onAuthChanged,
   compact,
@@ -62,6 +77,7 @@ export function AuthSection({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const toast = useOptionalToast();
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
@@ -76,8 +92,25 @@ export function AuthSection({
   const [localAuthEnabled, setLocalAuthEnabled] = useState(true);
 
   useEffect(() => {
-    const oauthStatus = new URLSearchParams(location.search).get('oauth');
-    if (oauthStatus === 'error') setError(t('auth.loginRedirectFailed'));
+    const params = new URLSearchParams(location.search);
+    const oauthStatus = params.get('oauth');
+    const oauthError = params.get('oauth_error');
+    if (oauthStatus === 'login' || oauthStatus === 'error') {
+      const noticeKey = `${location.pathname}${location.search}${location.hash}`;
+      if (lastHandledOAuthNotice !== noticeKey) {
+        lastHandledOAuthNotice = noticeKey;
+        if (oauthStatus === 'login') {
+          toast?.showToast({ kind: 'success', title: t('auth.loginSuccess') });
+          setStatus(t('auth.loginSuccess'));
+          void onAuthChanged();
+        } else {
+          const body = oauthErrorBody(oauthError);
+          toast?.showToast({ kind: 'error', title: t('auth.loginRedirectFailed'), body });
+          setError(body ? `${t('auth.loginRedirectFailed')} (${body})` : t('auth.loginRedirectFailed'));
+        }
+      }
+      navigate(`${location.pathname}${cleanOAuthSearch(location.search)}${location.hash}`, { replace: true });
+    }
 
     getAuthConfig()
       .then((config) => {
@@ -102,7 +135,7 @@ export function AuthSection({
     return () => {
       cancelled = true;
     };
-  }, [location.search]);
+  }, [location.hash, location.pathname, location.search, navigate, onAuthChanged, toast]);
 
   const resetForm = () => {
     setEmail('');
@@ -159,7 +192,8 @@ export function AuthSection({
   };
 
   const handleOAuthLogin = (provider: OAuthProvider) => {
-    window.location.assign(getOAuthStartUrl(provider.provider, 'login', '/'));
+    const returnTo = `${location.pathname}${cleanOAuthSearch(location.search)}${location.hash}`;
+    window.location.assign(getOAuthStartUrl(provider.provider, 'login', returnTo || '/'));
   };
 
   const openProfile = () => {

@@ -622,6 +622,15 @@ function verifyOAuthState(state) {
   }
 }
 
+function oauthErrorReason(error) {
+  const reason = String(error || 'unknown_error')
+    .trim()
+    .replace(/[^a-zA-Z0-9._ -]/g, '')
+    .replace(/\s+/g, '_')
+    .slice(0, 120);
+  return reason || 'unknown_error';
+}
+
 function oauthReturnScript({ token, returnTo, error }) {
   const safeReturnTo = typeof returnTo === 'string' && returnTo.startsWith('/') ? returnTo : '/';
   const url = new URL(`http://localhost${safeReturnTo}`);
@@ -630,6 +639,7 @@ function oauthReturnScript({ token, returnTo, error }) {
   if (!error && !token) url.searchParams.set('oauth', 'linked');
   const errorUrl = new URL(url.toString());
   errorUrl.searchParams.set('oauth', 'error');
+  if (error) errorUrl.searchParams.set('oauth_error', oauthErrorReason(error));
   const target = `${url.pathname}${url.search}${url.hash}`;
   const errorTarget = `${errorUrl.pathname}${errorUrl.search}${errorUrl.hash}`;
   return `<!doctype html><meta charset="utf-8"><script>
@@ -644,7 +654,9 @@ function oauthReturnScript({ token, returnTo, error }) {
         ? `const response = await fetch('/api/profile', { credentials: 'include', cache: 'no-store' });
     if (!response.ok) {
       localStorage.removeItem('zutomayo_session');
-      location.replace(errorTarget);
+      const failedUrl = new URL(errorTarget, location.origin);
+      failedUrl.searchParams.set('oauth_error', 'session_check_failed_' + response.status);
+      location.replace(failedUrl.pathname + failedUrl.search + failedUrl.hash);
       return;
     }`
         : ''
@@ -652,7 +664,9 @@ function oauthReturnScript({ token, returnTo, error }) {
     location.replace(target);
   } catch (e) {
     localStorage.removeItem('zutomayo_session');
-    location.replace(errorTarget);
+    const failedUrl = new URL(errorTarget, location.origin);
+    failedUrl.searchParams.set('oauth_error', 'session_check_network');
+    location.replace(failedUrl.pathname + failedUrl.search + failedUrl.hash);
   }
 })();
 </script>`;
