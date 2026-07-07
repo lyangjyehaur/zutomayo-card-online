@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createDeck, getDecks, isLoggedIn, updateDeck, type DeckResponse } from '../api/client';
 import { DeckEditor } from '../components/DeckEditor';
 import { useToast } from '../components/ToastProvider';
+import { Sentry } from '../sentry';
 import {
   createDeckExport,
   customDeckIdFromOption,
@@ -223,7 +224,8 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
       setSaveError('');
       setEditorRevision((value) => value + 1);
       showToast({ title: t('deckEditor.importSuccess'), kind: 'success' });
-    } catch {
+    } catch (err) {
+      Sentry.captureException(err, { tags: { action: 'deck-import' } });
       showToast({ title: t('deckEditor.importError'), kind: 'error' });
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';

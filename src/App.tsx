@@ -8,6 +8,7 @@ import { ensureCompatibleAppVersion } from './clientVersion';
 import { NetworkStatusNotifier } from './components/NetworkStatusNotifier';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PwaStatusPrompt } from './components/PwaStatusPrompt';
+import { Sentry } from './sentry';
 import { Button, IconButton } from './ui';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
@@ -92,7 +93,12 @@ async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
     body: JSON.stringify({ numPlayers: 2, setupData: { ...setupData, clientVersion: APP_VERSION_INFO } }),
   });
   if (response.status === 426) throw onlineRoomError('online.versionMismatch');
-  if (!response.ok) throw onlineRoomError('online.connectionFailed');
+  if (!response.ok) {
+    Sentry.captureException(new Error(`createMatch failed: HTTP ${response.status}`), {
+      tags: { action: 'create-match', http_status: String(response.status) },
+    });
+    throw onlineRoomError('online.connectionFailed');
+  }
   const data = await response.json();
   return data.matchID;
 }
@@ -133,6 +139,9 @@ async function joinMatch(
     if (response.status === 426) throw onlineRoomError('online.versionMismatch');
     if (response.status === 404) throw onlineRoomError('online.roomNotFound');
     if (response.status === 409) throw onlineRoomError('online.roomFull');
+    Sentry.captureException(new Error(`joinMatch failed: HTTP ${response.status}`), {
+      tags: { action: 'join-match', http_status: String(response.status), match_id: matchID },
+    });
     throw onlineRoomError('online.connectionFailed');
   }
   return response.json();
@@ -390,6 +399,8 @@ function RouterShell() {
 
   useEffect(() => {
     trackPageView(`${location.pathname}${location.search}`);
+    // 同步 route tag 到 Sentry，便於後台依頁面篩選錯誤。
+    Sentry.setTag('route', location.pathname);
   }, [location.pathname, location.search]);
 
   useEffect(() => {

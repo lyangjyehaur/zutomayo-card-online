@@ -28,6 +28,7 @@ import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
 import { Alert, AppHeader, Button, Input, PageShell, Panel } from '../ui';
 import { useOnlinePresence } from '../hooks/useOnlinePresence';
+import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
 import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
@@ -229,6 +230,7 @@ export function OnlineLobbyPage({
       const nextSession = await onStartOnline(id, effectivePlayerName);
       setCreatedMatchID(id ? '' : nextSession.matchID);
     } catch (err) {
+      Sentry.captureException(err, { tags: { action: 'start-online' } });
       setError(onlineErrorMessage(err));
     }
   };
@@ -243,6 +245,7 @@ export function OnlineLobbyPage({
     } catch (err) {
       if (cancelRef.current) return;
       if (phaseRef.current !== 'polling') return;
+      Sentry.captureException(err, { tags: { action: 'matchmaking-status' } });
       resetMatchmaking();
       setError(onlineErrorMessage(err));
       return;
@@ -263,6 +266,7 @@ export function OnlineLobbyPage({
         } catch (err) {
           phaseRef.current = 'idle';
           setMatchmakingActive(false);
+          Sentry.captureException(err, { tags: { action: 'matchmaking-host-start' } });
           setError(onlineErrorMessage(err));
           void matchmakingLeave().catch(() => {});
         }
@@ -275,6 +279,7 @@ export function OnlineLobbyPage({
         } catch (err) {
           phaseRef.current = 'idle';
           setMatchmakingActive(false);
+          Sentry.captureException(err, { tags: { action: 'matchmaking-guest-join' } });
           setError(onlineErrorMessage(err));
           void matchmakingLeave().catch(() => {});
         }
@@ -299,6 +304,7 @@ export function OnlineLobbyPage({
     try {
       await matchmakingQueue();
     } catch (err) {
+      Sentry.captureException(err, { tags: { action: 'matchmaking-queue' } });
       resetMatchmaking();
       setError(onlineErrorMessage(err));
       // 顯示錯誤 Toast 並提供重試按鈕

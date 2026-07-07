@@ -4,6 +4,7 @@ import { isVersionMismatchError, reloadForAppUpdate } from '../clientVersion';
 import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
 import { Alert, Button, Dialog, PageShell, Panel } from '../ui';
+import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
 import {
   clearStoredOnlineSession,
@@ -47,7 +48,8 @@ async function fetchRoom(
     const data = (await response.json()) as MatchResponse;
     const opponentJoined = Boolean(data.players?.some((player) => player.id === 1 && player.name));
     return { ok: true, opponentJoined };
-  } catch {
+  } catch (err) {
+    Sentry.captureException(err, { tags: { action: 'fetch-room', match_id: matchID } });
     return { ok: false, reason: 'connectionFailed' };
   }
 }
@@ -260,6 +262,7 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
       onClearSession();
       await onCreateNewRoom();
     } catch (err) {
+      Sentry.captureException(err, { tags: { action: 'create-room' } });
       setActionError(
         isVersionMismatchError(err)
           ? translate(locale, 'online.versionMismatchBody')

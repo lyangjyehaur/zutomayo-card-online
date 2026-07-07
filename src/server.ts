@@ -74,12 +74,26 @@ function authenticateVersionedCredentials(
 if (process.env.SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || 'development',
+    // 支援 staging/preview 等環境：若顯式設定 SENTRY_ENVIRONMENT 則優先使用。
+    environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
     release: `${APP_VERSION_INFO.appVersion}@${APP_VERSION_INFO.buildId}`,
     tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
+    // GlitchTip 不支援 session replay；@sentry/node 10.x 不再支援 autoSessionTracking 選項。
+    normalizeDepth: 5,
+    sendDefaultPii: false,
+    beforeSend(event) {
+      // 移除 request 中的敏感 header / cookie / body，避免 token / 密碼外洩。
+      if (event.request) {
+        delete event.request.headers;
+        delete event.request.cookies;
+        delete event.request.data;
+      }
+      return event;
+    },
     initialScope: {
       tags: {
         service: 'game',
+        app: 'zutomayo-card',
       },
     },
   });
@@ -497,7 +511,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
       resolve();
     });
 
-    proxyReq.on('error', () => {
+    proxyReq.on('error', (err: Error) => {
+      Sentry.captureException(err, { tags: { layer: 'api-proxy', route: ctx.path } });
       ctx.status = 502;
       ctx.body = JSON.stringify({ error: 'API server unavailable' });
       resolve();
@@ -623,11 +638,13 @@ async function bootstrap(): Promise<void> {
       type SocketLike = {
         id: string;
         handshake: { address: string };
-        on: (event: string, cb: () => void) => void;
+        on: (event: string, cb: (err?: Error) => void) => void;
         disconnect: (close?: boolean) => void;
       };
       const transport = server.transport as unknown as {
-        io?: { on: (event: string, cb: (socket: SocketLike) => void) => void };
+        io?: {
+          on: (event: string, cb: (socket: SocketLike) => void) => void;
+        };
       };
       const io = transport.io;
       if (io) {
@@ -647,6 +664,14 @@ async function bootstrap(): Promise<void> {
             if (c <= 1) connectionsPerIp.delete(ip);
             else connectionsPerIp.set(ip, c - 1);
             activeSocketConnections.dec();
+          });
+          // Socket 層錯誤上報 Sentry，帶 socket_id tag 便於追蹤單一連線問題。
+          socket.on('error', (err?: Error) => {
+            if (err) {
+              Sentry.captureException(err, {
+                tags: { layer: 'socket.io', socket_id: socket.id },
+              });
+            }
           });
         });
         logger.info({ maxPerIp: MAX_CONN_PER_IP }, 'socket.io per-IP connection limiter attached');
