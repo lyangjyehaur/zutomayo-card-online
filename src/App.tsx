@@ -51,6 +51,7 @@ const LeaderboardPage = lazy(() =>
   import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
 );
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((module) => ({ default: module.FeedbackPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })));
 const BattleVisualQaPage = lazy(() =>
   import('./pages/BattleVisualQaPage').then((module) => ({ default: module.BattleVisualQaPage })),
 );
@@ -72,7 +73,8 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/ai' ||
     pathname === '/tutorial' ||
     pathname === '/history' ||
-    pathname === '/leaderboard'
+    pathname === '/leaderboard' ||
+    pathname === '/profile'
   );
 }
 
@@ -150,6 +152,7 @@ function NavBar() {
     { path: '/ai', label: t('lobby.aiBattle') },
     { path: '/deck-builder', label: t('nav.deckBuilder') },
     { path: '/feedback', label: t('nav.feedback') },
+    { path: '/profile', label: t('nav.profile') },
     { path: '/tutorial', label: t('nav.tutorial') },
   ];
 
@@ -183,6 +186,15 @@ function NavBar() {
           ))}
         </div>
         <div className="rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">
+          <Button
+            className={navButtonClass('/profile')}
+            variant="ghost"
+            size="sm"
+            type="button"
+            onClick={() => goTo('/profile')}
+          >
+            {t('nav.profile')}
+          </Button>
           <Button
             className={navButtonClass('/tutorial')}
             variant="ghost"
@@ -593,6 +605,7 @@ function RouterShell() {
             <Route path="/history" element={<MatchHistoryPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/admin/i18n" element={<I18nManager />} />
             <Route path="/qa/battle" element={<BattleVisualQaPage />} />

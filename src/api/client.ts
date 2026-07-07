@@ -18,11 +18,38 @@ export interface ProfileResponse {
   id: string;
   email: string;
   nickname: string;
+  avatarUrl?: string;
+  avatarFallbackUrls?: string[];
   elo: number;
   matchCount: number;
   wins: number;
   winRate: number;
   createdAt: string;
+}
+
+export type OAuthProviderId = 'logto' | 'google' | 'github' | 'discord';
+
+export interface OAuthProvider {
+  provider: OAuthProviderId;
+  label: string;
+  enabled: boolean;
+}
+
+export interface AuthConfig {
+  authMode: 'hybrid' | 'logto' | string;
+  localAuthEnabled: boolean;
+  accountLinkingEnabled: boolean;
+  providers: OAuthProvider[];
+}
+
+export interface OAuthIdentity {
+  provider: OAuthProviderId;
+  providerUserId: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string;
+  linkedAt: string;
+  updatedAt: string;
 }
 
 export interface LeaderboardEntry {
@@ -370,18 +397,44 @@ interface AuthResponse {
 }
 
 export async function register(email: string, password: string, nickname?: string) {
+  return registerWithVerification({ email, password, nickname });
+}
+
+export async function registerWithVerification({
+  email,
+  password,
+  nickname,
+  verificationToken,
+}: {
+  email: string;
+  password: string;
+  nickname?: string;
+  verificationToken?: string;
+}) {
   const data = await request<AuthResponse>('/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password, nickname }),
+    body: JSON.stringify({ email, password, nickname, verificationToken }),
   });
   localStorage.setItem('zutomayo_token', data.token);
   return data.user;
 }
 
 export async function login(email: string, password: string) {
+  return loginWithVerification({ email, password });
+}
+
+export async function loginWithVerification({
+  email,
+  password,
+  verificationToken,
+}: {
+  email: string;
+  password: string;
+  verificationToken?: string;
+}) {
   const data = await request<AuthResponse>('/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, verificationToken }),
   });
   localStorage.setItem('zutomayo_token', data.token);
   return data.user;
@@ -398,6 +451,50 @@ export function isLoggedIn(): boolean {
 // ===== Profile =====
 export async function getProfile(): Promise<ProfileResponse> {
   return request('/profile');
+}
+
+export async function updateProfile(nickname: string): Promise<ProfileResponse> {
+  return request('/profile', {
+    method: 'PUT',
+    body: JSON.stringify({ nickname }),
+  });
+}
+
+export async function updatePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean }> {
+  return request('/profile/password', {
+    method: 'PUT',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export async function getOAuthProviders(): Promise<OAuthProvider[]> {
+  return (await getAuthConfig()).providers;
+}
+
+export async function getAuthConfig(): Promise<AuthConfig> {
+  const data = await request<Partial<AuthConfig> & { providers?: OAuthProvider[] }>('/oauth/providers');
+  return {
+    authMode: data.authMode || 'hybrid',
+    localAuthEnabled: data.localAuthEnabled ?? true,
+    accountLinkingEnabled: data.accountLinkingEnabled ?? true,
+    providers: data.providers || [],
+  };
+}
+
+export async function getLinkedOAuthIdentities(): Promise<OAuthIdentity[]> {
+  const data = await request<{ identities: OAuthIdentity[] }>('/profile/identities');
+  return data.identities;
+}
+
+export async function unlinkOAuthIdentity(provider: OAuthProviderId): Promise<{ unlinked: boolean; provider: string }> {
+  return request(`/profile/identities/${encodeURIComponent(provider)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function getOAuthStartUrl(provider: OAuthProviderId, mode: 'login' | 'link', returnTo = '/'): string {
+  const target = returnTo.startsWith('/') ? returnTo : '/';
+  return `${API_BASE}/oauth/${encodeURIComponent(provider)}/start?mode=${mode}&returnTo=${encodeURIComponent(target)}`;
 }
 
 // ===== Decks =====
