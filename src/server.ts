@@ -6,7 +6,7 @@ import { APP_VERSION_INFO, isCompatibleVersion, normalizeVersionInfo, type AppVe
 import path from 'path';
 import fs from 'fs';
 import serve from 'koa-static';
-import type { DefaultContext, Next } from 'koa';
+import type { Next, ParameterizedContext } from 'koa';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import Redis from 'ioredis';
@@ -14,15 +14,20 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { Pool } from 'pg';
 import { PostgresAdapter } from './server/db/postgres-adapter';
 import { RedisPubSub } from './server/transport/redis-pubsub';
+import * as Sentry from '@sentry/node';
+import helmet from 'koa-helmet';
+import { logger, requestLoggingMiddleware } from './server/observability/logger';
+import { metricsMiddleware, metricsEndpoint, activeSocketConnections } from './server/observability/metrics';
+import { createRateLimit } from './server/rateLimit';
 
 const require = createRequire(import.meta.url);
 const { Server, SocketIO } = require('boardgame.io/server') as typeof import('boardgame.io/server');
 const koaBody = require('koa-body') as typeof import('koa-body');
 
 // 擴充 Koa context 以涵蓋 koa-body（request.body）與 @koa/router（params）注入的屬性。
-interface KoaContext extends DefaultContext {
+interface KoaContext extends ParameterizedContext {
   params: Record<string, string>;
-  request: DefaultContext['request'] & { body?: unknown };
+  request: ParameterizedContext['request'] & { body?: unknown };
 }
 
 type VersionedPlayerData = Record<string, unknown> & { clientVersion?: unknown };
@@ -63,6 +68,16 @@ function authenticateVersionedCredentials(
 ): boolean {
   if (!credentials || !playerMetadata?.credentials || credentials !== playerMetadata.credentials) return false;
   return Boolean(compatibleClientVersion(playerMetadata.data?.clientVersion));
+}
+
+// GlitchTip/Sentry error tracking — no-op when SENTRY_DSN is unset.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    release: `${APP_VERSION_INFO.appVersion}@${APP_VERSION_INFO.buildId}`,
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
+  });
 }
 
 const configuredOrigins =
@@ -168,7 +183,7 @@ async function loadCardsFromPG(): Promise<void> {
   const cards = rows.map((row) => cardRowToDef(row as Record<string, unknown>));
   initCards(cards);
   resetParsedEffects();
-  console.log(`[server] Loaded ${cards.length} cards from PostgreSQL`);
+  logger.info({ count: cards.length }, 'loaded cards from PostgreSQL');
 
   const i18nRows = await cardPool.query(
     'SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang',
@@ -180,7 +195,7 @@ async function loadCardsFromPG(): Promise<void> {
     i18n[r.card_id][r.lang] = typeof r.effect_text === 'string' ? r.effect_text : '';
   }
   initEffectI18n(i18n);
-  console.log(`[server] Loaded ${Object.keys(i18n).length} card i18n entries from PostgreSQL`);
+  logger.info({ count: Object.keys(i18n).length }, 'loaded card i18n entries from PostgreSQL');
 }
 
 const API_SERVER = process.env.API_URL || 'http://api:3001';
@@ -213,6 +228,53 @@ function safeStaticFile(baseDir: string, requestPath: string, routePrefix: strin
   if (resolvedPath !== resolvedBase && !resolvedPath.startsWith(resolvedBase + path.sep)) return null;
   return resolvedPath;
 }
+
+server.app.use(helmet({ contentSecurityPolicy: false }));
+
+// Structured request logging + Prometheus metrics (before route handlers).
+server.app.use(requestLoggingMiddleware());
+server.app.use(metricsMiddleware());
+// Rate limit boardgame.io lobby routes (/games/*) to prevent match flooding. /api/* is
+// proxied to the API server which has its own rate limiter; static assets are exempt.
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  if (ctx.path.startsWith('/games/')) {
+    return createRateLimit({ redis: redisPubClient, limit: 120, namespace: 'game' })(ctx, next);
+  }
+  await next();
+});
+
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  if (ctx.path === '/metrics' && ctx.method === 'GET') {
+    return metricsEndpoint()(ctx, next);
+  }
+  await next();
+});
+
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  if (ctx.path === '/health') {
+    const checks: Record<string, string> = {};
+    let allOk = true;
+    try {
+      await cardPool.query('SELECT 1');
+      checks.postgres = 'up';
+    } catch {
+      checks.postgres = 'down';
+      allOk = false;
+    }
+    try {
+      await redisPubClient.ping();
+      checks.redis = 'up';
+    } catch {
+      checks.redis = 'down';
+      allOk = false;
+    }
+    ctx.status = allOk ? 200 : 503;
+    ctx.set('Cache-Control', 'no-store');
+    ctx.body = { status: allOk ? 'ok' : 'degraded', checks };
+    return;
+  }
+  await next();
+});
 
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/api/app-version') {
@@ -447,12 +509,12 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // 安全性驗證：JWT_SECRET 必須在生產環境設定
 function validateSecurityConfig(): void {
   if (!JWT_SECRET) {
-    console.error('FATAL: JWT_SECRET environment variable is required');
-    console.error('Generate one with: openssl rand -hex 32');
+    logger.fatal('JWT_SECRET environment variable is required');
+    logger.fatal('Generate one with: openssl rand -hex 32');
     process.exit(1);
   }
   if (JWT_SECRET.length < 32) {
-    console.warn('WARNING: JWT_SECRET should be at least 32 characters for security');
+    logger.warn('JWT_SECRET should be at least 32 characters for security');
   }
 }
 
@@ -477,18 +539,22 @@ async function cleanupStaleMatches() {
         /* skip */
       }
     }
-    if (cleaned > 0) console.log(`[cleanup] Removed ${cleaned} stale matches`);
+    if (cleaned > 0) logger.info({ count: cleaned }, 'removed stale matches');
   } catch (err) {
-    console.error('[cleanup] Error:', err);
+    logger.error({ err }, 'cleanup error');
+    Sentry.captureException(err);
   }
 }
 
 setInterval(cleanupStaleMatches, CLEANUP_INTERVAL_MS);
-console.log(`Stale match cleanup: TTL=${STALE_MATCH_TTL_MS / 60000}min, interval=${CLEANUP_INTERVAL_MS / 60000}min`);
+logger.info(
+  { ttlMin: STALE_MATCH_TTL_MS / 60000, intervalMin: CLEANUP_INTERVAL_MS / 60000 },
+  'stale match cleanup configured',
+);
 
 // Graceful shutdown：關閉 PG pool 與 Redis 連線，避免重啟時連線洩漏。
 async function shutdown(signal: string): Promise<void> {
-  console.log(`[shutdown] ${signal} received, closing connections...`);
+  logger.info({ signal }, 'shutdown received, closing connections');
   try {
     await Promise.all([
       db.close(),
@@ -496,9 +562,10 @@ async function shutdown(signal: string): Promise<void> {
       redisPubSub.close(),
       redisPubClient.quit(),
       redisAdapterSubClient.quit(),
+      Sentry.close(2000),
     ]);
   } catch (err) {
-    console.error('[shutdown] error:', err);
+    logger.error({ err }, 'shutdown error');
   }
   process.exit(0);
 }
@@ -516,9 +583,9 @@ async function bootstrap(): Promise<void> {
       await loadCardsFromPG();
       break;
     } catch (err) {
-      console.error(`[server] Failed to load cards from PG (attempt ${attempt}/5):`, err);
+      logger.error({ err, attempt }, 'failed to load cards from PG');
       if (attempt === 5) {
-        console.error('[server] Giving up — cards are required for game logic. Exiting.');
+        logger.fatal('giving up — cards are required for game logic. Exiting.');
         process.exit(1);
       }
       await new Promise((r) => setTimeout(r, 2000));
@@ -526,7 +593,47 @@ async function bootstrap(): Promise<void> {
   }
 
   server.run(PORT, () => {
-    console.log(`Zutomayo Card server running on port ${PORT}`);
+    logger.info({ port: PORT }, 'Zutomayo Card server running');
+
+    // Best-effort Socket.IO per-IP connection limiting to mitigate connection floods.
+    // boardgame.io transport structure is not part of the public API; access defensively.
+    try {
+      type SocketLike = {
+        id: string;
+        handshake: { address: string };
+        on: (event: string, cb: () => void) => void;
+        disconnect: (close?: boolean) => void;
+      };
+      const transport = server.transport as unknown as {
+        io?: { on: (event: string, cb: (socket: SocketLike) => void) => void };
+      };
+      const io = transport.io;
+      if (io) {
+        const MAX_CONN_PER_IP = 10;
+        const connectionsPerIp = new Map<string, number>();
+        io.on('connection', (socket: SocketLike) => {
+          const ip = socket.handshake.address;
+          const current = connectionsPerIp.get(ip) ?? 0;
+          if (current >= MAX_CONN_PER_IP) {
+            socket.disconnect(true);
+            return;
+          }
+          connectionsPerIp.set(ip, current + 1);
+          activeSocketConnections.inc();
+          socket.on('disconnect', () => {
+            const c = connectionsPerIp.get(ip) ?? 0;
+            if (c <= 1) connectionsPerIp.delete(ip);
+            else connectionsPerIp.set(ip, c - 1);
+            activeSocketConnections.dec();
+          });
+        });
+        logger.info({ maxPerIp: MAX_CONN_PER_IP }, 'socket.io per-IP connection limiter attached');
+      } else {
+        logger.warn('socket.io instance not accessible on transport; connection limiter skipped');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'failed to attach socket.io connection limiter');
+    }
   });
 }
 

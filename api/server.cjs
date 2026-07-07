@@ -1,4 +1,5 @@
 const http = require('http');
+const Sentry = require('@sentry/node');
 const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
@@ -6,6 +7,9 @@ const Redis = require('ioredis');
 const { getAccountProfile, loginAccount, registerAccount, updateAccountProfile } = require('./accountService.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
 const { adminLogin, listAdminUsers, resetUserElo } = require('./adminService.cjs');
+const { logger, attachRequestObservability, metricsResponse, rateLimitedTotal } = require('./observability.cjs');
+const { validateBody } = require('./validate.cjs');
+const S = require('./schemas.cjs');
 const {
   getAllCardI18n,
   getCardI18n,
@@ -63,20 +67,30 @@ const APP_VERSION_INFO = Object.freeze({
   rulesVersion: GAME_RULES_VERSION,
 });
 
+// GlitchTip/Sentry error tracking — no-op when SENTRY_DSN is unset.
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    release: `${APP_VERSION}@${APP_BUILD_ID}`,
+    tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE) || 0.1,
+  });
+}
+
 // 安全性驗證：JWT_SECRET 必須在生產環境設定
 function validateSecurityConfig() {
   if (!JWT_SECRET) {
-    console.error('FATAL: JWT_SECRET environment variable is required');
-    console.error('Generate one with: openssl rand -hex 32');
+    logger.fatal('JWT_SECRET environment variable is required');
+    logger.fatal('Generate one with: openssl rand -hex 32');
     process.exit(1);
   }
   if (JWT_SECRET.length < 32) {
-    console.warn('WARNING: JWT_SECRET should be at least 32 characters for security');
+    logger.warn('JWT_SECRET should be at least 32 characters for security');
   }
   if (!ADMIN_PASSWORD) {
-    console.warn('WARNING: ADMIN_PASSWORD not set - admin login will be disabled');
+    logger.warn('ADMIN_PASSWORD not set - admin login will be disabled');
   } else if (ADMIN_PASSWORD.length < 8) {
-    console.warn('WARNING: ADMIN_PASSWORD should be at least 8 characters');
+    logger.warn('ADMIN_PASSWORD should be at least 8 characters');
   }
 }
 
@@ -316,7 +330,7 @@ async function initSchema() {
 // 啟動時嘗試初始化 schema，連不上 PG 也允許載入（語法檢查用）。
 // 匯出 schemaReady 供測試 await，避免載入後立即發 request 造成 race condition。
 const schemaReady = initSchema().catch((err) => {
-  console.error('Schema init failed:', err.message);
+  logger.error({ err }, 'schema init failed');
 });
 
 // ===== Auth =====
@@ -653,11 +667,16 @@ function handleRequest(req, res) {
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
   if (method === 'OPTIONS') {
     res.writeHead(200);
     res.end();
     return;
   }
+
+  // Request observability: request id, structured logging, Prometheus metrics.
+  const { log: reqLog } = attachRequestObservability(req, res);
 
   // Rate limiting (P0-4, Redis)
   const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
@@ -701,7 +720,9 @@ function handleRequest(req, res) {
   const safe = (fn) => {
     Promise.resolve()
       .then(fn)
-      .catch(() => {
+      .catch((err) => {
+        Sentry.captureException(err);
+        reqLog.error({ err }, 'handler error');
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Internal server error' }));
@@ -712,8 +733,35 @@ function handleRequest(req, res) {
   // 先做 rate limit（async），其餘邏輯在 callback 內繼續。
   safe(async () => {
     if (!(await checkRateLimit(clientIp, isAuthEndpoint ? RATE_LIMIT_AUTH : RATE_LIMIT_DEFAULT))) {
+      rateLimitedTotal.labels(pathname).inc();
       res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
       res.end(JSON.stringify({ error: 'Too many requests. Please try again later.' }));
+      return;
+    }
+
+    if (pathname === '/metrics' && method === 'GET') {
+      return metricsResponse(res);
+    }
+
+    if (pathname === '/health' && method === 'GET') {
+      const checks = {};
+      let allOk = true;
+      try {
+        await pool.query('SELECT 1');
+        checks.postgres = 'up';
+      } catch {
+        checks.postgres = 'down';
+        allOk = false;
+      }
+      try {
+        await redis.ping();
+        checks.redis = 'up';
+      } catch {
+        checks.redis = 'down';
+        allOk = false;
+      }
+      res.writeHead(allOk ? 200 : 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ status: allOk ? 'ok' : 'degraded', checks }));
       return;
     }
 
@@ -727,9 +775,12 @@ function handleRequest(req, res) {
 
     // Register
     if (pathname === '/api/register' && method === 'POST') {
+      const __body = await readBody();
+      const __parsed = validateBody(S.registerSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
       const result = await registerAccount({
         pool,
-        body: await readBody(),
+        body: __parsed.data,
         sanitizeText,
         hashPassword,
         createToken,
@@ -743,9 +794,12 @@ function handleRequest(req, res) {
 
     // Login
     if (pathname === '/api/login' && method === 'POST') {
+      const __body = await readBody();
+      const __parsed = validateBody(S.loginSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
       const result = await loginAccount({
         pool,
-        body: await readBody(),
+        body: __parsed.data,
         hashPassword,
         createToken,
         currentIterations: PBKDF2_ITERATIONS,
@@ -780,7 +834,10 @@ function handleRequest(req, res) {
     if (pathname === '/api/decks' && method === 'POST') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const result = await createUserDeck(pool, userId, await readBody());
+      const __body = await readBody();
+      const __parsed = validateBody(S.deckCreateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await createUserDeck(pool, userId, __parsed.data);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -826,11 +883,13 @@ function handleRequest(req, res) {
       const authUserId = getAuthUserId(req);
       if (!authUserId) return json({ error: 'Unauthorized' }, 401);
 
-      const body = await readBody();
+      const __rawBody = await readBody();
+      const __parsed = validateBody(S.matchSubmitSchema, __rawBody);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
       const result = await submitMatchResult({
         pool,
         authUserId,
-        body,
+        body: __parsed.data,
         sanitizeActionLog,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
@@ -852,7 +911,10 @@ function handleRequest(req, res) {
 
     // POST /api/presence/heartbeat — 刷新目前客戶端在線狀態
     if (pathname === '/api/presence/heartbeat' && method === 'POST') {
-      const { visitorId } = await readBody(32 * 1024);
+      const __body = await readBody(32 * 1024);
+      const __parsed = validateBody(S.heartbeatSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const { visitorId } = __parsed.data;
       const result = await heartbeatOnlinePresence(redis, { visitorId, ttlMs: PRESENCE_TTL_MS });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -871,7 +933,10 @@ function handleRequest(req, res) {
     if (pathname === '/api/profile' && method === 'PUT') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const result = await updateAccountProfile({ pool, userId, body: await readBody(), sanitizeText });
+      const __body = await readBody();
+      const __parsed = validateBody(S.profileUpdateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await updateAccountProfile({ pool, userId, body: __parsed.data, sanitizeText });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -881,7 +946,10 @@ function handleRequest(req, res) {
 
     // Admin 登入
     if (pathname === '/api/admin/login' && method === 'POST') {
-      const result = await adminLogin(await readBody(), ADMIN_PASSWORD, createAdminToken);
+      const __body = await readBody();
+      const __parsed = validateBody(S.adminLoginSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await adminLogin(__parsed.data, ADMIN_PASSWORD, createAdminToken);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -905,8 +973,10 @@ function handleRequest(req, res) {
     if (pathname.startsWith('/api/admin/users/') && pathname.endsWith('/elo') && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const targetUserId = pathname.split('/')[4];
-      const { elo } = await readBody();
-      json(await resetUserElo(pool, targetUserId, elo));
+      const __body = await readBody();
+      const __parsed = validateBody(S.adminEloSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      json(await resetUserElo(pool, targetUserId, __parsed.data.elo));
       return;
     }
 
@@ -999,11 +1069,14 @@ function handleRequest(req, res) {
     if (pathname === '/api/matchmaking/queue' && method === 'POST') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody();
+      const __parsed = validateBody(S.mmQueueSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
       json(
         await joinMatchmakingQueue({
           redis,
           userId,
-          body: await readBody(),
+          body: __parsed.data,
           sanitizeText,
           generateQueueId: () => 'q_' + crypto.randomBytes(8).toString('hex'),
           generateMatchId: generateMatchmakingId,
@@ -1034,8 +1107,10 @@ function handleRequest(req, res) {
     if (pathname === '/api/matchmaking/match' && method === 'PUT') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const { matchId } = await readBody();
-      const result = await reportRealMatch(redis, userId, matchId);
+      const __body = await readBody();
+      const __parsed = validateBody(S.mmMatchSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await reportRealMatch(redis, userId, __parsed.data.matchId);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -1088,12 +1163,14 @@ function handleRequest(req, res) {
     // POST /api/feedback/posts — 建立反饋（匿名或登入）
     if (pathname === '/api/feedback/posts' && method === 'POST') {
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
+      const __parsed = validateBody(S.feedbackPostCreateSchema, body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const voter = extractFeedbackVoter(req, __parsed.data);
       serviceJson(
         await createFeedbackPost({
           pool,
           voter,
-          body,
+          body: __parsed.data,
           sanitizeText,
           generateId: () => generateFeedbackId('fb_'),
         }),
@@ -1116,13 +1193,15 @@ function handleRequest(req, res) {
     if (feedbackCommentRoute && method === 'POST') {
       const postId = decodeURIComponent(feedbackCommentRoute[1]);
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
+      const __parsed = validateBody(S.feedbackCommentCreateSchema, body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const voter = extractFeedbackVoter(req, __parsed.data);
       serviceJson(
         await addFeedbackComment({
           pool,
           voter,
           postId,
-          body,
+          body: __parsed.data,
           sanitizeText,
           generateId: () => generateFeedbackId('fc_'),
           isOfficial: Boolean(body.isOfficial) && verifyAdminToken(req),
@@ -1154,8 +1233,10 @@ function handleRequest(req, res) {
     if (feedbackEditPostRoute && method === 'PUT') {
       const postId = decodeURIComponent(feedbackEditPostRoute[1]);
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
-      serviceJson(await editFeedbackPost({ pool, voter, postId, body, sanitizeText }));
+      const __parsed = validateBody(S.feedbackPostEditSchema, body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const voter = extractFeedbackVoter(req, __parsed.data);
+      serviceJson(await editFeedbackPost({ pool, voter, postId, body: __parsed.data, sanitizeText }));
       return;
     }
 
@@ -1164,8 +1245,10 @@ function handleRequest(req, res) {
     if (commentEditRoute && method === 'PUT') {
       const commentId = decodeURIComponent(commentEditRoute[1]);
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
-      serviceJson(await editFeedbackComment({ pool, voter, commentId, body, sanitizeText }));
+      const __parsed = validateBody(S.feedbackCommentEditSchema, body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const voter = extractFeedbackVoter(req, __parsed.data);
+      serviceJson(await editFeedbackComment({ pool, voter, commentId, body: __parsed.data, sanitizeText }));
       return;
     }
 
@@ -1190,8 +1273,10 @@ function handleRequest(req, res) {
     if (feedbackStatusRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackStatusRoute[1]);
-      const { status } = await readBody();
-      serviceJson(await updateFeedbackPostStatus({ pool, postId, status }));
+      const __body = await readBody();
+      const __parsed = validateBody(S.feedbackStatusSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      serviceJson(await updateFeedbackPostStatus({ pool, postId, status: __parsed.data.status }));
       return;
     }
 
@@ -1200,8 +1285,10 @@ function handleRequest(req, res) {
     if (feedbackTagRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackTagRoute[1]);
-      const { tag } = await readBody();
-      serviceJson(await updateFeedbackPostTag({ pool, postId, tag, sanitizeText }));
+      const __body = await readBody();
+      const __parsed = validateBody(S.feedbackTagSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      serviceJson(await updateFeedbackPostTag({ pool, postId, tag: __parsed.data.tag, sanitizeText }));
       return;
     }
 
@@ -1366,6 +1453,7 @@ async function shutdown() {
   shuttingDown = true;
   try {
     await closeDatabase();
+    await Sentry.close(2000);
   } catch {}
   server.close();
   process.exit(0);
@@ -1378,13 +1466,13 @@ if (require.main === module) {
   initSchema()
     .then(() => {
       server.listen(PORT, () => {
-        console.log(`Zutomayo API server running on port ${PORT}`);
+        logger.info({ port: PORT }, 'Zutomayo API server running');
       });
     })
     .catch((err) => {
-      console.error('Failed to initialize schema, starting anyway:', err.message);
+      logger.error({ err }, 'failed to initialize schema, starting anyway');
       server.listen(PORT, () => {
-        console.log(`Zutomayo API server running on port ${PORT}`);
+        logger.info({ port: PORT }, 'Zutomayo API server running');
       });
     });
 }

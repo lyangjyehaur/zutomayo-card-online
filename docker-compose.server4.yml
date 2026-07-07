@@ -13,6 +13,9 @@ services:
         VITE_UMAMI_TELEMETRY_SCRIPT_URL: ${VITE_UMAMI_TELEMETRY_SCRIPT_URL:-}
         VITE_UMAMI_SECONDARY_WEBSITE_ID: ${VITE_UMAMI_SECONDARY_WEBSITE_ID:-}
         VITE_UMAMI_SECONDARY_HOST_URL: ${VITE_UMAMI_SECONDARY_HOST_URL:-}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.1}
+        SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - '3000:3000'
     env_file: .env
@@ -26,9 +29,17 @@ services:
       - PG_PORT=5432
       - REDIS_DB=0
       - API_URL=${API_URL:-http://api:3001}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
     networks:
       - default
       - 1panel-network
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   api:
@@ -50,9 +61,16 @@ services:
       - PG_HOST=postgresql
       - PG_PORT=5432
       - REDIS_DB=0
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     networks:
       - default
       - 1panel-network
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
 networks:

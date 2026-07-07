@@ -81,6 +81,8 @@ cp .env.example .env
 | `APP_VERSION`        | `0.1.0`                 | App release version exposed by `/api/app-version` and baked into the frontend bundle.                                                                                             |
 | `APP_BUILD_ID`       | `0.1.0`                 | Build identifier used for client/server version checks. Set this to a git SHA, image tag, or release number and change it on every deploy.                                        |
 | `GAME_RULES_VERSION` | `0.1.0`                 | Rules/calculation compatibility version. Bump when online matches must not mix old and new game logic.                                                                            |
+| `LOG_LEVEL`          | `info`                  | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). Lower for debugging, raise in production to reduce noise.                                                         |
+| `MAX_CONN_PER_IP`    | `10`                    | Max concurrent Socket.IO connections per client IP on the game server. Excess connections are rejected to prevent resource exhaustion.                                            |
 
 Frontend build-time variables (baked into the bundle at `vite build`):
 
@@ -117,6 +119,56 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `APP_VERSION`        | `0.1.0`              | App release version returned by `/api/version` and `/api/app-version`.                                                                                                                                         |
 | `APP_BUILD_ID`       | `0.1.0`              | Build identifier; keep it aligned with the `game` service.                                                                                                                                                     |
 | `GAME_RULES_VERSION` | `0.1.0`              | Rules/calculation compatibility version; keep it aligned with the `game` service.                                                                                                                              |
+| `LOG_LEVEL`          | `info`               | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                                                                                                |
+
+## Observability / 可觀測性
+
+### Structured Logging
+
+Both `game` and `api` services emit structured JSON logs via [pino](https://github.com/pinojs/pino). Every request is assigned an `X-Request-Id` (UUID v4, or forwarded from the `x-request-id` header) and a child logger with `requestId` bound, so all log lines within a request share the same id for easy correlation.
+
+Sensitive fields (`authorization` headers, cookies, passwords, tokens) are redacted automatically. Adjust the log level with `LOG_LEVEL` (default `info`).
+
+```bash
+docker compose logs -f game api | jq .
+```
+
+### Prometheus Metrics
+
+Both services expose a `/metrics` endpoint in the Prometheus text format:
+
+| Endpoint                     | Service | Scrape config example    |
+| ---------------------------- | ------- | ------------------------ |
+| `http://<host>:3000/metrics` | `game`  | `targets: ['game:3000']` |
+| `http://<host>:3001/metrics` | `api`   | `targets: ['api:3001']`  |
+
+Exposed metrics include:
+
+- `http_request_duration_seconds` (Histogram, labels: `method`, `path`, `status`) — dynamic path segments are normalized to `:id` to bound cardinality.
+- `http_requests_total` (Counter, labels: `method`, `path`, `status`)
+- `rate_limited_requests_total` (Counter, label: `pathname`) — requests rejected by the rate limiter (api server).
+- `matchmaking_queue_depth` (Gauge) — current matchmaking queue depth (game server).
+- `active_socket_connections` (Gauge) — active Socket.IO connections (game server).
+- Default Node.js metrics (event loop, GC, heap, etc.) via `collectDefaultMetrics`.
+
+Example Prometheus `scrape_configs`:
+
+```yaml
+scrape_configs:
+  - job_name: 'zutomayo-game'
+    static_configs:
+      - targets: ['<host>:3000']
+  - job_name: 'zutomayo-api'
+    static_configs:
+      - targets: ['<host>:3001']
+```
+
+### Rate Limiting & Connection Limiting
+
+- **API server**: Redis-backed fixed-window rate limiter (per-IP, per-minute) on all routes. Rejected requests return `429` and increment `rate_limited_requests_total`.
+- **Game server**: Redis-backed rate limiter on `/games/*` lobby routes (configurable, default 120/min) plus per-IP Socket.IO connection limiting (`MAX_CONN_PER_IP`, default 10) to prevent connection flooding.
+
+Both rate limiters **fail open** (allow the request through) when Redis is unavailable, to avoid blocking all traffic during a Redis outage.
 
 ## Volumes / 資料卷
 
