@@ -10,7 +10,7 @@ ARG APP_BUILD_ID=0.1.0
 ARG GAME_RULES_VERSION=0.1.0
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY --from=builder /app/*.cjs ./
+COPY ./*.cjs ./
 ENV API_PORT=3001
 ENV APP_VERSION=$APP_VERSION
 ENV APP_BUILD_ID=$APP_BUILD_ID
