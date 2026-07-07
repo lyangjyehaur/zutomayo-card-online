@@ -382,6 +382,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
     'x-forwarded-proto': ctx.protocol,
   };
   if (authorization) requestHeaders.authorization = authorization;
+  const cookie = firstHeaderValue(ctx.request.headers.cookie);
+  if (cookie) requestHeaders.cookie = cookie;
   if (ctx.method !== 'GET' && ctx.method !== 'HEAD') {
     requestHeaders['content-length'] = rawBody ? String(Buffer.byteLength(rawBody)) : '0';
   }
