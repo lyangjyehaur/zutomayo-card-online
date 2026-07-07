@@ -41,18 +41,33 @@ ZUTOMAYO CARD は、日本のバンド「ずっと真夜中でいいのに。」
 
 - **フルスクリーン・スクロールなし** — 100vh / 100vw のゲーム画面
 - **レスポンシブデザイン** — デスクトップ / タブレット / スマートフォンに適応
+- **Design System v1** — セマンティック token と共通 layout / primitive / game UI コンポーネント
 - **6 言語対応** — 繁體中文（台灣）、粵語（香港）、簡體中文、日本語、English、한국어
 - **インタラクティブチュートリアル** — 初心者向けガイドでルールを段階的に学習
 - **デッキエディター** — 422 枚のカードをフィルター / ソート / 構築。サーバー同期とローカルカスタムデッキに対応
 - **対戦履歴** — ローカル履歴記録
 - **ランキング** — ELO レーティングシステム
+- **プロフィールページ** — アカウント情報、OAuth 連携、パスワード変更、Logto Account Center 連携
+- **フィードバックボード** — 匿名 / ログイン投稿、投票、コメント、タグ、ステータス、重複マーク、画像添付
+- **PWA とバージョン通知** — インストール通知、更新通知、バージョン互換チェック、再接続通知
 
 ### 管理画面
 
 - カードデータブラウザー（フィルター / 検索 / 詳細）
-- i18n 翻訳管理
+- カードデータと効果翻訳の編集、ゲームサーバーのホットリロード
+- i18n 翻訳管理と About / コミュニティリンク設定
 - ユーザー一覧と ELO リセット
+- フィードバックボードのモデレーション（ステータス、タグ、削除、重複マーク）
 - Admin token ログイン（`/api/admin/login`、パスワードは `ADMIN_PASSWORD` 環境変数で指定）
+
+### アカウントと運用
+
+- Cookie session と legacy Bearer token の互換
+- ローカル email/password、Logto、Google、GitHub、Discord OAuth（環境変数で有効化）
+- Cloudflare Turnstile 検証 hook（任意）
+- オンライン人数 presence heartbeat
+- Sentry / GlitchTip エラー追跡、Pino 構造化 log、Prometheus `/metrics`
+- `/health` ヘルスチェックと stale match 自動クリーンアップ
 
 ---
 
@@ -63,19 +78,20 @@ ZUTOMAYO CARD は、日本のバンド「ずっと真夜中でいいのに。」
 │            Frontend (Vite + React)          │
 │  React 19 · TypeScript · React Router 7     │
 │  Tailwind CSS 4 · daisyUI 5 · Lucide        │
-│  boardgame.io Client                        │
+│  boardgame.io Client · PWA · Sentry         │
 └──────────────────┬──────────────────────────┘
                    │ HTTP / WebSocket
 ┌──────────────────┴──────────────────────────┐
 │            Game Server (port 3000)          │
 │  boardgame.io Server · Koa · Socket.IO      │
 │  Redis Adapter (Pub/Sub) · /api/* proxy     │
+│  Health / Metrics / Rate Limit              │
 └──────────────────┬──────────────────────────┘
                    │
 ┌──────────────────┴────────────────────────────┐
 │             API Server (port 3001)            │
 │  Node HTTP · PostgreSQL · Redis · HMAC tokens │
-│  Accounts / Decks / Matches / Leaderboard    │
+│  Accounts / OAuth / Decks / Matches / Feedback / Admin │
 └───────────────────────────────────────────────┘
 ```
 
@@ -95,7 +111,11 @@ ZUTOMAYO CARD は、日本のバンド「ずっと真夜中でいいのに。」
 | フォーマット                   | Prettier                                         | 3          |
 | TypeScript 実行                | tsx                                              | 4          |
 | PWA                            | vite-plugin-pwa                                  | 1          |
-| アナリティクス                 | Umami                                            | -          |
+| アナリティクス                 | Umami + web-vitals                               | -          |
+| エラー追跡                     | Sentry / GlitchTip                               | 10         |
+| 構造化ログ                     | Pino                                             | 10         |
+| メトリクス                     | prom-client                                      | 15         |
+| バリデーション                 | zod                                              | 4          |
 | バックエンド                   | Node HTTP + PostgreSQL + Redis（pg / ioredis）   | Node >=20  |
 
 ### コアゲームエンジン
@@ -107,18 +127,24 @@ ZUTOMAYO CARD は、日本のバンド「ずっと真夜中でいいのに。」
 - **決定的なステートマシン** — `GameState.step` で駆動し、boardgame.io のターン制には依存しない
 - **効果ルールエンジン** — 日本語の効果テキストを構造化されたゲームアクションへマッピング。267 行の効果をカバー（100%）し、複数回の独立レビューで検証済み
 - **playerView** — オンライン対戦時に相手の手札、デッキ、伏せカードを隠す
+- **バージョン互換チェック** — ルーム作成、参加、再開時に app / build / rules version を比較し、異なるバージョンの対戦を防止
+- **水平スケーリング対応** — boardgame.io state は PostgreSQL adapter、Socket.IO と boardgame.io Pub/Sub は Redis を使用
 
 ### データ保存
 
-| データ             | 保存場所                      | 説明                                                         |
-| ------------------ | ----------------------------- | ------------------------------------------------------------ |
-| カードデータ       | PostgreSQL (`api/server.cjs`) | API / game server で共有される動的カードデータ               |
-| カード画像         | Cloudflare R2 (`r2.dan.tw`)   | 422 枚のカード画像 CDN                                       |
-| ユーザーアカウント | PostgreSQL (`api/server.cjs`) | 登録 / ログイン / ELO                                        |
-| デッキ             | PostgreSQL + localStorage     | サーバー同期 + ローカルバックアップ + ローカルカスタムデッキ |
-| 対戦履歴           | PostgreSQL + localStorage     | ELO 変動 + 履歴 + クリーン済み action log                    |
-| オンライン Session | localStorage                  | オンライン対戦の再接続情報                                   |
-| 言語設定           | localStorage                  | ブラウザー内保存                                             |
+| データ                | 保存場所                                      | 説明                                                         |
+| --------------------- | --------------------------------------------- | ------------------------------------------------------------ |
+| カードデータ          | PostgreSQL (`api/server.cjs`)                 | API / game server で共有される動的カードデータ               |
+| カード画像            | Cloudflare R2 (`r2.dan.tw`)                   | 422 枚のカード画像 CDN                                       |
+| ユーザーアカウント    | PostgreSQL (`api/server.cjs`)                 | 登録 / ログイン / ELO / session / OAuth 身元                 |
+| デッキ                | PostgreSQL + localStorage                     | サーバー同期 + ローカルバックアップ + ローカルカスタムデッキ |
+| 対戦履歴              | PostgreSQL + localStorage                     | ELO 変動 + 履歴 + クリーン済み action log                    |
+| オンライン対戦状態    | PostgreSQL + Redis                            | boardgame.io state、metadata、クロスノード同期               |
+| マッチング / presence | Redis                                         | マッチングキュー、rate limit、オンライン人数                 |
+| フィードバックデータ  | PostgreSQL + ローカルアップロードディレクトリ | 投稿、投票、コメント、タグ、画像添付                         |
+| 動的設定              | PostgreSQL (`game_config`)                    | About ページ、プリセットデッキ、管理可能な設定               |
+| オンライン Session    | localStorage                                  | オンライン対戦の再接続情報                                   |
+| 言語設定              | localStorage                                  | ブラウザー内保存                                             |
 
 ---
 
@@ -253,33 +279,48 @@ zutomayo-card-online/
 │   │   └── __tests__/         # ゲームエンジンテスト
 │   │       ├── chronos.test.ts
 │   │       └── invariants.test.ts
-│   ├── components/            # React コンポーネント
+│   ├── components/            # React コンポーネントと feature コンポーネント
 │   │   ├── Board.tsx          # メインゲーム画面（~78K）
-│   │   ├── Card.tsx           # カード描画 + Popover
-│   │   ├── Chronos.tsx        # Chronos クロック SVG
 │   │   ├── AIGame.tsx         # AI 対戦 UI ロジック
 │   │   ├── OnlineGame.tsx     # オンライン対戦 UI ロジック
 │   │   ├── OnlineRoomInfo.tsx # オンラインルーム情報パネル
+│   │   ├── OnlinePresenceBadge.tsx # オンライン人数表示
 │   │   ├── DeckEditor.tsx     # デッキエディター
-│   │   ├── InteractiveTutorial.tsx # インタラクティブチュートリアル
+│   │   ├── DeckBuilderWorkspace.tsx # デッキ構築ワークスペース
+│   │   ├── CardBrowser.tsx    # カードブラウザー
+│   │   ├── GameTutorialOverlay.tsx # インタラクティブチュートリアル overlay
+│   │   ├── NetworkStatusNotifier.tsx # ネットワーク状態通知
+│   │   ├── PwaInstallPrompt.tsx # PWA インストール通知
+│   │   ├── PwaStatusPrompt.tsx # PWA 更新通知
+│   │   ├── ErrorBoundary.tsx  # フロントエンドエラー境界
 │   │   ├── LanguageSwitcher.tsx # 言語切り替え
 │   │   ├── MatchHistory.tsx   # 対戦履歴
 │   │   └── lobby/             # ロビーサブコンポーネント
 │   │       ├── AuthSection.tsx      # ログイン / 登録エリア
 │   │       ├── DeckSelector.tsx     # デッキ選択
 │   │       ├── DifficultyButtons.tsx # 難易度ボタン（AI モード）
-│   │       ├── OnlinePanel.tsx      # オンラインマッチングパネル
+│   │       ├── RoomPanel.tsx        # オンラインルーム / マッチングパネル
 │   │       └── shared.ts            # 共通型
+│   ├── ui/                    # Design System v1
+│   │   ├── primitives/        # Button / Panel / Sheet / Dialog / Toolbar など
+│   │   ├── layout/            # AppHeader / PageShell / PageHeader
+│   │   ├── game/              # バトル UI コンポーネントと responsive viewport ツール
+│   │   ├── feedback/          # フィードバックページ共通状態 UI
+│   │   ├── forms/             # フォームコンポーネント
+│   │   └── tokens/            # colors / spacing / typography / z-index / motion
 │   ├── pages/                 # ページルート
 │   │   ├── LobbyPage.tsx      # ホームロビー
-│   │   ├── LocalGamePage.tsx  # ローカル対戦
 │   │   ├── AILobbyPage.tsx    # AI モードメニュー
 │   │   ├── AIGamePage.tsx     # AI 対戦ページ
 │   │   ├── OnlineLobbyPage.tsx # オンラインモードメニュー
 │   │   ├── OnlineGamePage.tsx # オンライン対戦ページ
+│   │   ├── TutorialGamePage.tsx # チュートリアル対戦ページ
 │   │   ├── DeckEditorPage.tsx # デッキエディター（ルート版）
 │   │   ├── MatchHistoryPage.tsx # 対戦履歴
 │   │   ├── LeaderboardPage.tsx # ランキング
+│   │   ├── FeedbackPage.tsx   # フィードバックボード
+│   │   ├── ProfilePage.tsx    # プロフィール / OAuth 身元
+│   │   ├── BattleVisualQaPage.tsx # バトル画面ビジュアル QA
 │   │   ├── AdminPage.tsx      # 管理画面
 │   │   └── I18nManager.tsx    # i18n 翻訳管理
 │   ├── i18n/                  # 国際化
@@ -291,19 +332,33 @@ zutomayo-card-online/
 │   │   ├── en.ts              # English
 │   │   └── ko.ts              # 한국어
 │   ├── api/                   # API クライアント
-│   │   └── client.ts          # fetch wrapper（ログイン / デッキ / 対戦 / マッチング）
+│   │   ├── client.ts          # fetch wrapper（認証 / デッキ / 対戦 / マッチング / 管理）
+│   │   └── feedbackClient.ts  # フィードバック API クライアント
 │   ├── server/                # ゲームサーバー拡張
 │   │   ├── db/
 │   │   │   └── postgres-adapter.ts # PostgreSQL アダプター
+│   │   ├── observability/     # Pino log と Prometheus metrics
+│   │   ├── rateLimit.ts       # Redis rate limit
 │   │   └── transport/
 │   │       └── redis-pubsub.ts     # Redis Pub/Sub トランスポート層
+│   ├── analytics.ts           # Umami page view / identify
+│   ├── sentry.ts              # フロントエンド Sentry / GlitchTip 初期化
+│   ├── webVitals.ts           # Web Vitals 送信
+│   ├── version.ts             # app / build / rules version 互換チェック
+│   ├── clientVersion.ts       # フロントエンド version check API
+│   ├── anonymousIdentity.ts   # 匿名プレイヤー身元
 │   ├── onlineSession.ts       # オンライン Session 管理（localStorage 永続化）
 │   ├── onlineRoomStatus.ts    # オンラインルーム状態ポーリング
+│   ├── onlineStateGuard.ts    # オンライン状態ガード
 │   ├── server.ts              # boardgame.io ゲームサーバー入口
 │   ├── App.tsx                # アプリ入口（ルーティング + NavBar + チュートリアル + 再接続）
 │   └── main.tsx               # React DOM マウントポイント
 ├── api/                       # API サーバー
-│   ├── server.cjs             # Node HTTP + PostgreSQL + Redis
+│   ├── server.cjs             # Node HTTP + PostgreSQL + Redis + OAuth + feedback
+│   ├── *Service.cjs           # アカウント、デッキ、対戦、マッチング、カード、フィードバックサービス
+│   ├── schemas.cjs            # zod request schema
+│   ├── validate.cjs           # リクエスト検証
+│   ├── observability.cjs      # API log / metrics / request tracing
 │   ├── package.json
 │   └── Dockerfile
 ├── scripts/                   # テストとユーティリティスクリプト
@@ -314,15 +369,20 @@ zutomayo-card-online/
 │   ├── effect-smoke.ts        # 効果エンジンユニットテスト
 │   ├── seed-cards-pg.ts       # カードデータを PostgreSQL へインポート
 │   ├── migrate-sqlite-to-pg.ts # SQLite → PostgreSQL 移行
+│   ├── migrate-users-to-logto.cjs # ローカルユーザー → Logto 移行
+│   ├── *responsive-smoke.mjs  # レスポンシブ UI smoke テスト
+│   ├── pg-backup.sh           # PostgreSQL バックアップ
+│   ├── deploy-server4.sh      # server4 デプロイ補助スクリプト
 │   └── semantic-audit-dump.ts # セマンティック監査データ出力
-├── data/                      # 翻訳データ
+├── data/                      # 翻訳と OCR レビューデータ
 ├── qa.json                    # 74 件の公式 Q&A
 ├── rules.md                   # 完全なゲームルール
 ├── Dockerfile                 # ゲームサーバーイメージ
 ├── docker-compose.yml         # 4 サービスデプロイ（PG + Redis + game + api）
 └── docs/
     ├── API.md                 # REST API ドキュメント
-    └── DEPLOYMENT.md          # デプロイガイド
+    ├── DEPLOYMENT.md          # デプロイガイド
+    └── uiux/                  # UI/UX デザインシステムとリファクタ文書
 ```
 
 ---
@@ -387,47 +447,129 @@ zutomayo-card-online/
 
 ## ルーティング構成
 
-| パス                    | ページ           | 説明                           |
-| ----------------------- | ---------------- | ------------------------------ |
-| `/`                     | LobbyPage        | ホームロビー（モード切り替え） |
-| `/online`               | OnlineLobbyPage  | オンライン対戦メニュー         |
-| `/ai`                   | AILobbyPage      | AI 練習メニュー                |
-| `/play/local`           | LocalGamePage    | ローカル 2 人対戦              |
-| `/play/ai`              | AIGamePage       | AI 対戦                        |
-| `/play/online/:matchID` | OnlineGamePage   | オンライン対戦                 |
-| `/deck-builder`         | DeckEditorPage   | デッキエディター               |
-| `/history`              | MatchHistoryPage | 対戦履歴                       |
-| `/leaderboard`          | LeaderboardPage  | ランキング                     |
-| `/admin`                | AdminPage        | 管理画面（admin token が必要） |
-| `/admin/i18n`           | I18nManager      | i18n 翻訳管理                  |
+| パス                    | ページ             | 説明                           |
+| ----------------------- | ------------------ | ------------------------------ |
+| `/`                     | LobbyPage          | ホームロビー（モード切り替え） |
+| `/online`               | OnlineLobbyPage    | オンライン対戦メニュー         |
+| `/ai`                   | AILobbyPage        | AI 練習メニュー                |
+| `/play/ai`              | AIGamePage         | AI 対戦                        |
+| `/play/online/:matchID` | OnlineGamePage     | オンライン対戦                 |
+| `/tutorial`             | TutorialGamePage   | チュートリアル対戦             |
+| `/deck-builder`         | DeckEditorPage     | デッキエディター               |
+| `/history`              | MatchHistoryPage   | 対戦履歴                       |
+| `/leaderboard`          | LeaderboardPage    | ランキング                     |
+| `/feedback`             | FeedbackPage       | フィードバックボード           |
+| `/profile`              | ProfilePage        | プロフィール / OAuth 身元管理  |
+| `/admin`                | AdminPage          | 管理画面（admin token が必要） |
+| `/admin/i18n`           | I18nManager        | i18n 翻訳管理                  |
+| `/qa/battle`            | BattleVisualQaPage | バトル画面ビジュアル QA        |
 
 ---
 
 ## API エンドポイント
 
-| メソッド | パス                       | 認証  | 説明                                               |
-| -------- | -------------------------- | ----- | -------------------------------------------------- |
-| POST     | `/api/register`            | なし  | アカウント登録                                     |
-| POST     | `/api/login`               | なし  | ログイン                                           |
-| GET      | `/api/profile`             | JWT   | ユーザー情報を取得                                 |
-| PUT      | `/api/profile`             | JWT   | ニックネーム変更                                   |
-| GET      | `/api/decks`               | JWT   | デッキ一覧                                         |
-| POST     | `/api/decks`               | JWT   | デッキ作成                                         |
-| DELETE   | `/api/decks/:id`           | JWT   | デッキ削除                                         |
-| POST     | `/api/matches`             | JWT   | 対戦結果を送信（認証ユーザーは勝者である必要あり） |
-| GET      | `/api/matches`             | JWT   | 認証ユーザーの対戦履歴を取得                       |
-| GET      | `/api/matches/:id/log`     | なし  | クリーン済み action log を取得                     |
-| GET      | `/api/leaderboard`         | なし  | ランキング                                         |
-| POST     | `/api/admin/login`         | なし  | Admin ログイン、admin token を返す                 |
-| GET      | `/api/admin/users`         | Admin | ユーザー一覧を取得                                 |
-| GET      | `/api/admin/matches`       | Admin | 全対戦一覧を取得                                   |
-| PUT      | `/api/admin/users/:id/elo` | Admin | ユーザー ELO をリセット                            |
-| POST     | `/api/matchmaking/queue`   | JWT   | マッチングキューに参加                             |
-| GET      | `/api/matchmaking/status`  | JWT   | マッチング状態を確認                               |
-| DELETE   | `/api/matchmaking/queue`   | JWT   | キューから退出                                     |
-| PUT      | `/api/matchmaking/match`   | JWT   | host が boardgame.io matchID を報告                |
+### システムと公開データ
+
+| メソッド | パス                      | 認証 | 説明                        |
+| -------- | ------------------------- | ---- | --------------------------- |
+| GET      | `/api/app-version`        | なし | app / build / rules version |
+| GET      | `/api/version`            | なし | app / build / rules version |
+| GET      | `/api/cards`              | なし | カード一覧                  |
+| GET      | `/api/cards/i18n`         | なし | 全カード効果翻訳            |
+| GET      | `/api/cards/:id/i18n`     | なし | 単一カードの効果翻訳        |
+| GET      | `/api/config`             | なし | About などの動的設定        |
+| GET      | `/api/preset-decks`       | なし | プリセットデッキ            |
+| GET      | `/api/leaderboard`        | なし | ランキング                  |
+| GET      | `/api/presence`           | なし | 現在のオンライン人数        |
+| POST     | `/api/presence/heartbeat` | なし | presence heartbeat を更新   |
+
+### アカウント、OAuth、プロフィール
+
+| メソッド | パス                                         | 認証         | 説明                               |
+| -------- | -------------------------------------------- | ------------ | ---------------------------------- |
+| POST     | `/api/register`                              | なし         | アカウント登録                     |
+| POST     | `/api/login`                                 | なし         | ログイン                           |
+| POST     | `/api/logout`                                | Cookie / JWT | ログアウトして session を削除      |
+| GET      | `/api/oauth/providers`                       | なし         | OAuth / Logto 設定と provider 一覧 |
+| GET      | `/api/oauth/:provider/start`                 | なし         | OAuth ログインまたは身元連携開始   |
+| GET      | `/api/oauth/:provider/callback`              | なし         | OAuth callback                     |
+| POST     | `/api/oauth/session`                         | なし         | OAuth session 交換                 |
+| GET      | `/api/profile`                               | Cookie / JWT | ユーザー情報を取得                 |
+| PUT      | `/api/profile`                               | Cookie / JWT | ニックネーム変更                   |
+| PUT      | `/api/profile/password`                      | Cookie / JWT | ローカルパスワード変更             |
+| GET      | `/api/profile/identities`                    | Cookie / JWT | 連携済み OAuth 身元一覧            |
+| DELETE   | `/api/profile/identities/:provider`          | Cookie / JWT | OAuth 身元連携を解除               |
+| GET      | `/api/account-center`                        | Cookie / JWT | Logto Account Center 情報取得      |
+| POST     | `/api/account-center/verifications/password` | Cookie / JWT | Logto パスワード検証を作成         |
+| POST     | `/api/account-center/password`               | Cookie / JWT | Logto 経由でパスワード更新         |
+
+### デッキ、対戦、マッチング
+
+| メソッド | パス                      | 認証 | 説明                                               |
+| -------- | ------------------------- | ---- | -------------------------------------------------- |
+| GET      | `/api/decks`              | JWT  | デッキ一覧                                         |
+| POST     | `/api/decks`              | JWT  | デッキ作成                                         |
+| PUT      | `/api/decks/:id`          | JWT  | デッキ更新                                         |
+| DELETE   | `/api/decks/:id`          | JWT  | デッキ削除                                         |
+| POST     | `/api/matches`            | JWT  | 対戦結果を送信（認証ユーザーは勝者である必要あり） |
+| GET      | `/api/matches`            | JWT  | 認証ユーザーの対戦履歴を取得                       |
+| GET      | `/api/matches/:id/log`    | なし | クリーン済み action log を取得                     |
+| POST     | `/api/matchmaking/queue`  | JWT  | マッチングキューに参加                             |
+| GET      | `/api/matchmaking/status` | JWT  | マッチング状態を確認                               |
+| DELETE   | `/api/matchmaking/queue`  | JWT  | キューから退出                                     |
+| PUT      | `/api/matchmaking/match`  | JWT  | host が boardgame.io matchID を報告                |
+
+### 管理画面
+
+| メソッド | パス                        | 認証  | 説明                               |
+| -------- | --------------------------- | ----- | ---------------------------------- |
+| POST     | `/api/admin/login`          | なし  | Admin ログイン、admin token を返す |
+| GET      | `/api/admin/users`          | Admin | ユーザー一覧を取得                 |
+| GET      | `/api/admin/matches`        | Admin | 全対戦一覧を取得                   |
+| PUT      | `/api/admin/users/:id/elo`  | Admin | ユーザー ELO をリセット            |
+| PUT      | `/api/admin/cards/:id`      | Admin | カードデータ更新                   |
+| PUT      | `/api/admin/cards/:id/i18n` | Admin | カード効果翻訳更新                 |
+| PUT      | `/api/admin/config/:key`    | Admin | 動的設定更新                       |
+| POST     | `/api/admin/cards/reload`   | Admin | ゲームサーバーのカードデータ再読込 |
+
+### フィードバックボード
+
+| メソッド      | パス                                          | 認証         | 説明                          |
+| ------------- | --------------------------------------------- | ------------ | ----------------------------- |
+| GET           | `/api/feedback/posts`                         | なし         | フィードバック投稿一覧        |
+| POST          | `/api/feedback/posts`                         | 匿名 / JWT   | フィードバック投稿作成        |
+| GET           | `/api/feedback/posts/:id`                     | なし         | 投稿とコメントを取得          |
+| PUT           | `/api/feedback/posts/:id`                     | 作者         | 投稿編集                      |
+| POST          | `/api/feedback/posts/:id/votes`               | 匿名 / JWT   | 投稿投票を切り替え            |
+| POST          | `/api/feedback/posts/:id/comments`            | 匿名 / JWT   | コメント追加                  |
+| GET           | `/api/feedback/posts/:id/voters`              | なし         | 投票者一覧                    |
+| PUT           | `/api/feedback/comments/:id`                  | 作者         | コメント編集                  |
+| DELETE        | `/api/feedback/comments/:id`                  | 作者 / Admin | コメント削除                  |
+| POST          | `/api/feedback/comments/:id/votes`            | 匿名 / JWT   | コメントいいねを切り替え      |
+| POST / DELETE | `/api/feedback/comments/:id/reactions/:emoji` | 匿名 / JWT   | コメント emoji 反応を切り替え |
+| GET           | `/api/feedback/stats`                         | なし         | フィードバック統計            |
+| GET           | `/api/feedback/tags`                          | なし         | タグ一覧                      |
+| GET           | `/api/feedback/similar`                       | なし         | 類似投稿検索                  |
+| POST          | `/api/feedback/uploads`                       | 匿名 / JWT   | 画像添付アップロード          |
+| GET           | `/api/feedback/images/:bkey`                  | なし         | 画像添付を取得                |
+| PUT           | `/api/feedback/admin/posts/:id/status`        | Admin        | フィードバックステータス更新  |
+| PUT           | `/api/feedback/admin/posts/:id/tag`           | Admin        | フィードバックタグ更新        |
+| DELETE        | `/api/feedback/admin/posts/:id`               | Admin        | フィードバック投稿削除        |
+| POST          | `/api/feedback/admin/posts/:id/duplicate`     | Admin        | 重複投稿としてマーク          |
+| POST          | `/api/feedback/admin/tags`                    | Admin        | タグ作成                      |
+| DELETE        | `/api/feedback/admin/tags/:id`                | Admin        | タグ削除                      |
+
+### ゲームサーバーエンドポイント
+
+| メソッド | パス                              | 認証 | 説明                       |
+| -------- | --------------------------------- | ---- | -------------------------- |
+| GET      | `/health`                         | なし | PG / Redis ヘルスチェック  |
+| GET      | `/metrics`                        | なし | Prometheus メトリクス      |
+| POST     | `/games/zutomayo-card/:id/join`   | なし | boardgame.io 対戦へ参加    |
+| POST     | `/games/zutomayo-card/:id/resume` | なし | credentials 検証と座席復帰 |
 
 レート制限: `/api/login`、`/api/register`、`/api/admin/login` は 10/min、それ以外は 120/min。
+ゲームサーバーの `/games/*` ルートにも Redis rate limit があり、既定は 120/min です。
 
 詳細は [docs/API.md](docs/API.md) を参照してください。
 
