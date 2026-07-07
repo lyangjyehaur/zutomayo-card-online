@@ -38,6 +38,19 @@ function accountErrorMessage(error: unknown): string {
   return t('profile.saveError');
 }
 
+function accountCenterTarget(url: string): string {
+  if (!url) return '';
+  try {
+    const target = new URL(url);
+    if (!target.searchParams.has('redirect')) {
+      target.searchParams.set('redirect', `${window.location.origin}/profile`);
+    }
+    return target.toString();
+  } catch {
+    return url;
+  }
+}
+
 export function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -393,7 +406,7 @@ export function ProfilePage() {
                       variant="primary"
                       type="button"
                       leftIcon={<ExternalLink className="size-4" aria-hidden="true" />}
-                      onClick={() => window.open(accountCenterUrl, '_blank', 'noopener,noreferrer')}
+                      onClick={() => window.open(accountCenterTarget(accountCenterUrl), '_blank', 'noopener,noreferrer')}
                     >
                       {t('profile.manageAccountSecurity')}
                     </Button>

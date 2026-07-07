@@ -98,9 +98,9 @@ const LOGTO_DISCOVERY_URL =
 const LOGTO_ACCOUNT_CENTER_URL =
   process.env.LOGTO_ACCOUNT_CENTER_URL ||
   (LOGTO_ENDPOINT
-    ? `${LOGTO_ENDPOINT}/account`
+    ? `${LOGTO_ENDPOINT}/account/security`
     : LOGTO_ISSUER
-      ? `${LOGTO_ISSUER.replace(/\/oidc$/, '')}/account`
+      ? `${LOGTO_ISSUER.replace(/\/oidc$/, '')}/account/security`
       : '');
 
 // 安全性驗證：JWT_SECRET 必須在生產環境設定
