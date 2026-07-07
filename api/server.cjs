@@ -184,6 +184,9 @@ async function initSchema() {
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_user_identities_user_provider
       ON user_identities(user_id, provider)`,
     `CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities(user_id)`,
+    `ALTER TABLE user_identities ADD COLUMN IF NOT EXISTS access_token_ciphertext TEXT`,
+    `ALTER TABLE user_identities ADD COLUMN IF NOT EXISTS refresh_token_ciphertext TEXT`,
+    `ALTER TABLE user_identities ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ`,
 
     `CREATE TABLE IF NOT EXISTS decks (
       id TEXT PRIMARY KEY,
@@ -395,6 +398,34 @@ function signTokenInput(input) {
   return crypto.createHmac('sha256', JWT_SECRET).update(input).digest('base64url');
 }
 
+function secretEncryptionKey() {
+  return crypto.createHash('sha256').update(`zutomayo-secret:${JWT_SECRET}`).digest();
+}
+
+function encryptSecret(value) {
+  if (!value) return '';
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', secretEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+function decryptSecret(value) {
+  try {
+    const [ivPart, tagPart, encryptedPart] = String(value || '').split('.');
+    if (!ivPart || !tagPart || !encryptedPart) return '';
+    const decipher = crypto.createDecipheriv('aes-256-gcm', secretEncryptionKey(), Buffer.from(ivPart, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedPart, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
 function createToken(userId) {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
@@ -505,6 +536,12 @@ function hashEmailForAvatar(email) {
   return crypto.createHash('sha256').update(email).digest('hex');
 }
 
+function mergeOAuthScopes(baseScope, requiredScopes) {
+  const scopes = new Set(String(baseScope || '').split(/\s+/).filter(Boolean));
+  for (const scope of requiredScopes) scopes.add(scope);
+  return Array.from(scopes).join(' ');
+}
+
 const OAUTH_PROVIDERS = {
   logto: {
     label: 'Logto',
@@ -514,7 +551,14 @@ const OAUTH_PROVIDERS = {
     authUrl: '',
     tokenUrl: '',
     userInfoUrl: '',
-    scope: process.env.LOGTO_OAUTH_SCOPE || 'openid profile email',
+    scope: mergeOAuthScopes(process.env.LOGTO_OAUTH_SCOPE || 'openid profile email', [
+      'phone',
+      'address',
+      'identities',
+      'custom_data',
+      'urn:logto:scope:sessions',
+      'offline_access',
+    ]),
   },
   google: {
     label: 'Google',
@@ -739,7 +783,12 @@ async function exchangeOAuthCode(req, providerConfig, code) {
   if (!response.ok || !data.access_token) {
     throw new Error('OAuth token exchange failed');
   }
-  return data.access_token;
+  return {
+    accessToken: String(data.access_token),
+    refreshToken: typeof data.refresh_token === 'string' ? data.refresh_token : '',
+    expiresIn: Number(data.expires_in) || 0,
+    scope: typeof data.scope === 'string' ? data.scope : '',
+  };
 }
 
 async function fetchJsonWithBearer(url, accessToken) {
@@ -807,6 +856,131 @@ async function fetchOAuthProfile(providerConfig, accessToken) {
     displayName: profile.name || profile.login,
     avatarUrl: profile.avatar_url,
   };
+}
+
+function logtoApiBase() {
+  return LOGTO_ENDPOINT || LOGTO_ISSUER.replace(/\/oidc$/, '');
+}
+
+function tokenExpiresAt(expiresIn) {
+  const seconds = Number(expiresIn) || 3600;
+  return new Date(Date.now() + Math.max(60, seconds - 30) * 1000);
+}
+
+function logtoErrorMessage(data, fallback = 'Logto account request failed') {
+  if (typeof data?.error === 'string') return data.error;
+  if (typeof data?.message === 'string') return data.message;
+  if (typeof data?.error_description === 'string') return data.error_description;
+  return fallback;
+}
+
+async function storeOAuthTokenSet({ userId, provider, tokenSet }) {
+  if (!userId || !provider || !tokenSet?.accessToken) return;
+  await pool.query(
+    `UPDATE user_identities
+     SET access_token_ciphertext = $1,
+         refresh_token_ciphertext = COALESCE($2, refresh_token_ciphertext),
+         token_expires_at = $3,
+         updated_at = NOW()
+     WHERE user_id = $4 AND provider = $5`,
+    [
+      encryptSecret(tokenSet.accessToken),
+      tokenSet.refreshToken ? encryptSecret(tokenSet.refreshToken) : null,
+      tokenExpiresAt(tokenSet.expiresIn),
+      userId,
+      provider,
+    ],
+  );
+}
+
+async function refreshOAuthTokenSet(providerConfig, refreshToken) {
+  const body = new URLSearchParams();
+  body.set('client_id', providerConfig.clientId);
+  body.set('client_secret', providerConfig.clientSecret);
+  body.set('grant_type', 'refresh_token');
+  body.set('refresh_token', refreshToken);
+
+  const response = await fetch(providerConfig.tokenUrl, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) throw new Error('OAuth token refresh failed');
+  return {
+    accessToken: String(data.access_token),
+    refreshToken: typeof data.refresh_token === 'string' ? data.refresh_token : refreshToken,
+    expiresIn: Number(data.expires_in) || 0,
+  };
+}
+
+async function getLogtoAccountAccessToken(userId) {
+  const identity = (
+    await pool.query(
+      `SELECT access_token_ciphertext, refresh_token_ciphertext, token_expires_at
+       FROM user_identities
+       WHERE user_id = $1 AND provider = 'logto'`,
+      [userId],
+    )
+  ).rows[0];
+  const accessToken = decryptSecret(identity?.access_token_ciphertext);
+  if (!accessToken) return { ok: false, status: 409, error: 'Logto account session is not connected' };
+
+  const expiresAt = identity?.token_expires_at ? new Date(identity.token_expires_at).getTime() : 0;
+  if (expiresAt > Date.now() + 30 * 1000) return { ok: true, accessToken };
+
+  const refreshToken = decryptSecret(identity?.refresh_token_ciphertext);
+  if (!refreshToken) return { ok: false, status: 409, error: 'Logto account session needs reconnect' };
+
+  const providerConfig = await getResolvedOAuthProvider('logto');
+  if (!providerConfig) return { ok: false, status: 503, error: 'Logto provider is not configured' };
+  const nextTokenSet = await refreshOAuthTokenSet(providerConfig, refreshToken).catch(() => null);
+  if (!nextTokenSet) return { ok: false, status: 409, error: 'Logto account session needs reconnect' };
+  await storeOAuthTokenSet({ userId, provider: 'logto', tokenSet: nextTokenSet });
+  return { ok: true, accessToken: nextTokenSet.accessToken };
+}
+
+async function logtoAccountRequest({ userId, path, method = 'GET', body, verificationId }) {
+  const base = logtoApiBase();
+  if (!base) return { ok: false, status: 503, error: 'Logto endpoint is not configured' };
+  const token = await getLogtoAccountAccessToken(userId);
+  if (!token.ok) return token;
+
+  const headers = {
+    Accept: 'application/json',
+    Authorization: `Bearer ${token.accessToken}`,
+    'User-Agent': 'zutomayo-card-online',
+  };
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+  if (payload !== undefined) headers['Content-Type'] = 'application/json';
+  if (verificationId) headers['logto-verification-id'] = verificationId;
+
+  const response = await fetch(`${base}${path}`, {
+    method,
+    headers,
+    body: payload,
+  });
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { error: text };
+    }
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: logtoErrorMessage(data),
+      body: data,
+    };
+  }
+  return { ok: true, body: data };
 }
 
 async function verifyAuthChallenge(body, clientIp) {
@@ -1262,8 +1436,8 @@ function handleRequest(req, res) {
         return;
       }
 
-      const accessToken = await exchangeOAuthCode(req, providerConfig, code);
-      const oauthProfile = await fetchOAuthProfile(providerConfig, accessToken);
+      const tokenSet = await exchangeOAuthCode(req, providerConfig, code);
+      const oauthProfile = await fetchOAuthProfile(providerConfig, tokenSet.accessToken);
       if (state.mode === 'link') {
         if (!ACCOUNT_LINKING_ENABLED) {
           res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -1289,6 +1463,9 @@ function handleRequest(req, res) {
       });
       const localUserId = result.ok && typeof result.body?.user?.id === 'string' ? result.body.user.id : '';
       const loginOk = result.ok && Boolean(localUserId);
+      if (loginOk && providerConfig.provider === 'logto') {
+        await storeOAuthTokenSet({ userId: localUserId, provider: providerConfig.provider, tokenSet });
+      }
       res.writeHead(loginOk ? 200 : result.status || 400, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(
         oauthReturnScript({
@@ -1368,6 +1545,70 @@ function handleRequest(req, res) {
       const result = await listAccountIdentities(pool, userId);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/account-center' && method === 'GET') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const account = await logtoAccountRequest({ userId, path: '/api/my-account' });
+      if (!account.ok) return json({ error: account.error, details: account.body }, account.status);
+      const [identities, mfaVerifications, logtoConfigs] = await Promise.all([
+        logtoAccountRequest({ userId, path: '/api/my-account/identities' }).catch((error) => ({
+          ok: false,
+          error: error.message,
+        })),
+        logtoAccountRequest({ userId, path: '/api/my-account/mfa-verifications' }).catch((error) => ({
+          ok: false,
+          error: error.message,
+        })),
+        logtoAccountRequest({ userId, path: '/api/my-account/logto-configs' }).catch((error) => ({
+          ok: false,
+          error: error.message,
+        })),
+      ]);
+      json({
+        account: account.body,
+        identities: identities.ok ? identities.body : null,
+        mfaVerifications: mfaVerifications.ok ? mfaVerifications.body : null,
+        logtoConfigs: logtoConfigs.ok ? logtoConfigs.body : null,
+      });
+      return;
+    }
+
+    if (pathname === '/api/account-center/verifications/password' && method === 'POST') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+      if (!currentPassword) return json({ error: 'Current password required' }, 400);
+      const result = await logtoAccountRequest({
+        userId,
+        path: '/api/verifications/password',
+        method: 'POST',
+        body: { password: currentPassword },
+      });
+      if (!result.ok) return json({ error: result.error, details: result.body }, result.status);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/account-center/password' && method === 'POST') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const verificationRecordId = typeof body.verificationRecordId === 'string' ? body.verificationRecordId : '';
+      const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+      if (!verificationRecordId || !newPassword) return json({ error: 'Verification and new password required' }, 400);
+      const result = await logtoAccountRequest({
+        userId,
+        path: '/api/my-account/password',
+        method: 'POST',
+        verificationId: verificationRecordId,
+        body: { password: newPassword },
+      });
+      if (!result.ok) return json({ error: result.error, details: result.body }, result.status);
+      json({ ok: true });
       return;
     }
 

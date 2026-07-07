@@ -5,12 +5,16 @@ import {
   ApiError,
   getAuthConfig,
   getLinkedOAuthIdentities,
+  getLogtoAccountCenter,
   getOAuthStartUrl,
   getProfile,
   isLoggedIn,
   unlinkOAuthIdentity,
+  updateLogtoPassword,
   updatePassword,
   updateProfile,
+  verifyLogtoPassword,
+  type LogtoAccountCenterResponse,
   type OAuthProviderId,
   type OAuthIdentity,
   type OAuthProvider,
@@ -45,10 +49,17 @@ function accountCenterTarget(url: string): string {
     if (!target.searchParams.has('redirect')) {
       target.searchParams.set('redirect', `${window.location.origin}/profile`);
     }
+    if (!target.searchParams.has('show_success')) {
+      target.searchParams.set('show_success', 'true');
+    }
     return target.toString();
   } catch {
     return url;
   }
+}
+
+function accountValue(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value : '-';
 }
 
 export function ProfilePage() {
@@ -60,6 +71,8 @@ export function ProfilePage() {
   const [localAuthEnabled, setLocalAuthEnabled] = useState(true);
   const [accountLinkingEnabled, setAccountLinkingEnabled] = useState(true);
   const [accountCenterUrl, setAccountCenterUrl] = useState('');
+  const [logtoAccountCenter, setLogtoAccountCenter] = useState<LogtoAccountCenterResponse | null>(null);
+  const [logtoAccountError, setLogtoAccountError] = useState('');
   const [nickname, setNickname] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -81,7 +94,13 @@ export function ProfilePage() {
 
     let cancelled = false;
     Promise.all([getProfile(), getAuthConfig().catch(() => null), getLinkedOAuthIdentities().catch(() => [])])
-      .then(([data, authConfig, identities]) => {
+      .then(async ([data, authConfig, identities]) => {
+        const shouldLoadAccountCenter = Boolean(
+          authConfig && !authConfig.localAuthEnabled && !authConfig.accountLinkingEnabled,
+        );
+        const accountCenter = shouldLoadAccountCenter
+          ? await getLogtoAccountCenter().catch((err) => (err instanceof Error ? err : new Error(String(err))))
+          : null;
         if (cancelled) return;
         setProfile(data);
         setNickname(data.nickname);
@@ -90,6 +109,16 @@ export function ProfilePage() {
         setAccountLinkingEnabled(authConfig?.accountLinkingEnabled ?? true);
         setAccountCenterUrl(authConfig?.accountCenterUrl || '');
         setOauthIdentities(identities);
+        if (accountCenter instanceof Error) {
+          setLogtoAccountCenter(null);
+          setLogtoAccountError(accountCenter.message);
+        } else if (accountCenter) {
+          setLogtoAccountCenter(accountCenter);
+          setLogtoAccountError('');
+        } else {
+          setLogtoAccountCenter(null);
+          setLogtoAccountError('');
+        }
         const oauthStatus = new URLSearchParams(location.search).get('oauth');
         if (oauthStatus === 'linked') setProfileStatus(t('profile.oauthLinked'));
         if (oauthStatus === 'error') setError(t('profile.oauthError'));
@@ -135,7 +164,12 @@ export function ProfilePage() {
         setError(t('profile.passwordMismatch'));
         return;
       }
-      await updatePassword(currentPassword, newPassword);
+      if (localAuthEnabled) {
+        await updatePassword(currentPassword, newPassword);
+      } else {
+        const verification = await verifyLogtoPassword(currentPassword);
+        await updateLogtoPassword(newPassword, verification.verificationRecordId);
+      }
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -175,6 +209,8 @@ export function ProfilePage() {
   };
 
   const accountCenterMode = !localAuthEnabled && !accountLinkingEnabled;
+  const logtoIdentityEntries = Object.entries(logtoAccountCenter?.account.identities || {});
+  const logtoReconnectProvider = oauthProviders.find((provider) => provider.provider === 'logto' && provider.enabled);
 
   if (loading) {
     return (
@@ -399,11 +435,96 @@ export function ProfilePage() {
                   <KeyRound className="size-5 text-accent-primary" aria-hidden="true" />
                   <h2 className="font-display text-title-sm font-bold">{t('profile.accountSecurity')}</h2>
                 </div>
-                <p className="text-body-sm leading-relaxed text-content-muted">{t('profile.passwordManagedByLogto')}</p>
+                <p className="text-body-sm leading-relaxed text-content-muted">
+                  {t('profile.accountSecurityIntegrated')}
+                </p>
+                {logtoAccountError && (
+                  <Alert className="mt-4" tone="warning">
+                    {t('profile.logtoReconnectRequired')}
+                  </Alert>
+                )}
+                {logtoAccountCenter && (
+                  <div className="mt-4 grid gap-3">
+                    <div className="grid gap-2 rounded-sm border border-border-soft bg-surface-canvas/45 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-body-sm text-content-muted">{t('profile.logtoPrimaryEmail')}</span>
+                        <strong className="truncate text-body-sm">
+                          {accountValue(logtoAccountCenter.account.primaryEmail)}
+                        </strong>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-body-sm text-content-muted">{t('profile.logtoUsername')}</span>
+                        <strong className="truncate text-body-sm">{accountValue(logtoAccountCenter.account.username)}</strong>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-body-sm text-content-muted">{t('profile.logtoSocialConnections')}</span>
+                        <strong className="truncate text-body-sm">
+                          {logtoIdentityEntries.length > 0
+                            ? logtoIdentityEntries.map(([target]) => target).join(', ')
+                            : t('profile.logtoNoSocialConnections')}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <form className="mt-5 grid gap-4" onSubmit={handlePasswordSubmit}>
+                  <FormField label={t('profile.currentPassword')}>
+                    <Input
+                      type="password"
+                      value={currentPassword}
+                      autoComplete="current-password"
+                      required
+                      onChange={(event) => setCurrentPassword(event.target.value)}
+                    />
+                  </FormField>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormField label={t('profile.newPassword')}>
+                      <Input
+                        type="password"
+                        value={newPassword}
+                        autoComplete="new-password"
+                        minLength={6}
+                        required
+                        onChange={(event) => setNewPassword(event.target.value)}
+                      />
+                    </FormField>
+                    <FormField label={t('profile.confirmPassword')}>
+                      <Input
+                        type="password"
+                        value={confirmPassword}
+                        autoComplete="new-password"
+                        minLength={6}
+                        required
+                        onChange={(event) => setConfirmPassword(event.target.value)}
+                      />
+                    </FormField>
+                  </div>
+                  <FormActions>
+                    <Button
+                      variant="primary"
+                      type="submit"
+                      disabled={savingPassword || Boolean(logtoAccountError)}
+                      leftIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
+                    >
+                      {savingPassword ? t('auth.submitting') : t('profile.savePassword')}
+                    </Button>
+                    {logtoReconnectProvider && logtoAccountError && (
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        onClick={() =>
+                          window.location.assign(getOAuthStartUrl(logtoReconnectProvider.provider, 'login', '/profile'))
+                        }
+                      >
+                        {t('profile.logtoReconnectAction')}
+                      </Button>
+                    )}
+                  </FormActions>
+                </form>
                 {accountCenterUrl && (
                   <FormActions className="mt-4">
                     <Button
-                      variant="primary"
+                      variant="secondary"
                       type="button"
                       leftIcon={<ExternalLink className="size-4" aria-hidden="true" />}
                       onClick={() => window.open(accountCenterTarget(accountCenterUrl), '_blank', 'noopener,noreferrer')}

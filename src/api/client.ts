@@ -55,6 +55,29 @@ export interface OAuthIdentity {
   updatedAt: string;
 }
 
+export interface LogtoAccountIdentity {
+  target?: string;
+  userId?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface LogtoAccountCenterResponse {
+  account: Record<string, unknown> & {
+    id?: string;
+    username?: string;
+    name?: string;
+    avatar?: string;
+    primaryEmail?: string;
+    primaryPhone?: string;
+    hasPassword?: boolean;
+    hasSecurityVerificationMethod?: boolean;
+    identities?: Record<string, LogtoAccountIdentity>;
+  };
+  identities: unknown;
+  mfaVerifications: unknown;
+  logtoConfigs: unknown;
+}
+
 export interface LeaderboardEntry {
   id: string;
   nickname: string;
@@ -504,6 +527,24 @@ export async function getLinkedOAuthIdentities(): Promise<OAuthIdentity[]> {
 export async function unlinkOAuthIdentity(provider: OAuthProviderId): Promise<{ unlinked: boolean; provider: string }> {
   return request(`/profile/identities/${encodeURIComponent(provider)}`, {
     method: 'DELETE',
+  });
+}
+
+export async function getLogtoAccountCenter(): Promise<LogtoAccountCenterResponse> {
+  return request('/account-center');
+}
+
+export async function verifyLogtoPassword(currentPassword: string): Promise<{ verificationRecordId: string }> {
+  return request('/account-center/verifications/password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword }),
+  });
+}
+
+export async function updateLogtoPassword(newPassword: string, verificationRecordId: string): Promise<{ ok: boolean }> {
+  return request('/account-center/password', {
+    method: 'POST',
+    body: JSON.stringify({ newPassword, verificationRecordId }),
   });
 }
 

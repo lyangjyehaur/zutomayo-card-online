@@ -105,6 +105,13 @@ export const zhCN: Record<TranslationKey, string> = {
   'profile.accountSecurity': '账号安全',
   'profile.manageAccountSecurity': '管理账号安全',
   'profile.passwordManagedByLogto': '密码、登录方式与社交连接由账号中心管理；本站会保留你的昵称与游戏资料。',
+  'profile.accountSecurityIntegrated': '登录安全由 online 账号中心整合管理；昵称与游戏资料仍保留在本站。',
+  'profile.logtoPrimaryEmail': '主要邮箱',
+  'profile.logtoUsername': '登录名称',
+  'profile.logtoSocialConnections': '社交连接',
+  'profile.logtoNoSocialConnections': '尚未连接',
+  'profile.logtoReconnectRequired': '需要重新登录一次，才能启用站内账号安全管理。',
+  'profile.logtoReconnectAction': '重新登录启用',
 
   'lobby.aiBattle': '与电脑对战',
   'lobby.createRoom': '创建房间',

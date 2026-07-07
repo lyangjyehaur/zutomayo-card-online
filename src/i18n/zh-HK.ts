@@ -105,6 +105,13 @@ export const zhHK: Record<TranslationKey, string> = {
   'profile.accountSecurity': '帳號安全',
   'profile.manageAccountSecurity': '管理帳號安全',
   'profile.passwordManagedByLogto': '密碼、登入方式同社交連接由帳號中心管理；本站會保留你嘅暱稱同遊戲資料。',
+  'profile.accountSecurityIntegrated': '登入安全由 online 帳號中心整合管理；暱稱同遊戲資料仍保留喺本站。',
+  'profile.logtoPrimaryEmail': '主要電郵',
+  'profile.logtoUsername': '登入名稱',
+  'profile.logtoSocialConnections': '社交連接',
+  'profile.logtoNoSocialConnections': '尚未連接',
+  'profile.logtoReconnectRequired': '需要重新登入一次，先可以啟用站內帳號安全管理。',
+  'profile.logtoReconnectAction': '重新登入啟用',
 
   'lobby.aiBattle': '同電腦打',
   'lobby.createRoom': '開房',

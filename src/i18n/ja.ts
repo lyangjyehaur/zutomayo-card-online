@@ -109,6 +109,14 @@ export const ja: Record<TranslationKey, string> = {
   'profile.manageAccountSecurity': 'アカウントセキュリティを管理',
   'profile.passwordManagedByLogto':
     'パスワード、ログイン方法、外部連携はアカウントセンターで管理されます。このサイトではニックネームとゲームデータを保存します。',
+  'profile.accountSecurityIntegrated':
+    'ログインセキュリティは online アカウントセンターに統合されています。ニックネームとゲームデータはこのサイトに保存されます。',
+  'profile.logtoPrimaryEmail': 'メインメール',
+  'profile.logtoUsername': 'ユーザー名',
+  'profile.logtoSocialConnections': 'ソーシャル連携',
+  'profile.logtoNoSocialConnections': '未連携',
+  'profile.logtoReconnectRequired': 'サイト内のアカウントセキュリティ管理を有効にするには、もう一度ログインしてください。',
+  'profile.logtoReconnectAction': 'もう一度ログイン',
 
   'lobby.aiBattle': 'コンピュータ対戦',
   'lobby.createRoom': 'ルーム作成',

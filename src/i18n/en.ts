@@ -109,6 +109,14 @@ export const en: Record<TranslationKey, string> = {
   'profile.manageAccountSecurity': 'Manage account security',
   'profile.passwordManagedByLogto':
     'Passwords, sign-in methods, and social connections are managed by the account center. This site keeps your nickname and game data.',
+  'profile.accountSecurityIntegrated':
+    'Sign-in security is integrated into the online account center. Your nickname and game data stay here.',
+  'profile.logtoPrimaryEmail': 'Primary email',
+  'profile.logtoUsername': 'Username',
+  'profile.logtoSocialConnections': 'Social connections',
+  'profile.logtoNoSocialConnections': 'Not connected',
+  'profile.logtoReconnectRequired': 'Sign in again once to enable in-site account security management.',
+  'profile.logtoReconnectAction': 'Sign in again',
 
   'lobby.aiBattle': 'Practice vs AI',
   'lobby.createRoom': 'Create Room',

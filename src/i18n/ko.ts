@@ -109,6 +109,14 @@ export const ko: Record<TranslationKey, string> = {
   'profile.manageAccountSecurity': '계정 보안 관리',
   'profile.passwordManagedByLogto':
     '비밀번호, 로그인 방법, 소셜 연결은 계정 센터에서 관리됩니다. 이 사이트는 닉네임과 게임 데이터를 저장합니다.',
+  'profile.accountSecurityIntegrated':
+    '로그인 보안은 online 계정 센터에 통합되어 있습니다. 닉네임과 게임 데이터는 이 사이트에 유지됩니다.',
+  'profile.logtoPrimaryEmail': '기본 이메일',
+  'profile.logtoUsername': '사용자 이름',
+  'profile.logtoSocialConnections': '소셜 연결',
+  'profile.logtoNoSocialConnections': '연결 없음',
+  'profile.logtoReconnectRequired': '사이트 내 계정 보안 관리를 활성화하려면 한 번 더 로그인해 주세요.',
+  'profile.logtoReconnectAction': '다시 로그인',
 
   'lobby.aiBattle': 'AI 연습',
   'lobby.createRoom': '방 만들기',
