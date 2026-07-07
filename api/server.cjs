@@ -1365,21 +1365,20 @@ function handleRequest(req, res) {
     });
 
   // 統一 async handler 錯誤處理：PG/Redis 丟錯時回 500，避免 unhandled rejection 崩潰。
-  // captureException 前注入 request context（request_id / route / method / user_id），
-  // 讓 GlitchTip 後台能依請求上下文定位問題。
+  // 使用 withScope 包裹單次 capture，避免 configureScope 污染 Node server 請求 scope。
   const safe = (fn) => {
     Promise.resolve()
       .then(fn)
       .catch((err) => {
-        Sentry.configureScope((scope) => {
+        Sentry.withScope((scope) => {
           scope.setTag('request_id', requestId);
           scope.setTag('route', pathname);
           scope.setTag('method', method);
           scope.setContext('client', { ip: clientIp });
           const authUserId = getAuthUserId(req);
           if (authUserId) scope.setUser({ id: authUserId });
+          Sentry.captureException(err);
         });
-        Sentry.captureException(err);
         reqLog.error({ err }, 'handler error');
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' });

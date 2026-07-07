@@ -39,7 +39,7 @@ ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+RUN npm run build && find dist -name "*.map" -type f -delete
 
 FROM node:22-alpine
 WORKDIR /app

@@ -17,6 +17,14 @@ function versionEnv(name: string, fallback: string): string {
 // Release 字串必須與 src/sentry.ts 的 release 完全一致，source map 才能正確關聯。
 const release = `${versionEnv('APP_VERSION', fallbackVersion)}@${versionEnv('APP_BUILD_ID', fallbackVersion)}`;
 
+// 只有四個 Sentry upload 變數都存在時才啟用 source map 上傳，避免配置不完整導致 build 異常或上傳到錯誤目標。
+// SENTRY_AUTH_TOKEN 僅用於 build 時上傳 source map，不會進入前端 bundle。
+const sentrySourceMapUploadEnabled =
+  Boolean(process.env.SENTRY_URL) &&
+  Boolean(process.env.SENTRY_ORG) &&
+  Boolean(process.env.SENTRY_PROJECT) &&
+  Boolean(process.env.SENTRY_AUTH_TOKEN);
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(versionEnv('APP_VERSION', fallbackVersion)),
@@ -46,9 +54,9 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     react(),
-    // 只在 SENTRY_AUTH_TOKEN 設定時啟用 source map 上傳，避免 dev / 無 token 環境 build 失敗。
-    // SENTRY_AUTH_TOKEN 僅用於 build 時上傳 source map，不會進入前端 bundle。
-    ...(process.env.SENTRY_AUTH_TOKEN
+    // 只有四個 Sentry upload 變數都存在時才啟用 source map 上傳。
+    // 無配置或配置不完整時 vite build 正常完成，只是不做 source map upload。
+    ...(sentrySourceMapUploadEnabled
       ? [
           sentryVitePlugin({
             url: process.env.SENTRY_URL,
