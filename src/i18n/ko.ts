@@ -60,6 +60,7 @@ export const ko: Record<TranslationKey, string> = {
   'auth.eloChange': 'ELO 변동',
   'auth.serviceUnavailable': '계정 서비스에 연결할 수 없습니다',
   'auth.profileUnavailable': '계정 프로필을 불러올 수 없습니다. 나중에 다시 시도하세요.',
+  'auth.loginRedirectFailed': '계정 로그인이 완료되지 않았습니다. 나중에 다시 시도해 주세요.',
   'auth.matchSubmittedNoElo': '대전이 기록되었습니다. 게스트 상대는 ELO에 반영되지 않습니다',
   'auth.matchSubmitFailed': '로컬 기록은 저장했지만 대전 결과를 보고하지 못했습니다',
   'auth.submitting': '처리 중...',

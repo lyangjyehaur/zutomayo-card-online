@@ -74,6 +74,10 @@ const APP_VERSION_INFO = Object.freeze({
 });
 const AUTH_COOKIE_NAME = 'zutomayo_session';
 const AUTH_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+const AUTH_COOKIE_DOMAIN = process.env.AUTH_COOKIE_DOMAIN || '';
+const AUTH_COOKIE_SAMESITE = ['Strict', 'Lax', 'None'].includes(process.env.AUTH_COOKIE_SAMESITE)
+  ? process.env.AUTH_COOKIE_SAMESITE
+  : 'Lax';
 const AUTH_MODE = process.env.AUTH_MODE || (process.env.LOGTO_ONLY_AUTH === 'true' ? 'logto' : 'hybrid');
 const LOCAL_AUTH_ENABLED = AUTH_MODE !== 'logto';
 const ACCOUNT_LINKING_ENABLED = AUTH_MODE !== 'logto';
@@ -432,9 +436,10 @@ function serializeAuthCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
     'Path=/',
     `Max-Age=${maxAge}`,
     'HttpOnly',
-    'SameSite=Lax',
+    `SameSite=${AUTH_COOKIE_SAMESITE}`,
   ];
-  if (isSecureRequest(req)) parts.push('Secure');
+  if (AUTH_COOKIE_DOMAIN) parts.push(`Domain=${AUTH_COOKIE_DOMAIN}`);
+  if (AUTH_COOKIE_SAMESITE === 'None' || isSecureRequest(req)) parts.push('Secure');
   return parts.join('; ');
 }
 
@@ -1134,6 +1139,7 @@ function handleRequest(req, res) {
       authUrl.searchParams.set('scope', providerConfig.scope);
       authUrl.searchParams.set('state', state);
       if (providerConfig.provider === 'google') authUrl.searchParams.set('prompt', 'select_account');
+      if (providerConfig.provider === 'logto' && mode === 'login') authUrl.searchParams.set('prompt', 'login');
 
       res.writeHead(302, { Location: authUrl.toString() });
       res.end();

@@ -59,6 +59,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'auth.eloChange': 'ELO 变动',
   'auth.serviceUnavailable': '账号服务暂时无法连接',
   'auth.profileUnavailable': '无法加载账号资料，请稍后再试',
+  'auth.loginRedirectFailed': '账号登录未完成，请稍后再试',
   'auth.matchSubmittedNoElo': '对战已记录；访客对手不计入 ELO',
   'auth.matchSubmitFailed': '已保存本地记录，但无法上报对战结果',
   'auth.submitting': '处理中...',

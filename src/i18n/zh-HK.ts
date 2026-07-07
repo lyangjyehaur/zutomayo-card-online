@@ -59,6 +59,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'auth.eloChange': 'ELO 變動',
   'auth.serviceUnavailable': '帳號服務暫時連唔到',
   'auth.profileUnavailable': '載入唔到帳號資料，請稍後再試',
+  'auth.loginRedirectFailed': '帳號登入未完成，請稍後再試',
   'auth.matchSubmittedNoElo': '對戰已記錄；訪客對手唔計 ELO',
   'auth.matchSubmitFailed': '已保存本地紀錄，但上報對戰失敗',
   'auth.submitting': '處理中...',

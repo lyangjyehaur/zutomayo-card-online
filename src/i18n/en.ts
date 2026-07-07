@@ -60,6 +60,7 @@ export const en: Record<TranslationKey, string> = {
   'auth.eloChange': 'ELO change',
   'auth.serviceUnavailable': 'Account service is unavailable',
   'auth.profileUnavailable': 'Could not load account profile. Try again later.',
+  'auth.loginRedirectFailed': 'Account login was not completed. Try again later.',
   'auth.matchSubmittedNoElo': 'Match recorded; guest opponent does not affect ELO',
   'auth.matchSubmitFailed': 'Local history was saved, but match reporting failed',
   'auth.submitting': 'Submitting...',

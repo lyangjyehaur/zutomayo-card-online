@@ -60,6 +60,7 @@ export const ja: Record<TranslationKey, string> = {
   'auth.eloChange': 'ELO 変動',
   'auth.serviceUnavailable': 'アカウントサービスに接続できません',
   'auth.profileUnavailable': 'プロフィールを読み込めません。あとでもう一度お試しください',
+  'auth.loginRedirectFailed': 'アカウントログインが完了しませんでした。あとでもう一度お試しください',
   'auth.matchSubmittedNoElo': '対戦を記録しました。ゲスト相手はELOに反映されません',
   'auth.matchSubmitFailed': 'ローカル履歴は保存しましたが、対戦結果を送信できませんでした',
   'auth.submitting': '処理中...',

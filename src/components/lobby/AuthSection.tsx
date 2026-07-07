@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AlertCircle, LogOut, User } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ApiError,
   getAuthConfig,
@@ -61,6 +61,7 @@ export function AuthSection({
   compact?: boolean;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
@@ -75,6 +76,9 @@ export function AuthSection({
   const [localAuthEnabled, setLocalAuthEnabled] = useState(true);
 
   useEffect(() => {
+    const oauthStatus = new URLSearchParams(location.search).get('oauth');
+    if (oauthStatus === 'error') setError(t('auth.loginRedirectFailed'));
+
     getAuthConfig()
       .then((config) => {
         setOauthProviders(config.providers);
@@ -98,7 +102,7 @@ export function AuthSection({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [location.search]);
 
   const resetForm = () => {
     setEmail('');
@@ -162,6 +166,9 @@ export function AuthSection({
     setExpanded(false);
     navigate('/profile');
   };
+
+  const primaryOAuthProvider = oauthProviders.find((provider) => provider.enabled) || oauthProviders[0];
+  const useDirectAccountLogin = !localAuthEnabled && Boolean(primaryOAuthProvider);
 
   const authForm = (
     <form
@@ -438,21 +445,32 @@ export function AuthSection({
           variant="secondary"
           size="sm"
           type="button"
-          onClick={() => setExpanded(true)}
-          disabled={!PUBLIC_AUTH_ENTRYPOINTS_ENABLED}
+          onClick={() => {
+            if (useDirectAccountLogin && primaryOAuthProvider) {
+              handleOAuthLogin(primaryOAuthProvider);
+              return;
+            }
+            setExpanded(true);
+          }}
+          disabled={
+            !PUBLIC_AUTH_ENTRYPOINTS_ENABLED ||
+            (useDirectAccountLogin && (!primaryOAuthProvider || !primaryOAuthProvider.enabled))
+          }
           className="h-8 whitespace-nowrap"
         >
-          {t('auth.login')}
+          {useDirectAccountLogin ? t('auth.accountContinue') : t('auth.login')}
         </Button>
-        <Dialog
-          open={expanded}
-          onOpenChange={setExpanded}
-          title={`${t('auth.login')} / ${t('auth.register')}`}
-          closeLabel={t('common.close')}
-          size="sm"
-        >
-          {authForm}
-        </Dialog>
+        {!useDirectAccountLogin && (
+          <Dialog
+            open={expanded}
+            onOpenChange={setExpanded}
+            title={`${t('auth.login')} / ${t('auth.register')}`}
+            closeLabel={t('common.close')}
+            size="sm"
+          >
+            {authForm}
+          </Dialog>
+        )}
       </>
     );
   }
@@ -467,13 +485,20 @@ export function AuthSection({
           type="button"
           aria-expanded={expanded}
           aria-disabled={!PUBLIC_AUTH_ENTRYPOINTS_ENABLED}
-          disabled={!PUBLIC_AUTH_ENTRYPOINTS_ENABLED}
+          disabled={
+            !PUBLIC_AUTH_ENTRYPOINTS_ENABLED ||
+            (useDirectAccountLogin && (!primaryOAuthProvider || !primaryOAuthProvider.enabled))
+          }
           onClick={() => {
             if (!PUBLIC_AUTH_ENTRYPOINTS_ENABLED) return;
+            if (useDirectAccountLogin && primaryOAuthProvider) {
+              handleOAuthLogin(primaryOAuthProvider);
+              return;
+            }
             setExpanded((value) => !value);
           }}
         >
-          {t('auth.login')} / {t('auth.register')}
+          {useDirectAccountLogin ? t('auth.accountContinue') : `${t('auth.login')} / ${t('auth.register')}`}
         </Button>
         {!expanded && error && (
           <Alert tone="danger" role="alert" aria-live="polite" className="flex items-start gap-2">

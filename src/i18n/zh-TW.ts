@@ -57,6 +57,7 @@ export const zhTW = {
   'auth.eloChange': 'ELO 變動',
   'auth.serviceUnavailable': '帳號服務暫時無法連線',
   'auth.profileUnavailable': '無法載入帳號資料，請稍後再試',
+  'auth.loginRedirectFailed': '帳號登入未完成，請稍後再試',
   'auth.matchSubmittedNoElo': '對戰已記錄；訪客對手不計入 ELO',
   'auth.matchSubmitFailed': '已保存本地紀錄，但無法上報對戰結果',
   'auth.submitting': '處理中...',
