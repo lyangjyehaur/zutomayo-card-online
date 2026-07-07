@@ -6,6 +6,7 @@
     "start": "node server.cjs"
   },
   "dependencies": {
+    "@sentry/node": "^10.63.0",
     "ioredis": "^5.4.2",
     "pg": "^8.13.1"
   }
