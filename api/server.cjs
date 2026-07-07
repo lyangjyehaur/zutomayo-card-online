@@ -427,7 +427,12 @@ function isSecureRequest(req) {
     .split(',')[0]
     .trim()
     .toLowerCase();
-  return proto === 'https' || req.socket.encrypted === true || process.env.NODE_ENV === 'production';
+  return (
+    proto === 'https' ||
+    req.socket.encrypted === true ||
+    process.env.NODE_ENV === 'production' ||
+    getPublicBaseUrl(req).startsWith('https://')
+  );
 }
 
 function serializeAuthCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
@@ -623,14 +628,33 @@ function oauthReturnScript({ token, returnTo, error }) {
   if (error) url.searchParams.set('oauth', 'error');
   if (!error && token) url.searchParams.set('oauth', 'login');
   if (!error && !token) url.searchParams.set('oauth', 'linked');
+  const errorUrl = new URL(url.toString());
+  errorUrl.searchParams.set('oauth', 'error');
+  const target = `${url.pathname}${url.search}${url.hash}`;
+  const errorTarget = `${errorUrl.pathname}${errorUrl.search}${errorUrl.hash}`;
   return `<!doctype html><meta charset="utf-8"><script>
-try {
-  localStorage.removeItem('zutomayo_token');
-  ${token ? `localStorage.setItem('zutomayo_session', '1');` : ''}
-  location.replace(${JSON.stringify(`${url.pathname}${url.search}${url.hash}`)});
-} catch (e) {
-  location.replace(${JSON.stringify(`${url.pathname}${url.search}${url.hash}`)});
-}
+(async function () {
+  const target = ${JSON.stringify(target)};
+  const errorTarget = ${JSON.stringify(errorTarget)};
+  try {
+    localStorage.removeItem('zutomayo_token');
+    ${token ? "localStorage.setItem('zutomayo_session', '1');" : "localStorage.removeItem('zutomayo_session');"}
+    ${
+      token
+        ? `const response = await fetch('/api/profile', { credentials: 'include', cache: 'no-store' });
+    if (!response.ok) {
+      localStorage.removeItem('zutomayo_session');
+      location.replace(errorTarget);
+      return;
+    }`
+        : ''
+    }
+    location.replace(target);
+  } catch (e) {
+    localStorage.removeItem('zutomayo_session');
+    location.replace(errorTarget);
+  }
+})();
 </script>`;
 }
 
