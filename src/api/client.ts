@@ -2,6 +2,8 @@ import type { ActionLogEntry, CardDef } from '../game/types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
+const SESSION_HINT_KEY = 'zutomayo_session';
+const LEGACY_TOKEN_KEY = 'zutomayo_token';
 const PUBLIC_DATA_CACHE_MS = 0;
 
 let cardsCache: { expiresAt: number; data: CardDef[] } | null = null;
@@ -39,6 +41,7 @@ export interface AuthConfig {
   authMode: 'hybrid' | 'logto' | string;
   localAuthEnabled: boolean;
   accountLinkingEnabled: boolean;
+  accountCenterUrl: string;
   providers: OAuthProvider[];
 }
 
@@ -241,14 +244,14 @@ export class ApiError extends Error {
 }
 
 async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('zutomayo_token');
+  const token = localStorage.getItem(LEGACY_TOKEN_KEY);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
   const text = await res.text();
   let data: Record<string, unknown> = {};
   if (text) {
@@ -268,6 +271,16 @@ function adminAuthHeaders(): Record<string, string> {
     (typeof localStorage !== 'undefined' && localStorage.getItem(ADMIN_TOKEN_KEY)) ||
     '';
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function markAccountSession() {
+  localStorage.setItem(SESSION_HINT_KEY, '1');
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
+}
+
+function clearAccountSession() {
+  localStorage.removeItem(SESSION_HINT_KEY);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 function isFresh<T>(cache: { expiresAt: number; data: T } | null): cache is { expiresAt: number; data: T } {
@@ -415,7 +428,7 @@ export async function registerWithVerification({
     method: 'POST',
     body: JSON.stringify({ email, password, nickname, verificationToken }),
   });
-  localStorage.setItem('zutomayo_token', data.token);
+  markAccountSession();
   return data.user;
 }
 
@@ -436,16 +449,17 @@ export async function loginWithVerification({
     method: 'POST',
     body: JSON.stringify({ email, password, verificationToken }),
   });
-  localStorage.setItem('zutomayo_token', data.token);
+  markAccountSession();
   return data.user;
 }
 
 export function logout() {
-  localStorage.removeItem('zutomayo_token');
+  clearAccountSession();
+  void request('/logout', { method: 'POST' }).catch(() => {});
 }
 
 export function isLoggedIn(): boolean {
-  return !!localStorage.getItem('zutomayo_token');
+  return Boolean(localStorage.getItem(SESSION_HINT_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY));
 }
 
 // ===== Profile =====
@@ -477,6 +491,7 @@ export async function getAuthConfig(): Promise<AuthConfig> {
     authMode: data.authMode || 'hybrid',
     localAuthEnabled: data.localAuthEnabled ?? true,
     accountLinkingEnabled: data.accountLinkingEnabled ?? true,
+    accountCenterUrl: typeof data.accountCenterUrl === 'string' ? data.accountCenterUrl : '',
     providers: data.providers || [],
   };
 }

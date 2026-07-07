@@ -65,6 +65,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'auth.loginForm': '登录表单',
   'auth.registerForm': '注册表单',
   'auth.oauthLogin': '第三方登录',
+  'auth.accountLogin': '账号登录',
+  'auth.accountContinue': '登录 / 注册',
 
   'profile.title': '个人页',
   'profile.loading': '正在加载账号...',
@@ -98,8 +100,10 @@ export const zhCN: Record<TranslationKey, string> = {
   'profile.oauthError': '第三方账号绑定失败，请稍后再试',
   'profile.oauthUnlinkError': '第三方账号解除失败，请稍后再试',
   'profile.oauthCannotUnlinkLast': '无法解除最后一个登录方式。请先设置密码或绑定其他第三方账号。',
-  'profile.oauthManagedByLogto': '登录与社交账号连接由 Logto 管理。',
-  'profile.passwordManagedByLogto': '密码与登录安全由 Logto 管理，本站只保存游戏内资料。',
+  'profile.oauthManagedByLogto': '登录与社交账号连接由账号中心管理。',
+  'profile.accountSecurity': '账号安全',
+  'profile.manageAccountSecurity': '管理账号安全',
+  'profile.passwordManagedByLogto': '密码、登录方式与社交连接由账号中心管理；本站会保留你的昵称与游戏资料。',
 
   'lobby.aiBattle': '与电脑对战',
   'lobby.createRoom': '创建房间',

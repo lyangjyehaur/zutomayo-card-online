@@ -72,6 +72,8 @@ const APP_VERSION_INFO = Object.freeze({
   buildId: APP_BUILD_ID,
   rulesVersion: GAME_RULES_VERSION,
 });
+const AUTH_COOKIE_NAME = 'zutomayo_session';
+const AUTH_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 const AUTH_MODE = process.env.AUTH_MODE || (process.env.LOGTO_ONLY_AUTH === 'true' ? 'logto' : 'hybrid');
 const LOCAL_AUTH_ENABLED = AUTH_MODE !== 'logto';
 const ACCOUNT_LINKING_ENABLED = AUTH_MODE !== 'logto';
@@ -89,6 +91,7 @@ const LOGTO_DISCOVERY_URL =
     : LOGTO_ENDPOINT
       ? `${LOGTO_ENDPOINT}/oidc/.well-known/openid-configuration`
       : '');
+const LOGTO_ACCOUNT_CENTER_URL = process.env.LOGTO_ACCOUNT_CENTER_URL || '';
 
 // 安全性驗證：JWT_SECRET 必須在生產環境設定
 function validateSecurityConfig() {
@@ -395,6 +398,54 @@ function createToken(userId) {
   return `${input}.${signTokenInput(input)}`;
 }
 
+function decodeCookieValue(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function parseCookies(req) {
+  return Object.fromEntries(
+    String(req.headers.cookie || '')
+      .split(';')
+      .map((part) => {
+        const [name, ...valueParts] = part.trim().split('=');
+        return [name, decodeCookieValue(valueParts.join('=') || '')];
+      })
+      .filter(([name]) => name),
+  );
+}
+
+function isSecureRequest(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  return proto === 'https' || req.socket.encrypted === true || process.env.NODE_ENV === 'production';
+}
+
+function serializeAuthCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
+  const parts = [
+    `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/',
+    `Max-Age=${maxAge}`,
+    'HttpOnly',
+    'SameSite=Lax',
+  ];
+  if (isSecureRequest(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+
+function setAuthCookie(req, res, token) {
+  res.setHeader('Set-Cookie', serializeAuthCookie(req, token));
+}
+
+function clearAuthCookie(req, res) {
+  res.setHeader('Set-Cookie', serializeAuthCookie(req, '', 0));
+}
+
 function verifyToken(token) {
   try {
     if (typeof token !== 'string') return null;
@@ -423,8 +474,11 @@ function verifyToken(token) {
 
 function getAuthUserId(req) {
   const auth = req.headers.authorization;
-  if (!auth) return null;
-  return verifyToken(auth.replace('Bearer ', ''));
+  if (auth) {
+    const userId = verifyToken(auth.replace('Bearer ', ''));
+    if (userId) return userId;
+  }
+  return verifyToken(parseCookies(req)[AUTH_COOKIE_NAME]);
 }
 
 function getClientCountry(req) {
@@ -566,7 +620,8 @@ function oauthReturnScript({ token, returnTo, error }) {
   if (!error && !token) url.searchParams.set('oauth', 'linked');
   return `<!doctype html><meta charset="utf-8"><script>
 try {
-  ${token ? `localStorage.setItem('zutomayo_token', ${JSON.stringify(token)});` : ''}
+  localStorage.removeItem('zutomayo_token');
+  ${token ? `localStorage.setItem('zutomayo_session', '1');` : ''}
   location.replace(${JSON.stringify(`${url.pathname}${url.search}${url.hash}`)});
 } catch (e) {
   location.replace(${JSON.stringify(`${url.pathname}${url.search}${url.hash}`)});
@@ -958,6 +1013,7 @@ function handleRequest(req, res) {
   if (corsOrigin) {
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
     res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -1036,6 +1092,7 @@ function handleRequest(req, res) {
         authMode: AUTH_MODE,
         localAuthEnabled: LOCAL_AUTH_ENABLED,
         accountLinkingEnabled: ACCOUNT_LINKING_ENABLED,
+        accountCenterUrl: AUTH_MODE === 'logto' ? LOGTO_ACCOUNT_CENTER_URL : '',
         providers: visibleOAuthProviderEntries().map(([provider, config]) => ({
           provider,
           label: config.label,
@@ -1130,6 +1187,7 @@ function handleRequest(req, res) {
         hashEmail: hashEmailForAvatar,
         country: getClientCountry(req),
       });
+      if (result.ok) setAuthCookie(req, res, result.body.token);
       res.writeHead(result.ok ? 200 : result.status || 400, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(
         oauthReturnScript({
@@ -1159,6 +1217,7 @@ function handleRequest(req, res) {
         generateSalt: () => crypto.randomBytes(16).toString('hex'),
       });
       if (!result.ok) return json({ error: result.error }, result.status);
+      setAuthCookie(req, res, result.body.token);
       json(result.body);
       return;
     }
@@ -1178,7 +1237,14 @@ function handleRequest(req, res) {
         legacyIterations: PBKDF2_LEGACY_ITERATIONS,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
+      setAuthCookie(req, res, result.body.token);
       json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/logout' && method === 'POST') {
+      clearAuthCookie(req, res);
+      json({ ok: true });
       return;
     }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { CheckCircle2, KeyRound, Link2, Mail, Save, ShieldCheck, Trophy } from 'lucide-react';
+import { CheckCircle2, ExternalLink, KeyRound, Link2, Mail, Save, ShieldCheck, Trophy } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ApiError,
@@ -46,6 +46,7 @@ export function ProfilePage() {
   const [oauthIdentities, setOauthIdentities] = useState<OAuthIdentity[]>([]);
   const [localAuthEnabled, setLocalAuthEnabled] = useState(true);
   const [accountLinkingEnabled, setAccountLinkingEnabled] = useState(true);
+  const [accountCenterUrl, setAccountCenterUrl] = useState('');
   const [nickname, setNickname] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -74,6 +75,7 @@ export function ProfilePage() {
         setOauthProviders(authConfig?.providers || []);
         setLocalAuthEnabled(authConfig?.localAuthEnabled ?? true);
         setAccountLinkingEnabled(authConfig?.accountLinkingEnabled ?? true);
+        setAccountCenterUrl(authConfig?.accountCenterUrl || '');
         setOauthIdentities(identities);
         const oauthStatus = new URLSearchParams(location.search).get('oauth');
         if (oauthStatus === 'linked') setProfileStatus(t('profile.oauthLinked'));
@@ -158,6 +160,8 @@ export function ProfilePage() {
       setUnlinkingProvider(null);
     }
   };
+
+  const accountCenterMode = !localAuthEnabled && !accountLinkingEnabled;
 
   if (loading) {
     return (
@@ -274,40 +278,38 @@ export function ProfilePage() {
               </form>
             </Panel>
 
-            <Panel size="lg">
-              <div className="mb-4 flex items-center gap-2">
-                <Link2 className="size-5 text-accent-primary" aria-hidden="true" />
-                <h2 className="font-display text-title-sm font-bold">{t('profile.oauthTitle')}</h2>
-              </div>
-              <div className="grid gap-3">
-                {oauthProviders.map((provider) => {
-                  const linked = linkedProviderIds.has(provider.provider);
-                  const identity = oauthIdentities.find((item) => item.provider === provider.provider);
-                  return (
-                    <div
-                      key={provider.provider}
-                      className="flex flex-col gap-3 rounded-sm border border-border-soft bg-surface-canvas/45 p-3 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <strong className="font-display text-body-lg">{provider.label}</strong>
-                          {linked && (
-                            <Badge tone="jade" className="gap-1">
-                              <CheckCircle2 className="size-3" aria-hidden="true" />
-                              {t('profile.oauthLinkedBadge')}
-                            </Badge>
-                          )}
-                          {!provider.enabled && <Badge tone="neutral">{t('profile.oauthNotConfigured')}</Badge>}
-                        </div>
-                        <p className="mt-1 truncate text-body-sm text-content-muted">
-                          {!accountLinkingEnabled
-                            ? t('profile.oauthManagedByLogto')
-                            : linked
+            {!accountCenterMode && (
+              <Panel size="lg">
+                <div className="mb-4 flex items-center gap-2">
+                  <Link2 className="size-5 text-accent-primary" aria-hidden="true" />
+                  <h2 className="font-display text-title-sm font-bold">{t('profile.oauthTitle')}</h2>
+                </div>
+                <div className="grid gap-3">
+                  {oauthProviders.map((provider) => {
+                    const linked = linkedProviderIds.has(provider.provider);
+                    const identity = oauthIdentities.find((item) => item.provider === provider.provider);
+                    return (
+                      <div
+                        key={provider.provider}
+                        className="flex flex-col gap-3 rounded-sm border border-border-soft bg-surface-canvas/45 p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <strong className="font-display text-body-lg">{provider.label}</strong>
+                            {linked && (
+                              <Badge tone="jade" className="gap-1">
+                                <CheckCircle2 className="size-3" aria-hidden="true" />
+                                {t('profile.oauthLinkedBadge')}
+                              </Badge>
+                            )}
+                            {!provider.enabled && <Badge tone="neutral">{t('profile.oauthNotConfigured')}</Badge>}
+                          </div>
+                          <p className="mt-1 truncate text-body-sm text-content-muted">
+                            {linked
                               ? identity?.email || identity?.displayName || t('profile.oauthLinkedDescription')
                               : t('profile.oauthDescription')}
-                        </p>
-                      </div>
-                      {accountLinkingEnabled && (
+                          </p>
+                        </div>
                         <Button
                           className="shrink-0"
                           variant={linked ? 'danger' : 'primary'}
@@ -321,12 +323,12 @@ export function ProfilePage() {
                               : t('profile.oauthUnlinkAction')
                             : t('profile.oauthLinkAction')}
                         </Button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </Panel>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Panel>
+            )}
 
             {localAuthEnabled ? (
               <Panel size="lg">
@@ -379,7 +381,25 @@ export function ProfilePage() {
                 </form>
               </Panel>
             ) : (
-              <Alert tone="info">{t('profile.passwordManagedByLogto')}</Alert>
+              <Panel size="lg">
+                <div className="mb-3 flex items-center gap-2">
+                  <KeyRound className="size-5 text-accent-primary" aria-hidden="true" />
+                  <h2 className="font-display text-title-sm font-bold">{t('profile.accountSecurity')}</h2>
+                </div>
+                <p className="text-body-sm leading-relaxed text-content-muted">{t('profile.passwordManagedByLogto')}</p>
+                {accountCenterUrl && (
+                  <FormActions className="mt-4">
+                    <Button
+                      variant="primary"
+                      type="button"
+                      leftIcon={<ExternalLink className="size-4" aria-hidden="true" />}
+                      onClick={() => window.open(accountCenterUrl, '_blank', 'noopener,noreferrer')}
+                    >
+                      {t('profile.manageAccountSecurity')}
+                    </Button>
+                  </FormActions>
+                )}
+              </Panel>
             )}
           </div>
         </div>

@@ -63,6 +63,8 @@ export const zhTW = {
   'auth.loginForm': '登入表單',
   'auth.registerForm': '註冊表單',
   'auth.oauthLogin': '第三方登入',
+  'auth.accountLogin': '帳號登入',
+  'auth.accountContinue': '登入 / 註冊',
 
   'profile.title': '個人頁',
   'profile.loading': '載入帳號中...',
@@ -96,8 +98,10 @@ export const zhTW = {
   'profile.oauthError': '第三方帳戶綁定失敗，請稍後再試',
   'profile.oauthUnlinkError': '第三方帳戶解除失敗，請稍後再試',
   'profile.oauthCannotUnlinkLast': '無法解除最後一個登入方式。請先設定密碼或綁定其他第三方帳戶。',
-  'profile.oauthManagedByLogto': '登入與社交帳戶連接由 Logto 管理。',
-  'profile.passwordManagedByLogto': '密碼與登入安全由 Logto 管理，本站只保存遊戲內資料。',
+  'profile.oauthManagedByLogto': '登入與社交帳戶連接由帳號中心管理。',
+  'profile.accountSecurity': '帳號安全',
+  'profile.manageAccountSecurity': '管理帳號安全',
+  'profile.passwordManagedByLogto': '密碼、登入方式與社交連接由帳號中心管理；本站會保留你的暱稱與遊戲資料。',
 
   'lobby.aiBattle': '與電腦對戰',
   'lobby.createRoom': '創建房間',

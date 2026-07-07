@@ -260,19 +260,19 @@ export function AuthSection({
       {oauthProviders.length > 0 && (
         <div className={`grid gap-2 ${localAuthEnabled ? 'border-t border-content-primary/10 pt-3' : ''}`}>
           <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-            {t('auth.oauthLogin')}
+            {localAuthEnabled ? t('auth.oauthLogin') : t('auth.accountLogin')}
           </span>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className={localAuthEnabled ? 'grid gap-2 sm:grid-cols-3' : 'grid gap-2'}>
             {oauthProviders.map((provider) => (
               <Button
                 key={provider.provider}
-                variant="secondary"
+                variant={localAuthEnabled ? 'secondary' : 'primary'}
                 size="sm"
                 type="button"
                 disabled={!provider.enabled}
                 onClick={() => handleOAuthLogin(provider)}
               >
-                {provider.label}
+                {localAuthEnabled ? provider.label : t('auth.accountContinue')}
               </Button>
             ))}
           </div>

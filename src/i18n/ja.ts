@@ -66,6 +66,8 @@ export const ja: Record<TranslationKey, string> = {
   'auth.loginForm': 'ログインフォーム',
   'auth.registerForm': '登録フォーム',
   'auth.oauthLogin': '外部サービスでログイン',
+  'auth.accountLogin': 'アカウントログイン',
+  'auth.accountContinue': 'ログイン / 登録',
 
   'profile.title': 'プロフィール',
   'profile.loading': 'アカウントを読み込み中...',
@@ -101,9 +103,11 @@ export const ja: Record<TranslationKey, string> = {
   'profile.oauthUnlinkError': '外部アカウントの連携解除に失敗しました。あとでもう一度お試しください',
   'profile.oauthCannotUnlinkLast':
     '最後のログイン方法は解除できません。先にパスワードを設定するか、別の外部アカウントを連携してください。',
-  'profile.oauthManagedByLogto': 'ログインと外部アカウント連携は Logto で管理されます。',
+  'profile.oauthManagedByLogto': 'ログインと外部アカウント連携はアカウントセンターで管理されます。',
+  'profile.accountSecurity': 'アカウントセキュリティ',
+  'profile.manageAccountSecurity': 'アカウントセキュリティを管理',
   'profile.passwordManagedByLogto':
-    'パスワードとログインセキュリティは Logto で管理されます。このサイトはゲーム内データのみ保存します。',
+    'パスワード、ログイン方法、外部連携はアカウントセンターで管理されます。このサイトではニックネームとゲームデータを保存します。',
 
   'lobby.aiBattle': 'コンピュータ対戦',
   'lobby.createRoom': 'ルーム作成',

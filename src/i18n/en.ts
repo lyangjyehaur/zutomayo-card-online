@@ -66,6 +66,8 @@ export const en: Record<TranslationKey, string> = {
   'auth.loginForm': 'Login form',
   'auth.registerForm': 'Registration form',
   'auth.oauthLogin': 'Third-party login',
+  'auth.accountLogin': 'Account login',
+  'auth.accountContinue': 'Log in / Register',
 
   'profile.title': 'Profile',
   'profile.loading': 'Loading account...',
@@ -101,9 +103,11 @@ export const en: Record<TranslationKey, string> = {
   'profile.oauthUnlinkError': 'Could not disconnect the account. Try again later.',
   'profile.oauthCannotUnlinkLast':
     'You cannot remove the last sign-in method. Set a password or connect another account first.',
-  'profile.oauthManagedByLogto': 'Sign-in and social account connections are managed by Logto.',
+  'profile.oauthManagedByLogto': 'Sign-in and social account connections are managed by the account center.',
+  'profile.accountSecurity': 'Account security',
+  'profile.manageAccountSecurity': 'Manage account security',
   'profile.passwordManagedByLogto':
-    'Password and sign-in security are managed by Logto. This site only stores game data.',
+    'Passwords, sign-in methods, and social connections are managed by the account center. This site keeps your nickname and game data.',
 
   'lobby.aiBattle': 'Practice vs AI',
   'lobby.createRoom': 'Create Room',

@@ -66,6 +66,8 @@ export const ko: Record<TranslationKey, string> = {
   'auth.loginForm': '로그인 양식',
   'auth.registerForm': '가입 양식',
   'auth.oauthLogin': '외부 서비스 로그인',
+  'auth.accountLogin': '계정 로그인',
+  'auth.accountContinue': '로그인 / 가입',
 
   'profile.title': '프로필',
   'profile.loading': '계정을 불러오는 중...',
@@ -101,9 +103,11 @@ export const ko: Record<TranslationKey, string> = {
   'profile.oauthUnlinkError': '외부 계정 연결을 해제할 수 없습니다. 나중에 다시 시도해 주세요.',
   'profile.oauthCannotUnlinkLast':
     '마지막 로그인 방법은 제거할 수 없습니다. 먼저 비밀번호를 설정하거나 다른 외부 계정을 연결해 주세요.',
-  'profile.oauthManagedByLogto': '로그인 및 소셜 계정 연결은 Logto에서 관리됩니다.',
+  'profile.oauthManagedByLogto': '로그인 및 소셜 계정 연결은 계정 센터에서 관리됩니다.',
+  'profile.accountSecurity': '계정 보안',
+  'profile.manageAccountSecurity': '계정 보안 관리',
   'profile.passwordManagedByLogto':
-    '비밀번호와 로그인 보안은 Logto에서 관리됩니다. 이 사이트는 게임 데이터만 저장합니다.',
+    '비밀번호, 로그인 방법, 소셜 연결은 계정 센터에서 관리됩니다. 이 사이트는 닉네임과 게임 데이터를 저장합니다.',
 
   'lobby.aiBattle': 'AI 연습',
   'lobby.createRoom': '방 만들기',
