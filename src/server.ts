@@ -396,7 +396,22 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
       },
       (proxyRes) => {
         ctx.status = proxyRes.statusCode || 200;
-        ctx.set('Content-Type', proxyRes.headers['content-type'] || 'application/json');
+        const responseHeaders = proxyRes.headers;
+        const hopByHopHeaders = new Set([
+          'connection',
+          'keep-alive',
+          'proxy-authenticate',
+          'proxy-authorization',
+          'te',
+          'trailer',
+          'transfer-encoding',
+          'upgrade',
+        ]);
+        for (const [name, value] of Object.entries(responseHeaders)) {
+          if (value === undefined || hopByHopHeaders.has(name.toLowerCase())) continue;
+          ctx.set(name, value);
+        }
+        if (!responseHeaders['content-type']) ctx.set('Content-Type', 'application/json');
         const resChunks: Buffer[] = [];
         proxyRes.on('data', (chunk: Buffer) => resChunks.push(chunk));
         proxyRes.on('end', () => {
