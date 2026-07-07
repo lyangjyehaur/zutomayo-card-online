@@ -1,0 +1,352 @@
+@import url("https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&family=Noto+Sans:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&family=Noto+Sans+KR:wght@400;600;700&family=Noto+Sans+SC:wght@400;600;700&family=Noto+Sans+TC:wght@400;600;700&display=swap");
+
+/*
+ * ZUTOMAYO CARD ONLINE x Logto custom CSS
+ *
+ * Paste into Logto Console > Sign-in experience > Custom CSS.
+ *
+ * Safety note:
+ * Logto uses CSS Modules. Avoid broad layout selectors such as
+ * [class*="content"], [class*="wrapper"], [class*="container"], and
+ * [class*="form"]; those can break the sign-in page layout after a build.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --ztmy-ink-950: oklch(0.14 0.028 265);
+  --ztmy-ink-900: oklch(0.185 0.03 265);
+  --ztmy-ink-850: oklch(0.23 0.032 265);
+  --ztmy-signal: oklch(0.97 0.008 240);
+  --ztmy-muted: oklch(0.82 0.018 250);
+  --ztmy-dim: oklch(0.64 0.025 250);
+  --ztmy-volt: oklch(0.88 0.16 102);
+  --ztmy-volt-soft: oklch(0.75 0.13 100);
+  --ztmy-night: oklch(0.63 0.17 278);
+  --ztmy-day: oklch(0.66 0.2 32);
+  --ztmy-cyan: oklch(0.8 0.12 215);
+  --ztmy-danger: oklch(0.6 0.21 15);
+  --ztmy-border: oklch(0.97 0.008 240 / 0.14);
+  --ztmy-border-strong: oklch(0.88 0.16 102 / 0.56);
+  --ztmy-font-display: "Kaisei Tokumin", "Noto Sans JP", "Noto Sans", serif;
+  --ztmy-font-sans: "Noto Sans", "Noto Sans TC", "Noto Sans SC", "Noto Sans JP", "Noto Sans KR", system-ui, sans-serif;
+}
+
+html[lang="zh-TW"],
+html[lang="zh-HK"],
+html[lang="zh-MO"],
+html[lang^="zh-Hant"] {
+  --ztmy-font-sans: "Noto Sans TC", "Noto Sans", "Noto Sans JP", "Noto Sans KR", system-ui, sans-serif;
+}
+
+html[lang="zh-CN"],
+html[lang^="zh-Hans"] {
+  --ztmy-font-sans: "Noto Sans SC", "Noto Sans", "Noto Sans JP", "Noto Sans KR", system-ui, sans-serif;
+}
+
+html[lang^="ja"] {
+  --ztmy-font-sans: "Noto Sans JP", "Noto Sans", "Noto Sans TC", "Noto Sans SC", system-ui, sans-serif;
+}
+
+html[lang^="ko"] {
+  --ztmy-font-sans: "Noto Sans KR", "Noto Sans", "Noto Sans TC", "Noto Sans SC", system-ui, sans-serif;
+}
+
+html,
+body,
+#app {
+  min-height: 100vh !important;
+  color: var(--ztmy-signal) !important;
+  font-family: var(--ztmy-font-sans) !important;
+}
+
+body {
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 50% 40%, oklch(0.63 0.17 278 / 0.18), transparent 36rem),
+    radial-gradient(circle at 18% 16%, oklch(0.66 0.2 32 / 0.1), transparent 28rem),
+    linear-gradient(135deg, var(--ztmy-ink-950), var(--ztmy-ink-900) 52%, var(--ztmy-ink-950)) !important;
+}
+
+#app {
+  background: transparent !important;
+}
+
+#app .logto_main-content {
+  border: 1px solid oklch(0.97 0.008 240 / 0.12) !important;
+  border-radius: 8px !important;
+  background:
+    linear-gradient(135deg, oklch(0.23 0.032 265 / 0.94), oklch(0.185 0.03 265 / 0.96)),
+    var(--ztmy-ink-900) !important;
+  box-shadow:
+    0 24px 80px oklch(0.08 0.02 265 / 0.42),
+    inset 0 1px 0 oklch(0.97 0.008 240 / 0.06) !important;
+}
+
+#app * {
+  letter-spacing: 0 !important;
+}
+
+#app h1,
+#app h2,
+#app [class*="title"],
+#app [class*="Title"],
+#app [class*="headline"],
+#app [class*="Headline"] {
+  color: var(--ztmy-signal) !important;
+  font-family: var(--ztmy-font-sans) !important;
+  font-style: normal !important;
+  font-weight: 700 !important;
+  text-wrap: balance;
+}
+
+#app p,
+#app label,
+#app [class*="description"],
+#app [class*="Description"],
+#app [class*="subtitle"],
+#app [class*="Subtitle"] {
+  color: var(--ztmy-muted) !important;
+}
+
+#app a {
+  color: var(--ztmy-volt) !important;
+  text-decoration-color: oklch(0.88 0.16 102 / 0.36) !important;
+  text-underline-offset: 0.18em;
+}
+
+#app a:hover {
+  color: var(--ztmy-signal) !important;
+  text-decoration-color: var(--ztmy-volt) !important;
+}
+
+#app img[class*="logo"],
+#app [class*="logo"] img,
+#app [class*="Logo"] img {
+  max-height: 52px !important;
+  filter: drop-shadow(0 10px 28px oklch(0.88 0.16 102 / 0.16));
+}
+
+#app .logto_branding-header::before {
+  content: "ZUTOMAYO CARD ONLINE";
+  display: block;
+  margin-bottom: 0.85rem;
+  color: var(--ztmy-signal);
+  font-family: var(--ztmy-font-display);
+  font-size: clamp(1.32rem, 4vw, 1.72rem);
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+}
+
+#app input,
+#app textarea,
+#app select {
+  min-height: 44px !important;
+  border-radius: 4px !important;
+  border: 1px solid var(--ztmy-border) !important;
+  background: oklch(0.14 0.028 265 / 0.72) !important;
+  color: var(--ztmy-signal) !important;
+  box-shadow: inset 0 1px 0 oklch(0.97 0.008 240 / 0.04) !important;
+  caret-color: var(--ztmy-volt) !important;
+}
+
+#app input::placeholder,
+#app textarea::placeholder {
+  color: oklch(0.97 0.008 240 / 0.38) !important;
+}
+
+#app input:hover,
+#app textarea:hover,
+#app select:hover {
+  border-color: oklch(0.97 0.008 240 / 0.22) !important;
+}
+
+#app input:focus,
+#app input:focus-visible,
+#app textarea:focus,
+#app textarea:focus-visible,
+#app select:focus {
+  border-color: var(--ztmy-border-strong) !important;
+  box-shadow:
+    0 0 0 3px oklch(0.88 0.16 102 / 0.18),
+    inset 0 1px 0 oklch(0.97 0.008 240 / 0.05) !important;
+  outline: none !important;
+}
+
+#app :where([class*="inputField"], [class*="InputField"]) input {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#app :where([class*="inputField"], [class*="InputField"]) input:hover {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#app :where([class*="inputField"], [class*="InputField"]) input:focus,
+#app :where([class*="inputField"], [class*="InputField"]) input:focus-visible {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#app fieldset[class*="_border"] {
+  border-color: var(--ztmy-border) !important;
+}
+
+#app :where([class*="inputField"], [class*="InputField"]) label[class*="_label"],
+#app :where([class*="inputField"], [class*="InputField"]) fieldset legend span {
+  padding-inline: 0.28rem !important;
+  background: transparent !important;
+  box-decoration-break: clone;
+}
+
+#app :where([class*="_active"], [class*="_focused"]) fieldset[class*="_border"] {
+  border-color: var(--ztmy-border-strong) !important;
+  outline: none !important;
+}
+
+#app :where([class*="_active"], [class*="_focused"]) fieldset[class*="_outline"] {
+  border-color: oklch(0.88 0.16 102 / 0.18) !important;
+  border-style: solid !important;
+  outline: none !important;
+}
+
+#app button {
+  min-height: 44px !important;
+  border-radius: 4px !important;
+  font-weight: 700 !important;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease !important;
+}
+
+#app button[type="submit"],
+#app button[class*="primary"],
+#app button[class*="Primary"] {
+  border: 1px solid oklch(0.88 0.16 102 / 0.68) !important;
+  background: linear-gradient(180deg, var(--ztmy-volt), var(--ztmy-volt-soft)) !important;
+  color: var(--ztmy-ink-950) !important;
+  box-shadow:
+    0 14px 38px oklch(0.88 0.16 102 / 0.2),
+    inset 0 1px 0 oklch(0.97 0.008 240 / 0.42) !important;
+}
+
+#app button[type="submit"]:hover,
+#app button[class*="primary"]:hover,
+#app button[class*="Primary"]:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(180deg, oklch(0.93 0.16 102), var(--ztmy-volt)) !important;
+  box-shadow:
+    0 18px 46px oklch(0.88 0.16 102 / 0.28),
+    inset 0 1px 0 oklch(0.97 0.008 240 / 0.5) !important;
+}
+
+#app button:not([type="submit"]):not([class*="primary"]):not([class*="Primary"]) {
+  border-color: var(--ztmy-border) !important;
+  color: var(--ztmy-signal) !important;
+}
+
+#app button:not([type="submit"]):not([class*="primary"]):not([class*="Primary"]):hover {
+  border-color: oklch(0.8 0.12 215 / 0.48) !important;
+}
+
+#app button svg {
+  color: var(--ztmy-signal) !important;
+  opacity: 0.88;
+}
+
+#app button svg path:not([fill]),
+#app button svg circle:not([fill]),
+#app button svg rect:not([fill]) {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+#app button svg [fill="#000"],
+#app button svg [fill="#000000"],
+#app button svg [fill="black"],
+#app button svg [stroke="#000"],
+#app button svg [stroke="#000000"],
+#app button svg [stroke="black"] {
+  fill: var(--ztmy-signal) !important;
+  stroke: var(--ztmy-signal) !important;
+}
+
+#app button:disabled {
+  opacity: 0.52 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+#app [role="alert"],
+#app [class*="error"],
+#app [class*="Error"],
+#app [class*="danger"],
+#app [class*="Danger"] {
+  border-radius: 4px !important;
+  border-color: oklch(0.6 0.21 15 / 0.45) !important;
+  background: oklch(0.6 0.21 15 / 0.1) !important;
+  color: oklch(0.78 0.16 25) !important;
+}
+
+#app [class*="success"],
+#app [class*="Success"] {
+  border-radius: 4px !important;
+  border-color: oklch(0.72 0.14 155 / 0.38) !important;
+  background: oklch(0.72 0.14 155 / 0.1) !important;
+  color: oklch(0.82 0.12 155) !important;
+}
+
+#app [class*="divider"],
+#app [class*="Divider"],
+#app [class*="back"],
+#app [class*="Back"],
+#app [class*="forgot"],
+#app [class*="Forgot"],
+#app [class*="switch"],
+#app [class*="Switch"],
+#app [class*="footer"],
+#app [class*="Footer"] {
+  color: var(--ztmy-dim) !important;
+}
+
+#app [class*="divider"] i,
+#app [class*="Divider"] i {
+  background-color: oklch(0.97 0.008 240 / 0.18) !important;
+}
+
+#app [class*="social"] button,
+#app [class*="Social"] button,
+#app button[class*="connector"],
+#app button[class*="Connector"],
+#app button[class*="sso"],
+#app button[class*="Sso"],
+#app button[class*="SSO"] {
+  justify-content: center !important;
+  border-color: oklch(0.8 0.12 215 / 0.28) !important;
+  background: oklch(0.23 0.032 265 / 0.56) !important;
+}
+
+#app [class*="social"] button:hover,
+#app [class*="Social"] button:hover,
+#app button[class*="connector"]:hover,
+#app button[class*="Connector"]:hover,
+#app button[class*="sso"]:hover,
+#app button[class*="Sso"]:hover,
+#app button[class*="SSO"]:hover {
+  border-color: oklch(0.8 0.12 215 / 0.55) !important;
+  box-shadow: 0 12px 34px oklch(0.8 0.12 215 / 0.12) !important;
+}
+
+#app *:focus-visible {
+  outline: 2px solid var(--ztmy-volt) !important;
+  outline-offset: 3px !important;
+}

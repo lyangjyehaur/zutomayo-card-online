@@ -4,7 +4,17 @@ const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
 const Redis = require('ioredis');
-const { getAccountProfile, loginAccount, registerAccount, updateAccountProfile } = require('./accountService.cjs');
+const {
+  getAccountProfile,
+  linkOAuthIdentity,
+  listAccountIdentities,
+  loginAccount,
+  loginWithOAuthIdentity,
+  registerAccount,
+  updateAccountPassword,
+  updateAccountProfile,
+  unlinkOAuthIdentity,
+} = require('./accountService.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
 const { adminLogin, listAdminUsers, resetUserElo } = require('./adminService.cjs');
 const { logger, attachRequestObservability, metricsResponse, rateLimitedTotal } = require('./observability.cjs');
@@ -66,6 +76,36 @@ const APP_VERSION_INFO = Object.freeze({
   buildId: APP_BUILD_ID,
   rulesVersion: GAME_RULES_VERSION,
 });
+const AUTH_COOKIE_NAME = 'zutomayo_session';
+const AUTH_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+const AUTH_COOKIE_DOMAIN = process.env.AUTH_COOKIE_DOMAIN || '';
+const AUTH_COOKIE_SAMESITE = ['Strict', 'Lax', 'None'].includes(process.env.AUTH_COOKIE_SAMESITE)
+  ? process.env.AUTH_COOKIE_SAMESITE
+  : 'Lax';
+const AUTH_MODE = process.env.AUTH_MODE || (process.env.LOGTO_ONLY_AUTH === 'true' ? 'logto' : 'hybrid');
+const LOCAL_AUTH_ENABLED = AUTH_MODE !== 'logto';
+const ACCOUNT_LINKING_ENABLED = AUTH_MODE !== 'logto';
+const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || '';
+const TURNSTILE_REQUIRED = process.env.TURNSTILE_REQUIRED === 'true';
+const TURNSTILE_SITEVERIFY_URL =
+  process.env.TURNSTILE_SITEVERIFY_URL || 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+const OAUTH_PUBLIC_BASE_URL = process.env.OAUTH_PUBLIC_BASE_URL || '';
+const LOGTO_ISSUER = (process.env.LOGTO_ISSUER || '').replace(/\/$/, '');
+const LOGTO_ENDPOINT = (process.env.LOGTO_ENDPOINT || '').replace(/\/$/, '');
+const LOGTO_DISCOVERY_URL =
+  process.env.LOGTO_DISCOVERY_URL ||
+  (LOGTO_ISSUER
+    ? `${LOGTO_ISSUER}/.well-known/openid-configuration`
+    : LOGTO_ENDPOINT
+      ? `${LOGTO_ENDPOINT}/oidc/.well-known/openid-configuration`
+      : '');
+const LOGTO_ACCOUNT_CENTER_URL =
+  process.env.LOGTO_ACCOUNT_CENTER_URL ||
+  (LOGTO_ENDPOINT
+    ? `${LOGTO_ENDPOINT}/account/security`
+    : LOGTO_ISSUER
+      ? `${LOGTO_ISSUER.replace(/\/oidc$/, '')}/account/security`
+      : '');
 
 // GlitchTip/Sentry error tracking — no-op when SENTRY_DSN is unset.
 if (process.env.SENTRY_DSN) {
@@ -142,6 +182,25 @@ async function initSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
     `CREATE INDEX IF NOT EXISTS idx_users_elo ON users (elo DESC)`,
+
+    `CREATE TABLE IF NOT EXISTS user_identities (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      provider_user_id TEXT NOT NULL,
+      email TEXT DEFAULT '',
+      email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      display_name TEXT DEFAULT '',
+      avatar_url TEXT DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (provider, provider_user_id)
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_user_identities_user_provider
+      ON user_identities(user_id, provider)`,
+    `CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities(user_id)`,
+    `ALTER TABLE user_identities ADD COLUMN IF NOT EXISTS access_token_ciphertext TEXT`,
+    `ALTER TABLE user_identities ADD COLUMN IF NOT EXISTS refresh_token_ciphertext TEXT`,
+    `ALTER TABLE user_identities ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ`,
 
     `CREATE TABLE IF NOT EXISTS decks (
       id TEXT PRIMARY KEY,
@@ -353,6 +412,34 @@ function signTokenInput(input) {
   return crypto.createHmac('sha256', JWT_SECRET).update(input).digest('base64url');
 }
 
+function secretEncryptionKey() {
+  return crypto.createHash('sha256').update(`zutomayo-secret:${JWT_SECRET}`).digest();
+}
+
+function encryptSecret(value) {
+  if (!value) return '';
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', secretEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+function decryptSecret(value) {
+  try {
+    const [ivPart, tagPart, encryptedPart] = String(value || '').split('.');
+    if (!ivPart || !tagPart || !encryptedPart) return '';
+    const decipher = crypto.createDecipheriv('aes-256-gcm', secretEncryptionKey(), Buffer.from(ivPart, 'base64url'));
+    decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedPart, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
 function createToken(userId) {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
@@ -364,6 +451,60 @@ function createToken(userId) {
   });
   const input = `${header}.${payload}`;
   return `${input}.${signTokenInput(input)}`;
+}
+
+function decodeCookieValue(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function parseCookies(req) {
+  return Object.fromEntries(
+    String(req.headers.cookie || '')
+      .split(';')
+      .map((part) => {
+        const [name, ...valueParts] = part.trim().split('=');
+        return [name, decodeCookieValue(valueParts.join('=') || '')];
+      })
+      .filter(([name]) => name),
+  );
+}
+
+function isSecureRequest(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  return (
+    proto === 'https' ||
+    req.socket.encrypted === true ||
+    process.env.NODE_ENV === 'production' ||
+    getPublicBaseUrl(req).startsWith('https://')
+  );
+}
+
+function serializeAuthCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
+  const parts = [
+    `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/',
+    `Max-Age=${maxAge}`,
+    'HttpOnly',
+    `SameSite=${AUTH_COOKIE_SAMESITE}`,
+  ];
+  if (AUTH_COOKIE_DOMAIN) parts.push(`Domain=${AUTH_COOKIE_DOMAIN}`);
+  if (AUTH_COOKIE_SAMESITE === 'None' || isSecureRequest(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+
+function setAuthCookie(req, res, token) {
+  res.setHeader('Set-Cookie', serializeAuthCookie(req, token));
+}
+
+function clearAuthCookie(req, res) {
+  res.setHeader('Set-Cookie', serializeAuthCookie(req, '', 0));
 }
 
 function verifyToken(token) {
@@ -394,8 +535,494 @@ function verifyToken(token) {
 
 function getAuthUserId(req) {
   const auth = req.headers.authorization;
-  if (!auth) return null;
-  return verifyToken(auth.replace('Bearer ', ''));
+  if (auth) {
+    const userId = verifyToken(auth.replace('Bearer ', ''));
+    if (userId) return userId;
+  }
+  return verifyToken(parseCookies(req)[AUTH_COOKIE_NAME]);
+}
+
+function getClientCountry(req) {
+  return String(req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || '').toUpperCase();
+}
+
+function hashEmailForAvatar(email) {
+  return crypto.createHash('sha256').update(email).digest('hex');
+}
+
+function mergeOAuthScopes(baseScope, requiredScopes) {
+  const scopes = new Set(String(baseScope || '').split(/\s+/).filter(Boolean));
+  for (const scope of requiredScopes) scopes.add(scope);
+  return Array.from(scopes).join(' ');
+}
+
+const OAUTH_PROVIDERS = {
+  logto: {
+    label: 'Logto',
+    clientId: process.env.LOGTO_APP_ID || process.env.LOGTO_CLIENT_ID || '',
+    clientSecret: process.env.LOGTO_APP_SECRET || process.env.LOGTO_CLIENT_SECRET || '',
+    discoveryUrl: LOGTO_DISCOVERY_URL,
+    authUrl: '',
+    tokenUrl: '',
+    userInfoUrl: '',
+    scope: mergeOAuthScopes(process.env.LOGTO_OAUTH_SCOPE || 'openid profile email', [
+      'phone',
+      'address',
+      'identities',
+      'custom_data',
+      'urn:logto:scope:sessions',
+      'offline_access',
+    ]),
+  },
+  google: {
+    label: 'Google',
+    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
+    authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    userInfoUrl: 'https://openidconnect.googleapis.com/v1/userinfo',
+    scope: 'openid email profile',
+  },
+  github: {
+    label: 'GitHub',
+    clientId: process.env.GITHUB_OAUTH_CLIENT_ID || '',
+    clientSecret: process.env.GITHUB_OAUTH_CLIENT_SECRET || '',
+    authUrl: 'https://github.com/login/oauth/authorize',
+    tokenUrl: 'https://github.com/login/oauth/access_token',
+    userInfoUrl: 'https://api.github.com/user',
+    emailsUrl: 'https://api.github.com/user/emails',
+    scope: 'read:user user:email',
+  },
+  discord: {
+    label: 'Discord',
+    clientId: process.env.DISCORD_OAUTH_CLIENT_ID || '',
+    clientSecret: process.env.DISCORD_OAUTH_CLIENT_SECRET || '',
+    authUrl: 'https://discord.com/oauth2/authorize',
+    tokenUrl: 'https://discord.com/api/oauth2/token',
+    userInfoUrl: 'https://discord.com/api/users/@me',
+    scope: 'identify email',
+  },
+};
+
+let logtoDiscoveryCache = null;
+
+async function resolveLogtoProvider(config) {
+  if (!config.discoveryUrl || !config.clientId || !config.clientSecret) return config;
+  if (!logtoDiscoveryCache) {
+    const response = await fetch(config.discoveryUrl, { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error('Logto discovery failed');
+    const discovery = await response.json();
+    logtoDiscoveryCache = {
+      authUrl: discovery.authorization_endpoint || '',
+      tokenUrl: discovery.token_endpoint || '',
+      userInfoUrl: discovery.userinfo_endpoint || '',
+    };
+  }
+  return { ...config, ...logtoDiscoveryCache };
+}
+
+function getOAuthProvider(provider) {
+  const config = OAUTH_PROVIDERS[String(provider || '').toLowerCase()];
+  if (!config) return null;
+  return {
+    ...config,
+    provider: String(provider).toLowerCase(),
+    enabled: Boolean(config.clientId && config.clientSecret && (config.authUrl || config.discoveryUrl)),
+  };
+}
+
+async function getResolvedOAuthProvider(provider) {
+  const config = getOAuthProvider(provider);
+  if (!config) return null;
+  if (config.provider !== 'logto') return config;
+  const resolved = await resolveLogtoProvider(config);
+  return {
+    ...resolved,
+    enabled: Boolean(
+      resolved.clientId && resolved.clientSecret && resolved.authUrl && resolved.tokenUrl && resolved.userInfoUrl,
+    ),
+  };
+}
+
+function isOAuthProviderAllowed(provider) {
+  return LOCAL_AUTH_ENABLED || provider === 'logto';
+}
+
+function visibleOAuthProviderEntries() {
+  return Object.entries(OAUTH_PROVIDERS).filter(([provider]) => isOAuthProviderAllowed(provider));
+}
+
+function getPublicBaseUrl(req) {
+  if (OAUTH_PUBLIC_BASE_URL) return OAUTH_PUBLIC_BASE_URL.replace(/\/$/, '');
+  const proto = String(req.headers['x-forwarded-proto'] || 'http')
+    .split(',')[0]
+    .trim();
+  const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`;
+  return `${proto}://${host}`.replace(/\/$/, '');
+}
+
+function oauthRedirectUri(req, provider) {
+  return `${getPublicBaseUrl(req)}/api/oauth/${encodeURIComponent(provider)}/callback`;
+}
+
+function signOAuthState(payload) {
+  const body = base64urlJson(payload);
+  return `${body}.${signTokenInput(`oauth.${body}`)}`;
+}
+
+function verifyOAuthState(state) {
+  try {
+    const [body, signature] = String(state || '').split('.');
+    if (!body || !signature) return null;
+    const expected = signTokenInput(`oauth.${body}`);
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function createOAuthSessionTicket(userId) {
+  const now = Math.floor(Date.now() / 1000);
+  const body = base64urlJson({
+    sub: userId,
+    iat: now,
+    exp: now + 2 * 60,
+    nonce: crypto.randomBytes(12).toString('hex'),
+  });
+  return `${body}.${signTokenInput(`oauth-session.${body}`)}`;
+}
+
+function verifyOAuthSessionTicket(ticket) {
+  try {
+    const [body, signature] = String(ticket || '').split('.');
+    if (!body || !signature) return null;
+    const expected = signTokenInput(`oauth-session.${body}`);
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return typeof payload.sub === 'string' ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+function oauthErrorReason(error) {
+  const reason = String(error || 'unknown_error')
+    .trim()
+    .replace(/[^a-zA-Z0-9._ -]/g, '')
+    .replace(/\s+/g, '_')
+    .slice(0, 120);
+  return reason || 'unknown_error';
+}
+
+function oauthReturnScript({ sessionTicket, returnTo, error }) {
+  const safeReturnTo = typeof returnTo === 'string' && returnTo.startsWith('/') ? returnTo : '/';
+  const url = new URL(`http://localhost${safeReturnTo}`);
+  if (error) url.searchParams.set('oauth', 'error');
+  if (!error && sessionTicket) url.searchParams.set('oauth', 'login');
+  if (!error && !sessionTicket) url.searchParams.set('oauth', 'linked');
+  const errorUrl = new URL(url.toString());
+  errorUrl.searchParams.set('oauth', 'error');
+  if (error) errorUrl.searchParams.set('oauth_error', oauthErrorReason(error));
+  const target = `${url.pathname}${url.search}${url.hash}`;
+  const errorTarget = `${errorUrl.pathname}${errorUrl.search}${errorUrl.hash}`;
+  return `<!doctype html><meta charset="utf-8"><script>
+(async function () {
+  const target = ${JSON.stringify(target)};
+  const errorTarget = ${JSON.stringify(errorTarget)};
+  try {
+    localStorage.removeItem('zutomayo_token');
+    ${
+      sessionTicket
+        ? `const exchange = await fetch('/api/oauth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      cache: 'no-store',
+      body: JSON.stringify({ ticket: ${JSON.stringify(sessionTicket)} })
+    });
+    if (!exchange.ok) {
+      localStorage.removeItem('zutomayo_session');
+      const failedUrl = new URL(errorTarget, location.origin);
+      failedUrl.searchParams.set('oauth_error', 'session_exchange_failed_' + exchange.status);
+      location.replace(failedUrl.pathname + failedUrl.search + failedUrl.hash);
+      return;
+    }
+    const response = await fetch('/api/profile', { credentials: 'include', cache: 'no-store' });
+    if (!response.ok) {
+      localStorage.removeItem('zutomayo_session');
+      const failedUrl = new URL(errorTarget, location.origin);
+      failedUrl.searchParams.set('oauth_error', 'session_check_failed_' + response.status);
+      location.replace(failedUrl.pathname + failedUrl.search + failedUrl.hash);
+      return;
+    }
+    localStorage.setItem('zutomayo_session', '1');`
+        : ''
+    }
+    location.replace(target);
+  } catch (e) {
+    localStorage.removeItem('zutomayo_session');
+    const failedUrl = new URL(errorTarget, location.origin);
+    failedUrl.searchParams.set('oauth_error', 'session_check_network');
+    location.replace(failedUrl.pathname + failedUrl.search + failedUrl.hash);
+  }
+})();
+</script>`;
+}
+
+async function exchangeOAuthCode(req, providerConfig, code) {
+  const body = new URLSearchParams();
+  body.set('client_id', providerConfig.clientId);
+  body.set('client_secret', providerConfig.clientSecret);
+  body.set('code', code);
+  body.set('grant_type', 'authorization_code');
+  body.set('redirect_uri', oauthRedirectUri(req, providerConfig.provider));
+
+  const response = await fetch(providerConfig.tokenUrl, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) {
+    throw new Error('OAuth token exchange failed');
+  }
+  return {
+    accessToken: String(data.access_token),
+    refreshToken: typeof data.refresh_token === 'string' ? data.refresh_token : '',
+    expiresIn: Number(data.expires_in) || 0,
+    scope: typeof data.scope === 'string' ? data.scope : '',
+  };
+}
+
+async function fetchJsonWithBearer(url, accessToken) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      'User-Agent': 'zutomayo-card-online',
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error('OAuth profile fetch failed');
+  return data;
+}
+
+async function fetchOAuthProfile(providerConfig, accessToken) {
+  const profile = await fetchJsonWithBearer(providerConfig.userInfoUrl, accessToken);
+  if (providerConfig.provider === 'logto') {
+    return {
+      provider: 'logto',
+      providerUserId: profile.sub,
+      email: profile.email,
+      emailVerified: profile.email_verified,
+      displayName: profile.name || profile.username || profile.email,
+      avatarUrl: profile.picture,
+    };
+  }
+  if (providerConfig.provider === 'google') {
+    return {
+      provider: 'google',
+      providerUserId: profile.sub,
+      email: profile.email,
+      emailVerified: profile.email_verified,
+      displayName: profile.name,
+      avatarUrl: profile.picture,
+    };
+  }
+  if (providerConfig.provider === 'discord') {
+    const avatarUrl = profile.avatar
+      ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png?size=160`
+      : '';
+    return {
+      provider: 'discord',
+      providerUserId: profile.id,
+      email: profile.email,
+      emailVerified: profile.verified,
+      displayName: profile.global_name || profile.username,
+      avatarUrl,
+    };
+  }
+
+  let email = profile.email || '';
+  let emailVerified = Boolean(profile.email);
+  if (providerConfig.emailsUrl) {
+    const emails = await fetchJsonWithBearer(providerConfig.emailsUrl, accessToken).catch(() => []);
+    const primary = Array.isArray(emails) ? emails.find((item) => item.primary) || emails[0] : null;
+    email = primary?.email || email;
+    emailVerified = Boolean(primary?.verified || emailVerified);
+  }
+  return {
+    provider: 'github',
+    providerUserId: profile.id,
+    email,
+    emailVerified,
+    displayName: profile.name || profile.login,
+    avatarUrl: profile.avatar_url,
+  };
+}
+
+function logtoApiBase() {
+  return LOGTO_ENDPOINT || LOGTO_ISSUER.replace(/\/oidc$/, '');
+}
+
+function tokenExpiresAt(expiresIn) {
+  const seconds = Number(expiresIn) || 3600;
+  return new Date(Date.now() + Math.max(60, seconds - 30) * 1000);
+}
+
+function logtoErrorMessage(data, fallback = 'Logto account request failed') {
+  if (typeof data?.error === 'string') return data.error;
+  if (typeof data?.message === 'string') return data.message;
+  if (typeof data?.error_description === 'string') return data.error_description;
+  return fallback;
+}
+
+async function storeOAuthTokenSet({ userId, provider, tokenSet }) {
+  if (!userId || !provider || !tokenSet?.accessToken) return;
+  await pool.query(
+    `UPDATE user_identities
+     SET access_token_ciphertext = $1,
+         refresh_token_ciphertext = COALESCE($2, refresh_token_ciphertext),
+         token_expires_at = $3,
+         updated_at = NOW()
+     WHERE user_id = $4 AND provider = $5`,
+    [
+      encryptSecret(tokenSet.accessToken),
+      tokenSet.refreshToken ? encryptSecret(tokenSet.refreshToken) : null,
+      tokenExpiresAt(tokenSet.expiresIn),
+      userId,
+      provider,
+    ],
+  );
+}
+
+async function refreshOAuthTokenSet(providerConfig, refreshToken) {
+  const body = new URLSearchParams();
+  body.set('client_id', providerConfig.clientId);
+  body.set('client_secret', providerConfig.clientSecret);
+  body.set('grant_type', 'refresh_token');
+  body.set('refresh_token', refreshToken);
+
+  const response = await fetch(providerConfig.tokenUrl, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) throw new Error('OAuth token refresh failed');
+  return {
+    accessToken: String(data.access_token),
+    refreshToken: typeof data.refresh_token === 'string' ? data.refresh_token : refreshToken,
+    expiresIn: Number(data.expires_in) || 0,
+  };
+}
+
+async function getLogtoAccountAccessToken(userId) {
+  const identity = (
+    await pool.query(
+      `SELECT access_token_ciphertext, refresh_token_ciphertext, token_expires_at
+       FROM user_identities
+       WHERE user_id = $1 AND provider = 'logto'`,
+      [userId],
+    )
+  ).rows[0];
+  const accessToken = decryptSecret(identity?.access_token_ciphertext);
+  if (!accessToken) return { ok: false, status: 409, error: 'Logto account session is not connected' };
+
+  const expiresAt = identity?.token_expires_at ? new Date(identity.token_expires_at).getTime() : 0;
+  if (expiresAt > Date.now() + 30 * 1000) return { ok: true, accessToken };
+
+  const refreshToken = decryptSecret(identity?.refresh_token_ciphertext);
+  if (!refreshToken) return { ok: false, status: 409, error: 'Logto account session needs reconnect' };
+
+  const providerConfig = await getResolvedOAuthProvider('logto');
+  if (!providerConfig) return { ok: false, status: 503, error: 'Logto provider is not configured' };
+  const nextTokenSet = await refreshOAuthTokenSet(providerConfig, refreshToken).catch(() => null);
+  if (!nextTokenSet) return { ok: false, status: 409, error: 'Logto account session needs reconnect' };
+  await storeOAuthTokenSet({ userId, provider: 'logto', tokenSet: nextTokenSet });
+  return { ok: true, accessToken: nextTokenSet.accessToken };
+}
+
+async function logtoAccountRequest({ userId, path, method = 'GET', body, verificationId }) {
+  const base = logtoApiBase();
+  if (!base) return { ok: false, status: 503, error: 'Logto endpoint is not configured' };
+  const token = await getLogtoAccountAccessToken(userId);
+  if (!token.ok) return token;
+
+  const headers = {
+    Accept: 'application/json',
+    Authorization: `Bearer ${token.accessToken}`,
+    'User-Agent': 'zutomayo-card-online',
+  };
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+  if (payload !== undefined) headers['Content-Type'] = 'application/json';
+  if (verificationId) headers['logto-verification-id'] = verificationId;
+
+  const response = await fetch(`${base}${path}`, {
+    method,
+    headers,
+    body: payload,
+  });
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { error: text };
+    }
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: logtoErrorMessage(data),
+      body: data,
+    };
+  }
+  return { ok: true, body: data };
+}
+
+async function verifyAuthChallenge(body, clientIp) {
+  const token = body && typeof body.verificationToken === 'string' ? body.verificationToken : '';
+  if (!TURNSTILE_SECRET_KEY) {
+    if (TURNSTILE_REQUIRED) return { ok: false, status: 503, error: 'Verification is not configured' };
+    return { ok: true };
+  }
+  if (!token) {
+    if (TURNSTILE_REQUIRED) return { ok: false, status: 400, error: 'Verification token required' };
+    return { ok: true };
+  }
+
+  const form = new URLSearchParams();
+  form.set('secret', TURNSTILE_SECRET_KEY);
+  form.set('response', token);
+  if (clientIp) form.set('remoteip', clientIp);
+
+  const response = await fetch(TURNSTILE_SITEVERIFY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  });
+  if (!response.ok) return { ok: false, status: 502, error: 'Verification service unavailable' };
+
+  const result = await response.json().catch(() => ({}));
+  if (!result.success) return { ok: false, status: 400, error: 'Verification failed' };
+  return { ok: true };
 }
 
 // P0-3：Admin token 機制（payload 含 admin: true）。
@@ -664,6 +1291,7 @@ function handleRequest(req, res) {
   if (corsOrigin) {
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
     res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -771,11 +1399,140 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/oauth/providers' && method === 'GET') {
+      json({
+        authMode: AUTH_MODE,
+        localAuthEnabled: LOCAL_AUTH_ENABLED,
+        accountLinkingEnabled: ACCOUNT_LINKING_ENABLED,
+        accountCenterUrl: AUTH_MODE === 'logto' ? LOGTO_ACCOUNT_CENTER_URL : '',
+        providers: visibleOAuthProviderEntries().map(([provider, config]) => ({
+          provider,
+          label: config.label,
+          enabled: Boolean(config.clientId && config.clientSecret && (config.authUrl || config.discoveryUrl)),
+        })),
+      });
+      return;
+    }
+
+    if (pathname === '/api/oauth/session' && method === 'POST') {
+      const body = await readBody(32 * 1024);
+      const userId = verifyOAuthSessionTicket(body.ticket);
+      if (!userId) return json({ error: 'Invalid OAuth session ticket' }, 401);
+      setAuthCookie(req, res, createToken(userId));
+      json({ ok: true });
+      return;
+    }
+
+    const oauthStartRoute = pathname.match(/^\/api\/oauth\/([^/]+)\/start$/);
+    if (oauthStartRoute && method === 'GET') {
+      const provider = decodeURIComponent(oauthStartRoute[1]);
+      if (!isOAuthProviderAllowed(provider)) return json({ error: 'Unknown OAuth provider' }, 404);
+      const providerConfig = await getResolvedOAuthProvider(provider);
+      if (!providerConfig) return json({ error: 'Unknown OAuth provider' }, 404);
+      if (!providerConfig.enabled) return json({ error: 'OAuth provider is not configured' }, 503);
+
+      const mode = url.searchParams.get('mode') === 'link' ? 'link' : 'login';
+      if (mode === 'link' && !ACCOUNT_LINKING_ENABLED)
+        return json({ error: 'Account linking is managed by Logto' }, 403);
+      const userId = getAuthUserId(req);
+      if (mode === 'link' && !userId) return json({ error: 'Unauthorized' }, 401);
+      const returnTo = url.searchParams.get('returnTo') || (mode === 'link' ? '/profile' : '/');
+      const now = Math.floor(Date.now() / 1000);
+      const state = signOAuthState({
+        mode,
+        provider: providerConfig.provider,
+        userId: mode === 'link' ? userId : undefined,
+        returnTo: returnTo.startsWith('/') ? returnTo : '/',
+        nonce: crypto.randomBytes(12).toString('hex'),
+        iat: now,
+        exp: now + 10 * 60,
+      });
+
+      const authUrl = new URL(providerConfig.authUrl);
+      authUrl.searchParams.set('client_id', providerConfig.clientId);
+      authUrl.searchParams.set('redirect_uri', oauthRedirectUri(req, providerConfig.provider));
+      authUrl.searchParams.set('response_type', 'code');
+      authUrl.searchParams.set('scope', providerConfig.scope);
+      authUrl.searchParams.set('state', state);
+      if (providerConfig.provider === 'google') authUrl.searchParams.set('prompt', 'select_account');
+      if (providerConfig.provider === 'logto' && mode === 'login') authUrl.searchParams.set('prompt', 'login');
+
+      res.writeHead(302, { Location: authUrl.toString() });
+      res.end();
+      return;
+    }
+
+    const oauthCallbackRoute = pathname.match(/^\/api\/oauth\/([^/]+)\/callback$/);
+    if (oauthCallbackRoute && method === 'GET') {
+      const provider = decodeURIComponent(oauthCallbackRoute[1]);
+      if (!isOAuthProviderAllowed(provider)) {
+        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(oauthReturnScript({ returnTo: '/', error: 'Unknown OAuth provider' }));
+        return;
+      }
+      const providerConfig = await getResolvedOAuthProvider(provider);
+      const state = verifyOAuthState(url.searchParams.get('state'));
+      if (!providerConfig || !state || state.provider !== providerConfig.provider) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(oauthReturnScript({ returnTo: state?.returnTo || '/', error: 'Invalid OAuth state' }));
+        return;
+      }
+      const code = url.searchParams.get('code');
+      if (!code) {
+        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(oauthReturnScript({ returnTo: state.returnTo, error: 'Missing OAuth code' }));
+        return;
+      }
+
+      const tokenSet = await exchangeOAuthCode(req, providerConfig, code);
+      const oauthProfile = await fetchOAuthProfile(providerConfig, tokenSet.accessToken);
+      if (state.mode === 'link') {
+        if (!ACCOUNT_LINKING_ENABLED) {
+          res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(oauthReturnScript({ returnTo: state.returnTo, error: 'Account linking is managed by Logto' }));
+          return;
+        }
+        const result = await linkOAuthIdentity({ pool, userId: state.userId, profile: oauthProfile });
+        res.writeHead(result.ok ? 200 : result.status || 400, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(oauthReturnScript({ returnTo: state.returnTo, error: result.ok ? '' : result.error }));
+        return;
+      }
+
+      const result = await loginWithOAuthIdentity({
+        pool,
+        profile: oauthProfile,
+        sanitizeText,
+        createToken,
+        generateUserId: () => 'u_' + crypto.randomBytes(8).toString('hex'),
+        generateDisabledPasswordHash: () => 'oauth:' + crypto.randomBytes(24).toString('hex'),
+        generateSalt: () => crypto.randomBytes(16).toString('hex'),
+        hashEmail: hashEmailForAvatar,
+        country: getClientCountry(req),
+      });
+      const localUserId = result.ok && typeof result.body?.user?.id === 'string' ? result.body.user.id : '';
+      const loginOk = result.ok && Boolean(localUserId);
+      if (loginOk && providerConfig.provider === 'logto') {
+        await storeOAuthTokenSet({ userId: localUserId, provider: providerConfig.provider, tokenSet });
+      }
+      res.writeHead(loginOk ? 200 : result.status || 400, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(
+        oauthReturnScript({
+          sessionTicket: loginOk ? createOAuthSessionTicket(localUserId) : '',
+          returnTo: state.returnTo,
+          error: loginOk ? '' : result.error || 'Missing local account id',
+        }),
+      );
+      return;
+    }
+
     // ===== Auth Routes =====
 
     // Register
     if (pathname === '/api/register' && method === 'POST') {
+      if (!LOCAL_AUTH_ENABLED) return json({ error: 'Local auth is disabled' }, 403);
       const __body = await readBody();
+      const challenge = await verifyAuthChallenge(__body, clientIp);
+      if (!challenge.ok) return json({ error: challenge.error }, challenge.status);
       const __parsed = validateBody(S.registerSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
       const result = await registerAccount({
@@ -788,13 +1545,17 @@ function handleRequest(req, res) {
         generateSalt: () => crypto.randomBytes(16).toString('hex'),
       });
       if (!result.ok) return json({ error: result.error }, result.status);
+      setAuthCookie(req, res, result.body.token);
       json(result.body);
       return;
     }
 
     // Login
     if (pathname === '/api/login' && method === 'POST') {
+      if (!LOCAL_AUTH_ENABLED) return json({ error: 'Local auth is disabled' }, 403);
       const __body = await readBody();
+      const challenge = await verifyAuthChallenge(__body, clientIp);
+      if (!challenge.ok) return json({ error: challenge.error }, challenge.status);
       const __parsed = validateBody(S.loginSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
       const result = await loginAccount({
@@ -806,7 +1567,14 @@ function handleRequest(req, res) {
         legacyIterations: PBKDF2_LEGACY_ITERATIONS,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
+      setAuthCookie(req, res, result.body.token);
       json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/logout' && method === 'POST') {
+      clearAuthCookie(req, res);
+      json({ ok: true });
       return;
     }
 
@@ -814,7 +1582,95 @@ function handleRequest(req, res) {
     if (pathname === '/api/profile' && method === 'GET') {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const result = await getAccountProfile(pool, userId);
+      const result = await getAccountProfile(pool, userId, {
+        country: getClientCountry(req),
+        hashEmail: hashEmailForAvatar,
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/profile/identities' && method === 'GET') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await listAccountIdentities(pool, userId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/account-center' && method === 'GET') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const account = await logtoAccountRequest({ userId, path: '/api/my-account' });
+      if (!account.ok) return json({ error: account.error, details: account.body }, account.status);
+      const [identities, mfaVerifications, logtoConfigs] = await Promise.all([
+        logtoAccountRequest({ userId, path: '/api/my-account/identities' }).catch((error) => ({
+          ok: false,
+          error: error.message,
+        })),
+        logtoAccountRequest({ userId, path: '/api/my-account/mfa-verifications' }).catch((error) => ({
+          ok: false,
+          error: error.message,
+        })),
+        logtoAccountRequest({ userId, path: '/api/my-account/logto-configs' }).catch((error) => ({
+          ok: false,
+          error: error.message,
+        })),
+      ]);
+      json({
+        account: account.body,
+        identities: identities.ok ? identities.body : null,
+        mfaVerifications: mfaVerifications.ok ? mfaVerifications.body : null,
+        logtoConfigs: logtoConfigs.ok ? logtoConfigs.body : null,
+      });
+      return;
+    }
+
+    if (pathname === '/api/account-center/verifications/password' && method === 'POST') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+      if (!currentPassword) return json({ error: 'Current password required' }, 400);
+      const result = await logtoAccountRequest({
+        userId,
+        path: '/api/verifications/password',
+        method: 'POST',
+        body: { password: currentPassword },
+      });
+      if (!result.ok) return json({ error: result.error, details: result.body }, result.status);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/account-center/password' && method === 'POST') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const verificationRecordId = typeof body.verificationRecordId === 'string' ? body.verificationRecordId : '';
+      const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+      if (!verificationRecordId || !newPassword) return json({ error: 'Verification and new password required' }, 400);
+      const result = await logtoAccountRequest({
+        userId,
+        path: '/api/my-account/password',
+        method: 'POST',
+        verificationId: verificationRecordId,
+        body: { password: newPassword },
+      });
+      if (!result.ok) return json({ error: result.error, details: result.body }, result.status);
+      json({ ok: true });
+      return;
+    }
+
+    const profileIdentityRoute = pathname.match(/^\/api\/profile\/identities\/([^/]+)$/);
+    if (profileIdentityRoute && method === 'DELETE') {
+      if (!ACCOUNT_LINKING_ENABLED) return json({ error: 'Account linking is managed by Logto' }, 403);
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const provider = decodeURIComponent(profileIdentityRoute[1]);
+      const result = await unlinkOAuthIdentity({ pool, userId, provider });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -936,7 +1792,36 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.profileUpdateSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const result = await updateAccountProfile({ pool, userId, body: __parsed.data, sanitizeText });
+      const result = await updateAccountProfile({
+        pool,
+        userId,
+        body: __parsed.data,
+        sanitizeText,
+        country: getClientCountry(req),
+        hashEmail: hashEmailForAvatar,
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // PUT /api/profile/password — 修改密碼。
+    if (pathname === '/api/profile/password' && method === 'PUT') {
+      if (!LOCAL_AUTH_ENABLED) return json({ error: 'Password is managed by Logto' }, 403);
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody();
+      const __parsed = validateBody(S.passwordChangeSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await updateAccountPassword({
+        pool,
+        userId,
+        body: __parsed.data,
+        hashPassword,
+        generateSalt: () => crypto.randomBytes(16).toString('hex'),
+        currentIterations: PBKDF2_ITERATIONS,
+        legacyIterations: PBKDF2_LEGACY_ITERATIONS,
+      });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;

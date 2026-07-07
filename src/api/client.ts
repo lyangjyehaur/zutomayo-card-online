@@ -2,6 +2,8 @@ import type { ActionLogEntry, CardDef } from '../game/types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
+const SESSION_HINT_KEY = 'zutomayo_session';
+const LEGACY_TOKEN_KEY = 'zutomayo_token';
 const PUBLIC_DATA_CACHE_MS = 0;
 
 let cardsCache: { expiresAt: number; data: CardDef[] } | null = null;
@@ -18,11 +20,62 @@ export interface ProfileResponse {
   id: string;
   email: string;
   nickname: string;
+  avatarUrl?: string;
+  avatarFallbackUrls?: string[];
   elo: number;
   matchCount: number;
   wins: number;
   winRate: number;
   createdAt: string;
+}
+
+export type OAuthProviderId = 'logto' | 'google' | 'github' | 'discord';
+
+export interface OAuthProvider {
+  provider: OAuthProviderId;
+  label: string;
+  enabled: boolean;
+}
+
+export interface AuthConfig {
+  authMode: 'hybrid' | 'logto' | string;
+  localAuthEnabled: boolean;
+  accountLinkingEnabled: boolean;
+  accountCenterUrl: string;
+  providers: OAuthProvider[];
+}
+
+export interface OAuthIdentity {
+  provider: OAuthProviderId;
+  providerUserId: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string;
+  linkedAt: string;
+  updatedAt: string;
+}
+
+export interface LogtoAccountIdentity {
+  target?: string;
+  userId?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface LogtoAccountCenterResponse {
+  account: Record<string, unknown> & {
+    id?: string;
+    username?: string;
+    name?: string;
+    avatar?: string;
+    primaryEmail?: string;
+    primaryPhone?: string;
+    hasPassword?: boolean;
+    hasSecurityVerificationMethod?: boolean;
+    identities?: Record<string, LogtoAccountIdentity>;
+  };
+  identities: unknown;
+  mfaVerifications: unknown;
+  logtoConfigs: unknown;
 }
 
 export interface LeaderboardEntry {
@@ -214,14 +267,14 @@ export class ApiError extends Error {
 }
 
 async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('zutomayo_token');
+  const token = localStorage.getItem(LEGACY_TOKEN_KEY);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
   const text = await res.text();
   let data: Record<string, unknown> = {};
   if (text) {
@@ -241,6 +294,16 @@ function adminAuthHeaders(): Record<string, string> {
     (typeof localStorage !== 'undefined' && localStorage.getItem(ADMIN_TOKEN_KEY)) ||
     '';
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function markAccountSession() {
+  localStorage.setItem(SESSION_HINT_KEY, '1');
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
+}
+
+function clearAccountSession() {
+  localStorage.removeItem(SESSION_HINT_KEY);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 function isFresh<T>(cache: { expiresAt: number; data: T } | null): cache is { expiresAt: number; data: T } {
@@ -370,34 +433,124 @@ interface AuthResponse {
 }
 
 export async function register(email: string, password: string, nickname?: string) {
+  return registerWithVerification({ email, password, nickname });
+}
+
+export async function registerWithVerification({
+  email,
+  password,
+  nickname,
+  verificationToken,
+}: {
+  email: string;
+  password: string;
+  nickname?: string;
+  verificationToken?: string;
+}) {
   const data = await request<AuthResponse>('/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password, nickname }),
+    body: JSON.stringify({ email, password, nickname, verificationToken }),
   });
-  localStorage.setItem('zutomayo_token', data.token);
+  markAccountSession();
   return data.user;
 }
 
 export async function login(email: string, password: string) {
+  return loginWithVerification({ email, password });
+}
+
+export async function loginWithVerification({
+  email,
+  password,
+  verificationToken,
+}: {
+  email: string;
+  password: string;
+  verificationToken?: string;
+}) {
   const data = await request<AuthResponse>('/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, verificationToken }),
   });
-  localStorage.setItem('zutomayo_token', data.token);
+  markAccountSession();
   return data.user;
 }
 
 export function logout() {
-  localStorage.removeItem('zutomayo_token');
+  clearAccountSession();
+  void request('/logout', { method: 'POST' }).catch(() => {});
 }
 
 export function isLoggedIn(): boolean {
-  return !!localStorage.getItem('zutomayo_token');
+  return Boolean(localStorage.getItem(SESSION_HINT_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY));
 }
 
 // ===== Profile =====
 export async function getProfile(): Promise<ProfileResponse> {
   return request('/profile');
+}
+
+export async function updateProfile(nickname: string): Promise<ProfileResponse> {
+  return request('/profile', {
+    method: 'PUT',
+    body: JSON.stringify({ nickname }),
+  });
+}
+
+export async function updatePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean }> {
+  return request('/profile/password', {
+    method: 'PUT',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export async function getOAuthProviders(): Promise<OAuthProvider[]> {
+  return (await getAuthConfig()).providers;
+}
+
+export async function getAuthConfig(): Promise<AuthConfig> {
+  const data = await request<Partial<AuthConfig> & { providers?: OAuthProvider[] }>('/oauth/providers');
+  return {
+    authMode: data.authMode || 'hybrid',
+    localAuthEnabled: data.localAuthEnabled ?? true,
+    accountLinkingEnabled: data.accountLinkingEnabled ?? true,
+    accountCenterUrl: typeof data.accountCenterUrl === 'string' ? data.accountCenterUrl : '',
+    providers: data.providers || [],
+  };
+}
+
+export async function getLinkedOAuthIdentities(): Promise<OAuthIdentity[]> {
+  const data = await request<{ identities: OAuthIdentity[] }>('/profile/identities');
+  return data.identities;
+}
+
+export async function unlinkOAuthIdentity(provider: OAuthProviderId): Promise<{ unlinked: boolean; provider: string }> {
+  return request(`/profile/identities/${encodeURIComponent(provider)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getLogtoAccountCenter(): Promise<LogtoAccountCenterResponse> {
+  return request('/account-center');
+}
+
+export async function verifyLogtoPassword(currentPassword: string): Promise<{ verificationRecordId: string }> {
+  return request('/account-center/verifications/password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword }),
+  });
+}
+
+export async function updateLogtoPassword(newPassword: string, verificationRecordId: string): Promise<{ ok: boolean }> {
+  return request('/account-center/password', {
+    method: 'POST',
+    body: JSON.stringify({ newPassword, verificationRecordId }),
+  });
+}
+
+export function getOAuthStartUrl(provider: OAuthProviderId, mode: 'login' | 'link', returnTo = '/'): string {
+  const target = returnTo.startsWith('/') ? returnTo : '/';
+  return `${API_BASE}/oauth/${encodeURIComponent(provider)}/start?mode=${mode}&returnTo=${encodeURIComponent(target)}`;
 }
 
 // ===== Decks =====

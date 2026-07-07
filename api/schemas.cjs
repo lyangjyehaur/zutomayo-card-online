@@ -25,6 +25,11 @@ const profileUpdateSchema = z.object({
   nickname: z.string().min(1).max(30),
 });
 
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword: z.string().min(6).max(200),
+});
+
 // ===== Deck =====
 const deckCreateSchema = z.object({
   name: z.string().min(1).max(60),
@@ -113,6 +118,7 @@ module.exports = {
   registerSchema,
   loginSchema,
   profileUpdateSchema,
+  passwordChangeSchema,
   deckCreateSchema,
   matchSubmitSchema,
   heartbeatSchema,
