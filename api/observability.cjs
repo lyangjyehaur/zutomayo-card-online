@@ -39,6 +39,7 @@ const rateLimitedTotal = new promClient.Counter({
 
 function normalizePath(path) {
   return path
+    .replace(/\/api\/imgproxy\/.+/i, '/api/imgproxy/:path')
     .replace(/\/api\/cards\/[^/]+/i, '/api/cards/:id')
     .replace(/\/api\/decks\/[^/]+/i, '/api/decks/:id')
     .replace(/\/api\/matches\/[^/]+/i, '/api/matches/:id')

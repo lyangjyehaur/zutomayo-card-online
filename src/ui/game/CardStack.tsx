@@ -1,5 +1,6 @@
 import type { CardInstance } from '../../game/types';
 import { getCardDef } from '../../game/cards/loader';
+import { CardImage } from '../../components/CardImage';
 
 /**
  * CardStack — 牌組 / 深淵 / 充能區的堆疊呈現。
@@ -45,15 +46,24 @@ export function CardStack({
       <span className="cardstack-well" aria-hidden="true">
         {kind === 'deck' &&
           Array.from({ length: Math.min(count, 3) }).map((_, i) => (
-            <img key={i} src="/card-back.jpg" alt="" className="cardstack-thumb" data-index={i} loading="lazy" />
+            <img
+              key={i}
+              src="/card-back.jpg"
+              alt=""
+              className="cardstack-thumb"
+              data-index={i}
+              loading="lazy"
+              decoding="async"
+            />
           ))}
         {kind !== 'deck' &&
           thumbs.map((card, i) => {
             const def = getCardDef(card.defId);
             return def?.image ? (
-              <img
+              <CardImage
                 key={card.instanceId}
-                src={def.image}
+                cardId={def.id}
+                context="thumbnail"
                 alt=""
                 className="cardstack-thumb"
                 data-index={i}

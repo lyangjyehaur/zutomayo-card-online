@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const Sentry = require('@sentry/node');
 const crypto = require('crypto');
 const util = require('util');
@@ -20,6 +21,7 @@ const { adminLogin, listAdminUsers, resetUserElo } = require('./adminService.cjs
 const { logger, attachRequestObservability, metricsResponse, rateLimitedTotal } = require('./observability.cjs');
 const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
+const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigner.cjs');
 const {
   getAllCardI18n,
   getCardI18n,
@@ -71,6 +73,11 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const APP_VERSION = process.env.APP_VERSION || '0.1.0';
 const APP_BUILD_ID = process.env.APP_BUILD_ID || APP_VERSION;
 const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
+const IMGPROXY_INTERNAL_BASE_URL = process.env.IMGPROXY_INTERNAL_BASE_URL || process.env.IMGPROXY_BASE_URL || '';
+const IMGPROXY_KEY = process.env.IMGPROXY_KEY || '';
+const IMGPROXY_SALT = process.env.IMGPROXY_SALT || '';
+const IMGPROXY_ALLOWED_SOURCES = parseAllowedSources(process.env.IMGPROXY_ALLOWED_SOURCES);
+const IMGPROXY_CACHE_CONTROL = process.env.IMGPROXY_CACHE_CONTROL || 'public, max-age=31536000, immutable';
 const APP_VERSION_INFO = Object.freeze({
   appVersion: APP_VERSION,
   buildId: APP_BUILD_ID,
@@ -1202,6 +1209,7 @@ function sanitizeActionLog(actionLog) {
 // ===== Rate Limiting (P0-4, Redis INCR + TTL) =====
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_AUTH = 10;
+const RATE_LIMIT_IMGPROXY = Number(process.env.RATE_LIMIT_IMGPROXY) || 600;
 const RATE_LIMIT_DEFAULT = 120;
 
 async function checkRateLimit(ip, limit) {
@@ -1212,6 +1220,107 @@ async function checkRateLimit(ip, limit) {
     await redis.expire(key, 120);
   }
   return count <= limit;
+}
+
+const IMGPROXY_RESPONSE_HEADERS = new Set([
+  'accept-ranges',
+  'cache-control',
+  'content-length',
+  'content-range',
+  'content-security-policy',
+  'content-type',
+  'etag',
+  'expires',
+  'last-modified',
+]);
+
+const IMGPROXY_FORWARD_REQUEST_HEADERS = ['if-none-match', 'if-modified-since', 'if-range', 'range'];
+
+function forwardedImgproxyHeaders(req) {
+  const headers = {};
+  for (const name of IMGPROXY_FORWARD_REQUEST_HEADERS) {
+    const value = req.headers[name];
+    if (typeof value === 'string') headers[name] = value;
+  }
+  return headers;
+}
+
+function proxyImgproxyResponse(targetUrl, req, res) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(targetUrl);
+    const client = parsed.protocol === 'https:' ? https : http;
+    const method = req.method === 'HEAD' ? 'HEAD' : 'GET';
+    let completed = false;
+    let proxyResEnded = false;
+    let proxyReq;
+    const cleanup = () => {
+      req.off('aborted', onClientAbort);
+      res.off('close', onClientAbort);
+    };
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      cleanup();
+      resolve();
+    };
+    const fail = (err) => {
+      if (completed) return;
+      completed = true;
+      cleanup();
+      reject(err);
+    };
+    const onClientAbort = () => {
+      if (proxyResEnded || completed) return;
+      proxyReq?.destroy(new Error('client aborted imgproxy request'));
+      finish();
+    };
+    req.on('aborted', onClientAbort);
+    res.on('close', onClientAbort);
+
+    proxyReq = client.request(
+      parsed,
+      {
+        method,
+        headers: forwardedImgproxyHeaders(req),
+        timeout: 10000,
+      },
+      (proxyRes) => {
+        const headers = {};
+        for (const [name, value] of Object.entries(proxyRes.headers)) {
+          if (value === undefined || !IMGPROXY_RESPONSE_HEADERS.has(name.toLowerCase())) continue;
+          headers[name] = value;
+        }
+        headers['cache-control'] =
+          proxyRes.statusCode && proxyRes.statusCode >= 200 && proxyRes.statusCode < 400
+            ? IMGPROXY_CACHE_CONTROL
+            : 'no-store';
+        res.writeHead(proxyRes.statusCode || 502, headers);
+
+        if (method === 'HEAD') {
+          proxyRes.resume();
+          proxyRes.on('end', () => {
+            proxyResEnded = true;
+            finish();
+          });
+          proxyRes.on('error', fail);
+          return;
+        }
+
+        proxyRes.pipe(res);
+        proxyRes.on('end', () => {
+          proxyResEnded = true;
+          finish();
+        });
+        proxyRes.on('error', fail);
+      },
+    );
+
+    proxyReq.on('timeout', () => {
+      proxyReq.destroy(new Error('imgproxy timeout'));
+    });
+    proxyReq.on('error', fail);
+    proxyReq.end();
+  });
 }
 
 // ===== CORS (P0-4 收緊為白名單) =====
@@ -1329,6 +1438,7 @@ function handleRequest(req, res) {
   // Rate limiting (P0-4, Redis)
   const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
   const isAuthEndpoint = pathname === '/api/login' || pathname === '/api/register' || pathname === '/api/admin/login';
+  const isImgproxyEndpoint = pathname.startsWith('/api/imgproxy/');
 
   const json = (data, status = 200) => {
     res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -1389,10 +1499,37 @@ function handleRequest(req, res) {
 
   // 先做 rate limit（async），其餘邏輯在 callback 內繼續。
   safe(async () => {
-    if (!(await checkRateLimit(clientIp, isAuthEndpoint ? RATE_LIMIT_AUTH : RATE_LIMIT_DEFAULT))) {
-      rateLimitedTotal.labels(pathname).inc();
+    const rateLimit = isAuthEndpoint ? RATE_LIMIT_AUTH : isImgproxyEndpoint ? RATE_LIMIT_IMGPROXY : RATE_LIMIT_DEFAULT;
+    if (!(await checkRateLimit(clientIp, rateLimit))) {
+      rateLimitedTotal.labels(isImgproxyEndpoint ? '/api/imgproxy/:path' : pathname).inc();
       res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
       res.end(JSON.stringify({ error: 'Too many requests. Please try again later.' }));
+      return;
+    }
+
+    if (isImgproxyEndpoint && (method === 'GET' || method === 'HEAD')) {
+      if (url.search) return json({ error: 'imgproxy query string is not supported' }, 400);
+      const unsignedPath = pathname.slice('/api/imgproxy'.length);
+      const signed = buildSignedImgproxyUrl({
+        path: unsignedPath,
+        baseUrl: IMGPROXY_INTERNAL_BASE_URL,
+        keyHex: IMGPROXY_KEY,
+        saltHex: IMGPROXY_SALT,
+        allowedSources: IMGPROXY_ALLOWED_SOURCES,
+      });
+      if (!signed.ok) return json({ error: signed.error }, signed.status);
+
+      try {
+        await proxyImgproxyResponse(signed.url, req, res);
+      } catch (err) {
+        reqLog.warn({ err }, 'imgproxy proxy failed');
+        if (!res.headersSent) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'imgproxy unavailable' }));
+        } else {
+          res.destroy(err);
+        }
+      }
       return;
     }
 

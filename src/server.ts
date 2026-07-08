@@ -19,6 +19,7 @@ import helmet from 'koa-helmet';
 import { logger, requestLoggingMiddleware } from './server/observability/logger';
 import { metricsMiddleware, metricsEndpoint, activeSocketConnections } from './server/observability/metrics';
 import { createRateLimit } from './server/rateLimit';
+import type { IncomingHttpHeaders, IncomingMessage } from 'http';
 
 const require = createRequire(import.meta.url);
 const { Server, SocketIO } = require('boardgame.io/server') as typeof import('boardgame.io/server');
@@ -434,12 +435,43 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
   return Array.isArray(value) ? value[0] : value;
 }
 
+const HOP_BY_HOP_PROXY_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
+
+const IMGPROXY_PROXY_FORWARD_HEADERS = ['accept', 'if-none-match', 'if-modified-since', 'if-range', 'range'];
+
+function setProxyResponseHeaders(ctx: KoaContext, responseHeaders: IncomingHttpHeaders): void {
+  for (const [name, value] of Object.entries(responseHeaders)) {
+    if (value === undefined || HOP_BY_HOP_PROXY_HEADERS.has(name.toLowerCase())) continue;
+    ctx.set(name, value);
+  }
+}
+
+function forwardOptionalRequestHeader(
+  requestHeaders: Record<string, string>,
+  sourceHeaders: IncomingHttpHeaders,
+  name: string,
+): void {
+  const value = firstHeaderValue(sourceHeaders[name]);
+  if (value) requestHeaders[name] = value;
+}
+
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (!ctx.path.startsWith('/api/')) return next();
 
   const http = await import('http');
   const url = new URL(ctx.path, API_SERVER);
   url.search = ctx.search;
+  const shouldStreamImageProxy =
+    ctx.path.startsWith('/api/imgproxy/') && (ctx.method === 'GET' || ctx.method === 'HEAD');
 
   // Read raw body from stream (koa-body may not be applied globally)
   let rawBody = '';
@@ -456,20 +488,32 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
     .filter((value): value is string => Boolean(value))
     .join(', ');
   const requestHeaders: Record<string, string> = {
-    'content-type': firstHeaderValue(ctx.request.headers['content-type']) || 'application/json',
     host: url.host,
     'x-forwarded-for': forwardedFor,
     'x-forwarded-host': firstHeaderValue(ctx.request.headers.host) || ctx.host,
     'x-forwarded-proto': ctx.protocol,
   };
+  const contentType = firstHeaderValue(ctx.request.headers['content-type']);
+  if (contentType) {
+    requestHeaders['content-type'] = contentType;
+  } else if (ctx.method !== 'GET' && ctx.method !== 'HEAD') {
+    requestHeaders['content-type'] = 'application/json';
+  }
   if (authorization) requestHeaders.authorization = authorization;
   const cookie = firstHeaderValue(ctx.request.headers.cookie);
   if (cookie) requestHeaders.cookie = cookie;
+  if (shouldStreamImageProxy) {
+    for (const name of IMGPROXY_PROXY_FORWARD_HEADERS) {
+      forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, name);
+    }
+  }
   if (ctx.method !== 'GET' && ctx.method !== 'HEAD') {
     requestHeaders['content-length'] = rawBody ? String(Buffer.byteLength(rawBody)) : '0';
   }
 
   return new Promise<void>((resolve) => {
+    let responseStarted = false;
+    let proxyResStream: IncomingMessage | null = null;
     const proxyReq = http.request(
       url,
       {
@@ -478,23 +522,27 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
         timeout: 10000,
       },
       (proxyRes) => {
+        responseStarted = true;
+        proxyResStream = proxyRes;
         ctx.status = proxyRes.statusCode || 200;
         const responseHeaders = proxyRes.headers;
-        const hopByHopHeaders = new Set([
-          'connection',
-          'keep-alive',
-          'proxy-authenticate',
-          'proxy-authorization',
-          'te',
-          'trailer',
-          'transfer-encoding',
-          'upgrade',
-        ]);
-        for (const [name, value] of Object.entries(responseHeaders)) {
-          if (value === undefined || hopByHopHeaders.has(name.toLowerCase())) continue;
-          ctx.set(name, value);
+        setProxyResponseHeaders(ctx, responseHeaders);
+        if (!responseHeaders['content-type'])
+          ctx.set('Content-Type', shouldStreamImageProxy ? 'application/octet-stream' : 'application/json');
+        if (shouldStreamImageProxy) {
+          if (ctx.method === 'HEAD') {
+            proxyRes.resume();
+            ctx.body = null;
+          } else {
+            proxyRes.on('error', (err: Error) => {
+              Sentry.captureException(err, { tags: { layer: 'api-proxy', route: ctx.path } });
+            });
+            ctx.body = proxyRes;
+          }
+          resolve();
+          return;
         }
-        if (!responseHeaders['content-type']) ctx.set('Content-Type', 'application/json');
+
         const resChunks: Buffer[] = [];
         proxyRes.on('data', (chunk: Buffer) => resChunks.push(chunk));
         proxyRes.on('end', () => {
@@ -504,6 +552,14 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
       },
     );
 
+    const abortProxyRequest = () => {
+      if (ctx.res.writableEnded) return;
+      proxyReq.destroy();
+      proxyResStream?.destroy();
+    };
+    ctx.req.on('aborted', abortProxyRequest);
+    ctx.res.on('close', abortProxyRequest);
+
     proxyReq.on('timeout', () => {
       proxyReq.destroy();
       ctx.status = 504;
@@ -512,6 +568,7 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
     });
 
     proxyReq.on('error', (err: Error) => {
+      if (responseStarted) return;
       Sentry.captureException(err, { tags: { layer: 'api-proxy', route: ctx.path } });
       ctx.status = 502;
       ctx.body = JSON.stringify({ error: 'API server unavailable' });

@@ -40,6 +40,7 @@ import {
   Textarea,
   ToolHeader,
 } from '../ui';
+import { CardImage } from '../components/CardImage';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -929,10 +930,12 @@ export function AdminPage() {
       >
         <div className="grid gap-4">
           <div className="admin-card-modal-summary flex items-center gap-3">
-            <img
-              src={selectedCard.image}
+            <CardImage
+              cardId={selectedCard.id}
+              context="thumbnail"
               alt={selectedCard.name}
-              className="h-20 w-14 rounded object-cover"
+              className="h-20 w-14 rounded object-contain"
+              loading="eager"
               referrerPolicy="no-referrer"
             />
             <div>
@@ -1157,9 +1160,10 @@ export function AdminPage() {
                     setModalTab('basic');
                   }}
                 >
-                  <img
-                    className="aspect-[5/7] w-full object-cover opacity-80 transition group-hover:opacity-100"
-                    src={card.image}
+                  <CardImage
+                    className="aspect-[5/7] w-full object-contain opacity-80 transition group-hover:opacity-100"
+                    cardId={card.id}
+                    context="thumbnail"
                     alt={card.name}
                     loading="lazy"
                     referrerPolicy="no-referrer"

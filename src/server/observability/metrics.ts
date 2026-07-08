@@ -35,6 +35,7 @@ export const activeSocketConnections = new Gauge({
 /** Normalize dynamic path segments to keep label cardinality bounded. */
 function normalizePath(path: string): string {
   return path
+    .replace(/\/api\/imgproxy\/.+/i, '/api/imgproxy/:path')
     .replace(/\/api\/cards\/[^/]+/i, '/api/cards/:id')
     .replace(/\/api\/decks\/[^/]+/i, '/api/decks/:id')
     .replace(/\/api\/matches\/[^/]+/i, '/api/matches/:id')

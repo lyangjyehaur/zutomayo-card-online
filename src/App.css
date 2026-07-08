@@ -455,9 +455,7 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  background-image:
-    linear-gradient(90deg, rgba(5, 7, 18, 0.92), rgba(5, 7, 18, 0.56)),
-    url('https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_1.jpg');
+  background-image: linear-gradient(90deg, rgba(5, 7, 18, 0.92), rgba(5, 7, 18, 0.56));
   background-position: center;
   background-size: cover;
   filter: blur(0.45rem) saturate(1.25);

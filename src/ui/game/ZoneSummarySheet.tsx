@@ -50,6 +50,7 @@ export function ZoneSummarySheet({
                 <CardView
                   card={card}
                   size="md"
+                  imageContext="thumbnail"
                   state="idle"
                   onActivate={onInspectCard ? () => onInspectCard(card) : undefined}
                   ariaLabel={def?.name}

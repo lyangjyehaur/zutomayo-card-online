@@ -700,9 +700,11 @@
       to bottom,
       var(--bf-opponent-plane) 0,
       var(--bf-opponent-plane) calc(50% - var(--bf-stage-blend)),
-      color-mix(in srgb, var(--bf-opponent-plane) 70%, var(--bf-twilight-plane) 30%) calc(50% - var(--bf-stage-inner-blend)),
+      color-mix(in srgb, var(--bf-opponent-plane) 70%, var(--bf-twilight-plane) 30%)
+        calc(50% - var(--bf-stage-inner-blend)),
       var(--bf-twilight-plane) 50%,
-      color-mix(in srgb, var(--bf-player-plane) 70%, var(--bf-twilight-plane) 30%) calc(50% + var(--bf-stage-inner-blend)),
+      color-mix(in srgb, var(--bf-player-plane) 70%, var(--bf-twilight-plane) 30%)
+        calc(50% + var(--bf-stage-inner-blend)),
       var(--bf-player-plane) calc(50% + var(--bf-stage-blend)),
       var(--bf-player-plane) 100%
     );
@@ -837,8 +839,7 @@
 
 .chronosdial-slot[data-time='day'] .chronosdial-slot-inner {
   background:
-    radial-gradient(circle at 34% 28%, #ffffff, transparent 36%),
-    linear-gradient(145deg, #ffffff, #f2e3bc 76%);
+    radial-gradient(circle at 34% 28%, #ffffff, transparent 36%), linear-gradient(145deg, #ffffff, #f2e3bc 76%);
   border: 1px solid rgb(62 49 121 / 0.22);
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 0.7),
@@ -1123,7 +1124,7 @@ button.cardview {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   user-select: none;
 }
 
@@ -1291,7 +1292,7 @@ button.cardstack:focus-visible {
   width: calc(100% - var(--space-4));
   aspect-ratio: var(--card-aspect-ratio);
   height: auto;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: var(--radius-xs);
   outline: 1px solid var(--color-border-subtle);
   opacity: 0.85;
@@ -1459,7 +1460,7 @@ button.cardstack:focus-visible {
 .carddetail-art img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .carddetail-name {
