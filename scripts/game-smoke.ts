@@ -31,7 +31,7 @@ import {
 } from '../src/game/GameLogic';
 import { collectTurnEffects, executeEffect, processTurnEffects } from '../src/game/effects/executor';
 import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
-import { CHRONOS_MAPPING, type GameState, type TimingEvent } from '../src/game/types';
+import { CHRONOS_MAPPING, type CardInstance, type GameState, type TimingEvent } from '../src/game/types';
 import { normalizeChronosPosition } from '../src/game/chronos';
 import type { ParsedEffect } from '../src/game/effects';
 import { ZutomayoCard, resetParsedEffects } from '../src/game/Game';
@@ -1588,7 +1588,10 @@ function fivePowerCards() {
     [nonmatchingStudy.instanceId, studyDrawCard.instanceId],
   );
   assert.equal(optionalStudyState.players[0].deck.length, 0);
-  assert.equal(optionalStudyState.players[0].powerCharger.at(-1)?.instanceId, matchingStudy.instanceId);
+  assert.equal(
+    (optionalStudyState.players[0].powerCharger as CardInstance[]).at(-1)?.instanceId,
+    matchingStudy.instanceId,
+  );
   assert.equal(matchingStudy.faceUp, true);
   assert.equal(studyDrawCard.faceUp, true);
 
