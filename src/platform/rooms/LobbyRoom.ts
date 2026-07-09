@@ -1,10 +1,20 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { authenticatePlatformClient } from './auth';
-import type { LobbyJoinOptions, LobbyRoomMetadata, PlatformAuth, PlatformClient } from './types';
+import type {
+  LobbyJoinOptions,
+  LobbyRoomMetadata,
+  PlatformAuth,
+  PlatformClient,
+  PlatformFriendPresenceEvent,
+} from './types';
+
+const MAX_FRIEND_IDS = 100;
+const USER_ID_PATTERN = /^[a-zA-Z0-9:_-]{3,128}$/;
 
 export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: PlatformClient }> {
   maxClients = 1_000;
   autoDispose = false;
+  private readonly friendUserIdsBySession = new Map<string, Set<string>>();
 
   async onCreate(): Promise<void> {
     await this.setMatchmaking({
@@ -19,7 +29,7 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     return authenticatePlatformClient(options, context);
   }
 
-  async onJoin(client: PlatformClient): Promise<void> {
+  async onJoin(client: PlatformClient, options: LobbyJoinOptions): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
     client.userData = {
@@ -29,23 +39,33 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
       role: auth.role,
       joinedAt: Date.now(),
     };
+    this.friendUserIdsBySession.set(client.sessionId, friendUserIdsFromOptions(options, auth.userId));
     await this.refreshMetadata();
-    client.send('lobbySnapshot', this.snapshot());
+    client.send('lobbySnapshot', this.snapshot(client));
     this.broadcast('presence', this.presencePayload('join', client.userData));
+    this.broadcastFriendPresence(this.onlineSessionCount(auth.userId) > 1 ? 'update' : 'online', client.userData);
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
     const profile = client.userData;
+    this.friendUserIdsBySession.delete(client.sessionId);
     await this.refreshMetadata();
     if (profile) {
       this.broadcast('presence', this.presencePayload('leave', profile));
+      this.broadcastFriendPresence(
+        this.onlineSessionCount(profile.userId, client.sessionId) > 0 ? 'update' : 'offline',
+        profile,
+        client.sessionId,
+      );
     }
   }
 
-  private snapshot(): PlatformClient['~messages']['lobbySnapshot'] {
+  private snapshot(client: PlatformClient): PlatformClient['~messages']['lobbySnapshot'] {
+    const friendUserIds = this.friendUserIdsBySession.get(client.sessionId) ?? new Set<string>();
     return {
       roomId: this.roomId,
       onlineCount: this.clients.length,
+      friends: Array.from(friendUserIds, (userId) => this.friendPresencePayload('update', userId, client.sessionId)),
     };
   }
 
@@ -69,4 +89,56 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
       },
     });
   }
+
+  private broadcastFriendPresence(
+    event: PlatformFriendPresenceEvent,
+    profile: NonNullable<PlatformClient['userData']>,
+    ignoredSessionId?: string,
+  ) {
+    const payload = this.friendPresencePayload(event, profile.userId, ignoredSessionId);
+    this.clients.forEach((client) => {
+      if (!this.friendUserIdsBySession.get(client.sessionId)?.has(profile.userId)) return;
+      client.send('friendPresence', payload);
+    });
+  }
+
+  private friendPresencePayload(
+    event: PlatformFriendPresenceEvent,
+    userId: string,
+    ignoredSessionId?: string,
+  ): PlatformClient['~messages']['friendPresence'] {
+    const profiles = this.onlineProfilesByUserId(userId, ignoredSessionId);
+    return {
+      event,
+      userId,
+      online: profiles.length > 0,
+      activeSessionCount: profiles.length,
+      profiles,
+      updatedAt: Date.now(),
+    };
+  }
+
+  private onlineProfilesByUserId(userId: string, ignoredSessionId?: string): NonNullable<PlatformClient['userData']>[] {
+    return this.clients
+      .filter((client) => client.sessionId !== ignoredSessionId && client.userData?.userId === userId)
+      .map((client) => client.userData)
+      .filter((profile): profile is NonNullable<PlatformClient['userData']> => Boolean(profile));
+  }
+
+  private onlineSessionCount(userId: string, ignoredSessionId?: string): number {
+    return this.onlineProfilesByUserId(userId, ignoredSessionId).length;
+  }
+}
+
+export function friendUserIdsFromOptions(options: LobbyJoinOptions, selfUserId: string): Set<string> {
+  if (!Array.isArray(options.friendUserIds)) return new Set();
+  const friendUserIds = new Set<string>();
+  for (const value of options.friendUserIds) {
+    if (typeof value !== 'string') continue;
+    const userId = value.trim();
+    if (userId === selfUserId || !USER_ID_PATTERN.test(userId)) continue;
+    friendUserIds.add(userId);
+    if (friendUserIds.size >= MAX_FRIEND_IDS) break;
+  }
+  return friendUserIds;
 }

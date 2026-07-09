@@ -6,10 +6,12 @@ export interface PlatformLobbyJoinOptions {
   userId: string;
   displayName: string;
   role?: PlatformRole;
+  friendUserIds?: string[];
 }
 
 export interface PlatformLobbyHandlers {
   onOnlineCount: (onlineCount: number) => void;
+  onFriendPresence?: (presence: PlatformFriendPresence) => void;
   onDisconnect?: () => void;
 }
 
@@ -48,6 +50,23 @@ export interface PlatformClientProfile {
   displayName: string;
   role: PlatformRole;
   joinedAt: number;
+}
+
+export type PlatformFriendPresenceEvent = 'online' | 'offline' | 'update';
+
+export interface PlatformFriendPresence {
+  event: PlatformFriendPresenceEvent;
+  userId: string;
+  online: boolean;
+  activeSessionCount: number;
+  profiles: PlatformClientProfile[];
+  updatedAt: number;
+}
+
+export interface PlatformLobbySnapshot {
+  roomId: string;
+  onlineCount: number;
+  friends: PlatformFriendPresence[];
 }
 
 export interface PlatformMatchShellSnapshot {
@@ -208,6 +227,64 @@ export function platformOnlineCountFromMessage(message: unknown): number | null 
   return null;
 }
 
+function platformProfileFromMessage(value: unknown): PlatformClientProfile | null {
+  if (!value || typeof value !== 'object') return null;
+  const data = value as Partial<PlatformClientProfile>;
+  if (typeof data.sessionId !== 'string' || typeof data.userId !== 'string') return null;
+  return {
+    sessionId: data.sessionId,
+    userId: data.userId,
+    displayName: typeof data.displayName === 'string' ? data.displayName : 'Player',
+    role: data.role === 'player' || data.role === 'spectator' || data.role === 'moderator' ? data.role : 'spectator',
+    joinedAt: Number.isFinite(data.joinedAt) ? Math.trunc(data.joinedAt as number) : Date.now(),
+  };
+}
+
+export function platformFriendPresenceFromMessage(message: unknown): PlatformFriendPresence | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as {
+    event?: unknown;
+    userId?: unknown;
+    online?: unknown;
+    activeSessionCount?: unknown;
+    profiles?: unknown;
+    updatedAt?: unknown;
+  };
+  if (data.event !== 'online' && data.event !== 'offline' && data.event !== 'update') return null;
+  if (typeof data.userId !== 'string' || !data.userId.trim()) return null;
+  const profiles = Array.isArray(data.profiles)
+    ? data.profiles
+        .map(platformProfileFromMessage)
+        .filter((profile): profile is PlatformClientProfile => Boolean(profile))
+    : [];
+  return {
+    event: data.event,
+    userId: data.userId.trim().slice(0, 128),
+    online: typeof data.online === 'boolean' ? data.online : profiles.length > 0,
+    activeSessionCount: Number.isFinite(data.activeSessionCount)
+      ? Math.max(0, Math.trunc(data.activeSessionCount as number))
+      : profiles.length,
+    profiles,
+    updatedAt: Number.isFinite(data.updatedAt) ? Math.trunc(data.updatedAt as number) : Date.now(),
+  };
+}
+
+export function platformLobbySnapshotFromMessage(message: unknown): PlatformLobbySnapshot | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as { roomId?: unknown; onlineCount?: unknown; friends?: unknown };
+  if (typeof data.roomId !== 'string' || !Number.isFinite(data.onlineCount)) return null;
+  const friends = Array.isArray(data.friends)
+    ? data.friends
+        .map(platformFriendPresenceFromMessage)
+        .filter((presence): presence is PlatformFriendPresence => Boolean(presence))
+    : [];
+  return {
+    roomId: data.roomId,
+    onlineCount: Math.max(0, Math.trunc(data.onlineCount as number)),
+    friends,
+  };
+}
+
 export function normalizeSeatReservation(response: FlatSeatReservation | SeatReservation): SeatReservation {
   if ('room' in response) return response;
   const room = {
@@ -252,15 +329,28 @@ export async function connectPlatformLobby(
     userId: options.userId,
     displayName: options.displayName,
     role: options.role ?? 'spectator',
+    friendUserIds: options.friendUserIds ?? [],
   });
 
-  const handleOnlineCount = (message: unknown) => {
+  const handlePresence = (message: unknown) => {
     const onlineCount = platformOnlineCountFromMessage(message);
     if (onlineCount !== null) handlers.onOnlineCount(onlineCount);
   };
 
-  room.onMessage('lobbySnapshot', handleOnlineCount);
-  room.onMessage('presence', handleOnlineCount);
+  room.onMessage('lobbySnapshot', (message) => {
+    const snapshot = platformLobbySnapshotFromMessage(message);
+    if (snapshot) {
+      handlers.onOnlineCount(snapshot.onlineCount);
+      snapshot.friends.forEach((presence) => handlers.onFriendPresence?.(presence));
+      return;
+    }
+    handlePresence(message);
+  });
+  room.onMessage('presence', handlePresence);
+  room.onMessage('friendPresence', (message) => {
+    const presence = platformFriendPresenceFromMessage(message);
+    if (presence) handlers.onFriendPresence?.(presence);
+  });
   room.onLeave(() => handlers.onDisconnect?.());
 
   return room;
@@ -301,19 +391,6 @@ export function platformChatPreviewFromMessage(message: unknown): PlatformChatPr
     },
     text: data.text.trim().slice(0, 500),
     createdAt: Number.isFinite(data.createdAt) ? Math.trunc(data.createdAt as number) : Date.now(),
-  };
-}
-
-function platformProfileFromMessage(value: unknown): PlatformClientProfile | null {
-  if (!value || typeof value !== 'object') return null;
-  const data = value as Partial<PlatformClientProfile>;
-  if (typeof data.sessionId !== 'string' || typeof data.userId !== 'string') return null;
-  return {
-    sessionId: data.sessionId,
-    userId: data.userId,
-    displayName: typeof data.displayName === 'string' ? data.displayName : 'Player',
-    role: data.role === 'player' || data.role === 'spectator' || data.role === 'moderator' ? data.role : 'spectator',
-    joinedAt: Number.isFinite(data.joinedAt) ? Math.trunc(data.joinedAt as number) : Date.now(),
   };
 }
 

@@ -20,11 +20,24 @@ export interface PlatformClientProfile {
   joinedAt: number;
 }
 
+export type PlatformFriendPresenceEvent = 'online' | 'offline' | 'update';
+
+export interface PlatformFriendPresence {
+  event: PlatformFriendPresenceEvent;
+  userId: string;
+  online: boolean;
+  activeSessionCount: number;
+  profiles: PlatformClientProfile[];
+  updatedAt: number;
+}
+
 export interface PlatformClientMessages {
   lobbySnapshot: {
     roomId: string;
     onlineCount: number;
+    friends: PlatformFriendPresence[];
   };
+  friendPresence: PlatformFriendPresence;
   roomSnapshot: {
     roomId: string;
     boardgameMatchID?: string;
@@ -155,6 +168,7 @@ export interface LobbyJoinOptions {
   userId?: unknown;
   displayName?: unknown;
   role?: unknown;
+  friendUserIds?: unknown;
 }
 
 export interface MatchShellRoomOptions extends LobbyJoinOptions {
