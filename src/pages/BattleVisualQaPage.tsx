@@ -12,9 +12,11 @@ import {
   isCardsInitialized,
   resetInstanceCounter,
 } from '../game/cards/loader';
+import { CHRONOS_MAPPING } from '../game/types';
 import type {
   CardDef,
   CardInstance,
+  ChronosTime,
   GameState,
   PendingChoice,
   PendingEffect,
@@ -39,8 +41,15 @@ const BATTLE_QA_SIDES = [
   { id: 'day', label: 'Me Day' },
 ] as const;
 
+const BATTLE_QA_TIMES = [
+  { id: 'auto', label: 'Auto Time' },
+  { id: 'night', label: 'Night Time' },
+  { id: 'day', label: 'Day Time' },
+] as const;
+
 type BattleQaStateId = (typeof BATTLE_QA_STATES)[number]['id'];
 type BattleQaSideId = (typeof BATTLE_QA_SIDES)[number]['id'];
+type BattleQaTimeId = (typeof BATTLE_QA_TIMES)[number]['id'];
 
 const REQUIRED_QA_CARD_IDS = [...new Set([...TUTORIAL_DECK0_IDS, ...TUTORIAL_DECK1_IDS])];
 
@@ -446,15 +455,37 @@ function normalizeSideId(value: string | null): BattleQaSideId {
   return BATTLE_QA_SIDES.some((side) => side.id === value) ? (value as BattleQaSideId) : 'night';
 }
 
-function createBattleQaState(id: BattleQaStateId, side: BattleQaSideId): GameState {
+function normalizeTimeId(value: string | null): BattleQaTimeId {
+  return BATTLE_QA_TIMES.some((time) => time.id === value) ? (value as BattleQaTimeId) : 'auto';
+}
+
+function applyQaChronosTime(G: GameState, time: BattleQaTimeId): void {
+  if (time === 'auto') return;
+  const positionByTime: Record<ChronosTime, number> = {
+    night: CHRONOS_MAPPING.midnight,
+    day: CHRONOS_MAPPING.noon,
+  };
+  G.chronos.position = positionByTime[time];
+}
+
+function createBattleQaState(id: BattleQaStateId, side: BattleQaSideId, time: BattleQaTimeId): GameState {
   const parsedEffects = createParsedEffects();
-  if (id === 'janken') return createTutorialGame();
-  if (id === 'mulligan') return createMulliganState(side);
-  if (id === 'initial-set') return createInitialSetState(side);
-  if (id === 'turn-set') return createTurnSetState(parsedEffects, side);
-  if (id === 'effect-order') return createEffectOrderState(parsedEffects, side);
-  if (id === 'pending-choice') return createPendingChoiceState(parsedEffects, side);
-  return createGameOverState(parsedEffects, side);
+  const G =
+    id === 'janken'
+      ? createTutorialGame()
+      : id === 'mulligan'
+        ? createMulliganState(side)
+        : id === 'initial-set'
+          ? createInitialSetState(side)
+          : id === 'turn-set'
+            ? createTurnSetState(parsedEffects, side)
+            : id === 'effect-order'
+              ? createEffectOrderState(parsedEffects, side)
+              : id === 'pending-choice'
+                ? createPendingChoiceState(parsedEffects, side)
+                : createGameOverState(parsedEffects, side);
+  applyQaChronosTime(G, time);
+  return G;
 }
 
 const noopMoves: BoardComponentProps['moves'] = {
@@ -483,7 +514,15 @@ function createQaCtx(G: GameState): BoardComponentProps['ctx'] {
   } as BoardComponentProps['ctx'];
 }
 
-function QaControls({ selectedState, selectedSide }: { selectedState: BattleQaStateId; selectedSide: BattleQaSideId }) {
+function QaControls({
+  selectedState,
+  selectedSide,
+  selectedTime,
+}: {
+  selectedState: BattleQaStateId;
+  selectedSide: BattleQaSideId;
+  selectedTime: BattleQaTimeId;
+}) {
   return (
     <aside className="fixed bottom-3 left-3 z-[var(--z-modal)] max-w-[calc(100vw-1.5rem)] rounded-sm border border-content-primary/10 bg-surface-canvas/90 p-2 font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/55 shadow-raised backdrop-blur">
       <div className="mb-1 text-accent-primary/70">Battle QA</div>
@@ -496,7 +535,7 @@ function QaControls({ selectedState, selectedSide }: { selectedState: BattleQaSt
                 ? 'bg-accent-primary text-surface-base'
                 : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
             }`}
-            to={`/qa/battle?state=${state.id}&side=${selectedSide}`}
+            to={`/qa/battle?state=${state.id}&side=${selectedSide}&time=${selectedTime}`}
           >
             {state.label}
           </Link>
@@ -511,9 +550,24 @@ function QaControls({ selectedState, selectedSide }: { selectedState: BattleQaSt
                 ? 'bg-accent-action text-surface-base'
                 : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
             }`}
-            to={`/qa/battle?state=${selectedState}&side=${side.id}`}
+            to={`/qa/battle?state=${selectedState}&side=${side.id}&time=${selectedTime}`}
           >
             {side.label}
+          </Link>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {BATTLE_QA_TIMES.map((time) => (
+          <Link
+            key={time.id}
+            className={`rounded-xs px-2 py-1 transition ${
+              selectedTime === time.id
+                ? 'bg-content-primary text-surface-base'
+                : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
+            }`}
+            to={`/qa/battle?state=${selectedState}&side=${selectedSide}&time=${time.id}`}
+          >
+            {time.label}
           </Link>
         ))}
       </div>
@@ -525,25 +579,28 @@ export function BattleVisualQaPage() {
   const [searchParams] = useSearchParams();
   const selectedState = normalizeStateId(searchParams.get('state'));
   const selectedSide = normalizeSideId(searchParams.get('side'));
+  const selectedTime = normalizeTimeId(searchParams.get('time'));
   const showControls = searchParams.get('controls') !== '0';
 
   const fixture = useMemo(() => {
     try {
       ensureBattleQaCards();
-      return { G: createBattleQaState(selectedState, selectedSide), error: null };
+      return { G: createBattleQaState(selectedState, selectedSide, selectedTime), error: null };
     } catch (error) {
       return { G: null, error: error instanceof Error ? error.message : String(error) };
     }
-  }, [selectedState, selectedSide]);
+  }, [selectedState, selectedSide, selectedTime]);
 
   useEffect(() => {
     document.documentElement.dataset.battleQaState = fixture.G ? selectedState : '';
     document.documentElement.dataset.battleQaSide = fixture.G ? selectedSide : '';
+    document.documentElement.dataset.battleQaTime = fixture.G ? selectedTime : '';
     return () => {
       delete document.documentElement.dataset.battleQaState;
       delete document.documentElement.dataset.battleQaSide;
+      delete document.documentElement.dataset.battleQaTime;
     };
-  }, [fixture.G, selectedState, selectedSide]);
+  }, [fixture.G, selectedState, selectedSide, selectedTime]);
 
   if (fixture.error) {
     return (
@@ -566,6 +623,7 @@ export function BattleVisualQaPage() {
       className="relative h-full min-h-0 w-full overflow-hidden bg-surface-canvas"
       data-battle-qa-state={selectedState}
       data-battle-qa-side={selectedSide}
+      data-battle-qa-time={selectedTime}
     >
       <Board
         G={fixture.G}
@@ -584,12 +642,14 @@ export function BattleVisualQaPage() {
         sendChatMessage={() => undefined}
         chatMessages={[]}
         playerID="0"
-        matchID={`qa-${selectedState}-${selectedSide}`}
+        matchID={`qa-${selectedState}-${selectedSide}-${selectedTime}`}
         isActive
         isConnected
         isMultiplayer={false}
       />
-      {showControls && <QaControls selectedState={selectedState} selectedSide={selectedSide} />}
+      {showControls && (
+        <QaControls selectedState={selectedState} selectedSide={selectedSide} selectedTime={selectedTime} />
+      )}
     </main>
   );
 }

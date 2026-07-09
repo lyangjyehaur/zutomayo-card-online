@@ -14,6 +14,26 @@
 
 /* ---------------------------------------------------------------- 根容器 */
 .bf-root {
+  --bf-time-root-base: var(--color-bg-base);
+  --bf-time-root-halo: transparent;
+  --bf-time-root-rim: transparent;
+  --bf-time-main-center: transparent;
+  --bf-time-main-edge: rgb(0 0 0 / 0.12);
+  --bf-time-main-horizon: transparent;
+  --bf-time-field-rim: rgb(0 0 0 / 0.18);
+  --bf-time-field-vignette: rgb(9 11 19 / 0.28);
+  --bf-time-field-center: transparent;
+  --bf-time-side-wash: transparent;
+  --bf-time-stage-core: rgb(255 255 255 / 0.08);
+  --bf-time-stage-halo: transparent;
+  --bf-time-stage-horizon: transparent;
+  --bf-time-divider-edge: rgb(255 255 255 / 0.12);
+  --bf-time-divider-core: rgb(196 187 255 / 0.26);
+  --bf-time-divider-shadow: rgb(48 39 105 / 0.34);
+  --bf-time-divider-glow: transparent;
+  --chronos-time-halo: transparent;
+  --chronos-time-ring: transparent;
+
   position: relative;
   display: flex;
   flex-direction: column;
@@ -21,18 +41,57 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--color-bg-base);
+  background:
+    radial-gradient(ellipse 88% 54% at 50% -10%, var(--bf-time-root-halo), transparent 72%),
+    radial-gradient(ellipse 94% 56% at 50% 112%, var(--bf-time-root-rim), transparent 76%),
+    var(--bf-time-root-base);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
 }
 
 /* 晝夜氛圍：Chronos 狀態驅動的極低調背景色偏移（不干擾卡牌辨識） */
 .bf-root.chrono-night {
-  background: color-mix(in oklch, var(--color-bg-base) 94%, oklch(0.3 0.05 270));
+  --bf-time-root-base: color-mix(in oklch, var(--color-bg-base) 90%, oklch(0.28 0.06 275));
+  --bf-time-root-halo: rgb(88 73 172 / 0.22);
+  --bf-time-root-rim: rgb(17 13 44 / 0.38);
+  --bf-time-main-center: rgb(104 88 206 / 0.16);
+  --bf-time-main-edge: rgb(14 11 39 / 0.34);
+  --bf-time-main-horizon: rgb(88 73 172 / 0.1);
+  --bf-time-field-rim: rgb(96 78 204 / 0.26);
+  --bf-time-field-vignette: rgb(8 8 26 / 0.34);
+  --bf-time-field-center: rgb(118 98 232 / 0.08);
+  --bf-time-side-wash: rgb(117 98 232 / 0.12);
+  --bf-time-stage-core: rgb(150 134 255 / 0.16);
+  --bf-time-stage-halo: rgb(75 60 172 / 0.18);
+  --bf-time-stage-horizon: rgb(40 32 102 / 0.18);
+  --bf-time-divider-edge: rgb(190 181 255 / 0.16);
+  --bf-time-divider-core: rgb(189 179 255 / 0.46);
+  --bf-time-divider-shadow: rgb(30 24 84 / 0.48);
+  --bf-time-divider-glow: rgb(125 104 255 / 0.34);
+  --chronos-time-halo: rgb(112 92 238 / 0.34);
+  --chronos-time-ring: rgb(199 191 255 / 0.18);
 }
 
 .bf-root.chrono-day {
-  background: color-mix(in oklch, var(--color-bg-base) 92%, oklch(0.3 0.04 70));
+  --bf-time-root-base: color-mix(in oklch, var(--color-bg-base) 88%, oklch(0.82 0.06 82));
+  --bf-time-root-halo: rgb(255 248 218 / 0.28);
+  --bf-time-root-rim: rgb(255 239 188 / 0.14);
+  --bf-time-main-center: rgb(255 247 216 / 0.18);
+  --bf-time-main-edge: rgb(80 61 22 / 0.08);
+  --bf-time-main-horizon: rgb(255 235 176 / 0.12);
+  --bf-time-field-rim: rgb(255 235 170 / 0.26);
+  --bf-time-field-vignette: rgb(68 48 12 / 0.14);
+  --bf-time-field-center: rgb(255 252 237 / 0.1);
+  --bf-time-side-wash: rgb(255 249 224 / 0.16);
+  --bf-time-stage-core: rgb(255 255 248 / 0.2);
+  --bf-time-stage-halo: rgb(255 234 166 / 0.18);
+  --bf-time-stage-horizon: rgb(255 248 222 / 0.18);
+  --bf-time-divider-edge: rgb(255 255 255 / 0.2);
+  --bf-time-divider-core: rgb(255 238 180 / 0.48);
+  --bf-time-divider-shadow: rgb(151 110 38 / 0.26);
+  --bf-time-divider-glow: rgb(255 232 156 / 0.36);
+  --chronos-time-halo: rgb(255 229 139 / 0.34);
+  --chronos-time-ring: rgb(255 255 246 / 0.22);
 }
 
 /* ---------------------------------------------------------------- 浮動 HUD */
@@ -296,8 +355,12 @@
   flex: 1 1 auto;
   min-height: 0;
   gap: var(--space-3);
+  isolation: isolate;
   padding: calc(var(--control-height-sm) + var(--space-4)) var(--space-3) var(--space-2);
   background:
+    radial-gradient(ellipse 60% 44% at 50% 50%, var(--bf-time-main-center), transparent 72%),
+    radial-gradient(ellipse 108% 82% at 50% 50%, transparent 58%, var(--bf-time-main-edge) 100%),
+    linear-gradient(to bottom, transparent 34%, var(--bf-time-main-horizon) 50%, transparent 66%),
     radial-gradient(ellipse 75% 38% at 46% 14%, var(--bf-main-opponent-ambient), transparent 72%),
     radial-gradient(ellipse 78% 44% at 46% 86%, var(--bf-main-player-ambient), transparent 74%),
     radial-gradient(ellipse 58% 24% at 46% 50%, var(--bf-main-twilight-ambient), transparent 72%);
@@ -358,6 +421,7 @@
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 0.08),
     inset 0 0 clamp(2rem, 7vw, 5.5rem) rgb(9 11 19 / 0.22),
+    0 0 clamp(1.5rem, 5vw, 4.5rem) var(--bf-time-field-rim),
     0 1rem clamp(1.5rem, 4vw, 3.5rem) rgb(0 0 0 / 0.26),
     0 0 0 1px rgb(255 255 255 / 0.05);
 }
@@ -422,7 +486,9 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse 100% 80% at 50% 50%, transparent 50%, rgb(9 11 19 / 0.28) 100%);
+  background:
+    radial-gradient(ellipse 74% 64% at 50% 50%, var(--bf-time-field-center), transparent 74%),
+    radial-gradient(ellipse 100% 80% at 50% 50%, transparent 50%, var(--bf-time-field-vignette) 100%);
 }
 
 .bf-sidebar {
@@ -441,6 +507,8 @@
 
 /* ---------------------------------------------------------------- 對手區 */
 .bf-opponent {
+  --bf-side-time-y: 100%;
+
   position: relative;
   display: flex;
   flex: 0 0 auto;
@@ -467,15 +535,21 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-size: var(--pattern-dot-size);
+  background-size:
+    100% 100%,
+    var(--pattern-dot-size) var(--pattern-dot-size);
 }
 
 .bf-opponent::before {
-  background-image: radial-gradient(var(--bf-opponent-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px);
+  background-image:
+    radial-gradient(ellipse 72% 120% at 50% var(--bf-side-time-y), var(--bf-time-side-wash), transparent 62%),
+    radial-gradient(var(--bf-opponent-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px);
 }
 
 .bf-player::before {
-  background-image: radial-gradient(var(--bf-player-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px);
+  background-image:
+    radial-gradient(ellipse 72% 120% at 50% var(--bf-side-time-y), var(--bf-time-side-wash), transparent 62%),
+    radial-gradient(var(--bf-player-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px);
 }
 
 .bf-opponent > * {
@@ -706,6 +780,11 @@
 
 /* ---------------------------------------------------------------- 中央舞台 */
 .bf-stage {
+  --bf-stage-character-left: 59%;
+  --bf-stage-character-width: clamp(9rem, 20vw, 17rem);
+  --bf-stage-character-opacity: 1;
+  --bf-stage-character-y: 10%;
+
   position: relative;
   z-index: 1;
   display: flex;
@@ -715,7 +794,9 @@
   justify-content: center;
   gap: clamp(var(--space-3), 5vw, var(--space-12));
   background:
-    radial-gradient(ellipse 30rem 18rem at 50% 50%, rgb(255 255 255 / 0.08), transparent 62%),
+    radial-gradient(ellipse 30rem 18rem at 50% 50%, var(--bf-time-stage-core), transparent 62%),
+    radial-gradient(ellipse 54% 82% at 50% 50%, var(--bf-time-stage-halo), transparent 68%),
+    linear-gradient(to bottom, transparent 42%, var(--bf-time-stage-horizon) 50%, transparent 58%),
     radial-gradient(ellipse 120% 60% at 50% 0%, oklch(from var(--bf-opponent-bg) l c h / 0.12), transparent 70%),
     radial-gradient(ellipse 120% 60% at 50% 100%, oklch(from var(--bf-player-bg) l c h / 0.1), transparent 70%),
     linear-gradient(
@@ -740,10 +821,25 @@
   height: clamp(0.22rem, 0.62vh, 0.4rem);
   pointer-events: none;
   background:
-    linear-gradient(to right, transparent 7%, rgb(255 255 255 / 0.16) 24%, rgb(196 187 255 / 0.26) 50%, rgb(255 255 255 / 0.12) 76%, transparent 93%),
-    linear-gradient(to bottom, transparent 0%, rgb(255 255 255 / 0.14) 34%, rgb(48 39 105 / 0.34) 52%, rgb(255 255 255 / 0.08) 68%, transparent 100%);
+    linear-gradient(
+      to right,
+      transparent 7%,
+      var(--bf-time-divider-edge) 24%,
+      var(--bf-time-divider-core) 50%,
+      var(--bf-time-divider-edge) 76%,
+      transparent 93%
+    ),
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgb(255 255 255 / 0.14) 34%,
+      var(--bf-time-divider-shadow) 52%,
+      rgb(255 255 255 / 0.08) 68%,
+      transparent 100%
+    );
   mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
   opacity: 0.82;
+  box-shadow: 0 0 clamp(0.7rem, 1.5vw, 1.4rem) var(--bf-time-divider-glow);
   transform: translateY(-50%);
 }
 
@@ -752,13 +848,13 @@
   position: absolute;
   z-index: 0;
   bottom: 0;
-  left: 59%;
-  width: clamp(9rem, 20vw, 17rem);
+  left: var(--bf-stage-character-left);
+  width: var(--bf-stage-character-width);
   aspect-ratio: 1.42;
   pointer-events: none;
   background: var(--bf-player-character-art) center / contain no-repeat;
-  opacity: 1;
-  transform: translate(-50%, 10%);
+  opacity: var(--bf-stage-character-opacity);
+  transform: translate(-50%, var(--bf-stage-character-y));
 }
 
 .bf-stage > * {
@@ -798,7 +894,7 @@
   content: '';
   position: absolute;
   inset: var(--chronos-face-inset);
-  z-index: 0;
+  z-index: 1;
   border-radius: 50%;
   background:
     radial-gradient(circle at 50% 50%, rgb(255 255 255 / 0.86) 0 18%, transparent 19%),
@@ -814,6 +910,19 @@
     transform var(--motion-slow) var(--ease-emphasized);
 }
 
+.chronosdial::after {
+  content: '';
+  position: absolute;
+  inset: -16%;
+  z-index: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 50%, var(--chronos-time-ring) 0 38%, transparent 39%),
+    radial-gradient(circle at 50% 50%, var(--chronos-time-halo), transparent 70%);
+  filter: blur(0.16rem);
+}
+
 .chronosdial[data-face-art='true']::before {
   opacity: 0;
 }
@@ -821,7 +930,7 @@
 .chronosdial-face-art {
   position: absolute;
   inset: var(--chronos-face-inset);
-  z-index: 0;
+  z-index: 1;
   display: block;
   width: auto;
   height: auto;
@@ -852,7 +961,7 @@
 .chronosdial-orbit {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
   transform-origin: center;
   transition: transform var(--motion-slow) var(--ease-emphasized);
@@ -911,7 +1020,7 @@
   left: var(--slot-x);
   top: var(--slot-y);
   display: grid;
-  z-index: 2;
+  z-index: 3;
   width: calc(var(--chronos-slot-size) * 1.46);
   aspect-ratio: 309 / 303;
   place-items: center;
@@ -959,6 +1068,8 @@
 
 /* ---------------------------------------------------------------- 玩家區 */
 .bf-player {
+  --bf-side-time-y: 0%;
+
   position: relative;
   z-index: 0;
   display: flex;
@@ -1897,6 +2008,8 @@ button.cardstack:focus-visible {
   }
 
   .bf-stage {
+    --bf-stage-character-width: clamp(8rem, 42vw, 14rem);
+
     gap: clamp(var(--space-2), 4vw, var(--space-8));
     min-height: calc(var(--slot-height-md) + var(--space-2));
   }
@@ -1923,6 +2036,7 @@ button.cardstack:focus-visible {
   .actiondock {
     flex-direction: row;
     align-items: center;
+    justify-content: center;
     width: 100%;
     gap: var(--space-2);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -2035,6 +2149,8 @@ button.cardstack:focus-visible {
   }
 
   .bf-stage {
+    --bf-stage-character-width: clamp(7rem, 46vw, 11rem);
+
     min-height: calc(var(--slot-height-sm) + var(--space-2));
   }
 
@@ -2194,6 +2310,8 @@ button.cardstack:focus-visible {
   }
 
   .bf-stage {
+    --bf-stage-character-width: clamp(5rem, 24vh, 7.25rem);
+
     min-height: calc(var(--slot-height-sm) + var(--space-1));
     gap: clamp(var(--space-2), 3vw, var(--space-6));
   }
@@ -2218,7 +2336,8 @@ button.cardstack:focus-visible {
   }
 
   .bf-hand-dock {
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: minmax(8.5rem, 1fr) minmax(11rem, 1.2fr) minmax(8rem, 1fr);
     align-items: flex-end;
     gap: var(--space-2);
   }
@@ -2228,12 +2347,16 @@ button.cardstack:focus-visible {
   }
 
   .handzone-strip {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
     padding-block: var(--space-1);
   }
 
   .actiondock {
     flex-direction: column;
-    width: 11rem;
+    justify-self: center;
+    width: min(100%, 11rem);
     gap: var(--space-1);
   }
 
