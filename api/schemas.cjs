@@ -56,6 +56,11 @@ const heartbeatSchema = z.object({
   visitorId: z.string().min(1).max(96),
 });
 
+// ===== Friends =====
+const friendCreateSchema = z.object({
+  friendUserId: z.string().min(3).max(128),
+});
+
 // ===== Chat =====
 const chatConversationType = z.enum(['match', 'room', 'direct', 'global']);
 
@@ -162,6 +167,7 @@ module.exports = {
   deckCreateSchema,
   matchSubmitSchema,
   heartbeatSchema,
+  friendCreateSchema,
   chatMessageCreateSchema,
   chatReadSchema,
   chatReportCreateSchema,

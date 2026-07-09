@@ -30,6 +30,15 @@ export interface ProfileResponse {
   createdAt: string;
 }
 
+export interface FriendProfile {
+  userId: string;
+  nickname: string;
+  elo: number;
+  matchCount: number;
+  wins: number;
+  createdAt: string;
+}
+
 export type OAuthProviderId = 'logto' | 'google' | 'github' | 'discord';
 
 export interface OAuthProvider {
@@ -251,6 +260,10 @@ export type AboutPageI18nConfig = Record<AboutPageLocale, AboutPageConfig>;
 
 interface DeckListResponse {
   decks: DeckResponse[];
+}
+
+interface FriendListResponse {
+  friends: FriendProfile[];
 }
 
 interface LeaderboardListResponse {
@@ -612,6 +625,23 @@ export async function updateLogtoPassword(newPassword: string, verificationRecor
 export function getOAuthStartUrl(provider: OAuthProviderId, mode: 'login' | 'link', returnTo = '/'): string {
   const target = returnTo.startsWith('/') ? returnTo : '/';
   return `${API_BASE}/oauth/${encodeURIComponent(provider)}/start?mode=${mode}&returnTo=${encodeURIComponent(target)}`;
+}
+
+// ===== Friends =====
+export async function getFriends(): Promise<FriendProfile[]> {
+  const data = await request<FriendListResponse>('/friends');
+  return data.friends;
+}
+
+export async function addFriend(friendUserId: string): Promise<{ ok: boolean; friendUserId: string }> {
+  return request('/friends', {
+    method: 'POST',
+    body: JSON.stringify({ friendUserId }),
+  });
+}
+
+export async function removeFriend(friendUserId: string): Promise<{ ok: boolean }> {
+  return request(`/friends/${encodeURIComponent(friendUserId)}`, { method: 'DELETE' });
 }
 
 // ===== Decks =====

@@ -73,6 +73,7 @@ const {
   findSimilarPosts: findFeedbackSimilarPosts,
   toggleCommentReaction: toggleFeedbackCommentReaction,
 } = require('./feedbackService.cjs');
+const { addFriend, listFriends, removeFriend } = require('./friendService.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 
@@ -298,6 +299,16 @@ async function initSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
     `CREATE INDEX IF NOT EXISTS idx_decks_user ON decks(user_id)`,
+
+    `CREATE TABLE IF NOT EXISTS user_friends (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      friend_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, friend_user_id),
+      CHECK (user_id <> friend_user_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_user_friends_friend
+      ON user_friends(friend_user_id)`,
 
     `CREATE TABLE IF NOT EXISTS matches (
       id TEXT PRIMARY KEY,
@@ -2361,6 +2372,39 @@ function handleRequest(req, res) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const provider = decodeURIComponent(profileIdentityRoute[1]);
       const result = await unlinkOAuthIdentity({ pool, userId, provider });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // ===== Friend Routes =====
+
+    if (pathname === '/api/friends' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await listFriends({ pool, userId });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/friends' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody();
+      const __parsed = validateBody(S.friendCreateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await addFriend({ pool, userId, body: __parsed.data });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    const friendRoute = pathname.match(/^\/api\/friends\/([^/]+)$/);
+    if (friendRoute && method === 'DELETE') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await removeFriend({ pool, userId, friendUserId: decodeURIComponent(friendRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;

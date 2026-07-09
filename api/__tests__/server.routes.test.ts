@@ -395,6 +395,11 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('GET /api/friends returns 401 without auth', async () => {
+      const res = await sendRequest('GET', '/api/friends');
+      expect(res.statusCode).toBe(401);
+    });
+
     it('GET /api/decks returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/decks');
       expect(res.statusCode).toBe(401);
