@@ -1980,7 +1980,10 @@ function handleRequest(req, res) {
       const userId = getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const deckId = pathname.split('/').pop();
-      const result = await updateUserDeck(pool, userId, deckId, await readBody());
+      const __body = await readBody();
+      const __parsed = validateBody(S.deckCreateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await updateUserDeck(pool, userId, deckId, __parsed.data);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
