@@ -27,6 +27,8 @@ export interface BattleZoneProps {
   onInspect?: (card: CardInstance) => void;
   size?: 'md' | 'lg';
   tutId?: string;
+  /** 前端動畫層用的公開 DOM 錨點，不承載規則狀態。 */
+  animationZone?: string;
 }
 
 export function BattleZone({
@@ -39,10 +41,11 @@ export function BattleZone({
   onInspect,
   size = 'lg',
   tutId,
+  animationZone,
 }: BattleZoneProps) {
   const sideName = side === 'me' ? t('player.me') : t('player.opponent');
   return (
-    <div className={`battlezone battlezone-${side}`} data-time={time} data-tut={tutId}>
+    <div className={`battlezone battlezone-${side}`} data-time={time} data-tut={tutId} data-anim-zone={animationZone}>
       <CardSlot
         label={t('board.battleZoneShort')}
         ariaLabel={`${sideName} ${t('board.battleZone')}`}

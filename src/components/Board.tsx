@@ -22,6 +22,7 @@ import { useModalFocus } from '../ui';
 import {
   AbyssZone,
   ActionDock,
+  BattleAnimationLayer,
   BattleZone,
   CardDetailBody,
   CardDetailPanel,
@@ -2029,6 +2030,7 @@ function BattleBoard({
                 totalPower={powerTotal(G, opponentIndex)}
                 chronosSide={setZoneChronosSide(opponentIndex)}
                 onOpen={() => setZoneSheet({ kind: 'power', owner: opponentIndex })}
+                animationZone={`p${opponentIndex}:powerCharger`}
               />
               <SetZone
                 slot="A"
@@ -2038,6 +2040,7 @@ function BattleBoard({
                 chronosSide={setZoneChronosSide(opponentIndex)}
                 onActivate={detailActivate(opponent.setZoneA, opponentIndex, zoneNames.A)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.A)}
+                animationZone={`p${opponentIndex}:setZoneA`}
               />
               <SetZone
                 slot="B"
@@ -2047,6 +2050,7 @@ function BattleBoard({
                 chronosSide={setZoneChronosSide(opponentIndex)}
                 onActivate={detailActivate(opponent.setZoneB, opponentIndex, zoneNames.B)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.B)}
+                animationZone={`p${opponentIndex}:setZoneB`}
               />
               <SetZone
                 slot="C"
@@ -2056,6 +2060,7 @@ function BattleBoard({
                 chronosSide={setZoneChronosSide(opponentIndex)}
                 onActivate={detailActivate(opponent.setZoneC, opponentIndex, zoneNames.C)}
                 onInspect={(card) => inspect(card, opponentIndex, zoneNames.C)}
+                animationZone={`p${opponentIndex}:setZoneC`}
               />
               {!touchLike && (
                 <>
@@ -2064,6 +2069,7 @@ function BattleBoard({
                     size="sm"
                     count={opponent.deck.length}
                     chronosSide={setZoneChronosSide(opponentIndex)}
+                    animationZone={`p${opponentIndex}:deck`}
                   />
                   <AbyssZone
                     side="opponent"
@@ -2071,6 +2077,7 @@ function BattleBoard({
                     cards={opponent.abyss}
                     chronosSide={setZoneChronosSide(opponentIndex)}
                     onOpen={() => setZoneSheet({ kind: 'abyss', owner: opponentIndex })}
+                    animationZone={`p${opponentIndex}:abyss`}
                   />
                 </>
               )}
@@ -2087,12 +2094,14 @@ function BattleBoard({
               onActivate={detailActivate(opponent.battleZone, opponentIndex, zoneNames.battle)}
               onInspect={(card) => inspect(card, opponentIndex, zoneNames.battle)}
               tutId="opponent-battle-zone"
+              animationZone={`p${opponentIndex}:battleZone`}
             />
             <ChronosPanel
               chronos={G.chronos}
               currentTime={time}
               currentPlayer={meIndex}
               size={viewport.mode === 'mobile' ? 'sm' : 'md'}
+              animationZone="chronos"
             />
             <BattleZone
               side="me"
@@ -2103,6 +2112,7 @@ function BattleBoard({
               onActivate={initialSetUndo ?? detailActivate(me.battleZone, meIndex, zoneNames.battle)}
               onInspect={(card) => inspect(card, meIndex, zoneNames.battle)}
               tutId="player-battle-zone"
+              animationZone={`p${meIndex}:battleZone`}
             />
           </section>
 
@@ -2116,6 +2126,7 @@ function BattleBoard({
                 chronosSide={setZoneChronosSide(meIndex)}
                 onOpen={() => setZoneSheet({ kind: 'power', owner: meIndex })}
                 tutId="player-power"
+                animationZone={`p${meIndex}:powerCharger`}
               />
               <div className="bf-slot-group" data-tut="player-set-zones">
                 <SetZone
@@ -2126,6 +2137,7 @@ function BattleBoard({
                   state={meSlotUndo('A', me.setZoneA) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('A', me.setZoneA) ?? detailActivate(me.setZoneA, meIndex, zoneNames.A)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.A)}
+                  animationZone={`p${meIndex}:setZoneA`}
                 />
                 <SetZone
                   slot="B"
@@ -2135,6 +2147,7 @@ function BattleBoard({
                   state={meSlotUndo('B', me.setZoneB) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('B', me.setZoneB) ?? detailActivate(me.setZoneB, meIndex, zoneNames.B)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.B)}
+                  animationZone={`p${meIndex}:setZoneB`}
                 />
                 <SetZone
                   slot="C"
@@ -2144,22 +2157,29 @@ function BattleBoard({
                   state={meSlotUndo('C', me.setZoneC) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('C', me.setZoneC) ?? detailActivate(me.setZoneC, meIndex, zoneNames.C)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.C)}
+                  animationZone={`p${meIndex}:setZoneC`}
                 />
               </div>
               {!touchLike && (
                 <>
-                  <DeckZone side="me" count={me.deck.length} chronosSide={setZoneChronosSide(meIndex)} />
+                  <DeckZone
+                    side="me"
+                    count={me.deck.length}
+                    chronosSide={setZoneChronosSide(meIndex)}
+                    animationZone={`p${meIndex}:deck`}
+                  />
                   <AbyssZone
                     side="me"
                     cards={me.abyss}
                     chronosSide={setZoneChronosSide(meIndex)}
                     onOpen={() => setZoneSheet({ kind: 'abyss', owner: meIndex })}
+                    animationZone={`p${meIndex}:abyss`}
                     tutId="player-abyss"
                   />
                 </>
               )}
             </div>
-            <div className="bf-hand-dock" data-tut="player-actions">
+            <div className="bf-hand-dock" data-tut="player-actions" data-anim-zone={`p${meIndex}:hand`}>
               <div className={touchLike ? 'mobile-status-row' : 'playerstatus-row'}>
                 <PlayerStatus
                   side="me"
@@ -2269,6 +2289,7 @@ function BattleBoard({
 
       <FeedbackOverlay message={phaseMessage} />
       <GameNoticeOverlay G={G} me={meIndex} onNoticeDismiss={onNoticeDismiss} />
+      <BattleAnimationLayer G={G} me={meIndex} />
     </BoardLayout>
   );
 }

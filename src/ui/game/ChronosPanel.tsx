@@ -10,11 +10,12 @@ export interface ChronosPanelProps {
   currentTime: ChronosTime;
   currentPlayer: PlayerIndex;
   size?: 'md' | 'sm';
+  animationZone?: string;
 }
 
-export function ChronosPanel({ chronos, currentTime, currentPlayer, size = 'md' }: ChronosPanelProps) {
+export function ChronosPanel({ chronos, currentTime, currentPlayer, size = 'md', animationZone }: ChronosPanelProps) {
   return (
-    <div className={`chronospanel chronospanel-${size}`} data-tut="chronos-clock">
+    <div className={`chronospanel chronospanel-${size}`} data-tut="chronos-clock" data-anim-zone={animationZone}>
       <ChronosDial chronos={chronos} currentTime={currentTime} currentPlayer={currentPlayer} />
     </div>
   );

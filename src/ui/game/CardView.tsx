@@ -77,7 +77,7 @@ export function CardView({
     .filter(Boolean)
     .join(' ');
 
-  const content = def ? (
+  const front = def ? (
     <>
       <CardImage
         className="cardview-art"
@@ -94,8 +94,17 @@ export function CardView({
         </span>
       )}
     </>
-  ) : (
-    <img className="cardview-art" src="/card-back.jpg" alt="" loading="lazy" decoding="async" draggable={false} />
+  ) : null;
+
+  // 兩個面永遠保留在 DOM：伏牌→公開時可由 CSS 以同一張實例完成 3D 翻轉。
+  // 未公開卡不渲染任何定義資料，維持線上資訊隱藏。
+  const content = (
+    <span className="cardview-inner" aria-hidden="true">
+      <span className="cardview-face cardview-face-front">{front}</span>
+      <span className="cardview-face cardview-face-back">
+        <img className="cardview-art" src="/card-back.jpg" alt="" loading="lazy" decoding="async" draggable={false} />
+      </span>
+    </span>
   );
 
   if (interactive) {
@@ -104,6 +113,8 @@ export function CardView({
         type="button"
         className={cls}
         data-state={state}
+        data-face-up={faceUp ? 'true' : 'false'}
+        data-anim-card={card.instanceId}
         data-tut-card={tutId}
         aria-label={label}
         onClick={onActivate}
@@ -122,6 +133,8 @@ export function CardView({
     <div
       className={cls}
       data-state={state}
+      data-face-up={faceUp ? 'true' : 'false'}
+      data-anim-card={card.instanceId}
       data-tut-card={tutId}
       role="img"
       aria-label={label}
