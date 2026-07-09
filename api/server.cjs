@@ -68,6 +68,8 @@ const pbkdf2 = util.promisify(crypto.pbkdf2);
 // ===== Config =====
 const PORT = Number(process.env.API_PORT) || 3001;
 const JWT_SECRET = process.env.JWT_SECRET;
+// B4：OAuth token 加密金鑰獨立於 JWT_SECRET，避免金鑰輪換時 OAuth token 失效。
+const OAUTH_TOKEN_ENCRYPTION_KEY = process.env.OAUTH_TOKEN_ENCRYPTION_KEY || '';
 // P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 // admin 系統使用共享密碼，無個別 admin 帳號；稽核日誌以 'admin' 標識操作者。
@@ -179,6 +181,9 @@ function validateSecurityConfig() {
     logger.warn('ADMIN_PASSWORD not set - admin login will be disabled');
   } else if (ADMIN_PASSWORD.length < 8) {
     logger.warn('ADMIN_PASSWORD should be at least 8 characters');
+  }
+  if (OAUTH_TOKEN_ENCRYPTION_KEY && OAUTH_TOKEN_ENCRYPTION_KEY.length < 32) {
+    logger.warn('OAUTH_TOKEN_ENCRYPTION_KEY should be at least 32 characters; falling back to JWT_SECRET-derived key');
   }
 }
 
@@ -505,6 +510,15 @@ function signTokenInput(input) {
 }
 
 function secretEncryptionKey() {
+  // B4：優先使用獨立的 OAUTH_TOKEN_ENCRYPTION_KEY（>=32 字元）
+  if (OAUTH_TOKEN_ENCRYPTION_KEY.length >= 32) {
+    return crypto.createHash('sha256').update(`oauth-encryption:${OAUTH_TOKEN_ENCRYPTION_KEY}`).digest();
+  }
+  // Fallback：從 JWT_SECRET 衍生（向後相容）
+  return crypto.createHash('sha256').update(`zutomayo-secret:${JWT_SECRET}`).digest();
+}
+
+function legacySecretEncryptionKey() {
   return crypto.createHash('sha256').update(`zutomayo-secret:${JWT_SECRET}`).digest();
 }
 
@@ -518,12 +532,24 @@ function encryptSecret(value) {
 }
 
 function decryptSecret(value) {
-  try {
-    const [ivPart, tagPart, encryptedPart] = String(value || '').split('.');
-    if (!ivPart || !tagPart || !encryptedPart) return '';
-    const decipher = crypto.createDecipheriv('aes-256-gcm', secretEncryptionKey(), Buffer.from(ivPart, 'base64url'));
+  const raw = String(value || '');
+  const parts = raw.split('.');
+  if (parts.length !== 3) return '';
+  const [ivPart, tagPart, encryptedPart] = parts;
+  if (!ivPart || !tagPart || !encryptedPart) return '';
+  const decryptWithKey = (key) => {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivPart, 'base64url'));
     decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
     return Buffer.concat([decipher.update(Buffer.from(encryptedPart, 'base64url')), decipher.final()]).toString('utf8');
+  };
+  // 先用當前金鑰嘗試
+  try {
+    return decryptWithKey(secretEncryptionKey());
+  } catch {
+    // 當前金鑰失敗，fallback 嘗試舊金鑰（JWT_SECRET 衍生）
+  }
+  try {
+    return decryptWithKey(legacySecretEncryptionKey());
   } catch {
     return '';
   }
