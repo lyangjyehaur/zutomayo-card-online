@@ -10,7 +10,7 @@ export function ActiveDeckPanel({ label, className, children, ...props }: Active
   return (
     <aside
       className={cn(
-        'hidden min-h-[18rem] flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10 md:min-h-[22rem] md:p-5 xl:flex xl:min-h-0',
+        'hidden min-h-0 flex-col rounded-md border border-border-soft bg-surface-base/70 p-4 backdrop-blur md:p-5 xl:flex',
         className,
       )}
       aria-label={label}

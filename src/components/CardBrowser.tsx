@@ -10,7 +10,7 @@ export function CardBrowser({ label, className, children, ...props }: CardBrowse
   return (
     <section
       className={cn(
-        'card-browser flex min-h-[24rem] flex-col rounded-sm bg-surface-base/60 p-4 ring-1 ring-content-primary/10 md:min-h-[28rem] md:p-5 xl:min-h-0',
+        'card-browser flex min-h-[24rem] flex-col rounded-md border border-border-soft bg-surface-base/60 p-4 backdrop-blur md:min-h-[28rem] md:p-5 xl:min-h-0',
         className,
       )}
       aria-label={label}
