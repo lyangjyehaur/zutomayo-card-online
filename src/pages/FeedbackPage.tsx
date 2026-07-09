@@ -286,21 +286,23 @@ export function FeedbackPage() {
       <AppHeader title={t('feedback.title')} subtitle={t('feedback.subtitle')} backTo="/" />
 
       {!isLoggedIn() && (
-        <p className="feedback-anon-notice text-caption text-content-primary/40">
-          {t('feedback.anonymousNotice')}
-        </p>
+        <p className="feedback-anon-notice text-caption text-content-primary/40">{t('feedback.anonymousNotice')}</p>
       )}
 
       {stats && (
         <StatsGrid className="feedback-stats grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
           <div className="stat-cell flex min-h-14 items-center justify-between gap-2 rounded-sm border border-border-soft bg-surface-panel/55 px-3 py-2">
-            <span className="stat-label text-caption leading-tight text-content-primary/55">{t('feedback.statsTotal')}</span>
+            <span className="stat-label text-caption leading-tight text-content-primary/55">
+              {t('feedback.statsTotal')}
+            </span>
             <span className="stat-num shrink-0 font-mono text-lg font-bold text-accent-primary">
               {Number(stats.total) || 0}
             </span>
           </div>
           <div className="stat-cell flex min-h-14 items-center justify-between gap-2 rounded-sm border border-border-soft bg-surface-panel/55 px-3 py-2">
-            <span className="stat-label text-caption leading-tight text-content-primary/55">{t('feedback.statsVotes')}</span>
+            <span className="stat-label text-caption leading-tight text-content-primary/55">
+              {t('feedback.statsVotes')}
+            </span>
             <span className="stat-num shrink-0 font-mono text-lg font-bold text-accent-primary">
               {Number(stats.total_votes) || 0}
             </span>

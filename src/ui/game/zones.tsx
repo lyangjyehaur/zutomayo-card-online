@@ -76,12 +76,7 @@ export interface ChargeZoneProps {
 
 export function ChargeZone({ side, cards, totalPower, chronosSide, size = 'md', onOpen, tutId }: ChargeZoneProps) {
   return (
-    <ZonePanel
-      label={t('board.powerCharger')}
-      side={side}
-      tutId={tutId}
-      className="chargezone"
-    >
+    <ZonePanel label={t('board.powerCharger')} side={side} tutId={tutId} className="chargezone">
       <span className="chargezone-total" aria-hidden="true">
         {t('board.powerTotal')} {totalPower}
       </span>
@@ -147,7 +142,14 @@ export interface DeckZoneProps {
 export function DeckZone({ side, count, chronosSide, size = 'md', tutId }: DeckZoneProps) {
   return (
     <ZonePanel label={t('board.deck')} side={side} tutId={tutId} className="deckzone">
-      <CardStack kind="deck" size={size} label={t('board.deck')} count={count} chronosSide={chronosSide} showLabel={false} />
+      <CardStack
+        kind="deck"
+        size={size}
+        label={t('board.deck')}
+        count={count}
+        chronosSide={chronosSide}
+        showLabel={false}
+      />
     </ZonePanel>
   );
 }

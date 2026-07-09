@@ -454,7 +454,9 @@ export function ProfilePage() {
                       </div>
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-body-sm text-content-muted">{t('profile.logtoUsername')}</span>
-                        <strong className="truncate text-body-sm">{accountValue(logtoAccountCenter.account.username)}</strong>
+                        <strong className="truncate text-body-sm">
+                          {accountValue(logtoAccountCenter.account.username)}
+                        </strong>
                       </div>
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-body-sm text-content-muted">{t('profile.logtoSocialConnections')}</span>
@@ -527,7 +529,9 @@ export function ProfilePage() {
                       variant="secondary"
                       type="button"
                       leftIcon={<ExternalLink className="size-4" aria-hidden="true" />}
-                      onClick={() => window.open(accountCenterTarget(accountCenterUrl), '_blank', 'noopener,noreferrer')}
+                      onClick={() =>
+                        window.open(accountCenterTarget(accountCenterUrl), '_blank', 'noopener,noreferrer')
+                      }
                     >
                       {t('profile.manageAccountSecurity')}
                     </Button>

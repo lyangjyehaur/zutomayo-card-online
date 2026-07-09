@@ -537,9 +537,7 @@
   background-position:
     0 0,
     center;
-  background-repeat:
-    repeat,
-    no-repeat;
+  background-repeat: repeat, no-repeat;
   background-size:
     var(--pattern-dot-size),
     100% 100%;

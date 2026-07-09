@@ -115,7 +115,8 @@ export const ja: Record<TranslationKey, string> = {
   'profile.logtoUsername': 'ユーザー名',
   'profile.logtoSocialConnections': 'ソーシャル連携',
   'profile.logtoNoSocialConnections': '未連携',
-  'profile.logtoReconnectRequired': 'サイト内のアカウントセキュリティ管理を有効にするには、もう一度ログインしてください。',
+  'profile.logtoReconnectRequired':
+    'サイト内のアカウントセキュリティ管理を有効にするには、もう一度ログインしてください。',
   'profile.logtoReconnectAction': 'もう一度ログイン',
 
   'lobby.aiBattle': 'コンピュータ対戦',
