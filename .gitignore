@@ -59,6 +59,7 @@ schema.json
 # Card data (source of truth is PostgreSQL; files kept locally for dev/scripts only)
 cards.json
 data/card-effects-i18n.json
+data/vision-ocr/
 
 # Environment variables (contain secrets)
 .env
