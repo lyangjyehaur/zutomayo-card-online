@@ -41,6 +41,8 @@ Friend direct messages use the durable `ChatService` direct conversation type. T
 
 Cross-room lobby chat uses the durable `ChatService` global conversation type (`online-lobby`) with the same history, read-state, report, moderation, and translation behavior instead of Colyseus room memory.
 
+Admin moderation uses ChatService as the evidence source of truth. Chat reports include the reported message snapshot, and the admin console can load the full durable conversation context for post-match lookup and report review, including messages that are blocked, pending review, or deleted from normal user history.
+
 ## Migration Plan
 
 1. Add Colyseus runtime and room contracts.

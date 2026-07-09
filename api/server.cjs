@@ -32,6 +32,7 @@ const {
 } = require('./cardDataService.cjs');
 const {
   defaultChatModerationRules,
+  listChatEvidenceMessages,
   listChatMessages,
   listChatReports,
   listUnreadChat,
@@ -2704,6 +2705,22 @@ function handleRequest(req, res) {
         pool,
         status: url.searchParams.get('status'),
         limit: url.searchParams.get('limit'),
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // Admin：查看聊天對話上下文（賽後查詢與舉報取證）。
+    const adminChatEvidenceRoute = pathname.match(/^\/api\/admin\/chat\/conversations\/([^/]+)\/messages$/);
+    if (adminChatEvidenceRoute && method === 'GET') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const conversationId = decodeURIComponent(adminChatEvidenceRoute[1]);
+      const result = await listChatEvidenceMessages({
+        pool,
+        conversationId,
+        limit: url.searchParams.get('limit'),
+        before: url.searchParams.get('before'),
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);

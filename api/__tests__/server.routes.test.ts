@@ -435,6 +435,11 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('GET /api/admin/chat/conversations/:conversationId/messages returns 401 without admin token', async () => {
+      const res = await sendRequest('GET', '/api/admin/chat/conversations/match%3Abgio-match-1/messages');
+      expect(res.statusCode).toBe(401);
+    });
+
     it('GET /api/matchmaking/status returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/matchmaking/status');
       expect(res.statusCode).toBe(401);

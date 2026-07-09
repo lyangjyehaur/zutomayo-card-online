@@ -319,6 +319,33 @@ async function listChatMessages({ pool, userId, conversationType, subjectId, lim
   return { ok: true, body: { messages: rows.map(mapMessage).reverse() } };
 }
 
+async function listChatEvidenceMessages({ pool, conversationId, limit, before }) {
+  const cleanConversationId = typeof conversationId === 'string' ? conversationId.slice(0, 340) : '';
+  if (!cleanConversationId) return { ok: false, status: 400, error: 'Invalid conversation' };
+  const conversation = (await pool.query('SELECT * FROM chat_conversations WHERE id = $1', [cleanConversationId]))
+    .rows[0];
+  if (!conversation) return { ok: false, status: 404, error: 'Conversation not found' };
+
+  const lim = clampLimit(limit, 100, 500);
+  const params = [cleanConversationId, lim];
+  let beforeClause = '';
+  if (before) {
+    params.push(String(before));
+    beforeClause =
+      "AND created_at < COALESCE((SELECT created_at FROM chat_messages WHERE id = $3), NOW() + INTERVAL '1 second')";
+  }
+  const { rows } = await pool.query(
+    `SELECT *
+     FROM chat_messages
+     WHERE conversation_id = $1
+       ${beforeClause}
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    params,
+  );
+  return { ok: true, body: { conversation: mapConversation(conversation), messages: rows.map(mapMessage).reverse() } };
+}
+
 async function markConversationRead({ pool, userId, body }) {
   if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
   const key = conversationKey(body.conversationType, body.subjectId);
@@ -561,6 +588,7 @@ module.exports = {
   defaultChatModerationRules,
   evaluateChatModeration,
   getOrCreateConversation,
+  listChatEvidenceMessages,
   listChatMessages,
   listChatReports,
   requestChatTranslation,

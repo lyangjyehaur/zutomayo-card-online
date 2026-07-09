@@ -919,6 +919,19 @@ export async function adminGetChatReports(
   });
 }
 
+export async function adminGetChatConversationMessages(
+  token: string,
+  conversationId: string,
+  limit = 100,
+): Promise<{ conversation: ChatConversation; messages: ChatMessage[] }> {
+  return request<{ conversation: ChatConversation; messages: ChatMessage[] }>(
+    `/admin/chat/conversations/${encodeURIComponent(conversationId)}/messages?limit=${limit}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+}
+
 export async function adminReviewChatReport(
   token: string,
   reportId: string,

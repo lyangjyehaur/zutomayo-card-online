@@ -11,6 +11,7 @@ const {
   canAccessConversation,
   conversationKey,
   evaluateChatModeration,
+  listChatEvidenceMessages,
   listChatMessages,
   listChatReports,
   listUnreadChat,
@@ -30,6 +31,12 @@ const {
     userId: string;
     conversationType: unknown;
     subjectId: unknown;
+    limit?: unknown;
+    before?: unknown;
+  }) => Promise<Record<string, unknown>>;
+  listChatEvidenceMessages: (input: {
+    pool: PoolLike;
+    conversationId: unknown;
     limit?: unknown;
     before?: unknown;
   }) => Promise<Record<string, unknown>>;
@@ -509,5 +516,79 @@ describe('chat service', () => {
       },
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('LEFT JOIN chat_messages'), ['open', 10]);
+  });
+
+  it('lists full conversation context for admin evidence including hidden moderation states', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            id: 'match:bgio-match-1',
+            type: 'match',
+            subject_id: 'bgio-match-1',
+            title: 'Ranked match',
+            status: 'active',
+            created_at: '2026-07-10T00:00:00.000Z',
+            updated_at: '2026-07-10T00:00:05.000Z',
+          },
+        ],
+      },
+      {
+        rows: [
+          {
+            id: 'chat_msg_deleted',
+            conversation_id: 'match:bgio-match-1',
+            author_user_id: 'u_3',
+            author_display_name: 'Carol',
+            author_role: 'spectator',
+            content: 'deleted evidence',
+            source_language: '',
+            moderation_status: 'deleted',
+            moderation_reason: 'manual_remove',
+            metadata: {},
+            created_at: '2026-07-10T00:00:03.000Z',
+            edited_at: null,
+            deleted_at: '2026-07-10T00:00:04.000Z',
+          },
+          {
+            id: 'chat_msg_blocked',
+            conversation_id: 'match:bgio-match-1',
+            author_user_id: 'u_1',
+            author_display_name: 'Alice',
+            author_role: 'player',
+            content: 'blocked evidence',
+            source_language: '',
+            moderation_status: 'blocked',
+            moderation_reason: 'blocked_keyword',
+            metadata: {},
+            created_at: '2026-07-10T00:00:01.000Z',
+            edited_at: null,
+            deleted_at: null,
+          },
+        ],
+      },
+    ]);
+
+    await expect(listChatEvidenceMessages({ pool, conversationId: 'match:bgio-match-1', limit: 20 })).resolves.toEqual({
+      ok: true,
+      body: {
+        conversation: expect.objectContaining({
+          id: 'match:bgio-match-1',
+          subjectId: 'bgio-match-1',
+        }),
+        messages: [
+          expect.objectContaining({ id: 'chat_msg_blocked', moderationStatus: 'blocked' }),
+          expect.objectContaining({ id: 'chat_msg_deleted', moderationStatus: 'deleted' }),
+        ],
+      },
+    });
+    expect(pool.query).toHaveBeenNthCalledWith(1, 'SELECT * FROM chat_conversations WHERE id = $1', [
+      'match:bgio-match-1',
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      expect.not.stringContaining("moderation_status IN ('visible', 'pending_review')"),
+      ['match:bgio-match-1', 20],
+    );
   });
 });

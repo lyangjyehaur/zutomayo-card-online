@@ -8,6 +8,7 @@ import type { ParsedEffect } from '../game/effects';
 import type { CardDef, CardType, Element } from '../game/types';
 import {
   ApiError,
+  adminGetChatConversationMessages,
   adminGetChatReports,
   adminGetMatches,
   adminGetUsers,
@@ -27,6 +28,8 @@ import type {
   AboutPageLocale,
   AdminMatch,
   AdminUser,
+  ChatConversation,
+  ChatMessage,
   ChatReport,
 } from '../api/client';
 import {
@@ -741,6 +744,12 @@ export function AdminPage() {
   const [chatReports, setChatReports] = useState<ChatReport[]>([]);
   const [chatReportStatus, setChatReportStatus] = useState<'open' | 'reviewing' | 'resolved' | 'dismissed'>('open');
   const [chatReviewingId, setChatReviewingId] = useState<string | null>(null);
+  const [chatEvidenceLoadingId, setChatEvidenceLoadingId] = useState<string | null>(null);
+  const [chatEvidenceFocusMessageId, setChatEvidenceFocusMessageId] = useState<string | null>(null);
+  const [chatEvidence, setChatEvidence] = useState<{
+    conversation: ChatConversation;
+    messages: ChatMessage[];
+  } | null>(null);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [eloEdits, setEloEdits] = useState<Record<string, string>>({});
@@ -899,6 +908,8 @@ export function AdminPage() {
     try {
       const { reports } = await adminGetChatReports(token, chatReportStatus);
       setChatReports(reports);
+      setChatEvidence(null);
+      setChatEvidenceFocusMessageId(null);
     } catch (e) {
       setAdminError(e instanceof Error ? e.message : '載入失敗');
     } finally {
@@ -921,6 +932,29 @@ export function AdminPage() {
       }
     },
     [refreshChatReports, token],
+  );
+
+  const loadChatEvidence = useCallback(
+    async (report: ChatReport) => {
+      if (!token) return;
+      if (chatEvidence?.conversation.id === report.conversationId) {
+        setChatEvidence(null);
+        setChatEvidenceFocusMessageId(null);
+        return;
+      }
+      setChatEvidenceLoadingId(report.id);
+      setAdminError('');
+      try {
+        const evidence = await adminGetChatConversationMessages(token, report.conversationId, 100);
+        setChatEvidence(evidence);
+        setChatEvidenceFocusMessageId(report.messageId);
+      } catch (e) {
+        setAdminError(e instanceof Error ? e.message : '載入聊天上下文失敗');
+      } finally {
+        setChatEvidenceLoadingId(null);
+      }
+    },
+    [chatEvidence?.conversation.id, token],
   );
 
   const loadAdminCards = useCallback(async () => {
@@ -1446,87 +1480,149 @@ export function AdminPage() {
           {chatReports.length === 0 && !adminLoading ? (
             <EmptyState className="min-h-48" title="沒有聊天舉報" description="目前篩選條件下沒有待處理項目。" />
           ) : (
-            <DataListTable className="admin-responsive-table">
-              <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                <tr className="border-b border-content-primary/10">
-                  <th className="px-3 py-2">狀態</th>
-                  <th className="px-3 py-2">訊息</th>
-                  <th className="px-3 py-2">舉報</th>
-                  <th className="px-3 py-2">時間</th>
-                  <th className="px-3 py-2">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {chatReports.map((report) => (
-                  <tr key={report.id} className="odd:bg-surface-base/50">
-                    <DataListCell label="狀態">
-                      <Badge
-                        tone={
-                          report.status === 'resolved' ? 'jade' : report.status === 'dismissed' ? 'neutral' : 'gold'
-                        }
-                      >
-                        {report.status}
-                      </Badge>
-                    </DataListCell>
-                    <DataListCell label="訊息">
-                      <div className="grid max-w-xl gap-1">
-                        <span className="font-mono text-xs text-content-primary/50">{report.conversationId}</span>
-                        <span className="text-xs text-content-primary/60">
-                          {report.message?.authorDisplayName || report.message?.authorUserId || 'Unknown'}
-                        </span>
-                        <p className="whitespace-pre-wrap break-words text-sm">
-                          {report.message?.content || '訊息已刪除或無法讀取'}
-                        </p>
-                      </div>
-                    </DataListCell>
-                    <DataListCell label="舉報">
-                      <div className="grid gap-1">
-                        <span>{report.reason}</span>
-                        {report.note && <span className="text-xs text-content-primary/60">{report.note}</span>}
-                        <span className="font-mono text-xs text-content-primary/50">
-                          by {report.reporterUserId || 'unknown'}
-                        </span>
-                      </div>
-                    </DataListCell>
-                    <DataListCell label="時間">{new Date(report.createdAt).toLocaleString()}</DataListCell>
-                    <DataListCell label="操作">
-                      <div className="flex flex-wrap gap-2">
-                        {report.status === 'open' && (
+            <>
+              <DataListTable className="admin-responsive-table">
+                <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                  <tr className="border-b border-content-primary/10">
+                    <th className="px-3 py-2">狀態</th>
+                    <th className="px-3 py-2">訊息</th>
+                    <th className="px-3 py-2">舉報</th>
+                    <th className="px-3 py-2">時間</th>
+                    <th className="px-3 py-2">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {chatReports.map((report) => (
+                    <tr key={report.id} className="odd:bg-surface-base/50">
+                      <DataListCell label="狀態">
+                        <Badge
+                          tone={
+                            report.status === 'resolved' ? 'jade' : report.status === 'dismissed' ? 'neutral' : 'gold'
+                          }
+                        >
+                          {report.status}
+                        </Badge>
+                      </DataListCell>
+                      <DataListCell label="訊息">
+                        <div className="grid max-w-xl gap-1">
+                          <span className="font-mono text-xs text-content-primary/50">{report.conversationId}</span>
+                          <span className="text-xs text-content-primary/60">
+                            {report.message?.authorDisplayName || report.message?.authorUserId || 'Unknown'}
+                          </span>
+                          <p className="whitespace-pre-wrap break-words text-sm">
+                            {report.message?.content || '訊息已刪除或無法讀取'}
+                          </p>
+                        </div>
+                      </DataListCell>
+                      <DataListCell label="舉報">
+                        <div className="grid gap-1">
+                          <span>{report.reason}</span>
+                          {report.note && <span className="text-xs text-content-primary/60">{report.note}</span>}
+                          <span className="font-mono text-xs text-content-primary/50">
+                            by {report.reporterUserId || 'unknown'}
+                          </span>
+                        </div>
+                      </DataListCell>
+                      <DataListCell label="時間">{new Date(report.createdAt).toLocaleString()}</DataListCell>
+                      <DataListCell label="操作">
+                        <div className="flex flex-wrap gap-2">
                           <Button
                             size="sm"
                             variant="secondary"
-                            disabled={chatReviewingId === report.id}
-                            onClick={() => void reviewChatReport(report.id, 'reviewing')}
+                            disabled={chatEvidenceLoadingId === report.id}
+                            onClick={() => void loadChatEvidence(report)}
                           >
-                            標記審核中
+                            {chatEvidenceLoadingId === report.id ? '載入中…' : '上下文'}
                           </Button>
-                        )}
-                        {report.status !== 'resolved' && (
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            disabled={chatReviewingId === report.id}
-                            onClick={() => void reviewChatReport(report.id, 'resolved')}
-                          >
-                            已處理
-                          </Button>
-                        )}
-                        {report.status !== 'dismissed' && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={chatReviewingId === report.id}
-                            onClick={() => void reviewChatReport(report.id, 'dismissed')}
-                          >
-                            駁回
-                          </Button>
-                        )}
-                      </div>
-                    </DataListCell>
-                  </tr>
-                ))}
-              </tbody>
-            </DataListTable>
+                          {report.status === 'open' && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={chatReviewingId === report.id}
+                              onClick={() => void reviewChatReport(report.id, 'reviewing')}
+                            >
+                              標記審核中
+                            </Button>
+                          )}
+                          {report.status !== 'resolved' && (
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              disabled={chatReviewingId === report.id}
+                              onClick={() => void reviewChatReport(report.id, 'resolved')}
+                            >
+                              已處理
+                            </Button>
+                          )}
+                          {report.status !== 'dismissed' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={chatReviewingId === report.id}
+                              onClick={() => void reviewChatReport(report.id, 'dismissed')}
+                            >
+                              駁回
+                            </Button>
+                          )}
+                        </div>
+                      </DataListCell>
+                    </tr>
+                  ))}
+                </tbody>
+              </DataListTable>
+
+              {chatEvidence && (
+                <div className="mt-4 border-t border-border-soft pt-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="grid gap-1">
+                      <h3 className="text-sm font-semibold text-content-primary">聊天上下文</h3>
+                      <span className="font-mono text-xs text-content-primary/50">{chatEvidence.conversation.id}</span>
+                    </div>
+                    <Badge tone="neutral">{chatEvidence.messages.length} messages</Badge>
+                  </div>
+                  <div className="grid gap-2">
+                    {chatEvidence.messages.map((message) => {
+                      const isFocused = message.id === chatEvidenceFocusMessageId;
+                      return (
+                        <div
+                          key={message.id}
+                          className={`grid gap-1 border-l-2 px-3 py-2 ${
+                            isFocused
+                              ? 'border-accent-primary bg-accent-primary/10'
+                              : 'border-content-primary/10 bg-surface-base/40'
+                          }`}
+                        >
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-content-primary/60">
+                            <span className="font-mono text-content-primary/50">{message.id}</span>
+                            <span>{message.authorDisplayName || message.authorUserId || 'Unknown'}</span>
+                            <Badge
+                              tone={
+                                message.moderationStatus === 'blocked'
+                                  ? 'vermilion'
+                                  : message.moderationStatus === 'pending_review'
+                                    ? 'gold'
+                                    : message.deletedAt
+                                      ? 'neutral'
+                                      : 'jade'
+                              }
+                            >
+                              {message.deletedAt ? 'deleted' : message.moderationStatus}
+                            </Badge>
+                            <span>{new Date(message.createdAt).toLocaleString()}</span>
+                          </div>
+                          <p className="whitespace-pre-wrap break-words text-sm text-content-primary">
+                            {message.content || '（空白訊息）'}
+                          </p>
+                          {message.moderationReason && (
+                            <span className="text-xs text-content-primary/50">{message.moderationReason}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </section>
       )}
