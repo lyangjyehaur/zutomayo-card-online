@@ -83,6 +83,22 @@ const APP_VERSION_INFO = Object.freeze({
   buildId: APP_BUILD_ID,
   rulesVersion: GAME_RULES_VERSION,
 });
+
+// /metrics 端點 bearer token 認證：未設定 METRICS_TOKEN 時 warn 但允許存取（開發模式）；
+// 已設定則檢查 Authorization: Bearer <token>，不符回 401。
+const METRICS_TOKEN = process.env.METRICS_TOKEN || '';
+let metricsTokenWarned = false;
+function checkMetricsAuth(req) {
+  if (!METRICS_TOKEN) {
+    if (!metricsTokenWarned && process.env.NODE_ENV === 'production') {
+      logger.warn('METRICS_TOKEN not set - /metrics accessible without auth');
+      metricsTokenWarned = true;
+    }
+    return true;
+  }
+  const auth = req.headers.authorization || '';
+  return auth === `Bearer ${METRICS_TOKEN}`;
+}
 const AUTH_COOKIE_NAME = 'zutomayo_session';
 const AUTH_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 const AUTH_COOKIE_DOMAIN = process.env.AUTH_COOKIE_DOMAIN || '';
@@ -1537,6 +1553,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/metrics' && method === 'GET') {
+      if (!checkMetricsAuth(req)) return json({ error: 'Unauthorized' }, 401);
       return metricsResponse(res);
     }
 
