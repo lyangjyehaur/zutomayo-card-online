@@ -68,20 +68,23 @@ export interface ChargeZoneProps {
   side: 'me' | 'opponent';
   cards: CardInstance[];
   totalPower: number;
+  chronosSide?: ChronosTime;
   size?: 'sm' | 'md';
   onOpen?: () => void;
   tutId?: string;
 }
 
-export function ChargeZone({ side, cards, totalPower, size = 'md', onOpen, tutId }: ChargeZoneProps) {
+export function ChargeZone({ side, cards, totalPower, chronosSide, size = 'md', onOpen, tutId }: ChargeZoneProps) {
   return (
     <ZonePanel
       label={t('board.powerCharger')}
-      hint={`${t('board.powerTotal')} ${totalPower}`}
       side={side}
       tutId={tutId}
       className="chargezone"
     >
+      <span className="chargezone-total" aria-hidden="true">
+        {t('board.powerTotal')} {totalPower}
+      </span>
       <CardStack
         kind="power"
         size={size}
@@ -89,6 +92,7 @@ export function ChargeZone({ side, cards, totalPower, size = 'md', onOpen, tutId
         count={cards.length}
         value={totalPower}
         cards={cards}
+        chronosSide={chronosSide}
         onOpen={onOpen}
         showLabel={false}
       />
@@ -104,12 +108,13 @@ export function ChargeZone({ side, cards, totalPower, size = 'md', onOpen, tutId
 export interface AbyssZoneProps {
   side: 'me' | 'opponent';
   cards: CardInstance[];
+  chronosSide?: ChronosTime;
   size?: 'sm' | 'md';
   onOpen?: () => void;
   tutId?: string;
 }
 
-export function AbyssZone({ side, cards, size = 'md', onOpen, tutId }: AbyssZoneProps) {
+export function AbyssZone({ side, cards, chronosSide, size = 'md', onOpen, tutId }: AbyssZoneProps) {
   return (
     <ZonePanel label={t('board.abyss')} side={side} tutId={tutId} className="abysszone">
       <CardStack
@@ -118,6 +123,7 @@ export function AbyssZone({ side, cards, size = 'md', onOpen, tutId }: AbyssZone
         label={t('board.abyss')}
         count={cards.length}
         cards={cards}
+        chronosSide={chronosSide}
         onOpen={onOpen}
         showLabel={false}
       />
@@ -133,14 +139,15 @@ export function AbyssZone({ side, cards, size = 'md', onOpen, tutId }: AbyssZone
 export interface DeckZoneProps {
   side: 'me' | 'opponent';
   count: number;
+  chronosSide?: ChronosTime;
   size?: 'sm' | 'md';
   tutId?: string;
 }
 
-export function DeckZone({ side, count, size = 'md', tutId }: DeckZoneProps) {
+export function DeckZone({ side, count, chronosSide, size = 'md', tutId }: DeckZoneProps) {
   return (
     <ZonePanel label={t('board.deck')} side={side} tutId={tutId} className="deckzone">
-      <CardStack kind="deck" size={size} label={t('board.deck')} count={count} showLabel={false} />
+      <CardStack kind="deck" size={size} label={t('board.deck')} count={count} chronosSide={chronosSide} showLabel={false} />
     </ZonePanel>
   );
 }

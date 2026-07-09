@@ -4,7 +4,14 @@ import { Board } from '../components/Board';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS } from '../data/tutorialScenario';
 import { confirmReady, finishMulligan, resolveJanken, setInitialCard, setTurnCard, setupGame } from '../game/GameLogic';
 import { parseAllEffects, type ParsedEffect } from '../game/effects';
-import { getAllCardDefs, getCardDef, initCards, isCardsInitialized, resetInstanceCounter } from '../game/cards/loader';
+import {
+  createInstance,
+  getAllCardDefs,
+  getCardDef,
+  initCards,
+  isCardsInitialized,
+  resetInstanceCounter,
+} from '../game/cards/loader';
 import type {
   CardDef,
   CardInstance,
@@ -296,7 +303,19 @@ function createTurnSetState(parsedEffects: Map<string, ParsedEffect[]>, side: Ba
   setTurnCardFromHand(G, 0, '1st_34', 'A');
   setTurnCardFromHand(G, 0, '2nd_86', 'B');
   setTurnCardFromHand(G, 1, '1st_98', 'A');
+  addQaZonePreviewStacks(G);
   return G;
+}
+
+function createZonePreviewCards(defIds: string[]): CardInstance[] {
+  return defIds.filter((defId) => Boolean(getCardDef(defId))).map((defId) => createInstance(defId, true));
+}
+
+function addQaZonePreviewStacks(G: GameState): void {
+  G.players[0].powerCharger = createZonePreviewCards(['1st_9', '1st_43', '1st_13']);
+  G.players[0].abyss = createZonePreviewCards(['2nd_92', '1st_98', '2nd_86']);
+  G.players[1].powerCharger = createZonePreviewCards(['1st_9', '1st_43']);
+  G.players[1].abyss = createZonePreviewCards(['2nd_92', '1st_98']);
 }
 
 function faceUp(card: CardInstance | null): void {

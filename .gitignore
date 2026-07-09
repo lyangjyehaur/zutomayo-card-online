@@ -29,6 +29,12 @@ docs/responsive-visual-smoke-screenshots/
 # Card images (on R2 CDN)
 public/cards/
 
+# Optional local battle art. These files may contain licensed/copyrighted artwork;
+# the battle UI has CSS/React fallbacks so deployments work without them.
+public/battle/*.svg
+public/battle/*.png
+public/battle/chronos-slots/
+
 # One-time audit/tracking documents
 CARD_EFFECT_AUDIT*.md
 NON_CARD_GAPS.md

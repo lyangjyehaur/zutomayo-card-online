@@ -1977,6 +1977,7 @@ function BattleBoard({
       <button
         className="mobile-zone-button mobile-zone-button-abyss"
         type="button"
+        data-chronos-side={setZoneChronosSide(owner)}
         aria-label={`${playerName(owner)} ${zoneNames.abyss}: ${count}`}
         onClick={() => setZoneSheet({ kind: 'abyss', owner })}
       >
@@ -2025,6 +2026,7 @@ function BattleBoard({
                 size="sm"
                 cards={opponent.powerCharger}
                 totalPower={powerTotal(G, opponentIndex)}
+                chronosSide={setZoneChronosSide(opponentIndex)}
                 onOpen={() => setZoneSheet({ kind: 'power', owner: opponentIndex })}
               />
               <SetZone
@@ -2056,11 +2058,17 @@ function BattleBoard({
               />
               {!touchLike && (
                 <>
-                  <DeckZone side="opponent" size="sm" count={opponent.deck.length} />
+                  <DeckZone
+                    side="opponent"
+                    size="sm"
+                    count={opponent.deck.length}
+                    chronosSide={setZoneChronosSide(opponentIndex)}
+                  />
                   <AbyssZone
                     side="opponent"
                     size="sm"
                     cards={opponent.abyss}
+                    chronosSide={setZoneChronosSide(opponentIndex)}
                     onOpen={() => setZoneSheet({ kind: 'abyss', owner: opponentIndex })}
                   />
                 </>
@@ -2104,6 +2112,7 @@ function BattleBoard({
                 side="me"
                 cards={me.powerCharger}
                 totalPower={powerTotal(G, meIndex)}
+                chronosSide={setZoneChronosSide(meIndex)}
                 onOpen={() => setZoneSheet({ kind: 'power', owner: meIndex })}
                 tutId="player-power"
               />
@@ -2138,10 +2147,11 @@ function BattleBoard({
               </div>
               {!touchLike && (
                 <>
-                  <DeckZone side="me" count={me.deck.length} />
+                  <DeckZone side="me" count={me.deck.length} chronosSide={setZoneChronosSide(meIndex)} />
                   <AbyssZone
                     side="me"
                     cards={me.abyss}
+                    chronosSide={setZoneChronosSide(meIndex)}
                     onOpen={() => setZoneSheet({ kind: 'abyss', owner: meIndex })}
                     tutId="player-abyss"
                   />

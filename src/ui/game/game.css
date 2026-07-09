@@ -334,11 +334,15 @@
   --bf-stage-axis-glow: rgb(255 255 255 / 0.16);
   --bf-night-text: #fffaff;
   --bf-night-muted: rgb(255 250 255 / 0.78);
+  --bf-night-accent: var(--color-accent-primary);
+  --bf-night-label-shadow: 0 1px 8px rgb(0 0 0 / 0.28);
   --bf-night-border: rgb(255 255 255 / 0.2);
   --bf-night-shadow: 0 1px 10px rgb(0 0 0 / 0.32);
   --bf-night-dot: rgb(255 255 255 / 0.05);
-  --bf-day-text: #17131f;
-  --bf-day-muted: rgb(23 19 31 / 0.66);
+  --bf-day-text: #15101e;
+  --bf-day-muted: rgb(21 16 30 / 0.86);
+  --bf-day-accent: #5a4214;
+  --bf-day-label-shadow: 0 1px 0 rgb(255 255 255 / 0.56);
   --bf-day-border: rgb(23 19 31 / 0.16);
   --bf-day-shadow: 0 1px 8px rgb(255 255 255 / 0.22);
   --bf-day-dot: rgb(62 49 121 / 0.052);
@@ -364,6 +368,8 @@
   --bf-opponent-surface: var(--bf-night-surface);
   --bf-opponent-text: var(--bf-night-text);
   --bf-opponent-muted: var(--bf-night-muted);
+  --bf-opponent-accent: var(--bf-night-accent);
+  --bf-opponent-label-shadow: var(--bf-night-label-shadow);
   --bf-opponent-border: var(--bf-night-border);
   --bf-opponent-shadow: var(--bf-night-shadow);
   --bf-opponent-dot: var(--bf-night-dot);
@@ -372,6 +378,8 @@
   --bf-player-surface: var(--bf-day-surface);
   --bf-player-text: var(--bf-day-text);
   --bf-player-muted: var(--bf-day-muted);
+  --bf-player-accent: var(--bf-day-accent);
+  --bf-player-label-shadow: var(--bf-day-label-shadow);
   --bf-player-border: var(--bf-day-border);
   --bf-player-shadow: var(--bf-day-shadow);
   --bf-player-dot: var(--bf-day-dot);
@@ -384,6 +392,8 @@
   --bf-opponent-surface: var(--bf-day-surface);
   --bf-opponent-text: var(--bf-day-text);
   --bf-opponent-muted: var(--bf-day-muted);
+  --bf-opponent-accent: var(--bf-day-accent);
+  --bf-opponent-label-shadow: var(--bf-day-label-shadow);
   --bf-opponent-border: var(--bf-day-border);
   --bf-opponent-shadow: var(--bf-day-shadow);
   --bf-opponent-dot: var(--bf-day-dot);
@@ -392,6 +402,8 @@
   --bf-player-surface: var(--bf-night-surface);
   --bf-player-text: var(--bf-night-text);
   --bf-player-muted: var(--bf-night-muted);
+  --bf-player-accent: var(--bf-night-accent);
+  --bf-player-label-shadow: var(--bf-night-label-shadow);
   --bf-player-border: var(--bf-night-border);
   --bf-player-shadow: var(--bf-night-shadow);
   --bf-player-dot: var(--bf-night-dot);
@@ -442,6 +454,8 @@
   color: var(--bf-opponent-text);
   --bf-side-muted: var(--bf-opponent-muted);
   --bf-side-text: var(--bf-opponent-text);
+  --bf-side-accent: var(--bf-opponent-accent);
+  --bf-side-label-shadow: var(--bf-opponent-label-shadow);
   --bf-side-border: var(--bf-opponent-border);
   --bf-side-shadow: var(--bf-opponent-shadow);
 }
@@ -551,6 +565,8 @@
 .bf-player .cardstack-label,
 .bf-player .playerstatus-meta {
   color: var(--bf-side-muted);
+  font-weight: var(--font-weight-medium);
+  text-shadow: var(--bf-side-label-shadow);
 }
 
 .bf-opponent .playerstatus-name,
@@ -559,8 +575,20 @@
   text-shadow: var(--bf-side-shadow);
 }
 
+.chargezone-total,
 .chargezone .zonepanel-hint {
-  color: var(--color-accent-primary);
+  color: var(--bf-side-accent, var(--color-accent-primary));
+}
+
+.chargezone-total {
+  max-width: calc((var(--slot-height-md) + var(--space-2)) * 1.17);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
+  letter-spacing: var(--tracking-compact);
 }
 
 /* ---------------------------------------------------------------- 設置區 A/B/C */
@@ -571,34 +599,28 @@
   gap: calc(var(--space-1) / 2);
 }
 
-.setzone .cardslot[data-empty='true'] {
-  --setzone-art: url('/battle/set-zone-night.png');
+.setzone .cardslot {
+  --setzone-art: url('/battle/set-zone-night.svg');
   --setzone-overlay: linear-gradient(
     oklch(from var(--color-bg-base) l c h / 0.08),
     oklch(from var(--color-bg-base) l c h / 0.08)
   );
-
-  overflow: hidden;
-  background:
-    var(--setzone-overlay),
-    var(--setzone-art) center / cover no-repeat;
-  box-shadow: inset 0 0 0 1px oklch(from var(--color-accent-primary) l c h / 0.12);
 }
 
-.setzone[data-chronos-side='night'] .cardslot[data-empty='true'] {
-  --setzone-art: url('/battle/set-zone-night.png');
+.setzone[data-chronos-side='night'] .cardslot {
+  --setzone-art: url('/battle/set-zone-night.svg');
 }
 
-.setzone[data-chronos-side='day'] .cardslot[data-empty='true'] {
-  --setzone-art: url('/battle/set-zone-day.png');
+.setzone[data-chronos-side='day'] .cardslot {
+  --setzone-art: url('/battle/set-zone-day.svg');
   --setzone-overlay: linear-gradient(
     oklch(from var(--color-bg-elevated) l c h / 0.04),
     oklch(from var(--color-bg-elevated) l c h / 0.04)
   );
 }
 
-.setzone .cardslot[data-empty='true']::before,
-.setzone .cardslot[data-empty='true']::after {
+.setzone .cardslot::before,
+.setzone .cardslot::after {
   z-index: 1;
 }
 
@@ -711,12 +733,18 @@
 .bf-stage::before {
   content: '';
   position: absolute;
-  inset: calc(50% - 1px) 0 auto;
+  left: 0;
+  right: 0;
+  top: 50%;
   z-index: 0;
-  height: 1px;
+  height: clamp(0.22rem, 0.62vh, 0.4rem);
   pointer-events: none;
-  background: linear-gradient(to right, transparent, var(--bf-stage-axis-glow), transparent);
-  opacity: 0.5;
+  background:
+    linear-gradient(to right, transparent 7%, rgb(255 255 255 / 0.16) 24%, rgb(196 187 255 / 0.26) 50%, rgb(255 255 255 / 0.12) 76%, transparent 93%),
+    linear-gradient(to bottom, transparent 0%, rgb(255 255 255 / 0.14) 34%, rgb(48 39 105 / 0.34) 52%, rgb(255 255 255 / 0.08) 68%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent);
+  opacity: 0.82;
+  transform: translateY(-50%);
 }
 
 .bf-stage::after {
@@ -751,7 +779,7 @@
   --chronos-readout-muted: oklch(from var(--color-bg-elevated) l c h / 0.72);
   --chronos-readout-shadow: 0 1px 10px oklch(from var(--color-bg-base) l c h / 0.86);
   --chronos-face-inset: 14.5%;
-  --chronos-slot-size: clamp(0.9rem, 9%, 1.32rem);
+  --chronos-slot-size: clamp(1.26rem, 12.4%, 1.86rem);
 
   position: relative;
   display: grid;
@@ -763,7 +791,7 @@
 
 .chronospanel-sm .chronosdial {
   width: clamp(8.75rem, 30vw, 12rem);
-  --chronos-slot-size: clamp(0.72rem, 8.8%, 1.06rem);
+  --chronos-slot-size: clamp(1rem, 11.8%, 1.48rem);
 }
 
 .chronosdial::before {
@@ -771,7 +799,35 @@
   position: absolute;
   inset: var(--chronos-face-inset);
   z-index: 0;
-  background: url('/battle/chronos.svg') center / contain no-repeat;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, rgb(255 255 255 / 0.86) 0 18%, transparent 19%),
+    conic-gradient(
+      from -90deg,
+      rgb(226 211 168 / 0.82) 0deg 180deg,
+      rgb(89 78 151 / 0.82) 180deg 360deg
+    );
+  filter: drop-shadow(0 10px 28px oklch(from var(--color-bg-base) l c h / 0.48));
+  transform-origin: center;
+  transition:
+    opacity var(--motion-normal) var(--ease-standard),
+    transform var(--motion-slow) var(--ease-emphasized);
+}
+
+.chronosdial[data-face-art='true']::before {
+  opacity: 0;
+}
+
+.chronosdial-face-art {
+  position: absolute;
+  inset: var(--chronos-face-inset);
+  z-index: 0;
+  display: block;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
   filter: drop-shadow(0 10px 28px oklch(from var(--color-bg-base) l c h / 0.48));
   transform-origin: center;
   transition: transform var(--motion-slow) var(--ease-emphasized);
@@ -788,6 +844,7 @@
 }
 
 .chronosdial::before,
+.chronosdial-face-art,
 .chronosdial-orbit {
   transform: rotate(var(--chronos-orbit-rotation));
 }
@@ -816,6 +873,7 @@
   width: 100%;
   aspect-ratio: 1;
   border-radius: 50%;
+  overflow: visible;
   transform: rotate(var(--chronos-slot-counter-rotation));
   transition:
     transform var(--motion-slow) var(--ease-emphasized),
@@ -826,32 +884,77 @@
 
 .chronosdial-slot[data-time='night'] .chronosdial-slot-inner {
   background:
-    radial-gradient(circle at 35% 28%, rgb(255 255 255 / 0.3), transparent 34%),
+    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 0.28), transparent 36%),
     linear-gradient(145deg, #6a5bc1, #3e3179 72%);
-  border: 1px solid rgb(255 255 255 / 0.34);
-  box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 0.12),
-    0 0 0 1px rgb(22 16 54 / 0.34),
-    0 0.18rem 0.55rem rgb(18 13 48 / 0.32);
+  filter: drop-shadow(0 0.16rem 0.42rem rgb(18 13 48 / 0.28));
 }
 
 .chronosdial-slot[data-time='day'] .chronosdial-slot-inner {
   background:
     radial-gradient(circle at 34% 28%, #ffffff, transparent 36%),
-    linear-gradient(145deg, #ffffff, #f2e3bc 76%);
-  border: 1px solid rgb(62 49 121 / 0.22);
+    linear-gradient(145deg, #ffffff, #d9bf84 76%);
+  filter: drop-shadow(0 0.14rem 0.36rem rgb(62 49 121 / 0.16));
+}
+
+.chronosdial-slot-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scaleX(var(--chronos-slot-mirror, 1));
+  transform-origin: center;
+  user-select: none;
+}
+
+.chronosdial-medal {
+  position: absolute;
+  left: var(--slot-x);
+  top: var(--slot-y);
+  display: grid;
+  z-index: 2;
+  width: calc(var(--chronos-slot-size) * 1.46);
+  aspect-ratio: 309 / 303;
+  place-items: center;
+  pointer-events: none;
+  transform: translate(-50%, -50%) rotate(var(--chronos-slot-counter-rotation));
+  transform-origin: center;
+  transition:
+    left 110ms var(--ease-emphasized),
+    top 110ms var(--ease-emphasized),
+    transform var(--motion-slow) var(--ease-emphasized);
+}
+
+.chronosdial-medal::before {
+  content: '';
+  position: absolute;
+  inset: 18%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 36% 30%, rgb(255 255 255 / 0.92), transparent 36%),
+    linear-gradient(145deg, #f0d781, #8d74c8);
   box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 0.7),
-    0 0 0 1px rgb(255 255 255 / 0.28),
-    0 0.16rem 0.5rem rgb(62 49 121 / 0.16);
+    0 0 0 1px rgb(255 255 255 / 0.5),
+    0 0.18rem 0.38rem rgb(20 16 42 / 0.24);
+}
+
+.chronosdial-medal-img {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  max-width: none;
+  pointer-events: none;
+  filter:
+    drop-shadow(0 0 0.16rem rgb(255 255 255 / 0.62))
+    drop-shadow(0 0.22rem 0.42rem rgb(20 16 42 / 0.32));
+  user-select: none;
 }
 
 .chronosdial-slot[data-active='true'] .chronosdial-slot-inner {
-  border-color: rgb(255 255 255 / 0.78);
   box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 0.35),
-    0 0 0 2px rgb(255 255 255 / 0.24),
-    0 0.24rem 0.72rem rgb(20 16 42 / 0.34);
+    0 0 0 1px rgb(255 255 255 / 0.32),
+    0 0.24rem 0.58rem rgb(20 16 42 / 0.24);
 }
 
 /* ---------------------------------------------------------------- 玩家區 */
@@ -869,6 +972,8 @@
   color: var(--bf-player-text);
   --bf-side-muted: var(--bf-player-muted);
   --bf-side-text: var(--bf-player-text);
+  --bf-side-accent: var(--bf-player-accent);
+  --bf-side-label-shadow: var(--bf-player-label-shadow);
   --bf-side-border: var(--bf-player-border);
   --bf-side-shadow: var(--bf-player-shadow);
 }
@@ -1029,6 +1134,17 @@
   font-size: var(--font-size-sm);
   line-height: var(--line-height-tight);
   color: var(--color-text-muted);
+}
+
+.bf-player .actiondock-hint span {
+  color: var(--bf-side-accent);
+  text-shadow: var(--bf-side-label-shadow);
+}
+
+.bf-player .actiondock-hint p {
+  color: var(--bf-side-muted);
+  font-weight: var(--font-weight-medium);
+  text-shadow: var(--bf-side-label-shadow);
 }
 
 .actiondock-btn {
@@ -1244,8 +1360,43 @@ button.cardview {
   --bracket-color: oklch(from var(--color-accent-primary) l c h / 0.8);
 }
 
+.setzone .cardslot {
+  overflow: hidden;
+  background:
+    var(--setzone-overlay),
+    var(--setzone-art) center / 100% 100% no-repeat,
+    oklch(from var(--color-bg-surface) l c h / 0.18);
+  box-shadow: inset 0 0 0 1px oklch(from var(--color-accent-primary) l c h / 0.12);
+}
+
+.setzone .cardslot-sm {
+  width: calc(var(--slot-width-sm) + var(--space-2));
+  height: calc(var(--slot-height-sm) + var(--space-2));
+}
+
+.setzone .cardslot-md {
+  width: calc(var(--slot-width-md) + var(--space-2));
+  height: calc(var(--slot-height-md) + var(--space-2));
+}
+
+.setzone .cardview {
+  z-index: 2;
+}
+
+.setzone .cardslot::before,
+.setzone .cardslot::after {
+  z-index: 3;
+}
+
 /* ---------------------------------------------------------------- 堆疊 */
 .cardstack {
+  --cardstack-art: none;
+  --cardstack-art-size: 100% 100%;
+  --cardstack-overlay: linear-gradient(
+    oklch(from var(--color-bg-base) l c h / 0.08),
+    oklch(from var(--color-bg-base) l c h / 0.08)
+  );
+
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1268,57 +1419,137 @@ button.cardstack:focus-visible {
 .cardstack-well {
   position: relative;
   display: block;
-  background: oklch(from var(--color-bg-surface) l c h / 0.35);
-  border-radius: var(--radius-md);
-  outline: 1px solid oklch(from var(--color-text-primary) l c h / 0.08);
-  outline-offset: -1px;
+  background:
+    var(--cardstack-overlay),
+    var(--cardstack-art) center / var(--cardstack-art-size) no-repeat,
+    oklch(from var(--color-bg-surface) l c h / 0.18);
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px oklch(from var(--color-accent-primary) l c h / 0.12);
   overflow: hidden;
 }
 
 .cardstack-md .cardstack-well {
-  width: var(--slot-width-md);
-  height: var(--slot-height-md);
+  --cardstack-card-width: var(--card-width-md);
+  width: calc(var(--slot-width-md) + var(--space-2));
+  height: calc(var(--slot-height-md) + var(--space-2));
 }
 
 .cardstack-sm .cardstack-well {
-  width: var(--slot-width-sm);
-  height: var(--slot-height-sm);
+  --cardstack-card-width: var(--card-width-sm);
+  width: calc(var(--slot-width-sm) + var(--space-2));
+  height: calc(var(--slot-height-sm) + var(--space-2));
+}
+
+.cardstack-power .cardstack-well {
+  width: calc((var(--slot-height-md) + var(--space-2)) * 1.17);
+  height: calc(var(--slot-height-md) + var(--space-2));
+}
+
+.cardstack-sm.cardstack-power .cardstack-well {
+  width: calc((var(--slot-height-sm) + var(--space-2)) * 1.17);
+  height: calc(var(--slot-height-sm) + var(--space-2));
+}
+
+.cardstack-power[data-chronos-side='night'] {
+  --cardstack-art: url('/battle/charge-night.svg');
+}
+
+.cardstack-power[data-chronos-side='day'] {
+  --cardstack-art: url('/battle/charge-day.svg');
+  --cardstack-overlay: linear-gradient(
+    oklch(from var(--color-bg-elevated) l c h / 0.04),
+    oklch(from var(--color-bg-elevated) l c h / 0.04)
+  );
+}
+
+.cardstack-deck[data-chronos-side='night'] {
+  --cardstack-art: url('/battle/deck-night.svg');
+}
+
+.cardstack-deck[data-chronos-side='day'] {
+  --cardstack-art: url('/battle/deck-day.svg');
+  --cardstack-overlay: linear-gradient(
+    oklch(from var(--color-bg-elevated) l c h / 0.04),
+    oklch(from var(--color-bg-elevated) l c h / 0.04)
+  );
+}
+
+.cardstack-abyss[data-chronos-side='night'] {
+  --cardstack-art: url('/battle/abyss-night.svg');
+}
+
+.cardstack-abyss[data-chronos-side='day'] {
+  --cardstack-art: url('/battle/abyss-day.svg');
+  --cardstack-overlay: linear-gradient(
+    oklch(from var(--color-bg-elevated) l c h / 0.04),
+    oklch(from var(--color-bg-elevated) l c h / 0.04)
+  );
+}
+
+.cardstack-back-layer {
+  position: absolute;
+  left: calc((100% - var(--cardstack-card-width, var(--card-width-md))) / 2);
+  bottom: calc(var(--space-1) + var(--cardstack-layer-bottom, 0px));
+  z-index: var(--cardstack-layer-z, 1);
+  width: var(--cardstack-card-width, var(--card-width-md));
+  aspect-ratio: var(--card-aspect-ratio);
+  height: auto;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  outline: 1px solid var(--color-border-subtle);
+  filter: drop-shadow(0 0.1rem 0.2rem rgb(9 11 19 / 0.18));
+  transform: translateX(var(--cardstack-layer-left, 0));
+}
+
+.cardstack-sm .cardstack-back-layer {
+  left: calc((100% - var(--cardstack-card-width, var(--card-width-sm))) / 2);
+  width: var(--cardstack-card-width, var(--card-width-sm));
 }
 
 .cardstack-thumb {
   position: absolute;
   bottom: var(--space-1);
-  width: calc(100% - var(--space-4));
+  left: var(--space-1);
+  z-index: var(--cardstack-thumb-z, 1);
   aspect-ratio: var(--card-aspect-ratio);
   height: auto;
   object-fit: cover;
   border-radius: var(--radius-xs);
   outline: 1px solid var(--color-border-subtle);
   opacity: 0.85;
+  transform: translateX(var(--cardstack-thumb-left, 0));
 }
 
-.cardstack-thumb[data-index='0'] {
-  left: var(--space-1);
+.cardstack-power .cardstack-thumb {
+  top: 50%;
+  bottom: auto;
+  left: 50%;
+  transform: translate(-50%, -50%) translateX(var(--cardstack-thumb-offset, 0));
 }
-.cardstack-thumb[data-index='1'] {
-  left: calc(var(--space-1) + 4px);
-  bottom: calc(var(--space-1) + 2px);
+
+.cardstack-md .cardstack-thumb {
+  width: var(--cardstack-card-width, var(--card-width-md));
 }
-.cardstack-thumb[data-index='2'] {
-  left: calc(var(--space-1) + 8px);
-  bottom: calc(var(--space-1) + 4px);
+
+.cardstack-sm .cardstack-thumb {
+  width: var(--cardstack-card-width, var(--card-width-sm));
 }
 
 .cardstack-count {
   position: absolute;
   right: var(--space-1);
   bottom: var(--space-1);
+  z-index: 12;
   padding: 0 var(--space-1);
   border-radius: var(--radius-xs);
   background: oklch(from var(--color-bg-base) l c h / 0.8);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   color: var(--color-accent-primary);
+}
+
+.cardstack-deck .cardstack-count {
+  color: var(--color-text-primary);
 }
 
 .cardstack-abyss .cardstack-count {
@@ -1382,16 +1613,16 @@ button.cardstack:focus-visible {
   position: absolute;
   inset-block: 0;
   left: 0;
-  background: var(--color-accent-primary);
+  background: linear-gradient(90deg, var(--color-success), var(--color-info));
   transition: width var(--motion-slow) var(--ease-emphasized);
 }
 
 .playerstatus-opponent .playerstatus-bar-fill {
-  background: var(--color-accent-secondary);
+  background: linear-gradient(90deg, var(--color-success), var(--color-info));
 }
 
 .playerstatus[data-hp='warning'] .playerstatus-bar-fill {
-  background: var(--color-warning);
+  background: #d89d22;
 }
 
 .playerstatus[data-hp='danger'] .playerstatus-bar-fill {
@@ -1866,7 +2097,7 @@ button.cardstack:focus-visible {
 
   .chronospanel-sm .chronosdial {
     width: clamp(8.25rem, 30vw, 10.5rem);
-    --chronos-slot-size: clamp(0.66rem, 8.4%, 0.92rem);
+    --chronos-slot-size: clamp(0.92rem, 11.5%, 1.3rem);
   }
 
   .battlezone {
@@ -1979,7 +2210,7 @@ button.cardstack:focus-visible {
   .chronosdial,
   .chronospanel-sm .chronosdial {
     width: clamp(8rem, 30vh, 11.25rem);
-    --chronos-slot-size: clamp(0.64rem, 8.4%, 0.92rem);
+    --chronos-slot-size: clamp(0.92rem, 11.5%, 1.3rem);
   }
 
   .bf-player {
@@ -2027,7 +2258,7 @@ button.cardstack:focus-visible {
 
   .chronosdial {
     width: clamp(10.5rem, 32vh, 15rem);
-    --chronos-slot-size: clamp(0.8rem, 8.8%, 1.12rem);
+    --chronos-slot-size: clamp(1.12rem, 12%, 1.58rem);
   }
 
   .bf-hand-dock {
