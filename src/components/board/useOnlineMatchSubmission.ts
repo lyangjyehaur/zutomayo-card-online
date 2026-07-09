@@ -111,7 +111,8 @@ export function useOnlineMatchSubmission({
     if (isAlreadySubmitted(submitKey)) return;
 
     markSubmitted(submitKey);
-    saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds);
+    const sourceMatchId = onlineSourceMatchID(matchID);
+    saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds, sourceMatchId);
 
     const accountPlayer = activeAccountPlayer(playerID);
     if (!isLoggedIn() || winner === null || accountPlayer === null) return;
@@ -127,7 +128,7 @@ export function useOnlineMatchSubmission({
           G.turnNumber,
           durationSeconds,
           G.actionLog,
-          onlineSourceMatchID(matchID),
+          sourceMatchId,
           winner,
         ) as Promise<MatchSubmitResponse>;
       })

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Flag, Languages, MessageCircle } from 'lucide-react';
 import {
   clearMatchRecords,
   downloadMatchActionLog,
@@ -11,6 +12,14 @@ import { CHRONOS_MAPPING, type ActionLogEntry } from '../game/types';
 import { getTranslatedEffect } from '../game/cards/i18n';
 import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
+import {
+  fetchChatMessages,
+  markChatRead,
+  reportChatMessage,
+  requestChatTranslation,
+  type ChatMessage,
+  type ChatMessageTranslation,
+} from '../api/client';
 import {
   ActionBar,
   AppHeader,
@@ -30,6 +39,13 @@ interface MatchHistoryProps {
 }
 
 const PAGE_SIZE = 6;
+
+type HistoryChatStatus = 'idle' | 'loading' | 'ready' | 'unavailable';
+type HistoryTranslationState = {
+  status: ChatMessageTranslation['status'] | 'loading' | 'unavailable';
+  targetLanguage: string;
+  content?: string;
+};
 
 function winnerLabel(record: MatchRecord): string {
   if (record.winner === 0) return `${t('player.zero')} ${t('board.playerWins')}`;
@@ -54,6 +70,21 @@ function formatTracePayload(payload: ActionLogEntry['payload']): string {
     .filter(([, value]) => value !== undefined && value !== null && typeof value !== 'object')
     .map(([key, value]) => `${key}: ${String(value)}`);
   return parts.join(' · ');
+}
+
+function chatTimeLabel(createdAt: string, locale: string): string {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(locale, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function canShowChatMessage(message: ChatMessage): boolean {
+  return message.moderationStatus !== 'blocked' && message.moderationStatus !== 'deleted';
 }
 
 function traceContext(entry: ActionLogEntry): string[] {
@@ -94,7 +125,15 @@ function TraceEntry({ entry, locale }: { entry: ActionLogEntry; locale: string }
   );
 }
 
-function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => void }) {
+function MatchDetail({
+  record,
+  onClose,
+  onOpenChat,
+}: {
+  record: MatchRecord;
+  onClose: () => void;
+  onOpenChat: (record: MatchRecord) => void;
+}) {
   const locale = useLocale();
   const trace = record.actionLog ?? [];
   return (
@@ -134,9 +173,21 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
           </Panel>
         </div>
         <div>
-          <Button size="sm" variant="secondary" type="button" onClick={() => downloadMatchActionLog(record)}>
-            {t('history.downloadTrace')}
-          </Button>
+          <ActionBar mobileLayout="grid">
+            <Button
+              size="sm"
+              variant="secondary"
+              type="button"
+              leftIcon={<MessageCircle size={14} />}
+              disabled={!record.sourceMatchId}
+              onClick={() => onOpenChat(record)}
+            >
+              {t('history.viewChat')}
+            </Button>
+            <Button size="sm" variant="secondary" type="button" onClick={() => downloadMatchActionLog(record)}>
+              {t('history.downloadTrace')}
+            </Button>
+          </ActionBar>
         </div>
         <section>
           <h3 className="font-display text-lg font-bold">{t('history.traceTitle')}</h3>
@@ -155,11 +206,181 @@ function MatchDetail({ record, onClose }: { record: MatchRecord; onClose: () => 
   );
 }
 
+function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: () => void }) {
+  const locale = useLocale();
+  const { showToast } = useToast();
+  const [status, setStatus] = useState<HistoryChatStatus>('idle');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
+  const [translations, setTranslations] = useState<Record<string, HistoryTranslationState>>({});
+  const sourceMatchId = record.sourceMatchId;
+
+  useEffect(() => {
+    if (!sourceMatchId) return;
+    let cancelled = false;
+    setStatus('loading');
+    setMessages([]);
+    setReportedMessageIds(new Set());
+    setTranslations({});
+
+    void fetchChatMessages({ conversationType: 'match', subjectId: sourceMatchId, limit: 100 }).then(
+      (nextMessages) => {
+        if (cancelled) return;
+        const visibleMessages = nextMessages.filter(canShowChatMessage);
+        setMessages(visibleMessages);
+        setStatus('ready');
+      },
+      () => {
+        if (!cancelled) setStatus('unavailable');
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceMatchId]);
+
+  useEffect(() => {
+    if (!sourceMatchId || status !== 'ready') return;
+    const latestPersisted = [...messages].reverse().find((message) => message.id);
+    if (!latestPersisted) return;
+    void markChatRead({
+      conversationType: 'match',
+      subjectId: sourceMatchId,
+      lastReadMessageId: latestPersisted.id,
+    }).catch(() => undefined);
+  }, [messages, sourceMatchId, status]);
+
+  const handleTranslate = async (message: ChatMessage) => {
+    const targetLanguage = locale.toLowerCase();
+    setTranslations((state) => ({
+      ...state,
+      [message.id]: { status: 'loading', targetLanguage },
+    }));
+    try {
+      const result = await requestChatTranslation(message.id, targetLanguage);
+      setTranslations((state) => ({
+        ...state,
+        [message.id]: {
+          status: result.translation.status,
+          targetLanguage: result.translation.targetLanguage,
+          content: result.translation.translatedContent || undefined,
+        },
+      }));
+    } catch {
+      setTranslations((state) => ({
+        ...state,
+        [message.id]: { status: 'unavailable', targetLanguage },
+      }));
+    }
+  };
+
+  const handleReport = async (message: ChatMessage) => {
+    if (reportedMessageIds.has(message.id)) return;
+    setReportedMessageIds((ids) => new Set(ids).add(message.id));
+    try {
+      await reportChatMessage(message.id, { reason: 'post_match_history' });
+      showToast({ title: t('chat.reported'), kind: 'success' });
+    } catch {
+      setReportedMessageIds((ids) => {
+        const next = new Set(ids);
+        next.delete(message.id);
+        return next;
+      });
+      showToast({ title: t('chat.reportFailed'), kind: 'error' });
+    }
+  };
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={<span id="match-chat-title">{t('history.chatTitle')}</span>}
+      size="lg"
+    >
+      <div className="grid gap-4">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div className="grid gap-1">
+            <span className="text-sm text-content-primary/60">{new Date(record.date).toLocaleString(locale)}</span>
+            <span className="font-mono text-xs text-content-primary/50">{sourceMatchId ?? record.id}</span>
+          </div>
+          <Badge tone={sourceMatchId ? 'jade' : 'neutral'}>
+            {sourceMatchId ? t('history.chatDurable') : t('history.chatUnavailable')}
+          </Badge>
+        </header>
+
+        {!sourceMatchId ? (
+          <Panel className="text-sm text-content-primary/60">{t('history.chatNoOnlineMatch')}</Panel>
+        ) : status === 'loading' || status === 'idle' ? (
+          <Panel className="text-sm text-content-primary/60">{t('history.chatLoading')}</Panel>
+        ) : status === 'unavailable' ? (
+          <Panel className="text-sm text-content-primary/60">{t('chat.historyUnavailable')}</Panel>
+        ) : messages.length === 0 ? (
+          <Panel className="text-sm text-content-primary/60">{t('chat.empty')}</Panel>
+        ) : (
+          <div className="grid max-h-[60vh] gap-3 overflow-y-auto pr-1">
+            {messages.map((message) => {
+              const translation = translations[message.id];
+              return (
+                <Panel key={message.id} variant="ghost" className="grid gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong>{message.authorDisplayName || message.authorUserId || 'Player'}</strong>
+                      <Badge tone={message.authorRole === 'spectator' ? 'neutral' : 'gold'}>{message.authorRole}</Badge>
+                      {message.moderationStatus === 'pending_review' && (
+                        <Badge tone="vermilion">{message.moderationStatus}</Badge>
+                      )}
+                    </div>
+                    <span className="text-xs text-content-primary/50">{chatTimeLabel(message.createdAt, locale)}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap break-words text-sm text-content-primary">{message.content}</p>
+                  {translation && (
+                    <p className="whitespace-pre-wrap break-words border-l-2 border-accent-primary/40 pl-3 text-sm text-content-primary/70">
+                      {translation.status === 'loading'
+                        ? t('chat.translationTranslating')
+                        : translation.status === 'unavailable'
+                          ? t('chat.translationOffline')
+                          : translation.content || t('chat.translationPending')}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      leftIcon={<Languages size={14} />}
+                      disabled={translation?.status === 'loading'}
+                      onClick={() => void handleTranslate(message)}
+                    >
+                      {t('chat.translate')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      leftIcon={<Flag size={14} />}
+                      disabled={reportedMessageIds.has(message.id)}
+                      onClick={() => void handleReport(message)}
+                    >
+                      {reportedMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')}
+                    </Button>
+                  </div>
+                </Panel>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
 export function MatchHistory(_props: MatchHistoryProps) {
   const { showToast } = useToast();
   const [records, setRecords] = useState(() => getMatchRecords());
   const [page, setPage] = useState(0);
   const [selectedRecord, setSelectedRecord] = useState<MatchRecord | null>(null);
+  const [chatRecord, setChatRecord] = useState<MatchRecord | null>(null);
   const locale = useLocale();
   const stats = getMatchStats();
   const totalPages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
@@ -174,6 +395,7 @@ export function MatchHistory(_props: MatchHistoryProps) {
     setRecords([]);
     setPage(0);
     setSelectedRecord(null);
+    setChatRecord(null);
     showToast({
       title: t('history.clearSuccessTitle'),
       body: t('history.clearSuccessBody'),
@@ -185,6 +407,7 @@ export function MatchHistory(_props: MatchHistoryProps) {
         setRecords(previousRecords);
         setPage(previousPage);
         setSelectedRecord(null);
+        setChatRecord(null);
         showToast({
           title: t('history.restoreSuccessTitle'),
           kind: 'success',
@@ -304,6 +527,17 @@ export function MatchHistory(_props: MatchHistoryProps) {
                         size="sm"
                         variant="secondary"
                         type="button"
+                        leftIcon={<MessageCircle size={14} />}
+                        className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
+                        disabled={!record.sourceMatchId}
+                        onClick={() => setChatRecord(record)}
+                      >
+                        {t('history.viewChat')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        type="button"
                         className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
                         onClick={() => downloadMatchActionLog(record)}
                       >
@@ -315,7 +549,14 @@ export function MatchHistory(_props: MatchHistoryProps) {
               </div>
             )}
           </section>
-          {selectedRecord && <MatchDetail record={selectedRecord} onClose={() => setSelectedRecord(null)} />}
+          {selectedRecord && (
+            <MatchDetail
+              record={selectedRecord}
+              onClose={() => setSelectedRecord(null)}
+              onOpenChat={(record) => setChatRecord(record)}
+            />
+          )}
+          {chatRecord && <MatchChatDialog record={chatRecord} onClose={() => setChatRecord(null)} />}
         </div>
       </main>
     </PageShell>

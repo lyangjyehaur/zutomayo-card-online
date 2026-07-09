@@ -45,6 +45,8 @@ Admin moderation uses ChatService as the evidence source of truth. Chat reports 
 
 Chat sanctions are durable server-side moderation actions. Admins can mute or unmute a reported author from the chat report workflow; `ChatService` checks active mute sanctions before accepting any match, room, direct, or global chat message, so Colyseus room memory and frontend state are not trusted for enforcement.
 
+Player match history stores the online boardgame match ID when available. The history page can reopen the durable `ChatService` match conversation after a game ends, with read-state sync, translation, and report actions still using the same REST-backed chat domain.
+
 ## Migration Plan
 
 1. Add Colyseus runtime and room contracts.

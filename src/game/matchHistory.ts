@@ -2,6 +2,7 @@ import type { ActionLogEntry, GameState } from '../game/types';
 
 export interface MatchRecord {
   id: string;
+  sourceMatchId?: string;
   date: string;
   duration: number; // seconds
   winner: 0 | 1 | null;
@@ -33,9 +34,15 @@ function normalizeWinner(winner: MatchWinnerInput): 0 | 1 | null {
 }
 
 // Save match record to localStorage
-export function saveMatchRecord(G: GameState, winner: MatchWinnerInput, durationSeconds = 0): void {
+export function saveMatchRecord(
+  G: GameState,
+  winner: MatchWinnerInput,
+  durationSeconds = 0,
+  sourceMatchId?: string,
+): void {
   const record: MatchRecord = {
     id: `match_${Date.now()}`,
+    sourceMatchId,
     date: new Date().toISOString(),
     duration: Math.max(0, Math.round(durationSeconds)),
     winner: normalizeWinner(winner),
