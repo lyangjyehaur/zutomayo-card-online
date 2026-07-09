@@ -7,8 +7,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['src/game/**'],
-      exclude: ['**/.DS_Store', '**/__tests__/**', '**/*.test.ts'],
+      include: ['src/**', 'api/**'],
+      exclude: ['**/.DS_Store', '**/__tests__/**', '**/*.test.ts', '**/node_modules/**', '**/dist/**', '**/*.cjs'],
+      thresholds: {
+        lines: 50,
+        functions: 50,
+        branches: 40,
+        statements: 50,
+      },
     },
   },
 });
