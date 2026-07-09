@@ -4,6 +4,7 @@ export type PlatformRole = 'player' | 'spectator' | 'moderator';
 export type MatchShellStatus = 'waiting' | 'ready' | 'in_progress' | 'finished';
 export type QuickMatchStatus = 'waiting' | 'matched' | 'cancelled' | 'finished';
 export type CustomRoomStatus = 'waiting' | 'ready' | 'cancelled' | 'finished';
+export type InviteStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
 
 export interface PlatformAuth {
   userId: string;
@@ -71,6 +72,32 @@ export interface PlatformClientMessages {
   customRoomCancelled: {
     reason: string;
   };
+  inviteSnapshot: {
+    roomId: string;
+    inviteId: string;
+    status: InviteStatus;
+    inviter?: PlatformClientProfile;
+    targetUserId?: string;
+    roomCode?: string;
+    boardgameMatchID?: string;
+    createdAt: number;
+    expiresAt: number;
+  };
+  inviteAccepted: {
+    inviteId: string;
+    acceptedBy: PlatformClientProfile;
+    roomCode?: string;
+    boardgameMatchID?: string;
+  };
+  inviteDeclined: {
+    inviteId: string;
+    declinedBy?: PlatformClientProfile;
+    reason: string;
+  };
+  inviteCancelled: {
+    inviteId: string;
+    reason: string;
+  };
   chatPreview: {
     conversationId?: string;
     sender: PlatformClientProfile;
@@ -115,6 +142,15 @@ export interface CustomRoomMetadata {
   boardgameMatchID?: string;
 }
 
+export interface InviteRoomMetadata {
+  kind: 'invite';
+  inviteId: string;
+  status: InviteStatus;
+  targetUserId?: string;
+  roomCode?: string;
+  boardgameMatchID?: string;
+}
+
 export interface LobbyJoinOptions {
   userId?: unknown;
   displayName?: unknown;
@@ -139,6 +175,13 @@ export interface CustomRoomOptions extends LobbyJoinOptions {
   status?: unknown;
 }
 
+export interface InviteRoomOptions extends LobbyJoinOptions {
+  inviteId?: unknown;
+  targetUserId?: unknown;
+  roomCode?: unknown;
+  boardgameMatchID?: unknown;
+}
+
 export interface LinkBoardgameMatchMessage {
   boardgameMatchID?: unknown;
 }
@@ -150,4 +193,8 @@ export interface ChatPreviewMessage {
 
 export interface BoardgameMatchReadyMessage {
   boardgameMatchID?: unknown;
+}
+
+export interface InviteResponseMessage {
+  reason?: unknown;
 }

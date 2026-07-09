@@ -33,6 +33,15 @@ export interface PlatformCustomRoomOptions {
   displayName: string;
 }
 
+export interface PlatformInviteOptions {
+  inviteId: string;
+  userId: string;
+  displayName: string;
+  targetUserId?: string;
+  roomCode?: string;
+  boardgameMatchID?: string;
+}
+
 export interface PlatformClientProfile {
   sessionId: string;
   userId: string;
@@ -95,6 +104,44 @@ export interface PlatformCustomRoomHandlers {
   onDisconnect?: () => void;
 }
 
+export interface PlatformInviteSnapshot {
+  roomId: string;
+  inviteId: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
+  inviter?: PlatformClientProfile;
+  targetUserId?: string;
+  roomCode?: string;
+  boardgameMatchID?: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface PlatformInviteAccepted {
+  inviteId: string;
+  acceptedBy: PlatformClientProfile;
+  roomCode?: string;
+  boardgameMatchID?: string;
+}
+
+export interface PlatformInviteDeclined {
+  inviteId: string;
+  declinedBy?: PlatformClientProfile;
+  reason: string;
+}
+
+export interface PlatformInviteCancelled {
+  inviteId: string;
+  reason: string;
+}
+
+export interface PlatformInviteHandlers {
+  onSnapshot?: (snapshot: PlatformInviteSnapshot) => void;
+  onAccepted?: (message: PlatformInviteAccepted) => void;
+  onDeclined?: (message: PlatformInviteDeclined) => void;
+  onCancelled?: (message: PlatformInviteCancelled) => void;
+  onDisconnect?: () => void;
+}
+
 export interface PlatformQuickMatchHandlers {
   onSnapshot?: (snapshot: PlatformQuickMatchSnapshot) => void;
   onMatched?: (match: PlatformQuickMatchMatched) => void;
@@ -118,6 +165,7 @@ interface LocationLike {
 
 export type PlatformLobbyRoom = Room<unknown>;
 export type PlatformCustomRoom = Room<unknown>;
+export type PlatformInviteRoom = Room<unknown>;
 export type PlatformMatchShellRoom = Room<unknown>;
 export type PlatformQuickMatchRoom = Room<unknown>;
 
@@ -409,6 +457,137 @@ export async function joinPlatformCustomRoom(
     'join',
   );
   return bindPlatformCustomRoomHandlers(room, handlers);
+}
+
+export function platformInviteSnapshotFromMessage(message: unknown): PlatformInviteSnapshot | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as {
+    roomId?: unknown;
+    inviteId?: unknown;
+    status?: unknown;
+    inviter?: unknown;
+    targetUserId?: unknown;
+    roomCode?: unknown;
+    boardgameMatchID?: unknown;
+    createdAt?: unknown;
+    expiresAt?: unknown;
+  };
+  if (typeof data.roomId !== 'string' || typeof data.inviteId !== 'string') return null;
+  if (
+    data.status !== 'pending' &&
+    data.status !== 'accepted' &&
+    data.status !== 'declined' &&
+    data.status !== 'cancelled' &&
+    data.status !== 'expired'
+  ) {
+    return null;
+  }
+  return {
+    roomId: data.roomId,
+    inviteId: data.inviteId,
+    status: data.status,
+    inviter: platformProfileFromMessage(data.inviter) ?? undefined,
+    targetUserId: typeof data.targetUserId === 'string' ? data.targetUserId : undefined,
+    roomCode: typeof data.roomCode === 'string' ? data.roomCode : undefined,
+    boardgameMatchID: typeof data.boardgameMatchID === 'string' ? data.boardgameMatchID : undefined,
+    createdAt: Number.isFinite(data.createdAt) ? Math.trunc(data.createdAt as number) : Date.now(),
+    expiresAt: Number.isFinite(data.expiresAt) ? Math.trunc(data.expiresAt as number) : Date.now(),
+  };
+}
+
+export function platformInviteAcceptedFromMessage(message: unknown): PlatformInviteAccepted | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as { inviteId?: unknown; acceptedBy?: unknown; roomCode?: unknown; boardgameMatchID?: unknown };
+  const acceptedBy = platformProfileFromMessage(data.acceptedBy);
+  if (typeof data.inviteId !== 'string' || !acceptedBy) return null;
+  return {
+    inviteId: data.inviteId,
+    acceptedBy,
+    roomCode: typeof data.roomCode === 'string' ? data.roomCode : undefined,
+    boardgameMatchID: typeof data.boardgameMatchID === 'string' ? data.boardgameMatchID : undefined,
+  };
+}
+
+export function platformInviteDeclinedFromMessage(message: unknown): PlatformInviteDeclined | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as { inviteId?: unknown; declinedBy?: unknown; reason?: unknown };
+  if (typeof data.inviteId !== 'string') return null;
+  return {
+    inviteId: data.inviteId,
+    declinedBy: platformProfileFromMessage(data.declinedBy) ?? undefined,
+    reason: typeof data.reason === 'string' ? data.reason : 'declined',
+  };
+}
+
+export function platformInviteCancelledFromMessage(message: unknown): PlatformInviteCancelled | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as { inviteId?: unknown; reason?: unknown };
+  if (typeof data.inviteId !== 'string') return null;
+  return {
+    inviteId: data.inviteId,
+    reason: typeof data.reason === 'string' ? data.reason : 'cancelled',
+  };
+}
+
+function bindPlatformInviteHandlers(room: Room<unknown>, handlers: PlatformInviteHandlers): PlatformInviteRoom {
+  room.onMessage('inviteSnapshot', (message) => {
+    const snapshot = platformInviteSnapshotFromMessage(message);
+    if (snapshot) handlers.onSnapshot?.(snapshot);
+  });
+  room.onMessage('inviteAccepted', (message) => {
+    const accepted = platformInviteAcceptedFromMessage(message);
+    if (accepted) handlers.onAccepted?.(accepted);
+  });
+  room.onMessage('inviteDeclined', (message) => {
+    const declined = platformInviteDeclinedFromMessage(message);
+    if (declined) handlers.onDeclined?.(declined);
+  });
+  room.onMessage('inviteCancelled', (message) => {
+    const cancelled = platformInviteCancelledFromMessage(message);
+    if (cancelled) handlers.onCancelled?.(cancelled);
+  });
+  room.onLeave(() => handlers.onDisconnect?.());
+  return room;
+}
+
+export async function createPlatformInvite(
+  options: PlatformInviteOptions,
+  handlers: PlatformInviteHandlers = {},
+): Promise<PlatformInviteRoom> {
+  const room = await joinPlatformRoom(
+    'invite',
+    {
+      inviteId: options.inviteId,
+      targetUserId: options.targetUserId,
+      roomCode: options.roomCode,
+      boardgameMatchID: options.boardgameMatchID,
+      userId: options.userId,
+      displayName: options.displayName,
+      role: 'player',
+      status: 'pending',
+    },
+    'create',
+  );
+  return bindPlatformInviteHandlers(room, handlers);
+}
+
+export async function joinPlatformInvite(
+  options: PlatformInviteOptions,
+  handlers: PlatformInviteHandlers = {},
+): Promise<PlatformInviteRoom> {
+  const room = await joinPlatformRoom(
+    'invite',
+    {
+      inviteId: options.inviteId,
+      targetUserId: options.targetUserId,
+      userId: options.userId,
+      displayName: options.displayName,
+      role: 'player',
+      status: 'pending',
+    },
+    'join',
+  );
+  return bindPlatformInviteHandlers(room, handlers);
 }
 
 export async function connectPlatformQuickMatch(

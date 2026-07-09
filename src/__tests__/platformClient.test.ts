@@ -4,6 +4,10 @@ import {
   platformBoardgameMatchReadyFromMessage,
   platformChatPreviewFromMessage,
   platformCustomRoomSnapshotFromMessage,
+  platformInviteAcceptedFromMessage,
+  platformInviteCancelledFromMessage,
+  platformInviteDeclinedFromMessage,
+  platformInviteSnapshotFromMessage,
   platformOnlineCountFromMessage,
   platformPresenceFromMatchShellMessage,
   platformQuickMatchMatchedFromMessage,
@@ -192,6 +196,58 @@ describe('platform client helpers', () => {
     });
     expect(platformCustomRoomSnapshotFromMessage({ roomId: 'room_1', roomCode: 'code', status: 'gone' })).toBeNull();
     expect(platformCustomRoomSnapshotFromMessage({ roomId: 'room_1', status: 'ready' })).toBeNull();
+  });
+
+  it('reads invite lifecycle messages defensively', () => {
+    const profile = {
+      sessionId: 's_1',
+      userId: 'u_1',
+      displayName: 'Alice',
+      role: 'player',
+      joinedAt: 1000,
+    };
+    expect(
+      platformInviteSnapshotFromMessage({
+        roomId: 'invite_room_1',
+        inviteId: 'invite_1',
+        status: 'pending',
+        inviter: profile,
+        targetUserId: 'u_2',
+        roomCode: 'room_1',
+        boardgameMatchID: 'bgio-match-1',
+        createdAt: 1000.9,
+        expiresAt: 2000.9,
+      }),
+    ).toEqual({
+      roomId: 'invite_room_1',
+      inviteId: 'invite_1',
+      status: 'pending',
+      inviter: profile,
+      targetUserId: 'u_2',
+      roomCode: 'room_1',
+      boardgameMatchID: 'bgio-match-1',
+      createdAt: 1000,
+      expiresAt: 2000,
+    });
+    expect(
+      platformInviteSnapshotFromMessage({ roomId: 'invite_room_1', inviteId: 'invite_1', status: 'unknown' }),
+    ).toBeNull();
+    expect(platformInviteAcceptedFromMessage({ inviteId: 'invite_1', acceptedBy: profile })).toEqual({
+      inviteId: 'invite_1',
+      acceptedBy: profile,
+      roomCode: undefined,
+      boardgameMatchID: undefined,
+    });
+    expect(platformInviteAcceptedFromMessage({ inviteId: 'invite_1' })).toBeNull();
+    expect(platformInviteDeclinedFromMessage({ inviteId: 'invite_1', reason: 'busy' })).toEqual({
+      inviteId: 'invite_1',
+      declinedBy: undefined,
+      reason: 'busy',
+    });
+    expect(platformInviteCancelledFromMessage({ inviteId: 'invite_1' })).toEqual({
+      inviteId: 'invite_1',
+      reason: 'cancelled',
+    });
   });
 
   it('adapts Colyseus 0.17 flat seat reservations for the browser SDK', () => {
