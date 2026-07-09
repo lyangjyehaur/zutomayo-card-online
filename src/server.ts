@@ -249,7 +249,29 @@ function safeStaticFile(baseDir: string, requestPath: string, routePrefix: strin
   return resolvedPath;
 }
 
-server.app.use(helmet({ contentSecurityPolicy: false }));
+server.app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        imgSrc: [
+          "'self'",
+          'https://r2.dan.tw',
+          'https://www.gravatar.com',
+          'https://cravatar.cn',
+          'https://q1.qlogo.cn',
+          'data:',
+          'blob:',
+        ],
+        connectSrc: ["'self'", 'wss:', 'https:'],
+        fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+        frameAncestors: ["'none'"],
+      },
+    },
+  }),
+);
 
 // Structured request logging + Prometheus metrics (before route handlers).
 server.app.use(requestLoggingMiddleware());
