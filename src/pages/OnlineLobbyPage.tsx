@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, MessageCircle, Pencil, Radio, Send, Trash2, UserPlus, X } from 'lucide-react';
+import { Check, Flag, Languages, MessageCircle, Pencil, Radio, Send, Trash2, UserPlus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   ANONYMOUS_PLAYER_DEFAULT_NAME,
@@ -21,9 +21,12 @@ import {
   matchmakingQueue,
   matchmakingReportMatch,
   matchmakingStatus,
+  reportChatMessage,
   removeFriend,
+  requestChatTranslation,
   sendChatMessage,
   type ChatMessage,
+  type ChatMessageTranslation,
   type DeckResponse,
   type ChatUnreadConversation,
   type FriendProfile,
@@ -64,6 +67,14 @@ interface OnlineLobbyPageProps {
 
 type MatchmakingPhase = 'idle' | 'platform-waiting' | 'polling' | 'host-starting' | 'guest-joining' | 'done';
 type DirectChatStatus = 'idle' | 'loading' | 'ready' | 'sending' | 'unavailable';
+type DirectChatTranslationState = {
+  status: ChatMessageTranslation['status'] | 'loading' | 'unavailable';
+  targetLanguage: string;
+  content?: string;
+};
+type DirectChatEntry = ChatMessage & {
+  translation?: DirectChatTranslationState;
+};
 const ANONYMOUS_NAME_PROMPT_STORAGE_KEY = 'zutomayo_anonymous_name_prompt_seen';
 
 // 段位定義：依 ELO 劃分漆面塔羅風格的段位名（專有名詞，不 i18n）。
@@ -135,9 +146,10 @@ export function OnlineLobbyPage({
     peerUserId: string;
     friend?: FriendProfile;
   } | null>(null);
-  const [directChatMessages, setDirectChatMessages] = useState<ChatMessage[]>([]);
+  const [directChatMessages, setDirectChatMessages] = useState<DirectChatEntry[]>([]);
   const [directChatDraft, setDirectChatDraft] = useState('');
   const [directChatStatus, setDirectChatStatus] = useState<DirectChatStatus>('idle');
+  const [reportedDirectMessageIds, setReportedDirectMessageIds] = useState<Set<string>>(() => new Set());
   const directChatMessagesRef = useRef<HTMLDivElement | null>(null);
   const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
@@ -278,6 +290,12 @@ export function OnlineLobbyPage({
     if (!element) return;
     element.scrollTop = element.scrollHeight;
   }, [directChatMessages]);
+
+  const applyDirectChatTranslation = useCallback((messageId: string, translation: DirectChatTranslationState) => {
+    setDirectChatMessages((messages) =>
+      messages.map((message) => (message.id === messageId ? { ...message, translation } : message)),
+    );
+  }, []);
 
   const anonymousDisplayName = formatAnonymousDisplayName(anonymousIdentity);
   const effectivePlayerName = profile?.nickname || anonymousDisplayName;
@@ -745,6 +763,56 @@ export function OnlineLobbyPage({
       showToast({ title: t('chat.sendFailed'), kind: 'error' });
     }
   };
+
+  const handleDirectChatTranslate = useCallback(
+    async (message: DirectChatEntry) => {
+      if (message.translation?.status === 'loading') return;
+      const targetLanguage = locale.toLowerCase();
+      applyDirectChatTranslation(message.id, { status: 'loading', targetLanguage });
+      try {
+        const result = await requestChatTranslation(message.id, targetLanguage);
+        applyDirectChatTranslation(message.id, {
+          status: result.translation.status,
+          targetLanguage: result.translation.targetLanguage,
+          content: result.translation.translatedContent || undefined,
+        });
+      } catch (err) {
+        applyDirectChatTranslation(message.id, { status: 'unavailable', targetLanguage });
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'direct chat translation failed',
+          level: 'warning',
+          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    },
+    [applyDirectChatTranslation, locale],
+  );
+
+  const handleDirectChatReport = useCallback(
+    async (message: DirectChatEntry) => {
+      if (message.authorUserId === profile?.id || reportedDirectMessageIds.has(message.id)) return;
+      setReportedDirectMessageIds((ids) => new Set(ids).add(message.id));
+      try {
+        await reportChatMessage(message.id, { reason: 'inappropriate' });
+        showToast({ title: t('chat.reported'), kind: 'success' });
+      } catch (err) {
+        setReportedDirectMessageIds((ids) => {
+          const next = new Set(ids);
+          next.delete(message.id);
+          return next;
+        });
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'direct chat report failed',
+          level: 'warning',
+          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
+        });
+        showToast({ title: t('chat.reportFailed'), kind: 'error' });
+      }
+    },
+    [profile?.id, reportedDirectMessageIds, showToast],
+  );
 
   return (
     <PageShell>
@@ -1269,7 +1337,37 @@ export function OnlineLobbyPage({
                             className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
                           >
                             <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                              {message.authorDisplayName || message.authorUserId || t('auth.guest')}
+                              <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
+                              <span className="ml-2 inline-flex items-center gap-1">
+                                <Button
+                                  className="size-7 p-0 tracking-normal"
+                                  variant="ghost"
+                                  type="button"
+                                  onClick={() => void handleDirectChatTranslate(message)}
+                                  disabled={message.translation?.status === 'loading'}
+                                  aria-label={t('chat.translate')}
+                                  title={t('chat.translate')}
+                                >
+                                  <Languages className="size-3" strokeWidth={1.25} />
+                                </Button>
+                                {!self && (
+                                  <Button
+                                    className="size-7 p-0 tracking-normal"
+                                    variant="ghost"
+                                    type="button"
+                                    onClick={() => void handleDirectChatReport(message)}
+                                    disabled={reportedDirectMessageIds.has(message.id)}
+                                    aria-label={
+                                      reportedDirectMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                    }
+                                    title={
+                                      reportedDirectMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                    }
+                                  >
+                                    <Flag className="size-3" strokeWidth={1.25} />
+                                  </Button>
+                                )}
+                              </span>
                             </div>
                             <div
                               className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
@@ -1280,6 +1378,23 @@ export function OnlineLobbyPage({
                             >
                               {message.content}
                             </div>
+                            {message.translation && (
+                              <div
+                                className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                                  message.translation.status === 'ready' && message.translation.content
+                                    ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
+                                    : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
+                                }`}
+                              >
+                                {message.translation.status === 'ready' && message.translation.content
+                                  ? message.translation.content
+                                  : message.translation.status === 'loading'
+                                    ? t('chat.translationTranslating')
+                                    : message.translation.status === 'unavailable'
+                                      ? t('chat.translationOffline')
+                                      : t('chat.translationPending')}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
