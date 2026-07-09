@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildPlatformFriendInviteId,
   normalizeSeatReservation,
   platformBoardgameMatchReadyFromMessage,
   platformChatPreviewFromMessage,
@@ -248,6 +249,10 @@ describe('platform client helpers', () => {
       inviteId: 'invite_1',
       reason: 'cancelled',
     });
+  });
+
+  it('builds stable directional friend invite ids', () => {
+    expect(buildPlatformFriendInviteId('logto:u_1', 'u 2')).toBe('friend:v1:logto%3Au_1:u%202');
   });
 
   it('adapts Colyseus 0.17 flat seat reservations for the browser SDK', () => {

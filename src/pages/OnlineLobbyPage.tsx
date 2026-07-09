@@ -44,9 +44,13 @@ import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '
 import { Alert, AppHeader, Button, Input, PageShell, Panel } from '../ui';
 import { useOnlinePresence } from '../hooks/useOnlinePresence';
 import {
+  buildPlatformFriendInviteId,
   connectPlatformQuickMatch,
+  createPlatformInvite,
   createPlatformCustomRoom,
   joinPlatformCustomRoom,
+  joinPlatformInvite,
+  type PlatformInviteRoom,
   type PlatformQuickMatchRoom,
 } from '../platformClient';
 import { Sentry } from '../sentry';
@@ -140,6 +144,9 @@ export function OnlineLobbyPage({
   const [friendStatus, setFriendStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [friendUserIdDraft, setFriendUserIdDraft] = useState('');
   const [friendActionId, setFriendActionId] = useState<string | null>(null);
+  const [friendInviteActionId, setFriendInviteActionId] = useState<string | null>(null);
+  const [friendInvitePeerId, setFriendInvitePeerId] = useState<string | null>(null);
+  const platformInviteRoomRef = useRef<PlatformInviteRoom | null>(null);
   const [unreadChats, setUnreadChats] = useState<ChatUnreadConversation[]>([]);
   const [unreadChatStatus, setUnreadChatStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [directChat, setDirectChat] = useState<{
@@ -182,6 +189,10 @@ export function OnlineLobbyPage({
       setLobbyChatStatus('idle');
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
+      setFriendInviteActionId(null);
+      setFriendInvitePeerId(null);
+      void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
+      platformInviteRoomRef.current = null;
       return;
     }
     try {
@@ -197,6 +208,10 @@ export function OnlineLobbyPage({
       setLobbyChatStatus('idle');
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
+      setFriendInviteActionId(null);
+      setFriendInvitePeerId(null);
+      void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
+      platformInviteRoomRef.current = null;
     }
   }, []);
 
@@ -885,6 +900,152 @@ export function OnlineLobbyPage({
       showToast({ title: t('friend.removeFailed'), kind: 'error' });
     } finally {
       setFriendActionId(null);
+    }
+  };
+
+  const leavePlatformInviteRoom = () => {
+    void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
+    platformInviteRoomRef.current = null;
+  };
+
+  const handleInviteFriend = async (friend: FriendProfile) => {
+    if (!profile) return;
+    if (!canStart) {
+      setError(startDisabledReason);
+      return;
+    }
+
+    const inviteId = buildPlatformFriendInviteId(profile.id, friend.userId);
+    setFriendInviteActionId(`send:${friend.userId}`);
+    setError('');
+    leavePlatformInviteRoom();
+
+    try {
+      const room = await createPlatformInvite(
+        {
+          inviteId,
+          targetUserId: friend.userId,
+          userId: profile.id,
+          displayName: effectivePlayerName,
+        },
+        {
+          onAccepted: (message) => {
+            if (message.inviteId !== inviteId) return;
+            setFriendInviteActionId(`start:${friend.userId}`);
+            showToast({ title: t('friend.inviteAccepted'), kind: 'success' });
+            void onStartOnline(undefined, effectivePlayerName)
+              .then((session) => {
+                platformInviteRoomRef.current?.send('boardgameMatchReady', {
+                  boardgameMatchID: session.matchID,
+                });
+                void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
+                platformInviteRoomRef.current = null;
+                setFriendInviteActionId(null);
+                setFriendInvitePeerId(null);
+              })
+              .catch((err) => {
+                Sentry.captureException(err, { tags: { action: 'platform-invite-host-start' } });
+                setError(onlineErrorMessage(err));
+                setFriendInviteActionId(null);
+              });
+          },
+          onDeclined: () => {
+            showToast({ title: t('friend.inviteDeclined'), kind: 'error' });
+            setFriendInviteActionId(null);
+            setFriendInvitePeerId(null);
+            leavePlatformInviteRoom();
+          },
+          onCancelled: () => {
+            setFriendInviteActionId(null);
+            setFriendInvitePeerId(null);
+            leavePlatformInviteRoom();
+          },
+          onDisconnect: () => {
+            setFriendInvitePeerId(null);
+            setFriendInviteActionId(null);
+          },
+        },
+      );
+      platformInviteRoomRef.current = room;
+      setFriendInvitePeerId(friend.userId);
+      setFriendInviteActionId(null);
+      showToast({ title: t('friend.inviteSent'), kind: 'success' });
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'platform',
+        message: 'friend invite create failed',
+        level: 'warning',
+        data: { friend_user_id: friend.userId, error: err instanceof Error ? err.message : String(err) },
+      });
+      setFriendInviteActionId(null);
+      setFriendInvitePeerId(null);
+      showToast({ title: t('friend.inviteFailed'), kind: 'error' });
+    }
+  };
+
+  const handleAcceptFriendInvite = async (friend: FriendProfile) => {
+    if (!profile) return;
+    const inviteId = buildPlatformFriendInviteId(friend.userId, profile.id);
+    setFriendInviteActionId(`accept:${friend.userId}`);
+    setError('');
+    leavePlatformInviteRoom();
+
+    try {
+      const room = await joinPlatformInvite(
+        {
+          inviteId,
+          targetUserId: profile.id,
+          userId: profile.id,
+          displayName: effectivePlayerName,
+        },
+        {
+          onAccepted: (message) => {
+            if (message.boardgameMatchID) {
+              void onStartOnline(message.boardgameMatchID, effectivePlayerName);
+            }
+          },
+          onBoardgameMatchReady: (message) => {
+            setFriendInviteActionId(`join:${friend.userId}`);
+            void onStartOnline(message.boardgameMatchID, effectivePlayerName)
+              .then(() => {
+                void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
+                platformInviteRoomRef.current = null;
+                setFriendInviteActionId(null);
+                setFriendInvitePeerId(null);
+              })
+              .catch((err) => {
+                Sentry.captureException(err, { tags: { action: 'platform-invite-guest-join' } });
+                setError(onlineErrorMessage(err));
+                setFriendInviteActionId(null);
+              });
+          },
+          onDeclined: () => {
+            setFriendInviteActionId(null);
+            setFriendInvitePeerId(null);
+            leavePlatformInviteRoom();
+          },
+          onCancelled: () => {
+            showToast({ title: t('friend.inviteCancelled'), kind: 'error' });
+            setFriendInviteActionId(null);
+            setFriendInvitePeerId(null);
+            leavePlatformInviteRoom();
+          },
+        },
+      );
+      platformInviteRoomRef.current = room;
+      setFriendInvitePeerId(friend.userId);
+      room.send('acceptInvite', {});
+      showToast({ title: t('friend.inviteAccepted'), kind: 'success' });
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'platform',
+        message: 'friend invite accept failed',
+        level: 'warning',
+        data: { friend_user_id: friend.userId, error: err instanceof Error ? err.message : String(err) },
+      });
+      setFriendInviteActionId(null);
+      setFriendInvitePeerId(null);
+      showToast({ title: t('friend.noInvite'), kind: 'error' });
     }
   };
 
@@ -1725,7 +1886,7 @@ export function OnlineLobbyPage({
                       {friends.map((friend) => (
                         <div
                           key={friend.userId}
-                          className={`grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border px-3 py-2 transition ${
+                          className={`grid min-h-16 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 rounded-sm border px-3 py-2 transition ${
                             directChat?.peerUserId === friend.userId
                               ? 'border-accent-primary/50 bg-accent-primary/10'
                               : 'border-border-soft bg-surface-canvas/30'
@@ -1744,6 +1905,30 @@ export function OnlineLobbyPage({
                               {friend.userId}
                             </span>
                           </button>
+                          <Button
+                            className="size-10 shrink-0 p-0 tracking-normal"
+                            variant="ghost"
+                            type="button"
+                            onClick={() => void handleInviteFriend(friend)}
+                            disabled={friendInviteActionId !== null || matchmakingActive || !canStart}
+                            aria-label={t('friend.invite')}
+                            title={
+                              friendInvitePeerId === friend.userId ? t('friend.inviteWaiting') : t('friend.invite')
+                            }
+                          >
+                            <Send className="size-3.5" strokeWidth={1.25} />
+                          </Button>
+                          <Button
+                            className="size-10 shrink-0 p-0 tracking-normal"
+                            variant="ghost"
+                            type="button"
+                            onClick={() => void handleAcceptFriendInvite(friend)}
+                            disabled={friendInviteActionId !== null || matchmakingActive}
+                            aria-label={t('friend.acceptInvite')}
+                            title={t('friend.acceptInvite')}
+                          >
+                            <Check className="size-3.5" strokeWidth={1.25} />
+                          </Button>
                           <Button
                             className="size-10 shrink-0 p-0 tracking-normal"
                             variant="ghost"

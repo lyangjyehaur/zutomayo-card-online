@@ -159,6 +159,7 @@ export interface PlatformInviteCancelled {
 export interface PlatformInviteHandlers {
   onSnapshot?: (snapshot: PlatformInviteSnapshot) => void;
   onAccepted?: (message: PlatformInviteAccepted) => void;
+  onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
   onDeclined?: (message: PlatformInviteDeclined) => void;
   onCancelled?: (message: PlatformInviteCancelled) => void;
   onDisconnect?: () => void;
@@ -632,8 +633,16 @@ function bindPlatformInviteHandlers(room: Room<unknown>, handlers: PlatformInvit
     const cancelled = platformInviteCancelledFromMessage(message);
     if (cancelled) handlers.onCancelled?.(cancelled);
   });
+  room.onMessage('boardgameMatchReady', (message) => {
+    const ready = platformBoardgameMatchReadyFromMessage(message);
+    if (ready) handlers.onBoardgameMatchReady?.(ready);
+  });
   room.onLeave(() => handlers.onDisconnect?.());
   return room;
+}
+
+export function buildPlatformFriendInviteId(inviterUserId: string, targetUserId: string): string {
+  return `friend:v1:${encodeURIComponent(inviterUserId)}:${encodeURIComponent(targetUserId)}`;
 }
 
 export async function createPlatformInvite(
