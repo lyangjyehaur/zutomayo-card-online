@@ -1,3 +1,5 @@
+import packageJson from '../package.json';
+
 export interface AppVersionInfo {
   appVersion: string;
   buildId: string;
@@ -9,7 +11,7 @@ declare const __APP_BUILD_ID__: string | undefined;
 declare const __APP_BUILT_AT__: string | undefined;
 declare const __GAME_RULES_VERSION__: string | undefined;
 
-const PACKAGE_VERSION = '0.1.0';
+const PACKAGE_VERSION = packageJson.version;
 
 function definedValue(value: string | undefined): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
