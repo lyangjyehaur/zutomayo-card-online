@@ -6,6 +6,7 @@ import { WebSocketTransport } from '@colyseus/ws-transport';
 import * as Sentry from '@sentry/node';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
 import { platformLogger as logger } from './logger';
+import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -58,6 +59,9 @@ function redisUrlWithDb(url: string, db: number): string {
 const httpServer = http.createServer();
 
 const colyseusRedisUrl = redisUrlWithDb(REDIS_URL, REDIS_DB);
+const friendStore = createPlatformFriendStoreFromEnv();
+LobbyRoom.configureFriendStore(friendStore);
+
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
   express: (app) => {
@@ -83,8 +87,9 @@ gameServer.define('quick_match', QuickMatchRoom).filterBy(['status']);
 gameServer.define('custom_room', CustomRoom).filterBy(['roomCode', 'status']);
 gameServer.define('invite', InviteRoom).filterBy(['inviteId', 'status', 'targetUserId']);
 
-gameServer.onShutdown(() => {
+gameServer.onShutdown(async () => {
   logger.info('platform server shutting down');
+  await friendStore.close?.();
 });
 
 process.on('uncaughtException', (err) => {
@@ -99,4 +104,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 await gameServer.listen(PLATFORM_PORT);
-logger.info({ port: PLATFORM_PORT, redisMode: PLATFORM_REDIS_MODE }, 'Zutomayo platform server running');
+logger.info(
+  { port: PLATFORM_PORT, redisMode: PLATFORM_REDIS_MODE, friendStoreMode: resolvePlatformFriendStoreMode() },
+  'Zutomayo platform server running',
+);

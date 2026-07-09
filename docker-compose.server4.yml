@@ -118,8 +118,11 @@ services:
       - APP_VERSION=${APP_VERSION:-}
       - APP_BUILD_ID=${APP_BUILD_ID:-}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - PG_HOST=postgresql
+      - PG_PORT=5432
       - REDIS_DB=0
       - PLATFORM_REDIS_MODE=redis
+      - PLATFORM_FRIEND_STORE=postgres
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     networks:

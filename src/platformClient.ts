@@ -6,7 +6,6 @@ export interface PlatformLobbyJoinOptions {
   userId: string;
   displayName: string;
   role?: PlatformRole;
-  friendUserIds?: string[];
 }
 
 export interface PlatformLobbyHandlers {
@@ -340,7 +339,6 @@ export async function connectPlatformLobby(
     userId: options.userId,
     displayName: options.displayName,
     role: options.role ?? 'spectator',
-    friendUserIds: options.friendUserIds ?? [],
   });
 
   const handlePresence = (message: unknown) => {

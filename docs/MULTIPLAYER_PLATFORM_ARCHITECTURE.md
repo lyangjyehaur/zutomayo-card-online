@@ -35,6 +35,8 @@ By default, `npm run platform` uses in-memory Colyseus presence/driver outside p
 
 The frontend resolves the platform endpoint from `VITE_PLATFORM_URL` when set. When unset, local `:3000` or Vite `:5173` pages connect to `:3002`; other origins use the same host and websocket scheme. If the Colyseus lobby connection fails or disconnects, `useOnlinePresence()` falls back to the existing `/api/presence/heartbeat` path.
 
+Friend presence subscriptions are resolved server-side from the durable `user_friends` table. The browser no longer sends friend IDs in Colyseus lobby join options; production Compose sets `PLATFORM_FRIEND_STORE=postgres`, while local development can keep `PLATFORM_FRIEND_STORE=none`.
+
 ## Migration Plan
 
 1. Add Colyseus runtime and room contracts.

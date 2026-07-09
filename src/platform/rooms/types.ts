@@ -170,7 +170,6 @@ export interface LobbyJoinOptions {
   userId?: unknown;
   displayName?: unknown;
   role?: unknown;
-  friendUserIds?: unknown;
 }
 
 export interface MatchShellRoomOptions extends LobbyJoinOptions {

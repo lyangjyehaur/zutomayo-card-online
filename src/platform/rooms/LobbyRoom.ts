@@ -1,4 +1,6 @@
 import { Room, type AuthContext } from '@colyseus/core';
+import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
+import { platformLogger as logger } from '../logger';
 import { authenticatePlatformClient } from './auth';
 import type {
   LobbyJoinOptions,
@@ -8,13 +10,16 @@ import type {
   PlatformFriendPresenceEvent,
 } from './types';
 
-const MAX_FRIEND_IDS = 100;
-const USER_ID_PATTERN = /^[a-zA-Z0-9:_-]{3,128}$/;
-
 export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: PlatformClient }> {
+  static friendStore: PlatformFriendStore = createEmptyPlatformFriendStore();
+
   maxClients = 1_000;
   autoDispose = false;
   private readonly friendUserIdsBySession = new Map<string, Set<string>>();
+
+  static configureFriendStore(friendStore: PlatformFriendStore): void {
+    LobbyRoom.friendStore = friendStore;
+  }
 
   async onCreate(): Promise<void> {
     await this.setMatchmaking({
@@ -29,7 +34,7 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     return authenticatePlatformClient(options, context);
   }
 
-  async onJoin(client: PlatformClient, options: LobbyJoinOptions): Promise<void> {
+  async onJoin(client: PlatformClient): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
     client.userData = {
@@ -39,7 +44,7 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
       role: auth.role,
       joinedAt: Date.now(),
     };
-    this.friendUserIdsBySession.set(client.sessionId, friendUserIdsFromOptions(options, auth.userId));
+    this.friendUserIdsBySession.set(client.sessionId, await this.friendUserIdsFor(auth.userId));
     await this.refreshMetadata();
     client.send('lobbySnapshot', this.snapshot(client));
     this.broadcast('presence', this.presencePayload('join', client.userData));
@@ -128,17 +133,13 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
   private onlineSessionCount(userId: string, ignoredSessionId?: string): number {
     return this.onlineProfilesByUserId(userId, ignoredSessionId).length;
   }
-}
 
-export function friendUserIdsFromOptions(options: LobbyJoinOptions, selfUserId: string): Set<string> {
-  if (!Array.isArray(options.friendUserIds)) return new Set();
-  const friendUserIds = new Set<string>();
-  for (const value of options.friendUserIds) {
-    if (typeof value !== 'string') continue;
-    const userId = value.trim();
-    if (userId === selfUserId || !USER_ID_PATTERN.test(userId)) continue;
-    friendUserIds.add(userId);
-    if (friendUserIds.size >= MAX_FRIEND_IDS) break;
+  private async friendUserIdsFor(userId: string): Promise<Set<string>> {
+    try {
+      return new Set(await LobbyRoom.friendStore.listFriendUserIds(userId));
+    } catch (err) {
+      logger.warn({ err, userId }, 'failed to load lobby friend presence subscriptions');
+      return new Set();
+    }
   }
-  return friendUserIds;
 }

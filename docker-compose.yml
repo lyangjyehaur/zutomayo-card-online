@@ -163,13 +163,23 @@ services:
       - APP_VERSION=${APP_VERSION:-}
       - APP_BUILD_ID=${APP_BUILD_ID:-}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=${PG_USER:-zutomayo}
+      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - REDIS_URL=redis://redis:6379
       - REDIS_DB=${REDIS_DB:-0}
       - PLATFORM_REDIS_MODE=redis
+      - PLATFORM_FRIEND_STORE=postgres
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
+        condition: service_healthy
+      api:
         condition: service_healthy
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3002/health || exit 1']
