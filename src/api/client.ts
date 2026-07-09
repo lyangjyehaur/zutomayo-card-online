@@ -267,6 +267,36 @@ export class ApiError extends Error {
   }
 }
 
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|; )zutomayo_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+async function tryRefreshToken(): Promise<boolean> {
+  if (isRefreshing && refreshPromise) return refreshPromise;
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) return false;
+      markAccountSession();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
 async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem(LEGACY_TOKEN_KEY);
   const headers: Record<string, string> = {
@@ -274,8 +304,26 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  // CSRF: double-submit cookie pattern — attach X-CSRF-Token for state-changing methods
+  const method = (options.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const csrfToken = getCsrfToken();
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+  }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
+  const doFetch = async (): Promise<Response> =>
+    fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
+
+  let res = await doFetch();
+
+  // 401 攔截：嘗試 refresh token 後重試一次（refresh 路由自身不遞迴）
+  if (res.status === 401 && !path.startsWith('/auth/refresh') && !path.startsWith('/logout')) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      res = await doFetch();
+    }
+  }
+
   const text = await res.text();
   let data: Record<string, unknown> = {};
   if (text) {
@@ -286,6 +334,10 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
     }
   }
   if (!res.ok) {
+    // refresh 失敗後的 401 清除前端 session 狀態
+    if (res.status === 401) {
+      clearAccountSession();
+    }
     // 5xx 為伺服器錯誤，上報 Sentry 以利定位線上問題；4xx 為客戶端錯誤，不上報。
     if (res.status >= 500) {
       Sentry.captureException(new Error(`API ${res.status}: ${path}`), {

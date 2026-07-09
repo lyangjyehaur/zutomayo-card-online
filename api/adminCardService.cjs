@@ -2,6 +2,7 @@
 /* global module, require */
 
 const { CARD_SELECT, cardRowToDef, normalizeI18nLang } = require('./cardDataService.cjs');
+const { writeAuditLog } = require('./adminService.cjs');
 
 function cardDefToDbParams(card) {
   const attack =
@@ -78,7 +79,7 @@ function normalizeCardForUpsert(id, body, baseCard) {
   };
 }
 
-async function upsertCardI18n(pool, cardId, body) {
+async function upsertCardI18n(pool, cardId, body, adminUserId) {
   const lang = normalizeI18nLang(body?.lang);
   if (!lang) return { ok: false, status: 400, error: 'Unsupported language' };
   if (typeof body?.effectText !== 'string') return { ok: false, status: 400, error: 'effectText required' };
@@ -90,14 +91,17 @@ async function upsertCardI18n(pool, cardId, body) {
        effect_text = EXCLUDED.effect_text`,
     [cardId, lang, body.effectText],
   );
-  await pool.query(
-    'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-    ['upsert_card_i18n', 'card_effects_i18n', cardId, JSON.stringify({ lang, effectText: body.effectText })],
-  );
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'upsert_card_i18n',
+    targetType: 'card_effects_i18n',
+    targetId: cardId,
+    details: { lang, effectText: body.effectText },
+  });
   return { ok: true, body: { ok: true } };
 }
 
-async function upsertCard(pool, cardId, body) {
+async function upsertCard(pool, cardId, body, adminUserId) {
   const existing = (await pool.query(`${CARD_SELECT} FROM cards WHERE id = $1`, [cardId])).rows[0];
   const card = normalizeCardForUpsert(cardId, body, existing ? cardRowToDef(existing) : undefined);
   if (!card) return { ok: false, status: 400, error: 'Card requires name, pack, element, and type' };
@@ -130,14 +134,17 @@ async function upsertCard(pool, cardId, body) {
        updated_at = NOW()`,
     cardDefToDbParams(card),
   );
-  await pool.query(
-    'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-    ['upsert_card', 'card', cardId, JSON.stringify({ card })],
-  );
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'upsert_card',
+    targetType: 'card',
+    targetId: cardId,
+    details: { card },
+  });
   return { ok: true, body: card };
 }
 
-async function upsertGameConfig(pool, key, body) {
+async function upsertGameConfig(pool, key, body, adminUserId) {
   if (!body || typeof body !== 'object' || !Object.prototype.hasOwnProperty.call(body, 'value')) {
     return { ok: false, status: 400, error: 'Config value required' };
   }
@@ -151,10 +158,13 @@ async function upsertGameConfig(pool, key, body) {
        updated_at = NOW()`,
     [key, JSON.stringify(body.value), description],
   );
-  await pool.query(
-    'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-    ['upsert_config', 'game_config', key, JSON.stringify({ value: body.value, description })],
-  );
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'upsert_config',
+    targetType: 'game_config',
+    targetId: key,
+    details: { value: body.value, description },
+  });
   return { ok: true, body: { key, value: body.value, description } };
 }
 

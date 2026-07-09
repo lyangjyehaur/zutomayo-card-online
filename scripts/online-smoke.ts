@@ -142,7 +142,7 @@ async function waitForSyncedStateID(
 function stateSnapshot(state: NonNullable<ClientState>) {
   assert.equal(typeof state._stateID, 'number', 'client state should have _stateID');
   return createOnlineStateSnapshot({
-    stateID: state._stateID,
+    stateID: state._stateID!,
     G: state.G,
     ctx: state.ctx ?? {},
   });

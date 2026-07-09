@@ -4,6 +4,7 @@ Production deployment uses [docker-compose.yml](../docker-compose.yml) with four
 
 - `postgres`: PostgreSQL 16 (`postgres:16-alpine`) database. Shared data layer for both boardgame.io match state (`bjg_matches` table) and API data (users/decks/matches). Healthcheck: `pg_isready`.
 - `redis`: Redis 7 (`redis:7-alpine`, `appendonly yes`, `maxmemory-policy allkeys-lru`). Powers boardgame.io PubSub, Socket.IO redis-adapter, matchmaking queue, and rate-limit counters. Healthcheck: `redis-cli ping`.
+- `migrate`: One-shot schema migration service (uses the `builder` Docker stage). Runs `npm run db:migrate` via [node-pg-migrate](https://github.com/salsita/node-pg-migrate) before `api` starts. Exits `0` on success; `api` waits via `depends_on: service_completed_successfully`.
 - `game`: boardgame.io server, built React app, static card/admin assets, and `/api/*` proxy. Persists match state via `PostgresAdapter` and broadcasts cross-node via `RedisPubSub` + `@socket.io/redis-adapter`.
 - `api`: REST API service with PostgreSQL + Redis persistence. Uses `pg.Pool` for users/decks/matches and Redis for the matchmaking queue (sorted set + Lua atomic pairing) and rate limit (`INCR` + `EXPIRE`).
 
@@ -202,6 +203,58 @@ docker compose exec postgres pg_dump -U zutomayo -Fc zutomayo > backup.dump
 docker compose exec -T postgres pg_restore -U zutomayo -d zutomayo -c < backup.dump
 ```
 
+## Schema Migrations / 資料表遷移
+
+Schema changes are managed by [node-pg-migrate](https://github.com/salsita/node-pg-migrate). Migration files live in [`migrations/`](../migrations); the initial migration (`000001_init_schema.js`) mirrors the previous `initSchema()` `CREATE TABLE IF NOT EXISTS` statements using `pgm.createTable` / `pgm.createIndex` / `pgm.addColumn` with `ifNotExists: true`, so it is safe to run on databases that already had the old `initSchema()` applied.
+
+### Available scripts
+
+| Script                           | Purpose                                            |
+| -------------------------------- | -------------------------------------------------- |
+| `npm run db:migrate`             | Apply all pending migrations (up).                 |
+| `npm run db:migrate:down`        | Roll back the most recent migration (down).        |
+| `npm run db:migrate:make <name>` | Generate a new migration file under `migrations/`. |
+
+The wrapper [`scripts/db-migrate.cjs`](../scripts/db-migrate.cjs) bridges the project's `PG_*` environment variables to node-pg-migrate's `databaseUrl`. If `DATABASE_URL` is set it takes precedence; otherwise the wrapper assembles a `pg.ClientConfig` from `PG_HOST` / `PG_PORT` / `PG_USER` / `PG_PASSWORD` / `PG_DATABASE`.
+
+### Docker Compose
+
+The `migrate` service runs migrations before `api` starts:
+
+```yaml
+migrate:
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: builder
+  command: ['npm', 'run', 'db:migrate']
+  depends_on:
+    postgres:
+      condition: service_healthy
+  restart: 'no'
+
+api:
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+```
+
+If the `migrate` service exits non-zero, `api` will not start. Check `docker compose logs migrate` for details.
+
+### Fallback (production API image)
+
+The production API Docker image (`api/Dockerfile`) does not bundle `node-pg-migrate` (it is a `devDependency`) nor the `migrations/` directory. When `api/server.cjs` cannot `require('node-pg-migrate')` or cannot find `migrations/`, it falls back to the original `initSchema()` (`CREATE TABLE IF NOT EXISTS`), so the API still self-heals the schema in production. The `migrate` Compose service is the preferred path; the fallback is a safety net for images built without dev dependencies.
+
+### Creating a new migration
+
+```bash
+npm run db:migrate:make add_some_column
+# edit migrations/<timestamp>_add_some_column.js
+npm run db:migrate
+```
+
+Use `pgm.addColumn` / `pgm.createTable` / `pgm.alterTable` etc. For irreversible changes (e.g. dropping a column) export `down = false` or provide a `down` function.
+
 ## 水平擴展 / Horizontal Scaling
 
 The `game` and `api` services can be replicated (multiple instances) to scale horizontally. PostgreSQL serves as the shared data layer — both boardgame.io (via `PostgresAdapter`, writing the `bjg_matches` table) and the API (via `pg.Pool`, writing the users/decks/matches tables) use the same instance, isolated by table prefix (`bjg_` vs no prefix).
@@ -241,7 +294,7 @@ PG_PASSWORD=<strong-password>
 PG_DATABASE=zutomayo   # the dedicated database created above
 ```
 
-Schemas (`users`/`decks`/`matches`/`bjg_matches`) are created automatically on startup via `CREATE TABLE IF NOT EXISTS`.
+Schemas (`users`/`decks`/`matches`/`bjg_matches`) are applied automatically on startup via `node-pg-migrate` (see [Schema Migrations](#schema-migrations--資料表遷移)). The API falls back to `CREATE TABLE IF NOT EXISTS` when `node-pg-migrate` is unavailable.
 
 ### Redis — separate DB index
 

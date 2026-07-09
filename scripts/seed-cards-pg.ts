@@ -60,12 +60,14 @@ const SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS admin_audit_log (
     id BIGSERIAL PRIMARY KEY,
+    admin_user_id TEXT,
     action TEXT NOT NULL,
     target_type TEXT NOT NULL,
     target_id TEXT,
     details JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+  ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS admin_user_id TEXT;
 `;
 
 const DEFAULT_GAME_CONFIG: Array<{ key: string; value: unknown; description: string }> = [

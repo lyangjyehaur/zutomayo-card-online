@@ -110,8 +110,8 @@ describe('admin card service', () => {
     ]);
     expect(pool.query).toHaveBeenNthCalledWith(
       2,
-      'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
-      ['upsert_card_i18n', 'card_effects_i18n', 'c_1', JSON.stringify({ lang: 'zh-TW', effectText: '效果' })],
+      'INSERT INTO admin_audit_log (admin_user_id, action, target_type, target_id, details) VALUES ($1, $2, $3, $4, $5::jsonb)',
+      [null, 'upsert_card_i18n', 'card_effects_i18n', 'c_1', JSON.stringify({ lang: 'zh-TW', effectText: '效果' })],
     );
   });
 
@@ -151,7 +151,7 @@ describe('admin card service', () => {
     });
     expect(existingPool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO cards'), expect.any(Array));
     expect(existingPool.query).toHaveBeenCalledWith(
-      'INSERT INTO admin_audit_log (action, target_type, target_id, details) VALUES ($1, $2, $3, $4::jsonb)',
+      'INSERT INTO admin_audit_log (admin_user_id, action, target_type, target_id, details) VALUES ($1, $2, $3, $4, $5::jsonb)',
       expect.arrayContaining(['upsert_card', 'card', 'c_1']),
     );
   });

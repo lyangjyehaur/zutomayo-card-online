@@ -105,6 +105,21 @@ const configuredOrigins =
     .map((origin) => origin.trim())
     .filter(Boolean) ?? [];
 
+// /metrics 端點 bearer token 認證：未設定 METRICS_TOKEN 時 warn 但允許存取（開發模式）；
+// 已設定則檢查 Authorization: Bearer <token>，不符回 401。
+const METRICS_TOKEN = process.env.METRICS_TOKEN ?? '';
+let metricsTokenWarned = false;
+function checkMetricsAuth(authorization: string | undefined): boolean {
+  if (!METRICS_TOKEN) {
+    if (!metricsTokenWarned && process.env.NODE_ENV === 'production') {
+      logger.warn('METRICS_TOKEN not set - /metrics accessible without auth');
+      metricsTokenWarned = true;
+    }
+    return true;
+  }
+  return authorization === `Bearer ${METRICS_TOKEN}`;
+}
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
 const adminRoot = path.join(root, 'admin');
@@ -249,7 +264,29 @@ function safeStaticFile(baseDir: string, requestPath: string, routePrefix: strin
   return resolvedPath;
 }
 
-server.app.use(helmet({ contentSecurityPolicy: false }));
+server.app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        imgSrc: [
+          "'self'",
+          'https://r2.dan.tw',
+          'https://www.gravatar.com',
+          'https://cravatar.cn',
+          'https://q1.qlogo.cn',
+          'data:',
+          'blob:',
+        ],
+        connectSrc: ["'self'", 'wss:', 'https:'],
+        fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+        frameAncestors: ["'none'"],
+      },
+    },
+  }),
+);
 
 // Structured request logging + Prometheus metrics (before route handlers).
 server.app.use(requestLoggingMiddleware());
@@ -265,6 +302,11 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/metrics' && ctx.method === 'GET') {
+    if (!checkMetricsAuth(ctx.request.headers.authorization)) {
+      ctx.status = 401;
+      ctx.body = { error: 'Unauthorized' };
+      return;
+    }
     return metricsEndpoint()(ctx, next);
   }
   await next();

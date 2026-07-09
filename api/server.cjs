@@ -80,8 +80,12 @@ function readPackageVersion() {
 // ===== Config =====
 const PORT = Number(process.env.API_PORT) || 3001;
 const JWT_SECRET = process.env.JWT_SECRET;
+// B4：OAuth token 加密金鑰獨立於 JWT_SECRET，避免金鑰輪換時 OAuth token 失效。
+const OAUTH_TOKEN_ENCRYPTION_KEY = process.env.OAUTH_TOKEN_ENCRYPTION_KEY || '';
 // P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+// admin 系統使用共享密碼，無個別 admin 帳號；稽核日誌以 'admin' 標識操作者。
+const ADMIN_ACTOR_ID = 'admin';
 const PACKAGE_VERSION = readPackageVersion();
 const APP_VERSION = process.env.APP_VERSION || PACKAGE_VERSION;
 const APP_BUILD_ID = process.env.APP_BUILD_ID || APP_VERSION;
@@ -96,12 +100,42 @@ const APP_VERSION_INFO = Object.freeze({
   buildId: APP_BUILD_ID,
   rulesVersion: GAME_RULES_VERSION,
 });
+
+// /metrics 端點 bearer token 認證：未設定 METRICS_TOKEN 時 warn 但允許存取（開發模式）；
+// 已設定則檢查 Authorization: Bearer <token>，不符回 401。
+const METRICS_TOKEN = process.env.METRICS_TOKEN || '';
+let metricsTokenWarned = false;
+function checkMetricsAuth(req) {
+  if (!METRICS_TOKEN) {
+    if (!metricsTokenWarned && process.env.NODE_ENV === 'production') {
+      logger.warn('METRICS_TOKEN not set - /metrics accessible without auth');
+      metricsTokenWarned = true;
+    }
+    return true;
+  }
+  const auth = req.headers.authorization || '';
+  return auth === `Bearer ${METRICS_TOKEN}`;
+}
 const AUTH_COOKIE_NAME = 'zutomayo_session';
-const AUTH_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+const ACCESS_TOKEN_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 3600;
+const REFRESH_TOKEN_TTL_SECONDS = Number(process.env.REFRESH_TOKEN_TTL_SECONDS) || 7 * 24 * 60 * 60;
+const AUTH_COOKIE_MAX_AGE_SECONDS = ACCESS_TOKEN_TTL_SECONDS;
 const AUTH_COOKIE_DOMAIN = process.env.AUTH_COOKIE_DOMAIN || '';
 const AUTH_COOKIE_SAMESITE = ['Strict', 'Lax', 'None'].includes(process.env.AUTH_COOKIE_SAMESITE)
   ? process.env.AUTH_COOKIE_SAMESITE
   : 'Lax';
+const REFRESH_COOKIE_NAME = 'zutomayo_refresh';
+const REFRESH_COOKIE_PATH = '/api';
+const CSRF_COOKIE_NAME = 'zutomayo_csrf';
+const CSRF_EXEMPT_PATHS = new Set([
+  '/api/login',
+  '/api/register',
+  '/api/admin/login',
+  '/api/oauth/session',
+  '/api/presence/heartbeat',
+  '/api/auth/refresh',
+  '/api/logout',
+]);
 const AUTH_MODE = process.env.AUTH_MODE || (process.env.LOGTO_ONLY_AUTH === 'true' ? 'logto' : 'hybrid');
 const LOCAL_AUTH_ENABLED = AUTH_MODE !== 'logto';
 const ACCOUNT_LINKING_ENABLED = AUTH_MODE !== 'logto';
@@ -170,6 +204,9 @@ function validateSecurityConfig() {
     logger.warn('ADMIN_PASSWORD not set - admin login will be disabled');
   } else if (ADMIN_PASSWORD.length < 8) {
     logger.warn('ADMIN_PASSWORD should be at least 8 characters');
+  }
+  if (OAUTH_TOKEN_ENCRYPTION_KEY && OAUTH_TOKEN_ENCRYPTION_KEY.length < 32) {
+    logger.warn('OAUTH_TOKEN_ENCRYPTION_KEY should be at least 32 characters; falling back to JWT_SECRET-derived key');
   }
 }
 
@@ -318,12 +355,15 @@ async function initSchema() {
 
     `CREATE TABLE IF NOT EXISTS admin_audit_log (
       id BIGSERIAL PRIMARY KEY,
+      admin_user_id TEXT,
       action TEXT NOT NULL,
       target_type TEXT NOT NULL,
       target_id TEXT,
       details JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    // 既有資料庫補欄位（CREATE TABLE IF NOT EXISTS 不會對已存在資料表新增欄位）
+    `ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS admin_user_id TEXT`,
 
     // ===== 反饋功能 schema（參考 Fider）=====
     `CREATE TABLE IF NOT EXISTS feedback_posts (
@@ -425,9 +465,50 @@ async function initSchema() {
   }
 }
 
+// 使用 node-pg-migrate 執行 schema migration（dev/CI 環境）。
+// node-pg-migrate 為 devDependency，production runtime 可能未安裝；
+// 此時 fallback 到 initSchema()（CREATE TABLE IF NOT EXISTS）確保 schema 存在。
+async function runMigrations() {
+  let runner;
+  try {
+    ({ runner } = require('node-pg-migrate'));
+  } catch {
+    // node-pg-migrate 未安裝（production image），使用 initSchema() fallback。
+    return initSchema();
+  }
+
+  const { resolve } = require('node:path');
+  const { existsSync } = require('node:fs');
+  const migrationsDir = resolve(__dirname, '..', 'migrations');
+  if (!existsSync(migrationsDir)) {
+    // migrations 目錄不存在（api Docker image 未包含），使用 initSchema() fallback。
+    return initSchema();
+  }
+
+  // node-pg-migrate runner 接受 connection string 或 pg ClientConfig。
+  // 專案用 PG_* 分開的環境變數，直接組成 ClientConfig。
+  const databaseUrl = process.env.DATABASE_URL || {
+    host: PG_HOST,
+    port: PG_PORT,
+    user: PG_USER,
+    password: PG_PASSWORD,
+    database: PG_DATABASE,
+  };
+
+  await runner({
+    databaseUrl,
+    dir: migrationsDir,
+    direction: 'up',
+    migrationsTable: 'schema_migrations',
+    schema: 'public',
+    count: Infinity,
+    log: (msg) => logger.info({ msg }, 'migration'),
+  });
+}
+
 // 啟動時嘗試初始化 schema，連不上 PG 也允許載入（語法檢查用）。
 // 匯出 schemaReady 供測試 await，避免載入後立即發 request 造成 race condition。
-const schemaReady = initSchema().catch((err) => {
+const schemaReady = runMigrations().catch((err) => {
   logger.error({ err }, 'schema init failed');
 });
 
@@ -452,6 +533,15 @@ function signTokenInput(input) {
 }
 
 function secretEncryptionKey() {
+  // B4：優先使用獨立的 OAUTH_TOKEN_ENCRYPTION_KEY（>=32 字元）
+  if (OAUTH_TOKEN_ENCRYPTION_KEY.length >= 32) {
+    return crypto.createHash('sha256').update(`oauth-encryption:${OAUTH_TOKEN_ENCRYPTION_KEY}`).digest();
+  }
+  // Fallback：從 JWT_SECRET 衍生（向後相容）
+  return crypto.createHash('sha256').update(`zutomayo-secret:${JWT_SECRET}`).digest();
+}
+
+function legacySecretEncryptionKey() {
   return crypto.createHash('sha256').update(`zutomayo-secret:${JWT_SECRET}`).digest();
 }
 
@@ -465,12 +555,24 @@ function encryptSecret(value) {
 }
 
 function decryptSecret(value) {
-  try {
-    const [ivPart, tagPart, encryptedPart] = String(value || '').split('.');
-    if (!ivPart || !tagPart || !encryptedPart) return '';
-    const decipher = crypto.createDecipheriv('aes-256-gcm', secretEncryptionKey(), Buffer.from(ivPart, 'base64url'));
+  const raw = String(value || '');
+  const parts = raw.split('.');
+  if (parts.length !== 3) return '';
+  const [ivPart, tagPart, encryptedPart] = parts;
+  if (!ivPart || !tagPart || !encryptedPart) return '';
+  const decryptWithKey = (key) => {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivPart, 'base64url'));
     decipher.setAuthTag(Buffer.from(tagPart, 'base64url'));
     return Buffer.concat([decipher.update(Buffer.from(encryptedPart, 'base64url')), decipher.final()]).toString('utf8');
+  };
+  // 先用當前金鑰嘗試
+  try {
+    return decryptWithKey(secretEncryptionKey());
+  } catch {
+    // 當前金鑰失敗，fallback 嘗試舊金鑰（JWT_SECRET 衍生）
+  }
+  try {
+    return decryptWithKey(legacySecretEncryptionKey());
   } catch {
     return '';
   }
@@ -483,10 +585,92 @@ function createToken(userId) {
     sub: userId,
     userId,
     iat: now,
-    exp: now + 7 * 24 * 60 * 60,
+    exp: now + ACCESS_TOKEN_TTL_SECONDS,
+    jti: crypto.randomBytes(12).toString('hex'),
   });
   const input = `${header}.${payload}`;
   return `${input}.${signTokenInput(input)}`;
+}
+
+function createRefreshToken(userId) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({
+    sub: userId,
+    userId,
+    typ: 'refresh',
+    iat: now,
+    exp: now + REFRESH_TOKEN_TTL_SECONDS,
+    jti: crypto.randomBytes(12).toString('hex'),
+  });
+  const input = `${header}.${payload}`;
+  return `${input}.${signTokenInput(input)}`;
+}
+
+function decodeJWTPayload(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length !== 3) return null;
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+  } catch {
+    return null;
+  }
+}
+
+async function issueRefreshToken(userId) {
+  const refreshToken = createRefreshToken(userId);
+  const payload = decodeJWTPayload(refreshToken);
+  if (payload && payload.jti) {
+    const ttl = Number(payload.exp) - Math.floor(Date.now() / 1000);
+    if (ttl > 0) {
+      try {
+        await redis.set(`refresh:${payload.jti}`, String(userId), 'EX', ttl);
+      } catch {
+        // Redis 寫入失敗不阻塞發 token（refresh 驗證時會再檢查）
+      }
+    }
+  }
+  return refreshToken;
+}
+
+async function createTokenPair(userId) {
+  const accessToken = createToken(userId);
+  const refreshToken = await issueRefreshToken(userId);
+  return { accessToken, refreshToken };
+}
+
+async function isTokenBlacklisted(jti) {
+  if (!jti) return false;
+  try {
+    const flagged = await redis.get(`blacklist:${jti}`);
+    return flagged === '1';
+  } catch {
+    return false;
+  }
+}
+
+async function blacklistToken(token) {
+  const payload = decodeJWTPayload(token);
+  if (!payload || !payload.jti) return;
+  const now = Math.floor(Date.now() / 1000);
+  const ttl = Number(payload.exp) - now;
+  if (ttl > 0) {
+    try {
+      await redis.set(`blacklist:${payload.jti}`, '1', 'EX', ttl);
+    } catch {
+      // 黑名單寫入失敗不阻塞登出
+    }
+  }
+}
+
+async function revokeRefreshToken(token) {
+  const payload = decodeJWTPayload(token);
+  if (!payload || !payload.jti) return;
+  try {
+    await redis.del(`refresh:${payload.jti}`);
+  } catch {
+    // 撤銷失敗不阻塞登出
+  }
 }
 
 function decodeCookieValue(value) {
@@ -522,6 +706,15 @@ function isSecureRequest(req) {
   );
 }
 
+function appendSetCookie(res, cookie) {
+  const existing = res.getHeader('Set-Cookie');
+  if (existing) {
+    res.setHeader('Set-Cookie', Array.isArray(existing) ? [...existing, cookie] : [existing, cookie]);
+  } else {
+    res.setHeader('Set-Cookie', cookie);
+  }
+}
+
 function serializeAuthCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
   const parts = [
     `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
@@ -535,15 +728,95 @@ function serializeAuthCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
   return parts.join('; ');
 }
 
+function serializeRefreshCookie(req, token, maxAge = REFRESH_TOKEN_TTL_SECONDS) {
+  const parts = [
+    `${REFRESH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    `Path=${REFRESH_COOKIE_PATH}`,
+    `Max-Age=${maxAge}`,
+    'HttpOnly',
+    `SameSite=${AUTH_COOKIE_SAMESITE}`,
+  ];
+  if (AUTH_COOKIE_DOMAIN) parts.push(`Domain=${AUTH_COOKIE_DOMAIN}`);
+  if (AUTH_COOKIE_SAMESITE === 'None' || isSecureRequest(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+
 function setAuthCookie(req, res, token) {
-  res.setHeader('Set-Cookie', serializeAuthCookie(req, token));
+  appendSetCookie(res, serializeAuthCookie(req, token));
+}
+
+function setRefreshCookie(req, res, token) {
+  appendSetCookie(res, serializeRefreshCookie(req, token));
 }
 
 function clearAuthCookie(req, res) {
-  res.setHeader('Set-Cookie', serializeAuthCookie(req, '', 0));
+  appendSetCookie(res, serializeAuthCookie(req, '', 0));
 }
 
-function verifyToken(token) {
+function clearRefreshCookie(req, res) {
+  appendSetCookie(res, serializeRefreshCookie(req, '', 0));
+}
+
+function generateCsrfToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function serializeCsrfCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
+  const parts = [
+    `${CSRF_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/',
+    `Max-Age=${maxAge}`,
+    `SameSite=${AUTH_COOKIE_SAMESITE}`,
+  ];
+  if (AUTH_COOKIE_DOMAIN) parts.push(`Domain=${AUTH_COOKIE_DOMAIN}`);
+  if (AUTH_COOKIE_SAMESITE === 'None' || isSecureRequest(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+
+function setCsrfCookie(req, res, token) {
+  appendSetCookie(res, serializeCsrfCookie(req, token));
+}
+
+function clearCsrfCookie(req, res) {
+  appendSetCookie(res, serializeCsrfCookie(req, '', 0));
+}
+
+function isCsrfValid(req) {
+  const cookieToken = parseCookies(req)[CSRF_COOKIE_NAME];
+  const headerToken = req.headers['x-csrf-token'];
+  if (!cookieToken || !headerToken) return false;
+  const a = Buffer.from(String(cookieToken));
+  const b = Buffer.from(String(headerToken));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function verifyTokenSync(token) {
+  try {
+    if (typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [header, payloadPart, signature] = parts;
+    const input = `${header}.${payloadPart}`;
+    const expected = signTokenInput(input);
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+      return null;
+    }
+    const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
+    if (parsedHeader.alg !== 'HS256' || parsedHeader.typ !== 'JWT') return null;
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    // 拒絕 refresh token 用於一般認證
+    if (payload.typ === 'refresh') return null;
+    const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
+    return typeof userId === 'string' ? userId : null;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyToken(token) {
   try {
     if (typeof token !== 'string') return null;
     const parts = token.split('.');
@@ -562,6 +835,10 @@ function verifyToken(token) {
 
     const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
     if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    // 拒絕 refresh token 用於一般認證
+    if (payload.typ === 'refresh') return null;
+    // 向後相容：舊 JWT 無 jti，略過黑名單檢查
+    if (payload.jti && (await isTokenBlacklisted(payload.jti))) return null;
     const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
     return typeof userId === 'string' ? userId : null;
   } catch {
@@ -569,13 +846,54 @@ function verifyToken(token) {
   }
 }
 
-function getAuthUserId(req) {
+async function verifyRefreshToken(token) {
+  try {
+    if (typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [header, payloadPart, signature] = parts;
+    const input = `${header}.${payloadPart}`;
+    const expected = signTokenInput(input);
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+      return null;
+    }
+    const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
+    if (parsedHeader.alg !== 'HS256' || parsedHeader.typ !== 'JWT') return null;
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
+    if (payload.typ !== 'refresh') return null;
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    if (!payload.jti) return null;
+    const registered = await redis.get(`refresh:${payload.jti}`);
+    if (!registered) return null;
+    const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
+    return typeof userId === 'string' ? userId : null;
+  } catch {
+    return null;
+  }
+}
+
+function getAuthUserIdSync(req) {
   const auth = req.headers.authorization;
   if (auth) {
-    const userId = verifyToken(auth.replace('Bearer ', ''));
+    const userId = verifyTokenSync(auth.replace('Bearer ', ''));
     if (userId) return userId;
   }
-  return verifyToken(parseCookies(req)[AUTH_COOKIE_NAME]);
+  return verifyTokenSync(parseCookies(req)[AUTH_COOKIE_NAME]);
+}
+
+async function getAuthUserId(req) {
+  const auth = req.headers.authorization;
+  if (auth) {
+    const userId = await verifyToken(auth.replace('Bearer ', ''));
+    if (userId) return userId;
+  }
+  const cookieToken = parseCookies(req)[AUTH_COOKIE_NAME];
+  if (cookieToken) {
+    return verifyToken(cookieToken);
+  }
+  return null;
 }
 
 function getClientCountry(req) {
@@ -1224,15 +1542,50 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_AUTH = 10;
 const RATE_LIMIT_IMGPROXY = Number(process.env.RATE_LIMIT_IMGPROXY) || 600;
 const RATE_LIMIT_DEFAULT = 120;
+const RATE_LIMIT_UPLOAD = 10;
 
-async function checkRateLimit(ip, limit) {
+async function checkRateLimit(ip, limit, keyPrefix = 'ratelimit') {
   const minuteWindow = Math.floor(Date.now() / RATE_LIMIT_WINDOW_MS);
-  const key = `ratelimit:${ip}:${minuteWindow}`;
+  const key = `${keyPrefix}:${ip}:${minuteWindow}`;
   const count = await redis.incr(key);
   if (count === 1) {
     await redis.expire(key, 120);
   }
   return count <= limit;
+}
+
+// 驗證上傳圖片的 magic bytes，防止偽造副檔名上傳惡意檔案。
+function validateImageMagicBytes(buffer) {
+  if (!buffer || buffer.length < 12) return false;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  )
+    return true;
+  // JPG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true;
+  // GIF: 47 49 46 38
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return true;
+  // WEBP: RIFF .... WEBP
+  if (
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  )
+    return true;
+  return false;
 }
 
 const IMGPROXY_RESPONSE_HEADERS = new Set([
@@ -1439,6 +1792,9 @@ function handleRequest(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
   if (method === 'OPTIONS') {
     res.writeHead(200);
     res.end();
@@ -1498,7 +1854,7 @@ function handleRequest(req, res) {
           scope.setTag('route', pathname);
           scope.setTag('method', method);
           scope.setContext('client', { ip: clientIp });
-          const authUserId = getAuthUserId(req);
+          const authUserId = getAuthUserIdSync(req);
           if (authUserId) scope.setUser({ id: authUserId });
           Sentry.captureException(err);
         });
@@ -1518,6 +1874,15 @@ function handleRequest(req, res) {
       res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
       res.end(JSON.stringify({ error: 'Too many requests. Please try again later.' }));
       return;
+    }
+
+    // CSRF protection (double-submit cookie pattern)
+    if ((method === 'POST' || method === 'PUT' || method === 'DELETE') && !CSRF_EXEMPT_PATHS.has(pathname)) {
+      if (!isCsrfValid(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'CSRF token validation failed' }));
+        return;
+      }
     }
 
     if (isImgproxyEndpoint && (method === 'GET' || method === 'HEAD')) {
@@ -1547,6 +1912,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/metrics' && method === 'GET') {
+      if (!checkMetricsAuth(req)) return json({ error: 'Unauthorized' }, 401);
       return metricsResponse(res);
     }
 
@@ -1597,7 +1963,10 @@ function handleRequest(req, res) {
       const body = await readBody(32 * 1024);
       const userId = verifyOAuthSessionTicket(body.ticket);
       if (!userId) return json({ error: 'Invalid OAuth session ticket' }, 401);
-      setAuthCookie(req, res, createToken(userId));
+      const { accessToken, refreshToken } = await createTokenPair(userId);
+      setAuthCookie(req, res, accessToken);
+      setRefreshCookie(req, res, refreshToken);
+      setCsrfCookie(req, res, generateCsrfToken());
       json({ ok: true });
       return;
     }
@@ -1613,7 +1982,7 @@ function handleRequest(req, res) {
       const mode = url.searchParams.get('mode') === 'link' ? 'link' : 'login';
       if (mode === 'link' && !ACCOUNT_LINKING_ENABLED)
         return json({ error: 'Account linking is managed by Logto' }, 403);
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (mode === 'link' && !userId) return json({ error: 'Unauthorized' }, 401);
       const returnTo = url.searchParams.get('returnTo') || (mode === 'link' ? '/profile' : '/');
       const now = Math.floor(Date.now() / 1000);
@@ -1715,6 +2084,14 @@ function handleRequest(req, res) {
 
     // ===== Auth Routes =====
 
+    // CSRF token endpoint: generates a new CSRF token and sets it as a cookie.
+    if (pathname === '/api/csrf-token' && method === 'GET') {
+      const token = generateCsrfToken();
+      setCsrfCookie(req, res, token);
+      json({ token });
+      return;
+    }
+
     // Register
     if (pathname === '/api/register' && method === 'POST') {
       if (!LOCAL_AUTH_ENABLED) return json({ error: 'Local auth is disabled' }, 403);
@@ -1734,6 +2111,8 @@ function handleRequest(req, res) {
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       setAuthCookie(req, res, result.body.token);
+      setRefreshCookie(req, res, await issueRefreshToken(result.body.user.id));
+      setCsrfCookie(req, res, generateCsrfToken());
       json(result.body);
       return;
     }
@@ -1756,19 +2135,46 @@ function handleRequest(req, res) {
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       setAuthCookie(req, res, result.body.token);
+      setRefreshCookie(req, res, await issueRefreshToken(result.body.user.id));
+      setCsrfCookie(req, res, generateCsrfToken());
       json(result.body);
       return;
     }
 
+    if (pathname === '/api/auth/refresh' && method === 'POST') {
+      const refreshToken = parseCookies(req)[REFRESH_COOKIE_NAME];
+      if (!refreshToken) return json({ error: 'Refresh token required' }, 401);
+      const userId = await verifyRefreshToken(refreshToken);
+      if (!userId) {
+        clearRefreshCookie(req, res);
+        clearCsrfCookie(req, res);
+        return json({ error: 'Invalid or expired refresh token' }, 401);
+      }
+      // Rotate：撤銷舊 refresh token，發新 token pair
+      await revokeRefreshToken(refreshToken);
+      const { accessToken, refreshToken: newRefreshToken } = await createTokenPair(userId);
+      setAuthCookie(req, res, accessToken);
+      setRefreshCookie(req, res, newRefreshToken);
+      setCsrfCookie(req, res, generateCsrfToken());
+      json({ token: accessToken });
+      return;
+    }
+
     if (pathname === '/api/logout' && method === 'POST') {
+      const cookieToken = parseCookies(req)[AUTH_COOKIE_NAME];
+      if (cookieToken) await blacklistToken(cookieToken);
+      const refreshToken = parseCookies(req)[REFRESH_COOKIE_NAME];
+      if (refreshToken) await revokeRefreshToken(refreshToken);
       clearAuthCookie(req, res);
+      clearRefreshCookie(req, res);
+      clearCsrfCookie(req, res);
       json({ ok: true });
       return;
     }
 
     // Get profile
     if (pathname === '/api/profile' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await getAccountProfile(pool, userId, {
         country: getClientCountry(req),
@@ -1780,7 +2186,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/profile/identities' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await listAccountIdentities(pool, userId);
       if (!result.ok) return json({ error: result.error }, result.status);
@@ -1789,7 +2195,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/account-center' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const account = await logtoAccountRequest({ userId, path: '/api/my-account' });
       if (!account.ok) return json({ error: account.error, details: account.body }, account.status);
@@ -1817,7 +2223,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/account-center/verifications/password' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const body = await readBody(32 * 1024);
       const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
@@ -1834,7 +2240,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/account-center/password' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const body = await readBody(32 * 1024);
       const verificationRecordId = typeof body.verificationRecordId === 'string' ? body.verificationRecordId : '';
@@ -1855,7 +2261,7 @@ function handleRequest(req, res) {
     const profileIdentityRoute = pathname.match(/^\/api\/profile\/identities\/([^/]+)$/);
     if (profileIdentityRoute && method === 'DELETE') {
       if (!ACCOUNT_LINKING_ENABLED) return json({ error: 'Account linking is managed by Logto' }, 403);
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const provider = decodeURIComponent(profileIdentityRoute[1]);
       const result = await unlinkOAuthIdentity({ pool, userId, provider });
@@ -1868,7 +2274,7 @@ function handleRequest(req, res) {
 
     // List user's decks
     if (pathname === '/api/decks' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       json(await listUserDecks(pool, userId));
       return;
@@ -1876,7 +2282,7 @@ function handleRequest(req, res) {
 
     // Create deck
     if (pathname === '/api/decks' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.deckCreateSchema, __body);
@@ -1889,10 +2295,13 @@ function handleRequest(req, res) {
 
     // Update deck
     if (pathname.match(/^\/api\/decks\/d_/) && method === 'PUT') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const deckId = pathname.split('/').pop();
-      const result = await updateUserDeck(pool, userId, deckId, await readBody());
+      const __body = await readBody();
+      const __parsed = validateBody(S.deckCreateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await updateUserDeck(pool, userId, deckId, __parsed.data);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -1900,7 +2309,7 @@ function handleRequest(req, res) {
 
     // Delete deck
     if (pathname.match(/^\/api\/decks\/d_/) && method === 'DELETE') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const deckId = pathname.split('/').pop();
       const result = await deleteUserDeck(pool, userId, deckId);
@@ -1914,6 +2323,8 @@ function handleRequest(req, res) {
     // Get match action log
     const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
     if (matchLogRoute && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
       const matchId = matchLogRoute[1];
       const result = await getMatchActionLog(pool, matchId, sanitizeActionLog);
       if (!result.ok) return json({ error: result.error }, result.status);
@@ -1924,7 +2335,7 @@ function handleRequest(req, res) {
     // Submit match result
     if (pathname === '/api/matches' && method === 'POST') {
       // P0-2：強制 JWT 認證，只有贏家可以提交自己的勝利。
-      const authUserId = getAuthUserId(req);
+      const authUserId = await getAuthUserId(req);
       if (!authUserId) return json({ error: 'Unauthorized' }, 401);
 
       const __rawBody = await readBody();
@@ -1967,7 +2378,7 @@ function handleRequest(req, res) {
 
     // P2-10：使用者對戰歷史（跨裝置同步）。
     if (pathname === '/api/matches' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       json(await getUserMatches(pool, userId, url.searchParams.get('limit'), url.searchParams.get('offset')));
       return;
@@ -1975,7 +2386,7 @@ function handleRequest(req, res) {
 
     // PUT /api/profile — 修改暱稱（P2 補齊）。
     if (pathname === '/api/profile' && method === 'PUT') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.profileUpdateSchema, __body);
@@ -1996,7 +2407,7 @@ function handleRequest(req, res) {
     // PUT /api/profile/password — 修改密碼。
     if (pathname === '/api/profile/password' && method === 'PUT') {
       if (!LOCAL_AUTH_ENABLED) return json({ error: 'Password is managed by Logto' }, 403);
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.passwordChangeSchema, __body);
@@ -2049,7 +2460,7 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.adminEloSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      json(await resetUserElo(pool, targetUserId, __parsed.data.elo));
+      json(await resetUserElo(pool, targetUserId, __parsed.data.elo, ADMIN_ACTOR_ID));
       return;
     }
 
@@ -2110,7 +2521,7 @@ function handleRequest(req, res) {
     if (adminCardI18nRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const cardId = decodeURIComponent(adminCardI18nRoute[1]);
-      const result = await upsertCardI18n(pool, cardId, await readBody());
+      const result = await upsertCardI18n(pool, cardId, await readBody(), ADMIN_ACTOR_ID);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -2120,7 +2531,7 @@ function handleRequest(req, res) {
     if (adminCardRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const cardId = decodeURIComponent(adminCardRoute[1]);
-      const result = await upsertCard(pool, cardId, await readBody());
+      const result = await upsertCard(pool, cardId, await readBody(), ADMIN_ACTOR_ID);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -2130,7 +2541,7 @@ function handleRequest(req, res) {
     if (adminConfigRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const key = decodeURIComponent(adminConfigRoute[1]);
-      const result = await upsertGameConfig(pool, key, await readBody());
+      const result = await upsertGameConfig(pool, key, await readBody(), ADMIN_ACTOR_ID);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -2140,7 +2551,7 @@ function handleRequest(req, res) {
 
     // POST /api/matchmaking/queue — 加入配對佇列
     if (pathname === '/api/matchmaking/queue' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.mmQueueSchema, __body);
@@ -2162,7 +2573,7 @@ function handleRequest(req, res) {
 
     // GET /api/matchmaking/status — 查詢配對狀態
     if (pathname === '/api/matchmaking/status' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       json(await getMatchmakingStatus(redis, userId, Date.now(), MATCHMAKING_TIMEOUT_MS));
       return;
@@ -2170,7 +2581,7 @@ function handleRequest(req, res) {
 
     // DELETE /api/matchmaking/queue — 離開佇列
     if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       json(await leaveMatchmakingQueue(redis, userId));
       return;
@@ -2178,7 +2589,7 @@ function handleRequest(req, res) {
 
     // PUT /api/matchmaking/match — host 回報真實 boardgame.io matchID
     if (pathname === '/api/matchmaking/match' && method === 'PUT') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.mmMatchSchema, __body);
@@ -2191,8 +2602,8 @@ function handleRequest(req, res) {
 
     // ===== Feedback Routes（反饋功能，參考 Fider）=====
     // 投票者身份：登入用戶優先，否則用匿名 ID（前端 localStorage 產生）。
-    function extractFeedbackVoter(req, body) {
-      const userId = getAuthUserId(req);
+    async function extractFeedbackVoter(req, body) {
+      const userId = await getAuthUserId(req);
       if (userId) return { userId };
       const raw = body && body.anonymousId !== undefined ? body.anonymousId : url.searchParams.get('anonymousId');
       if (typeof raw === 'string' && /^[a-zA-Z0-9_-]{8,64}$/.test(raw)) return { anonymousId: raw };
@@ -2202,7 +2613,7 @@ function handleRequest(req, res) {
 
     // GET /api/feedback/posts — 列出反饋
     if (pathname === '/api/feedback/posts' && method === 'GET') {
-      const voter = extractFeedbackVoter(req, {});
+      const voter = await extractFeedbackVoter(req, {});
       serviceJson(
         await listFeedbackPosts({
           pool,
@@ -2228,7 +2639,7 @@ function handleRequest(req, res) {
     const feedbackPostRoute = pathname.match(/^\/api\/feedback\/posts\/([^/]+)$/);
     if (feedbackPostRoute && method === 'GET') {
       const postId = decodeURIComponent(feedbackPostRoute[1]);
-      const voter = extractFeedbackVoter(req, {});
+      const voter = await extractFeedbackVoter(req, {});
       serviceJson(await getFeedbackPost({ pool, voter, postId }));
       return;
     }
@@ -2238,7 +2649,7 @@ function handleRequest(req, res) {
       const body = await readBody();
       const __parsed = validateBody(S.feedbackPostCreateSchema, body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const voter = extractFeedbackVoter(req, __parsed.data);
+      const voter = await extractFeedbackVoter(req, __parsed.data);
       serviceJson(
         await createFeedbackPost({
           pool,
@@ -2256,7 +2667,7 @@ function handleRequest(req, res) {
     if (feedbackVoteRoute && method === 'POST') {
       const postId = decodeURIComponent(feedbackVoteRoute[1]);
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
+      const voter = await extractFeedbackVoter(req, body);
       serviceJson(await toggleFeedbackVote({ pool, voter, postId }));
       return;
     }
@@ -2268,7 +2679,7 @@ function handleRequest(req, res) {
       const body = await readBody();
       const __parsed = validateBody(S.feedbackCommentCreateSchema, body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const voter = extractFeedbackVoter(req, __parsed.data);
+      const voter = await extractFeedbackVoter(req, __parsed.data);
       serviceJson(
         await addFeedbackComment({
           pool,
@@ -2296,7 +2707,7 @@ function handleRequest(req, res) {
     if (commentVoteRoute && method === 'POST') {
       const commentId = decodeURIComponent(commentVoteRoute[1]);
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
+      const voter = await extractFeedbackVoter(req, body);
       serviceJson(await toggleFeedbackCommentVote({ pool, voter, commentId }));
       return;
     }
@@ -2308,7 +2719,7 @@ function handleRequest(req, res) {
       const body = await readBody();
       const __parsed = validateBody(S.feedbackPostEditSchema, body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const voter = extractFeedbackVoter(req, __parsed.data);
+      const voter = await extractFeedbackVoter(req, __parsed.data);
       serviceJson(await editFeedbackPost({ pool, voter, postId, body: __parsed.data, sanitizeText }));
       return;
     }
@@ -2320,7 +2731,7 @@ function handleRequest(req, res) {
       const body = await readBody();
       const __parsed = validateBody(S.feedbackCommentEditSchema, body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const voter = extractFeedbackVoter(req, __parsed.data);
+      const voter = await extractFeedbackVoter(req, __parsed.data);
       serviceJson(await editFeedbackComment({ pool, voter, commentId, body: __parsed.data, sanitizeText }));
       return;
     }
@@ -2329,7 +2740,7 @@ function handleRequest(req, res) {
     if (commentEditRoute && method === 'DELETE') {
       const commentId = decodeURIComponent(commentEditRoute[1]);
       const isAdmin = verifyAdminToken(req);
-      const voter = extractFeedbackVoter(req, {});
+      const voter = await extractFeedbackVoter(req, {});
       serviceJson(await deleteFeedbackComment({ pool, voter, commentId, isAdmin }));
       return;
     }
@@ -2349,7 +2760,9 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.feedbackStatusSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      serviceJson(await updateFeedbackPostStatus({ pool, postId, status: __parsed.data.status }));
+      serviceJson(
+        await updateFeedbackPostStatus({ pool, postId, status: __parsed.data.status, adminUserId: ADMIN_ACTOR_ID }),
+      );
       return;
     }
 
@@ -2361,7 +2774,15 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.feedbackTagSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      serviceJson(await updateFeedbackPostTag({ pool, postId, tag: __parsed.data.tag, sanitizeText }));
+      serviceJson(
+        await updateFeedbackPostTag({
+          pool,
+          postId,
+          tag: __parsed.data.tag,
+          sanitizeText,
+          adminUserId: ADMIN_ACTOR_ID,
+        }),
+      );
       return;
     }
 
@@ -2370,7 +2791,7 @@ function handleRequest(req, res) {
     if (feedbackDeleteRoute && method === 'DELETE') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackDeleteRoute[1]);
-      serviceJson(await deleteFeedbackPost({ pool, postId }));
+      serviceJson(await deleteFeedbackPost({ pool, postId, adminUserId: ADMIN_ACTOR_ID }));
       return;
     }
 
@@ -2384,6 +2805,7 @@ function handleRequest(req, res) {
           body,
           sanitizeText,
           generateId: () => generateFeedbackId('ft_'),
+          adminUserId: ADMIN_ACTOR_ID,
         }),
       );
       return;
@@ -2394,7 +2816,7 @@ function handleRequest(req, res) {
     if (feedbackTagDeleteRoute && method === 'DELETE') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const tagId = decodeURIComponent(feedbackTagDeleteRoute[1]);
-      serviceJson(await deleteFeedbackTag({ pool, tagId }));
+      serviceJson(await deleteFeedbackTag({ pool, tagId, adminUserId: ADMIN_ACTOR_ID }));
       return;
     }
 
@@ -2412,7 +2834,7 @@ function handleRequest(req, res) {
       const commentId = decodeURIComponent(commentReactionRoute[1]);
       const emoji = decodeURIComponent(commentReactionRoute[2]);
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
+      const voter = await extractFeedbackVoter(req, body);
       serviceJson(await toggleFeedbackCommentReaction({ pool, voter, commentId, emoji }));
       return;
     }
@@ -2423,14 +2845,27 @@ function handleRequest(req, res) {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackDuplicateRoute[1]);
       const body = await readBody();
-      serviceJson(await markFeedbackAsDuplicate({ pool, postId, originalPostId: body.originalPostId }));
+      serviceJson(
+        await markFeedbackAsDuplicate({
+          pool,
+          postId,
+          originalPostId: body.originalPostId,
+          adminUserId: ADMIN_ACTOR_ID,
+        }),
+      );
       return;
     }
 
     // POST /api/feedback/uploads — 圖片上傳（base64，限制 3MB body）
     if (pathname === '/api/feedback/uploads' && method === 'POST') {
+      // 獨立限流：10 req/min/IP，避免大 body 上傳被濫用
+      if (!(await checkRateLimit(clientIp, RATE_LIMIT_UPLOAD, 'rl:upload'))) {
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
+        res.end(JSON.stringify({ error: 'Too many upload requests. Please try again later.' }));
+        return;
+      }
       const body = await readBody(3 * 1024 * 1024);
-      const voter = extractFeedbackVoter(req, body);
+      const voter = await extractFeedbackVoter(req, body);
       if (!voter.userId && !voter.anonymousId) return json({ error: 'Identity is required' }, 400);
       // 解析 data URL: data:image/png;base64,xxxx
       const dataUrl = body.image || '';
@@ -2447,6 +2882,10 @@ function handleRequest(req, res) {
       // 二次驗證實際大小
       if (buffer.length > 2 * 1024 * 1024) {
         return json({ error: 'Image too large (max 2MB)' }, 400);
+      }
+      // magic byte 驗證，防止偽造副檔名上傳惡意檔案
+      if (!validateImageMagicBytes(buffer)) {
+        return json({ error: 'Invalid image file' }, 400);
       }
       const bkey = generateFeedbackId('fa_') + '.' + ext;
       const uploadDir = process.env.FEEDBACK_UPLOAD_DIR || '/tmp/feedback-uploads';
@@ -2536,7 +2975,7 @@ process.on('SIGINT', shutdown);
 
 if (require.main === module) {
   validateSecurityConfig();
-  initSchema()
+  runMigrations()
     .then(() => {
       server.listen(PORT, () => {
         logger.info({ port: PORT }, 'Zutomayo API server running');
