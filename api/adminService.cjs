@@ -41,9 +41,26 @@ async function listAdminUsers(pool, limitParam) {
   return { users: users.map(mapAdminUser) };
 }
 
-async function resetUserElo(pool, targetUserId, elo) {
+// 寫入 admin 稽核日誌。adminUserId 為執行操作的 admin 識別（目前為共享密碼 'admin'）。
+async function writeAuditLog(pool, { adminUserId, action, targetType, targetId, details }) {
+  await pool.query(
+    'INSERT INTO admin_audit_log (admin_user_id, action, target_type, target_id, details) VALUES ($1, $2, $3, $4, $5::jsonb)',
+    [adminUserId ?? null, action, targetType, targetId ?? null, JSON.stringify(details ?? {})],
+  );
+}
+
+async function resetUserElo(pool, targetUserId, elo, adminUserId) {
   const newElo = Math.max(0, Math.min(9999, Math.trunc(Number(elo) || 1000)));
+  const prev = await pool.query('SELECT elo FROM users WHERE id = $1', [targetUserId]);
+  const oldElo = prev.rows[0] ? Number(prev.rows[0].elo) : null;
   await pool.query('UPDATE users SET elo = $1 WHERE id = $2', [newElo, targetUserId]);
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'reset_elo',
+    targetType: 'user',
+    targetId: targetUserId,
+    details: { oldElo, newElo },
+  });
   return { id: targetUserId, elo: newElo };
 }
 
@@ -52,4 +69,5 @@ module.exports = {
   listAdminUsers,
   mapAdminUser,
   resetUserElo,
+  writeAuditLog,
 };

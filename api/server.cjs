@@ -70,6 +70,8 @@ const PORT = Number(process.env.API_PORT) || 3001;
 const JWT_SECRET = process.env.JWT_SECRET;
 // P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+// admin 系統使用共享密碼，無個別 admin 帳號；稽核日誌以 'admin' 標識操作者。
+const ADMIN_ACTOR_ID = 'admin';
 const APP_VERSION = process.env.APP_VERSION || '0.1.3';
 const APP_BUILD_ID = process.env.APP_BUILD_ID || APP_VERSION;
 const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
@@ -321,12 +323,15 @@ async function initSchema() {
 
     `CREATE TABLE IF NOT EXISTS admin_audit_log (
       id BIGSERIAL PRIMARY KEY,
+      admin_user_id TEXT,
       action TEXT NOT NULL,
       target_type TEXT NOT NULL,
       target_id TEXT,
       details JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    // 既有資料庫補欄位（CREATE TABLE IF NOT EXISTS 不會對已存在資料表新增欄位）
+    `ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS admin_user_id TEXT`,
 
     // ===== 反饋功能 schema（參考 Fider）=====
     `CREATE TABLE IF NOT EXISTS feedback_posts (
@@ -2058,7 +2063,7 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.adminEloSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      json(await resetUserElo(pool, targetUserId, __parsed.data.elo));
+      json(await resetUserElo(pool, targetUserId, __parsed.data.elo, ADMIN_ACTOR_ID));
       return;
     }
 
@@ -2119,7 +2124,7 @@ function handleRequest(req, res) {
     if (adminCardI18nRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const cardId = decodeURIComponent(adminCardI18nRoute[1]);
-      const result = await upsertCardI18n(pool, cardId, await readBody());
+      const result = await upsertCardI18n(pool, cardId, await readBody(), ADMIN_ACTOR_ID);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -2129,7 +2134,7 @@ function handleRequest(req, res) {
     if (adminCardRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const cardId = decodeURIComponent(adminCardRoute[1]);
-      const result = await upsertCard(pool, cardId, await readBody());
+      const result = await upsertCard(pool, cardId, await readBody(), ADMIN_ACTOR_ID);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -2139,7 +2144,7 @@ function handleRequest(req, res) {
     if (adminConfigRoute && method === 'PUT') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const key = decodeURIComponent(adminConfigRoute[1]);
-      const result = await upsertGameConfig(pool, key, await readBody());
+      const result = await upsertGameConfig(pool, key, await readBody(), ADMIN_ACTOR_ID);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -2358,7 +2363,9 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.feedbackStatusSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      serviceJson(await updateFeedbackPostStatus({ pool, postId, status: __parsed.data.status }));
+      serviceJson(
+        await updateFeedbackPostStatus({ pool, postId, status: __parsed.data.status, adminUserId: ADMIN_ACTOR_ID }),
+      );
       return;
     }
 
@@ -2370,7 +2377,15 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.feedbackTagSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      serviceJson(await updateFeedbackPostTag({ pool, postId, tag: __parsed.data.tag, sanitizeText }));
+      serviceJson(
+        await updateFeedbackPostTag({
+          pool,
+          postId,
+          tag: __parsed.data.tag,
+          sanitizeText,
+          adminUserId: ADMIN_ACTOR_ID,
+        }),
+      );
       return;
     }
 
@@ -2379,7 +2394,7 @@ function handleRequest(req, res) {
     if (feedbackDeleteRoute && method === 'DELETE') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackDeleteRoute[1]);
-      serviceJson(await deleteFeedbackPost({ pool, postId }));
+      serviceJson(await deleteFeedbackPost({ pool, postId, adminUserId: ADMIN_ACTOR_ID }));
       return;
     }
 
@@ -2393,6 +2408,7 @@ function handleRequest(req, res) {
           body,
           sanitizeText,
           generateId: () => generateFeedbackId('ft_'),
+          adminUserId: ADMIN_ACTOR_ID,
         }),
       );
       return;
@@ -2403,7 +2419,7 @@ function handleRequest(req, res) {
     if (feedbackTagDeleteRoute && method === 'DELETE') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const tagId = decodeURIComponent(feedbackTagDeleteRoute[1]);
-      serviceJson(await deleteFeedbackTag({ pool, tagId }));
+      serviceJson(await deleteFeedbackTag({ pool, tagId, adminUserId: ADMIN_ACTOR_ID }));
       return;
     }
 
@@ -2432,7 +2448,14 @@ function handleRequest(req, res) {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackDuplicateRoute[1]);
       const body = await readBody();
-      serviceJson(await markFeedbackAsDuplicate({ pool, postId, originalPostId: body.originalPostId }));
+      serviceJson(
+        await markFeedbackAsDuplicate({
+          pool,
+          postId,
+          originalPostId: body.originalPostId,
+          adminUserId: ADMIN_ACTOR_ID,
+        }),
+      );
       return;
     }
 

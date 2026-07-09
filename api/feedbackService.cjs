@@ -1,6 +1,9 @@
-/* global module */
+/* global module, require */
 
 // ===== 反饋功能服務（參考 Fider）=====
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { writeAuditLog } = require('./adminService.cjs');
 // 支援匿名（anonymousId，前端 localStorage 產生）與登入用戶（JWT userId）雙軌。
 // 投票/留言/發文皆以「用戶或匿名擇一」作為身份識別，避免重複投票。
 
@@ -514,7 +517,7 @@ async function deleteComment({ pool, voter, commentId, isAdmin }) {
 }
 
 // 管理員：更新文章狀態。
-async function updatePostStatus({ pool, postId, status }) {
+async function updatePostStatus({ pool, postId, status, adminUserId }) {
   if (!VALID_STATUSES.includes(status)) {
     return { ok: false, status: 400, error: 'Invalid status' };
   }
@@ -523,11 +526,18 @@ async function updatePostStatus({ pool, postId, status }) {
     [status, postId],
   );
   if (rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'update_feedback_status',
+    targetType: 'feedback_post',
+    targetId: postId,
+    details: { status },
+  });
   return { ok: true, body: mapPost(rows[0]) };
 }
 
 // 管理員：標記為重複文章（指向原文章）。
-async function markAsDuplicate({ pool, postId, originalPostId }) {
+async function markAsDuplicate({ pool, postId, originalPostId, adminUserId }) {
   if (postId === originalPostId) {
     return { ok: false, status: 400, error: 'Cannot mark post as duplicate of itself' };
   }
@@ -543,24 +553,45 @@ async function markAsDuplicate({ pool, postId, originalPostId }) {
   const post = mapPost(rows[0]);
   post.originalPostTitle = orig.rows[0].title;
   post.originalPostStatus = orig.rows[0].status;
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'mark_feedback_duplicate',
+    targetType: 'feedback_post',
+    targetId: postId,
+    details: { originalPostId },
+  });
   return { ok: true, body: post };
 }
 
 // 管理員：更新文章標籤。
-async function updatePostTag({ pool, postId, tag, sanitizeText }) {
+async function updatePostTag({ pool, postId, tag, sanitizeText, adminUserId }) {
   const clean = sanitizeText(tag, 30);
   const { rows } = await pool.query(
     'UPDATE feedback_posts SET tag = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
     [clean, postId],
   );
   if (rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'update_feedback_tag',
+    targetType: 'feedback_post',
+    targetId: postId,
+    details: { tag: clean },
+  });
   return { ok: true, body: mapPost(rows[0]) };
 }
 
 // 管理員：刪除文章。
-async function deletePost({ pool, postId }) {
+async function deletePost({ pool, postId, adminUserId }) {
   const { rowCount } = await pool.query('DELETE FROM feedback_posts WHERE id = $1', [postId]);
   if (rowCount === 0) return { ok: false, status: 404, error: 'Post not found' };
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'delete_feedback_post',
+    targetType: 'feedback_post',
+    targetId: postId,
+    details: {},
+  });
   return { ok: true, body: { deleted: true } };
 }
 
@@ -620,7 +651,7 @@ async function listTags({ pool }) {
 }
 
 // 管理員：建立標籤。
-async function createTag({ pool, body, sanitizeText, generateId }) {
+async function createTag({ pool, body, sanitizeText, generateId, adminUserId }) {
   const name = sanitizeText(body.name, 30);
   const color = sanitizeText(body.color || '', 20);
   if (!name) return { ok: false, status: 400, error: 'Tag name is required' };
@@ -630,13 +661,27 @@ async function createTag({ pool, body, sanitizeText, generateId }) {
     name,
     color,
   ]);
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'create_feedback_tag',
+    targetType: 'feedback_tag',
+    targetId: id,
+    details: { name, color },
+  });
   return { ok: true, body: mapTag(rows[0]) };
 }
 
 // 管理員：刪除標籤。
-async function deleteTag({ pool, tagId }) {
+async function deleteTag({ pool, tagId, adminUserId }) {
   const { rowCount } = await pool.query('DELETE FROM feedback_tags WHERE id = $1', [tagId]);
   if (rowCount === 0) return { ok: false, status: 404, error: 'Tag not found' };
+  await writeAuditLog(pool, {
+    adminUserId: adminUserId ?? null,
+    action: 'delete_feedback_tag',
+    targetType: 'feedback_tag',
+    targetId: tagId,
+    details: {},
+  });
   return { ok: true, body: { deleted: true } };
 }
 
