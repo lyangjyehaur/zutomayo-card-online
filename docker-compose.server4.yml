@@ -1,4 +1,19 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: ['npm', 'run', 'db:migrate']
+    env_file: .env
+    environment:
+      - PG_HOST=postgresql
+      - PG_PORT=5432
+    networks:
+      - default
+      - 1panel-network
+    restart: 'no'
+
   game:
     build:
       context: .

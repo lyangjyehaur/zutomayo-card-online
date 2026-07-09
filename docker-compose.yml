@@ -26,6 +26,23 @@ services:
       retries: 10
     restart: unless-stopped
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: ['npm', 'run', 'db:migrate']
+    environment:
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=${PG_USER:-zutomayo}
+      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      - PG_DATABASE=${PG_DATABASE:-zutomayo}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
   game:
     build:
       context: .
@@ -119,6 +136,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/health || exit 1']
       interval: 10s

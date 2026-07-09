@@ -15,6 +15,8 @@ export default [
       '.data/',
       'public/cards/',
       'api/server.cjs',
+      'scripts/db-migrate.cjs',
+      'migrations/',
       '.claude/',
       '.git/',
       'coverage/',

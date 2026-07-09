@@ -433,9 +433,50 @@ async function initSchema() {
   }
 }
 
+// 使用 node-pg-migrate 執行 schema migration（dev/CI 環境）。
+// node-pg-migrate 為 devDependency，production runtime 可能未安裝；
+// 此時 fallback 到 initSchema()（CREATE TABLE IF NOT EXISTS）確保 schema 存在。
+async function runMigrations() {
+  let runner;
+  try {
+    ({ runner } = require('node-pg-migrate'));
+  } catch {
+    // node-pg-migrate 未安裝（production image），使用 initSchema() fallback。
+    return initSchema();
+  }
+
+  const { resolve } = require('node:path');
+  const { existsSync } = require('node:fs');
+  const migrationsDir = resolve(__dirname, '..', 'migrations');
+  if (!existsSync(migrationsDir)) {
+    // migrations 目錄不存在（api Docker image 未包含），使用 initSchema() fallback。
+    return initSchema();
+  }
+
+  // node-pg-migrate runner 接受 connection string 或 pg ClientConfig。
+  // 專案用 PG_* 分開的環境變數，直接組成 ClientConfig。
+  const databaseUrl = process.env.DATABASE_URL || {
+    host: PG_HOST,
+    port: PG_PORT,
+    user: PG_USER,
+    password: PG_PASSWORD,
+    database: PG_DATABASE,
+  };
+
+  await runner({
+    databaseUrl,
+    dir: migrationsDir,
+    direction: 'up',
+    migrationsTable: 'schema_migrations',
+    schema: 'public',
+    count: Infinity,
+    log: (msg) => logger.info({ msg }, 'migration'),
+  });
+}
+
 // 啟動時嘗試初始化 schema，連不上 PG 也允許載入（語法檢查用）。
 // 匯出 schemaReady 供測試 await，避免載入後立即發 request 造成 race condition。
-const schemaReady = initSchema().catch((err) => {
+const schemaReady = runMigrations().catch((err) => {
   logger.error({ err }, 'schema init failed');
 });
 
@@ -2613,7 +2654,7 @@ process.on('SIGINT', shutdown);
 
 if (require.main === module) {
   validateSecurityConfig();
-  initSchema()
+  runMigrations()
     .then(() => {
       server.listen(PORT, () => {
         logger.info({ port: PORT }, 'Zutomayo API server running');
