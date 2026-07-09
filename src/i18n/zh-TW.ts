@@ -151,6 +151,8 @@ export const zhTW = {
   'chat.refreshUnread': '重新同步未讀訊息',
   'chat.conversationLabel': '{type} · {subjectId}',
   'chat.directTitle': '好友私訊',
+  'chat.globalEyebrow': '跨房間',
+  'chat.globalTitle': '線上大廳聊天',
   'chat.selectDirect': '選擇好友',
   'chat.empty': '尚無訊息',
   'chat.historyUnavailable': '暫時無法同步聊天記錄',

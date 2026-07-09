@@ -39,6 +39,8 @@ Friend presence subscriptions are resolved server-side from the durable `user_fr
 
 Friend direct messages use the durable `ChatService` direct conversation type. The Online Lobby provides friend management plus direct chat history/send/read/report/translate flows; direct conversation subject IDs are canonicalized so both participants share one thread.
 
+Cross-room lobby chat uses the durable `ChatService` global conversation type (`online-lobby`) with the same history, read-state, report, moderation, and translation behavior instead of Colyseus room memory.
+
 ## Migration Plan
 
 1. Add Colyseus runtime and room contracts.

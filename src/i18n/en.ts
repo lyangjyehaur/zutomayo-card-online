@@ -158,6 +158,8 @@ export const en: Record<TranslationKey, string> = {
   'chat.refreshUnread': 'Refresh unread messages',
   'chat.conversationLabel': '{type} · {subjectId}',
   'chat.directTitle': 'Friend DMs',
+  'chat.globalEyebrow': 'Cross-room',
+  'chat.globalTitle': 'Online Lobby Chat',
   'chat.selectDirect': 'Select a friend',
   'chat.empty': 'No messages',
   'chat.historyUnavailable': 'Chat history unavailable',

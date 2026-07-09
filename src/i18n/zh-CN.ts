@@ -153,6 +153,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'chat.refreshUnread': '重新同步未读消息',
   'chat.conversationLabel': '{type} · {subjectId}',
   'chat.directTitle': '好友私信',
+  'chat.globalEyebrow': '跨房间',
+  'chat.globalTitle': '线上大厅聊天',
   'chat.selectDirect': '选择好友',
   'chat.empty': '暂无消息',
   'chat.historyUnavailable': '暂时无法同步聊天记录',

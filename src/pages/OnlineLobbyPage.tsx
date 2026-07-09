@@ -72,10 +72,10 @@ type DirectChatTranslationState = {
   targetLanguage: string;
   content?: string;
 };
-type DirectChatEntry = ChatMessage & {
-  translation?: DirectChatTranslationState;
-};
+type LobbyChatEntry = ChatMessage & { translation?: DirectChatTranslationState };
+type DirectChatEntry = LobbyChatEntry;
 const ANONYMOUS_NAME_PROMPT_STORAGE_KEY = 'zutomayo_anonymous_name_prompt_seen';
+const GLOBAL_LOBBY_CHAT_SUBJECT_ID = 'online-lobby';
 
 // 段位定義：依 ELO 劃分漆面塔羅風格的段位名（專有名詞，不 i18n）。
 const RANKS = [
@@ -151,6 +151,11 @@ export function OnlineLobbyPage({
   const [directChatStatus, setDirectChatStatus] = useState<DirectChatStatus>('idle');
   const [reportedDirectMessageIds, setReportedDirectMessageIds] = useState<Set<string>>(() => new Set());
   const directChatMessagesRef = useRef<HTMLDivElement | null>(null);
+  const [lobbyChatMessages, setLobbyChatMessages] = useState<LobbyChatEntry[]>([]);
+  const [lobbyChatDraft, setLobbyChatDraft] = useState('');
+  const [lobbyChatStatus, setLobbyChatStatus] = useState<DirectChatStatus>('idle');
+  const [reportedLobbyMessageIds, setReportedLobbyMessageIds] = useState<Set<string>>(() => new Set());
+  const lobbyChatMessagesRef = useRef<HTMLDivElement | null>(null);
   const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
   const [anonymousNameDraft, setAnonymousNameDraft] = useState(() => anonymousIdentity.baseName);
@@ -163,6 +168,8 @@ export function OnlineLobbyPage({
       setUnreadChats([]);
       setUnreadChatStatus('idle');
       setDirectChat(null);
+      setLobbyChatMessages([]);
+      setLobbyChatStatus('idle');
       return;
     }
     try {
@@ -174,6 +181,8 @@ export function OnlineLobbyPage({
       setUnreadChats([]);
       setUnreadChatStatus('idle');
       setDirectChat(null);
+      setLobbyChatMessages([]);
+      setLobbyChatStatus('idle');
     }
   }, []);
 
@@ -291,8 +300,61 @@ export function OnlineLobbyPage({
     element.scrollTop = element.scrollHeight;
   }, [directChatMessages]);
 
+  useEffect(() => {
+    if (!profile) {
+      setLobbyChatMessages([]);
+      setLobbyChatStatus('idle');
+      return;
+    }
+    let cancelled = false;
+    setLobbyChatStatus('loading');
+    void fetchChatMessages({
+      conversationType: 'global',
+      subjectId: GLOBAL_LOBBY_CHAT_SUBJECT_ID,
+      limit: 50,
+    }).then(
+      (messages) => {
+        if (cancelled) return;
+        const visibleMessages = messages.filter(canShowChatMessage);
+        setLobbyChatMessages(visibleMessages);
+        setLobbyChatStatus('ready');
+        const latestMessageId = visibleMessages.at(-1)?.id;
+        void markChatRead({
+          conversationType: 'global',
+          subjectId: GLOBAL_LOBBY_CHAT_SUBJECT_ID,
+          lastReadMessageId: latestMessageId,
+        }).then(refreshUnreadChats, () => undefined);
+      },
+      (err) => {
+        if (cancelled) return;
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'global lobby chat history unavailable',
+          level: 'warning',
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+        setLobbyChatStatus('unavailable');
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, refreshUnreadChats]);
+
+  useEffect(() => {
+    const element = lobbyChatMessagesRef.current;
+    if (!element) return;
+    element.scrollTop = element.scrollHeight;
+  }, [lobbyChatMessages]);
+
   const applyDirectChatTranslation = useCallback((messageId: string, translation: DirectChatTranslationState) => {
     setDirectChatMessages((messages) =>
+      messages.map((message) => (message.id === messageId ? { ...message, translation } : message)),
+    );
+  }, []);
+
+  const applyLobbyChatTranslation = useCallback((messageId: string, translation: DirectChatTranslationState) => {
+    setLobbyChatMessages((messages) =>
       messages.map((message) => (message.id === messageId ? { ...message, translation } : message)),
     );
   }, []);
@@ -812,6 +874,91 @@ export function OnlineLobbyPage({
       }
     },
     [profile?.id, reportedDirectMessageIds, showToast],
+  );
+
+  const handleLobbyChatSubmit = async () => {
+    if (!profile || !lobbyChatDraft.trim() || lobbyChatStatus === 'sending') return;
+    const content = lobbyChatDraft.trim();
+    setLobbyChatStatus('sending');
+    try {
+      const result = await sendChatMessage({
+        conversationType: 'global',
+        subjectId: GLOBAL_LOBBY_CHAT_SUBJECT_ID,
+        content,
+        title: t('chat.globalTitle'),
+        authorDisplayName: profile.nickname,
+        authorRole: 'player',
+      });
+      if (canShowChatMessage(result.message)) {
+        setLobbyChatMessages((messages) => [...messages, result.message]);
+        void markChatRead({
+          conversationType: 'global',
+          subjectId: GLOBAL_LOBBY_CHAT_SUBJECT_ID,
+          lastReadMessageId: result.message.id,
+        }).then(refreshUnreadChats, () => undefined);
+      }
+      setLobbyChatDraft('');
+      setLobbyChatStatus('ready');
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'chat',
+        message: 'global lobby chat send failed',
+        level: 'warning',
+        data: { error: err instanceof Error ? err.message : String(err) },
+      });
+      setLobbyChatStatus('ready');
+      showToast({ title: t('chat.sendFailed'), kind: 'error' });
+    }
+  };
+
+  const handleLobbyChatTranslate = useCallback(
+    async (message: LobbyChatEntry) => {
+      if (message.translation?.status === 'loading') return;
+      const targetLanguage = locale.toLowerCase();
+      applyLobbyChatTranslation(message.id, { status: 'loading', targetLanguage });
+      try {
+        const result = await requestChatTranslation(message.id, targetLanguage);
+        applyLobbyChatTranslation(message.id, {
+          status: result.translation.status,
+          targetLanguage: result.translation.targetLanguage,
+          content: result.translation.translatedContent || undefined,
+        });
+      } catch (err) {
+        applyLobbyChatTranslation(message.id, { status: 'unavailable', targetLanguage });
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'global lobby chat translation failed',
+          level: 'warning',
+          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    },
+    [applyLobbyChatTranslation, locale],
+  );
+
+  const handleLobbyChatReport = useCallback(
+    async (message: LobbyChatEntry) => {
+      if (message.authorUserId === profile?.id || reportedLobbyMessageIds.has(message.id)) return;
+      setReportedLobbyMessageIds((ids) => new Set(ids).add(message.id));
+      try {
+        await reportChatMessage(message.id, { reason: 'inappropriate' });
+        showToast({ title: t('chat.reported'), kind: 'success' });
+      } catch (err) {
+        setReportedLobbyMessageIds((ids) => {
+          const next = new Set(ids);
+          next.delete(message.id);
+          return next;
+        });
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'global lobby chat report failed',
+          level: 'warning',
+          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
+        });
+        showToast({ title: t('chat.reportFailed'), kind: 'error' });
+      }
+    },
+    [profile?.id, reportedLobbyMessageIds, showToast],
   );
 
   return (
@@ -1432,6 +1579,137 @@ export function OnlineLobbyPage({
                       </Button>
                     </form>
                   </div>
+                </div>
+              </RoomPanel>
+            )}
+
+            {profile && (
+              <RoomPanel mode="custom">
+                <div className="flex flex-col gap-1">
+                  <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                    {t('chat.globalEyebrow')}
+                  </div>
+                  <h2 className="font-display text-2xl font-bold">{t('chat.globalTitle')}</h2>
+                </div>
+
+                <div className="grid min-h-80 grid-rows-[minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
+                  <div ref={lobbyChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
+                    {lobbyChatStatus === 'loading' && (
+                      <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                        {t('presence.syncing')}
+                      </div>
+                    )}
+                    {lobbyChatStatus === 'unavailable' && (
+                      <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
+                        {t('chat.historyUnavailable')}
+                      </div>
+                    )}
+                    {lobbyChatStatus !== 'loading' &&
+                      lobbyChatStatus !== 'unavailable' &&
+                      lobbyChatMessages.length === 0 && (
+                        <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                          {t('chat.empty')}
+                        </div>
+                      )}
+                    {lobbyChatMessages.map((message) => {
+                      const self = message.authorUserId === profile.id;
+                      return (
+                        <div
+                          key={message.id}
+                          className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
+                        >
+                          <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                            <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
+                            <span className="ml-2 inline-flex items-center gap-1">
+                              <Button
+                                className="size-7 p-0 tracking-normal"
+                                variant="ghost"
+                                type="button"
+                                onClick={() => void handleLobbyChatTranslate(message)}
+                                disabled={message.translation?.status === 'loading'}
+                                aria-label={t('chat.translate')}
+                                title={t('chat.translate')}
+                              >
+                                <Languages className="size-3" strokeWidth={1.25} />
+                              </Button>
+                              {!self && (
+                                <Button
+                                  className="size-7 p-0 tracking-normal"
+                                  variant="ghost"
+                                  type="button"
+                                  onClick={() => void handleLobbyChatReport(message)}
+                                  disabled={reportedLobbyMessageIds.has(message.id)}
+                                  aria-label={
+                                    reportedLobbyMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                  }
+                                  title={
+                                    reportedLobbyMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                  }
+                                >
+                                  <Flag className="size-3" strokeWidth={1.25} />
+                                </Button>
+                              )}
+                            </span>
+                          </div>
+                          <div
+                            className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                              self
+                                ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
+                                : 'border-border-soft bg-surface-elevated/50 text-content-primary'
+                            }`}
+                          >
+                            {message.content}
+                          </div>
+                          {message.translation && (
+                            <div
+                              className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                                message.translation.status === 'ready' && message.translation.content
+                                  ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
+                                  : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
+                              }`}
+                            >
+                              {message.translation.status === 'ready' && message.translation.content
+                                ? message.translation.content
+                                : message.translation.status === 'loading'
+                                  ? t('chat.translationTranslating')
+                                  : message.translation.status === 'unavailable'
+                                    ? t('chat.translationOffline')
+                                    : t('chat.translationPending')}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <form
+                    className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleLobbyChatSubmit();
+                    }}
+                  >
+                    <Input
+                      className="min-h-11 min-w-0"
+                      value={lobbyChatDraft}
+                      onChange={(event) => setLobbyChatDraft(event.target.value.slice(0, 500))}
+                      placeholder={t('chat.messagePlaceholder')}
+                      aria-label={t('chat.messagePlaceholder')}
+                      disabled={lobbyChatStatus === 'sending' || lobbyChatStatus === 'unavailable'}
+                    />
+                    <Button
+                      className="size-11 p-0 tracking-normal"
+                      variant="primary"
+                      type="submit"
+                      disabled={
+                        !lobbyChatDraft.trim() || lobbyChatStatus === 'sending' || lobbyChatStatus === 'unavailable'
+                      }
+                      aria-label={t('chat.send')}
+                      title={t('chat.send')}
+                    >
+                      <Send className="size-4" strokeWidth={1.25} />
+                    </Button>
+                  </form>
                 </div>
               </RoomPanel>
             )}

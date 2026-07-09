@@ -159,6 +159,8 @@ export const ja: Record<TranslationKey, string> = {
   'chat.refreshUnread': '未読メッセージを再同期',
   'chat.conversationLabel': '{type} · {subjectId}',
   'chat.directTitle': 'フレンドDM',
+  'chat.globalEyebrow': 'ルーム横断',
+  'chat.globalTitle': 'オンラインロビーチャット',
   'chat.selectDirect': 'フレンドを選択',
   'chat.empty': 'メッセージなし',
   'chat.historyUnavailable': 'チャット履歴を同期できません',

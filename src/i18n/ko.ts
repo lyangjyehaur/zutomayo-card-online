@@ -158,6 +158,8 @@ export const ko: Record<TranslationKey, string> = {
   'chat.refreshUnread': '읽지 않은 메시지 다시 동기화',
   'chat.conversationLabel': '{type} · {subjectId}',
   'chat.directTitle': '친구 DM',
+  'chat.globalEyebrow': '방 전체',
+  'chat.globalTitle': '온라인 로비 채팅',
   'chat.selectDirect': '친구 선택',
   'chat.empty': '메시지 없음',
   'chat.historyUnavailable': '채팅 기록을 동기화할 수 없습니다',

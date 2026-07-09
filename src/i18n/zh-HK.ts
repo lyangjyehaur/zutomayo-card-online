@@ -153,6 +153,8 @@ export const zhHK: Record<TranslationKey, string> = {
   'chat.refreshUnread': '重新同步未讀訊息',
   'chat.conversationLabel': '{type} · {subjectId}',
   'chat.directTitle': '好友私訊',
+  'chat.globalEyebrow': '跨房間',
+  'chat.globalTitle': '線上大廳聊天',
   'chat.selectDirect': '選擇好友',
   'chat.empty': '暫無訊息',
   'chat.historyUnavailable': '暫時同步唔到聊天記錄',
