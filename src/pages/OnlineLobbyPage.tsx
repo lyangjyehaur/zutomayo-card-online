@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Check, Flag, Languages, MessageCircle, Pencil, Radio, Send, Trash2, UserPlus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -151,16 +151,20 @@ export function OnlineLobbyPage({
   const [directChatDraft, setDirectChatDraft] = useState('');
   const [directChatStatus, setDirectChatStatus] = useState<DirectChatStatus>('idle');
   const [reportedDirectMessageIds, setReportedDirectMessageIds] = useState<Set<string>>(() => new Set());
+  const directChatPanelRef = useRef<HTMLDivElement | null>(null);
   const directChatMessagesRef = useRef<HTMLDivElement | null>(null);
   const [lobbyChatMessages, setLobbyChatMessages] = useState<LobbyChatEntry[]>([]);
   const [lobbyChatDraft, setLobbyChatDraft] = useState('');
   const [lobbyChatStatus, setLobbyChatStatus] = useState<DirectChatStatus>('idle');
   const [reportedLobbyMessageIds, setReportedLobbyMessageIds] = useState<Set<string>>(() => new Set());
+  const lobbyChatPanelRef = useRef<HTMLDivElement | null>(null);
   const lobbyChatMessagesRef = useRef<HTMLDivElement | null>(null);
+  const [roomChatSubjectOverride, setRoomChatSubjectOverride] = useState('');
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatEntry[]>([]);
   const [roomChatDraft, setRoomChatDraft] = useState('');
   const [roomChatStatus, setRoomChatStatus] = useState<DirectChatStatus>('idle');
   const [reportedRoomMessageIds, setReportedRoomMessageIds] = useState<Set<string>>(() => new Set());
+  const customRoomPanelRef = useRef<HTMLDivElement | null>(null);
   const roomChatMessagesRef = useRef<HTMLDivElement | null>(null);
   const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
@@ -469,7 +473,11 @@ export function OnlineLobbyPage({
     setCopied(false);
   }, [createdMatchID]);
 
-  const roomChatSubjectId = createdMatchID || (matchID.length >= 3 ? matchID : '');
+  useEffect(() => {
+    if (createdMatchID) setRoomChatSubjectOverride('');
+  }, [createdMatchID]);
+
+  const roomChatSubjectId = roomChatSubjectOverride || createdMatchID || (matchID.length >= 3 ? matchID : '');
 
   useEffect(() => {
     if (!profile || !roomChatSubjectId) {
@@ -794,13 +802,31 @@ export function OnlineLobbyPage({
     suffix: anonymousIdentity.suffix,
   });
 
+  const scrollToPanel = (ref: RefObject<HTMLDivElement | null>) => {
+    window.requestAnimationFrame(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const openUnreadConversation = (conversation: ChatUnreadConversation) => {
     if (conversation.type === 'match') {
       navigate(`/play/online/${encodeURIComponent(conversation.subjectId)}?spectate=1`);
       return;
     }
     if (conversation.type === 'room') {
+      setRoomChatSubjectOverride(conversation.subjectId);
       setMatchID(conversation.subjectId);
+      scrollToPanel(customRoomPanelRef);
+      return;
+    }
+    if (conversation.type === 'global') {
+      scrollToPanel(lobbyChatPanelRef);
+      const latestMessageId = lobbyChatMessages.at(-1)?.id;
+      void markChatRead({
+        conversationType: 'global',
+        subjectId: conversation.subjectId,
+        lastReadMessageId: latestMessageId,
+      }).then(refreshUnreadChats, () => undefined);
       return;
     }
     if (conversation.type === 'direct' && profile) {
@@ -808,6 +834,7 @@ export function OnlineLobbyPage({
       if (!peerUserId) return;
       const friend = friends.find((item) => item.userId === peerUserId);
       setDirectChat({ subjectId: conversation.subjectId, peerUserId, friend });
+      scrollToPanel(directChatPanelRef);
     }
   };
 
@@ -1298,7 +1325,6 @@ export function OnlineLobbyPage({
                 {unreadChats.length > 0 && (
                   <div className="mt-3 grid gap-2">
                     {unreadChats.slice(0, 3).map((conversation) => {
-                      const isOpenable = conversation.type === 'match';
                       const label =
                         conversation.title ||
                         translate(locale, 'chat.conversationLabel')
@@ -1318,7 +1344,6 @@ export function OnlineLobbyPage({
                           type="button"
                           className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm border border-border-soft bg-surface-canvas/40 px-3 py-2 text-left transition hover:border-accent-primary/40 disabled:cursor-default disabled:hover:border-border-soft"
                           onClick={() => openUnreadConversation(conversation)}
-                          disabled={!isOpenable}
                         >
                           <span className="min-w-0">
                             <span className="block truncate font-mono text-xs text-content-primary/80">{label}</span>
@@ -1382,397 +1407,143 @@ export function OnlineLobbyPage({
             </RoomPanel>
 
             {/* 自訂房間 */}
-            <RoomPanel mode="custom">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-                    {t('lobby.customRooms')}
+            <div ref={customRoomPanelRef}>
+              <RoomPanel mode="custom">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                      {t('lobby.customRooms')}
+                    </div>
+                    <h2 className="font-display text-2xl font-bold">{t('lobby.createRoom')}</h2>
                   </div>
-                  <h2 className="font-display text-2xl font-bold">{t('lobby.createRoom')}</h2>
-                </div>
-                <div className="grid gap-2 sm:justify-items-end">
-                  <Button
-                    className="!min-h-11"
-                    size="sm"
-                    variant="secondary"
-                    type="button"
-                    onClick={() => runOnline()}
-                    disabled={matchmakingActive || !canStart}
-                    aria-describedby={!canStart ? 'online-create-room-helper' : undefined}
-                  >
-                    + {t('lobby.createRoom')}
-                  </Button>
-
-                  {!canStart && (
-                    <p
-                      id="online-create-room-helper"
-                      className="max-w-[18rem] text-left text-caption leading-relaxed text-accent-action/70 sm:text-right"
-                    >
-                      {startDisabledReason}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* 加入房間 */}
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  className="min-h-11 min-w-0 flex-1"
-                  value={matchID}
-                  onChange={(event) => setMatchID(event.target.value.trim())}
-                  placeholder={t('lobby.roomCodePlaceholder')}
-                  aria-label={t('lobby.roomCode')}
-                  disabled={matchmakingActive}
-                />
-                <Button
-                  className="min-h-11"
-                  variant="secondary"
-                  type="button"
-                  disabled={!matchID || matchmakingActive}
-                  onClick={() => runOnline(matchID)}
-                >
-                  {t('lobby.joinRoom')}
-                </Button>
-              </div>
-
-              {serverDeckError && (
-                <Alert tone="danger" role="alert">
-                  {serverDeckError}
-                </Alert>
-              )}
-
-              {/* 已建立房間資訊 */}
-              {createdMatchID && (
-                <RoomDetails>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                      {t('online.roomCode')}
-                    </span>
-                    <span className="font-mono text-xs text-accent-primary">{createdMatchID}</span>
-                  </div>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                      {t('online.shareLink')}
-                    </span>
-                    <Input
-                      className="min-h-11 min-w-0 font-mono text-xs text-content-primary/70"
-                      value={buildOnlineRoomUrl(createdMatchID)}
-                      readOnly
-                      aria-label={t('online.shareLink')}
-                    />
-                  </label>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="grid gap-2 sm:justify-items-end">
                     <Button
                       className="!min-h-11"
                       size="sm"
                       variant="secondary"
                       type="button"
-                      onClick={handleCopyShareLink}
+                      onClick={() => runOnline()}
+                      disabled={matchmakingActive || !canStart}
+                      aria-describedby={!canStart ? 'online-create-room-helper' : undefined}
                     >
-                      {copied ? t('online.copied') : t('online.copyLink')}
+                      + {t('lobby.createRoom')}
                     </Button>
-                    <span className="text-caption text-content-primary/40">{t('online.hostWaitingHelper')}</span>
-                  </div>
-                </RoomDetails>
-              )}
 
-              {profile && (
-                <div className="grid min-h-72 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
-                  <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border-soft px-3">
-                    <div className="min-w-0">
-                      <div className="text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                        {t('chat.roomEyebrow')}
-                      </div>
-                      <div className="truncate font-mono text-xs text-accent-primary">
-                        {roomChatSubjectId || t('chat.roomSubjectEmpty')}
-                      </div>
-                    </div>
-                    <MessageCircle className="size-4 shrink-0 text-content-primary/35" strokeWidth={1.25} />
-                  </div>
-
-                  <div ref={roomChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
-                    {!roomChatSubjectId && (
-                      <div className="grid min-h-full place-items-center px-4 text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                        {t('chat.roomSubjectEmpty')}
-                      </div>
+                    {!canStart && (
+                      <p
+                        id="online-create-room-helper"
+                        className="max-w-[18rem] text-left text-caption leading-relaxed text-accent-action/70 sm:text-right"
+                      >
+                        {startDisabledReason}
+                      </p>
                     )}
-                    {roomChatSubjectId && roomChatStatus === 'loading' && (
-                      <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                        {t('presence.syncing')}
-                      </div>
-                    )}
-                    {roomChatSubjectId && roomChatStatus === 'unavailable' && (
-                      <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
-                        {t('chat.historyUnavailable')}
-                      </div>
-                    )}
-                    {roomChatSubjectId &&
-                      roomChatStatus !== 'loading' &&
-                      roomChatStatus !== 'unavailable' &&
-                      roomChatMessages.length === 0 && (
-                        <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                          {t('chat.empty')}
-                        </div>
-                      )}
-                    {roomChatMessages.map((message) => {
-                      const self = message.authorUserId === profile.id;
-                      return (
-                        <div
-                          key={message.id}
-                          className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
-                        >
-                          <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                            <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
-                            <span className="ml-2 inline-flex items-center gap-1">
-                              <Button
-                                className="size-7 p-0 tracking-normal"
-                                variant="ghost"
-                                type="button"
-                                onClick={() => void handleRoomChatTranslate(message)}
-                                disabled={message.translation?.status === 'loading'}
-                                aria-label={t('chat.translate')}
-                                title={t('chat.translate')}
-                              >
-                                <Languages className="size-3" strokeWidth={1.25} />
-                              </Button>
-                              {!self && (
-                                <Button
-                                  className="size-7 p-0 tracking-normal"
-                                  variant="ghost"
-                                  type="button"
-                                  onClick={() => void handleRoomChatReport(message)}
-                                  disabled={reportedRoomMessageIds.has(message.id)}
-                                  aria-label={
-                                    reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
-                                  }
-                                  title={reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')}
-                                >
-                                  <Flag className="size-3" strokeWidth={1.25} />
-                                </Button>
-                              )}
-                            </span>
-                          </div>
-                          <div
-                            className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                              self
-                                ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
-                                : 'border-border-soft bg-surface-elevated/50 text-content-primary'
-                            }`}
-                          >
-                            {message.content}
-                          </div>
-                          {message.translation && (
-                            <div
-                              className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                                message.translation.status === 'ready' && message.translation.content
-                                  ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
-                                  : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
-                              }`}
-                            >
-                              {message.translation.status === 'ready' && message.translation.content
-                                ? message.translation.content
-                                : message.translation.status === 'loading'
-                                  ? t('chat.translationTranslating')
-                                  : message.translation.status === 'unavailable'
-                                    ? t('chat.translationOffline')
-                                    : t('chat.translationPending')}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
                   </div>
-
-                  <form
-                    className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void handleRoomChatSubmit();
-                    }}
-                  >
-                    <Input
-                      className="min-h-11 min-w-0"
-                      value={roomChatDraft}
-                      onChange={(event) => setRoomChatDraft(event.target.value.slice(0, 500))}
-                      placeholder={t('chat.messagePlaceholder')}
-                      aria-label={t('chat.messagePlaceholder')}
-                      disabled={!roomChatSubjectId || roomChatStatus === 'sending' || roomChatStatus === 'unavailable'}
-                    />
-                    <Button
-                      className="size-11 p-0 tracking-normal"
-                      variant="primary"
-                      type="submit"
-                      disabled={
-                        !roomChatSubjectId ||
-                        !roomChatDraft.trim() ||
-                        roomChatStatus === 'sending' ||
-                        roomChatStatus === 'unavailable'
-                      }
-                      aria-label={t('chat.send')}
-                      title={t('chat.send')}
-                    >
-                      <Send className="size-4" strokeWidth={1.25} />
-                    </Button>
-                  </form>
-                </div>
-              )}
-
-              {error && (
-                <Alert tone="danger" role="alert">
-                  {error}
-                </Alert>
-              )}
-            </RoomPanel>
-
-            {profile && (
-              <RoomPanel mode="custom">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-                      {t('friend.title')}
-                    </div>
-                    <h2 className="font-display text-2xl font-bold">{t('chat.directTitle')}</h2>
-                  </div>
-                  <Button
-                    className="size-11 shrink-0 p-0 tracking-normal"
-                    variant="ghost"
-                    type="button"
-                    onClick={refreshFriends}
-                    aria-label={t('friend.refresh')}
-                    title={t('friend.refresh')}
-                  >
-                    <Radio className="size-3.5" strokeWidth={1.25} />
-                  </Button>
                 </div>
 
+                {/* 加入房間 */}
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
-                    className="min-h-11 min-w-0 flex-1 font-mono text-xs"
-                    value={friendUserIdDraft}
-                    onChange={(event) => setFriendUserIdDraft(event.target.value.slice(0, 128))}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') void handleAddFriend();
+                    className="min-h-11 min-w-0 flex-1"
+                    value={matchID}
+                    onChange={(event) => {
+                      setRoomChatSubjectOverride('');
+                      setMatchID(event.target.value.trim());
                     }}
-                    placeholder={t('friend.userId')}
-                    aria-label={t('friend.userId')}
-                    disabled={friendActionId !== null}
+                    placeholder={t('lobby.roomCodePlaceholder')}
+                    aria-label={t('lobby.roomCode')}
+                    disabled={matchmakingActive}
                   />
                   <Button
                     className="min-h-11"
                     variant="secondary"
                     type="button"
-                    leftIcon={<UserPlus className="size-4" strokeWidth={1.25} />}
-                    disabled={!friendUserIdDraft.trim() || friendActionId !== null}
-                    onClick={() => void handleAddFriend()}
+                    disabled={!matchID || matchmakingActive}
+                    onClick={() => runOnline(matchID)}
                   >
-                    {t('friend.add')}
+                    {t('lobby.joinRoom')}
                   </Button>
                 </div>
 
-                {friendStatus === 'unavailable' && (
+                {serverDeckError && (
                   <Alert tone="danger" role="alert">
-                    {t('friend.unavailable')}
+                    {serverDeckError}
                   </Alert>
                 )}
 
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-                  <div className="grid max-h-80 gap-2 overflow-y-auto pr-1">
-                    {friendStatus === 'loading' && (
-                      <div className="grid min-h-16 place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                        {t('presence.syncing')}
-                      </div>
-                    )}
-                    {friendStatus !== 'loading' && friends.length === 0 && (
-                      <div className="grid min-h-16 place-items-center rounded-sm border border-border-soft bg-surface-canvas/30 px-3 text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                        {t('friend.empty')}
-                      </div>
-                    )}
-                    {friends.map((friend) => (
-                      <div
-                        key={friend.userId}
-                        className={`grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border px-3 py-2 transition ${
-                          directChat?.peerUserId === friend.userId
-                            ? 'border-accent-primary/50 bg-accent-primary/10'
-                            : 'border-border-soft bg-surface-canvas/30'
-                        }`}
+                {/* 已建立房間資訊 */}
+                {createdMatchID && (
+                  <RoomDetails>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                        {t('online.roomCode')}
+                      </span>
+                      <span className="font-mono text-xs text-accent-primary">{createdMatchID}</span>
+                    </div>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                        {t('online.shareLink')}
+                      </span>
+                      <Input
+                        className="min-h-11 min-w-0 font-mono text-xs text-content-primary/70"
+                        value={buildOnlineRoomUrl(createdMatchID)}
+                        readOnly
+                        aria-label={t('online.shareLink')}
+                      />
+                    </label>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                      <Button
+                        className="!min-h-11"
+                        size="sm"
+                        variant="secondary"
+                        type="button"
+                        onClick={handleCopyShareLink}
                       >
-                        <button
-                          type="button"
-                          className="min-w-0 text-left"
-                          onClick={() => openFriendChat(friend)}
-                          aria-label={`${t('chat.directTitle')} ${friend.nickname || friend.userId}`}
-                        >
-                          <span className="block truncate font-mono text-xs text-content-primary/80">
-                            {friend.nickname || friend.userId}
-                          </span>
-                          <span className="mt-1 block truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                            {friend.userId}
-                          </span>
-                        </button>
-                        <Button
-                          className="size-10 shrink-0 p-0 tracking-normal"
-                          variant="ghost"
-                          type="button"
-                          onClick={() => void handleRemoveFriend(friend)}
-                          disabled={friendActionId === friend.userId}
-                          aria-label={t('friend.remove')}
-                          title={t('friend.remove')}
-                        >
-                          <Trash2 className="size-3.5" strokeWidth={1.25} />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+                        {copied ? t('online.copied') : t('online.copyLink')}
+                      </Button>
+                      <span className="text-caption text-content-primary/40">{t('online.hostWaitingHelper')}</span>
+                    </div>
+                  </RoomDetails>
+                )}
 
-                  <div className="grid min-h-80 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
+                {profile && (
+                  <div className="grid min-h-72 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
                     <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border-soft px-3">
                       <div className="min-w-0">
-                        <div className="truncate font-mono text-xs text-accent-primary">
-                          {directChat ? directChatPeerName : t('chat.directTitle')}
+                        <div className="text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                          {t('chat.roomEyebrow')}
                         </div>
-                        <div className="truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                          {directChat?.peerUserId || t('friend.empty')}
+                        <div className="truncate font-mono text-xs text-accent-primary">
+                          {roomChatSubjectId || t('chat.roomSubjectEmpty')}
                         </div>
                       </div>
-                      {directChat && (
-                        <Button
-                          className="size-10 shrink-0 p-0 tracking-normal"
-                          variant="ghost"
-                          type="button"
-                          onClick={() => setDirectChat(null)}
-                          aria-label={t('common.close')}
-                          title={t('common.close')}
-                        >
-                          <X className="size-3.5" strokeWidth={1.25} />
-                        </Button>
-                      )}
+                      <MessageCircle className="size-4 shrink-0 text-content-primary/35" strokeWidth={1.25} />
                     </div>
 
-                    <div ref={directChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
-                      {!directChat && (
-                        <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                          {t('chat.selectDirect')}
+                    <div ref={roomChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
+                      {!roomChatSubjectId && (
+                        <div className="grid min-h-full place-items-center px-4 text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                          {t('chat.roomSubjectEmpty')}
                         </div>
                       )}
-                      {directChat && directChatStatus === 'loading' && (
+                      {roomChatSubjectId && roomChatStatus === 'loading' && (
                         <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
                           {t('presence.syncing')}
                         </div>
                       )}
-                      {directChat && directChatStatus === 'unavailable' && (
+                      {roomChatSubjectId && roomChatStatus === 'unavailable' && (
                         <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
                           {t('chat.historyUnavailable')}
                         </div>
                       )}
-                      {directChat &&
-                        directChatStatus !== 'loading' &&
-                        directChatStatus !== 'unavailable' &&
-                        directChatMessages.length === 0 && (
+                      {roomChatSubjectId &&
+                        roomChatStatus !== 'loading' &&
+                        roomChatStatus !== 'unavailable' &&
+                        roomChatMessages.length === 0 && (
                           <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
                             {t('chat.empty')}
                           </div>
                         )}
-                      {directChatMessages.map((message) => {
+                      {roomChatMessages.map((message) => {
                         const self = message.authorUserId === profile.id;
                         return (
                           <div
@@ -1786,7 +1557,7 @@ export function OnlineLobbyPage({
                                   className="size-7 p-0 tracking-normal"
                                   variant="ghost"
                                   type="button"
-                                  onClick={() => void handleDirectChatTranslate(message)}
+                                  onClick={() => void handleRoomChatTranslate(message)}
                                   disabled={message.translation?.status === 'loading'}
                                   aria-label={t('chat.translate')}
                                   title={t('chat.translate')}
@@ -1798,13 +1569,13 @@ export function OnlineLobbyPage({
                                     className="size-7 p-0 tracking-normal"
                                     variant="ghost"
                                     type="button"
-                                    onClick={() => void handleDirectChatReport(message)}
-                                    disabled={reportedDirectMessageIds.has(message.id)}
+                                    onClick={() => void handleRoomChatReport(message)}
+                                    disabled={reportedRoomMessageIds.has(message.id)}
                                     aria-label={
-                                      reportedDirectMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                      reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
                                     }
                                     title={
-                                      reportedDirectMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                      reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
                                     }
                                   >
                                     <Flag className="size-3" strokeWidth={1.25} />
@@ -1847,26 +1618,28 @@ export function OnlineLobbyPage({
                       className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
                       onSubmit={(event) => {
                         event.preventDefault();
-                        void handleDirectChatSubmit();
+                        void handleRoomChatSubmit();
                       }}
                     >
                       <Input
                         className="min-h-11 min-w-0"
-                        value={directChatDraft}
-                        onChange={(event) => setDirectChatDraft(event.target.value.slice(0, 500))}
+                        value={roomChatDraft}
+                        onChange={(event) => setRoomChatDraft(event.target.value.slice(0, 500))}
                         placeholder={t('chat.messagePlaceholder')}
                         aria-label={t('chat.messagePlaceholder')}
-                        disabled={!directChat || directChatStatus === 'sending' || directChatStatus === 'unavailable'}
+                        disabled={
+                          !roomChatSubjectId || roomChatStatus === 'sending' || roomChatStatus === 'unavailable'
+                        }
                       />
                       <Button
                         className="size-11 p-0 tracking-normal"
                         variant="primary"
                         type="submit"
                         disabled={
-                          !directChat ||
-                          !directChatDraft.trim() ||
-                          directChatStatus === 'sending' ||
-                          directChatStatus === 'unavailable'
+                          !roomChatSubjectId ||
+                          !roomChatDraft.trim() ||
+                          roomChatStatus === 'sending' ||
+                          roomChatStatus === 'unavailable'
                         }
                         aria-label={t('chat.send')}
                         title={t('chat.send')}
@@ -1875,139 +1648,404 @@ export function OnlineLobbyPage({
                       </Button>
                     </form>
                   </div>
-                </div>
+                )}
+
+                {error && (
+                  <Alert tone="danger" role="alert">
+                    {error}
+                  </Alert>
+                )}
               </RoomPanel>
+            </div>
+
+            {profile && (
+              <div ref={directChatPanelRef}>
+                <RoomPanel mode="custom">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                        {t('friend.title')}
+                      </div>
+                      <h2 className="font-display text-2xl font-bold">{t('chat.directTitle')}</h2>
+                    </div>
+                    <Button
+                      className="size-11 shrink-0 p-0 tracking-normal"
+                      variant="ghost"
+                      type="button"
+                      onClick={refreshFriends}
+                      aria-label={t('friend.refresh')}
+                      title={t('friend.refresh')}
+                    >
+                      <Radio className="size-3.5" strokeWidth={1.25} />
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      className="min-h-11 min-w-0 flex-1 font-mono text-xs"
+                      value={friendUserIdDraft}
+                      onChange={(event) => setFriendUserIdDraft(event.target.value.slice(0, 128))}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') void handleAddFriend();
+                      }}
+                      placeholder={t('friend.userId')}
+                      aria-label={t('friend.userId')}
+                      disabled={friendActionId !== null}
+                    />
+                    <Button
+                      className="min-h-11"
+                      variant="secondary"
+                      type="button"
+                      leftIcon={<UserPlus className="size-4" strokeWidth={1.25} />}
+                      disabled={!friendUserIdDraft.trim() || friendActionId !== null}
+                      onClick={() => void handleAddFriend()}
+                    >
+                      {t('friend.add')}
+                    </Button>
+                  </div>
+
+                  {friendStatus === 'unavailable' && (
+                    <Alert tone="danger" role="alert">
+                      {t('friend.unavailable')}
+                    </Alert>
+                  )}
+
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+                    <div className="grid max-h-80 gap-2 overflow-y-auto pr-1">
+                      {friendStatus === 'loading' && (
+                        <div className="grid min-h-16 place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                          {t('presence.syncing')}
+                        </div>
+                      )}
+                      {friendStatus !== 'loading' && friends.length === 0 && (
+                        <div className="grid min-h-16 place-items-center rounded-sm border border-border-soft bg-surface-canvas/30 px-3 text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                          {t('friend.empty')}
+                        </div>
+                      )}
+                      {friends.map((friend) => (
+                        <div
+                          key={friend.userId}
+                          className={`grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border px-3 py-2 transition ${
+                            directChat?.peerUserId === friend.userId
+                              ? 'border-accent-primary/50 bg-accent-primary/10'
+                              : 'border-border-soft bg-surface-canvas/30'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            className="min-w-0 text-left"
+                            onClick={() => openFriendChat(friend)}
+                            aria-label={`${t('chat.directTitle')} ${friend.nickname || friend.userId}`}
+                          >
+                            <span className="block truncate font-mono text-xs text-content-primary/80">
+                              {friend.nickname || friend.userId}
+                            </span>
+                            <span className="mt-1 block truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                              {friend.userId}
+                            </span>
+                          </button>
+                          <Button
+                            className="size-10 shrink-0 p-0 tracking-normal"
+                            variant="ghost"
+                            type="button"
+                            onClick={() => void handleRemoveFriend(friend)}
+                            disabled={friendActionId === friend.userId}
+                            aria-label={t('friend.remove')}
+                            title={t('friend.remove')}
+                          >
+                            <Trash2 className="size-3.5" strokeWidth={1.25} />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid min-h-80 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
+                      <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border-soft px-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-mono text-xs text-accent-primary">
+                            {directChat ? directChatPeerName : t('chat.directTitle')}
+                          </div>
+                          <div className="truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                            {directChat?.peerUserId || t('friend.empty')}
+                          </div>
+                        </div>
+                        {directChat && (
+                          <Button
+                            className="size-10 shrink-0 p-0 tracking-normal"
+                            variant="ghost"
+                            type="button"
+                            onClick={() => setDirectChat(null)}
+                            aria-label={t('common.close')}
+                            title={t('common.close')}
+                          >
+                            <X className="size-3.5" strokeWidth={1.25} />
+                          </Button>
+                        )}
+                      </div>
+
+                      <div ref={directChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
+                        {!directChat && (
+                          <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                            {t('chat.selectDirect')}
+                          </div>
+                        )}
+                        {directChat && directChatStatus === 'loading' && (
+                          <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                            {t('presence.syncing')}
+                          </div>
+                        )}
+                        {directChat && directChatStatus === 'unavailable' && (
+                          <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
+                            {t('chat.historyUnavailable')}
+                          </div>
+                        )}
+                        {directChat &&
+                          directChatStatus !== 'loading' &&
+                          directChatStatus !== 'unavailable' &&
+                          directChatMessages.length === 0 && (
+                            <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                              {t('chat.empty')}
+                            </div>
+                          )}
+                        {directChatMessages.map((message) => {
+                          const self = message.authorUserId === profile.id;
+                          return (
+                            <div
+                              key={message.id}
+                              className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
+                            >
+                              <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                                <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
+                                <span className="ml-2 inline-flex items-center gap-1">
+                                  <Button
+                                    className="size-7 p-0 tracking-normal"
+                                    variant="ghost"
+                                    type="button"
+                                    onClick={() => void handleDirectChatTranslate(message)}
+                                    disabled={message.translation?.status === 'loading'}
+                                    aria-label={t('chat.translate')}
+                                    title={t('chat.translate')}
+                                  >
+                                    <Languages className="size-3" strokeWidth={1.25} />
+                                  </Button>
+                                  {!self && (
+                                    <Button
+                                      className="size-7 p-0 tracking-normal"
+                                      variant="ghost"
+                                      type="button"
+                                      onClick={() => void handleDirectChatReport(message)}
+                                      disabled={reportedDirectMessageIds.has(message.id)}
+                                      aria-label={
+                                        reportedDirectMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                      }
+                                      title={
+                                        reportedDirectMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                      }
+                                    >
+                                      <Flag className="size-3" strokeWidth={1.25} />
+                                    </Button>
+                                  )}
+                                </span>
+                              </div>
+                              <div
+                                className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                                  self
+                                    ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
+                                    : 'border-border-soft bg-surface-elevated/50 text-content-primary'
+                                }`}
+                              >
+                                {message.content}
+                              </div>
+                              {message.translation && (
+                                <div
+                                  className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                                    message.translation.status === 'ready' && message.translation.content
+                                      ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
+                                      : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
+                                  }`}
+                                >
+                                  {message.translation.status === 'ready' && message.translation.content
+                                    ? message.translation.content
+                                    : message.translation.status === 'loading'
+                                      ? t('chat.translationTranslating')
+                                      : message.translation.status === 'unavailable'
+                                        ? t('chat.translationOffline')
+                                        : t('chat.translationPending')}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <form
+                        className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleDirectChatSubmit();
+                        }}
+                      >
+                        <Input
+                          className="min-h-11 min-w-0"
+                          value={directChatDraft}
+                          onChange={(event) => setDirectChatDraft(event.target.value.slice(0, 500))}
+                          placeholder={t('chat.messagePlaceholder')}
+                          aria-label={t('chat.messagePlaceholder')}
+                          disabled={!directChat || directChatStatus === 'sending' || directChatStatus === 'unavailable'}
+                        />
+                        <Button
+                          className="size-11 p-0 tracking-normal"
+                          variant="primary"
+                          type="submit"
+                          disabled={
+                            !directChat ||
+                            !directChatDraft.trim() ||
+                            directChatStatus === 'sending' ||
+                            directChatStatus === 'unavailable'
+                          }
+                          aria-label={t('chat.send')}
+                          title={t('chat.send')}
+                        >
+                          <Send className="size-4" strokeWidth={1.25} />
+                        </Button>
+                      </form>
+                    </div>
+                  </div>
+                </RoomPanel>
+              </div>
             )}
 
             {profile && (
-              <RoomPanel mode="custom">
-                <div className="flex flex-col gap-1">
-                  <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-                    {t('chat.globalEyebrow')}
+              <div ref={lobbyChatPanelRef}>
+                <RoomPanel mode="custom">
+                  <div className="flex flex-col gap-1">
+                    <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                      {t('chat.globalEyebrow')}
+                    </div>
+                    <h2 className="font-display text-2xl font-bold">{t('chat.globalTitle')}</h2>
                   </div>
-                  <h2 className="font-display text-2xl font-bold">{t('chat.globalTitle')}</h2>
-                </div>
 
-                <div className="grid min-h-80 grid-rows-[minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
-                  <div ref={lobbyChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
-                    {lobbyChatStatus === 'loading' && (
-                      <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                        {t('presence.syncing')}
-                      </div>
-                    )}
-                    {lobbyChatStatus === 'unavailable' && (
-                      <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
-                        {t('chat.historyUnavailable')}
-                      </div>
-                    )}
-                    {lobbyChatStatus !== 'loading' &&
-                      lobbyChatStatus !== 'unavailable' &&
-                      lobbyChatMessages.length === 0 && (
-                        <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                          {t('chat.empty')}
+                  <div className="grid min-h-80 grid-rows-[minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
+                    <div ref={lobbyChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
+                      {lobbyChatStatus === 'loading' && (
+                        <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                          {t('presence.syncing')}
                         </div>
                       )}
-                    {lobbyChatMessages.map((message) => {
-                      const self = message.authorUserId === profile.id;
-                      return (
-                        <div
-                          key={message.id}
-                          className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
-                        >
-                          <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                            <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
-                            <span className="ml-2 inline-flex items-center gap-1">
-                              <Button
-                                className="size-7 p-0 tracking-normal"
-                                variant="ghost"
-                                type="button"
-                                onClick={() => void handleLobbyChatTranslate(message)}
-                                disabled={message.translation?.status === 'loading'}
-                                aria-label={t('chat.translate')}
-                                title={t('chat.translate')}
-                              >
-                                <Languages className="size-3" strokeWidth={1.25} />
-                              </Button>
-                              {!self && (
+                      {lobbyChatStatus === 'unavailable' && (
+                        <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
+                          {t('chat.historyUnavailable')}
+                        </div>
+                      )}
+                      {lobbyChatStatus !== 'loading' &&
+                        lobbyChatStatus !== 'unavailable' &&
+                        lobbyChatMessages.length === 0 && (
+                          <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                            {t('chat.empty')}
+                          </div>
+                        )}
+                      {lobbyChatMessages.map((message) => {
+                        const self = message.authorUserId === profile.id;
+                        return (
+                          <div
+                            key={message.id}
+                            className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
+                          >
+                            <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                              <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
+                              <span className="ml-2 inline-flex items-center gap-1">
                                 <Button
                                   className="size-7 p-0 tracking-normal"
                                   variant="ghost"
                                   type="button"
-                                  onClick={() => void handleLobbyChatReport(message)}
-                                  disabled={reportedLobbyMessageIds.has(message.id)}
-                                  aria-label={
-                                    reportedLobbyMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
-                                  }
-                                  title={
-                                    reportedLobbyMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
-                                  }
+                                  onClick={() => void handleLobbyChatTranslate(message)}
+                                  disabled={message.translation?.status === 'loading'}
+                                  aria-label={t('chat.translate')}
+                                  title={t('chat.translate')}
                                 >
-                                  <Flag className="size-3" strokeWidth={1.25} />
+                                  <Languages className="size-3" strokeWidth={1.25} />
                                 </Button>
-                              )}
-                            </span>
-                          </div>
-                          <div
-                            className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                              self
-                                ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
-                                : 'border-border-soft bg-surface-elevated/50 text-content-primary'
-                            }`}
-                          >
-                            {message.content}
-                          </div>
-                          {message.translation && (
+                                {!self && (
+                                  <Button
+                                    className="size-7 p-0 tracking-normal"
+                                    variant="ghost"
+                                    type="button"
+                                    onClick={() => void handleLobbyChatReport(message)}
+                                    disabled={reportedLobbyMessageIds.has(message.id)}
+                                    aria-label={
+                                      reportedLobbyMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                    }
+                                    title={
+                                      reportedLobbyMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                    }
+                                  >
+                                    <Flag className="size-3" strokeWidth={1.25} />
+                                  </Button>
+                                )}
+                              </span>
+                            </div>
                             <div
-                              className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                                message.translation.status === 'ready' && message.translation.content
-                                  ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
-                                  : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
+                              className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                                self
+                                  ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
+                                  : 'border-border-soft bg-surface-elevated/50 text-content-primary'
                               }`}
                             >
-                              {message.translation.status === 'ready' && message.translation.content
-                                ? message.translation.content
-                                : message.translation.status === 'loading'
-                                  ? t('chat.translationTranslating')
-                                  : message.translation.status === 'unavailable'
-                                    ? t('chat.translationOffline')
-                                    : t('chat.translationPending')}
+                              {message.content}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                            {message.translation && (
+                              <div
+                                className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                                  message.translation.status === 'ready' && message.translation.content
+                                    ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
+                                    : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
+                                }`}
+                              >
+                                {message.translation.status === 'ready' && message.translation.content
+                                  ? message.translation.content
+                                  : message.translation.status === 'loading'
+                                    ? t('chat.translationTranslating')
+                                    : message.translation.status === 'unavailable'
+                                      ? t('chat.translationOffline')
+                                      : t('chat.translationPending')}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
 
-                  <form
-                    className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void handleLobbyChatSubmit();
-                    }}
-                  >
-                    <Input
-                      className="min-h-11 min-w-0"
-                      value={lobbyChatDraft}
-                      onChange={(event) => setLobbyChatDraft(event.target.value.slice(0, 500))}
-                      placeholder={t('chat.messagePlaceholder')}
-                      aria-label={t('chat.messagePlaceholder')}
-                      disabled={lobbyChatStatus === 'sending' || lobbyChatStatus === 'unavailable'}
-                    />
-                    <Button
-                      className="size-11 p-0 tracking-normal"
-                      variant="primary"
-                      type="submit"
-                      disabled={
-                        !lobbyChatDraft.trim() || lobbyChatStatus === 'sending' || lobbyChatStatus === 'unavailable'
-                      }
-                      aria-label={t('chat.send')}
-                      title={t('chat.send')}
+                    <form
+                      className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void handleLobbyChatSubmit();
+                      }}
                     >
-                      <Send className="size-4" strokeWidth={1.25} />
-                    </Button>
-                  </form>
-                </div>
-              </RoomPanel>
+                      <Input
+                        className="min-h-11 min-w-0"
+                        value={lobbyChatDraft}
+                        onChange={(event) => setLobbyChatDraft(event.target.value.slice(0, 500))}
+                        placeholder={t('chat.messagePlaceholder')}
+                        aria-label={t('chat.messagePlaceholder')}
+                        disabled={lobbyChatStatus === 'sending' || lobbyChatStatus === 'unavailable'}
+                      />
+                      <Button
+                        className="size-11 p-0 tracking-normal"
+                        variant="primary"
+                        type="submit"
+                        disabled={
+                          !lobbyChatDraft.trim() || lobbyChatStatus === 'sending' || lobbyChatStatus === 'unavailable'
+                        }
+                        aria-label={t('chat.send')}
+                        title={t('chat.send')}
+                      >
+                        <Send className="size-4" strokeWidth={1.25} />
+                      </Button>
+                    </form>
+                  </div>
+                </RoomPanel>
+              </div>
             )}
           </section>
         </div>
