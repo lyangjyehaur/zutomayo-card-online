@@ -10,7 +10,9 @@ const require = createRequire(import.meta.url);
 const {
   canAccessConversation,
   conversationKey,
+  createChatUserSanction,
   evaluateChatModeration,
+  getActiveChatSanction,
   listChatEvidenceMessages,
   listChatMessages,
   listChatReports,
@@ -18,14 +20,24 @@ const {
   markConversationRead,
   reportChatMessage,
   requestChatTranslation,
+  revokeChatUserSanction,
   sendChatMessage,
 } = require('../chatService.cjs') as {
   canAccessConversation: (userId: string, type: unknown, subjectId: unknown) => boolean;
   conversationKey: (type: unknown, subjectId: unknown) => string | null;
+  createChatUserSanction: (input: {
+    pool: PoolLike;
+    targetUserId: string;
+    body: Record<string, unknown>;
+    reviewerUserId: string;
+    sanitizeText: (value: unknown, maxLen?: number) => string;
+    generateSanctionId: () => string;
+  }) => Promise<Record<string, unknown>>;
   evaluateChatModeration: (
     content: string,
     rules?: { blockedWords?: string[]; reviewWords?: string[] },
   ) => { status: string; action: string; reason: string; matchedWords: string[] };
+  getActiveChatSanction: (input: { pool: PoolLike; userId: string }) => Promise<Record<string, unknown> | null>;
   listChatMessages: (input: {
     pool: PoolLike;
     userId: string;
@@ -63,6 +75,13 @@ const {
     translateText?: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
     providerName?: string;
     modelName?: string;
+  }) => Promise<Record<string, unknown>>;
+  revokeChatUserSanction: (input: {
+    pool: PoolLike;
+    sanctionId: string;
+    reviewerUserId: string;
+    body?: Record<string, unknown>;
+    sanitizeText: (value: unknown, maxLen?: number) => string;
   }) => Promise<Record<string, unknown>>;
   sendChatMessage: (input: {
     pool: PoolLike;
@@ -122,6 +141,23 @@ const translationRow = {
   updated_at: '2026-07-10T00:00:02.000Z',
 };
 
+const sanctionRow = {
+  id: 'chat_sanction_1',
+  target_user_id: 'u_1',
+  type: 'chat_mute',
+  status: 'active',
+  reason: 'chat_report:abuse',
+  source_report_id: 'chat_report_1',
+  source_message_id: 'chat_msg_1',
+  conversation_id: 'match:bgio-match-1',
+  created_by_user_id: 'admin',
+  created_at: '2026-07-10T00:00:03.000Z',
+  expires_at: '2026-07-11T00:00:03.000Z',
+  revoked_at: null,
+  revoked_by_user_id: null,
+  revocation_reason: '',
+};
+
 describe('chat service', () => {
   it('builds stable conversation keys for durable chat scopes', () => {
     expect(conversationKey('match', ' bgio-match-1 ')).toBe('match:bgio-match-1');
@@ -179,7 +215,7 @@ describe('chat service', () => {
   });
 
   it('persists messages after upserting the conversation', async () => {
-    const pool = poolWithResults([{ rows: [conversationRow] }, { rows: [messageRow] }, { rows: [] }]);
+    const pool = poolWithResults([{ rows: [] }, { rows: [conversationRow] }, { rows: [messageRow] }, { rows: [] }]);
 
     await expect(
       sendChatMessage({
@@ -210,17 +246,62 @@ describe('chat service', () => {
       },
     });
 
-    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('INSERT INTO chat_conversations'), [
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM chat_user_sanctions'), ['u_1']);
+    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('INSERT INTO chat_conversations'), [
       'match:bgio-match-1',
       'match',
       'bgio-match-1',
       '',
     ]);
     expect(pool.query).toHaveBeenNthCalledWith(
-      2,
+      3,
       expect.stringContaining('INSERT INTO chat_messages'),
       expect.arrayContaining(['chat_msg_1', 'match:bgio-match-1', 'u_1', 'Alice', 'player', 'hello', 'zh-tw']),
     );
+  });
+
+  it('rejects muted users before persisting chat messages', async () => {
+    const pool = poolWithResults([{ rows: [sanctionRow] }]);
+
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_1',
+        body: {
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+          content: 'hello',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      status: 403,
+      error: 'Chat muted until 2026-07-11T00:00:03.000Z',
+      body: {
+        sanction: expect.objectContaining({
+          id: 'chat_sanction_1',
+          targetUserId: 'u_1',
+          type: 'chat_mute',
+        }),
+      },
+    });
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM chat_user_sanctions'), ['u_1']);
+  });
+
+  it('loads the latest active chat mute sanction for enforcement', async () => {
+    const pool = poolWithResults([{ rows: [sanctionRow] }]);
+
+    await expect(getActiveChatSanction({ pool, userId: 'u_1' })).resolves.toEqual(
+      expect.objectContaining({
+        id: 'chat_sanction_1',
+        targetUserId: 'u_1',
+        type: 'chat_mute',
+      }),
+    );
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM chat_user_sanctions'), ['u_1']);
   });
 
   it('stores blocked messages with a moderation event for evidence', async () => {
@@ -230,7 +311,13 @@ describe('chat service', () => {
       moderation_status: 'blocked',
       moderation_reason: 'blocked_keyword',
     };
-    const pool = poolWithResults([{ rows: [conversationRow] }, { rows: [blockedRow] }, { rows: [] }, { rows: [] }]);
+    const pool = poolWithResults([
+      { rows: [] },
+      { rows: [conversationRow] },
+      { rows: [blockedRow] },
+      { rows: [] },
+      { rows: [] },
+    ]);
 
     await expect(
       sendChatMessage({
@@ -258,7 +345,7 @@ describe('chat service', () => {
       },
     });
     expect(pool.query).toHaveBeenNthCalledWith(
-      3,
+      4,
       expect.stringContaining('INSERT INTO chat_moderation_events'),
       expect.arrayContaining(['chat_mod_1', 'chat_msg_1', 'match:bgio-match-1', 'u_1', 'keyword', 'block']),
     );
@@ -516,6 +603,156 @@ describe('chat service', () => {
       },
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('LEFT JOIN chat_messages'), ['open', 10]);
+  });
+
+  it('includes active chat sanctions on report evidence for admin actions', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            id: 'chat_report_1',
+            message_id: 'chat_msg_1',
+            conversation_id: 'match:bgio-match-1',
+            reporter_user_id: 'u_2',
+            reason: 'abuse',
+            note: '',
+            status: 'open',
+            reviewer_user_id: null,
+            resolution_note: '',
+            created_at: '2026-07-10T00:00:03.000Z',
+            reviewed_at: null,
+            message_content: 'reported text',
+            message_author_user_id: 'u_1',
+            message_author_display_name: 'Alice',
+            message_author_role: 'player',
+            message_moderation_status: 'visible',
+            message_created_at: '2026-07-10T00:00:01.000Z',
+            sanction_id: 'chat_sanction_1',
+            sanction_target_user_id: 'u_1',
+            sanction_type: 'chat_mute',
+            sanction_status: 'active',
+            sanction_reason: 'chat_report:abuse',
+            sanction_source_report_id: 'chat_report_1',
+            sanction_source_message_id: 'chat_msg_1',
+            sanction_conversation_id: 'match:bgio-match-1',
+            sanction_created_by_user_id: 'admin',
+            sanction_created_at: '2026-07-10T00:00:03.000Z',
+            sanction_expires_at: '2026-07-11T00:00:03.000Z',
+            sanction_revoked_at: null,
+            sanction_revoked_by_user_id: null,
+            sanction_revocation_reason: '',
+          },
+        ],
+      },
+    ]);
+
+    await expect(listChatReports({ pool, status: 'open', limit: 10 })).resolves.toEqual({
+      ok: true,
+      body: {
+        reports: [
+          expect.objectContaining({
+            message: expect.objectContaining({
+              authorUserId: 'u_1',
+              activeSanction: expect.objectContaining({
+                id: 'chat_sanction_1',
+                targetUserId: 'u_1',
+                expiresAt: '2026-07-11T00:00:03.000Z',
+              }),
+            }),
+          }),
+        ],
+      },
+    });
+  });
+
+  it('creates durable chat mute sanctions and supersedes previous active mutes', async () => {
+    const pool = poolWithResults([{ rows: [] }, { rows: [{ ...sanctionRow, reason: 'abuse' }] }]);
+
+    await expect(
+      createChatUserSanction({
+        pool,
+        targetUserId: 'u_1',
+        body: {
+          type: 'chat_mute',
+          durationMinutes: 60,
+          reason: '<abuse>',
+          sourceReportId: 'chat_report_1',
+          sourceMessageId: 'chat_msg_1',
+          conversationId: 'match:bgio-match-1',
+        },
+        reviewerUserId: 'admin',
+        sanitizeText,
+        generateSanctionId: () => 'chat_sanction_1',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        sanction: expect.objectContaining({
+          id: 'chat_sanction_1',
+          targetUserId: 'u_1',
+          reason: 'abuse',
+        }),
+      },
+    });
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('UPDATE chat_user_sanctions'), [
+      'u_1',
+      'admin',
+      'chat_mute',
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('INSERT INTO chat_user_sanctions'),
+      expect.arrayContaining([
+        'chat_sanction_1',
+        'u_1',
+        'chat_mute',
+        'abuse',
+        'chat_report_1',
+        'chat_msg_1',
+        'match:bgio-match-1',
+        'admin',
+        expect.any(String),
+      ]),
+    );
+  });
+
+  it('revokes active chat mute sanctions', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            ...sanctionRow,
+            status: 'revoked',
+            revoked_at: '2026-07-10T01:00:00Z',
+            revocation_reason: 'manual',
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      revokeChatUserSanction({
+        pool,
+        sanctionId: 'chat_sanction_1',
+        reviewerUserId: 'admin',
+        body: { reason: '<manual>' },
+        sanitizeText,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        sanction: expect.objectContaining({
+          id: 'chat_sanction_1',
+          status: 'revoked',
+          revocationReason: 'manual',
+        }),
+      },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_user_sanctions'), [
+      'chat_sanction_1',
+      'admin',
+      'manual',
+    ]);
   });
 
   it('lists full conversation context for admin evidence including hidden moderation states', async () => {

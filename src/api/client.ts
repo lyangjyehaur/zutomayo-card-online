@@ -850,7 +850,25 @@ export interface ChatReport {
     authorRole: ChatAuthorRole;
     moderationStatus: string;
     createdAt: string | null;
+    activeSanction?: ChatUserSanction;
   };
+}
+
+export interface ChatUserSanction {
+  id: string;
+  targetUserId: string;
+  type: 'chat_mute' | string;
+  status: 'active' | 'revoked' | string;
+  reason: string;
+  sourceReportId: string | null;
+  sourceMessageId: string | null;
+  conversationId: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  revokedByUserId: string | null;
+  revocationReason: string;
 }
 
 export async function reportChatMessage(
@@ -930,6 +948,35 @@ export async function adminGetChatConversationMessages(
       headers: { Authorization: `Bearer ${token}` },
     },
   );
+}
+
+export async function adminCreateChatUserSanction(
+  token: string,
+  input: {
+    targetUserId: string;
+    type?: 'chat_mute';
+    durationMinutes?: number;
+    reason?: string;
+    sourceReportId?: string;
+    sourceMessageId?: string;
+    conversationId?: string;
+  },
+): Promise<{ sanction: ChatUserSanction }> {
+  return request<{ sanction: ChatUserSanction }>('/admin/chat/sanctions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function adminRevokeChatUserSanction(
+  token: string,
+  sanctionId: string,
+): Promise<{ sanction: ChatUserSanction }> {
+  return request<{ sanction: ChatUserSanction }>(`/admin/chat/sanctions/${encodeURIComponent(sanctionId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 export async function adminReviewChatReport(

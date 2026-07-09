@@ -8,11 +8,13 @@ import type { ParsedEffect } from '../game/effects';
 import type { CardDef, CardType, Element } from '../game/types';
 import {
   ApiError,
+  adminCreateChatUserSanction,
   adminGetChatConversationMessages,
   adminGetChatReports,
   adminGetMatches,
   adminGetUsers,
   adminLogin,
+  adminRevokeChatUserSanction,
   adminReviewChatReport,
   adminResetElo,
   adminUpdateAboutPage,
@@ -745,6 +747,7 @@ export function AdminPage() {
   const [chatReportStatus, setChatReportStatus] = useState<'open' | 'reviewing' | 'resolved' | 'dismissed'>('open');
   const [chatReviewingId, setChatReviewingId] = useState<string | null>(null);
   const [chatEvidenceLoadingId, setChatEvidenceLoadingId] = useState<string | null>(null);
+  const [chatSanctioningId, setChatSanctioningId] = useState<string | null>(null);
   const [chatEvidenceFocusMessageId, setChatEvidenceFocusMessageId] = useState<string | null>(null);
   const [chatEvidence, setChatEvidence] = useState<{
     conversation: ChatConversation;
@@ -955,6 +958,50 @@ export function AdminPage() {
       }
     },
     [chatEvidence?.conversation.id, token],
+  );
+
+  const muteReportedAuthor = useCallback(
+    async (report: ChatReport) => {
+      const targetUserId = report.message?.authorUserId;
+      if (!token || !targetUserId) return;
+      setChatSanctioningId(report.id);
+      setAdminError('');
+      try {
+        await adminCreateChatUserSanction(token, {
+          targetUserId,
+          type: 'chat_mute',
+          durationMinutes: 1440,
+          reason: `chat_report:${report.reason}`,
+          sourceReportId: report.id,
+          sourceMessageId: report.messageId,
+          conversationId: report.conversationId,
+        });
+        await refreshChatReports();
+      } catch (e) {
+        setAdminError(e instanceof Error ? e.message : '禁言失敗');
+      } finally {
+        setChatSanctioningId(null);
+      }
+    },
+    [refreshChatReports, token],
+  );
+
+  const revokeChatSanction = useCallback(
+    async (report: ChatReport) => {
+      const sanctionId = report.message?.activeSanction?.id;
+      if (!token || !sanctionId) return;
+      setChatSanctioningId(report.id);
+      setAdminError('');
+      try {
+        await adminRevokeChatUserSanction(token, sanctionId);
+        await refreshChatReports();
+      } catch (e) {
+        setAdminError(e instanceof Error ? e.message : '解除禁言失敗');
+      } finally {
+        setChatSanctioningId(null);
+      }
+    },
+    [refreshChatReports, token],
   );
 
   const loadAdminCards = useCallback(async () => {
@@ -1512,6 +1559,14 @@ export function AdminPage() {
                           <p className="whitespace-pre-wrap break-words text-sm">
                             {report.message?.content || '訊息已刪除或無法讀取'}
                           </p>
+                          {report.message?.activeSanction && (
+                            <span className="text-xs text-accent-action">
+                              已禁言至{' '}
+                              {report.message.activeSanction.expiresAt
+                                ? new Date(report.message.activeSanction.expiresAt).toLocaleString()
+                                : '永久'}
+                            </span>
+                          )}
                         </div>
                       </DataListCell>
                       <DataListCell label="舉報">
@@ -1534,6 +1589,27 @@ export function AdminPage() {
                           >
                             {chatEvidenceLoadingId === report.id ? '載入中…' : '上下文'}
                           </Button>
+                          {report.message?.activeSanction ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={chatSanctioningId === report.id}
+                              onClick={() => void revokeChatSanction(report)}
+                            >
+                              解除禁言
+                            </Button>
+                          ) : (
+                            report.message?.authorUserId && (
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                disabled={chatSanctioningId === report.id}
+                                onClick={() => void muteReportedAuthor(report)}
+                              >
+                                禁言 24h
+                              </Button>
+                            )
+                          )}
                           {report.status === 'open' && (
                             <Button
                               size="sm"

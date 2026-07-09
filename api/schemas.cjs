@@ -95,6 +95,18 @@ const chatReportReviewSchema = z.object({
   resolutionNote: z.string().max(1000).optional(),
 });
 
+const chatUserSanctionCreateSchema = z
+  .object({
+    targetUserId: z.string().min(3).max(128),
+    type: z.enum(['chat_mute']).optional(),
+    durationMinutes: z.number().int().min(1).max(43200).optional(),
+    reason: z.string().max(1000).optional(),
+    sourceReportId: z.string().max(80).optional(),
+    sourceMessageId: z.string().max(80).optional(),
+    conversationId: z.string().max(340).optional(),
+  })
+  .passthrough();
+
 const chatTranslationRequestSchema = z
   .object({
     targetLanguage: z.string().min(2).max(16),
@@ -172,6 +184,7 @@ module.exports = {
   chatReadSchema,
   chatReportCreateSchema,
   chatReportReviewSchema,
+  chatUserSanctionCreateSchema,
   chatTranslationRequestSchema,
   adminLoginSchema,
   adminEloSchema,

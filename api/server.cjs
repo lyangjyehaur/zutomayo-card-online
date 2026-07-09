@@ -31,6 +31,7 @@ const {
   getPublicCards,
 } = require('./cardDataService.cjs');
 const {
+  createChatUserSanction,
   defaultChatModerationRules,
   listChatEvidenceMessages,
   listChatMessages,
@@ -40,6 +41,7 @@ const {
   reportChatMessage,
   requestChatTranslation,
   reviewChatReport,
+  revokeChatUserSanction,
   sendChatMessage,
 } = require('./chatService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks, updateUserDeck } = require('./deckService.cjs');
@@ -566,6 +568,24 @@ async function initSchema() {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_chat_moderation_events_message
       ON chat_moderation_events(message_id, created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS chat_user_sanctions (
+      id TEXT PRIMARY KEY,
+      target_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL DEFAULT 'chat_mute',
+      status TEXT NOT NULL DEFAULT 'active',
+      reason TEXT NOT NULL DEFAULT '',
+      source_report_id TEXT REFERENCES chat_reports(id) ON DELETE SET NULL,
+      source_message_id TEXT REFERENCES chat_messages(id) ON DELETE SET NULL,
+      conversation_id TEXT REFERENCES chat_conversations(id) ON DELETE SET NULL,
+      created_by_user_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ,
+      revoked_by_user_id TEXT,
+      revocation_reason TEXT NOT NULL DEFAULT ''
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_user_sanctions_target_active
+      ON chat_user_sanctions(target_user_id, type, status, expires_at DESC)`,
   ];
 
   for (const statement of schemaStatements) {
@@ -2721,6 +2741,41 @@ function handleRequest(req, res) {
         conversationId,
         limit: url.searchParams.get('limit'),
         before: url.searchParams.get('before'),
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // Admin：建立聊天禁言處置。
+    if (pathname === '/api/admin/chat/sanctions' && method === 'POST') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody(32 * 1024);
+      const __parsed = validateBody(S.chatUserSanctionCreateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await createChatUserSanction({
+        pool,
+        targetUserId: __parsed.data.targetUserId,
+        body: __parsed.data,
+        reviewerUserId: ADMIN_ACTOR_ID,
+        sanitizeText,
+        generateSanctionId: () => 'chat_sanction_' + crypto.randomBytes(12).toString('hex'),
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body, 201);
+      return;
+    }
+
+    // Admin：解除聊天禁言處置。
+    const adminChatSanctionRoute = pathname.match(/^\/api\/admin\/chat\/sanctions\/([^/]+)$/);
+    if (adminChatSanctionRoute && method === 'DELETE') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const result = await revokeChatUserSanction({
+        pool,
+        sanctionId: adminChatSanctionRoute[1],
+        reviewerUserId: ADMIN_ACTOR_ID,
+        body: { reason: 'manual_revoke' },
+        sanitizeText,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);

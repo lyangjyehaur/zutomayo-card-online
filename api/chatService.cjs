@@ -4,6 +4,7 @@ const CONVERSATION_TYPES = ['match', 'room', 'direct', 'global'];
 const PARTICIPANT_ROLES = ['player', 'spectator', 'moderator'];
 const MESSAGE_STATUSES = ['visible', 'pending_review', 'blocked', 'deleted'];
 const REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'];
+const SANCTION_TYPES = ['chat_mute'];
 
 function normalizeKeywordList(value) {
   if (Array.isArray(value)) return value.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
@@ -64,6 +65,10 @@ function normalizeParticipantRole(value) {
 
 function normalizeMessageStatus(value) {
   return MESSAGE_STATUSES.includes(value) ? value : 'visible';
+}
+
+function normalizeSanctionType(value) {
+  return SANCTION_TYPES.includes(value) ? value : 'chat_mute';
 }
 
 function normalizeSubjectId(value) {
@@ -179,8 +184,62 @@ function mapReport(row) {
       moderationStatus: row.message_moderation_status || 'visible',
       createdAt: row.message_created_at || null,
     };
+    if (row.sanction_id) {
+      report.message.activeSanction = mapSanction({
+        id: row.sanction_id,
+        target_user_id: row.sanction_target_user_id,
+        type: row.sanction_type,
+        status: row.sanction_status,
+        reason: row.sanction_reason,
+        source_report_id: row.sanction_source_report_id,
+        source_message_id: row.sanction_source_message_id,
+        conversation_id: row.sanction_conversation_id,
+        created_by_user_id: row.sanction_created_by_user_id,
+        created_at: row.sanction_created_at,
+        expires_at: row.sanction_expires_at,
+        revoked_at: row.sanction_revoked_at,
+        revoked_by_user_id: row.sanction_revoked_by_user_id,
+        revocation_reason: row.sanction_revocation_reason,
+      });
+    }
   }
   return report;
+}
+
+function mapSanction(row) {
+  return {
+    id: row.id,
+    targetUserId: row.target_user_id,
+    type: row.type || 'chat_mute',
+    status: row.status || 'active',
+    reason: row.reason || '',
+    sourceReportId: row.source_report_id || null,
+    sourceMessageId: row.source_message_id || null,
+    conversationId: row.conversation_id || null,
+    createdByUserId: row.created_by_user_id || null,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at || null,
+    revokedAt: row.revoked_at || null,
+    revokedByUserId: row.revoked_by_user_id || null,
+    revocationReason: row.revocation_reason || '',
+  };
+}
+
+async function getActiveChatSanction({ pool, userId }) {
+  if (!userId) return null;
+  const { rows } = await pool.query(
+    `SELECT *
+     FROM chat_user_sanctions
+     WHERE target_user_id = $1
+       AND type = 'chat_mute'
+       AND status = 'active'
+       AND revoked_at IS NULL
+       AND (expires_at IS NULL OR expires_at > NOW())
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId],
+  );
+  return rows[0] ? mapSanction(rows[0]) : null;
 }
 
 async function getOrCreateConversation({ pool, type, subjectId, title = '' }) {
@@ -240,6 +299,15 @@ async function sendChatMessage({
   if (!type || !subjectId) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (!canAccessConversation(authorUserId, type, subjectId)) return { ok: false, status: 403, error: 'Forbidden' };
   if (!content) return { ok: false, status: 400, error: 'Message content is required' };
+  const activeSanction = await getActiveChatSanction({ pool, userId: authorUserId });
+  if (activeSanction) {
+    return {
+      ok: false,
+      status: 403,
+      error: activeSanction.expiresAt ? `Chat muted until ${activeSanction.expiresAt}` : 'Chat muted',
+      body: { sanction: activeSanction },
+    };
+  }
 
   const conversation = await getOrCreateConversation({
     pool,
@@ -553,15 +621,103 @@ async function listChatReports({ pool, status, limit }) {
             m.author_display_name AS message_author_display_name,
             m.author_role AS message_author_role,
             m.moderation_status AS message_moderation_status,
-            m.created_at AS message_created_at
+            m.created_at AS message_created_at,
+            s.id AS sanction_id,
+            s.target_user_id AS sanction_target_user_id,
+            s.type AS sanction_type,
+            s.status AS sanction_status,
+            s.reason AS sanction_reason,
+            s.source_report_id AS sanction_source_report_id,
+            s.source_message_id AS sanction_source_message_id,
+            s.conversation_id AS sanction_conversation_id,
+            s.created_by_user_id AS sanction_created_by_user_id,
+            s.created_at AS sanction_created_at,
+            s.expires_at AS sanction_expires_at,
+            s.revoked_at AS sanction_revoked_at,
+            s.revoked_by_user_id AS sanction_revoked_by_user_id,
+            s.revocation_reason AS sanction_revocation_reason
      FROM chat_reports r
      LEFT JOIN chat_messages m ON m.id = r.message_id
+     LEFT JOIN LATERAL (
+       SELECT *
+       FROM chat_user_sanctions
+       WHERE target_user_id = m.author_user_id
+         AND type = 'chat_mute'
+         AND status = 'active'
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY created_at DESC
+       LIMIT 1
+     ) s ON true
      WHERE r.status = $1
      ORDER BY r.created_at DESC
      LIMIT $2`,
     [cleanStatus, lim],
   );
   return { ok: true, body: { reports: rows.map(mapReport) } };
+}
+
+async function createChatUserSanction({ pool, targetUserId, body, reviewerUserId, sanitizeText, generateSanctionId }) {
+  const cleanTargetUserId = typeof targetUserId === 'string' ? targetUserId.slice(0, 128) : '';
+  if (!cleanTargetUserId) return { ok: false, status: 400, error: 'Invalid target user' };
+  const type = normalizeSanctionType(body.type);
+  const durationMinutes = clampLimit(body.durationMinutes, 1440, 43200);
+  const expiresAt = new Date(Date.now() + durationMinutes * 60_000).toISOString();
+  const reason = sanitizeText(body.reason || '', 1000);
+  const id = generateSanctionId();
+
+  await pool.query(
+    `UPDATE chat_user_sanctions
+     SET status = 'revoked',
+         revoked_at = NOW(),
+         revoked_by_user_id = $2,
+         revocation_reason = 'superseded'
+     WHERE target_user_id = $1
+       AND type = $3
+       AND status = 'active'
+       AND revoked_at IS NULL
+       AND (expires_at IS NULL OR expires_at > NOW())`,
+    [cleanTargetUserId, reviewerUserId || null, type],
+  );
+
+  const { rows } = await pool.query(
+    `INSERT INTO chat_user_sanctions (
+       id, target_user_id, type, status, reason, source_report_id, source_message_id,
+       conversation_id, created_by_user_id, expires_at
+     )
+     VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9)
+     RETURNING *`,
+    [
+      id,
+      cleanTargetUserId,
+      type,
+      reason,
+      body.sourceReportId || null,
+      body.sourceMessageId || null,
+      body.conversationId || null,
+      reviewerUserId || null,
+      expiresAt,
+    ],
+  );
+  return { ok: true, body: { sanction: mapSanction(rows[0]) } };
+}
+
+async function revokeChatUserSanction({ pool, sanctionId, reviewerUserId, body, sanitizeText }) {
+  const cleanSanctionId = typeof sanctionId === 'string' ? sanctionId.slice(0, 80) : '';
+  if (!cleanSanctionId) return { ok: false, status: 400, error: 'Invalid sanction' };
+  const { rows } = await pool.query(
+    `UPDATE chat_user_sanctions
+     SET status = 'revoked',
+         revoked_at = NOW(),
+         revoked_by_user_id = $2,
+         revocation_reason = $3
+     WHERE id = $1
+       AND status = 'active'
+     RETURNING *`,
+    [cleanSanctionId, reviewerUserId || null, sanitizeText(body?.reason || 'manual_revoke', 1000)],
+  );
+  if (rows.length === 0) return { ok: false, status: 404, error: 'Sanction not found' };
+  return { ok: true, body: { sanction: mapSanction(rows[0]) } };
 }
 
 async function reviewChatReport({ pool, reportId, body, reviewerUserId, sanitizeText }) {
@@ -583,10 +739,13 @@ module.exports = {
   PARTICIPANT_ROLES,
   MESSAGE_STATUSES,
   REPORT_STATUSES,
+  SANCTION_TYPES,
   canAccessConversation,
   conversationKey,
+  createChatUserSanction,
   defaultChatModerationRules,
   evaluateChatModeration,
+  getActiveChatSanction,
   getOrCreateConversation,
   listChatEvidenceMessages,
   listChatMessages,
@@ -596,5 +755,6 @@ module.exports = {
   markConversationRead,
   reportChatMessage,
   reviewChatReport,
+  revokeChatUserSanction,
   sendChatMessage,
 };

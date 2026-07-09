@@ -440,6 +440,32 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('POST /api/admin/chat/sanctions returns 401 without admin token', async () => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/chat/sanctions',
+        {
+          targetUserId: 'u_1',
+          durationMinutes: 1440,
+        },
+        {
+          cookie: `zutomayo_csrf=${csrfToken}`,
+          'x-csrf-token': csrfToken,
+        },
+      );
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('DELETE /api/admin/chat/sanctions/:sanctionId returns 401 without admin token', async () => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const res = await sendRequest('DELETE', '/api/admin/chat/sanctions/chat_sanction_1', null, {
+        cookie: `zutomayo_csrf=${csrfToken}`,
+        'x-csrf-token': csrfToken,
+      });
+      expect(res.statusCode).toBe(401);
+    });
+
     it('GET /api/matchmaking/status returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/matchmaking/status');
       expect(res.statusCode).toBe(401);
