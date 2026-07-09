@@ -20,6 +20,12 @@ export interface PlatformMatchShellJoinOptions {
   role?: PlatformRole;
 }
 
+export interface PlatformQuickMatchJoinOptions {
+  userId: string;
+  displayName: string;
+  deckName?: string;
+}
+
 export interface PlatformClientProfile {
   sessionId: string;
   userId: string;
@@ -48,6 +54,32 @@ export interface PlatformChatPreview {
   createdAt: number;
 }
 
+export interface PlatformQuickMatchSnapshot {
+  roomId: string;
+  status: 'waiting' | 'matched' | 'cancelled' | 'finished';
+  players: PlatformClientProfile[];
+  hostSessionId?: string;
+  boardgameMatchID?: string;
+}
+
+export interface PlatformQuickMatchMatched {
+  roomId: string;
+  role: 'host' | 'guest';
+  opponent?: PlatformClientProfile;
+}
+
+export interface PlatformBoardgameMatchReady {
+  boardgameMatchID: string;
+}
+
+export interface PlatformQuickMatchHandlers {
+  onSnapshot?: (snapshot: PlatformQuickMatchSnapshot) => void;
+  onMatched?: (match: PlatformQuickMatchMatched) => void;
+  onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
+  onCancelled?: (reason: string) => void;
+  onDisconnect?: () => void;
+}
+
 export interface PlatformMatchShellHandlers {
   onSnapshot?: (snapshot: PlatformMatchShellSnapshot) => void;
   onPresence?: (presence: PlatformMatchShellPresence) => void;
@@ -63,6 +95,7 @@ interface LocationLike {
 
 export type PlatformLobbyRoom = Room<unknown>;
 export type PlatformMatchShellRoom = Room<unknown>;
+export type PlatformQuickMatchRoom = Room<unknown>;
 
 interface FlatSeatReservation {
   name: string;
@@ -197,6 +230,106 @@ export function platformChatPreviewFromMessage(message: unknown): PlatformChatPr
     text: data.text.trim().slice(0, 500),
     createdAt: Number.isFinite(data.createdAt) ? Math.trunc(data.createdAt as number) : Date.now(),
   };
+}
+
+function platformProfileFromMessage(value: unknown): PlatformClientProfile | null {
+  if (!value || typeof value !== 'object') return null;
+  const data = value as Partial<PlatformClientProfile>;
+  if (typeof data.sessionId !== 'string' || typeof data.userId !== 'string') return null;
+  return {
+    sessionId: data.sessionId,
+    userId: data.userId,
+    displayName: typeof data.displayName === 'string' ? data.displayName : 'Player',
+    role: data.role === 'player' || data.role === 'spectator' || data.role === 'moderator' ? data.role : 'spectator',
+    joinedAt: Number.isFinite(data.joinedAt) ? Math.trunc(data.joinedAt as number) : Date.now(),
+  };
+}
+
+export function platformQuickMatchSnapshotFromMessage(message: unknown): PlatformQuickMatchSnapshot | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as {
+    roomId?: unknown;
+    status?: unknown;
+    players?: unknown;
+    hostSessionId?: unknown;
+    boardgameMatchID?: unknown;
+  };
+  if (typeof data.roomId !== 'string') return null;
+  if (
+    data.status !== 'waiting' &&
+    data.status !== 'matched' &&
+    data.status !== 'cancelled' &&
+    data.status !== 'finished'
+  ) {
+    return null;
+  }
+  const players = Array.isArray(data.players)
+    ? data.players
+        .map(platformProfileFromMessage)
+        .filter((profile): profile is PlatformClientProfile => Boolean(profile))
+    : [];
+  return {
+    roomId: data.roomId,
+    status: data.status,
+    players,
+    hostSessionId: typeof data.hostSessionId === 'string' ? data.hostSessionId : undefined,
+    boardgameMatchID: typeof data.boardgameMatchID === 'string' ? data.boardgameMatchID : undefined,
+  };
+}
+
+export function platformQuickMatchMatchedFromMessage(message: unknown): PlatformQuickMatchMatched | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as { roomId?: unknown; role?: unknown; opponent?: unknown };
+  if (typeof data.roomId !== 'string') return null;
+  if (data.role !== 'host' && data.role !== 'guest') return null;
+  return {
+    roomId: data.roomId,
+    role: data.role,
+    opponent: platformProfileFromMessage(data.opponent) ?? undefined,
+  };
+}
+
+export function platformBoardgameMatchReadyFromMessage(message: unknown): PlatformBoardgameMatchReady | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as { boardgameMatchID?: unknown };
+  if (typeof data.boardgameMatchID !== 'string' || !data.boardgameMatchID.trim()) return null;
+  return { boardgameMatchID: data.boardgameMatchID.trim().slice(0, 128) };
+}
+
+export async function connectPlatformQuickMatch(
+  options: PlatformQuickMatchJoinOptions,
+  handlers: PlatformQuickMatchHandlers,
+): Promise<PlatformQuickMatchRoom> {
+  const room = await joinPlatformRoom('quick_match', {
+    userId: options.userId,
+    displayName: options.displayName,
+    role: 'player',
+    deckName: options.deckName,
+    status: 'waiting',
+  });
+
+  room.onMessage('quickMatchSnapshot', (message) => {
+    const snapshot = platformQuickMatchSnapshotFromMessage(message);
+    if (snapshot) handlers.onSnapshot?.(snapshot);
+  });
+  room.onMessage('quickMatchMatched', (message) => {
+    const matched = platformQuickMatchMatchedFromMessage(message);
+    if (matched) handlers.onMatched?.(matched);
+  });
+  room.onMessage('boardgameMatchReady', (message) => {
+    const ready = platformBoardgameMatchReadyFromMessage(message);
+    if (ready) handlers.onBoardgameMatchReady?.(ready);
+  });
+  room.onMessage('quickMatchCancelled', (message) => {
+    const reason =
+      message && typeof message === 'object' && typeof (message as { reason?: unknown }).reason === 'string'
+        ? (message as { reason: string }).reason
+        : 'cancelled';
+    handlers.onCancelled?.(reason);
+  });
+  room.onLeave(() => handlers.onDisconnect?.());
+
+  return room;
 }
 
 export async function connectPlatformMatchShell(

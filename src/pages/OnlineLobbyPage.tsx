@@ -28,6 +28,7 @@ import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
 import { Alert, AppHeader, Button, Input, PageShell, Panel } from '../ui';
 import { useOnlinePresence } from '../hooks/useOnlinePresence';
+import { connectPlatformQuickMatch, type PlatformQuickMatchRoom } from '../platformClient';
 import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
@@ -44,7 +45,7 @@ interface OnlineLobbyPageProps {
   cardsReady: boolean;
 }
 
-type MatchmakingPhase = 'idle' | 'polling' | 'host-starting' | 'guest-joining' | 'done';
+type MatchmakingPhase = 'idle' | 'platform-waiting' | 'polling' | 'host-starting' | 'guest-joining' | 'done';
 const ANONYMOUS_NAME_PROMPT_STORAGE_KEY = 'zutomayo_anonymous_name_prompt_seen';
 
 // 段位定義：依 ELO 劃分漆面塔羅風格的段位名（專有名詞，不 i18n）。
@@ -194,6 +195,7 @@ export function OnlineLobbyPage({
   const [matchmakingActive, setMatchmakingActive] = useState(false);
   const [copied, setCopied] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const platformQuickMatchRoomRef = useRef<PlatformQuickMatchRoom | null>(null);
   const phaseRef = useRef<MatchmakingPhase>('idle');
   const cancelRef = useRef(false);
 
@@ -215,6 +217,8 @@ export function OnlineLobbyPage({
     () => () => {
       cancelRef.current = true;
       stopPolling();
+      void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
+      platformQuickMatchRoomRef.current = null;
     },
     [stopPolling],
   );
@@ -291,13 +295,7 @@ export function OnlineLobbyPage({
     }
   }, [resetMatchmaking, onStartOnline, stopPolling]);
 
-  const handleQuickMatch = async () => {
-    if (!isLoggedIn()) {
-      setError(t('lobby.loginRequired'));
-      return;
-    }
-    if (requestAnonymousNameBeforeStart()) return;
-    setError('');
+  const startHttpMatchmaking = async () => {
     setMatchmakingActive(true);
     cancelRef.current = false;
     phaseRef.current = 'polling';
@@ -326,8 +324,98 @@ export function OnlineLobbyPage({
     }, 2000);
   };
 
+  const handleQuickMatch = async () => {
+    if (!isLoggedIn()) {
+      setError(t('lobby.loginRequired'));
+      return;
+    }
+    if (requestAnonymousNameBeforeStart()) return;
+    setError('');
+    setMatchmakingActive(true);
+    cancelRef.current = false;
+    phaseRef.current = 'platform-waiting';
+
+    try {
+      const room = await connectPlatformQuickMatch(
+        {
+          userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
+          displayName: effectivePlayerName,
+          deckName: deck0Name,
+        },
+        {
+          onMatched: (match) => {
+            if (cancelRef.current || phaseRef.current !== 'platform-waiting') return;
+            if (match.role === 'host') {
+              phaseRef.current = 'host-starting';
+              void onStartOnline(undefined, effectivePlayerName)
+                .then((session) => {
+                  phaseRef.current = 'done';
+                  platformQuickMatchRoomRef.current?.send('boardgameMatchReady', {
+                    boardgameMatchID: session.matchID,
+                  });
+                })
+                .catch((err) => {
+                  phaseRef.current = 'idle';
+                  setMatchmakingActive(false);
+                  Sentry.captureException(err, { tags: { action: 'platform-matchmaking-host-start' } });
+                  setError(onlineErrorMessage(err));
+                  void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
+                  platformQuickMatchRoomRef.current = null;
+                });
+              return;
+            }
+            phaseRef.current = 'guest-joining';
+          },
+          onBoardgameMatchReady: (message) => {
+            if (cancelRef.current || phaseRef.current === 'done' || phaseRef.current === 'host-starting') return;
+            phaseRef.current = 'guest-joining';
+            void onStartOnline(message.boardgameMatchID, effectivePlayerName)
+              .then(() => {
+                phaseRef.current = 'done';
+              })
+              .catch((err) => {
+                phaseRef.current = 'idle';
+                setMatchmakingActive(false);
+                Sentry.captureException(err, { tags: { action: 'platform-matchmaking-guest-join' } });
+                setError(onlineErrorMessage(err));
+                void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
+                platformQuickMatchRoomRef.current = null;
+              });
+          },
+          onCancelled: () => {
+            if (cancelRef.current || phaseRef.current === 'done') return;
+            platformQuickMatchRoomRef.current = null;
+            resetMatchmaking();
+            setError(t('lobby.matchmakingTimeout'));
+          },
+          onDisconnect: () => {
+            platformQuickMatchRoomRef.current = null;
+            if (cancelRef.current || phaseRef.current !== 'platform-waiting') return;
+            void startHttpMatchmaking();
+          },
+        },
+      );
+      if (cancelRef.current) {
+        void room.leave(true).catch(() => undefined);
+        return;
+      }
+      platformQuickMatchRoomRef.current = room;
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'platform',
+        message: 'platform quick match unavailable, falling back to HTTP matchmaking',
+        level: 'warning',
+        data: { error: err instanceof Error ? err.message : String(err) },
+      });
+      await startHttpMatchmaking();
+    }
+  };
+
   const handleCancelMatchmaking = () => {
     cancelRef.current = true;
+    platformQuickMatchRoomRef.current?.send('cancelQuickMatch', {});
+    void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
+    platformQuickMatchRoomRef.current = null;
     resetMatchmaking();
     void matchmakingLeave().catch(() => {});
   };

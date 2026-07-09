@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeSeatReservation,
+  platformBoardgameMatchReadyFromMessage,
   platformChatPreviewFromMessage,
   platformOnlineCountFromMessage,
   platformPresenceFromMatchShellMessage,
+  platformQuickMatchMatchedFromMessage,
+  platformQuickMatchSnapshotFromMessage,
   resolvePlatformEndpoint,
 } from '../platformClient';
 
@@ -93,6 +96,51 @@ describe('platform client helpers', () => {
     });
     expect(platformChatPreviewFromMessage({ text: 'hello' })).toBeNull();
     expect(platformChatPreviewFromMessage({ sender: { sessionId: 's_1', userId: 'u_1' }, text: '' })).toBeNull();
+  });
+
+  it('reads quick match lifecycle messages defensively', () => {
+    expect(
+      platformQuickMatchSnapshotFromMessage({
+        roomId: 'room_1',
+        status: 'matched',
+        players: [
+          {
+            sessionId: 's_1',
+            userId: 'u_1',
+            displayName: 'Alice',
+            role: 'player',
+            joinedAt: 1000,
+          },
+        ],
+        hostSessionId: 's_1',
+        boardgameMatchID: 'bgio-match-1',
+      }),
+    ).toEqual({
+      roomId: 'room_1',
+      status: 'matched',
+      players: [
+        {
+          sessionId: 's_1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'player',
+          joinedAt: 1000,
+        },
+      ],
+      hostSessionId: 's_1',
+      boardgameMatchID: 'bgio-match-1',
+    });
+    expect(platformQuickMatchSnapshotFromMessage({ roomId: 'room_1', status: 'unknown' })).toBeNull();
+    expect(platformQuickMatchMatchedFromMessage({ roomId: 'room_1', role: 'host' })).toEqual({
+      roomId: 'room_1',
+      role: 'host',
+      opponent: undefined,
+    });
+    expect(platformQuickMatchMatchedFromMessage({ roomId: 'room_1', role: 'observer' })).toBeNull();
+    expect(platformBoardgameMatchReadyFromMessage({ boardgameMatchID: ' bgio-match-1 ' })).toEqual({
+      boardgameMatchID: 'bgio-match-1',
+    });
+    expect(platformBoardgameMatchReadyFromMessage({})).toBeNull();
   });
 
   it('adapts Colyseus 0.17 flat seat reservations for the browser SDK', () => {

@@ -2,6 +2,7 @@ import type { Client } from '@colyseus/core';
 
 export type PlatformRole = 'player' | 'spectator' | 'moderator';
 export type MatchShellStatus = 'waiting' | 'ready' | 'in_progress' | 'finished';
+export type QuickMatchStatus = 'waiting' | 'matched' | 'cancelled' | 'finished';
 
 export interface PlatformAuth {
   userId: string;
@@ -40,6 +41,24 @@ export interface PlatformClientMessages {
     boardgameMatchID: string;
     status: MatchShellStatus;
   };
+  quickMatchSnapshot: {
+    roomId: string;
+    status: QuickMatchStatus;
+    players: PlatformClientProfile[];
+    hostSessionId?: string;
+    boardgameMatchID?: string;
+  };
+  quickMatchMatched: {
+    roomId: string;
+    role: 'host' | 'guest';
+    opponent?: PlatformClientProfile;
+  };
+  quickMatchCancelled: {
+    reason: string;
+  };
+  boardgameMatchReady: {
+    boardgameMatchID: string;
+  };
   chatPreview: {
     conversationId?: string;
     sender: PlatformClientProfile;
@@ -68,6 +87,14 @@ export interface MatchShellRoomMetadata {
   conversationId?: string;
 }
 
+export interface QuickMatchRoomMetadata {
+  kind: 'quick-match';
+  status: QuickMatchStatus;
+  playerCount: number;
+  hostSessionId?: string;
+  boardgameMatchID?: string;
+}
+
 export interface LobbyJoinOptions {
   userId?: unknown;
   displayName?: unknown;
@@ -81,6 +108,11 @@ export interface MatchShellRoomOptions extends LobbyJoinOptions {
   maxSpectators?: unknown;
 }
 
+export interface QuickMatchRoomOptions extends LobbyJoinOptions {
+  deckName?: unknown;
+  status?: unknown;
+}
+
 export interface LinkBoardgameMatchMessage {
   boardgameMatchID?: unknown;
 }
@@ -88,4 +120,8 @@ export interface LinkBoardgameMatchMessage {
 export interface ChatPreviewMessage {
   text?: unknown;
   conversationId?: unknown;
+}
+
+export interface BoardgameMatchReadyMessage {
+  boardgameMatchID?: unknown;
 }
