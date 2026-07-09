@@ -146,10 +146,10 @@ git log --oneline -3
 ok "git reset 完成"
 
 # --- Step 3:更新 APP_BUILD_ID / APP_VERSION / GAME_RULES_VERSION ---
-# 三個都要從 package.json 跟 HEAD 同步,不能只用預設值 0.1.0
+# 三個都要從 package.json 跟 HEAD 同步，避免依賴 Docker/Compose 的空值 fallback。
 log ""
 log "Step 3/6: 同步 server4 .env 的版本號(APP_BUILD_ID / APP_VERSION / GAME_RULES_VERSION)"
-PACKAGE_VERSION=$(python3 -c "import json; print(json.load(open('$PROJECT_DIR/package.json')).get('version','0.1.0'))")
+PACKAGE_VERSION=$(python3 -c "import json; print(json.load(open('$PROJECT_DIR/package.json'))['version'])")
 run_or_dry ssh_run "
 cd $REMOTE_DIR
 

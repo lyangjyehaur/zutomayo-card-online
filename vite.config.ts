@@ -7,15 +7,20 @@ import fs from 'fs';
 import path from 'path';
 
 const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as { version?: string };
-const fallbackVersion = packageJson.version ?? '0.1.0';
+if (!packageJson.version) throw new Error('package.json version is required');
+const packageVersion = packageJson.version;
 const fallbackBuildTime = new Date().toISOString();
 
 function versionEnv(name: string, fallback: string): string {
   return process.env[`VITE_${name}`] || process.env[name] || fallback;
 }
 
+const appVersion = versionEnv('APP_VERSION', packageVersion);
+const appBuildId = versionEnv('APP_BUILD_ID', appVersion);
+const gameRulesVersion = versionEnv('GAME_RULES_VERSION', appVersion);
+
 // Release 字串必須與 src/sentry.ts 的 release 完全一致，source map 才能正確關聯。
-const release = `${versionEnv('APP_VERSION', fallbackVersion)}@${versionEnv('APP_BUILD_ID', fallbackVersion)}`;
+const release = `${appVersion}@${appBuildId}`;
 
 // 只有四個 Sentry upload 變數都存在時才啟用 source map 上傳，避免配置不完整導致 build 異常或上傳到錯誤目標。
 // SENTRY_AUTH_TOKEN 僅用於 build 時上傳 source map，不會進入前端 bundle。
@@ -27,10 +32,10 @@ const sentrySourceMapUploadEnabled =
 
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(versionEnv('APP_VERSION', fallbackVersion)),
-    __APP_BUILD_ID__: JSON.stringify(versionEnv('APP_BUILD_ID', fallbackVersion)),
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __APP_BUILD_ID__: JSON.stringify(appBuildId),
     __APP_BUILT_AT__: JSON.stringify(versionEnv('APP_BUILT_AT', fallbackBuildTime)),
-    __GAME_RULES_VERSION__: JSON.stringify(versionEnv('GAME_RULES_VERSION', fallbackVersion)),
+    __GAME_RULES_VERSION__: JSON.stringify(gameRulesVersion),
   },
   build: {
     // hidden：產生 source map 但不寫入 //# sourceMappingURL 註解，避免 .map 檔暴露到公網。

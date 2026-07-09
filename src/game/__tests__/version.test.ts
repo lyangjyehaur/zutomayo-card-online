@@ -1,8 +1,22 @@
 import { describe, expect, it } from 'vitest';
+import packageJson from '../../../package.json';
 import { ZutomayoCard, ZutomayoOnlineCard } from '../Game';
 import { APP_VERSION_INFO } from '../../version';
 
 describe('online version guard', () => {
+  it('defaults version identity from the root package version', () => {
+    const expectedAppVersion = process.env.VITE_APP_VERSION || process.env.APP_VERSION || packageJson.version;
+    const expectedBuildId = process.env.VITE_APP_BUILD_ID || process.env.APP_BUILD_ID || expectedAppVersion;
+    const expectedRulesVersion =
+      process.env.VITE_GAME_RULES_VERSION || process.env.GAME_RULES_VERSION || expectedAppVersion;
+
+    expect(APP_VERSION_INFO).toEqual({
+      appVersion: expectedAppVersion,
+      buildId: expectedBuildId,
+      rulesVersion: expectedRulesVersion,
+    });
+  });
+
   it('rejects online match setup without a matching client version', () => {
     expect(ZutomayoOnlineCard.validateSetupData?.({ deck0Name: 'dark', deck1Name: 'flame' }, 2)).toMatch(
       /Client version/,

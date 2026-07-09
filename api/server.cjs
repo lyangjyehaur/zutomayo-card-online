@@ -65,12 +65,25 @@ const {
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 
+function readPackageVersion() {
+  for (const packagePath of ['../package.json', './package.json']) {
+    try {
+      const packageJson = require(packagePath);
+      if (typeof packageJson.version === 'string' && packageJson.version.trim()) return packageJson.version.trim();
+    } catch {
+      // Try the next package path. The API Docker image only contains ./package.json.
+    }
+  }
+  throw new Error('package.json version is required');
+}
+
 // ===== Config =====
 const PORT = Number(process.env.API_PORT) || 3001;
 const JWT_SECRET = process.env.JWT_SECRET;
 // P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-const APP_VERSION = process.env.APP_VERSION || '0.1.0';
+const PACKAGE_VERSION = readPackageVersion();
+const APP_VERSION = process.env.APP_VERSION || PACKAGE_VERSION;
 const APP_BUILD_ID = process.env.APP_BUILD_ID || APP_VERSION;
 const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
 const IMGPROXY_INTERNAL_BASE_URL = process.env.IMGPROXY_INTERNAL_BASE_URL || process.env.IMGPROXY_BASE_URL || '';

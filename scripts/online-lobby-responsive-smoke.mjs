@@ -8,6 +8,11 @@ const outDir = process.env.OUT_DIR ?? '/private/tmp/zutomayo-online-lobby-respon
 const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-online-lobby-responsive-report.json';
 const port = Number(process.env.CDP_PORT ?? 9931);
 const profileDir = `/private/tmp/zutomayo-online-lobby-responsive-profile-${process.pid}-${Date.now()}`;
+const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+if (typeof packageJson.version !== 'string' || !packageJson.version) {
+  throw new Error('package.json version is required');
+}
+const smokeVersion = packageJson.version;
 
 const cases = [
   { name: 'online-lobby-360x740', width: 360, height: 740, createRoom: true },
@@ -135,6 +140,7 @@ async function waitFor(client, expression, timeoutMs = 14000) {
 
 const setup = `
 (() => {
+  const smokeVersion = ${JSON.stringify(smokeVersion)};
   localStorage.removeItem('zutomayo_token');
   localStorage.removeItem('zutomayo_online_session');
   localStorage.removeItem('zutomayo_custom_deck');
@@ -161,9 +167,9 @@ const setup = `
       const getHeader = (name) =>
         typeof headers.get === 'function' ? headers.get(name) : headers[name] || headers[name.toLowerCase()];
       return new Response(JSON.stringify({
-        appVersion: getHeader('X-Client-App-Version') || '0.1.0',
-        buildId: getHeader('X-Client-Build-Id') || '0.1.0',
-        rulesVersion: getHeader('X-Client-Rules-Version') || '0.1.0'
+        appVersion: getHeader('X-Client-App-Version') || smokeVersion,
+        buildId: getHeader('X-Client-Build-Id') || smokeVersion,
+        rulesVersion: getHeader('X-Client-Rules-Version') || smokeVersion
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
     if (url.includes('/api/preset-decks')) {

@@ -8,6 +8,11 @@ const outDir = process.env.OUT_DIR ?? '/private/tmp/zutomayo-ui-responsive-scree
 const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-ui-responsive-report.json';
 const port = Number(process.env.CDP_PORT ?? 9947);
 const profileDir = `/private/tmp/zutomayo-ui-responsive-profile-${process.pid}-${Date.now()}`;
+const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+if (typeof packageJson.version !== 'string' || !packageJson.version) {
+  throw new Error('package.json version is required');
+}
+const smokeVersion = packageJson.version;
 
 const viewports = [
   { viewportId: '1920x1080', width: 1920, height: 1080 },
@@ -160,6 +165,7 @@ async function evalChecked(client, expression) {
 
 const setup = `
 (() => {
+  const smokeVersion = ${JSON.stringify(smokeVersion)};
   localStorage.setItem('zutomayo_deck_intro_seen', 'true');
   localStorage.removeItem('zutomayo_online_session');
   localStorage.removeItem('zutomayo_token');
@@ -205,7 +211,7 @@ const setup = `
     if (url.includes('/api/config')) return json({});
     if (url.includes('/api/cards/i18n')) return json({});
     if (url.includes('/api/app-version')) {
-      return json({ appVersion: '0.1.0', buildId: '0.1.0', rulesVersion: '0.1.0' });
+      return json({ appVersion: smokeVersion, buildId: smokeVersion, rulesVersion: smokeVersion });
     }
     if (url.includes('/api/feedback/posts')) {
       return json({
