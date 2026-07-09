@@ -18,6 +18,8 @@ export interface PlatformClientProfile {
   displayName: string;
   role: PlatformRole;
   joinedAt: number;
+  boardgamePlayerID?: string;
+  hasBoardgameCredentials?: boolean;
 }
 
 export type PlatformFriendPresenceEvent = 'online' | 'offline' | 'update';
@@ -173,6 +175,8 @@ export interface LobbyJoinOptions {
 
 export interface MatchShellRoomOptions extends LobbyJoinOptions {
   boardgameMatchID?: unknown;
+  boardgamePlayerID?: unknown;
+  hasBoardgameCredentials?: unknown;
   conversationId?: unknown;
   maxPlayers?: unknown;
   maxSpectators?: unknown;

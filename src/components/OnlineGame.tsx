@@ -256,6 +256,8 @@ export function OnlineGame({
         userId: localPlatformUserId,
         displayName: localDisplayName,
         role: spectator ? 'spectator' : 'player',
+        boardgamePlayerID: spectator ? undefined : playerID,
+        hasBoardgameCredentials: !spectator && Boolean(playerCredentials),
       },
       {
         onPresence: (presence) => {
@@ -303,7 +305,7 @@ export function OnlineGame({
       setPlatformShellStatus(null);
       void room?.leave(true).catch(() => undefined);
     };
-  }, [appendChatEntry, localDisplayName, localPlatformUserId, matchID, spectator]);
+  }, [appendChatEntry, localDisplayName, localPlatformUserId, matchID, playerCredentials, playerID, spectator]);
 
   const handleOpponentDetected = useCallback(() => {
     opponentDetectedRef.current?.();

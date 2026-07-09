@@ -22,6 +22,12 @@ function positiveInteger(value: unknown, fallback: number, max: number): number 
   return Math.max(1, Math.min(value as number, max));
 }
 
+function boardgamePlayerIDFromOptions(options: MatchShellRoomOptions, role: PlatformAuth['role']): string | undefined {
+  if (role !== 'player') return undefined;
+  if (options.boardgamePlayerID !== '0' && options.boardgamePlayerID !== '1') return undefined;
+  return options.boardgamePlayerID;
+}
+
 export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; client: PlatformClient }> {
   private boardgameMatchID?: string;
   private conversationId?: string;
@@ -67,7 +73,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     return auth;
   }
 
-  async onJoin(client: PlatformClient): Promise<void> {
+  async onJoin(client: PlatformClient, options: MatchShellRoomOptions): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
     const role = this.resolveRole(auth.role);
@@ -77,6 +83,8 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
       displayName: auth.displayName,
       role,
       joinedAt: Date.now(),
+      boardgamePlayerID: boardgamePlayerIDFromOptions(options, role),
+      hasBoardgameCredentials: role === 'player' && options.hasBoardgameCredentials === true,
     };
 
     await this.refreshMetadata();

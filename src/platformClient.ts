@@ -20,6 +20,8 @@ export interface PlatformMatchShellJoinOptions {
   userId: string;
   displayName: string;
   role?: PlatformRole;
+  boardgamePlayerID?: string;
+  hasBoardgameCredentials?: boolean;
 }
 
 export interface PlatformQuickMatchJoinOptions {
@@ -50,6 +52,8 @@ export interface PlatformClientProfile {
   displayName: string;
   role: PlatformRole;
   joinedAt: number;
+  boardgamePlayerID?: string;
+  hasBoardgameCredentials?: boolean;
 }
 
 export type PlatformFriendPresenceEvent = 'online' | 'offline' | 'update';
@@ -231,13 +235,20 @@ function platformProfileFromMessage(value: unknown): PlatformClientProfile | nul
   if (!value || typeof value !== 'object') return null;
   const data = value as Partial<PlatformClientProfile>;
   if (typeof data.sessionId !== 'string' || typeof data.userId !== 'string') return null;
-  return {
+  const profile: PlatformClientProfile = {
     sessionId: data.sessionId,
     userId: data.userId,
     displayName: typeof data.displayName === 'string' ? data.displayName : 'Player',
     role: data.role === 'player' || data.role === 'spectator' || data.role === 'moderator' ? data.role : 'spectator',
     joinedAt: Number.isFinite(data.joinedAt) ? Math.trunc(data.joinedAt as number) : Date.now(),
   };
+  if (data.boardgamePlayerID === '0' || data.boardgamePlayerID === '1') {
+    profile.boardgamePlayerID = data.boardgamePlayerID;
+  }
+  if (data.hasBoardgameCredentials === true) {
+    profile.hasBoardgameCredentials = true;
+  }
+  return profile;
 }
 
 export function platformFriendPresenceFromMessage(message: unknown): PlatformFriendPresence | null {
@@ -712,6 +723,8 @@ export async function connectPlatformMatchShell(
     userId: options.userId,
     displayName: options.displayName,
     role: options.role ?? 'spectator',
+    boardgamePlayerID: options.boardgamePlayerID,
+    hasBoardgameCredentials: options.hasBoardgameCredentials === true,
   });
 
   room.onMessage<PlatformMatchShellSnapshot>('roomSnapshot', (snapshot) => {
