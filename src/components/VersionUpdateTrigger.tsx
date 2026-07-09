@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fetchServerVersion, requestPwaUpdateCheck } from '../clientVersion';
+import { applyPwaUpdateOrRecover, fetchServerVersion, requestPwaUpdateCheck } from '../clientVersion';
 import { useToast } from './ToastProvider';
 import { t } from '../i18n';
 import { APP_BUILT_AT, APP_VERSION_INFO, isSameAppVersion } from '../version';
@@ -41,11 +41,7 @@ export function VersionUpdateTrigger() {
           durationMs: null,
           actionLabel: t('pwa.updateAction'),
           onAction: () => {
-            if (updateReady) {
-              updateReady.applyUpdate();
-              return;
-            }
-            window.location.reload();
+            void applyPwaUpdateOrRecover(updateReady);
           },
         });
         return;

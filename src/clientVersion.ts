@@ -12,6 +12,26 @@ let currentApplyUpdate: (() => void) | null = null;
 let pendingUpdateReady: PwaUpdateReadyDetail | null = null;
 let currentRegistration: ServiceWorkerRegistration | null = null;
 
+function waitForPwaUpdateReady(timeoutMs = 1500): Promise<PwaUpdateReadyDetail | null> {
+  if (typeof window === 'undefined' || pendingUpdateReady) return Promise.resolve(pendingUpdateReady);
+
+  return new Promise((resolve) => {
+    let timeoutId: number | null = null;
+    const finish = (updateReady: PwaUpdateReadyDetail | null) => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      window.removeEventListener(PWA_UPDATE_READY_EVENT, onUpdateReady);
+      resolve(updateReady);
+    };
+    const onUpdateReady = (event: Event) => {
+      const updateEvent = event as CustomEvent<PwaUpdateReadyDetail>;
+      finish(updateEvent.detail ?? pendingUpdateReady);
+    };
+
+    window.addEventListener(PWA_UPDATE_READY_EVENT, onUpdateReady);
+    timeoutId = window.setTimeout(() => finish(pendingUpdateReady), timeoutMs);
+  });
+}
+
 function dispatchPwaUpdateReady(): void {
   if (typeof window === 'undefined') return;
   pendingUpdateReady = {
@@ -97,9 +117,21 @@ export function requestPwaRecoveryPrompt(): void {
 export async function requestPwaUpdateCheck(): Promise<PwaUpdateReadyDetail | null> {
   if (typeof window === 'undefined') return pendingUpdateReady;
   if (currentRegistration) {
+    const updateReadyPromise = waitForPwaUpdateReady();
     await currentRegistration.update();
+    if (pendingUpdateReady) return pendingUpdateReady;
+    return updateReadyPromise;
   }
   return pendingUpdateReady;
+}
+
+export async function applyPwaUpdateOrRecover(preferredUpdate: PwaUpdateReadyDetail | null = null): Promise<void> {
+  const updateReady = preferredUpdate ?? pendingUpdateReady ?? (await requestPwaUpdateCheck().catch(() => null));
+  if (updateReady) {
+    updateReady.applyUpdate();
+    return;
+  }
+  await recoverPwaAndReload();
 }
 
 export function registerPwaAutoUpdate(): void {

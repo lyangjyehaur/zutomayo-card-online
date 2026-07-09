@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  applyPwaUpdateOrRecover,
   fetchServerVersion,
   getPendingPwaUpdate,
   PWA_RECOVER_REQUESTED_EVENT,
@@ -69,7 +70,7 @@ export function PwaStatusPrompt() {
       // Analytics should never block an update.
     }
     setIsApplyingUpdate(true);
-    updateReady?.applyUpdate();
+    void applyPwaUpdateOrRecover(updateReady);
   };
 
   const recover = async () => {
