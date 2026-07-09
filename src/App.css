@@ -1349,6 +1349,13 @@ input:focus {
   color: var(--content-dim);
 }
 
+.online-chat-translate-button {
+  min-width: 1.35rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  color: var(--content-dim);
+}
+
 .online-chat-bubble {
   overflow-wrap: anywhere;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1363,6 +1370,25 @@ input:focus {
 .online-chat-message.self .online-chat-bubble {
   border-color: rgba(66, 215, 198, 0.24);
   background: rgba(66, 215, 198, 0.12);
+}
+
+.online-chat-translation {
+  overflow-wrap: anywhere;
+  margin-top: 0.3rem;
+  border: 1px solid rgba(245, 211, 104, 0.12);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  background: rgba(245, 211, 104, 0.07);
+  color: var(--content-muted);
+  font-size: var(--text-caption);
+  line-height: 1.35;
+}
+
+.online-chat-translation.pending {
+  color: var(--content-dim);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: var(--tracking-kicker);
 }
 
 .online-chat-form {

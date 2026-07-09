@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Client, type BoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
-import { ChevronDown, Flag, MessageCircle, Send } from 'lucide-react';
+import { ChevronDown, Flag, Languages, MessageCircle, Send } from 'lucide-react';
 import { ZutomayoCard } from '../game/Game';
 import type { GameState } from '../game/types';
 import { Board, type BoardGameOverActions } from './Board';
-import { t } from '../i18n';
+import { t, useLocale } from '../i18n';
 import { IconButton, PageShell } from '../ui';
 import { Sentry } from '../sentry';
 import {
@@ -13,8 +13,10 @@ import {
   fetchChatMessages,
   markChatRead,
   reportChatMessage,
+  requestChatTranslation,
   sendChatMessage,
   type ChatAuthorRole,
+  type ChatMessageTranslation,
   type ChatMessage,
 } from '../api/client';
 import {
@@ -54,6 +56,12 @@ type OnlineChatEntry = {
   createdAt: string;
   persisted: boolean;
   self: boolean;
+  translation?: OnlineChatTranslationState;
+};
+type OnlineChatTranslationState = {
+  status: ChatMessageTranslation['status'] | 'loading' | 'unavailable';
+  targetLanguage: string;
+  content?: string;
 };
 
 function playerDisplayName(playerID: string): string {
@@ -157,6 +165,7 @@ export function OnlineGame({
   onCreateNewRoom,
   onOpponentDetected,
 }: OnlineGameProps) {
+  const locale = useLocale();
   const connectedOnce = useRef(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -205,6 +214,12 @@ export function OnlineGame({
       if (messages.some((message) => message.id === entry.id)) return messages;
       return [...messages, entry].slice(-60);
     });
+  }, []);
+
+  const applyChatTranslation = useCallback((messageId: string, translation: OnlineChatTranslationState) => {
+    setChatMessages((messages) =>
+      messages.map((message) => (message.id === messageId ? { ...message, translation } : message)),
+    );
   }, []);
 
   useEffect(() => {
@@ -426,6 +441,31 @@ export function OnlineGame({
     [matchID, reportedMessageIds],
   );
 
+  const handleChatTranslate = useCallback(
+    async (message: OnlineChatEntry) => {
+      if (!message.persisted || message.translation?.status === 'loading') return;
+      const targetLanguage = locale.toLowerCase();
+      applyChatTranslation(message.id, { status: 'loading', targetLanguage });
+      try {
+        const result = await requestChatTranslation(message.id, targetLanguage);
+        applyChatTranslation(message.id, {
+          status: result.translation.status,
+          targetLanguage: result.translation.targetLanguage,
+          content: result.translation.translatedContent || undefined,
+        });
+      } catch (err) {
+        applyChatTranslation(message.id, { status: 'unavailable', targetLanguage });
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'match chat translation failed',
+          level: 'warning',
+          data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
+        });
+      }
+    },
+    [applyChatTranslation, locale, matchID],
+  );
+
   const [OnlineClient] = useState(() =>
     Client({
       game: ZutomayoCard,
@@ -517,6 +557,16 @@ export function OnlineGame({
                       <span>{message.authorDisplayName}</span>
                       <span className="online-chat-meta-actions">
                         {chatTimeLabel(message.createdAt)}
+                        {message.persisted && (
+                          <IconButton
+                            label="Translate match chat message"
+                            icon={<Languages className="size-3" aria-hidden="true" />}
+                            size="sm"
+                            className="online-chat-translate-button"
+                            disabled={message.translation?.status === 'loading'}
+                            onClick={() => void handleChatTranslate(message)}
+                          />
+                        )}
                         {message.persisted && !message.self && (
                           <IconButton
                             label={
@@ -534,6 +584,21 @@ export function OnlineGame({
                       </span>
                     </div>
                     <div className="online-chat-bubble">{message.content}</div>
+                    {message.translation && (
+                      <div
+                        className={`online-chat-translation ${
+                          message.translation.status === 'ready' && message.translation.content ? 'ready' : 'pending'
+                        }`}
+                      >
+                        {message.translation.status === 'ready' && message.translation.content
+                          ? message.translation.content
+                          : message.translation.status === 'loading'
+                            ? 'TRANSLATING'
+                            : message.translation.status === 'unavailable'
+                              ? 'TRANSLATION OFFLINE'
+                              : 'TRANSLATION PENDING'}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
