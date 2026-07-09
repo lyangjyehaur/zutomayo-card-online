@@ -270,6 +270,11 @@ export class ApiError extends Error {
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
+function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|; )zutomayo_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 async function tryRefreshToken(): Promise<boolean> {
   if (isRefreshing && refreshPromise) return refreshPromise;
   isRefreshing = true;
@@ -299,6 +304,12 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  // CSRF: double-submit cookie pattern — attach X-CSRF-Token for state-changing methods
+  const method = (options.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const csrfToken = getCsrfToken();
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+  }
 
   const doFetch = async (): Promise<Response> =>
     fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });

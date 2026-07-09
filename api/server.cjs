@@ -113,6 +113,16 @@ const AUTH_COOKIE_SAMESITE = ['Strict', 'Lax', 'None'].includes(process.env.AUTH
   : 'Lax';
 const REFRESH_COOKIE_NAME = 'zutomayo_refresh';
 const REFRESH_COOKIE_PATH = '/api';
+const CSRF_COOKIE_NAME = 'zutomayo_csrf';
+const CSRF_EXEMPT_PATHS = new Set([
+  '/api/login',
+  '/api/register',
+  '/api/admin/login',
+  '/api/oauth/session',
+  '/api/presence/heartbeat',
+  '/api/auth/refresh',
+  '/api/logout',
+]);
 const AUTH_MODE = process.env.AUTH_MODE || (process.env.LOGTO_ONLY_AUTH === 'true' ? 'logto' : 'hybrid');
 const LOCAL_AUTH_ENABLED = AUTH_MODE !== 'logto';
 const ACCOUNT_LINKING_ENABLED = AUTH_MODE !== 'logto';
@@ -732,6 +742,39 @@ function clearAuthCookie(req, res) {
 
 function clearRefreshCookie(req, res) {
   appendSetCookie(res, serializeRefreshCookie(req, '', 0));
+}
+
+function generateCsrfToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function serializeCsrfCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
+  const parts = [
+    `${CSRF_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/',
+    `Max-Age=${maxAge}`,
+    `SameSite=${AUTH_COOKIE_SAMESITE}`,
+  ];
+  if (AUTH_COOKIE_DOMAIN) parts.push(`Domain=${AUTH_COOKIE_DOMAIN}`);
+  if (AUTH_COOKIE_SAMESITE === 'None' || isSecureRequest(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+
+function setCsrfCookie(req, res, token) {
+  appendSetCookie(res, serializeCsrfCookie(req, token));
+}
+
+function clearCsrfCookie(req, res) {
+  appendSetCookie(res, serializeCsrfCookie(req, '', 0));
+}
+
+function isCsrfValid(req) {
+  const cookieToken = parseCookies(req)[CSRF_COOKIE_NAME];
+  const headerToken = req.headers['x-csrf-token'];
+  if (!cookieToken || !headerToken) return false;
+  const a = Buffer.from(String(cookieToken));
+  const b = Buffer.from(String(headerToken));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function verifyTokenSync(token) {
@@ -1820,6 +1863,15 @@ function handleRequest(req, res) {
       return;
     }
 
+    // CSRF protection (double-submit cookie pattern)
+    if ((method === 'POST' || method === 'PUT' || method === 'DELETE') && !CSRF_EXEMPT_PATHS.has(pathname)) {
+      if (!isCsrfValid(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'CSRF token validation failed' }));
+        return;
+      }
+    }
+
     if (isImgproxyEndpoint && (method === 'GET' || method === 'HEAD')) {
       if (url.search) return json({ error: 'imgproxy query string is not supported' }, 400);
       const unsignedPath = pathname.slice('/api/imgproxy'.length);
@@ -1901,6 +1953,7 @@ function handleRequest(req, res) {
       const { accessToken, refreshToken } = await createTokenPair(userId);
       setAuthCookie(req, res, accessToken);
       setRefreshCookie(req, res, refreshToken);
+      setCsrfCookie(req, res, generateCsrfToken());
       json({ ok: true });
       return;
     }
@@ -2018,6 +2071,14 @@ function handleRequest(req, res) {
 
     // ===== Auth Routes =====
 
+    // CSRF token endpoint: generates a new CSRF token and sets it as a cookie.
+    if (pathname === '/api/csrf-token' && method === 'GET') {
+      const token = generateCsrfToken();
+      setCsrfCookie(req, res, token);
+      json({ token });
+      return;
+    }
+
     // Register
     if (pathname === '/api/register' && method === 'POST') {
       if (!LOCAL_AUTH_ENABLED) return json({ error: 'Local auth is disabled' }, 403);
@@ -2038,6 +2099,7 @@ function handleRequest(req, res) {
       if (!result.ok) return json({ error: result.error }, result.status);
       setAuthCookie(req, res, result.body.token);
       setRefreshCookie(req, res, await issueRefreshToken(result.body.user.id));
+      setCsrfCookie(req, res, generateCsrfToken());
       json(result.body);
       return;
     }
@@ -2061,6 +2123,7 @@ function handleRequest(req, res) {
       if (!result.ok) return json({ error: result.error }, result.status);
       setAuthCookie(req, res, result.body.token);
       setRefreshCookie(req, res, await issueRefreshToken(result.body.user.id));
+      setCsrfCookie(req, res, generateCsrfToken());
       json(result.body);
       return;
     }
@@ -2071,6 +2134,7 @@ function handleRequest(req, res) {
       const userId = await verifyRefreshToken(refreshToken);
       if (!userId) {
         clearRefreshCookie(req, res);
+        clearCsrfCookie(req, res);
         return json({ error: 'Invalid or expired refresh token' }, 401);
       }
       // Rotate：撤銷舊 refresh token，發新 token pair
@@ -2078,6 +2142,7 @@ function handleRequest(req, res) {
       const { accessToken, refreshToken: newRefreshToken } = await createTokenPair(userId);
       setAuthCookie(req, res, accessToken);
       setRefreshCookie(req, res, newRefreshToken);
+      setCsrfCookie(req, res, generateCsrfToken());
       json({ token: accessToken });
       return;
     }
@@ -2089,6 +2154,7 @@ function handleRequest(req, res) {
       if (refreshToken) await revokeRefreshToken(refreshToken);
       clearAuthCookie(req, res);
       clearRefreshCookie(req, res);
+      clearCsrfCookie(req, res);
       json({ ok: true });
       return;
     }

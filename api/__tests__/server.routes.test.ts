@@ -457,6 +457,46 @@ describe('server routes', () => {
     });
   });
 
+  describe('CSRF protection', () => {
+    it('GET /api/csrf-token returns token and sets cookie', async () => {
+      const res = await sendRequest('GET', '/api/csrf-token');
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as Record<string, unknown>;
+      expect(typeof body.token).toBe('string');
+      expect((body.token as string).length).toBeGreaterThan(0);
+      const setCookie = res.headers['set-cookie'];
+      const cookieStr = Array.isArray(setCookie) ? setCookie.join('; ') : setCookie || '';
+      expect(cookieStr).toContain('zutomayo_csrf=');
+    });
+
+    it('PUT /api/profile without CSRF token returns 403', async () => {
+      const res = await sendRequest('PUT', '/api/profile', { nickname: 'test' });
+      expect(res.statusCode).toBe(403);
+      const body = parseBody(res) as Record<string, unknown>;
+      expect(body.error).toContain('CSRF');
+    });
+
+    it('PUT /api/profile with valid CSRF token passes CSRF check (returns 401 for auth)', async () => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const res = await sendRequest(
+        'PUT',
+        '/api/profile',
+        { nickname: 'test' },
+        {
+          cookie: `zutomayo_csrf=${csrfToken}`,
+          'x-csrf-token': csrfToken,
+        },
+      );
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('POST /api/login is exempt from CSRF check', async () => {
+      // login is exempt; without CSRF it should proceed to validation (400 for empty body)
+      const res = await sendRequest('POST', '/api/login', {});
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
   describe('presence', () => {
     it('GET /api/presence returns online count', async () => {
       mockRedisZremrangebyscore.mockResolvedValue(0);
