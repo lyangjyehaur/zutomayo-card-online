@@ -26,6 +26,13 @@ export interface PlatformQuickMatchJoinOptions {
   deckName?: string;
 }
 
+export interface PlatformCustomRoomOptions {
+  roomCode: string;
+  boardgameMatchID?: string;
+  userId: string;
+  displayName: string;
+}
+
 export interface PlatformClientProfile {
   sessionId: string;
   userId: string;
@@ -72,6 +79,22 @@ export interface PlatformBoardgameMatchReady {
   boardgameMatchID: string;
 }
 
+export interface PlatformCustomRoomSnapshot {
+  roomId: string;
+  roomCode: string;
+  status: 'waiting' | 'ready' | 'cancelled' | 'finished';
+  host?: PlatformClientProfile;
+  players: PlatformClientProfile[];
+  boardgameMatchID?: string;
+}
+
+export interface PlatformCustomRoomHandlers {
+  onSnapshot?: (snapshot: PlatformCustomRoomSnapshot) => void;
+  onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
+  onCancelled?: (reason: string) => void;
+  onDisconnect?: () => void;
+}
+
 export interface PlatformQuickMatchHandlers {
   onSnapshot?: (snapshot: PlatformQuickMatchSnapshot) => void;
   onMatched?: (match: PlatformQuickMatchMatched) => void;
@@ -94,6 +117,7 @@ interface LocationLike {
 }
 
 export type PlatformLobbyRoom = Room<unknown>;
+export type PlatformCustomRoom = Room<unknown>;
 export type PlatformMatchShellRoom = Room<unknown>;
 export type PlatformQuickMatchRoom = Room<unknown>;
 
@@ -294,6 +318,97 @@ export function platformBoardgameMatchReadyFromMessage(message: unknown): Platfo
   const data = message as { boardgameMatchID?: unknown };
   if (typeof data.boardgameMatchID !== 'string' || !data.boardgameMatchID.trim()) return null;
   return { boardgameMatchID: data.boardgameMatchID.trim().slice(0, 128) };
+}
+
+export function platformCustomRoomSnapshotFromMessage(message: unknown): PlatformCustomRoomSnapshot | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as {
+    roomId?: unknown;
+    roomCode?: unknown;
+    status?: unknown;
+    host?: unknown;
+    players?: unknown;
+    boardgameMatchID?: unknown;
+  };
+  if (typeof data.roomId !== 'string' || typeof data.roomCode !== 'string') return null;
+  if (
+    data.status !== 'waiting' &&
+    data.status !== 'ready' &&
+    data.status !== 'cancelled' &&
+    data.status !== 'finished'
+  ) {
+    return null;
+  }
+  const players = Array.isArray(data.players)
+    ? data.players
+        .map(platformProfileFromMessage)
+        .filter((profile): profile is PlatformClientProfile => Boolean(profile))
+    : [];
+  return {
+    roomId: data.roomId,
+    roomCode: data.roomCode,
+    status: data.status,
+    host: platformProfileFromMessage(data.host) ?? undefined,
+    players,
+    boardgameMatchID: typeof data.boardgameMatchID === 'string' ? data.boardgameMatchID : undefined,
+  };
+}
+
+function bindPlatformCustomRoomHandlers(room: Room<unknown>, handlers: PlatformCustomRoomHandlers): PlatformCustomRoom {
+  room.onMessage('customRoomSnapshot', (message) => {
+    const snapshot = platformCustomRoomSnapshotFromMessage(message);
+    if (snapshot) handlers.onSnapshot?.(snapshot);
+  });
+  room.onMessage('boardgameMatchReady', (message) => {
+    const ready = platformBoardgameMatchReadyFromMessage(message);
+    if (ready) handlers.onBoardgameMatchReady?.(ready);
+  });
+  room.onMessage('customRoomCancelled', (message) => {
+    const reason =
+      message && typeof message === 'object' && typeof (message as { reason?: unknown }).reason === 'string'
+        ? (message as { reason: string }).reason
+        : 'cancelled';
+    handlers.onCancelled?.(reason);
+  });
+  room.onLeave(() => handlers.onDisconnect?.());
+  return room;
+}
+
+export async function createPlatformCustomRoom(
+  options: PlatformCustomRoomOptions,
+  handlers: PlatformCustomRoomHandlers = {},
+): Promise<PlatformCustomRoom> {
+  const room = await joinPlatformRoom(
+    'custom_room',
+    {
+      roomCode: options.roomCode,
+      boardgameMatchID: options.boardgameMatchID,
+      userId: options.userId,
+      displayName: options.displayName,
+      role: 'player',
+      status: options.boardgameMatchID ? 'ready' : 'waiting',
+    },
+    'create',
+  );
+  return bindPlatformCustomRoomHandlers(room, handlers);
+}
+
+export async function joinPlatformCustomRoom(
+  options: PlatformCustomRoomOptions,
+  handlers: PlatformCustomRoomHandlers = {},
+): Promise<PlatformCustomRoom> {
+  const room = await joinPlatformRoom(
+    'custom_room',
+    {
+      roomCode: options.roomCode,
+      userId: options.userId,
+      displayName: options.displayName,
+      role: 'player',
+      status: 'ready',
+    },
+    'join',
+  );
+  return bindPlatformCustomRoomHandlers(room, handlers);
 }
 
 export async function connectPlatformQuickMatch(

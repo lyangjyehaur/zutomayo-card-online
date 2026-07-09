@@ -1,0 +1,135 @@
+import { Room, type AuthContext } from '@colyseus/core';
+import { authenticatePlatformClient } from './auth';
+import type {
+  BoardgameMatchReadyMessage,
+  CustomRoomMetadata,
+  CustomRoomOptions,
+  CustomRoomStatus,
+  PlatformAuth,
+  PlatformClient,
+  PlatformClientProfile,
+} from './types';
+
+const CUSTOM_ROOM_TTL_MS = 30 * 60 * 1000;
+
+function optionalText(value: unknown, maxLength: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
+function normalizeStatus(value: unknown, boardgameMatchID?: string): CustomRoomStatus {
+  if (value === 'waiting' || value === 'ready' || value === 'cancelled' || value === 'finished') return value;
+  return boardgameMatchID ? 'ready' : 'waiting';
+}
+
+export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: PlatformClient }> {
+  maxClients = 16;
+  autoDispose = false;
+
+  private roomCode = '';
+  private boardgameMatchID?: string;
+  private status: CustomRoomStatus = 'waiting';
+  private host?: PlatformClientProfile;
+
+  async onCreate(options: CustomRoomOptions = {}): Promise<void> {
+    this.maxMessagesPerSecond = 4;
+    this.roomCode = optionalText(options.roomCode, 128) ?? this.roomId;
+    this.boardgameMatchID = optionalText(options.boardgameMatchID, 128);
+    this.status = normalizeStatus(options.status, this.boardgameMatchID);
+
+    this.clock.setTimeout(() => {
+      void this.disconnect();
+    }, CUSTOM_ROOM_TTL_MS);
+
+    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
+      if (this.host && client.sessionId !== this.host.sessionId) return;
+      const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
+      if (!boardgameMatchID || this.status === 'cancelled' || this.status === 'finished') return;
+      this.boardgameMatchID = boardgameMatchID;
+      this.status = 'ready';
+      void this.refreshMetadata();
+      this.broadcast('boardgameMatchReady', { boardgameMatchID });
+      this.broadcastSnapshot();
+    });
+
+    this.onMessage('cancelCustomRoom', (client) => {
+      if (this.host && client.sessionId !== this.host.sessionId) return;
+      void this.cancel('host_cancelled');
+    });
+
+    await this.refreshMetadata();
+  }
+
+  onAuth(_client: PlatformClient, options: CustomRoomOptions, context: AuthContext): PlatformAuth {
+    return { ...authenticatePlatformClient(options, context), role: 'player' };
+  }
+
+  async onJoin(client: PlatformClient): Promise<void> {
+    const auth = client.auth;
+    if (!auth) throw new Error('Missing platform auth');
+    client.userData = {
+      sessionId: client.sessionId,
+      userId: auth.userId,
+      displayName: auth.displayName,
+      role: 'player',
+      joinedAt: Date.now(),
+    };
+    if (!this.host) this.host = client.userData;
+
+    await this.refreshMetadata();
+    this.clock.setTimeout(() => {
+      client.send('customRoomSnapshot', this.snapshot());
+      if (this.boardgameMatchID && this.status === 'ready') {
+        client.send('boardgameMatchReady', { boardgameMatchID: this.boardgameMatchID });
+      }
+      this.broadcastSnapshot();
+    }, 50);
+  }
+
+  async onLeave(): Promise<void> {
+    await this.refreshMetadata();
+    this.broadcastSnapshot();
+  }
+
+  private profiles(): PlatformClientProfile[] {
+    return this.clients
+      .map((client) => client.userData)
+      .filter((profile): profile is PlatformClientProfile => Boolean(profile));
+  }
+
+  private snapshot(): PlatformClient['~messages']['customRoomSnapshot'] {
+    return {
+      roomId: this.roomId,
+      roomCode: this.roomCode,
+      status: this.status,
+      host: this.host,
+      players: this.profiles(),
+      boardgameMatchID: this.boardgameMatchID,
+    };
+  }
+
+  private broadcastSnapshot(): void {
+    this.broadcast('customRoomSnapshot', this.snapshot());
+  }
+
+  private async cancel(reason: string): Promise<void> {
+    if (this.status === 'cancelled' || this.status === 'finished') return;
+    this.status = 'cancelled';
+    await this.refreshMetadata();
+    this.broadcast('customRoomCancelled', { reason });
+    this.broadcastSnapshot();
+  }
+
+  private async refreshMetadata(): Promise<void> {
+    await this.setMatchmaking({
+      metadata: {
+        kind: 'custom-room',
+        roomCode: this.roomCode,
+        status: this.status,
+        playerCount: this.profiles().length,
+        boardgameMatchID: this.boardgameMatchID,
+      },
+    });
+  }
+}

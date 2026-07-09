@@ -28,7 +28,12 @@ import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
 import { Alert, AppHeader, Button, Input, PageShell, Panel } from '../ui';
 import { useOnlinePresence } from '../hooks/useOnlinePresence';
-import { connectPlatformQuickMatch, type PlatformQuickMatchRoom } from '../platformClient';
+import {
+  connectPlatformQuickMatch,
+  createPlatformCustomRoom,
+  joinPlatformCustomRoom,
+  type PlatformQuickMatchRoom,
+} from '../platformClient';
 import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
@@ -227,11 +232,72 @@ export function OnlineLobbyPage({
     setCopied(false);
   }, [createdMatchID]);
 
+  const registerPlatformCustomRoom = useCallback(
+    async (session: OnlineSession) => {
+      try {
+        const room = await createPlatformCustomRoom({
+          roomCode: session.matchID,
+          boardgameMatchID: session.matchID,
+          userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
+          displayName: effectivePlayerName,
+        });
+        void room.leave(true).catch(() => undefined);
+      } catch (err) {
+        Sentry.addBreadcrumb({
+          category: 'platform',
+          message: 'custom room registration unavailable',
+          level: 'warning',
+          data: { match_id: session.matchID, error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    },
+    [anonymousIdentity.suffix, effectivePlayerName, profile?.id],
+  );
+
+  const resolvePlatformCustomRoom = useCallback(
+    async (roomCode: string): Promise<string> =>
+      new Promise((resolve) => {
+        let settled = false;
+        let room: Awaited<ReturnType<typeof joinPlatformCustomRoom>> | null = null;
+        const settle = (matchID = roomCode) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timer);
+          void room?.leave(true).catch(() => undefined);
+          resolve(matchID);
+        };
+        const timer = window.setTimeout(() => settle(roomCode), 1500);
+        void joinPlatformCustomRoom(
+          {
+            roomCode,
+            userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
+            displayName: effectivePlayerName,
+          },
+          {
+            onSnapshot: (snapshot) => {
+              if (snapshot.boardgameMatchID) settle(snapshot.boardgameMatchID);
+            },
+            onBoardgameMatchReady: (message) => settle(message.boardgameMatchID),
+            onCancelled: () => settle(roomCode),
+            onDisconnect: () => settle(roomCode),
+          },
+        ).then(
+          (nextRoom) => {
+            room = nextRoom;
+          },
+          () => settle(roomCode),
+        );
+      }),
+    [anonymousIdentity.suffix, effectivePlayerName, profile?.id],
+  );
+
   const runOnline = async (id?: string) => {
     if (requestAnonymousNameBeforeStart()) return;
     setError('');
     try {
-      const nextSession = await onStartOnline(id, effectivePlayerName);
+      const targetMatchID = id ? await resolvePlatformCustomRoom(id) : undefined;
+      const nextSession = await onStartOnline(targetMatchID, effectivePlayerName);
+      if (!id) void registerPlatformCustomRoom(nextSession);
       setCreatedMatchID(id ? '' : nextSession.matchID);
     } catch (err) {
       Sentry.captureException(err, { tags: { action: 'start-online' } });

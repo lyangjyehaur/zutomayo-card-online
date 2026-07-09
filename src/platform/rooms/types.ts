@@ -3,6 +3,7 @@ import type { Client } from '@colyseus/core';
 export type PlatformRole = 'player' | 'spectator' | 'moderator';
 export type MatchShellStatus = 'waiting' | 'ready' | 'in_progress' | 'finished';
 export type QuickMatchStatus = 'waiting' | 'matched' | 'cancelled' | 'finished';
+export type CustomRoomStatus = 'waiting' | 'ready' | 'cancelled' | 'finished';
 
 export interface PlatformAuth {
   userId: string;
@@ -59,6 +60,17 @@ export interface PlatformClientMessages {
   boardgameMatchReady: {
     boardgameMatchID: string;
   };
+  customRoomSnapshot: {
+    roomId: string;
+    roomCode: string;
+    status: CustomRoomStatus;
+    host?: PlatformClientProfile;
+    players: PlatformClientProfile[];
+    boardgameMatchID?: string;
+  };
+  customRoomCancelled: {
+    reason: string;
+  };
   chatPreview: {
     conversationId?: string;
     sender: PlatformClientProfile;
@@ -95,6 +107,14 @@ export interface QuickMatchRoomMetadata {
   boardgameMatchID?: string;
 }
 
+export interface CustomRoomMetadata {
+  kind: 'custom-room';
+  roomCode: string;
+  status: CustomRoomStatus;
+  playerCount: number;
+  boardgameMatchID?: string;
+}
+
 export interface LobbyJoinOptions {
   userId?: unknown;
   displayName?: unknown;
@@ -110,6 +130,12 @@ export interface MatchShellRoomOptions extends LobbyJoinOptions {
 
 export interface QuickMatchRoomOptions extends LobbyJoinOptions {
   deckName?: unknown;
+  status?: unknown;
+}
+
+export interface CustomRoomOptions extends LobbyJoinOptions {
+  roomCode?: unknown;
+  boardgameMatchID?: unknown;
   status?: unknown;
 }
 

@@ -4,7 +4,7 @@ import { RedisDriver } from '@colyseus/redis-driver';
 import { RedisPresence } from '@colyseus/redis-presence';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import * as Sentry from '@sentry/node';
-import { LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
+import { CustomRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
 import { platformLogger as logger } from './logger';
 
 if (process.env.SENTRY_DSN) {
@@ -80,6 +80,7 @@ const gameServer = new Server({
 gameServer.define('lobby', LobbyRoom);
 gameServer.define('match_shell', MatchShellRoom).filterBy(['boardgameMatchID', 'status']);
 gameServer.define('quick_match', QuickMatchRoom).filterBy(['status']);
+gameServer.define('custom_room', CustomRoom).filterBy(['roomCode', 'status']);
 
 gameServer.onShutdown(() => {
   logger.info('platform server shutting down');

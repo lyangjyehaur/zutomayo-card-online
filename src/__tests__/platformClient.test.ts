@@ -3,6 +3,7 @@ import {
   normalizeSeatReservation,
   platformBoardgameMatchReadyFromMessage,
   platformChatPreviewFromMessage,
+  platformCustomRoomSnapshotFromMessage,
   platformOnlineCountFromMessage,
   platformPresenceFromMatchShellMessage,
   platformQuickMatchMatchedFromMessage,
@@ -141,6 +142,56 @@ describe('platform client helpers', () => {
       boardgameMatchID: 'bgio-match-1',
     });
     expect(platformBoardgameMatchReadyFromMessage({})).toBeNull();
+  });
+
+  it('reads custom room snapshots defensively', () => {
+    expect(
+      platformCustomRoomSnapshotFromMessage({
+        roomId: 'platform_room_1',
+        roomCode: 'bgio-match-1',
+        status: 'ready',
+        host: {
+          sessionId: 's_1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'player',
+          joinedAt: 1000,
+        },
+        players: [
+          {
+            sessionId: 's_2',
+            userId: 'u_2',
+            displayName: 'Bob',
+            role: 'player',
+            joinedAt: 2000,
+          },
+        ],
+        boardgameMatchID: 'bgio-match-1',
+      }),
+    ).toEqual({
+      roomId: 'platform_room_1',
+      roomCode: 'bgio-match-1',
+      status: 'ready',
+      host: {
+        sessionId: 's_1',
+        userId: 'u_1',
+        displayName: 'Alice',
+        role: 'player',
+        joinedAt: 1000,
+      },
+      players: [
+        {
+          sessionId: 's_2',
+          userId: 'u_2',
+          displayName: 'Bob',
+          role: 'player',
+          joinedAt: 2000,
+        },
+      ],
+      boardgameMatchID: 'bgio-match-1',
+    });
+    expect(platformCustomRoomSnapshotFromMessage({ roomId: 'room_1', roomCode: 'code', status: 'gone' })).toBeNull();
+    expect(platformCustomRoomSnapshotFromMessage({ roomId: 'room_1', status: 'ready' })).toBeNull();
   });
 
   it('adapts Colyseus 0.17 flat seat reservations for the browser SDK', () => {
