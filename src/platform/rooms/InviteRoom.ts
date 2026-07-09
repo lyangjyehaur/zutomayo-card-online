@@ -104,7 +104,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
-    if (this.status === 'pending' && this.inviter?.sessionId === client.sessionId && this.clients.length > 0) {
+    if (this.status === 'pending' && this.inviter?.sessionId === client.sessionId) {
       await this.cancel('inviter_left');
       return;
     }
