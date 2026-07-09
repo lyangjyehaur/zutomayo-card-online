@@ -74,6 +74,7 @@ type DirectChatTranslationState = {
 };
 type LobbyChatEntry = ChatMessage & { translation?: DirectChatTranslationState };
 type DirectChatEntry = LobbyChatEntry;
+type RoomChatEntry = LobbyChatEntry;
 const ANONYMOUS_NAME_PROMPT_STORAGE_KEY = 'zutomayo_anonymous_name_prompt_seen';
 const GLOBAL_LOBBY_CHAT_SUBJECT_ID = 'online-lobby';
 
@@ -156,6 +157,11 @@ export function OnlineLobbyPage({
   const [lobbyChatStatus, setLobbyChatStatus] = useState<DirectChatStatus>('idle');
   const [reportedLobbyMessageIds, setReportedLobbyMessageIds] = useState<Set<string>>(() => new Set());
   const lobbyChatMessagesRef = useRef<HTMLDivElement | null>(null);
+  const [roomChatMessages, setRoomChatMessages] = useState<RoomChatEntry[]>([]);
+  const [roomChatDraft, setRoomChatDraft] = useState('');
+  const [roomChatStatus, setRoomChatStatus] = useState<DirectChatStatus>('idle');
+  const [reportedRoomMessageIds, setReportedRoomMessageIds] = useState<Set<string>>(() => new Set());
+  const roomChatMessagesRef = useRef<HTMLDivElement | null>(null);
   const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
   const [anonymousNameDraft, setAnonymousNameDraft] = useState(() => anonymousIdentity.baseName);
@@ -170,6 +176,8 @@ export function OnlineLobbyPage({
       setDirectChat(null);
       setLobbyChatMessages([]);
       setLobbyChatStatus('idle');
+      setRoomChatMessages([]);
+      setRoomChatStatus('idle');
       return;
     }
     try {
@@ -183,6 +191,8 @@ export function OnlineLobbyPage({
       setDirectChat(null);
       setLobbyChatMessages([]);
       setLobbyChatStatus('idle');
+      setRoomChatMessages([]);
+      setRoomChatStatus('idle');
     }
   }, []);
 
@@ -359,6 +369,12 @@ export function OnlineLobbyPage({
     );
   }, []);
 
+  const applyRoomChatTranslation = useCallback((messageId: string, translation: DirectChatTranslationState) => {
+    setRoomChatMessages((messages) =>
+      messages.map((message) => (message.id === messageId ? { ...message, translation } : message)),
+    );
+  }, []);
+
   const anonymousDisplayName = formatAnonymousDisplayName(anonymousIdentity);
   const effectivePlayerName = profile?.nickname || anonymousDisplayName;
   const shouldPromptForAnonymousName =
@@ -452,6 +468,56 @@ export function OnlineLobbyPage({
   useEffect(() => {
     setCopied(false);
   }, [createdMatchID]);
+
+  const roomChatSubjectId = createdMatchID || (matchID.length >= 3 ? matchID : '');
+
+  useEffect(() => {
+    if (!profile || !roomChatSubjectId) {
+      setRoomChatMessages([]);
+      setRoomChatStatus('idle');
+      return;
+    }
+    let cancelled = false;
+    setRoomChatStatus('loading');
+    setReportedRoomMessageIds(new Set());
+    void fetchChatMessages({
+      conversationType: 'room',
+      subjectId: roomChatSubjectId,
+      limit: 50,
+    }).then(
+      (messages) => {
+        if (cancelled) return;
+        const visibleMessages = messages.filter(canShowChatMessage);
+        setRoomChatMessages(visibleMessages);
+        setRoomChatStatus('ready');
+        const latestMessageId = visibleMessages.at(-1)?.id;
+        void markChatRead({
+          conversationType: 'room',
+          subjectId: roomChatSubjectId,
+          lastReadMessageId: latestMessageId,
+        }).then(refreshUnreadChats, () => undefined);
+      },
+      (err) => {
+        if (cancelled) return;
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'custom room chat history unavailable',
+          level: 'warning',
+          data: { room_code: roomChatSubjectId, error: err instanceof Error ? err.message : String(err) },
+        });
+        setRoomChatStatus('unavailable');
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, refreshUnreadChats, roomChatSubjectId]);
+
+  useEffect(() => {
+    const element = roomChatMessagesRef.current;
+    if (!element) return;
+    element.scrollTop = element.scrollHeight;
+  }, [roomChatMessages]);
 
   const registerPlatformCustomRoom = useCallback(
     async (session: OnlineSession) => {
@@ -733,6 +799,10 @@ export function OnlineLobbyPage({
       navigate(`/play/online/${encodeURIComponent(conversation.subjectId)}?spectate=1`);
       return;
     }
+    if (conversation.type === 'room') {
+      setMatchID(conversation.subjectId);
+      return;
+    }
     if (conversation.type === 'direct' && profile) {
       const peerUserId = directConversationPeerId(conversation.subjectId, profile.id);
       if (!peerUserId) return;
@@ -959,6 +1029,91 @@ export function OnlineLobbyPage({
       }
     },
     [profile?.id, reportedLobbyMessageIds, showToast],
+  );
+
+  const handleRoomChatSubmit = async () => {
+    if (!profile || !roomChatSubjectId || !roomChatDraft.trim() || roomChatStatus === 'sending') return;
+    const content = roomChatDraft.trim();
+    setRoomChatStatus('sending');
+    try {
+      const result = await sendChatMessage({
+        conversationType: 'room',
+        subjectId: roomChatSubjectId,
+        content,
+        title: t('chat.roomTitle'),
+        authorDisplayName: profile.nickname,
+        authorRole: 'player',
+      });
+      if (canShowChatMessage(result.message)) {
+        setRoomChatMessages((messages) => [...messages, result.message]);
+        void markChatRead({
+          conversationType: 'room',
+          subjectId: roomChatSubjectId,
+          lastReadMessageId: result.message.id,
+        }).then(refreshUnreadChats, () => undefined);
+      }
+      setRoomChatDraft('');
+      setRoomChatStatus('ready');
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'chat',
+        message: 'custom room chat send failed',
+        level: 'warning',
+        data: { room_code: roomChatSubjectId, error: err instanceof Error ? err.message : String(err) },
+      });
+      setRoomChatStatus('ready');
+      showToast({ title: t('chat.sendFailed'), kind: 'error' });
+    }
+  };
+
+  const handleRoomChatTranslate = useCallback(
+    async (message: RoomChatEntry) => {
+      if (message.translation?.status === 'loading') return;
+      const targetLanguage = locale.toLowerCase();
+      applyRoomChatTranslation(message.id, { status: 'loading', targetLanguage });
+      try {
+        const result = await requestChatTranslation(message.id, targetLanguage);
+        applyRoomChatTranslation(message.id, {
+          status: result.translation.status,
+          targetLanguage: result.translation.targetLanguage,
+          content: result.translation.translatedContent || undefined,
+        });
+      } catch (err) {
+        applyRoomChatTranslation(message.id, { status: 'unavailable', targetLanguage });
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'custom room chat translation failed',
+          level: 'warning',
+          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    },
+    [applyRoomChatTranslation, locale],
+  );
+
+  const handleRoomChatReport = useCallback(
+    async (message: RoomChatEntry) => {
+      if (message.authorUserId === profile?.id || reportedRoomMessageIds.has(message.id)) return;
+      setReportedRoomMessageIds((ids) => new Set(ids).add(message.id));
+      try {
+        await reportChatMessage(message.id, { reason: 'inappropriate' });
+        showToast({ title: t('chat.reported'), kind: 'success' });
+      } catch (err) {
+        setReportedRoomMessageIds((ids) => {
+          const next = new Set(ids);
+          next.delete(message.id);
+          return next;
+        });
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'custom room chat report failed',
+          level: 'warning',
+          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
+        });
+        showToast({ title: t('chat.reportFailed'), kind: 'error' });
+      }
+    },
+    [profile?.id, reportedRoomMessageIds, showToast],
   );
 
   return (
@@ -1319,6 +1474,147 @@ export function OnlineLobbyPage({
                     <span className="text-caption text-content-primary/40">{t('online.hostWaitingHelper')}</span>
                   </div>
                 </RoomDetails>
+              )}
+
+              {profile && (
+                <div className="grid min-h-72 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
+                  <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border-soft px-3">
+                    <div className="min-w-0">
+                      <div className="text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                        {t('chat.roomEyebrow')}
+                      </div>
+                      <div className="truncate font-mono text-xs text-accent-primary">
+                        {roomChatSubjectId || t('chat.roomSubjectEmpty')}
+                      </div>
+                    </div>
+                    <MessageCircle className="size-4 shrink-0 text-content-primary/35" strokeWidth={1.25} />
+                  </div>
+
+                  <div ref={roomChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
+                    {!roomChatSubjectId && (
+                      <div className="grid min-h-full place-items-center px-4 text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                        {t('chat.roomSubjectEmpty')}
+                      </div>
+                    )}
+                    {roomChatSubjectId && roomChatStatus === 'loading' && (
+                      <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                        {t('presence.syncing')}
+                      </div>
+                    )}
+                    {roomChatSubjectId && roomChatStatus === 'unavailable' && (
+                      <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
+                        {t('chat.historyUnavailable')}
+                      </div>
+                    )}
+                    {roomChatSubjectId &&
+                      roomChatStatus !== 'loading' &&
+                      roomChatStatus !== 'unavailable' &&
+                      roomChatMessages.length === 0 && (
+                        <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                          {t('chat.empty')}
+                        </div>
+                      )}
+                    {roomChatMessages.map((message) => {
+                      const self = message.authorUserId === profile.id;
+                      return (
+                        <div
+                          key={message.id}
+                          className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
+                        >
+                          <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                            <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
+                            <span className="ml-2 inline-flex items-center gap-1">
+                              <Button
+                                className="size-7 p-0 tracking-normal"
+                                variant="ghost"
+                                type="button"
+                                onClick={() => void handleRoomChatTranslate(message)}
+                                disabled={message.translation?.status === 'loading'}
+                                aria-label={t('chat.translate')}
+                                title={t('chat.translate')}
+                              >
+                                <Languages className="size-3" strokeWidth={1.25} />
+                              </Button>
+                              {!self && (
+                                <Button
+                                  className="size-7 p-0 tracking-normal"
+                                  variant="ghost"
+                                  type="button"
+                                  onClick={() => void handleRoomChatReport(message)}
+                                  disabled={reportedRoomMessageIds.has(message.id)}
+                                  aria-label={
+                                    reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                  }
+                                  title={reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')}
+                                >
+                                  <Flag className="size-3" strokeWidth={1.25} />
+                                </Button>
+                              )}
+                            </span>
+                          </div>
+                          <div
+                            className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                              self
+                                ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
+                                : 'border-border-soft bg-surface-elevated/50 text-content-primary'
+                            }`}
+                          >
+                            {message.content}
+                          </div>
+                          {message.translation && (
+                            <div
+                              className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                                message.translation.status === 'ready' && message.translation.content
+                                  ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
+                                  : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
+                              }`}
+                            >
+                              {message.translation.status === 'ready' && message.translation.content
+                                ? message.translation.content
+                                : message.translation.status === 'loading'
+                                  ? t('chat.translationTranslating')
+                                  : message.translation.status === 'unavailable'
+                                    ? t('chat.translationOffline')
+                                    : t('chat.translationPending')}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <form
+                    className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleRoomChatSubmit();
+                    }}
+                  >
+                    <Input
+                      className="min-h-11 min-w-0"
+                      value={roomChatDraft}
+                      onChange={(event) => setRoomChatDraft(event.target.value.slice(0, 500))}
+                      placeholder={t('chat.messagePlaceholder')}
+                      aria-label={t('chat.messagePlaceholder')}
+                      disabled={!roomChatSubjectId || roomChatStatus === 'sending' || roomChatStatus === 'unavailable'}
+                    />
+                    <Button
+                      className="size-11 p-0 tracking-normal"
+                      variant="primary"
+                      type="submit"
+                      disabled={
+                        !roomChatSubjectId ||
+                        !roomChatDraft.trim() ||
+                        roomChatStatus === 'sending' ||
+                        roomChatStatus === 'unavailable'
+                      }
+                      aria-label={t('chat.send')}
+                      title={t('chat.send')}
+                    >
+                      <Send className="size-4" strokeWidth={1.25} />
+                    </Button>
+                  </form>
+                </div>
               )}
 
               {error && (

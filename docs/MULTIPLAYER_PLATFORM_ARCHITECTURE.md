@@ -41,6 +41,8 @@ Friend direct messages use the durable `ChatService` direct conversation type. T
 
 Cross-room lobby chat uses the durable `ChatService` global conversation type (`online-lobby`) with the same history, read-state, report, moderation, and translation behavior instead of Colyseus room memory.
 
+Custom-room pregame chat uses the durable `ChatService` room conversation type keyed by the room code. The lobby can sync, send, translate, report, and mark room chat read before the boardgame match starts; Colyseus still owns the room lifecycle and realtime membership, not chat persistence.
+
 Admin moderation uses ChatService as the evidence source of truth. Chat reports include the reported message snapshot, and the admin console can load the full durable conversation context for post-match lookup and report review, including messages that are blocked, pending review, or deleted from normal user history.
 
 Chat sanctions are durable server-side moderation actions. Admins can mute or unmute a reported author from the chat report workflow; `ChatService` checks active mute sanctions before accepting any match, room, direct, or global chat message, so Colyseus room memory and frontend state are not trusted for enforcement.
