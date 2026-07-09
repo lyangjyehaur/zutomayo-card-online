@@ -11,6 +11,8 @@ import { Sentry } from '../sentry';
 import {
   ApiError,
   fetchChatMessages,
+  getProfile,
+  isLoggedIn,
   markChatRead,
   reportChatMessage,
   requestChatTranslation,
@@ -18,6 +20,7 @@ import {
   type ChatAuthorRole,
   type ChatMessageTranslation,
   type ChatMessage,
+  type ProfileResponse,
 } from '../api/client';
 import {
   createOnlineStateSnapshot,
@@ -47,7 +50,7 @@ type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
 
 type MatchDataMember = { id: number; name?: string } | undefined;
 type PlatformShellStatus = (PlatformMatchShellPresence & { connected: boolean }) | null;
-type ChatStatus = 'loading' | 'ready' | 'unavailable' | 'sending';
+type ChatStatus = 'loading' | 'ready' | 'unavailable' | 'login_required' | 'sending';
 type OnlineChatEntry = {
   id: string;
   authorDisplayName: string;
@@ -79,7 +82,9 @@ function chatTimeLabel(createdAt: string): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function mapChatMessage(message: ChatMessage, localDisplayName: string): OnlineChatEntry {
+function mapChatMessage(message: ChatMessage, localUserId: string, localDisplayName: string): OnlineChatEntry {
+  const sameUser = Boolean(localUserId && message.authorUserId === localUserId);
+  const sameDisplayName = Boolean(!localUserId && localDisplayName && message.authorDisplayName === localDisplayName);
   return {
     id: message.id,
     authorDisplayName: message.authorDisplayName || 'Player',
@@ -87,12 +92,25 @@ function mapChatMessage(message: ChatMessage, localDisplayName: string): OnlineC
     content: message.content,
     createdAt: message.createdAt,
     persisted: true,
-    self: Boolean(localDisplayName && message.authorDisplayName === localDisplayName),
+    self: sameUser || sameDisplayName,
   };
 }
 
 function canShowChatMessage(message: ChatMessage): boolean {
   return message.moderationStatus !== 'blocked' && message.moderationStatus !== 'deleted';
+}
+
+function chatStatusLabel(status: ChatStatus): string {
+  if (status === 'loading') return 'SYNCING';
+  if (status === 'login_required') return 'LOGIN REQUIRED';
+  if (status === 'unavailable') return 'OFFLINE';
+  return 'MATCH CHAT';
+}
+
+function chatEmptyLabel(status: ChatStatus): string {
+  if (status === 'loading') return 'SYNCING';
+  if (status === 'login_required') return 'LOGIN TO CHAT';
+  return 'NO MESSAGES';
 }
 
 function OnlineLoading() {
@@ -183,8 +201,16 @@ export function OnlineGame({
   const [chatMessages, setChatMessages] = useState<OnlineChatEntry[]>([]);
   const [chatDraft, setChatDraft] = useState('');
   const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
-  const localDisplayName = participantDisplayName(playerID, spectator);
-  const localPlatformUserId = spectator ? spectatorPlatformUserId.current : `match:${matchID}:player:${playerID}`;
+  const [chatAccount, setChatAccount] = useState<ProfileResponse | null>(null);
+  const [chatAccountLoaded, setChatAccountLoaded] = useState(false);
+  const fallbackDisplayName = participantDisplayName(playerID, spectator);
+  const chatDisplayName = chatAccount?.nickname || fallbackDisplayName;
+  const chatUserId = chatAccount?.id || '';
+  const localPlatformUserId = chatUserId
+    ? `user:${chatUserId}`
+    : spectator
+      ? spectatorPlatformUserId.current
+      : `match:${matchID}:player:${playerID}`;
 
   // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
   useEffect(() => {
@@ -209,6 +235,42 @@ export function OnlineGame({
     opponentDetectedRef.current = onOpponentDetected ?? null;
   }, [onReturnToLobby, onCreateNewRoom, onOpponentDetected]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setChatAccount(null);
+
+    if (!isLoggedIn()) {
+      setChatAccountLoaded(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setChatAccountLoaded(false);
+    void getProfile().then(
+      (profile) => {
+        if (cancelled) return;
+        setChatAccount(profile);
+        setChatAccountLoaded(true);
+      },
+      (err) => {
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'match chat account unavailable',
+          level: 'warning',
+          data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
+        });
+        if (cancelled) return;
+        setChatAccount(null);
+        setChatAccountLoaded(true);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchID]);
+
   const appendChatEntry = useCallback((entry: OnlineChatEntry) => {
     setChatMessages((messages) => {
       if (messages.some((message) => message.id === entry.id)) return messages;
@@ -228,10 +290,23 @@ export function OnlineGame({
     setChatMessages([]);
     setReportedMessageIds(new Set());
 
+    if (!chatAccountLoaded) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!chatAccount) {
+      setChatStatus('login_required');
+      return () => {
+        cancelled = true;
+      };
+    }
+
     void fetchChatMessages({ conversationType: 'match', subjectId: matchID, limit: 50 }).then(
       (messages) => {
         if (cancelled) return;
-        setChatMessages(messages.map((message) => mapChatMessage(message, localDisplayName)));
+        setChatMessages(messages.map((message) => mapChatMessage(message, chatUserId, chatDisplayName)));
         setChatStatus('ready');
       },
       (err) => {
@@ -248,7 +323,7 @@ export function OnlineGame({
     return () => {
       cancelled = true;
     };
-  }, [localDisplayName, matchID]);
+  }, [chatAccount, chatAccountLoaded, chatDisplayName, chatUserId, matchID]);
 
   useEffect(() => {
     if (chatStatus !== 'ready') return;
@@ -262,6 +337,7 @@ export function OnlineGame({
   }, [chatMessages, chatStatus, matchID]);
 
   useEffect(() => {
+    if (!chatAccountLoaded) return;
     let cancelled = false;
     let room: PlatformMatchShellRoom | undefined;
 
@@ -269,7 +345,7 @@ export function OnlineGame({
       {
         boardgameMatchID: matchID,
         userId: localPlatformUserId,
-        displayName: localDisplayName,
+        displayName: chatDisplayName,
         role: spectator ? 'spectator' : 'player',
         boardgamePlayerID: spectator ? undefined : playerID,
         hasBoardgameCredentials: !spectator && Boolean(playerCredentials),
@@ -320,7 +396,16 @@ export function OnlineGame({
       setPlatformShellStatus(null);
       void room?.leave(true).catch(() => undefined);
     };
-  }, [appendChatEntry, localDisplayName, localPlatformUserId, matchID, playerCredentials, playerID, spectator]);
+  }, [
+    appendChatEntry,
+    chatAccountLoaded,
+    chatDisplayName,
+    localPlatformUserId,
+    matchID,
+    playerCredentials,
+    playerID,
+    spectator,
+  ]);
 
   const handleOpponentDetected = useCallback(() => {
     opponentDetectedRef.current?.();
@@ -383,6 +468,10 @@ export function OnlineGame({
       event.preventDefault();
       const content = chatDraft.trim();
       if (!content || chatStatus === 'sending') return;
+      if (!chatAccount) {
+        setChatStatus('login_required');
+        return;
+      }
 
       setChatStatus('sending');
       try {
@@ -390,12 +479,12 @@ export function OnlineGame({
           conversationType: 'match',
           subjectId: matchID,
           content,
-          authorDisplayName: localDisplayName,
+          authorDisplayName: chatDisplayName,
           authorRole: spectator ? 'spectator' : 'player',
           clientMessageId: `client:${Date.now()}:${Math.random().toString(36).slice(2)}`,
         });
         if (canShowChatMessage(result.message)) {
-          appendChatEntry(mapChatMessage(result.message, localDisplayName));
+          appendChatEntry(mapChatMessage(result.message, chatUserId, chatDisplayName));
         }
         setChatDraft('');
         if (canShowChatMessage(result.message)) {
@@ -412,10 +501,10 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
-        setChatStatus('ready');
+        setChatStatus(err instanceof ApiError && err.status === 401 ? 'login_required' : 'ready');
       }
     },
-    [appendChatEntry, chatDraft, chatStatus, localDisplayName, matchID, spectator],
+    [appendChatEntry, chatAccount, chatDisplayName, chatDraft, chatStatus, chatUserId, matchID, spectator],
   );
 
   const handleChatReport = useCallback(
@@ -539,17 +628,13 @@ export function OnlineGame({
             className="online-chat-toggle"
             onClick={() => setChatOpen((open) => !open)}
           />
-          {chatOpen && (
-            <span className="online-chat-state">
-              {chatStatus === 'loading' ? 'SYNCING' : chatStatus === 'unavailable' ? 'OFFLINE' : 'MATCH CHAT'}
-            </span>
-          )}
+          {chatOpen && <span className="online-chat-state">{chatStatusLabel(chatStatus)}</span>}
         </div>
         {chatOpen && (
           <>
             <div className="online-chat-messages" aria-live="polite">
               {chatMessages.length === 0 ? (
-                <div className="online-chat-empty">{chatStatus === 'loading' ? 'SYNCING' : 'NO MESSAGES'}</div>
+                <div className="online-chat-empty">{chatEmptyLabel(chatStatus)}</div>
               ) : (
                 chatMessages.map((message) => (
                   <div key={message.id} className={`online-chat-message ${message.self ? 'self' : ''}`}>
@@ -608,7 +693,7 @@ export function OnlineGame({
                 value={chatDraft}
                 onChange={(event) => setChatDraft(event.target.value.slice(0, 500))}
                 maxLength={500}
-                disabled={chatStatus === 'loading' || chatStatus === 'unavailable'}
+                disabled={chatStatus === 'loading' || chatStatus === 'unavailable' || chatStatus === 'login_required'}
                 aria-label="Match chat message"
               />
               <IconButton
@@ -616,7 +701,13 @@ export function OnlineGame({
                 icon={<Send className="size-4" aria-hidden="true" />}
                 type="submit"
                 variant="secondary"
-                disabled={!chatDraft.trim() || chatStatus === 'loading' || chatStatus === 'sending'}
+                disabled={
+                  !chatDraft.trim() ||
+                  chatStatus === 'loading' ||
+                  chatStatus === 'sending' ||
+                  chatStatus === 'unavailable' ||
+                  chatStatus === 'login_required'
+                }
               />
             </form>
           </>
