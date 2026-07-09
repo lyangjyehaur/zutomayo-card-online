@@ -102,11 +102,15 @@ function checkMetricsAuth(req) {
   return auth === `Bearer ${METRICS_TOKEN}`;
 }
 const AUTH_COOKIE_NAME = 'zutomayo_session';
-const AUTH_COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+const ACCESS_TOKEN_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 3600;
+const REFRESH_TOKEN_TTL_SECONDS = Number(process.env.REFRESH_TOKEN_TTL_SECONDS) || 7 * 24 * 60 * 60;
+const AUTH_COOKIE_MAX_AGE_SECONDS = ACCESS_TOKEN_TTL_SECONDS;
 const AUTH_COOKIE_DOMAIN = process.env.AUTH_COOKIE_DOMAIN || '';
 const AUTH_COOKIE_SAMESITE = ['Strict', 'Lax', 'None'].includes(process.env.AUTH_COOKIE_SAMESITE)
   ? process.env.AUTH_COOKIE_SAMESITE
   : 'Lax';
+const REFRESH_COOKIE_NAME = 'zutomayo_refresh';
+const REFRESH_COOKIE_PATH = '/api';
 const AUTH_MODE = process.env.AUTH_MODE || (process.env.LOGTO_ONLY_AUTH === 'true' ? 'logto' : 'hybrid');
 const LOCAL_AUTH_ENABLED = AUTH_MODE !== 'logto';
 const ACCOUNT_LINKING_ENABLED = AUTH_MODE !== 'logto';
@@ -532,10 +536,92 @@ function createToken(userId) {
     sub: userId,
     userId,
     iat: now,
-    exp: now + 7 * 24 * 60 * 60,
+    exp: now + ACCESS_TOKEN_TTL_SECONDS,
+    jti: crypto.randomBytes(12).toString('hex'),
   });
   const input = `${header}.${payload}`;
   return `${input}.${signTokenInput(input)}`;
+}
+
+function createRefreshToken(userId) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({
+    sub: userId,
+    userId,
+    typ: 'refresh',
+    iat: now,
+    exp: now + REFRESH_TOKEN_TTL_SECONDS,
+    jti: crypto.randomBytes(12).toString('hex'),
+  });
+  const input = `${header}.${payload}`;
+  return `${input}.${signTokenInput(input)}`;
+}
+
+function decodeJWTPayload(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length !== 3) return null;
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+  } catch {
+    return null;
+  }
+}
+
+async function issueRefreshToken(userId) {
+  const refreshToken = createRefreshToken(userId);
+  const payload = decodeJWTPayload(refreshToken);
+  if (payload && payload.jti) {
+    const ttl = Number(payload.exp) - Math.floor(Date.now() / 1000);
+    if (ttl > 0) {
+      try {
+        await redis.set(`refresh:${payload.jti}`, String(userId), 'EX', ttl);
+      } catch {
+        // Redis 寫入失敗不阻塞發 token（refresh 驗證時會再檢查）
+      }
+    }
+  }
+  return refreshToken;
+}
+
+async function createTokenPair(userId) {
+  const accessToken = createToken(userId);
+  const refreshToken = await issueRefreshToken(userId);
+  return { accessToken, refreshToken };
+}
+
+async function isTokenBlacklisted(jti) {
+  if (!jti) return false;
+  try {
+    const flagged = await redis.get(`blacklist:${jti}`);
+    return flagged === '1';
+  } catch {
+    return false;
+  }
+}
+
+async function blacklistToken(token) {
+  const payload = decodeJWTPayload(token);
+  if (!payload || !payload.jti) return;
+  const now = Math.floor(Date.now() / 1000);
+  const ttl = Number(payload.exp) - now;
+  if (ttl > 0) {
+    try {
+      await redis.set(`blacklist:${payload.jti}`, '1', 'EX', ttl);
+    } catch {
+      // 黑名單寫入失敗不阻塞登出
+    }
+  }
+}
+
+async function revokeRefreshToken(token) {
+  const payload = decodeJWTPayload(token);
+  if (!payload || !payload.jti) return;
+  try {
+    await redis.del(`refresh:${payload.jti}`);
+  } catch {
+    // 撤銷失敗不阻塞登出
+  }
 }
 
 function decodeCookieValue(value) {
@@ -571,6 +657,15 @@ function isSecureRequest(req) {
   );
 }
 
+function appendSetCookie(res, cookie) {
+  const existing = res.getHeader('Set-Cookie');
+  if (existing) {
+    res.setHeader('Set-Cookie', Array.isArray(existing) ? [...existing, cookie] : [existing, cookie]);
+  } else {
+    res.setHeader('Set-Cookie', cookie);
+  }
+}
+
 function serializeAuthCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
   const parts = [
     `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
@@ -584,15 +679,62 @@ function serializeAuthCookie(req, token, maxAge = AUTH_COOKIE_MAX_AGE_SECONDS) {
   return parts.join('; ');
 }
 
+function serializeRefreshCookie(req, token, maxAge = REFRESH_TOKEN_TTL_SECONDS) {
+  const parts = [
+    `${REFRESH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    `Path=${REFRESH_COOKIE_PATH}`,
+    `Max-Age=${maxAge}`,
+    'HttpOnly',
+    `SameSite=${AUTH_COOKIE_SAMESITE}`,
+  ];
+  if (AUTH_COOKIE_DOMAIN) parts.push(`Domain=${AUTH_COOKIE_DOMAIN}`);
+  if (AUTH_COOKIE_SAMESITE === 'None' || isSecureRequest(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+
 function setAuthCookie(req, res, token) {
-  res.setHeader('Set-Cookie', serializeAuthCookie(req, token));
+  appendSetCookie(res, serializeAuthCookie(req, token));
+}
+
+function setRefreshCookie(req, res, token) {
+  appendSetCookie(res, serializeRefreshCookie(req, token));
 }
 
 function clearAuthCookie(req, res) {
-  res.setHeader('Set-Cookie', serializeAuthCookie(req, '', 0));
+  appendSetCookie(res, serializeAuthCookie(req, '', 0));
 }
 
-function verifyToken(token) {
+function clearRefreshCookie(req, res) {
+  appendSetCookie(res, serializeRefreshCookie(req, '', 0));
+}
+
+function verifyTokenSync(token) {
+  try {
+    if (typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [header, payloadPart, signature] = parts;
+    const input = `${header}.${payloadPart}`;
+    const expected = signTokenInput(input);
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+      return null;
+    }
+    const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
+    if (parsedHeader.alg !== 'HS256' || parsedHeader.typ !== 'JWT') return null;
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    // 拒絕 refresh token 用於一般認證
+    if (payload.typ === 'refresh') return null;
+    const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
+    return typeof userId === 'string' ? userId : null;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyToken(token) {
   try {
     if (typeof token !== 'string') return null;
     const parts = token.split('.');
@@ -611,6 +753,10 @@ function verifyToken(token) {
 
     const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
     if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    // 拒絕 refresh token 用於一般認證
+    if (payload.typ === 'refresh') return null;
+    // 向後相容：舊 JWT 無 jti，略過黑名單檢查
+    if (payload.jti && (await isTokenBlacklisted(payload.jti))) return null;
     const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
     return typeof userId === 'string' ? userId : null;
   } catch {
@@ -618,13 +764,54 @@ function verifyToken(token) {
   }
 }
 
-function getAuthUserId(req) {
+async function verifyRefreshToken(token) {
+  try {
+    if (typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [header, payloadPart, signature] = parts;
+    const input = `${header}.${payloadPart}`;
+    const expected = signTokenInput(input);
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+      return null;
+    }
+    const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
+    if (parsedHeader.alg !== 'HS256' || parsedHeader.typ !== 'JWT') return null;
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
+    if (payload.typ !== 'refresh') return null;
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    if (!payload.jti) return null;
+    const registered = await redis.get(`refresh:${payload.jti}`);
+    if (!registered) return null;
+    const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
+    return typeof userId === 'string' ? userId : null;
+  } catch {
+    return null;
+  }
+}
+
+function getAuthUserIdSync(req) {
   const auth = req.headers.authorization;
   if (auth) {
-    const userId = verifyToken(auth.replace('Bearer ', ''));
+    const userId = verifyTokenSync(auth.replace('Bearer ', ''));
     if (userId) return userId;
   }
-  return verifyToken(parseCookies(req)[AUTH_COOKIE_NAME]);
+  return verifyTokenSync(parseCookies(req)[AUTH_COOKIE_NAME]);
+}
+
+async function getAuthUserId(req) {
+  const auth = req.headers.authorization;
+  if (auth) {
+    const userId = await verifyToken(auth.replace('Bearer ', ''));
+    if (userId) return userId;
+  }
+  const cookieToken = parseCookies(req)[AUTH_COOKIE_NAME];
+  if (cookieToken) {
+    return verifyToken(cookieToken);
+  }
+  return null;
 }
 
 function getClientCountry(req) {
@@ -1585,7 +1772,7 @@ function handleRequest(req, res) {
           scope.setTag('route', pathname);
           scope.setTag('method', method);
           scope.setContext('client', { ip: clientIp });
-          const authUserId = getAuthUserId(req);
+          const authUserId = getAuthUserIdSync(req);
           if (authUserId) scope.setUser({ id: authUserId });
           Sentry.captureException(err);
         });
@@ -1685,7 +1872,9 @@ function handleRequest(req, res) {
       const body = await readBody(32 * 1024);
       const userId = verifyOAuthSessionTicket(body.ticket);
       if (!userId) return json({ error: 'Invalid OAuth session ticket' }, 401);
-      setAuthCookie(req, res, createToken(userId));
+      const { accessToken, refreshToken } = await createTokenPair(userId);
+      setAuthCookie(req, res, accessToken);
+      setRefreshCookie(req, res, refreshToken);
       json({ ok: true });
       return;
     }
@@ -1701,7 +1890,7 @@ function handleRequest(req, res) {
       const mode = url.searchParams.get('mode') === 'link' ? 'link' : 'login';
       if (mode === 'link' && !ACCOUNT_LINKING_ENABLED)
         return json({ error: 'Account linking is managed by Logto' }, 403);
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (mode === 'link' && !userId) return json({ error: 'Unauthorized' }, 401);
       const returnTo = url.searchParams.get('returnTo') || (mode === 'link' ? '/profile' : '/');
       const now = Math.floor(Date.now() / 1000);
@@ -1822,6 +2011,7 @@ function handleRequest(req, res) {
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       setAuthCookie(req, res, result.body.token);
+      setRefreshCookie(req, res, await issueRefreshToken(result.body.user.id));
       json(result.body);
       return;
     }
@@ -1844,19 +2034,42 @@ function handleRequest(req, res) {
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       setAuthCookie(req, res, result.body.token);
+      setRefreshCookie(req, res, await issueRefreshToken(result.body.user.id));
       json(result.body);
       return;
     }
 
+    if (pathname === '/api/auth/refresh' && method === 'POST') {
+      const refreshToken = parseCookies(req)[REFRESH_COOKIE_NAME];
+      if (!refreshToken) return json({ error: 'Refresh token required' }, 401);
+      const userId = await verifyRefreshToken(refreshToken);
+      if (!userId) {
+        clearRefreshCookie(req, res);
+        return json({ error: 'Invalid or expired refresh token' }, 401);
+      }
+      // Rotate：撤銷舊 refresh token，發新 token pair
+      await revokeRefreshToken(refreshToken);
+      const { accessToken, refreshToken: newRefreshToken } = await createTokenPair(userId);
+      setAuthCookie(req, res, accessToken);
+      setRefreshCookie(req, res, newRefreshToken);
+      json({ token: accessToken });
+      return;
+    }
+
     if (pathname === '/api/logout' && method === 'POST') {
+      const cookieToken = parseCookies(req)[AUTH_COOKIE_NAME];
+      if (cookieToken) await blacklistToken(cookieToken);
+      const refreshToken = parseCookies(req)[REFRESH_COOKIE_NAME];
+      if (refreshToken) await revokeRefreshToken(refreshToken);
       clearAuthCookie(req, res);
+      clearRefreshCookie(req, res);
       json({ ok: true });
       return;
     }
 
     // Get profile
     if (pathname === '/api/profile' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await getAccountProfile(pool, userId, {
         country: getClientCountry(req),
@@ -1868,7 +2081,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/profile/identities' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await listAccountIdentities(pool, userId);
       if (!result.ok) return json({ error: result.error }, result.status);
@@ -1877,7 +2090,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/account-center' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const account = await logtoAccountRequest({ userId, path: '/api/my-account' });
       if (!account.ok) return json({ error: account.error, details: account.body }, account.status);
@@ -1905,7 +2118,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/account-center/verifications/password' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const body = await readBody(32 * 1024);
       const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
@@ -1922,7 +2135,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/account-center/password' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const body = await readBody(32 * 1024);
       const verificationRecordId = typeof body.verificationRecordId === 'string' ? body.verificationRecordId : '';
@@ -1943,7 +2156,7 @@ function handleRequest(req, res) {
     const profileIdentityRoute = pathname.match(/^\/api\/profile\/identities\/([^/]+)$/);
     if (profileIdentityRoute && method === 'DELETE') {
       if (!ACCOUNT_LINKING_ENABLED) return json({ error: 'Account linking is managed by Logto' }, 403);
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const provider = decodeURIComponent(profileIdentityRoute[1]);
       const result = await unlinkOAuthIdentity({ pool, userId, provider });
@@ -1956,7 +2169,7 @@ function handleRequest(req, res) {
 
     // List user's decks
     if (pathname === '/api/decks' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       json(await listUserDecks(pool, userId));
       return;
@@ -1964,7 +2177,7 @@ function handleRequest(req, res) {
 
     // Create deck
     if (pathname === '/api/decks' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.deckCreateSchema, __body);
@@ -1977,7 +2190,7 @@ function handleRequest(req, res) {
 
     // Update deck
     if (pathname.match(/^\/api\/decks\/d_/) && method === 'PUT') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const deckId = pathname.split('/').pop();
       const __body = await readBody();
@@ -1991,7 +2204,7 @@ function handleRequest(req, res) {
 
     // Delete deck
     if (pathname.match(/^\/api\/decks\/d_/) && method === 'DELETE') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const deckId = pathname.split('/').pop();
       const result = await deleteUserDeck(pool, userId, deckId);
@@ -2005,7 +2218,7 @@ function handleRequest(req, res) {
     // Get match action log
     const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
     if (matchLogRoute && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const matchId = matchLogRoute[1];
       const result = await getMatchActionLog(pool, matchId, sanitizeActionLog);
@@ -2017,7 +2230,7 @@ function handleRequest(req, res) {
     // Submit match result
     if (pathname === '/api/matches' && method === 'POST') {
       // P0-2：強制 JWT 認證，只有贏家可以提交自己的勝利。
-      const authUserId = getAuthUserId(req);
+      const authUserId = await getAuthUserId(req);
       if (!authUserId) return json({ error: 'Unauthorized' }, 401);
 
       const __rawBody = await readBody();
@@ -2060,7 +2273,7 @@ function handleRequest(req, res) {
 
     // P2-10：使用者對戰歷史（跨裝置同步）。
     if (pathname === '/api/matches' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       json(await getUserMatches(pool, userId, url.searchParams.get('limit'), url.searchParams.get('offset')));
       return;
@@ -2068,7 +2281,7 @@ function handleRequest(req, res) {
 
     // PUT /api/profile — 修改暱稱（P2 補齊）。
     if (pathname === '/api/profile' && method === 'PUT') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.profileUpdateSchema, __body);
@@ -2089,7 +2302,7 @@ function handleRequest(req, res) {
     // PUT /api/profile/password — 修改密碼。
     if (pathname === '/api/profile/password' && method === 'PUT') {
       if (!LOCAL_AUTH_ENABLED) return json({ error: 'Password is managed by Logto' }, 403);
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.passwordChangeSchema, __body);
@@ -2233,7 +2446,7 @@ function handleRequest(req, res) {
 
     // POST /api/matchmaking/queue — 加入配對佇列
     if (pathname === '/api/matchmaking/queue' && method === 'POST') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.mmQueueSchema, __body);
@@ -2255,7 +2468,7 @@ function handleRequest(req, res) {
 
     // GET /api/matchmaking/status — 查詢配對狀態
     if (pathname === '/api/matchmaking/status' && method === 'GET') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       json(await getMatchmakingStatus(redis, userId, Date.now(), MATCHMAKING_TIMEOUT_MS));
       return;
@@ -2263,7 +2476,7 @@ function handleRequest(req, res) {
 
     // DELETE /api/matchmaking/queue — 離開佇列
     if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       json(await leaveMatchmakingQueue(redis, userId));
       return;
@@ -2271,7 +2484,7 @@ function handleRequest(req, res) {
 
     // PUT /api/matchmaking/match — host 回報真實 boardgame.io matchID
     if (pathname === '/api/matchmaking/match' && method === 'PUT') {
-      const userId = getAuthUserId(req);
+      const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.mmMatchSchema, __body);
@@ -2284,8 +2497,8 @@ function handleRequest(req, res) {
 
     // ===== Feedback Routes（反饋功能，參考 Fider）=====
     // 投票者身份：登入用戶優先，否則用匿名 ID（前端 localStorage 產生）。
-    function extractFeedbackVoter(req, body) {
-      const userId = getAuthUserId(req);
+    async function extractFeedbackVoter(req, body) {
+      const userId = await getAuthUserId(req);
       if (userId) return { userId };
       const raw = body && body.anonymousId !== undefined ? body.anonymousId : url.searchParams.get('anonymousId');
       if (typeof raw === 'string' && /^[a-zA-Z0-9_-]{8,64}$/.test(raw)) return { anonymousId: raw };
@@ -2295,7 +2508,7 @@ function handleRequest(req, res) {
 
     // GET /api/feedback/posts — 列出反饋
     if (pathname === '/api/feedback/posts' && method === 'GET') {
-      const voter = extractFeedbackVoter(req, {});
+      const voter = await extractFeedbackVoter(req, {});
       serviceJson(
         await listFeedbackPosts({
           pool,
@@ -2321,7 +2534,7 @@ function handleRequest(req, res) {
     const feedbackPostRoute = pathname.match(/^\/api\/feedback\/posts\/([^/]+)$/);
     if (feedbackPostRoute && method === 'GET') {
       const postId = decodeURIComponent(feedbackPostRoute[1]);
-      const voter = extractFeedbackVoter(req, {});
+      const voter = await extractFeedbackVoter(req, {});
       serviceJson(await getFeedbackPost({ pool, voter, postId }));
       return;
     }
@@ -2331,7 +2544,7 @@ function handleRequest(req, res) {
       const body = await readBody();
       const __parsed = validateBody(S.feedbackPostCreateSchema, body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const voter = extractFeedbackVoter(req, __parsed.data);
+      const voter = await extractFeedbackVoter(req, __parsed.data);
       serviceJson(
         await createFeedbackPost({
           pool,
@@ -2349,7 +2562,7 @@ function handleRequest(req, res) {
     if (feedbackVoteRoute && method === 'POST') {
       const postId = decodeURIComponent(feedbackVoteRoute[1]);
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
+      const voter = await extractFeedbackVoter(req, body);
       serviceJson(await toggleFeedbackVote({ pool, voter, postId }));
       return;
     }
@@ -2361,7 +2574,7 @@ function handleRequest(req, res) {
       const body = await readBody();
       const __parsed = validateBody(S.feedbackCommentCreateSchema, body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const voter = extractFeedbackVoter(req, __parsed.data);
+      const voter = await extractFeedbackVoter(req, __parsed.data);
       serviceJson(
         await addFeedbackComment({
           pool,
@@ -2389,7 +2602,7 @@ function handleRequest(req, res) {
     if (commentVoteRoute && method === 'POST') {
       const commentId = decodeURIComponent(commentVoteRoute[1]);
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
+      const voter = await extractFeedbackVoter(req, body);
       serviceJson(await toggleFeedbackCommentVote({ pool, voter, commentId }));
       return;
     }
@@ -2401,7 +2614,7 @@ function handleRequest(req, res) {
       const body = await readBody();
       const __parsed = validateBody(S.feedbackPostEditSchema, body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const voter = extractFeedbackVoter(req, __parsed.data);
+      const voter = await extractFeedbackVoter(req, __parsed.data);
       serviceJson(await editFeedbackPost({ pool, voter, postId, body: __parsed.data, sanitizeText }));
       return;
     }
@@ -2413,7 +2626,7 @@ function handleRequest(req, res) {
       const body = await readBody();
       const __parsed = validateBody(S.feedbackCommentEditSchema, body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const voter = extractFeedbackVoter(req, __parsed.data);
+      const voter = await extractFeedbackVoter(req, __parsed.data);
       serviceJson(await editFeedbackComment({ pool, voter, commentId, body: __parsed.data, sanitizeText }));
       return;
     }
@@ -2422,7 +2635,7 @@ function handleRequest(req, res) {
     if (commentEditRoute && method === 'DELETE') {
       const commentId = decodeURIComponent(commentEditRoute[1]);
       const isAdmin = verifyAdminToken(req);
-      const voter = extractFeedbackVoter(req, {});
+      const voter = await extractFeedbackVoter(req, {});
       serviceJson(await deleteFeedbackComment({ pool, voter, commentId, isAdmin }));
       return;
     }
@@ -2516,7 +2729,7 @@ function handleRequest(req, res) {
       const commentId = decodeURIComponent(commentReactionRoute[1]);
       const emoji = decodeURIComponent(commentReactionRoute[2]);
       const body = await readBody();
-      const voter = extractFeedbackVoter(req, body);
+      const voter = await extractFeedbackVoter(req, body);
       serviceJson(await toggleFeedbackCommentReaction({ pool, voter, commentId, emoji }));
       return;
     }
@@ -2547,7 +2760,7 @@ function handleRequest(req, res) {
         return;
       }
       const body = await readBody(3 * 1024 * 1024);
-      const voter = extractFeedbackVoter(req, body);
+      const voter = await extractFeedbackVoter(req, body);
       if (!voter.userId && !voter.anonymousId) return json({ error: 'Identity is required' }, 400);
       // 解析 data URL: data:image/png;base64,xxxx
       const dataUrl = body.image || '';

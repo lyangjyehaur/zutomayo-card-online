@@ -29,6 +29,8 @@ const mockRedisZrem = vi.fn().mockResolvedValue(1);
 const mockRedisZcount = vi.fn().mockResolvedValue(0);
 const mockRedisZremrangebyscore = vi.fn().mockResolvedValue(0);
 const mockRedisDel = vi.fn().mockResolvedValue(1);
+const mockRedisGet = vi.fn().mockResolvedValue(null);
+const mockRedisSet = vi.fn().mockResolvedValue('OK');
 const mockRedisMmTryMatch = vi.fn().mockResolvedValue('');
 const mockRedisMmCleanExpired = vi.fn().mockResolvedValue(0);
 
@@ -46,6 +48,8 @@ const mockRedis = {
   zcount: mockRedisZcount,
   zremrangebyscore: mockRedisZremrangebyscore,
   del: mockRedisDel,
+  get: mockRedisGet,
+  set: mockRedisSet,
   mmTryMatch: mockRedisMmTryMatch,
   mmCleanExpired: mockRedisMmCleanExpired,
 };
@@ -212,6 +216,8 @@ describe('server routes', () => {
     mockRedisZremrangebyscore.mockResolvedValue(0);
     mockRedisZadd.mockResolvedValue(1);
     mockRedisHgetall.mockResolvedValue({});
+    mockRedisGet.mockResolvedValue(null);
+    mockRedisSet.mockResolvedValue('OK');
   });
 
   describe('security headers', () => {
@@ -441,6 +447,13 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(200);
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.ok).toBe(true);
+    });
+  });
+
+  describe('auth refresh', () => {
+    it('POST /api/auth/refresh returns 401 without refresh cookie', async () => {
+      const res = await sendRequest('POST', '/api/auth/refresh');
+      expect(res.statusCode).toBe(401);
     });
   });
 
