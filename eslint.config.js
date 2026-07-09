@@ -16,6 +16,7 @@ export default [
       'public/cards/',
       'api/server.cjs',
       'scripts/db-migrate.cjs',
+      'commitlint.config.cjs',
       'migrations/',
       '.claude/',
       '.git/',
