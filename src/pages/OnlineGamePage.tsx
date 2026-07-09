@@ -100,7 +100,8 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
   const location = useLocation();
   const locale = useLocale();
   const { matchID = '' } = useParams<'matchID'>();
-  const activeSession = session?.matchID === matchID ? session : null;
+  const spectatorMode = new URLSearchParams(location.search).get('spectate') === '1';
+  const activeSession = !spectatorMode && session?.matchID === matchID ? session : null;
   const [reconnectStatus, setReconnectStatus] = useState<OnlineRoomStatus>('reconnecting');
   const [retryNonce, setRetryNonce] = useState(0);
   const [leavePromptOpen, setLeavePromptOpen] = useState(false);
@@ -119,7 +120,7 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
   }, []);
 
   useEffect(() => {
-    if (activeSession || !matchID) return;
+    if (spectatorMode || activeSession || !matchID) return;
 
     let cancelled = false;
     setReconnectStatus('reconnecting');
@@ -135,7 +136,23 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
     return () => {
       cancelled = true;
     };
-  }, [activeSession, matchID, onJoinSharedRoom, retryNonce]);
+  }, [activeSession, matchID, onJoinSharedRoom, retryNonce, spectatorMode]);
+
+  useEffect(() => {
+    if (!spectatorMode || !matchID) return;
+
+    let cancelled = false;
+    setReconnectStatus('reconnecting');
+
+    void fetchRoom(matchID).then((room) => {
+      if (cancelled) return;
+      setReconnectStatus(room.ok ? 'ready' : room.reason);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchID, retryNonce, spectatorMode]);
 
   useEffect(() => {
     if (!activeSession) return;
@@ -233,6 +250,11 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
     setRetryNonce((value) => value + 1);
   }, []);
 
+  const spectateRoom = useCallback(() => {
+    setActionError('');
+    navigate(`/play/online/${encodeURIComponent(matchID)}?spectate=1`);
+  }, [matchID, navigate]);
+
   const returnToLobby = useCallback(() => {
     onClearSession();
     navigate('/');
@@ -299,6 +321,7 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
     const isFailure = isOnlineFailureStatus(status);
     const canLeave = panelSession && !isFailure;
     const canRetry = copy.canRetry || status === 'retrying';
+    const canSpectate = Boolean(matchID && status === 'roomFull');
     const primaryLabel = isFailure
       ? t('common.backToLobby')
       : canLeave
@@ -348,6 +371,11 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
                 {creatingRoom ? t('online.creatingRoom') : t('online.createNewRoom')}
               </Button>
             )}
+            {canSpectate && (
+              <Button variant="secondary" type="button" onClick={spectateRoom}>
+                {t('online.watchMatch')}
+              </Button>
+            )}
           </div>
           {actionError && (
             <Alert className="mt-4" tone="danger" role="alert">
@@ -361,6 +389,20 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
       </PageShell>
     );
   };
+
+  if (spectatorMode && reconnectStatus === 'ready') {
+    return (
+      <OnlineGame
+        matchID={matchID}
+        spectator
+        onLeaveRequest={returnToLobby}
+        onReturnToLobby={returnToLobby}
+        onCreateNewRoom={() => {
+          void createNewRoom();
+        }}
+      />
+    );
+  }
 
   if (!activeSession) {
     return renderStatusPanel(reconnectStatus, null);

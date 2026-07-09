@@ -483,6 +483,7 @@ export const ja: Record<TranslationKey, string> = {
   'online.createNewRoom': '新しいルームを作成',
   'online.creatingRoom': '作成中...',
   'online.createRoomFailed': '新しいルームを作成できません。あとでもう一度お試しください。',
+  'online.watchMatch': '観戦',
   'online.leaveRoom': 'ルームを退出',
   'online.leaveTitle': 'オンライン対戦を退出しますか？',
   'online.leaveBody': 'サーバーに退出を通知し、この端末の保存済み座席を削除してロビーへ戻ります。',

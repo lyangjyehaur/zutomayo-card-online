@@ -474,6 +474,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'online.createNewRoom': '创建新房间',
   'online.creatingRoom': '创建中...',
   'online.createRoomFailed': '无法创建新房间，请稍后再试。',
+  'online.watchMatch': '观战',
   'online.leaveRoom': '离开房间',
   'online.leaveTitle': '要离开在线对战吗？',
   'online.leaveBody': '会通知服务器你离开，清除本机保存的座位，并返回大厅。',

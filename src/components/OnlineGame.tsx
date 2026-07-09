@@ -31,8 +31,9 @@ import {
 
 interface OnlineGameProps {
   matchID: string;
-  playerID: string;
-  playerCredentials: string;
+  playerID?: string;
+  playerCredentials?: string;
+  spectator?: boolean;
   showRejoinedStatus?: boolean;
   onLeaveRequest: () => void;
   onReturnToLobby: () => void;
@@ -57,6 +58,11 @@ type OnlineChatEntry = {
 
 function playerDisplayName(playerID: string): string {
   return `Player ${Number(playerID) + 1}`;
+}
+
+function participantDisplayName(playerID: string | undefined, spectator: boolean): string {
+  if (spectator || playerID === undefined) return 'Spectator';
+  return playerDisplayName(playerID);
 }
 
 function chatTimeLabel(createdAt: string): string {
@@ -144,6 +150,7 @@ export function OnlineGame({
   matchID,
   playerID,
   playerCredentials,
+  spectator = false,
   showRejoinedStatus = false,
   onLeaveRequest: _onLeaveRequest,
   onReturnToLobby,
@@ -157,6 +164,7 @@ export function OnlineGame({
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
   const opponentDetectedRef = useRef<(() => void) | null>(null);
   const platformRoomRef = useRef<PlatformMatchShellRoom | null>(null);
+  const spectatorPlatformUserId = useRef(`match:${matchID}:spectator:${Date.now().toString(36)}`);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
@@ -166,8 +174,8 @@ export function OnlineGame({
   const [chatMessages, setChatMessages] = useState<OnlineChatEntry[]>([]);
   const [chatDraft, setChatDraft] = useState('');
   const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
-  const localDisplayName = playerDisplayName(playerID);
-  const localPlatformUserId = `match:${matchID}:player:${playerID}`;
+  const localDisplayName = participantDisplayName(playerID, spectator);
+  const localPlatformUserId = spectator ? spectatorPlatformUserId.current : `match:${matchID}:player:${playerID}`;
 
   // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
   useEffect(() => {
@@ -247,7 +255,7 @@ export function OnlineGame({
         boardgameMatchID: matchID,
         userId: localPlatformUserId,
         displayName: localDisplayName,
-        role: 'player',
+        role: spectator ? 'spectator' : 'player',
       },
       {
         onPresence: (presence) => {
@@ -295,7 +303,7 @@ export function OnlineGame({
       setPlatformShellStatus(null);
       void room?.leave(true).catch(() => undefined);
     };
-  }, [appendChatEntry, localDisplayName, localPlatformUserId, matchID]);
+  }, [appendChatEntry, localDisplayName, localPlatformUserId, matchID, spectator]);
 
   const handleOpponentDetected = useCallback(() => {
     opponentDetectedRef.current?.();
@@ -366,7 +374,7 @@ export function OnlineGame({
           subjectId: matchID,
           content,
           authorDisplayName: localDisplayName,
-          authorRole: 'player',
+          authorRole: spectator ? 'spectator' : 'player',
           clientMessageId: `client:${Date.now()}:${Math.random().toString(36).slice(2)}`,
         });
         if (canShowChatMessage(result.message)) {
@@ -390,7 +398,7 @@ export function OnlineGame({
         setChatStatus('ready');
       }
     },
-    [appendChatEntry, chatDraft, chatStatus, localDisplayName, matchID],
+    [appendChatEntry, chatDraft, chatStatus, localDisplayName, matchID, spectator],
   );
 
   const handleChatReport = useCallback(
@@ -549,10 +557,10 @@ export function OnlineGame({
       </div>
       <div className="board-client-frame h-full w-full">
         <OnlineClient
-          key={`${matchID}:${playerID}:${clientSyncNonce}`}
-          playerID={playerID}
+          key={`${matchID}:${spectator ? 'spectator' : playerID}:${clientSyncNonce}`}
+          playerID={spectator ? undefined : playerID}
           matchID={matchID}
-          credentials={playerCredentials}
+          credentials={spectator ? undefined : playerCredentials}
         />
       </div>
     </PageShell>

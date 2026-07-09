@@ -472,6 +472,7 @@ export const zhTW = {
   'online.createNewRoom': '建立新房間',
   'online.creatingRoom': '建立中...',
   'online.createRoomFailed': '無法建立新房間，請稍後再試。',
+  'online.watchMatch': '觀戰',
   'online.leaveRoom': '離開房間',
   'online.leaveTitle': '要離開線上對戰嗎？',
   'online.leaveBody': '會通知伺服器你離開，清除本機保存的座位，並返回大廳。',

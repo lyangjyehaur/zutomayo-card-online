@@ -16,6 +16,12 @@ export function buildOnlineRoomUrl(matchID: string): string {
   return `${window.location.origin}${path}`;
 }
 
+export function buildOnlineSpectatorUrl(matchID: string): string {
+  const path = `/play/online/${encodeURIComponent(matchID)}?spectate=1`;
+  if (typeof window === 'undefined') return path;
+  return `${window.location.origin}${path}`;
+}
+
 export function OnlineRoomInfo({ matchID, helperText, className = '' }: OnlineRoomInfoProps) {
   const { showToast } = useToast();
   const [copied, setCopied] = useState(false);

@@ -482,6 +482,7 @@ export const en: Record<TranslationKey, string> = {
   'online.createNewRoom': 'Create New Room',
   'online.creatingRoom': 'Creating...',
   'online.createRoomFailed': 'Could not create a new room. Try again later.',
+  'online.watchMatch': 'Watch Match',
   'online.leaveRoom': 'Leave Room',
   'online.leaveTitle': 'Leave online match?',
   'online.leaveBody': 'This tells the server you left, clears the saved seat on this device, and returns to the lobby.',

@@ -481,6 +481,7 @@ export const ko: Record<TranslationKey, string> = {
   'online.createNewRoom': '새 방 만들기',
   'online.creatingRoom': '만드는 중...',
   'online.createRoomFailed': '새 방을 만들 수 없습니다. 나중에 다시 시도하세요.',
+  'online.watchMatch': '관전',
   'online.leaveRoom': '방 나가기',
   'online.leaveTitle': '온라인 대전을 나갈까요?',
   'online.leaveBody': '서버에 나감을 알리고 이 기기의 저장된 좌석을 지운 뒤 로비로 돌아갑니다.',

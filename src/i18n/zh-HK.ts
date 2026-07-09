@@ -474,6 +474,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'online.createNewRoom': '開新房',
   'online.creatingRoom': '開房中...',
   'online.createRoomFailed': '開唔到新房，請稍後再試。',
+  'online.watchMatch': '觀戰',
   'online.leaveRoom': '離開房間',
   'online.leaveTitle': '要離開綫上對戰嗎？',
   'online.leaveBody': '會通知伺服器你離開，清除本機保存嘅座位，並返回大廳。',
