@@ -1232,15 +1232,50 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_AUTH = 10;
 const RATE_LIMIT_IMGPROXY = Number(process.env.RATE_LIMIT_IMGPROXY) || 600;
 const RATE_LIMIT_DEFAULT = 120;
+const RATE_LIMIT_UPLOAD = 10;
 
-async function checkRateLimit(ip, limit) {
+async function checkRateLimit(ip, limit, keyPrefix = 'ratelimit') {
   const minuteWindow = Math.floor(Date.now() / RATE_LIMIT_WINDOW_MS);
-  const key = `ratelimit:${ip}:${minuteWindow}`;
+  const key = `${keyPrefix}:${ip}:${minuteWindow}`;
   const count = await redis.incr(key);
   if (count === 1) {
     await redis.expire(key, 120);
   }
   return count <= limit;
+}
+
+// 驗證上傳圖片的 magic bytes，防止偽造副檔名上傳惡意檔案。
+function validateImageMagicBytes(buffer) {
+  if (!buffer || buffer.length < 12) return false;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  )
+    return true;
+  // JPG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true;
+  // GIF: 47 49 46 38
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return true;
+  // WEBP: RIFF .... WEBP
+  if (
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  )
+    return true;
+  return false;
 }
 
 const IMGPROXY_RESPONSE_HEADERS = new Set([
@@ -2461,6 +2496,12 @@ function handleRequest(req, res) {
 
     // POST /api/feedback/uploads — 圖片上傳（base64，限制 3MB body）
     if (pathname === '/api/feedback/uploads' && method === 'POST') {
+      // 獨立限流：10 req/min/IP，避免大 body 上傳被濫用
+      if (!(await checkRateLimit(clientIp, RATE_LIMIT_UPLOAD, 'rl:upload'))) {
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
+        res.end(JSON.stringify({ error: 'Too many upload requests. Please try again later.' }));
+        return;
+      }
       const body = await readBody(3 * 1024 * 1024);
       const voter = extractFeedbackVoter(req, body);
       if (!voter.userId && !voter.anonymousId) return json({ error: 'Identity is required' }, 400);
@@ -2479,6 +2520,10 @@ function handleRequest(req, res) {
       // 二次驗證實際大小
       if (buffer.length > 2 * 1024 * 1024) {
         return json({ error: 'Image too large (max 2MB)' }, 400);
+      }
+      // magic byte 驗證，防止偽造副檔名上傳惡意檔案
+      if (!validateImageMagicBytes(buffer)) {
+        return json({ error: 'Invalid image file' }, 400);
       }
       const bkey = generateFeedbackId('fa_') + '.' + ext;
       const uploadDir = process.env.FEEDBACK_UPLOAD_DIR || '/tmp/feedback-uploads';
