@@ -700,6 +700,11 @@ export interface ChatConversation {
   updatedAt: string;
 }
 
+export interface ChatUnreadConversation extends ChatConversation {
+  unreadCount: number;
+  latestMessageAt: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -767,6 +772,12 @@ export async function markChatRead(input: {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export async function fetchUnreadChat(limit = 20): Promise<ChatUnreadConversation[]> {
+  const cleanLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 20;
+  const data = await request<{ conversations: ChatUnreadConversation[] }>(`/chat/unread?limit=${cleanLimit}`);
+  return data.conversations;
 }
 
 export interface ChatReport {

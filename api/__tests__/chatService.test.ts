@@ -13,6 +13,7 @@ const {
   evaluateChatModeration,
   listChatMessages,
   listChatReports,
+  listUnreadChat,
   markConversationRead,
   reportChatMessage,
   sendChatMessage,
@@ -32,6 +33,7 @@ const {
     before?: unknown;
   }) => Promise<Record<string, unknown>>;
   listChatReports: (input: { pool: PoolLike; status?: unknown; limit?: unknown }) => Promise<Record<string, unknown>>;
+  listUnreadChat: (input: { pool: PoolLike; userId: string; limit?: unknown }) => Promise<Record<string, unknown>>;
   markConversationRead: (input: { pool: PoolLike; userId: string; body: Record<string, unknown> }) => Promise<{
     ok: boolean;
     body?: Record<string, unknown>;
@@ -273,6 +275,34 @@ describe('chat service', () => {
       'u_1',
       'chat_msg_1',
     ]);
+  });
+
+  it('lists unread chat summaries across conversations', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            ...conversationRow,
+            unread_count: '3',
+            latest_message_at: '2026-07-10T00:00:04.000Z',
+          },
+        ],
+      },
+    ]);
+
+    await expect(listUnreadChat({ pool, userId: 'u_2', limit: '999' })).resolves.toEqual({
+      ok: true,
+      body: {
+        conversations: [
+          expect.objectContaining({
+            id: 'match:bgio-match-1',
+            unreadCount: 3,
+            latestMessageAt: '2026-07-10T00:00:04.000Z',
+          }),
+        ],
+      },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('COUNT(m.id) AS unread_count'), ['u_2', 200]);
   });
 
   it('creates reports against the original message for evidence review', async () => {

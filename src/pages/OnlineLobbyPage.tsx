@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Pencil, Radio, X } from 'lucide-react';
+import { Check, MessageCircle, Pencil, Radio, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   ANONYMOUS_PLAYER_DEFAULT_NAME,
   formatAnonymousDisplayName,
@@ -10,12 +11,14 @@ import {
 } from '../anonymousIdentity';
 import {
   getProfile,
+  fetchUnreadChat,
   isLoggedIn,
   matchmakingLeave,
   matchmakingQueue,
   matchmakingReportMatch,
   matchmakingStatus,
   type DeckResponse,
+  type ChatUnreadConversation,
   type ProfileResponse,
 } from '../api/client';
 import { copyText } from '../clipboard';
@@ -94,6 +97,7 @@ export function OnlineLobbyPage({
 }: OnlineLobbyPageProps) {
   const { showToast } = useToast();
   const locale = useLocale();
+  const navigate = useNavigate();
   const { onlineCount } = useOnlinePresence();
   const deckOptions = useMemo<DeckOptionGroup[]>(() => {
     const localOptions = buildDeckOptions(customDeckAvailable);
@@ -106,6 +110,8 @@ export function OnlineLobbyPage({
 
   // 帳號資料：用於 Header 與段位顯示。
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [unreadChats, setUnreadChats] = useState<ChatUnreadConversation[]>([]);
+  const [unreadChatStatus, setUnreadChatStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
   const [anonymousNameDraft, setAnonymousNameDraft] = useState(() => anonymousIdentity.baseName);
@@ -113,12 +119,39 @@ export function OnlineLobbyPage({
   const refreshProfile = useCallback(async () => {
     if (!isLoggedIn()) {
       setProfile(null);
+      setUnreadChats([]);
+      setUnreadChatStatus('idle');
       return;
     }
     try {
       setProfile(await getProfile());
     } catch {
       setProfile(null);
+      setUnreadChats([]);
+      setUnreadChatStatus('idle');
+    }
+  }, []);
+
+  const refreshUnreadChats = useCallback(async () => {
+    if (!isLoggedIn()) {
+      setUnreadChats([]);
+      setUnreadChatStatus('idle');
+      return;
+    }
+    setUnreadChatStatus('loading');
+    try {
+      const conversations = await fetchUnreadChat(5);
+      setUnreadChats(conversations);
+      setUnreadChatStatus('ready');
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'chat',
+        message: 'unread chat summary unavailable',
+        level: 'warning',
+        data: { error: err instanceof Error ? err.message : String(err) },
+      });
+      setUnreadChats([]);
+      setUnreadChatStatus('unavailable');
     }
   }, []);
 
@@ -132,11 +165,17 @@ export function OnlineLobbyPage({
     };
   }, [refreshProfile]);
 
+  useEffect(() => {
+    if (!profile) return;
+    void refreshUnreadChats();
+  }, [profile, refreshUnreadChats]);
+
   const handleAuthChanged = useCallback(async () => {
     await onAuthChanged();
     await refreshProfile();
+    await refreshUnreadChats();
     setError('');
-  }, [onAuthChanged, refreshProfile]);
+  }, [onAuthChanged, refreshProfile, refreshUnreadChats]);
 
   const anonymousDisplayName = formatAnonymousDisplayName(anonymousIdentity);
   const effectivePlayerName = profile?.nickname || anonymousDisplayName;
@@ -500,10 +539,17 @@ export function OnlineLobbyPage({
   const canStart = cardsReady && !!deck0Name;
   const startDisabledReason = !cardsReady ? t('game.loading') : !deck0Name ? t('lobby.selectDeckFirst') : '';
   const rank = profile ? eloToRank(profile.elo) : null;
+  const unreadChatTotal = unreadChats.reduce((total, conversation) => total + conversation.unreadCount, 0);
   const draftPreview = formatAnonymousDisplayName({
     baseName: sanitizeAnonymousBaseName(anonymousNameDraft),
     suffix: anonymousIdentity.suffix,
   });
+
+  const openUnreadConversation = (conversation: ChatUnreadConversation) => {
+    if (conversation.type === 'match') {
+      navigate(`/play/online/${encodeURIComponent(conversation.subjectId)}?spectate=1`);
+    }
+  };
 
   return (
     <PageShell>
@@ -647,6 +693,84 @@ export function OnlineLobbyPage({
                 {profile ? `ELO ${profile.elo} · ${profile.wins}/${profile.matchCount}` : t('lobby.loginRequired')}
               </div>
             </Panel>
+
+            {profile && (
+              <Panel variant="ghost">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <MessageCircle className="size-4 shrink-0 text-accent-primary/80" strokeWidth={1.25} />
+                    <div className="min-w-0">
+                      <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                        {t('chat.unreadTitle')}
+                      </div>
+                      <div className="mt-1 truncate font-mono text-sm text-accent-primary">
+                        {unreadChatStatus === 'loading'
+                          ? t('presence.syncing')
+                          : unreadChatTotal > 0
+                            ? translate(locale, 'chat.unreadCount').replace('{count}', String(unreadChatTotal))
+                            : t('chat.unreadEmpty')}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    className="size-11 shrink-0 p-0"
+                    variant="ghost"
+                    type="button"
+                    onClick={refreshUnreadChats}
+                    aria-label={t('chat.refreshUnread')}
+                    title={t('chat.refreshUnread')}
+                  >
+                    <Radio className="size-3.5" strokeWidth={1.25} />
+                  </Button>
+                </div>
+
+                {unreadChatStatus === 'unavailable' && (
+                  <p className="mt-3 text-caption leading-relaxed text-accent-action/70">
+                    {t('chat.unreadUnavailable')}
+                  </p>
+                )}
+
+                {unreadChats.length > 0 && (
+                  <div className="mt-3 grid gap-2">
+                    {unreadChats.slice(0, 3).map((conversation) => {
+                      const isOpenable = conversation.type === 'match';
+                      const label =
+                        conversation.title ||
+                        translate(locale, 'chat.conversationLabel')
+                          .replace('{type}', conversation.type)
+                          .replace('{subjectId}', conversation.subjectId);
+                      const time = conversation.latestMessageAt
+                        ? new Date(conversation.latestMessageAt).toLocaleString(locale, {
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '';
+                      return (
+                        <button
+                          key={conversation.id}
+                          type="button"
+                          className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm border border-border-soft bg-surface-canvas/40 px-3 py-2 text-left transition hover:border-accent-primary/40 disabled:cursor-default disabled:hover:border-border-soft"
+                          onClick={() => openUnreadConversation(conversation)}
+                          disabled={!isOpenable}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-mono text-xs text-content-primary/80">{label}</span>
+                            <span className="mt-1 block truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                              {time || conversation.subjectId}
+                            </span>
+                          </span>
+                          <span className="rounded-sm bg-accent-primary/15 px-2 py-1 font-mono text-minutia text-accent-primary">
+                            {conversation.unreadCount}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </Panel>
+            )}
 
             {/* 開始匹配 */}
             <div className="grid gap-2">
