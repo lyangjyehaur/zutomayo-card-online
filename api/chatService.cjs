@@ -1,0 +1,304 @@
+/* global module */
+
+const CONVERSATION_TYPES = ['match', 'room', 'direct', 'global'];
+const PARTICIPANT_ROLES = ['player', 'spectator', 'moderator'];
+const MESSAGE_STATUSES = ['visible', 'pending_review', 'blocked', 'deleted'];
+const REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'];
+
+function clampLimit(value, fallback, max) {
+  const limit = Number(value) || fallback;
+  return Math.min(Math.max(1, Math.trunc(limit)), max);
+}
+
+function normalizeConversationType(value) {
+  return CONVERSATION_TYPES.includes(value) ? value : null;
+}
+
+function normalizeParticipantRole(value) {
+  return PARTICIPANT_ROLES.includes(value) ? value : 'spectator';
+}
+
+function normalizeMessageStatus(value) {
+  return MESSAGE_STATUSES.includes(value) ? value : 'visible';
+}
+
+function normalizeSubjectId(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().slice(0, 128);
+}
+
+function conversationKey(type, subjectId) {
+  const cleanType = normalizeConversationType(type);
+  const cleanSubjectId = normalizeSubjectId(subjectId);
+  if (!cleanType || !cleanSubjectId) return null;
+  return `${cleanType}:${cleanSubjectId}`;
+}
+
+function canAccessConversation(userId, type, subjectId) {
+  if (!userId) return false;
+  if (type !== 'direct') return true;
+  return normalizeSubjectId(subjectId).split(':').includes(userId);
+}
+
+function normalizeContent(value, sanitizeText) {
+  const text = sanitizeText(value, 1000).trim();
+  return text;
+}
+
+function normalizeLanguage(value) {
+  if (typeof value !== 'string') return '';
+  const lang = value.trim().toLowerCase();
+  return /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(lang) ? lang.slice(0, 16) : '';
+}
+
+function mapConversation(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    subjectId: row.subject_id,
+    title: row.title || '',
+    status: row.status || 'active',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapMessage(row) {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    authorUserId: row.author_user_id || null,
+    authorDisplayName: row.author_display_name || '',
+    authorRole: row.author_role || 'spectator',
+    content: row.content,
+    sourceLanguage: row.source_language || '',
+    moderationStatus: row.moderation_status || 'visible',
+    moderationReason: row.moderation_reason || '',
+    metadata: row.metadata || {},
+    createdAt: row.created_at,
+    editedAt: row.edited_at || null,
+    deletedAt: row.deleted_at || null,
+  };
+}
+
+function mapReport(row) {
+  return {
+    id: row.id,
+    messageId: row.message_id,
+    conversationId: row.conversation_id,
+    reporterUserId: row.reporter_user_id || null,
+    reason: row.reason,
+    note: row.note || '',
+    status: row.status || 'open',
+    reviewerUserId: row.reviewer_user_id || null,
+    resolutionNote: row.resolution_note || '',
+    createdAt: row.created_at,
+    reviewedAt: row.reviewed_at || null,
+  };
+}
+
+async function getOrCreateConversation({ pool, type, subjectId, title = '' }) {
+  const key = conversationKey(type, subjectId);
+  if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
+
+  const { rows } = await pool.query(
+    `INSERT INTO chat_conversations (id, type, subject_id, title)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (id) DO UPDATE SET updated_at = NOW()
+     RETURNING *`,
+    [key, type, normalizeSubjectId(subjectId), String(title || '').slice(0, 120)],
+  );
+  return { ok: true, body: mapConversation(rows[0]) };
+}
+
+async function sendChatMessage({ pool, authorUserId, body, sanitizeText, generateMessageId }) {
+  if (!authorUserId) return { ok: false, status: 401, error: 'Unauthorized' };
+  const type = normalizeConversationType(body.conversationType);
+  const subjectId = normalizeSubjectId(body.subjectId);
+  const content = normalizeContent(body.content, sanitizeText);
+  if (!type || !subjectId) return { ok: false, status: 400, error: 'Invalid conversation' };
+  if (!canAccessConversation(authorUserId, type, subjectId)) return { ok: false, status: 403, error: 'Forbidden' };
+  if (!content) return { ok: false, status: 400, error: 'Message content is required' };
+
+  const conversation = await getOrCreateConversation({
+    pool,
+    type,
+    subjectId,
+    title: sanitizeText(body.title || '', 120),
+  });
+  if (!conversation.ok) return conversation;
+
+  const id = generateMessageId();
+  const role = normalizeParticipantRole(body.authorRole);
+  const displayName = sanitizeText(body.authorDisplayName || '', 60);
+  const status = normalizeMessageStatus(body.moderationStatus);
+  const metadata = body.clientMessageId
+    ? { clientMessageId: sanitizeText(body.clientMessageId, 120), transport: body.transport || 'api' }
+    : { transport: body.transport || 'api' };
+
+  const { rows } = await pool.query(
+    `INSERT INTO chat_messages (
+       id, conversation_id, author_user_id, author_display_name, author_role,
+       content, source_language, moderation_status, moderation_reason, metadata
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING *`,
+    [
+      id,
+      conversation.body.id,
+      authorUserId,
+      displayName,
+      role,
+      content,
+      normalizeLanguage(body.sourceLanguage),
+      status,
+      sanitizeText(body.moderationReason || '', 240),
+      metadata,
+    ],
+  );
+
+  await pool.query('UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1', [conversation.body.id]);
+  return { ok: true, body: { message: mapMessage(rows[0]), conversation: conversation.body } };
+}
+
+async function listChatMessages({ pool, userId, conversationType, subjectId, limit, before }) {
+  if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
+  const key = conversationKey(conversationType, subjectId);
+  if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
+  if (!canAccessConversation(userId, conversationType, subjectId))
+    return { ok: false, status: 403, error: 'Forbidden' };
+  const lim = clampLimit(limit, 50, 200);
+  const params = [key, lim];
+  let beforeClause = '';
+  if (before) {
+    params.push(String(before));
+    beforeClause =
+      "AND created_at < COALESCE((SELECT created_at FROM chat_messages WHERE id = $3), NOW() + INTERVAL '1 second')";
+  }
+  const { rows } = await pool.query(
+    `SELECT *
+     FROM chat_messages
+     WHERE conversation_id = $1
+       AND deleted_at IS NULL
+       AND moderation_status IN ('visible', 'pending_review')
+       ${beforeClause}
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    params,
+  );
+  return { ok: true, body: { messages: rows.map(mapMessage).reverse() } };
+}
+
+async function markConversationRead({ pool, userId, body }) {
+  if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
+  const key = conversationKey(body.conversationType, body.subjectId);
+  if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
+  if (!canAccessConversation(userId, body.conversationType, body.subjectId)) {
+    return { ok: false, status: 403, error: 'Forbidden' };
+  }
+  const lastReadMessageId = typeof body.lastReadMessageId === 'string' ? body.lastReadMessageId.slice(0, 80) : null;
+  await pool.query(
+    `INSERT INTO chat_read_states (conversation_id, user_id, last_read_message_id, read_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (conversation_id, user_id)
+     DO UPDATE SET last_read_message_id = EXCLUDED.last_read_message_id, read_at = NOW()`,
+    [key, userId, lastReadMessageId],
+  );
+  return { ok: true, body: { ok: true } };
+}
+
+async function listUnreadChat({ pool, userId, limit }) {
+  if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
+  const lim = clampLimit(limit, 50, 200);
+  const { rows } = await pool.query(
+    `SELECT c.id, c.type, c.subject_id, c.title, c.status, c.created_at, c.updated_at,
+            COUNT(m.id) AS unread_count,
+            MAX(m.created_at) AS latest_message_at
+     FROM chat_conversations c
+     JOIN chat_messages m ON m.conversation_id = c.id
+     LEFT JOIN chat_read_states r ON r.conversation_id = c.id AND r.user_id = $1
+     WHERE m.author_user_id <> $1
+       AND m.deleted_at IS NULL
+       AND m.moderation_status IN ('visible', 'pending_review')
+       AND (r.read_at IS NULL OR m.created_at > r.read_at)
+     GROUP BY c.id
+     ORDER BY latest_message_at DESC
+     LIMIT $2`,
+    [userId, lim],
+  );
+  return {
+    ok: true,
+    body: {
+      conversations: rows.map((row) => ({
+        ...mapConversation(row),
+        unreadCount: Number(row.unread_count) || 0,
+        latestMessageAt: row.latest_message_at || null,
+      })),
+    },
+  };
+}
+
+async function reportChatMessage({ pool, reporterUserId, messageId, body, sanitizeText, generateReportId }) {
+  if (!reporterUserId) return { ok: false, status: 401, error: 'Unauthorized' };
+  const cleanMessageId = typeof messageId === 'string' ? messageId.slice(0, 80) : '';
+  const reason = sanitizeText(body.reason || '', 60);
+  if (!cleanMessageId || !reason) return { ok: false, status: 400, error: 'Report reason is required' };
+
+  const message = (await pool.query('SELECT id, conversation_id FROM chat_messages WHERE id = $1', [cleanMessageId]))
+    .rows[0];
+  if (!message) return { ok: false, status: 404, error: 'Message not found' };
+
+  const id = generateReportId();
+  const { rows } = await pool.query(
+    `INSERT INTO chat_reports (id, message_id, conversation_id, reporter_user_id, reason, note)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [id, cleanMessageId, message.conversation_id, reporterUserId, reason, sanitizeText(body.note || '', 1000)],
+  );
+  return { ok: true, body: { report: mapReport(rows[0]) } };
+}
+
+async function listChatReports({ pool, status, limit }) {
+  const cleanStatus = REPORT_STATUSES.includes(status) ? status : 'open';
+  const lim = clampLimit(limit, 50, 200);
+  const { rows } = await pool.query(
+    `SELECT *
+     FROM chat_reports
+     WHERE status = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [cleanStatus, lim],
+  );
+  return { ok: true, body: { reports: rows.map(mapReport) } };
+}
+
+async function reviewChatReport({ pool, reportId, body, reviewerUserId, sanitizeText }) {
+  const cleanStatus = REPORT_STATUSES.includes(body.status) ? body.status : null;
+  if (!cleanStatus || cleanStatus === 'open') return { ok: false, status: 400, error: 'Invalid report status' };
+  const { rows } = await pool.query(
+    `UPDATE chat_reports
+     SET status = $2, reviewer_user_id = $3, resolution_note = $4, reviewed_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [reportId, cleanStatus, reviewerUserId || null, sanitizeText(body.resolutionNote || '', 1000)],
+  );
+  if (rows.length === 0) return { ok: false, status: 404, error: 'Report not found' };
+  return { ok: true, body: { report: mapReport(rows[0]) } };
+}
+
+module.exports = {
+  CONVERSATION_TYPES,
+  PARTICIPANT_ROLES,
+  MESSAGE_STATUSES,
+  REPORT_STATUSES,
+  canAccessConversation,
+  conversationKey,
+  getOrCreateConversation,
+  listChatMessages,
+  listChatReports,
+  listUnreadChat,
+  markConversationRead,
+  reportChatMessage,
+  reviewChatReport,
+  sendChatMessage,
+};

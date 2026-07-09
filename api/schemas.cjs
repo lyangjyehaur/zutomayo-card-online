@@ -56,6 +56,40 @@ const heartbeatSchema = z.object({
   visitorId: z.string().min(1).max(96),
 });
 
+// ===== Chat =====
+const chatConversationType = z.enum(['match', 'room', 'direct', 'global']);
+
+const chatMessageCreateSchema = z
+  .object({
+    conversationType: chatConversationType,
+    subjectId: z.string().min(1).max(128),
+    content: z.string().min(1).max(1000),
+    title: z.string().max(120).optional(),
+    authorDisplayName: z.string().max(60).optional(),
+    authorRole: z.enum(['player', 'spectator', 'moderator']).optional(),
+    clientMessageId: z.string().max(120).optional(),
+    sourceLanguage: z.string().max(16).optional(),
+  })
+  .passthrough();
+
+const chatReadSchema = z.object({
+  conversationType: chatConversationType,
+  subjectId: z.string().min(1).max(128),
+  lastReadMessageId: z.string().max(80).optional(),
+});
+
+const chatReportCreateSchema = z
+  .object({
+    reason: z.string().min(1).max(60),
+    note: z.string().max(1000).optional(),
+  })
+  .passthrough();
+
+const chatReportReviewSchema = z.object({
+  status: z.enum(['reviewing', 'resolved', 'dismissed']),
+  resolutionNote: z.string().max(1000).optional(),
+});
+
 // ===== Admin =====
 const adminLoginSchema = z.object({
   password: z.string().min(1).max(200),
@@ -122,6 +156,10 @@ module.exports = {
   deckCreateSchema,
   matchSubmitSchema,
   heartbeatSchema,
+  chatMessageCreateSchema,
+  chatReadSchema,
+  chatReportCreateSchema,
+  chatReportReviewSchema,
   adminLoginSchema,
   adminEloSchema,
   mmQueueSchema,

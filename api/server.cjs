@@ -30,6 +30,15 @@ const {
   getPublicCard,
   getPublicCards,
 } = require('./cardDataService.cjs');
+const {
+  listChatMessages,
+  listChatReports,
+  listUnreadChat,
+  markConversationRead,
+  reportChatMessage,
+  reviewChatReport,
+  sendChatMessage,
+} = require('./chatService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks, updateUserDeck } = require('./deckService.cjs');
 const {
   getMatchmakingStatus,
@@ -458,6 +467,91 @@ async function initSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CHECK (post_id IS NOT NULL OR comment_id IS NOT NULL)
     )`,
+
+    // ===== 聊天功能 schema：持久化聊天、未讀、舉報、LLM 翻譯與審核事件 =====
+    `CREATE TABLE IF NOT EXISTS chat_conversations (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (type, subject_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_conversations_type_subject
+      ON chat_conversations(type, subject_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated_at
+      ON chat_conversations(updated_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS chat_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+      author_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      author_display_name TEXT NOT NULL DEFAULT '',
+      author_role TEXT NOT NULL DEFAULT 'spectator',
+      content TEXT NOT NULL,
+      source_language TEXT NOT NULL DEFAULT '',
+      moderation_status TEXT NOT NULL DEFAULT 'visible',
+      moderation_reason TEXT NOT NULL DEFAULT '',
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      edited_at TIMESTAMPTZ,
+      deleted_at TIMESTAMPTZ
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_created
+      ON chat_messages(conversation_id, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_messages_author_created
+      ON chat_messages(author_user_id, created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS chat_message_translations (
+      message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+      target_language TEXT NOT NULL,
+      translated_content TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'ready',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (message_id, target_language)
+    )`,
+    `CREATE TABLE IF NOT EXISTS chat_read_states (
+      conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      last_read_message_id TEXT,
+      read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (conversation_id, user_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_read_states_user
+      ON chat_read_states(user_id, read_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS chat_reports (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+      conversation_id TEXT NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+      reporter_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      reason TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      reviewer_user_id TEXT,
+      resolution_note TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_reports_status_created
+      ON chat_reports(status, created_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_reports_message
+      ON chat_reports(message_id)`,
+    `CREATE TABLE IF NOT EXISTS chat_moderation_events (
+      id TEXT PRIMARY KEY,
+      message_id TEXT REFERENCES chat_messages(id) ON DELETE CASCADE,
+      conversation_id TEXT REFERENCES chat_conversations(id) ON DELETE CASCADE,
+      actor_user_id TEXT,
+      source TEXT NOT NULL,
+      action TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_chat_moderation_events_message
+      ON chat_moderation_events(message_id, created_at DESC)`,
   ];
 
   for (const statement of schemaStatements) {
@@ -2376,6 +2470,87 @@ function handleRequest(req, res) {
       return;
     }
 
+    // ===== Chat Routes =====
+
+    // GET /api/chat/messages?type=match&subjectId=... — 對話歷史同步。
+    if (pathname === '/api/chat/messages' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await listChatMessages({
+        pool,
+        userId,
+        conversationType: url.searchParams.get('type'),
+        subjectId: url.searchParams.get('subjectId'),
+        limit: url.searchParams.get('limit'),
+        before: url.searchParams.get('before'),
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // POST /api/chat/messages — 持久化訊息；Colyseus 只負責後續 preview 廣播。
+    if (pathname === '/api/chat/messages' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody(32 * 1024);
+      const __parsed = validateBody(S.chatMessageCreateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await sendChatMessage({
+        pool,
+        authorUserId: userId,
+        body: __parsed.data,
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_' + crypto.randomBytes(12).toString('hex'),
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body, 201);
+      return;
+    }
+
+    // POST /api/chat/read — 記錄已讀游標，支援未讀計數。
+    if (pathname === '/api/chat/read' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody(32 * 1024);
+      const __parsed = validateBody(S.chatReadSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await markConversationRead({ pool, userId, body: __parsed.data });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // GET /api/chat/unread — 跨對局/房間/好友聊天未讀摘要。
+    if (pathname === '/api/chat/unread' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await listUnreadChat({ pool, userId, limit: url.searchParams.get('limit') });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    const chatReportRoute = pathname.match(/^\/api\/chat\/messages\/([^/]+)\/report$/);
+    if (chatReportRoute && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody(32 * 1024);
+      const __parsed = validateBody(S.chatReportCreateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await reportChatMessage({
+        pool,
+        reporterUserId: userId,
+        messageId: chatReportRoute[1],
+        body: __parsed.data,
+        sanitizeText,
+        generateReportId: () => 'chat_report_' + crypto.randomBytes(12).toString('hex'),
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body, 201);
+      return;
+    }
+
     // P2-10：使用者對戰歷史（跨裝置同步）。
     if (pathname === '/api/matches' && method === 'GET') {
       const userId = await getAuthUserId(req);
@@ -2450,6 +2625,38 @@ function handleRequest(req, res) {
     if (pathname === '/api/admin/matches' && method === 'GET') {
       if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
       json(await getAdminMatches(pool, url.searchParams.get('limit')));
+      return;
+    }
+
+    // Admin：聊天舉報列表（審核取證）。
+    if (pathname === '/api/admin/chat/reports' && method === 'GET') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const result = await listChatReports({
+        pool,
+        status: url.searchParams.get('status'),
+        limit: url.searchParams.get('limit'),
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // Admin：更新聊天舉報審核狀態。
+    const adminChatReportRoute = pathname.match(/^\/api\/admin\/chat\/reports\/([^/]+)$/);
+    if (adminChatReportRoute && method === 'POST') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody(32 * 1024);
+      const __parsed = validateBody(S.chatReportReviewSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await reviewChatReport({
+        pool,
+        reportId: adminChatReportRoute[1],
+        body: __parsed.data,
+        reviewerUserId: ADMIN_ACTOR_ID,
+        sanitizeText,
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 

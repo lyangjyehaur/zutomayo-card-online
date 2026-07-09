@@ -405,6 +405,16 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('GET /api/chat/messages returns 401 without auth', async () => {
+      const res = await sendRequest('GET', '/api/chat/messages?type=match&subjectId=bgio-match-1');
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('GET /api/chat/unread returns 401 without auth', async () => {
+      const res = await sendRequest('GET', '/api/chat/unread');
+      expect(res.statusCode).toBe(401);
+    });
+
     it('GET /api/admin/users returns 401 without admin token', async () => {
       const res = await sendRequest('GET', '/api/admin/users');
       expect(res.statusCode).toBe(401);
@@ -412,6 +422,11 @@ describe('server routes', () => {
 
     it('GET /api/admin/matches returns 401 without admin token', async () => {
       const res = await sendRequest('GET', '/api/admin/matches');
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('GET /api/admin/chat/reports returns 401 without admin token', async () => {
+      const res = await sendRequest('GET', '/api/admin/chat/reports');
       expect(res.statusCode).toBe(401);
     });
 

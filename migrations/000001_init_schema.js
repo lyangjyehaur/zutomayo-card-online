@@ -448,6 +448,178 @@ export const up = (pgm) => {
       },
     },
   );
+
+  // ===== chat_conversations =====
+  pgm.createTable(
+    'chat_conversations',
+    {
+      id: { type: 'text', primaryKey: true },
+      type: { type: 'text', notNull: true },
+      subject_id: { type: 'text', notNull: true },
+      title: { type: 'text', notNull: true, default: '' },
+      status: { type: 'text', notNull: true, default: 'active' },
+      created_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+      updated_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+    },
+    {
+      ifNotExists: true,
+      constraints: {
+        unique: ['type', 'subject_id'],
+      },
+    },
+  );
+  pgm.createIndex('chat_conversations', ['type', 'subject_id'], {
+    ifNotExists: true,
+    name: 'idx_chat_conversations_type_subject',
+  });
+  pgm.createIndex('chat_conversations', [{ name: 'updated_at', sort: 'DESC' }], {
+    ifNotExists: true,
+    name: 'idx_chat_conversations_updated_at',
+  });
+
+  // ===== chat_messages =====
+  pgm.createTable(
+    'chat_messages',
+    {
+      id: { type: 'text', primaryKey: true },
+      conversation_id: {
+        type: 'text',
+        notNull: true,
+        references: 'chat_conversations(id)',
+        onDelete: 'CASCADE',
+      },
+      author_user_id: { type: 'text', references: 'users(id)', onDelete: 'SET NULL' },
+      author_display_name: { type: 'text', notNull: true, default: '' },
+      author_role: { type: 'text', notNull: true, default: 'spectator' },
+      content: { type: 'text', notNull: true },
+      source_language: { type: 'text', notNull: true, default: '' },
+      moderation_status: { type: 'text', notNull: true, default: 'visible' },
+      moderation_reason: { type: 'text', notNull: true, default: '' },
+      metadata: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") },
+      created_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+      edited_at: { type: 'timestamptz' },
+      deleted_at: { type: 'timestamptz' },
+    },
+    { ifNotExists: true },
+  );
+  pgm.createIndex('chat_messages', ['conversation_id', { name: 'created_at', sort: 'DESC' }], {
+    ifNotExists: true,
+    name: 'idx_chat_messages_conversation_created',
+  });
+  pgm.createIndex('chat_messages', ['author_user_id', { name: 'created_at', sort: 'DESC' }], {
+    ifNotExists: true,
+    name: 'idx_chat_messages_author_created',
+  });
+
+  // ===== chat_message_translations =====
+  pgm.createTable(
+    'chat_message_translations',
+    {
+      message_id: {
+        type: 'text',
+        notNull: true,
+        references: 'chat_messages(id)',
+        onDelete: 'CASCADE',
+      },
+      target_language: { type: 'text', notNull: true },
+      translated_content: { type: 'text', notNull: true },
+      provider: { type: 'text', notNull: true, default: '' },
+      model: { type: 'text', notNull: true, default: '' },
+      status: { type: 'text', notNull: true, default: 'ready' },
+      created_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+      updated_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+    },
+    {
+      ifNotExists: true,
+      constraints: {
+        primaryKey: ['message_id', 'target_language'],
+      },
+    },
+  );
+
+  // ===== chat_read_states =====
+  pgm.createTable(
+    'chat_read_states',
+    {
+      conversation_id: {
+        type: 'text',
+        notNull: true,
+        references: 'chat_conversations(id)',
+        onDelete: 'CASCADE',
+      },
+      user_id: { type: 'text', notNull: true, references: 'users(id)', onDelete: 'CASCADE' },
+      last_read_message_id: { type: 'text' },
+      read_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+    },
+    {
+      ifNotExists: true,
+      constraints: {
+        primaryKey: ['conversation_id', 'user_id'],
+      },
+    },
+  );
+  pgm.createIndex('chat_read_states', ['user_id', { name: 'read_at', sort: 'DESC' }], {
+    ifNotExists: true,
+    name: 'idx_chat_read_states_user',
+  });
+
+  // ===== chat_reports =====
+  pgm.createTable(
+    'chat_reports',
+    {
+      id: { type: 'text', primaryKey: true },
+      message_id: {
+        type: 'text',
+        notNull: true,
+        references: 'chat_messages(id)',
+        onDelete: 'CASCADE',
+      },
+      conversation_id: {
+        type: 'text',
+        notNull: true,
+        references: 'chat_conversations(id)',
+        onDelete: 'CASCADE',
+      },
+      reporter_user_id: { type: 'text', references: 'users(id)', onDelete: 'SET NULL' },
+      reason: { type: 'text', notNull: true },
+      note: { type: 'text', notNull: true, default: '' },
+      status: { type: 'text', notNull: true, default: 'open' },
+      reviewer_user_id: { type: 'text' },
+      resolution_note: { type: 'text', notNull: true, default: '' },
+      created_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+      reviewed_at: { type: 'timestamptz' },
+    },
+    { ifNotExists: true },
+  );
+  pgm.createIndex('chat_reports', ['status', { name: 'created_at', sort: 'DESC' }], {
+    ifNotExists: true,
+    name: 'idx_chat_reports_status_created',
+  });
+  pgm.createIndex('chat_reports', ['message_id'], {
+    ifNotExists: true,
+    name: 'idx_chat_reports_message',
+  });
+
+  // ===== chat_moderation_events =====
+  pgm.createTable(
+    'chat_moderation_events',
+    {
+      id: { type: 'text', primaryKey: true },
+      message_id: { type: 'text', references: 'chat_messages(id)', onDelete: 'CASCADE' },
+      conversation_id: { type: 'text', references: 'chat_conversations(id)', onDelete: 'CASCADE' },
+      actor_user_id: { type: 'text' },
+      source: { type: 'text', notNull: true },
+      action: { type: 'text', notNull: true },
+      reason: { type: 'text', notNull: true, default: '' },
+      details: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") },
+      created_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+    },
+    { ifNotExists: true },
+  );
+  pgm.createIndex('chat_moderation_events', ['message_id', { name: 'created_at', sort: 'DESC' }], {
+    ifNotExists: true,
+    name: 'idx_chat_moderation_events_message',
+  });
 };
 
 // 初始 schema 不可逆（不提供 down migration）
