@@ -31,6 +31,7 @@ const {
   getPublicCards,
 } = require('./cardDataService.cjs');
 const {
+  defaultChatModerationRules,
   listChatMessages,
   listChatReports,
   listUnreadChat,
@@ -2502,6 +2503,8 @@ function handleRequest(req, res) {
         body: __parsed.data,
         sanitizeText,
         generateMessageId: () => 'chat_msg_' + crypto.randomBytes(12).toString('hex'),
+        generateModerationEventId: () => 'chat_mod_' + crypto.randomBytes(12).toString('hex'),
+        moderationRules: defaultChatModerationRules(process.env),
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, 201);

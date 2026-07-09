@@ -77,6 +77,10 @@ function mapChatMessage(message: ChatMessage, localDisplayName: string): OnlineC
   };
 }
 
+function canShowChatMessage(message: ChatMessage): boolean {
+  return message.moderationStatus !== 'blocked' && message.moderationStatus !== 'deleted';
+}
+
 function OnlineLoading() {
   return (
     <PageShell
@@ -365,12 +369,16 @@ export function OnlineGame({
           authorRole: 'player',
           clientMessageId: `client:${Date.now()}:${Math.random().toString(36).slice(2)}`,
         });
-        appendChatEntry(mapChatMessage(result.message, localDisplayName));
+        if (canShowChatMessage(result.message)) {
+          appendChatEntry(mapChatMessage(result.message, localDisplayName));
+        }
         setChatDraft('');
-        platformRoomRef.current?.send('chatPreview', {
-          conversationId: result.conversation.id,
-          text: result.message.content,
-        });
+        if (canShowChatMessage(result.message)) {
+          platformRoomRef.current?.send('chatPreview', {
+            conversationId: result.conversation.id,
+            text: result.message.content,
+          });
+        }
         setChatStatus('ready');
       } catch (err) {
         Sentry.addBreadcrumb({

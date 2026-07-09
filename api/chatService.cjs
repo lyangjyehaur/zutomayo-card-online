@@ -5,6 +5,50 @@ const PARTICIPANT_ROLES = ['player', 'spectator', 'moderator'];
 const MESSAGE_STATUSES = ['visible', 'pending_review', 'blocked', 'deleted'];
 const REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'];
 
+function normalizeKeywordList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+  if (typeof value !== 'string') return [];
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function defaultChatModerationRules(env = {}) {
+  return {
+    blockedWords: normalizeKeywordList(env.CHAT_BLOCKED_WORDS),
+    reviewWords: normalizeKeywordList(env.CHAT_REVIEW_WORDS),
+  };
+}
+
+function evaluateChatModeration(content, rules = defaultChatModerationRules()) {
+  const normalized = String(content || '').toLowerCase();
+  const blockedWord = normalizeKeywordList(rules.blockedWords).find((word) => normalized.includes(word));
+  if (blockedWord) {
+    return {
+      status: 'blocked',
+      action: 'block',
+      reason: 'blocked_keyword',
+      matchedWords: [blockedWord],
+    };
+  }
+  const reviewWord = normalizeKeywordList(rules.reviewWords).find((word) => normalized.includes(word));
+  if (reviewWord) {
+    return {
+      status: 'pending_review',
+      action: 'review',
+      reason: 'review_keyword',
+      matchedWords: [reviewWord],
+    };
+  }
+  return {
+    status: 'visible',
+    action: 'allow',
+    reason: '',
+    matchedWords: [],
+  };
+}
+
 function clampLimit(value, fallback, max) {
   const limit = Number(value) || fallback;
   return Math.min(Math.max(1, Math.trunc(limit)), max);
@@ -122,7 +166,42 @@ async function getOrCreateConversation({ pool, type, subjectId, title = '' }) {
   return { ok: true, body: mapConversation(rows[0]) };
 }
 
-async function sendChatMessage({ pool, authorUserId, body, sanitizeText, generateMessageId }) {
+async function writeModerationEvent({
+  pool,
+  generateModerationEventId,
+  messageId,
+  conversationId,
+  actorUserId,
+  moderation,
+}) {
+  if (!generateModerationEventId || moderation.status === 'visible') return;
+  await pool.query(
+    `INSERT INTO chat_moderation_events (
+       id, message_id, conversation_id, actor_user_id, source, action, reason, details
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      generateModerationEventId(),
+      messageId,
+      conversationId,
+      actorUserId,
+      'keyword',
+      moderation.action,
+      moderation.reason,
+      { matchedWords: moderation.matchedWords },
+    ],
+  );
+}
+
+async function sendChatMessage({
+  pool,
+  authorUserId,
+  body,
+  sanitizeText,
+  generateMessageId,
+  generateModerationEventId,
+  moderationRules,
+}) {
   if (!authorUserId) return { ok: false, status: 401, error: 'Unauthorized' };
   const type = normalizeConversationType(body.conversationType);
   const subjectId = normalizeSubjectId(body.subjectId);
@@ -142,7 +221,8 @@ async function sendChatMessage({ pool, authorUserId, body, sanitizeText, generat
   const id = generateMessageId();
   const role = normalizeParticipantRole(body.authorRole);
   const displayName = sanitizeText(body.authorDisplayName || '', 60);
-  const status = normalizeMessageStatus(body.moderationStatus);
+  const moderation = evaluateChatModeration(content, moderationRules);
+  const status = normalizeMessageStatus(moderation.status);
   const metadata = body.clientMessageId
     ? { clientMessageId: sanitizeText(body.clientMessageId, 120), transport: body.transport || 'api' }
     : { transport: body.transport || 'api' };
@@ -163,11 +243,19 @@ async function sendChatMessage({ pool, authorUserId, body, sanitizeText, generat
       content,
       normalizeLanguage(body.sourceLanguage),
       status,
-      sanitizeText(body.moderationReason || '', 240),
+      sanitizeText(moderation.reason || body.moderationReason || '', 240),
       metadata,
     ],
   );
 
+  await writeModerationEvent({
+    pool,
+    generateModerationEventId,
+    messageId: id,
+    conversationId: conversation.body.id,
+    actorUserId: authorUserId,
+    moderation,
+  });
   await pool.query('UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1', [conversation.body.id]);
   return { ok: true, body: { message: mapMessage(rows[0]), conversation: conversation.body } };
 }
@@ -311,6 +399,8 @@ module.exports = {
   REPORT_STATUSES,
   canAccessConversation,
   conversationKey,
+  defaultChatModerationRules,
+  evaluateChatModeration,
   getOrCreateConversation,
   listChatMessages,
   listChatReports,

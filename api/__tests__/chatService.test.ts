@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 const {
   canAccessConversation,
   conversationKey,
+  evaluateChatModeration,
   listChatMessages,
   listChatReports,
   markConversationRead,
@@ -18,6 +19,10 @@ const {
 } = require('../chatService.cjs') as {
   canAccessConversation: (userId: string, type: unknown, subjectId: unknown) => boolean;
   conversationKey: (type: unknown, subjectId: unknown) => string | null;
+  evaluateChatModeration: (
+    content: string,
+    rules?: { blockedWords?: string[]; reviewWords?: string[] },
+  ) => { status: string; action: string; reason: string; matchedWords: string[] };
   listChatMessages: (input: {
     pool: PoolLike;
     userId: string;
@@ -45,6 +50,8 @@ const {
     body: Record<string, unknown>;
     sanitizeText: (value: unknown, maxLen?: number) => string;
     generateMessageId: () => string;
+    generateModerationEventId?: () => string;
+    moderationRules?: { blockedWords?: string[]; reviewWords?: string[] };
   }) => Promise<Record<string, unknown>>;
 };
 
@@ -117,6 +124,27 @@ describe('chat service', () => {
     expect(pool.query).not.toHaveBeenCalled();
   });
 
+  it('evaluates keyword moderation rules before persistence', () => {
+    expect(evaluateChatModeration('a very bad phrase', { blockedWords: ['bad'] })).toEqual({
+      status: 'blocked',
+      action: 'block',
+      reason: 'blocked_keyword',
+      matchedWords: ['bad'],
+    });
+    expect(evaluateChatModeration('please review this', { reviewWords: ['review'] })).toEqual({
+      status: 'pending_review',
+      action: 'review',
+      reason: 'review_keyword',
+      matchedWords: ['review'],
+    });
+    expect(evaluateChatModeration('hello', { blockedWords: ['bad'], reviewWords: ['review'] })).toEqual({
+      status: 'visible',
+      action: 'allow',
+      reason: '',
+      matchedWords: [],
+    });
+  });
+
   it('persists messages after upserting the conversation', async () => {
     const pool = poolWithResults([{ rows: [conversationRow] }, { rows: [messageRow] }, { rows: [] }]);
 
@@ -159,6 +187,47 @@ describe('chat service', () => {
       2,
       expect.stringContaining('INSERT INTO chat_messages'),
       expect.arrayContaining(['chat_msg_1', 'match:bgio-match-1', 'u_1', 'Alice', 'player', 'hello', 'zh-tw']),
+    );
+  });
+
+  it('stores blocked messages with a moderation event for evidence', async () => {
+    const blockedRow = {
+      ...messageRow,
+      content: 'bad text',
+      moderation_status: 'blocked',
+      moderation_reason: 'blocked_keyword',
+    };
+    const pool = poolWithResults([{ rows: [conversationRow] }, { rows: [blockedRow] }, { rows: [] }, { rows: [] }]);
+
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_1',
+        body: {
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+          content: 'bad text',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+        generateModerationEventId: () => 'chat_mod_1',
+        moderationRules: { blockedWords: ['bad'] },
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        conversation: expect.objectContaining({ id: 'match:bgio-match-1' }),
+        message: expect.objectContaining({
+          id: 'chat_msg_1',
+          moderationStatus: 'blocked',
+          moderationReason: 'blocked_keyword',
+        }),
+      },
+    });
+    expect(pool.query).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('INSERT INTO chat_moderation_events'),
+      expect.arrayContaining(['chat_mod_1', 'chat_msg_1', 'match:bgio-match-1', 'u_1', 'keyword', 'block']),
     );
   });
 
