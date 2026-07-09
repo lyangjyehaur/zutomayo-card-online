@@ -70,6 +70,11 @@ export function TutorialGamePage() {
     navigate('/');
   };
 
+  const activeStep = TUTORIAL_STEPS[currentStep];
+  const tutorialSetCards =
+    gameState?.step === 'initialSet' ? ['1st_70'] : gameState?.step === 'turnSet' ? ['1st_34', '2nd_86'] : undefined;
+  const tutorialSetInteractionEnabled = activeStep?.phase === 'initialSet' || activeStep?.phase === 'turnSet';
+
   // 卡牌未載入時顯示 loading，避免 AIGame 用空牌組崩潰
   if (!cardsReady) {
     return (
@@ -94,6 +99,9 @@ export function TutorialGamePage() {
         aiPaused={aiPaused}
         onSetupFeedbackDismiss={handleSetupFeedbackDismiss}
         onNoticeDismiss={handleNoticeDismiss}
+        tutorialAllowedSetCardDefIds={tutorialSetCards}
+        tutorialRequiredSetCardDefIds={tutorialSetCards}
+        tutorialSetInteractionEnabled={tutorialSetInteractionEnabled}
       />
 
       <GameTutorialOverlay
@@ -103,6 +111,7 @@ export function TutorialGamePage() {
         onNext={goNext}
         onComplete={handleComplete}
         onSkip={handleSkip}
+        suspendFocusManagement={skipPromptOpen}
       />
       <Dialog
         open={skipPromptOpen}

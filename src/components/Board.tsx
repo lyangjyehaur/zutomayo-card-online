@@ -192,6 +192,12 @@ type Props = BoardProps<GameState> & {
   onSetupFeedbackDismiss?: () => void;
   // 教學模式：GameNoticeOverlay 彈窗（時鐘推進、HP 計算）確認按鈕點擊時的通知
   onNoticeDismiss?: () => void;
+  // 教學模式：限制當前步驟可從手牌打出的卡，讓固定劇本不會因誤觸偏離。
+  tutorialAllowedSetCardDefIds?: string[];
+  // 教學模式：確認前必須已放置的卡（例如追趕回合要求的兩張牌）。
+  tutorialRequiredSetCardDefIds?: string[];
+  // 教學模式：只在指定操作步驟開放出牌與確認，避免導覽步驟提早推進戰局。
+  tutorialSetInteractionEnabled?: boolean;
 };
 
 type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
@@ -1745,6 +1751,9 @@ function BattleBoard({
   opponentLabel,
   selfLabel,
   onNoticeDismiss,
+  tutorialAllowedSetCardDefIds,
+  tutorialRequiredSetCardDefIds,
+  tutorialSetInteractionEnabled = true,
   onPause,
 }: Props & { onPause: () => void }) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
@@ -1778,6 +1787,9 @@ function BattleBoard({
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const previousTurnNumber = useRef(G.turnNumber);
+  const hasRequiredTutorialCards =
+    !tutorialRequiredSetCardDefIds ||
+    tutorialRequiredSetCardDefIds.every((defId) => G.setCardsThisTurn[meIndex].some((card) => card.defId === defId));
 
   const clearPhaseTimers = useCallback(() => {
     for (const phaseTimer of phaseTimers.current) clearTimeout(phaseTimer);
@@ -1854,10 +1866,28 @@ function BattleBoard({
       return;
     }
     // 本機/AI：維持原行為，僅達最低出牌數時自動 confirmReady。
-    if (me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required) {
+    if (
+      tutorialSetInteractionEnabled &&
+      me.cardsSetThisTurn >= minimum &&
+      me.cardsSetThisTurn <= required &&
+      hasRequiredTutorialCards
+    ) {
       moves.confirmReady();
     }
-  }, [G.step, timeLeft, G.ready, me.cardsSetThisTurn, minimum, required, meIndex, moves, useServerTimer, retryTick]);
+  }, [
+    G.step,
+    timeLeft,
+    G.ready,
+    me.cardsSetThisTurn,
+    minimum,
+    required,
+    hasRequiredTutorialCards,
+    tutorialSetInteractionEnabled,
+    meIndex,
+    moves,
+    useServerTimer,
+    retryTick,
+  ]);
 
   useEffect(() => {
     setSelectedHandIndex(null);
@@ -1878,7 +1908,9 @@ function BattleBoard({
   }, [G, meIndex, opponentIndex, playBattleFeedbackSequence]);
 
   const setFromHand = (handIndex: number) => {
-    if (G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
+    if (!tutorialSetInteractionEnabled || G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
+    const card = me.hand[handIndex];
+    if (!card || (tutorialAllowedSetCardDefIds && !tutorialAllowedSetCardDefIds.includes(card.defId))) return;
     if (G.step === 'initialSet') moves.setInitialCard(handIndex);
     else moves.setTurnCard(handIndex, me.setZoneA ? 'B' : 'A');
     setSelectedHandIndex(null);
@@ -1886,12 +1918,23 @@ function BattleBoard({
 
   const time = getChronosTime(G);
   const canAct =
-    (G.step === 'initialSet' || G.step === 'turnSet') && !G.ready[meIndex] && me.cardsSetThisTurn < required;
-  const canConfirm = !G.ready[meIndex] && me.cardsSetThisTurn >= minimum && me.cardsSetThisTurn <= required;
+    tutorialSetInteractionEnabled &&
+    (G.step === 'initialSet' || G.step === 'turnSet') &&
+    !G.ready[meIndex] &&
+    me.cardsSetThisTurn < required;
+  const canConfirm =
+    tutorialSetInteractionEnabled &&
+    !G.ready[meIndex] &&
+    me.cardsSetThisTurn >= minimum &&
+    me.cardsSetThisTurn <= required &&
+    hasRequiredTutorialCards;
   const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
   const selectedHandCard =
     selectedHandIndex !== null && selectedHandIndex < me.hand.length ? me.hand[selectedHandIndex] : null;
-  const canSetSelected = Boolean(selectedHandCard) && canAct;
+  const canSetSelected =
+    Boolean(selectedHandCard) &&
+    canAct &&
+    (!tutorialAllowedSetCardDefIds || tutorialAllowedSetCardDefIds.includes(selectedHandCard?.defId ?? ''));
   const primaryActionTitle = G.ready[meIndex]
     ? t('board.readyWaiting')
     : G.pendingChoice
@@ -1926,6 +1969,7 @@ function BattleBoard({
     const card = me.hand[index];
     if (!card) return;
     inspect(card, meIndex, t('board.hand'));
+    if (tutorialAllowedSetCardDefIds && !tutorialAllowedSetCardDefIds.includes(card.defId)) return;
     if (touchLike) {
       // 兩段式：第一次 tap 選中（ActionDock 顯示「設置這張」），再 tap 開詳情。
       if (selectedHandIndex === index) {
@@ -2196,6 +2240,7 @@ function BattleBoard({
                 variant={touchLike ? 'strip' : 'fan'}
                 selectedIndex={selectedHandIndex}
                 canAct={canAct}
+                allowedCardDefIds={tutorialAllowedSetCardDefIds}
                 onCardTap={handleHandTap}
                 onCardHover={
                   touchLike
@@ -2219,6 +2264,7 @@ function BattleBoard({
                   if (selectedHandIndex !== null) setFromHand(selectedHandIndex);
                 }}
                 onConfirm={() => {
+                  if (!canConfirm) return;
                   showTransientPhaseMessage({ title: t('board.setConfirmed'), tone: 'neutral' });
                   moves.confirmReady();
                 }}

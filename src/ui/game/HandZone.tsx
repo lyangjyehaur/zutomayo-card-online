@@ -15,16 +15,27 @@ export interface HandZoneProps {
   selectedIndex: number | null;
   /** 全手牌是否可操作（非 ready、未達出牌上限）；false 時仍可 tap 查看 */
   canAct: boolean;
+  /** 教學劇本可操作的卡牌定義；未提供時所有合法手牌皆可操作。 */
+  allowedCardDefIds?: string[];
   onCardTap: (index: number) => void;
   onCardHover?: (index: number | null) => void;
 }
 
-export function HandZone({ cards, variant, selectedIndex, canAct, onCardTap, onCardHover }: HandZoneProps) {
+export function HandZone({
+  cards,
+  variant,
+  selectedIndex,
+  canAct,
+  allowedCardDefIds,
+  onCardTap,
+  onCardHover,
+}: HandZoneProps) {
   const center = (cards.length - 1) / 2;
   return (
     <div className={`handzone handzone-${variant}`} data-zone="hand" role="group" aria-label={`hand (${cards.length})`}>
       {cards.map((card, index) => {
-        const state: CardViewState = selectedIndex === index ? 'selected' : canAct ? 'playable' : 'idle';
+        const isAllowed = !allowedCardDefIds || allowedCardDefIds.includes(card.defId);
+        const state: CardViewState = selectedIndex === index ? 'selected' : canAct && isAllowed ? 'playable' : 'idle';
         const fanStyle =
           variant === 'fan'
             ? {
@@ -45,7 +56,7 @@ export function HandZone({ cards, variant, selectedIndex, canAct, onCardTap, onC
               size={variant === 'fan' ? 'lg' : 'md'}
               imageContext="hand"
               state={state}
-              onActivate={() => onCardTap(index)}
+              onActivate={canAct && isAllowed ? () => onCardTap(index) : undefined}
               tutId={card.defId}
             />
           </div>

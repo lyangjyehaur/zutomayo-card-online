@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
 import { Button } from '../ui';
@@ -32,6 +32,24 @@ export interface TutorialStep {
 
 type Rect = { x: number; y: number; w: number; h: number };
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function sameRects(a: Rect[], b: Rect[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (rect, index) => rect.x === b[index].x && rect.y === b[index].y && rect.w === b[index].w && rect.h === b[index].h,
+    )
+  );
+}
+
 function useTargetRects(selector: string | string[] | null, pad: number, stepKey: number): Rect[] {
   const [rects, setRects] = useState<Rect[]>([]);
 
@@ -43,7 +61,6 @@ function useTargetRects(selector: string | string[] | null, pad: number, stepKey
       return;
     }
 
-    let raf = 0;
     const measure = () => {
       const next: Rect[] = [];
       for (const sel of selectors) {
@@ -57,17 +74,27 @@ function useTargetRects(selector: string | string[] | null, pad: number, stepKey
           h: r.height + pad * 2,
         });
       }
-      setRects(next);
+      setRects((previous) => (sameRects(previous, next) ? previous : next));
     };
 
     measure();
-    const tick = () => {
-      measure();
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
+    const resizeObserver = new ResizeObserver(measure);
+    if (document.documentElement) resizeObserver.observe(document.documentElement);
+    for (const sel of selectors) {
+      const element = document.querySelector(sel);
+      if (element) resizeObserver.observe(element);
+    }
+    const mutationObserver = new MutationObserver(measure);
+    mutationObserver.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
 
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
   }, [selector, pad, stepKey]);
 
   return rects;
@@ -80,6 +107,8 @@ interface GameTutorialOverlayProps {
   onNext: () => void;
   onComplete: () => void;
   onSkip: () => void;
+  /** 跳過確認 Dialog 開啟時交由 Dialog 接管焦點。 */
+  suspendFocusManagement?: boolean;
 }
 
 export function GameTutorialOverlay({
@@ -89,8 +118,11 @@ export function GameTutorialOverlay({
   onNext,
   onComplete,
   onSkip,
+  suspendFocusManagement = false,
 }: GameTutorialOverlayProps) {
   const current = steps[currentStep];
+  const titleId = useId();
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
   const resolved = current.resolveKeys && gameState ? current.resolveKeys(gameState) : null;
   const titleKey = resolved?.title ?? current.title;
   const bodyKey = resolved?.body ?? current.body;
@@ -109,10 +141,76 @@ export function GameTutorialOverlay({
   const isActionStep = Boolean(current.completeWhen);
   const hasRects = rects.length > 0;
   const isMobileViewport = vp.w > 0 && vp.w <= 768;
+  const allowTargetFocus = isActionStep || current.hideNext;
+  const [tooltipHeight, setTooltipHeight] = useState(220);
+
+  useLayoutEffect(() => {
+    const tooltip = tooltipRef.current;
+    if (!tooltip) return;
+    const measure = () =>
+      setTooltipHeight((previous) => Math.round(tooltip.getBoundingClientRect().height) || previous);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(tooltip);
+    return () => observer.disconnect();
+  }, [bodyKey, titleKey, currentStep, vp.w, vp.h]);
+
+  useEffect(() => {
+    if (suspendFocusManagement) return;
+    const tooltip = tooltipRef.current;
+    const board = document.querySelector('.board-client-frame');
+    if (!tooltip || !board) return;
+    const selectors =
+      allowTargetFocus && current.target ? (Array.isArray(current.target) ? current.target : [current.target]) : [];
+    const targets = selectors.flatMap((selector) => Array.from(document.querySelectorAll<HTMLElement>(selector)));
+    const isTargetFocusable = (element: HTMLElement) =>
+      targets.some((target) => target === element || target.contains(element));
+    const restoredTabIndexes = Array.from(board.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      .filter((element) => !isTargetFocusable(element))
+      .map((element) => ({ element, tabIndex: element.getAttribute('tabindex') }));
+    restoredTabIndexes.forEach(({ element }) => element.setAttribute('tabindex', '-1'));
+
+    const available = () =>
+      [
+        tooltip,
+        ...Array.from(tooltip.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+        ...targets.flatMap((target) =>
+          target.matches(FOCUSABLE_SELECTOR)
+            ? [target]
+            : Array.from(target.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+        ),
+      ].filter((element, index, all) => all.indexOf(element) === index && !element.hasAttribute('disabled'));
+
+    const focusTooltip = () => window.requestAnimationFrame(() => tooltip.focus());
+    focusTooltip();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const focusable = available();
+      if (focusable.length === 0) return;
+      const activeIndex = focusable.indexOf(document.activeElement as HTMLElement);
+      const nextIndex = event.shiftKey
+        ? activeIndex <= 0
+          ? focusable.length - 1
+          : activeIndex - 1
+        : activeIndex === -1 || activeIndex === focusable.length - 1
+          ? 0
+          : activeIndex + 1;
+      event.preventDefault();
+      focusable[nextIndex].focus();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      restoredTabIndexes.forEach(({ element, tabIndex }) => {
+        if (tabIndex === null) element.removeAttribute('tabindex');
+        else element.setAttribute('tabindex', tabIndex);
+      });
+    };
+  }, [allowTargetFocus, current.target, currentStep, suspendFocusManagement]);
 
   // Tooltip placement calculation
   const tipW = 380;
-  const tipH = 220;
+  const tipH = tooltipHeight;
   const gap = 20;
   // 無 target 或明確 center 且無 rect：置中；有 rect 時一律避開高亮區
   const placement = current.placement ?? (hasRects ? 'bottom' : 'center');
@@ -215,34 +313,24 @@ export function GameTutorialOverlay({
           'left var(--motion-duration-slow) var(--motion-ease-standard), top var(--motion-duration-slow) var(--motion-ease-standard)',
       };
 
-  // 點擊攔截：有 rects 時用 4-div 包圍法包圍所有 rects 的聯集 bbox
-  // 聯集 bbox 外的四個區域各放一個攔截 div，聯集 bbox 內部（含所有高亮區）可點擊穿透到下方遊戲
-  // 無 rects 時用單一全屏 blocker 攔截所有點擊
+  // 點擊攔截：視覺遮罩與命中區皆採逐洞處理，只有實際高亮區可穿透到遊戲。
   const renderClickBlockers = () => {
     if (!hasRects || !union) {
       return <div className="tutorial-click-blocker" style={{ left: 0, top: 0, width: vp.w, height: vp.h }} />;
     }
-    const ux = union.minX;
-    const uy = union.minY;
-    const uw = union.maxX - union.minX;
-    const uh = union.maxY - union.minY;
+    const path = [
+      `M 0 0 H ${vp.w} V ${vp.h} H 0 Z`,
+      ...rects.map((rect) => `M ${rect.x} ${rect.y} h ${rect.w} v ${rect.h} h ${-rect.w} Z`),
+    ].join(' ');
     return (
-      <>
-        {/* 上方帶狀 */}
-        <div className="tutorial-click-blocker" style={{ left: 0, top: 0, width: vp.w, height: Math.max(0, uy) }} />
-        {/* 下方帶狀 */}
-        <div
-          className="tutorial-click-blocker"
-          style={{ left: 0, top: uy + uh, width: vp.w, height: Math.max(0, vp.h - (uy + uh)) }}
-        />
-        {/* 左方帶狀（聯集 bbox 高度範圍內） */}
-        <div className="tutorial-click-blocker" style={{ left: 0, top: uy, width: Math.max(0, ux), height: uh }} />
-        {/* 右方帶狀（聯集 bbox 高度範圍內） */}
-        <div
-          className="tutorial-click-blocker"
-          style={{ left: ux + uw, top: uy, width: Math.max(0, vp.w - (ux + uw)), height: uh }}
-        />
-      </>
+      <svg
+        className="tutorial-click-blocker-svg absolute inset-0 h-full w-full"
+        width={vp.w}
+        height={vp.h}
+        aria-hidden="true"
+      >
+        <path d={path} fill="transparent" fillRule="evenodd" pointerEvents="all" />
+      </svg>
     );
   };
 
@@ -294,10 +382,14 @@ export function GameTutorialOverlay({
 
       {/* Tutorial tooltip card */}
       <div
+        ref={tooltipRef}
         className={`tutorial-tooltip absolute rounded-sm bg-gradient-to-br from-surface-canvas via-surface-canvas to-surface-base p-5 text-content-primary shadow-sheet ring-1 ring-accent-primary/40 backdrop-blur ${
           mobileSheetAtTop ? 'tutorial-tooltip--mobile-top' : ''
         }`}
         style={tooltipStyle}
+        role="dialog"
+        aria-labelledby={titleId}
+        tabIndex={-1}
       >
         {/* Header */}
         <div className="tutorial-tooltip-header mb-3 flex items-center justify-between">
@@ -317,7 +409,9 @@ export function GameTutorialOverlay({
 
         {/* Content */}
         <div className="tutorial-tooltip-body">
-          <h3 className="font-display text-2xl font-bold leading-tight text-content-primary">{t(titleKey as never)}</h3>
+          <h3 id={titleId} className="font-display text-2xl font-bold leading-tight text-content-primary">
+            {t(titleKey as never)}
+          </h3>
           <p className="mt-3 text-body leading-relaxed text-content-primary/75">{t(bodyKey as never)}</p>
         </div>
 
