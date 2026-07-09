@@ -534,21 +534,27 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
+  background-position:
+    0 0,
+    center;
+  background-repeat:
+    repeat,
+    no-repeat;
   background-size:
-    100% 100%,
-    var(--pattern-dot-size) var(--pattern-dot-size);
+    var(--pattern-dot-size),
+    100% 100%;
 }
 
 .bf-opponent::before {
   background-image:
-    radial-gradient(ellipse 72% 120% at 50% var(--bf-side-time-y), var(--bf-time-side-wash), transparent 62%),
-    radial-gradient(var(--bf-opponent-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px);
+    radial-gradient(var(--bf-opponent-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px),
+    radial-gradient(ellipse 72% 120% at 50% var(--bf-side-time-y), var(--bf-time-side-wash), transparent 62%);
 }
 
 .bf-player::before {
   background-image:
-    radial-gradient(ellipse 72% 120% at 50% var(--bf-side-time-y), var(--bf-time-side-wash), transparent 62%),
-    radial-gradient(var(--bf-player-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px);
+    radial-gradient(var(--bf-player-dot, rgb(255 255 255 / 0.1)) 1px, transparent 1px),
+    radial-gradient(ellipse 72% 120% at 50% var(--bf-side-time-y), var(--bf-time-side-wash), transparent 62%);
 }
 
 .bf-opponent > * {

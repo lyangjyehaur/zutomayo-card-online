@@ -188,18 +188,20 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       {/* 環境層：隨機卡牌模糊背景＋中央光暈＋夜色微染＋點陣（與戰場同語言） */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         {backgroundImage && (
-          <CardImage
-            src={backgroundImage}
-            context="detail"
-            alt=""
-            referrerPolicy="no-referrer"
-            className="absolute inset-[-7%] h-[114%] w-[114%] object-contain opacity-45 blur-[6px] brightness-[0.72] saturate-[1.35]"
-            onError={() =>
-              setBackgroundImage((current) =>
-                current === LOBBY_BACKGROUND_FALLBACK_IMAGE ? '' : LOBBY_BACKGROUND_FALLBACK_IMAGE,
-              )
-            }
-          />
+          <div className="absolute inset-[-7%] [&>img]:block [&>img]:h-full [&>img]:w-full [&>picture]:block [&>picture]:h-full [&>picture]:w-full">
+            <CardImage
+              src={backgroundImage}
+              context="detail"
+              alt=""
+              referrerPolicy="no-referrer"
+              className="h-full w-full object-cover opacity-45 blur-[6px] brightness-[0.72] saturate-[1.35]"
+              onError={() =>
+                setBackgroundImage((current) =>
+                  current === LOBBY_BACKGROUND_FALLBACK_IMAGE ? '' : LOBBY_BACKGROUND_FALLBACK_IMAGE,
+                )
+              }
+            />
+          </div>
         )}
         <div className="absolute inset-0 bg-surface-canvas/58" />
         <div className="absolute inset-0 bg-gradient-to-r from-surface-canvas/82 via-surface-canvas/24 to-surface-canvas/62" />
