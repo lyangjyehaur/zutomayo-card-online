@@ -1240,6 +1240,16 @@ input:focus {
   color: #b9fff4;
 }
 
+.online-platform-status {
+  min-width: 7.5rem;
+  border: 1px solid rgba(66, 215, 198, 0.35);
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  background: rgba(10, 20, 24, 0.72);
+  text-align: center;
+  backdrop-filter: blur(10px);
+}
+
 .online-connection-panel {
   display: grid;
   place-items: center;

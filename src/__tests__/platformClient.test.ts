@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeSeatReservation, platformOnlineCountFromMessage, resolvePlatformEndpoint } from '../platformClient';
+import {
+  normalizeSeatReservation,
+  platformOnlineCountFromMessage,
+  platformPresenceFromMatchShellMessage,
+  resolvePlatformEndpoint,
+} from '../platformClient';
 
 describe('platform client helpers', () => {
   it('uses explicit platform endpoint when configured', () => {
@@ -45,6 +50,18 @@ describe('platform client helpers', () => {
     expect(platformOnlineCountFromMessage({ players: 2, spectators: 7 })).toBe(9);
     expect(platformOnlineCountFromMessage({ onlineCount: -2 })).toBe(0);
     expect(platformOnlineCountFromMessage({})).toBeNull();
+  });
+
+  it('reads match shell presence from platform messages', () => {
+    expect(platformPresenceFromMatchShellMessage({ players: 2.8, spectators: 4.2 })).toEqual({
+      players: 2,
+      spectators: 4,
+    });
+    expect(platformPresenceFromMatchShellMessage({ players: -1, spectators: 1 })).toEqual({
+      players: 0,
+      spectators: 1,
+    });
+    expect(platformPresenceFromMatchShellMessage({ players: 2 })).toBeNull();
   });
 
   it('adapts Colyseus 0.17 flat seat reservations for the browser SDK', () => {

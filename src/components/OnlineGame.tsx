@@ -13,6 +13,11 @@ import {
   type OnlineStateMismatchReason,
   type OnlineStateSnapshot,
 } from '../onlineStateGuard';
+import {
+  connectPlatformMatchShell,
+  type PlatformMatchShellPresence,
+  type PlatformMatchShellRoom,
+} from '../platformClient';
 
 interface OnlineGameProps {
   matchID: string;
@@ -28,6 +33,7 @@ interface OnlineGameProps {
 type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
 
 type MatchDataMember = { id: number; name?: string } | undefined;
+type PlatformShellStatus = (PlatformMatchShellPresence & { connected: boolean }) | null;
 
 function OnlineLoading() {
   return (
@@ -107,6 +113,7 @@ export function OnlineGame({
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
+  const [platformShellStatus, setPlatformShellStatus] = useState<PlatformShellStatus>(null);
 
   // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
   useEffect(() => {
@@ -130,6 +137,51 @@ export function OnlineGame({
     onCreateNewRoomRef.current = onCreateNewRoom;
     opponentDetectedRef.current = onOpponentDetected ?? null;
   }, [onReturnToLobby, onCreateNewRoom, onOpponentDetected]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let room: PlatformMatchShellRoom | undefined;
+
+    void connectPlatformMatchShell(
+      {
+        boardgameMatchID: matchID,
+        userId: `match:${matchID}:player:${playerID}`,
+        displayName: `Player ${Number(playerID) + 1}`,
+        role: 'player',
+      },
+      {
+        onPresence: (presence) => {
+          if (!cancelled) setPlatformShellStatus({ ...presence, connected: true });
+        },
+        onDisconnect: () => {
+          if (!cancelled) setPlatformShellStatus(null);
+        },
+      },
+    ).then(
+      (nextRoom) => {
+        if (cancelled) {
+          void nextRoom.leave(true).catch(() => undefined);
+          return;
+        }
+        room = nextRoom;
+      },
+      (err) => {
+        Sentry.addBreadcrumb({
+          category: 'platform',
+          message: 'match shell unavailable',
+          level: 'warning',
+          data: { match_id: matchID, error: err instanceof Error ? err.message : String(err) },
+        });
+        if (!cancelled) setPlatformShellStatus(null);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      setPlatformShellStatus(null);
+      void room?.leave(true).catch(() => undefined);
+    };
+  }, [matchID, playerID]);
 
   const handleOpponentDetected = useCallback(() => {
     opponentDetectedRef.current?.();
@@ -233,6 +285,16 @@ export function OnlineGame({
               : visibleConnectionStatus === 'disconnected'
                 ? t('onlineSession.disconnectedRetrying')
                 : t('onlineSession.reconnecting')}
+          </span>
+        </div>
+      )}
+      {platformShellStatus && (
+        <div className="absolute left-6 top-1.5 z-[var(--z-modal)]">
+          <span
+            className="online-platform-status font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70"
+            aria-label={`Platform room connected, ${platformShellStatus.players} players, ${platformShellStatus.spectators} spectators`}
+          >
+            P {platformShellStatus.players} / S {platformShellStatus.spectators}
           </span>
         </div>
       )}
