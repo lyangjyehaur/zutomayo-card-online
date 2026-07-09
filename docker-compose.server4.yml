@@ -29,6 +29,7 @@ services:
         VITE_UMAMI_SECONDARY_WEBSITE_ID: ${VITE_UMAMI_SECONDARY_WEBSITE_ID:-}
         VITE_UMAMI_SECONDARY_HOST_URL: ${VITE_UMAMI_SECONDARY_HOST_URL:-}
         VITE_IMGPROXY_BASE_URL: ${VITE_IMGPROXY_BASE_URL:-}
+        VITE_PLATFORM_URL: ${VITE_PLATFORM_URL:-}
         VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
         VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.1}
         SENTRY_DSN: ${SENTRY_DSN:-}
@@ -94,6 +95,38 @@ services:
       - 1panel-network
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-}
+        APP_BUILD_ID: ${APP_BUILD_ID:-}
+        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
+    command: ['npm', 'run', 'platform']
+    ports:
+      - '3002:3002'
+    env_file: .env
+    environment:
+      - PLATFORM_PORT=3002
+      - NODE_ENV=production
+      - APP_VERSION=${APP_VERSION:-}
+      - APP_BUILD_ID=${APP_BUILD_ID:-}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - REDIS_DB=0
+      - PLATFORM_REDIS_MODE=redis
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - default
+      - 1panel-network
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3002/health || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5

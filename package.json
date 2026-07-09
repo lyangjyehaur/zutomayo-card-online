@@ -55,6 +55,7 @@
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.10",
     "boardgame.io": "^0.50.2",
+    "colyseus.js": "^0.16.22",
     "express": "^5.2.1",
     "ioredis": "^5.4.2",
     "koa-helmet": "^9.0.0",

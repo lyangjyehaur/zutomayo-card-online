@@ -30,25 +30,35 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
       joinedAt: Date.now(),
     };
     await this.refreshMetadata();
-    this.broadcast('presence', {
-      event: 'join',
-      profile: client.userData,
-      players: this.clients.filter((item) => item.userData?.role === 'player').length,
-      spectators: this.clients.filter((item) => item.userData?.role !== 'player').length,
-    });
+    client.send('lobbySnapshot', this.snapshot());
+    this.broadcast('presence', this.presencePayload('join', client.userData));
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
     const profile = client.userData;
     await this.refreshMetadata();
     if (profile) {
-      this.broadcast('presence', {
-        event: 'leave',
-        profile,
-        players: this.clients.filter((item) => item.userData?.role === 'player').length,
-        spectators: this.clients.filter((item) => item.userData?.role !== 'player').length,
-      });
+      this.broadcast('presence', this.presencePayload('leave', profile));
     }
+  }
+
+  private snapshot(): PlatformClient['~messages']['lobbySnapshot'] {
+    return {
+      roomId: this.roomId,
+      onlineCount: this.clients.length,
+    };
+  }
+
+  private presencePayload(event: 'join' | 'leave', profile: NonNullable<PlatformClient['userData']>) {
+    const players = this.clients.filter((item) => item.userData?.role === 'player').length;
+    const spectators = this.clients.filter((item) => item.userData?.role !== 'player').length;
+    return {
+      event,
+      profile,
+      players,
+      spectators,
+      onlineCount: this.clients.length,
+    };
   }
 
   private async refreshMetadata(): Promise<void> {

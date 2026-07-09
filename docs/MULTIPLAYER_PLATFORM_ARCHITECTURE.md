@@ -27,10 +27,13 @@ The first implementation slice adds a standalone Colyseus platform runtime witho
 - `src/platform/rooms/MatchShellRoom.ts`
 - Docker Compose `platform` service on port `3002`
 - `PLATFORM_REDIS_MODE=memory|redis` for local single-process development versus multi-instance production
+- Browser lobby presence integration through `VITE_PLATFORM_URL`, with the existing HTTP presence heartbeat kept as fallback
 
 Existing `boardgame.io` online battles continue to use the current flow.
 
 By default, `npm run platform` uses in-memory Colyseus presence/driver outside production so local development can start without Redis. Docker Compose sets `PLATFORM_REDIS_MODE=redis` and uses the shared Redis service for production-style room discovery, presence, and future horizontal scaling.
+
+The frontend resolves the platform endpoint from `VITE_PLATFORM_URL` when set. When unset, local `:3000` or Vite `:5173` pages connect to `:3002`; other origins use the same host and websocket scheme. If the Colyseus lobby connection fails or disconnects, `useOnlinePresence()` falls back to the existing `/api/presence/heartbeat` path.
 
 ## Migration Plan
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchOnlinePresence, sendOnlinePresenceHeartbeat } from '../api/client';
+import { connectPlatformLobby, type PlatformLobbyRoom } from '../platformClient';
 
 const PRESENCE_VISITOR_ID_KEY = 'zutomayo_presence_visitor_id';
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -35,17 +36,64 @@ export function useOnlinePresence() {
   }, []);
 
   useEffect(() => {
-    void refresh(true);
-    const timer = window.setInterval(() => void refresh(true), HEARTBEAT_INTERVAL_MS);
+    let cancelled = false;
+    let fallbackStarted = false;
+    let fallbackTimer: number | undefined;
+    let platformRoom: PlatformLobbyRoom | undefined;
+
     const refreshWhenVisible = () => {
       if (document.visibilityState === 'visible') void refresh(true);
     };
-    window.addEventListener('focus', refreshWhenVisible);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-    return () => {
-      window.clearInterval(timer);
+
+    const startHttpFallback = () => {
+      if (cancelled || fallbackStarted) return;
+      fallbackStarted = true;
+      void refresh(true);
+      fallbackTimer = window.setInterval(() => void refresh(true), HEARTBEAT_INTERVAL_MS);
+      window.addEventListener('focus', refreshWhenVisible);
+      document.addEventListener('visibilitychange', refreshWhenVisible);
+    };
+
+    const stopHttpFallback = () => {
+      if (!fallbackStarted) return;
+      fallbackStarted = false;
+      if (fallbackTimer) window.clearInterval(fallbackTimer);
+      fallbackTimer = undefined;
       window.removeEventListener('focus', refreshWhenVisible);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+
+    void connectPlatformLobby(
+      {
+        userId: loadVisitorId(),
+        displayName: 'visitor',
+        role: 'spectator',
+      },
+      {
+        onOnlineCount: (count) => {
+          if (cancelled) return;
+          stopHttpFallback();
+          setOnlineCount(count);
+        },
+        onDisconnect: startHttpFallback,
+      },
+    ).then(
+      (room) => {
+        if (cancelled) {
+          void room.leave(true).catch(() => undefined);
+          return;
+        }
+        platformRoom = room;
+      },
+      () => {
+        startHttpFallback();
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      stopHttpFallback();
+      void platformRoom?.leave(true).catch(() => undefined);
     };
   }, [refresh]);
 

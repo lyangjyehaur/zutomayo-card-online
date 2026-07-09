@@ -18,6 +18,10 @@ export interface PlatformClientProfile {
 }
 
 export interface PlatformClientMessages {
+  lobbySnapshot: {
+    roomId: string;
+    onlineCount: number;
+  };
   roomSnapshot: {
     roomId: string;
     boardgameMatchID?: string;
@@ -30,6 +34,7 @@ export interface PlatformClientMessages {
     profile: PlatformClientProfile;
     players: number;
     spectators: number;
+    onlineCount?: number;
   };
   boardgameMatchLinked: {
     boardgameMatchID: string;
