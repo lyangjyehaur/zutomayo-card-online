@@ -125,6 +125,19 @@ function mapMessage(row) {
   };
 }
 
+function mapTranslation(row) {
+  return {
+    messageId: row.message_id,
+    targetLanguage: row.target_language,
+    translatedContent: row.translated_content || '',
+    provider: row.provider || '',
+    model: row.model || '',
+    status: row.status || 'pending',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function mapReport(row) {
   const report = {
     id: row.id,
@@ -337,6 +350,132 @@ async function listUnreadChat({ pool, userId, limit }) {
   };
 }
 
+async function upsertChatTranslation({ pool, messageId, targetLanguage, translatedContent, provider, model, status }) {
+  const { rows } = await pool.query(
+    `INSERT INTO chat_message_translations (
+       message_id, target_language, translated_content, provider, model, status, updated_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+     ON CONFLICT (message_id, target_language)
+     DO UPDATE SET
+       translated_content = EXCLUDED.translated_content,
+       provider = EXCLUDED.provider,
+       model = EXCLUDED.model,
+       status = EXCLUDED.status,
+       updated_at = NOW()
+     RETURNING *`,
+    [messageId, targetLanguage, translatedContent, provider, model, status],
+  );
+  return mapTranslation(rows[0]);
+}
+
+async function requestChatTranslation({
+  pool,
+  userId,
+  messageId,
+  body,
+  sanitizeText,
+  translateText,
+  providerName = '',
+  modelName = '',
+}) {
+  if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
+  const cleanMessageId = typeof messageId === 'string' ? messageId.slice(0, 80) : '';
+  const targetLanguage = normalizeLanguage(body.targetLanguage);
+  if (!cleanMessageId || !targetLanguage) return { ok: false, status: 400, error: 'Invalid translation request' };
+
+  const message = (
+    await pool.query(
+      `SELECT m.id, m.conversation_id, m.content, m.source_language, c.type, c.subject_id
+       FROM chat_messages m
+       JOIN chat_conversations c ON c.id = m.conversation_id
+       WHERE m.id = $1
+         AND m.deleted_at IS NULL
+         AND m.moderation_status IN ('visible', 'pending_review')`,
+      [cleanMessageId],
+    )
+  ).rows[0];
+  if (!message) return { ok: false, status: 404, error: 'Message not found' };
+  if (!canAccessConversation(userId, message.type, message.subject_id)) {
+    return { ok: false, status: 403, error: 'Forbidden' };
+  }
+
+  const existing = (
+    await pool.query(
+      `SELECT *
+       FROM chat_message_translations
+       WHERE message_id = $1 AND target_language = $2`,
+      [cleanMessageId, targetLanguage],
+    )
+  ).rows[0];
+  if (existing && existing.status === 'ready') {
+    return { ok: true, body: { translation: mapTranslation(existing), cached: true } };
+  }
+
+  const sourceLanguage = normalizeLanguage(message.source_language);
+  if (sourceLanguage && sourceLanguage === targetLanguage) {
+    const translation = await upsertChatTranslation({
+      pool,
+      messageId: cleanMessageId,
+      targetLanguage,
+      translatedContent: message.content,
+      provider: 'source',
+      model: '',
+      status: 'ready',
+    });
+    return { ok: true, body: { translation, cached: Boolean(existing) } };
+  }
+
+  if (typeof translateText !== 'function') {
+    const translation =
+      existing && existing.status === 'pending'
+        ? mapTranslation(existing)
+        : await upsertChatTranslation({
+            pool,
+            messageId: cleanMessageId,
+            targetLanguage,
+            translatedContent: '',
+            provider: providerName || 'unconfigured',
+            model: modelName || '',
+            status: 'pending',
+          });
+    return { ok: true, body: { translation, cached: Boolean(existing) } };
+  }
+
+  try {
+    const result = await translateText({
+      text: message.content,
+      sourceLanguage,
+      targetLanguage,
+      messageId: cleanMessageId,
+      conversationId: message.conversation_id,
+    });
+    const translatedContent = sanitizeText(result?.translatedContent || '', 4000).trim();
+    if (!translatedContent) throw new Error('Empty translation result');
+    const translation = await upsertChatTranslation({
+      pool,
+      messageId: cleanMessageId,
+      targetLanguage,
+      translatedContent,
+      provider: sanitizeText(result?.provider || providerName || 'llm', 60),
+      model: sanitizeText(result?.model || modelName || '', 120),
+      status: 'ready',
+    });
+    return { ok: true, body: { translation, cached: false } };
+  } catch {
+    const translation = await upsertChatTranslation({
+      pool,
+      messageId: cleanMessageId,
+      targetLanguage,
+      translatedContent: existing?.translated_content || '',
+      provider: providerName || 'llm',
+      model: modelName || '',
+      status: 'pending',
+    });
+    return { ok: true, body: { translation, cached: Boolean(existing) } };
+  }
+}
+
 async function reportChatMessage({ pool, reporterUserId, messageId, body, sanitizeText, generateReportId }) {
   if (!reporterUserId) return { ok: false, status: 401, error: 'Unauthorized' };
   const cleanMessageId = typeof messageId === 'string' ? messageId.slice(0, 80) : '';
@@ -404,6 +543,7 @@ module.exports = {
   getOrCreateConversation,
   listChatMessages,
   listChatReports,
+  requestChatTranslation,
   listUnreadChat,
   markConversationRead,
   reportChatMessage,

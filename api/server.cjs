@@ -37,6 +37,7 @@ const {
   listUnreadChat,
   markConversationRead,
   reportChatMessage,
+  requestChatTranslation,
   reviewChatReport,
   sendChatMessage,
 } = require('./chatService.cjs');
@@ -2531,6 +2532,27 @@ function handleRequest(req, res) {
       const result = await listUnreadChat({ pool, userId, limit: url.searchParams.get('limit') });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
+      return;
+    }
+
+    const chatTranslationRoute = pathname.match(/^\/api\/chat\/messages\/([^/]+)\/translate$/);
+    if (chatTranslationRoute && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody(32 * 1024);
+      const __parsed = validateBody(S.chatTranslationRequestSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await requestChatTranslation({
+        pool,
+        userId,
+        messageId: chatTranslationRoute[1],
+        body: __parsed.data,
+        sanitizeText,
+        providerName: process.env.CHAT_TRANSLATION_PROVIDER || '',
+        modelName: process.env.CHAT_TRANSLATION_MODEL || '',
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body, result.body.translation?.status === 'ready' ? 200 : 202);
       return;
     }
 

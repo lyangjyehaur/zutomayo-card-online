@@ -721,6 +721,17 @@ export interface ChatMessage {
   deletedAt: string | null;
 }
 
+export interface ChatMessageTranslation {
+  messageId: string;
+  targetLanguage: string;
+  translatedContent: string;
+  provider: string;
+  model: string;
+  status: 'pending' | 'ready' | string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ChatMessageInput {
   conversationType: ChatConversationType;
   subjectId: string;
@@ -778,6 +789,16 @@ export async function fetchUnreadChat(limit = 20): Promise<ChatUnreadConversatio
   const cleanLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 20;
   const data = await request<{ conversations: ChatUnreadConversation[] }>(`/chat/unread?limit=${cleanLimit}`);
   return data.conversations;
+}
+
+export async function requestChatTranslation(
+  messageId: string,
+  targetLanguage: string,
+): Promise<{ translation: ChatMessageTranslation; cached: boolean }> {
+  return request(`/chat/messages/${encodeURIComponent(messageId)}/translate`, {
+    method: 'POST',
+    body: JSON.stringify({ targetLanguage }),
+  });
 }
 
 export interface ChatReport {

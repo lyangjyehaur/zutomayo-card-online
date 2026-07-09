@@ -90,6 +90,12 @@ const chatReportReviewSchema = z.object({
   resolutionNote: z.string().max(1000).optional(),
 });
 
+const chatTranslationRequestSchema = z
+  .object({
+    targetLanguage: z.string().min(2).max(16),
+  })
+  .passthrough();
+
 // ===== Admin =====
 const adminLoginSchema = z.object({
   password: z.string().min(1).max(200),
@@ -160,6 +166,7 @@ module.exports = {
   chatReadSchema,
   chatReportCreateSchema,
   chatReportReviewSchema,
+  chatTranslationRequestSchema,
   adminLoginSchema,
   adminEloSchema,
   mmQueueSchema,

@@ -16,6 +16,7 @@ const {
   listUnreadChat,
   markConversationRead,
   reportChatMessage,
+  requestChatTranslation,
   sendChatMessage,
 } = require('../chatService.cjs') as {
   canAccessConversation: (userId: string, type: unknown, subjectId: unknown) => boolean;
@@ -45,6 +46,16 @@ const {
     body: Record<string, unknown>;
     sanitizeText: (value: unknown, maxLen?: number) => string;
     generateReportId: () => string;
+  }) => Promise<Record<string, unknown>>;
+  requestChatTranslation: (input: {
+    pool: PoolLike;
+    userId: string;
+    messageId: string;
+    body: Record<string, unknown>;
+    sanitizeText: (value: unknown, maxLen?: number) => string;
+    translateText?: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
+    providerName?: string;
+    modelName?: string;
   }) => Promise<Record<string, unknown>>;
   sendChatMessage: (input: {
     pool: PoolLike;
@@ -91,6 +102,17 @@ const messageRow = {
   created_at: '2026-07-10T00:00:01.000Z',
   edited_at: null,
   deleted_at: null,
+};
+
+const translationRow = {
+  message_id: 'chat_msg_1',
+  target_language: 'en',
+  translated_content: 'hello',
+  provider: 'test-llm',
+  model: 'test-model',
+  status: 'ready',
+  created_at: '2026-07-10T00:00:02.000Z',
+  updated_at: '2026-07-10T00:00:02.000Z',
 };
 
 describe('chat service', () => {
@@ -303,6 +325,95 @@ describe('chat service', () => {
       },
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('COUNT(m.id) AS unread_count'), ['u_2', 200]);
+  });
+
+  it('stores ready chat translations through a provider hook', async () => {
+    const pool = poolWithResults([
+      { rows: [{ ...messageRow, type: 'match', subject_id: 'bgio-match-1' }] },
+      { rows: [] },
+      { rows: [translationRow] },
+    ]);
+    const translateText = vi.fn(async () => ({
+      translatedContent: 'hello',
+      provider: 'test-llm',
+      model: 'test-model',
+    }));
+
+    await expect(
+      requestChatTranslation({
+        pool,
+        userId: 'u_2',
+        messageId: 'chat_msg_1',
+        body: { targetLanguage: 'EN' },
+        sanitizeText,
+        translateText,
+        providerName: 'fallback-provider',
+        modelName: 'fallback-model',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        cached: false,
+        translation: {
+          messageId: 'chat_msg_1',
+          targetLanguage: 'en',
+          translatedContent: 'hello',
+          provider: 'test-llm',
+          model: 'test-model',
+          status: 'ready',
+          createdAt: '2026-07-10T00:00:02.000Z',
+          updatedAt: '2026-07-10T00:00:02.000Z',
+        },
+      },
+    });
+    expect(translateText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'hello', targetLanguage: 'en', messageId: 'chat_msg_1' }),
+    );
+    expect(pool.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO chat_message_translations'), [
+      'chat_msg_1',
+      'en',
+      'hello',
+      'test-llm',
+      'test-model',
+      'ready',
+    ]);
+  });
+
+  it('records pending chat translations when no provider is configured', async () => {
+    const pendingRow = {
+      ...translationRow,
+      translated_content: '',
+      provider: 'unconfigured',
+      model: '',
+      status: 'pending',
+    };
+    const pool = poolWithResults([
+      { rows: [{ ...messageRow, type: 'match', subject_id: 'bgio-match-1' }] },
+      { rows: [] },
+      { rows: [pendingRow] },
+    ]);
+
+    await expect(
+      requestChatTranslation({
+        pool,
+        userId: 'u_2',
+        messageId: 'chat_msg_1',
+        body: { targetLanguage: 'en' },
+        sanitizeText,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        cached: false,
+        translation: expect.objectContaining({
+          messageId: 'chat_msg_1',
+          targetLanguage: 'en',
+          translatedContent: '',
+          provider: 'unconfigured',
+          status: 'pending',
+        }),
+      },
+    });
   });
 
   it('creates reports against the original message for evidence review', async () => {
