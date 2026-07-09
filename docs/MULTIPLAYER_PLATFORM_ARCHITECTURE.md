@@ -37,6 +37,8 @@ The frontend resolves the platform endpoint from `VITE_PLATFORM_URL` when set. W
 
 Friend presence subscriptions are resolved server-side from the durable `user_friends` table. The browser no longer sends friend IDs in Colyseus lobby join options; production Compose sets `PLATFORM_FRIEND_STORE=postgres`, while local development can keep `PLATFORM_FRIEND_STORE=none`.
 
+Friend direct messages use the durable `ChatService` direct conversation type. The Online Lobby provides friend management and direct chat history/send/read flows; direct conversation subject IDs are canonicalized so both participants share one thread.
+
 ## Migration Plan
 
 1. Add Colyseus runtime and room contracts.

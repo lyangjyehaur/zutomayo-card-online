@@ -119,12 +119,14 @@ describe('chat service', () => {
   it('builds stable conversation keys for durable chat scopes', () => {
     expect(conversationKey('match', ' bgio-match-1 ')).toBe('match:bgio-match-1');
     expect(conversationKey('direct', 'u_1:u_2')).toBe('direct:u_1:u_2');
+    expect(conversationKey('direct', 'v1:logto%3Au_1:u_2')).toBe('direct:v1:logto%3Au_1:u_2');
     expect(conversationKey('unknown', 'x')).toBeNull();
     expect(conversationKey('match', '')).toBeNull();
   });
 
   it('requires direct chat participants to include the current user', () => {
     expect(canAccessConversation('u_1', 'direct', 'u_1:u_2')).toBe(true);
+    expect(canAccessConversation('logto:u_1', 'direct', 'v1:logto%3Au_1:u_2')).toBe(true);
     expect(canAccessConversation('u_3', 'direct', 'u_1:u_2')).toBe(false);
     expect(canAccessConversation('u_3', 'match', 'bgio-match-1')).toBe(true);
   });
@@ -307,6 +309,14 @@ describe('chat service', () => {
             ...conversationRow,
             unread_count: '3',
             latest_message_at: '2026-07-10T00:00:04.000Z',
+          },
+          {
+            ...conversationRow,
+            id: 'direct:u_3:u_4',
+            type: 'direct',
+            subject_id: 'u_3:u_4',
+            unread_count: '1',
+            latest_message_at: '2026-07-10T00:00:05.000Z',
           },
         ],
       },

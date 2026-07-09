@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, MessageCircle, Pencil, Radio, X } from 'lucide-react';
+import { Check, MessageCircle, Pencil, Radio, Send, Trash2, UserPlus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   ANONYMOUS_PLAYER_DEFAULT_NAME,
@@ -10,17 +10,26 @@ import {
   type AnonymousIdentity,
 } from '../anonymousIdentity';
 import {
+  addFriend,
+  fetchChatMessages,
   getProfile,
+  getFriends,
   fetchUnreadChat,
   isLoggedIn,
+  markChatRead,
   matchmakingLeave,
   matchmakingQueue,
   matchmakingReportMatch,
   matchmakingStatus,
+  removeFriend,
+  sendChatMessage,
+  type ChatMessage,
   type DeckResponse,
   type ChatUnreadConversation,
+  type FriendProfile,
   type ProfileResponse,
 } from '../api/client';
+import { buildDirectConversationSubjectId, directConversationPeerId } from '../chat/directConversation';
 import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
@@ -54,6 +63,7 @@ interface OnlineLobbyPageProps {
 }
 
 type MatchmakingPhase = 'idle' | 'platform-waiting' | 'polling' | 'host-starting' | 'guest-joining' | 'done';
+type DirectChatStatus = 'idle' | 'loading' | 'ready' | 'sending' | 'unavailable';
 const ANONYMOUS_NAME_PROMPT_STORAGE_KEY = 'zutomayo_anonymous_name_prompt_seen';
 
 // 段位定義：依 ELO 劃分漆面塔羅風格的段位名（專有名詞，不 i18n）。
@@ -85,6 +95,10 @@ function onlineErrorMessage(error: unknown): string {
   return t('online.connectionFailed');
 }
 
+function canShowChatMessage(message: ChatMessage): boolean {
+  return message.moderationStatus === 'visible' || message.moderationStatus === 'pending_review';
+}
+
 export function OnlineLobbyPage({
   deck0Name,
   customDeckAvailable,
@@ -110,8 +124,21 @@ export function OnlineLobbyPage({
 
   // 帳號資料：用於 Header 與段位顯示。
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [friends, setFriends] = useState<FriendProfile[]>([]);
+  const [friendStatus, setFriendStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [friendUserIdDraft, setFriendUserIdDraft] = useState('');
+  const [friendActionId, setFriendActionId] = useState<string | null>(null);
   const [unreadChats, setUnreadChats] = useState<ChatUnreadConversation[]>([]);
   const [unreadChatStatus, setUnreadChatStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [directChat, setDirectChat] = useState<{
+    subjectId: string;
+    peerUserId: string;
+    friend?: FriendProfile;
+  } | null>(null);
+  const [directChatMessages, setDirectChatMessages] = useState<ChatMessage[]>([]);
+  const [directChatDraft, setDirectChatDraft] = useState('');
+  const [directChatStatus, setDirectChatStatus] = useState<DirectChatStatus>('idle');
+  const directChatMessagesRef = useRef<HTMLDivElement | null>(null);
   const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
   const [anonymousNameDraft, setAnonymousNameDraft] = useState(() => anonymousIdentity.baseName);
@@ -119,16 +146,45 @@ export function OnlineLobbyPage({
   const refreshProfile = useCallback(async () => {
     if (!isLoggedIn()) {
       setProfile(null);
+      setFriends([]);
+      setFriendStatus('idle');
       setUnreadChats([]);
       setUnreadChatStatus('idle');
+      setDirectChat(null);
       return;
     }
     try {
       setProfile(await getProfile());
     } catch {
       setProfile(null);
+      setFriends([]);
+      setFriendStatus('idle');
       setUnreadChats([]);
       setUnreadChatStatus('idle');
+      setDirectChat(null);
+    }
+  }, []);
+
+  const refreshFriends = useCallback(async () => {
+    if (!isLoggedIn()) {
+      setFriends([]);
+      setFriendStatus('idle');
+      return;
+    }
+    setFriendStatus('loading');
+    try {
+      const nextFriends = await getFriends();
+      setFriends(nextFriends);
+      setFriendStatus('ready');
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'friends',
+        message: 'friend list unavailable',
+        level: 'warning',
+        data: { error: err instanceof Error ? err.message : String(err) },
+      });
+      setFriends([]);
+      setFriendStatus('unavailable');
     }
   }, []);
 
@@ -167,15 +223,61 @@ export function OnlineLobbyPage({
 
   useEffect(() => {
     if (!profile) return;
+    void refreshFriends();
     void refreshUnreadChats();
-  }, [profile, refreshUnreadChats]);
+  }, [profile, refreshFriends, refreshUnreadChats]);
 
   const handleAuthChanged = useCallback(async () => {
     await onAuthChanged();
     await refreshProfile();
+    await refreshFriends();
     await refreshUnreadChats();
     setError('');
-  }, [onAuthChanged, refreshProfile, refreshUnreadChats]);
+  }, [onAuthChanged, refreshFriends, refreshProfile, refreshUnreadChats]);
+
+  useEffect(() => {
+    if (!directChat || !profile) {
+      setDirectChatMessages([]);
+      setDirectChatStatus('idle');
+      return;
+    }
+    let cancelled = false;
+    setDirectChatStatus('loading');
+    setDirectChatMessages([]);
+    void fetchChatMessages({ conversationType: 'direct', subjectId: directChat.subjectId, limit: 50 }).then(
+      (messages) => {
+        if (cancelled) return;
+        const visibleMessages = messages.filter(canShowChatMessage);
+        setDirectChatMessages(visibleMessages);
+        setDirectChatStatus('ready');
+        const latestMessageId = visibleMessages.at(-1)?.id;
+        void markChatRead({
+          conversationType: 'direct',
+          subjectId: directChat.subjectId,
+          lastReadMessageId: latestMessageId,
+        }).then(refreshUnreadChats, () => undefined);
+      },
+      (err) => {
+        if (cancelled) return;
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'direct chat history unavailable',
+          level: 'warning',
+          data: { peer_user_id: directChat.peerUserId, error: err instanceof Error ? err.message : String(err) },
+        });
+        setDirectChatStatus('unavailable');
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [directChat, profile, refreshUnreadChats]);
+
+  useEffect(() => {
+    const element = directChatMessagesRef.current;
+    if (!element) return;
+    element.scrollTop = element.scrollHeight;
+  }, [directChatMessages]);
 
   const anonymousDisplayName = formatAnonymousDisplayName(anonymousIdentity);
   const effectivePlayerName = profile?.nickname || anonymousDisplayName;
@@ -540,6 +642,7 @@ export function OnlineLobbyPage({
   const startDisabledReason = !cardsReady ? t('game.loading') : !deck0Name ? t('lobby.selectDeckFirst') : '';
   const rank = profile ? eloToRank(profile.elo) : null;
   const unreadChatTotal = unreadChats.reduce((total, conversation) => total + conversation.unreadCount, 0);
+  const directChatPeerName = directChat?.friend?.nickname || directChat?.peerUserId || '';
   const draftPreview = formatAnonymousDisplayName({
     baseName: sanitizeAnonymousBaseName(anonymousNameDraft),
     suffix: anonymousIdentity.suffix,
@@ -548,6 +651,98 @@ export function OnlineLobbyPage({
   const openUnreadConversation = (conversation: ChatUnreadConversation) => {
     if (conversation.type === 'match') {
       navigate(`/play/online/${encodeURIComponent(conversation.subjectId)}?spectate=1`);
+      return;
+    }
+    if (conversation.type === 'direct' && profile) {
+      const peerUserId = directConversationPeerId(conversation.subjectId, profile.id);
+      if (!peerUserId) return;
+      const friend = friends.find((item) => item.userId === peerUserId);
+      setDirectChat({ subjectId: conversation.subjectId, peerUserId, friend });
+    }
+  };
+
+  const openFriendChat = (friend: FriendProfile) => {
+    if (!profile) return;
+    const subjectId = buildDirectConversationSubjectId(profile.id, friend.userId);
+    if (!subjectId) return;
+    setDirectChat({ subjectId, peerUserId: friend.userId, friend });
+  };
+
+  const handleAddFriend = async () => {
+    if (!profile) return;
+    const friendUserId = friendUserIdDraft.trim();
+    if (!friendUserId) return;
+    setFriendActionId(friendUserId);
+    try {
+      await addFriend(friendUserId);
+      setFriendUserIdDraft('');
+      await refreshFriends();
+      showToast({ title: t('friend.added'), kind: 'success' });
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'friends',
+        message: 'add friend failed',
+        level: 'warning',
+        data: { friend_user_id: friendUserId, error: err instanceof Error ? err.message : String(err) },
+      });
+      showToast({ title: t('friend.addFailed'), kind: 'error' });
+    } finally {
+      setFriendActionId(null);
+    }
+  };
+
+  const handleRemoveFriend = async (friend: FriendProfile) => {
+    setFriendActionId(friend.userId);
+    try {
+      await removeFriend(friend.userId);
+      if (directChat?.peerUserId === friend.userId) setDirectChat(null);
+      await refreshFriends();
+      showToast({ title: t('friend.removed'), kind: 'success' });
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'friends',
+        message: 'remove friend failed',
+        level: 'warning',
+        data: { friend_user_id: friend.userId, error: err instanceof Error ? err.message : String(err) },
+      });
+      showToast({ title: t('friend.removeFailed'), kind: 'error' });
+    } finally {
+      setFriendActionId(null);
+    }
+  };
+
+  const handleDirectChatSubmit = async () => {
+    if (!profile || !directChat || !directChatDraft.trim() || directChatStatus === 'sending') return;
+    const content = directChatDraft.trim();
+    setDirectChatStatus('sending');
+    try {
+      const result = await sendChatMessage({
+        conversationType: 'direct',
+        subjectId: directChat.subjectId,
+        content,
+        title: directChatPeerName ? `${profile.nickname} / ${directChatPeerName}` : '',
+        authorDisplayName: profile.nickname,
+        authorRole: 'player',
+      });
+      if (canShowChatMessage(result.message)) {
+        setDirectChatMessages((messages) => [...messages, result.message]);
+        void markChatRead({
+          conversationType: 'direct',
+          subjectId: directChat.subjectId,
+          lastReadMessageId: result.message.id,
+        }).then(refreshUnreadChats, () => undefined);
+      }
+      setDirectChatDraft('');
+      setDirectChatStatus('ready');
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'chat',
+        message: 'direct chat send failed',
+        level: 'warning',
+        data: { peer_user_id: directChat.peerUserId, error: err instanceof Error ? err.message : String(err) },
+      });
+      setDirectChatStatus('ready');
+      showToast({ title: t('chat.sendFailed'), kind: 'error' });
     }
   };
 
@@ -917,6 +1112,214 @@ export function OnlineLobbyPage({
                 </Alert>
               )}
             </RoomPanel>
+
+            {profile && (
+              <RoomPanel mode="custom">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                      {t('friend.title')}
+                    </div>
+                    <h2 className="font-display text-2xl font-bold">{t('chat.directTitle')}</h2>
+                  </div>
+                  <Button
+                    className="size-11 shrink-0 p-0 tracking-normal"
+                    variant="ghost"
+                    type="button"
+                    onClick={refreshFriends}
+                    aria-label={t('friend.refresh')}
+                    title={t('friend.refresh')}
+                  >
+                    <Radio className="size-3.5" strokeWidth={1.25} />
+                  </Button>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    className="min-h-11 min-w-0 flex-1 font-mono text-xs"
+                    value={friendUserIdDraft}
+                    onChange={(event) => setFriendUserIdDraft(event.target.value.slice(0, 128))}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') void handleAddFriend();
+                    }}
+                    placeholder={t('friend.userId')}
+                    aria-label={t('friend.userId')}
+                    disabled={friendActionId !== null}
+                  />
+                  <Button
+                    className="min-h-11"
+                    variant="secondary"
+                    type="button"
+                    leftIcon={<UserPlus className="size-4" strokeWidth={1.25} />}
+                    disabled={!friendUserIdDraft.trim() || friendActionId !== null}
+                    onClick={() => void handleAddFriend()}
+                  >
+                    {t('friend.add')}
+                  </Button>
+                </div>
+
+                {friendStatus === 'unavailable' && (
+                  <Alert tone="danger" role="alert">
+                    {t('friend.unavailable')}
+                  </Alert>
+                )}
+
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
+                  <div className="grid max-h-80 gap-2 overflow-y-auto pr-1">
+                    {friendStatus === 'loading' && (
+                      <div className="grid min-h-16 place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                        {t('presence.syncing')}
+                      </div>
+                    )}
+                    {friendStatus !== 'loading' && friends.length === 0 && (
+                      <div className="grid min-h-16 place-items-center rounded-sm border border-border-soft bg-surface-canvas/30 px-3 text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                        {t('friend.empty')}
+                      </div>
+                    )}
+                    {friends.map((friend) => (
+                      <div
+                        key={friend.userId}
+                        className={`grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border px-3 py-2 transition ${
+                          directChat?.peerUserId === friend.userId
+                            ? 'border-accent-primary/50 bg-accent-primary/10'
+                            : 'border-border-soft bg-surface-canvas/30'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          className="min-w-0 text-left"
+                          onClick={() => openFriendChat(friend)}
+                          aria-label={`${t('chat.directTitle')} ${friend.nickname || friend.userId}`}
+                        >
+                          <span className="block truncate font-mono text-xs text-content-primary/80">
+                            {friend.nickname || friend.userId}
+                          </span>
+                          <span className="mt-1 block truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                            {friend.userId}
+                          </span>
+                        </button>
+                        <Button
+                          className="size-10 shrink-0 p-0 tracking-normal"
+                          variant="ghost"
+                          type="button"
+                          onClick={() => void handleRemoveFriend(friend)}
+                          disabled={friendActionId === friend.userId}
+                          aria-label={t('friend.remove')}
+                          title={t('friend.remove')}
+                        >
+                          <Trash2 className="size-3.5" strokeWidth={1.25} />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid min-h-80 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
+                    <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border-soft px-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-mono text-xs text-accent-primary">
+                          {directChat ? directChatPeerName : t('chat.directTitle')}
+                        </div>
+                        <div className="truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                          {directChat?.peerUserId || t('friend.empty')}
+                        </div>
+                      </div>
+                      {directChat && (
+                        <Button
+                          className="size-10 shrink-0 p-0 tracking-normal"
+                          variant="ghost"
+                          type="button"
+                          onClick={() => setDirectChat(null)}
+                          aria-label={t('common.close')}
+                          title={t('common.close')}
+                        >
+                          <X className="size-3.5" strokeWidth={1.25} />
+                        </Button>
+                      )}
+                    </div>
+
+                    <div ref={directChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
+                      {!directChat && (
+                        <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                          {t('chat.selectDirect')}
+                        </div>
+                      )}
+                      {directChat && directChatStatus === 'loading' && (
+                        <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                          {t('presence.syncing')}
+                        </div>
+                      )}
+                      {directChat && directChatStatus === 'unavailable' && (
+                        <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
+                          {t('chat.historyUnavailable')}
+                        </div>
+                      )}
+                      {directChat &&
+                        directChatStatus !== 'loading' &&
+                        directChatStatus !== 'unavailable' &&
+                        directChatMessages.length === 0 && (
+                          <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
+                            {t('chat.empty')}
+                          </div>
+                        )}
+                      {directChatMessages.map((message) => {
+                        const self = message.authorUserId === profile.id;
+                        return (
+                          <div
+                            key={message.id}
+                            className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
+                          >
+                            <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
+                              {message.authorDisplayName || message.authorUserId || t('auth.guest')}
+                            </div>
+                            <div
+                              className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                                self
+                                  ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
+                                  : 'border-border-soft bg-surface-elevated/50 text-content-primary'
+                              }`}
+                            >
+                              {message.content}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <form
+                      className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void handleDirectChatSubmit();
+                      }}
+                    >
+                      <Input
+                        className="min-h-11 min-w-0"
+                        value={directChatDraft}
+                        onChange={(event) => setDirectChatDraft(event.target.value.slice(0, 500))}
+                        placeholder={t('chat.messagePlaceholder')}
+                        aria-label={t('chat.messagePlaceholder')}
+                        disabled={!directChat || directChatStatus === 'sending' || directChatStatus === 'unavailable'}
+                      />
+                      <Button
+                        className="size-11 p-0 tracking-normal"
+                        variant="primary"
+                        type="submit"
+                        disabled={
+                          !directChat ||
+                          !directChatDraft.trim() ||
+                          directChatStatus === 'sending' ||
+                          directChatStatus === 'unavailable'
+                        }
+                        aria-label={t('chat.send')}
+                        title={t('chat.send')}
+                      >
+                        <Send className="size-4" strokeWidth={1.25} />
+                      </Button>
+                    </form>
+                  </div>
+                </div>
+              </RoomPanel>
+            )}
           </section>
         </div>
       </main>

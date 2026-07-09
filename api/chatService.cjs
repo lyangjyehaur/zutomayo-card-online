@@ -68,7 +68,7 @@ function normalizeMessageStatus(value) {
 
 function normalizeSubjectId(value) {
   if (typeof value !== 'string') return '';
-  return value.trim().slice(0, 128);
+  return value.trim().slice(0, 300);
 }
 
 function conversationKey(type, subjectId) {
@@ -81,7 +81,25 @@ function conversationKey(type, subjectId) {
 function canAccessConversation(userId, type, subjectId) {
   if (!userId) return false;
   if (type !== 'direct') return true;
-  return normalizeSubjectId(subjectId).split(':').includes(userId);
+  return directConversationParticipants(subjectId).includes(userId);
+}
+
+function directConversationParticipants(subjectId) {
+  const cleanSubjectId = normalizeSubjectId(subjectId);
+  if (cleanSubjectId.startsWith('v1:')) {
+    return cleanSubjectId
+      .slice(3)
+      .split(':')
+      .map((value) => {
+        try {
+          return decodeURIComponent(value);
+        } catch {
+          return '';
+        }
+      })
+      .filter(Boolean);
+  }
+  return cleanSubjectId.split(':').filter(Boolean);
 }
 
 function normalizeContent(value, sanitizeText) {
@@ -341,11 +359,13 @@ async function listUnreadChat({ pool, userId, limit }) {
   return {
     ok: true,
     body: {
-      conversations: rows.map((row) => ({
-        ...mapConversation(row),
-        unreadCount: Number(row.unread_count) || 0,
-        latestMessageAt: row.latest_message_at || null,
-      })),
+      conversations: rows
+        .filter((row) => canAccessConversation(userId, row.type, row.subject_id))
+        .map((row) => ({
+          ...mapConversation(row),
+          unreadCount: Number(row.unread_count) || 0,
+          latestMessageAt: row.latest_message_at || null,
+        })),
     },
   };
 }

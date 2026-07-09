@@ -67,7 +67,7 @@ const chatConversationType = z.enum(['match', 'room', 'direct', 'global']);
 const chatMessageCreateSchema = z
   .object({
     conversationType: chatConversationType,
-    subjectId: z.string().min(1).max(128),
+    subjectId: z.string().min(1).max(300),
     content: z.string().min(1).max(1000),
     title: z.string().max(120).optional(),
     authorDisplayName: z.string().max(60).optional(),
@@ -79,7 +79,7 @@ const chatMessageCreateSchema = z
 
 const chatReadSchema = z.object({
   conversationType: chatConversationType,
-  subjectId: z.string().min(1).max(128),
+  subjectId: z.string().min(1).max(300),
   lastReadMessageId: z.string().max(80).optional(),
 });
 
