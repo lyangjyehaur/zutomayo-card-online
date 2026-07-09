@@ -372,7 +372,7 @@ export function DeckEditor({
     if (!hasDeckLibraryActions) return null;
 
     return (
-      <div className="mb-3 grid gap-2 rounded-sm border border-content-primary/10 bg-surface-base/55 p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 rounded-sm border border-content-primary/10 bg-surface-base/55 p-2">
         <label className="grid min-w-0 gap-1">
           <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-primary/35">
             {t('deckEditor.deckLibrary')}
@@ -383,7 +383,7 @@ export function DeckEditor({
               disabled={!onSelectDeckLibrary || deckLibraryOptions.length === 0}
               onChange={(event) => onSelectDeckLibrary?.(event.target.value)}
               aria-label={t('deckEditor.selectDeck')}
-              className="min-h-9 appearance-none truncate border-border-soft bg-surface-canvas py-1.5 pl-3 pr-10 text-body-sm"
+              className="min-h-11 appearance-none truncate border-border-soft bg-surface-canvas py-2 pl-3 pr-10 text-body-sm"
             >
               {deckLibraryOptions.length === 0 ? (
                 <option value="">{t('deckEditor.currentDraft')}</option>
@@ -401,13 +401,13 @@ export function DeckEditor({
             />
           </div>
         </label>
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:items-end">
+        <div className="flex items-end gap-2">
           {onNewDeck && (
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              className="min-w-0 px-3"
+              className="min-h-11 min-w-11 !px-0 sm:!px-3"
               onClick={onNewDeck}
               aria-label={t('deckEditor.newDeck')}
             >
@@ -420,7 +420,7 @@ export function DeckEditor({
               type="button"
               variant="secondary"
               size="sm"
-              className="min-w-0 px-3"
+              className="min-h-11 min-w-11 !px-0 sm:!px-3"
               onClick={onImportDeck}
               aria-label={t('deckEditor.importDeck')}
             >
@@ -433,7 +433,7 @@ export function DeckEditor({
               type="button"
               variant="secondary"
               size="sm"
-              className="min-w-0 px-3"
+              className="min-h-11 min-w-11 !px-0 sm:!px-3"
               onClick={() => onExportDeck(deck)}
               disabled={deck.length === 0}
               aria-label={t('deckEditor.exportDeck')}
@@ -680,7 +680,7 @@ export function DeckEditor({
                   aria-label={t('deck.custom')}
                   placeholder={t('deck.custom')}
                   onChange={(event) => onDeckNameChange(event.target.value)}
-                  className="min-h-9 w-28 px-2 py-1.5 text-xs sm:w-40"
+                  className="min-h-11 w-32 px-3 py-2 text-body-sm sm:w-40"
                 />
               )}
               {syncLabel && (
@@ -698,7 +698,7 @@ export function DeckEditor({
                 size="sm"
                 variant="primary"
                 aria-label={saveLabel ?? t('deckEditor.saveDeck')}
-                className="!min-h-9 px-3"
+                className="min-h-11 min-w-11 px-3"
               >
                 <Save className="size-3.5" aria-hidden="true" />
                 <span className="hidden sm:inline">{saveLabel ?? t('deckEditor.saveDeck')}</span>

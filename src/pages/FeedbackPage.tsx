@@ -292,19 +292,28 @@ export function FeedbackPage() {
       )}
 
       {stats && (
-        <StatsGrid className="feedback-stats">
-          <div className="stat-cell">
-            <span className="stat-num font-mono">{Number(stats.total) || 0}</span>
-            <span className="stat-label">{t('feedback.statsTotal')}</span>
+        <StatsGrid className="feedback-stats grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          <div className="stat-cell flex min-h-14 items-center justify-between gap-2 rounded-sm border border-border-soft bg-surface-panel/55 px-3 py-2">
+            <span className="stat-label text-caption leading-tight text-content-primary/55">{t('feedback.statsTotal')}</span>
+            <span className="stat-num shrink-0 font-mono text-lg font-bold text-accent-primary">
+              {Number(stats.total) || 0}
+            </span>
           </div>
-          <div className="stat-cell">
-            <span className="stat-num font-mono">{Number(stats.total_votes) || 0}</span>
-            <span className="stat-label">{t('feedback.statsVotes')}</span>
+          <div className="stat-cell flex min-h-14 items-center justify-between gap-2 rounded-sm border border-border-soft bg-surface-panel/55 px-3 py-2">
+            <span className="stat-label text-caption leading-tight text-content-primary/55">{t('feedback.statsVotes')}</span>
+            <span className="stat-num shrink-0 font-mono text-lg font-bold text-accent-primary">
+              {Number(stats.total_votes) || 0}
+            </span>
           </div>
           {STATUS_OPTIONS.map((s) => (
-            <div key={s} className="stat-cell">
-              <span className="stat-num font-mono">{Number(stats[s as keyof FeedbackStats]) || 0}</span>
-              <span className="stat-label">{t(statusKey(s))}</span>
+            <div
+              key={s}
+              className="stat-cell flex min-h-14 items-center justify-between gap-2 rounded-sm border border-border-soft bg-surface-panel/55 px-3 py-2"
+            >
+              <span className="stat-label text-caption leading-tight text-content-primary/55">{t(statusKey(s))}</span>
+              <span className="stat-num shrink-0 font-mono text-lg font-bold text-content-primary">
+                {Number(stats[s as keyof FeedbackStats]) || 0}
+              </span>
             </div>
           ))}
         </StatsGrid>
@@ -312,22 +321,22 @@ export function FeedbackPage() {
 
       <FilterToolbar
         as="section"
-        className="feedback-toolbar border-0 bg-transparent p-0"
-        contentClassName="contents"
-        actionsClassName="contents"
+        className="feedback-toolbar rounded-sm border border-border-soft bg-surface-panel/55 p-3"
+        contentClassName="grid w-full grid-cols-1 gap-3 md:flex md:flex-wrap md:items-center"
+        actionsClassName="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:flex md:w-auto"
         primary={
           <>
             <SegmentedControl
-              className="sort-tabs"
+              className="sort-tabs w-full overflow-x-auto md:w-auto"
               options={SORT_OPTIONS.map((s) => ({ value: s, label: t(sortKey(s)) }))}
               value={sort}
               onChange={setSort}
               ariaLabel={t('feedback.sortTop')}
               size="sm"
-              optionClassName="!min-h-11"
+              optionClassName="!min-h-11 px-3"
             />
             <Select
-              className="status-filter text-xs"
+              className="status-filter min-h-11 w-full text-body-sm md:w-44"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as FeedbackStatus | '')}
             >
@@ -340,7 +349,7 @@ export function FeedbackPage() {
             </Select>
             {tags.length > 0 && (
               <Select
-                className="status-filter text-xs"
+                className="status-filter min-h-11 w-full text-body-sm md:w-44"
                 value={tagFilter}
                 onChange={(e) => setTagFilter(e.target.value)}
               >
@@ -353,7 +362,7 @@ export function FeedbackPage() {
               </Select>
             )}
             <Input
-              className="search-input"
+              className="search-input min-h-11 w-full md:w-64"
               placeholder={t('feedback.searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -364,7 +373,7 @@ export function FeedbackPage() {
           <>
             <Button
               type="button"
-              className="feedback-submit-toggle"
+              className="feedback-submit-toggle min-h-11 w-full md:w-auto"
               aria-expanded={showSubmit}
               onClick={() => setShowSubmit((v) => !v)}
             >
@@ -373,7 +382,7 @@ export function FeedbackPage() {
             {adminMode && (
               <Button
                 type="button"
-                className="feedback-tag-toggle"
+                className="feedback-tag-toggle min-h-11 w-full md:w-auto"
                 variant="secondary"
                 aria-expanded={showTagPanel}
                 onClick={() => setShowTagPanel((v) => !v)}
@@ -443,16 +452,18 @@ export function FeedbackPage() {
         <EmptyState className="feedback-empty" description={t('feedback.empty')} />
       )}
 
-      <ul className="feedback-list">
+      <ul className="feedback-list grid gap-3">
         {posts.map((post) => (
           <li key={post.id}>
-            <article className="feedback-card">
+            <article className="feedback-card grid gap-3 rounded-sm border border-border-soft bg-surface-panel/70 p-3 shadow-raised sm:grid-cols-[4rem_minmax(0,1fr)] sm:p-4">
               <button
                 type="button"
                 className={
-                  'vote-column' +
-                  (post.hasVoted ? ' voted' : '') +
-                  (NO_VOTE_STATUSES.includes(post.status) ? ' disabled' : '')
+                  'vote-column flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-sm border px-3 py-2 text-accent-primary transition hover:border-accent-primary/60 hover:bg-accent-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-16 sm:flex-col ' +
+                  (post.hasVoted
+                    ? 'voted border-accent-primary bg-accent-primary/15 '
+                    : 'border-border-soft bg-surface-base/75 ') +
+                  (NO_VOTE_STATUSES.includes(post.status) ? 'disabled ' : '')
                 }
                 onClick={() => {
                   void handleVote(post.id, post.status);
@@ -462,10 +473,10 @@ export function FeedbackPage() {
                 aria-label={`${post.hasVoted ? t('feedback.voted') : t('feedback.vote')}: ${post.title}`}
               >
                 <span className="vote-arrow">{post.hasVoted ? '▲' : '△'}</span>
-                <span className="vote-count font-mono">{post.voteCount}</span>
+                <span className="vote-count font-mono text-lg font-bold leading-none">{post.voteCount}</span>
               </button>
-              <div className="post-body">
-                <div className="post-title-row">
+              <div className="post-body min-w-0">
+                <div className="post-title-row flex flex-wrap items-center gap-2">
                   <Badge tone={statusBadgeTone(post.status)}>{t(statusKey(post.status))}</Badge>
                   {post.tag && (
                     <TagButton
@@ -477,16 +488,22 @@ export function FeedbackPage() {
                       #{post.tag}
                     </TagButton>
                   )}
-                  <h3 className="post-title font-display">{post.title}</h3>
-                  {post.editedAt && <span className="edited-mark">{t('feedback.edited')}</span>}
+                  <h3 className="post-title min-w-0 flex-1 font-display text-body-lg font-bold leading-snug text-content-primary">
+                    {post.title}
+                  </h3>
+                  {post.editedAt && (
+                    <span className="edited-mark font-mono text-caption uppercase text-content-primary/40">
+                      {t('feedback.edited')}
+                    </span>
+                  )}
                 </div>
                 {post.description && (
-                  <p className="post-desc">
+                  <p className="post-desc mt-2 text-body-sm leading-relaxed text-content-muted">
                     <Markdown text={post.description} />
                   </p>
                 )}
-                <div className="post-footer">
-                  <div className="post-meta">
+                <div className="post-footer mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="post-meta flex flex-wrap items-center gap-1 text-caption text-content-primary/45">
                     <span>{authorLabel(post)}</span>
                     <span>·</span>
                     <span>{relativeTime(post.createdAt, locale)}</span>
@@ -497,7 +514,7 @@ export function FeedbackPage() {
                   </div>
                   <Button
                     type="button"
-                    className="post-detail-button"
+                    className="post-detail-button min-h-11 w-full justify-center px-3 sm:w-auto"
                     variant="ghost"
                     size="sm"
                     onClick={() => setSelectedId(post.id)}

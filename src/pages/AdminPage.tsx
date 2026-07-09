@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { LogOut, SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 import { getAllCardDefs, refreshCards } from '../game/cards/loader';
@@ -28,6 +28,7 @@ import {
   DataListCell,
   DataListTable,
   Dialog,
+  EmptyState,
   Input,
   Alert,
   LoadingState,
@@ -745,6 +746,10 @@ export function AdminPage() {
   const [modalTab, setModalTab] = useState<ModalTab>('basic');
   const [showMobileCardFilters, setShowMobileCardFilters] = useState(false);
   const [allCards, setAllCards] = useState(() => getAllCardDefs());
+  const [cardLoadStatus, setCardLoadStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>(() =>
+    getAllCardDefs().length > 0 ? 'loaded' : 'idle',
+  );
+  const [cardLoadError, setCardLoadError] = useState('');
   const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
 
   const metaById = useMemo(() => new Map(allCards.map((card) => [card.id, parseCardMeta(card)])), [allCards]);
@@ -874,10 +879,42 @@ export function AdminPage() {
     }
   }, [token]);
 
+  const loadAdminCards = useCallback(async () => {
+    setCardLoadStatus('loading');
+    setCardLoadError('');
+    try {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const cards = await refreshCards();
+        const nextCards = cards.length > 0 ? cards : getAllCardDefs();
+        if (nextCards.length > 0) {
+          setAllCards(nextCards);
+          setCardLoadStatus('loaded');
+          return;
+        }
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+      setAllCards([]);
+      setCardLoadStatus('error');
+      setCardLoadError('卡牌資料尚未載入，請稍後重試。');
+    } catch (e) {
+      setCardLoadStatus('error');
+      setCardLoadError(e instanceof Error ? e.message : '卡牌資料載入失敗');
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'users' && users.length === 0) void refreshUsers();
     if (activeTab === 'matches' && matches.length === 0) void refreshMatches();
   }, [activeTab, matches.length, refreshMatches, refreshUsers, users.length]);
+
+  useEffect(() => {
+    if (!authenticated || activeTab !== 'cards') return;
+    if (allCards.length > 0) {
+      setCardLoadStatus('loaded');
+      return;
+    }
+    if (cardLoadStatus === 'idle') void loadAdminCards();
+  }, [activeTab, allCards.length, authenticated, cardLoadStatus, loadAdminCards]);
 
   if (!authenticated) {
     return (
@@ -1011,8 +1048,15 @@ export function AdminPage() {
               onChange={setActiveTab}
             />
             <div className="admin-header-actions">
-              <Button variant="secondary" size="sm" onClick={handleLogout}>
-                登出
+              <Button
+                aria-label="登出"
+                className="admin-logout-button size-11 p-0 sm:size-auto sm:min-h-11 sm:px-3"
+                variant="secondary"
+                size="sm"
+                onClick={handleLogout}
+              >
+                <LogOut className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">登出</span>
               </Button>
             </div>
           </>
@@ -1144,44 +1188,67 @@ export function AdminPage() {
               </div>
             </div>
           </div>
-          <div className="admin-card-grid grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
-            {filtered.map((card) => {
-              const meta = metaById.get(card.id);
-              return (
-                <button
-                  key={card.id}
-                  type="button"
-                  className="group relative overflow-hidden rounded-sm bg-surface-base text-left ring-1 ring-content-primary/10 transition hover:-translate-y-1 hover:ring-accent-primary/40 focus:outline-none focus:ring-2 focus:ring-accent-primary/60"
-                  onClick={() => {
-                    setSelectedCard(card);
-                    setModalTab('basic');
-                  }}
-                >
-                  <img
-                    className="aspect-[5/7] w-full object-cover opacity-80 transition group-hover:opacity-100"
-                    src={card.image}
-                    alt={card.name}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-x-0 bottom-0 bg-surface-canvas/80 p-3 backdrop-blur">
-                    <h2 className="block truncate text-sm font-bold">{card.name}</h2>
-                    <p className="font-mono text-xs opacity-80">{card.id}</p>
-                    <p className="text-xs opacity-80">
-                      {card.element} • {card.type === 'Character' ? '角' : card.type === 'Enchant' ? '附' : '域'}
-                      {card.type === 'Character' && card.attack && ` • ${card.attack.night}/${card.attack.day}`}
-                      {card.powerCost > 0 && ` • ${card.powerCost}`}
-                    </p>
-                  </div>
-                  {card.effect && (
-                    <Badge tone={meta?.unparsedLines.length ? 'vermilion' : 'gold'} className="absolute right-2 top-2">
-                      {meta?.parsed.length ?? 0}
-                    </Badge>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          {cardLoadStatus === 'loading' && allCards.length === 0 && (
+            <LoadingState className="min-h-48" label="載入卡牌資料中…" />
+          )}
+          {cardLoadStatus === 'error' && allCards.length === 0 && (
+            <EmptyState
+              className="min-h-48"
+              title="卡牌資料未載入"
+              description={cardLoadError || '請確認 API 服務後重新載入。'}
+              actions={
+                <Button type="button" onClick={() => void loadAdminCards()}>
+                  重新載入
+                </Button>
+              }
+            />
+          )}
+          {allCards.length > 0 && filtered.length === 0 && (
+            <EmptyState className="min-h-48" title="沒有符合條件的卡牌" description="調整搜尋或篩選條件後再試一次。" />
+          )}
+          {allCards.length > 0 && filtered.length > 0 && (
+            <div className="admin-card-grid grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+              {filtered.map((card) => {
+                const meta = metaById.get(card.id);
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    className="group relative overflow-hidden rounded-sm bg-surface-base text-left ring-1 ring-content-primary/10 transition hover:-translate-y-1 hover:ring-accent-primary/40 focus:outline-none focus:ring-2 focus:ring-accent-primary/60"
+                    onClick={() => {
+                      setSelectedCard(card);
+                      setModalTab('basic');
+                    }}
+                  >
+                    <img
+                      className="aspect-[5/7] w-full object-cover opacity-80 transition group-hover:opacity-100"
+                      src={card.image}
+                      alt={card.name}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 bg-surface-canvas/80 p-3 backdrop-blur">
+                      <h2 className="block truncate text-sm font-bold">{card.name}</h2>
+                      <p className="font-mono text-xs opacity-80">{card.id}</p>
+                      <p className="text-xs opacity-80">
+                        {card.element} • {card.type === 'Character' ? '角' : card.type === 'Enchant' ? '附' : '域'}
+                        {card.type === 'Character' && card.attack && ` • ${card.attack.night}/${card.attack.day}`}
+                        {card.powerCost > 0 && ` • ${card.powerCost}`}
+                      </p>
+                    </div>
+                    {card.effect && (
+                      <Badge
+                        tone={meta?.unparsedLines.length ? 'vermilion' : 'gold'}
+                        className="absolute right-2 top-2"
+                      >
+                        {meta?.parsed.length ?? 0}
+                      </Badge>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

@@ -15,7 +15,7 @@ const variantClass: Record<ButtonVariant, string> = {
 };
 
 const sizeClass: Record<ButtonSize, string> = {
-  sm: 'min-h-control-sm px-4 py-1.5 text-control',
+  sm: 'min-h-touch px-4 py-2 text-control',
   md: 'min-h-control-md px-5 py-2.5 text-control',
   lg: 'min-h-control-lg px-8 py-3 text-control',
 };
@@ -73,7 +73,7 @@ export function BackButton({ children, size = 'md', ...props }: BackButtonProps)
 }
 
 const iconSizeClass: Record<IconButtonSize, string> = {
-  sm: 'size-control-sm',
+  sm: 'size-touch',
   md: 'size-touch',
 };
 

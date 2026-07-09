@@ -203,7 +203,7 @@ export function MatchHistory(_props: MatchHistoryProps) {
         backTo="/"
         actions={
           <Button
-            className="!min-h-9"
+            className="min-h-11 whitespace-nowrap px-3"
             variant="danger"
             size="sm"
             type="button"
