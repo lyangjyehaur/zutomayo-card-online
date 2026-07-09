@@ -1901,6 +1901,8 @@ function handleRequest(req, res) {
     // Get match action log
     const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
     if (matchLogRoute && method === 'GET') {
+      const userId = getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
       const matchId = matchLogRoute[1];
       const result = await getMatchActionLog(pool, matchId, sanitizeActionLog);
       if (!result.ok) return json({ error: result.error }, result.status);
