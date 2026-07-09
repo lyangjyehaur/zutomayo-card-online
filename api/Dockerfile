@@ -5,9 +5,9 @@ RUN npm ci
 
 FROM node:22-alpine
 WORKDIR /app
-ARG APP_VERSION=0.1.3
-ARG APP_BUILD_ID=0.1.3
-ARG GAME_RULES_VERSION=0.1.3
+ARG APP_VERSION
+ARG APP_BUILD_ID
+ARG GAME_RULES_VERSION
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY ./*.cjs ./

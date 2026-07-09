@@ -1,9 +1,9 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 # APP_BUILD_ID 建議在 CI/部署時設為 git commit hash，確保每次部署有獨立 Sentry release。
-ARG APP_VERSION=0.1.3
-ARG APP_BUILD_ID=0.1.3
-ARG GAME_RULES_VERSION=0.1.3
+ARG APP_VERSION
+ARG APP_BUILD_ID
+ARG GAME_RULES_VERSION
 ARG VITE_UMAMI_WEBSITE_ID=
 ARG VITE_UMAMI_SCRIPT_URL=
 ARG VITE_UMAMI_HOST_URL=
@@ -45,9 +45,9 @@ RUN npm run build && find dist -name "*.map" -type f -delete
 
 FROM node:22-alpine
 WORKDIR /app
-ARG APP_VERSION=0.1.3
-ARG APP_BUILD_ID=0.1.3
-ARG GAME_RULES_VERSION=0.1.3
+ARG APP_VERSION
+ARG APP_BUILD_ID
+ARG GAME_RULES_VERSION
 ARG SENTRY_DSN=
 # node:22-alpine 已內建非 root 的 node 使用者
 COPY package.json package-lock.json ./
@@ -57,10 +57,11 @@ COPY --from=builder /app/src ./src
 COPY --from=builder /app/data ./data
 COPY --from=builder /app/scripts ./scripts
 ENV PORT=3000
+ENV PLATFORM_PORT=3002
 ENV APP_VERSION=$APP_VERSION
 ENV APP_BUILD_ID=$APP_BUILD_ID
 ENV GAME_RULES_VERSION=$GAME_RULES_VERSION
 ENV SENTRY_DSN=$SENTRY_DSN
-EXPOSE 3000
+EXPOSE 3000 3002
 USER node
 CMD ["npm", "run", "server"]

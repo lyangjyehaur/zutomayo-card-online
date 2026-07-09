@@ -27,6 +27,7 @@
     "seed:cards": "node --import tsx scripts/seed-cards-pg.ts",
     "preview": "vite preview",
     "server": "node --import tsx src/server.ts",
+    "platform": "node --import tsx src/platform/server.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -42,6 +43,11 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@colyseus/core": "^0.17.44",
+    "@colyseus/redis-driver": "^0.17.7",
+    "@colyseus/redis-presence": "^0.17.7",
+    "@colyseus/schema": "^4.0.27",
+    "@colyseus/ws-transport": "^0.17.13",
     "@sentry/node": "^10.63.0",
     "@sentry/react": "^10.63.0",
     "@socket.io/redis-adapter": "^8.3.0",
@@ -49,6 +55,7 @@
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.10",
     "boardgame.io": "^0.50.2",
+    "express": "^5.2.1",
     "ioredis": "^5.4.2",
     "koa-helmet": "^9.0.0",
     "koa-static": "^5.0.0",

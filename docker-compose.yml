@@ -48,9 +48,9 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_VERSION: ${APP_VERSION:-0.1.3}
-        APP_BUILD_ID: ${APP_BUILD_ID:-0.1.3}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-0.1.3}
+        APP_VERSION: ${APP_VERSION:-}
+        APP_BUILD_ID: ${APP_BUILD_ID:-}
+        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
         VITE_UMAMI_WEBSITE_ID: ${VITE_UMAMI_WEBSITE_ID:-}
         VITE_UMAMI_SCRIPT_URL: ${VITE_UMAMI_SCRIPT_URL:-}
         VITE_UMAMI_HOST_URL: ${VITE_UMAMI_HOST_URL:-}
@@ -70,9 +70,9 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-0.1.3}
-      - APP_BUILD_ID=${APP_BUILD_ID:-0.1.3}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-0.1.3}
+      - APP_VERSION=${APP_VERSION:-}
+      - APP_BUILD_ID=${APP_BUILD_ID:-}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=postgres
       - PG_PORT=5432
       - PG_USER=${PG_USER:-zutomayo}
@@ -103,16 +103,16 @@ services:
       context: ./api
       dockerfile: Dockerfile
       args:
-        APP_VERSION: ${APP_VERSION:-0.1.3}
-        APP_BUILD_ID: ${APP_BUILD_ID:-0.1.3}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-0.1.3}
+        APP_VERSION: ${APP_VERSION:-}
+        APP_BUILD_ID: ${APP_BUILD_ID:-}
+        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
     ports:
       - '3001:3001'
     environment:
       - API_PORT=3001
-      - APP_VERSION=${APP_VERSION:-0.1.3}
-      - APP_BUILD_ID=${APP_BUILD_ID:-0.1.3}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-0.1.3}
+      - APP_VERSION=${APP_VERSION:-}
+      - APP_BUILD_ID=${APP_BUILD_ID:-}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=postgres
       - PG_PORT=5432
       - PG_USER=${PG_USER:-zutomayo}
@@ -140,6 +140,38 @@ services:
         condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-}
+        APP_BUILD_ID: ${APP_BUILD_ID:-}
+        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
+    command: ['npm', 'run', 'platform']
+    ports:
+      - '3002:3002'
+    environment:
+      - PLATFORM_PORT=3002
+      - NODE_ENV=production
+      - APP_VERSION=${APP_VERSION:-}
+      - APP_BUILD_ID=${APP_BUILD_ID:-}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - REDIS_URL=redis://redis:6379
+      - REDIS_DB=${REDIS_DB:-0}
+      - PLATFORM_REDIS_MODE=redis
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3002/health || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
