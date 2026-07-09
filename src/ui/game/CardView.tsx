@@ -2,6 +2,8 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { CardInstance, Element } from '../../game/types';
 import { getCardDef } from '../../game/cards/loader';
 import { t } from '../../i18n';
+import { CardImage } from '../../components/CardImage';
+import type { CardImageContext } from '../../lib/cardImages';
 
 /**
  * CardView — Design System 唯一的戰場卡牌渲染元件。
@@ -26,6 +28,7 @@ export interface CardViewProps {
   card: CardInstance;
   size?: CardViewSize;
   state?: CardViewState;
+  imageContext?: CardImageContext;
   /** 顯示左上充能成本 chip（mini 尺寸一律隱藏） */
   showCost?: boolean;
   /** 點擊 / Enter / Space：執行動作（出牌、選目標、撤回…） */
@@ -43,6 +46,7 @@ export function CardView({
   card,
   size = 'md',
   state = 'idle',
+  imageContext,
   showCost = true,
   onActivate,
   onInspect,
@@ -55,6 +59,8 @@ export function CardView({
   const def = faceUp ? getCardDef(card.defId) : undefined;
   const interactive = Boolean(onActivate) && state !== 'disabled';
   const label = ariaLabel ?? (def ? def.name : t('card.back'));
+  const resolvedImageContext: CardImageContext =
+    imageContext ?? (size === 'mini' || size === 'sm' ? 'mobile-board' : size === 'xl' ? 'preview' : 'board');
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -73,9 +79,10 @@ export function CardView({
 
   const content = def ? (
     <>
-      <img
+      <CardImage
         className="cardview-art"
-        src={def.image}
+        cardId={def.id}
+        context={resolvedImageContext}
         alt=""
         loading="lazy"
         referrerPolicy="no-referrer"
@@ -88,7 +95,7 @@ export function CardView({
       )}
     </>
   ) : (
-    <img className="cardview-art" src="/card-back.jpg" alt="" loading="lazy" draggable={false} />
+    <img className="cardview-art" src="/card-back.jpg" alt="" loading="lazy" decoding="async" draggable={false} />
   );
 
   if (interactive) {

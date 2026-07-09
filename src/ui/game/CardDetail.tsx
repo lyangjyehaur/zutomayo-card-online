@@ -3,6 +3,7 @@ import { getCardDef } from '../../game/cards/loader';
 import { getBaseAttack, getEffectiveAttack, isAttackPowerInsufficient } from '../../game/GameLogic';
 import { getTranslatedEffect } from '../../game/cards/i18n';
 import { t, useLocale } from '../../i18n';
+import { CardImage } from '../../components/CardImage';
 
 /**
  * CardDetail — 卡牌詳情的唯一內容實作。
@@ -34,7 +35,7 @@ export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G:
         {ownerName} · {focus.zone}
       </div>
       <div className="carddetail-art">
-        <img src={def.image} alt={def.name} loading="lazy" referrerPolicy="no-referrer" />
+        <CardImage cardId={def.id} context="detail" alt={def.name} loading="eager" referrerPolicy="no-referrer" />
       </div>
       <h2 className="carddetail-name">{def.name}</h2>
       <div className="carddetail-taxonomy">

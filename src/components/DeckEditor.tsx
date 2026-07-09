@@ -39,6 +39,7 @@ import {
   CardBrowserGrid,
   CardBrowserToolbar,
 } from './CardBrowser';
+import { CardImage } from './CardImage';
 import { ActiveDeckPanel, ActiveDeckSheet } from './DeckBuilderWorkspace';
 
 interface DeckEditorProps {
@@ -846,12 +847,13 @@ export function DeckEditor({
                   }`}
                 >
                   <div className="absolute inset-0 overflow-hidden rounded-sm">
-                    <img
-                      src={card.image}
+                    <CardImage
+                      cardId={card.id}
+                      context="hand"
                       alt={card.name}
                       loading="lazy"
                       referrerPolicy="no-referrer"
-                      className="absolute inset-0 size-full object-cover"
+                      className="absolute inset-0 size-full object-contain"
                     />
                   </div>
                   {/* 費用角標 */}

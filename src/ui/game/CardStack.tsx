@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { CardInstance, ChronosTime } from '../../game/types';
 import { getCardDef } from '../../game/cards/loader';
+import { CardImage } from '../../components/CardImage';
 
 /**
  * CardStack — 牌組 / 深淵 / 充能區的堆疊呈現。
@@ -75,6 +76,7 @@ export function CardStack({
               className="cardstack-back-layer"
               style={backLayerStyle(i)}
               loading="lazy"
+              decoding="async"
               draggable={false}
             />
           ))}
@@ -82,9 +84,10 @@ export function CardStack({
           thumbs.map((card, i) => {
             const def = getCardDef(card.defId);
             return def?.image ? (
-              <img
+              <CardImage
                 key={card.instanceId}
-                src={def.image}
+                cardId={def.id}
+                context="thumbnail"
                 alt=""
                 className="cardstack-thumb"
                 data-index={i}

@@ -955,6 +955,7 @@ function MulliganScreen({
                 <CardView
                   card={card}
                   size="md"
+                  imageContext="hand"
                   state={done ? 'disabled' : selected.includes(index) ? 'selected' : 'idle'}
                   onActivate={done ? undefined : () => activateCard(card, index)}
                   onInspect={() => focusCard(card)}
@@ -2017,7 +2018,7 @@ function BattleBoard({
             </div>
             <div className="bf-opponent-handbacks" aria-label={`${t('board.hand')} ${opponent.hand.length}`}>
               {opponent.hand.map((card) => (
-                <img key={card.instanceId} src="/card-back.jpg" alt="" loading="lazy" />
+                <img key={card.instanceId} src="/card-back.jpg" alt="" loading="lazy" decoding="async" />
               ))}
             </div>
             <div className="bf-strip">

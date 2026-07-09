@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react';
 import { AppDrawer } from '../components/AppDrawer';
+import { CardImage } from '../components/CardImage';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
@@ -187,11 +188,12 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       {/* 環境層：隨機卡牌模糊背景＋中央光暈＋夜色微染＋點陣（與戰場同語言） */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         {backgroundImage && (
-          <img
+          <CardImage
             src={backgroundImage}
+            context="detail"
             alt=""
             referrerPolicy="no-referrer"
-            className="absolute inset-[-7%] h-[114%] w-[114%] object-cover opacity-45 blur-[6px] brightness-[0.72] saturate-[1.35]"
+            className="absolute inset-[-7%] h-[114%] w-[114%] object-contain opacity-45 blur-[6px] brightness-[0.72] saturate-[1.35]"
             onError={() =>
               setBackgroundImage((current) =>
                 current === LOBBY_BACKGROUND_FALLBACK_IMAGE ? '' : LOBBY_BACKGROUND_FALLBACK_IMAGE,

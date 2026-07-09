@@ -50,6 +50,7 @@ export function CardSlot({
     <CardView
       card={card}
       size={size}
+      imageContext={size === 'sm' ? 'mobile-board' : 'board'}
       state={cardState(state)}
       onActivate={onActivate}
       onInspect={onInspect ? () => onInspect(card) : undefined}
