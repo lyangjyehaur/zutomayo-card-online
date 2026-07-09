@@ -41,9 +41,17 @@ export interface PlatformMatchShellPresence {
   spectators: number;
 }
 
+export interface PlatformChatPreview {
+  conversationId?: string;
+  sender: PlatformClientProfile;
+  text: string;
+  createdAt: number;
+}
+
 export interface PlatformMatchShellHandlers {
   onSnapshot?: (snapshot: PlatformMatchShellSnapshot) => void;
   onPresence?: (presence: PlatformMatchShellPresence) => void;
+  onChatPreview?: (message: PlatformChatPreview) => void;
   onDisconnect?: () => void;
 }
 
@@ -163,6 +171,34 @@ export function platformPresenceFromMatchShellMessage(message: unknown): Platfor
   };
 }
 
+export function platformChatPreviewFromMessage(message: unknown): PlatformChatPreview | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as {
+    conversationId?: unknown;
+    sender?: Partial<PlatformClientProfile>;
+    text?: unknown;
+    createdAt?: unknown;
+  };
+  if (typeof data.text !== 'string' || !data.text.trim()) return null;
+  if (!data.sender || typeof data.sender !== 'object') return null;
+  if (typeof data.sender.sessionId !== 'string' || typeof data.sender.userId !== 'string') return null;
+  return {
+    conversationId: typeof data.conversationId === 'string' ? data.conversationId : undefined,
+    sender: {
+      sessionId: data.sender.sessionId,
+      userId: data.sender.userId,
+      displayName: typeof data.sender.displayName === 'string' ? data.sender.displayName : 'Player',
+      role:
+        data.sender.role === 'player' || data.sender.role === 'spectator' || data.sender.role === 'moderator'
+          ? data.sender.role
+          : 'spectator',
+      joinedAt: Number.isFinite(data.sender.joinedAt) ? Math.trunc(data.sender.joinedAt as number) : Date.now(),
+    },
+    text: data.text.trim().slice(0, 500),
+    createdAt: Number.isFinite(data.createdAt) ? Math.trunc(data.createdAt as number) : Date.now(),
+  };
+}
+
 export async function connectPlatformMatchShell(
   options: PlatformMatchShellJoinOptions,
   handlers: PlatformMatchShellHandlers,
@@ -184,6 +220,10 @@ export async function connectPlatformMatchShell(
   room.onMessage('presence', (message) => {
     const presence = platformPresenceFromMatchShellMessage(message);
     if (presence) handlers.onPresence?.(presence);
+  });
+  room.onMessage('chatPreview', (message) => {
+    const preview = platformChatPreviewFromMessage(message);
+    if (preview) handlers.onChatPreview?.(preview);
   });
   room.onMessage('boardgameMatchLinked', () => undefined);
   room.onLeave(() => handlers.onDisconnect?.());

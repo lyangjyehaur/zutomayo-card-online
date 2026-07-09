@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeSeatReservation,
+  platformChatPreviewFromMessage,
   platformOnlineCountFromMessage,
   platformPresenceFromMatchShellMessage,
   resolvePlatformEndpoint,
@@ -62,6 +63,36 @@ describe('platform client helpers', () => {
       spectators: 1,
     });
     expect(platformPresenceFromMatchShellMessage({ players: 2 })).toBeNull();
+  });
+
+  it('reads match shell chat preview messages defensively', () => {
+    expect(
+      platformChatPreviewFromMessage({
+        conversationId: 'match:bgio-match-1',
+        sender: {
+          sessionId: 's_1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'player',
+          joinedAt: 1000,
+        },
+        text: ' hello ',
+        createdAt: 2000.9,
+      }),
+    ).toEqual({
+      conversationId: 'match:bgio-match-1',
+      sender: {
+        sessionId: 's_1',
+        userId: 'u_1',
+        displayName: 'Alice',
+        role: 'player',
+        joinedAt: 1000,
+      },
+      text: 'hello',
+      createdAt: 2000,
+    });
+    expect(platformChatPreviewFromMessage({ text: 'hello' })).toBeNull();
+    expect(platformChatPreviewFromMessage({ sender: { sessionId: 's_1', userId: 'u_1' }, text: '' })).toBeNull();
   });
 
   it('adapts Colyseus 0.17 flat seat reservations for the browser SDK', () => {

@@ -1,12 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Client, type BoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
+import { ChevronDown, MessageCircle, Send } from 'lucide-react';
 import { ZutomayoCard } from '../game/Game';
 import type { GameState } from '../game/types';
 import { Board, type BoardGameOverActions } from './Board';
 import { t } from '../i18n';
-import { PageShell } from '../ui';
+import { IconButton, PageShell } from '../ui';
 import { Sentry } from '../sentry';
+import {
+  ApiError,
+  fetchChatMessages,
+  markChatRead,
+  sendChatMessage,
+  type ChatAuthorRole,
+  type ChatMessage,
+} from '../api/client';
 import {
   createOnlineStateSnapshot,
   evaluateOnlineStateSnapshot,
@@ -34,6 +43,38 @@ type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
 
 type MatchDataMember = { id: number; name?: string } | undefined;
 type PlatformShellStatus = (PlatformMatchShellPresence & { connected: boolean }) | null;
+type ChatStatus = 'loading' | 'ready' | 'unavailable' | 'sending';
+type OnlineChatEntry = {
+  id: string;
+  authorDisplayName: string;
+  authorRole: ChatAuthorRole;
+  content: string;
+  createdAt: string;
+  persisted: boolean;
+  self: boolean;
+};
+
+function playerDisplayName(playerID: string): string {
+  return `Player ${Number(playerID) + 1}`;
+}
+
+function chatTimeLabel(createdAt: string): string {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function mapChatMessage(message: ChatMessage, localDisplayName: string): OnlineChatEntry {
+  return {
+    id: message.id,
+    authorDisplayName: message.authorDisplayName || 'Player',
+    authorRole: message.authorRole,
+    content: message.content,
+    createdAt: message.createdAt,
+    persisted: true,
+    self: Boolean(localDisplayName && message.authorDisplayName === localDisplayName),
+  };
+}
 
 function OnlineLoading() {
   return (
@@ -110,10 +151,17 @@ export function OnlineGame({
   const onReturnToLobbyRef = useRef(onReturnToLobby);
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
   const opponentDetectedRef = useRef<(() => void) | null>(null);
+  const platformRoomRef = useRef<PlatformMatchShellRoom | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
   const [platformShellStatus, setPlatformShellStatus] = useState<PlatformShellStatus>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatStatus, setChatStatus] = useState<ChatStatus>('loading');
+  const [chatMessages, setChatMessages] = useState<OnlineChatEntry[]>([]);
+  const [chatDraft, setChatDraft] = useState('');
+  const localDisplayName = playerDisplayName(playerID);
+  const localPlatformUserId = `match:${matchID}:player:${playerID}`;
 
   // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
   useEffect(() => {
@@ -138,6 +186,51 @@ export function OnlineGame({
     opponentDetectedRef.current = onOpponentDetected ?? null;
   }, [onReturnToLobby, onCreateNewRoom, onOpponentDetected]);
 
+  const appendChatEntry = useCallback((entry: OnlineChatEntry) => {
+    setChatMessages((messages) => {
+      if (messages.some((message) => message.id === entry.id)) return messages;
+      return [...messages, entry].slice(-60);
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setChatStatus('loading');
+    setChatMessages([]);
+
+    void fetchChatMessages({ conversationType: 'match', subjectId: matchID, limit: 50 }).then(
+      (messages) => {
+        if (cancelled) return;
+        setChatMessages(messages.map((message) => mapChatMessage(message, localDisplayName)));
+        setChatStatus('ready');
+      },
+      (err) => {
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'match chat history unavailable',
+          level: 'warning',
+          data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
+        });
+        if (!cancelled) setChatStatus('unavailable');
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [localDisplayName, matchID]);
+
+  useEffect(() => {
+    if (chatStatus !== 'ready') return;
+    const latestPersisted = [...chatMessages].reverse().find((message) => message.persisted);
+    if (!latestPersisted) return;
+    void markChatRead({
+      conversationType: 'match',
+      subjectId: matchID,
+      lastReadMessageId: latestPersisted.id,
+    }).catch(() => undefined);
+  }, [chatMessages, chatStatus, matchID]);
+
   useEffect(() => {
     let cancelled = false;
     let room: PlatformMatchShellRoom | undefined;
@@ -145,13 +238,25 @@ export function OnlineGame({
     void connectPlatformMatchShell(
       {
         boardgameMatchID: matchID,
-        userId: `match:${matchID}:player:${playerID}`,
-        displayName: `Player ${Number(playerID) + 1}`,
+        userId: localPlatformUserId,
+        displayName: localDisplayName,
         role: 'player',
       },
       {
         onPresence: (presence) => {
           if (!cancelled) setPlatformShellStatus({ ...presence, connected: true });
+        },
+        onChatPreview: (message) => {
+          if (cancelled || message.sender.userId === localPlatformUserId) return;
+          appendChatEntry({
+            id: `preview:${message.sender.sessionId}:${message.createdAt}`,
+            authorDisplayName: message.sender.displayName,
+            authorRole: message.sender.role,
+            content: message.text,
+            createdAt: new Date(message.createdAt).toISOString(),
+            persisted: false,
+            self: false,
+          });
         },
         onDisconnect: () => {
           if (!cancelled) setPlatformShellStatus(null);
@@ -164,6 +269,7 @@ export function OnlineGame({
           return;
         }
         room = nextRoom;
+        platformRoomRef.current = nextRoom;
       },
       (err) => {
         Sentry.addBreadcrumb({
@@ -178,10 +284,11 @@ export function OnlineGame({
 
     return () => {
       cancelled = true;
+      platformRoomRef.current = null;
       setPlatformShellStatus(null);
       void room?.leave(true).catch(() => undefined);
     };
-  }, [matchID, playerID]);
+  }, [appendChatEntry, localDisplayName, localPlatformUserId, matchID]);
 
   const handleOpponentDetected = useCallback(() => {
     opponentDetectedRef.current?.();
@@ -237,6 +344,42 @@ export function OnlineGame({
       resyncTimer.current = setTimeout(() => setResyncingState(false), 5000);
     },
     [matchID],
+  );
+
+  const handleChatSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const content = chatDraft.trim();
+      if (!content || chatStatus === 'sending') return;
+
+      setChatStatus('sending');
+      try {
+        const result = await sendChatMessage({
+          conversationType: 'match',
+          subjectId: matchID,
+          content,
+          authorDisplayName: localDisplayName,
+          authorRole: 'player',
+          clientMessageId: `client:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+        });
+        appendChatEntry(mapChatMessage(result.message, localDisplayName));
+        setChatDraft('');
+        platformRoomRef.current?.send('chatPreview', {
+          conversationId: result.conversation.id,
+          text: result.message.content,
+        });
+        setChatStatus('ready');
+      } catch (err) {
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'match chat send failed',
+          level: 'warning',
+          data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
+        });
+        setChatStatus('ready');
+      }
+    },
+    [appendChatEntry, chatDraft, chatStatus, localDisplayName, matchID],
   );
 
   const [OnlineClient] = useState(() =>
@@ -298,6 +441,62 @@ export function OnlineGame({
           </span>
         </div>
       )}
+      <div className={`online-chat-panel ${chatOpen ? 'open' : 'collapsed'}`}>
+        <div className="online-chat-header">
+          <IconButton
+            label={chatOpen ? 'Hide match chat' : 'Show match chat'}
+            icon={
+              chatOpen ? (
+                <ChevronDown className="size-4" aria-hidden="true" />
+              ) : (
+                <MessageCircle className="size-4" aria-hidden="true" />
+              )
+            }
+            className="online-chat-toggle"
+            onClick={() => setChatOpen((open) => !open)}
+          />
+          {chatOpen && (
+            <span className="online-chat-state">
+              {chatStatus === 'loading' ? 'SYNCING' : chatStatus === 'unavailable' ? 'OFFLINE' : 'MATCH CHAT'}
+            </span>
+          )}
+        </div>
+        {chatOpen && (
+          <>
+            <div className="online-chat-messages" aria-live="polite">
+              {chatMessages.length === 0 ? (
+                <div className="online-chat-empty">{chatStatus === 'loading' ? 'SYNCING' : 'NO MESSAGES'}</div>
+              ) : (
+                chatMessages.map((message) => (
+                  <div key={message.id} className={`online-chat-message ${message.self ? 'self' : ''}`}>
+                    <div className="online-chat-meta">
+                      <span>{message.authorDisplayName}</span>
+                      <span>{chatTimeLabel(message.createdAt)}</span>
+                    </div>
+                    <div className="online-chat-bubble">{message.content}</div>
+                  </div>
+                ))
+              )}
+            </div>
+            <form className="online-chat-form" onSubmit={handleChatSubmit}>
+              <input
+                value={chatDraft}
+                onChange={(event) => setChatDraft(event.target.value.slice(0, 500))}
+                maxLength={500}
+                disabled={chatStatus === 'loading' || chatStatus === 'unavailable'}
+                aria-label="Match chat message"
+              />
+              <IconButton
+                label="Send match chat message"
+                icon={<Send className="size-4" aria-hidden="true" />}
+                type="submit"
+                variant="secondary"
+                disabled={!chatDraft.trim() || chatStatus === 'loading' || chatStatus === 'sending'}
+              />
+            </form>
+          </>
+        )}
+      </div>
       <div className="board-client-frame h-full w-full">
         <OnlineClient
           key={`${matchID}:${playerID}:${clientSyncNonce}`}

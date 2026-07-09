@@ -686,6 +686,89 @@ export async function sendOnlinePresenceHeartbeat(visitorId: string): Promise<On
   });
 }
 
+// ===== Chat =====
+export type ChatConversationType = 'match' | 'room' | 'direct' | 'global';
+export type ChatAuthorRole = 'player' | 'spectator' | 'moderator';
+
+export interface ChatConversation {
+  id: string;
+  type: ChatConversationType;
+  subjectId: string;
+  title: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  authorUserId: string | null;
+  authorDisplayName: string;
+  authorRole: ChatAuthorRole;
+  content: string;
+  sourceLanguage: string;
+  moderationStatus: 'visible' | 'pending_review' | 'blocked' | 'deleted' | string;
+  moderationReason: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
+}
+
+export interface ChatMessageInput {
+  conversationType: ChatConversationType;
+  subjectId: string;
+  content: string;
+  title?: string;
+  authorDisplayName?: string;
+  authorRole?: ChatAuthorRole;
+  clientMessageId?: string;
+  sourceLanguage?: string;
+}
+
+export async function fetchChatMessages({
+  conversationType,
+  subjectId,
+  limit = 50,
+  before,
+}: {
+  conversationType: ChatConversationType;
+  subjectId: string;
+  limit?: number;
+  before?: string;
+}): Promise<ChatMessage[]> {
+  const params = new URLSearchParams({
+    type: conversationType,
+    subjectId,
+    limit: String(limit),
+  });
+  if (before) params.set('before', before);
+  const data = await request<{ messages: ChatMessage[] }>(`/chat/messages?${params.toString()}`);
+  return data.messages;
+}
+
+export async function sendChatMessage(input: ChatMessageInput): Promise<{
+  conversation: ChatConversation;
+  message: ChatMessage;
+}> {
+  return request('/chat/messages', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function markChatRead(input: {
+  conversationType: ChatConversationType;
+  subjectId: string;
+  lastReadMessageId?: string;
+}): Promise<{ ok: boolean }> {
+  return request('/chat/read', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 // ===== Admin =====
 export interface AdminUser {
   id: string;
