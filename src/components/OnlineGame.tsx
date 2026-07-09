@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Client, type BoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
-import { ChevronDown, MessageCircle, Send } from 'lucide-react';
+import { ChevronDown, Flag, MessageCircle, Send } from 'lucide-react';
 import { ZutomayoCard } from '../game/Game';
 import type { GameState } from '../game/types';
 import { Board, type BoardGameOverActions } from './Board';
@@ -12,6 +12,7 @@ import {
   ApiError,
   fetchChatMessages,
   markChatRead,
+  reportChatMessage,
   sendChatMessage,
   type ChatAuthorRole,
   type ChatMessage,
@@ -160,6 +161,7 @@ export function OnlineGame({
   const [chatStatus, setChatStatus] = useState<ChatStatus>('loading');
   const [chatMessages, setChatMessages] = useState<OnlineChatEntry[]>([]);
   const [chatDraft, setChatDraft] = useState('');
+  const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
   const localDisplayName = playerDisplayName(playerID);
   const localPlatformUserId = `match:${matchID}:player:${playerID}`;
 
@@ -197,6 +199,7 @@ export function OnlineGame({
     let cancelled = false;
     setChatStatus('loading');
     setChatMessages([]);
+    setReportedMessageIds(new Set());
 
     void fetchChatMessages({ conversationType: 'match', subjectId: matchID, limit: 50 }).then(
       (messages) => {
@@ -382,6 +385,29 @@ export function OnlineGame({
     [appendChatEntry, chatDraft, chatStatus, localDisplayName, matchID],
   );
 
+  const handleChatReport = useCallback(
+    async (message: OnlineChatEntry) => {
+      if (!message.persisted || message.self || reportedMessageIds.has(message.id)) return;
+      setReportedMessageIds((ids) => new Set(ids).add(message.id));
+      try {
+        await reportChatMessage(message.id, { reason: 'inappropriate' });
+      } catch (err) {
+        setReportedMessageIds((ids) => {
+          const next = new Set(ids);
+          next.delete(message.id);
+          return next;
+        });
+        Sentry.addBreadcrumb({
+          category: 'chat',
+          message: 'match chat report failed',
+          level: 'warning',
+          data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
+        });
+      }
+    },
+    [matchID, reportedMessageIds],
+  );
+
   const [OnlineClient] = useState(() =>
     Client({
       game: ZutomayoCard,
@@ -471,7 +497,23 @@ export function OnlineGame({
                   <div key={message.id} className={`online-chat-message ${message.self ? 'self' : ''}`}>
                     <div className="online-chat-meta">
                       <span>{message.authorDisplayName}</span>
-                      <span>{chatTimeLabel(message.createdAt)}</span>
+                      <span className="online-chat-meta-actions">
+                        {chatTimeLabel(message.createdAt)}
+                        {message.persisted && !message.self && (
+                          <IconButton
+                            label={
+                              reportedMessageIds.has(message.id)
+                                ? 'Match chat message reported'
+                                : 'Report match chat message'
+                            }
+                            icon={<Flag className="size-3" aria-hidden="true" />}
+                            size="sm"
+                            className="online-chat-report-button"
+                            disabled={reportedMessageIds.has(message.id)}
+                            onClick={() => void handleChatReport(message)}
+                          />
+                        )}
+                      </span>
                     </div>
                     <div className="online-chat-bubble">{message.content}</div>
                   </div>

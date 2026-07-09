@@ -11,6 +11,7 @@ const {
   canAccessConversation,
   conversationKey,
   listChatMessages,
+  listChatReports,
   markConversationRead,
   reportChatMessage,
   sendChatMessage,
@@ -25,6 +26,7 @@ const {
     limit?: unknown;
     before?: unknown;
   }) => Promise<Record<string, unknown>>;
+  listChatReports: (input: { pool: PoolLike; status?: unknown; limit?: unknown }) => Promise<Record<string, unknown>>;
   markConversationRead: (input: { pool: PoolLike; userId: string; body: Record<string, unknown> }) => Promise<{
     ok: boolean;
     body?: Record<string, unknown>;
@@ -243,5 +245,49 @@ describe('chat service', () => {
         }),
       },
     });
+  });
+
+  it('lists reports with message evidence for admin review', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            id: 'chat_report_1',
+            message_id: 'chat_msg_1',
+            conversation_id: 'match:bgio-match-1',
+            reporter_user_id: 'u_2',
+            reason: 'spam',
+            note: '',
+            status: 'open',
+            reviewer_user_id: null,
+            resolution_note: '',
+            created_at: '2026-07-10T00:00:03.000Z',
+            reviewed_at: null,
+            message_content: 'reported text',
+            message_author_user_id: 'u_1',
+            message_author_display_name: 'Alice',
+            message_author_role: 'player',
+            message_moderation_status: 'visible',
+            message_created_at: '2026-07-10T00:00:01.000Z',
+          },
+        ],
+      },
+    ]);
+
+    await expect(listChatReports({ pool, status: 'open', limit: 10 })).resolves.toEqual({
+      ok: true,
+      body: {
+        reports: [
+          expect.objectContaining({
+            id: 'chat_report_1',
+            message: expect.objectContaining({
+              content: 'reported text',
+              authorDisplayName: 'Alice',
+            }),
+          }),
+        ],
+      },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('LEFT JOIN chat_messages'), ['open', 10]);
   });
 });

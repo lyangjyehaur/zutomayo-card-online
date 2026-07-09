@@ -8,9 +8,11 @@ import type { ParsedEffect } from '../game/effects';
 import type { CardDef, CardType, Element } from '../game/types';
 import {
   ApiError,
+  adminGetChatReports,
   adminGetMatches,
   adminGetUsers,
   adminLogin,
+  adminReviewChatReport,
   adminResetElo,
   adminUpdateAboutPage,
   adminUpdateCard,
@@ -19,7 +21,14 @@ import {
   fetchAboutPageI18n,
   fetchCardI18n,
 } from '../api/client';
-import type { AboutPageConfig, AboutPageI18nConfig, AboutPageLocale, AdminMatch, AdminUser } from '../api/client';
+import type {
+  AboutPageConfig,
+  AboutPageI18nConfig,
+  AboutPageLocale,
+  AdminMatch,
+  AdminUser,
+  ChatReport,
+} from '../api/client';
 import {
   Badge,
   BackButton,
@@ -76,7 +85,7 @@ const ABOUT_LANGS: Array<{ code: AboutPageLocale; label: string }> = I18N_LANGS.
   label: lang.label,
 }));
 
-type AdminTab = 'cards' | 'users' | 'matches' | 'about';
+type AdminTab = 'cards' | 'users' | 'matches' | 'chat' | 'about';
 type ModalTab = 'basic' | 'engine' | 'i18n';
 type ParsedCardMeta = {
   card: CardDef;
@@ -729,6 +738,9 @@ export function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('cards');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [matches, setMatches] = useState<AdminMatch[]>([]);
+  const [chatReports, setChatReports] = useState<ChatReport[]>([]);
+  const [chatReportStatus, setChatReportStatus] = useState<'open' | 'reviewing' | 'resolved' | 'dismissed'>('open');
+  const [chatReviewingId, setChatReviewingId] = useState<string | null>(null);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
   const [eloEdits, setEloEdits] = useState<Record<string, string>>({});
@@ -880,6 +892,37 @@ export function AdminPage() {
     }
   }, [token]);
 
+  const refreshChatReports = useCallback(async () => {
+    if (!token) return;
+    setAdminLoading(true);
+    setAdminError('');
+    try {
+      const { reports } = await adminGetChatReports(token, chatReportStatus);
+      setChatReports(reports);
+    } catch (e) {
+      setAdminError(e instanceof Error ? e.message : '載入失敗');
+    } finally {
+      setAdminLoading(false);
+    }
+  }, [chatReportStatus, token]);
+
+  const reviewChatReport = useCallback(
+    async (reportId: string, status: 'reviewing' | 'resolved' | 'dismissed') => {
+      if (!token) return;
+      setChatReviewingId(reportId);
+      setAdminError('');
+      try {
+        await adminReviewChatReport(token, reportId, { status });
+        await refreshChatReports();
+      } catch (e) {
+        setAdminError(e instanceof Error ? e.message : '更新失敗');
+      } finally {
+        setChatReviewingId(null);
+      }
+    },
+    [refreshChatReports, token],
+  );
+
   const loadAdminCards = useCallback(async () => {
     setCardLoadStatus('loading');
     setCardLoadError('');
@@ -906,7 +949,8 @@ export function AdminPage() {
   useEffect(() => {
     if (activeTab === 'users' && users.length === 0) void refreshUsers();
     if (activeTab === 'matches' && matches.length === 0) void refreshMatches();
-  }, [activeTab, matches.length, refreshMatches, refreshUsers, users.length]);
+    if (activeTab === 'chat') void refreshChatReports();
+  }, [activeTab, matches.length, refreshChatReports, refreshMatches, refreshUsers, users.length]);
 
   useEffect(() => {
     if (!authenticated || activeTab !== 'cards') return;
@@ -1045,6 +1089,7 @@ export function AdminPage() {
                 { value: 'cards', label: '卡牌資料' },
                 { value: 'users', label: '使用者' },
                 { value: 'matches', label: '對戰' },
+                { value: 'chat', label: '聊天' },
                 { value: 'about', label: 'About' },
               ]}
               value={activeTab}
@@ -1369,6 +1414,120 @@ export function AdminPage() {
               ))}
             </tbody>
           </DataListTable>
+        </section>
+      )}
+
+      {activeTab === 'chat' && (
+        <section className="admin-table-section flex-1 overflow-auto p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <SegmentedControl
+              behavior="tabs"
+              size="sm"
+              ariaLabel="聊天舉報狀態"
+              options={[
+                { value: 'open', label: 'Open' },
+                { value: 'reviewing', label: 'Reviewing' },
+                { value: 'resolved', label: 'Resolved' },
+                { value: 'dismissed', label: 'Dismissed' },
+              ]}
+              value={chatReportStatus}
+              onChange={setChatReportStatus}
+            />
+            <Button size="sm" variant="secondary" onClick={() => void refreshChatReports()}>
+              重新整理
+            </Button>
+          </div>
+          {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
+          {adminError && (
+            <Alert className="mb-3" tone="danger" role="alert">
+              {adminError}
+            </Alert>
+          )}
+          {chatReports.length === 0 && !adminLoading ? (
+            <EmptyState className="min-h-48" title="沒有聊天舉報" description="目前篩選條件下沒有待處理項目。" />
+          ) : (
+            <DataListTable className="admin-responsive-table">
+              <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                <tr className="border-b border-content-primary/10">
+                  <th className="px-3 py-2">狀態</th>
+                  <th className="px-3 py-2">訊息</th>
+                  <th className="px-3 py-2">舉報</th>
+                  <th className="px-3 py-2">時間</th>
+                  <th className="px-3 py-2">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chatReports.map((report) => (
+                  <tr key={report.id} className="odd:bg-surface-base/50">
+                    <DataListCell label="狀態">
+                      <Badge
+                        tone={
+                          report.status === 'resolved' ? 'jade' : report.status === 'dismissed' ? 'neutral' : 'gold'
+                        }
+                      >
+                        {report.status}
+                      </Badge>
+                    </DataListCell>
+                    <DataListCell label="訊息">
+                      <div className="grid max-w-xl gap-1">
+                        <span className="font-mono text-xs text-content-primary/50">{report.conversationId}</span>
+                        <span className="text-xs text-content-primary/60">
+                          {report.message?.authorDisplayName || report.message?.authorUserId || 'Unknown'}
+                        </span>
+                        <p className="whitespace-pre-wrap break-words text-sm">
+                          {report.message?.content || '訊息已刪除或無法讀取'}
+                        </p>
+                      </div>
+                    </DataListCell>
+                    <DataListCell label="舉報">
+                      <div className="grid gap-1">
+                        <span>{report.reason}</span>
+                        {report.note && <span className="text-xs text-content-primary/60">{report.note}</span>}
+                        <span className="font-mono text-xs text-content-primary/50">
+                          by {report.reporterUserId || 'unknown'}
+                        </span>
+                      </div>
+                    </DataListCell>
+                    <DataListCell label="時間">{new Date(report.createdAt).toLocaleString()}</DataListCell>
+                    <DataListCell label="操作">
+                      <div className="flex flex-wrap gap-2">
+                        {report.status === 'open' && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={chatReviewingId === report.id}
+                            onClick={() => void reviewChatReport(report.id, 'reviewing')}
+                          >
+                            標記審核中
+                          </Button>
+                        )}
+                        {report.status !== 'resolved' && (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={chatReviewingId === report.id}
+                            onClick={() => void reviewChatReport(report.id, 'resolved')}
+                          >
+                            已處理
+                          </Button>
+                        )}
+                        {report.status !== 'dismissed' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={chatReviewingId === report.id}
+                            onClick={() => void reviewChatReport(report.id, 'dismissed')}
+                          >
+                            駁回
+                          </Button>
+                        )}
+                      </div>
+                    </DataListCell>
+                  </tr>
+                ))}
+              </tbody>
+            </DataListTable>
+          )}
         </section>
       )}
 

@@ -82,7 +82,7 @@ function mapMessage(row) {
 }
 
 function mapReport(row) {
-  return {
+  const report = {
     id: row.id,
     messageId: row.message_id,
     conversationId: row.conversation_id,
@@ -95,6 +95,17 @@ function mapReport(row) {
     createdAt: row.created_at,
     reviewedAt: row.reviewed_at || null,
   };
+  if (row.message_content !== undefined) {
+    report.message = {
+      content: row.message_content || '',
+      authorUserId: row.message_author_user_id || null,
+      authorDisplayName: row.message_author_display_name || '',
+      authorRole: row.message_author_role || 'spectator',
+      moderationStatus: row.message_moderation_status || 'visible',
+      createdAt: row.message_created_at || null,
+    };
+  }
+  return report;
 }
 
 async function getOrCreateConversation({ pool, type, subjectId, title = '' }) {
@@ -262,10 +273,17 @@ async function listChatReports({ pool, status, limit }) {
   const cleanStatus = REPORT_STATUSES.includes(status) ? status : 'open';
   const lim = clampLimit(limit, 50, 200);
   const { rows } = await pool.query(
-    `SELECT *
-     FROM chat_reports
-     WHERE status = $1
-     ORDER BY created_at DESC
+    `SELECT r.*,
+            m.content AS message_content,
+            m.author_user_id AS message_author_user_id,
+            m.author_display_name AS message_author_display_name,
+            m.author_role AS message_author_role,
+            m.moderation_status AS message_moderation_status,
+            m.created_at AS message_created_at
+     FROM chat_reports r
+     LEFT JOIN chat_messages m ON m.id = r.message_id
+     WHERE r.status = $1
+     ORDER BY r.created_at DESC
      LIMIT $2`,
     [cleanStatus, lim],
   );

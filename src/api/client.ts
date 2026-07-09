@@ -769,6 +769,38 @@ export async function markChatRead(input: {
   });
 }
 
+export interface ChatReport {
+  id: string;
+  messageId: string;
+  conversationId: string;
+  reporterUserId: string | null;
+  reason: string;
+  note: string;
+  status: 'open' | 'reviewing' | 'resolved' | 'dismissed' | string;
+  reviewerUserId: string | null;
+  resolutionNote: string;
+  createdAt: string;
+  reviewedAt: string | null;
+  message?: {
+    content: string;
+    authorUserId: string | null;
+    authorDisplayName: string;
+    authorRole: ChatAuthorRole;
+    moderationStatus: string;
+    createdAt: string | null;
+  };
+}
+
+export async function reportChatMessage(
+  messageId: string,
+  input: { reason: string; note?: string },
+): Promise<{ report: ChatReport }> {
+  return request(`/chat/messages/${encodeURIComponent(messageId)}/report`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 // ===== Admin =====
 export interface AdminUser {
   id: string;
@@ -813,6 +845,28 @@ export async function adminGetMatches(token: string, limit = 50): Promise<{ matc
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;
+}
+
+export async function adminGetChatReports(
+  token: string,
+  status = 'open',
+  limit = 50,
+): Promise<{ reports: ChatReport[] }> {
+  return request<{ reports: ChatReport[] }>(`/admin/chat/reports?status=${encodeURIComponent(status)}&limit=${limit}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function adminReviewChatReport(
+  token: string,
+  reportId: string,
+  input: { status: 'reviewing' | 'resolved' | 'dismissed'; resolutionNote?: string },
+): Promise<{ report: ChatReport }> {
+  return request<{ report: ChatReport }>(`/admin/chat/reports/${encodeURIComponent(reportId)}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function adminResetElo(token: string, userId: string, elo: number): Promise<{ id: string; elo: number }> {
