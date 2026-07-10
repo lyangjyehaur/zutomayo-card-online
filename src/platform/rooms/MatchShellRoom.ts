@@ -45,6 +45,11 @@ function canLinkBoardgameMatch(profile: PlatformClientProfile | undefined): bool
   return profile.role === 'player' && profile.hasBoardgameCredentials === true;
 }
 
+function sameBoardgameMatchID(current: string | undefined, next: unknown): boolean {
+  if (!current) return true;
+  return optionalText(next, 128) === current;
+}
+
 export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; client: PlatformClient }> {
   private boardgameMatchID?: string;
   private conversationId?: string;
@@ -82,6 +87,9 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
   }
 
   onAuth(_client: PlatformClient, options: MatchShellRoomOptions, context: AuthContext): PlatformAuth {
+    if (!sameBoardgameMatchID(this.boardgameMatchID, options.boardgameMatchID)) {
+      throw new Error('Match shell access denied');
+    }
     const auth = authenticatePlatformClient(options, context);
     if (auth.role === 'player' && !hasValidBoardgamePlayerSeat(options)) {
       return { ...auth, role: 'spectator' };
@@ -157,6 +165,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
   }
 
   private async linkBoardgameMatch(boardgameMatchID: string): Promise<void> {
+    if (this.boardgameMatchID && this.boardgameMatchID !== boardgameMatchID) return;
     this.boardgameMatchID = boardgameMatchID;
     this.status = 'ready';
     await this.refreshMetadata();

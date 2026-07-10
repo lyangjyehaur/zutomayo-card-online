@@ -23,7 +23,13 @@ describe('match shell room', () => {
     await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
     const auth = room.onAuth(
       {} as PlatformClient,
-      { userId: 'guest:player', displayName: 'Player', role: 'player', boardgamePlayerID: '0' },
+      {
+        userId: 'guest:player',
+        displayName: 'Player',
+        role: 'player',
+        boardgameMatchID: 'bgio-match-1',
+        boardgamePlayerID: '0',
+      },
       authContext(),
     );
     expect(auth.role).toBe('spectator');
@@ -34,7 +40,7 @@ describe('match shell room', () => {
       send: vi.fn(),
     } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
     room.clients.push(client);
-    await room.onJoin(client, { boardgamePlayerID: '0' });
+    await room.onJoin(client, { boardgameMatchID: 'bgio-match-1', boardgamePlayerID: '0' });
 
     expect(client.userData).toEqual(
       expect.objectContaining({
@@ -65,6 +71,7 @@ describe('match shell room', () => {
         userId: 'guest:player',
         displayName: 'Player',
         role: 'player',
+        boardgameMatchID: 'bgio-match-1',
         boardgamePlayerID: '0',
         hasBoardgameCredentials: true,
       },
@@ -78,7 +85,11 @@ describe('match shell room', () => {
       send: vi.fn(),
     } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
     room.clients.push(client);
-    await room.onJoin(client, { boardgamePlayerID: '0', hasBoardgameCredentials: true });
+    await room.onJoin(client, {
+      boardgameMatchID: 'bgio-match-1',
+      boardgamePlayerID: '0',
+      hasBoardgameCredentials: true,
+    });
 
     expect(client.userData).toEqual(
       expect.objectContaining({
@@ -87,6 +98,30 @@ describe('match shell room', () => {
         hasBoardgameCredentials: true,
       }),
     );
+  });
+
+  it('rejects joins that target a different boardgame match shell', async () => {
+    const room = new MatchShellRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+
+    expect(() =>
+      room.onAuth(
+        {} as PlatformClient,
+        {
+          userId: 'u_player',
+          displayName: 'Player',
+          role: 'player',
+          boardgameMatchID: 'bgio-match-2',
+          boardgamePlayerID: '0',
+          hasBoardgameCredentials: true,
+        },
+        authContext(),
+      ),
+    ).toThrow('Match shell access denied');
   });
 
   it('demotes duplicate boardgame player seats from different users', async () => {
@@ -107,7 +142,11 @@ describe('match shell room', () => {
       send: vi.fn(),
     } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
     room.clients.push(existingClient);
-    await room.onJoin(existingClient, { boardgamePlayerID: '0', hasBoardgameCredentials: true });
+    await room.onJoin(existingClient, {
+      boardgameMatchID: 'bgio-match-1',
+      boardgamePlayerID: '0',
+      hasBoardgameCredentials: true,
+    });
 
     const duplicateAuth = room.onAuth(
       {} as PlatformClient,
@@ -115,6 +154,7 @@ describe('match shell room', () => {
         userId: 'guest:duplicate',
         displayName: 'Duplicate',
         role: 'player',
+        boardgameMatchID: 'bgio-match-1',
         boardgamePlayerID: '0',
         hasBoardgameCredentials: true,
       },
@@ -153,7 +193,11 @@ describe('match shell room', () => {
     } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
 
     room.clients.push(oldClient);
-    await room.onJoin(oldClient, { boardgamePlayerID: '0', hasBoardgameCredentials: true });
+    await room.onJoin(oldClient, {
+      boardgameMatchID: 'bgio-match-1',
+      boardgamePlayerID: '0',
+      hasBoardgameCredentials: true,
+    });
 
     const reconnectAuth = room.onAuth(
       {} as PlatformClient,
@@ -161,6 +205,7 @@ describe('match shell room', () => {
         userId: 'guest:player',
         displayName: 'Player',
         role: 'player',
+        boardgameMatchID: 'bgio-match-1',
         boardgamePlayerID: '0',
         hasBoardgameCredentials: true,
       },
@@ -169,7 +214,11 @@ describe('match shell room', () => {
     expect(reconnectAuth.role).toBe('player');
 
     room.clients.push(newClient);
-    await room.onJoin(newClient, { boardgamePlayerID: '0', hasBoardgameCredentials: true });
+    await room.onJoin(newClient, {
+      boardgameMatchID: 'bgio-match-1',
+      boardgamePlayerID: '0',
+      hasBoardgameCredentials: true,
+    });
 
     expect(oldClient.userData).toEqual(
       expect.objectContaining({
@@ -194,7 +243,7 @@ describe('match shell room', () => {
     );
   });
 
-  it('only lets credentialed players or moderators link boardgame match ids', async () => {
+  it('only lets credentialed players or moderators link the boardgame match id once', async () => {
     const room = new MatchShellRoom();
     const handlers = new Map<string, LinkBoardgameMatchHandler>();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -247,6 +296,13 @@ describe('match shell room', () => {
         status: 'ready',
       }),
     });
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+    linkBoardgameMatch?.({ userData: credentialedPlayer } as PlatformClient, { boardgameMatchID: 'bgio-match-2' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchLinked', expect.anything());
+    expect(setMatchmaking).not.toHaveBeenCalled();
   });
 
   it('ignores chat preview messages from unauthenticated clients', async () => {
