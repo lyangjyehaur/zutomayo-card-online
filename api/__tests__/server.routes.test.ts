@@ -224,10 +224,31 @@ function createAdminJwt() {
   return `${input}.${signature}`;
 }
 
+function createUserJwt(userId = 'u_test') {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({ sub: userId, userId, iat: now, exp: now + 60 * 60 });
+  const input = `${header}.${payload}`;
+  const signature = crypto
+    .createHmac('sha256', process.env.JWT_SECRET || '')
+    .update(input)
+    .digest('base64url');
+  return `${input}.${signature}`;
+}
+
 function adminHeaders(headers: Record<string, string> = {}) {
   return {
     authorization: `Bearer ${createAdminJwt()}`,
     ...headers,
+  };
+}
+
+function userUnsafeHeaders(userId = 'u_test') {
+  const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+  return {
+    authorization: `Bearer ${createUserJwt(userId)}`,
+    cookie: `zutomayo_csrf=${csrfToken}`,
+    'x-csrf-token': csrfToken,
   };
 }
 
@@ -526,6 +547,68 @@ describe('server routes', () => {
     it('GET /api/matchmaking/status returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/matchmaking/status');
       expect(res.statusCode).toBe(401);
+    });
+  });
+
+  describe('chat routes', () => {
+    it('POST /api/chat/messages/:messageId/translate returns 202 when translation is queued', async () => {
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'chat_msg_1',
+              conversation_id: 'match:bgio-match-1',
+              content: 'こんにちは',
+              source_language: 'ja',
+              type: 'match',
+              subject_id: 'bgio-match-1',
+            },
+          ],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              message_id: 'chat_msg_1',
+              target_language: 'en',
+              translated_content: '',
+              provider: 'unconfigured',
+              model: '',
+              status: 'pending',
+              created_at: '2026-07-10T00:00:02.000Z',
+              updated_at: '2026-07-10T00:00:02.000Z',
+            },
+          ],
+          rowCount: 1,
+        });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/chat/messages/chat_msg_1/translate',
+        { targetLanguage: 'en' },
+        userUnsafeHeaders('u_reader'),
+      );
+
+      expect(res.statusCode).toBe(202);
+      const body = parseBody(res) as { translation: Record<string, unknown>; cached: boolean };
+      expect(body.cached).toBe(false);
+      expect(body.translation).toEqual(
+        expect.objectContaining({
+          messageId: 'chat_msg_1',
+          targetLanguage: 'en',
+          provider: 'unconfigured',
+          status: 'pending',
+        }),
+      );
+      expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO chat_message_translations'), [
+        'chat_msg_1',
+        'en',
+        '',
+        'unconfigured',
+        '',
+        'pending',
+      ]);
     });
   });
 
