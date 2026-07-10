@@ -586,6 +586,115 @@ describe('server routes', () => {
   });
 
   describe('chat routes', () => {
+    it('POST /api/chat/messages persists every durable conversation type through the same route', async () => {
+      const cases = [
+        {
+          body: { conversationType: 'match', subjectId: 'bgio-match-1', authorRole: 'player' },
+          expectedKey: 'match:bgio-match-1',
+          expectedType: 'match',
+          expectedSubjectId: 'bgio-match-1',
+        },
+        {
+          body: { conversationType: 'room', subjectId: 'ROOM42', authorRole: 'player' },
+          expectedKey: 'room:ROOM42',
+          expectedType: 'room',
+          expectedSubjectId: 'ROOM42',
+        },
+        {
+          body: { conversationType: 'global', subjectId: 'online-lobby', authorRole: 'player' },
+          expectedKey: 'global:online-lobby',
+          expectedType: 'global',
+          expectedSubjectId: 'online-lobby',
+        },
+        {
+          body: { conversationType: 'direct', subjectId: 'v1:u_friend:u_reader', authorRole: 'player' },
+          expectedKey: 'direct:v1:u_friend:u_reader',
+          expectedType: 'direct',
+          expectedSubjectId: 'v1:u_friend:u_reader',
+        },
+      ];
+
+      for (const testCase of cases) {
+        mockQuery.mockReset();
+        mockQuery
+          .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: testCase.expectedKey,
+                type: testCase.expectedType,
+                subject_id: testCase.expectedSubjectId,
+                title: '',
+                status: 'active',
+                created_at: '2026-07-10T00:00:00.000Z',
+                updated_at: '2026-07-10T00:00:00.000Z',
+              },
+            ],
+            rowCount: 1,
+          })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: `chat_msg_${testCase.expectedType}`,
+                conversation_id: testCase.expectedKey,
+                author_user_id: 'u_reader',
+                author_display_name: 'Reader',
+                author_role: testCase.body.authorRole,
+                content: `hello ${testCase.expectedType}`,
+                source_language: 'en',
+                moderation_status: 'visible',
+                moderation_reason: '',
+                metadata: { transport: 'api' },
+                created_at: '2026-07-10T00:00:01.000Z',
+                edited_at: null,
+                deleted_at: null,
+              },
+            ],
+            rowCount: 1,
+          })
+          .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+        const res = await sendRequest(
+          'POST',
+          '/api/chat/messages',
+          {
+            ...testCase.body,
+            content: `hello ${testCase.expectedType}`,
+            authorDisplayName: 'Reader',
+            sourceLanguage: 'en',
+          },
+          userUnsafeHeaders('u_reader'),
+        );
+
+        expect(res.statusCode).toBe(201);
+        const body = parseBody(res) as { conversation: Record<string, unknown>; message: Record<string, unknown> };
+        expect(body.conversation).toEqual(
+          expect.objectContaining({
+            id: testCase.expectedKey,
+            type: testCase.expectedType,
+            subjectId: testCase.expectedSubjectId,
+          }),
+        );
+        expect(body.message).toEqual(
+          expect.objectContaining({
+            conversationId: testCase.expectedKey,
+            authorUserId: 'u_reader',
+            content: `hello ${testCase.expectedType}`,
+          }),
+        );
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO chat_conversations'), [
+          testCase.expectedKey,
+          testCase.expectedType,
+          testCase.expectedSubjectId,
+          '',
+        ]);
+        expect(mockQuery).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO chat_messages'),
+          expect.arrayContaining([testCase.expectedKey, 'u_reader', 'Reader', testCase.body.authorRole]),
+        );
+      }
+    });
+
     it('POST /api/chat/read marks every durable conversation type through the same route', async () => {
       const cases = [
         {
