@@ -28,6 +28,12 @@ function boardgamePlayerIDFromOptions(options: MatchShellRoomOptions, role: Plat
   return options.boardgamePlayerID;
 }
 
+function hasValidBoardgamePlayerSeat(options: MatchShellRoomOptions): boolean {
+  return (
+    options.hasBoardgameCredentials === true && (options.boardgamePlayerID === '0' || options.boardgamePlayerID === '1')
+  );
+}
+
 function normalizeStatus(value: unknown, boardgameMatchID?: string): MatchShellStatus {
   if (value === 'waiting' || value === 'ready' || value === 'in_progress' || value === 'finished') return value;
   return boardgameMatchID ? 'ready' : 'waiting';
@@ -77,6 +83,9 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
 
   onAuth(_client: PlatformClient, options: MatchShellRoomOptions, context: AuthContext): PlatformAuth {
     const auth = authenticatePlatformClient(options, context);
+    if (auth.role === 'player' && !hasValidBoardgamePlayerSeat(options)) {
+      return { ...auth, role: 'spectator' };
+    }
     const currentPlayers = this.clients.filter((client) => client.userData?.role === 'player').length;
     if (auth.role === 'player' && currentPlayers >= this.maxPlayerSeats) {
       return { ...auth, role: 'spectator' };

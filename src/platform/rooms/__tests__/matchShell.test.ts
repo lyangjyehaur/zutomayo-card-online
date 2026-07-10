@@ -1,11 +1,94 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { AuthContext } from '@colyseus/core';
 import { MatchShellRoom } from '../MatchShellRoom';
 import type { ChatPreviewMessage, LinkBoardgameMatchMessage, PlatformClient, PlatformClientProfile } from '../types';
 
 type ChatPreviewHandler = (client: PlatformClient, message: ChatPreviewMessage) => void;
 type LinkBoardgameMatchHandler = (client: PlatformClient, message: LinkBoardgameMatchMessage) => void;
 
+function authContext(): AuthContext {
+  return {
+    headers: new Headers(),
+    ip: '127.0.0.1',
+  };
+}
+
 describe('match shell room', () => {
+  it('demotes player joins without boardgame credentials to spectator presence', async () => {
+    const room = new MatchShellRoom();
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    const auth = room.onAuth(
+      {} as PlatformClient,
+      { userId: 'guest:player', displayName: 'Player', role: 'player', boardgamePlayerID: '0' },
+      authContext(),
+    );
+    expect(auth.role).toBe('spectator');
+
+    const client = {
+      sessionId: 'session_player',
+      auth,
+      send: vi.fn(),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    room.clients.push(client);
+    await room.onJoin(client, { boardgamePlayerID: '0' });
+
+    expect(client.userData).toEqual(
+      expect.objectContaining({
+        role: 'spectator',
+        boardgamePlayerID: undefined,
+        hasBoardgameCredentials: false,
+      }),
+    );
+    expect(broadcast).toHaveBeenCalledWith(
+      'presence',
+      expect.objectContaining({
+        players: 0,
+        spectators: 1,
+      }),
+    );
+  });
+
+  it('keeps credentialed boardgame seats as player presence', async () => {
+    const room = new MatchShellRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    const auth = room.onAuth(
+      {} as PlatformClient,
+      {
+        userId: 'guest:player',
+        displayName: 'Player',
+        role: 'player',
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+      },
+      authContext(),
+    );
+    expect(auth.role).toBe('player');
+
+    const client = {
+      sessionId: 'session_player',
+      auth,
+      send: vi.fn(),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    room.clients.push(client);
+    await room.onJoin(client, { boardgamePlayerID: '0', hasBoardgameCredentials: true });
+
+    expect(client.userData).toEqual(
+      expect.objectContaining({
+        role: 'player',
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+      }),
+    );
+  });
+
   it('only lets credentialed players or moderators link boardgame match ids', async () => {
     const room = new MatchShellRoom();
     const handlers = new Map<string, LinkBoardgameMatchHandler>();
