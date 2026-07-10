@@ -1,12 +1,13 @@
 # Deployment
 
-Production deployment uses [docker-compose.yml](../docker-compose.yml) with four services:
+Production deployment uses [docker-compose.yml](../docker-compose.yml) with six services:
 
 - `postgres`: PostgreSQL 16 (`postgres:16-alpine`) database. Shared data layer for both boardgame.io match state (`bjg_matches` table) and API data (users/decks/matches). Healthcheck: `pg_isready`.
 - `redis`: Redis 7 (`redis:7-alpine`, `appendonly yes`, `maxmemory-policy allkeys-lru`). Powers boardgame.io PubSub, Socket.IO redis-adapter, matchmaking queue, and rate-limit counters. Healthcheck: `redis-cli ping`.
 - `migrate`: One-shot schema migration service (uses the `builder` Docker stage). Runs `npm run db:migrate` via [node-pg-migrate](https://github.com/salsita/node-pg-migrate) before `api` starts. Exits `0` on success; `api` waits via `depends_on: service_completed_successfully`.
 - `game`: boardgame.io server, built React app, static card/admin assets, and `/api/*` proxy. Persists match state via `PostgresAdapter` and broadcasts cross-node via `RedisPubSub` + `@socket.io/redis-adapter`.
 - `api`: REST API service with PostgreSQL + Redis persistence. Uses `pg.Pool` for users/decks/matches and Redis for the matchmaking queue (sorted set + Lua atomic pairing) and rate limit (`INCR` + `EXPIRE`).
+- `platform`: Colyseus platform service for lobby presence, quick matchmaking, custom-room lifecycle, invitations, spectator presence, and realtime room coordination. Uses Redis driver/presence in Compose and PostgreSQL-backed friend lookup.
 
 Target host: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
 
@@ -18,19 +19,20 @@ Target host: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
 
 ## Ports / 連接埠
 
-| Port   | Service | Purpose                                                          |
-| ------ | ------- | ---------------------------------------------------------------- |
-| `3000` | `game`  | Browser app, boardgame.io HTTP routes, Socket.IO, `/api/*` proxy |
-| `3001` | `api`   | Direct REST API access                                           |
+| Port   | Service    | Purpose                                                          |
+| ------ | ---------- | ---------------------------------------------------------------- |
+| `3000` | `game`     | Browser app, boardgame.io HTTP routes, Socket.IO, `/api/*` proxy |
+| `3001` | `api`      | Direct REST API access                                           |
+| `3002` | `platform` | Colyseus websocket rooms and health checks                       |
 
 Users should normally open `http://<host>:3000`.
 
 PostgreSQL (`5432`) and Redis (`6379`) are intentionally not published to the host by the default Compose file. They
-are reachable only on the Compose network by `game` and `api`.
+are reachable only on the Compose network by `game`, `api`, and `platform`.
 
 ## Compose Setup / Compose 設定
 
-Start or rebuild all four services:
+Start or rebuild all six services:
 
 ```bash
 docker compose up -d --build
@@ -39,7 +41,7 @@ docker compose up -d --build
 Watch logs:
 
 ```bash
-docker compose logs -f game api
+docker compose logs -f game api platform
 ```
 
 Stop services:
@@ -87,18 +89,19 @@ cp .env.example .env
 
 Frontend build-time variables (baked into the bundle at `vite build`):
 
-| Variable                          | Default              | Notes                                                                                                                            |
-| --------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_API_URL`                    | `/api`               | API base used by [src/api/client.ts](../src/api/client.ts).                                                                      |
-| `VITE_APP_VERSION`                | `APP_VERSION`        | Usually set automatically from `APP_VERSION` by the Docker build.                                                                |
-| `VITE_APP_BUILD_ID`               | `APP_BUILD_ID`       | Must match the `game` runtime `APP_BUILD_ID`, otherwise clients are asked to reload before online play.                          |
-| `VITE_GAME_RULES_VERSION`         | `GAME_RULES_VERSION` | Must match the `game` runtime `GAME_RULES_VERSION`.                                                                              |
-| `VITE_UMAMI_WEBSITE_ID`           | empty                | Umami website ID. Set from deployment secrets; falls back to `VITE_UMAMI_SECONDARY_WEBSITE_ID` for gallery config compatibility. |
-| `VITE_UMAMI_SCRIPT_URL`           | empty                | Umami analytics script URL. Set from deployment secrets. Analytics is disabled when this or the website ID is empty.             |
-| `VITE_UMAMI_HOST_URL`             | empty                | Optional Umami host URL override. Usually unnecessary when loading the standard Umami script directly.                           |
-| `VITE_UMAMI_TELEMETRY_SCRIPT_URL` | empty                | Optional replay / telemetry script URL. Leave empty for standard Umami analytics only.                                           |
-| `VITE_UMAMI_SECONDARY_WEBSITE_ID` | empty                | Backward-compatible alias used by `zutumayo-gallery`.                                                                            |
-| `VITE_UMAMI_SECONDARY_HOST_URL`   | empty                | Backward-compatible host URL alias used by `zutumayo-gallery`.                                                                   |
+| Variable                          | Default              | Notes                                                                                                                                                     |
+| --------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_URL`                    | `/api`               | API base used by [src/api/client.ts](../src/api/client.ts).                                                                                               |
+| `VITE_PLATFORM_URL`               | derived              | Optional Colyseus endpoint. Leave empty for same-host production or set an explicit `ws://`/`wss://` URL when the platform service is exposed separately. |
+| `VITE_APP_VERSION`                | `APP_VERSION`        | Usually set automatically from `APP_VERSION` by the Docker build.                                                                                         |
+| `VITE_APP_BUILD_ID`               | `APP_BUILD_ID`       | Must match the `game` runtime `APP_BUILD_ID`, otherwise clients are asked to reload before online play.                                                   |
+| `VITE_GAME_RULES_VERSION`         | `GAME_RULES_VERSION` | Must match the `game` runtime `GAME_RULES_VERSION`.                                                                                                       |
+| `VITE_UMAMI_WEBSITE_ID`           | empty                | Umami website ID. Set from deployment secrets; falls back to `VITE_UMAMI_SECONDARY_WEBSITE_ID` for gallery config compatibility.                          |
+| `VITE_UMAMI_SCRIPT_URL`           | empty                | Umami analytics script URL. Set from deployment secrets. Analytics is disabled when this or the website ID is empty.                                      |
+| `VITE_UMAMI_HOST_URL`             | empty                | Optional Umami host URL override. Usually unnecessary when loading the standard Umami script directly.                                                    |
+| `VITE_UMAMI_TELEMETRY_SCRIPT_URL` | empty                | Optional replay / telemetry script URL. Leave empty for standard Umami analytics only.                                                                    |
+| `VITE_UMAMI_SECONDARY_WEBSITE_ID` | empty                | Backward-compatible alias used by `zutumayo-gallery`.                                                                                                     |
+| `VITE_UMAMI_SECONDARY_HOST_URL`   | empty                | Backward-compatible host URL alias used by `zutumayo-gallery`.                                                                                            |
 
 > Admin authentication is no longer handled in the frontend. The `VITE_ADMIN_PASSWORD` build-time variable has been removed; admin login now goes through `POST /api/admin/login` backed by the `ADMIN_PASSWORD` environment variable on the `api` service.
 
@@ -127,21 +130,45 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `CHAT_TRANSLATION_MODEL`      | empty                  | Optional model label sent to the provider and stored with translation rows.                                                                                                                                    |
 | `CHAT_TRANSLATION_TIMEOUT_MS` | `10000`                | Provider request timeout, clamped between 1s and 60s.                                                                                                                                                          |
 
+### `platform`
+
+| Variable                | Default                                   | Notes                                                                                                                                |
+| ----------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `PLATFORM_PORT`         | `3002`                                    | Colyseus platform service port inside the container.                                                                                 |
+| `NODE_ENV`              | `production` in Compose                   | Runtime mode; also controls the default Redis mode when `PLATFORM_REDIS_MODE` is unset.                                              |
+| `PG_HOST`               | `postgres`                                | PostgreSQL host used by `PLATFORM_FRIEND_STORE=postgres` for server-side friend presence lookup.                                     |
+| `PG_PORT`               | `5432`                                    | PostgreSQL port.                                                                                                                     |
+| `PG_USER`               | `zutomayo`                                | PostgreSQL user.                                                                                                                     |
+| `PG_PASSWORD`           | required                                  | PostgreSQL password. Required in Compose because friend presence lookup is backed by `user_friends`.                                 |
+| `PG_DATABASE`           | `zutomayo`                                | PostgreSQL database name.                                                                                                            |
+| `REDIS_URL`             | `redis://redis:6379`                      | Redis connection URL for Colyseus `RedisPresence` and `RedisDriver`. Use `redis://localhost:6379` for local dev.                     |
+| `REDIS_DB`              | `0`                                       | Redis DB index shared with other online coordination services.                                                                       |
+| `PLATFORM_REDIS_MODE`   | `redis` in production, `memory` otherwise | `memory` keeps local development dependency-light; `redis` enables multi-instance room discovery and presence in Compose/production. |
+| `PLATFORM_FRIEND_STORE` | `postgres` in Compose, auto otherwise     | `postgres` resolves friend presence subscriptions from `user_friends`; `none` disables friend lookup for local development.          |
+| `PLATFORM_PG_POOL_MAX`  | `PG_POOL_MAX` or `5`                      | Optional pool size override for platform friend lookup.                                                                              |
+| `APP_VERSION`           | `package.json` version                    | Release version used in platform logs/Sentry release metadata.                                                                       |
+| `APP_BUILD_ID`          | `APP_VERSION`                             | Build identifier; keep it aligned with `game` and `api`.                                                                             |
+| `GAME_RULES_VERSION`    | `APP_VERSION`                             | Rules compatibility version; keep it aligned with `game` and `api`.                                                                  |
+| `SENTRY_DSN`            | empty                                     | Backend DSN. Leave empty to disable platform error reporting.                                                                        |
+| `LOG_LEVEL`             | `info`                                    | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                      |
+
+The platform service exposes `/health` and `/ready` over HTTP on `PLATFORM_PORT`; Colyseus websocket room traffic uses the same port.
+
 ## Observability / 可觀測性
 
 ### Structured Logging
 
-Both `game` and `api` services emit structured JSON logs via [pino](https://github.com/pinojs/pino). Every request is assigned an `X-Request-Id` (UUID v4, or forwarded from the `x-request-id` header) and a child logger with `requestId` bound, so all log lines within a request share the same id for easy correlation.
+`game`, `api`, and `platform` services emit structured JSON logs via [pino](https://github.com/pinojs/pino). `game` and `api` bind HTTP requests to an `X-Request-Id`; `platform` logs Colyseus service lifecycle and room-level events with the same deployment metadata.
 
 Sensitive fields (`authorization` headers, cookies, passwords, tokens) are redacted automatically. Adjust the log level with `LOG_LEVEL` (default `info`).
 
 ```bash
-docker compose logs -f game api | jq .
+docker compose logs -f game api platform | jq .
 ```
 
 ### Prometheus Metrics
 
-Both services expose a `/metrics` endpoint in the Prometheus text format:
+The `game` and `api` services expose a `/metrics` endpoint in the Prometheus text format:
 
 | Endpoint                     | Service | Scrape config example    |
 | ---------------------------- | ------- | ------------------------ |
