@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import crypto from 'node:crypto';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 // ===== Environment setup (must happen before requiring server.cjs) =====
@@ -205,6 +206,37 @@ function parseBody(res: MockRes): Record<string, unknown> | string {
   } catch {
     return res._body;
   }
+}
+
+function base64urlJson(value: Record<string, unknown>) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function createAdminJwt() {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({ admin: true, iat: now, exp: now + 60 * 60 });
+  const input = `${header}.${payload}`;
+  const signature = crypto
+    .createHmac('sha256', process.env.JWT_SECRET || '')
+    .update(input)
+    .digest('base64url');
+  return `${input}.${signature}`;
+}
+
+function adminHeaders(headers: Record<string, string> = {}) {
+  return {
+    authorization: `Bearer ${createAdminJwt()}`,
+    ...headers,
+  };
+}
+
+function adminUnsafeHeaders() {
+  const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+  return adminHeaders({
+    cookie: `zutomayo_csrf=${csrfToken}`,
+    'x-csrf-token': csrfToken,
+  });
 }
 
 // ===== Tests =====
@@ -474,6 +506,306 @@ describe('server routes', () => {
     it('GET /api/matchmaking/status returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/matchmaking/status');
       expect(res.statusCode).toBe(401);
+    });
+  });
+
+  describe('admin chat moderation routes', () => {
+    it('GET /api/admin/chat/reports returns snapshotted message evidence', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'chat_report_1',
+            message_id: 'chat_msg_1',
+            conversation_id: 'match:bgio-match-1',
+            reporter_user_id: 'u_2',
+            reason: 'spam',
+            note: '',
+            status: 'open',
+            reviewer_user_id: null,
+            resolution_note: '',
+            created_at: '2026-07-10T00:00:03.000Z',
+            reviewed_at: null,
+            reported_message_content: 'snapshotted text',
+            reported_message_author_user_id: 'u_1',
+            reported_message_author_display_name: 'Alice at report time',
+            reported_message_author_role: 'player',
+            reported_message_moderation_status: 'pending_review',
+            reported_message_created_at: '2026-07-10T00:00:01.000Z',
+            message_content: 'edited later',
+            message_author_user_id: 'u_9',
+            message_author_display_name: 'Changed',
+            message_author_role: 'spectator',
+            message_moderation_status: 'visible',
+            message_created_at: '2026-07-10T00:00:09.000Z',
+            sanction_id: 'chat_sanction_1',
+            sanction_target_user_id: 'u_1',
+            sanction_type: 'chat_mute',
+            sanction_status: 'active',
+            sanction_reason: 'chat_report:spam',
+            sanction_source_report_id: 'chat_report_1',
+            sanction_source_message_id: 'chat_msg_1',
+            sanction_conversation_id: 'match:bgio-match-1',
+            sanction_created_by_user_id: 'admin',
+            sanction_created_at: '2026-07-10T00:00:03.000Z',
+            sanction_expires_at: '2026-07-11T00:00:03.000Z',
+            sanction_revoked_at: null,
+            sanction_revoked_by_user_id: null,
+            sanction_revocation_reason: '',
+          },
+        ],
+        rowCount: 1,
+      });
+
+      const res = await sendRequest('GET', '/api/admin/chat/reports?status=open&limit=10', null, adminHeaders());
+
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as { reports: Array<{ message: Record<string, unknown> }> };
+      expect(body.reports[0]?.message).toEqual(
+        expect.objectContaining({
+          content: 'snapshotted text',
+          authorUserId: 'u_1',
+          authorDisplayName: 'Alice at report time',
+          moderationStatus: 'pending_review',
+          activeSanction: expect.objectContaining({
+            id: 'chat_sanction_1',
+            targetUserId: 'u_1',
+          }),
+        }),
+      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('LEFT JOIN chat_messages'), ['open', 10]);
+    });
+
+    it('GET /api/admin/chat/conversations/:conversationId/messages returns full evidence context', async () => {
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'match:bgio-match-1',
+              type: 'match',
+              subject_id: 'bgio-match-1',
+              title: 'Ranked match',
+              status: 'active',
+              created_at: '2026-07-10T00:00:00.000Z',
+              updated_at: '2026-07-10T00:00:05.000Z',
+            },
+          ],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'chat_msg_deleted',
+              conversation_id: 'match:bgio-match-1',
+              author_user_id: 'u_3',
+              author_display_name: 'Carol',
+              author_role: 'spectator',
+              content: 'deleted evidence',
+              source_language: '',
+              moderation_status: 'deleted',
+              moderation_reason: 'manual_remove',
+              metadata: {},
+              created_at: '2026-07-10T00:00:03.000Z',
+              edited_at: null,
+              deleted_at: '2026-07-10T00:00:04.000Z',
+            },
+            {
+              id: 'chat_msg_blocked',
+              conversation_id: 'match:bgio-match-1',
+              author_user_id: 'u_1',
+              author_display_name: 'Alice',
+              author_role: 'player',
+              content: 'blocked evidence',
+              source_language: '',
+              moderation_status: 'blocked',
+              moderation_reason: 'blocked_keyword',
+              metadata: {},
+              created_at: '2026-07-10T00:00:01.000Z',
+              edited_at: null,
+              deleted_at: null,
+            },
+          ],
+          rowCount: 2,
+        });
+
+      const res = await sendRequest(
+        'GET',
+        '/api/admin/chat/conversations/match%3Abgio-match-1/messages?limit=20',
+        null,
+        adminHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as {
+        conversation: Record<string, unknown>;
+        messages: Array<Record<string, unknown>>;
+      };
+      expect(body.conversation).toEqual(
+        expect.objectContaining({ id: 'match:bgio-match-1', subjectId: 'bgio-match-1' }),
+      );
+      expect(body.messages).toEqual([
+        expect.objectContaining({ id: 'chat_msg_blocked', moderationStatus: 'blocked' }),
+        expect.objectContaining({ id: 'chat_msg_deleted', moderationStatus: 'deleted' }),
+      ]);
+      expect(mockQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.not.stringContaining("moderation_status IN ('visible', 'pending_review')"),
+        ['match:bgio-match-1', 20],
+      );
+    });
+
+    it('POST /api/admin/chat/sanctions creates a durable mute sanction', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }).mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'chat_sanction_1',
+            target_user_id: 'u_1',
+            type: 'chat_mute',
+            status: 'active',
+            reason: 'abuse',
+            source_report_id: 'chat_report_1',
+            source_message_id: 'chat_msg_1',
+            conversation_id: 'match:bgio-match-1',
+            created_by_user_id: 'admin',
+            created_at: '2026-07-10T00:00:03.000Z',
+            expires_at: '2026-07-10T01:00:03.000Z',
+            revoked_at: null,
+            revoked_by_user_id: null,
+            revocation_reason: '',
+          },
+        ],
+        rowCount: 1,
+      });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/chat/sanctions',
+        {
+          targetUserId: 'u_1',
+          type: 'chat_mute',
+          durationMinutes: 60,
+          reason: '<abuse>',
+          sourceReportId: 'chat_report_1',
+          sourceMessageId: 'chat_msg_1',
+          conversationId: 'match:bgio-match-1',
+        },
+        adminUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(201);
+      const body = parseBody(res) as { sanction: Record<string, unknown> };
+      expect(body.sanction).toEqual(
+        expect.objectContaining({
+          id: 'chat_sanction_1',
+          targetUserId: 'u_1',
+          reason: 'abuse',
+          sourceReportId: 'chat_report_1',
+        }),
+      );
+      expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('UPDATE chat_user_sanctions'), [
+        'u_1',
+        'admin',
+        'chat_mute',
+      ]);
+      expect(mockQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('INSERT INTO chat_user_sanctions'),
+        expect.arrayContaining([
+          'u_1',
+          'chat_mute',
+          'abuse',
+          'chat_report_1',
+          'chat_msg_1',
+          'match:bgio-match-1',
+          'admin',
+        ]),
+      );
+    });
+
+    it('DELETE /api/admin/chat/sanctions/:sanctionId revokes an active mute', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'chat_sanction_1',
+            target_user_id: 'u_1',
+            type: 'chat_mute',
+            status: 'revoked',
+            reason: 'abuse',
+            source_report_id: 'chat_report_1',
+            source_message_id: 'chat_msg_1',
+            conversation_id: 'match:bgio-match-1',
+            created_by_user_id: 'admin',
+            created_at: '2026-07-10T00:00:03.000Z',
+            expires_at: '2026-07-10T01:00:03.000Z',
+            revoked_at: '2026-07-10T00:30:03.000Z',
+            revoked_by_user_id: 'admin',
+            revocation_reason: 'manual_revoke',
+          },
+        ],
+        rowCount: 1,
+      });
+
+      const res = await sendRequest('DELETE', '/api/admin/chat/sanctions/chat_sanction_1', null, adminUnsafeHeaders());
+
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as { sanction: Record<string, unknown> };
+      expect(body.sanction).toEqual(
+        expect.objectContaining({
+          id: 'chat_sanction_1',
+          status: 'revoked',
+          revokedByUserId: 'admin',
+          revocationReason: 'manual_revoke',
+        }),
+      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_user_sanctions'), [
+        'chat_sanction_1',
+        'admin',
+        'manual_revoke',
+      ]);
+    });
+
+    it('POST /api/admin/chat/reports/:reportId reviews a chat report', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'chat_report_1',
+            message_id: 'chat_msg_1',
+            conversation_id: 'match:bgio-match-1',
+            reporter_user_id: 'u_2',
+            reason: 'spam',
+            note: '',
+            status: 'resolved',
+            reviewer_user_id: 'admin',
+            resolution_note: 'handled',
+            created_at: '2026-07-10T00:00:03.000Z',
+            reviewed_at: '2026-07-10T00:30:03.000Z',
+          },
+        ],
+        rowCount: 1,
+      });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/chat/reports/chat_report_1',
+        { status: 'resolved', resolutionNote: '<handled>' },
+        adminUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as { report: Record<string, unknown> };
+      expect(body.report).toEqual(
+        expect.objectContaining({
+          id: 'chat_report_1',
+          status: 'resolved',
+          reviewerUserId: 'admin',
+          resolutionNote: 'handled',
+        }),
+      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_reports'), [
+        'chat_report_1',
+        'resolved',
+        'admin',
+        'handled',
+      ]);
     });
   });
 
