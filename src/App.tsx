@@ -385,8 +385,8 @@ function RouterShell() {
   const [serverDecks, setServerDecks] = useState<DeckResponse[]>([]);
   const [serverDeckError, setServerDeckError] = useState('');
   const [appResourcesReady, setAppResourcesReady] = useState(false);
-  // 卡牌資料是否已載入完成；未完成時禁用開局按鈕，避免空牌組崩潰。
-  const [cardsReady, setCardsReady] = useState(false);
+  // 卡牌資料載入狀態；失敗時保留可恢復的錯誤狀態，絕不把空卡池當成 ready。
+  const [cardResourceState, setCardResourceState] = useState<'loading' | 'ready' | 'error'>('loading');
   // 預設不選中任何牌組，玩家每次必須主動選擇才能開始遊戲。
   const [deck0Name, setDeck0Name] = useState('');
   const [deck1Name, setDeck1Name] = useState('');
@@ -450,32 +450,41 @@ function RouterShell() {
     void refreshServerDecks();
   }, [refreshServerDecks]);
 
+  const refreshCardResources = useCallback(async () => {
+    setCardResourceState('loading');
+    try {
+      const { refreshCards } = await import('./game/cards/loader');
+      const cards = await withBootTimeout(refreshCards());
+      setCardResourceState(cards && cards.length > 0 ? 'ready' : 'error');
+    } catch {
+      setCardResourceState('error');
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const boot = async () => {
-      const [{ loadConfigFromAPI, refreshCards }, { loadEffectI18nFromAPI }] = await Promise.all([
+      const [{ loadConfigFromAPI }, { loadEffectI18nFromAPI }] = await Promise.all([
         import('./game/cards/loader'),
         import('./game/cards/i18n'),
       ]);
       await Promise.allSettled([
-        withBootTimeout(refreshCards()),
+        refreshCardResources(),
         withBootTimeout(loadConfigFromAPI()),
         withBootTimeout(loadEffectI18nFromAPI()),
         withBootTimeout(waitForFonts(), 2500),
       ]);
       if (cancelled) return;
-      setCardsReady(true);
       setAppResourcesReady(true);
     };
     void boot().catch(() => {
       if (cancelled) return;
-      setCardsReady(true);
       setAppResourcesReady(true);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshCardResources]);
 
   const startAI = (difficulty: AIDifficulty) => {
     navigate('/play/ai', { state: { difficulty, autoStart: true } });
@@ -543,6 +552,8 @@ function RouterShell() {
 
   const deck0 = selectedDeckName(deck0Name, customDeckAvailable);
   const deck1 = aiOpponentDeckName(deck1Name);
+  const cardsReady = cardResourceState === 'ready';
+  const cardsLoadError = cardResourceState === 'error';
   // 新版沉浸頁面有自己的 AppHeader，不需要外層 NavBar 和 padding。
   const hideNav = isFullscreenRoute(location.pathname);
 
@@ -567,6 +578,8 @@ function RouterShell() {
                   onAuthChanged={refreshServerDecks}
                   serverDeckError={serverDeckError}
                   cardsReady={cardsReady}
+                  cardsLoadError={cardsLoadError}
+                  onRetryCards={refreshCardResources}
                 />
               }
             />
@@ -583,10 +596,23 @@ function RouterShell() {
                   onStartAI={startAI}
                   serverDeckError={serverDeckError}
                   cardsReady={cardsReady}
+                  cardsLoadError={cardsLoadError}
+                  onRetryCards={refreshCardResources}
                 />
               }
             />
-            <Route path="/play/ai" element={<AIGamePage deck0Name={deck0} deck1Name={deck1} />} />
+            <Route
+              path="/play/ai"
+              element={
+                <AIGamePage
+                  deck0Name={deck0}
+                  deck1Name={deck1}
+                  cardsReady={cardsReady}
+                  cardsLoadError={cardsLoadError}
+                  onRetryCards={refreshCardResources}
+                />
+              }
+            />
             <Route path="/tutorial" element={<TutorialGamePage />} />
             <Route
               path="/play/online/:matchID"

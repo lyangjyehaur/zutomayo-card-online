@@ -5168,6 +5168,32 @@ button.zone:focus-visible {
   gap: 0.65rem;
 }
 
+.pending-choice-panel {
+  max-height: min(72dvh, 36rem) !important;
+  overflow: hidden !important;
+}
+
+.pending-choice-panel .effect-order-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  max-height: none;
+  padding-right: 0.25rem;
+  overscroll-behavior: contain;
+}
+
+.pending-choice-error {
+  color: var(--vermilion) !important;
+  font-weight: 700;
+}
+
+.pending-choice-panel .pending-choice-footer {
+  position: sticky;
+  bottom: 0;
+  flex: 0 0 auto;
+  margin-top: 0;
+  background: color-mix(in oklch, var(--lacquer-deep) 98%, transparent);
+}
+
 .pending-choice-footer span {
   color: #d7d4c8;
   font-size: 0.78rem;

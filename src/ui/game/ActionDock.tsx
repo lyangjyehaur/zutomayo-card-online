@@ -12,7 +12,6 @@ export interface ActionDockProps {
   ready: boolean;
   canConfirm: boolean;
   cardsSet: number;
-  required: number;
   /** 已選中手牌可設置時，顯示「設置這張」次要行動 */
   canSetSelected: boolean;
   onSetSelected: () => void;
@@ -27,7 +26,6 @@ export function ActionDock({
   ready,
   canConfirm,
   cardsSet,
-  required,
   canSetSelected,
   onSetSelected,
   onConfirm,
@@ -57,7 +55,7 @@ export function ActionDock({
           disabled={!canConfirm}
           onClick={onConfirm}
         >
-          {t('board.confirmSet')} ({cardsSet}/{required})
+          {t('board.confirmSet')} ({cardsSet} {t('board.cardsUnit')})
         </button>
       ) : (
         <button type="button" className="actiondock-btn actiondock-btn-waiting" disabled>

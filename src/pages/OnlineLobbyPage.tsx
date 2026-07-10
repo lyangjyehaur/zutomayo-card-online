@@ -42,6 +42,8 @@ interface OnlineLobbyPageProps {
   onAuthChanged: () => void | Promise<void>;
   serverDeckError?: string;
   cardsReady: boolean;
+  cardsLoadError?: boolean;
+  onRetryCards?: () => void | Promise<void>;
 }
 
 type MatchmakingPhase = 'idle' | 'polling' | 'host-starting' | 'guest-joining' | 'done';
@@ -85,6 +87,8 @@ export function OnlineLobbyPage({
   onAuthChanged,
   serverDeckError,
   cardsReady,
+  cardsLoadError,
+  onRetryCards,
 }: OnlineLobbyPageProps) {
   const { showToast } = useToast();
   const locale = useLocale();
@@ -595,6 +599,16 @@ export function OnlineLobbyPage({
               {serverDeckError && (
                 <Alert tone="danger" role="alert">
                   {serverDeckError}
+                </Alert>
+              )}
+              {cardsLoadError && (
+                <Alert tone="danger" role="alert">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span>{t('game.cardsUnavailable')}</span>
+                    <Button type="button" variant="secondary" onClick={() => void onRetryCards?.()}>
+                      {t('common.retry')}
+                    </Button>
+                  </div>
                 </Alert>
               )}
 

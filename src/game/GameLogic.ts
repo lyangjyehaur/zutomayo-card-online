@@ -23,7 +23,12 @@ import type {
   TimingEvent,
   ZutomayoSetupData,
 } from './types';
-import { applyPendingChoice, choiceActionPayload, shouldPreserveChoiceSelectionCount } from './pendingChoices';
+import {
+  applyPendingChoice,
+  choiceActionPayload,
+  pendingChoiceSelectionError,
+  shouldPreserveChoiceSelectionCount,
+} from './pendingChoices';
 import { getChronosTimeForPosition, normalizeChronosPosition } from './chronos';
 import { getCardDef } from './cards/loader';
 import {
@@ -169,8 +174,12 @@ export function emptyModifiers(): CombatModifiers {
 }
 
 function drawUnchecked(player: PlayerState, count: number): void {
+  if (count < 0 || player.deck.length < count) {
+    throw new Error(`Cannot draw ${count} card(s) from a deck with ${player.deck.length} remaining.`);
+  }
   for (let i = 0; i < count; i++) {
-    const card = player.deck.shift()!;
+    const card = player.deck.shift();
+    if (!card) throw new Error('Deck became empty while drawing cards.');
     card.faceUp = true;
     player.hand.push(card);
   }
@@ -339,6 +348,7 @@ export function setupGame(
     cardsSetThisTurn: 0,
     rawAttack: 0,
   });
+  const matchStartedAt = Date.now();
   const G: GameState = {
     players: [makePlayer(), makePlayer()],
     step: 'janken',
@@ -347,7 +357,9 @@ export function setupGame(
     midnightRange: 0,
     chronosAtTurnStart: 0,
     turnNumber: 1,
-    turnStartTime: Date.now(),
+    matchStartedAt,
+    matchEndedAt: null,
+    turnStartTime: matchStartedAt,
     lastBattleResult: { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 },
     setCardsThisTurn: [[], []],
     pendingEffects: [[], []],
@@ -1177,6 +1189,7 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
   G.step = 'gameOver';
   G.winner = winner;
   G.gameoverReason = reason;
+  G.matchEndedAt ??= Date.now();
   G.ready = [true, true];
   clearPendingEffects(G);
   G.delayedEffects = [];
@@ -1458,10 +1471,7 @@ export function submitPendingChoice(
 ): boolean {
   const choice = G.pendingChoice;
   if (!choice || choice.player !== player) return false;
-  if (!Array.isArray(optionIds) || optionIds.length < choice.min || optionIds.length > choice.max) return false;
-  if (new Set(optionIds).size !== optionIds.length) return false;
-  const legal = new Set(choice.options.map((option) => option.id));
-  if (!optionIds.every((id) => legal.has(id))) return false;
+  if (pendingChoiceSelectionError(choice, optionIds)) return false;
 
   const playerState = G.players[player];
   const result = applyPendingChoice(

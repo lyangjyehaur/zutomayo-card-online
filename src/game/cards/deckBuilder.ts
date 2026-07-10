@@ -38,7 +38,7 @@ function shuffle<T>(arr: T[]): T[] {
  * 瀏覽器端 refreshCards() 是非同步，慢網路下可能在載入完成前就開局。
  */
 function assertCardsLoaded(): void {
-  if (!isCardsInitialized()) {
+  if (!isCardsInitialized() || getAllCardDefs().length === 0) {
     throw new Error('Cards not loaded yet. Call refreshCards() before starting a game.');
   }
 }
@@ -119,6 +119,7 @@ export function getPresetDeckNames(): string[] {
  * 每次呼叫都重新隨機，確保每次對戰牌組都不同。
  */
 export function randomDeck(): CardInstance[] {
+  assertCardsLoaded();
   const allCards = getAllCardDefs();
   const characters = allCards.filter((c) => c.type === 'Character');
   const others = allCards.filter((c) => c.type !== 'Character');

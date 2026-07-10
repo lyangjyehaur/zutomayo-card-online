@@ -1,9 +1,10 @@
 import type { CardInstance } from '../../game/types';
+import { t } from '../../i18n';
 import { CardView, type CardViewState } from './CardView';
 
 /**
  * HandZone — 玩家手牌。
- * - fan（桌面）：扇形排列，hover 抬起；click 直接執行（由 Board 決定語義）。
+ * - fan（桌面）：扇形排列，hover 抬起；click 先選中，再由行動列確認。
  * - strip（觸控/行動端）：橫向滑動列，不重疊、每張 >=44px 觸控目標；
  *   tap = 選中（Board 顯示行動列），不依賴 hover。
  * data-zone="hand" 為佈局/測試錨點、data-tut-card 為教學錨點。
@@ -32,7 +33,12 @@ export function HandZone({
 }: HandZoneProps) {
   const center = (cards.length - 1) / 2;
   return (
-    <div className={`handzone handzone-${variant}`} data-zone="hand" role="group" aria-label={`hand (${cards.length})`}>
+    <div
+      className={`handzone handzone-${variant}`}
+      data-zone="hand"
+      role="group"
+      aria-label={`${t('board.hand')} (${cards.length})`}
+    >
       {cards.map((card, index) => {
         const isAllowed = !allowedCardDefIds || allowedCardDefIds.includes(card.defId);
         const state: CardViewState = selectedIndex === index ? 'selected' : canAct && isAllowed ? 'playable' : 'idle';
@@ -56,7 +62,7 @@ export function HandZone({
               size={variant === 'fan' ? 'lg' : 'md'}
               imageContext="hand"
               state={state}
-              onActivate={canAct && isAllowed ? () => onCardTap(index) : undefined}
+              onActivate={() => onCardTap(index)}
               tutId={card.defId}
             />
           </div>

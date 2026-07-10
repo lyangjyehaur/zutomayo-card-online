@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AIGame } from '../components/AIGame';
-import { BackButton, Card, PageSectionHeader, Panel, ScrollPageLayout } from '../ui';
+import { Alert, BackButton, Button, Card, PageSectionHeader, Panel, ScrollPageLayout } from '../ui';
 import type { AIDifficulty } from '../game/ai';
 import { t } from '../i18n';
 
 interface AIGamePageProps {
   deck0Name?: string;
   deck1Name?: string;
+  cardsReady: boolean;
+  cardsLoadError?: boolean;
+  onRetryCards?: () => void | Promise<void>;
 }
 
 function isAIDifficulty(value: unknown): value is AIDifficulty {
@@ -25,7 +28,7 @@ function shouldAutoStart(state: unknown): boolean {
   return Boolean(state && typeof state === 'object' && (state as Record<string, unknown>).autoStart);
 }
 
-export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
+export function AIGamePage({ deck0Name, deck1Name, cardsReady, cardsLoadError, onRetryCards }: AIGamePageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const levels: { id: AIDifficulty; label: string; detail: string }[] = [
@@ -44,6 +47,29 @@ export function AIGamePage({ deck0Name, deck1Name }: AIGamePageProps) {
     setDifficulty(routeDifficulty);
     setActiveDifficulty(routeDifficulty);
   }, [location.state]);
+
+  if (!cardsReady) {
+    return (
+      <ScrollPageLayout>
+        <Panel className="mx-auto mt-20 max-w-xl" size="lg">
+          {cardsLoadError ? (
+            <Alert tone="danger" role="alert">
+              <div className="grid gap-4">
+                <span>{t('game.cardsUnavailable')}</span>
+                <Button type="button" variant="secondary" onClick={() => void onRetryCards?.()}>
+                  {t('common.retry')}
+                </Button>
+              </div>
+            </Alert>
+          ) : (
+            <p role="status" aria-live="polite">
+              {t('game.loading')}
+            </p>
+          )}
+        </Panel>
+      </ScrollPageLayout>
+    );
+  }
 
   if (activeDifficulty) {
     return (

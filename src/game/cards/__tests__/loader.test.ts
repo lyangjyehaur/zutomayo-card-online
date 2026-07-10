@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCardDef, initCards, refreshCards } from '../loader';
+import { randomDeck } from '../deckBuilder';
 
 describe('card loader', () => {
   beforeEach(() => {
@@ -36,5 +37,9 @@ describe('card loader', () => {
     expect(getCardDef('fallback_card')).toEqual(fallbackCards[0]);
     expect(fetchMock).toHaveBeenCalledWith('/api/cards', expect.objectContaining({ cache: 'no-store' }));
     expect(fetchMock).toHaveBeenCalledWith('/cards.json', expect.objectContaining({ cache: 'default' }));
+  });
+
+  it('refuses to build a random deck from an empty card pool', () => {
+    expect(() => randomDeck()).toThrow('Cards not loaded yet');
   });
 });

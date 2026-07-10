@@ -123,7 +123,15 @@ function zoneRect(
  * 規則狀態不等待視覺演出；本元件僅比較前後「已對該玩家公開」的畫面快照，
  * 以固定定位的卡牌複本補上飛牌與對戰節奏。這讓線上同步、重連、跳過動畫皆不影響權威狀態。
  */
-export function BattleAnimationLayer({ G, me }: { G: GameState; me: PlayerIndex }) {
+export function BattleAnimationLayer({
+  G,
+  me,
+  onAnimatingChange,
+}: {
+  G: GameState;
+  me: PlayerIndex;
+  onAnimatingChange?: (active: boolean) => void;
+}) {
   const previous = useRef<VisualSnapshot | null>(null);
   const previousRects = useRef<Map<string, Rect>>(new Map());
   const previousZoneRects = useRef<Map<string, Rect>>(new Map());
@@ -200,7 +208,12 @@ export function BattleAnimationLayer({ G, me }: { G: GameState; me: PlayerIndex 
       }
 
       // 回合結算時，保留正式卡牌在原位，改以複本向中央短衝，避免誤導規則上的場地移動。
-      if (next.turn > before.turn && next.battle.winner !== null) {
+      const battleChanged =
+        next.battle.winner !== before.battle.winner ||
+        next.battle.damage !== before.battle.damage ||
+        next.battle.winnerAttack !== before.battle.winnerAttack ||
+        next.battle.loserAttack !== before.battle.loserAttack;
+      if ((next.turn > before.turn || battleChanged) && next.battle.winner !== null) {
         const winner = next.battle.winner;
         const loser = (1 - winner) as PlayerIndex;
         const winnerCard = next.players[winner].battleZone[0];
@@ -235,6 +248,10 @@ export function BattleAnimationLayer({ G, me }: { G: GameState; me: PlayerIndex 
     }, ANIMATION_DURATION);
     timers.current.push(timer);
   }, [G, me]);
+
+  useLayoutEffect(() => {
+    onAnimatingChange?.(items.length > 0);
+  }, [items.length, onAnimatingChange]);
 
   useLayoutEffect(
     () => () => {

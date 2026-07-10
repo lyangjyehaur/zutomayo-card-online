@@ -18,8 +18,12 @@ export type OnlineMatchSubmissionOptions = {
   G: GameState;
   gameover?: GameOverState;
   matchID?: string;
-  matchStartedAt: number;
   playerID?: string | null;
+};
+
+export type EloSubmissionState = {
+  status: 'pending' | 'rated' | 'unrated' | 'failed';
+  message: string;
 };
 
 function currentPathname(): string {
@@ -91,30 +95,44 @@ export function signedEloChange(value: number): string {
   return value > 0 ? `+${value}` : `${value}`;
 }
 
+export function matchDurationSeconds(G: GameState, now = Date.now()): number {
+  const startedAt = Number.isFinite(G.matchStartedAt) ? G.matchStartedAt : now;
+  const endedAt = Number.isFinite(G.matchEndedAt) ? (G.matchEndedAt as number) : now;
+  return Math.max(0, (endedAt - startedAt) / 1000);
+}
+
 export function useOnlineMatchSubmission({
   G,
   gameover,
   matchID,
-  matchStartedAt,
   playerID,
-}: OnlineMatchSubmissionOptions): string {
+}: OnlineMatchSubmissionOptions): EloSubmissionState {
   const saved = useRef(false);
-  const [eloNotice, setEloNotice] = useState('');
+  const [eloState, setEloState] = useState<EloSubmissionState>({
+    status: 'pending',
+    message: t('auth.eloCalculating'),
+  });
 
   useEffect(() => {
     if (saved.current) return;
     saved.current = true;
 
-    const durationSeconds = (Date.now() - matchStartedAt) / 1000;
+    const durationSeconds = matchDurationSeconds(G);
     const winner = normalizeGameOverWinner(G, gameover);
     const submitKey = matchSubmissionKey(G, winner);
-    if (isAlreadySubmitted(submitKey)) return;
+    if (isAlreadySubmitted(submitKey)) {
+      setEloState({ status: 'unrated', message: t('auth.eloUnrated') });
+      return;
+    }
 
     markSubmitted(submitKey);
     saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds);
 
     const accountPlayer = activeAccountPlayer(playerID);
-    if (!isLoggedIn() || winner === null || accountPlayer === null) return;
+    if (!isLoggedIn() || winner === null || accountPlayer === null) {
+      setEloState({ status: 'unrated', message: t('auth.eloUnrated') });
+      return;
+    }
 
     const loser = (1 - winner) as PlayerIndex;
     getProfile()
@@ -133,17 +151,17 @@ export function useOnlineMatchSubmission({
       })
       .then((result) => {
         if ((result.winnerEloChange ?? 0) === 0 && (result.loserEloChange ?? 0) === 0) {
-          setEloNotice(t('auth.matchSubmittedNoElo'));
+          setEloState({ status: 'unrated', message: t('auth.eloUnrated') });
           return;
         }
         const change = winner === accountPlayer ? (result.winnerEloChange ?? 0) : (result.loserEloChange ?? 0);
-        setEloNotice(`${t('auth.eloChange')} ${signedEloChange(change)}`);
+        setEloState({ status: 'rated', message: signedEloChange(change) });
       })
       .catch(() => {
         // Local history above remains the fallback when the API is unavailable.
-        setEloNotice(t('auth.matchSubmitFailed'));
+        setEloState({ status: 'failed', message: t('auth.eloFailed') });
       });
-  }, [G, gameover, matchID, matchStartedAt, playerID]);
+  }, [G, gameover, matchID, playerID]);
 
-  return eloNotice;
+  return eloState;
 }

@@ -49,7 +49,12 @@ import {
 } from '../game/GameLogic';
 import { t, useLocale } from '../i18n';
 import { getTranslatedEffect } from '../game/cards/i18n';
-import { normalizeGameOverWinner, useOnlineMatchSubmission } from './board/useOnlineMatchSubmission';
+import { pendingChoiceSelectionError } from '../game/pendingChoices';
+import {
+  matchDurationSeconds,
+  normalizeGameOverWinner,
+  useOnlineMatchSubmission,
+} from './board/useOnlineMatchSubmission';
 
 export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
@@ -551,10 +556,11 @@ function formatBreakdownValue(value: string, cardDefId?: string): string {
  * 元件首次 mount 時跳過歷史 notice（lastSeenId 初始化為 -1，首次設為當前 max 並 return），
  * 僅顯示 mount 後新增的事件。
  */
-function noticeDuration(notice: GameNotice): number {
+function noticeDuration(notice: GameNotice, isGameOver: boolean): number {
   const reduced = prefersReducedMotion();
-  if (notice.breakdown && notice.breakdown.lines.length > 0) return reduced ? 3000 : 5200;
-  return reduced ? 2200 : 3800;
+  if (isGameOver) return reduced ? 300 : 900;
+  if (notice.breakdown && notice.breakdown.lines.length > 0) return reduced ? 600 : 1800;
+  return reduced ? 400 : 1100;
 }
 
 function chronosTimeLabel(time: ChronosTime): string {
@@ -697,9 +703,10 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
   }
 }
 
-/** 判斷 notice 是否需要手動確認（時鐘推進、HP 計算等含明細的彈框）。
- *  這些 notice 點擊確定按鈕才關閉，方便玩家看清資訊；其餘 notice 維持自動消失。 */
-function noticeNeedsConfirm(notice: GameNotice): boolean {
+/** 教學模式下判斷 notice 是否需要手動確認（時鐘推進、HP 計算等含明細的彈框）。
+ *  一般對戰一律自動消失，避免確認操作阻塞回合或結算流程。 */
+function noticeNeedsConfirm(notice: GameNotice, manualConfirm: boolean): boolean {
+  if (!manualConfirm) return false;
   if (notice.kind === 'chronosChange') return true;
   if (notice.kind === 'hpChange' && notice.breakdown) return true;
   return false;
@@ -709,15 +716,19 @@ function GameNoticeOverlay({
   G,
   me,
   onNoticeDismiss,
+  onActivityChange,
 }: {
   G: GameState;
   me?: PlayerIndex;
   onNoticeDismiss?: () => void;
+  onActivityChange?: (active: boolean) => void;
 }) {
   const lastSeenIdRef = useRef<number>(-1);
   const [queue, setQueue] = useState<GameNotice[]>([]);
   const [current, setCurrent] = useState<GameNotice | null>(null);
+  const [busy, setBusy] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const manualConfirm = Boolean(onNoticeDismiss);
 
   // 用原始型別（最後一筆 id + 數量）作為 effect 依賴，避免 boardgame.io immer/playerView
   // 淺拷貝導致 recentGameNotices 參考比較失效的邊界情況。
@@ -735,6 +746,7 @@ function GameNoticeOverlay({
     const newOnes = arr.filter((n) => n.id > lastSeenIdRef.current);
     lastSeenIdRef.current = maxId;
     if (newOnes.length === 0) return;
+    setBusy(true);
     setQueue((prev) => [...prev, ...newOnes]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastNoticeId, noticeCount]);
@@ -744,10 +756,31 @@ function GameNoticeOverlay({
     const next = queue[0];
     setCurrent(next);
     setQueue((prev) => prev.slice(1));
-    // 需要手動確認的 notice 不設自動消失 timer，等玩家點確定按鈕
-    if (noticeNeedsConfirm(next)) return;
-    timerRef.current = setTimeout(() => setCurrent(null), noticeDuration(next));
   }, [current, queue]);
+
+  useEffect(() => {
+    if (!current || noticeNeedsConfirm(current, manualConfirm)) return;
+    // 一般通知依情境自動消失；進入 gameOver 時縮短最後提示，避免拖慢結算頁。
+    const timer = setTimeout(() => setCurrent(null), noticeDuration(current, G.step === 'gameOver'));
+    timerRef.current = timer;
+    return () => {
+      clearTimeout(timer);
+      if (timerRef.current === timer) timerRef.current = null;
+    };
+  }, [G.step, current, manualConfirm]);
+
+  useEffect(() => {
+    if (current || queue.length > 0) {
+      setBusy(true);
+      return;
+    }
+    const timer = setTimeout(() => setBusy(false), 0);
+    return () => clearTimeout(timer);
+  }, [current, queue]);
+
+  useEffect(() => {
+    onActivityChange?.(busy);
+  }, [busy, onActivityChange]);
 
   const dismissCurrent = () => {
     if (timerRef.current) {
@@ -756,7 +789,7 @@ function GameNoticeOverlay({
     }
     setCurrent(null);
     // 教學模式：通知教學引擎彈窗已確認關閉（用於 clock-advance/hp-calc 步驟推進）
-    if (current && noticeNeedsConfirm(current)) {
+    if (current && noticeNeedsConfirm(current, manualConfirm)) {
       onNoticeDismiss?.();
     }
   };
@@ -776,7 +809,7 @@ function GameNoticeOverlay({
     content = <strong>Notice render error</strong>;
   }
 
-  const needsConfirm = noticeNeedsConfirm(current);
+  const needsConfirm = noticeNeedsConfirm(current, manualConfirm);
 
   return (
     <div
@@ -1101,19 +1134,11 @@ function ResultCell({ label, value, accent }: { label: string; value: string; ac
   );
 }
 
-function GameOverScreen({
-  G,
-  ctx,
-  matchStartedAt,
-  playerID,
-  matchID,
-  gameOverActions,
-}: Props & { matchStartedAt: number }) {
-  const eloNotice = useOnlineMatchSubmission({
+function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions }: Props) {
+  const eloState = useOnlineMatchSubmission({
     G,
     gameover: ctx.gameover as { winner?: string | number; draw?: boolean } | undefined,
     matchID,
-    matchStartedAt,
     playerID,
   });
 
@@ -1122,7 +1147,7 @@ function GameOverScreen({
   const myPlayer = myPlayerIndex(playerID);
   const outcome: 'victory' | 'defeat' | 'draw' = winner === null ? 'draw' : winner === myPlayer ? 'victory' : 'defeat';
   const win = outcome === 'victory';
-  const durationSeconds = (Date.now() - matchStartedAt) / 1000;
+  const durationSeconds = matchDurationSeconds(G);
   const reason = translateGameOverReason(G.gameoverReason);
   const glyphKey =
     outcome === 'victory'
@@ -1158,7 +1183,11 @@ function GameOverScreen({
         </div>
 
         <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-content-primary/10 py-6 md:grid-cols-4">
-          <ResultCell label={t('auth.eloChange')} value={eloNotice || '-'} accent={win} />
+          <ResultCell
+            label={t('auth.eloChange')}
+            value={eloState.message}
+            accent={win && eloState.status === 'rated'}
+          />
           <ResultCell label={t('board.result.duration')} value={formatDuration(durationSeconds)} />
           <ResultCell label={t('board.result.turns')} value={String(G.turnNumber)} />
           <ResultCell label={t('board.result.reason')} value={reason} />
@@ -1212,37 +1241,6 @@ function wasSetThisTurn(G: GameState, player: PlayerIndex, card: CardInstance | 
   return !!card && G.setCardsThisTurn[player].some((item) => item.instanceId === card.instanceId);
 }
 
-function battleFeedback(G: GameState, meIndex: PlayerIndex, opponentIndex: PlayerIndex): FeedbackMessage {
-  const result = G.lastBattleResult;
-  if (result.winner === null) {
-    return {
-      title: t('board.battleDrawTitle'),
-      lines: [t('board.noBattleDamage')],
-      tone: 'neutral',
-    };
-  }
-
-  if (result.winner === meIndex) {
-    return {
-      title: t('board.youWinBattle'),
-      lines: [
-        `${t('board.dealtDamage')} ${result.damage} ${t('board.damagePointSuffix')}`,
-        `${t('board.opponentHp')}: ${G.players[opponentIndex].hp}`,
-      ],
-      tone: 'success',
-    };
-  }
-
-  return {
-    title: t('board.youLoseBattle'),
-    lines: [
-      `${t('board.receivedDamage')} ${result.damage} ${t('board.damagePointSuffix')}`,
-      `${t('board.yourHp')}: ${G.players[meIndex].hp}`,
-    ],
-    tone: 'danger',
-  };
-}
-
 function effectSummary(effect: GameState['pendingEffects'][number][number]): string {
   const action = effect.effect.action;
   const value = action.params.value ?? action.params.count ?? action.params.max;
@@ -1269,6 +1267,7 @@ function choiceInstruction(type: string): string {
   if (type === 'reorderOpponentDeckTop') return t('board.choiceHintReorder');
   if (type === 'opponentPowerCharacterSwap') return t('board.choiceHintSwap');
   if (type === 'abyssToDeckBottomOrLose') return t('board.choiceHintAbyss');
+  if (type === 'handAbyssSwap') return t('board.choiceHintHandAbyssSwap');
   if (type.includes('Hand') || type.includes('hand')) return t('board.choiceHintHand');
   return t('board.choiceHintDefault');
 }
@@ -1287,7 +1286,12 @@ function phaseInstruction(
       body: mine
         ? choiceInstruction(G.pendingChoice.type)
         : `${playerName(G.pendingChoice.player)} ${t('board.phaseChoosing')}`,
-      meta: [{ text: `${t('board.choiceCount')} ${G.pendingChoice.min}-${G.pendingChoice.max}`, done: false }],
+      meta: [
+        {
+          text: `${t('board.choiceRequired')} ${G.pendingChoice.min}–${G.pendingChoice.max}`,
+          done: false,
+        },
+      ],
     };
   }
   if (G.step === 'effectOrder') {
@@ -1317,10 +1321,13 @@ function phaseInstruction(
       body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseTurnSetBody'),
       meta: [
         {
-          text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/${required}`,
-          done: me.cardsSetThisTurn >= required,
+          text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn} ${t('board.cardsUnit')}`,
+          done: me.cardsSetThisTurn >= minimum,
         },
         { text: `${t('board.phaseMinimum')} ${minimum}`, done: me.cardsSetThisTurn >= minimum },
+        ...(required > minimum
+          ? [{ text: `${t('board.phaseMaximum')} ${required}`, done: me.cardsSetThisTurn <= required }]
+          : []),
       ],
     };
   }
@@ -1397,7 +1404,9 @@ function PendingChoicePanel({
   if (!choice) return null;
 
   const isCurrentPlayer = choice.player === meIndex;
-  const canSubmit = selected.length >= choice.min && selected.length <= choice.max;
+  const selectionError = pendingChoiceSelectionError(choice, selected);
+  const canSubmit = selectionError === null;
+  const semanticError = selectionError === 'handAbyssPair' ? t('board.choiceInvalidHandAbyssPair') : '';
   const prompt = translatedChoicePrompt(G, locale) ?? choiceInstruction(choice.type);
   const toggle = (optionId: string) => {
     setSelected((current) => {
@@ -1417,7 +1426,8 @@ function PendingChoicePanel({
         <>
           <p>{prompt}</p>
           <p className="pending-choice-range">
-            {t('board.choiceCount')} {selected.length}/{choice.max} · {t('board.phaseMinimum')} {choice.min}
+            {t('board.choiceCount')} {selected.length}/{choice.max} · {t('board.choiceRequired')} {choice.min}–
+            {choice.max}
           </p>
           <div className="effect-order-list">
             {choice.options.map((option) => {
@@ -1442,6 +1452,11 @@ function PendingChoicePanel({
               );
             })}
           </div>
+          {semanticError && (
+            <p className="pending-choice-error" role="alert" aria-live="polite">
+              {semanticError}
+            </p>
+          )}
           <div className="pending-choice-footer">
             <span>
               {t('board.choiceCount')} {selected.length}/{choice.max}
@@ -1465,18 +1480,20 @@ function PendingChoicePanel({
 
 type BattleSidePanel = 'focus' | 'status' | 'log';
 
-function BattleLogSidebarPanel({ G }: { G: GameState }) {
+function BattleLogSidebarPanel({ G, compact = false }: { G: GameState; compact?: boolean }) {
   const locale = useLocale();
 
   return (
     <div className="battle-log-panel flex min-h-0 flex-1 flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Log</span>
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+          {t('board.panel.log')}
+        </span>
         <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
       </div>
       <div className="min-h-0 flex-1 space-y-1 overflow-y-auto font-mono text-caption leading-relaxed">
         {(G.actionLog ?? [])
-          .slice(-20)
+          .slice(compact ? -6 : -20)
           .reverse()
           .map((entry) => {
             const { segments, tone, breakdown } = formatLogEntry(entry, locale);
@@ -1520,18 +1537,24 @@ function BattleLogSidebarPanel({ G }: { G: GameState }) {
 function BattleStatusSidebarPanel({ G }: { G: GameState }) {
   const chronosTime = getChronosTime(G);
   const statusRows = [
-    { label: 'Step', value: G.step },
-    { label: 'Turn', value: String(G.turnNumber) },
-    { label: 'Chronos', value: `${G.chronos.position}/${CHRONOS_MAPPING.positions} · ${chronosTime}` },
-    { label: 'Night', value: playerName(G.chronos.nightSidePlayer) },
+    { label: t('board.panel.status'), value: G.step },
+    { label: t('board.turn'), value: String(G.turnNumber) },
+    { label: t('chronos.title'), value: `${G.chronos.position}/${CHRONOS_MAPPING.positions} · ${chronosTime}` },
+    { label: t('board.night'), value: playerName(G.chronos.nightSidePlayer) },
   ];
 
   return (
     <div className="battle-status-panel flex min-h-0 flex-1 flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">Status</span>
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+          {t('board.panel.status')}
+        </span>
         <span className="font-mono text-minutia uppercase tracking-[var(--tracking-meta)] text-content-primary/35">
-          {G.pendingChoice ? 'Choice' : G.pendingEffects.some((queue) => queue.length > 0) ? 'Effect' : 'Live'}
+          {G.pendingChoice
+            ? t('board.chooseCards')
+            : G.pendingEffects.some((queue) => queue.length > 0)
+              ? t('board.effectOrder')
+              : t('board.phaseTurnSetTitle')}
         </span>
       </div>
       <div className="grid gap-3">
@@ -1577,12 +1600,12 @@ function BattleStatusSidebarPanel({ G }: { G: GameState }) {
 
 const BATTLE_SIDE_PANELS: Array<{
   id: BattleSidePanel;
-  label: string;
+  labelKey: 'board.panel.focus' | 'board.panel.status' | 'board.panel.log';
   Icon: typeof Info;
 }> = [
-  { id: 'focus', label: 'Focus', Icon: Info },
-  { id: 'status', label: 'Status', Icon: Activity },
-  { id: 'log', label: 'Log', Icon: BookOpen },
+  { id: 'focus', labelKey: 'board.panel.focus', Icon: Info },
+  { id: 'status', labelKey: 'board.panel.status', Icon: Activity },
+  { id: 'log', labelKey: 'board.panel.log', Icon: BookOpen },
 ];
 
 function BoardLayout({ time, children }: { time: ChronosTime; children: ReactNode }) {
@@ -1603,6 +1626,7 @@ function BattleHud({
   activePanel,
   time,
   timeLeft,
+  timerActive,
   onPause,
   onPanelChange,
 }: {
@@ -1610,6 +1634,7 @@ function BattleHud({
   activePanel: BattleSidePanel | null;
   time: ChronosTime;
   timeLeft: number;
+  timerActive: boolean;
   onPause: () => void;
   onPanelChange: (panel: BattleSidePanel) => void;
 }) {
@@ -1625,19 +1650,23 @@ function BattleHud({
           <span className="bf-hud-time" data-time={time}>
             {time === 'night' ? '🌙' : '☀️'} {time === 'night' ? t('board.night') : t('board.day')}
           </span>
-          <span className="bf-hud-divider" aria-hidden="true" />
-          <span className="bf-hud-timer" data-urgent={timeLeft <= 10}>
-            {String(timeLeft).padStart(2, '0')}
-            <span className="bf-hud-timer-unit">{t('board.secondsUnit')}</span>
-          </span>
+          {timerActive && (
+            <>
+              <span className="bf-hud-divider" aria-hidden="true" />
+              <span className="bf-hud-timer" data-urgent={timeLeft <= 10}>
+                {String(timeLeft).padStart(2, '0')}
+                <span className="bf-hud-timer-unit">{t('board.secondsUnit')}</span>
+              </span>
+            </>
+          )}
         </div>
       </div>
       <div className="bf-hud bf-hud-right">
-        <div className="bf-hud-pill battle-side-panel-actions" aria-label="Battle panels">
-          {BATTLE_SIDE_PANELS.map(({ id, label, Icon }) => (
+        <div className="bf-hud-pill battle-side-panel-actions" aria-label={t('board.panel.panels')}>
+          {BATTLE_SIDE_PANELS.map(({ id, labelKey, Icon }) => (
             <IconButton
               key={id}
-              label={label}
+              label={t(labelKey)}
               icon={<Icon className="size-4" aria-hidden="true" />}
               data-panel-id={id}
               aria-pressed={activePanel === id}
@@ -1686,7 +1715,7 @@ function BattleSideSheet({
 
   if (!activePanel) return null;
   const activePanelMeta = BATTLE_SIDE_PANELS.find((panel) => panel.id === activePanel);
-  const title = activePanelMeta?.label ?? 'Battle Panel';
+  const title = activePanelMeta ? t(activePanelMeta.labelKey) : t('board.panel.panels');
 
   return (
     <div ref={overlayRef} className="battle-side-sheet-overlay" role="presentation" onClick={onClose}>
@@ -1705,13 +1734,13 @@ function BattleSideSheet({
             optionClassName="battle-side-sheet-tab"
             behavior="tabs"
             size="sm"
-            ariaLabel="Battle panels"
-            options={BATTLE_SIDE_PANELS.map(({ id, label, Icon }) => ({
+            ariaLabel={t('board.panel.panels')}
+            options={BATTLE_SIDE_PANELS.map(({ id, labelKey, Icon }) => ({
               value: id,
               label: (
                 <>
                   <Icon className="size-3.5" aria-hidden="true" />
-                  <span>{label}</span>
+                  <span>{t(labelKey)}</span>
                 </>
               ),
             }))}
@@ -1754,8 +1783,14 @@ function BattleBoard({
   tutorialAllowedSetCardDefIds,
   tutorialRequiredSetCardDefIds,
   tutorialSetInteractionEnabled = true,
+  onNoticeActivityChange,
+  onBattleAnimationChange,
   onPause,
-}: Props & { onPause: () => void }) {
+}: Props & {
+  onPause: () => void;
+  onNoticeActivityChange?: (active: boolean) => void;
+  onBattleAnimationChange?: (active: boolean) => void;
+}) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
@@ -1777,8 +1812,8 @@ function BattleBoard({
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
   // P3-16：伺服器權威計時器超時後，每秒遞增 retryTick 以重試 timeoutSkip（處理時鐘漂移）。
   const [retryTick, setRetryTick] = useState(0);
-  const [phaseMessage, setPhaseMessage] = useState<FeedbackMessage | null>(null);
   const [focusedCard, setFocusedCard] = useState<FocusedCard>(null);
+  const [interactionMessage, setInteractionMessage] = useState('');
   const [activeSidePanel, setActiveSidePanel] = useState<BattleSidePanel | null>(null);
   const [selectedHandIndex, setSelectedHandIndex] = useState<number | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
@@ -1796,36 +1831,6 @@ function BattleBoard({
     phaseTimers.current = [];
   }, []);
 
-  const showTransientPhaseMessage = (message: FeedbackMessage, duration = 1500) => {
-    clearPhaseTimers();
-    setPhaseMessage(message);
-    const effectiveDuration = prefersReducedMotion() ? Math.min(duration, 600) : duration;
-    phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), effectiveDuration));
-  };
-
-  const playBattleFeedbackSequence = useCallback(
-    (resultMessage: FeedbackMessage) => {
-      clearPhaseTimers();
-      const reduced = prefersReducedMotion();
-      const phaseDuration = reduced ? 250 : 700;
-      const resultDuration = reduced ? 1200 : 2600;
-      const sequence: { message: FeedbackMessage; duration: number }[] = [
-        { message: { title: t('board.phaseReveal'), tone: 'phase' }, duration: phaseDuration },
-        { message: { title: t('board.phaseTimeAdvance'), tone: 'phase' }, duration: phaseDuration },
-        { message: { title: t('board.phaseBattleStart'), tone: 'phase' }, duration: phaseDuration },
-        { message: resultMessage, duration: resultDuration },
-      ];
-
-      let offset = 0;
-      for (const item of sequence) {
-        phaseTimers.current.push(setTimeout(() => setPhaseMessage(item.message), offset));
-        offset += item.duration;
-      }
-      phaseTimers.current.push(setTimeout(() => setPhaseMessage(null), offset));
-    },
-    [clearPhaseTimers],
-  );
-
   useEffect(() => () => clearPhaseTimers(), [clearPhaseTimers]);
 
   useEffect(() => {
@@ -1837,7 +1842,7 @@ function BattleBoard({
         return Math.max(0, TURN_TIMER_SECONDS - elapsed);
       };
       setTimeLeft(compute());
-      if (G.step !== 'turnSet') return;
+      if (G.step !== 'turnSet' || G.ready[meIndex]) return;
       timer.current = setInterval(() => {
         const next = compute();
         setTimeLeft(next);
@@ -1851,51 +1856,41 @@ function BattleBoard({
     // 本機/AI：維持原客戶端 setInterval 倒數行為。
     setTimeLeft(TURN_TIMER_SECONDS);
     if (timer.current) clearInterval(timer.current);
-    if (G.step !== 'turnSet') return;
-    timer.current = setInterval(() => setTimeLeft((value) => Math.max(0, value - 1)), 1000);
+    if (G.step !== 'turnSet' || G.ready[meIndex]) return;
+    timer.current = setInterval(
+      () =>
+        setTimeLeft((value) => {
+          const next = Math.max(0, value - 1);
+          if (next === 0) setRetryTick((tick) => tick + 1);
+          return next;
+        }),
+      1000,
+    );
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [G.turnNumber, G.step, G.turnStartTime, useServerTimer]);
+  }, [G.ready, G.turnNumber, G.step, G.turnStartTime, meIndex, useServerTimer]);
 
   useEffect(() => {
     if (G.step !== 'turnSet' || timeLeft > 0 || G.ready[meIndex]) return;
-    if (useServerTimer) {
-      // P3-16：線上模式超時由伺服器權威 timeoutSkip 處理，允許未達最低出牌數時跳過該玩家回合。
-      moves.timeoutSkip();
-      return;
-    }
-    // 本機/AI：維持原行為，僅達最低出牌數時自動 confirmReady。
-    if (
-      tutorialSetInteractionEnabled &&
-      me.cardsSetThisTurn >= minimum &&
-      me.cardsSetThisTurn <= required &&
-      hasRequiredTutorialCards
-    ) {
-      moves.confirmReady();
-    }
-  }, [
-    G.step,
-    timeLeft,
-    G.ready,
-    me.cardsSetThisTurn,
-    minimum,
-    required,
-    hasRequiredTutorialCards,
-    tutorialSetInteractionEnabled,
-    meIndex,
-    moves,
-    useServerTimer,
-    retryTick,
-  ]);
+    // 教學流程不使用真實倒數；一般本機與線上模式皆走同一 timeoutSkip 規則，
+    // 允許未達最低出牌數時跳過，避免 00 秒後仍可無限操作。
+    if (onNoticeDismiss) return;
+    moves.timeoutSkip();
+  }, [G.step, timeLeft, G.ready, meIndex, moves, onNoticeDismiss, retryTick]);
 
   useEffect(() => {
     setSelectedHandIndex(null);
+    setInteractionMessage('');
   }, [G.step, G.turnNumber, G.ready, meIndex]);
 
   useEffect(() => {
+    if (focusedCard || me.hand.length === 0) return;
+    setFocusedCard({ card: me.hand[0], owner: meIndex, zone: t('board.hand') });
+  }, [focusedCard, me.hand, meIndex]);
+
+  useEffect(() => {
     if (G.turnNumber > previousTurnNumber.current) {
-      playBattleFeedbackSequence(battleFeedback(G, meIndex, opponentIndex));
       const result = G.lastBattleResult;
       if (result.winner !== null && result.damage > 0) {
         const target = (1 - result.winner) as PlayerIndex;
@@ -1905,36 +1900,48 @@ function BattleBoard({
       }
     }
     previousTurnNumber.current = G.turnNumber;
-  }, [G, meIndex, opponentIndex, playBattleFeedbackSequence]);
-
-  const setFromHand = (handIndex: number) => {
-    if (!tutorialSetInteractionEnabled || G.ready[meIndex] || me.cardsSetThisTurn >= required) return;
-    const card = me.hand[handIndex];
-    if (!card || (tutorialAllowedSetCardDefIds && !tutorialAllowedSetCardDefIds.includes(card.defId))) return;
-    if (G.step === 'initialSet') moves.setInitialCard(handIndex);
-    else moves.setTurnCard(handIndex, me.setZoneA ? 'B' : 'A');
-    setSelectedHandIndex(null);
-  };
+  }, [G.lastBattleResult, G.turnNumber]);
 
   const time = getChronosTime(G);
+  const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
   const canAct =
     tutorialSetInteractionEnabled &&
     (G.step === 'initialSet' || G.step === 'turnSet') &&
     !G.ready[meIndex] &&
     me.cardsSetThisTurn < required;
+  const cardBlockReason = (card: CardInstance): string => {
+    if (tutorialAllowedSetCardDefIds && !tutorialAllowedSetCardDefIds.includes(card.defId)) {
+      return currentInstruction.body;
+    }
+    if (getCardDef(card.defId)?.type === 'Area Enchant' && G.areaEnchantSetLocked?.[meIndex]) {
+      return t('board.areaEnchantLocked');
+    }
+    if (G.step === 'turnSet' && me.setZoneA && me.setZoneB) return t('board.noSetSlotAvailable');
+    return '';
+  };
+  const playableCardDefIds = canAct ? me.hand.filter((card) => !cardBlockReason(card)).map((card) => card.defId) : [];
+  const setFromHand = (handIndex: number) => {
+    const card = me.hand[handIndex];
+    if (!card || !canAct) return;
+    const blocked = cardBlockReason(card);
+    if (blocked) {
+      setInteractionMessage(blocked);
+      return;
+    }
+    if (G.step === 'initialSet') moves.setInitialCard(handIndex);
+    else moves.setTurnCard(handIndex, me.setZoneA ? 'B' : 'A');
+    setInteractionMessage('');
+    setSelectedHandIndex(null);
+  };
   const canConfirm =
     tutorialSetInteractionEnabled &&
     !G.ready[meIndex] &&
     me.cardsSetThisTurn >= minimum &&
     me.cardsSetThisTurn <= required &&
     hasRequiredTutorialCards;
-  const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
   const selectedHandCard =
     selectedHandIndex !== null && selectedHandIndex < me.hand.length ? me.hand[selectedHandIndex] : null;
-  const canSetSelected =
-    Boolean(selectedHandCard) &&
-    canAct &&
-    (!tutorialAllowedSetCardDefIds || tutorialAllowedSetCardDefIds.includes(selectedHandCard?.defId ?? ''));
+  const canSetSelected = Boolean(selectedHandCard) && canAct && !cardBlockReason(selectedHandCard as CardInstance);
   const primaryActionTitle = G.ready[meIndex]
     ? t('board.readyWaiting')
     : G.pendingChoice
@@ -1946,15 +1953,17 @@ function BattleBoard({
           : canSetSelected
             ? t('board.setInspectedCard')
             : t('board.inspectHandCard');
-  const primaryActionBody = G.ready[meIndex]
-    ? t('board.phaseWaitingOpponentReady')
-    : G.pendingChoice || G.step === 'effectOrder'
-      ? currentInstruction.body
-      : canConfirm
-        ? `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/${required} · ${t('board.phaseMinimum')} ${minimum}`
-        : touchLike
-          ? t('board.touchInspectHint')
-          : currentInstruction.body;
+  const primaryActionBody = interactionMessage
+    ? interactionMessage
+    : G.ready[meIndex]
+      ? t('board.phaseWaitingOpponentReady')
+      : G.pendingChoice || G.step === 'effectOrder'
+        ? currentInstruction.body
+        : canConfirm
+          ? `${t('board.phaseSetCount')} ${me.cardsSetThisTurn} ${t('board.cardsUnit')} · ${t('board.undoSetHint')}`
+          : touchLike
+            ? t('board.touchInspectHint')
+            : currentInstruction.body;
 
   const inspect = (card: CardInstance, owner: PlayerIndex, zone: string) => setFocusedCard({ card, owner, zone });
   // 觸控端：點擊卡牌開啟詳情 sheet；桌面端 hover 已更新側欄，不攔截 click。
@@ -1969,7 +1978,18 @@ function BattleBoard({
     const card = me.hand[index];
     if (!card) return;
     inspect(card, meIndex, t('board.hand'));
-    if (tutorialAllowedSetCardDefIds && !tutorialAllowedSetCardDefIds.includes(card.defId)) return;
+    if (!canAct) {
+      setSelectedHandIndex(index);
+      setInteractionMessage(currentInstruction.body);
+      return;
+    }
+    const blocked = cardBlockReason(card);
+    if (blocked) {
+      setSelectedHandIndex(index);
+      setInteractionMessage(blocked);
+      return;
+    }
+    setInteractionMessage('');
     if (touchLike) {
       // 兩段式：第一次 tap 選中（ActionDock 顯示「設置這張」），再 tap 開詳情。
       if (selectedHandIndex === index) {
@@ -1979,7 +1999,8 @@ function BattleBoard({
       setSelectedHandIndex(index);
       return;
     }
-    if (canAct) setFromHand(index);
+    // 桌面與觸控統一採兩段式：先選中／預覽，再由 ActionDock 明確打出，避免單擊誤出牌。
+    setSelectedHandIndex(index);
   };
 
   const zoneNames = {
@@ -2039,6 +2060,7 @@ function BattleBoard({
         activePanel={activeSidePanel}
         time={time}
         timeLeft={timeLeft}
+        timerActive={G.step === 'turnSet' && !G.ready[meIndex] && !onNoticeDismiss}
         onPause={onPause}
         onPanelChange={setActiveSidePanel}
       />
@@ -2240,7 +2262,7 @@ function BattleBoard({
                 variant={touchLike ? 'strip' : 'fan'}
                 selectedIndex={selectedHandIndex}
                 canAct={canAct}
-                allowedCardDefIds={tutorialAllowedSetCardDefIds}
+                allowedCardDefIds={playableCardDefIds}
                 onCardTap={handleHandTap}
                 onCardHover={
                   touchLike
@@ -2258,14 +2280,12 @@ function BattleBoard({
                 ready={G.ready[meIndex]}
                 canConfirm={canConfirm}
                 cardsSet={me.cardsSetThisTurn}
-                required={required}
                 canSetSelected={canSetSelected}
                 onSetSelected={() => {
                   if (selectedHandIndex !== null) setFromHand(selectedHandIndex);
                 }}
                 onConfirm={() => {
                   if (!canConfirm) return;
-                  showTransientPhaseMessage({ title: t('board.setConfirmed'), tone: 'neutral' });
                   moves.confirmReady();
                 }}
                 onShowDetail={touchLike && selectedHandCard ? () => setDetailSheetOpen(true) : undefined}
@@ -2275,13 +2295,13 @@ function BattleBoard({
         </div>
 
         {/* ===== 桌面側欄（>=1180px，CSS 控制顯示）===== */}
-        <aside className="bf-sidebar" aria-label="Battle info">
+        <aside className="bf-sidebar" aria-label={t('board.panel.panels')}>
           <CardDetailPanel
             focus={focusedCard}
             G={G}
             ownerName={focusedCard ? playerName(focusedCard.owner) : undefined}
           />
-          <BattleLogSidebarPanel G={G} />
+          <BattleLogSidebarPanel G={G} compact />
         </aside>
       </div>
 
@@ -2333,25 +2353,31 @@ function BattleBoard({
         />
       )}
 
-      <FeedbackOverlay message={phaseMessage} />
-      <GameNoticeOverlay G={G} me={meIndex} onNoticeDismiss={onNoticeDismiss} />
-      <BattleAnimationLayer G={G} me={meIndex} />
+      <GameNoticeOverlay
+        G={G}
+        me={meIndex}
+        onNoticeDismiss={onNoticeDismiss}
+        onActivityChange={onNoticeActivityChange}
+      />
+      <BattleAnimationLayer G={G} me={meIndex} onAnimatingChange={onBattleAnimationChange} />
     </BoardLayout>
   );
 }
 
 export function Board(props: Props) {
   const navigate = useNavigate();
-  const matchStartedAt = useRef(Date.now());
   const me = Number(props.playerID ?? '0') as PlayerIndex;
   const previousStep = useRef(props.G.step);
   const setupFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [setupFeedback, setSetupFeedback] = useState<FeedbackMessage | null>(null);
   const [mulliganFocusedCard, setMulliganFocusedCard] = useState<FocusedCard>(null);
-  // 戰敗延遲：step 變成 gameOver 時，延遲顯示 GameOverScreen，
-  // 讓最後的 HP 變化 breakdown 等 notice 有時間播完。
-  const [gameOverDelayed, setGameOverDelayed] = useState(false);
+  // 結算頁等待最後一筆通知與戰鬥動畫實際完成；保底 timer 僅防止異常狀態永久卡住。
+  const [showGameOver, setShowGameOver] = useState(false);
   const gameOverTriggeredRef = useRef(false);
+  const noticeActiveRef = useRef(false);
+  const battleAnimationActiveRef = useRef(false);
+  const gameOverSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gameOverFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 暫停/離開確認對話框
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
@@ -2367,14 +2393,69 @@ export function Board(props: Props) {
     setMulliganFocusedCard(null);
   }, [props.G.step]);
 
+  const clearGameOverTimers = useCallback(() => {
+    if (gameOverSettleTimerRef.current) clearTimeout(gameOverSettleTimerRef.current);
+    if (gameOverFallbackTimerRef.current) clearTimeout(gameOverFallbackTimerRef.current);
+    gameOverSettleTimerRef.current = null;
+    gameOverFallbackTimerRef.current = null;
+  }, []);
+
+  const revealGameOver = useCallback(() => {
+    clearGameOverTimers();
+    setShowGameOver(true);
+  }, [clearGameOverTimers]);
+
+  const scheduleGameOverWhenIdle = useCallback(() => {
+    if (props.G.step !== 'gameOver') return;
+    if (gameOverSettleTimerRef.current) clearTimeout(gameOverSettleTimerRef.current);
+    gameOverSettleTimerRef.current = setTimeout(() => {
+      gameOverSettleTimerRef.current = null;
+      if (!noticeActiveRef.current && !battleAnimationActiveRef.current) revealGameOver();
+    }, 120);
+  }, [props.G.step, revealGameOver]);
+
+  const handleNoticeActivityChange = useCallback(
+    (active: boolean) => {
+      noticeActiveRef.current = active;
+      if (active && gameOverSettleTimerRef.current) {
+        clearTimeout(gameOverSettleTimerRef.current);
+        gameOverSettleTimerRef.current = null;
+      } else if (!active) {
+        scheduleGameOverWhenIdle();
+      }
+    },
+    [scheduleGameOverWhenIdle],
+  );
+
+  const handleBattleAnimationChange = useCallback(
+    (active: boolean) => {
+      battleAnimationActiveRef.current = active;
+      if (active && gameOverSettleTimerRef.current) {
+        clearTimeout(gameOverSettleTimerRef.current);
+        gameOverSettleTimerRef.current = null;
+      } else if (!active) {
+        scheduleGameOverWhenIdle();
+      }
+    },
+    [scheduleGameOverWhenIdle],
+  );
+
   useEffect(() => {
-    if (props.G.step === 'gameOver' && !gameOverTriggeredRef.current) {
-      gameOverTriggeredRef.current = true;
-      setGameOverDelayed(true);
-      const timer = setTimeout(() => setGameOverDelayed(false), prefersReducedMotion() ? 4500 : 6500);
-      return () => clearTimeout(timer);
+    if (props.G.step !== 'gameOver') {
+      gameOverTriggeredRef.current = false;
+      noticeActiveRef.current = false;
+      battleAnimationActiveRef.current = false;
+      clearGameOverTimers();
+      setShowGameOver(false);
+      return;
     }
-  }, [props.G.step]);
+    if (gameOverTriggeredRef.current) return;
+    gameOverTriggeredRef.current = true;
+    setShowGameOver(false);
+    scheduleGameOverWhenIdle();
+    gameOverFallbackTimerRef.current = setTimeout(revealGameOver, 3500);
+    return clearGameOverTimers;
+  }, [clearGameOverTimers, props.G.step, revealGameOver, scheduleGameOverWhenIdle]);
 
   useEffect(() => {
     if (
@@ -2476,8 +2557,8 @@ export function Board(props: Props) {
     </div>
   );
 
-  if (props.G.step === 'gameOver' && !gameOverDelayed) {
-    return <GameOverScreen {...props} matchStartedAt={matchStartedAt.current} />;
+  if (props.G.step === 'gameOver' && showGameOver) {
+    return <GameOverScreen {...props} />;
   }
   // janken/mulligan 階段也渲染 BattleBoard 場地，操作面板作為浮層疊加
   // 教學模式時，若 hideSetupOverlay=true 則隱藏浮層（等教學進度到了才顯示）
@@ -2494,7 +2575,12 @@ export function Board(props: Props) {
   ) : null;
   return renderWithSetupFeedback(
     <>
-      <BattleBoard {...props} onPause={() => setShowExitConfirm(true)} />
+      <BattleBoard
+        {...props}
+        onPause={() => setShowExitConfirm(true)}
+        onNoticeActivityChange={handleNoticeActivityChange}
+        onBattleAnimationChange={handleBattleAnimationChange}
+      />
       {setupOverlay}
     </>,
   );

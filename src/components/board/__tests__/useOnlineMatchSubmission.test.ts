@@ -4,6 +4,7 @@ import {
   accountIdForPlayer,
   activeAccountPlayer,
   matchSubmissionKey,
+  matchDurationSeconds,
   normalizeGameOverWinner,
   onlineSourceMatchID,
   signedEloChange,
@@ -57,5 +58,10 @@ describe('useOnlineMatchSubmission helpers', () => {
     expect(signedEloChange(12)).toBe('+12');
     expect(signedEloChange(0)).toBe('0');
     expect(signedEloChange(-8)).toBe('-8');
+  });
+
+  it('uses authoritative game timestamps for duration after remount or reconnect', () => {
+    const G = gameState({ matchStartedAt: 10_000, matchEndedAt: 73_500 });
+    expect(matchDurationSeconds(G, 999_999)).toBe(63.5);
   });
 });
