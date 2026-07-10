@@ -452,6 +452,26 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('POST /api/chat/messages returns 401 without auth even with valid CSRF', async () => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const res = await sendRequest(
+        'POST',
+        '/api/chat/messages',
+        {
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+          content: 'anonymous spectator message',
+          authorDisplayName: 'Spectator',
+          authorRole: 'spectator',
+        },
+        {
+          cookie: `zutomayo_csrf=${csrfToken}`,
+          'x-csrf-token': csrfToken,
+        },
+      );
+      expect(res.statusCode).toBe(401);
+    });
+
     it('GET /api/chat/unread returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/chat/unread');
       expect(res.statusCode).toBe(401);
