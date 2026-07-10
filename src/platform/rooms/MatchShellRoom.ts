@@ -86,8 +86,12 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     if (auth.role === 'player' && !hasValidBoardgamePlayerSeat(options)) {
       return { ...auth, role: 'spectator' };
     }
+    const existingSeatHolder = this.playerProfileByBoardgamePlayerID(options.boardgamePlayerID);
+    if (auth.role === 'player' && existingSeatHolder && existingSeatHolder.userId !== auth.userId) {
+      return { ...auth, role: 'spectator' };
+    }
     const currentPlayers = this.clients.filter((client) => client.userData?.role === 'player').length;
-    if (auth.role === 'player' && currentPlayers >= this.maxPlayerSeats) {
+    if (auth.role === 'player' && currentPlayers >= this.maxPlayerSeats && !existingSeatHolder) {
       return { ...auth, role: 'spectator' };
     }
     return auth;
@@ -96,14 +100,18 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
   async onJoin(client: PlatformClient, options: MatchShellRoomOptions): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
-    const role = this.resolveRole(auth.role);
+    const role = this.resolveRole(auth.role, options, auth.userId);
+    const boardgamePlayerID = boardgamePlayerIDFromOptions(options, role);
+    if (role === 'player' && boardgamePlayerID) {
+      this.releaseReconnectSeat(boardgamePlayerID, auth.userId, client.sessionId);
+    }
     client.userData = {
       sessionId: client.sessionId,
       userId: auth.userId,
       displayName: auth.displayName,
       role,
       joinedAt: Date.now(),
-      boardgamePlayerID: boardgamePlayerIDFromOptions(options, role),
+      boardgamePlayerID,
       hasBoardgameCredentials: role === 'player' && options.hasBoardgameCredentials === true,
     };
 
@@ -118,10 +126,34 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     if (profile) this.broadcastPresence('leave', profile);
   }
 
-  private resolveRole(requestedRole: PlatformAuth['role']): PlatformAuth['role'] {
+  private resolveRole(
+    requestedRole: PlatformAuth['role'],
+    options: MatchShellRoomOptions = {},
+    userId = '',
+  ): PlatformAuth['role'] {
     if (requestedRole !== 'player') return requestedRole;
+    const existingSeatHolder = this.playerProfileByBoardgamePlayerID(options.boardgamePlayerID);
+    if (existingSeatHolder?.userId === userId) return 'player';
     const currentPlayers = this.clients.filter((client) => client.userData?.role === 'player').length;
     return currentPlayers >= this.maxPlayerSeats ? 'spectator' : 'player';
+  }
+
+  private playerProfileByBoardgamePlayerID(boardgamePlayerID: unknown): PlatformClientProfile | undefined {
+    if (boardgamePlayerID !== '0' && boardgamePlayerID !== '1') return undefined;
+    return this.profiles('player').find((profile) => profile.boardgamePlayerID === boardgamePlayerID);
+  }
+
+  private releaseReconnectSeat(boardgamePlayerID: string, userId: string, currentSessionId: string): void {
+    for (const client of this.clients) {
+      const profile = client.userData;
+      if (!profile || profile.sessionId === currentSessionId) continue;
+      if (profile.role !== 'player' || profile.boardgamePlayerID !== boardgamePlayerID || profile.userId !== userId) {
+        continue;
+      }
+      profile.role = 'spectator';
+      profile.boardgamePlayerID = undefined;
+      profile.hasBoardgameCredentials = false;
+    }
   }
 
   private async linkBoardgameMatch(boardgameMatchID: string): Promise<void> {

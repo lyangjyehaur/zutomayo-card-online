@@ -89,6 +89,111 @@ describe('match shell room', () => {
     );
   });
 
+  it('demotes duplicate boardgame player seats from different users', async () => {
+    const room = new MatchShellRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    const existingClient = {
+      sessionId: 'session_existing',
+      auth: {
+        userId: 'guest:existing',
+        displayName: 'Existing',
+        role: 'player',
+        authenticated: true,
+      },
+      send: vi.fn(),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    room.clients.push(existingClient);
+    await room.onJoin(existingClient, { boardgamePlayerID: '0', hasBoardgameCredentials: true });
+
+    const duplicateAuth = room.onAuth(
+      {} as PlatformClient,
+      {
+        userId: 'guest:duplicate',
+        displayName: 'Duplicate',
+        role: 'player',
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+      },
+      authContext(),
+    );
+
+    expect(duplicateAuth.role).toBe('spectator');
+  });
+
+  it('transfers a boardgame player seat to the same user reconnect session', async () => {
+    const room = new MatchShellRoom();
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    const oldClient = {
+      sessionId: 'session_old',
+      auth: {
+        userId: 'guest:player',
+        displayName: 'Player',
+        role: 'player',
+        authenticated: true,
+      },
+      send: vi.fn(),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    const newClient = {
+      sessionId: 'session_new',
+      auth: {
+        userId: 'guest:player',
+        displayName: 'Player',
+        role: 'player',
+        authenticated: true,
+      },
+      send: vi.fn(),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+
+    room.clients.push(oldClient);
+    await room.onJoin(oldClient, { boardgamePlayerID: '0', hasBoardgameCredentials: true });
+
+    const reconnectAuth = room.onAuth(
+      {} as PlatformClient,
+      {
+        userId: 'guest:player',
+        displayName: 'Player',
+        role: 'player',
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+      },
+      authContext(),
+    );
+    expect(reconnectAuth.role).toBe('player');
+
+    room.clients.push(newClient);
+    await room.onJoin(newClient, { boardgamePlayerID: '0', hasBoardgameCredentials: true });
+
+    expect(oldClient.userData).toEqual(
+      expect.objectContaining({
+        role: 'spectator',
+        boardgamePlayerID: undefined,
+        hasBoardgameCredentials: false,
+      }),
+    );
+    expect(newClient.userData).toEqual(
+      expect.objectContaining({
+        role: 'player',
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+      }),
+    );
+    expect(broadcast).toHaveBeenLastCalledWith(
+      'presence',
+      expect.objectContaining({
+        players: 1,
+        spectators: 1,
+      }),
+    );
+  });
+
   it('only lets credentialed players or moderators link boardgame match ids', async () => {
     const room = new MatchShellRoom();
     const handlers = new Map<string, LinkBoardgameMatchHandler>();
