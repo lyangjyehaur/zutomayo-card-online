@@ -180,6 +180,60 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('custom room defaults prelinked host rooms to waiting until a guest joins', async () => {
+    const room = new CustomRoom();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', boardgameMatchID: 'bgio-match-3' });
+
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        kind: 'custom-room',
+        roomCode: 'ROOM42',
+        status: 'waiting',
+        playerCount: 0,
+        boardgameMatchID: 'bgio-match-3',
+      }),
+    });
+
+    room.clients.push(host);
+    await room.onJoin(host);
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        status: 'waiting',
+        playerCount: 1,
+        boardgameMatchID: 'bgio-match-3',
+      }),
+    });
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+
+    room.clients.push(guest);
+    await room.onJoin(guest);
+    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-3' });
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        status: 'ready',
+        playerCount: 2,
+        boardgameMatchID: 'bgio-match-3',
+      }),
+    });
+  });
+
   it('custom room cancellation is controlled by the waiting host', async () => {
     const room = new CustomRoom();
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);

@@ -18,9 +18,9 @@ function optionalText(value: unknown, maxLength: number): string | undefined {
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
 }
 
-function normalizeStatus(value: unknown, boardgameMatchID?: string): CustomRoomStatus {
+function normalizeStatus(value: unknown): CustomRoomStatus {
   if (value === 'waiting' || value === 'ready' || value === 'cancelled' || value === 'finished') return value;
-  return boardgameMatchID ? 'ready' : 'waiting';
+  return 'waiting';
 }
 
 export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: PlatformClient }> {
@@ -36,7 +36,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     this.maxMessagesPerSecond = 4;
     this.roomCode = optionalText(options.roomCode, 128) ?? this.roomId;
     this.boardgameMatchID = optionalText(options.boardgameMatchID, 128);
-    this.status = normalizeStatus(options.status, this.boardgameMatchID);
+    this.status = normalizeStatus(options.status);
 
     this.clock.setTimeout(() => {
       void this.disconnect();
