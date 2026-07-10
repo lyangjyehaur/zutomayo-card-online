@@ -950,6 +950,124 @@ describe('server routes', () => {
         ]);
       }
     });
+
+    it('POST /api/chat/messages/:messageId/report snapshots every durable conversation type through the same route', async () => {
+      const cases = [
+        {
+          messageId: 'chat_msg_report_match',
+          type: 'match',
+          subjectId: 'bgio-match-1',
+          conversationId: 'match:bgio-match-1',
+        },
+        {
+          messageId: 'chat_msg_report_room',
+          type: 'room',
+          subjectId: 'ROOM42',
+          conversationId: 'room:ROOM42',
+        },
+        {
+          messageId: 'chat_msg_report_global',
+          type: 'global',
+          subjectId: 'online-lobby',
+          conversationId: 'global:online-lobby',
+        },
+        {
+          messageId: 'chat_msg_report_direct',
+          type: 'direct',
+          subjectId: 'v1:u_friend:u_reader',
+          conversationId: 'direct:v1:u_friend:u_reader',
+        },
+      ];
+
+      for (const testCase of cases) {
+        mockQuery.mockReset();
+        mockQuery
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: testCase.messageId,
+                conversation_id: testCase.conversationId,
+                author_user_id: 'u_author',
+                author_display_name: 'Author',
+                author_role: testCase.type === 'match' ? 'spectator' : 'player',
+                content: `reportable ${testCase.type}`,
+                moderation_status: 'visible',
+                created_at: '2026-07-10T00:00:01.000Z',
+                conversation_type: testCase.type,
+                conversation_subject_id: testCase.subjectId,
+              },
+            ],
+            rowCount: 1,
+          })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: `chat_report_${testCase.type}`,
+                message_id: testCase.messageId,
+                conversation_id: testCase.conversationId,
+                reporter_user_id: 'u_reader',
+                reason: 'abuse',
+                note: 'needs review',
+                reported_message_content: `reportable ${testCase.type}`,
+                reported_message_author_user_id: 'u_author',
+                reported_message_author_display_name: 'Author',
+                reported_message_author_role: testCase.type === 'match' ? 'spectator' : 'player',
+                reported_message_moderation_status: 'visible',
+                reported_message_created_at: '2026-07-10T00:00:01.000Z',
+                status: 'open',
+                reviewer_user_id: null,
+                resolution_note: '',
+                created_at: '2026-07-10T00:00:03.000Z',
+                reviewed_at: null,
+              },
+            ],
+            rowCount: 1,
+          });
+
+        const res = await sendRequest(
+          'POST',
+          `/api/chat/messages/${testCase.messageId}/report`,
+          { reason: 'abuse', note: '<needs review>' },
+          userUnsafeHeaders('u_reader'),
+        );
+
+        expect(res.statusCode).toBe(201);
+        const body = parseBody(res) as { report: Record<string, unknown> };
+        expect(body.report).toEqual(
+          expect.objectContaining({
+            id: `chat_report_${testCase.type}`,
+            messageId: testCase.messageId,
+            conversationId: testCase.conversationId,
+            reason: 'abuse',
+            note: 'needs review',
+            message: expect.objectContaining({
+              content: `reportable ${testCase.type}`,
+              authorUserId: 'u_author',
+              authorDisplayName: 'Author',
+            }),
+          }),
+        );
+        expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('JOIN chat_conversations'), [
+          testCase.messageId,
+        ]);
+        expect(mockQuery).toHaveBeenLastCalledWith(
+          expect.stringContaining('reported_message_content'),
+          expect.arrayContaining([
+            testCase.messageId,
+            testCase.conversationId,
+            'u_reader',
+            'abuse',
+            'needs review',
+            `reportable ${testCase.type}`,
+            'u_author',
+            'Author',
+            testCase.type === 'match' ? 'spectator' : 'player',
+            'visible',
+            '2026-07-10T00:00:01.000Z',
+          ]),
+        );
+      }
+    });
   });
 
   describe('admin chat moderation routes', () => {
