@@ -19,6 +19,19 @@ function optionalText(value: unknown, maxLength: number): string | undefined {
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
 }
 
+export function parseFriendInviteId(inviteId: string): { inviterUserId: string; targetUserId: string } | null {
+  const parts = inviteId.split(':');
+  if (parts.length !== 4 || parts[0] !== 'friend' || parts[1] !== 'v1') return null;
+  try {
+    const inviterUserId = decodeURIComponent(parts[2] ?? '').trim();
+    const targetUserId = decodeURIComponent(parts[3] ?? '').trim();
+    if (!inviterUserId || !targetUserId) return null;
+    return { inviterUserId, targetUserId };
+  } catch {
+    return null;
+  }
+}
+
 export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: PlatformClient }> {
   maxClients = 8;
   autoDispose = false;
@@ -35,7 +48,8 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   async onCreate(options: InviteRoomOptions = {}): Promise<void> {
     this.maxMessagesPerSecond = 4;
     this.inviteId = optionalText(options.inviteId, 128) ?? this.roomId;
-    this.targetUserId = optionalText(options.targetUserId, 128);
+    const friendInvite = parseFriendInviteId(this.inviteId);
+    this.targetUserId = friendInvite?.targetUserId ?? optionalText(options.targetUserId, 128);
     this.roomCode = optionalText(options.roomCode, 128);
     this.boardgameMatchID = optionalText(options.boardgameMatchID, 128);
     this.createdAt = Date.now();
@@ -100,6 +114,15 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   onAuth(_client: PlatformClient, options: InviteRoomOptions, context: AuthContext): PlatformAuth {
     const auth = authenticatePlatformClient(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
+    const inviteId = optionalText(options.inviteId, 128);
+    const friendInvite = inviteId ? parseFriendInviteId(inviteId) : null;
+    if (friendInvite) {
+      const targetUserId = optionalText(options.targetUserId, 128);
+      if (targetUserId && targetUserId !== friendInvite.targetUserId) throw new Error('Invalid invite target');
+      if (auth.userId !== friendInvite.inviterUserId && auth.userId !== friendInvite.targetUserId) {
+        throw new Error('Invite access denied');
+      }
+    }
     return { ...auth, role: 'player' };
   }
 

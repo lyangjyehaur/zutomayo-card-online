@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import type { AuthContext } from '@colyseus/core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authenticatePlatformClient } from '../auth';
-import { InviteRoom } from '../InviteRoom';
+import { InviteRoom, parseFriendInviteId } from '../InviteRoom';
 import { platformAuthTokenFromContext, verifyPlatformJwtUserId } from '../jwt';
 import { QuickMatchRoom } from '../QuickMatchRoom';
 
@@ -35,6 +35,12 @@ function authContext(headers: Record<string, string> = {}): AuthContext {
     headers: new Headers(headers),
     ip: '127.0.0.1',
   };
+}
+
+function cookieAuthContext(userId: string): AuthContext {
+  process.env.JWT_SECRET = 'test-platform-jwt-secret-at-least-32-characters';
+  const token = createJwt(userId, process.env.JWT_SECRET);
+  return authContext({ cookie: `zutomayo_session=${encodeURIComponent(token)}` });
 }
 
 afterEach(() => {
@@ -122,5 +128,72 @@ describe('platform room auth', () => {
         authContext(),
       ),
     ).toThrow('Authentication required');
+  });
+
+  it('parses directional friend invite ids', () => {
+    expect(parseFriendInviteId('friend:v1:logto%3Au_1:u%202')).toEqual({
+      inviterUserId: 'logto:u_1',
+      targetUserId: 'u 2',
+    });
+    expect(parseFriendInviteId('invite_1')).toBeNull();
+    expect(parseFriendInviteId('friend:v1:u_1')).toBeNull();
+    expect(parseFriendInviteId('friend:v1:%E0%A4%A:u_2')).toBeNull();
+  });
+
+  it('allows only friend invite participants to join invite rooms', () => {
+    const inviteRoom = new InviteRoom();
+    const inviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_target')}`;
+
+    expect(
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId, targetUserId: 'u_target', displayName: 'Alice' },
+        cookieAuthContext('u_inviter'),
+      ),
+    ).toMatchObject({ userId: 'u_inviter', authenticated: true, role: 'player' });
+
+    expect(
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId, targetUserId: 'u_target', displayName: 'Bob' },
+        cookieAuthContext('u_target'),
+      ),
+    ).toMatchObject({ userId: 'u_target', authenticated: true, role: 'player' });
+
+    expect(() =>
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId, targetUserId: 'u_target', displayName: 'Mallory' },
+        cookieAuthContext('u_other'),
+      ),
+    ).toThrow('Invite access denied');
+  });
+
+  it('rejects friend invite joins with mismatched target filters', () => {
+    const inviteRoom = new InviteRoom();
+    const inviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_target')}`;
+
+    expect(() =>
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId, targetUserId: 'u_other', displayName: 'Alice' },
+        cookieAuthContext('u_inviter'),
+      ),
+    ).toThrow('Invalid invite target');
+  });
+
+  it('derives friend invite room target metadata from invite id', async () => {
+    const inviteRoom = new InviteRoom();
+    const setMatchmaking = vi.spyOn(inviteRoom, 'setMatchmaking').mockResolvedValue(undefined);
+    const inviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_target')}`;
+
+    await inviteRoom.onCreate({ inviteId, targetUserId: 'u_other' });
+
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        inviteId,
+        targetUserId: 'u_target',
+      }),
+    });
   });
 });
