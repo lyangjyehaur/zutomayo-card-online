@@ -68,6 +68,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
   async onJoin(client: PlatformClient): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
+    const previousHost = this.host;
     client.userData = {
       sessionId: client.sessionId,
       userId: auth.userId,
@@ -75,7 +76,14 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       role: 'player',
       joinedAt: Date.now(),
     };
-    if (!this.host) this.host = client.userData;
+    const isHostReconnect = previousHost?.userId === client.userData.userId;
+    if (!previousHost || isHostReconnect) this.host = client.userData;
+
+    if (this.boardgameMatchID && this.status === 'waiting' && previousHost && !isHostReconnect) {
+      this.status = 'ready';
+      await this.refreshMetadata();
+      this.broadcast('boardgameMatchReady', { boardgameMatchID: this.boardgameMatchID });
+    }
 
     await this.refreshMetadata();
     this.clock.setTimeout(() => {
@@ -87,7 +95,12 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     }, 50);
   }
 
-  async onLeave(): Promise<void> {
+  async onLeave(client: PlatformClient): Promise<void> {
+    if (this.status === 'waiting' && this.host?.sessionId === client.sessionId) {
+      await this.cancel('host_left');
+      return;
+    }
+
     await this.refreshMetadata();
     this.broadcastSnapshot();
   }

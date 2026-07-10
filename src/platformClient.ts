@@ -521,9 +521,9 @@ export async function createPlatformCustomRoom(
       userId: options.userId,
       displayName: options.displayName,
       role: 'player',
-      status: options.boardgameMatchID ? 'ready' : 'waiting',
+      status: 'waiting',
     },
-    'create',
+    'joinOrCreate',
   );
   return bindPlatformCustomRoomHandlers(room, handlers);
 }
@@ -532,17 +532,19 @@ export async function joinPlatformCustomRoom(
   options: PlatformCustomRoomOptions,
   handlers: PlatformCustomRoomHandlers = {},
 ): Promise<PlatformCustomRoom> {
-  const room = await joinPlatformRoom(
-    'custom_room',
-    {
-      roomCode: options.roomCode,
-      userId: options.userId,
-      displayName: options.displayName,
-      role: 'player',
-      status: 'ready',
-    },
-    'join',
-  );
+  const joinWithStatus = (status: 'waiting' | 'ready') =>
+    joinPlatformRoom(
+      'custom_room',
+      {
+        roomCode: options.roomCode,
+        userId: options.userId,
+        displayName: options.displayName,
+        role: 'player',
+        status,
+      },
+      'join',
+    );
+  const room = await joinWithStatus('waiting').catch(() => joinWithStatus('ready'));
   return bindPlatformCustomRoomHandlers(room, handlers);
 }
 

@@ -18,6 +18,7 @@ import {
   onlineStatusPanelCopy,
   type OnlineRoomStatus,
 } from '../onlineRoomStatus';
+import { createPlatformCustomRoom, type PlatformCustomRoom } from '../platformClient';
 
 type MatchPlayer = {
   id: number;
@@ -108,6 +109,8 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
   const [leaving, setLeaving] = useState(false);
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [actionError, setActionError] = useState('');
+  const platformCustomRoomRef = useRef<PlatformCustomRoom | null>(null);
+  const latestReconnectStatusRef = useRef(reconnectStatus);
   // P2-13：Socket.IO 偵測到對手加入時設為 true，用來停止 HTTP fallback 並推進到 ready。
   const opponentJoinedRef = useRef(false);
   const routeState = location.state as { freshOnlineSession?: boolean; resumeOnlineSession?: boolean } | null;
@@ -117,6 +120,23 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
     if (opponentJoinedRef.current) return;
     opponentJoinedRef.current = true;
     setReconnectStatus('ready');
+  }, []);
+
+  useEffect(() => {
+    latestReconnectStatusRef.current = reconnectStatus;
+  }, [reconnectStatus]);
+
+  const leavePlatformCustomRoom = useCallback((cancel = false) => {
+    const room = platformCustomRoomRef.current;
+    if (cancel && room) {
+      try {
+        room.send('cancelCustomRoom', {});
+      } catch {
+        // The room may already be closing; onLeave still handles host cleanup when possible.
+      }
+    }
+    void room?.leave(true).catch(() => undefined);
+    platformCustomRoomRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -244,6 +264,55 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
   useEffect(() => {
     if (!activeSession) setLeavePromptOpen(false);
   }, [activeSession]);
+
+  useEffect(() => {
+    if (!activeSession || activeSession.playerID !== '0' || reconnectStatus !== 'waiting') {
+      leavePlatformCustomRoom(!activeSession && latestReconnectStatusRef.current === 'waiting');
+      return;
+    }
+
+    let cancelled = false;
+    if (platformCustomRoomRef.current) return;
+
+    void createPlatformCustomRoom(
+      {
+        roomCode: activeSession.matchID,
+        boardgameMatchID: activeSession.matchID,
+        userId: `match:${activeSession.matchID}:player:${activeSession.playerID}`,
+        displayName: t('player.zero'),
+      },
+      {
+        onDisconnect: () => {
+          platformCustomRoomRef.current = null;
+        },
+      },
+    ).then(
+      (room) => {
+        if (cancelled) {
+          void room.leave(true).catch(() => undefined);
+          return;
+        }
+        platformCustomRoomRef.current = room;
+      },
+      (err) => {
+        Sentry.addBreadcrumb({
+          category: 'platform',
+          message: 'custom room host registration unavailable',
+          level: 'warning',
+          data: { match_id: activeSession.matchID, error: err instanceof Error ? err.message : String(err) },
+        });
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSession, leavePlatformCustomRoom, reconnectStatus]);
+
+  useEffect(
+    () => () => leavePlatformCustomRoom(latestReconnectStatusRef.current === 'waiting'),
+    [leavePlatformCustomRoom],
+  );
 
   const retryStatusCheck = useCallback(() => {
     setActionError('');
