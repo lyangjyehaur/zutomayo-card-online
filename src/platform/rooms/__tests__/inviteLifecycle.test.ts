@@ -170,6 +170,75 @@ describe('invite room lifecycle', () => {
     });
   });
 
+  it('transfers pending invite ownership to the same inviter reconnect session', async () => {
+    const { room, inviteHandlers, setMatchmaking, broadcast, inviter } = await setupInviteRoom();
+    const reconnectingInviter = client('session_inviter_new', {
+      userId: 'u_inviter',
+      displayName: 'Inviter',
+      role: 'player',
+      authenticated: true,
+    });
+
+    room.clients.push(reconnectingInviter);
+    await room.onJoin(reconnectingInviter);
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+
+    await room.onLeave(inviter);
+
+    expect(broadcast).not.toHaveBeenCalledWith('inviteCancelled', expect.anything());
+    expect(broadcast).toHaveBeenCalledWith(
+      'inviteSnapshot',
+      expect.objectContaining({
+        status: 'pending',
+        inviter: expect.objectContaining({ sessionId: 'session_inviter_new', userId: 'u_inviter' }),
+      }),
+    );
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({ status: 'pending', boardgameMatchID: undefined }),
+    });
+
+    inviteHandlers.get('cancelInvite')?.(reconnectingInviter, { reason: 'reconnected-cancel' });
+    await flushAsyncHandlers();
+
+    expect(broadcast).toHaveBeenCalledWith('inviteCancelled', {
+      inviteId: inviteId(),
+      reason: 'reconnected-cancel',
+    });
+  });
+
+  it('lets a reconnected inviter relay the accepted invite boardgame match id', async () => {
+    const { room, inviteHandlers, boardgameHandlers, setMatchmaking, broadcast, inviter, target } =
+      await setupInviteRoom();
+    const reconnectingInviter = client('session_inviter_new', {
+      userId: 'u_inviter',
+      displayName: 'Inviter',
+      role: 'player',
+      authenticated: true,
+    });
+
+    room.clients.push(reconnectingInviter);
+    await room.onJoin(reconnectingInviter);
+    inviteHandlers.get('acceptInvite')?.(target, {});
+    await room.onLeave(inviter);
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+
+    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-old-session-ignored' });
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+
+    boardgameHandlers.get('boardgameMatchReady')?.(reconnectingInviter, { boardgameMatchID: ' bgio-match-1 ' });
+
+    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        status: 'accepted',
+        roomCode: 'bgio-match-1',
+        boardgameMatchID: 'bgio-match-1',
+      }),
+    });
+  });
+
   it('lets only the target decline a pending invite', async () => {
     const { inviteHandlers, setMatchmaking, broadcast, inviter, target } = await setupInviteRoom();
 

@@ -143,11 +143,42 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
-    if (this.status === 'pending' && this.inviter?.sessionId === client.sessionId) {
-      await this.cancel('inviter_left');
-      return;
+    if (this.inviter?.sessionId === client.sessionId) {
+      const replacementInviter = this.replacementInviterProfile(client.sessionId);
+      if (replacementInviter) {
+        this.inviter = replacementInviter;
+        await this.refreshMetadata();
+        this.broadcastSnapshot();
+        return;
+      }
+      if ((this.status === 'pending' || this.status === 'accepted') && !this.boardgameMatchID) {
+        await this.cancel('inviter_left');
+        return;
+      }
     }
+
     await this.refreshMetadata();
+  }
+
+  private replacementInviterProfile(leavingSessionId: string): PlatformClientProfile | undefined {
+    return this.clients
+      .map((item) => item.userData)
+      .find((profile): profile is PlatformClientProfile =>
+        Boolean(profile && profile.sessionId !== leavingSessionId && this.isInviter(profile)),
+      );
+  }
+
+  private canCancel(): boolean {
+    if (this.status === 'pending') return true;
+    return this.status === 'accepted' && !this.boardgameMatchID;
+  }
+
+  private async cancel(reason: string): Promise<void> {
+    if (!this.canCancel()) return;
+    this.status = 'cancelled';
+    await this.refreshMetadata();
+    this.broadcast('inviteCancelled', { inviteId: this.inviteId, reason });
+    this.broadcastSnapshot();
   }
 
   private canRespond(client: PlatformClient): client is PlatformClient & { userData: PlatformClientProfile } {
@@ -181,14 +212,6 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
 
   private broadcastSnapshot(): void {
     this.broadcast('inviteSnapshot', this.snapshot());
-  }
-
-  private async cancel(reason: string): Promise<void> {
-    if (this.status !== 'pending') return;
-    this.status = 'cancelled';
-    await this.refreshMetadata();
-    this.broadcast('inviteCancelled', { inviteId: this.inviteId, reason });
-    this.broadcastSnapshot();
   }
 
   private async refreshMetadata(): Promise<void> {
