@@ -44,6 +44,7 @@ import {
   buildPlatformFriendInviteId,
   connectPlatformQuickMatch,
   createPlatformInvite,
+  isPlatformBoardgameRelayAcknowledged,
   joinPlatformCustomRoom,
   joinPlatformInvite,
   type PlatformInviteRoom,
@@ -69,6 +70,7 @@ type MatchmakingPhase =
   | 'idle'
   | 'platform-waiting'
   | 'host-starting'
+  | 'host-waiting-relay'
   | 'guest-waiting-match'
   | 'guest-joining'
   | 'done';
@@ -150,6 +152,7 @@ export function OnlineLobbyPage({
   const [friendInvitePeerId, setFriendInvitePeerId] = useState<string | null>(null);
   const [friendInviteMode, setFriendInviteMode] = useState<'incoming' | 'outgoing' | null>(null);
   const platformInviteRoomRef = useRef<PlatformInviteRoom | null>(null);
+  const pendingInviteHostSessionRef = useRef<{ friendUserId: string; session: OnlineSession } | null>(null);
   const [unreadChats, setUnreadChats] = useState<ChatUnreadConversation[]>([]);
   const [unreadChatStatus, setUnreadChatStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [directChat, setDirectChat] = useState<{
@@ -195,6 +198,7 @@ export function OnlineLobbyPage({
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
       setFriendInviteMode(null);
+      pendingInviteHostSessionRef.current = null;
       void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
       platformInviteRoomRef.current = null;
       return;
@@ -215,6 +219,7 @@ export function OnlineLobbyPage({
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
       setFriendInviteMode(null);
+      pendingInviteHostSessionRef.current = null;
       void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
       platformInviteRoomRef.current = null;
     }
@@ -459,15 +464,19 @@ export function OnlineLobbyPage({
   const [createdMatchID, setCreatedMatchID] = useState('');
   const [error, setError] = useState('');
   const [matchmakingActive, setMatchmakingActive] = useState(false);
+  const [matchmakingCancellable, setMatchmakingCancellable] = useState(false);
   const [copied, setCopied] = useState(false);
   const platformQuickMatchRoomRef = useRef<PlatformQuickMatchRoom | null>(null);
   const phaseRef = useRef<MatchmakingPhase>('idle');
   const cancelRef = useRef(false);
+  const pendingQuickMatchSessionRef = useRef<OnlineSession | null>(null);
 
   const resetMatchmaking = useCallback(() => {
     phaseRef.current = 'idle';
     cancelRef.current = false;
+    pendingQuickMatchSessionRef.current = null;
     setMatchmakingActive(false);
+    setMatchmakingCancellable(false);
   }, []);
 
   useEffect(
@@ -595,6 +604,7 @@ export function OnlineLobbyPage({
     if (requestAnonymousNameBeforeStart()) return;
     setError('');
     setMatchmakingActive(true);
+    setMatchmakingCancellable(true);
     cancelRef.current = false;
     phaseRef.current = 'platform-waiting';
 
@@ -608,18 +618,21 @@ export function OnlineLobbyPage({
         {
           onMatched: (match) => {
             if (cancelRef.current || phaseRef.current !== 'platform-waiting') return;
+            setMatchmakingCancellable(false);
             if (match.role === 'host') {
               phaseRef.current = 'host-starting';
               void onStartOnline(undefined, effectivePlayerName, { navigate: false })
                 .then((session) => {
-                  phaseRef.current = 'done';
+                  if (cancelRef.current || phaseRef.current !== 'host-starting') return;
+                  pendingQuickMatchSessionRef.current = session;
+                  phaseRef.current = 'host-waiting-relay';
                   const room = platformQuickMatchRoomRef.current;
                   room?.send('boardgameMatchReady', {
                     boardgameMatchID: session.matchID,
                   });
-                  navigateToOnlineSession(session);
                 })
                 .catch((err) => {
+                  pendingQuickMatchSessionRef.current = null;
                   phaseRef.current = 'idle';
                   setMatchmakingActive(false);
                   Sentry.captureException(err, { tags: { action: 'platform-matchmaking-host-start' } });
@@ -633,6 +646,17 @@ export function OnlineLobbyPage({
           },
           onBoardgameMatchReady: (message) => {
             if (cancelRef.current || phaseRef.current === 'done' || phaseRef.current === 'host-starting') return;
+            if (phaseRef.current === 'host-waiting-relay') {
+              const session = pendingQuickMatchSessionRef.current;
+              if (!session || !isPlatformBoardgameRelayAcknowledged(session.matchID, message)) return;
+              pendingQuickMatchSessionRef.current = null;
+              phaseRef.current = 'done';
+              void platformQuickMatchRoomRef.current?.leave(true).catch(() => undefined);
+              platformQuickMatchRoomRef.current = null;
+              navigateToOnlineSession(session);
+              return;
+            }
+            if (phaseRef.current !== 'guest-waiting-match') return;
             phaseRef.current = 'guest-joining';
             void onStartOnline(message.boardgameMatchID, effectivePlayerName, { navigate: false })
               .then((session) => {
@@ -658,7 +682,10 @@ export function OnlineLobbyPage({
             platformQuickMatchRoomRef.current = null;
             if (
               cancelRef.current ||
-              (phaseRef.current !== 'platform-waiting' && phaseRef.current !== 'guest-waiting-match')
+              (phaseRef.current !== 'platform-waiting' &&
+                phaseRef.current !== 'host-starting' &&
+                phaseRef.current !== 'host-waiting-relay' &&
+                phaseRef.current !== 'guest-waiting-match')
             ) {
               return;
             }
@@ -680,6 +707,10 @@ export function OnlineLobbyPage({
         return;
       }
       platformQuickMatchRoomRef.current = room;
+      const pendingSession = pendingQuickMatchSessionRef.current;
+      if ((phaseRef.current as MatchmakingPhase) === 'host-waiting-relay' && pendingSession) {
+        room.send('boardgameMatchReady', { boardgameMatchID: pendingSession.matchID });
+      }
     } catch (err) {
       Sentry.addBreadcrumb({
         category: 'platform',
@@ -701,7 +732,10 @@ export function OnlineLobbyPage({
   };
 
   const handleCancelMatchmaking = () => {
+    if (phaseRef.current !== 'platform-waiting') return;
     cancelRef.current = true;
+    pendingQuickMatchSessionRef.current = null;
+    setMatchmakingCancellable(false);
     platformQuickMatchRoomRef.current?.send('cancelQuickMatch', {});
     void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
     platformQuickMatchRoomRef.current = null;
@@ -816,6 +850,7 @@ export function OnlineLobbyPage({
   };
 
   const leavePlatformInviteRoom = () => {
+    pendingInviteHostSessionRef.current = null;
     void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
     platformInviteRoomRef.current = null;
     setFriendInviteMode(null);
@@ -880,40 +915,62 @@ export function OnlineLobbyPage({
             showToast({ title: t('friend.inviteAccepted'), kind: 'success' });
             void onStartOnline(undefined, effectivePlayerName, { navigate: false })
               .then((session) => {
+                pendingInviteHostSessionRef.current = { friendUserId: friend.userId, session };
                 const room = platformInviteRoomRef.current;
                 room?.send('boardgameMatchReady', {
                   boardgameMatchID: session.matchID,
                 });
-                void room?.leave(true).catch(() => undefined);
-                platformInviteRoomRef.current = null;
-                setFriendInviteActionId(null);
-                setFriendInvitePeerId(null);
-                navigateToOnlineSession(session);
               })
               .catch((err) => {
+                pendingInviteHostSessionRef.current = null;
                 Sentry.captureException(err, { tags: { action: 'platform-invite-host-start' } });
                 setError(onlineErrorMessage(err));
                 setFriendInviteActionId(null);
               });
           },
+          onBoardgameMatchReady: (message) => {
+            const pending = pendingInviteHostSessionRef.current;
+            if (
+              !pending ||
+              pending.friendUserId !== friend.userId ||
+              !isPlatformBoardgameRelayAcknowledged(pending.session.matchID, message)
+            ) {
+              return;
+            }
+            pendingInviteHostSessionRef.current = null;
+            void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
+            platformInviteRoomRef.current = null;
+            setFriendInviteActionId(null);
+            setFriendInvitePeerId(null);
+            setFriendInviteMode(null);
+            navigateToOnlineSession(pending.session);
+          },
           onDeclined: () => {
+            pendingInviteHostSessionRef.current = null;
             showToast({ title: t('friend.inviteDeclined'), kind: 'error' });
             setFriendInviteActionId(null);
             setFriendInvitePeerId(null);
             leavePlatformInviteRoom();
           },
           onCancelled: () => {
+            pendingInviteHostSessionRef.current = null;
             setFriendInviteActionId(null);
             setFriendInvitePeerId(null);
             leavePlatformInviteRoom();
           },
           onDisconnect: () => {
+            pendingInviteHostSessionRef.current = null;
             setFriendInvitePeerId(null);
             setFriendInviteActionId(null);
+            setFriendInviteMode(null);
           },
         },
       );
       platformInviteRoomRef.current = room;
+      const pendingInviteSession = pendingInviteHostSessionRef.current;
+      if (pendingInviteSession?.friendUserId === friend.userId) {
+        room.send('boardgameMatchReady', { boardgameMatchID: pendingInviteSession.session.matchID });
+      }
       setFriendInvitePeerId(friend.userId);
       setFriendInviteMode('outgoing');
       setFriendInviteActionId(null);
@@ -1600,9 +1657,17 @@ export function OnlineLobbyPage({
                   <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
                   {t('lobby.matchmakingSearching')}
                 </span>
-                <Button className="min-h-11" variant="ghost" size="sm" type="button" onClick={handleCancelMatchmaking}>
-                  {t('lobby.matchmakingCancel')}
-                </Button>
+                {matchmakingCancellable && (
+                  <Button
+                    className="min-h-11"
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    onClick={handleCancelMatchmaking}
+                  >
+                    {t('lobby.matchmakingCancel')}
+                  </Button>
+                )}
               </div>
             )}
           </RoomPanel>

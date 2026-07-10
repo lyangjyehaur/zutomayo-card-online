@@ -455,6 +455,14 @@ export function platformBoardgameMatchReadyFromMessage(message: unknown): Platfo
   return { boardgameMatchID: data.boardgameMatchID.trim().slice(0, 128) };
 }
 
+export function isPlatformBoardgameRelayAcknowledged(
+  expectedBoardgameMatchID: string | undefined,
+  message: PlatformBoardgameMatchReady,
+): boolean {
+  const expected = expectedBoardgameMatchID?.trim().slice(0, 128);
+  return Boolean(expected && expected === message.boardgameMatchID);
+}
+
 export function shouldLinkPlatformMatchShell(options: PlatformMatchShellJoinOptions): boolean {
   return (options.role ?? 'spectator') === 'player' && options.hasBoardgameCredentials === true;
 }

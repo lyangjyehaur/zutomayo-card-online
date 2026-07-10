@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPlatformFriendInviteId,
+  isPlatformBoardgameRelayAcknowledged,
   normalizeSeatReservation,
   platformBoardgameMatchReadyFromMessage,
   platformChatPreviewFromMessage,
@@ -160,6 +161,9 @@ describe('platform client helpers', () => {
       boardgameMatchID: 'bgio-match-1',
     });
     expect(platformBoardgameMatchReadyFromMessage({})).toBeNull();
+    expect(isPlatformBoardgameRelayAcknowledged(' bgio-match-1 ', { boardgameMatchID: 'bgio-match-1' })).toBe(true);
+    expect(isPlatformBoardgameRelayAcknowledged('bgio-match-1', { boardgameMatchID: 'bgio-match-2' })).toBe(false);
+    expect(isPlatformBoardgameRelayAcknowledged('', { boardgameMatchID: 'bgio-match-1' })).toBe(false);
   });
 
   it('reads custom room snapshots defensively', () => {
