@@ -50,6 +50,17 @@ function sameBoardgameMatchID(current: string | undefined, next: unknown): boole
   return optionalText(next, 128) === current;
 }
 
+function matchConversationId(boardgameMatchID: string | undefined): string | undefined {
+  return boardgameMatchID ? `match:${boardgameMatchID}` : undefined;
+}
+
+function normalizeMatchConversationId(value: unknown, boardgameMatchID: string | undefined): string | undefined {
+  const expectedConversationId = matchConversationId(boardgameMatchID);
+  if (!expectedConversationId) return undefined;
+  const suppliedConversationId = optionalText(value, 128);
+  return suppliedConversationId === expectedConversationId ? suppliedConversationId : expectedConversationId;
+}
+
 export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; client: PlatformClient }> {
   private boardgameMatchID?: string;
   private conversationId?: string;
@@ -61,7 +72,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     const maxSpectators = positiveInteger(options.maxSpectators, 98, 500);
     this.maxClients = this.maxPlayerSeats + maxSpectators;
     this.boardgameMatchID = optionalText(options.boardgameMatchID, 128);
-    this.conversationId = optionalText(options.conversationId, 128);
+    this.conversationId = normalizeMatchConversationId(options.conversationId, this.boardgameMatchID);
     this.status = normalizeStatus(options.status, this.boardgameMatchID);
     this.maxMessagesPerSecond = 6;
 
@@ -75,8 +86,10 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     this.onMessage<ChatPreviewMessage>('chatPreview', (client, message) => {
       const text = optionalText(message.text, 500);
       if (!text || !client.userData || !client.auth?.authenticated) return;
+      const suppliedConversationId = optionalText(message.conversationId, 128);
+      if (!this.conversationId || (suppliedConversationId && suppliedConversationId !== this.conversationId)) return;
       this.broadcast('chatPreview', {
-        conversationId: optionalText(message.conversationId, 128) ?? this.conversationId,
+        conversationId: this.conversationId,
         sender: client.userData,
         text,
         createdAt: Date.now(),
@@ -167,6 +180,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
   private async linkBoardgameMatch(boardgameMatchID: string): Promise<void> {
     if (this.boardgameMatchID && this.boardgameMatchID !== boardgameMatchID) return;
     this.boardgameMatchID = boardgameMatchID;
+    this.conversationId = matchConversationId(boardgameMatchID);
     this.status = 'ready';
     await this.refreshMetadata();
     this.broadcast('boardgameMatchLinked', {

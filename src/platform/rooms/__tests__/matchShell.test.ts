@@ -293,6 +293,7 @@ describe('match shell room', () => {
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         boardgameMatchID: 'bgio-match-1',
+        conversationId: 'match:bgio-match-1',
         status: 'ready',
       }),
     });
@@ -305,7 +306,7 @@ describe('match shell room', () => {
     expect(setMatchmaking).not.toHaveBeenCalled();
   });
 
-  it('ignores chat preview messages from unauthenticated clients', async () => {
+  it('keeps match chat preview scoped to the shell conversation', async () => {
     const room = new MatchShellRoom();
     const handlers = new Map<string, ChatPreviewHandler>();
     vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -322,7 +323,7 @@ describe('match shell room', () => {
       joinedAt: 1000,
     };
 
-    await room.onCreate({ boardgameMatchID: 'bgio-match-1', conversationId: 'match:bgio-match-1' });
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1', conversationId: 'match:bgio-other-match' });
     const chatPreview = handlers.get('chatPreview');
     expect(chatPreview).toBeDefined();
 
@@ -339,9 +340,22 @@ describe('match shell room', () => {
         },
         userData: { ...profile, userId: 'u_1', displayName: 'Alice' },
       } as PlatformClient,
-      { text: 'persisted hello', conversationId: 'match:bgio-match-1' },
+      { text: 'wrong room', conversationId: 'match:bgio-other-match' },
     );
+    expect(broadcast).not.toHaveBeenCalledWith('chatPreview', expect.anything());
 
+    chatPreview?.(
+      {
+        auth: {
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'spectator',
+          authenticated: true,
+        },
+        userData: { ...profile, userId: 'u_1', displayName: 'Alice' },
+      } as PlatformClient,
+      { text: 'persisted hello' },
+    );
     expect(broadcast).toHaveBeenCalledWith(
       'chatPreview',
       expect.objectContaining({
