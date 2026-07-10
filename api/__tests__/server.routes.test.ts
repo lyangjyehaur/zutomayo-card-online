@@ -678,7 +678,7 @@ describe('server routes', () => {
           expectedSubjectId: 'online-lobby',
         },
         {
-          body: { conversationType: 'direct', subjectId: 'v1:u_friend:u_reader', authorRole: 'player' },
+          body: { conversationType: 'direct', subjectId: 'v1:u_reader:u_friend', authorRole: 'player' },
           expectedKey: 'direct:v1:u_friend:u_reader',
           expectedType: 'direct',
           expectedSubjectId: 'v1:u_friend:u_reader',

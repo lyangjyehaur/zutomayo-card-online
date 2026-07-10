@@ -76,9 +76,19 @@ function normalizeSubjectId(value) {
   return value.trim().slice(0, 300);
 }
 
+function canonicalConversationSubjectId(type, subjectId) {
+  const cleanSubjectId = normalizeSubjectId(subjectId);
+  if (type !== 'direct' || !cleanSubjectId) return cleanSubjectId;
+  const participants = directConversationParticipants(cleanSubjectId);
+  if (participants.length !== 2) return cleanSubjectId;
+  return cleanSubjectId.startsWith('v1:')
+    ? `v1:${participants.sort().map(encodeURIComponent).join(':')}`
+    : participants.sort().join(':');
+}
+
 function conversationKey(type, subjectId) {
   const cleanType = normalizeConversationType(type);
-  const cleanSubjectId = normalizeSubjectId(subjectId);
+  const cleanSubjectId = canonicalConversationSubjectId(cleanType, subjectId);
   if (!cleanType || !cleanSubjectId) return null;
   return `${cleanType}:${cleanSubjectId}`;
 }
@@ -265,6 +275,7 @@ async function getActiveChatSanction({ pool, userId }) {
 }
 
 async function getOrCreateConversation({ pool, type, subjectId, title = '' }) {
+  const canonicalSubjectId = canonicalConversationSubjectId(type, subjectId);
   const key = conversationKey(type, subjectId);
   if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
 
@@ -273,7 +284,7 @@ async function getOrCreateConversation({ pool, type, subjectId, title = '' }) {
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (id) DO UPDATE SET updated_at = NOW()
      RETURNING *`,
-    [key, type, normalizeSubjectId(subjectId), String(title || '').slice(0, 120)],
+    [key, type, canonicalSubjectId, String(title || '').slice(0, 120)],
   );
   return { ok: true, body: mapConversation(rows[0]) };
 }

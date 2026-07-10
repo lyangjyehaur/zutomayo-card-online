@@ -162,7 +162,9 @@ describe('chat service', () => {
   it('builds stable conversation keys for durable chat scopes', () => {
     expect(conversationKey('match', ' bgio-match-1 ')).toBe('match:bgio-match-1');
     expect(conversationKey('direct', 'u_1:u_2')).toBe('direct:u_1:u_2');
+    expect(conversationKey('direct', 'u_2:u_1')).toBe('direct:u_1:u_2');
     expect(conversationKey('direct', 'v1:logto%3Au_1:u_2')).toBe('direct:v1:logto%3Au_1:u_2');
+    expect(conversationKey('direct', 'v1:u_2:logto%3Au_1')).toBe('direct:v1:logto%3Au_1:u_2');
     expect(conversationKey('unknown', 'x')).toBeNull();
     expect(conversationKey('match', '')).toBeNull();
   });
@@ -191,6 +193,68 @@ describe('chat service', () => {
       }),
     ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
     expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  it('canonicalizes direct chat subjects before persistence', async () => {
+    const pool = poolWithResults([
+      { rows: [] },
+      {
+        rows: [
+          {
+            ...conversationRow,
+            id: 'direct:v1:u_1:u_2',
+            type: 'direct',
+            subject_id: 'v1:u_1:u_2',
+          },
+        ],
+      },
+      {
+        rows: [
+          {
+            ...messageRow,
+            id: 'chat_msg_direct',
+            conversation_id: 'direct:v1:u_1:u_2',
+            author_user_id: 'u_2',
+            content: 'hello',
+          },
+        ],
+      },
+      { rows: [] },
+    ]);
+
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_2',
+        body: {
+          conversationType: 'direct',
+          subjectId: 'v1:u_2:u_1',
+          content: 'hello',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_direct',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        conversation: expect.objectContaining({
+          id: 'direct:v1:u_1:u_2',
+          type: 'direct',
+          subjectId: 'v1:u_1:u_2',
+        }),
+        message: expect.objectContaining({
+          id: 'chat_msg_direct',
+          conversationId: 'direct:v1:u_1:u_2',
+        }),
+      },
+    });
+
+    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('INSERT INTO chat_conversations'), [
+      'direct:v1:u_1:u_2',
+      'direct',
+      'v1:u_1:u_2',
+      '',
+    ]);
   });
 
   it('evaluates keyword moderation rules before persistence', () => {
