@@ -471,6 +471,7 @@ async function markConversationRead({ pool, userId, body }) {
 async function listUnreadChat({ pool, userId, limit }) {
   if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
   const lim = clampLimit(limit, 50, 200);
+  const encodedUserId = encodeURIComponent(userId);
   const { rows } = await pool.query(
     `SELECT c.id, c.type, c.subject_id, c.title, c.status, c.created_at, c.updated_at,
             COUNT(m.id) AS unread_count,
@@ -482,10 +483,21 @@ async function listUnreadChat({ pool, userId, limit }) {
        AND m.deleted_at IS NULL
        AND m.moderation_status IN ('visible', 'pending_review')
        AND (r.read_at IS NULL OR m.created_at > r.read_at)
+       AND (
+         c.type <> 'direct'
+         OR (
+           c.subject_id LIKE 'v1:%'
+           AND $3 = ANY(string_to_array(SUBSTRING(c.subject_id FROM 4), ':'))
+         )
+         OR (
+           c.subject_id NOT LIKE 'v1:%'
+           AND $1 = ANY(string_to_array(c.subject_id, ':'))
+         )
+       )
      GROUP BY c.id
      ORDER BY latest_message_at DESC
      LIMIT $2`,
-    [userId, lim],
+    [userId, lim, encodedUserId],
   );
   return {
     ok: true,

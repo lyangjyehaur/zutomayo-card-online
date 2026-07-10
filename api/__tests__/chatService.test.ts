@@ -494,17 +494,25 @@ describe('chat service', () => {
           },
           {
             ...conversationRow,
+            id: 'direct:v1:logto%3Au_2:u_4',
+            type: 'direct',
+            subject_id: 'v1:logto%3Au_2:u_4',
+            unread_count: '1',
+            latest_message_at: '2026-07-10T00:00:05.000Z',
+          },
+          {
+            ...conversationRow,
             id: 'direct:u_3:u_4',
             type: 'direct',
             subject_id: 'u_3:u_4',
-            unread_count: '1',
-            latest_message_at: '2026-07-10T00:00:05.000Z',
+            unread_count: '5',
+            latest_message_at: '2026-07-10T00:00:06.000Z',
           },
         ],
       },
     ]);
 
-    await expect(listUnreadChat({ pool, userId: 'u_2', limit: '999' })).resolves.toEqual({
+    await expect(listUnreadChat({ pool, userId: 'logto:u_2', limit: '999' })).resolves.toEqual({
       ok: true,
       body: {
         conversations: [
@@ -513,13 +521,18 @@ describe('chat service', () => {
             unreadCount: 3,
             latestMessageAt: '2026-07-10T00:00:04.000Z',
           }),
+          expect.objectContaining({
+            id: 'direct:v1:logto%3Au_2:u_4',
+            unreadCount: 1,
+            latestMessageAt: '2026-07-10T00:00:05.000Z',
+          }),
         ],
       },
     });
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('m.author_user_id IS DISTINCT FROM $1'), [
-      'u_2',
-      200,
-    ]);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("$3 = ANY(string_to_array(SUBSTRING(c.subject_id FROM 4), ':'))"),
+      ['logto:u_2', 200, 'logto%3Au_2'],
+    );
   });
 
   it('keeps unread summaries for messages whose author account was tombstoned', async () => {
@@ -550,6 +563,7 @@ describe('chat service', () => {
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('m.author_user_id IS DISTINCT FROM $1'), [
       'u_2',
       20,
+      'u_2',
     ]);
   });
 

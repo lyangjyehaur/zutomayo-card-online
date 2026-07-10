@@ -527,10 +527,10 @@ describe('server routes', () => {
           latestMessageAt: '2026-07-10T00:00:06.000Z',
         }),
       ]);
-      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('m.author_user_id IS DISTINCT FROM $1'), [
-        'u_reader',
-        10,
-      ]);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining("$3 = ANY(string_to_array(SUBSTRING(c.subject_id FROM 4), ':'))"),
+        ['u_reader', 10, 'u_reader'],
+      );
     });
 
     it('GET /api/admin/users returns 401 without admin token', async () => {
