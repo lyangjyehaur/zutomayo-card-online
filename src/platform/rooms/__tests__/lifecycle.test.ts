@@ -85,6 +85,64 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('keeps guest cancellation from interrupting a matched quick match relay', async () => {
+    const room = new QuickMatchRoom();
+    const handlers = new Map<string, (client: PlatformClient, message?: unknown) => void>();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation(((
+      type: string,
+      handler: (client: PlatformClient, message?: unknown) => void,
+    ) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void) => {
+      handler();
+      return { clear: vi.fn() };
+    }) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate();
+    room.clients.push(host);
+    await room.onJoin(host);
+    room.clients.push(guest);
+    await room.onJoin(guest);
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+
+    handlers.get('cancelQuickMatch')?.(guest);
+
+    expect(broadcast).not.toHaveBeenCalledWith('quickMatchCancelled', expect.anything());
+    expect(setMatchmaking).not.toHaveBeenCalledWith({
+      metadata: expect.objectContaining({ status: 'cancelled' }),
+    });
+
+    handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-2' });
+
+    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-2' });
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        status: 'finished',
+        boardgameMatchID: 'bgio-match-2',
+      }),
+    });
+  });
+
   it('custom room lets only the host relay the boardgame match id once', async () => {
     const room = new CustomRoom();
     const handlers = new Map<string, BoardgameMatchReadyHandler>();

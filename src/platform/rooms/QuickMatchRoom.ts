@@ -40,6 +40,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
 
     this.onMessage('cancelQuickMatch', (client) => {
       if (!client.userData) return;
+      if (this.status === 'matched' && client.sessionId !== this.hostSessionId) return;
       void this.cancel('player_left');
     });
 
