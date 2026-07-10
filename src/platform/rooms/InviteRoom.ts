@@ -25,7 +25,7 @@ export function parseFriendInviteId(inviteId: string): { inviterUserId: string; 
   try {
     const inviterUserId = decodeURIComponent(parts[2] ?? '').trim();
     const targetUserId = decodeURIComponent(parts[3] ?? '').trim();
-    if (!inviterUserId || !targetUserId) return null;
+    if (!inviterUserId || !targetUserId || inviterUserId === targetUserId) return null;
     return { inviterUserId, targetUserId };
   } catch {
     return null;
@@ -118,12 +118,11 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     if (!auth.authenticated) throw new Error('Authentication required');
     const inviteId = optionalText(options.inviteId, 128);
     const friendInvite = inviteId ? parseFriendInviteId(inviteId) : null;
-    if (friendInvite) {
-      const targetUserId = optionalText(options.targetUserId, 128);
-      if (targetUserId && targetUserId !== friendInvite.targetUserId) throw new Error('Invalid invite target');
-      if (auth.userId !== friendInvite.inviterUserId && auth.userId !== friendInvite.targetUserId) {
-        throw new Error('Invite access denied');
-      }
+    if (!inviteId || !friendInvite) throw new Error('Invalid invite id');
+    const targetUserId = optionalText(options.targetUserId, 128);
+    if (targetUserId && targetUserId !== friendInvite.targetUserId) throw new Error('Invalid invite target');
+    if (auth.userId !== friendInvite.inviterUserId && auth.userId !== friendInvite.targetUserId) {
+      throw new Error('Invite access denied');
     }
     return { ...auth, role: 'player' };
   }

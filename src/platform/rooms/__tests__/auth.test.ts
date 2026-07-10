@@ -163,7 +163,28 @@ describe('platform room auth', () => {
     });
     expect(parseFriendInviteId('invite_1')).toBeNull();
     expect(parseFriendInviteId('friend:v1:u_1')).toBeNull();
+    expect(parseFriendInviteId('friend:v1:u_1:u_1')).toBeNull();
     expect(parseFriendInviteId('friend:v1:%E0%A4%A:u_2')).toBeNull();
+  });
+
+  it('requires directional friend invite ids for authenticated invite room joins', () => {
+    const inviteRoom = new InviteRoom();
+
+    expect(() =>
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId: 'invite_1', targetUserId: 'u_target', displayName: 'Alice' },
+        cookieAuthContext('u_inviter'),
+      ),
+    ).toThrow('Invalid invite id');
+
+    expect(() =>
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId: 'friend:v1:u_inviter:u_inviter', targetUserId: 'u_inviter', displayName: 'Alice' },
+        cookieAuthContext('u_inviter'),
+      ),
+    ).toThrow('Invalid invite id');
   });
 
   it('allows only friend invite participants to join invite rooms', () => {
