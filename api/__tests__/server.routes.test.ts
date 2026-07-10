@@ -586,6 +586,39 @@ describe('server routes', () => {
   });
 
   describe('chat routes', () => {
+    it('POST /api/chat/read marks every durable conversation type through the same route', async () => {
+      const cases = [
+        {
+          body: { conversationType: 'match', subjectId: 'bgio-match-1', lastReadMessageId: 'chat_msg_match' },
+          expectedKey: 'match:bgio-match-1',
+        },
+        {
+          body: { conversationType: 'room', subjectId: 'ROOM42', lastReadMessageId: 'chat_msg_room' },
+          expectedKey: 'room:ROOM42',
+        },
+        {
+          body: { conversationType: 'global', subjectId: 'online-lobby', lastReadMessageId: 'chat_msg_global' },
+          expectedKey: 'global:online-lobby',
+        },
+        {
+          body: { conversationType: 'direct', subjectId: 'v1:u_friend:u_reader', lastReadMessageId: 'chat_msg_direct' },
+          expectedKey: 'direct:v1:u_friend:u_reader',
+        },
+      ];
+
+      for (const testCase of cases) {
+        mockQuery.mockClear();
+        const res = await sendRequest('POST', '/api/chat/read', testCase.body, userUnsafeHeaders('u_reader'));
+        expect(res.statusCode).toBe(200);
+        expect(parseBody(res)).toEqual({ ok: true });
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO chat_read_states'), [
+          testCase.expectedKey,
+          'u_reader',
+          testCase.body.lastReadMessageId,
+        ]);
+      }
+    });
+
     it('POST /api/chat/messages/:messageId/translate returns 202 when translation is queued', async () => {
       mockQuery
         .mockResolvedValueOnce({
