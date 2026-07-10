@@ -528,6 +528,12 @@ describe('chat service', () => {
       reporter_user_id: 'u_2',
       reason: 'spam',
       note: 'too much',
+      reported_message_content: 'reported text',
+      reported_message_author_user_id: 'u_1',
+      reported_message_author_display_name: 'Alice',
+      reported_message_author_role: 'player',
+      reported_message_moderation_status: 'visible',
+      reported_message_created_at: '2026-07-10T00:00:01.000Z',
       status: 'open',
       reviewer_user_id: null,
       resolution_note: '',
@@ -535,7 +541,20 @@ describe('chat service', () => {
       reviewed_at: null,
     };
     const pool = poolWithResults([
-      { rows: [{ id: 'chat_msg_1', conversation_id: 'match:bgio-match-1' }] },
+      {
+        rows: [
+          {
+            id: 'chat_msg_1',
+            conversation_id: 'match:bgio-match-1',
+            author_user_id: 'u_1',
+            author_display_name: 'Alice',
+            author_role: 'player',
+            content: 'reported text',
+            moderation_status: 'visible',
+            created_at: '2026-07-10T00:00:01.000Z',
+          },
+        ],
+      },
       { rows: [reportRow] },
     ]);
 
@@ -556,12 +575,36 @@ describe('chat service', () => {
           messageId: 'chat_msg_1',
           conversationId: 'match:bgio-match-1',
           note: 'too much',
+          message: expect.objectContaining({
+            content: 'reported text',
+            authorUserId: 'u_1',
+            authorDisplayName: 'Alice',
+            authorRole: 'player',
+          }),
         }),
       },
     });
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('reported_message_content'),
+      expect.arrayContaining([
+        'chat_report_1',
+        'chat_msg_1',
+        'match:bgio-match-1',
+        'u_2',
+        'spam',
+        'too much',
+        'reported text',
+        'u_1',
+        'Alice',
+        'player',
+        'visible',
+        '2026-07-10T00:00:01.000Z',
+      ]),
+    );
   });
 
-  it('lists reports with message evidence for admin review', async () => {
+  it('lists reports with snapshotted message evidence for admin review', async () => {
     const pool = poolWithResults([
       {
         rows: [
@@ -577,12 +620,18 @@ describe('chat service', () => {
             resolution_note: '',
             created_at: '2026-07-10T00:00:03.000Z',
             reviewed_at: null,
-            message_content: 'reported text',
-            message_author_user_id: 'u_1',
-            message_author_display_name: 'Alice',
-            message_author_role: 'player',
+            reported_message_content: 'snapshotted text',
+            reported_message_author_user_id: 'u_1',
+            reported_message_author_display_name: 'Alice at report time',
+            reported_message_author_role: 'player',
+            reported_message_moderation_status: 'pending_review',
+            reported_message_created_at: '2026-07-10T00:00:01.000Z',
+            message_content: 'edited later',
+            message_author_user_id: 'u_9',
+            message_author_display_name: 'Changed',
+            message_author_role: 'spectator',
             message_moderation_status: 'visible',
-            message_created_at: '2026-07-10T00:00:01.000Z',
+            message_created_at: '2026-07-10T00:00:09.000Z',
           },
         ],
       },
@@ -595,8 +644,12 @@ describe('chat service', () => {
           expect.objectContaining({
             id: 'chat_report_1',
             message: expect.objectContaining({
-              content: 'reported text',
-              authorDisplayName: 'Alice',
+              content: 'snapshotted text',
+              authorUserId: 'u_1',
+              authorDisplayName: 'Alice at report time',
+              authorRole: 'player',
+              moderationStatus: 'pending_review',
+              createdAt: '2026-07-10T00:00:01.000Z',
             }),
           }),
         ],

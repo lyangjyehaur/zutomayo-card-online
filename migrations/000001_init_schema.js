@@ -581,6 +581,12 @@ export const up = (pgm) => {
         onDelete: 'CASCADE',
       },
       reporter_user_id: { type: 'text', references: 'users(id)', onDelete: 'SET NULL' },
+      reported_message_content: { type: 'text', notNull: true, default: '' },
+      reported_message_author_user_id: { type: 'text' },
+      reported_message_author_display_name: { type: 'text', notNull: true, default: '' },
+      reported_message_author_role: { type: 'text', notNull: true, default: 'spectator' },
+      reported_message_moderation_status: { type: 'text', notNull: true, default: 'visible' },
+      reported_message_created_at: { type: 'timestamptz' },
       reason: { type: 'text', notNull: true },
       note: { type: 'text', notNull: true, default: '' },
       status: { type: 'text', notNull: true, default: 'open' },
@@ -599,6 +605,18 @@ export const up = (pgm) => {
     ifNotExists: true,
     name: 'idx_chat_reports_message',
   });
+  pgm.addColumn(
+    'chat_reports',
+    {
+      reported_message_content: { type: 'text', notNull: true, default: '' },
+      reported_message_author_user_id: { type: 'text' },
+      reported_message_author_display_name: { type: 'text', notNull: true, default: '' },
+      reported_message_author_role: { type: 'text', notNull: true, default: 'spectator' },
+      reported_message_moderation_status: { type: 'text', notNull: true, default: 'visible' },
+      reported_message_created_at: { type: 'timestamptz' },
+    },
+    { ifNotExists: true },
+  );
 
   // ===== chat_moderation_events =====
   pgm.createTable(

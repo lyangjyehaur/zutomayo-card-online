@@ -162,6 +162,28 @@ function mapTranslation(row) {
 }
 
 function mapReport(row) {
+  const messageContent =
+    row.reported_message_content !== undefined && row.reported_message_content !== ''
+      ? row.reported_message_content
+      : row.message_content;
+  const messageAuthorUserId =
+    row.reported_message_author_user_id !== undefined
+      ? row.reported_message_author_user_id
+      : row.message_author_user_id;
+  const messageAuthorDisplayName =
+    row.reported_message_author_display_name !== undefined && row.reported_message_author_display_name !== ''
+      ? row.reported_message_author_display_name
+      : row.message_author_display_name;
+  const messageAuthorRole =
+    row.reported_message_author_role !== undefined && row.reported_message_author_role !== ''
+      ? row.reported_message_author_role
+      : row.message_author_role;
+  const messageModerationStatus =
+    row.reported_message_moderation_status !== undefined && row.reported_message_moderation_status !== ''
+      ? row.reported_message_moderation_status
+      : row.message_moderation_status;
+  const messageCreatedAt =
+    row.reported_message_created_at !== undefined ? row.reported_message_created_at : row.message_created_at;
   const report = {
     id: row.id,
     messageId: row.message_id,
@@ -175,14 +197,14 @@ function mapReport(row) {
     createdAt: row.created_at,
     reviewedAt: row.reviewed_at || null,
   };
-  if (row.message_content !== undefined) {
+  if (messageContent !== undefined) {
     report.message = {
-      content: row.message_content || '',
-      authorUserId: row.message_author_user_id || null,
-      authorDisplayName: row.message_author_display_name || '',
-      authorRole: row.message_author_role || 'spectator',
-      moderationStatus: row.message_moderation_status || 'visible',
-      createdAt: row.message_created_at || null,
+      content: messageContent || '',
+      authorUserId: messageAuthorUserId || null,
+      authorDisplayName: messageAuthorDisplayName || '',
+      authorRole: messageAuthorRole || 'spectator',
+      moderationStatus: messageModerationStatus || 'visible',
+      createdAt: messageCreatedAt || null,
     };
     if (row.sanction_id) {
       report.message.activeSanction = mapSanction({
@@ -597,16 +619,40 @@ async function reportChatMessage({ pool, reporterUserId, messageId, body, saniti
   const reason = sanitizeText(body.reason || '', 60);
   if (!cleanMessageId || !reason) return { ok: false, status: 400, error: 'Report reason is required' };
 
-  const message = (await pool.query('SELECT id, conversation_id FROM chat_messages WHERE id = $1', [cleanMessageId]))
-    .rows[0];
+  const message = (
+    await pool.query(
+      `SELECT id, conversation_id, author_user_id, author_display_name, author_role,
+              content, moderation_status, created_at
+       FROM chat_messages
+       WHERE id = $1`,
+      [cleanMessageId],
+    )
+  ).rows[0];
   if (!message) return { ok: false, status: 404, error: 'Message not found' };
 
   const id = generateReportId();
   const { rows } = await pool.query(
-    `INSERT INTO chat_reports (id, message_id, conversation_id, reporter_user_id, reason, note)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO chat_reports (
+       id, message_id, conversation_id, reporter_user_id, reason, note,
+       reported_message_content, reported_message_author_user_id, reported_message_author_display_name,
+       reported_message_author_role, reported_message_moderation_status, reported_message_created_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
-    [id, cleanMessageId, message.conversation_id, reporterUserId, reason, sanitizeText(body.note || '', 1000)],
+    [
+      id,
+      cleanMessageId,
+      message.conversation_id,
+      reporterUserId,
+      reason,
+      sanitizeText(body.note || '', 1000),
+      message.content || '',
+      message.author_user_id || null,
+      message.author_display_name || '',
+      message.author_role || 'spectator',
+      message.moderation_status || 'visible',
+      message.created_at || null,
+    ],
   );
   return { ok: true, body: { report: mapReport(rows[0]) } };
 }
@@ -641,7 +687,7 @@ async function listChatReports({ pool, status, limit }) {
      LEFT JOIN LATERAL (
        SELECT *
        FROM chat_user_sanctions
-       WHERE target_user_id = m.author_user_id
+       WHERE target_user_id = COALESCE(r.reported_message_author_user_id, m.author_user_id)
          AND type = 'chat_mute'
          AND status = 'active'
          AND revoked_at IS NULL
