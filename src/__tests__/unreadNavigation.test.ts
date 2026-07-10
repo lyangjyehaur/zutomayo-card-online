@@ -62,6 +62,7 @@ describe('unread conversation navigation', () => {
   it('rejects unread conversations that cannot be opened safely', () => {
     expect(resolveUnreadConversationAction(unreadConversation('match', '   '))).toBeNull();
     expect(resolveUnreadConversationAction(unreadConversation('direct', 'v1:u_friend:u_me'))).toBeNull();
+    expect(resolveUnreadConversationAction(unreadConversation('global', 'staff-room'))).toBeNull();
     expect(
       resolveUnreadConversationAction(unreadConversation('direct', 'v1:u_friend:u_me'), {
         profileId: 'u_other',

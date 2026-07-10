@@ -5,6 +5,7 @@ const PARTICIPANT_ROLES = ['player', 'spectator', 'moderator'];
 const MESSAGE_STATUSES = ['visible', 'pending_review', 'blocked', 'deleted'];
 const REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'];
 const SANCTION_TYPES = ['chat_mute'];
+const GLOBAL_LOBBY_SUBJECT_ID = 'online-lobby';
 
 function normalizeKeywordList(value) {
   if (Array.isArray(value)) return value.map((item) => String(item).trim().toLowerCase()).filter(Boolean);
@@ -90,11 +91,13 @@ function conversationKey(type, subjectId) {
   const cleanType = normalizeConversationType(type);
   const cleanSubjectId = canonicalConversationSubjectId(cleanType, subjectId);
   if (!cleanType || !cleanSubjectId) return null;
+  if (cleanType === 'global' && cleanSubjectId !== GLOBAL_LOBBY_SUBJECT_ID) return null;
   return `${cleanType}:${cleanSubjectId}`;
 }
 
 function canAccessConversation(userId, type, subjectId) {
   if (!userId) return false;
+  if (type === 'global') return canonicalConversationSubjectId(type, subjectId) === GLOBAL_LOBBY_SUBJECT_ID;
   if (type !== 'direct') return true;
   const canonicalSubjectId = canonicalConversationSubjectId(type, subjectId);
   if (!canonicalSubjectId) return false;
@@ -483,6 +486,7 @@ async function listUnreadChat({ pool, userId, limit }) {
        AND m.deleted_at IS NULL
        AND m.moderation_status IN ('visible', 'pending_review')
        AND (r.read_at IS NULL OR m.created_at > r.read_at)
+       AND (c.type <> 'global' OR c.subject_id = 'online-lobby')
        AND (
          c.type <> 'direct'
          OR (

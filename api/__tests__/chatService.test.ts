@@ -161,6 +161,8 @@ const sanctionRow = {
 describe('chat service', () => {
   it('builds stable conversation keys for durable chat scopes', () => {
     expect(conversationKey('match', ' bgio-match-1 ')).toBe('match:bgio-match-1');
+    expect(conversationKey('global', ' online-lobby ')).toBe('global:online-lobby');
+    expect(conversationKey('global', 'staff-room')).toBeNull();
     expect(conversationKey('direct', 'u_1:u_2')).toBe('direct:u_1:u_2');
     expect(conversationKey('direct', 'u_2:u_1')).toBe('direct:u_1:u_2');
     expect(conversationKey('direct', 'v1:logto%3Au_1:u_2')).toBe('direct:v1:logto%3Au_1:u_2');
@@ -177,6 +179,8 @@ describe('chat service', () => {
     expect(canAccessConversation('u_3', 'direct', 'u_1:u_2')).toBe(false);
     expect(canAccessConversation('u_1', 'direct', 'u_1:u_1')).toBe(false);
     expect(canAccessConversation('u_1', 'direct', 'u_1:u_2:u_3')).toBe(false);
+    expect(canAccessConversation('u_1', 'global', 'online-lobby')).toBe(true);
+    expect(canAccessConversation('u_1', 'global', 'staff-room')).toBe(false);
     expect(canAccessConversation('u_3', 'match', 'bgio-match-1')).toBe(true);
   });
 
@@ -508,6 +512,14 @@ describe('chat service', () => {
             unread_count: '5',
             latest_message_at: '2026-07-10T00:00:06.000Z',
           },
+          {
+            ...conversationRow,
+            id: 'global:staff-room',
+            type: 'global',
+            subject_id: 'staff-room',
+            unread_count: '9',
+            latest_message_at: '2026-07-10T00:00:07.000Z',
+          },
         ],
       },
     ]);
@@ -530,7 +542,7 @@ describe('chat service', () => {
       },
     });
     expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining("$3 = ANY(string_to_array(SUBSTRING(c.subject_id FROM 4), ':'))"),
+      expect.stringContaining("c.type <> 'global' OR c.subject_id = 'online-lobby'"),
       ['logto:u_2', 200, 'logto%3Au_2'],
     );
   });

@@ -1,6 +1,8 @@
 import type { ChatUnreadConversation, FriendProfile } from '../api/client';
 import { directConversationPeerId } from './directConversation';
 
+const GLOBAL_LOBBY_CHAT_SUBJECT_ID = 'online-lobby';
+
 export type UnreadConversationAction =
   | { kind: 'match'; subjectId: string }
   | { kind: 'room'; subjectId: string }
@@ -33,6 +35,7 @@ export function resolveUnreadConversationAction(
   }
 
   if (conversation.type === 'global') {
+    if (subjectId !== GLOBAL_LOBBY_CHAT_SUBJECT_ID) return null;
     return { kind: 'global', subjectId };
   }
 
