@@ -858,6 +858,98 @@ describe('server routes', () => {
         'pending',
       ]);
     });
+
+    it('POST /api/chat/messages/:messageId/translate queues every durable conversation type through the same route', async () => {
+      const cases = [
+        {
+          messageId: 'chat_msg_translate_match',
+          type: 'match',
+          subjectId: 'bgio-match-1',
+          conversationId: 'match:bgio-match-1',
+        },
+        {
+          messageId: 'chat_msg_translate_room',
+          type: 'room',
+          subjectId: 'ROOM42',
+          conversationId: 'room:ROOM42',
+        },
+        {
+          messageId: 'chat_msg_translate_global',
+          type: 'global',
+          subjectId: 'online-lobby',
+          conversationId: 'global:online-lobby',
+        },
+        {
+          messageId: 'chat_msg_translate_direct',
+          type: 'direct',
+          subjectId: 'v1:u_friend:u_reader',
+          conversationId: 'direct:v1:u_friend:u_reader',
+        },
+      ];
+
+      for (const testCase of cases) {
+        mockQuery.mockReset();
+        mockQuery
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                id: testCase.messageId,
+                conversation_id: testCase.conversationId,
+                content: `こんにちは ${testCase.type}`,
+                source_language: 'ja',
+                type: testCase.type,
+                subject_id: testCase.subjectId,
+              },
+            ],
+            rowCount: 1,
+          })
+          .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+          .mockResolvedValueOnce({
+            rows: [
+              {
+                message_id: testCase.messageId,
+                target_language: 'en',
+                translated_content: '',
+                provider: 'unconfigured',
+                model: '',
+                status: 'pending',
+                created_at: '2026-07-10T00:00:02.000Z',
+                updated_at: '2026-07-10T00:00:02.000Z',
+              },
+            ],
+            rowCount: 1,
+          });
+
+        const res = await sendRequest(
+          'POST',
+          `/api/chat/messages/${testCase.messageId}/translate`,
+          { targetLanguage: 'en' },
+          userUnsafeHeaders('u_reader'),
+        );
+
+        expect(res.statusCode).toBe(202);
+        const body = parseBody(res) as { translation: Record<string, unknown>; cached: boolean };
+        expect(body).toEqual({
+          cached: false,
+          translation: expect.objectContaining({
+            messageId: testCase.messageId,
+            targetLanguage: 'en',
+            status: 'pending',
+          }),
+        });
+        expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('JOIN chat_conversations'), [
+          testCase.messageId,
+        ]);
+        expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO chat_message_translations'), [
+          testCase.messageId,
+          'en',
+          '',
+          'unconfigured',
+          '',
+          'pending',
+        ]);
+      }
+    });
   });
 
   describe('admin chat moderation routes', () => {
