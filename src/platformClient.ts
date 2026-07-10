@@ -455,6 +455,10 @@ export function platformBoardgameMatchReadyFromMessage(message: unknown): Platfo
   return { boardgameMatchID: data.boardgameMatchID.trim().slice(0, 128) };
 }
 
+export function shouldLinkPlatformMatchShell(options: PlatformMatchShellJoinOptions): boolean {
+  return (options.role ?? 'spectator') === 'player' && options.hasBoardgameCredentials === true;
+}
+
 export function platformCustomRoomSnapshotFromMessage(message: unknown): PlatformCustomRoomSnapshot | null {
   if (!message || typeof message !== 'object') return null;
   const data = message as {
@@ -754,7 +758,9 @@ export async function connectPlatformMatchShell(
   });
   room.onMessage('boardgameMatchLinked', () => undefined);
   room.onLeave(() => handlers.onDisconnect?.());
-  room.send('linkBoardgameMatch', { boardgameMatchID: options.boardgameMatchID });
+  if (shouldLinkPlatformMatchShell(options)) {
+    room.send('linkBoardgameMatch', { boardgameMatchID: options.boardgameMatchID });
+  }
 
   return room;
 }

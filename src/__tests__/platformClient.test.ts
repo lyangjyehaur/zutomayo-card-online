@@ -14,6 +14,7 @@ import {
   platformQuickMatchMatchedFromMessage,
   platformQuickMatchSnapshotFromMessage,
   resolvePlatformEndpoint,
+  shouldLinkPlatformMatchShell,
 } from '../platformClient';
 
 describe('platform client helpers', () => {
@@ -72,6 +73,18 @@ describe('platform client helpers', () => {
       spectators: 1,
     });
     expect(platformPresenceFromMatchShellMessage({ players: 2 })).toBeNull();
+  });
+
+  it('only links match shells from credentialed boardgame players', () => {
+    const base = {
+      boardgameMatchID: 'bgio-match-1',
+      userId: 'u_1',
+      displayName: 'Alice',
+    };
+
+    expect(shouldLinkPlatformMatchShell({ ...base, role: 'spectator', hasBoardgameCredentials: true })).toBe(false);
+    expect(shouldLinkPlatformMatchShell({ ...base, role: 'player' })).toBe(false);
+    expect(shouldLinkPlatformMatchShell({ ...base, role: 'player', hasBoardgameCredentials: true })).toBe(true);
   });
 
   it('reads match shell chat preview messages defensively', () => {
