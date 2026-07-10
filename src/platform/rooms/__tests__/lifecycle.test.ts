@@ -85,7 +85,7 @@ describe('platform room lifecycle', () => {
     });
   });
 
-  it('keeps guest cancellation from interrupting a matched quick match relay', async () => {
+  it('keeps guest cancellation and leave from interrupting a matched quick match relay', async () => {
     const room = new QuickMatchRoom();
     const handlers = new Map<string, (client: PlatformClient, message?: unknown) => void>();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -126,6 +126,13 @@ describe('platform room lifecycle', () => {
     setMatchmaking.mockClear();
 
     handlers.get('cancelQuickMatch')?.(guest);
+
+    expect(broadcast).not.toHaveBeenCalledWith('quickMatchCancelled', expect.anything());
+    expect(setMatchmaking).not.toHaveBeenCalledWith({
+      metadata: expect.objectContaining({ status: 'cancelled' }),
+    });
+
+    await room.onLeave(guest);
 
     expect(broadcast).not.toHaveBeenCalledWith('quickMatchCancelled', expect.anything());
     expect(setMatchmaking).not.toHaveBeenCalledWith({

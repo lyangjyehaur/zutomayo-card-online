@@ -84,6 +84,10 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
+    if (this.status === 'matched' && client.sessionId !== this.hostSessionId) {
+      await this.refreshMetadata();
+      return;
+    }
     if (this.status === 'waiting' || this.status === 'matched') {
       await this.cancel(client.userData ? 'player_left' : 'connection_lost');
       return;
