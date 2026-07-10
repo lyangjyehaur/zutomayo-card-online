@@ -184,6 +184,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'friend.refresh': '重新同步好友',
   'friend.invite': '邀请对战',
   'friend.acceptInvite': '接受邀请',
+  'friend.inviteIncoming': '收到好友对战邀请',
   'friend.inviteWaiting': '等待好友接受',
   'friend.inviteSent': '已发送对战邀请',
   'friend.inviteAccepted': '已接受对战邀请',

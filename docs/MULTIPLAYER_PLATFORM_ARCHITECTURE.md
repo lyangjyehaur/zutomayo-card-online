@@ -39,7 +39,7 @@ Friend presence subscriptions are resolved server-side from the durable `user_fr
 
 Friend direct messages use the durable `ChatService` direct conversation type. The Online Lobby provides friend management plus direct chat history/send/read/report/translate flows; direct conversation subject IDs are canonicalized so both participants share one thread.
 
-Friend match invitations use the Colyseus `invite` room as the realtime coordination channel. The lobby creates deterministic directional invite IDs from inviter/target user IDs, lets the target join and accept the pending invite, then sends the resulting boardgame.io match ID back through the same invite room. This keeps invitation lifecycle in Colyseus while the actual match remains owned by boardgame.io.
+Friend match invitations use the Colyseus `invite` room as the realtime coordination channel. The lobby creates deterministic directional invite IDs from inviter/target user IDs, probes friends for incoming pending invites, lets the target accept through the same invite room, then sends the resulting boardgame.io match ID back through that room. This keeps invitation lifecycle in Colyseus while the actual match remains owned by boardgame.io.
 
 Cross-room lobby chat uses the durable `ChatService` global conversation type (`online-lobby`) with the same history, read-state, report, moderation, and translation behavior instead of Colyseus room memory.
 

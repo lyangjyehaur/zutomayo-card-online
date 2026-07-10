@@ -189,6 +189,7 @@ export const ko: Record<TranslationKey, string> = {
   'friend.refresh': '친구 다시 동기화',
   'friend.invite': '대전 초대',
   'friend.acceptInvite': '초대 수락',
+  'friend.inviteIncoming': '친구의 대전 초대가 있습니다',
   'friend.inviteWaiting': '친구 수락 대기',
   'friend.inviteSent': '대전 초대를 보냈습니다',
   'friend.inviteAccepted': '대전 초대를 수락했습니다',

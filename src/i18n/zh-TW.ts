@@ -182,6 +182,7 @@ export const zhTW = {
   'friend.refresh': '重新同步好友',
   'friend.invite': '邀請對戰',
   'friend.acceptInvite': '接受邀請',
+  'friend.inviteIncoming': '收到好友對戰邀請',
   'friend.inviteWaiting': '等待好友接受',
   'friend.inviteSent': '已送出對戰邀請',
   'friend.inviteAccepted': '已接受對戰邀請',

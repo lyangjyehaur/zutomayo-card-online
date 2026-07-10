@@ -146,6 +146,7 @@ export function OnlineLobbyPage({
   const [friendActionId, setFriendActionId] = useState<string | null>(null);
   const [friendInviteActionId, setFriendInviteActionId] = useState<string | null>(null);
   const [friendInvitePeerId, setFriendInvitePeerId] = useState<string | null>(null);
+  const [friendInviteMode, setFriendInviteMode] = useState<'incoming' | 'outgoing' | null>(null);
   const platformInviteRoomRef = useRef<PlatformInviteRoom | null>(null);
   const [unreadChats, setUnreadChats] = useState<ChatUnreadConversation[]>([]);
   const [unreadChatStatus, setUnreadChatStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
@@ -191,6 +192,7 @@ export function OnlineLobbyPage({
       setRoomChatStatus('idle');
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
+      setFriendInviteMode(null);
       void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
       platformInviteRoomRef.current = null;
       return;
@@ -210,6 +212,7 @@ export function OnlineLobbyPage({
       setRoomChatStatus('idle');
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
+      setFriendInviteMode(null);
       void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
       platformInviteRoomRef.current = null;
     }
@@ -906,7 +909,32 @@ export function OnlineLobbyPage({
   const leavePlatformInviteRoom = () => {
     void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
     platformInviteRoomRef.current = null;
+    setFriendInviteMode(null);
   };
+
+  const leaveObservedInviteRoom = (room: PlatformInviteRoom | null) => {
+    void room?.leave(true).catch(() => undefined);
+  };
+
+  const joinAcceptedInviteMatch = useCallback(
+    (friend: FriendProfile, boardgameMatchID: string) => {
+      setFriendInviteActionId(`join:${friend.userId}`);
+      void onStartOnline(boardgameMatchID, effectivePlayerName)
+        .then(() => {
+          void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
+          platformInviteRoomRef.current = null;
+          setFriendInviteActionId(null);
+          setFriendInvitePeerId(null);
+          setFriendInviteMode(null);
+        })
+        .catch((err) => {
+          Sentry.captureException(err, { tags: { action: 'platform-invite-guest-join' } });
+          setError(onlineErrorMessage(err));
+          setFriendInviteActionId(null);
+        });
+    },
+    [effectivePlayerName, onStartOnline],
+  );
 
   const handleInviteFriend = async (friend: FriendProfile) => {
     if (!profile) return;
@@ -968,6 +996,7 @@ export function OnlineLobbyPage({
       );
       platformInviteRoomRef.current = room;
       setFriendInvitePeerId(friend.userId);
+      setFriendInviteMode('outgoing');
       setFriendInviteActionId(null);
       showToast({ title: t('friend.inviteSent'), kind: 'success' });
     } catch (err) {
@@ -979,6 +1008,7 @@ export function OnlineLobbyPage({
       });
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
+      setFriendInviteMode(null);
       showToast({ title: t('friend.inviteFailed'), kind: 'error' });
     }
   };
@@ -988,6 +1018,13 @@ export function OnlineLobbyPage({
     const inviteId = buildPlatformFriendInviteId(friend.userId, profile.id);
     setFriendInviteActionId(`accept:${friend.userId}`);
     setError('');
+
+    if (friendInviteMode === 'incoming' && friendInvitePeerId === friend.userId && platformInviteRoomRef.current) {
+      platformInviteRoomRef.current.send('acceptInvite', {});
+      showToast({ title: t('friend.inviteAccepted'), kind: 'success' });
+      return;
+    }
+
     leavePlatformInviteRoom();
 
     try {
@@ -1001,23 +1038,11 @@ export function OnlineLobbyPage({
         {
           onAccepted: (message) => {
             if (message.boardgameMatchID) {
-              void onStartOnline(message.boardgameMatchID, effectivePlayerName);
+              joinAcceptedInviteMatch(friend, message.boardgameMatchID);
             }
           },
           onBoardgameMatchReady: (message) => {
-            setFriendInviteActionId(`join:${friend.userId}`);
-            void onStartOnline(message.boardgameMatchID, effectivePlayerName)
-              .then(() => {
-                void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
-                platformInviteRoomRef.current = null;
-                setFriendInviteActionId(null);
-                setFriendInvitePeerId(null);
-              })
-              .catch((err) => {
-                Sentry.captureException(err, { tags: { action: 'platform-invite-guest-join' } });
-                setError(onlineErrorMessage(err));
-                setFriendInviteActionId(null);
-              });
+            joinAcceptedInviteMatch(friend, message.boardgameMatchID);
           },
           onDeclined: () => {
             setFriendInviteActionId(null);
@@ -1034,6 +1059,7 @@ export function OnlineLobbyPage({
       );
       platformInviteRoomRef.current = room;
       setFriendInvitePeerId(friend.userId);
+      setFriendInviteMode('incoming');
       room.send('acceptInvite', {});
       showToast({ title: t('friend.inviteAccepted'), kind: 'success' });
     } catch (err) {
@@ -1045,9 +1071,116 @@ export function OnlineLobbyPage({
       });
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
+      setFriendInviteMode(null);
       showToast({ title: t('friend.noInvite'), kind: 'error' });
     }
   };
+
+  useEffect(() => {
+    if (!profile || friendStatus !== 'ready' || friends.length === 0) return;
+    if (friendInviteActionId || friendInvitePeerId || matchmakingActive || platformInviteRoomRef.current) return;
+
+    let cancelled = false;
+
+    const scanIncomingInvites = async () => {
+      for (const friend of friends) {
+        if (cancelled || platformInviteRoomRef.current) return;
+        const inviteId = buildPlatformFriendInviteId(friend.userId, profile.id);
+        let room: PlatformInviteRoom | null = null;
+        const snapshot = await new Promise<{ ok: boolean }>((resolve) => {
+          let settled = false;
+          const settle = (ok: boolean) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            resolve({ ok });
+          };
+          const timer = window.setTimeout(() => settle(false), 900);
+          void joinPlatformInvite(
+            {
+              inviteId,
+              targetUserId: profile.id,
+              userId: profile.id,
+              displayName: effectivePlayerName,
+            },
+            {
+              onSnapshot: (nextSnapshot) => {
+                settle(
+                  nextSnapshot.status === 'pending' &&
+                    nextSnapshot.targetUserId === profile.id &&
+                    nextSnapshot.inviter?.userId === friend.userId,
+                );
+              },
+              onAccepted: (message) => {
+                if (message.boardgameMatchID) joinAcceptedInviteMatch(friend, message.boardgameMatchID);
+              },
+              onBoardgameMatchReady: (message) => {
+                joinAcceptedInviteMatch(friend, message.boardgameMatchID);
+              },
+              onCancelled: () => {
+                if (!settled) {
+                  settle(false);
+                  return;
+                }
+                setFriendInviteActionId(null);
+                setFriendInvitePeerId(null);
+                setFriendInviteMode(null);
+                platformInviteRoomRef.current = null;
+                showToast({ title: t('friend.inviteCancelled'), kind: 'error' });
+              },
+              onDisconnect: () => {
+                if (!settled) {
+                  settle(false);
+                  return;
+                }
+                setFriendInviteActionId(null);
+                setFriendInvitePeerId(null);
+                setFriendInviteMode(null);
+                platformInviteRoomRef.current = null;
+              },
+            },
+          ).then(
+            (nextRoom) => {
+              room = nextRoom;
+            },
+            () => settle(false),
+          );
+        });
+
+        if (cancelled) {
+          leaveObservedInviteRoom(room);
+          return;
+        }
+
+        if (snapshot.ok && room) {
+          platformInviteRoomRef.current = room;
+          setFriendInvitePeerId(friend.userId);
+          setFriendInviteMode('incoming');
+          setFriendInviteActionId(null);
+          showToast({ title: t('friend.inviteIncoming'), kind: 'success' });
+          return;
+        }
+
+        leaveObservedInviteRoom(room);
+      }
+    };
+
+    void scanIncomingInvites();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    effectivePlayerName,
+    friendInviteActionId,
+    friendInvitePeerId,
+    friendStatus,
+    friends,
+    joinAcceptedInviteMatch,
+    matchmakingActive,
+    profile,
+    showToast,
+  ]);
 
   const handleDirectChatSubmit = async () => {
     if (!profile || !directChat || !directChatDraft.trim() || directChatStatus === 'sending') return;
@@ -1910,7 +2043,12 @@ export function OnlineLobbyPage({
                             variant="ghost"
                             type="button"
                             onClick={() => void handleInviteFriend(friend)}
-                            disabled={friendInviteActionId !== null || matchmakingActive || !canStart}
+                            disabled={
+                              friendInviteActionId !== null ||
+                              friendInvitePeerId !== null ||
+                              matchmakingActive ||
+                              !canStart
+                            }
                             aria-label={t('friend.invite')}
                             title={
                               friendInvitePeerId === friend.userId ? t('friend.inviteWaiting') : t('friend.invite')
@@ -1923,9 +2061,17 @@ export function OnlineLobbyPage({
                             variant="ghost"
                             type="button"
                             onClick={() => void handleAcceptFriendInvite(friend)}
-                            disabled={friendInviteActionId !== null || matchmakingActive}
+                            disabled={
+                              friendInviteActionId !== null ||
+                              matchmakingActive ||
+                              (friendInvitePeerId !== null && friendInvitePeerId !== friend.userId)
+                            }
                             aria-label={t('friend.acceptInvite')}
-                            title={t('friend.acceptInvite')}
+                            title={
+                              friendInviteMode === 'incoming' && friendInvitePeerId === friend.userId
+                                ? t('friend.inviteIncoming')
+                                : t('friend.acceptInvite')
+                            }
                           >
                             <Check className="size-3.5" strokeWidth={1.25} />
                           </Button>

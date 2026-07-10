@@ -190,6 +190,7 @@ export const ja: Record<TranslationKey, string> = {
   'friend.refresh': 'フレンドを再同期',
   'friend.invite': '対戦に招待',
   'friend.acceptInvite': '招待を承認',
+  'friend.inviteIncoming': '対戦招待が届いています',
   'friend.inviteWaiting': 'フレンドの承認待ち',
   'friend.inviteSent': '対戦招待を送信しました',
   'friend.inviteAccepted': '対戦招待を承認しました',

@@ -189,6 +189,7 @@ export const en: Record<TranslationKey, string> = {
   'friend.refresh': 'Refresh friends',
   'friend.invite': 'Invite to match',
   'friend.acceptInvite': 'Accept invite',
+  'friend.inviteIncoming': 'Incoming match invite',
   'friend.inviteWaiting': 'Waiting for friend',
   'friend.inviteSent': 'Match invite sent',
   'friend.inviteAccepted': 'Match invite accepted',
