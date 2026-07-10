@@ -7,6 +7,7 @@ import * as Sentry from '@sentry/node';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
 import { platformLogger as logger } from './logger';
 import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
+import { isPlatformRedisMode, redisUrlWithDb, resolvePlatformRedisMode } from './config';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -35,25 +36,11 @@ if (process.env.SENTRY_DSN) {
 const PLATFORM_PORT = Number(process.env.PLATFORM_PORT) || 3002;
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const REDIS_DB = Number(process.env.REDIS_DB) || 0;
-const PLATFORM_REDIS_MODE = resolveRedisMode(process.env.PLATFORM_REDIS_MODE, process.env.NODE_ENV);
+const configuredRedisMode = process.env.PLATFORM_REDIS_MODE;
+const PLATFORM_REDIS_MODE = resolvePlatformRedisMode(configuredRedisMode, process.env.NODE_ENV);
 
-function resolveRedisMode(value: string | undefined, nodeEnv: string | undefined): 'memory' | 'redis' {
-  const normalized = value?.trim().toLowerCase();
-  if (normalized === 'memory' || normalized === 'redis') return normalized;
-  if (normalized) {
-    logger.warn({ mode: value }, 'unknown PLATFORM_REDIS_MODE, falling back to environment default');
-  }
-  return nodeEnv === 'production' ? 'redis' : 'memory';
-}
-
-function redisUrlWithDb(url: string, db: number): string {
-  try {
-    const parsed = new URL(url);
-    if (!parsed.pathname || parsed.pathname === '/') parsed.pathname = `/${db}`;
-    return parsed.toString();
-  } catch {
-    return url;
-  }
+if (configuredRedisMode?.trim() && !isPlatformRedisMode(configuredRedisMode)) {
+  logger.warn({ mode: configuredRedisMode }, 'unknown PLATFORM_REDIS_MODE, falling back to environment default');
 }
 
 const httpServer = http.createServer();

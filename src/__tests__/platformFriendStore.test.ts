@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { isPlatformRedisMode, redisUrlWithDb, resolvePlatformRedisMode } from '../platform/config';
 import {
   MAX_PLATFORM_FRIEND_PRESENCE_IDS,
   createEmptyPlatformFriendStore,
@@ -59,5 +60,30 @@ describe('platform friend store', () => {
     expect(resolvePlatformFriendStoreMode({ PLATFORM_FRIEND_STORE: 'postgres' })).toBe('postgres');
     expect(resolvePlatformFriendStoreMode({ NODE_ENV: 'production' })).toBe('postgres');
     expect(resolvePlatformFriendStoreMode({})).toBe('none');
+  });
+});
+
+describe('platform runtime config', () => {
+  it('resolves documented Redis mode defaults by environment', () => {
+    expect(resolvePlatformRedisMode(undefined, 'development')).toBe('memory');
+    expect(resolvePlatformRedisMode('', 'test')).toBe('memory');
+    expect(resolvePlatformRedisMode(undefined, 'production')).toBe('redis');
+    expect(resolvePlatformRedisMode('unknown', 'production')).toBe('redis');
+    expect(resolvePlatformRedisMode('unknown', 'development')).toBe('memory');
+  });
+
+  it('accepts explicit platform Redis modes case-insensitively', () => {
+    expect(isPlatformRedisMode('memory')).toBe(true);
+    expect(isPlatformRedisMode(' Redis ')).toBe(true);
+    expect(isPlatformRedisMode('postgres')).toBe(false);
+    expect(resolvePlatformRedisMode(' Memory ', 'production')).toBe('memory');
+    expect(resolvePlatformRedisMode('REDIS', 'development')).toBe('redis');
+  });
+
+  it('adds the configured Redis DB only when the URL has no DB path', () => {
+    expect(redisUrlWithDb('redis://localhost:6379', 3)).toBe('redis://localhost:6379/3');
+    expect(redisUrlWithDb('redis://localhost:6379/', 4)).toBe('redis://localhost:6379/4');
+    expect(redisUrlWithDb('redis://localhost:6379/2', 5)).toBe('redis://localhost:6379/2');
+    expect(redisUrlWithDb('not a url', 6)).toBe('not a url');
   });
 });
