@@ -284,6 +284,13 @@ export function OnlineGame({
     );
   }, []);
 
+  const loadMatchChatEntries = useCallback(async (): Promise<OnlineChatEntry[]> => {
+    const messages = await fetchChatMessages({ conversationType: 'match', subjectId: matchID, limit: 50 });
+    return messages
+      .filter((message) => canShowChatMessage(message))
+      .map((message) => mapChatMessage(message, chatUserId, chatDisplayName));
+  }, [chatDisplayName, chatUserId, matchID]);
+
   useEffect(() => {
     let cancelled = false;
     setChatStatus('loading');
@@ -303,10 +310,10 @@ export function OnlineGame({
       };
     }
 
-    void fetchChatMessages({ conversationType: 'match', subjectId: matchID, limit: 50 }).then(
-      (messages) => {
+    void loadMatchChatEntries().then(
+      (entries) => {
         if (cancelled) return;
-        setChatMessages(messages.map((message) => mapChatMessage(message, chatUserId, chatDisplayName)));
+        setChatMessages(entries);
         setChatStatus('ready');
       },
       (err) => {
@@ -323,7 +330,7 @@ export function OnlineGame({
     return () => {
       cancelled = true;
     };
-  }, [chatAccount, chatAccountLoaded, chatDisplayName, chatUserId, matchID]);
+  }, [chatAccount, chatAccountLoaded, loadMatchChatEntries, matchID]);
 
   useEffect(() => {
     if (chatStatus !== 'ready') return;
@@ -356,15 +363,20 @@ export function OnlineGame({
         },
         onChatPreview: (message) => {
           if (cancelled || message.sender.userId === localPlatformUserId) return;
-          appendChatEntry({
-            id: `preview:${message.sender.sessionId}:${message.createdAt}`,
-            authorDisplayName: message.sender.displayName,
-            authorRole: message.sender.role,
-            content: message.text,
-            createdAt: new Date(message.createdAt).toISOString(),
-            persisted: false,
-            self: false,
-          });
+          if (!chatAccount) return;
+          void loadMatchChatEntries().then(
+            (entries) => {
+              if (!cancelled) setChatMessages(entries);
+            },
+            (err) => {
+              Sentry.addBreadcrumb({
+                category: 'chat',
+                message: 'match chat preview sync failed',
+                level: 'warning',
+                data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
+              });
+            },
+          );
         },
         onDisconnect: () => {
           if (!cancelled) setPlatformShellStatus(null);
@@ -397,9 +409,10 @@ export function OnlineGame({
       void room?.leave(true).catch(() => undefined);
     };
   }, [
-    appendChatEntry,
+    chatAccount,
     chatAccountLoaded,
     chatDisplayName,
+    loadMatchChatEntries,
     localPlatformUserId,
     matchID,
     playerCredentials,

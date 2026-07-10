@@ -57,7 +57,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
 
     this.onMessage<ChatPreviewMessage>('chatPreview', (client, message) => {
       const text = optionalText(message.text, 500);
-      if (!text || !client.userData) return;
+      if (!text || !client.userData || !client.auth?.authenticated) return;
       this.broadcast('chatPreview', {
         conversationId: optionalText(message.conversationId, 128) ?? this.conversationId,
         sender: client.userData,
