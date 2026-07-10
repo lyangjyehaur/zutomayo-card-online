@@ -498,6 +498,41 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('GET /api/chat/unread keeps tombstoned-author conversations in summaries', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'match:bgio-match-1',
+            type: 'match',
+            subject_id: 'bgio-match-1',
+            title: 'Ranked match',
+            status: 'active',
+            created_at: '2026-07-10T00:00:00.000Z',
+            updated_at: '2026-07-10T00:00:06.000Z',
+            unread_count: '2',
+            latest_message_at: '2026-07-10T00:00:06.000Z',
+          },
+        ],
+      });
+
+      const res = await sendRequest('GET', '/api/chat/unread?limit=10', null, userUnsafeHeaders('u_reader'));
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as { conversations: Array<Record<string, unknown>> };
+      expect(body.conversations).toEqual([
+        expect.objectContaining({
+          id: 'match:bgio-match-1',
+          type: 'match',
+          subjectId: 'bgio-match-1',
+          unreadCount: 2,
+          latestMessageAt: '2026-07-10T00:00:06.000Z',
+        }),
+      ]);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('m.author_user_id IS DISTINCT FROM $1'), [
+        'u_reader',
+        10,
+      ]);
+    });
+
     it('GET /api/admin/users returns 401 without admin token', async () => {
       const res = await sendRequest('GET', '/api/admin/users');
       expect(res.statusCode).toBe(401);

@@ -434,6 +434,37 @@ describe('chat service', () => {
     ]);
   });
 
+  it('keeps unread summaries for messages whose author account was tombstoned', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            ...conversationRow,
+            unread_count: '2',
+            latest_message_at: '2026-07-10T00:00:06.000Z',
+          },
+        ],
+      },
+    ]);
+
+    await expect(listUnreadChat({ pool, userId: 'u_2', limit: 20 })).resolves.toEqual({
+      ok: true,
+      body: {
+        conversations: [
+          expect.objectContaining({
+            id: 'match:bgio-match-1',
+            unreadCount: 2,
+            latestMessageAt: '2026-07-10T00:00:06.000Z',
+          }),
+        ],
+      },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('m.author_user_id IS DISTINCT FROM $1'), [
+      'u_2',
+      20,
+    ]);
+  });
+
   it('stores ready chat translations through a provider hook', async () => {
     const pool = poolWithResults([
       { rows: [{ ...messageRow, type: 'match', subject_id: 'bgio-match-1' }] },
