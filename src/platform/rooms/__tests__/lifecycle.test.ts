@@ -133,6 +133,47 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('custom room promotes a prelinked waiting host room when a guest joins', async () => {
+    const room = new CustomRoom();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', boardgameMatchID: 'bgio-match-3', status: 'waiting' });
+    room.clients.push(host);
+    await room.onJoin(host);
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+
+    room.clients.push(guest);
+    await room.onJoin(guest);
+
+    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-3' });
+    expect(setMatchmaking).toHaveBeenCalledWith({
+      metadata: expect.objectContaining({
+        kind: 'custom-room',
+        roomCode: 'ROOM42',
+        status: 'ready',
+        playerCount: 2,
+        boardgameMatchID: 'bgio-match-3',
+      }),
+    });
+  });
+
   it('custom room cancellation is controlled by the waiting host', async () => {
     const room = new CustomRoom();
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
