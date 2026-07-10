@@ -58,7 +58,7 @@ interface OnlineLobbyPageProps {
   customDeckAvailable: boolean;
   serverDecks: DeckResponse[];
   setDeck0Name: (deckName: string) => void;
-  onStartOnline: (matchID?: string, playerName?: string) => Promise<OnlineSession>;
+  onStartOnline: (matchID?: string, playerName?: string, options?: { navigate?: boolean }) => Promise<OnlineSession>;
   onAuthChanged: () => void | Promise<void>;
   serverDeckError?: string;
   cardsReady: boolean;
@@ -609,12 +609,14 @@ export function OnlineLobbyPage({
             if (cancelRef.current || phaseRef.current !== 'platform-waiting') return;
             if (match.role === 'host') {
               phaseRef.current = 'host-starting';
-              void onStartOnline(undefined, effectivePlayerName)
+              void onStartOnline(undefined, effectivePlayerName, { navigate: false })
                 .then((session) => {
                   phaseRef.current = 'done';
-                  platformQuickMatchRoomRef.current?.send('boardgameMatchReady', {
+                  const room = platformQuickMatchRoomRef.current;
+                  room?.send('boardgameMatchReady', {
                     boardgameMatchID: session.matchID,
                   });
+                  navigateToOnlineSession(session);
                 })
                 .catch((err) => {
                   phaseRef.current = 'idle';
@@ -631,9 +633,10 @@ export function OnlineLobbyPage({
           onBoardgameMatchReady: (message) => {
             if (cancelRef.current || phaseRef.current === 'done' || phaseRef.current === 'host-starting') return;
             phaseRef.current = 'guest-joining';
-            void onStartOnline(message.boardgameMatchID, effectivePlayerName)
-              .then(() => {
+            void onStartOnline(message.boardgameMatchID, effectivePlayerName, { navigate: false })
+              .then((session) => {
                 phaseRef.current = 'done';
+                navigateToOnlineSession(session);
               })
               .catch((err) => {
                 phaseRef.current = 'idle';
@@ -821,16 +824,24 @@ export function OnlineLobbyPage({
     void room?.leave(true).catch(() => undefined);
   };
 
+  const navigateToOnlineSession = useCallback(
+    (session: OnlineSession) => {
+      navigate(`/play/online/${encodeURIComponent(session.matchID)}`, { state: { freshOnlineSession: true } });
+    },
+    [navigate],
+  );
+
   const joinAcceptedInviteMatch = useCallback(
     (friend: FriendProfile, boardgameMatchID: string) => {
       setFriendInviteActionId(`join:${friend.userId}`);
-      void onStartOnline(boardgameMatchID, effectivePlayerName)
-        .then(() => {
+      void onStartOnline(boardgameMatchID, effectivePlayerName, { navigate: false })
+        .then((session) => {
           void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
           platformInviteRoomRef.current = null;
           setFriendInviteActionId(null);
           setFriendInvitePeerId(null);
           setFriendInviteMode(null);
+          navigateToOnlineSession(session);
         })
         .catch((err) => {
           Sentry.captureException(err, { tags: { action: 'platform-invite-guest-join' } });
@@ -838,7 +849,7 @@ export function OnlineLobbyPage({
           setFriendInviteActionId(null);
         });
     },
-    [effectivePlayerName, onStartOnline],
+    [effectivePlayerName, navigateToOnlineSession, onStartOnline],
   );
 
   const handleInviteFriend = async (friend: FriendProfile) => {
@@ -866,15 +877,17 @@ export function OnlineLobbyPage({
             if (message.inviteId !== inviteId) return;
             setFriendInviteActionId(`start:${friend.userId}`);
             showToast({ title: t('friend.inviteAccepted'), kind: 'success' });
-            void onStartOnline(undefined, effectivePlayerName)
+            void onStartOnline(undefined, effectivePlayerName, { navigate: false })
               .then((session) => {
-                platformInviteRoomRef.current?.send('boardgameMatchReady', {
+                const room = platformInviteRoomRef.current;
+                room?.send('boardgameMatchReady', {
                   boardgameMatchID: session.matchID,
                 });
-                void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
+                void room?.leave(true).catch(() => undefined);
                 platformInviteRoomRef.current = null;
                 setFriendInviteActionId(null);
                 setFriendInvitePeerId(null);
+                navigateToOnlineSession(session);
               })
               .catch((err) => {
                 Sentry.captureException(err, { tags: { action: 'platform-invite-host-start' } });

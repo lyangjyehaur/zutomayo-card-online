@@ -490,7 +490,11 @@ function RouterShell() {
     return session;
   }, []);
 
-  const startOnline = async (existingID?: string, playerName?: string): Promise<OnlineSession> => {
+  const startOnline = async (
+    existingID?: string,
+    playerName?: string,
+    options: { navigate?: boolean } = {},
+  ): Promise<OnlineSession> => {
     const setupData = {
       ...onlineDeckName(0, deck0Name, serverDecks),
       ...onlineDeckName(1, deck1Name, serverDecks),
@@ -502,7 +506,9 @@ function RouterShell() {
     setOnlineSession(session);
     setResumePromptSession(null);
     saveOnlineSession(session);
-    navigate(`/play/online/${encodeURIComponent(matchID)}`, { state: { freshOnlineSession: true } });
+    if (options.navigate !== false) {
+      navigate(`/play/online/${encodeURIComponent(matchID)}`, { state: { freshOnlineSession: true } });
+    }
     return session;
   };
 
