@@ -130,6 +130,32 @@ describe('platform room auth', () => {
     ).toThrow('Authentication required');
   });
 
+  it('prevents the same account from occupying both quick match seats', () => {
+    const quickRoom = new QuickMatchRoom();
+    quickRoom.clients.push({
+      sessionId: 'session_existing',
+      userData: {
+        sessionId: 'session_existing',
+        userId: 'u_queued',
+        displayName: 'Queued',
+        role: 'player',
+        joinedAt: 1000,
+      },
+    } as never);
+
+    expect(() =>
+      quickRoom.onAuth(
+        {} as never,
+        { userId: 'u_spoofed', displayName: 'Queued Again' },
+        cookieAuthContext('u_queued'),
+      ),
+    ).toThrow('Already queued');
+
+    expect(
+      quickRoom.onAuth({} as never, { userId: 'u_other', displayName: 'Other' }, cookieAuthContext('u_other')),
+    ).toMatchObject({ userId: 'u_other', authenticated: true, role: 'player' });
+  });
+
   it('parses directional friend invite ids', () => {
     expect(parseFriendInviteId('friend:v1:logto%3Au_1:u%202')).toEqual({
       inviterUserId: 'logto:u_1',

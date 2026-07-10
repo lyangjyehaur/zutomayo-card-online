@@ -49,6 +49,9 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   onAuth(_client: PlatformClient, options: QuickMatchRoomOptions, context: AuthContext): PlatformAuth {
     const auth = authenticatePlatformClient(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
+    if (this.clients.some((client) => client.userData?.userId === auth.userId)) {
+      throw new Error('Already queued');
+    }
     return { ...auth, role: 'player' };
   }
 
