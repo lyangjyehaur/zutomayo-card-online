@@ -102,7 +102,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
       if (!this.inviter || client.sessionId !== this.inviter.sessionId) return;
       if (this.status !== 'accepted') return;
       const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
-      if (!boardgameMatchID) return;
+      if (!boardgameMatchID || this.boardgameMatchID) return;
       this.boardgameMatchID = boardgameMatchID;
       this.roomCode = this.roomCode ?? boardgameMatchID;
       void this.refreshMetadata();

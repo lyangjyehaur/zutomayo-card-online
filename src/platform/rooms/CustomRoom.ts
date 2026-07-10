@@ -45,7 +45,9 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
       if (this.host && client.sessionId !== this.host.sessionId) return;
       const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
-      if (!boardgameMatchID || this.status === 'cancelled' || this.status === 'finished') return;
+      if (!boardgameMatchID || this.boardgameMatchID || this.status === 'cancelled' || this.status === 'finished') {
+        return;
+      }
       this.boardgameMatchID = boardgameMatchID;
       this.status = 'ready';
       void this.refreshMetadata();

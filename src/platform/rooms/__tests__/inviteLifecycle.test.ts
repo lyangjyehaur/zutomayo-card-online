@@ -77,7 +77,7 @@ async function setupInviteRoom() {
 }
 
 describe('invite room lifecycle', () => {
-  it('lets the target accept and then lets the inviter relay the boardgame match id', async () => {
+  it('lets the target accept and then lets the inviter relay the boardgame match id once', async () => {
     const { inviteHandlers, boardgameHandlers, setMatchmaking, broadcast, inviter, target, observer } =
       await setupInviteRoom();
 
@@ -111,6 +111,12 @@ describe('invite room lifecycle', () => {
         boardgameMatchID: 'bgio-match-1',
       }),
     });
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-match-2' });
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(setMatchmaking).not.toHaveBeenCalled();
   });
 
   it('derives the inviter from directional invite ids instead of first join order', async () => {

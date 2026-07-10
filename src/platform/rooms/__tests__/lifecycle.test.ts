@@ -85,7 +85,7 @@ describe('platform room lifecycle', () => {
     });
   });
 
-  it('custom room lets only the host relay the boardgame match id', async () => {
+  it('custom room lets only the host relay the boardgame match id once', async () => {
     const room = new CustomRoom();
     const handlers = new Map<string, BoardgameMatchReadyHandler>();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -131,6 +131,12 @@ describe('platform room lifecycle', () => {
         boardgameMatchID: 'bgio-match-2',
       }),
     });
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+    relay?.(host, { boardgameMatchID: 'bgio-match-3' });
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(setMatchmaking).not.toHaveBeenCalled();
   });
 
   it('custom room promotes a prelinked waiting host room when a guest joins', async () => {
