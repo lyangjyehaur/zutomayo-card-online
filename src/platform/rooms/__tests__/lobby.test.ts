@@ -49,6 +49,12 @@ describe('lobby room', () => {
     await room.onCreate();
     room.clients.push(alice);
     await room.onJoin(alice);
+    expect(room.broadcast).toHaveBeenCalledWith(
+      'presence',
+      expect.not.objectContaining({
+        profile: expect.anything(),
+      }),
+    );
     room.clients.push(mallory);
     await room.onJoin(mallory);
 

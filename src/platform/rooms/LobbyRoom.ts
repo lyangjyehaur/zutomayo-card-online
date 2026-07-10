@@ -47,7 +47,7 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     this.friendUserIdsBySession.set(client.sessionId, await this.friendUserIdsFor(auth.userId));
     await this.refreshMetadata();
     client.send('lobbySnapshot', this.snapshot(client));
-    this.broadcast('presence', this.presencePayload('join', client.userData));
+    this.broadcast('presence', this.presencePayload('join'));
     this.broadcastFriendPresence(this.onlineSessionCount(auth.userId) > 1 ? 'update' : 'online', client.userData);
   }
 
@@ -56,7 +56,7 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     this.friendUserIdsBySession.delete(client.sessionId);
     await this.refreshMetadata();
     if (profile) {
-      this.broadcast('presence', this.presencePayload('leave', profile));
+      this.broadcast('presence', this.presencePayload('leave'));
       this.broadcastFriendPresence(
         this.onlineSessionCount(profile.userId, client.sessionId) > 0 ? 'update' : 'offline',
         profile,
@@ -74,12 +74,11 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     };
   }
 
-  private presencePayload(event: 'join' | 'leave', profile: NonNullable<PlatformClient['userData']>) {
+  private presencePayload(event: 'join' | 'leave') {
     const players = this.clients.filter((item) => item.userData?.role === 'player').length;
     const spectators = this.clients.filter((item) => item.userData?.role !== 'player').length;
     return {
       event,
-      profile,
       players,
       spectators,
       onlineCount: this.clients.length,

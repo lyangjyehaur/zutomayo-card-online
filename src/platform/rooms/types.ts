@@ -50,7 +50,7 @@ export interface PlatformClientMessages {
   };
   presence: {
     event: 'join' | 'leave';
-    profile: PlatformClientProfile;
+    profile?: PlatformClientProfile;
     players: number;
     spectators: number;
     onlineCount?: number;
