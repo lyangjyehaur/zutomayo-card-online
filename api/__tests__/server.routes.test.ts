@@ -9,6 +9,11 @@ delete process.env.TURNSTILE_SECRET_KEY;
 delete process.env.TURNSTILE_REQUIRED;
 delete process.env.SENTRY_DSN;
 delete process.env.ALLOWED_ORIGINS; // Use dev origins fallback
+delete process.env.CHAT_TRANSLATION_ENDPOINT;
+delete process.env.CHAT_TRANSLATION_API_KEY;
+delete process.env.CHAT_TRANSLATION_PROVIDER;
+delete process.env.CHAT_TRANSLATION_MODEL;
+delete process.env.CHAT_TRANSLATION_TIMEOUT_MS;
 
 // ===== Mock pg and ioredis via Module._load interception =====
 const mockQuery = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });

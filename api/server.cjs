@@ -77,8 +77,10 @@ const {
   toggleCommentReaction: toggleFeedbackCommentReaction,
 } = require('./feedbackService.cjs');
 const { addFriend, listFriends, removeFriend } = require('./friendService.cjs');
+const { createChatTranslationProviderFromEnv } = require('./chatTranslationProvider.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
+const translateChatMessage = createChatTranslationProviderFromEnv(process.env);
 
 function readPackageVersion() {
   for (const packagePath of ['../package.json', './package.json']) {
@@ -2625,6 +2627,7 @@ function handleRequest(req, res) {
         messageId: chatTranslationRoute[1],
         body: __parsed.data,
         sanitizeText,
+        translateText: translateChatMessage,
         providerName: process.env.CHAT_TRANSLATION_PROVIDER || '',
         modelName: process.env.CHAT_TRANSLATION_MODEL || '',
       });
