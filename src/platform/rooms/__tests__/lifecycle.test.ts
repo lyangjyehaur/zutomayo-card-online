@@ -154,4 +154,46 @@ describe('platform room lifecycle', () => {
 
     expect(broadcast).toHaveBeenCalledWith('customRoomCancelled', { reason: 'host_left' });
   });
+
+  it('custom room transfers waiting host ownership to a reconnect session', async () => {
+    const room = new CustomRoom();
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const oldHost = client('session_host_old', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const newHost = client('session_host_new', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(oldHost);
+    await room.onJoin(oldHost);
+    room.clients.push(newHost);
+    await room.onJoin(newHost);
+    await room.onLeave(oldHost);
+
+    expect(broadcast).not.toHaveBeenCalledWith('customRoomCancelled', expect.anything());
+    expect(broadcast).toHaveBeenLastCalledWith(
+      'customRoomSnapshot',
+      expect.objectContaining({
+        host: expect.objectContaining({ sessionId: 'session_host_new', userId: 'u_host' }),
+      }),
+    );
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        kind: 'custom-room',
+        status: 'waiting',
+        playerCount: 2,
+      }),
+    });
+  });
 });

@@ -97,6 +97,17 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
 
   async onLeave(client: PlatformClient): Promise<void> {
     if (this.status === 'waiting' && this.host?.sessionId === client.sessionId) {
+      const replacementHost = this.clients
+        .map((item) => item.userData)
+        .find((profile): profile is PlatformClientProfile =>
+          Boolean(profile && profile.sessionId !== client.sessionId && profile.userId === this.host?.userId),
+        );
+      if (replacementHost) {
+        this.host = replacementHost;
+        await this.refreshMetadata();
+        this.broadcastSnapshot();
+        return;
+      }
       await this.cancel('host_left');
       return;
     }
