@@ -5,6 +5,7 @@ import {
   downloadMatchActionLog,
   getMatchRecords,
   getMatchStats,
+  historyChatSubjectId,
   replaceMatchRecords,
   type MatchRecord,
 } from '../game/matchHistory';
@@ -179,7 +180,7 @@ function MatchDetail({
               variant="secondary"
               type="button"
               leftIcon={<MessageCircle size={14} />}
-              disabled={!record.sourceMatchId}
+              disabled={!historyChatSubjectId(record)}
               onClick={() => onOpenChat(record)}
             >
               {t('history.viewChat')}
@@ -213,7 +214,7 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
   const [translations, setTranslations] = useState<Record<string, HistoryTranslationState>>({});
-  const sourceMatchId = record.sourceMatchId;
+  const sourceMatchId = historyChatSubjectId(record);
 
   useEffect(() => {
     if (!sourceMatchId) return;
@@ -529,7 +530,7 @@ export function MatchHistory(_props: MatchHistoryProps) {
                         type="button"
                         leftIcon={<MessageCircle size={14} />}
                         className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-                        disabled={!record.sourceMatchId}
+                        disabled={!historyChatSubjectId(record)}
                         onClick={() => setChatRecord(record)}
                       >
                         {t('history.viewChat')}

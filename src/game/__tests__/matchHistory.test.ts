@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getMatchRecords, saveMatchRecord } from '../matchHistory';
+import { getMatchRecords, historyChatSubjectId, saveMatchRecord } from '../matchHistory';
 import type { GameState } from '../types';
 
 function gameState(): GameState {
@@ -44,7 +44,7 @@ describe('match history', () => {
   it('stores the online source match id for post-match chat lookup', () => {
     installLocalStorage();
 
-    saveMatchRecord(gameState(), 0, 90, 'bgio-match-1');
+    saveMatchRecord(gameState(), 0, 90, ' bgio-match-1 ');
 
     expect(getMatchRecords()[0]).toEqual(
       expect.objectContaining({
@@ -52,5 +52,12 @@ describe('match history', () => {
         turns: 4,
       }),
     );
+  });
+
+  it('uses only the durable online source match id for post-match chat lookup', () => {
+    expect(historyChatSubjectId({ sourceMatchId: ' bgio-match-1 ' })).toBe('bgio-match-1');
+    expect(historyChatSubjectId({ sourceMatchId: '' })).toBeNull();
+    expect(historyChatSubjectId({ sourceMatchId: '   ' })).toBeNull();
+    expect(historyChatSubjectId({})).toBeNull();
   });
 });

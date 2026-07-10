@@ -22,6 +22,15 @@ export interface MatchRecord {
 
 type MatchWinnerInput = string | number | null | undefined;
 
+function normalizeSourceMatchId(sourceMatchId: string | undefined): string | undefined {
+  const normalized = sourceMatchId?.trim();
+  return normalized || undefined;
+}
+
+export function historyChatSubjectId(record: Pick<MatchRecord, 'sourceMatchId'>): string | null {
+  return normalizeSourceMatchId(record.sourceMatchId) ?? null;
+}
+
 function normalizeWinner(winner: MatchWinnerInput): 0 | 1 | null {
   if (winner === 0 || winner === '0') return 0;
   if (winner === 1 || winner === '1') return 1;
@@ -42,7 +51,7 @@ export function saveMatchRecord(
 ): void {
   const record: MatchRecord = {
     id: `match_${Date.now()}`,
-    sourceMatchId,
+    sourceMatchId: normalizeSourceMatchId(sourceMatchId),
     date: new Date().toISOString(),
     duration: Math.max(0, Math.round(durationSeconds)),
     winner: normalizeWinner(winner),
