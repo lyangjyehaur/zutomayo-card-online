@@ -185,6 +185,8 @@ export type BoardGameOverActions = {
 
 type Props = BoardProps<GameState> & {
   gameOverActions?: BoardGameOverActions;
+  // 線上對戰由頁面層接管離開確認與房間清理；未提供時使用本地確認抽屜。
+  onExitRequest?: () => void;
   // P3-16：線上模式用伺服器權威計時器（G.turnStartTime）；本機/AI 維持客戶端 setInterval。
   useServerTimer?: boolean;
   // 對手顯示名稱 override（如 AI 對戰時傳入「電腦」），未傳則用 player.one i18n key。
@@ -1842,7 +1844,7 @@ function BattleBoard({
         return Math.max(0, TURN_TIMER_SECONDS - elapsed);
       };
       setTimeLeft(compute());
-      if (G.step !== 'turnSet' || G.ready[meIndex]) return;
+      if (G.step !== 'turnSet' || G.ready.every(Boolean)) return;
       timer.current = setInterval(() => {
         const next = compute();
         setTimeLeft(next);
@@ -1856,7 +1858,7 @@ function BattleBoard({
     // 本機/AI：維持原客戶端 setInterval 倒數行為。
     setTimeLeft(TURN_TIMER_SECONDS);
     if (timer.current) clearInterval(timer.current);
-    if (G.step !== 'turnSet' || G.ready[meIndex]) return;
+    if (G.step !== 'turnSet' || G.ready.every(Boolean)) return;
     timer.current = setInterval(
       () =>
         setTimeLeft((value) => {
@@ -1872,11 +1874,13 @@ function BattleBoard({
   }, [G.ready, G.turnNumber, G.step, G.turnStartTime, meIndex, useServerTimer]);
 
   useEffect(() => {
-    if (G.step !== 'turnSet' || timeLeft > 0 || G.ready[meIndex]) return;
+    if (G.step !== 'turnSet' || timeLeft > 0 || G.ready.every(Boolean)) return;
     // 教學流程不使用真實倒數；一般本機與線上模式皆走同一 timeoutSkip 規則，
     // 允許未達最低出牌數時跳過，避免 00 秒後仍可無限操作。
     if (onNoticeDismiss) return;
-    moves.timeoutSkip();
+    for (const player of [0, 1] as const) {
+      if (!G.ready[player]) moves.timeoutSkip(player);
+    }
   }, [G.step, timeLeft, G.ready, meIndex, moves, onNoticeDismiss, retryTick]);
 
   useEffect(() => {
@@ -2509,6 +2513,14 @@ export function Board(props: Props) {
     navigate('/');
   };
 
+  const requestExit = () => {
+    if (props.onExitRequest) {
+      props.onExitRequest();
+      return;
+    }
+    setShowExitConfirm(true);
+  };
+
   const renderWithSetupFeedback = (node: ReactNode) => (
     <div className="board-feedback-root">
       {node}
@@ -2525,7 +2537,7 @@ export function Board(props: Props) {
         <button
           className="board-pause-button"
           type="button"
-          onClick={() => setShowExitConfirm(true)}
+          onClick={requestExit}
           aria-label={t('game.pause')}
         >
           <Pause className="board-pause-icon hidden size-4" aria-hidden="true" />
@@ -2577,7 +2589,7 @@ export function Board(props: Props) {
     <>
       <BattleBoard
         {...props}
-        onPause={() => setShowExitConfirm(true)}
+        onPause={requestExit}
         onNoticeActivityChange={handleNoticeActivityChange}
         onBattleAnimationChange={handleBattleAnimationChange}
       />

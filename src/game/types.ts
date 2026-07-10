@@ -393,7 +393,7 @@ export interface GameState {
   matchStartedAt: number;
   matchEndedAt: number | null;
   // P3-16：伺服器權威回合計時器，於回合開始時記錄（毫秒，Date.now()）。
-  // 客戶端據此計算剩餘時間，避免兩端 setInterval 漂移；超時由 timeoutSkip move 處理。
+  // 客戶端據此計算剩餘時間，避免兩端 setInterval 漂移；超時後任一在線端可為未準備玩家送出 timeoutSkip。
   turnStartTime: number;
   lastBattleResult: LastBattleResult;
   setCardsThisTurn: [CardInstance[], CardInstance[]];

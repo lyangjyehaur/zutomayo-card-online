@@ -46,6 +46,7 @@ function OnlineBoard(
     onConnectionStatusChange: (isConnected: boolean) => void;
     onOpponentDetected: () => void;
     onStateMismatch: (reason: OnlineStateMismatchReason) => void;
+    onExitRequest: () => void;
   },
 ) {
   const { gameOverActions, onConnectionStatusChange, onOpponentDetected, onStateMismatch, ...boardProps } = props;
@@ -93,7 +94,7 @@ export function OnlineGame({
   playerID,
   playerCredentials,
   showRejoinedStatus = false,
-  onLeaveRequest: _onLeaveRequest,
+  onLeaveRequest,
   onReturnToLobby,
   onCreateNewRoom,
   onOpponentDetected,
@@ -103,6 +104,7 @@ export function OnlineGame({
   const resyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onReturnToLobbyRef = useRef(onReturnToLobby);
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
+  const onLeaveRequestRef = useRef(onLeaveRequest);
   const opponentDetectedRef = useRef<(() => void) | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
@@ -128,8 +130,9 @@ export function OnlineGame({
   useEffect(() => {
     onReturnToLobbyRef.current = onReturnToLobby;
     onCreateNewRoomRef.current = onCreateNewRoom;
+    onLeaveRequestRef.current = onLeaveRequest;
     opponentDetectedRef.current = onOpponentDetected ?? null;
-  }, [onReturnToLobby, onCreateNewRoom, onOpponentDetected]);
+  }, [onReturnToLobby, onCreateNewRoom, onLeaveRequest, onOpponentDetected]);
 
   const handleOpponentDetected = useCallback(() => {
     opponentDetectedRef.current?.();
@@ -208,6 +211,7 @@ export function OnlineGame({
           onConnectionStatusChange={handleConnectionStatusChange}
           onOpponentDetected={handleOpponentDetected}
           onStateMismatch={handleStateMismatch}
+          onExitRequest={() => onLeaveRequestRef.current()}
         />
       ),
       loading: OnlineLoading,

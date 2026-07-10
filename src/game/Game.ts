@@ -180,9 +180,13 @@ const moves: Record<string, Move<GameState>> = {
     if (player === null || !confirmReady(G, player, getParsedEffects())) return INVALID_MOVE;
   },
   // P3-16：線上回合超時由伺服器權威判斷，強制跳過該玩家回合（避免卡死）。
-  timeoutSkip: ({ G, playerID }) => {
-    const player = playerIndex(playerID);
-    if (player === null || !timeoutSkip(G, player, getParsedEffects())) return INVALID_MOVE;
+  timeoutSkip: ({ G, playerID }, targetPlayer?: PlayerIndex) => {
+    const caller = playerIndex(playerID);
+    if (caller === null) return INVALID_MOVE;
+    // 權威時間到後，允許仍在線的一方代為跳過斷線／無回應的玩家。
+    // timeoutSkip 本身仍會驗證 turnSet、ready 與伺服器時間，不能提前強制對手結束操作。
+    const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
+    if (!timeoutSkip(G, target, getParsedEffects())) return INVALID_MOVE;
   },
   resolvePendingEffect: ({ G, playerID }, index: number) => {
     const player = playerIndex(playerID);

@@ -613,7 +613,16 @@ function RouterShell() {
                 />
               }
             />
-            <Route path="/tutorial" element={<TutorialGamePage />} />
+            <Route
+              path="/tutorial"
+              element={
+                <TutorialGamePage
+                  cardsReady={cardsReady}
+                  cardsLoadError={cardsLoadError}
+                  onRetryCards={refreshCardResources}
+                />
+              }
+            />
             <Route
               path="/play/online/:matchID"
               element={
