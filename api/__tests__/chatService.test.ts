@@ -555,6 +555,8 @@ describe('chat service', () => {
             content: 'reported text',
             moderation_status: 'visible',
             created_at: '2026-07-10T00:00:01.000Z',
+            conversation_type: 'match',
+            conversation_subject_id: 'bgio-match-1',
           },
         ],
       },
@@ -605,6 +607,40 @@ describe('chat service', () => {
         '2026-07-10T00:00:01.000Z',
       ]),
     );
+  });
+
+  it('rejects reports for direct conversations the reporter cannot access', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            id: 'chat_msg_1',
+            conversation_id: 'direct:v1:u_1:u_2',
+            author_user_id: 'u_1',
+            author_display_name: 'Alice',
+            author_role: 'player',
+            content: 'private text',
+            moderation_status: 'visible',
+            created_at: '2026-07-10T00:00:01.000Z',
+            conversation_type: 'direct',
+            conversation_subject_id: 'v1:u_1:u_2',
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      reportChatMessage({
+        pool,
+        reporterUserId: 'u_3',
+        messageId: 'chat_msg_1',
+        body: { reason: 'spam' },
+        sanitizeText,
+        generateReportId: () => 'chat_report_1',
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('JOIN chat_conversations'), ['chat_msg_1']);
   });
 
   it('lists reports with snapshotted message evidence for admin review', async () => {

@@ -621,14 +621,19 @@ async function reportChatMessage({ pool, reporterUserId, messageId, body, saniti
 
   const message = (
     await pool.query(
-      `SELECT id, conversation_id, author_user_id, author_display_name, author_role,
-              content, moderation_status, created_at
-       FROM chat_messages
-       WHERE id = $1`,
+      `SELECT m.id, m.conversation_id, m.author_user_id, m.author_display_name, m.author_role,
+              m.content, m.moderation_status, m.created_at,
+              c.type AS conversation_type, c.subject_id AS conversation_subject_id
+       FROM chat_messages m
+       JOIN chat_conversations c ON c.id = m.conversation_id
+       WHERE m.id = $1`,
       [cleanMessageId],
     )
   ).rows[0];
   if (!message) return { ok: false, status: 404, error: 'Message not found' };
+  if (!canAccessConversation(reporterUserId, message.conversation_type, message.conversation_subject_id)) {
+    return { ok: false, status: 403, error: 'Forbidden' };
+  }
 
   const id = generateReportId();
   const { rows } = await pool.query(
