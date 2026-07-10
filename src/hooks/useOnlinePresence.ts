@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchOnlinePresence, sendOnlinePresenceHeartbeat } from '../api/client';
 import { connectPlatformLobby, type PlatformLobbyRoom } from '../platformClient';
+import { createOnlinePresenceFallbackController } from './onlinePresenceFallback';
 
 const PRESENCE_VISITOR_ID_KEY = 'zutomayo_presence_visitor_id';
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -37,30 +38,24 @@ export function useOnlinePresence() {
 
   useEffect(() => {
     let cancelled = false;
-    let fallbackStarted = false;
-    let fallbackTimer: number | undefined;
     let platformRoom: PlatformLobbyRoom | undefined;
-
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') void refresh(true);
-    };
+    const fallback = createOnlinePresenceFallbackController({
+      refresh,
+      intervalMs: HEARTBEAT_INTERVAL_MS,
+      windowTarget: window,
+      documentTarget: document,
+      visibilityState: () => document.visibilityState,
+      setIntervalFn: window.setInterval.bind(window),
+      clearIntervalFn: window.clearInterval.bind(window),
+    });
 
     const startHttpFallback = () => {
-      if (cancelled || fallbackStarted) return;
-      fallbackStarted = true;
-      void refresh(true);
-      fallbackTimer = window.setInterval(() => void refresh(true), HEARTBEAT_INTERVAL_MS);
-      window.addEventListener('focus', refreshWhenVisible);
-      document.addEventListener('visibilitychange', refreshWhenVisible);
+      if (cancelled) return;
+      fallback.start();
     };
 
     const stopHttpFallback = () => {
-      if (!fallbackStarted) return;
-      fallbackStarted = false;
-      if (fallbackTimer) window.clearInterval(fallbackTimer);
-      fallbackTimer = undefined;
-      window.removeEventListener('focus', refreshWhenVisible);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      fallback.stop();
     };
 
     void connectPlatformLobby(
