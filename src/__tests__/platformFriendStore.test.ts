@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { isPlatformRedisMode, redisUrlWithDb, resolvePlatformRedisMode } from '../platform/config';
+import {
+  isPlatformRedisMode,
+  redisUrlWithDb,
+  resolvePlatformCorsOrigin,
+  resolvePlatformCorsOrigins,
+  resolvePlatformRedisMode,
+} from '../platform/config';
 import {
   MAX_PLATFORM_FRIEND_PRESENCE_IDS,
   createEmptyPlatformFriendStore,
@@ -85,5 +91,20 @@ describe('platform runtime config', () => {
     expect(redisUrlWithDb('redis://localhost:6379/', 4)).toBe('redis://localhost:6379/4');
     expect(redisUrlWithDb('redis://localhost:6379/2', 5)).toBe('redis://localhost:6379/2');
     expect(redisUrlWithDb('not a url', 6)).toBe('not a url');
+  });
+
+  it('allows documented local platform browser origins by default', () => {
+    const origins = resolvePlatformCorsOrigins(undefined);
+
+    expect(resolvePlatformCorsOrigin('http://localhost:5173', origins)).toBe('http://localhost:5173');
+    expect(resolvePlatformCorsOrigin('http://localhost:3000', origins)).toBe('http://localhost:3000');
+    expect(resolvePlatformCorsOrigin('http://evil.example.com', origins)).toBeNull();
+  });
+
+  it('uses explicit platform CORS origins when configured', () => {
+    const origins = resolvePlatformCorsOrigins(' https://game.example.com, https://admin.example.com ');
+
+    expect(resolvePlatformCorsOrigin('https://game.example.com', origins)).toBe('https://game.example.com');
+    expect(resolvePlatformCorsOrigin('http://localhost:5173', origins)).toBeNull();
   });
 });

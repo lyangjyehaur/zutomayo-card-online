@@ -4,10 +4,17 @@ import { RedisDriver } from '@colyseus/redis-driver';
 import { RedisPresence } from '@colyseus/redis-presence';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import * as Sentry from '@sentry/node';
+import type { NextFunction, Request, Response } from 'express';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
 import { platformLogger as logger } from './logger';
 import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
-import { isPlatformRedisMode, redisUrlWithDb, resolvePlatformRedisMode } from './config';
+import {
+  isPlatformRedisMode,
+  redisUrlWithDb,
+  resolvePlatformCorsOrigin,
+  resolvePlatformCorsOrigins,
+  resolvePlatformRedisMode,
+} from './config';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -38,6 +45,7 @@ const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 const REDIS_DB = Number(process.env.REDIS_DB) || 0;
 const configuredRedisMode = process.env.PLATFORM_REDIS_MODE;
 const PLATFORM_REDIS_MODE = resolvePlatformRedisMode(configuredRedisMode, process.env.NODE_ENV);
+const PLATFORM_CORS_ORIGINS = resolvePlatformCorsOrigins(process.env.ALLOWED_ORIGINS);
 
 if (configuredRedisMode?.trim() && !isPlatformRedisMode(configuredRedisMode)) {
   logger.warn({ mode: configuredRedisMode }, 'unknown PLATFORM_REDIS_MODE, falling back to environment default');
@@ -52,6 +60,21 @@ LobbyRoom.configureFriendStore(friendStore);
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
   express: (app) => {
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      const corsOrigin = resolvePlatformCorsOrigin(req.headers.origin, PLATFORM_CORS_ORIGINS);
+      if (corsOrigin) {
+        res.set('Access-Control-Allow-Origin', corsOrigin);
+        res.set('Vary', 'Origin');
+        res.set('Access-Control-Allow-Credentials', 'true');
+      }
+      res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      if (req.method === 'OPTIONS') {
+        res.sendStatus(200);
+        return;
+      }
+      next();
+    });
     app.get('/health', (_req, res) => {
       res.set('Cache-Control', 'no-store').json({ ok: true, service: 'platform' });
     });
