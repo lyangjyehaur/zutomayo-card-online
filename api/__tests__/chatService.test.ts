@@ -428,7 +428,10 @@ describe('chat service', () => {
         ],
       },
     });
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('COUNT(m.id) AS unread_count'), ['u_2', 200]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('m.author_user_id IS DISTINCT FROM $1'), [
+      'u_2',
+      200,
+    ]);
   });
 
   it('stores ready chat translations through a provider hook', async () => {

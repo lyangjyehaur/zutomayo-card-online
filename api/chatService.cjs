@@ -464,7 +464,7 @@ async function listUnreadChat({ pool, userId, limit }) {
      FROM chat_conversations c
      JOIN chat_messages m ON m.conversation_id = c.id
      LEFT JOIN chat_read_states r ON r.conversation_id = c.id AND r.user_id = $1
-     WHERE m.author_user_id <> $1
+     WHERE m.author_user_id IS DISTINCT FROM $1
        AND m.deleted_at IS NULL
        AND m.moderation_status IN ('visible', 'pending_review')
        AND (r.read_at IS NULL OR m.created_at > r.read_at)

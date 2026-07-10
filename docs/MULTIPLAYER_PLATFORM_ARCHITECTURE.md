@@ -58,7 +58,7 @@ Chat sanctions are durable server-side moderation actions. Admins can mute or un
 
 Player match history stores the online boardgame match ID when available. The history page can reopen the durable `ChatService` match conversation after a game ends, with read-state sync, translation, and report actions still using the same REST-backed chat domain.
 
-Unread chat summaries are ChatService-backed across match, room, direct, and global conversations. The lobby can reopen each durable conversation type from the unread panel instead of treating unread state as a match-only shortcut.
+Unread chat summaries are ChatService-backed across match, room, direct, and global conversations. The unread query is null-safe for durable messages whose author account has been deleted or otherwise tombstoned, so evidence-bearing history does not disappear from unread state when identity records change. The lobby can reopen each durable conversation type from the unread panel instead of treating unread state as a match-only shortcut.
 
 ## Migration Plan
 
