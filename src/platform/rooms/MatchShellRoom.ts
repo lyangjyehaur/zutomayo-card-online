@@ -28,6 +28,11 @@ function boardgamePlayerIDFromOptions(options: MatchShellRoomOptions, role: Plat
   return options.boardgamePlayerID;
 }
 
+function normalizeStatus(value: unknown, boardgameMatchID?: string): MatchShellStatus {
+  if (value === 'waiting' || value === 'ready' || value === 'in_progress' || value === 'finished') return value;
+  return boardgameMatchID ? 'ready' : 'waiting';
+}
+
 export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; client: PlatformClient }> {
   private boardgameMatchID?: string;
   private conversationId?: string;
@@ -40,7 +45,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     this.maxClients = this.maxPlayerSeats + maxSpectators;
     this.boardgameMatchID = optionalText(options.boardgameMatchID, 128);
     this.conversationId = optionalText(options.conversationId, 128);
-    this.status = this.boardgameMatchID ? 'ready' : 'waiting';
+    this.status = normalizeStatus(options.status, this.boardgameMatchID);
     this.maxMessagesPerSecond = 6;
 
     this.onMessage<LinkBoardgameMatchMessage>('linkBoardgameMatch', (client, message) => {

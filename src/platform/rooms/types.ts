@@ -177,6 +177,7 @@ export interface MatchShellRoomOptions extends LobbyJoinOptions {
   boardgamePlayerID?: unknown;
   hasBoardgameCredentials?: unknown;
   conversationId?: unknown;
+  status?: unknown;
   maxPlayers?: unknown;
   maxSpectators?: unknown;
 }

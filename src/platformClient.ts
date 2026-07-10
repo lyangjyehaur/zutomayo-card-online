@@ -732,6 +732,7 @@ export async function connectPlatformMatchShell(
     userId: options.userId,
     displayName: options.displayName,
     role: options.role ?? 'spectator',
+    status: 'ready',
     boardgamePlayerID: options.boardgamePlayerID,
     hasBoardgameCredentials: options.hasBoardgameCredentials === true,
   });
