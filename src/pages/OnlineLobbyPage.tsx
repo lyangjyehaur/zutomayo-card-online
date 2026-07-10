@@ -50,6 +50,8 @@ import {
   createPlatformCustomRoom,
   joinPlatformCustomRoom,
   joinPlatformInvite,
+  type PlatformCustomRoom,
+  type PlatformCustomRoomSnapshot,
   type PlatformInviteRoom,
   type PlatformQuickMatchRoom,
 } from '../platformClient';
@@ -174,6 +176,8 @@ export function OnlineLobbyPage({
   const [reportedRoomMessageIds, setReportedRoomMessageIds] = useState<Set<string>>(() => new Set());
   const customRoomPanelRef = useRef<HTMLDivElement | null>(null);
   const roomChatMessagesRef = useRef<HTMLDivElement | null>(null);
+  const platformCustomRoomRef = useRef<PlatformCustomRoom | null>(null);
+  const [platformCustomRoomSnapshot, setPlatformCustomRoomSnapshot] = useState<PlatformCustomRoomSnapshot | null>(null);
   const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
   const [anonymousNameDraft, setAnonymousNameDraft] = useState(() => anonymousIdentity.baseName);
@@ -545,16 +549,41 @@ export function OnlineLobbyPage({
     element.scrollTop = element.scrollHeight;
   }, [roomChatMessages]);
 
+  const leavePlatformCustomRoom = useCallback(() => {
+    void platformCustomRoomRef.current?.leave(true).catch(() => undefined);
+    platformCustomRoomRef.current = null;
+    setPlatformCustomRoomSnapshot(null);
+  }, []);
+
+  useEffect(() => () => leavePlatformCustomRoom(), [leavePlatformCustomRoom]);
+
   const registerPlatformCustomRoom = useCallback(
     async (session: OnlineSession) => {
+      leavePlatformCustomRoom();
       try {
-        const room = await createPlatformCustomRoom({
-          roomCode: session.matchID,
-          boardgameMatchID: session.matchID,
-          userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
-          displayName: effectivePlayerName,
-        });
-        void room.leave(true).catch(() => undefined);
+        const room = await createPlatformCustomRoom(
+          {
+            roomCode: session.matchID,
+            boardgameMatchID: session.matchID,
+            userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
+            displayName: effectivePlayerName,
+          },
+          {
+            onSnapshot: setPlatformCustomRoomSnapshot,
+            onBoardgameMatchReady: (message) => {
+              setPlatformCustomRoomSnapshot((snapshot) =>
+                snapshot ? { ...snapshot, status: 'ready', boardgameMatchID: message.boardgameMatchID } : snapshot,
+              );
+            },
+            onCancelled: () => {
+              setPlatformCustomRoomSnapshot((snapshot) => (snapshot ? { ...snapshot, status: 'cancelled' } : snapshot));
+            },
+            onDisconnect: () => {
+              platformCustomRoomRef.current = null;
+            },
+          },
+        );
+        platformCustomRoomRef.current = room;
       } catch (err) {
         Sentry.addBreadcrumb({
           category: 'platform',
@@ -564,7 +593,7 @@ export function OnlineLobbyPage({
         });
       }
     },
-    [anonymousIdentity.suffix, effectivePlayerName, profile?.id],
+    [anonymousIdentity.suffix, effectivePlayerName, leavePlatformCustomRoom, profile?.id],
   );
 
   const resolvePlatformCustomRoom = useCallback(
@@ -1773,6 +1802,16 @@ export function OnlineLobbyPage({
                       </span>
                       <span className="font-mono text-xs text-accent-primary">{createdMatchID}</span>
                     </div>
+                    {platformCustomRoomSnapshot && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                          {t('platform.roomStatus')}
+                        </span>
+                        <span className="font-mono text-xs uppercase tracking-[var(--tracking-label)] text-content-primary/60">
+                          {platformCustomRoomSnapshot.status} · P {platformCustomRoomSnapshot.players.length}
+                        </span>
+                      </div>
+                    )}
                     <label className="flex flex-col gap-1">
                       <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
                         {t('online.shareLink')}

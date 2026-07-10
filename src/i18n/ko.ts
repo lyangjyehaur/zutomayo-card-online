@@ -197,6 +197,7 @@ export const ko: Record<TranslationKey, string> = {
   'friend.inviteCancelled': '초대가 취소되었습니다',
   'friend.inviteFailed': '초대 전송 실패',
   'friend.noInvite': '수락할 초대가 없습니다',
+  'platform.roomStatus': '플랫폼 방',
   'lobby.homeOnlineCaption': '2인 대전에서 상대 HP를 먼저 0으로 만들면 승리',
   'lobby.homeAiCaption': '크로노스의 밤과 낮에 따라 바뀌는 공격과 효과를 연습',
   'lobby.homeDeckCaption': '20장 덱을 구성해 시간으로 뒤바뀌는 전투에 대비',

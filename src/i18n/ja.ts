@@ -198,6 +198,7 @@ export const ja: Record<TranslationKey, string> = {
   'friend.inviteCancelled': '招待はキャンセルされました',
   'friend.inviteFailed': '招待の送信に失敗しました',
   'friend.noInvite': '承認できる招待はありません',
+  'platform.roomStatus': 'プラットフォームルーム',
   'lobby.homeOnlineCaption': '2人対戦で、先に相手のHPを0にすれば勝利',
   'lobby.homeAiCaption': 'クロノスの夜と昼で変わる攻撃力や効果を練習',
   'lobby.homeDeckCaption': '20枚のカードを組み合わせて、時間を操る戦いへ',

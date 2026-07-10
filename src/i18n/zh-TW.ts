@@ -190,6 +190,7 @@ export const zhTW = {
   'friend.inviteCancelled': '邀請已取消',
   'friend.inviteFailed': '邀請送出失敗',
   'friend.noInvite': '目前沒有可接受的邀請',
+  'platform.roomStatus': '平台房間',
   'lobby.homeOnlineCaption': '展開 2 人對戰，先將對手 HP 歸零即可取勝',
   'lobby.homeAiCaption': '在 Chronos 的夜晝流轉中練習攻防判斷',
   'lobby.homeDeckCaption': '組成 20 張牌組，迎接夜與晝改寫效果的戰鬥',

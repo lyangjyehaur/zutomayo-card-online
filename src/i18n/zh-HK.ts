@@ -192,6 +192,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'friend.inviteCancelled': '邀請已取消',
   'friend.inviteFailed': '邀請送出失敗',
   'friend.noInvite': '目前冇可接受嘅邀請',
+  'platform.roomStatus': '平台房間',
   'lobby.homeOnlineCaption': '展開 2 人對戰，先將對手 HP 歸零就勝出',
   'lobby.homeAiCaption': '喺 Chronos 嘅夜晝流轉中練習攻防判斷',
   'lobby.homeDeckCaption': '組成 20 張牌組，迎接夜與晝改寫效果嘅戰鬥',

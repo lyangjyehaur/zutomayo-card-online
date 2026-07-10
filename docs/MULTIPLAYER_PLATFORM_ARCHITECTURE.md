@@ -43,7 +43,7 @@ Friend match invitations use the Colyseus `invite` room as the realtime coordina
 
 Cross-room lobby chat uses the durable `ChatService` global conversation type (`online-lobby`) with the same history, read-state, report, moderation, and translation behavior instead of Colyseus room memory.
 
-Custom-room pregame chat uses the durable `ChatService` room conversation type keyed by the room code. The lobby can sync, send, translate, report, and mark room chat read before the boardgame match starts; Colyseus still owns the room lifecycle and realtime membership, not chat persistence.
+Custom-room pregame chat uses the durable `ChatService` room conversation type keyed by the room code. The lobby can sync, send, translate, report, and mark room chat read before the boardgame match starts; Colyseus still owns the room lifecycle and realtime membership, exposes room snapshots/status/player counts back to the lobby, and does not own chat persistence.
 
 Match spectators join the Colyseus match shell as `spectator` participants for realtime presence. Durable match chat remains account-backed: logged-in players and spectators can sync/send/report/translate messages through ChatService, while anonymous spectators can watch the board and appear in platform presence but cannot write evidence-bearing chat until they sign in. This keeps report evidence, mute sanctions, unread state, and future LLM translation tied to stable user IDs instead of transient room sessions.
 

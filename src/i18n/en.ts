@@ -197,6 +197,7 @@ export const en: Record<TranslationKey, string> = {
   'friend.inviteCancelled': 'Invite cancelled',
   'friend.inviteFailed': 'Failed to send invite',
   'friend.noInvite': 'No pending invite to accept',
+  'platform.roomStatus': 'Platform room',
   'lobby.homeOnlineCaption': 'Battle another player and reduce their HP to 0 first',
   'lobby.homeAiCaption': 'Practice attacks and effects as Chronos shifts night and day',
   'lobby.homeDeckCaption': 'Build a 20-card deck for battles rewritten by night and day',
