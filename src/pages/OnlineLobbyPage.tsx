@@ -17,10 +17,6 @@ import {
   fetchUnreadChat,
   isLoggedIn,
   markChatRead,
-  matchmakingLeave,
-  matchmakingQueue,
-  matchmakingReportMatch,
-  matchmakingStatus,
   reportChatMessage,
   removeFriend,
   requestChatTranslation,
@@ -68,7 +64,13 @@ interface OnlineLobbyPageProps {
   cardsReady: boolean;
 }
 
-type MatchmakingPhase = 'idle' | 'platform-waiting' | 'polling' | 'host-starting' | 'guest-joining' | 'done';
+type MatchmakingPhase =
+  | 'idle'
+  | 'platform-waiting'
+  | 'host-starting'
+  | 'guest-waiting-match'
+  | 'guest-joining'
+  | 'done';
 type DirectChatStatus = 'idle' | 'loading' | 'ready' | 'sending' | 'unavailable';
 type DirectChatTranslationState = {
   status: ChatMessageTranslation['status'] | 'loading' | 'unavailable';
@@ -457,33 +459,23 @@ export function OnlineLobbyPage({
   const [error, setError] = useState('');
   const [matchmakingActive, setMatchmakingActive] = useState(false);
   const [copied, setCopied] = useState(false);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const platformQuickMatchRoomRef = useRef<PlatformQuickMatchRoom | null>(null);
   const phaseRef = useRef<MatchmakingPhase>('idle');
   const cancelRef = useRef(false);
 
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, []);
-
   const resetMatchmaking = useCallback(() => {
-    stopPolling();
     phaseRef.current = 'idle';
     cancelRef.current = false;
     setMatchmakingActive(false);
-  }, [stopPolling]);
+  }, []);
 
   useEffect(
     () => () => {
       cancelRef.current = true;
-      stopPolling();
       void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
       platformQuickMatchRoomRef.current = null;
     },
-    [stopPolling],
+    [],
   );
 
   useEffect(() => {
@@ -594,91 +586,6 @@ export function OnlineLobbyPage({
     }
   };
 
-  const pollMatchmaking = useCallback(async () => {
-    if (cancelRef.current) return;
-    if (phaseRef.current !== 'polling') return;
-
-    let status;
-    try {
-      status = await matchmakingStatus();
-    } catch (err) {
-      if (cancelRef.current) return;
-      if (phaseRef.current !== 'polling') return;
-      Sentry.captureException(err, { tags: { action: 'matchmaking-status' } });
-      resetMatchmaking();
-      setError(onlineErrorMessage(err));
-      return;
-    }
-
-    if (cancelRef.current) return;
-    if (phaseRef.current !== 'polling') return;
-
-    if (status.status === 'matched') {
-      if (status.role === 'host') {
-        phaseRef.current = 'host-starting';
-        stopPolling();
-        try {
-          const session = await onStartOnline();
-          phaseRef.current = 'done';
-          // 通知 guest 真實 boardgame.io matchID（fire and forget，避免阻塞導航）
-          void matchmakingReportMatch(session.matchID).catch(() => {});
-        } catch (err) {
-          phaseRef.current = 'idle';
-          setMatchmakingActive(false);
-          Sentry.captureException(err, { tags: { action: 'matchmaking-host-start' } });
-          setError(onlineErrorMessage(err));
-          void matchmakingLeave().catch(() => {});
-        }
-      } else if (status.role === 'guest' && status.realMatchId) {
-        phaseRef.current = 'guest-joining';
-        stopPolling();
-        try {
-          await onStartOnline(status.realMatchId);
-          phaseRef.current = 'done';
-        } catch (err) {
-          phaseRef.current = 'idle';
-          setMatchmakingActive(false);
-          Sentry.captureException(err, { tags: { action: 'matchmaking-guest-join' } });
-          setError(onlineErrorMessage(err));
-          void matchmakingLeave().catch(() => {});
-        }
-      }
-      // guest 但尚未收到 realMatchId，繼續輪詢
-    } else if (status.status === 'timeout') {
-      resetMatchmaking();
-      setError(t('lobby.matchmakingTimeout'));
-    }
-  }, [resetMatchmaking, onStartOnline, stopPolling]);
-
-  const startHttpMatchmaking = async () => {
-    setMatchmakingActive(true);
-    cancelRef.current = false;
-    phaseRef.current = 'polling';
-    try {
-      await matchmakingQueue();
-    } catch (err) {
-      Sentry.captureException(err, { tags: { action: 'matchmaking-queue' } });
-      resetMatchmaking();
-      setError(onlineErrorMessage(err));
-      // 顯示錯誤 Toast 並提供重試按鈕
-      showToast({
-        title: t('error.matchmakingFailed'),
-        body: t('error.checkConnection'),
-        kind: 'error',
-        durationMs: 6000,
-        actionLabel: t('common.retry'),
-        onAction: handleQuickMatch,
-      });
-      return;
-    }
-    // 立即檢查一次（可能已立即配對）
-    void pollMatchmaking();
-    // 每 2 秒輪詢
-    pollingRef.current = setInterval(() => {
-      void pollMatchmaking();
-    }, 2000);
-  };
-
   const handleQuickMatch = async () => {
     if (!isLoggedIn()) {
       setError(t('lobby.loginRequired'));
@@ -719,7 +626,7 @@ export function OnlineLobbyPage({
                 });
               return;
             }
-            phaseRef.current = 'guest-joining';
+            phaseRef.current = 'guest-waiting-match';
           },
           onBoardgameMatchReady: (message) => {
             if (cancelRef.current || phaseRef.current === 'done' || phaseRef.current === 'host-starting') return;
@@ -745,8 +652,22 @@ export function OnlineLobbyPage({
           },
           onDisconnect: () => {
             platformQuickMatchRoomRef.current = null;
-            if (cancelRef.current || phaseRef.current !== 'platform-waiting') return;
-            void startHttpMatchmaking();
+            if (
+              cancelRef.current ||
+              (phaseRef.current !== 'platform-waiting' && phaseRef.current !== 'guest-waiting-match')
+            ) {
+              return;
+            }
+            resetMatchmaking();
+            setError(t('lobby.matchmakingFailed'));
+            showToast({
+              title: t('error.matchmakingFailed'),
+              body: t('error.checkConnection'),
+              kind: 'error',
+              durationMs: 6000,
+              actionLabel: t('common.retry'),
+              onAction: handleQuickMatch,
+            });
           },
         },
       );
@@ -758,11 +679,20 @@ export function OnlineLobbyPage({
     } catch (err) {
       Sentry.addBreadcrumb({
         category: 'platform',
-        message: 'platform quick match unavailable, falling back to HTTP matchmaking',
+        message: 'platform quick match unavailable',
         level: 'warning',
         data: { error: err instanceof Error ? err.message : String(err) },
       });
-      await startHttpMatchmaking();
+      resetMatchmaking();
+      setError(t('lobby.matchmakingFailed'));
+      showToast({
+        title: t('error.matchmakingFailed'),
+        body: t('error.checkConnection'),
+        kind: 'error',
+        durationMs: 6000,
+        actionLabel: t('common.retry'),
+        onAction: handleQuickMatch,
+      });
     }
   };
 
@@ -772,7 +702,6 @@ export function OnlineLobbyPage({
     void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
     platformQuickMatchRoomRef.current = null;
     resetMatchmaking();
-    void matchmakingLeave().catch(() => {});
   };
 
   const handleCopyShareLink = async () => {

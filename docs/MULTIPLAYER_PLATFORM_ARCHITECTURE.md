@@ -25,6 +25,9 @@ The first implementation slice adds a standalone Colyseus platform runtime witho
 - `src/platform/server.ts`
 - `src/platform/rooms/LobbyRoom.ts`
 - `src/platform/rooms/MatchShellRoom.ts`
+- `src/platform/rooms/QuickMatchRoom.ts`
+- `src/platform/rooms/CustomRoom.ts`
+- `src/platform/rooms/InviteRoom.ts`
 - Docker Compose `platform` service on port `3002`
 - `PLATFORM_REDIS_MODE=memory|redis` for local single-process development versus multi-instance production
 - Browser lobby presence integration through `VITE_PLATFORM_URL`, with the existing HTTP presence heartbeat kept as fallback
@@ -40,6 +43,8 @@ Friend presence subscriptions are resolved server-side from the durable `user_fr
 Friend direct messages use the durable `ChatService` direct conversation type. The Online Lobby provides friend management plus direct chat history/send/read/report/translate flows; direct conversation subject IDs are canonicalized so both participants share one thread.
 
 Friend match invitations use the Colyseus `invite` room as the realtime coordination channel. The lobby creates deterministic directional invite IDs from inviter/target user IDs, probes friends for incoming pending invites, lets the target accept through the same invite room, then sends the resulting boardgame.io match ID back through that room. This keeps invitation lifecycle in Colyseus while the actual match remains owned by boardgame.io.
+
+Quick matchmaking uses the Colyseus `quick_match` room for queueing, pairing, cancellation, and boardgame match ID relay. The browser lobby no longer falls back to the legacy REST matchmaking polling or Redis `realMatchId` handoff path when Colyseus quick match is unavailable; that failure is surfaced as a retryable platform matchmaking error instead.
 
 Cross-room lobby chat uses the durable `ChatService` global conversation type (`online-lobby`) with the same history, read-state, report, moderation, and translation behavior instead of Colyseus room memory.
 
