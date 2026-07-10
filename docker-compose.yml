@@ -175,6 +175,7 @@ services:
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - REDIS_URL=redis://redis:6379
       - REDIS_DB=${REDIS_DB:-0}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
       - SENTRY_DSN=${SENTRY_DSN:-}

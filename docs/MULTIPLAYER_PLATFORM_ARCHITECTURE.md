@@ -40,6 +40,8 @@ The frontend resolves the platform endpoint from `VITE_PLATFORM_URL` when set. W
 
 Friend presence subscriptions are resolved server-side from the durable `user_friends` table. The browser no longer sends friend IDs in Colyseus lobby join options; production Compose sets `PLATFORM_FRIEND_STORE=postgres`, while local development can keep `PLATFORM_FRIEND_STORE=none`.
 
+Colyseus account identity is verified from the same JWT session cookie used by the REST API. When a valid account cookie is present, platform rooms ignore client-supplied account IDs and use the token subject instead; unauthenticated clients are limited to guest-shaped IDs. Quick matchmaking and friend invitations require a verified account identity, while lobby presence, custom rooms, match shells, and anonymous spectators can still use guest identity where the product flow allows it.
+
 Friend direct messages use the durable `ChatService` direct conversation type. The Online Lobby provides friend management plus direct chat history/send/read/report/translate flows; direct conversation subject IDs are canonicalized so both participants share one thread.
 
 Friend match invitations use the Colyseus `invite` room as the realtime coordination channel. The lobby creates deterministic directional invite IDs from inviter/target user IDs, probes friends for incoming pending invites, lets the target accept through the same invite room, then sends the resulting boardgame.io match ID back through that room before either side navigates into the match. This keeps invitation lifecycle in Colyseus while the actual match remains owned by boardgame.io.

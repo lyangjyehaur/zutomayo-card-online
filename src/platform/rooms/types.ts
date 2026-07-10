@@ -10,6 +10,7 @@ export interface PlatformAuth {
   userId: string;
   displayName: string;
   role: PlatformRole;
+  authenticated: boolean;
 }
 
 export interface PlatformClientProfile {

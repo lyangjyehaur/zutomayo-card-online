@@ -98,7 +98,9 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   }
 
   onAuth(_client: PlatformClient, options: InviteRoomOptions, context: AuthContext): PlatformAuth {
-    return { ...authenticatePlatformClient(options, context), role: 'player' };
+    const auth = authenticatePlatformClient(options, context);
+    if (!auth.authenticated) throw new Error('Authentication required');
+    return { ...auth, role: 'player' };
   }
 
   async onJoin(client: PlatformClient): Promise<void> {

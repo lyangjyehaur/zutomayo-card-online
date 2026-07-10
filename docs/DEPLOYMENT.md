@@ -143,6 +143,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `PG_DATABASE`           | `zutomayo`                                | PostgreSQL database name.                                                                                                            |
 | `REDIS_URL`             | `redis://redis:6379`                      | Redis connection URL for Colyseus `RedisPresence` and `RedisDriver`. Use `redis://localhost:6379` for local dev.                     |
 | `REDIS_DB`              | `0`                                       | Redis DB index shared with other online coordination services.                                                                       |
+| `JWT_SECRET`            | **required**                              | Shared HMAC secret for validating account session cookies during Colyseus matchmaking/auth. Must match `game` and `api`.             |
 | `PLATFORM_REDIS_MODE`   | `redis` in production, `memory` otherwise | `memory` keeps local development dependency-light; `redis` enables multi-instance room discovery and presence in Compose/production. |
 | `PLATFORM_FRIEND_STORE` | `postgres` in Compose, auto otherwise     | `postgres` resolves friend presence subscriptions from `user_friends`; `none` disables friend lookup for local development.          |
 | `PLATFORM_PG_POOL_MAX`  | `PG_POOL_MAX` or `5`                      | Optional pool size override for platform friend lookup.                                                                              |

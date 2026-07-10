@@ -1,0 +1,126 @@
+import crypto from 'node:crypto';
+import type { AuthContext } from '@colyseus/core';
+import { afterEach, describe, expect, it } from 'vitest';
+import { authenticatePlatformClient } from '../auth';
+import { InviteRoom } from '../InviteRoom';
+import { platformAuthTokenFromContext, verifyPlatformJwtUserId } from '../jwt';
+import { QuickMatchRoom } from '../QuickMatchRoom';
+
+const originalJwtSecret = process.env.JWT_SECRET;
+
+function base64urlJson(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function signToken(input: string, secret: string): string {
+  return crypto.createHmac('sha256', secret).update(input).digest('base64url');
+}
+
+function createJwt(userId: string, secret: string, options: { expiresInSeconds?: number; typ?: string } = {}): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({
+    sub: userId,
+    userId,
+    iat: now,
+    exp: now + (options.expiresInSeconds ?? 3600),
+    ...(options.typ ? { typ: options.typ } : {}),
+  });
+  const input = `${header}.${payload}`;
+  return `${input}.${signToken(input, secret)}`;
+}
+
+function authContext(headers: Record<string, string> = {}): AuthContext {
+  return {
+    headers: new Headers(headers),
+    ip: '127.0.0.1',
+  };
+}
+
+afterEach(() => {
+  process.env.JWT_SECRET = originalJwtSecret;
+});
+
+describe('platform room auth', () => {
+  it('extracts auth token from bearer header before cookie', () => {
+    const context = authContext({
+      authorization: 'Bearer bearer-token',
+      cookie: 'zutomayo_session=cookie-token',
+    });
+    expect(platformAuthTokenFromContext(context)).toBe('bearer-token');
+  });
+
+  it('extracts auth token from the session cookie', () => {
+    const context = authContext({
+      cookie: `other=1; zutomayo_session=${encodeURIComponent('cookie.token.value')}`,
+    });
+    expect(platformAuthTokenFromContext(context)).toBe('cookie.token.value');
+  });
+
+  it('verifies access JWT user ids and rejects refresh tokens', () => {
+    const secret = 'test-platform-jwt-secret-at-least-32-characters';
+    const accessToken = createJwt('u_verified', secret);
+    const refreshToken = createJwt('u_verified', secret, { typ: 'refresh' });
+
+    expect(verifyPlatformJwtUserId(accessToken, secret)).toBe('u_verified');
+    expect(verifyPlatformJwtUserId(refreshToken, secret)).toBe('');
+    expect(verifyPlatformJwtUserId(accessToken, 'wrong-secret')).toBe('');
+  });
+
+  it('uses verified cookie identity instead of client supplied user id', () => {
+    process.env.JWT_SECRET = 'test-platform-jwt-secret-at-least-32-characters';
+    const token = createJwt('u_cookie_user', process.env.JWT_SECRET);
+    const auth = authenticatePlatformClient(
+      { userId: 'u_spoofed', displayName: 'Alice', role: 'player' },
+      authContext({ cookie: `zutomayo_session=${encodeURIComponent(token)}` }),
+    );
+
+    expect(auth).toMatchObject({
+      userId: 'u_cookie_user',
+      displayName: 'Alice',
+      role: 'player',
+      authenticated: true,
+    });
+  });
+
+  it('falls back when an unauthenticated client supplies an account-shaped user id', () => {
+    process.env.JWT_SECRET = 'test-platform-jwt-secret-at-least-32-characters';
+    const auth = authenticatePlatformClient(
+      { userId: 'u_spoofed', displayName: 'Mallory', role: 'player' },
+      authContext(),
+    );
+
+    expect(auth.authenticated).toBe(false);
+    expect(auth.userId).toMatch(/^guest:/);
+    expect(auth.userId).not.toBe('u_spoofed');
+  });
+
+  it('allows guest-shaped anonymous ids without JWT', () => {
+    const auth = authenticatePlatformClient(
+      { userId: 'anon:1234', displayName: 'Guest', role: 'spectator' },
+      authContext(),
+    );
+
+    expect(auth).toMatchObject({
+      userId: 'anon:1234',
+      authenticated: false,
+      role: 'spectator',
+    });
+  });
+
+  it('requires verified account identity for quick matchmaking and invites', () => {
+    const quickRoom = new QuickMatchRoom();
+    const inviteRoom = new InviteRoom();
+
+    expect(() => quickRoom.onAuth({} as never, { userId: 'u_spoofed', displayName: 'Mallory' }, authContext())).toThrow(
+      'Authentication required',
+    );
+    expect(() =>
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId: 'invite_1', userId: 'u_spoofed', displayName: 'Mallory' },
+        authContext(),
+      ),
+    ).toThrow('Authentication required');
+  });
+});
