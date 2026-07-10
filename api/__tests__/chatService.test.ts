@@ -260,35 +260,43 @@ describe('chat service', () => {
     );
   });
 
-  it('rejects muted users before persisting chat messages', async () => {
-    const pool = poolWithResults([{ rows: [sanctionRow] }]);
+  it('rejects muted users before persisting any durable conversation type', async () => {
+    const cases = [
+      { conversationType: 'match', subjectId: 'bgio-match-1' },
+      { conversationType: 'room', subjectId: 'ROOM42' },
+      { conversationType: 'global', subjectId: 'online-lobby' },
+      { conversationType: 'direct', subjectId: 'v1:u_1:u_friend' },
+    ];
 
-    await expect(
-      sendChatMessage({
-        pool,
-        authorUserId: 'u_1',
-        body: {
-          conversationType: 'match',
-          subjectId: 'bgio-match-1',
-          content: 'hello',
-        },
-        sanitizeText,
-        generateMessageId: () => 'chat_msg_1',
-      }),
-    ).resolves.toEqual({
-      ok: false,
-      status: 403,
-      error: 'Chat muted until 2026-07-11T00:00:03.000Z',
-      body: {
-        sanction: expect.objectContaining({
-          id: 'chat_sanction_1',
-          targetUserId: 'u_1',
-          type: 'chat_mute',
+    for (const testCase of cases) {
+      const pool = poolWithResults([{ rows: [sanctionRow] }]);
+
+      await expect(
+        sendChatMessage({
+          pool,
+          authorUserId: 'u_1',
+          body: {
+            ...testCase,
+            content: 'hello',
+          },
+          sanitizeText,
+          generateMessageId: () => `chat_msg_${testCase.conversationType}`,
         }),
-      },
-    });
-    expect(pool.query).toHaveBeenCalledTimes(1);
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM chat_user_sanctions'), ['u_1']);
+      ).resolves.toEqual({
+        ok: false,
+        status: 403,
+        error: 'Chat muted until 2026-07-11T00:00:03.000Z',
+        body: {
+          sanction: expect.objectContaining({
+            id: 'chat_sanction_1',
+            targetUserId: 'u_1',
+            type: 'chat_mute',
+          }),
+        },
+      });
+      expect(pool.query).toHaveBeenCalledTimes(1);
+      expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM chat_user_sanctions'), ['u_1']);
+    }
   });
 
   it('loads the latest active chat mute sanction for enforcement', async () => {
