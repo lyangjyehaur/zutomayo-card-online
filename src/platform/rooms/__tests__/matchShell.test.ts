@@ -100,6 +100,22 @@ describe('match shell room', () => {
     );
   });
 
+  it('normalizes prelinked match shells to ready status', async () => {
+    const room = new MatchShellRoom();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1', status: 'waiting' });
+
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        boardgameMatchID: 'bgio-match-1',
+        status: 'ready',
+      }),
+    });
+  });
+
   it('rejects joins that target a different boardgame match shell', async () => {
     const room = new MatchShellRoom();
     vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);

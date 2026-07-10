@@ -35,6 +35,7 @@ function hasValidBoardgamePlayerSeat(options: MatchShellRoomOptions): boolean {
 }
 
 function normalizeStatus(value: unknown, boardgameMatchID?: string): MatchShellStatus {
+  if (boardgameMatchID && value === 'waiting') return 'ready';
   if (value === 'waiting' || value === 'ready' || value === 'in_progress' || value === 'finished') return value;
   return boardgameMatchID ? 'ready' : 'waiting';
 }
