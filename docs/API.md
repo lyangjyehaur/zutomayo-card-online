@@ -494,13 +494,15 @@ Response:
 
 Errors: `401`.
 
-## Matchmaking / 配對佇列
+## Legacy Matchmaking / 舊版配對佇列
 
-In-memory matchmaking queue keyed by user ID. Entries expire after 60 seconds without a match, with a 10-second grace window before deletion. All endpoints require a user JWT.
+These REST endpoints are kept as a compatibility surface for older clients and service-level tests. The current browser quick-match flow uses the Colyseus `quick_match` room for queueing, cancellation, pairing, and boardgame.io match ID relay; see [MULTIPLAYER_PLATFORM_ARCHITECTURE.md](./MULTIPLAYER_PLATFORM_ARCHITECTURE.md). All endpoints require a user JWT.
+
+The legacy queue is Redis-backed and keyed by user ID. Entries expire after 60 seconds without a match, with a 10-second grace window before deletion.
 
 ### `POST /api/matchmaking/queue`
 
-Join the matchmaking queue (or refresh an existing entry). If a compatible opponent is already queued, both entries are immediately marked `matched` and assigned a shared `matchId`; the user with the lexicographically smaller ID becomes `host`.
+Join the legacy matchmaking queue (or refresh an existing entry). If a compatible opponent is already queued, both entries are immediately marked `matched` and assigned a shared `matchId`; the user with the lexicographically smaller ID becomes `host`.
 
 Request:
 
@@ -535,7 +537,7 @@ Errors: `401`.
 
 ### `GET /api/matchmaking/status`
 
-Poll the caller's current queue entry. Expired entries are cleaned up before the lookup.
+Poll the caller's current legacy queue entry. Expired entries are cleaned up before the lookup.
 
 Response (queued or matched):
 
@@ -557,7 +559,7 @@ Response (no entry / timed out):
 }
 ```
 
-`role` is `"host"` or `"guest"`. `realMatchId` is the boardgame.io match ID once the host reports it via `PUT /api/matchmaking/match`.
+`role` is `"host"` or `"guest"`. `realMatchId` is the boardgame.io match ID once the legacy REST host reports it via `PUT /api/matchmaking/match`.
 
 Errors: `401`.
 
@@ -577,7 +579,7 @@ Errors: `401`.
 
 ### `PUT /api/matchmaking/match`
 
-Called by the host after creating the boardgame.io match to publish the real match ID so the guest can join.
+Called by the host on the legacy REST flow after creating the boardgame.io match to publish the real match ID so the guest can join. The Colyseus quick-match flow relays this through `boardgameMatchReady` on the `quick_match` room instead.
 
 Request:
 

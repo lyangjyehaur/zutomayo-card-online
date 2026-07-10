@@ -3,10 +3,10 @@
 Production deployment uses [docker-compose.yml](../docker-compose.yml) with six services:
 
 - `postgres`: PostgreSQL 16 (`postgres:16-alpine`) database. Shared data layer for both boardgame.io match state (`bjg_matches` table) and API data (users/decks/matches). Healthcheck: `pg_isready`.
-- `redis`: Redis 7 (`redis:7-alpine`, `appendonly yes`, `maxmemory-policy allkeys-lru`). Powers boardgame.io PubSub, Socket.IO redis-adapter, matchmaking queue, and rate-limit counters. Healthcheck: `redis-cli ping`.
+- `redis`: Redis 7 (`redis:7-alpine`, `appendonly yes`, `maxmemory-policy allkeys-lru`). Powers boardgame.io PubSub, Socket.IO redis-adapter, Colyseus room/presence backing, legacy matchmaking queue, and rate-limit counters. Healthcheck: `redis-cli ping`.
 - `migrate`: One-shot schema migration service (uses the `builder` Docker stage). Runs `npm run db:migrate` via [node-pg-migrate](https://github.com/salsita/node-pg-migrate) before `api` starts. Exits `0` on success; `api` waits via `depends_on: service_completed_successfully`.
 - `game`: boardgame.io server, built React app, static card/admin assets, and `/api/*` proxy. Persists match state via `PostgresAdapter` and broadcasts cross-node via `RedisPubSub` + `@socket.io/redis-adapter`.
-- `api`: REST API service with PostgreSQL + Redis persistence. Uses `pg.Pool` for users/decks/matches and Redis for the matchmaking queue (sorted set + Lua atomic pairing) and rate limit (`INCR` + `EXPIRE`).
+- `api`: REST API service with PostgreSQL + Redis persistence. Uses `pg.Pool` for users/decks/matches/chat and Redis for the legacy matchmaking queue (sorted set + Lua atomic pairing) and rate limit (`INCR` + `EXPIRE`).
 - `platform`: Colyseus platform service for lobby presence, quick matchmaking, custom-room lifecycle, invitations, spectator presence, and realtime room coordination. Uses Redis driver/presence in Compose and PostgreSQL-backed friend lookup.
 
 Target host: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
@@ -115,7 +115,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `PG_USER`                     | `zutomayo`             | PostgreSQL user.                                                                                                                                                                                               |
 | `PG_PASSWORD`                 | required               | PostgreSQL password. Set a strong value in `.env` or the shell before running Compose.                                                                                                                         |
 | `PG_DATABASE`                 | `zutomayo`             | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                                                                          |
-| `REDIS_URL`                   | `redis://redis:6379`   | Redis connection URL for the matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                                                                                                     |
+| `REDIS_URL`                   | `redis://redis:6379`   | Redis connection URL for the legacy matchmaking queue and rate limit. Use `redis://localhost:6379` for local dev.                                                                                              |
 | `REDIS_DB`                    | `0`                    | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                                               |
 | `JWT_SECRET`                  | **required**           | HMAC key for signed user/admin tokens. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set a stable secret in production or all tokens become invalid when the API process restarts. |
 | `ADMIN_PASSWORD`              | empty                  | Password checked by `POST /api/admin/login`. **Recommended: at least 8 characters.** When empty, admin login returns `503` and admin endpoints are effectively disabled.                                       |
@@ -181,7 +181,7 @@ Exposed metrics include:
 - `http_request_duration_seconds` (Histogram, labels: `method`, `path`, `status`) — dynamic path segments are normalized to `:id` to bound cardinality.
 - `http_requests_total` (Counter, labels: `method`, `path`, `status`)
 - `rate_limited_requests_total` (Counter, label: `pathname`) — requests rejected by the rate limiter (api server).
-- `matchmaking_queue_depth` (Gauge) — current matchmaking queue depth (game server).
+- `matchmaking_queue_depth` (Gauge) — current legacy REST matchmaking queue depth (game server).
 - `active_socket_connections` (Gauge) — active Socket.IO connections (game server).
 - Default Node.js metrics (event loop, GC, heap, etc.) via `collectDefaultMetrics`.
 
@@ -206,10 +206,10 @@ Both rate limiters **fail open** (allow the request through) when Redis is unava
 
 ## Volumes / 資料卷
 
-| Volume       | Mount                               | Purpose                                                                                                                                 |
-| ------------ | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `pg-data`    | `postgres:/var/lib/postgresql/data` | PostgreSQL data directory. Source of truth for boardgame.io match state (`bjg_matches`) and API data (users/decks/matches/leaderboard). |
-| `redis-data` | `redis:/data`                       | Redis AOF persistence directory. Holds matchmaking queue and rate-limit counters; loss is tolerable but causes a cold restart.          |
+| Volume       | Mount                               | Purpose                                                                                                                                                                |
+| ------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pg-data`    | `postgres:/var/lib/postgresql/data` | PostgreSQL data directory. Source of truth for boardgame.io match state (`bjg_matches`) and API data (users/decks/matches/leaderboard).                                |
+| `redis-data` | `redis:/data`                       | Redis AOF persistence directory. Holds Colyseus room/presence backing, legacy matchmaking queue, and rate-limit counters; loss is tolerable but causes a cold restart. |
 
 ## PostgreSQL Backup / Restore
 
@@ -290,16 +290,17 @@ Use `pgm.addColumn` / `pgm.createTable` / `pgm.alterTable` etc. For irreversible
 
 ## 水平擴展 / Horizontal Scaling
 
-The `game` and `api` services can be replicated (multiple instances) to scale horizontally. PostgreSQL serves as the shared data layer — both boardgame.io (via `PostgresAdapter`, writing the `bjg_matches` table) and the API (via `pg.Pool`, writing the users/decks/matches tables) use the same instance, isolated by table prefix (`bjg_` vs no prefix).
+The `game`, `api`, and `platform` services can be replicated (multiple instances) to scale horizontally. PostgreSQL serves as the shared data layer — boardgame.io uses `PostgresAdapter` for the `bjg_matches` table, the API uses `pg.Pool` for durable product/chat data, and the platform service uses PostgreSQL for server-side friend presence lookup.
 
-Redis serves four roles simultaneously:
+Redis serves five roles simultaneously:
 
 - boardgame.io PubSub (custom `RedisPubSub` implementing `GenericPubSub`) for cross-node match-state broadcast.
 - `@socket.io/redis-adapter` for Socket.IO horizontal scaling.
-- Matchmaking queue shared across API instances: a Redis sorted set (`mm:queue`) plus a hash (`mm:{userId}`) plus a Lua script perform atomic pairing, so multiple instances never match the same user twice.
+- Colyseus room and presence backing for the `platform` service via `RedisDriver` and `RedisPresence`.
+- Legacy REST matchmaking queue shared across API instances: a Redis sorted set (`mm:queue`) plus a hash (`mm:{userId}`) plus a Lua script perform atomic pairing, so multiple instances never match the same user twice.
 - Rate-limit counters shared across API instances: Redis `INCR` + `EXPIRE` for cross-instance counting.
 
-To scale up, increase the replica count for `game` and/or `api`. Both `postgres` and `redis` should remain single instances. Ensure `JWT_SECRET` and `ALLOWED_ORIGINS` are identical across all instances of the same service.
+To scale up, increase the replica count for `game`, `api`, and/or `platform`. Both `postgres` and `redis` should remain single instances. Ensure `JWT_SECRET` is identical across all three services; keep `ALLOWED_ORIGINS` identical across `game`/`api` instances. Platform replicas must run with `PLATFORM_REDIS_MODE=redis` so Colyseus room discovery and presence are shared.
 
 ## Reusing Existing PostgreSQL / Redis
 
@@ -331,7 +332,7 @@ Schemas (`users`/`decks`/`matches`/`bjg_matches`) are applied automatically on s
 
 ### Redis — separate DB index
 
-Redis databases (0-15) are logical namespaces — all keys in DB index N are invisible to clients using a different index. Use a dedicated index to avoid key collisions with other services (the app uses `ratelimit:*`, `mm:*`, `MATCH-*`, and Socket.IO adapter internal keys).
+Redis databases (0-15) are logical namespaces — all keys in DB index N are invisible to clients using a different index. Use a dedicated index to avoid key collisions with other services (the app uses `ratelimit:*`, `mm:*`, `MATCH-*`, Colyseus presence/driver keys, and Socket.IO adapter internal keys).
 
 Pick an index not used by other services (e.g. `2`) and set the same value on both `game` and `api`:
 
@@ -340,7 +341,7 @@ REDIS_URL=redis://<existing-redis-host>:6379
 REDIS_DB=2
 ```
 
-The `REDIS_DB` option is applied to every ioredis connection (publish, subscribe, and `duplicate()`-d connections inherit it), so boardgame.io PubSub channels, Socket.IO adapter keys, matchmaking, and rate-limit counters all land in the same isolated DB index.
+The `REDIS_DB` option is applied to every ioredis connection (publish, subscribe, and `duplicate()`-d connections inherit it), so boardgame.io PubSub channels, Socket.IO adapter keys, Colyseus room/presence backing, legacy matchmaking, and rate-limit counters all land in the same isolated DB index.
 
 > **Why not key prefix?** boardgame.io's internal PubSub channel (`MATCH-{matchID}`) and `@socket.io/redis-adapter`'s internal keys cannot be prefixed from application code, so a key-prefix strategy cannot fully isolate this app from other services. A dedicated DB index is the only complete isolation mechanism that works without forking boardgame.io.
 
