@@ -113,6 +113,57 @@ describe('invite room lifecycle', () => {
     });
   });
 
+  it('derives the inviter from directional invite ids instead of first join order', async () => {
+    const room = new InviteRoom();
+    const inviteHandlers = new Map<string, InviteHandler>();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: InviteHandler) => {
+      inviteHandlers.set(type, handler);
+      return room;
+    }) as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const target = client('session_target', {
+      userId: 'u_target',
+      displayName: 'Target',
+      role: 'player',
+      authenticated: true,
+    });
+    const inviter = client('session_inviter', {
+      userId: 'u_inviter',
+      displayName: 'Inviter',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate({ inviteId: inviteId(), targetUserId: 'u_target' });
+    room.clients.push(target);
+    await room.onJoin(target);
+
+    inviteHandlers.get('acceptInvite')?.(target, {});
+    inviteHandlers.get('cancelInvite')?.(target, { reason: 'target-first' });
+    await flushAsyncHandlers();
+    expect(broadcast).not.toHaveBeenCalledWith('inviteAccepted', expect.anything());
+    expect(broadcast).not.toHaveBeenCalledWith('inviteCancelled', expect.anything());
+
+    room.clients.push(inviter);
+    await room.onJoin(inviter);
+
+    inviteHandlers.get('acceptInvite')?.(target, {});
+
+    expect(broadcast).toHaveBeenCalledWith(
+      'inviteAccepted',
+      expect.objectContaining({
+        inviteId: inviteId(),
+        acceptedBy: expect.objectContaining({ userId: 'u_target' }),
+      }),
+    );
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({ inviteId: inviteId(), status: 'accepted', targetUserId: 'u_target' }),
+    });
+  });
+
   it('lets only the target decline a pending invite', async () => {
     const { inviteHandlers, setMatchmaking, broadcast, inviter, target } = await setupInviteRoom();
 

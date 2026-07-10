@@ -38,6 +38,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
 
   private inviteId = '';
   private status: InviteStatus = 'pending';
+  private inviterUserId?: string;
   private targetUserId?: string;
   private roomCode?: string;
   private boardgameMatchID?: string;
@@ -49,6 +50,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     this.maxMessagesPerSecond = 4;
     this.inviteId = optionalText(options.inviteId, 128) ?? this.roomId;
     const friendInvite = parseFriendInviteId(this.inviteId);
+    this.inviterUserId = friendInvite?.inviterUserId;
     this.targetUserId = friendInvite?.targetUserId ?? optionalText(options.targetUserId, 128);
     this.roomCode = optionalText(options.roomCode, 128);
     this.boardgameMatchID = optionalText(options.boardgameMatchID, 128);
@@ -92,7 +94,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     });
 
     this.onMessage<InviteResponseMessage>('cancelInvite', (client, message) => {
-      if (this.inviter && client.sessionId !== this.inviter.sessionId) return;
+      if (!this.inviter || client.sessionId !== this.inviter.sessionId) return;
       void this.cancel(optionalText(message.reason, 80) ?? 'cancelled');
     });
 
@@ -136,7 +138,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
       role: 'player',
       joinedAt: Date.now(),
     };
-    if (!this.inviter) this.inviter = client.userData;
+    if (!this.inviter && this.canBecomeInviter(client.userData)) this.inviter = client.userData;
     await this.refreshMetadata();
     this.clock.setTimeout(() => client.send('inviteSnapshot', this.snapshot()), 50);
   }
@@ -150,10 +152,18 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   }
 
   private canRespond(client: PlatformClient): client is PlatformClient & { userData: PlatformClientProfile } {
-    if (this.status !== 'pending' || !client.userData) return false;
-    if (this.inviter?.sessionId === client.sessionId) return false;
+    if (this.status !== 'pending' || !this.inviter || !client.userData) return false;
+    if (this.isInviter(client.userData)) return false;
     if (this.targetUserId && client.userData.userId !== this.targetUserId) return false;
     return true;
+  }
+
+  private canBecomeInviter(profile: PlatformClientProfile): boolean {
+    return this.inviterUserId ? profile.userId === this.inviterUserId : true;
+  }
+
+  private isInviter(profile: PlatformClientProfile): boolean {
+    return this.inviterUserId ? profile.userId === this.inviterUserId : this.inviter?.sessionId === profile.sessionId;
   }
 
   private snapshot(): PlatformClient['~messages']['inviteSnapshot'] {
