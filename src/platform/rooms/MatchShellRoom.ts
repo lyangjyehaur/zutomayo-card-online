@@ -33,6 +33,12 @@ function normalizeStatus(value: unknown, boardgameMatchID?: string): MatchShellS
   return boardgameMatchID ? 'ready' : 'waiting';
 }
 
+function canLinkBoardgameMatch(profile: PlatformClientProfile | undefined): boolean {
+  if (!profile) return false;
+  if (profile.role === 'moderator') return true;
+  return profile.role === 'player' && profile.hasBoardgameCredentials === true;
+}
+
 export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; client: PlatformClient }> {
   private boardgameMatchID?: string;
   private conversationId?: string;
@@ -49,7 +55,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     this.maxMessagesPerSecond = 6;
 
     this.onMessage<LinkBoardgameMatchMessage>('linkBoardgameMatch', (client, message) => {
-      if (client.userData?.role !== 'moderator' && client.userData?.role !== 'player') return;
+      if (!canLinkBoardgameMatch(client.userData)) return;
       const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
       if (!boardgameMatchID) return;
       void this.linkBoardgameMatch(boardgameMatchID);
