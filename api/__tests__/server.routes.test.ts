@@ -586,6 +586,77 @@ describe('server routes', () => {
   });
 
   describe('chat routes', () => {
+    it('GET /api/chat/messages syncs every durable conversation type through the same route', async () => {
+      const cases = [
+        {
+          query: { type: 'match', subjectId: 'bgio-match-1' },
+          expectedKey: 'match:bgio-match-1',
+        },
+        {
+          query: { type: 'room', subjectId: 'ROOM42' },
+          expectedKey: 'room:ROOM42',
+        },
+        {
+          query: { type: 'global', subjectId: 'online-lobby' },
+          expectedKey: 'global:online-lobby',
+        },
+        {
+          query: { type: 'direct', subjectId: 'v1:u_friend:u_reader' },
+          expectedKey: 'direct:v1:u_friend:u_reader',
+        },
+      ];
+
+      for (const testCase of cases) {
+        mockQuery.mockReset();
+        mockQuery.mockResolvedValueOnce({
+          rows: [
+            {
+              id: `chat_msg_${testCase.query.type}`,
+              conversation_id: testCase.expectedKey,
+              author_user_id: 'u_friend',
+              author_display_name: 'Friend',
+              author_role: 'player',
+              content: `history ${testCase.query.type}`,
+              source_language: 'en',
+              moderation_status: 'visible',
+              moderation_reason: '',
+              metadata: { transport: 'api' },
+              created_at: '2026-07-10T00:00:01.000Z',
+              edited_at: null,
+              deleted_at: null,
+            },
+          ],
+          rowCount: 1,
+        });
+
+        const params = new URLSearchParams({
+          type: testCase.query.type,
+          subjectId: testCase.query.subjectId,
+          limit: '10',
+        });
+        const res = await sendRequest(
+          'GET',
+          `/api/chat/messages?${params.toString()}`,
+          null,
+          userUnsafeHeaders('u_reader'),
+        );
+
+        expect(res.statusCode).toBe(200);
+        const body = parseBody(res) as { messages: Array<Record<string, unknown>> };
+        expect(body.messages).toEqual([
+          expect.objectContaining({
+            id: `chat_msg_${testCase.query.type}`,
+            conversationId: testCase.expectedKey,
+            content: `history ${testCase.query.type}`,
+          }),
+        ]);
+        expect(mockQuery).toHaveBeenCalledWith(
+          expect.stringContaining("moderation_status IN ('visible', 'pending_review')"),
+          [testCase.expectedKey, 10],
+        );
+      }
+    });
+
     it('POST /api/chat/messages persists every durable conversation type through the same route', async () => {
       const cases = [
         {
