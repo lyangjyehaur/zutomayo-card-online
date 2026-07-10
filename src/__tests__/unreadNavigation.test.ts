@@ -14,10 +14,7 @@ const baseConversation: ChatUnreadConversation = {
   latestMessageAt: '2026-07-10T00:00:01.000Z',
 };
 
-function unreadConversation(
-  type: ChatUnreadConversation['type'],
-  subjectId: string,
-): ChatUnreadConversation {
+function unreadConversation(type: ChatUnreadConversation['type'], subjectId: string): ChatUnreadConversation {
   return {
     ...baseConversation,
     id: `${type}:${subjectId}`,

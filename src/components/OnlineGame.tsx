@@ -22,6 +22,7 @@ import {
   type ChatMessage,
   type ProfileResponse,
 } from '../api/client';
+import { canSubmitMatchChat, matchChatAccessStatus, matchChatAuthorRole } from '../chat/matchChatAccess';
 import {
   createOnlineStateSnapshot,
   evaluateOnlineStateSnapshot,
@@ -297,13 +298,14 @@ export function OnlineGame({
     setChatMessages([]);
     setReportedMessageIds(new Set());
 
-    if (!chatAccountLoaded) {
+    const accessStatus = matchChatAccessStatus(chatAccountLoaded, chatAccount);
+    if (accessStatus === 'loading') {
       return () => {
         cancelled = true;
       };
     }
 
-    if (!chatAccount) {
+    if (accessStatus === 'login_required') {
       setChatStatus('login_required');
       return () => {
         cancelled = true;
@@ -480,8 +482,9 @@ export function OnlineGame({
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const content = chatDraft.trim();
-      if (!content || chatStatus === 'sending') return;
-      if (!chatAccount) {
+      if (!canSubmitMatchChat({ account: chatAccount, content, status: chatStatus })) return;
+      const authorRole = matchChatAuthorRole(chatAccount, spectator);
+      if (!authorRole) {
         setChatStatus('login_required');
         return;
       }
@@ -493,7 +496,7 @@ export function OnlineGame({
           subjectId: matchID,
           content,
           authorDisplayName: chatDisplayName,
-          authorRole: spectator ? 'spectator' : 'player',
+          authorRole,
           clientMessageId: `client:${Date.now()}:${Math.random().toString(36).slice(2)}`,
         });
         if (canShowChatMessage(result.message)) {

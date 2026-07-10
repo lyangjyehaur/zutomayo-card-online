@@ -40,9 +40,7 @@ export function resolveUnreadConversationAction(
     const peerUserId = directConversationPeerId(subjectId, profileId);
     if (!peerUserId) return null;
     const friend = friends.find((item) => item.userId === peerUserId);
-    return friend
-      ? { kind: 'direct', subjectId, peerUserId, friend }
-      : { kind: 'direct', subjectId, peerUserId };
+    return friend ? { kind: 'direct', subjectId, peerUserId, friend } : { kind: 'direct', subjectId, peerUserId };
   }
 
   return null;
