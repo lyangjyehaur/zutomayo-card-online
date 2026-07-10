@@ -80,7 +80,7 @@ function canonicalConversationSubjectId(type, subjectId) {
   const cleanSubjectId = normalizeSubjectId(subjectId);
   if (type !== 'direct' || !cleanSubjectId) return cleanSubjectId;
   const participants = directConversationParticipants(cleanSubjectId);
-  if (participants.length !== 2) return cleanSubjectId;
+  if (participants.length !== 2 || new Set(participants).size !== 2) return '';
   return cleanSubjectId.startsWith('v1:')
     ? `v1:${participants.sort().map(encodeURIComponent).join(':')}`
     : participants.sort().join(':');
@@ -96,7 +96,9 @@ function conversationKey(type, subjectId) {
 function canAccessConversation(userId, type, subjectId) {
   if (!userId) return false;
   if (type !== 'direct') return true;
-  return directConversationParticipants(subjectId).includes(userId);
+  const canonicalSubjectId = canonicalConversationSubjectId(type, subjectId);
+  if (!canonicalSubjectId) return false;
+  return directConversationParticipants(canonicalSubjectId).includes(userId);
 }
 
 function directConversationParticipants(subjectId) {
@@ -330,6 +332,7 @@ async function sendChatMessage({
   const subjectId = normalizeSubjectId(body.subjectId);
   const content = normalizeContent(body.content, sanitizeText);
   if (!type || !subjectId) return { ok: false, status: 400, error: 'Invalid conversation' };
+  if (!conversationKey(type, subjectId)) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (!canAccessConversation(authorUserId, type, subjectId)) return { ok: false, status: 403, error: 'Forbidden' };
   if (!content) return { ok: false, status: 400, error: 'Message content is required' };
   const activeSanction = await getActiveChatSanction({ pool, userId: authorUserId });

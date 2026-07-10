@@ -165,6 +165,8 @@ describe('chat service', () => {
     expect(conversationKey('direct', 'u_2:u_1')).toBe('direct:u_1:u_2');
     expect(conversationKey('direct', 'v1:logto%3Au_1:u_2')).toBe('direct:v1:logto%3Au_1:u_2');
     expect(conversationKey('direct', 'v1:u_2:logto%3Au_1')).toBe('direct:v1:logto%3Au_1:u_2');
+    expect(conversationKey('direct', 'u_1:u_1')).toBeNull();
+    expect(conversationKey('direct', 'u_1:u_2:u_3')).toBeNull();
     expect(conversationKey('unknown', 'x')).toBeNull();
     expect(conversationKey('match', '')).toBeNull();
   });
@@ -173,26 +175,40 @@ describe('chat service', () => {
     expect(canAccessConversation('u_1', 'direct', 'u_1:u_2')).toBe(true);
     expect(canAccessConversation('logto:u_1', 'direct', 'v1:logto%3Au_1:u_2')).toBe(true);
     expect(canAccessConversation('u_3', 'direct', 'u_1:u_2')).toBe(false);
+    expect(canAccessConversation('u_1', 'direct', 'u_1:u_1')).toBe(false);
+    expect(canAccessConversation('u_1', 'direct', 'u_1:u_2:u_3')).toBe(false);
     expect(canAccessConversation('u_3', 'match', 'bgio-match-1')).toBe(true);
   });
 
-  it('rejects direct chat writes from non-participants', async () => {
-    const pool = poolWithResults([]);
+  it('rejects direct chat writes from non-participants or invalid direct subjects', async () => {
+    const cases = [
+      { authorUserId: 'u_3', subjectId: 'u_1:u_2', error: 'Forbidden' },
+      { authorUserId: 'u_1', subjectId: 'u_1:u_1', error: 'Invalid conversation' },
+      { authorUserId: 'u_1', subjectId: 'u_1:u_2:u_3', error: 'Invalid conversation' },
+    ];
 
-    await expect(
-      sendChatMessage({
-        pool,
-        authorUserId: 'u_3',
-        body: {
-          conversationType: 'direct',
-          subjectId: 'u_1:u_2',
-          content: 'hello',
-        },
-        sanitizeText,
-        generateMessageId: () => 'chat_msg_1',
-      }),
-    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
-    expect(pool.query).not.toHaveBeenCalled();
+    for (const testCase of cases) {
+      const pool = poolWithResults([]);
+
+      await expect(
+        sendChatMessage({
+          pool,
+          authorUserId: testCase.authorUserId,
+          body: {
+            conversationType: 'direct',
+            subjectId: testCase.subjectId,
+            content: 'hello',
+          },
+          sanitizeText,
+          generateMessageId: () => 'chat_msg_1',
+        }),
+      ).resolves.toEqual({
+        ok: false,
+        status: testCase.error === 'Forbidden' ? 403 : 400,
+        error: testCase.error,
+      });
+      expect(pool.query).not.toHaveBeenCalled();
+    }
   });
 
   it('canonicalizes direct chat subjects before persistence', async () => {

@@ -766,6 +766,25 @@ describe('server routes', () => {
       }
     });
 
+    it('POST /api/chat/messages rejects group-shaped direct conversation subjects before persistence', async () => {
+      mockQuery.mockReset();
+
+      const res = await sendRequest(
+        'POST',
+        '/api/chat/messages',
+        {
+          conversationType: 'direct',
+          subjectId: 'v1:u_reader:u_friend:u_other',
+          content: 'hello group',
+        },
+        userUnsafeHeaders('u_reader'),
+      );
+
+      expect(res.statusCode).toBe(400);
+      expect(parseBody(res)).toEqual({ error: 'Invalid conversation' });
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
     it('POST /api/chat/read marks every durable conversation type through the same route', async () => {
       const cases = [
         {
