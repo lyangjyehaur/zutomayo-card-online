@@ -10,14 +10,22 @@ interface OnlineRoomInfoProps {
   className?: string;
 }
 
+export function buildOnlineRoomPath(matchID: string): string {
+  return `/play/online/${encodeURIComponent(matchID)}`;
+}
+
+export function buildOnlineSpectatorPath(matchID: string): string {
+  return `${buildOnlineRoomPath(matchID)}?spectate=1`;
+}
+
 export function buildOnlineRoomUrl(matchID: string): string {
-  const path = `/play/online/${encodeURIComponent(matchID)}`;
+  const path = buildOnlineRoomPath(matchID);
   if (typeof window === 'undefined') return path;
   return `${window.location.origin}${path}`;
 }
 
 export function buildOnlineSpectatorUrl(matchID: string): string {
-  const path = `/play/online/${encodeURIComponent(matchID)}?spectate=1`;
+  const path = buildOnlineSpectatorPath(matchID);
   if (typeof window === 'undefined') return path;
   return `${window.location.origin}${path}`;
 }

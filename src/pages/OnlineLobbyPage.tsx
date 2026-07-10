@@ -28,9 +28,10 @@ import {
   type FriendProfile,
   type ProfileResponse,
 } from '../api/client';
-import { buildDirectConversationSubjectId, directConversationPeerId } from '../chat/directConversation';
+import { buildDirectConversationSubjectId } from '../chat/directConversation';
+import { resolveUnreadConversationAction } from '../chat/unreadNavigation';
 import { copyText } from '../clipboard';
-import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
+import { buildOnlineRoomUrl, buildOnlineSpectatorPath } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
 import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge';
 import { AuthSection } from '../components/lobby/AuthSection';
@@ -735,31 +736,31 @@ export function OnlineLobbyPage({
   };
 
   const openUnreadConversation = (conversation: ChatUnreadConversation) => {
-    if (conversation.type === 'match') {
-      navigate(`/play/online/${encodeURIComponent(conversation.subjectId)}?spectate=1`);
+    const action = resolveUnreadConversationAction(conversation, { profileId: profile?.id, friends });
+    if (!action) return;
+
+    if (action.kind === 'match') {
+      navigate(buildOnlineSpectatorPath(action.subjectId));
       return;
     }
-    if (conversation.type === 'room') {
-      setRoomChatSubjectOverride(conversation.subjectId);
-      setMatchID(conversation.subjectId);
+    if (action.kind === 'room') {
+      setRoomChatSubjectOverride(action.subjectId);
+      setMatchID(action.subjectId);
       scrollToPanel(customRoomPanelRef);
       return;
     }
-    if (conversation.type === 'global') {
+    if (action.kind === 'global') {
       scrollToPanel(lobbyChatPanelRef);
       const latestMessageId = lobbyChatMessages.at(-1)?.id;
       void markChatRead({
         conversationType: 'global',
-        subjectId: conversation.subjectId,
+        subjectId: action.subjectId,
         lastReadMessageId: latestMessageId,
       }).then(refreshUnreadChats, () => undefined);
       return;
     }
-    if (conversation.type === 'direct' && profile) {
-      const peerUserId = directConversationPeerId(conversation.subjectId, profile.id);
-      if (!peerUserId) return;
-      const friend = friends.find((item) => item.userId === peerUserId);
-      setDirectChat({ subjectId: conversation.subjectId, peerUserId, friend });
+    if (action.kind === 'direct') {
+      setDirectChat({ subjectId: action.subjectId, peerUserId: action.peerUserId, friend: action.friend });
       scrollToPanel(directChatPanelRef);
     }
   };
@@ -1536,7 +1537,7 @@ export function OnlineLobbyPage({
 
                 {unreadChats.length > 0 && (
                   <div className="mt-3 grid gap-2">
-                    {unreadChats.slice(0, 3).map((conversation) => {
+                    {unreadChats.map((conversation) => {
                       const label =
                         conversation.title ||
                         translate(locale, 'chat.conversationLabel')
