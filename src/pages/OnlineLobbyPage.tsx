@@ -152,7 +152,12 @@ export function OnlineLobbyPage({
   const [friendInvitePeerId, setFriendInvitePeerId] = useState<string | null>(null);
   const [friendInviteMode, setFriendInviteMode] = useState<'incoming' | 'outgoing' | null>(null);
   const platformInviteRoomRef = useRef<PlatformInviteRoom | null>(null);
-  const pendingInviteHostSessionRef = useRef<{ friendUserId: string; session: OnlineSession } | null>(null);
+  const activeOutgoingInviteIdRef = useRef<string | null>(null);
+  const pendingInviteHostSessionRef = useRef<{
+    inviteId: string;
+    friendUserId: string;
+    session: OnlineSession;
+  } | null>(null);
   const [unreadChats, setUnreadChats] = useState<ChatUnreadConversation[]>([]);
   const [unreadChatStatus, setUnreadChatStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [directChat, setDirectChat] = useState<{
@@ -198,6 +203,7 @@ export function OnlineLobbyPage({
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
       setFriendInviteMode(null);
+      activeOutgoingInviteIdRef.current = null;
       pendingInviteHostSessionRef.current = null;
       void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
       platformInviteRoomRef.current = null;
@@ -219,6 +225,7 @@ export function OnlineLobbyPage({
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
       setFriendInviteMode(null);
+      activeOutgoingInviteIdRef.current = null;
       pendingInviteHostSessionRef.current = null;
       void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
       platformInviteRoomRef.current = null;
@@ -850,6 +857,7 @@ export function OnlineLobbyPage({
   };
 
   const leavePlatformInviteRoom = () => {
+    activeOutgoingInviteIdRef.current = null;
     pendingInviteHostSessionRef.current = null;
     void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
     platformInviteRoomRef.current = null;
@@ -899,6 +907,7 @@ export function OnlineLobbyPage({
     setFriendInviteActionId(`send:${friend.userId}`);
     setError('');
     leavePlatformInviteRoom();
+    activeOutgoingInviteIdRef.current = inviteId;
 
     try {
       const room = await createPlatformInvite(
@@ -911,11 +920,13 @@ export function OnlineLobbyPage({
         {
           onAccepted: (message) => {
             if (message.inviteId !== inviteId) return;
+            if (activeOutgoingInviteIdRef.current !== inviteId) return;
             setFriendInviteActionId(`start:${friend.userId}`);
             showToast({ title: t('friend.inviteAccepted'), kind: 'success' });
             void onStartOnline(undefined, effectivePlayerName, { navigate: false })
               .then((session) => {
-                pendingInviteHostSessionRef.current = { friendUserId: friend.userId, session };
+                if (activeOutgoingInviteIdRef.current !== inviteId) return;
+                pendingInviteHostSessionRef.current = { inviteId, friendUserId: friend.userId, session };
                 const room = platformInviteRoomRef.current;
                 room?.send('boardgameMatchReady', {
                   boardgameMatchID: session.matchID,
@@ -932,11 +943,14 @@ export function OnlineLobbyPage({
             const pending = pendingInviteHostSessionRef.current;
             if (
               !pending ||
+              pending.inviteId !== inviteId ||
               pending.friendUserId !== friend.userId ||
+              activeOutgoingInviteIdRef.current !== inviteId ||
               !isPlatformBoardgameRelayAcknowledged(pending.session.matchID, message)
             ) {
               return;
             }
+            activeOutgoingInviteIdRef.current = null;
             pendingInviteHostSessionRef.current = null;
             void platformInviteRoomRef.current?.leave(true).catch(() => undefined);
             platformInviteRoomRef.current = null;
@@ -946,6 +960,7 @@ export function OnlineLobbyPage({
             navigateToOnlineSession(pending.session);
           },
           onDeclined: () => {
+            activeOutgoingInviteIdRef.current = null;
             pendingInviteHostSessionRef.current = null;
             showToast({ title: t('friend.inviteDeclined'), kind: 'error' });
             setFriendInviteActionId(null);
@@ -953,12 +968,14 @@ export function OnlineLobbyPage({
             leavePlatformInviteRoom();
           },
           onCancelled: () => {
+            activeOutgoingInviteIdRef.current = null;
             pendingInviteHostSessionRef.current = null;
             setFriendInviteActionId(null);
             setFriendInvitePeerId(null);
             leavePlatformInviteRoom();
           },
           onDisconnect: () => {
+            activeOutgoingInviteIdRef.current = null;
             pendingInviteHostSessionRef.current = null;
             setFriendInvitePeerId(null);
             setFriendInviteActionId(null);
@@ -968,7 +985,7 @@ export function OnlineLobbyPage({
       );
       platformInviteRoomRef.current = room;
       const pendingInviteSession = pendingInviteHostSessionRef.current;
-      if (pendingInviteSession?.friendUserId === friend.userId) {
+      if (pendingInviteSession?.inviteId === inviteId && pendingInviteSession.friendUserId === friend.userId) {
         room.send('boardgameMatchReady', { boardgameMatchID: pendingInviteSession.session.matchID });
       }
       setFriendInvitePeerId(friend.userId);
@@ -985,6 +1002,8 @@ export function OnlineLobbyPage({
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
       setFriendInviteMode(null);
+      activeOutgoingInviteIdRef.current = null;
+      pendingInviteHostSessionRef.current = null;
       showToast({ title: t('friend.inviteFailed'), kind: 'error' });
     }
   };
