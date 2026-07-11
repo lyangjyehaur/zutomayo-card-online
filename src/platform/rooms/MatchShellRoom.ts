@@ -1,6 +1,7 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { platformLogger as logger } from '../logger';
 import { verifyPlatformSeatToken } from '../seatToken';
+import { createEmptyPlatformChatPreviewStore, type PlatformChatPreviewStore } from '../chatPreviewStore';
 import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
 import { authenticatePlatformClient } from './auth';
 import type {
@@ -71,6 +72,7 @@ function normalizeMatchConversationId(value: unknown, boardgameMatchID: string |
 
 export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; client: PlatformClient }> {
   private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
+  private static chatPreviewStore: PlatformChatPreviewStore = createEmptyPlatformChatPreviewStore();
   private boardgameMatchID?: string;
   private conversationId?: string;
   private status: MatchShellStatus = 'waiting';
@@ -78,6 +80,10 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
 
   static configureParticipantStore(store: PlatformMatchParticipantStore): void {
     MatchShellRoom.participantStore = store;
+  }
+
+  static configureChatPreviewStore(store: PlatformChatPreviewStore): void {
+    MatchShellRoom.chatPreviewStore = store;
   }
 
   async onCreate(options: MatchShellRoomOptions = {}): Promise<void> {
@@ -97,19 +103,33 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     });
 
     this.onMessage<ChatPreviewMessage>('chatPreview', (client, message) => {
-      const messageId = optionalText(message.messageId, 128);
-      if (!messageId || !client.userData || !client.auth?.authenticated) return;
-      const suppliedConversationId = optionalText(message.conversationId, 128);
-      if (!this.conversationId || (suppliedConversationId && suppliedConversationId !== this.conversationId)) return;
-      this.broadcast('chatPreview', {
-        conversationId: this.conversationId,
-        sender: client.userData,
-        messageId,
-        createdAt: Date.now(),
+      void this.broadcastChatPreview(client, message).catch((err) => {
+        logger.warn({ err, boardgameMatchID: this.boardgameMatchID }, 'failed to verify match chat preview');
       });
     });
 
     await this.refreshMetadata();
+  }
+
+  private async broadcastChatPreview(client: PlatformClient, message: ChatPreviewMessage): Promise<void> {
+    const messageId = optionalText(message.messageId, 128);
+    if (!messageId || !client.userData || !client.auth?.authenticated) return;
+    if (client.userData.userId !== client.auth.userId) return;
+    const suppliedConversationId = optionalText(message.conversationId, 128);
+    if (!this.conversationId || (suppliedConversationId && suppliedConversationId !== this.conversationId)) return;
+    const canBroadcastPreview = await MatchShellRoom.chatPreviewStore.canBroadcastPreview({
+      conversationId: this.conversationId,
+      boardgameMatchID: this.boardgameMatchID,
+      messageId,
+      authorUserId: client.auth.userId,
+    });
+    if (!canBroadcastPreview) return;
+    this.broadcast('chatPreview', {
+      conversationId: this.conversationId,
+      sender: client.userData,
+      messageId,
+      createdAt: Date.now(),
+    });
   }
 
   onAuth(_client: PlatformClient, options: MatchShellRoomOptions, context: AuthContext): PlatformAuth {

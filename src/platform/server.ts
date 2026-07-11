@@ -7,6 +7,7 @@ import * as Sentry from '@sentry/node';
 import type { NextFunction, Request, Response } from 'express';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
 import { platformLogger as logger } from './logger';
+import { createPlatformChatPreviewStoreFromEnv, resolvePlatformChatPreviewStoreMode } from './chatPreviewStore';
 import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
 import {
   createPlatformMatchParticipantStoreFromEnv,
@@ -60,12 +61,15 @@ const httpServer = http.createServer();
 const colyseusRedisUrl = redisUrlWithDb(REDIS_URL, REDIS_DB);
 const friendStore = createPlatformFriendStoreFromEnv();
 const matchParticipantStore = createPlatformMatchParticipantStoreFromEnv();
+const chatPreviewStore = createPlatformChatPreviewStoreFromEnv();
 const platformFriendStoreMode = resolvePlatformFriendStoreMode();
 const platformMatchParticipantStoreMode = resolvePlatformMatchParticipantStoreMode();
+const platformChatPreviewStoreMode = resolvePlatformChatPreviewStoreMode();
 LobbyRoom.configureFriendStore(friendStore);
 InviteRoom.configureFriendStore(friendStore, { enforceFriendship: platformFriendStoreMode === 'postgres' });
 CustomRoom.configureParticipantStore(matchParticipantStore);
 MatchShellRoom.configureParticipantStore(matchParticipantStore);
+MatchShellRoom.configureChatPreviewStore(chatPreviewStore);
 
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
@@ -109,7 +113,7 @@ gameServer.define('invite', InviteRoom).filterBy(['inviteId', 'status', 'targetU
 
 gameServer.onShutdown(async () => {
   logger.info('platform server shutting down');
-  await Promise.all([friendStore.close?.(), matchParticipantStore.close?.()]);
+  await Promise.all([friendStore.close?.(), matchParticipantStore.close?.(), chatPreviewStore.close?.()]);
 });
 
 process.on('uncaughtException', (err) => {
@@ -130,6 +134,7 @@ logger.info(
     redisMode: PLATFORM_REDIS_MODE,
     friendStoreMode: platformFriendStoreMode,
     matchParticipantStoreMode: platformMatchParticipantStoreMode,
+    chatPreviewStoreMode: platformChatPreviewStoreMode,
   },
   'Zutomayo platform server running',
 );

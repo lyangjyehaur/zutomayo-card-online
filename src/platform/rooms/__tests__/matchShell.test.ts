@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuthContext } from '@colyseus/core';
+import { createEmptyPlatformChatPreviewStore } from '../../chatPreviewStore';
 import { createEmptyPlatformMatchParticipantStore } from '../../matchParticipantStore';
 import { createPlatformSeatToken } from '../../seatToken';
 import { MatchShellRoom } from '../MatchShellRoom';
@@ -58,6 +59,7 @@ afterEach(() => {
   process.env.PLATFORM_SEAT_TOKEN_SECRET = originalSeatTokenSecret;
   process.env.JWT_SECRET = originalJwtSecret;
   MatchShellRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
+  MatchShellRoom.configureChatPreviewStore(createEmptyPlatformChatPreviewStore());
 });
 
 describe('match shell room', () => {
@@ -604,6 +606,8 @@ describe('match shell room', () => {
       } as PlatformClient,
       { messageId: 'chat_msg_persisted' },
     );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
     expect(broadcast).toHaveBeenCalledWith(
       'chatPreview',
       expect.objectContaining({
@@ -611,5 +615,49 @@ describe('match shell room', () => {
         messageId: 'chat_msg_persisted',
       }),
     );
+  });
+
+  it('verifies match chat preview evidence before broadcasting sync signals', async () => {
+    const canBroadcastPreview = vi.fn(async () => false);
+    MatchShellRoom.configureChatPreviewStore({
+      canBroadcastPreview,
+    });
+    const room = new MatchShellRoom();
+    const handlers = new Map<string, ChatPreviewHandler>();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: ChatPreviewHandler) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    handlers.get('chatPreview')?.(
+      {
+        auth: {
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'spectator',
+          authenticated: true,
+        },
+        userData: {
+          sessionId: 'session_1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'spectator',
+          joinedAt: 1000,
+        },
+      } as PlatformClient,
+      { messageId: 'chat_msg_fake', conversationId: 'match:bgio-match-1' },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(canBroadcastPreview).toHaveBeenCalledWith({
+      conversationId: 'match:bgio-match-1',
+      boardgameMatchID: 'bgio-match-1',
+      messageId: 'chat_msg_fake',
+      authorUserId: 'u_1',
+    });
+    expect(broadcast).not.toHaveBeenCalledWith('chatPreview', expect.anything());
   });
 });
