@@ -117,7 +117,7 @@ async function joinMatch(
   matchID: string,
   playerID: '0' | '1',
   requestedPlayerName?: string,
-): Promise<{ playerCredentials: string }> {
+): Promise<{ playerCredentials: string; platformSeatToken?: string }> {
   await ensureCompatibleAppVersion();
   const account = await currentAccountSeatProfile();
   const playerName =
@@ -482,8 +482,8 @@ function RouterShell() {
   };
 
   const joinSharedOnlineRoom = useCallback(async (matchID: string): Promise<OnlineSession> => {
-    const { playerCredentials } = await joinMatch(matchID, '1');
-    const session = { matchID, playerID: '1' as const, playerCredentials };
+    const { playerCredentials, platformSeatToken } = await joinMatch(matchID, '1');
+    const session = { matchID, playerID: '1' as const, playerCredentials, platformSeatToken };
     setOnlineSession(session);
     setResumePromptSession(null);
     saveOnlineSession(session);
@@ -501,8 +501,8 @@ function RouterShell() {
     };
     const matchID = existingID || (await createMatch(setupData));
     const playerID: '0' | '1' = existingID ? '1' : '0';
-    const { playerCredentials } = await joinMatch(matchID, playerID, playerName);
-    const session = { matchID, playerID, playerCredentials };
+    const { playerCredentials, platformSeatToken } = await joinMatch(matchID, playerID, playerName);
+    const session = { matchID, playerID, playerCredentials, platformSeatToken };
     setOnlineSession(session);
     setResumePromptSession(null);
     saveOnlineSession(session);

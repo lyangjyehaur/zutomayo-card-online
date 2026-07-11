@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuthContext } from '@colyseus/core';
+import { createPlatformSeatToken } from '../../seatToken';
 import { MatchShellRoom } from '../MatchShellRoom';
 import type { ChatPreviewMessage, LinkBoardgameMatchMessage, PlatformClient, PlatformClientProfile } from '../types';
 
@@ -12,6 +13,17 @@ function authContext(): AuthContext {
     ip: '127.0.0.1',
   };
 }
+
+const originalSeatTokenSecret = process.env.PLATFORM_SEAT_TOKEN_SECRET;
+
+function seatToken(matchID = 'bgio-match-1', playerID: '0' | '1' = '0'): string {
+  process.env.PLATFORM_SEAT_TOKEN_SECRET = 'test-seat-token-secret-at-least-32-characters';
+  return createPlatformSeatToken({ matchID, playerID });
+}
+
+afterEach(() => {
+  process.env.PLATFORM_SEAT_TOKEN_SECRET = originalSeatTokenSecret;
+});
 
 describe('match shell room', () => {
   it('demotes player joins without boardgame credentials to spectator presence', async () => {
@@ -74,6 +86,7 @@ describe('match shell room', () => {
         boardgameMatchID: 'bgio-match-1',
         boardgamePlayerID: '0',
         hasBoardgameCredentials: true,
+        platformSeatToken: seatToken(),
       },
       authContext(),
     );
@@ -89,6 +102,7 @@ describe('match shell room', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
+      platformSeatToken: seatToken(),
     });
 
     expect(client.userData).toEqual(
@@ -98,6 +112,30 @@ describe('match shell room', () => {
         hasBoardgameCredentials: true,
       }),
     );
+  });
+
+  it('demotes player joins that only self-report boardgame credentials', async () => {
+    const room = new MatchShellRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+
+    const auth = room.onAuth(
+      {} as PlatformClient,
+      {
+        userId: 'guest:spoofed',
+        displayName: 'Spoofed',
+        role: 'player',
+        boardgameMatchID: 'bgio-match-1',
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+      },
+      authContext(),
+    );
+
+    expect(auth.role).toBe('spectator');
   });
 
   it('normalizes prelinked match shells to ready status', async () => {
@@ -134,6 +172,7 @@ describe('match shell room', () => {
           boardgameMatchID: 'bgio-match-2',
           boardgamePlayerID: '0',
           hasBoardgameCredentials: true,
+          platformSeatToken: seatToken(),
         },
         authContext(),
       ),
@@ -162,6 +201,7 @@ describe('match shell room', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
+      platformSeatToken: seatToken(),
     });
 
     const duplicateAuth = room.onAuth(
@@ -173,6 +213,7 @@ describe('match shell room', () => {
         boardgameMatchID: 'bgio-match-1',
         boardgamePlayerID: '0',
         hasBoardgameCredentials: true,
+        platformSeatToken: seatToken(),
       },
       authContext(),
     );
@@ -213,6 +254,7 @@ describe('match shell room', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
+      platformSeatToken: seatToken(),
     });
 
     const reconnectAuth = room.onAuth(
@@ -224,6 +266,7 @@ describe('match shell room', () => {
         boardgameMatchID: 'bgio-match-1',
         boardgamePlayerID: '0',
         hasBoardgameCredentials: true,
+        platformSeatToken: seatToken(),
       },
       authContext(),
     );
@@ -234,6 +277,7 @@ describe('match shell room', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
+      platformSeatToken: seatToken(),
     });
 
     expect(oldClient.userData).toEqual(

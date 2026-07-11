@@ -39,6 +39,7 @@ interface OnlineGameProps {
   matchID: string;
   playerID?: string;
   playerCredentials?: string;
+  platformSeatToken?: string;
   spectator?: boolean;
   showRejoinedStatus?: boolean;
   onLeaveRequest: () => void;
@@ -177,6 +178,7 @@ export function OnlineGame({
   matchID,
   playerID,
   playerCredentials,
+  platformSeatToken,
   spectator = false,
   showRejoinedStatus = false,
   onLeaveRequest: _onLeaveRequest,
@@ -358,6 +360,7 @@ export function OnlineGame({
         role: spectator ? 'spectator' : 'player',
         boardgamePlayerID: spectator ? undefined : playerID,
         hasBoardgameCredentials: !spectator && Boolean(playerCredentials),
+        platformSeatToken: spectator ? undefined : platformSeatToken,
       },
       {
         onPresence: (presence) => {
@@ -418,6 +421,7 @@ export function OnlineGame({
     localPlatformUserId,
     matchID,
     playerCredentials,
+    platformSeatToken,
     playerID,
     spectator,
   ]);

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createPlatformSeatToken } from '../../seatToken';
 import { CustomRoom } from '../CustomRoom';
 import { InviteRoom } from '../InviteRoom';
 import { MatchShellRoom } from '../MatchShellRoom';
@@ -63,6 +64,11 @@ const poisonedBoardgamePayload = {
   playerView: { hand: ['hidden-card'] },
 };
 
+function seatToken(): string {
+  process.env.PLATFORM_SEAT_TOKEN_SECRET = 'test-seat-token-secret-at-least-32-characters';
+  return createPlatformSeatToken({ matchID: 'bgio-match-1', playerID: '0' });
+}
+
 describe('platform room boundary', () => {
   it('keeps match shell snapshots and metadata free of boardgame state', async () => {
     const room = new MatchShellRoom();
@@ -87,6 +93,7 @@ describe('platform room boundary', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
+      platformSeatToken: seatToken(),
       ...poisonedBoardgamePayload,
     });
 

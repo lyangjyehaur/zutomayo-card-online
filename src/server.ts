@@ -20,6 +20,7 @@ import { logger, requestLoggingMiddleware } from './server/observability/logger'
 import { metricsMiddleware, metricsEndpoint, activeSocketConnections } from './server/observability/metrics';
 import { createRateLimit } from './server/rateLimit';
 import type { IncomingHttpHeaders, IncomingMessage } from 'http';
+import { createPlatformSeatToken } from './platform/seatToken';
 
 const require = createRequire(import.meta.url);
 const { Server, SocketIO } = require('boardgame.io/server') as typeof import('boardgame.io/server');
@@ -391,7 +392,11 @@ server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: Koa
   });
   if (!isAuthorized) ctx.throw(409, 'Player ' + typedPlayerID + ' not available');
 
-  ctx.body = { matchID, playerID: typedPlayerID };
+  ctx.body = {
+    matchID,
+    playerID: typedPlayerID,
+    platformSeatToken: createPlatformSeatToken({ matchID, playerID: typedPlayerID }),
+  };
 });
 
 server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaContext) => {
@@ -446,7 +451,11 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
 
   await server.db.setMetadata(matchID, metadata);
 
-  ctx.body = { playerID: typedPlayerID, playerCredentials };
+  ctx.body = {
+    playerID: typedPlayerID,
+    playerCredentials,
+    platformSeatToken: createPlatformSeatToken({ matchID, playerID: typedPlayerID }),
+  };
 });
 
 // Serve dist (frontend)

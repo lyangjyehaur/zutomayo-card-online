@@ -85,7 +85,15 @@ describe('platform client helpers', () => {
 
     expect(shouldLinkPlatformMatchShell({ ...base, role: 'spectator', hasBoardgameCredentials: true })).toBe(false);
     expect(shouldLinkPlatformMatchShell({ ...base, role: 'player' })).toBe(false);
-    expect(shouldLinkPlatformMatchShell({ ...base, role: 'player', hasBoardgameCredentials: true })).toBe(true);
+    expect(shouldLinkPlatformMatchShell({ ...base, role: 'player', hasBoardgameCredentials: true })).toBe(false);
+    expect(
+      shouldLinkPlatformMatchShell({
+        ...base,
+        role: 'player',
+        hasBoardgameCredentials: true,
+        platformSeatToken: 'seat-token',
+      }),
+    ).toBe(true);
   });
 
   it('reads match shell chat preview messages defensively', () => {

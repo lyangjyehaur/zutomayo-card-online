@@ -1,4 +1,5 @@
 import { Room, type AuthContext } from '@colyseus/core';
+import { verifyPlatformSeatToken } from '../seatToken';
 import { authenticatePlatformClient } from './auth';
 import type {
   ChatPreviewMessage,
@@ -28,9 +29,14 @@ function boardgamePlayerIDFromOptions(options: MatchShellRoomOptions, role: Plat
   return options.boardgamePlayerID;
 }
 
-function hasValidBoardgamePlayerSeat(options: MatchShellRoomOptions): boolean {
+function hasValidBoardgamePlayerSeat(options: MatchShellRoomOptions, boardgameMatchID: string | undefined): boolean {
   return (
-    options.hasBoardgameCredentials === true && (options.boardgamePlayerID === '0' || options.boardgamePlayerID === '1')
+    options.hasBoardgameCredentials === true &&
+    verifyPlatformSeatToken({
+      token: options.platformSeatToken,
+      matchID: boardgameMatchID,
+      playerID: options.boardgamePlayerID,
+    })
   );
 }
 
@@ -105,7 +111,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
       throw new Error('Match shell access denied');
     }
     const auth = authenticatePlatformClient(options, context);
-    if (auth.role === 'player' && !hasValidBoardgamePlayerSeat(options)) {
+    if (auth.role === 'player' && !hasValidBoardgamePlayerSeat(options, this.boardgameMatchID)) {
       return { ...auth, role: 'spectator' };
     }
     const existingSeatHolder = this.playerProfileByBoardgamePlayerID(options.boardgamePlayerID);

@@ -21,6 +21,7 @@ export interface PlatformMatchShellJoinOptions {
   role?: PlatformRole;
   boardgamePlayerID?: string;
   hasBoardgameCredentials?: boolean;
+  platformSeatToken?: string;
 }
 
 export interface PlatformQuickMatchJoinOptions {
@@ -464,7 +465,11 @@ export function isPlatformBoardgameRelayAcknowledged(
 }
 
 export function shouldLinkPlatformMatchShell(options: PlatformMatchShellJoinOptions): boolean {
-  return (options.role ?? 'spectator') === 'player' && options.hasBoardgameCredentials === true;
+  return (
+    (options.role ?? 'spectator') === 'player' &&
+    options.hasBoardgameCredentials === true &&
+    Boolean(options.platformSeatToken)
+  );
 }
 
 export function platformCustomRoomSnapshotFromMessage(message: unknown): PlatformCustomRoomSnapshot | null {
@@ -747,6 +752,7 @@ export async function connectPlatformMatchShell(
     status: 'ready',
     boardgamePlayerID: options.boardgamePlayerID,
     hasBoardgameCredentials: options.hasBoardgameCredentials === true,
+    platformSeatToken: options.platformSeatToken,
   });
 
   room.onMessage<PlatformMatchShellSnapshot>('roomSnapshot', (snapshot) => {

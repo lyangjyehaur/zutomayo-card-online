@@ -5,6 +5,7 @@ export interface OnlineSession {
   matchID: string;
   playerID: '0' | '1';
   playerCredentials: string;
+  platformSeatToken?: string;
 }
 
 export type OnlineSessionValidationReason = 'network' | 'roomGone' | 'seatTaken' | 'versionMismatch';
@@ -22,7 +23,8 @@ function isOnlineSession(data: Partial<OnlineSession>): data is OnlineSession {
   return (
     typeof data.matchID === 'string' &&
     (data.playerID === '0' || data.playerID === '1') &&
-    typeof data.playerCredentials === 'string'
+    typeof data.playerCredentials === 'string' &&
+    (data.platformSeatToken === undefined || typeof data.platformSeatToken === 'string')
   );
 }
 
@@ -81,7 +83,14 @@ export async function validateOnlineSession(session: OnlineSession): Promise<Onl
       }),
     });
 
-    if (response.ok) return { ok: true };
+    if (response.ok) {
+      const data = (await response.json()) as Partial<OnlineSession>;
+      if (typeof data.platformSeatToken === 'string' && data.platformSeatToken) {
+        session.platformSeatToken = data.platformSeatToken;
+        saveOnlineSession(session);
+      }
+      return { ok: true };
+    }
     if (response.status === 426) return { ok: false, reason: 'versionMismatch' };
     if (response.status === 404) return { ok: false, reason: 'roomGone' };
     if (response.status === 403 || response.status === 409) return { ok: false, reason: 'seatTaken' };
