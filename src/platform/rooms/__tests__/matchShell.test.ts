@@ -339,13 +339,13 @@ describe('match shell room', () => {
       displayName: 'Host',
       hasBoardgameCredentials: true,
     };
-    const selfReportedModerator: PlatformClientProfile = {
+    const selfReportedModerator = {
       sessionId: 'session_mod',
       userId: 'u_mod',
       displayName: 'Mod',
       role: 'moderator',
       joinedAt: 1000,
-    };
+    } as unknown as PlatformClientProfile;
 
     linkBoardgameMatch?.({ userData: spectator } as PlatformClient, { boardgameMatchID: 'bgio-ignored-1' });
     linkBoardgameMatch?.({ userData: uncredentialedPlayer } as PlatformClient, { boardgameMatchID: 'bgio-ignored-2' });

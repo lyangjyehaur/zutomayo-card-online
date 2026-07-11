@@ -1,6 +1,6 @@
 import type { Client } from '@colyseus/core';
 
-export type PlatformRole = 'player' | 'spectator' | 'moderator';
+export type PlatformRole = 'player' | 'spectator';
 export type MatchShellStatus = 'waiting' | 'ready' | 'in_progress' | 'finished';
 export type QuickMatchStatus = 'waiting' | 'matched' | 'cancelled' | 'finished';
 export type CustomRoomStatus = 'waiting' | 'ready' | 'cancelled' | 'finished';

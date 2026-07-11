@@ -124,6 +124,12 @@ describe('platform client helpers', () => {
     });
     expect(platformChatPreviewFromMessage({ messageId: 'chat_msg_1' })).toBeNull();
     expect(platformChatPreviewFromMessage({ sender: { sessionId: 's_1', userId: 'u_1' }, messageId: '' })).toBeNull();
+    expect(
+      platformChatPreviewFromMessage({
+        sender: { sessionId: 's_mod', userId: 'u_mod', displayName: 'Mod', role: 'moderator' },
+        messageId: 'chat_msg_2',
+      })?.sender.role,
+    ).toBe('spectator');
   });
 
   it('reads quick match lifecycle messages defensively', () => {
@@ -184,7 +190,7 @@ describe('platform client helpers', () => {
           sessionId: 's_1',
           userId: 'u_1',
           displayName: 'Alice',
-          role: 'player',
+          role: 'moderator',
           joinedAt: 1000,
         },
         players: [
@@ -215,7 +221,7 @@ describe('platform client helpers', () => {
         sessionId: 's_1',
         userId: 'u_1',
         displayName: 'Alice',
-        role: 'player',
+        role: 'spectator',
         joinedAt: 1000,
       },
       players: [

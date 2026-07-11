@@ -1,6 +1,6 @@
 import type { Room, SeatReservation } from 'colyseus.js';
 
-export type PlatformRole = 'player' | 'spectator' | 'moderator';
+export type PlatformRole = 'player' | 'spectator';
 
 export interface PlatformLobbyJoinOptions {
   userId: string;
@@ -242,7 +242,7 @@ function platformProfileFromMessage(value: unknown): PlatformClientProfile | nul
     sessionId: data.sessionId,
     userId: data.userId,
     displayName: typeof data.displayName === 'string' ? data.displayName : 'Player',
-    role: data.role === 'player' || data.role === 'spectator' || data.role === 'moderator' ? data.role : 'spectator',
+    role: data.role === 'player' || data.role === 'spectator' ? data.role : 'spectator',
     joinedAt: Number.isFinite(data.joinedAt) ? Math.trunc(data.joinedAt as number) : Date.now(),
   };
   if (data.boardgamePlayerID === '0' || data.boardgamePlayerID === '1') {
@@ -396,10 +396,7 @@ export function platformChatPreviewFromMessage(message: unknown): PlatformChatPr
       sessionId: data.sender.sessionId,
       userId: data.sender.userId,
       displayName: typeof data.sender.displayName === 'string' ? data.sender.displayName : 'Player',
-      role:
-        data.sender.role === 'player' || data.sender.role === 'spectator' || data.sender.role === 'moderator'
-          ? data.sender.role
-          : 'spectator',
+      role: data.sender.role === 'player' || data.sender.role === 'spectator' ? data.sender.role : 'spectator',
       joinedAt: Number.isFinite(data.sender.joinedAt) ? Math.trunc(data.sender.joinedAt as number) : Date.now(),
     },
     messageId: data.messageId.trim().slice(0, 128),
