@@ -95,23 +95,18 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
     const previousHost = this.host;
+    const role = this.resolveRole(auth.role, auth.userId, previousHost);
     client.userData = {
       sessionId: client.sessionId,
       userId: auth.userId,
       displayName: auth.displayName,
-      role: auth.role,
+      role,
       joinedAt: Date.now(),
     };
     const isHostReconnect = previousHost?.userId === client.userData.userId;
     if (client.userData.role === 'player' && (!previousHost || isHostReconnect)) this.host = client.userData;
 
-    if (
-      this.boardgameMatchID &&
-      this.status === 'waiting' &&
-      previousHost &&
-      !isHostReconnect &&
-      auth.role === 'player'
-    ) {
+    if (this.boardgameMatchID && this.status === 'waiting' && previousHost && !isHostReconnect && role === 'player') {
       this.status = 'ready';
       this.lockReadyRoom();
       await this.refreshMetadata();
@@ -123,7 +118,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       .recordRoomParticipant({
         roomCode: this.roomCode,
         userId: auth.userId,
-        role: auth.role,
+        role,
         displayName: auth.displayName,
       })
       .catch((err) => {
@@ -167,6 +162,21 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
 
   private roleProfiles(role: PlatformAuth['role']): PlatformClientProfile[] {
     return this.profiles().filter((profile) => profile.role === role);
+  }
+
+  private resolveRole(
+    requestedRole: PlatformAuth['role'],
+    userId: string,
+    host: PlatformClientProfile | undefined,
+  ): PlatformAuth['role'] {
+    if (requestedRole !== 'player') return requestedRole;
+    if (!host || host.userId === userId) return 'player';
+    const guestPlayerUserIds = new Set(
+      this.roleProfiles('player')
+        .filter((profile) => profile.userId !== host.userId)
+        .map((profile) => profile.userId),
+    );
+    return guestPlayerUserIds.size === 0 || guestPlayerUserIds.has(userId) ? 'player' : 'spectator';
   }
 
   private snapshot(): PlatformClient['~messages']['customRoomSnapshot'] {

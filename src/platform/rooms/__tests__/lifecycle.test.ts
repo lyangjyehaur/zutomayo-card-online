@@ -437,6 +437,66 @@ describe('platform room lifecycle', () => {
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-2' });
   });
 
+  it('demotes extra custom-room players to spectators for durable room chat roles', async () => {
+    const recordRoomParticipant = vi.fn(async () => undefined);
+    CustomRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordRoomParticipant,
+    });
+    const room = new CustomRoom();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+    const extra = client('session_extra', {
+      userId: 'u_extra',
+      displayName: 'Extra',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(host);
+    await room.onJoin(host);
+    room.clients.push(guest);
+    await room.onJoin(guest);
+    room.clients.push(extra);
+    await room.onJoin(extra);
+
+    expect(extra.userData).toEqual(
+      expect.objectContaining({
+        userId: 'u_extra',
+        role: 'spectator',
+      }),
+    );
+    expect(recordRoomParticipant).toHaveBeenLastCalledWith({
+      roomCode: 'ROOM42',
+      userId: 'u_extra',
+      role: 'spectator',
+      displayName: 'Extra',
+    });
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        kind: 'custom-room',
+        roomCode: 'ROOM42',
+        playerCount: 2,
+        spectatorCount: 1,
+      }),
+    });
+  });
+
   it('custom room promotes a prelinked waiting host room when a guest joins', async () => {
     const room = new CustomRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
