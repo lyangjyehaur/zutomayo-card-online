@@ -351,6 +351,151 @@ describe('chat service', () => {
     expect(pool.query).toHaveBeenCalledTimes(1);
   });
 
+  it('requires durable match participation for match history, reads, translations, and reports when enforced', async () => {
+    const messageWithConversation = {
+      ...messageRow,
+      type: 'match',
+      subject_id: 'bgio-match-1',
+      conversation_type: 'match',
+      conversation_subject_id: 'bgio-match-1',
+    };
+
+    const historyPool = poolWithResults([{ rows: [] }]);
+    await expect(
+      listChatMessages({
+        pool: historyPool,
+        userId: 'u_stranger',
+        conversationType: 'match',
+        subjectId: 'bgio-match-1',
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(historyPool.query).toHaveBeenCalledWith(expect.stringContaining('platform_match_participants'), [
+      'bgio-match-1',
+      'u_stranger',
+    ]);
+
+    const readPool = poolWithResults([{ rows: [] }]);
+    await expect(
+      markConversationRead({
+        pool: readPool,
+        userId: 'u_stranger',
+        body: { conversationType: 'match', subjectId: 'bgio-match-1', lastReadMessageId: 'chat_msg_1' },
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(readPool.query).toHaveBeenCalledWith(expect.stringContaining('platform_match_participants'), [
+      'bgio-match-1',
+      'u_stranger',
+    ]);
+
+    const translationPool = poolWithResults([{ rows: [messageWithConversation] }, { rows: [] }]);
+    await expect(
+      requestChatTranslation({
+        pool: translationPool,
+        userId: 'u_stranger',
+        messageId: 'chat_msg_1',
+        body: { targetLanguage: 'en' },
+        sanitizeText,
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(translationPool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('platform_match_participants'), [
+      'bgio-match-1',
+      'u_stranger',
+    ]);
+
+    const reportPool = poolWithResults([{ rows: [messageWithConversation] }, { rows: [] }]);
+    await expect(
+      reportChatMessage({
+        pool: reportPool,
+        reporterUserId: 'u_stranger',
+        messageId: 'chat_msg_1',
+        body: { reason: 'spam' },
+        sanitizeText,
+        generateReportId: () => 'chat_report_1',
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(reportPool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('platform_match_participants'), [
+      'bgio-match-1',
+      'u_stranger',
+    ]);
+  });
+
+  it('requires durable room participation for room history, reads, translations, and reports when enforced', async () => {
+    const roomMessageWithConversation = {
+      ...messageRow,
+      conversation_id: 'room:ROOM42',
+      type: 'room',
+      subject_id: 'ROOM42',
+      conversation_type: 'room',
+      conversation_subject_id: 'ROOM42',
+    };
+
+    const historyPool = poolWithResults([{ rows: [] }]);
+    await expect(
+      listChatMessages({
+        pool: historyPool,
+        userId: 'u_stranger',
+        conversationType: 'room',
+        subjectId: 'ROOM42',
+        enforceRoomParticipation: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(historyPool.query).toHaveBeenCalledWith(expect.stringContaining('platform_room_participants'), [
+      'ROOM42',
+      'u_stranger',
+    ]);
+
+    const readPool = poolWithResults([{ rows: [] }]);
+    await expect(
+      markConversationRead({
+        pool: readPool,
+        userId: 'u_stranger',
+        body: { conversationType: 'room', subjectId: 'ROOM42', lastReadMessageId: 'chat_msg_1' },
+        enforceRoomParticipation: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(readPool.query).toHaveBeenCalledWith(expect.stringContaining('platform_room_participants'), [
+      'ROOM42',
+      'u_stranger',
+    ]);
+
+    const translationPool = poolWithResults([{ rows: [roomMessageWithConversation] }, { rows: [] }]);
+    await expect(
+      requestChatTranslation({
+        pool: translationPool,
+        userId: 'u_stranger',
+        messageId: 'chat_msg_1',
+        body: { targetLanguage: 'en' },
+        sanitizeText,
+        enforceRoomParticipation: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(translationPool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('platform_room_participants'), [
+      'ROOM42',
+      'u_stranger',
+    ]);
+
+    const reportPool = poolWithResults([{ rows: [roomMessageWithConversation] }, { rows: [] }]);
+    await expect(
+      reportChatMessage({
+        pool: reportPool,
+        reporterUserId: 'u_stranger',
+        messageId: 'chat_msg_1',
+        body: { reason: 'spam' },
+        sanitizeText,
+        generateReportId: () => 'chat_report_1',
+        enforceRoomParticipation: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(reportPool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('platform_room_participants'), [
+      'ROOM42',
+      'u_stranger',
+    ]);
+  });
+
   it('rejects direct chat writes from non-participants or invalid direct subjects', async () => {
     const cases = [
       { authorUserId: 'u_3', subjectId: 'u_1:u_2', error: 'Forbidden' },
