@@ -103,11 +103,13 @@ async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
   return data.matchID;
 }
 
-async function currentAccountSeatProfile(): Promise<{ data?: { userId: string }; playerName?: string } | undefined> {
+type OnlineSeatProfile = { data?: { userId: string }; platformUserId: string; platformDisplayName: string };
+
+async function currentAccountSeatProfile(): Promise<OnlineSeatProfile | undefined> {
   if (!isLoggedIn()) return undefined;
   try {
     const profile = await getProfile();
-    return { data: { userId: profile.id }, playerName: profile.nickname };
+    return { data: { userId: profile.id }, platformUserId: profile.id, platformDisplayName: profile.nickname };
   } catch {
     return undefined;
   }
@@ -117,12 +119,17 @@ async function joinMatch(
   matchID: string,
   playerID: '0' | '1',
   requestedPlayerName?: string,
-): Promise<{ playerCredentials: string; platformSeatToken?: string }> {
+): Promise<{
+  playerCredentials: string;
+  platformSeatToken?: string;
+  platformUserId: string;
+  platformDisplayName: string;
+}> {
   await ensureCompatibleAppVersion();
   const account = await currentAccountSeatProfile();
   const playerName =
     requestedPlayerName ||
-    account?.playerName ||
+    account?.platformDisplayName ||
     formatAnonymousDisplayName() ||
     (playerID === '0' ? t('player.zero') : t('player.one'));
   const response = await fetch(`/games/zutomayo-card/${matchID}/join`, {
@@ -144,7 +151,12 @@ async function joinMatch(
     });
     throw onlineRoomError('online.connectionFailed');
   }
-  return response.json();
+  const data = (await response.json()) as { playerCredentials: string; platformSeatToken?: string };
+  return {
+    ...data,
+    platformUserId: account?.platformUserId ?? `guest:match:${matchID}:player:${playerID}`,
+    platformDisplayName: playerName,
+  };
 }
 
 function NavBar() {
@@ -482,8 +494,15 @@ function RouterShell() {
   };
 
   const joinSharedOnlineRoom = useCallback(async (matchID: string): Promise<OnlineSession> => {
-    const { playerCredentials, platformSeatToken } = await joinMatch(matchID, '1');
-    const session = { matchID, playerID: '1' as const, playerCredentials, platformSeatToken };
+    const { playerCredentials, platformSeatToken, platformUserId, platformDisplayName } = await joinMatch(matchID, '1');
+    const session = {
+      matchID,
+      playerID: '1' as const,
+      playerCredentials,
+      platformSeatToken,
+      platformUserId,
+      platformDisplayName,
+    };
     setOnlineSession(session);
     setResumePromptSession(null);
     saveOnlineSession(session);
@@ -501,8 +520,12 @@ function RouterShell() {
     };
     const matchID = existingID || (await createMatch(setupData));
     const playerID: '0' | '1' = existingID ? '1' : '0';
-    const { playerCredentials, platformSeatToken } = await joinMatch(matchID, playerID, playerName);
-    const session = { matchID, playerID, playerCredentials, platformSeatToken };
+    const { playerCredentials, platformSeatToken, platformUserId, platformDisplayName } = await joinMatch(
+      matchID,
+      playerID,
+      playerName,
+    );
+    const session = { matchID, playerID, playerCredentials, platformSeatToken, platformUserId, platformDisplayName };
     setOnlineSession(session);
     setResumePromptSession(null);
     saveOnlineSession(session);

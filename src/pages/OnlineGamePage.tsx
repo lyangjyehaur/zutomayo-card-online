@@ -5,6 +5,7 @@ import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
 import { Alert, Button, Dialog, PageShell, Panel } from '../ui';
 import { Sentry } from '../sentry';
+import { getProfile, isLoggedIn, type ProfileResponse } from '../api/client';
 import { t, translate, useLocale } from '../i18n';
 import {
   clearStoredOnlineSession,
@@ -27,6 +28,11 @@ type MatchPlayer = {
 
 type MatchResponse = {
   players?: MatchPlayer[];
+};
+
+type PlatformSessionIdentity = {
+  userId: string;
+  displayName: string;
 };
 
 interface OnlineGamePageProps {
@@ -59,6 +65,34 @@ function roomInfoHelper(status: OnlineRoomStatus): string {
   if (status === 'waiting') return t('online.hostWaitingHelper');
   if (status === 'ready') return t('online.roomReadyHelper');
   return t('online.reconnectHelper');
+}
+
+async function resolvePlatformSessionIdentity(session: OnlineSession): Promise<PlatformSessionIdentity> {
+  if (session.platformUserId) {
+    return {
+      userId: session.platformUserId,
+      displayName: session.platformDisplayName || (session.playerID === '0' ? t('player.zero') : t('player.one')),
+    };
+  }
+
+  if (isLoggedIn()) {
+    try {
+      const profile: ProfileResponse = await getProfile();
+      return { userId: profile.id, displayName: profile.nickname };
+    } catch (err) {
+      Sentry.addBreadcrumb({
+        category: 'platform',
+        message: 'platform session account identity unavailable',
+        level: 'warning',
+        data: { match_id: session.matchID, error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+  }
+
+  return {
+    userId: `guest:match:${session.matchID}:player:${session.playerID}`,
+    displayName: session.platformDisplayName || (session.playerID === '0' ? t('player.zero') : t('player.one')),
+  };
 }
 
 function LeaveConfirmDialog({
@@ -274,35 +308,39 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
     let cancelled = false;
     if (platformCustomRoomRef.current) return;
 
-    void createPlatformCustomRoom(
-      {
-        roomCode: activeSession.matchID,
-        boardgameMatchID: activeSession.matchID,
-        userId: `match:${activeSession.matchID}:player:${activeSession.playerID}`,
-        displayName: t('player.zero'),
-      },
-      {
-        onDisconnect: () => {
-          platformCustomRoomRef.current = null;
+    void resolvePlatformSessionIdentity(activeSession)
+      .then((identity) =>
+        createPlatformCustomRoom(
+          {
+            roomCode: activeSession.matchID,
+            boardgameMatchID: activeSession.matchID,
+            userId: identity.userId,
+            displayName: identity.displayName,
+          },
+          {
+            onDisconnect: () => {
+              platformCustomRoomRef.current = null;
+            },
+          },
+        ),
+      )
+      .then(
+        (room) => {
+          if (cancelled) {
+            void room.leave(true).catch(() => undefined);
+            return;
+          }
+          platformCustomRoomRef.current = room;
         },
-      },
-    ).then(
-      (room) => {
-        if (cancelled) {
-          void room.leave(true).catch(() => undefined);
-          return;
-        }
-        platformCustomRoomRef.current = room;
-      },
-      (err) => {
-        Sentry.addBreadcrumb({
-          category: 'platform',
-          message: 'custom room host registration unavailable',
-          level: 'warning',
-          data: { match_id: activeSession.matchID, error: err instanceof Error ? err.message : String(err) },
-        });
-      },
-    );
+        (err) => {
+          Sentry.addBreadcrumb({
+            category: 'platform',
+            message: 'custom room host registration unavailable',
+            level: 'warning',
+            data: { match_id: activeSession.matchID, error: err instanceof Error ? err.message : String(err) },
+          });
+        },
+      );
 
     return () => {
       cancelled = true;
@@ -493,6 +531,8 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
         playerID={activeSession.playerID}
         playerCredentials={activeSession.playerCredentials}
         platformSeatToken={activeSession.platformSeatToken}
+        platformUserId={activeSession.platformUserId}
+        platformDisplayName={activeSession.platformDisplayName}
         showRejoinedStatus={showRejoinedStatus}
         onLeaveRequest={requestLeave}
         onReturnToLobby={() => {

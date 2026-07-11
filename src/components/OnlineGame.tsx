@@ -45,6 +45,8 @@ interface OnlineGameProps {
   playerID?: string;
   playerCredentials?: string;
   platformSeatToken?: string;
+  platformUserId?: string;
+  platformDisplayName?: string;
   spectator?: boolean;
   showRejoinedStatus?: boolean;
   onLeaveRequest: () => void;
@@ -184,6 +186,8 @@ export function OnlineGame({
   playerID,
   playerCredentials,
   platformSeatToken,
+  platformUserId,
+  platformDisplayName,
   spectator = false,
   showRejoinedStatus = false,
   onLeaveRequest: _onLeaveRequest,
@@ -214,15 +218,18 @@ export function OnlineGame({
   const [chatAccount, setChatAccount] = useState<ProfileResponse | null>(null);
   const [chatAccountLoaded, setChatAccountLoaded] = useState(false);
   const fallbackDisplayName = participantDisplayName(playerID, spectator);
-  const chatDisplayName = chatAccount?.nickname || fallbackDisplayName;
+  const chatDisplayName = chatAccount?.nickname || platformDisplayName || fallbackDisplayName;
   const chatUserId = chatAccount?.id || '';
-  const localPlatformUserId = matchPlatformPresenceUserId({
-    account: chatAccount,
-    matchID,
-    playerID,
-    spectator,
-    anonymousToken: spectatorPlatformUserId.current,
-  });
+  const localPlatformUserId =
+    platformUserId && !spectator
+      ? platformUserId
+      : matchPlatformPresenceUserId({
+          account: chatAccount,
+          matchID,
+          playerID,
+          spectator,
+          anonymousToken: spectatorPlatformUserId.current,
+        });
 
   // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
   useEffect(() => {
@@ -455,6 +462,7 @@ export function OnlineGame({
     matchID,
     playerCredentials,
     platformSeatToken,
+    platformUserId,
     playerID,
     spectator,
   ]);

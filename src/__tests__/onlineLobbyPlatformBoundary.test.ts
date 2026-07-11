@@ -27,4 +27,20 @@ describe('online lobby platform boundary', () => {
     expect(platformClientSource).not.toContain('realMatchId');
     expect(apiClientSource).toContain('export async function matchmakingQueue');
   });
+
+  it('persists stable platform identity for Colyseus participant evidence', () => {
+    const appSource = readRepoFile('src/App.tsx');
+    const onlineSessionSource = readRepoFile('src/onlineSession.ts');
+    const onlineGamePageSource = readRepoFile('src/pages/OnlineGamePage.tsx');
+    const onlineGameSource = readRepoFile('src/components/OnlineGame.tsx');
+
+    expect(onlineSessionSource).toContain('platformUserId?: string');
+    expect(onlineSessionSource).toContain('platformDisplayName?: string');
+    expect(appSource).toContain('platformUserId: account?.platformUserId');
+    expect(appSource).toContain('platformDisplayName: playerName');
+    expect(onlineGamePageSource).toContain('resolvePlatformSessionIdentity(activeSession)');
+    expect(onlineGamePageSource).toContain('userId: identity.userId');
+    expect(onlineGameSource).toContain('platformUserId && !spectator');
+    expect(onlineGamePageSource).not.toContain('match:${activeSession.matchID}:player');
+  });
 });
