@@ -683,20 +683,19 @@ export async function createPlatformInvite(
   options: PlatformInviteOptions,
   handlers: PlatformInviteHandlers = {},
 ): Promise<PlatformInviteRoom> {
-  const room = await joinPlatformRoom(
-    'invite',
-    {
-      inviteId: options.inviteId,
-      targetUserId: options.targetUserId,
-      roomCode: options.roomCode,
-      boardgameMatchID: options.boardgameMatchID,
-      userId: options.userId,
-      displayName: options.displayName,
-      role: 'player',
-      status: 'pending',
-    },
-    'create',
-  );
+  const roomOptions = (status: 'pending' | 'accepted') => ({
+    inviteId: options.inviteId,
+    targetUserId: options.targetUserId,
+    roomCode: options.roomCode,
+    boardgameMatchID: options.boardgameMatchID,
+    userId: options.userId,
+    displayName: options.displayName,
+    role: 'player',
+    status,
+  });
+  const room = await joinPlatformRoom('invite', roomOptions('pending'), 'join')
+    .catch(() => joinPlatformRoom('invite', roomOptions('accepted'), 'join'))
+    .catch(() => joinPlatformRoom('invite', roomOptions('pending'), 'create'));
   return bindPlatformInviteHandlers(room, handlers);
 }
 

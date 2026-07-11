@@ -4,6 +4,7 @@ import {
   connectPlatformLobby,
   connectPlatformMatchShell,
   createPlatformCustomRoom,
+  createPlatformInvite,
   isPlatformBoardgameRelayAcknowledged,
   joinPlatformInvite,
   joinPlatformCustomRoom,
@@ -653,6 +654,141 @@ describe('platform client helpers', () => {
           displayName: 'Host',
           role: 'player',
           status: 'waiting',
+        }),
+      }),
+    );
+    expect(post.mock.calls.map(([path]) => path).join('\n')).not.toContain('/matchmaking/');
+    expect(post.mock.calls.map(([, request]) => JSON.stringify(request)).join('\n')).not.toContain('realMatchId');
+  });
+
+  it('joins an existing pending invite before creating a duplicate invite room', async () => {
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const post = vi.fn().mockResolvedValueOnce({
+      data: {
+        name: 'invite',
+        roomId: 'platform_invite_pending_1',
+        sessionId: 'session_1',
+      },
+    });
+    const consumeSeatReservation = vi.fn(() => room);
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await createPlatformInvite({
+      inviteId: 'friend:v1:u_inviter:u_target',
+      targetUserId: 'u_target',
+      userId: 'u_inviter',
+      displayName: 'Inviter',
+    });
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith(
+      'matchmake/join/invite',
+      expect.objectContaining({
+        body: JSON.stringify({
+          inviteId: 'friend:v1:u_inviter:u_target',
+          targetUserId: 'u_target',
+          roomCode: undefined,
+          boardgameMatchID: undefined,
+          userId: 'u_inviter',
+          displayName: 'Inviter',
+          role: 'player',
+          status: 'pending',
+        }),
+      }),
+    );
+  });
+
+  it('creates a pending invite only when pending and accepted invite rooms do not exist', async () => {
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const post = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('pending invite not found'))
+      .mockRejectedValueOnce(new Error('accepted invite not found'))
+      .mockResolvedValueOnce({
+        data: {
+          name: 'invite',
+          roomId: 'platform_invite_new_1',
+          sessionId: 'session_1',
+        },
+      });
+    const consumeSeatReservation = vi.fn(() => room);
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await createPlatformInvite({
+      inviteId: 'friend:v1:u_inviter:u_target',
+      targetUserId: 'u_target',
+      roomCode: 'ROOM42',
+      boardgameMatchID: 'bgio-match-1',
+      userId: 'u_inviter',
+      displayName: 'Inviter',
+    });
+
+    expect(post).toHaveBeenCalledTimes(3);
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      'matchmake/join/invite',
+      expect.objectContaining({
+        body: JSON.stringify({
+          inviteId: 'friend:v1:u_inviter:u_target',
+          targetUserId: 'u_target',
+          roomCode: 'ROOM42',
+          boardgameMatchID: 'bgio-match-1',
+          userId: 'u_inviter',
+          displayName: 'Inviter',
+          role: 'player',
+          status: 'pending',
+        }),
+      }),
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      'matchmake/join/invite',
+      expect.objectContaining({
+        body: JSON.stringify({
+          inviteId: 'friend:v1:u_inviter:u_target',
+          targetUserId: 'u_target',
+          roomCode: 'ROOM42',
+          boardgameMatchID: 'bgio-match-1',
+          userId: 'u_inviter',
+          displayName: 'Inviter',
+          role: 'player',
+          status: 'accepted',
+        }),
+      }),
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      3,
+      'matchmake/create/invite',
+      expect.objectContaining({
+        body: JSON.stringify({
+          inviteId: 'friend:v1:u_inviter:u_target',
+          targetUserId: 'u_target',
+          roomCode: 'ROOM42',
+          boardgameMatchID: 'bgio-match-1',
+          userId: 'u_inviter',
+          displayName: 'Inviter',
+          role: 'player',
+          status: 'pending',
         }),
       }),
     );
