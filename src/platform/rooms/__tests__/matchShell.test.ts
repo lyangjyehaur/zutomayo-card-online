@@ -848,12 +848,7 @@ describe('match shell room', () => {
 
     expect(broadcast).toHaveBeenCalledWith('chatPreview', {
       conversationId: 'match:bgio-match-1',
-      sender: expect.objectContaining({
-        userId: 'u_1',
-        role: 'spectator',
-      }),
       messageId: 'chat_msg_persisted',
-      createdAt: expect.any(Number),
     });
     const previewPayload = broadcast.mock.calls.find(([type]) => type === 'chatPreview')?.[1] as Record<
       string,
@@ -862,6 +857,11 @@ describe('match shell room', () => {
     expect(previewPayload).not.toHaveProperty('content');
     expect(previewPayload).not.toHaveProperty('translatedContent');
     expect(previewPayload).not.toHaveProperty('metadata');
+    expect(previewPayload).not.toHaveProperty('sender');
+    expect(previewPayload).not.toHaveProperty('authorUserId');
+    expect(previewPayload).not.toHaveProperty('authorDisplayName');
+    expect(previewPayload).not.toHaveProperty('authorRole');
+    expect(previewPayload).not.toHaveProperty('createdAt');
   });
 
   it('does not broadcast chat preview without durable verification', async () => {

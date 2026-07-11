@@ -132,6 +132,8 @@ describe('online lobby platform boundary', () => {
     expect(previewSnippet).toContain('conversationId: result.conversation.id');
     expect(previewSnippet).toContain('messageId: result.message.id');
     expect(previewSnippet).not.toContain('content');
+    expect(previewSnippet).not.toContain('sender');
+    expect(previewSnippet).not.toContain('authorUserId');
     expect(previewSnippet).not.toContain('authorDisplayName');
     expect(previewSnippet).not.toContain('authorRole');
   });

@@ -88,10 +88,8 @@ export interface PlatformMatchShellPresence {
 }
 
 export interface PlatformChatPreview {
-  conversationId?: string;
-  sender: PlatformClientProfile;
+  conversationId: string;
   messageId: string;
-  createdAt: number;
 }
 
 export interface PlatformQuickMatchSnapshot {
@@ -383,36 +381,35 @@ export function platformChatPreviewFromMessage(message: unknown): PlatformChatPr
   if (!message || typeof message !== 'object') return null;
   const data = message as {
     conversationId?: unknown;
-    sender?: Partial<PlatformClientProfile>;
     messageId?: unknown;
     createdAt?: unknown;
     content?: unknown;
     text?: unknown;
     translatedContent?: unknown;
     metadata?: unknown;
+    sender?: unknown;
+    authorUserId?: unknown;
+    authorDisplayName?: unknown;
+    authorRole?: unknown;
   };
   if (
     data.content !== undefined ||
     data.text !== undefined ||
     data.translatedContent !== undefined ||
-    data.metadata !== undefined
+    data.metadata !== undefined ||
+    data.sender !== undefined ||
+    data.authorUserId !== undefined ||
+    data.authorDisplayName !== undefined ||
+    data.authorRole !== undefined ||
+    data.createdAt !== undefined
   ) {
     return null;
   }
   if (typeof data.messageId !== 'string' || !data.messageId.trim()) return null;
-  if (!data.sender || typeof data.sender !== 'object') return null;
-  if (typeof data.sender.sessionId !== 'string' || typeof data.sender.userId !== 'string') return null;
+  if (typeof data.conversationId !== 'string' || !data.conversationId.trim()) return null;
   return {
-    conversationId: typeof data.conversationId === 'string' ? data.conversationId : undefined,
-    sender: {
-      sessionId: data.sender.sessionId,
-      userId: data.sender.userId,
-      displayName: typeof data.sender.displayName === 'string' ? data.sender.displayName : 'Player',
-      role: data.sender.role === 'player' || data.sender.role === 'spectator' ? data.sender.role : 'spectator',
-      joinedAt: Number.isFinite(data.sender.joinedAt) ? Math.trunc(data.sender.joinedAt as number) : Date.now(),
-    },
+    conversationId: data.conversationId.trim().slice(0, 340),
     messageId: data.messageId.trim().slice(0, 128),
-    createdAt: Number.isFinite(data.createdAt) ? Math.trunc(data.createdAt as number) : Date.now(),
   };
 }
 

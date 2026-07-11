@@ -154,47 +154,19 @@ describe('platform client helpers', () => {
     expect(
       platformChatPreviewFromMessage({
         conversationId: 'match:bgio-match-1',
-        sender: {
-          sessionId: 's_1',
-          userId: 'u_1',
-          displayName: 'Alice',
-          role: 'player',
-          joinedAt: 1000,
-        },
         messageId: ' chat_msg_1 ',
-        createdAt: 2000.9,
       }),
     ).toEqual({
       conversationId: 'match:bgio-match-1',
-      sender: {
-        sessionId: 's_1',
-        userId: 'u_1',
-        displayName: 'Alice',
-        role: 'player',
-        joinedAt: 1000,
-      },
       messageId: 'chat_msg_1',
-      createdAt: 2000,
     });
     expect(platformChatPreviewFromMessage({ messageId: 'chat_msg_1' })).toBeNull();
-    expect(platformChatPreviewFromMessage({ sender: { sessionId: 's_1', userId: 'u_1' }, messageId: '' })).toBeNull();
-    expect(
-      platformChatPreviewFromMessage({
-        sender: { sessionId: 's_mod', userId: 'u_mod', displayName: 'Mod', role: 'moderator' },
-        messageId: 'chat_msg_2',
-      })?.sender.role,
-    ).toBe('spectator');
+    expect(platformChatPreviewFromMessage({ conversationId: 'match:bgio-match-1', messageId: '' })).toBeNull();
   });
 
-  it('rejects match shell chat preview messages that carry chat text or metadata', () => {
+  it('rejects match shell chat preview messages that carry chat text or author metadata', () => {
     const basePreview = {
-      sender: {
-        sessionId: 's_1',
-        userId: 'u_1',
-        displayName: 'Alice',
-        role: 'player',
-        joinedAt: 1000,
-      },
+      conversationId: 'match:bgio-match-1',
       messageId: 'chat_msg_1',
     };
 
@@ -202,6 +174,11 @@ describe('platform client helpers', () => {
     expect(platformChatPreviewFromMessage({ ...basePreview, text: 'chat text' })).toBeNull();
     expect(platformChatPreviewFromMessage({ ...basePreview, translatedContent: 'translated text' })).toBeNull();
     expect(platformChatPreviewFromMessage({ ...basePreview, metadata: { moderationStatus: 'visible' } })).toBeNull();
+    expect(platformChatPreviewFromMessage({ ...basePreview, sender: { userId: 'u_1' } })).toBeNull();
+    expect(platformChatPreviewFromMessage({ ...basePreview, authorUserId: 'u_1' })).toBeNull();
+    expect(platformChatPreviewFromMessage({ ...basePreview, authorDisplayName: 'Alice' })).toBeNull();
+    expect(platformChatPreviewFromMessage({ ...basePreview, authorRole: 'player' })).toBeNull();
+    expect(platformChatPreviewFromMessage({ ...basePreview, createdAt: 2000 })).toBeNull();
   });
 
   it('reads quick match lifecycle messages defensively', () => {

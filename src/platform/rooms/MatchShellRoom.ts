@@ -126,9 +126,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     if (!canBroadcastPreview) return;
     this.broadcast('chatPreview', {
       conversationId: this.conversationId,
-      sender: client.userData,
       messageId,
-      createdAt: Date.now(),
     });
   }
 

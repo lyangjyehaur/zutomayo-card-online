@@ -116,10 +116,8 @@ export interface PlatformClientMessages {
     reason: string;
   };
   chatPreview: {
-    conversationId?: string;
-    sender: PlatformClientProfile;
+    conversationId: string;
     messageId: string;
-    createdAt: number;
   };
 }
 

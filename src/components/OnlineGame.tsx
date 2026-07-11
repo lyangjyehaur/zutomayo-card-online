@@ -401,8 +401,8 @@ export function OnlineGame({
             setPlatformShellEvidenceReady(true);
           }
         },
-        onChatPreview: (message) => {
-          if (cancelled || message.sender.userId === localPlatformUserId) return;
+        onChatPreview: () => {
+          if (cancelled) return;
           if (!chatAccount) return;
           void loadMatchChatEntries().then(
             (entries) => {
