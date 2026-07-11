@@ -99,15 +99,19 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     if (!auth) throw new Error('Missing platform auth');
     const previousHost = this.host;
     const role = this.resolveRole(auth.role, auth.userId, previousHost);
-    client.userData = {
+    const profile: PlatformClientProfile = {
       sessionId: client.sessionId,
       userId: auth.userId,
       displayName: auth.displayName,
       role,
       joinedAt: Date.now(),
     };
-    const isHostReconnect = previousHost?.userId === client.userData.userId;
-    if (client.userData.role === 'player' && (!previousHost || isHostReconnect)) this.host = client.userData;
+    const isHostReconnect = previousHost?.userId === profile.userId;
+
+    await this.recordRoomParticipant(profile, auth.authenticated);
+
+    client.userData = profile;
+    if (profile.role === 'player' && (!previousHost || isHostReconnect)) this.host = profile;
 
     if (this.boardgameMatchID && this.status === 'waiting' && previousHost && !isHostReconnect && role === 'player') {
       this.status = 'ready';
@@ -116,7 +120,6 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       this.broadcast('boardgameMatchReady', { boardgameMatchID: this.boardgameMatchID });
     }
 
-    await this.recordRoomParticipant(client.userData, auth.authenticated);
     await this.refreshMetadata();
     this.clock.setTimeout(() => {
       client.send('customRoomSnapshot', this.snapshot());

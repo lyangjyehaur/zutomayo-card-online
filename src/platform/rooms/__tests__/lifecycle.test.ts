@@ -428,7 +428,7 @@ describe('platform room lifecycle', () => {
     });
     const room = new CustomRoom();
     vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
-    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void, timeout?: number) => {
       if (typeof timeout === 'number' && timeout > 100) return { clear: vi.fn() };
       handler();
@@ -444,6 +444,7 @@ describe('platform room lifecycle', () => {
 
     await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
     room.clients.push(spectator);
+    setMatchmaking.mockClear();
 
     await expect(room.onJoin(spectator)).rejects.toThrow('participant store unavailable');
     expect(recordRoomParticipant).toHaveBeenCalledWith({
@@ -452,6 +453,8 @@ describe('platform room lifecycle', () => {
       role: 'spectator',
       displayName: 'Spectator',
     });
+    expect(spectator.userData).toBeUndefined();
+    expect(setMatchmaking).not.toHaveBeenCalled();
     expect(spectator.send).not.toHaveBeenCalledWith('customRoomSnapshot', expect.anything());
   });
 

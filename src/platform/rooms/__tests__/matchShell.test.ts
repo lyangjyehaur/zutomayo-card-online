@@ -273,7 +273,7 @@ describe('match shell room', () => {
     });
     const room = new MatchShellRoom();
     vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
-    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
 
     await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
@@ -288,6 +288,7 @@ describe('match shell room', () => {
       send: vi.fn(),
     } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
     room.clients.push(client);
+    setMatchmaking.mockClear();
 
     await expect(room.onJoin(client, { boardgameMatchID: 'bgio-match-1' })).rejects.toThrow(
       'participant store unavailable',
@@ -299,6 +300,8 @@ describe('match shell room', () => {
       boardgamePlayerID: undefined,
       displayName: 'Spectator',
     });
+    expect(client.userData).toBeUndefined();
+    expect(setMatchmaking).not.toHaveBeenCalled();
     expect(client.send).not.toHaveBeenCalledWith('roomSnapshot', expect.anything());
   });
 

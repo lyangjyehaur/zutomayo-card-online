@@ -156,10 +156,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     if (!auth) throw new Error('Missing platform auth');
     const role = this.resolveRole(auth.role, options, auth.userId);
     const boardgamePlayerID = boardgamePlayerIDFromOptions(options, role);
-    if (role === 'player' && boardgamePlayerID) {
-      this.releaseReconnectSeat(boardgamePlayerID, auth.userId, client.sessionId);
-    }
-    client.userData = {
+    const profile: PlatformClientProfile = {
       sessionId: client.sessionId,
       userId: auth.userId,
       displayName: auth.displayName,
@@ -169,7 +166,11 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
       hasBoardgameCredentials: role === 'player' && options.hasBoardgameCredentials === true,
     };
 
-    await this.recordParticipant(client.userData, auth.authenticated);
+    await this.recordParticipant(profile, auth.authenticated);
+    if (role === 'player' && boardgamePlayerID) {
+      this.releaseReconnectSeat(boardgamePlayerID, auth.userId, client.sessionId);
+    }
+    client.userData = profile;
     await this.refreshMetadata();
     client.send('roomSnapshot', this.snapshot());
     this.broadcastPresence('join', client.userData);
