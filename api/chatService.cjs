@@ -79,6 +79,16 @@ function normalizeSubjectId(value) {
   return value.trim().slice(0, 300);
 }
 
+function isPresenceOnlyUserId(value) {
+  if (typeof value !== 'string') return false;
+  const clean = value.trim();
+  return clean.startsWith('guest:') || clean.startsWith('anon:');
+}
+
+function hasAccountBackedUserId(value) {
+  return typeof value === 'string' && value.trim() !== '' && !isPresenceOnlyUserId(value);
+}
+
 function canonicalConversationSubjectId(type, subjectId) {
   const cleanSubjectId = normalizeSubjectId(subjectId);
   if (type !== 'direct' || !cleanSubjectId) return cleanSubjectId;
@@ -421,7 +431,7 @@ async function sendChatMessage({
   enforceRoomParticipation = false,
   allowedAuthorRoles = PUBLIC_AUTHOR_ROLES,
 }) {
-  if (!authorUserId) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(authorUserId)) return { ok: false, status: 401, error: 'Unauthorized' };
   const type = normalizeConversationType(body.conversationType);
   const subjectId = normalizeSubjectId(body.subjectId);
   const content = normalizeContent(body.content, sanitizeText);
@@ -513,7 +523,7 @@ async function listChatMessages({
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
 }) {
-  if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(userId)) return { ok: false, status: 401, error: 'Unauthorized' };
   const key = conversationKey(conversationType, subjectId);
   if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (
@@ -586,7 +596,7 @@ async function markConversationRead({
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
 }) {
-  if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(userId)) return { ok: false, status: 401, error: 'Unauthorized' };
   const key = conversationKey(body.conversationType, body.subjectId);
   if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (
@@ -621,7 +631,7 @@ async function listUnreadChat({
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
 }) {
-  if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(userId)) return { ok: false, status: 401, error: 'Unauthorized' };
   const lim = clampLimit(limit, 50, 200);
   const encodedUserId = encodeURIComponent(userId);
   const directSubjectIds = enforceDirectFriendship ? await directFriendConversationSubjects({ pool, userId }) : [];
@@ -742,7 +752,7 @@ async function requestChatTranslation({
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
 }) {
-  if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(userId)) return { ok: false, status: 401, error: 'Unauthorized' };
   const cleanMessageId = typeof messageId === 'string' ? messageId.slice(0, 80) : '';
   const targetLanguage = normalizeLanguage(body.targetLanguage);
   if (!cleanMessageId || !targetLanguage) return { ok: false, status: 400, error: 'Invalid translation request' };
@@ -860,7 +870,7 @@ async function reportChatMessage({
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
 }) {
-  if (!reporterUserId) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(reporterUserId)) return { ok: false, status: 401, error: 'Unauthorized' };
   const cleanMessageId = typeof messageId === 'string' ? messageId.slice(0, 80) : '';
   const reason = sanitizeText(body.reason || '', 60);
   if (!cleanMessageId || !reason) return { ok: false, status: 400, error: 'Report reason is required' };

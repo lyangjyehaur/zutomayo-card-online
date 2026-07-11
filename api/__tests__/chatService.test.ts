@@ -230,6 +230,81 @@ describe('chat service', () => {
     expect(canAccessConversation('u_3', 'match', 'bgio-match-1')).toBe(true);
   });
 
+  it('keeps guest and anonymous platform identities out of durable chat operations', async () => {
+    for (const userId of ['guest:match:bgio-match-1:player:0', 'anon:match:bgio-match-1:spectator:token']) {
+      const sendPool = poolWithResults([]);
+      await expect(
+        sendChatMessage({
+          pool: sendPool,
+          authorUserId: userId,
+          body: {
+            conversationType: 'match',
+            subjectId: 'bgio-match-1',
+            content: 'anonymous chat',
+            authorRole: 'spectator',
+          },
+          sanitizeText,
+          generateMessageId: () => 'chat_msg_guest',
+        }),
+      ).resolves.toEqual({ ok: false, status: 401, error: 'Unauthorized' });
+      expect(sendPool.query).not.toHaveBeenCalled();
+
+      const historyPool = poolWithResults([]);
+      await expect(
+        listChatMessages({
+          pool: historyPool,
+          userId,
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+        }),
+      ).resolves.toEqual({ ok: false, status: 401, error: 'Unauthorized' });
+      expect(historyPool.query).not.toHaveBeenCalled();
+
+      const readPool = poolWithResults([]);
+      await expect(
+        markConversationRead({
+          pool: readPool,
+          userId,
+          body: { conversationType: 'match', subjectId: 'bgio-match-1', lastReadMessageId: 'chat_msg_1' },
+        }),
+      ).resolves.toEqual({ ok: false, status: 401, error: 'Unauthorized' });
+      expect(readPool.query).not.toHaveBeenCalled();
+
+      const unreadPool = poolWithResults([]);
+      await expect(listUnreadChat({ pool: unreadPool, userId })).resolves.toEqual({
+        ok: false,
+        status: 401,
+        error: 'Unauthorized',
+      });
+      expect(unreadPool.query).not.toHaveBeenCalled();
+
+      const translationPool = poolWithResults([]);
+      await expect(
+        requestChatTranslation({
+          pool: translationPool,
+          userId,
+          messageId: 'chat_msg_1',
+          body: { targetLanguage: 'en' },
+          sanitizeText,
+        }),
+      ).resolves.toEqual({ ok: false, status: 401, error: 'Unauthorized' });
+      expect(translationPool.query).not.toHaveBeenCalled();
+
+      const reportPool = poolWithResults([]);
+      await expect(
+        reportChatMessage({
+          pool: reportPool,
+          reporterUserId: userId,
+          messageId: 'chat_msg_1',
+          body: { reason: 'abuse' },
+          sanitizeText,
+          generateReportId: () => 'chat_report_guest',
+        }),
+      ).resolves.toEqual({ ok: false, status: 401, error: 'Unauthorized' });
+      expect(reportPool.query).not.toHaveBeenCalled();
+    }
+  });
+
   it('can require durable friendship for direct chat access', async () => {
     const friendPool = poolWithResults([{ rows: [{ exists: 1 }] }]);
     await expect(
