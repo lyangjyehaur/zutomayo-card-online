@@ -423,6 +423,39 @@ describe('chat service', () => {
     ]);
   });
 
+  it('allows post-match chat history from persisted online match participation evidence', async () => {
+    const pool = poolWithResults([{ rows: [{ '?column?': 1 }] }, { rows: [messageRow] }]);
+
+    await expect(
+      listChatMessages({
+        pool,
+        userId: 'u_player',
+        conversationType: 'match',
+        subjectId: 'bgio-match-1',
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      body: {
+        messages: [
+          expect.objectContaining({
+            id: 'chat_msg_1',
+            conversationId: 'match:bgio-match-1',
+            content: 'hello',
+          }),
+        ],
+      },
+    });
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM matches'), [
+      'bgio-match-1',
+      'u_player',
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('source_match_id = $1'), [
+      'bgio-match-1',
+      'u_player',
+    ]);
+  });
+
   it('requires durable room participation for room history, reads, translations, and reports when enforced', async () => {
     const roomMessageWithConversation = {
       ...messageRow,
