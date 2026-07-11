@@ -811,6 +811,26 @@ describe('server routes', () => {
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader', 'u_stranger']);
     });
 
+    it('POST /api/chat/messages rejects client-reported moderator roles', async () => {
+      mockQuery.mockReset();
+
+      const res = await sendRequest(
+        'POST',
+        '/api/chat/messages',
+        {
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+          content: 'official-looking text',
+          authorRole: 'moderator',
+        },
+        userUnsafeHeaders('u_reader'),
+      );
+
+      expect(res.statusCode).toBe(403);
+      expect(parseBody(res)).toEqual({ error: 'Forbidden' });
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
     it('POST /api/chat/read marks every durable conversation type through the same route', async () => {
       const cases = [
         {

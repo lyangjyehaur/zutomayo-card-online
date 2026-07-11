@@ -357,13 +357,16 @@ async function sendChatMessage({
   generateModerationEventId,
   moderationRules,
   enforceDirectFriendship = false,
+  allowedAuthorRoles = PARTICIPANT_ROLES,
 }) {
   if (!authorUserId) return { ok: false, status: 401, error: 'Unauthorized' };
   const type = normalizeConversationType(body.conversationType);
   const subjectId = normalizeSubjectId(body.subjectId);
   const content = normalizeContent(body.content, sanitizeText);
+  const role = normalizeParticipantRole(body.authorRole);
   if (!type || !subjectId) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (!conversationKey(type, subjectId)) return { ok: false, status: 400, error: 'Invalid conversation' };
+  if (!allowedAuthorRoles.includes(role)) return { ok: false, status: 403, error: 'Forbidden' };
   if (
     !(await canAccessConversationWithPolicy({
       pool,
@@ -395,7 +398,6 @@ async function sendChatMessage({
   if (!conversation.ok) return conversation;
 
   const id = generateMessageId();
-  const role = normalizeParticipantRole(body.authorRole);
   const displayName = sanitizeText(body.authorDisplayName || '', 60);
   const moderation = evaluateChatModeration(content, moderationRules);
   const status = normalizeMessageStatus(moderation.status);

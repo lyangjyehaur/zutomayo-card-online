@@ -100,6 +100,7 @@ const {
     generateModerationEventId?: () => string;
     moderationRules?: { blockedWords?: string[]; reviewWords?: string[] };
     enforceDirectFriendship?: boolean;
+    allowedAuthorRoles?: string[];
   }) => Promise<Record<string, unknown>>;
 };
 
@@ -397,6 +398,27 @@ describe('chat service', () => {
       expect.stringContaining('INSERT INTO chat_messages'),
       expect.arrayContaining(['chat_msg_1', 'match:bgio-match-1', 'u_1', 'Alice', 'player', 'hello', 'zh-tw']),
     );
+  });
+
+  it('rejects disallowed public author roles before querying persistence', async () => {
+    const pool = poolWithResults([]);
+
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_1',
+        body: {
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+          content: 'hello',
+          authorRole: 'moderator',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+        allowedAuthorRoles: ['player', 'spectator'],
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(pool.query).not.toHaveBeenCalled();
   });
 
   it('rejects muted users before persisting any durable conversation type', async () => {

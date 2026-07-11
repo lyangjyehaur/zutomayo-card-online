@@ -2587,6 +2587,7 @@ function handleRequest(req, res) {
         generateModerationEventId: () => 'chat_mod_' + crypto.randomBytes(12).toString('hex'),
         moderationRules: defaultChatModerationRules(process.env),
         enforceDirectFriendship: true,
+        allowedAuthorRoles: ['player', 'spectator'],
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, 201);
