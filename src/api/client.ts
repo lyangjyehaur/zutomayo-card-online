@@ -992,6 +992,18 @@ export async function adminReviewChatReport(
   });
 }
 
+export async function adminReviewChatMessageModeration(
+  token: string,
+  messageId: string,
+  input: { status: 'visible' | 'blocked' | 'deleted'; reason?: string },
+): Promise<{ message: ChatMessage }> {
+  return request<{ message: ChatMessage }>(`/admin/chat/messages/${encodeURIComponent(messageId)}/moderation`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function adminResetElo(token: string, userId: string, elo: number): Promise<{ id: string; elo: number }> {
   return request<{ id: string; elo: number }>(`/admin/users/${userId}/elo`, {
     method: 'PUT',

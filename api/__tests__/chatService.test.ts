@@ -21,6 +21,7 @@ const {
   markConversationRead,
   reportChatMessage,
   requestChatTranslation,
+  reviewChatMessageModeration,
   revokeChatUserSanction,
   sendChatMessage,
 } = require('../chatService.cjs') as {
@@ -108,6 +109,14 @@ const {
     enforceDirectFriendship?: boolean;
     enforceMatchParticipation?: boolean;
     enforceRoomParticipation?: boolean;
+  }) => Promise<Record<string, unknown>>;
+  reviewChatMessageModeration: (input: {
+    pool: PoolLike;
+    messageId: string;
+    body: Record<string, unknown>;
+    reviewerUserId: string;
+    sanitizeText: (value: unknown, maxLen?: number) => string;
+    generateModerationEventId?: () => string;
   }) => Promise<Record<string, unknown>>;
   revokeChatUserSanction: (input: {
     pool: PoolLike;
@@ -1361,5 +1370,100 @@ describe('chat service', () => {
       expect.not.stringContaining("moderation_status IN ('visible', 'pending_review')"),
       ['match:bgio-match-1', 20],
     );
+  });
+
+  it('reviews chat message moderation and records an admin moderation event', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            ...messageRow,
+            id: 'chat_msg_pending',
+            moderation_status: 'visible',
+            moderation_reason: 'manual visible',
+            deleted_at: null,
+          },
+        ],
+      },
+      { rows: [] },
+    ]);
+
+    await expect(
+      reviewChatMessageModeration({
+        pool,
+        messageId: 'chat_msg_pending',
+        body: { status: 'visible', reason: '<manual visible>' },
+        reviewerUserId: 'admin',
+        sanitizeText,
+        generateModerationEventId: () => 'chat_mod_admin_1',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        message: expect.objectContaining({
+          id: 'chat_msg_pending',
+          moderationStatus: 'visible',
+          moderationReason: 'manual visible',
+          deletedAt: null,
+        }),
+      },
+    });
+
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('UPDATE chat_messages'), [
+      'chat_msg_pending',
+      'visible',
+      'manual visible',
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('INSERT INTO chat_moderation_events'), [
+      'chat_mod_admin_1',
+      'chat_msg_pending',
+      'match:bgio-match-1',
+      'admin',
+      'admin',
+      'visible',
+      'manual visible',
+      { status: 'visible' },
+    ]);
+  });
+
+  it('marks deleted chat messages with deleted_at through moderation review', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            ...messageRow,
+            id: 'chat_msg_delete',
+            moderation_status: 'deleted',
+            moderation_reason: 'manual_deleted',
+            deleted_at: '2026-07-10T00:10:00.000Z',
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      reviewChatMessageModeration({
+        pool,
+        messageId: 'chat_msg_delete',
+        body: { status: 'deleted' },
+        reviewerUserId: 'admin',
+        sanitizeText,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        message: expect.objectContaining({
+          id: 'chat_msg_delete',
+          moderationStatus: 'deleted',
+          moderationReason: 'manual_deleted',
+          deletedAt: '2026-07-10T00:10:00.000Z',
+        }),
+      },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("WHEN $2 = 'deleted'"), [
+      'chat_msg_delete',
+      'deleted',
+      'manual_deleted',
+    ]);
   });
 });

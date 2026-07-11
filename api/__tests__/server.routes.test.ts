@@ -586,6 +586,20 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('POST /api/admin/chat/messages/:messageId/moderation returns 401 without admin token', async () => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/chat/messages/chat_msg_1/moderation',
+        { status: 'visible' },
+        {
+          cookie: `zutomayo_csrf=${csrfToken}`,
+          'x-csrf-token': csrfToken,
+        },
+      );
+      expect(res.statusCode).toBe(401);
+    });
+
     it('DELETE /api/admin/chat/sanctions/:sanctionId returns 401 without admin token', async () => {
       const csrfToken = 'valid-csrf-token-for-testing-1234567890';
       const res = await sendRequest('DELETE', '/api/admin/chat/sanctions/chat_sanction_1', null, {
@@ -1539,6 +1553,58 @@ describe('server routes', () => {
         'admin',
         'handled',
       ]);
+    });
+
+    it('POST /api/admin/chat/messages/:messageId/moderation reviews a hidden chat message', async () => {
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'chat_msg_1',
+              conversation_id: 'match:bgio-match-1',
+              author_user_id: 'u_1',
+              author_display_name: 'Alice',
+              author_role: 'player',
+              content: 'needs review',
+              source_language: '',
+              moderation_status: 'blocked',
+              moderation_reason: 'manual blocked',
+              metadata: {},
+              created_at: '2026-07-10T00:00:01.000Z',
+              edited_at: null,
+              deleted_at: null,
+            },
+          ],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/chat/messages/chat_msg_1/moderation',
+        { status: 'blocked', reason: '<manual blocked>' },
+        adminUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as { message: Record<string, unknown> };
+      expect(body.message).toEqual(
+        expect.objectContaining({
+          id: 'chat_msg_1',
+          moderationStatus: 'blocked',
+          moderationReason: 'manual blocked',
+        }),
+      );
+      expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('UPDATE chat_messages'), [
+        'chat_msg_1',
+        'blocked',
+        'manual blocked',
+      ]);
+      expect(mockQuery).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('INSERT INTO chat_moderation_events'),
+        expect.arrayContaining(['chat_msg_1', 'match:bgio-match-1', 'admin', 'admin', 'blocked', 'manual blocked']),
+      );
     });
   });
 

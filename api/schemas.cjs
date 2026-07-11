@@ -95,6 +95,13 @@ const chatReportReviewSchema = z.object({
   resolutionNote: z.string().max(1000).optional(),
 });
 
+const chatMessageModerationReviewSchema = z
+  .object({
+    status: z.enum(['visible', 'blocked', 'deleted']),
+    reason: z.string().max(240).optional(),
+  })
+  .passthrough();
+
 const chatUserSanctionCreateSchema = z
   .object({
     targetUserId: z.string().min(3).max(128),
@@ -184,6 +191,7 @@ module.exports = {
   chatReadSchema,
   chatReportCreateSchema,
   chatReportReviewSchema,
+  chatMessageModerationReviewSchema,
   chatUserSanctionCreateSchema,
   chatTranslationRequestSchema,
   adminLoginSchema,

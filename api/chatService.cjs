@@ -3,6 +3,7 @@
 const CONVERSATION_TYPES = ['match', 'room', 'direct', 'global'];
 const PARTICIPANT_ROLES = ['player', 'spectator', 'moderator'];
 const MESSAGE_STATUSES = ['visible', 'pending_review', 'blocked', 'deleted'];
+const REVIEWABLE_MESSAGE_STATUSES = ['visible', 'blocked', 'deleted'];
 const REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'];
 const SANCTION_TYPES = ['chat_mute'];
 const GLOBAL_LOBBY_SUBJECT_ID = 'online-lobby';
@@ -1074,10 +1075,61 @@ async function reviewChatReport({ pool, reportId, body, reviewerUserId, sanitize
   return { ok: true, body: { report: mapReport(rows[0]) } };
 }
 
+async function reviewChatMessageModeration({
+  pool,
+  messageId,
+  body,
+  reviewerUserId,
+  sanitizeText,
+  generateModerationEventId,
+}) {
+  const cleanMessageId = typeof messageId === 'string' ? messageId.slice(0, 80) : '';
+  const cleanStatus = REVIEWABLE_MESSAGE_STATUSES.includes(body.status) ? body.status : null;
+  if (!cleanMessageId || !cleanStatus) {
+    return { ok: false, status: 400, error: 'Invalid moderation status' };
+  }
+  const fallbackReason = cleanStatus === 'visible' ? '' : `manual_${cleanStatus}`;
+  const reason = sanitizeText(body.reason || fallbackReason, 240);
+  const { rows } = await pool.query(
+    `UPDATE chat_messages
+     SET moderation_status = $2,
+         moderation_reason = $3,
+         deleted_at = CASE
+           WHEN $2 = 'deleted' THEN COALESCE(deleted_at, NOW())
+           ELSE NULL
+         END
+     WHERE id = $1
+     RETURNING *`,
+    [cleanMessageId, cleanStatus, reason],
+  );
+  if (rows.length === 0) return { ok: false, status: 404, error: 'Message not found' };
+  const message = mapMessage(rows[0]);
+  if (generateModerationEventId) {
+    await pool.query(
+      `INSERT INTO chat_moderation_events (
+         id, message_id, conversation_id, actor_user_id, source, action, reason, details
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        generateModerationEventId(),
+        cleanMessageId,
+        message.conversationId,
+        reviewerUserId || null,
+        'admin',
+        cleanStatus,
+        reason,
+        { status: cleanStatus },
+      ],
+    );
+  }
+  return { ok: true, body: { message } };
+}
+
 module.exports = {
   CONVERSATION_TYPES,
   PARTICIPANT_ROLES,
   MESSAGE_STATUSES,
+  REVIEWABLE_MESSAGE_STATUSES,
   REPORT_STATUSES,
   SANCTION_TYPES,
   canAccessConversation,
@@ -1097,6 +1149,7 @@ module.exports = {
   listUnreadChat,
   markConversationRead,
   reportChatMessage,
+  reviewChatMessageModeration,
   reviewChatReport,
   revokeChatUserSanction,
   sendChatMessage,

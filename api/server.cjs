@@ -40,6 +40,7 @@ const {
   markConversationRead,
   reportChatMessage,
   requestChatTranslation,
+  reviewChatMessageModeration,
   reviewChatReport,
   revokeChatUserSanction,
   sendChatMessage,
@@ -2866,6 +2867,26 @@ function handleRequest(req, res) {
         body: __parsed.data,
         reviewerUserId: ADMIN_ACTOR_ID,
         sanitizeText,
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // Admin：審核聊天訊息本身（敏感詞放行 / 封鎖 / 刪除）。
+    const adminChatMessageModerationRoute = pathname.match(/^\/api\/admin\/chat\/messages\/([^/]+)\/moderation$/);
+    if (adminChatMessageModerationRoute && method === 'POST') {
+      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody(32 * 1024);
+      const __parsed = validateBody(S.chatMessageModerationReviewSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await reviewChatMessageModeration({
+        pool,
+        messageId: adminChatMessageModerationRoute[1],
+        body: __parsed.data,
+        reviewerUserId: ADMIN_ACTOR_ID,
+        sanitizeText,
+        generateModerationEventId: () => 'chat_mod_' + crypto.randomBytes(12).toString('hex'),
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
