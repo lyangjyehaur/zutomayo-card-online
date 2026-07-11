@@ -261,6 +261,31 @@ describe('platform room auth', () => {
     ).rejects.toThrow('Invite access denied');
   });
 
+  it('binds invite joins to the invite room that was created', async () => {
+    const inviteRoom = new InviteRoom();
+    const inviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_target')}`;
+    const otherInviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_other')}`;
+    vi.spyOn(inviteRoom, 'setMatchmaking').mockResolvedValue(undefined);
+
+    await inviteRoom.onCreate({ inviteId, targetUserId: 'u_target' });
+
+    await expect(
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId: otherInviteId, targetUserId: 'u_other', displayName: 'Alice' },
+        cookieAuthContext('u_inviter'),
+      ),
+    ).rejects.toThrow('Invite access denied');
+
+    await expect(
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId, targetUserId: 'u_target', displayName: 'Alice' },
+        cookieAuthContext('u_inviter'),
+      ),
+    ).resolves.toMatchObject({ userId: 'u_inviter', authenticated: true, role: 'player' });
+  });
+
   it('requires configured durable friendship for production friend invite joins', async () => {
     const inviteRoom = new InviteRoom();
     const inviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_target')}`;

@@ -130,6 +130,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     const inviteId = optionalText(options.inviteId, 128);
     const friendInvite = inviteId ? parseFriendInviteId(inviteId) : null;
     if (!inviteId || !friendInvite) throw new Error('Invalid invite id');
+    if (this.inviteId && inviteId !== this.inviteId) throw new Error('Invite access denied');
     const targetUserId = optionalText(options.targetUserId, 128);
     if (targetUserId && targetUserId !== friendInvite.targetUserId) throw new Error('Invalid invite target');
     if (auth.userId !== friendInvite.inviterUserId && auth.userId !== friendInvite.targetUserId) {
