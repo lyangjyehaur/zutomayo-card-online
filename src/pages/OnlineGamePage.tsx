@@ -13,12 +13,7 @@ import {
   validateOnlineSession,
   type OnlineSession,
 } from '../onlineSession';
-import {
-  isOnlineFailureStatus,
-  onlineErrorStatus,
-  onlineStatusPanelCopy,
-  type OnlineRoomStatus,
-} from '../onlineRoomStatus';
+import { isOnlineFailureStatus, onlineStatusPanelCopy, type OnlineRoomStatus } from '../onlineRoomStatus';
 import { createPlatformCustomRoom, type PlatformCustomRoom } from '../platformClient';
 
 type MatchPlayer = {
@@ -38,7 +33,6 @@ type PlatformSessionIdentity = {
 interface OnlineGamePageProps {
   session: OnlineSession | null;
   onClearSession: () => void;
-  onJoinSharedRoom: (matchID: string) => Promise<OnlineSession>;
   onCreateNewRoom: () => Promise<OnlineSession>;
 }
 
@@ -130,7 +124,7 @@ function LeaveConfirmDialog({
   );
 }
 
-export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCreateNewRoom }: OnlineGamePageProps) {
+export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: OnlineGamePageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const locale = useLocale();
@@ -175,22 +169,8 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
 
   useEffect(() => {
     if (spectatorMode || activeSession || !matchID) return;
-
-    let cancelled = false;
-    setReconnectStatus('reconnecting');
-
-    onJoinSharedRoom(matchID)
-      .then(() => {
-        if (!cancelled) setReconnectStatus('ready');
-      })
-      .catch((error) => {
-        if (!cancelled) setReconnectStatus(onlineErrorStatus(error));
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeSession, matchID, onJoinSharedRoom, retryNonce, spectatorMode]);
+    navigate(`/online?room=${encodeURIComponent(matchID)}`, { replace: true });
+  }, [activeSession, matchID, navigate, spectatorMode]);
 
   useEffect(() => {
     if (!spectatorMode || !matchID) return;

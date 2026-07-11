@@ -493,22 +493,6 @@ function RouterShell() {
     navigate('/play/ai', { state: { difficulty, autoStart: true } });
   };
 
-  const joinSharedOnlineRoom = useCallback(async (matchID: string): Promise<OnlineSession> => {
-    const { playerCredentials, platformSeatToken, platformUserId, platformDisplayName } = await joinMatch(matchID, '1');
-    const session = {
-      matchID,
-      playerID: '1' as const,
-      playerCredentials,
-      platformSeatToken,
-      platformUserId,
-      platformDisplayName,
-    };
-    setOnlineSession(session);
-    setResumePromptSession(null);
-    saveOnlineSession(session);
-    return session;
-  }, []);
-
   const startOnline = async (
     existingID?: string,
     playerName?: string,
@@ -623,7 +607,6 @@ function RouterShell() {
                 <OnlineGamePage
                   session={onlineSession}
                   onClearSession={clearOnlineSession}
-                  onJoinSharedRoom={joinSharedOnlineRoom}
                   onCreateNewRoom={() => startOnline()}
                 />
               }

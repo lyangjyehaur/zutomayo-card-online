@@ -48,6 +48,17 @@ describe('online lobby platform boundary', () => {
     expect(roomInfoSource).toContain('return `/online?room=${encodeURIComponent(matchID)}`');
   });
 
+  it('redirects legacy player room links back through the Colyseus custom-room relay', () => {
+    const appSource = readRepoFile('src/App.tsx');
+    const onlineGamePageSource = readRepoFile('src/pages/OnlineGamePage.tsx');
+
+    expect(onlineGamePageSource).toContain(
+      'navigate(`/online?room=${encodeURIComponent(matchID)}`, { replace: true })',
+    );
+    expect(onlineGamePageSource).not.toContain('onJoinSharedRoom(matchID)');
+    expect(appSource).not.toContain('joinSharedOnlineRoom');
+  });
+
   it('persists stable platform identity for Colyseus participant evidence', () => {
     const appSource = readRepoFile('src/App.tsx');
     const onlineSessionSource = readRepoFile('src/onlineSession.ts');
