@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildPlatformFriendInviteId,
+  connectPlatformMatchShell,
   isPlatformBoardgameRelayAcknowledged,
   normalizeSeatReservation,
   platformBoardgameMatchReadyFromMessage,
@@ -17,6 +18,10 @@ import {
   resolvePlatformEndpoint,
   shouldLinkPlatformMatchShell,
 } from '../platformClient';
+
+afterEach(() => {
+  vi.doUnmock('colyseus.js');
+});
 
 describe('platform client helpers', () => {
   it('uses explicit platform endpoint when configured', () => {
@@ -322,5 +327,69 @@ describe('platform client helpers', () => {
         maxClients: 0,
       },
     });
+  });
+
+  it('joins ready match shells with the boardgame match id filter', async () => {
+    const send = vi.fn();
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+      send,
+    };
+    const post = vi.fn(async () => ({
+      data: {
+        name: 'match_shell',
+        roomId: 'platform_room_1',
+        sessionId: 'session_1',
+      },
+    }));
+    const consumeSeatReservation = vi.fn(() => room);
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await connectPlatformMatchShell(
+      {
+        boardgameMatchID: 'bgio-match-1',
+        userId: 'u_1',
+        displayName: 'Alice',
+        role: 'player',
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+        platformSeatToken: 'seat-token',
+      },
+      {},
+    );
+
+    expect(post).toHaveBeenCalledWith(
+      'matchmake/joinOrCreate/match_shell',
+      expect.objectContaining({
+        body: JSON.stringify({
+          boardgameMatchID: 'bgio-match-1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'player',
+          status: 'ready',
+          boardgamePlayerID: '0',
+          hasBoardgameCredentials: true,
+          platformSeatToken: 'seat-token',
+        }),
+      }),
+    );
+    expect(consumeSeatReservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session_1',
+        room: expect.objectContaining({
+          name: 'match_shell',
+          roomId: 'platform_room_1',
+        }),
+      }),
+    );
+    expect(send).toHaveBeenCalledWith('linkBoardgameMatch', { boardgameMatchID: 'bgio-match-1' });
   });
 });
