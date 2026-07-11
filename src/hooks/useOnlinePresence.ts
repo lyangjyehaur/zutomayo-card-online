@@ -5,8 +5,8 @@ import { createOnlinePresenceFallbackController } from './onlinePresenceFallback
 
 const PRESENCE_VISITOR_ID_KEY = 'zutomayo_presence_visitor_id';
 const HEARTBEAT_INTERVAL_MS = 30_000;
-const PRESENCE_VISITOR_ID_PATTERN = /^anon:presence:[a-zA-Z0-9_-]{8,83}$/;
-const LEGACY_PRESENCE_VISITOR_ID_PATTERN = /^presence:[a-zA-Z0-9_-]{8,88}$/;
+const PRESENCE_VISITOR_ID_PATTERN = /^anon:presence:[a-zA-Z0-9_-]{8,82}$/;
+const LEGACY_PRESENCE_VISITOR_ID_PATTERN = /^presence:[a-zA-Z0-9_-]{8,82}$/;
 
 export function createPresenceVisitorId(): string {
   const random =

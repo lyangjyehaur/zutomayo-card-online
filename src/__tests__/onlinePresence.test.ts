@@ -3,7 +3,9 @@ import { createPresenceVisitorId, normalizePresenceVisitorId } from '../hooks/us
 
 describe('online presence identity', () => {
   it('uses anonymous platform identity format for Colyseus lobby presence', () => {
-    expect(createPresenceVisitorId()).toMatch(/^anon:presence:[a-zA-Z0-9_-]{8,83}$/);
+    const visitorId = createPresenceVisitorId();
+    expect(visitorId).toMatch(/^anon:presence:[a-zA-Z0-9_-]{8,82}$/);
+    expect(visitorId.length).toBeLessThanOrEqual(96);
   });
 
   it('normalizes legacy HTTP presence ids into anonymous platform ids', () => {
@@ -11,5 +13,6 @@ describe('online presence identity', () => {
     expect(normalizePresenceVisitorId('anon:presence:abc_12345')).toBe('anon:presence:abc_12345');
     expect(normalizePresenceVisitorId('presence:bad space')).toBeNull();
     expect(normalizePresenceVisitorId('guest:presence:abc_12345')).toBeNull();
+    expect(normalizePresenceVisitorId(`presence:${'a'.repeat(83)}`)).toBeNull();
   });
 });
