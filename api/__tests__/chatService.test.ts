@@ -31,6 +31,7 @@ const {
     type: unknown;
     subjectId: unknown;
     enforceDirectFriendship?: boolean;
+    enforceMatchParticipation?: boolean;
   }) => Promise<boolean>;
   conversationKey: (type: unknown, subjectId: unknown) => string | null;
   createChatUserSanction: (input: {
@@ -53,6 +54,8 @@ const {
     subjectId: unknown;
     limit?: unknown;
     before?: unknown;
+    enforceDirectFriendship?: boolean;
+    enforceMatchParticipation?: boolean;
   }) => Promise<Record<string, unknown>>;
   listChatEvidenceMessages: (input: {
     pool: PoolLike;
@@ -61,8 +64,20 @@ const {
     before?: unknown;
   }) => Promise<Record<string, unknown>>;
   listChatReports: (input: { pool: PoolLike; status?: unknown; limit?: unknown }) => Promise<Record<string, unknown>>;
-  listUnreadChat: (input: { pool: PoolLike; userId: string; limit?: unknown }) => Promise<Record<string, unknown>>;
-  markConversationRead: (input: { pool: PoolLike; userId: string; body: Record<string, unknown> }) => Promise<{
+  listUnreadChat: (input: {
+    pool: PoolLike;
+    userId: string;
+    limit?: unknown;
+    enforceDirectFriendship?: boolean;
+    enforceMatchParticipation?: boolean;
+  }) => Promise<Record<string, unknown>>;
+  markConversationRead: (input: {
+    pool: PoolLike;
+    userId: string;
+    body: Record<string, unknown>;
+    enforceDirectFriendship?: boolean;
+    enforceMatchParticipation?: boolean;
+  }) => Promise<{
     ok: boolean;
     body?: Record<string, unknown>;
   }>;
@@ -73,6 +88,8 @@ const {
     body: Record<string, unknown>;
     sanitizeText: (value: unknown, maxLen?: number) => string;
     generateReportId: () => string;
+    enforceDirectFriendship?: boolean;
+    enforceMatchParticipation?: boolean;
   }) => Promise<Record<string, unknown>>;
   requestChatTranslation: (input: {
     pool: PoolLike;
@@ -83,6 +100,8 @@ const {
     translateText?: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
     providerName?: string;
     modelName?: string;
+    enforceDirectFriendship?: boolean;
+    enforceMatchParticipation?: boolean;
   }) => Promise<Record<string, unknown>>;
   revokeChatUserSanction: (input: {
     pool: PoolLike;
@@ -100,6 +119,7 @@ const {
     generateModerationEventId?: () => string;
     moderationRules?: { blockedWords?: string[]; reviewWords?: string[] };
     enforceDirectFriendship?: boolean;
+    enforceMatchParticipation?: boolean;
     allowedAuthorRoles?: string[];
   }) => Promise<Record<string, unknown>>;
 };
@@ -217,6 +237,54 @@ describe('chat service', () => {
         enforceDirectFriendship: true,
       }),
     ).resolves.toBe(false);
+  });
+
+  it('can require durable match participation for match chat access', async () => {
+    const participantPool = poolWithResults([{ rows: [{ exists: 1 }] }]);
+    await expect(
+      canAccessConversationWithPolicy({
+        pool: participantPool,
+        userId: 'u_1',
+        type: 'match',
+        subjectId: 'bgio-match-1',
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toBe(true);
+    expect(participantPool.query).toHaveBeenCalledWith(expect.stringContaining('platform_match_participants'), [
+      'bgio-match-1',
+      'u_1',
+    ]);
+
+    const strangerPool = poolWithResults([{ rows: [] }]);
+    await expect(
+      canAccessConversationWithPolicy({
+        pool: strangerPool,
+        userId: 'u_3',
+        type: 'match',
+        subjectId: 'bgio-match-1',
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('rejects match chat writes from accounts without durable participation when enforced', async () => {
+    const pool = poolWithResults([{ rows: [] }]);
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_stranger',
+        body: {
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+          content: 'hello',
+          authorRole: 'spectator',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toMatchObject({ ok: false, status: 403, error: 'Forbidden' });
+    expect(pool.query).toHaveBeenCalledTimes(1);
   });
 
   it('rejects direct chat writes from non-participants or invalid direct subjects', async () => {

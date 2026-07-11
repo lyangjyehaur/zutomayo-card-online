@@ -9,6 +9,10 @@ import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } fro
 import { platformLogger as logger } from './logger';
 import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
 import {
+  createPlatformMatchParticipantStoreFromEnv,
+  resolvePlatformMatchParticipantStoreMode,
+} from './matchParticipantStore';
+import {
   isPlatformRedisMode,
   redisUrlWithDb,
   resolvePlatformCorsOrigin,
@@ -55,9 +59,12 @@ const httpServer = http.createServer();
 
 const colyseusRedisUrl = redisUrlWithDb(REDIS_URL, REDIS_DB);
 const friendStore = createPlatformFriendStoreFromEnv();
+const matchParticipantStore = createPlatformMatchParticipantStoreFromEnv();
 const platformFriendStoreMode = resolvePlatformFriendStoreMode();
+const platformMatchParticipantStoreMode = resolvePlatformMatchParticipantStoreMode();
 LobbyRoom.configureFriendStore(friendStore);
 InviteRoom.configureFriendStore(friendStore, { enforceFriendship: platformFriendStoreMode === 'postgres' });
+MatchShellRoom.configureParticipantStore(matchParticipantStore);
 
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
@@ -101,7 +108,7 @@ gameServer.define('invite', InviteRoom).filterBy(['inviteId', 'status', 'targetU
 
 gameServer.onShutdown(async () => {
   logger.info('platform server shutting down');
-  await friendStore.close?.();
+  await Promise.all([friendStore.close?.(), matchParticipantStore.close?.()]);
 });
 
 process.on('uncaughtException', (err) => {
@@ -117,6 +124,11 @@ process.on('unhandledRejection', (reason) => {
 
 await gameServer.listen(PLATFORM_PORT);
 logger.info(
-  { port: PLATFORM_PORT, redisMode: PLATFORM_REDIS_MODE, friendStoreMode: platformFriendStoreMode },
+  {
+    port: PLATFORM_PORT,
+    redisMode: PLATFORM_REDIS_MODE,
+    friendStoreMode: platformFriendStoreMode,
+    matchParticipantStoreMode: platformMatchParticipantStoreMode,
+  },
   'Zutomayo platform server running',
 );

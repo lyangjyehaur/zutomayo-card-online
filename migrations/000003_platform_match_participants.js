@@ -1,0 +1,44 @@
+/**
+ * Persist account-backed Colyseus match-shell participation.
+ *
+ * ChatService uses this as durable evidence that a signed-in player or
+ * spectator joined a boardgame match before allowing match chat access.
+ *
+ * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
+ */
+export const shorthands = undefined;
+
+/**
+ * @param pgm {import('node-pg-migrate').MigrationBuilder}
+ * @returns {Promise<void> | void}
+ */
+export const up = (pgm) => {
+  pgm.createTable(
+    'platform_match_participants',
+    {
+      boardgame_match_id: { type: 'text', notNull: true },
+      user_id: { type: 'text', notNull: true, references: 'users(id)', onDelete: 'CASCADE' },
+      role: { type: 'text', notNull: true, default: 'spectator' },
+      boardgame_player_id: { type: 'text' },
+      display_name: { type: 'text', notNull: true, default: '' },
+      first_joined_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+      last_seen_at: { type: 'timestamptz', notNull: true, default: pgm.func('NOW()') },
+    },
+    {
+      ifNotExists: true,
+      constraints: {
+        primaryKey: ['boardgame_match_id', 'user_id'],
+      },
+    },
+  );
+  pgm.createIndex('platform_match_participants', ['user_id', { name: 'last_seen_at', sort: 'DESC' }], {
+    ifNotExists: true,
+    name: 'idx_platform_match_participants_user',
+  });
+  pgm.createIndex('platform_match_participants', ['boardgame_match_id', 'role'], {
+    ifNotExists: true,
+    name: 'idx_platform_match_participants_match_role',
+  });
+};
+
+export const down = false;

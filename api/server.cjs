@@ -339,6 +339,21 @@ async function initSchema() {
       ON matches(source_match_id)
       WHERE source_match_id IS NOT NULL`,
 
+    `CREATE TABLE IF NOT EXISTS platform_match_participants (
+      boardgame_match_id TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'spectator',
+      boardgame_player_id TEXT,
+      display_name TEXT NOT NULL DEFAULT '',
+      first_joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (boardgame_match_id, user_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_platform_match_participants_user
+      ON platform_match_participants(user_id, last_seen_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_platform_match_participants_match_role
+      ON platform_match_participants(boardgame_match_id, role)`,
+
     `CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -2565,6 +2580,7 @@ function handleRequest(req, res) {
         limit: url.searchParams.get('limit'),
         before: url.searchParams.get('before'),
         enforceDirectFriendship: true,
+        enforceMatchParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -2587,6 +2603,7 @@ function handleRequest(req, res) {
         generateModerationEventId: () => 'chat_mod_' + crypto.randomBytes(12).toString('hex'),
         moderationRules: defaultChatModerationRules(process.env),
         enforceDirectFriendship: true,
+        enforceMatchParticipation: true,
         allowedAuthorRoles: ['player', 'spectator'],
       });
       if (!result.ok) return json({ error: result.error }, result.status);
@@ -2606,6 +2623,7 @@ function handleRequest(req, res) {
         userId,
         body: __parsed.data,
         enforceDirectFriendship: true,
+        enforceMatchParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -2621,6 +2639,7 @@ function handleRequest(req, res) {
         userId,
         limit: url.searchParams.get('limit'),
         enforceDirectFriendship: true,
+        enforceMatchParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -2644,6 +2663,7 @@ function handleRequest(req, res) {
         providerName: process.env.CHAT_TRANSLATION_PROVIDER || '',
         modelName: process.env.CHAT_TRANSLATION_MODEL || '',
         enforceDirectFriendship: true,
+        enforceMatchParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, result.body.translation?.status === 'ready' ? 200 : 202);
@@ -2665,6 +2685,7 @@ function handleRequest(req, res) {
         sanitizeText,
         generateReportId: () => 'chat_report_' + crypto.randomBytes(12).toString('hex'),
         enforceDirectFriendship: true,
+        enforceMatchParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, 201);

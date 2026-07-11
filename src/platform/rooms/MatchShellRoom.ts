@@ -1,5 +1,7 @@
 import { Room, type AuthContext } from '@colyseus/core';
+import { platformLogger as logger } from '../logger';
 import { verifyPlatformSeatToken } from '../seatToken';
+import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
 import { authenticatePlatformClient } from './auth';
 import type {
   ChatPreviewMessage,
@@ -68,10 +70,15 @@ function normalizeMatchConversationId(value: unknown, boardgameMatchID: string |
 }
 
 export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; client: PlatformClient }> {
+  private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
   private boardgameMatchID?: string;
   private conversationId?: string;
   private status: MatchShellStatus = 'waiting';
   private maxPlayerSeats = 2;
+
+  static configureParticipantStore(store: PlatformMatchParticipantStore): void {
+    MatchShellRoom.participantStore = store;
+  }
 
   async onCreate(options: MatchShellRoomOptions = {}): Promise<void> {
     this.maxPlayerSeats = positiveInteger(options.maxPlayers, 2, 8);
@@ -145,6 +152,20 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     await this.refreshMetadata();
     client.send('roomSnapshot', this.snapshot());
     this.broadcastPresence('join', client.userData);
+    void MatchShellRoom.participantStore
+      .recordParticipant({
+        boardgameMatchID: this.boardgameMatchID,
+        userId: auth.userId,
+        role,
+        boardgamePlayerID,
+        displayName: auth.displayName,
+      })
+      .catch((err) => {
+        logger.warn(
+          { err, boardgameMatchID: this.boardgameMatchID, userId: auth.userId },
+          'failed to record match participant',
+        );
+      });
   }
 
   async onLeave(client: PlatformClient): Promise<void> {

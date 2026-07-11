@@ -208,6 +208,10 @@ function parseBody(res: MockRes): Record<string, unknown> | string {
   }
 }
 
+function mockMatchParticipant() {
+  mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+}
+
 function base64urlJson(value: Record<string, unknown>) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
 }
@@ -514,6 +518,7 @@ describe('server routes', () => {
           },
         ],
       });
+      mockMatchParticipant();
 
       const res = await sendRequest('GET', '/api/chat/unread?limit=10', null, userUnsafeHeaders('u_reader'));
       expect(res.statusCode).toBe(200);
@@ -608,6 +613,9 @@ describe('server routes', () => {
 
       for (const testCase of cases) {
         mockQuery.mockReset();
+        if (testCase.query.type === 'match') {
+          mockMatchParticipant();
+        }
         if (testCase.query.type === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }
@@ -690,6 +698,9 @@ describe('server routes', () => {
 
       for (const testCase of cases) {
         mockQuery.mockReset();
+        if (testCase.expectedType === 'match') {
+          mockMatchParticipant();
+        }
         if (testCase.expectedType === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }
@@ -853,6 +864,9 @@ describe('server routes', () => {
 
       for (const testCase of cases) {
         mockQuery.mockClear();
+        if (testCase.body.conversationType === 'match') {
+          mockMatchParticipant();
+        }
         if (testCase.body.conversationType === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }
@@ -882,6 +896,7 @@ describe('server routes', () => {
           ],
           rowCount: 1,
         })
+        .mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
         .mockResolvedValueOnce({
           rows: [
@@ -970,6 +985,9 @@ describe('server routes', () => {
           ],
           rowCount: 1,
         });
+        if (testCase.type === 'match') {
+          mockMatchParticipant();
+        }
         if (testCase.type === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }
@@ -1067,6 +1085,9 @@ describe('server routes', () => {
           ],
           rowCount: 1,
         });
+        if (testCase.type === 'match') {
+          mockMatchParticipant();
+        }
         if (testCase.type === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }

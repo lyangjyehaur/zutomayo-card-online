@@ -125,8 +125,34 @@ async function hasDirectFriendship({ pool, userId, subjectId }) {
   return rows.length > 0;
 }
 
-async function canAccessConversationWithPolicy({ pool, userId, type, subjectId, enforceDirectFriendship = false }) {
+async function hasMatchChatAccess({ pool, userId, subjectId }) {
+  const matchId = canonicalConversationSubjectId('match', subjectId);
+  if (!matchId) return false;
+  const { rows } = await pool.query(
+    `SELECT 1
+     FROM platform_match_participants
+     WHERE boardgame_match_id = $1 AND user_id = $2
+     UNION
+     SELECT 1
+     FROM matches
+     WHERE source_match_id = $1
+       AND (player0_id = $2 OR player1_id = $2)
+     LIMIT 1`,
+    [matchId, userId],
+  );
+  return rows.length > 0;
+}
+
+async function canAccessConversationWithPolicy({
+  pool,
+  userId,
+  type,
+  subjectId,
+  enforceDirectFriendship = false,
+  enforceMatchParticipation = false,
+}) {
   if (!canAccessConversation(userId, type, subjectId)) return false;
+  if (enforceMatchParticipation && type === 'match') return hasMatchChatAccess({ pool, userId, subjectId });
   if (!enforceDirectFriendship || type !== 'direct') return true;
   return hasDirectFriendship({ pool, userId, subjectId });
 }
@@ -357,6 +383,7 @@ async function sendChatMessage({
   generateModerationEventId,
   moderationRules,
   enforceDirectFriendship = false,
+  enforceMatchParticipation = false,
   allowedAuthorRoles = PARTICIPANT_ROLES,
 }) {
   if (!authorUserId) return { ok: false, status: 401, error: 'Unauthorized' };
@@ -374,6 +401,7 @@ async function sendChatMessage({
       type,
       subjectId,
       enforceDirectFriendship,
+      enforceMatchParticipation,
     }))
   ) {
     return { ok: false, status: 403, error: 'Forbidden' };
@@ -446,6 +474,7 @@ async function listChatMessages({
   limit,
   before,
   enforceDirectFriendship = false,
+  enforceMatchParticipation = false,
 }) {
   if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
   const key = conversationKey(conversationType, subjectId);
@@ -457,6 +486,7 @@ async function listChatMessages({
       type: conversationType,
       subjectId,
       enforceDirectFriendship,
+      enforceMatchParticipation,
     }))
   ) {
     return { ok: false, status: 403, error: 'Forbidden' };
@@ -510,7 +540,13 @@ async function listChatEvidenceMessages({ pool, conversationId, limit, before })
   return { ok: true, body: { conversation: mapConversation(conversation), messages: rows.map(mapMessage).reverse() } };
 }
 
-async function markConversationRead({ pool, userId, body, enforceDirectFriendship = false }) {
+async function markConversationRead({
+  pool,
+  userId,
+  body,
+  enforceDirectFriendship = false,
+  enforceMatchParticipation = false,
+}) {
   if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
   const key = conversationKey(body.conversationType, body.subjectId);
   if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
@@ -521,6 +557,7 @@ async function markConversationRead({ pool, userId, body, enforceDirectFriendshi
       type: body.conversationType,
       subjectId: body.subjectId,
       enforceDirectFriendship,
+      enforceMatchParticipation,
     }))
   ) {
     return { ok: false, status: 403, error: 'Forbidden' };
@@ -536,7 +573,13 @@ async function markConversationRead({ pool, userId, body, enforceDirectFriendshi
   return { ok: true, body: { ok: true } };
 }
 
-async function listUnreadChat({ pool, userId, limit, enforceDirectFriendship = false }) {
+async function listUnreadChat({
+  pool,
+  userId,
+  limit,
+  enforceDirectFriendship = false,
+  enforceMatchParticipation = false,
+}) {
   if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
   const lim = clampLimit(limit, 50, 200);
   const encodedUserId = encodeURIComponent(userId);
@@ -577,6 +620,7 @@ async function listUnreadChat({ pool, userId, limit, enforceDirectFriendship = f
         type: row.type,
         subjectId: row.subject_id,
         enforceDirectFriendship,
+        enforceMatchParticipation,
       })
     ) {
       accessibleConversations.push(row);
@@ -623,6 +667,7 @@ async function requestChatTranslation({
   providerName = '',
   modelName = '',
   enforceDirectFriendship = false,
+  enforceMatchParticipation = false,
 }) {
   if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
   const cleanMessageId = typeof messageId === 'string' ? messageId.slice(0, 80) : '';
@@ -648,6 +693,7 @@ async function requestChatTranslation({
       type: message.type,
       subjectId: message.subject_id,
       enforceDirectFriendship,
+      enforceMatchParticipation,
     }))
   ) {
     return { ok: false, status: 403, error: 'Forbidden' };
@@ -737,6 +783,7 @@ async function reportChatMessage({
   sanitizeText,
   generateReportId,
   enforceDirectFriendship = false,
+  enforceMatchParticipation = false,
 }) {
   if (!reporterUserId) return { ok: false, status: 401, error: 'Unauthorized' };
   const cleanMessageId = typeof messageId === 'string' ? messageId.slice(0, 80) : '';
@@ -762,6 +809,7 @@ async function reportChatMessage({
       type: message.conversation_type,
       subjectId: message.conversation_subject_id,
       enforceDirectFriendship,
+      enforceMatchParticipation,
     }))
   ) {
     return { ok: false, status: 403, error: 'Forbidden' };
@@ -931,6 +979,7 @@ module.exports = {
   evaluateChatModeration,
   getActiveChatSanction,
   getOrCreateConversation,
+  hasMatchChatAccess,
   listChatEvidenceMessages,
   listChatMessages,
   listChatReports,
