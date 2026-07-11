@@ -20,6 +20,8 @@ const forbiddenBoardgameStateKeys = new Set([
   'cards',
   'effects',
   'credentials',
+  'playerCredentials',
+  'platformSeatToken',
   'playerView',
 ]);
 
@@ -60,6 +62,8 @@ const poisonedBoardgamePayload = {
   ctx: { phase: 'main' },
   deck: ['secret-card'],
   credentials: 'raw-boardgame-credentials',
+  playerCredentials: 'raw-player-credentials',
+  platformSeatToken: 'raw-platform-seat-token',
   actionLog: [{ move: 'play-card' }],
   playerView: { hand: ['hidden-card'] },
 };
@@ -93,8 +97,8 @@ describe('platform room boundary', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
-      platformSeatToken: seatToken(),
       ...poisonedBoardgamePayload,
+      platformSeatToken: seatToken(),
     });
 
     expectNoBoardgameState(player.send.mock.calls);
