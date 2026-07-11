@@ -30,10 +30,11 @@ function createJwt(userId: string, secret: string, options: { expiresInSeconds?:
   return `${input}.${signToken(input, secret)}`;
 }
 
-function authContext(headers: Record<string, string> = {}): AuthContext {
+function authContext(headers: Record<string, string> = {}, token?: string): AuthContext {
   return {
     headers: new Headers(headers),
     ip: '127.0.0.1',
+    token,
   };
 }
 
@@ -56,15 +57,20 @@ afterEach(() => {
 });
 
 describe('platform room auth', () => {
-  it('extracts auth token from bearer header before cookie', () => {
+  it('extracts platform auth token only from the session cookie', () => {
     const context = authContext({
       authorization: 'Bearer bearer-token',
       cookie: 'zutomayo_session=cookie-token',
     });
-    expect(platformAuthTokenFromContext(context)).toBe('bearer-token');
+    expect(platformAuthTokenFromContext(context)).toBe('cookie-token');
   });
 
-  it('extracts auth token from the session cookie', () => {
+  it('does not accept bearer or websocket query tokens as platform account identity', () => {
+    expect(platformAuthTokenFromContext(authContext({ authorization: 'Bearer bearer-token' }))).toBe('');
+    expect(platformAuthTokenFromContext(authContext({}, 'query-token'))).toBe('');
+  });
+
+  it('extracts auth token from the session cookie among other cookies', () => {
     const context = authContext({
       cookie: `other=1; zutomayo_session=${encodeURIComponent('cookie.token.value')}`,
     });

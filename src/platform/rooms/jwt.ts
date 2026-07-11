@@ -17,15 +17,7 @@ function tokenFromCookieHeader(cookieHeader: string | null): string {
   return '';
 }
 
-function bearerTokenFromHeader(authorization: string | null): string {
-  if (!authorization?.startsWith('Bearer ')) return '';
-  return authorization.slice('Bearer '.length).trim();
-}
-
 export function platformAuthTokenFromContext(context: Pick<AuthContext, 'headers' | 'token'>): string {
-  const bearerToken = bearerTokenFromHeader(context.headers.get('authorization'));
-  if (bearerToken) return bearerToken;
-  if (typeof context.token === 'string' && context.token.trim()) return context.token.trim();
   return tokenFromCookieHeader(context.headers.get('cookie'));
 }
 
