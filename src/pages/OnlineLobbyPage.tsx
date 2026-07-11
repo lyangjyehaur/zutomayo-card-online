@@ -50,6 +50,7 @@ import {
   joinPlatformCustomRoom,
   joinPlatformInvite,
   type PlatformCustomRoom,
+  type PlatformInviteSnapshot,
   type PlatformInviteRoom,
   type PlatformQuickMatchRoom,
 } from '../platformClient';
@@ -935,6 +936,17 @@ export function OnlineLobbyPage({
     [effectivePlayerName, navigateToOnlineSession, onStartOnline],
   );
 
+  const resumeJoinedInviteMatch = useCallback(
+    (friend: FriendProfile, snapshot: PlatformInviteSnapshot) => {
+      if (snapshot.boardgameMatchID && (snapshot.status === 'accepted' || snapshot.status === 'finished')) {
+        joinAcceptedInviteMatch(friend, snapshot.boardgameMatchID);
+        return true;
+      }
+      return false;
+    },
+    [joinAcceptedInviteMatch],
+  );
+
   const handleInviteFriend = async (friend: FriendProfile) => {
     if (!profile) return;
     if (!canStart) {
@@ -1080,6 +1092,9 @@ export function OnlineLobbyPage({
           displayName: effectivePlayerName,
         },
         {
+          onSnapshot: (snapshot) => {
+            resumeJoinedInviteMatch(friend, snapshot);
+          },
           onAccepted: (message) => {
             if (message.boardgameMatchID) {
               joinAcceptedInviteMatch(friend, message.boardgameMatchID);
@@ -1100,6 +1115,7 @@ export function OnlineLobbyPage({
             leavePlatformInviteRoom();
           },
         },
+        { includeFinished: true },
       );
       platformInviteRoomRef.current = room;
       setFriendInvitePeerId(friend.userId);

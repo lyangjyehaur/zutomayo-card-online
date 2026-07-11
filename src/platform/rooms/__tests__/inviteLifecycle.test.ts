@@ -276,7 +276,7 @@ describe('invite room lifecycle', () => {
     });
   });
 
-  it('keeps accepted invites joinable for relay reconnects and rejects terminal invites', async () => {
+  it('keeps accepted invites joinable for relay reconnects and gates finished invite recovery', async () => {
     const { room, inviteHandlers, boardgameHandlers, target, inviter } = await setupInviteRoom();
 
     inviteHandlers.get('acceptInvite')?.(target, {});
@@ -298,6 +298,35 @@ describe('invite room lifecycle', () => {
         cookieAuthContext('u_inviter'),
       ),
     ).rejects.toThrow('Invite is not joinable');
+
+    await expect(
+      room.onAuth(
+        {} as PlatformClient,
+        { inviteId: inviteId(), targetUserId: 'u_target', displayName: 'Target Reconnect', status: 'finished' },
+        cookieAuthContext('u_target'),
+      ),
+    ).resolves.toMatchObject({ userId: 'u_target', authenticated: true, role: 'player' });
+
+    vi.mocked(room.clock.setTimeout).mockImplementation(((handler: () => void) => {
+      handler();
+      return { clear: vi.fn() };
+    }) as never);
+    const reconnectingTarget = client('session_target_reconnect', {
+      userId: 'u_target',
+      displayName: 'Target',
+      role: 'player',
+      authenticated: true,
+    });
+    room.clients.push(reconnectingTarget);
+    await room.onJoin(reconnectingTarget);
+
+    expect(reconnectingTarget.send).toHaveBeenCalledWith(
+      'inviteSnapshot',
+      expect.objectContaining({ status: 'finished', boardgameMatchID: 'bgio-match-1' }),
+    );
+    expect(reconnectingTarget.send).toHaveBeenCalledWith('boardgameMatchReady', {
+      boardgameMatchID: 'bgio-match-1',
+    });
 
     const declinedRoom = await setupInviteRoom();
     declinedRoom.inviteHandlers.get('declineInvite')?.(declinedRoom.target, { reason: 'busy' });

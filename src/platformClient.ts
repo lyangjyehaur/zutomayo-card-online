@@ -166,6 +166,10 @@ export interface PlatformInviteHandlers {
   onDisconnect?: () => void;
 }
 
+export interface PlatformInviteJoinOptions {
+  includeFinished?: boolean;
+}
+
 export interface PlatformQuickMatchHandlers {
   onSnapshot?: (snapshot: PlatformQuickMatchSnapshot) => void;
   onMatched?: (match: PlatformQuickMatchMatched) => void;
@@ -702,8 +706,9 @@ export async function createPlatformInvite(
 export async function joinPlatformInvite(
   options: PlatformInviteOptions,
   handlers: PlatformInviteHandlers = {},
+  joinOptions: PlatformInviteJoinOptions = {},
 ): Promise<PlatformInviteRoom> {
-  const joinWithStatus = (status: 'pending' | 'accepted') =>
+  const joinWithStatus = (status: 'pending' | 'accepted' | 'finished') =>
     joinPlatformRoom(
       'invite',
       {
@@ -716,7 +721,12 @@ export async function joinPlatformInvite(
       },
       'join',
     );
-  const room = await joinWithStatus('pending').catch(() => joinWithStatus('accepted'));
+  const room = await joinWithStatus('pending')
+    .catch(() => joinWithStatus('accepted'))
+    .catch((err) => {
+      if (joinOptions.includeFinished) return joinWithStatus('finished');
+      throw err;
+    });
   return bindPlatformInviteHandlers(room, handlers);
 }
 

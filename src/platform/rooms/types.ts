@@ -200,6 +200,7 @@ export interface InviteRoomOptions extends LobbyJoinOptions {
   targetUserId?: unknown;
   roomCode?: unknown;
   boardgameMatchID?: unknown;
+  status?: unknown;
 }
 
 export interface LinkBoardgameMatchMessage {

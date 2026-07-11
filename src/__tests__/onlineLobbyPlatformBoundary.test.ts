@@ -163,4 +163,20 @@ describe('online lobby platform boundary', () => {
     );
     expect(inviteSource).toContain("room?.send('boardgameMatchReady'");
   });
+
+  it('resumes explicit accepted invite joins from Colyseus snapshots', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+    const resumeIndex = lobbySource.indexOf('const resumeJoinedInviteMatch =');
+    const acceptIndex = lobbySource.indexOf('const handleAcceptFriendInvite =');
+    const scanIndex = lobbySource.indexOf('const scanIncomingInvites =');
+    const acceptSource = lobbySource.slice(acceptIndex, scanIndex);
+
+    expect(resumeIndex).toBeGreaterThan(-1);
+    expect(acceptIndex).toBeGreaterThan(resumeIndex);
+    expect(acceptSource).toContain('onSnapshot: (snapshot) =>');
+    expect(acceptSource).toContain('resumeJoinedInviteMatch(friend, snapshot);');
+    expect(acceptSource).toContain('{ includeFinished: true }');
+    expect(acceptSource).toContain('joinAcceptedInviteMatch(friend, message.boardgameMatchID)');
+    expect(lobbySource.slice(scanIndex)).not.toContain('resumeJoinedInviteMatch(friend, nextSnapshot)');
+  });
 });

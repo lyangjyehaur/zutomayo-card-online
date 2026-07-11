@@ -869,4 +869,58 @@ describe('platform client helpers', () => {
       }),
     );
   });
+
+  it('only retries finished invite joins when explicitly requested', async () => {
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const post = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('pending invite not found'))
+      .mockRejectedValueOnce(new Error('accepted invite not found'))
+      .mockResolvedValueOnce({
+        data: {
+          name: 'invite',
+          roomId: 'platform_invite_finished_1',
+          sessionId: 'session_1',
+        },
+      });
+    const consumeSeatReservation = vi.fn(() => room);
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await joinPlatformInvite(
+      {
+        inviteId: 'friend:v1:u_inviter:u_target',
+        targetUserId: 'u_target',
+        userId: 'u_target',
+        displayName: 'Target',
+      },
+      {},
+      { includeFinished: true },
+    );
+
+    expect(post).toHaveBeenCalledTimes(3);
+    expect(post).toHaveBeenNthCalledWith(
+      3,
+      'matchmake/join/invite',
+      expect.objectContaining({
+        body: JSON.stringify({
+          inviteId: 'friend:v1:u_inviter:u_target',
+          targetUserId: 'u_target',
+          userId: 'u_target',
+          displayName: 'Target',
+          role: 'player',
+          status: 'finished',
+        }),
+      }),
+    );
+  });
 });

@@ -127,7 +127,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   async onAuth(_client: PlatformClient, options: InviteRoomOptions, context: AuthContext): Promise<PlatformAuth> {
     const auth = authenticatePlatformClient(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
-    if (!this.isJoinableStatus()) throw new Error('Invite is not joinable');
+    if (!this.isJoinableStatus(options.status)) throw new Error('Invite is not joinable');
     const inviteId = optionalText(options.inviteId, 128);
     const friendInvite = inviteId ? parseFriendInviteId(inviteId) : null;
     if (!inviteId || !friendInvite) throw new Error('Invalid invite id');
@@ -154,6 +154,10 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     if (!this.inviter && this.canBecomeInviter(client.userData)) this.inviter = client.userData;
     await this.refreshMetadata();
     this.clock.setTimeout(() => client.send('inviteSnapshot', this.snapshot()), 50);
+    const readyBoardgameMatchID = this.status === 'finished' ? this.boardgameMatchID : undefined;
+    if (readyBoardgameMatchID) {
+      this.clock.setTimeout(() => client.send('boardgameMatchReady', { boardgameMatchID: readyBoardgameMatchID }), 50);
+    }
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
@@ -188,8 +192,9 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     return this.status === 'accepted' && !this.boardgameMatchID;
   }
 
-  private isJoinableStatus(): boolean {
-    return this.status === 'pending' || this.status === 'accepted';
+  private isJoinableStatus(requestedStatus?: unknown): boolean {
+    if (this.status === 'pending' || this.status === 'accepted') return true;
+    return this.status === 'finished' && requestedStatus === 'finished' && Boolean(this.boardgameMatchID);
   }
 
   private async cancel(reason: string): Promise<void> {
