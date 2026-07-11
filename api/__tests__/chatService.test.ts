@@ -1145,7 +1145,23 @@ describe('chat service', () => {
   });
 
   it('creates durable chat mute sanctions and supersedes previous active mutes', async () => {
-    const pool = poolWithResults([{ rows: [] }, { rows: [{ ...sanctionRow, reason: 'abuse' }] }]);
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            report_id: 'chat_report_1',
+            report_message_id: 'chat_msg_1',
+            report_conversation_id: 'match:bgio-match-1',
+            reported_message_author_user_id: 'u_1',
+            message_id: 'chat_msg_1',
+            message_conversation_id: 'match:bgio-match-1',
+            message_author_user_id: 'u_1',
+          },
+        ],
+      },
+      { rows: [] },
+      { rows: [{ ...sanctionRow, reason: 'abuse' }] },
+    ]);
 
     await expect(
       createChatUserSanction({
@@ -1173,13 +1189,17 @@ describe('chat service', () => {
         }),
       },
     });
-    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('UPDATE chat_user_sanctions'), [
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM chat_reports'), [
+      'chat_report_1',
+      'chat_msg_1',
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('UPDATE chat_user_sanctions'), [
       'u_1',
       'admin',
       'chat_mute',
     ]);
     expect(pool.query).toHaveBeenNthCalledWith(
-      2,
+      3,
       expect.stringContaining('INSERT INTO chat_user_sanctions'),
       expect.arrayContaining([
         'chat_sanction_1',
@@ -1193,6 +1213,41 @@ describe('chat service', () => {
         expect.any(String),
       ]),
     );
+  });
+
+  it('rejects report-backed sanctions when the target does not match the snapshotted author', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            report_id: 'chat_report_1',
+            report_message_id: 'chat_msg_1',
+            report_conversation_id: 'match:bgio-match-1',
+            reported_message_author_user_id: 'u_author',
+            message_id: 'chat_msg_1',
+            message_conversation_id: 'match:bgio-match-1',
+            message_author_user_id: 'u_author',
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      createChatUserSanction({
+        pool,
+        targetUserId: 'u_other',
+        body: {
+          type: 'chat_mute',
+          sourceReportId: 'chat_report_1',
+          sourceMessageId: 'chat_msg_1',
+          conversationId: 'match:bgio-match-1',
+        },
+        reviewerUserId: 'admin',
+        sanitizeText,
+        generateSanctionId: () => 'chat_sanction_1',
+      }),
+    ).resolves.toEqual({ ok: false, status: 400, error: 'Report target mismatch' });
+    expect(pool.query).toHaveBeenCalledOnce();
   });
 
   it('revokes active chat mute sanctions', async () => {

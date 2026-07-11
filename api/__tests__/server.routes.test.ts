@@ -1333,27 +1333,43 @@ describe('server routes', () => {
     });
 
     it('POST /api/admin/chat/sanctions creates a durable mute sanction', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }).mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'chat_sanction_1',
-            target_user_id: 'u_1',
-            type: 'chat_mute',
-            status: 'active',
-            reason: 'abuse',
-            source_report_id: 'chat_report_1',
-            source_message_id: 'chat_msg_1',
-            conversation_id: 'match:bgio-match-1',
-            created_by_user_id: 'admin',
-            created_at: '2026-07-10T00:00:03.000Z',
-            expires_at: '2026-07-10T01:00:03.000Z',
-            revoked_at: null,
-            revoked_by_user_id: null,
-            revocation_reason: '',
-          },
-        ],
-        rowCount: 1,
-      });
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              report_id: 'chat_report_1',
+              report_message_id: 'chat_msg_1',
+              report_conversation_id: 'match:bgio-match-1',
+              reported_message_author_user_id: 'u_1',
+              message_id: 'chat_msg_1',
+              message_conversation_id: 'match:bgio-match-1',
+              message_author_user_id: 'u_1',
+            },
+          ],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'chat_sanction_1',
+              target_user_id: 'u_1',
+              type: 'chat_mute',
+              status: 'active',
+              reason: 'abuse',
+              source_report_id: 'chat_report_1',
+              source_message_id: 'chat_msg_1',
+              conversation_id: 'match:bgio-match-1',
+              created_by_user_id: 'admin',
+              created_at: '2026-07-10T00:00:03.000Z',
+              expires_at: '2026-07-10T01:00:03.000Z',
+              revoked_at: null,
+              revoked_by_user_id: null,
+              revocation_reason: '',
+            },
+          ],
+          rowCount: 1,
+        });
 
       const res = await sendRequest(
         'POST',
@@ -1380,13 +1396,17 @@ describe('server routes', () => {
           sourceReportId: 'chat_report_1',
         }),
       );
-      expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('UPDATE chat_user_sanctions'), [
+      expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM chat_reports'), [
+        'chat_report_1',
+        'chat_msg_1',
+      ]);
+      expect(mockQuery).toHaveBeenNthCalledWith(2, expect.stringContaining('UPDATE chat_user_sanctions'), [
         'u_1',
         'admin',
         'chat_mute',
       ]);
       expect(mockQuery).toHaveBeenNthCalledWith(
-        2,
+        3,
         expect.stringContaining('INSERT INTO chat_user_sanctions'),
         expect.arrayContaining([
           'u_1',
@@ -1398,6 +1418,40 @@ describe('server routes', () => {
           'admin',
         ]),
       );
+    });
+
+    it('POST /api/admin/chat/sanctions rejects evidence mismatches', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            report_id: 'chat_report_1',
+            report_message_id: 'chat_msg_1',
+            report_conversation_id: 'match:bgio-match-1',
+            reported_message_author_user_id: 'u_author',
+            message_id: 'chat_msg_1',
+            message_conversation_id: 'match:bgio-match-1',
+            message_author_user_id: 'u_author',
+          },
+        ],
+        rowCount: 1,
+      });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/chat/sanctions',
+        {
+          targetUserId: 'u_other',
+          type: 'chat_mute',
+          sourceReportId: 'chat_report_1',
+          sourceMessageId: 'chat_msg_1',
+          conversationId: 'match:bgio-match-1',
+        },
+        adminUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(400);
+      expect(parseBody(res)).toEqual({ error: 'Report target mismatch' });
+      expect(mockQuery).toHaveBeenCalledOnce();
     });
 
     it('DELETE /api/admin/chat/sanctions/:sanctionId revokes an active mute', async () => {

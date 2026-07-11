@@ -967,6 +967,43 @@ async function createChatUserSanction({ pool, targetUserId, body, reviewerUserId
   const durationMinutes = clampLimit(body.durationMinutes, 1440, 43200);
   const expiresAt = new Date(Date.now() + durationMinutes * 60_000).toISOString();
   const reason = sanitizeText(body.reason || '', 1000);
+  const sourceReportId = typeof body.sourceReportId === 'string' ? body.sourceReportId.slice(0, 80) : '';
+  const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId.slice(0, 80) : '';
+  const sourceConversationId = typeof body.conversationId === 'string' ? body.conversationId.slice(0, 340) : '';
+  if (sourceReportId || sourceMessageId) {
+    const source = (
+      await pool.query(
+        `SELECT r.id AS report_id,
+                r.message_id AS report_message_id,
+                r.conversation_id AS report_conversation_id,
+                r.reported_message_author_user_id,
+                m.id AS message_id,
+                m.conversation_id AS message_conversation_id,
+                m.author_user_id AS message_author_user_id
+         FROM chat_reports r
+         LEFT JOIN chat_messages m ON m.id = r.message_id
+         WHERE ($1::text = '' OR r.id = $1)
+           AND ($2::text = '' OR r.message_id = $2)
+         LIMIT 1`,
+        [sourceReportId, sourceMessageId],
+      )
+    ).rows[0];
+    if (!source) return { ok: false, status: 404, error: 'Report evidence not found' };
+    if (sourceReportId && source.report_id !== sourceReportId) {
+      return { ok: false, status: 400, error: 'Report evidence mismatch' };
+    }
+    if (sourceMessageId && source.report_message_id !== sourceMessageId) {
+      return { ok: false, status: 400, error: 'Report evidence mismatch' };
+    }
+    const evidenceConversationId = source.report_conversation_id || source.message_conversation_id || '';
+    if (sourceConversationId && evidenceConversationId !== sourceConversationId) {
+      return { ok: false, status: 400, error: 'Report evidence mismatch' };
+    }
+    const evidenceAuthorUserId = source.reported_message_author_user_id || source.message_author_user_id || '';
+    if (!evidenceAuthorUserId || evidenceAuthorUserId !== cleanTargetUserId) {
+      return { ok: false, status: 400, error: 'Report target mismatch' };
+    }
+  }
   const id = generateSanctionId();
 
   await pool.query(
@@ -995,9 +1032,9 @@ async function createChatUserSanction({ pool, targetUserId, body, reviewerUserId
       cleanTargetUserId,
       type,
       reason,
-      body.sourceReportId || null,
-      body.sourceMessageId || null,
-      body.conversationId || null,
+      sourceReportId || null,
+      sourceMessageId || null,
+      sourceConversationId || null,
       reviewerUserId || null,
       expiresAt,
     ],
