@@ -792,6 +792,38 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('rejects custom-room joins after cancellation', async () => {
+    const room = new CustomRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(host);
+    await room.onJoin(host);
+    await room.onLeave(host);
+
+    expect(() =>
+      room.onAuth(
+        {} as PlatformClient,
+        {
+          roomCode: 'ROOM42',
+          userId: 'u_late',
+          displayName: 'Late Player',
+          role: 'player',
+        },
+        cookieAuthContext('u_late'),
+      ),
+    ).toThrow('Custom room is not joinable');
+  });
+
   it('custom room transfers waiting host ownership to a reconnect session', async () => {
     const room = new CustomRoom();
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);

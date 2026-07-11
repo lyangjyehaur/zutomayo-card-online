@@ -82,6 +82,9 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
   }
 
   onAuth(_client: PlatformClient, options: CustomRoomOptions, context: AuthContext): PlatformAuth {
+    if (!this.isJoinableStatus()) {
+      throw new Error('Custom room is not joinable');
+    }
     if (!sameRequiredText(this.roomCode, options.roomCode, 128)) {
       throw new Error('Custom room access denied');
     }
@@ -173,6 +176,10 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
         .map((profile) => profile.userId),
     );
     return guestPlayerUserIds.size === 0 || guestPlayerUserIds.has(userId) ? 'player' : 'spectator';
+  }
+
+  private isJoinableStatus(): boolean {
+    return this.status === 'waiting' || this.status === 'ready';
   }
 
   private async recordRoomParticipant(profile: PlatformClientProfile, authenticated: boolean): Promise<void> {
