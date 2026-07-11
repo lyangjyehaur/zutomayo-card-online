@@ -41,6 +41,7 @@ describe('custom room platform relay', () => {
       roomCode: 'ROOM42',
       status: 'ready',
       players: [],
+      spectators: [],
       boardgameMatchID: ' bgio-match-1 ',
     });
 

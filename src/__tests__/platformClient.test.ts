@@ -196,6 +196,15 @@ describe('platform client helpers', () => {
             joinedAt: 2000,
           },
         ],
+        spectators: [
+          {
+            sessionId: 's_3',
+            userId: 'u_3',
+            displayName: 'Carol',
+            role: 'spectator',
+            joinedAt: 3000,
+          },
+        ],
         boardgameMatchID: 'bgio-match-1',
       }),
     ).toEqual({
@@ -216,6 +225,15 @@ describe('platform client helpers', () => {
           displayName: 'Bob',
           role: 'player',
           joinedAt: 2000,
+        },
+      ],
+      spectators: [
+        {
+          sessionId: 's_3',
+          userId: 'u_3',
+          displayName: 'Carol',
+          role: 'spectator',
+          joinedAt: 3000,
         },
       ],
       boardgameMatchID: 'bgio-match-1',

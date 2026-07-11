@@ -35,6 +35,7 @@ export interface PlatformCustomRoomOptions {
   boardgameMatchID?: string;
   userId: string;
   displayName: string;
+  role?: PlatformRole;
 }
 
 export interface PlatformInviteOptions {
@@ -117,6 +118,7 @@ export interface PlatformCustomRoomSnapshot {
   status: 'waiting' | 'ready' | 'cancelled' | 'finished';
   host?: PlatformClientProfile;
   players: PlatformClientProfile[];
+  spectators: PlatformClientProfile[];
   boardgameMatchID?: string;
 }
 
@@ -480,6 +482,7 @@ export function platformCustomRoomSnapshotFromMessage(message: unknown): Platfor
     status?: unknown;
     host?: unknown;
     players?: unknown;
+    spectators?: unknown;
     boardgameMatchID?: unknown;
   };
   if (typeof data.roomId !== 'string' || typeof data.roomCode !== 'string') return null;
@@ -496,12 +499,18 @@ export function platformCustomRoomSnapshotFromMessage(message: unknown): Platfor
         .map(platformProfileFromMessage)
         .filter((profile): profile is PlatformClientProfile => Boolean(profile))
     : [];
+  const spectators = Array.isArray(data.spectators)
+    ? data.spectators
+        .map(platformProfileFromMessage)
+        .filter((profile): profile is PlatformClientProfile => Boolean(profile))
+    : [];
   return {
     roomId: data.roomId,
     roomCode: data.roomCode,
     status: data.status,
     host: platformProfileFromMessage(data.host) ?? undefined,
     players,
+    spectators,
     boardgameMatchID: typeof data.boardgameMatchID === 'string' ? data.boardgameMatchID : undefined,
   };
 }
@@ -556,7 +565,7 @@ export async function joinPlatformCustomRoom(
         roomCode: options.roomCode,
         userId: options.userId,
         displayName: options.displayName,
-        role: 'player',
+        role: options.role ?? 'player',
         status,
       },
       'join',

@@ -43,7 +43,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     }, CUSTOM_ROOM_TTL_MS);
 
     this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
-      if (this.host && client.sessionId !== this.host.sessionId) return;
+      if (!this.host || client.sessionId !== this.host.sessionId) return;
       const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
       if (!boardgameMatchID || this.boardgameMatchID || this.status === 'cancelled' || this.status === 'finished') {
         return;
@@ -57,7 +57,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     });
 
     this.onMessage('cancelCustomRoom', (client) => {
-      if (this.host && client.sessionId !== this.host.sessionId) return;
+      if (!this.host || client.sessionId !== this.host.sessionId) return;
       void this.cancel('host_cancelled');
     });
 
@@ -65,7 +65,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
   }
 
   onAuth(_client: PlatformClient, options: CustomRoomOptions, context: AuthContext): PlatformAuth {
-    return { ...authenticatePlatformClient(options, context), role: 'player' };
+    return authenticatePlatformClient(options, context);
   }
 
   async onJoin(client: PlatformClient): Promise<void> {
@@ -76,13 +76,19 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       sessionId: client.sessionId,
       userId: auth.userId,
       displayName: auth.displayName,
-      role: 'player',
+      role: auth.role,
       joinedAt: Date.now(),
     };
     const isHostReconnect = previousHost?.userId === client.userData.userId;
-    if (!previousHost || isHostReconnect) this.host = client.userData;
+    if (client.userData.role === 'player' && (!previousHost || isHostReconnect)) this.host = client.userData;
 
-    if (this.boardgameMatchID && this.status === 'waiting' && previousHost && !isHostReconnect) {
+    if (
+      this.boardgameMatchID &&
+      this.status === 'waiting' &&
+      previousHost &&
+      !isHostReconnect &&
+      auth.role === 'player'
+    ) {
       this.status = 'ready';
       this.lockReadyRoom();
       await this.refreshMetadata();
@@ -126,13 +132,18 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       .filter((profile): profile is PlatformClientProfile => Boolean(profile));
   }
 
+  private roleProfiles(role: PlatformAuth['role']): PlatformClientProfile[] {
+    return this.profiles().filter((profile) => profile.role === role);
+  }
+
   private snapshot(): PlatformClient['~messages']['customRoomSnapshot'] {
     return {
       roomId: this.roomId,
       roomCode: this.roomCode,
       status: this.status,
       host: this.host,
-      players: this.profiles(),
+      players: this.roleProfiles('player'),
+      spectators: this.roleProfiles('spectator'),
       boardgameMatchID: this.boardgameMatchID,
     };
   }
@@ -161,7 +172,8 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
         kind: 'custom-room',
         roomCode: this.roomCode,
         status: this.status,
-        playerCount: this.profiles().length,
+        playerCount: this.roleProfiles('player').length,
+        spectatorCount: this.roleProfiles('spectator').length,
         boardgameMatchID: this.boardgameMatchID,
       },
     });

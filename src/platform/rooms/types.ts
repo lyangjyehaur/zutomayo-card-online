@@ -83,6 +83,7 @@ export interface PlatformClientMessages {
     status: CustomRoomStatus;
     host?: PlatformClientProfile;
     players: PlatformClientProfile[];
+    spectators: PlatformClientProfile[];
     boardgameMatchID?: string;
   };
   customRoomCancelled: {
@@ -155,6 +156,7 @@ export interface CustomRoomMetadata {
   roomCode: string;
   status: CustomRoomStatus;
   playerCount: number;
+  spectatorCount: number;
   boardgameMatchID?: string;
 }
 
