@@ -524,7 +524,6 @@ describe('server routes', () => {
           },
         ],
       });
-      mockMatchParticipant();
 
       const res = await sendRequest('GET', '/api/chat/unread?limit=10', null, userUnsafeHeaders('u_reader'));
       expect(res.statusCode).toBe(200);
@@ -546,6 +545,50 @@ describe('server routes', () => {
         'u_reader',
         true,
         [],
+        true,
+        true,
+      ]);
+    });
+
+    it('GET /api/chat/unread derives direct chat visibility from durable friendships', async () => {
+      mockQuery.mockReset();
+      mockQuery.mockResolvedValueOnce({ rows: [{ friend_user_id: 'u_friend' }] });
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'direct:v1:u_friend:u_reader',
+            type: 'direct',
+            subject_id: 'v1:u_friend:u_reader',
+            title: 'Friend chat',
+            status: 'active',
+            created_at: '2026-07-10T00:00:00.000Z',
+            updated_at: '2026-07-10T00:00:06.000Z',
+            unread_count: '1',
+            latest_message_at: '2026-07-10T00:00:06.000Z',
+            latest_message_id: 'chat_msg_direct_latest',
+          },
+        ],
+      });
+
+      const res = await sendRequest('GET', '/api/chat/unread?limit=10', null, userUnsafeHeaders('u_reader'));
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as { conversations: Array<Record<string, unknown>> };
+      expect(body.conversations).toEqual([
+        expect.objectContaining({
+          id: 'direct:v1:u_friend:u_reader',
+          type: 'direct',
+          subjectId: 'v1:u_friend:u_reader',
+          unreadCount: 1,
+          latestMessageId: 'chat_msg_direct_latest',
+        }),
+      ]);
+      expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM user_friends'), ['u_reader']);
+      expect(mockQuery).toHaveBeenNthCalledWith(2, expect.stringContaining('c.subject_id = ANY($5::text[])'), [
+        'u_reader',
+        10,
+        'u_reader',
+        true,
+        ['v1:u_friend:u_reader'],
         true,
         true,
       ]);
