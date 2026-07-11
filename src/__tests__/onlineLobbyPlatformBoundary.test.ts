@@ -137,4 +137,30 @@ describe('online lobby platform boundary', () => {
     expect(previewSnippet).not.toContain('authorDisplayName');
     expect(previewSnippet).not.toContain('authorRole');
   });
+
+  it('resumes accepted outgoing invite rooms from Colyseus snapshots', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+    const inviteStartIndex = lobbySource.indexOf('const startAcceptedInviteMatch =');
+    const snapshotIndex = lobbySource.indexOf('onSnapshot: (snapshot) =>');
+    const acceptedIndex = lobbySource.indexOf('onAccepted: (message) =>');
+    const relayIndex = lobbySource.indexOf("room?.send('boardgameMatchReady'", inviteStartIndex);
+    const inviteSource = lobbySource.slice(
+      inviteStartIndex,
+      lobbySource.indexOf('onBoardgameMatchReady:', acceptedIndex),
+    );
+
+    expect(inviteStartIndex).toBeGreaterThan(-1);
+    expect(snapshotIndex).toBeGreaterThan(inviteStartIndex);
+    expect(acceptedIndex).toBeGreaterThan(snapshotIndex);
+    expect(relayIndex).toBeGreaterThan(inviteStartIndex);
+    expect(lobbySource).toContain('let hostStartRequested = false');
+    expect(inviteSource).toContain('hostStartRequested = true');
+    expect(inviteSource).toContain("snapshot.status !== 'accepted'");
+    expect(inviteSource).toContain('startAcceptedInviteMatch();');
+    expect(inviteSource.match(/startAcceptedInviteMatch\(\);/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(inviteSource).toContain(
+      'pendingInviteHostSessionRef.current = { inviteId, friendUserId: friend.userId, session }',
+    );
+    expect(inviteSource).toContain("room?.send('boardgameMatchReady'");
+  });
 });

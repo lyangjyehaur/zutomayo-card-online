@@ -947,6 +947,29 @@ export function OnlineLobbyPage({
     setError('');
     leavePlatformInviteRoom();
     activeOutgoingInviteIdRef.current = inviteId;
+    let hostStartRequested = false;
+    const startAcceptedInviteMatch = () => {
+      if (activeOutgoingInviteIdRef.current !== inviteId || hostStartRequested) return;
+      hostStartRequested = true;
+      setFriendInviteActionId(`start:${friend.userId}`);
+      showToast({ title: t('friend.inviteAccepted'), kind: 'success' });
+      void onStartOnline(undefined, effectivePlayerName, { navigate: false })
+        .then((session) => {
+          if (activeOutgoingInviteIdRef.current !== inviteId) return;
+          pendingInviteHostSessionRef.current = { inviteId, friendUserId: friend.userId, session };
+          const room = platformInviteRoomRef.current;
+          room?.send('boardgameMatchReady', {
+            boardgameMatchID: session.matchID,
+          });
+        })
+        .catch((err) => {
+          hostStartRequested = false;
+          pendingInviteHostSessionRef.current = null;
+          Sentry.captureException(err, { tags: { action: 'platform-invite-host-start' } });
+          setError(onlineErrorMessage(err));
+          setFriendInviteActionId(null);
+        });
+    };
 
     try {
       const room = await createPlatformInvite(
@@ -957,26 +980,13 @@ export function OnlineLobbyPage({
           displayName: effectivePlayerName,
         },
         {
+          onSnapshot: (snapshot) => {
+            if (snapshot.inviteId !== inviteId || snapshot.status !== 'accepted') return;
+            startAcceptedInviteMatch();
+          },
           onAccepted: (message) => {
             if (message.inviteId !== inviteId) return;
-            if (activeOutgoingInviteIdRef.current !== inviteId) return;
-            setFriendInviteActionId(`start:${friend.userId}`);
-            showToast({ title: t('friend.inviteAccepted'), kind: 'success' });
-            void onStartOnline(undefined, effectivePlayerName, { navigate: false })
-              .then((session) => {
-                if (activeOutgoingInviteIdRef.current !== inviteId) return;
-                pendingInviteHostSessionRef.current = { inviteId, friendUserId: friend.userId, session };
-                const room = platformInviteRoomRef.current;
-                room?.send('boardgameMatchReady', {
-                  boardgameMatchID: session.matchID,
-                });
-              })
-              .catch((err) => {
-                pendingInviteHostSessionRef.current = null;
-                Sentry.captureException(err, { tags: { action: 'platform-invite-host-start' } });
-                setError(onlineErrorMessage(err));
-                setFriendInviteActionId(null);
-              });
+            startAcceptedInviteMatch();
           },
           onBoardgameMatchReady: (message) => {
             const pending = pendingInviteHostSessionRef.current;
