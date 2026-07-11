@@ -461,6 +461,20 @@ export function platformQuickMatchMatchedFromMessage(message: unknown): Platform
   };
 }
 
+export function platformQuickMatchMatchedFromSnapshot(
+  snapshot: PlatformQuickMatchSnapshot,
+  sessionId: string | undefined,
+): PlatformQuickMatchMatched | null {
+  if (snapshot.status !== 'matched' || !snapshot.hostSessionId || !sessionId) return null;
+  const self = snapshot.players.find((profile) => profile.sessionId === sessionId);
+  if (!self) return null;
+  return {
+    roomId: snapshot.roomId,
+    role: snapshot.hostSessionId === sessionId ? 'host' : 'guest',
+    opponent: snapshot.players.find((profile) => profile.sessionId !== sessionId),
+  };
+}
+
 export function platformBoardgameMatchReadyFromMessage(message: unknown): PlatformBoardgameMatchReady | null {
   if (!message || typeof message !== 'object') return null;
   const data = message as { boardgameMatchID?: unknown };
@@ -744,7 +758,13 @@ export async function connectPlatformQuickMatch(
 
   room.onMessage('quickMatchSnapshot', (message) => {
     const snapshot = platformQuickMatchSnapshotFromMessage(message);
-    if (snapshot) handlers.onSnapshot?.(snapshot);
+    if (!snapshot) return;
+    handlers.onSnapshot?.(snapshot);
+    const matched = platformQuickMatchMatchedFromSnapshot(snapshot, room.sessionId);
+    if (matched) handlers.onMatched?.(matched);
+    if (snapshot.status === 'finished' && snapshot.boardgameMatchID) {
+      handlers.onBoardgameMatchReady?.({ boardgameMatchID: snapshot.boardgameMatchID });
+    }
   });
   room.onMessage('quickMatchMatched', (message) => {
     const matched = platformQuickMatchMatchedFromMessage(message);

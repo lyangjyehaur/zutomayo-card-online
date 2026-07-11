@@ -3,6 +3,7 @@ import {
   buildPlatformFriendInviteId,
   connectPlatformLobby,
   connectPlatformMatchShell,
+  connectPlatformQuickMatch,
   createPlatformCustomRoom,
   createPlatformInvite,
   isPlatformBoardgameRelayAcknowledged,
@@ -19,6 +20,7 @@ import {
   platformOnlineCountFromMessage,
   platformPresenceFromMatchShellMessage,
   platformQuickMatchMatchedFromMessage,
+  platformQuickMatchMatchedFromSnapshot,
   platformQuickMatchSnapshotFromMessage,
   resolvePlatformEndpoint,
   shouldLinkPlatformMatchShell,
@@ -263,6 +265,52 @@ describe('platform client helpers', () => {
       opponent: undefined,
     });
     expect(platformQuickMatchMatchedFromMessage({ roomId: 'room_1', role: 'observer' })).toBeNull();
+    expect(
+      platformQuickMatchMatchedFromSnapshot(
+        {
+          roomId: 'room_1',
+          status: 'matched',
+          hostSessionId: 's_1',
+          players: [
+            {
+              sessionId: 's_1',
+              userId: 'u_host',
+              displayName: 'Host',
+              role: 'player',
+              joinedAt: 1000,
+            },
+            {
+              sessionId: 's_2',
+              userId: 'u_guest',
+              displayName: 'Guest',
+              role: 'player',
+              joinedAt: 1001,
+            },
+          ],
+        },
+        's_2',
+      ),
+    ).toEqual({
+      roomId: 'room_1',
+      role: 'guest',
+      opponent: {
+        sessionId: 's_1',
+        userId: 'u_host',
+        displayName: 'Host',
+        role: 'player',
+        joinedAt: 1000,
+      },
+    });
+    expect(
+      platformQuickMatchMatchedFromSnapshot(
+        {
+          roomId: 'room_1',
+          status: 'waiting',
+          players: [],
+        },
+        's_1',
+      ),
+    ).toBeNull();
     expect(platformBoardgameMatchReadyFromMessage({ boardgameMatchID: ' bgio-match-1 ' })).toEqual({
       boardgameMatchID: 'bgio-match-1',
     });
@@ -868,6 +916,99 @@ describe('platform client helpers', () => {
         }),
       }),
     );
+  });
+
+  it('recovers quick-match matched and ready lifecycle from snapshots', async () => {
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+    const room = {
+      sessionId: 'session_guest',
+      onMessage: vi.fn((type: string, handler: (message: unknown) => void) => {
+        messageHandlers.set(type, handler);
+      }),
+      onLeave: vi.fn(),
+    };
+    const post = vi.fn(async () => ({
+      data: {
+        name: 'quick_match',
+        roomId: 'platform_quick_match_1',
+        sessionId: 'session_guest',
+      },
+    }));
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = vi.fn(() => room);
+        },
+      ),
+    }));
+    const onSnapshot = vi.fn();
+    const onMatched = vi.fn();
+    const onBoardgameMatchReady = vi.fn();
+
+    await connectPlatformQuickMatch(
+      {
+        userId: 'u_guest',
+        displayName: 'Guest',
+      },
+      {
+        onSnapshot,
+        onMatched,
+        onBoardgameMatchReady,
+      },
+    );
+
+    messageHandlers.get('quickMatchSnapshot')?.({
+      roomId: 'platform_quick_match_1',
+      status: 'matched',
+      hostSessionId: 'session_host',
+      players: [
+        {
+          sessionId: 'session_host',
+          userId: 'u_host',
+          displayName: 'Host',
+          role: 'player',
+          joinedAt: 1000,
+        },
+        {
+          sessionId: 'session_guest',
+          userId: 'u_guest',
+          displayName: 'Guest',
+          role: 'player',
+          joinedAt: 1001,
+        },
+      ],
+    });
+    messageHandlers.get('quickMatchSnapshot')?.({
+      roomId: 'platform_quick_match_1',
+      status: 'finished',
+      hostSessionId: 'session_host',
+      boardgameMatchID: 'bgio-match-1',
+      players: [
+        {
+          sessionId: 'session_host',
+          userId: 'u_host',
+          displayName: 'Host',
+          role: 'player',
+          joinedAt: 1000,
+        },
+        {
+          sessionId: 'session_guest',
+          userId: 'u_guest',
+          displayName: 'Guest',
+          role: 'player',
+          joinedAt: 1001,
+        },
+      ],
+    });
+
+    expect(onSnapshot).toHaveBeenCalledTimes(2);
+    expect(onMatched).toHaveBeenCalledWith({
+      roomId: 'platform_quick_match_1',
+      role: 'guest',
+      opponent: expect.objectContaining({ sessionId: 'session_host', userId: 'u_host' }),
+    });
+    expect(onBoardgameMatchReady).toHaveBeenCalledWith({ boardgameMatchID: 'bgio-match-1' });
   });
 
   it('only retries finished invite joins when explicitly requested', async () => {
