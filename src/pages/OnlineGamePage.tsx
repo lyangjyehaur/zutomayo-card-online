@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { loadAnonymousIdentity } from '../anonymousIdentity';
 import { isVersionMismatchError, reloadForAppUpdate } from '../clientVersion';
 import { OnlineGame } from '../components/OnlineGame';
 import { OnlineRoomInfo } from '../components/OnlineRoomInfo';
 import { Alert, Button, Dialog, PageShell, Panel } from '../ui';
 import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
+import { buildOnlineGameMatchShellJoinOptions } from '../onlineMatchShell';
 import {
   clearStoredOnlineSession,
   leaveOnlineSession,
@@ -18,7 +20,12 @@ import {
   onlineStatusPanelCopy,
   type OnlineRoomStatus,
 } from '../onlineRoomStatus';
-import { createPlatformCustomRoom, type PlatformCustomRoom } from '../platformClient';
+import {
+  connectPlatformMatchShell,
+  createPlatformCustomRoom,
+  type PlatformCustomRoom,
+  type PlatformMatchShellRoom,
+} from '../platformClient';
 
 type MatchPlayer = {
   id: number;
@@ -110,6 +117,9 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [actionError, setActionError] = useState('');
   const platformCustomRoomRef = useRef<PlatformCustomRoom | null>(null);
+  const platformMatchShellRef = useRef<PlatformMatchShellRoom | null>(null);
+  const platformMatchShellKeyRef = useRef<string | null>(null);
+  const platformMatchShellAttemptRef = useRef(0);
   const latestReconnectStatusRef = useRef(reconnectStatus);
   // P2-13：Socket.IO 偵測到對手加入時設為 true，用來停止 HTTP fallback 並推進到 ready。
   const opponentJoinedRef = useRef(false);
@@ -137,6 +147,13 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
     }
     void room?.leave(true).catch(() => undefined);
     platformCustomRoomRef.current = null;
+  }, []);
+
+  const leavePlatformMatchShell = useCallback(() => {
+    platformMatchShellAttemptRef.current += 1;
+    void platformMatchShellRef.current?.leave(true).catch(() => undefined);
+    platformMatchShellRef.current = null;
+    platformMatchShellKeyRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -313,6 +330,78 @@ export function OnlineGamePage({ session, onClearSession, onJoinSharedRoom, onCr
     () => () => leavePlatformCustomRoom(latestReconnectStatusRef.current === 'waiting'),
     [leavePlatformCustomRoom],
   );
+
+  useEffect(() => () => leavePlatformMatchShell(), [leavePlatformMatchShell]);
+
+  useEffect(() => {
+    const shellOptions = buildOnlineGameMatchShellJoinOptions({
+      activeSession,
+      matchID,
+      reconnectStatus,
+      spectatorMode,
+      spectatorIdentity: !activeSession && spectatorMode ? loadAnonymousIdentity() : undefined,
+    });
+
+    if (!shellOptions) {
+      leavePlatformMatchShell();
+      return;
+    }
+
+    const shellKey = [
+      shellOptions.boardgameMatchID,
+      shellOptions.role,
+      shellOptions.role === 'player' ? shellOptions.boardgamePlayerID : shellOptions.userId,
+    ].join(':');
+
+    if (platformMatchShellRef.current && platformMatchShellKeyRef.current === shellKey) return;
+
+    leavePlatformMatchShell();
+    platformMatchShellKeyRef.current = shellKey;
+
+    let cancelled = false;
+    let connectedRoom: PlatformMatchShellRoom | null = null;
+    const attemptId = ++platformMatchShellAttemptRef.current;
+    void connectPlatformMatchShell(shellOptions, {
+      onDisconnect: () => {
+        if (
+          platformMatchShellAttemptRef.current === attemptId &&
+          platformMatchShellKeyRef.current === shellKey &&
+          platformMatchShellRef.current === connectedRoom
+        ) {
+          platformMatchShellRef.current = null;
+          platformMatchShellKeyRef.current = null;
+        }
+      },
+    }).then(
+      (room) => {
+        if (cancelled) {
+          void room.leave(true).catch(() => undefined);
+          return;
+        }
+        connectedRoom = room;
+        platformMatchShellRef.current = room;
+      },
+      (err) => {
+        if (platformMatchShellAttemptRef.current === attemptId && platformMatchShellKeyRef.current === shellKey) {
+          platformMatchShellKeyRef.current = null;
+        }
+        Sentry.addBreadcrumb({
+          category: 'platform',
+          message: 'match shell presence unavailable',
+          level: 'warning',
+          data: {
+            match_id: shellOptions.boardgameMatchID,
+            role: shellOptions.role,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        });
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSession, leavePlatformMatchShell, matchID, reconnectStatus, spectatorMode]);
 
   const retryStatusCheck = useCallback(() => {
     setActionError('');
