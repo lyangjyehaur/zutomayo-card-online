@@ -100,4 +100,19 @@ describe('online lobby platform boundary', () => {
     expect(historySource).toContain('initialChatSourceMatchId');
     expect(historySource).toContain('historyChatRecordFromSourceMatchId(sourceMatchId)');
   });
+
+  it('emits match chat previews only after durable REST persistence and without message content', () => {
+    const onlineGameSource = readRepoFile('src/components/OnlineGame.tsx');
+    const sendIndex = onlineGameSource.indexOf('const result = await sendChatMessage({');
+    const previewIndex = onlineGameSource.indexOf("platformRoomRef.current?.send('chatPreview', {");
+    const previewSnippet = onlineGameSource.slice(previewIndex, previewIndex + 260);
+
+    expect(sendIndex).toBeGreaterThan(-1);
+    expect(previewIndex).toBeGreaterThan(sendIndex);
+    expect(previewSnippet).toContain('conversationId: result.conversation.id');
+    expect(previewSnippet).toContain('messageId: result.message.id');
+    expect(previewSnippet).not.toContain('content');
+    expect(previewSnippet).not.toContain('authorDisplayName');
+    expect(previewSnippet).not.toContain('authorRole');
+  });
 });
