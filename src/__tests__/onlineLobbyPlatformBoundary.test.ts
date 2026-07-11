@@ -101,6 +101,26 @@ describe('online lobby platform boundary', () => {
     expect(historySource).toContain('historyChatRecordFromSourceMatchId(sourceMatchId)');
   });
 
+  it('reopens non-match unread chats through durable lobby chat surfaces', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+    const openUnreadStart = lobbySource.indexOf('const openUnreadConversation =');
+    const openUnreadEnd = lobbySource.indexOf('const openFriendChat =');
+    const openUnreadSource = lobbySource.slice(openUnreadStart, openUnreadEnd);
+
+    expect(openUnreadStart).toBeGreaterThan(-1);
+    expect(openUnreadEnd).toBeGreaterThan(openUnreadStart);
+    expect(openUnreadSource).toContain("if (action.kind === 'room')");
+    expect(openUnreadSource).toContain('setRoomChatSubjectOverride(action.subjectId)');
+    expect(openUnreadSource).toContain('setMatchID(action.subjectId)');
+    expect(openUnreadSource).toContain('scrollToPanel(customRoomPanelRef)');
+    expect(openUnreadSource).toContain("if (action.kind === 'global')");
+    expect(openUnreadSource).toContain("conversationType: 'global'");
+    expect(openUnreadSource).toContain('lastReadMessageId: unreadConversationLatestMessageId(conversation)');
+    expect(openUnreadSource).toContain("if (action.kind === 'direct')");
+    expect(openUnreadSource).toContain('setDirectChat({ subjectId: action.subjectId');
+    expect(openUnreadSource).toContain('scrollToPanel(directChatPanelRef)');
+  });
+
   it('emits match chat previews only after durable REST persistence and without message content', () => {
     const onlineGameSource = readRepoFile('src/components/OnlineGame.tsx');
     const sendIndex = onlineGameSource.indexOf('const result = await sendChatMessage({');
