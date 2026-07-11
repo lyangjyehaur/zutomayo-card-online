@@ -113,17 +113,8 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       this.broadcast('boardgameMatchReady', { boardgameMatchID: this.boardgameMatchID });
     }
 
+    await this.recordRoomParticipant(client.userData);
     await this.refreshMetadata();
-    void CustomRoom.participantStore
-      .recordRoomParticipant({
-        roomCode: this.roomCode,
-        userId: auth.userId,
-        role,
-        displayName: auth.displayName,
-      })
-      .catch((err) => {
-        logger.warn({ err, roomCode: this.roomCode, userId: auth.userId }, 'failed to record custom-room participant');
-      });
     this.clock.setTimeout(() => {
       client.send('customRoomSnapshot', this.snapshot());
       if (this.boardgameMatchID && this.status === 'ready') {
@@ -182,6 +173,22 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
         .map((profile) => profile.userId),
     );
     return guestPlayerUserIds.size === 0 || guestPlayerUserIds.has(userId) ? 'player' : 'spectator';
+  }
+
+  private async recordRoomParticipant(profile: PlatformClientProfile): Promise<void> {
+    await CustomRoom.participantStore
+      .recordRoomParticipant({
+        roomCode: this.roomCode,
+        userId: profile.userId,
+        role: profile.role,
+        displayName: profile.displayName,
+      })
+      .catch((err) => {
+        logger.warn(
+          { err, roomCode: this.roomCode, userId: profile.userId },
+          'failed to record custom-room participant',
+        );
+      });
   }
 
   private snapshot(ignoredSessionId?: string): PlatformClient['~messages']['customRoomSnapshot'] {

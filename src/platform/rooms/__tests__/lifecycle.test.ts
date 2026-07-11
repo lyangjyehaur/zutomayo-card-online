@@ -74,8 +74,8 @@ describe('platform room lifecycle', () => {
       handlers.set(type, handler);
       return room;
     }) as never);
-    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void) => {
-      handler();
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void, timeout?: number) => {
+      if (timeout && timeout <= 100) handler();
       return { clear: vi.fn() };
     }) as never);
 
@@ -138,8 +138,8 @@ describe('platform room lifecycle', () => {
       handlers.set(type, handler);
       return room;
     }) as never);
-    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void) => {
-      handler();
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void, timeout?: number) => {
+      if (typeof timeout === 'number' && timeout <= 100) handler();
       return { clear: vi.fn() };
     }) as never);
 
@@ -312,6 +312,40 @@ describe('platform room lifecycle', () => {
       role: 'spectator',
       displayName: 'Spectator',
     });
+  });
+
+  it('records durable custom-room participants before sending the initial room snapshot', async () => {
+    const events: string[] = [];
+    const recordRoomParticipant = vi.fn(async () => {
+      events.push('recordRoomParticipant');
+    });
+    CustomRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordRoomParticipant,
+    });
+    const room = new CustomRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void, timeout?: number) => {
+      if (typeof timeout === 'number' && timeout <= 100) handler();
+      return { clear: vi.fn() };
+    }) as never);
+
+    const spectator = client('session_spectator', {
+      userId: 'u_spectator',
+      displayName: 'Spectator',
+      role: 'spectator',
+      authenticated: true,
+    });
+    spectator.send.mockImplementation(() => {
+      events.push('customRoomSnapshot');
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(spectator);
+    await room.onJoin(spectator);
+
+    expect(events).toEqual(['recordRoomParticipant', 'customRoomSnapshot']);
   });
 
   it('records verified cookie identity instead of client-supplied custom-room ids', async () => {
