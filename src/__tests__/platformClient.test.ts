@@ -3,6 +3,7 @@ import {
   buildPlatformFriendInviteId,
   connectPlatformMatchShell,
   isPlatformBoardgameRelayAcknowledged,
+  joinPlatformCustomRoom,
   normalizeSeatReservation,
   platformBoardgameMatchReadyFromMessage,
   platformChatPreviewFromMessage,
@@ -391,5 +392,76 @@ describe('platform client helpers', () => {
       }),
     );
     expect(send).toHaveBeenCalledWith('linkBoardgameMatch', { boardgameMatchID: 'bgio-match-1' });
+  });
+
+  it('retries custom-room joins only through Colyseus room status filters', async () => {
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const post = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('waiting room not found'))
+      .mockResolvedValueOnce({
+        data: {
+          name: 'custom_room',
+          roomId: 'platform_room_1',
+          sessionId: 'session_1',
+        },
+      });
+    const consumeSeatReservation = vi.fn(() => room);
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await joinPlatformCustomRoom({
+      roomCode: 'ROOM42',
+      userId: 'u_guest',
+      displayName: 'Guest',
+    });
+
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      'matchmake/join/custom_room',
+      expect.objectContaining({
+        body: JSON.stringify({
+          roomCode: 'ROOM42',
+          userId: 'u_guest',
+          displayName: 'Guest',
+          role: 'player',
+          status: 'waiting',
+        }),
+      }),
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      'matchmake/join/custom_room',
+      expect.objectContaining({
+        body: JSON.stringify({
+          roomCode: 'ROOM42',
+          userId: 'u_guest',
+          displayName: 'Guest',
+          role: 'player',
+          status: 'ready',
+        }),
+      }),
+    );
+    expect(post.mock.calls.map(([path]) => path).join('\n')).not.toContain('/matchmaking/');
+    expect(post.mock.calls.map(([, request]) => JSON.stringify(request)).join('\n')).not.toContain('realMatchId');
+    expect(consumeSeatReservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session_1',
+        room: expect.objectContaining({
+          name: 'custom_room',
+          roomId: 'platform_room_1',
+        }),
+      }),
+    );
   });
 });
