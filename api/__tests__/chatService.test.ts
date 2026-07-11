@@ -1062,6 +1062,37 @@ describe('chat service', () => {
     );
   });
 
+  it('counts only unread visible or pending messages from other authors', async () => {
+    const pool = poolWithResults([{ rows: [] }]);
+
+    await expect(listUnreadChat({ pool, userId: 'u_reader', limit: 20 })).resolves.toEqual({
+      ok: true,
+      body: { conversations: [] },
+    });
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('m.author_user_id IS DISTINCT FROM $1'),
+      expect.any(Array),
+    );
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('m.deleted_at IS NULL'), expect.any(Array));
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("m.moderation_status IN ('visible', 'pending_review')"),
+      expect.any(Array),
+    );
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.not.stringContaining("m.moderation_status IN ('visible', 'pending_review', 'blocked')"),
+      expect.any(Array),
+    );
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('m.created_at > r.read_at'), [
+      'u_reader',
+      20,
+      'u_reader',
+      false,
+      [],
+      false,
+      false,
+    ]);
+  });
+
   it('keeps unread summaries for messages whose author account was tombstoned', async () => {
     const pool = poolWithResults([
       {
