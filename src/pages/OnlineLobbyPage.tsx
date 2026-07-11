@@ -612,6 +612,15 @@ export function OnlineLobbyPage({
               setCreatedMatchID('');
             }
           },
+          onBoardgameMatchReady: (message) => {
+            if (!isPlatformBoardgameRelayAcknowledged(nextSession.matchID, message)) return;
+            if (platformCustomRoomRef.current === room) {
+              platformCustomRoomRef.current = null;
+            }
+            setCreatedMatchID('');
+            void room.leave(true).catch(() => undefined);
+            navigateToOnlineSession(nextSession);
+          },
         },
       );
       platformCustomRoomRef.current = room;

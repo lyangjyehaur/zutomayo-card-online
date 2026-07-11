@@ -40,6 +40,9 @@ describe('online lobby platform boundary', () => {
     expect(lobbySource.indexOf('await createPlatformCustomRoom')).toBeLessThan(
       lobbySource.indexOf('setCreatedMatchID(nextSession.matchID)'),
     );
+    expect(lobbySource).toContain('onBoardgameMatchReady: (message) =>');
+    expect(lobbySource).toContain('isPlatformBoardgameRelayAcknowledged(nextSession.matchID, message)');
+    expect(lobbySource).toContain('navigateToOnlineSession(nextSession)');
   });
 
   it('persists stable platform identity for Colyseus participant evidence', () => {
