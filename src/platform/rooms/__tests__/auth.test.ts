@@ -99,14 +99,16 @@ describe('platform room auth', () => {
 
   it('falls back when an unauthenticated client supplies an account-shaped user id', () => {
     process.env.JWT_SECRET = 'test-platform-jwt-secret-at-least-32-characters';
-    const auth = authenticatePlatformClient(
-      { userId: 'u_spoofed', displayName: 'Mallory', role: 'player' },
-      authContext(),
-    );
+    for (const suppliedUserId of ['u_spoofed', 'user:u_spoofed', 'logto:u_spoofed', 'account:1234']) {
+      const auth = authenticatePlatformClient(
+        { userId: suppliedUserId, displayName: 'Mallory', role: 'player' },
+        authContext(),
+      );
 
-    expect(auth.authenticated).toBe(false);
-    expect(auth.userId).toMatch(/^guest:/);
-    expect(auth.userId).not.toBe('u_spoofed');
+      expect(auth.authenticated).toBe(false);
+      expect(auth.userId).toMatch(/^guest:/);
+      expect(auth.userId).not.toBe(suppliedUserId);
+    }
   });
 
   it('allows guest-shaped anonymous ids without JWT', () => {
@@ -117,6 +119,14 @@ describe('platform room auth', () => {
 
     expect(auth).toMatchObject({
       userId: 'anon:1234',
+      authenticated: false,
+      role: 'spectator',
+    });
+
+    expect(
+      authenticatePlatformClient({ userId: 'guest:room-1234', displayName: 'Guest', role: 'spectator' }, authContext()),
+    ).toMatchObject({
+      userId: 'guest:room-1234',
       authenticated: false,
       role: 'spectator',
     });

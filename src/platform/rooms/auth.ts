@@ -21,7 +21,7 @@ function cleanUserId(value: unknown, fallback: string): string {
 function cleanGuestUserId(value: unknown, fallback: string): string {
   const userId = cleanUserId(value, fallback);
   if (userId === fallback) return fallback;
-  if (userId.startsWith('u_') || userId.startsWith('user:')) return fallback;
+  if (!userId.startsWith('guest:') && !userId.startsWith('anon:')) return fallback;
   return userId;
 }
 
