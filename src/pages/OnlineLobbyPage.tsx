@@ -34,7 +34,7 @@ import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl, buildOnlineSpectatorPath } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
 import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge';
-import { resolvePlatformCustomRoomMatchID } from '../platform/customRoomRelay';
+import { customRoomRelayErrorKey, resolvePlatformCustomRoomMatchID } from '../platform/customRoomRelay';
 import { AuthSection } from '../components/lobby/AuthSection';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
@@ -112,6 +112,8 @@ function resolveDeckLabel(deckId: string, groups: DeckOptionGroup[]): string {
 }
 
 function onlineErrorMessage(error: unknown): string {
+  const customRoomRelayKey = customRoomRelayErrorKey(error);
+  if (customRoomRelayKey) return t(customRoomRelayKey);
   if (error instanceof Error && isOnlineRoomErrorKey(error.message)) return t(error.message);
   return t('online.connectionFailed');
 }

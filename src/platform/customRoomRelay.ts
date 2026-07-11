@@ -12,6 +12,11 @@ export class CustomRoomRelayError extends Error {
   }
 }
 
+export function customRoomRelayErrorKey(error: unknown): 'lobby.matchmakingTimeout' | 'lobby.onlineError' | null {
+  if (!(error instanceof CustomRoomRelayError)) return null;
+  return error.reason === 'timeout' ? 'lobby.matchmakingTimeout' : 'lobby.onlineError';
+}
+
 export type JoinPlatformCustomRoom = (
   options: PlatformCustomRoomOptions,
   handlers: PlatformCustomRoomHandlers,

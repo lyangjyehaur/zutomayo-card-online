@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CustomRoomRelayError,
+  customRoomRelayErrorKey,
   resolvePlatformCustomRoomMatchID,
   type JoinPlatformCustomRoom,
 } from '../platform/customRoomRelay';
@@ -54,7 +55,8 @@ describe('custom room platform relay', () => {
 
   it('rejects on timeout instead of falling back to the input room code', async () => {
     vi.useFakeTimers();
-    const joinPlatformCustomRoom = vi.fn(async () => mockRoom()) satisfies JoinPlatformCustomRoom;
+    const room = mockRoom();
+    const joinPlatformCustomRoom = vi.fn(async () => room) satisfies JoinPlatformCustomRoom;
 
     const matchID = resolvePlatformCustomRoomMatchID(resolverInput(joinPlatformCustomRoom, 1000));
     const observed = matchID.catch((err: unknown) => err);
@@ -66,6 +68,7 @@ describe('custom room platform relay', () => {
       reason: 'timeout',
     });
     expect(error).not.toBe('ROOM42');
+    expect(room.leave).toHaveBeenCalledWith(true);
   });
 
   it('rejects when the platform custom room is cancelled or disconnected', async () => {
@@ -84,5 +87,25 @@ describe('custom room platform relay', () => {
     const observedDisconnect = disconnected.catch((err: unknown) => err);
     handlers?.onDisconnect?.();
     await expect(observedDisconnect).resolves.toEqual(new CustomRoomRelayError('disconnected'));
+  });
+
+  it('rejects join failures as retryable room join errors', async () => {
+    const joinPlatformCustomRoom = vi.fn(async () => {
+      throw new Error('platform unavailable');
+    }) satisfies JoinPlatformCustomRoom;
+
+    const observed = resolvePlatformCustomRoomMatchID(resolverInput(joinPlatformCustomRoom)).catch(
+      (err: unknown) => err,
+    );
+
+    await expect(observed).resolves.toEqual(new CustomRoomRelayError('join_failed'));
+  });
+
+  it('maps relay failures to retryable lobby error keys', () => {
+    expect(customRoomRelayErrorKey(new CustomRoomRelayError('timeout'))).toBe('lobby.matchmakingTimeout');
+    expect(customRoomRelayErrorKey(new CustomRoomRelayError('cancelled'))).toBe('lobby.onlineError');
+    expect(customRoomRelayErrorKey(new CustomRoomRelayError('disconnected'))).toBe('lobby.onlineError');
+    expect(customRoomRelayErrorKey(new CustomRoomRelayError('join_failed'))).toBe('lobby.onlineError');
+    expect(customRoomRelayErrorKey(new Error('other'))).toBeNull();
   });
 });
