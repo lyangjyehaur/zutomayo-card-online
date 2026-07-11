@@ -704,22 +704,6 @@ describe('chat service', () => {
             unread_count: '1',
             latest_message_at: '2026-07-10T00:00:05.000Z',
           },
-          {
-            ...conversationRow,
-            id: 'direct:u_3:u_4',
-            type: 'direct',
-            subject_id: 'u_3:u_4',
-            unread_count: '5',
-            latest_message_at: '2026-07-10T00:00:06.000Z',
-          },
-          {
-            ...conversationRow,
-            id: 'global:staff-room',
-            type: 'global',
-            subject_id: 'staff-room',
-            unread_count: '9',
-            latest_message_at: '2026-07-10T00:00:07.000Z',
-          },
         ],
       },
     ]);
@@ -743,7 +727,61 @@ describe('chat service', () => {
     });
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining("c.type <> 'global' OR c.subject_id = 'online-lobby'"),
-      ['logto:u_2', 200, 'logto%3Au_2'],
+      ['logto:u_2', 200, 'logto%3Au_2', false, [], false, false],
+    );
+  });
+
+  it('pushes unread chat ACLs into the database query before applying the limit', async () => {
+    const pool = poolWithResults([
+      { rows: [{ friend_user_id: 'u_friend' }] },
+      {
+        rows: [
+          {
+            ...conversationRow,
+            id: 'direct:v1:u_friend:u_reader',
+            type: 'direct',
+            subject_id: 'v1:u_friend:u_reader',
+            unread_count: '1',
+            latest_message_at: '2026-07-10T00:00:05.000Z',
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      listUnreadChat({
+        pool,
+        userId: 'u_reader',
+        enforceDirectFriendship: true,
+        enforceMatchParticipation: true,
+        enforceRoomParticipation: true,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        conversations: [
+          expect.objectContaining({
+            id: 'direct:v1:u_friend:u_reader',
+            unreadCount: 1,
+            latestMessageAt: '2026-07-10T00:00:05.000Z',
+          }),
+        ],
+      },
+    });
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM user_friends'), ['u_reader']);
+    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('FROM platform_match_participants'), [
+      'u_reader',
+      50,
+      'u_reader',
+      true,
+      ['v1:u_friend:u_reader'],
+      true,
+      true,
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('FROM platform_room_participants'),
+      expect.any(Array),
     );
   });
 
@@ -776,6 +814,10 @@ describe('chat service', () => {
       'u_2',
       20,
       'u_2',
+      false,
+      [],
+      false,
+      false,
     ]);
   });
 

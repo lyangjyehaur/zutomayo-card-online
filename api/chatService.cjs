@@ -112,6 +112,23 @@ function directConversationPeerId(subjectId, userId) {
   return participants.find((participant) => participant !== cleanUserId) || '';
 }
 
+function directConversationSubjectForUsers(userId, peerUserId) {
+  const cleanUserId = normalizeSubjectId(userId);
+  const cleanPeerUserId = normalizeSubjectId(peerUserId);
+  if (!cleanUserId || !cleanPeerUserId || cleanUserId === cleanPeerUserId) return '';
+  return `v1:${[cleanUserId, cleanPeerUserId].sort().map(encodeURIComponent).join(':')}`;
+}
+
+async function directFriendConversationSubjects({ pool, userId }) {
+  const { rows } = await pool.query(
+    `SELECT friend_user_id
+     FROM user_friends
+     WHERE user_id = $1`,
+    [userId],
+  );
+  return rows.map((row) => directConversationSubjectForUsers(userId, row.friend_user_id)).filter(Boolean);
+}
+
 async function hasDirectFriendship({ pool, userId, subjectId }) {
   const peerUserId = directConversationPeerId(subjectId, userId);
   if (!peerUserId) return false;
@@ -605,6 +622,7 @@ async function listUnreadChat({
   if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
   const lim = clampLimit(limit, 50, 200);
   const encodedUserId = encodeURIComponent(userId);
+  const directSubjectIds = enforceDirectFriendship ? await directFriendConversationSubjects({ pool, userId }) : [];
   const { rows } = await pool.query(
     `SELECT c.id, c.type, c.subject_id, c.title, c.status, c.created_at, c.updated_at,
             COUNT(m.id) AS unread_count,
@@ -620,39 +638,66 @@ async function listUnreadChat({
        AND (
          c.type <> 'direct'
          OR (
-           c.subject_id LIKE 'v1:%'
-           AND $3 = ANY(string_to_array(SUBSTRING(c.subject_id FROM 4), ':'))
+           $4 = TRUE
+           AND c.subject_id = ANY($5::text[])
          )
          OR (
-           c.subject_id NOT LIKE 'v1:%'
-           AND $1 = ANY(string_to_array(c.subject_id, ':'))
+           $4 = FALSE
+           AND (
+             (
+               c.subject_id LIKE 'v1:%'
+               AND $3 = ANY(string_to_array(SUBSTRING(c.subject_id FROM 4), ':'))
+             )
+             OR (
+               c.subject_id NOT LIKE 'v1:%'
+               AND $1 = ANY(string_to_array(c.subject_id, ':'))
+             )
+           )
+         )
+       )
+       AND (
+         $6 = FALSE
+         OR c.type <> 'match'
+         OR EXISTS (
+           SELECT 1
+           FROM platform_match_participants pmp
+           WHERE pmp.boardgame_match_id = c.subject_id
+             AND pmp.user_id = $1
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM matches played_match
+           WHERE played_match.source_match_id = c.subject_id
+             AND (played_match.player0_id = $1 OR played_match.player1_id = $1)
+         )
+       )
+       AND (
+         $7 = FALSE
+         OR c.type <> 'room'
+         OR EXISTS (
+           SELECT 1
+           FROM platform_room_participants prp
+           WHERE prp.room_code = c.subject_id
+             AND prp.user_id = $1
          )
        )
      GROUP BY c.id
      ORDER BY latest_message_at DESC
      LIMIT $2`,
-    [userId, lim, encodedUserId],
+    [
+      userId,
+      lim,
+      encodedUserId,
+      Boolean(enforceDirectFriendship),
+      directSubjectIds,
+      Boolean(enforceMatchParticipation),
+      Boolean(enforceRoomParticipation),
+    ],
   );
-  const accessibleConversations = [];
-  for (const row of rows) {
-    if (
-      await canAccessConversationWithPolicy({
-        pool,
-        userId,
-        type: row.type,
-        subjectId: row.subject_id,
-        enforceDirectFriendship,
-        enforceMatchParticipation,
-        enforceRoomParticipation,
-      })
-    ) {
-      accessibleConversations.push(row);
-    }
-  }
   return {
     ok: true,
     body: {
-      conversations: accessibleConversations.map((row) => ({
+      conversations: rows.map((row) => ({
         ...mapConversation(row),
         unreadCount: Number(row.unread_count) || 0,
         latestMessageAt: row.latest_message_at || null,

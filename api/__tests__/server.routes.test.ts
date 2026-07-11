@@ -507,6 +507,7 @@ describe('server routes', () => {
     });
 
     it('GET /api/chat/unread keeps tombstoned-author conversations in summaries', async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
       mockQuery.mockResolvedValueOnce({
         rows: [
           {
@@ -536,10 +537,16 @@ describe('server routes', () => {
           latestMessageAt: '2026-07-10T00:00:06.000Z',
         }),
       ]);
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining("$3 = ANY(string_to_array(SUBSTRING(c.subject_id FROM 4), ':'))"),
-        ['u_reader', 10, 'u_reader'],
-      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader']);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM platform_match_participants'), [
+        'u_reader',
+        10,
+        'u_reader',
+        true,
+        [],
+        true,
+        true,
+      ]);
     });
 
     it('GET /api/admin/users returns 401 without admin token', async () => {
