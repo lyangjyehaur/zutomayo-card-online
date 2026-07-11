@@ -184,10 +184,11 @@ async function matchChatParticipantRole({ pool, userId, subjectId }) {
      FROM matches
      WHERE source_match_id = $1
        AND (player0_id = $2 OR player1_id = $2)
-     LIMIT 1`,
+    `,
     [matchId, userId],
   );
-  return rows[0]?.role === 'player' ? 'player' : rows.length > 0 ? 'spectator' : '';
+  if (rows.some((row) => row.role === 'player')) return 'player';
+  return rows.length > 0 ? 'spectator' : '';
 }
 
 async function hasRoomChatAccess({ pool, userId, subjectId }) {

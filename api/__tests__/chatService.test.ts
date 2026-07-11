@@ -892,6 +892,45 @@ describe('chat service', () => {
     );
   });
 
+  it('prefers durable boardgame player evidence over spectator match presence', async () => {
+    const playerMessage = { ...messageRow, author_role: 'player' };
+    const pool = poolWithResults([
+      { rows: [{ role: 'spectator' }, { role: 'player' }] },
+      { rows: [] },
+      { rows: [conversationRow] },
+      { rows: [playerMessage] },
+      { rows: [] },
+    ]);
+
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_1',
+        body: {
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+          content: 'hello',
+          authorDisplayName: 'Alice',
+          authorRole: 'spectator',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      body: {
+        message: expect.objectContaining({ authorRole: 'player' }),
+      },
+    });
+
+    expect(pool.query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('INSERT INTO chat_messages'),
+      expect.arrayContaining(['chat_msg_1', 'match:bgio-match-1', 'u_1', 'Alice', 'player']),
+    );
+  });
+
   it('uses durable custom-room participant role instead of client-reported chat role', async () => {
     const roomConversation = { ...conversationRow, id: 'room:ROOM42', type: 'room', subject_id: 'ROOM42' };
     const spectatorMessage = {
