@@ -47,6 +47,14 @@ describe('match chat access', () => {
         anonymousToken: 'token/value',
       }),
     ).toBe('anon:match:bgio_match_1:spectator:token_value');
+    expect(
+      matchPlatformPresenceUserId({
+        account: null,
+        matchID: 'm'.repeat(120),
+        spectator: true,
+        anonymousToken: 't'.repeat(120),
+      }).length,
+    ).toBeLessThanOrEqual(128);
 
     expect(
       matchPlatformPresenceUserId({
@@ -57,5 +65,14 @@ describe('match chat access', () => {
         anonymousToken: 'ignored',
       }),
     ).toBe('guest:match:bgio-match-1:player:0');
+    expect(
+      matchPlatformPresenceUserId({
+        account: null,
+        matchID: 'm'.repeat(120),
+        playerID: 'p'.repeat(120),
+        spectator: false,
+        anonymousToken: 'ignored',
+      }).length,
+    ).toBeLessThanOrEqual(128);
   });
 });

@@ -25,12 +25,12 @@ export function canSubmitMatchChat({
   return Boolean(account && content.trim() && status === 'ready');
 }
 
-function sanitizePresenceIdPart(value: string): string {
+function sanitizePresenceIdPart(value: string, maxLength: number): string {
   return (
     value
       .trim()
       .replace(/[^a-zA-Z0-9_-]/g, '_')
-      .slice(0, 80) || 'unknown'
+      .slice(0, maxLength) || 'unknown'
   );
 }
 
@@ -48,8 +48,8 @@ export function matchPlatformPresenceUserId({
   anonymousToken: string;
 }): string {
   if (account?.id) return account.id;
-  const cleanMatchID = sanitizePresenceIdPart(matchID);
-  const cleanToken = sanitizePresenceIdPart(anonymousToken);
+  const cleanMatchID = sanitizePresenceIdPart(matchID, 80);
+  const cleanToken = sanitizePresenceIdPart(anonymousToken, 24);
   if (spectator) return `anon:match:${cleanMatchID}:spectator:${cleanToken}`;
-  return `guest:match:${cleanMatchID}:player:${sanitizePresenceIdPart(playerID ?? 'unknown')}`;
+  return `guest:match:${cleanMatchID}:player:${sanitizePresenceIdPart(playerID ?? 'unknown', 16)}`;
 }
