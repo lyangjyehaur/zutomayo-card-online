@@ -849,6 +849,97 @@ describe('chat service', () => {
     );
   });
 
+  it('uses durable match participant role instead of client-reported chat role', async () => {
+    const spectatorMessage = { ...messageRow, author_role: 'spectator' };
+    const pool = poolWithResults([
+      { rows: [{ role: 'spectator' }] },
+      { rows: [] },
+      { rows: [conversationRow] },
+      { rows: [spectatorMessage] },
+      { rows: [] },
+    ]);
+
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_1',
+        body: {
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+          content: 'hello',
+          authorDisplayName: 'Alice',
+          authorRole: 'player',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      body: {
+        message: expect.objectContaining({ authorRole: 'spectator' }),
+      },
+    });
+
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM platform_match_participants'), [
+      'bgio-match-1',
+      'u_1',
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('INSERT INTO chat_messages'),
+      expect.arrayContaining(['chat_msg_1', 'match:bgio-match-1', 'u_1', 'Alice', 'spectator']),
+    );
+  });
+
+  it('uses durable custom-room participant role instead of client-reported chat role', async () => {
+    const roomConversation = { ...conversationRow, id: 'room:ROOM42', type: 'room', subject_id: 'ROOM42' };
+    const spectatorMessage = {
+      ...messageRow,
+      conversation_id: 'room:ROOM42',
+      author_role: 'spectator',
+    };
+    const pool = poolWithResults([
+      { rows: [{ role: 'spectator' }] },
+      { rows: [] },
+      { rows: [roomConversation] },
+      { rows: [spectatorMessage] },
+      { rows: [] },
+    ]);
+
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_1',
+        body: {
+          conversationType: 'room',
+          subjectId: 'ROOM42',
+          content: 'hello',
+          authorDisplayName: 'Alice',
+          authorRole: 'player',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+        enforceRoomParticipation: true,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      body: {
+        message: expect.objectContaining({ authorRole: 'spectator' }),
+      },
+    });
+
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM platform_room_participants'), [
+      'ROOM42',
+      'u_1',
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('INSERT INTO chat_messages'),
+      expect.arrayContaining(['chat_msg_1', 'room:ROOM42', 'u_1', 'Alice', 'spectator']),
+    );
+  });
+
   it('rejects disallowed public author roles before querying persistence', async () => {
     const pool = poolWithResults([]);
 

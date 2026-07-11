@@ -209,11 +209,11 @@ function parseBody(res: MockRes): Record<string, unknown> | string {
 }
 
 function mockMatchParticipant() {
-  mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+  mockQuery.mockResolvedValueOnce({ rows: [{ role: 'player' }], rowCount: 1 });
 }
 
 function mockRoomParticipant() {
-  mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+  mockQuery.mockResolvedValueOnce({ rows: [{ role: 'player' }], rowCount: 1 });
 }
 
 function base64urlJson(value: Record<string, unknown>) {

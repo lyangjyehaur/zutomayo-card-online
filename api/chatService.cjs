@@ -172,6 +172,24 @@ async function hasMatchChatAccess({ pool, userId, subjectId }) {
   return rows.length > 0;
 }
 
+async function matchChatParticipantRole({ pool, userId, subjectId }) {
+  const matchId = canonicalConversationSubjectId('match', subjectId);
+  if (!matchId) return '';
+  const { rows } = await pool.query(
+    `SELECT role
+     FROM platform_match_participants
+     WHERE boardgame_match_id = $1 AND user_id = $2
+     UNION
+     SELECT 'player' AS role
+     FROM matches
+     WHERE source_match_id = $1
+       AND (player0_id = $2 OR player1_id = $2)
+     LIMIT 1`,
+    [matchId, userId],
+  );
+  return rows[0]?.role === 'player' ? 'player' : rows.length > 0 ? 'spectator' : '';
+}
+
 async function hasRoomChatAccess({ pool, userId, subjectId }) {
   const roomCode = canonicalConversationSubjectId('room', subjectId);
   if (!roomCode) return false;
@@ -183,6 +201,19 @@ async function hasRoomChatAccess({ pool, userId, subjectId }) {
     [roomCode, userId],
   );
   return rows.length > 0;
+}
+
+async function roomChatParticipantRole({ pool, userId, subjectId }) {
+  const roomCode = canonicalConversationSubjectId('room', subjectId);
+  if (!roomCode) return '';
+  const { rows } = await pool.query(
+    `SELECT role
+     FROM platform_room_participants
+     WHERE room_code = $1 AND user_id = $2
+     LIMIT 1`,
+    [roomCode, userId],
+  );
+  return rows[0]?.role === 'player' ? 'player' : rows.length > 0 ? 'spectator' : '';
 }
 
 async function canAccessConversationWithPolicy({
@@ -199,6 +230,29 @@ async function canAccessConversationWithPolicy({
   if (enforceRoomParticipation && type === 'room') return hasRoomChatAccess({ pool, userId, subjectId });
   if (!enforceDirectFriendship || type !== 'direct') return true;
   return hasDirectFriendship({ pool, userId, subjectId });
+}
+
+async function writableAuthorRoleWithPolicy({
+  pool,
+  userId,
+  type,
+  subjectId,
+  requestedRole,
+  enforceDirectFriendship = false,
+  enforceMatchParticipation = false,
+  enforceRoomParticipation = false,
+}) {
+  if (!canAccessConversation(userId, type, subjectId)) return '';
+  if (enforceMatchParticipation && type === 'match') {
+    return matchChatParticipantRole({ pool, userId, subjectId });
+  }
+  if (enforceRoomParticipation && type === 'room') {
+    return roomChatParticipantRole({ pool, userId, subjectId });
+  }
+  if (enforceDirectFriendship && type === 'direct' && !(await hasDirectFriendship({ pool, userId, subjectId }))) {
+    return '';
+  }
+  return requestedRole;
 }
 
 function directConversationParticipants(subjectId) {
@@ -439,17 +493,17 @@ async function sendChatMessage({
   if (!type || !subjectId) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (!conversationKey(type, subjectId)) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (!allowedAuthorRoles.includes(role)) return { ok: false, status: 403, error: 'Forbidden' };
-  if (
-    !(await canAccessConversationWithPolicy({
-      pool,
-      userId: authorUserId,
-      type,
-      subjectId,
-      enforceDirectFriendship,
-      enforceMatchParticipation,
-      enforceRoomParticipation,
-    }))
-  ) {
+  const writableAuthorRole = await writableAuthorRoleWithPolicy({
+    pool,
+    userId: authorUserId,
+    type,
+    subjectId,
+    requestedRole: role,
+    enforceDirectFriendship,
+    enforceMatchParticipation,
+    enforceRoomParticipation,
+  });
+  if (!writableAuthorRole || !allowedAuthorRoles.includes(writableAuthorRole)) {
     return { ok: false, status: 403, error: 'Forbidden' };
   }
   if (!content) return { ok: false, status: 400, error: 'Message content is required' };
@@ -491,7 +545,7 @@ async function sendChatMessage({
       conversation.body.id,
       authorUserId,
       displayName,
-      role,
+      writableAuthorRole,
       content,
       normalizeLanguage(body.sourceLanguage),
       status,
