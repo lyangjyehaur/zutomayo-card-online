@@ -1,4 +1,6 @@
 import { Room, type AuthContext } from '@colyseus/core';
+import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
+import { platformLogger as logger } from '../logger';
 import { authenticatePlatformClient } from './auth';
 import type {
   BoardgameMatchReadyMessage,
@@ -33,6 +35,9 @@ export function parseFriendInviteId(inviteId: string): { inviterUserId: string; 
 }
 
 export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: PlatformClient }> {
+  static friendStore: PlatformFriendStore = createEmptyPlatformFriendStore();
+  static enforceFriendship = false;
+
   maxClients = 8;
   autoDispose = false;
 
@@ -45,6 +50,11 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   private inviter?: PlatformClientProfile;
   private createdAt = Date.now();
   private expiresAt = this.createdAt + INVITE_TTL_MS;
+
+  static configureFriendStore(friendStore: PlatformFriendStore, options: { enforceFriendship?: boolean } = {}): void {
+    InviteRoom.friendStore = friendStore;
+    InviteRoom.enforceFriendship = options.enforceFriendship === true;
+  }
 
   async onCreate(options: InviteRoomOptions = {}): Promise<void> {
     this.maxMessagesPerSecond = 4;
@@ -113,7 +123,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     await this.refreshMetadata();
   }
 
-  onAuth(_client: PlatformClient, options: InviteRoomOptions, context: AuthContext): PlatformAuth {
+  async onAuth(_client: PlatformClient, options: InviteRoomOptions, context: AuthContext): Promise<PlatformAuth> {
     const auth = authenticatePlatformClient(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
     const inviteId = optionalText(options.inviteId, 128);
@@ -124,6 +134,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     if (auth.userId !== friendInvite.inviterUserId && auth.userId !== friendInvite.targetUserId) {
       throw new Error('Invite access denied');
     }
+    await this.assertFriendInviteAllowed(auth.userId, friendInvite);
     return { ...auth, role: 'player' };
   }
 
@@ -194,6 +205,23 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
 
   private isInviter(profile: PlatformClientProfile): boolean {
     return this.inviterUserId ? profile.userId === this.inviterUserId : this.inviter?.sessionId === profile.sessionId;
+  }
+
+  private async assertFriendInviteAllowed(
+    userId: string,
+    friendInvite: { inviterUserId: string; targetUserId: string },
+  ): Promise<void> {
+    if (!InviteRoom.enforceFriendship) return;
+    const peerUserId = userId === friendInvite.inviterUserId ? friendInvite.targetUserId : friendInvite.inviterUserId;
+    let friendUserIds: string[];
+    try {
+      friendUserIds = await InviteRoom.friendStore.listFriendUserIds(userId);
+    } catch (err) {
+      logger.warn({ err, userId, peerUserId }, 'failed to verify friend invite relationship');
+      throw new Error('Invite friendship required');
+    }
+    if (friendUserIds.includes(peerUserId)) return;
+    throw new Error('Invite friendship required');
   }
 
   private snapshot(): PlatformClient['~messages']['inviteSnapshot'] {

@@ -45,6 +45,14 @@ function cookieAuthContext(userId: string): AuthContext {
 
 afterEach(() => {
   process.env.JWT_SECRET = originalJwtSecret;
+  InviteRoom.configureFriendStore(
+    {
+      async listFriendUserIds() {
+        return [];
+      },
+    },
+    { enforceFriendship: false },
+  );
 });
 
 describe('platform room auth', () => {
@@ -114,20 +122,20 @@ describe('platform room auth', () => {
     });
   });
 
-  it('requires verified account identity for quick matchmaking and invites', () => {
+  it('requires verified account identity for quick matchmaking and invites', async () => {
     const quickRoom = new QuickMatchRoom();
     const inviteRoom = new InviteRoom();
 
     expect(() => quickRoom.onAuth({} as never, { userId: 'u_spoofed', displayName: 'Mallory' }, authContext())).toThrow(
       'Authentication required',
     );
-    expect(() =>
+    await expect(
       inviteRoom.onAuth(
         {} as never,
         { inviteId: 'invite_1', userId: 'u_spoofed', displayName: 'Mallory' },
         authContext(),
       ),
-    ).toThrow('Authentication required');
+    ).rejects.toThrow('Authentication required');
   });
 
   it('prevents the same account from occupying both quick match seats', () => {
@@ -167,66 +175,91 @@ describe('platform room auth', () => {
     expect(parseFriendInviteId('friend:v1:%E0%A4%A:u_2')).toBeNull();
   });
 
-  it('requires directional friend invite ids for authenticated invite room joins', () => {
+  it('requires directional friend invite ids for authenticated invite room joins', async () => {
     const inviteRoom = new InviteRoom();
 
-    expect(() =>
+    await expect(
       inviteRoom.onAuth(
         {} as never,
         { inviteId: 'invite_1', targetUserId: 'u_target', displayName: 'Alice' },
         cookieAuthContext('u_inviter'),
       ),
-    ).toThrow('Invalid invite id');
+    ).rejects.toThrow('Invalid invite id');
 
-    expect(() =>
+    await expect(
       inviteRoom.onAuth(
         {} as never,
         { inviteId: 'friend:v1:u_inviter:u_inviter', targetUserId: 'u_inviter', displayName: 'Alice' },
         cookieAuthContext('u_inviter'),
       ),
-    ).toThrow('Invalid invite id');
+    ).rejects.toThrow('Invalid invite id');
   });
 
-  it('allows only friend invite participants to join invite rooms', () => {
+  it('allows only friend invite participants to join invite rooms', async () => {
     const inviteRoom = new InviteRoom();
     const inviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_target')}`;
 
-    expect(
+    await expect(
       inviteRoom.onAuth(
         {} as never,
         { inviteId, targetUserId: 'u_target', displayName: 'Alice' },
         cookieAuthContext('u_inviter'),
       ),
-    ).toMatchObject({ userId: 'u_inviter', authenticated: true, role: 'player' });
+    ).resolves.toMatchObject({ userId: 'u_inviter', authenticated: true, role: 'player' });
 
-    expect(
+    await expect(
       inviteRoom.onAuth(
         {} as never,
         { inviteId, targetUserId: 'u_target', displayName: 'Bob' },
         cookieAuthContext('u_target'),
       ),
-    ).toMatchObject({ userId: 'u_target', authenticated: true, role: 'player' });
+    ).resolves.toMatchObject({ userId: 'u_target', authenticated: true, role: 'player' });
 
-    expect(() =>
+    await expect(
       inviteRoom.onAuth(
         {} as never,
         { inviteId, targetUserId: 'u_target', displayName: 'Mallory' },
         cookieAuthContext('u_other'),
       ),
-    ).toThrow('Invite access denied');
+    ).rejects.toThrow('Invite access denied');
   });
 
-  it('rejects friend invite joins with mismatched target filters', () => {
+  it('requires configured durable friendship for production friend invite joins', async () => {
+    const inviteRoom = new InviteRoom();
+    const inviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_target')}`;
+    const listFriendUserIds = vi.fn(async (userId: string) => (userId === 'u_inviter' ? ['u_target'] : []));
+    InviteRoom.configureFriendStore({ listFriendUserIds }, { enforceFriendship: true });
+
+    await expect(
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId, targetUserId: 'u_target', displayName: 'Alice' },
+        cookieAuthContext('u_inviter'),
+      ),
+    ).resolves.toMatchObject({ userId: 'u_inviter', authenticated: true, role: 'player' });
+    expect(listFriendUserIds).toHaveBeenCalledWith('u_inviter');
+
+    await expect(
+      inviteRoom.onAuth(
+        {} as never,
+        { inviteId, targetUserId: 'u_target', displayName: 'Bob' },
+        cookieAuthContext('u_target'),
+      ),
+    ).rejects.toThrow('Invite friendship required');
+    expect(listFriendUserIds).toHaveBeenCalledWith('u_target');
+  });
+
+  it('rejects friend invite joins with mismatched target filters', async () => {
     const inviteRoom = new InviteRoom();
     const inviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_target')}`;
 
-    expect(() =>
+    await expect(
       inviteRoom.onAuth(
         {} as never,
         { inviteId, targetUserId: 'u_other', displayName: 'Alice' },
         cookieAuthContext('u_inviter'),
       ),
-    ).toThrow('Invalid invite target');
+    ).rejects.toThrow('Invalid invite target');
   });
 
   it('derives friend invite room target metadata from invite id', async () => {

@@ -46,6 +46,8 @@ Friend direct messages use the durable `ChatService` direct conversation type. T
 
 Friend match invitations use the Colyseus `invite` room as the realtime coordination channel. The lobby creates deterministic directional invite IDs from inviter/target user IDs, probes friends for incoming pending invites, lets the target accept through the same invite room, then sends the resulting boardgame.io match ID back through that room before either side navigates into the match. This keeps invitation lifecycle in Colyseus while the actual match remains owned by boardgame.io.
 
+When the platform friend store is backed by Postgres, `invite` room authentication also verifies the durable `user_friends` relationship server-side. Local development can keep `PLATFORM_FRIEND_STORE=none`, but production friend invitations must not rely on the browser-provided friend list alone.
+
 Quick matchmaking uses the Colyseus `quick_match` room for queueing, pairing, cancellation, and boardgame match ID relay. The host creates and joins the boardgame.io match without immediately navigating away, relays the boardgame match ID through Colyseus, and only then enters the match so the guest is not stranded by a lobby unmount. The browser lobby no longer falls back to the legacy REST matchmaking polling or Redis `realMatchId` handoff path when Colyseus quick match is unavailable; that failure is surfaced as a retryable platform matchmaking error instead.
 
 Cross-room lobby chat uses the durable `ChatService` global conversation type (`online-lobby`) with the same history, read-state, report, moderation, and translation behavior instead of Colyseus room memory.

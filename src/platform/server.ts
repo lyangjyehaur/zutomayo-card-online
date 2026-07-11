@@ -55,7 +55,9 @@ const httpServer = http.createServer();
 
 const colyseusRedisUrl = redisUrlWithDb(REDIS_URL, REDIS_DB);
 const friendStore = createPlatformFriendStoreFromEnv();
+const platformFriendStoreMode = resolvePlatformFriendStoreMode();
 LobbyRoom.configureFriendStore(friendStore);
+InviteRoom.configureFriendStore(friendStore, { enforceFriendship: platformFriendStoreMode === 'postgres' });
 
 const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
@@ -115,6 +117,6 @@ process.on('unhandledRejection', (reason) => {
 
 await gameServer.listen(PLATFORM_PORT);
 logger.info(
-  { port: PLATFORM_PORT, redisMode: PLATFORM_REDIS_MODE, friendStoreMode: resolvePlatformFriendStoreMode() },
+  { port: PLATFORM_PORT, redisMode: PLATFORM_REDIS_MODE, friendStoreMode: platformFriendStoreMode },
   'Zutomayo platform server running',
 );
