@@ -29,7 +29,7 @@ import {
   type ProfileResponse,
 } from '../api/client';
 import { buildDirectConversationSubjectId } from '../chat/directConversation';
-import { resolveUnreadConversationAction } from '../chat/unreadNavigation';
+import { resolveUnreadConversationAction, unreadConversationLatestMessageId } from '../chat/unreadNavigation';
 import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl, buildOnlineSpectatorPath } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
@@ -767,11 +767,10 @@ export function OnlineLobbyPage({
     }
     if (action.kind === 'global') {
       scrollToPanel(lobbyChatPanelRef);
-      const latestMessageId = lobbyChatMessages.at(-1)?.id;
       void markChatRead({
         conversationType: 'global',
         subjectId: action.subjectId,
-        lastReadMessageId: latestMessageId,
+        lastReadMessageId: unreadConversationLatestMessageId(conversation),
       }).then(refreshUnreadChats, () => undefined);
       return;
     }

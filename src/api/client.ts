@@ -734,6 +734,7 @@ export interface ChatConversation {
 export interface ChatUnreadConversation extends ChatConversation {
   unreadCount: number;
   latestMessageAt: string | null;
+  latestMessageId: string | null;
 }
 
 export interface ChatMessage {

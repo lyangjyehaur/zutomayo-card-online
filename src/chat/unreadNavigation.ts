@@ -48,3 +48,7 @@ export function resolveUnreadConversationAction(
 
   return null;
 }
+
+export function unreadConversationLatestMessageId(conversation: ChatUnreadConversation): string | undefined {
+  return conversation.latestMessageId?.trim() || undefined;
+}

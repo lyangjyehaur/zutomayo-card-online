@@ -520,6 +520,7 @@ describe('server routes', () => {
             updated_at: '2026-07-10T00:00:06.000Z',
             unread_count: '2',
             latest_message_at: '2026-07-10T00:00:06.000Z',
+            latest_message_id: 'chat_msg_latest',
           },
         ],
       });
@@ -535,6 +536,7 @@ describe('server routes', () => {
           subjectId: 'bgio-match-1',
           unreadCount: 2,
           latestMessageAt: '2026-07-10T00:00:06.000Z',
+          latestMessageId: 'chat_msg_latest',
         }),
       ]);
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader']);

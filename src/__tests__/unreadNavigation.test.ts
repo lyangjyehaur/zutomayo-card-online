@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatUnreadConversation, FriendProfile } from '../api/client';
-import { resolveUnreadConversationAction } from '../chat/unreadNavigation';
+import { resolveUnreadConversationAction, unreadConversationLatestMessageId } from '../chat/unreadNavigation';
 
 const baseConversation: ChatUnreadConversation = {
   id: 'conversation_1',
@@ -12,6 +12,7 @@ const baseConversation: ChatUnreadConversation = {
   updatedAt: '2026-07-10T00:00:01.000Z',
   unreadCount: 1,
   latestMessageAt: '2026-07-10T00:00:01.000Z',
+  latestMessageId: 'chat_msg_latest',
 };
 
 function unreadConversation(type: ChatUnreadConversation['type'], subjectId: string): ChatUnreadConversation {
@@ -68,5 +69,13 @@ describe('unread conversation navigation', () => {
         profileId: 'u_other',
       }),
     ).toBeNull();
+  });
+
+  it('uses the durable unread summary latest message id as the read marker', () => {
+    expect(unreadConversationLatestMessageId({ ...baseConversation, latestMessageId: ' chat_msg_latest ' })).toBe(
+      'chat_msg_latest',
+    );
+    expect(unreadConversationLatestMessageId({ ...baseConversation, latestMessageId: '' })).toBeUndefined();
+    expect(unreadConversationLatestMessageId({ ...baseConversation, latestMessageId: null })).toBeUndefined();
   });
 });

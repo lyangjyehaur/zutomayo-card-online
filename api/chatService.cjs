@@ -627,7 +627,8 @@ async function listUnreadChat({
   const { rows } = await pool.query(
     `SELECT c.id, c.type, c.subject_id, c.title, c.status, c.created_at, c.updated_at,
             COUNT(m.id) AS unread_count,
-            MAX(m.created_at) AS latest_message_at
+            MAX(m.created_at) AS latest_message_at,
+            (ARRAY_AGG(m.id ORDER BY m.created_at DESC, m.id DESC))[1] AS latest_message_id
      FROM chat_conversations c
      JOIN chat_messages m ON m.conversation_id = c.id
      LEFT JOIN chat_read_states r ON r.conversation_id = c.id AND r.user_id = $1
@@ -702,6 +703,7 @@ async function listUnreadChat({
         ...mapConversation(row),
         unreadCount: Number(row.unread_count) || 0,
         latestMessageAt: row.latest_message_at || null,
+        latestMessageId: row.latest_message_id || null,
       })),
     },
   };
