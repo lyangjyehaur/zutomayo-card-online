@@ -387,7 +387,9 @@ describe('match shell room', () => {
     const chatPreview = handlers.get('chatPreview');
     expect(chatPreview).toBeDefined();
 
-    chatPreview?.({ auth: { authenticated: false }, userData: profile } as PlatformClient, { text: 'fake' });
+    chatPreview?.({ auth: { authenticated: false }, userData: profile } as PlatformClient, {
+      messageId: 'chat_msg_fake',
+    });
     expect(broadcast).not.toHaveBeenCalledWith('chatPreview', expect.anything());
 
     chatPreview?.(
@@ -400,7 +402,7 @@ describe('match shell room', () => {
         },
         userData: { ...profile, userId: 'u_1', displayName: 'Alice' },
       } as PlatformClient,
-      { text: 'wrong room', conversationId: 'match:bgio-other-match' },
+      { messageId: 'chat_msg_wrong_room', conversationId: 'match:bgio-other-match' },
     );
     expect(broadcast).not.toHaveBeenCalledWith('chatPreview', expect.anything());
 
@@ -414,13 +416,13 @@ describe('match shell room', () => {
         },
         userData: { ...profile, userId: 'u_1', displayName: 'Alice' },
       } as PlatformClient,
-      { text: 'persisted hello' },
+      { messageId: 'chat_msg_persisted' },
     );
     expect(broadcast).toHaveBeenCalledWith(
       'chatPreview',
       expect.objectContaining({
         conversationId: 'match:bgio-match-1',
-        text: 'persisted hello',
+        messageId: 'chat_msg_persisted',
       }),
     );
   });

@@ -510,7 +510,7 @@ export function OnlineGame({
         if (canShowChatMessage(result.message)) {
           platformRoomRef.current?.send('chatPreview', {
             conversationId: result.conversation.id,
-            text: result.message.content,
+            messageId: result.message.id,
           });
         }
         setChatStatus('ready');

@@ -107,7 +107,7 @@ describe('platform client helpers', () => {
           role: 'player',
           joinedAt: 1000,
         },
-        text: ' hello ',
+        messageId: ' chat_msg_1 ',
         createdAt: 2000.9,
       }),
     ).toEqual({
@@ -119,11 +119,11 @@ describe('platform client helpers', () => {
         role: 'player',
         joinedAt: 1000,
       },
-      text: 'hello',
+      messageId: 'chat_msg_1',
       createdAt: 2000,
     });
-    expect(platformChatPreviewFromMessage({ text: 'hello' })).toBeNull();
-    expect(platformChatPreviewFromMessage({ sender: { sessionId: 's_1', userId: 'u_1' }, text: '' })).toBeNull();
+    expect(platformChatPreviewFromMessage({ messageId: 'chat_msg_1' })).toBeNull();
+    expect(platformChatPreviewFromMessage({ sender: { sessionId: 's_1', userId: 'u_1' }, messageId: '' })).toBeNull();
   });
 
   it('reads quick match lifecycle messages defensively', () => {

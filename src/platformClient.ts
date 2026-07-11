@@ -89,7 +89,7 @@ export interface PlatformMatchShellPresence {
 export interface PlatformChatPreview {
   conversationId?: string;
   sender: PlatformClientProfile;
-  text: string;
+  messageId: string;
   createdAt: number;
 }
 
@@ -382,10 +382,10 @@ export function platformChatPreviewFromMessage(message: unknown): PlatformChatPr
   const data = message as {
     conversationId?: unknown;
     sender?: Partial<PlatformClientProfile>;
-    text?: unknown;
+    messageId?: unknown;
     createdAt?: unknown;
   };
-  if (typeof data.text !== 'string' || !data.text.trim()) return null;
+  if (typeof data.messageId !== 'string' || !data.messageId.trim()) return null;
   if (!data.sender || typeof data.sender !== 'object') return null;
   if (typeof data.sender.sessionId !== 'string' || typeof data.sender.userId !== 'string') return null;
   return {
@@ -400,7 +400,7 @@ export function platformChatPreviewFromMessage(message: unknown): PlatformChatPr
           : 'spectator',
       joinedAt: Number.isFinite(data.sender.joinedAt) ? Math.trunc(data.sender.joinedAt as number) : Date.now(),
     },
-    text: data.text.trim().slice(0, 500),
+    messageId: data.messageId.trim().slice(0, 128),
     createdAt: Number.isFinite(data.createdAt) ? Math.trunc(data.createdAt as number) : Date.now(),
   };
 }

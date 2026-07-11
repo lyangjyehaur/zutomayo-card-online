@@ -91,14 +91,14 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     });
 
     this.onMessage<ChatPreviewMessage>('chatPreview', (client, message) => {
-      const text = optionalText(message.text, 500);
-      if (!text || !client.userData || !client.auth?.authenticated) return;
+      const messageId = optionalText(message.messageId, 128);
+      if (!messageId || !client.userData || !client.auth?.authenticated) return;
       const suppliedConversationId = optionalText(message.conversationId, 128);
       if (!this.conversationId || (suppliedConversationId && suppliedConversationId !== this.conversationId)) return;
       this.broadcast('chatPreview', {
         conversationId: this.conversationId,
         sender: client.userData,
-        text,
+        messageId,
         createdAt: Date.now(),
       });
     });

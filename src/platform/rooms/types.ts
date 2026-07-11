@@ -117,7 +117,7 @@ export interface PlatformClientMessages {
   chatPreview: {
     conversationId?: string;
     sender: PlatformClientProfile;
-    text: string;
+    messageId: string;
     createdAt: number;
   };
 }
@@ -207,7 +207,7 @@ export interface LinkBoardgameMatchMessage {
 }
 
 export interface ChatPreviewMessage {
-  text?: unknown;
+  messageId?: unknown;
   conversationId?: unknown;
 }
 
