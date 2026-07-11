@@ -127,6 +127,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   async onAuth(_client: PlatformClient, options: InviteRoomOptions, context: AuthContext): Promise<PlatformAuth> {
     const auth = authenticatePlatformClient(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
+    if (!this.isJoinableStatus()) throw new Error('Invite is not joinable');
     const inviteId = optionalText(options.inviteId, 128);
     const friendInvite = inviteId ? parseFriendInviteId(inviteId) : null;
     if (!inviteId || !friendInvite) throw new Error('Invalid invite id');
@@ -185,6 +186,10 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   private canCancel(): boolean {
     if (this.status === 'pending') return true;
     return this.status === 'accepted' && !this.boardgameMatchID;
+  }
+
+  private isJoinableStatus(): boolean {
+    return this.status === 'pending' || this.status === 'accepted';
   }
 
   private async cancel(reason: string): Promise<void> {

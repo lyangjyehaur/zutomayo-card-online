@@ -1,9 +1,42 @@
-import { describe, expect, it, vi } from 'vitest';
+import crypto from 'node:crypto';
+import type { AuthContext } from '@colyseus/core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InviteRoom } from '../InviteRoom';
 import type { BoardgameMatchReadyMessage, InviteResponseMessage, PlatformAuth, PlatformClient } from '../types';
 
 type InviteHandler = (client: PlatformClient, message: InviteResponseMessage) => void;
 type BoardgameMatchReadyHandler = (client: PlatformClient, message: BoardgameMatchReadyMessage) => void;
+const originalJwtSecret = process.env.JWT_SECRET;
+
+function base64urlJson(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function signToken(input: string, secret: string): string {
+  return crypto.createHmac('sha256', secret).update(input).digest('base64url');
+}
+
+function createJwt(userId: string, secret: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({
+    sub: userId,
+    userId,
+    iat: now,
+    exp: now + 3600,
+  });
+  const input = `${header}.${payload}`;
+  return `${input}.${signToken(input, secret)}`;
+}
+
+function cookieAuthContext(userId: string): AuthContext {
+  process.env.JWT_SECRET = 'test-platform-jwt-secret-at-least-32-characters';
+  const token = createJwt(userId, process.env.JWT_SECRET);
+  return {
+    headers: new Headers({ cookie: `zutomayo_session=${encodeURIComponent(token)}` }),
+    ip: '127.0.0.1',
+  };
+}
 
 function client(sessionId: string, auth: PlatformAuth): PlatformClient & { send: ReturnType<typeof vi.fn> } {
   return {
@@ -77,6 +110,10 @@ async function setupInviteRoom() {
 }
 
 describe('invite room lifecycle', () => {
+  afterEach(() => {
+    process.env.JWT_SECRET = originalJwtSecret;
+  });
+
   it('lets the target accept and then lets the inviter relay the boardgame match id once', async () => {
     const { inviteHandlers, boardgameHandlers, setMatchmaking, broadcast, inviter, target, observer } =
       await setupInviteRoom();
@@ -237,6 +274,41 @@ describe('invite room lifecycle', () => {
         boardgameMatchID: 'bgio-match-1',
       }),
     });
+  });
+
+  it('keeps accepted invites joinable for relay reconnects and rejects terminal invites', async () => {
+    const { room, inviteHandlers, boardgameHandlers, target, inviter } = await setupInviteRoom();
+
+    inviteHandlers.get('acceptInvite')?.(target, {});
+
+    await expect(
+      room.onAuth(
+        {} as PlatformClient,
+        { inviteId: inviteId(), targetUserId: 'u_target', displayName: 'Inviter Reconnect' },
+        cookieAuthContext('u_inviter'),
+      ),
+    ).resolves.toMatchObject({ userId: 'u_inviter', authenticated: true, role: 'player' });
+
+    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-match-1' });
+
+    await expect(
+      room.onAuth(
+        {} as PlatformClient,
+        { inviteId: inviteId(), targetUserId: 'u_target', displayName: 'Inviter Reconnect' },
+        cookieAuthContext('u_inviter'),
+      ),
+    ).rejects.toThrow('Invite is not joinable');
+
+    const declinedRoom = await setupInviteRoom();
+    declinedRoom.inviteHandlers.get('declineInvite')?.(declinedRoom.target, { reason: 'busy' });
+
+    await expect(
+      declinedRoom.room.onAuth(
+        {} as PlatformClient,
+        { inviteId: inviteId(), targetUserId: 'u_target', displayName: 'Target Reconnect' },
+        cookieAuthContext('u_target'),
+      ),
+    ).rejects.toThrow('Invite is not joinable');
   });
 
   it('lets only the target decline a pending invite', async () => {

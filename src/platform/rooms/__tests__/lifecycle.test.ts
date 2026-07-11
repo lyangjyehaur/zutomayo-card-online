@@ -190,6 +190,45 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('rejects quick-match joins once the room is no longer waiting', async () => {
+    const room = new QuickMatchRoom();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void, timeout?: number) => {
+      if (typeof timeout === 'number' && timeout <= 100) handler();
+      return { clear: vi.fn() };
+    }) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate();
+    room.clients.push(host);
+    await room.onJoin(host);
+    room.clients.push(guest);
+    await room.onJoin(guest);
+
+    expect(() =>
+      room.onAuth(
+        {} as PlatformClient,
+        { userId: 'u_late', displayName: 'Late Player', role: 'player' },
+        cookieAuthContext('u_late'),
+      ),
+    ).toThrow('Quick match is not joinable');
+  });
+
   it('excludes the leaving quick-match session from cancellation snapshots and matchmaking counts', async () => {
     const room = new QuickMatchRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
