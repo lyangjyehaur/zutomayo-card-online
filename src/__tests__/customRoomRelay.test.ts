@@ -53,6 +53,41 @@ describe('custom room platform relay', () => {
     );
   });
 
+  it('ignores non-ready or mismatched custom-room snapshots before resolving', async () => {
+    vi.useFakeTimers();
+    let handlers: PlatformCustomRoomHandlers | undefined;
+    const room = mockRoom();
+    const joinPlatformCustomRoom = vi.fn(async (_options, nextHandlers) => {
+      handlers = nextHandlers;
+      return room;
+    }) satisfies JoinPlatformCustomRoom;
+
+    const matchID = resolvePlatformCustomRoomMatchID(resolverInput(joinPlatformCustomRoom, 1000));
+    const observed = matchID.catch((err: unknown) => err);
+
+    handlers?.onSnapshot?.({
+      roomId: 'platform-room-1',
+      roomCode: 'ROOM42',
+      status: 'waiting',
+      players: [],
+      spectators: [],
+      boardgameMatchID: 'bgio-too-early',
+    });
+    handlers?.onSnapshot?.({
+      roomId: 'platform-room-2',
+      roomCode: 'OTHER42',
+      status: 'ready',
+      players: [],
+      spectators: [],
+      boardgameMatchID: 'bgio-wrong-room',
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(observed).resolves.toEqual(new CustomRoomRelayError('timeout'));
+    expect(room.leave).toHaveBeenCalledWith(true);
+  });
+
   it('rejects on timeout instead of falling back to the input room code', async () => {
     vi.useFakeTimers();
     const room = mockRoom();

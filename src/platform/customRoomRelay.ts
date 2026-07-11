@@ -75,6 +75,7 @@ export function resolvePlatformCustomRoomMatchID({
       },
       {
         onSnapshot: (snapshot) => {
+          if (snapshot.roomCode !== roomCode || snapshot.status !== 'ready') return;
           if (snapshot.boardgameMatchID) finish(snapshot.boardgameMatchID);
         },
         onBoardgameMatchReady: (message) => finish(message.boardgameMatchID),
