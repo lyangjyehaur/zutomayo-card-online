@@ -163,6 +163,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
         return;
       }
       if ((this.status === 'pending' || this.status === 'accepted') && !this.boardgameMatchID) {
+        this.inviter = undefined;
         await this.cancel('inviter_left');
         return;
       }

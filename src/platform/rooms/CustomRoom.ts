@@ -146,6 +146,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
         this.broadcastSnapshot();
         return;
       }
+      this.host = undefined;
       await this.cancel('host_left', client.sessionId);
       return;
     }

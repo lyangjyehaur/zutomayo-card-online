@@ -276,4 +276,27 @@ describe('invite room lifecycle', () => {
       metadata: expect.objectContaining({ status: 'cancelled' }),
     });
   });
+
+  it('clears inviter presence when inviter leave cancels the invite', async () => {
+    const { room, setMatchmaking, broadcast, inviter } = await setupInviteRoom();
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+    await room.onLeave(inviter);
+
+    expect(broadcast).toHaveBeenCalledWith('inviteCancelled', {
+      inviteId: inviteId(),
+      reason: 'inviter_left',
+    });
+    expect(broadcast).toHaveBeenCalledWith(
+      'inviteSnapshot',
+      expect.objectContaining({
+        status: 'cancelled',
+        inviter: undefined,
+      }),
+    );
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({ status: 'cancelled' }),
+    });
+  });
 });

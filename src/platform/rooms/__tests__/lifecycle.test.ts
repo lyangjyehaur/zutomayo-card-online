@@ -655,7 +655,7 @@ describe('platform room lifecycle', () => {
   it('custom room cancellation is controlled by the waiting host', async () => {
     const room = new CustomRoom();
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
-    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
 
     const host = client('session_host', {
@@ -672,6 +672,20 @@ describe('platform room lifecycle', () => {
     await room.onLeave(host);
 
     expect(broadcast).toHaveBeenCalledWith('customRoomCancelled', { reason: 'host_left' });
+    expect(broadcast).toHaveBeenCalledWith(
+      'customRoomSnapshot',
+      expect.objectContaining({
+        status: 'cancelled',
+        host: undefined,
+        players: [],
+      }),
+    );
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        status: 'cancelled',
+        playerCount: 0,
+      }),
+    });
   });
 
   it('custom room transfers waiting host ownership to a reconnect session', async () => {
