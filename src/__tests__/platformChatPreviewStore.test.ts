@@ -6,7 +6,7 @@ import {
 } from '../platform/chatPreviewStore';
 
 describe('platform chat preview store', () => {
-  it('allows local no-op chat preview verification', async () => {
+  it('rejects preview broadcasts when durable verification is disabled', async () => {
     const store = createEmptyPlatformChatPreviewStore();
 
     await expect(
@@ -16,7 +16,7 @@ describe('platform chat preview store', () => {
         messageId: 'chat_msg_1',
         authorUserId: 'guest:local',
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe(false);
   });
 
   it('verifies preview messages against durable match chat evidence', async () => {

@@ -55,6 +55,14 @@ function seatToken(matchID = 'bgio-match-1', playerID: '0' | '1' = '0'): string 
   return createPlatformSeatToken({ matchID, playerID });
 }
 
+function allowChatPreviewBroadcasts(): void {
+  MatchShellRoom.configureChatPreviewStore({
+    async canBroadcastPreview() {
+      return true;
+    },
+  });
+}
+
 afterEach(() => {
   process.env.PLATFORM_SEAT_TOKEN_SECRET = originalSeatTokenSecret;
   process.env.JWT_SECRET = originalJwtSecret;
@@ -695,6 +703,7 @@ describe('match shell room', () => {
   });
 
   it('keeps match chat preview scoped to the shell conversation', async () => {
+    allowChatPreviewBroadcasts();
     const room = new MatchShellRoom();
     const handlers = new Map<string, ChatPreviewHandler>();
     vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -758,6 +767,7 @@ describe('match shell room', () => {
   });
 
   it('broadcasts match chat preview as content-free durable sync signals', async () => {
+    allowChatPreviewBroadcasts();
     const room = new MatchShellRoom();
     const handlers = new Map<string, ChatPreviewHandler>();
     vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -810,6 +820,40 @@ describe('match shell room', () => {
     expect(previewPayload).not.toHaveProperty('content');
     expect(previewPayload).not.toHaveProperty('translatedContent');
     expect(previewPayload).not.toHaveProperty('metadata');
+  });
+
+  it('does not broadcast chat preview without durable verification', async () => {
+    const room = new MatchShellRoom();
+    const handlers = new Map<string, ChatPreviewHandler>();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: ChatPreviewHandler) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    handlers.get('chatPreview')?.(
+      {
+        auth: {
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'spectator',
+          authenticated: true,
+        },
+        userData: {
+          sessionId: 'session_1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'spectator',
+          joinedAt: 1000,
+        },
+      } as PlatformClient,
+      { messageId: 'chat_msg_unverified', conversationId: 'match:bgio-match-1' },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(broadcast).not.toHaveBeenCalledWith('chatPreview', expect.anything());
   });
 
   it('verifies match chat preview evidence before broadcasting sync signals', async () => {

@@ -25,7 +25,7 @@ function cleanIdentifier(value: unknown, maxLength: number): string {
 export function createEmptyPlatformChatPreviewStore(): PlatformChatPreviewStore {
   return {
     async canBroadcastPreview() {
-      return true;
+      return false;
     },
   };
 }
