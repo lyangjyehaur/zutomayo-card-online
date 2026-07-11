@@ -187,11 +187,8 @@ const setup = `
     if (url.includes('/api/profile')) {
       return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'content-type': 'application/json' } });
     }
-    if (url.includes('/api/matchmaking/queue')) {
-      return new Response(JSON.stringify({ status: 'queued' }), { status: 200, headers: { 'content-type': 'application/json' } });
-    }
-    if (url.includes('/api/matchmaking/status')) {
-      return new Response(JSON.stringify({ status: 'timeout' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    if (url.includes('/api/matchmaking/')) {
+      throw new Error('Online lobby smoke should not call legacy REST matchmaking');
     }
     if (url.includes('/games/zutomayo-card/create')) {
       return new Response(JSON.stringify({ matchID: 'visual-room-0001' }), { status: 200, headers: { 'content-type': 'application/json' } });

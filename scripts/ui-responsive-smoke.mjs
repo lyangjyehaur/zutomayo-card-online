@@ -285,8 +285,7 @@ const setup = `
     }
     if (url.includes('/games/zutomayo-card/create')) return json({ matchID: 'ui-responsive-room' });
     if (url.includes('/games/zutomayo-card/ui-responsive-room/join')) return json({ playerCredentials: 'ui-responsive-credentials' });
-    if (url.includes('/api/matchmaking/queue')) return json({ status: 'queued' });
-    if (url.includes('/api/matchmaking/status')) return json({ status: 'timeout' });
+    if (url.includes('/api/matchmaking/')) throw new Error('UI smoke should not call legacy REST matchmaking');
     return originalFetch(input, init);
   };
 })()
