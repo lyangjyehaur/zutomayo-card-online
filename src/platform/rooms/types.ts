@@ -4,7 +4,7 @@ export type PlatformRole = 'player' | 'spectator';
 export type MatchShellStatus = 'waiting' | 'ready' | 'in_progress' | 'finished';
 export type QuickMatchStatus = 'waiting' | 'matched' | 'cancelled' | 'finished';
 export type CustomRoomStatus = 'waiting' | 'ready' | 'cancelled' | 'finished';
-export type InviteStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
+export type InviteStatus = 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired' | 'finished';
 
 export interface PlatformAuth {
   userId: string;

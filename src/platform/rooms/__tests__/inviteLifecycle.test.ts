@@ -106,7 +106,7 @@ describe('invite room lifecycle', () => {
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
-        status: 'accepted',
+        status: 'finished',
         roomCode: 'bgio-match-1',
         boardgameMatchID: 'bgio-match-1',
       }),
@@ -232,7 +232,7 @@ describe('invite room lifecycle', () => {
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
-        status: 'accepted',
+        status: 'finished',
         roomCode: 'bgio-match-1',
         boardgameMatchID: 'bgio-match-1',
       }),

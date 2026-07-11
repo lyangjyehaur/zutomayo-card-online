@@ -132,7 +132,7 @@ export interface PlatformCustomRoomHandlers {
 export interface PlatformInviteSnapshot {
   roomId: string;
   inviteId: string;
-  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired' | 'finished';
   inviter?: PlatformClientProfile;
   targetUserId?: string;
   roomCode?: string;
@@ -590,7 +590,8 @@ export function platformInviteSnapshotFromMessage(message: unknown): PlatformInv
     data.status !== 'accepted' &&
     data.status !== 'declined' &&
     data.status !== 'cancelled' &&
-    data.status !== 'expired'
+    data.status !== 'expired' &&
+    data.status !== 'finished'
   ) {
     return null;
   }

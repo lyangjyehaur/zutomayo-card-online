@@ -265,7 +265,7 @@ describe('platform client helpers', () => {
       platformInviteSnapshotFromMessage({
         roomId: 'invite_room_1',
         inviteId: 'invite_1',
-        status: 'pending',
+        status: 'finished',
         inviter: profile,
         targetUserId: 'u_2',
         roomCode: 'room_1',
@@ -276,7 +276,7 @@ describe('platform client helpers', () => {
     ).toEqual({
       roomId: 'invite_room_1',
       inviteId: 'invite_1',
-      status: 'pending',
+      status: 'finished',
       inviter: profile,
       targetUserId: 'u_2',
       roomCode: 'room_1',
