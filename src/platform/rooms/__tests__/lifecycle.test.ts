@@ -314,6 +314,37 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('keeps anonymous custom-room presence out of durable room chat evidence', async () => {
+    const recordRoomParticipant = vi.fn(async () => undefined);
+    CustomRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordRoomParticipant,
+    });
+    const room = new CustomRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const spectator = client('session_spectator', {
+      userId: 'anon:custom-room:ROOM42:spectator',
+      displayName: 'Spectator',
+      role: 'spectator',
+      authenticated: false,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(spectator);
+    await room.onJoin(spectator);
+
+    expect(spectator.userData).toEqual(
+      expect.objectContaining({
+        userId: 'anon:custom-room:ROOM42:spectator',
+        role: 'spectator',
+      }),
+    );
+    expect(recordRoomParticipant).not.toHaveBeenCalled();
+  });
+
   it('records durable custom-room participants before sending the initial room snapshot', async () => {
     const events: string[] = [];
     const recordRoomParticipant = vi.fn(async () => {

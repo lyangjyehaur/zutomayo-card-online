@@ -169,7 +169,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
       hasBoardgameCredentials: role === 'player' && options.hasBoardgameCredentials === true,
     };
 
-    await this.recordParticipant(client.userData);
+    await this.recordParticipant(client.userData, auth.authenticated);
     await this.refreshMetadata();
     client.send('roomSnapshot', this.snapshot());
     this.broadcastPresence('join', client.userData);
@@ -226,13 +226,14 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
 
   private async recordCurrentParticipants(): Promise<void> {
     await Promise.all(
-      this.profiles('player')
-        .concat(this.profiles('spectator'))
-        .map((profile) => this.recordParticipant(profile)),
+      this.activeClients()
+        .filter((client) => client.userData)
+        .map((client) => this.recordParticipant(client.userData!, client.auth?.authenticated === true)),
     );
   }
 
-  private async recordParticipant(profile: PlatformClientProfile): Promise<void> {
+  private async recordParticipant(profile: PlatformClientProfile, authenticated: boolean): Promise<void> {
+    if (!authenticated) return;
     await MatchShellRoom.participantStore
       .recordParticipant({
         boardgameMatchID: this.boardgameMatchID,

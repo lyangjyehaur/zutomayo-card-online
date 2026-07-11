@@ -113,7 +113,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       this.broadcast('boardgameMatchReady', { boardgameMatchID: this.boardgameMatchID });
     }
 
-    await this.recordRoomParticipant(client.userData);
+    await this.recordRoomParticipant(client.userData, auth.authenticated);
     await this.refreshMetadata();
     this.clock.setTimeout(() => {
       client.send('customRoomSnapshot', this.snapshot());
@@ -175,7 +175,8 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     return guestPlayerUserIds.size === 0 || guestPlayerUserIds.has(userId) ? 'player' : 'spectator';
   }
 
-  private async recordRoomParticipant(profile: PlatformClientProfile): Promise<void> {
+  private async recordRoomParticipant(profile: PlatformClientProfile, authenticated: boolean): Promise<void> {
+    if (!authenticated) return;
     await CustomRoom.participantStore
       .recordRoomParticipant({
         roomCode: this.roomCode,

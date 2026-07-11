@@ -186,6 +186,41 @@ describe('match shell room', () => {
     });
   });
 
+  it('keeps anonymous match-shell presence out of durable chat evidence', async () => {
+    const recordParticipant = vi.fn(async () => undefined);
+    MatchShellRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordParticipant,
+    });
+    const room = new MatchShellRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    const client = {
+      sessionId: 'session_spectator',
+      auth: {
+        userId: 'anon:match:bgio-match-1:spectator:token',
+        displayName: 'Spectator',
+        role: 'spectator',
+        authenticated: false,
+      },
+      send: vi.fn(),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    room.clients.push(client);
+
+    await room.onJoin(client, { boardgameMatchID: 'bgio-match-1' });
+
+    expect(client.userData).toEqual(
+      expect.objectContaining({
+        userId: 'anon:match:bgio-match-1:spectator:token',
+        role: 'spectator',
+      }),
+    );
+    expect(recordParticipant).not.toHaveBeenCalled();
+  });
+
   it('records durable match participants before sending the initial shell snapshot', async () => {
     const events: string[] = [];
     const recordParticipant = vi.fn(async () => {
@@ -606,6 +641,12 @@ describe('match shell room', () => {
     await room.onCreate({ status: 'waiting' });
     const host = {
       sessionId: 'session_host',
+      auth: {
+        userId: 'u_host',
+        displayName: 'Host',
+        role: 'player',
+        authenticated: true,
+      },
       userData: {
         sessionId: 'session_host',
         userId: 'u_host',
@@ -618,6 +659,12 @@ describe('match shell room', () => {
     } as unknown as PlatformClient;
     const spectator = {
       sessionId: 'session_spectator',
+      auth: {
+        userId: 'u_spectator',
+        displayName: 'Spectator',
+        role: 'spectator',
+        authenticated: true,
+      },
       userData: {
         sessionId: 'session_spectator',
         userId: 'u_spectator',
