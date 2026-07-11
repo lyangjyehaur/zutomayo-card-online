@@ -3,6 +3,7 @@ import {
   buildPlatformFriendInviteId,
   connectPlatformLobby,
   connectPlatformMatchShell,
+  createPlatformCustomRoom,
   isPlatformBoardgameRelayAcknowledged,
   joinPlatformInvite,
   joinPlatformCustomRoom,
@@ -547,6 +548,116 @@ describe('platform client helpers', () => {
         }),
       }),
     );
+  });
+
+  it('joins an existing ready custom room before creating a waiting custom room', async () => {
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const post = vi.fn().mockResolvedValueOnce({
+      data: {
+        name: 'custom_room',
+        roomId: 'platform_ready_room_1',
+        sessionId: 'session_1',
+      },
+    });
+    const consumeSeatReservation = vi.fn(() => room);
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await createPlatformCustomRoom({
+      roomCode: 'ROOM42',
+      boardgameMatchID: 'bgio-match-1',
+      userId: 'u_host',
+      displayName: 'Host',
+    });
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith(
+      'matchmake/join/custom_room',
+      expect.objectContaining({
+        body: JSON.stringify({
+          roomCode: 'ROOM42',
+          boardgameMatchID: 'bgio-match-1',
+          userId: 'u_host',
+          displayName: 'Host',
+          role: 'player',
+          status: 'ready',
+        }),
+      }),
+    );
+  });
+
+  it('creates a waiting custom room only when no ready custom room exists', async () => {
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const post = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ready room not found'))
+      .mockResolvedValueOnce({
+        data: {
+          name: 'custom_room',
+          roomId: 'platform_waiting_room_1',
+          sessionId: 'session_1',
+        },
+      });
+    const consumeSeatReservation = vi.fn(() => room);
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await createPlatformCustomRoom({
+      roomCode: 'ROOM42',
+      boardgameMatchID: 'bgio-match-1',
+      userId: 'u_host',
+      displayName: 'Host',
+    });
+
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      'matchmake/join/custom_room',
+      expect.objectContaining({
+        body: JSON.stringify({
+          roomCode: 'ROOM42',
+          boardgameMatchID: 'bgio-match-1',
+          userId: 'u_host',
+          displayName: 'Host',
+          role: 'player',
+          status: 'ready',
+        }),
+      }),
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      'matchmake/joinOrCreate/custom_room',
+      expect.objectContaining({
+        body: JSON.stringify({
+          roomCode: 'ROOM42',
+          boardgameMatchID: 'bgio-match-1',
+          userId: 'u_host',
+          displayName: 'Host',
+          role: 'player',
+          status: 'waiting',
+        }),
+      }),
+    );
+    expect(post.mock.calls.map(([path]) => path).join('\n')).not.toContain('/matchmaking/');
+    expect(post.mock.calls.map(([, request]) => JSON.stringify(request)).join('\n')).not.toContain('realMatchId');
   });
 
   it('retries invite joins through pending and accepted Colyseus status filters', async () => {

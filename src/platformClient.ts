@@ -545,17 +545,16 @@ export async function createPlatformCustomRoom(
   options: PlatformCustomRoomOptions,
   handlers: PlatformCustomRoomHandlers = {},
 ): Promise<PlatformCustomRoom> {
-  const room = await joinPlatformRoom(
-    'custom_room',
-    {
-      roomCode: options.roomCode,
-      boardgameMatchID: options.boardgameMatchID,
-      userId: options.userId,
-      displayName: options.displayName,
-      role: 'player',
-      status: 'waiting',
-    },
-    'joinOrCreate',
+  const roomOptions = (status: 'waiting' | 'ready') => ({
+    roomCode: options.roomCode,
+    boardgameMatchID: options.boardgameMatchID,
+    userId: options.userId,
+    displayName: options.displayName,
+    role: 'player',
+    status,
+  });
+  const room = await joinPlatformRoom('custom_room', roomOptions('ready'), 'join').catch(() =>
+    joinPlatformRoom('custom_room', roomOptions('waiting'), 'joinOrCreate'),
   );
   return bindPlatformCustomRoomHandlers(room, handlers);
 }
