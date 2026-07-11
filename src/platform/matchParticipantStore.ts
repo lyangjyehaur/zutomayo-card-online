@@ -132,8 +132,9 @@ export function createPlatformMatchParticipantStoreFromEnv(
 
 export function resolvePlatformMatchParticipantStoreMode(env: NodeJS.ProcessEnv = process.env): 'none' | 'postgres' {
   const configured = env.PLATFORM_MATCH_PARTICIPANT_STORE?.trim().toLowerCase();
-  if (configured === 'none' || configured === 'postgres') return configured;
+  if (configured === 'postgres') return 'postgres';
   if (env.NODE_ENV === 'production' || env.DATABASE_URL || env.PG_HOST || env.PG_PASSWORD) return 'postgres';
+  if (configured === 'none') return 'none';
   return 'none';
 }
 

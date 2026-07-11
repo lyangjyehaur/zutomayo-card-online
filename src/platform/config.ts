@@ -14,7 +14,8 @@ export function isPlatformRedisMode(value: string | undefined): value is Platfor
 
 export function resolvePlatformRedisMode(value: string | undefined, nodeEnv: string | undefined): PlatformRedisMode {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === 'memory' || normalized === 'redis') return normalized;
+  if (normalized === 'redis') return 'redis';
+  if (normalized === 'memory' && nodeEnv !== 'production') return 'memory';
   return nodeEnv === 'production' ? 'redis' : 'memory';
 }
 

@@ -17,6 +17,9 @@ describe('platform match participant store', () => {
     expect(resolvePlatformMatchParticipantStoreMode({ DATABASE_URL: 'postgres://example/db' })).toBe('postgres');
     expect(
       resolvePlatformMatchParticipantStoreMode({ PLATFORM_MATCH_PARTICIPANT_STORE: 'none', NODE_ENV: 'production' }),
+    ).toBe('postgres');
+    expect(
+      resolvePlatformMatchParticipantStoreMode({ PLATFORM_MATCH_PARTICIPANT_STORE: 'none', NODE_ENV: 'development' }),
     ).toBe('none');
     expect(resolvePlatformMatchParticipantStoreMode({ PLATFORM_MATCH_PARTICIPANT_STORE: 'postgres' })).toBe('postgres');
   });

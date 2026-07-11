@@ -68,8 +68,11 @@ describe('platform chat preview store', () => {
     expect(resolvePlatformChatPreviewStoreMode({ NODE_ENV: 'development' })).toBe('none');
     expect(resolvePlatformChatPreviewStoreMode({ NODE_ENV: 'production' })).toBe('postgres');
     expect(resolvePlatformChatPreviewStoreMode({ DATABASE_URL: 'postgres://db/app' })).toBe('postgres');
-    expect(resolvePlatformChatPreviewStoreMode({ PLATFORM_CHAT_PREVIEW_STORE: 'none', NODE_ENV: 'production' })).toBe(
+    expect(resolvePlatformChatPreviewStoreMode({ PLATFORM_CHAT_PREVIEW_STORE: 'none', NODE_ENV: 'development' })).toBe(
       'none',
+    );
+    expect(resolvePlatformChatPreviewStoreMode({ PLATFORM_CHAT_PREVIEW_STORE: 'none', NODE_ENV: 'production' })).toBe(
+      'postgres',
     );
   });
 });

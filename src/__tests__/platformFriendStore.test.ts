@@ -62,10 +62,14 @@ describe('platform friend store', () => {
 
   it('uses an empty store when Postgres friend presence is disabled', async () => {
     await expect(createEmptyPlatformFriendStore().listFriendUserIds('u_self')).resolves.toEqual([]);
-    expect(resolvePlatformFriendStoreMode({ PLATFORM_FRIEND_STORE: 'none', NODE_ENV: 'production' })).toBe('none');
+    expect(resolvePlatformFriendStoreMode({ PLATFORM_FRIEND_STORE: 'none', NODE_ENV: 'development' })).toBe('none');
     expect(resolvePlatformFriendStoreMode({ PLATFORM_FRIEND_STORE: 'postgres' })).toBe('postgres');
     expect(resolvePlatformFriendStoreMode({ NODE_ENV: 'production' })).toBe('postgres');
     expect(resolvePlatformFriendStoreMode({})).toBe('none');
+  });
+
+  it('keeps durable friend evidence enabled in production even if none is configured', () => {
+    expect(resolvePlatformFriendStoreMode({ PLATFORM_FRIEND_STORE: 'none', NODE_ENV: 'production' })).toBe('postgres');
   });
 });
 
@@ -82,8 +86,12 @@ describe('platform runtime config', () => {
     expect(isPlatformRedisMode('memory')).toBe(true);
     expect(isPlatformRedisMode(' Redis ')).toBe(true);
     expect(isPlatformRedisMode('postgres')).toBe(false);
-    expect(resolvePlatformRedisMode(' Memory ', 'production')).toBe('memory');
+    expect(resolvePlatformRedisMode(' Memory ', 'development')).toBe('memory');
     expect(resolvePlatformRedisMode('REDIS', 'development')).toBe('redis');
+  });
+
+  it('keeps Redis-backed Colyseus coordination enabled in production even if memory is configured', () => {
+    expect(resolvePlatformRedisMode(' Memory ', 'production')).toBe('redis');
   });
 
   it('adds the configured Redis DB only when the URL has no DB path', () => {
