@@ -496,6 +496,70 @@ describe('chat service', () => {
     ]);
   });
 
+  it('requires durable friendship for direct history, reads, translations, and reports when enforced', async () => {
+    const directMessageWithConversation = {
+      ...messageRow,
+      conversation_id: 'direct:v1:u_1:u_2',
+      type: 'direct',
+      subject_id: 'v1:u_1:u_2',
+      conversation_type: 'direct',
+      conversation_subject_id: 'v1:u_1:u_2',
+    };
+
+    const historyPool = poolWithResults([{ rows: [] }]);
+    await expect(
+      listChatMessages({
+        pool: historyPool,
+        userId: 'u_1',
+        conversationType: 'direct',
+        subjectId: 'v1:u_1:u_2',
+        enforceDirectFriendship: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(historyPool.query).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_1', 'u_2']);
+
+    const readPool = poolWithResults([{ rows: [] }]);
+    await expect(
+      markConversationRead({
+        pool: readPool,
+        userId: 'u_1',
+        body: { conversationType: 'direct', subjectId: 'v1:u_1:u_2', lastReadMessageId: 'chat_msg_1' },
+        enforceDirectFriendship: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(readPool.query).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_1', 'u_2']);
+
+    const translationPool = poolWithResults([{ rows: [directMessageWithConversation] }, { rows: [] }]);
+    await expect(
+      requestChatTranslation({
+        pool: translationPool,
+        userId: 'u_1',
+        messageId: 'chat_msg_1',
+        body: { targetLanguage: 'en' },
+        sanitizeText,
+        enforceDirectFriendship: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(translationPool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('FROM user_friends'), [
+      'u_1',
+      'u_2',
+    ]);
+
+    const reportPool = poolWithResults([{ rows: [directMessageWithConversation] }, { rows: [] }]);
+    await expect(
+      reportChatMessage({
+        pool: reportPool,
+        reporterUserId: 'u_1',
+        messageId: 'chat_msg_1',
+        body: { reason: 'spam' },
+        sanitizeText,
+        generateReportId: () => 'chat_report_1',
+        enforceDirectFriendship: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(reportPool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('FROM user_friends'), ['u_1', 'u_2']);
+  });
+
   it('rejects direct chat writes from non-participants or invalid direct subjects', async () => {
     const cases = [
       { authorUserId: 'u_3', subjectId: 'u_1:u_2', error: 'Forbidden' },
