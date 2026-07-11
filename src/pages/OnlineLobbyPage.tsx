@@ -34,6 +34,7 @@ import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl, buildOnlineSpectatorPath } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
 import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge';
+import { resolvePlatformCustomRoomMatchID } from '../platform/customRoomRelay';
 import { AuthSection } from '../components/lobby/AuthSection';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
@@ -555,37 +556,11 @@ export function OnlineLobbyPage({
 
   const resolvePlatformCustomRoom = useCallback(
     async (roomCode: string): Promise<string> =>
-      new Promise((resolve) => {
-        let settled = false;
-        let room: Awaited<ReturnType<typeof joinPlatformCustomRoom>> | null = null;
-        const settle = (matchID = roomCode) => {
-          if (settled) return;
-          settled = true;
-          window.clearTimeout(timer);
-          void room?.leave(true).catch(() => undefined);
-          resolve(matchID);
-        };
-        const timer = window.setTimeout(() => settle(roomCode), 1500);
-        void joinPlatformCustomRoom(
-          {
-            roomCode,
-            userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
-            displayName: effectivePlayerName,
-          },
-          {
-            onSnapshot: (snapshot) => {
-              if (snapshot.boardgameMatchID) settle(snapshot.boardgameMatchID);
-            },
-            onBoardgameMatchReady: (message) => settle(message.boardgameMatchID),
-            onCancelled: () => settle(roomCode),
-            onDisconnect: () => settle(roomCode),
-          },
-        ).then(
-          (nextRoom) => {
-            room = nextRoom;
-          },
-          () => settle(roomCode),
-        );
+      resolvePlatformCustomRoomMatchID({
+        roomCode,
+        userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
+        displayName: effectivePlayerName,
+        joinPlatformCustomRoom,
       }),
     [anonymousIdentity.suffix, effectivePlayerName, profile?.id],
   );
