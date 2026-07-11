@@ -757,6 +757,61 @@ describe('match shell room', () => {
     );
   });
 
+  it('broadcasts match chat preview as content-free durable sync signals', async () => {
+    const room = new MatchShellRoom();
+    const handlers = new Map<string, ChatPreviewHandler>();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: ChatPreviewHandler) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    handlers.get('chatPreview')?.(
+      {
+        auth: {
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'spectator',
+          authenticated: true,
+        },
+        userData: {
+          sessionId: 'session_1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'spectator',
+          joinedAt: 1000,
+        },
+      } as PlatformClient,
+      {
+        messageId: 'chat_msg_persisted',
+        conversationId: 'match:bgio-match-1',
+        content: 'this text must stay in ChatService',
+        translatedContent: 'this translation must stay in ChatService',
+        metadata: { moderationStatus: 'visible' },
+      } as unknown as ChatPreviewMessage,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(broadcast).toHaveBeenCalledWith('chatPreview', {
+      conversationId: 'match:bgio-match-1',
+      sender: expect.objectContaining({
+        userId: 'u_1',
+        role: 'spectator',
+      }),
+      messageId: 'chat_msg_persisted',
+      createdAt: expect.any(Number),
+    });
+    const previewPayload = broadcast.mock.calls.find(([type]) => type === 'chatPreview')?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(previewPayload).not.toHaveProperty('content');
+    expect(previewPayload).not.toHaveProperty('translatedContent');
+    expect(previewPayload).not.toHaveProperty('metadata');
+  });
+
   it('verifies match chat preview evidence before broadcasting sync signals', async () => {
     const canBroadcastPreview = vi.fn(async () => false);
     MatchShellRoom.configureChatPreviewStore({
