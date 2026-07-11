@@ -386,7 +386,19 @@ export function platformChatPreviewFromMessage(message: unknown): PlatformChatPr
     sender?: Partial<PlatformClientProfile>;
     messageId?: unknown;
     createdAt?: unknown;
+    content?: unknown;
+    text?: unknown;
+    translatedContent?: unknown;
+    metadata?: unknown;
   };
+  if (
+    data.content !== undefined ||
+    data.text !== undefined ||
+    data.translatedContent !== undefined ||
+    data.metadata !== undefined
+  ) {
+    return null;
+  }
   if (typeof data.messageId !== 'string' || !data.messageId.trim()) return null;
   if (!data.sender || typeof data.sender !== 'object') return null;
   if (typeof data.sender.sessionId !== 'string' || typeof data.sender.userId !== 'string') return null;

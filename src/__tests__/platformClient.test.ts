@@ -138,6 +138,24 @@ describe('platform client helpers', () => {
     ).toBe('spectator');
   });
 
+  it('rejects match shell chat preview messages that carry chat text or metadata', () => {
+    const basePreview = {
+      sender: {
+        sessionId: 's_1',
+        userId: 'u_1',
+        displayName: 'Alice',
+        role: 'player',
+        joinedAt: 1000,
+      },
+      messageId: 'chat_msg_1',
+    };
+
+    expect(platformChatPreviewFromMessage({ ...basePreview, content: 'chat text' })).toBeNull();
+    expect(platformChatPreviewFromMessage({ ...basePreview, text: 'chat text' })).toBeNull();
+    expect(platformChatPreviewFromMessage({ ...basePreview, translatedContent: 'translated text' })).toBeNull();
+    expect(platformChatPreviewFromMessage({ ...basePreview, metadata: { moderationStatus: 'visible' } })).toBeNull();
+  });
+
   it('reads quick match lifecycle messages defensively', () => {
     expect(
       platformQuickMatchSnapshotFromMessage({
