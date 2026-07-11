@@ -1327,6 +1327,83 @@ describe('chat service', () => {
     );
   });
 
+  it('creates report evidence snapshots for deleted messages', async () => {
+    const reportRow = {
+      id: 'chat_report_deleted',
+      message_id: 'chat_msg_deleted',
+      conversation_id: 'match:bgio-match-1',
+      reporter_user_id: 'u_2',
+      reason: 'post_match_review',
+      note: '',
+      reported_message_content: 'deleted evidence text',
+      reported_message_author_user_id: 'u_1',
+      reported_message_author_display_name: 'Alice',
+      reported_message_author_role: 'player',
+      reported_message_moderation_status: 'deleted',
+      reported_message_created_at: '2026-07-10T00:00:01.000Z',
+      status: 'open',
+      reviewer_user_id: null,
+      resolution_note: '',
+      created_at: '2026-07-10T00:00:03.000Z',
+      reviewed_at: null,
+    };
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            id: 'chat_msg_deleted',
+            conversation_id: 'match:bgio-match-1',
+            author_user_id: 'u_1',
+            author_display_name: 'Alice',
+            author_role: 'player',
+            content: 'deleted evidence text',
+            moderation_status: 'deleted',
+            created_at: '2026-07-10T00:00:01.000Z',
+            conversation_type: 'match',
+            conversation_subject_id: 'bgio-match-1',
+          },
+        ],
+      },
+      { rows: [reportRow] },
+    ]);
+
+    await expect(
+      reportChatMessage({
+        pool,
+        reporterUserId: 'u_2',
+        messageId: 'chat_msg_deleted',
+        body: { reason: 'post_match_review' },
+        sanitizeText,
+        generateReportId: () => 'chat_report_deleted',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        report: expect.objectContaining({
+          id: 'chat_report_deleted',
+          messageId: 'chat_msg_deleted',
+          message: expect.objectContaining({
+            content: 'deleted evidence text',
+            moderationStatus: 'deleted',
+          }),
+        }),
+      },
+    });
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('JOIN chat_conversations'), [
+      'chat_msg_deleted',
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(
+      1,
+      expect.not.stringContaining("moderation_status IN ('visible', 'pending_review')"),
+      ['chat_msg_deleted'],
+    );
+    expect(pool.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('reported_message_moderation_status'),
+      expect.arrayContaining(['deleted evidence text', 'u_1', 'Alice', 'player', 'deleted']),
+    );
+  });
+
   it('rejects reports for direct conversations the reporter cannot access', async () => {
     const pool = poolWithResults([
       {
