@@ -25,6 +25,16 @@ function normalizeStatus(value: unknown): CustomRoomStatus {
   return 'waiting';
 }
 
+function sameRequiredText(current: string | undefined, next: unknown, maxLength: number): boolean {
+  const supplied = optionalText(next, maxLength);
+  return Boolean(supplied && current && supplied === current);
+}
+
+function sameOptionalText(current: string | undefined, next: unknown, maxLength: number): boolean {
+  const supplied = optionalText(next, maxLength);
+  return !supplied || Boolean(current && supplied === current);
+}
+
 export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: PlatformClient }> {
   private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
   maxClients = 16;
@@ -72,6 +82,12 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
   }
 
   onAuth(_client: PlatformClient, options: CustomRoomOptions, context: AuthContext): PlatformAuth {
+    if (!sameRequiredText(this.roomCode, options.roomCode, 128)) {
+      throw new Error('Custom room access denied');
+    }
+    if (!sameOptionalText(this.boardgameMatchID, options.boardgameMatchID, 128)) {
+      throw new Error('Custom room access denied');
+    }
     return authenticatePlatformClient(options, context);
   }
 

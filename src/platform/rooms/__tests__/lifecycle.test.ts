@@ -312,6 +312,69 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('rejects custom-room joins that target a different room identity', async () => {
+    const room = new CustomRoom();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    await room.onCreate({ roomCode: 'ROOM42', boardgameMatchID: 'bgio-match-1', status: 'waiting' });
+
+    expect(() =>
+      room.onAuth(
+        {} as PlatformClient,
+        {
+          roomCode: 'OTHER42',
+          boardgameMatchID: 'bgio-match-1',
+          userId: 'u_player',
+          displayName: 'Player',
+          role: 'player',
+        },
+        cookieAuthContext('u_player'),
+      ),
+    ).toThrow('Custom room access denied');
+
+    expect(() =>
+      room.onAuth(
+        {} as PlatformClient,
+        {
+          boardgameMatchID: 'bgio-match-1',
+          userId: 'u_player',
+          displayName: 'Player',
+          role: 'player',
+        },
+        cookieAuthContext('u_player'),
+      ),
+    ).toThrow('Custom room access denied');
+
+    expect(() =>
+      room.onAuth(
+        {} as PlatformClient,
+        {
+          roomCode: 'ROOM42',
+          boardgameMatchID: 'bgio-other-match',
+          userId: 'u_player',
+          displayName: 'Player',
+          role: 'player',
+        },
+        cookieAuthContext('u_player'),
+      ),
+    ).toThrow('Custom room access denied');
+
+    expect(() =>
+      room.onAuth(
+        {} as PlatformClient,
+        {
+          roomCode: ' ROOM42 ',
+          boardgameMatchID: ' bgio-match-1 ',
+          userId: 'u_player',
+          displayName: 'Player',
+          role: 'player',
+        },
+        cookieAuthContext('u_player'),
+      ),
+    ).not.toThrow();
+  });
+
   it('custom room keeps spectators out of player seats and relay authority', async () => {
     const room = new CustomRoom();
     const handlers = new Map<string, BoardgameMatchReadyHandler>();
