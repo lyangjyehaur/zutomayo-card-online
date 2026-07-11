@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Check, Flag, Languages, MessageCircle, Pencil, Radio, Send, Trash2, UserPlus, X } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ANONYMOUS_PLAYER_DEFAULT_NAME,
   formatAnonymousDisplayName,
@@ -138,6 +138,7 @@ export function OnlineLobbyPage({
   const { showToast } = useToast();
   const locale = useLocale();
   const navigate = useNavigate();
+  const location = useLocation();
   const { onlineCount } = useOnlinePresence();
   const deckOptions = useMemo<DeckOptionGroup[]>(() => {
     const localOptions = buildDeckOptions(customDeckAvailable);
@@ -484,6 +485,17 @@ export function OnlineLobbyPage({
   const phaseRef = useRef<MatchmakingPhase>('idle');
   const cancelRef = useRef(false);
   const pendingQuickMatchSessionRef = useRef<OnlineSession | null>(null);
+
+  useEffect(() => {
+    const roomCode = new URLSearchParams(location.search).get('room')?.trim();
+    if (!roomCode) return;
+    setCreatedMatchID('');
+    setRoomChatSubjectOverride('');
+    setMatchID(roomCode);
+    window.requestAnimationFrame(() => {
+      customRoomPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [location.search]);
 
   const resetMatchmaking = useCallback(() => {
     phaseRef.current = 'idle';

@@ -30,6 +30,7 @@ describe('online lobby platform boundary', () => {
 
   it('registers hosted custom rooms in Colyseus before exposing a shareable room code', () => {
     const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+    const roomInfoSource = readRepoFile('src/components/OnlineRoomInfo.tsx');
 
     expect(lobbySource).toContain('createPlatformCustomRoom');
     expect(lobbySource).toContain(
@@ -43,6 +44,8 @@ describe('online lobby platform boundary', () => {
     expect(lobbySource).toContain('onBoardgameMatchReady: (message) =>');
     expect(lobbySource).toContain('isPlatformBoardgameRelayAcknowledged(nextSession.matchID, message)');
     expect(lobbySource).toContain('navigateToOnlineSession(nextSession)');
+    expect(lobbySource).toContain("new URLSearchParams(location.search).get('room')");
+    expect(roomInfoSource).toContain('return `/online?room=${encodeURIComponent(matchID)}`');
   });
 
   it('persists stable platform identity for Colyseus participant evidence', () => {

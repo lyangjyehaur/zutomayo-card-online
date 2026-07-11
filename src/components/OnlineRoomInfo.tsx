@@ -11,11 +11,11 @@ interface OnlineRoomInfoProps {
 }
 
 export function buildOnlineRoomPath(matchID: string): string {
-  return `/play/online/${encodeURIComponent(matchID)}`;
+  return `/online?room=${encodeURIComponent(matchID)}`;
 }
 
 export function buildOnlineSpectatorPath(matchID: string): string {
-  return `${buildOnlineRoomPath(matchID)}?spectate=1`;
+  return `/play/online/${encodeURIComponent(matchID)}?spectate=1`;
 }
 
 export function buildOnlineRoomUrl(matchID: string): string {
