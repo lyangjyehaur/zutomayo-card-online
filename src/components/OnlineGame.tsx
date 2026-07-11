@@ -22,7 +22,12 @@ import {
   type ChatMessage,
   type ProfileResponse,
 } from '../api/client';
-import { canSubmitMatchChat, matchChatAccessStatus, matchChatAuthorRole } from '../chat/matchChatAccess';
+import {
+  canSubmitMatchChat,
+  matchChatAccessStatus,
+  matchChatAuthorRole,
+  matchPlatformPresenceUserId,
+} from '../chat/matchChatAccess';
 import {
   createOnlineStateSnapshot,
   evaluateOnlineStateSnapshot,
@@ -194,7 +199,7 @@ export function OnlineGame({
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
   const opponentDetectedRef = useRef<(() => void) | null>(null);
   const platformRoomRef = useRef<PlatformMatchShellRoom | null>(null);
-  const spectatorPlatformUserId = useRef(`match:${matchID}:spectator:${Date.now().toString(36)}`);
+  const spectatorPlatformUserId = useRef(Date.now().toString(36));
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
@@ -209,11 +214,13 @@ export function OnlineGame({
   const fallbackDisplayName = participantDisplayName(playerID, spectator);
   const chatDisplayName = chatAccount?.nickname || fallbackDisplayName;
   const chatUserId = chatAccount?.id || '';
-  const localPlatformUserId = chatUserId
-    ? `user:${chatUserId}`
-    : spectator
-      ? spectatorPlatformUserId.current
-      : `match:${matchID}:player:${playerID}`;
+  const localPlatformUserId = matchPlatformPresenceUserId({
+    account: chatAccount,
+    matchID,
+    playerID,
+    spectator,
+    anonymousToken: spectatorPlatformUserId.current,
+  });
 
   // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
   useEffect(() => {

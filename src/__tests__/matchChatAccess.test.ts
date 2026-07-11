@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { canSubmitMatchChat, matchChatAccessStatus, matchChatAuthorRole } from '../chat/matchChatAccess';
+import {
+  canSubmitMatchChat,
+  matchChatAccessStatus,
+  matchChatAuthorRole,
+  matchPlatformPresenceUserId,
+} from '../chat/matchChatAccess';
 
 describe('match chat access', () => {
   it('keeps anonymous spectators in login-required state for durable chat', () => {
@@ -21,5 +26,36 @@ describe('match chat access', () => {
     expect(canSubmitMatchChat({ account, content: 'hello', status: 'login_required' })).toBe(false);
     expect(canSubmitMatchChat({ account, content: 'hello', status: 'unavailable' })).toBe(false);
     expect(canSubmitMatchChat({ account, content: 'hello', status: 'sending' })).toBe(false);
+  });
+
+  it('aligns match-shell presence identity with durable chat identity', () => {
+    expect(
+      matchPlatformPresenceUserId({
+        account: { id: 'u_1' },
+        matchID: 'bgio-match-1',
+        playerID: '0',
+        spectator: false,
+        anonymousToken: 'ignored',
+      }),
+    ).toBe('u_1');
+
+    expect(
+      matchPlatformPresenceUserId({
+        account: null,
+        matchID: 'bgio match/1',
+        spectator: true,
+        anonymousToken: 'token/value',
+      }),
+    ).toBe('anon:match:bgio_match_1:spectator:token_value');
+
+    expect(
+      matchPlatformPresenceUserId({
+        account: null,
+        matchID: 'bgio-match-1',
+        playerID: '0',
+        spectator: false,
+        anonymousToken: 'ignored',
+      }),
+    ).toBe('guest:match:bgio-match-1:player:0');
   });
 });

@@ -24,3 +24,32 @@ export function canSubmitMatchChat({
 }): boolean {
   return Boolean(account && content.trim() && status === 'ready');
 }
+
+function sanitizePresenceIdPart(value: string): string {
+  return (
+    value
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 80) || 'unknown'
+  );
+}
+
+export function matchPlatformPresenceUserId({
+  account,
+  matchID,
+  playerID,
+  spectator,
+  anonymousToken,
+}: {
+  account: MatchChatAccount;
+  matchID: string;
+  playerID?: string;
+  spectator: boolean;
+  anonymousToken: string;
+}): string {
+  if (account?.id) return account.id;
+  const cleanMatchID = sanitizePresenceIdPart(matchID);
+  const cleanToken = sanitizePresenceIdPart(anonymousToken);
+  if (spectator) return `anon:match:${cleanMatchID}:spectator:${cleanToken}`;
+  return `guest:match:${cleanMatchID}:player:${sanitizePresenceIdPart(playerID ?? 'unknown')}`;
+}
