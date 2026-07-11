@@ -234,20 +234,21 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
 
   private async recordParticipant(profile: PlatformClientProfile, authenticated: boolean): Promise<void> {
     if (!authenticated) return;
-    await MatchShellRoom.participantStore
-      .recordParticipant({
+    try {
+      await MatchShellRoom.participantStore.recordParticipant({
         boardgameMatchID: this.boardgameMatchID,
         userId: profile.userId,
         role: profile.role,
         boardgamePlayerID: profile.boardgamePlayerID,
         displayName: profile.displayName,
-      })
-      .catch((err) => {
-        logger.warn(
-          { err, boardgameMatchID: this.boardgameMatchID, userId: profile.userId },
-          'failed to record match participant',
-        );
       });
+    } catch (err) {
+      logger.warn(
+        { err, boardgameMatchID: this.boardgameMatchID, userId: profile.userId },
+        'failed to record match participant',
+      );
+      throw err;
+    }
   }
 
   private activeClients(ignoredSessionId?: string): PlatformClient[] {

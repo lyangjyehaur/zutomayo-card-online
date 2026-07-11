@@ -418,6 +418,43 @@ describe('platform room lifecycle', () => {
     expect(events).toEqual(['recordRoomParticipant', 'customRoomSnapshot']);
   });
 
+  it('rejects authenticated custom-room joins when durable participant evidence cannot be recorded', async () => {
+    const recordRoomParticipant = vi.fn(async () => {
+      throw new Error('participant store unavailable');
+    });
+    CustomRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordRoomParticipant,
+    });
+    const room = new CustomRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void, timeout?: number) => {
+      if (typeof timeout === 'number' && timeout > 100) return { clear: vi.fn() };
+      handler();
+      return { clear: vi.fn() };
+    }) as never);
+
+    const spectator = client('session_spectator', {
+      userId: 'u_spectator',
+      displayName: 'Spectator',
+      role: 'spectator',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(spectator);
+
+    await expect(room.onJoin(spectator)).rejects.toThrow('participant store unavailable');
+    expect(recordRoomParticipant).toHaveBeenCalledWith({
+      roomCode: 'ROOM42',
+      userId: 'u_spectator',
+      role: 'spectator',
+      displayName: 'Spectator',
+    });
+    expect(spectator.send).not.toHaveBeenCalledWith('customRoomSnapshot', expect.anything());
+  });
+
   it('records verified cookie identity instead of client-supplied custom-room ids', async () => {
     const recordRoomParticipant = vi.fn(async () => undefined);
     CustomRoom.configureParticipantStore({

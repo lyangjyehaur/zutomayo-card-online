@@ -184,19 +184,17 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
 
   private async recordRoomParticipant(profile: PlatformClientProfile, authenticated: boolean): Promise<void> {
     if (!authenticated) return;
-    await CustomRoom.participantStore
-      .recordRoomParticipant({
+    try {
+      await CustomRoom.participantStore.recordRoomParticipant({
         roomCode: this.roomCode,
         userId: profile.userId,
         role: profile.role,
         displayName: profile.displayName,
-      })
-      .catch((err) => {
-        logger.warn(
-          { err, roomCode: this.roomCode, userId: profile.userId },
-          'failed to record custom-room participant',
-        );
       });
+    } catch (err) {
+      logger.warn({ err, roomCode: this.roomCode, userId: profile.userId }, 'failed to record custom-room participant');
+      throw err;
+    }
   }
 
   private snapshot(ignoredSessionId?: string): PlatformClient['~messages']['customRoomSnapshot'] {

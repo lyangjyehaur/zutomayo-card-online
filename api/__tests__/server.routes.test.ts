@@ -875,6 +875,162 @@ describe('server routes', () => {
       expect(mockQuery).not.toHaveBeenCalled();
     });
 
+    it('rejects match and room chat route access without durable participation evidence', async () => {
+      const cases = [
+        {
+          type: 'match',
+          subjectId: 'bgio-match-1',
+          expectedTable: 'platform_match_participants',
+          messageId: 'chat_msg_private_match',
+          conversationId: 'match:bgio-match-1',
+        },
+        {
+          type: 'room',
+          subjectId: 'ROOM42',
+          expectedTable: 'platform_room_participants',
+          messageId: 'chat_msg_private_room',
+          conversationId: 'room:ROOM42',
+        },
+      ];
+
+      for (const testCase of cases) {
+        mockQuery.mockReset();
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+
+        const historyParams = new URLSearchParams({
+          type: testCase.type,
+          subjectId: testCase.subjectId,
+        });
+        const historyRes = await sendRequest(
+          'GET',
+          `/api/chat/messages?${historyParams.toString()}`,
+          null,
+          userUnsafeHeaders('u_reader'),
+        );
+        expect(historyRes.statusCode).toBe(403);
+        expect(parseBody(historyRes)).toEqual({ error: 'Forbidden' });
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining(testCase.expectedTable), [
+          testCase.subjectId,
+          'u_reader',
+        ]);
+        expect(mockQuery).not.toHaveBeenCalledWith(expect.stringContaining('FROM chat_messages'), expect.any(Array));
+
+        mockQuery.mockReset();
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+        const sendRes = await sendRequest(
+          'POST',
+          '/api/chat/messages',
+          {
+            conversationType: testCase.type,
+            subjectId: testCase.subjectId,
+            content: 'private message',
+            authorRole: 'player',
+          },
+          userUnsafeHeaders('u_reader'),
+        );
+        expect(sendRes.statusCode).toBe(403);
+        expect(parseBody(sendRes)).toEqual({ error: 'Forbidden' });
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining(testCase.expectedTable), [
+          testCase.subjectId,
+          'u_reader',
+        ]);
+        expect(mockQuery).not.toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO chat_conversations'),
+          expect.any(Array),
+        );
+        expect(mockQuery).not.toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO chat_messages'),
+          expect.any(Array),
+        );
+
+        mockQuery.mockReset();
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+        const readRes = await sendRequest(
+          'POST',
+          '/api/chat/read',
+          {
+            conversationType: testCase.type,
+            subjectId: testCase.subjectId,
+            lastReadMessageId: testCase.messageId,
+          },
+          userUnsafeHeaders('u_reader'),
+        );
+        expect(readRes.statusCode).toBe(403);
+        expect(parseBody(readRes)).toEqual({ error: 'Forbidden' });
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining(testCase.expectedTable), [
+          testCase.subjectId,
+          'u_reader',
+        ]);
+        expect(mockQuery).not.toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO chat_read_states'),
+          expect.any(Array),
+        );
+
+        const messageRow = {
+          id: testCase.messageId,
+          conversation_id: testCase.conversationId,
+          content: 'secret message',
+          source_language: 'ja',
+          type: testCase.type,
+          subject_id: testCase.subjectId,
+        };
+
+        mockQuery.mockReset();
+        mockQuery
+          .mockResolvedValue({ rows: [], rowCount: 0 })
+          .mockResolvedValueOnce({ rows: [messageRow], rowCount: 1 });
+        const translateRes = await sendRequest(
+          'POST',
+          `/api/chat/messages/${testCase.messageId}/translate`,
+          { targetLanguage: 'en' },
+          userUnsafeHeaders('u_reader'),
+        );
+        expect(translateRes.statusCode).toBe(403);
+        expect(parseBody(translateRes)).toEqual({ error: 'Forbidden' });
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining(testCase.expectedTable), [
+          testCase.subjectId,
+          'u_reader',
+        ]);
+        expect(mockQuery).not.toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO chat_message_translations'),
+          expect.any(Array),
+        );
+
+        mockQuery.mockReset();
+        mockQuery.mockResolvedValue({ rows: [], rowCount: 0 }).mockResolvedValueOnce({
+          rows: [
+            {
+              ...messageRow,
+              author_user_id: 'u_author',
+              author_display_name: 'Author',
+              author_role: 'player',
+              moderation_status: 'visible',
+              created_at: '2026-07-10T00:00:01.000Z',
+              conversation_type: testCase.type,
+              conversation_subject_id: testCase.subjectId,
+            },
+          ],
+          rowCount: 1,
+        });
+        const reportRes = await sendRequest(
+          'POST',
+          `/api/chat/messages/${testCase.messageId}/report`,
+          { reason: 'abuse' },
+          userUnsafeHeaders('u_reader'),
+        );
+        expect(reportRes.statusCode).toBe(403);
+        expect(parseBody(reportRes)).toEqual({ error: 'Forbidden' });
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining(testCase.expectedTable), [
+          testCase.subjectId,
+          'u_reader',
+        ]);
+        expect(mockQuery).not.toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO chat_reports'),
+          expect.any(Array),
+        );
+      }
+    });
+
     it('POST /api/chat/read marks every durable conversation type through the same route', async () => {
       const cases = [
         {

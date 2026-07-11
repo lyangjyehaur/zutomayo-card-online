@@ -263,6 +263,45 @@ describe('match shell room', () => {
     expect(events).toEqual(['recordParticipant', 'roomSnapshot']);
   });
 
+  it('rejects authenticated match-shell joins when durable participant evidence cannot be recorded', async () => {
+    const recordParticipant = vi.fn(async () => {
+      throw new Error('participant store unavailable');
+    });
+    MatchShellRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordParticipant,
+    });
+    const room = new MatchShellRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    const client = {
+      sessionId: 'session_spectator',
+      auth: {
+        userId: 'u_spectator',
+        displayName: 'Spectator',
+        role: 'spectator',
+        authenticated: true,
+      },
+      send: vi.fn(),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    room.clients.push(client);
+
+    await expect(room.onJoin(client, { boardgameMatchID: 'bgio-match-1' })).rejects.toThrow(
+      'participant store unavailable',
+    );
+    expect(recordParticipant).toHaveBeenCalledWith({
+      boardgameMatchID: 'bgio-match-1',
+      userId: 'u_spectator',
+      role: 'spectator',
+      boardgamePlayerID: undefined,
+      displayName: 'Spectator',
+    });
+    expect(client.send).not.toHaveBeenCalledWith('roomSnapshot', expect.anything());
+  });
+
   it('records verified cookie identity instead of client-supplied match-shell ids', async () => {
     const recordParticipant = vi.fn(async () => undefined);
     MatchShellRoom.configureParticipantStore({
