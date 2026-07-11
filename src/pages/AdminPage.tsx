@@ -15,6 +15,7 @@ import {
   adminGetUsers,
   adminLogin,
   adminRevokeChatUserSanction,
+  adminReviewChatMessageModeration,
   adminReviewChatReport,
   adminResetElo,
   adminUpdateAboutPage,
@@ -748,6 +749,7 @@ export function AdminPage() {
   const [chatReviewingId, setChatReviewingId] = useState<string | null>(null);
   const [chatEvidenceLoadingId, setChatEvidenceLoadingId] = useState<string | null>(null);
   const [chatSanctioningId, setChatSanctioningId] = useState<string | null>(null);
+  const [chatModeratingMessageId, setChatModeratingMessageId] = useState<string | null>(null);
   const [chatEvidenceFocusMessageId, setChatEvidenceFocusMessageId] = useState<string | null>(null);
   const [chatEvidence, setChatEvidence] = useState<{
     conversation: ChatConversation;
@@ -958,6 +960,34 @@ export function AdminPage() {
       }
     },
     [chatEvidence?.conversation.id, token],
+  );
+
+  const moderateChatMessage = useCallback(
+    async (message: ChatMessage, status: 'visible' | 'blocked' | 'deleted') => {
+      if (!token) return;
+      setChatModeratingMessageId(message.id);
+      setAdminError('');
+      try {
+        const reason =
+          status === 'visible'
+            ? 'manual_visible'
+            : status === 'blocked'
+              ? message.moderationReason || 'manual_blocked'
+              : 'manual_deleted';
+        await adminReviewChatMessageModeration(token, message.id, { status, reason });
+        if (chatEvidence) {
+          const evidence = await adminGetChatConversationMessages(token, chatEvidence.conversation.id, 100);
+          setChatEvidence(evidence);
+        }
+        const { reports } = await adminGetChatReports(token, chatReportStatus);
+        setChatReports(reports);
+      } catch (e) {
+        setAdminError(e instanceof Error ? e.message : '訊息審核失敗');
+      } finally {
+        setChatModeratingMessageId(null);
+      }
+    },
+    [chatEvidence, chatReportStatus, token],
   );
 
   const muteReportedAuthor = useCallback(
@@ -1685,6 +1715,38 @@ export function AdminPage() {
                               {message.deletedAt ? 'deleted' : message.moderationStatus}
                             </Badge>
                             <span>{new Date(message.createdAt).toLocaleString()}</span>
+                            <div className="ml-auto flex flex-wrap gap-1">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={
+                                  chatModeratingMessageId === message.id || message.moderationStatus === 'visible'
+                                }
+                                onClick={() => void moderateChatMessage(message, 'visible')}
+                              >
+                                放行
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={
+                                  chatModeratingMessageId === message.id || message.moderationStatus === 'blocked'
+                                }
+                                onClick={() => void moderateChatMessage(message, 'blocked')}
+                              >
+                                封鎖
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                disabled={
+                                  chatModeratingMessageId === message.id || message.moderationStatus === 'deleted'
+                                }
+                                onClick={() => void moderateChatMessage(message, 'deleted')}
+                              >
+                                刪除
+                              </Button>
+                            </div>
                           </div>
                           <p className="whitespace-pre-wrap break-words text-sm text-content-primary">
                             {message.content || '（空白訊息）'}
