@@ -3,6 +3,7 @@ import {
   buildPlatformFriendInviteId,
   connectPlatformMatchShell,
   isPlatformBoardgameRelayAcknowledged,
+  joinPlatformInvite,
   joinPlatformCustomRoom,
   normalizeSeatReservation,
   platformBoardgameMatchReadyFromMessage,
@@ -478,6 +479,80 @@ describe('platform client helpers', () => {
         room: expect.objectContaining({
           name: 'custom_room',
           roomId: 'platform_room_1',
+        }),
+      }),
+    );
+  });
+
+  it('retries invite joins through pending and accepted Colyseus status filters', async () => {
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const post = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('pending invite not found'))
+      .mockResolvedValueOnce({
+        data: {
+          name: 'invite',
+          roomId: 'platform_invite_1',
+          sessionId: 'session_1',
+        },
+      });
+    const consumeSeatReservation = vi.fn(() => room);
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await joinPlatformInvite({
+      inviteId: 'friend:v1:u_inviter:u_target',
+      targetUserId: 'u_target',
+      userId: 'u_inviter',
+      displayName: 'Inviter',
+    });
+
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      'matchmake/join/invite',
+      expect.objectContaining({
+        body: JSON.stringify({
+          inviteId: 'friend:v1:u_inviter:u_target',
+          targetUserId: 'u_target',
+          userId: 'u_inviter',
+          displayName: 'Inviter',
+          role: 'player',
+          status: 'pending',
+        }),
+      }),
+    );
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      'matchmake/join/invite',
+      expect.objectContaining({
+        body: JSON.stringify({
+          inviteId: 'friend:v1:u_inviter:u_target',
+          targetUserId: 'u_target',
+          userId: 'u_inviter',
+          displayName: 'Inviter',
+          role: 'player',
+          status: 'accepted',
+        }),
+      }),
+    );
+    expect(post.mock.calls.map(([path]) => path).join('\n')).not.toContain('/matchmaking/');
+    expect(post.mock.calls.map(([, request]) => JSON.stringify(request)).join('\n')).not.toContain('realMatchId');
+    expect(consumeSeatReservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session_1',
+        room: expect.objectContaining({
+          name: 'invite',
+          roomId: 'platform_invite_1',
         }),
       }),
     );
