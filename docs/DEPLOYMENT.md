@@ -132,26 +132,27 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 
 ### `platform`
 
-| Variable                | Default                                   | Notes                                                                                                                                |
-| ----------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `PLATFORM_PORT`         | `3002`                                    | Colyseus platform service port inside the container.                                                                                 |
-| `NODE_ENV`              | `production` in Compose                   | Runtime mode; also controls the default Redis mode when `PLATFORM_REDIS_MODE` is unset.                                              |
-| `PG_HOST`               | `postgres`                                | PostgreSQL host used by `PLATFORM_FRIEND_STORE=postgres` for server-side friend presence lookup.                                     |
-| `PG_PORT`               | `5432`                                    | PostgreSQL port.                                                                                                                     |
-| `PG_USER`               | `zutomayo`                                | PostgreSQL user.                                                                                                                     |
-| `PG_PASSWORD`           | required                                  | PostgreSQL password. Required in Compose because friend presence lookup is backed by `user_friends`.                                 |
-| `PG_DATABASE`           | `zutomayo`                                | PostgreSQL database name.                                                                                                            |
-| `REDIS_URL`             | `redis://redis:6379`                      | Redis connection URL for Colyseus `RedisPresence` and `RedisDriver`. Use `redis://localhost:6379` for local dev.                     |
-| `REDIS_DB`              | `0`                                       | Redis DB index shared with other online coordination services.                                                                       |
-| `JWT_SECRET`            | **required**                              | Shared HMAC secret for validating account session cookies during Colyseus matchmaking/auth. Must match `game` and `api`.             |
-| `PLATFORM_REDIS_MODE`   | `redis` in production, `memory` otherwise | `memory` keeps local development dependency-light; `redis` enables multi-instance room discovery and presence in Compose/production. |
-| `PLATFORM_FRIEND_STORE` | `postgres` in Compose, auto otherwise     | `postgres` resolves friend presence subscriptions from `user_friends`; `none` disables friend lookup for local development.          |
-| `PLATFORM_PG_POOL_MAX`  | `PG_POOL_MAX` or `5`                      | Optional pool size override for platform friend lookup.                                                                              |
-| `APP_VERSION`           | `package.json` version                    | Release version used in platform logs/Sentry release metadata.                                                                       |
-| `APP_BUILD_ID`          | `APP_VERSION`                             | Build identifier; keep it aligned with `game` and `api`.                                                                             |
-| `GAME_RULES_VERSION`    | `APP_VERSION`                             | Rules compatibility version; keep it aligned with `game` and `api`.                                                                  |
-| `SENTRY_DSN`            | empty                                     | Backend DSN. Leave empty to disable platform error reporting.                                                                        |
-| `LOG_LEVEL`             | `info`                                    | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                      |
+| Variable                           | Default                                   | Notes                                                                                                                                                                       |
+| ---------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PLATFORM_PORT`                    | `3002`                                    | Colyseus platform service port inside the container.                                                                                                                        |
+| `NODE_ENV`                         | `production` in Compose                   | Runtime mode; also controls the default Redis mode when `PLATFORM_REDIS_MODE` is unset.                                                                                     |
+| `PG_HOST`                          | `postgres`                                | PostgreSQL host used by platform Postgres stores for friend presence lookup and durable match/room chat participant evidence.                                               |
+| `PG_PORT`                          | `5432`                                    | PostgreSQL port.                                                                                                                                                            |
+| `PG_USER`                          | `zutomayo`                                | PostgreSQL user.                                                                                                                                                            |
+| `PG_PASSWORD`                      | required                                  | PostgreSQL password. Required in Compose because friend presence and match/room chat participant evidence are backed by Postgres.                                           |
+| `PG_DATABASE`                      | `zutomayo`                                | PostgreSQL database name.                                                                                                                                                   |
+| `REDIS_URL`                        | `redis://redis:6379`                      | Redis connection URL for Colyseus `RedisPresence` and `RedisDriver`. Use `redis://localhost:6379` for local dev.                                                            |
+| `REDIS_DB`                         | `0`                                       | Redis DB index shared with other online coordination services.                                                                                                              |
+| `JWT_SECRET`                       | **required**                              | Shared HMAC secret for validating account session cookies during Colyseus matchmaking/auth. Must match `game` and `api`.                                                    |
+| `PLATFORM_REDIS_MODE`              | `redis` in production, `memory` otherwise | `memory` keeps local development dependency-light; `redis` enables multi-instance room discovery and presence in Compose/production.                                        |
+| `PLATFORM_FRIEND_STORE`            | `postgres` in Compose, auto otherwise     | `postgres` resolves friend presence subscriptions from `user_friends`; `none` disables friend lookup for local development.                                                 |
+| `PLATFORM_MATCH_PARTICIPANT_STORE` | `postgres` in Compose, auto otherwise     | `postgres` records account-backed Colyseus match-shell and custom-room participants so ChatService can enforce match/room chat ACLs; `none` keeps local presence transient. |
+| `PLATFORM_PG_POOL_MAX`             | `PG_POOL_MAX` or `5`                      | Optional pool size override shared by platform Postgres-backed stores.                                                                                                      |
+| `APP_VERSION`                      | `package.json` version                    | Release version used in platform logs/Sentry release metadata.                                                                                                              |
+| `APP_BUILD_ID`                     | `APP_VERSION`                             | Build identifier; keep it aligned with `game` and `api`.                                                                                                                    |
+| `GAME_RULES_VERSION`               | `APP_VERSION`                             | Rules compatibility version; keep it aligned with `game` and `api`.                                                                                                         |
+| `SENTRY_DSN`                       | empty                                     | Backend DSN. Leave empty to disable platform error reporting.                                                                                                               |
+| `LOG_LEVEL`                        | `info`                                    | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                                                             |
 
 The platform service exposes `/health` and `/ready` over HTTP on `PLATFORM_PORT`; Colyseus websocket room traffic uses the same port.
 
@@ -290,7 +291,7 @@ Use `pgm.addColumn` / `pgm.createTable` / `pgm.alterTable` etc. For irreversible
 
 ## 水平擴展 / Horizontal Scaling
 
-The `game`, `api`, and `platform` services can be replicated (multiple instances) to scale horizontally. PostgreSQL serves as the shared data layer — boardgame.io uses `PostgresAdapter` for the `bjg_matches` table, the API uses `pg.Pool` for durable product/chat data, and the platform service uses PostgreSQL for server-side friend presence lookup.
+The `game`, `api`, and `platform` services can be replicated (multiple instances) to scale horizontally. PostgreSQL serves as the shared data layer — boardgame.io uses `PostgresAdapter` for the `bjg_matches` table, the API uses `pg.Pool` for durable product/chat data, and the platform service uses PostgreSQL for server-side friend presence lookup plus durable match/custom-room participant evidence used by ChatService access control.
 
 Redis serves five roles simultaneously:
 
