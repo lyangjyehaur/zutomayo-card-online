@@ -44,10 +44,12 @@ import { useOnlinePresence } from '../hooks/useOnlinePresence';
 import {
   buildPlatformFriendInviteId,
   connectPlatformQuickMatch,
+  createPlatformCustomRoom,
   createPlatformInvite,
   isPlatformBoardgameRelayAcknowledged,
   joinPlatformCustomRoom,
   joinPlatformInvite,
+  type PlatformCustomRoom,
   type PlatformInviteRoom,
   type PlatformQuickMatchRoom,
 } from '../platformClient';
@@ -187,6 +189,7 @@ export function OnlineLobbyPage({
   const [roomChatStatus, setRoomChatStatus] = useState<DirectChatStatus>('idle');
   const [reportedRoomMessageIds, setReportedRoomMessageIds] = useState<Set<string>>(() => new Set());
   const customRoomPanelRef = useRef<HTMLDivElement | null>(null);
+  const platformCustomRoomRef = useRef<PlatformCustomRoom | null>(null);
   const roomChatMessagesRef = useRef<HTMLDivElement | null>(null);
   const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
@@ -495,6 +498,8 @@ export function OnlineLobbyPage({
       cancelRef.current = true;
       void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
       platformQuickMatchRoomRef.current = null;
+      void platformCustomRoomRef.current?.leave(true).catch(() => undefined);
+      platformCustomRoomRef.current = null;
     },
     [],
   );
@@ -568,13 +573,49 @@ export function OnlineLobbyPage({
     [anonymousIdentity.suffix, effectivePlayerName, profile?.id],
   );
 
+  const leavePlatformCustomRoom = () => {
+    void platformCustomRoomRef.current?.leave(true).catch(() => undefined);
+    platformCustomRoomRef.current = null;
+  };
+
   const runOnline = async (id?: string) => {
     if (requestAnonymousNameBeforeStart()) return;
     setError('');
     try {
-      const targetMatchID = id ? await resolvePlatformCustomRoom(id) : undefined;
-      const nextSession = await onStartOnline(targetMatchID, effectivePlayerName);
-      setCreatedMatchID(id ? '' : nextSession.matchID);
+      if (id) {
+        leavePlatformCustomRoom();
+        setCreatedMatchID('');
+        const targetMatchID = await resolvePlatformCustomRoom(id);
+        await onStartOnline(targetMatchID, effectivePlayerName);
+        return;
+      }
+
+      leavePlatformCustomRoom();
+      const nextSession = await onStartOnline(undefined, effectivePlayerName, { navigate: false });
+      const room = await createPlatformCustomRoom(
+        {
+          roomCode: nextSession.matchID,
+          boardgameMatchID: nextSession.matchID,
+          userId: nextSession.platformUserId || profile?.id || `anon:${anonymousIdentity.suffix}`,
+          displayName: nextSession.platformDisplayName || effectivePlayerName,
+        },
+        {
+          onCancelled: () => {
+            if (platformCustomRoomRef.current === room) {
+              platformCustomRoomRef.current = null;
+              setCreatedMatchID('');
+            }
+          },
+          onDisconnect: () => {
+            if (platformCustomRoomRef.current === room) {
+              platformCustomRoomRef.current = null;
+              setCreatedMatchID('');
+            }
+          },
+        },
+      );
+      platformCustomRoomRef.current = room;
+      setCreatedMatchID(nextSession.matchID);
     } catch (err) {
       Sentry.captureException(err, { tags: { action: 'start-online' } });
       setError(onlineErrorMessage(err));

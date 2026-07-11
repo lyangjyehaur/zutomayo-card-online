@@ -28,6 +28,20 @@ describe('online lobby platform boundary', () => {
     expect(apiClientSource).toContain('export async function matchmakingQueue');
   });
 
+  it('registers hosted custom rooms in Colyseus before exposing a shareable room code', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+
+    expect(lobbySource).toContain('createPlatformCustomRoom');
+    expect(lobbySource).toContain(
+      'const nextSession = await onStartOnline(undefined, effectivePlayerName, { navigate: false })',
+    );
+    expect(lobbySource).toContain('boardgameMatchID: nextSession.matchID');
+    expect(lobbySource).toContain('platformCustomRoomRef.current = room');
+    expect(lobbySource.indexOf('await createPlatformCustomRoom')).toBeLessThan(
+      lobbySource.indexOf('setCreatedMatchID(nextSession.matchID)'),
+    );
+  });
+
   it('persists stable platform identity for Colyseus participant evidence', () => {
     const appSource = readRepoFile('src/App.tsx');
     const onlineSessionSource = readRepoFile('src/onlineSession.ts');
