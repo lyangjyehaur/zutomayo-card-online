@@ -5,20 +5,34 @@ import { createOnlinePresenceFallbackController } from './onlinePresenceFallback
 
 const PRESENCE_VISITOR_ID_KEY = 'zutomayo_presence_visitor_id';
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const PRESENCE_VISITOR_ID_PATTERN = /^anon:presence:[a-zA-Z0-9_-]{8,83}$/;
+const LEGACY_PRESENCE_VISITOR_ID_PATTERN = /^presence:[a-zA-Z0-9_-]{8,88}$/;
 
-function createVisitorId(): string {
+export function createPresenceVisitorId(): string {
   const random =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
-  return `presence:${random.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  return `anon:presence:${random.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+}
+
+export function normalizePresenceVisitorId(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (PRESENCE_VISITOR_ID_PATTERN.test(trimmed)) return trimmed;
+  if (LEGACY_PRESENCE_VISITOR_ID_PATTERN.test(trimmed)) return `anon:${trimmed}`;
+  return null;
 }
 
 function loadVisitorId(): string {
-  if (typeof localStorage === 'undefined') return createVisitorId();
+  if (typeof localStorage === 'undefined') return createPresenceVisitorId();
   const existing = localStorage.getItem(PRESENCE_VISITOR_ID_KEY);
-  if (existing && /^[a-zA-Z0-9:_-]{8,96}$/.test(existing)) return existing;
-  const next = createVisitorId();
+  const normalized = normalizePresenceVisitorId(existing);
+  if (normalized) {
+    if (normalized !== existing) localStorage.setItem(PRESENCE_VISITOR_ID_KEY, normalized);
+    return normalized;
+  }
+  const next = createPresenceVisitorId();
   localStorage.setItem(PRESENCE_VISITOR_ID_KEY, next);
   return next;
 }

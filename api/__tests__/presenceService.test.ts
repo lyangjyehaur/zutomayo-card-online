@@ -31,6 +31,7 @@ function makeRedis(count = 0): RedisLike {
 describe('presence service', () => {
   it('normalizes browser visitor ids conservatively', () => {
     expect(normalizePresenceId('presence:abc_12345')).toBe('presence:abc_12345');
+    expect(normalizePresenceId('anon:presence:abc_12345')).toBe('anon:presence:abc_12345');
     expect(normalizePresenceId('bad space')).toBeNull();
     expect(normalizePresenceId('short')).toBeNull();
   });
@@ -59,6 +60,20 @@ describe('presence service', () => {
     ).resolves.toEqual({ ok: true, body: { onlineCount: 1, activeWindowSeconds: 90 } });
     expect(redis.zadd).toHaveBeenCalledWith('presence:test', 100_000, 'presence:visitor_1');
     expect(redis.expire).toHaveBeenCalledWith('presence:test', 180);
+  });
+
+  it('stores anonymous platform visitor ids for heartbeat fallback compatibility', async () => {
+    const redis = makeRedis(1);
+
+    await expect(
+      heartbeatOnlinePresence(redis, {
+        key: 'presence:test',
+        visitorId: 'anon:presence:visitor_1',
+        now: 100_000,
+        ttlMs: 90_000,
+      }),
+    ).resolves.toEqual({ ok: true, body: { onlineCount: 1, activeWindowSeconds: 90 } });
+    expect(redis.zadd).toHaveBeenCalledWith('presence:test', 100_000, 'anon:presence:visitor_1');
   });
 
   it('rejects missing visitor ids for heartbeat updates', async () => {
