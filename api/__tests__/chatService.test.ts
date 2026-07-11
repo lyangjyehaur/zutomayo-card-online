@@ -1241,6 +1241,66 @@ describe('chat service', () => {
     });
   });
 
+  it('stores ready source translations without calling the LLM provider for same-language requests', async () => {
+    const sourceRow = {
+      ...translationRow,
+      target_language: 'ja',
+      translated_content: 'こんにちは',
+      provider: 'source',
+      model: '',
+      status: 'ready',
+    };
+    const pool = poolWithResults([
+      {
+        rows: [
+          { ...messageRow, content: 'こんにちは', source_language: 'ja', type: 'match', subject_id: 'bgio-match-1' },
+        ],
+      },
+      { rows: [] },
+      { rows: [sourceRow] },
+    ]);
+    const translateText = vi.fn(async () => ({
+      translatedContent: 'this should not be used',
+      provider: 'llm',
+      model: 'model',
+    }));
+
+    await expect(
+      requestChatTranslation({
+        pool,
+        userId: 'u_2',
+        messageId: 'chat_msg_1',
+        body: { targetLanguage: 'JA' },
+        sanitizeText,
+        translateText,
+        providerName: 'gateway',
+        modelName: 'llm-model',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        cached: false,
+        translation: expect.objectContaining({
+          messageId: 'chat_msg_1',
+          targetLanguage: 'ja',
+          translatedContent: 'こんにちは',
+          provider: 'source',
+          model: '',
+          status: 'ready',
+        }),
+      },
+    });
+    expect(translateText).not.toHaveBeenCalled();
+    expect(pool.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO chat_message_translations'), [
+      'chat_msg_1',
+      'ja',
+      'こんにちは',
+      'source',
+      '',
+      'ready',
+    ]);
+  });
+
   it('creates reports against the original message for evidence review', async () => {
     const reportRow = {
       id: 'chat_report_1',
