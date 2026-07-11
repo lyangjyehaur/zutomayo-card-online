@@ -85,27 +85,28 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
 
   async onLeave(client: PlatformClient): Promise<void> {
     if (this.status === 'matched' && client.sessionId !== this.hostSessionId) {
-      await this.refreshMetadata();
+      await this.refreshMetadata(client.sessionId);
       return;
     }
     if (this.status === 'waiting' || this.status === 'matched') {
-      await this.cancel(client.userData ? 'player_left' : 'connection_lost');
+      await this.cancel(client.userData ? 'player_left' : 'connection_lost', client.sessionId);
       return;
     }
-    await this.refreshMetadata();
+    await this.refreshMetadata(client.sessionId);
   }
 
-  private profiles(): PlatformClientProfile[] {
+  private profiles(ignoredSessionId?: string): PlatformClientProfile[] {
     return this.clients
+      .filter((client) => client.sessionId !== ignoredSessionId)
       .map((client) => client.userData)
       .filter((profile): profile is PlatformClientProfile => Boolean(profile));
   }
 
-  private snapshot(): PlatformClient['~messages']['quickMatchSnapshot'] {
+  private snapshot(ignoredSessionId?: string): PlatformClient['~messages']['quickMatchSnapshot'] {
     return {
       roomId: this.roomId,
       status: this.status,
-      players: this.profiles(),
+      players: this.profiles(ignoredSessionId),
       hostSessionId: this.hostSessionId,
       boardgameMatchID: this.boardgameMatchID,
     };
@@ -123,24 +124,24 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     }
   }
 
-  private broadcastSnapshot(): void {
-    this.broadcast('quickMatchSnapshot', this.snapshot());
+  private broadcastSnapshot(ignoredSessionId?: string): void {
+    this.broadcast('quickMatchSnapshot', this.snapshot(ignoredSessionId));
   }
 
-  private async cancel(reason: string): Promise<void> {
+  private async cancel(reason: string, ignoredSessionId?: string): Promise<void> {
     if (this.status === 'cancelled' || this.status === 'finished') return;
     this.status = 'cancelled';
-    await this.refreshMetadata();
+    await this.refreshMetadata(ignoredSessionId);
     this.broadcast('quickMatchCancelled', { reason });
-    this.broadcastSnapshot();
+    this.broadcastSnapshot(ignoredSessionId);
   }
 
-  private async refreshMetadata(): Promise<void> {
+  private async refreshMetadata(ignoredSessionId?: string): Promise<void> {
     await this.setMatchmaking({
       metadata: {
         kind: 'quick-match',
         status: this.status,
-        playerCount: this.profiles().length,
+        playerCount: this.profiles(ignoredSessionId).length,
         hostSessionId: this.hostSessionId,
         boardgameMatchID: this.boardgameMatchID,
       },

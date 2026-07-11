@@ -170,8 +170,8 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
 
   async onLeave(client: PlatformClient): Promise<void> {
     const profile = client.userData;
-    await this.refreshMetadata();
-    if (profile) this.broadcastPresence('leave', profile);
+    await this.refreshMetadata(client.sessionId);
+    if (profile) this.broadcastPresence('leave', profile, client.sessionId);
   }
 
   private resolveRole(
@@ -216,41 +216,48 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     });
   }
 
-  private snapshot(): PlatformClient['~messages']['roomSnapshot'] {
+  private activeClients(ignoredSessionId?: string): PlatformClient[] {
+    return this.clients.filter((client) => client.sessionId !== ignoredSessionId);
+  }
+
+  private snapshot(ignoredSessionId?: string): PlatformClient['~messages']['roomSnapshot'] {
+    const clients = this.activeClients(ignoredSessionId);
     return {
       roomId: this.roomId,
       boardgameMatchID: this.boardgameMatchID,
       status: this.status,
-      players: this.profiles('player'),
-      spectators: this.clients
+      players: this.profiles('player', ignoredSessionId),
+      spectators: clients
         .map((client) => client.userData)
         .filter((profile): profile is PlatformClientProfile => Boolean(profile && profile.role !== 'player')),
     };
   }
 
-  private profiles(role: PlatformAuth['role']): PlatformClientProfile[] {
-    return this.clients
+  private profiles(role: PlatformAuth['role'], ignoredSessionId?: string): PlatformClientProfile[] {
+    return this.activeClients(ignoredSessionId)
       .map((client) => client.userData)
       .filter((profile): profile is PlatformClientProfile => Boolean(profile && profile.role === role));
   }
 
-  private broadcastPresence(event: 'join' | 'leave', profile: PlatformClientProfile): void {
+  private broadcastPresence(event: 'join' | 'leave', profile: PlatformClientProfile, ignoredSessionId?: string): void {
+    const clients = this.activeClients(ignoredSessionId);
     this.broadcast('presence', {
       event,
       profile,
-      players: this.profiles('player').length,
-      spectators: this.clients.filter((client) => client.userData?.role !== 'player').length,
+      players: this.profiles('player', ignoredSessionId).length,
+      spectators: clients.filter((client) => client.userData?.role !== 'player').length,
     });
   }
 
-  private async refreshMetadata(): Promise<void> {
+  private async refreshMetadata(ignoredSessionId?: string): Promise<void> {
+    const clients = this.activeClients(ignoredSessionId);
     await this.setMatchmaking({
       metadata: {
         kind: 'match-shell',
         boardgameMatchID: this.boardgameMatchID,
         status: this.status,
-        playerCount: this.profiles('player').length,
-        spectatorCount: this.clients.filter((client) => client.userData?.role !== 'player').length,
+        playerCount: this.profiles('player', ignoredSessionId).length,
+        spectatorCount: clients.filter((client) => client.userData?.role !== 'player').length,
         conversationId: this.conversationId,
       },
     });

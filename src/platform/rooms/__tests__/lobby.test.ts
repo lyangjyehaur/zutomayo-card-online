@@ -99,4 +99,48 @@ describe('lobby room', () => {
       }),
     );
   });
+
+  it('excludes the leaving lobby session from presence and matchmaking counts', async () => {
+    const room = new LobbyRoom();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+
+    const alice = lobbyClient('session_alice', {
+      userId: 'u_alice',
+      displayName: 'Alice',
+      role: 'player',
+      authenticated: true,
+    });
+    const bob = lobbyClient('session_bob', {
+      userId: 'u_bob',
+      displayName: 'Bob',
+      role: 'spectator',
+      authenticated: true,
+    });
+
+    await room.onCreate();
+    room.clients.push(alice);
+    await room.onJoin(alice);
+    room.clients.push(bob);
+    await room.onJoin(bob);
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+    await room.onLeave(bob);
+
+    expect(broadcast).toHaveBeenCalledWith(
+      'presence',
+      expect.objectContaining({
+        event: 'leave',
+        players: 1,
+        spectators: 0,
+        onlineCount: 1,
+      }),
+    );
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        onlineCount: 1,
+      }),
+    });
+  });
 });

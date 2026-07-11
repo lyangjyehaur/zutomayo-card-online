@@ -146,22 +146,26 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
         this.broadcastSnapshot();
         return;
       }
-      await this.cancel('host_left');
+      await this.cancel('host_left', client.sessionId);
       return;
     }
 
-    await this.refreshMetadata();
-    this.broadcastSnapshot();
+    await this.refreshMetadata(client.sessionId);
+    this.broadcastSnapshot(client.sessionId);
   }
 
-  private profiles(): PlatformClientProfile[] {
-    return this.clients
+  private activeClients(ignoredSessionId?: string): PlatformClient[] {
+    return this.clients.filter((client) => client.sessionId !== ignoredSessionId);
+  }
+
+  private profiles(ignoredSessionId?: string): PlatformClientProfile[] {
+    return this.activeClients(ignoredSessionId)
       .map((client) => client.userData)
       .filter((profile): profile is PlatformClientProfile => Boolean(profile));
   }
 
-  private roleProfiles(role: PlatformAuth['role']): PlatformClientProfile[] {
-    return this.profiles().filter((profile) => profile.role === role);
+  private roleProfiles(role: PlatformAuth['role'], ignoredSessionId?: string): PlatformClientProfile[] {
+    return this.profiles(ignoredSessionId).filter((profile) => profile.role === role);
   }
 
   private resolveRole(
@@ -179,20 +183,20 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     return guestPlayerUserIds.size === 0 || guestPlayerUserIds.has(userId) ? 'player' : 'spectator';
   }
 
-  private snapshot(): PlatformClient['~messages']['customRoomSnapshot'] {
+  private snapshot(ignoredSessionId?: string): PlatformClient['~messages']['customRoomSnapshot'] {
     return {
       roomId: this.roomId,
       roomCode: this.roomCode,
       status: this.status,
       host: this.host,
-      players: this.roleProfiles('player'),
-      spectators: this.roleProfiles('spectator'),
+      players: this.roleProfiles('player', ignoredSessionId),
+      spectators: this.roleProfiles('spectator', ignoredSessionId),
       boardgameMatchID: this.boardgameMatchID,
     };
   }
 
-  private broadcastSnapshot(): void {
-    this.broadcast('customRoomSnapshot', this.snapshot());
+  private broadcastSnapshot(ignoredSessionId?: string): void {
+    this.broadcast('customRoomSnapshot', this.snapshot(ignoredSessionId));
   }
 
   private lockReadyRoom(): void {
@@ -201,22 +205,22 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     }
   }
 
-  private async cancel(reason: string): Promise<void> {
+  private async cancel(reason: string, ignoredSessionId?: string): Promise<void> {
     if (this.status === 'cancelled' || this.status === 'finished') return;
     this.status = 'cancelled';
-    await this.refreshMetadata();
+    await this.refreshMetadata(ignoredSessionId);
     this.broadcast('customRoomCancelled', { reason });
-    this.broadcastSnapshot();
+    this.broadcastSnapshot(ignoredSessionId);
   }
 
-  private async refreshMetadata(): Promise<void> {
+  private async refreshMetadata(ignoredSessionId?: string): Promise<void> {
     await this.setMatchmaking({
       metadata: {
         kind: 'custom-room',
         roomCode: this.roomCode,
         status: this.status,
-        playerCount: this.roleProfiles('player').length,
-        spectatorCount: this.roleProfiles('spectator').length,
+        playerCount: this.roleProfiles('player', ignoredSessionId).length,
+        spectatorCount: this.roleProfiles('spectator', ignoredSessionId).length,
         boardgameMatchID: this.boardgameMatchID,
       },
     });

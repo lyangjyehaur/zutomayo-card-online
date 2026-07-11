@@ -54,9 +54,9 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
   async onLeave(client: PlatformClient): Promise<void> {
     const profile = client.userData;
     this.friendUserIdsBySession.delete(client.sessionId);
-    await this.refreshMetadata();
+    await this.refreshMetadata(client.sessionId);
     if (profile) {
-      this.broadcast('presence', this.presencePayload('leave'));
+      this.broadcast('presence', this.presencePayload('leave', client.sessionId));
       this.broadcastFriendPresence(
         this.onlineSessionCount(profile.userId, client.sessionId) > 0 ? 'update' : 'offline',
         profile,
@@ -74,22 +74,27 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     };
   }
 
-  private presencePayload(event: 'join' | 'leave') {
-    const players = this.clients.filter((item) => item.userData?.role === 'player').length;
-    const spectators = this.clients.filter((item) => item.userData?.role !== 'player').length;
+  private activeClients(ignoredSessionId?: string): PlatformClient[] {
+    return this.clients.filter((client) => client.sessionId !== ignoredSessionId);
+  }
+
+  private presencePayload(event: 'join' | 'leave', ignoredSessionId?: string) {
+    const clients = this.activeClients(ignoredSessionId);
+    const players = clients.filter((item) => item.userData?.role === 'player').length;
+    const spectators = clients.filter((item) => item.userData?.role !== 'player').length;
     return {
       event,
       players,
       spectators,
-      onlineCount: this.clients.length,
+      onlineCount: clients.length,
     };
   }
 
-  private async refreshMetadata(): Promise<void> {
+  private async refreshMetadata(ignoredSessionId?: string): Promise<void> {
     await this.setMatchmaking({
       metadata: {
         kind: 'lobby',
-        onlineCount: this.clients.length,
+        onlineCount: this.activeClients(ignoredSessionId).length,
       },
     });
   }

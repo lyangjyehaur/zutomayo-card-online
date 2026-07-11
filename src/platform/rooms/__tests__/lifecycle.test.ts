@@ -190,6 +190,42 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('excludes the leaving quick-match session from cancellation snapshots and matchmaking counts', async () => {
+    const room = new QuickMatchRoom();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    const queued = client('session_queued', {
+      userId: 'u_queued',
+      displayName: 'Queued',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate();
+    room.clients.push(queued);
+    await room.onJoin(queued);
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+    await room.onLeave(queued);
+
+    expect(broadcast).toHaveBeenCalledWith(
+      'quickMatchSnapshot',
+      expect.objectContaining({
+        status: 'cancelled',
+        players: [],
+      }),
+    );
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        status: 'cancelled',
+        playerCount: 0,
+      }),
+    });
+  });
+
   it('custom room lets only the host relay the boardgame match id once', async () => {
     const room = new CustomRoom();
     const handlers = new Map<string, BoardgameMatchReadyHandler>();
@@ -675,7 +711,51 @@ describe('platform room lifecycle', () => {
       metadata: expect.objectContaining({
         kind: 'custom-room',
         status: 'waiting',
-        playerCount: 2,
+        playerCount: 1,
+      }),
+    });
+  });
+
+  it('excludes leaving custom-room spectators from snapshots and matchmaking counts', async () => {
+    const room = new CustomRoom();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const spectator = client('session_spectator', {
+      userId: 'u_spectator',
+      displayName: 'Spectator',
+      role: 'spectator',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(host);
+    await room.onJoin(host);
+    room.clients.push(spectator);
+    await room.onJoin(spectator);
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+    await room.onLeave(spectator);
+
+    expect(broadcast).toHaveBeenCalledWith(
+      'customRoomSnapshot',
+      expect.objectContaining({
+        players: [expect.objectContaining({ userId: 'u_host' })],
+        spectators: [],
+      }),
+    );
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        playerCount: 1,
+        spectatorCount: 0,
       }),
     });
   });

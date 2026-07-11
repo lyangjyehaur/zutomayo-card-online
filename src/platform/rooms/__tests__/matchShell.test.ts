@@ -421,6 +421,64 @@ describe('match shell room', () => {
     );
   });
 
+  it('excludes leaving match-shell sessions from presence and matchmaking counts', async () => {
+    const room = new MatchShellRoom();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    const player = {
+      sessionId: 'session_player',
+      auth: {
+        userId: 'u_player',
+        displayName: 'Player',
+        role: 'player',
+        authenticated: true,
+      },
+      send: vi.fn(),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    const spectator = {
+      sessionId: 'session_spectator',
+      auth: {
+        userId: 'u_spectator',
+        displayName: 'Spectator',
+        role: 'spectator',
+        authenticated: true,
+      },
+      send: vi.fn(),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+
+    room.clients.push(player);
+    await room.onJoin(player, {
+      boardgameMatchID: 'bgio-match-1',
+      boardgamePlayerID: '0',
+      hasBoardgameCredentials: true,
+      platformSeatToken: seatToken(),
+    });
+    room.clients.push(spectator);
+    await room.onJoin(spectator, { boardgameMatchID: 'bgio-match-1' });
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+    await room.onLeave(spectator);
+
+    expect(broadcast).toHaveBeenCalledWith(
+      'presence',
+      expect.objectContaining({
+        event: 'leave',
+        players: 1,
+        spectators: 0,
+      }),
+    );
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        playerCount: 1,
+        spectatorCount: 0,
+      }),
+    });
+  });
+
   it('only lets credentialed players link the boardgame match id once', async () => {
     const room = new MatchShellRoom();
     const handlers = new Map<string, LinkBoardgameMatchHandler>();
