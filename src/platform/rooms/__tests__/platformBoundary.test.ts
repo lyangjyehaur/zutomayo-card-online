@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { createPlatformSeatToken } from '../../seatToken';
 import { CustomRoom } from '../CustomRoom';
@@ -24,6 +25,36 @@ const forbiddenBoardgameStateKeys = new Set([
   'platformSeatToken',
   'playerView',
 ]);
+
+const forbiddenPlatformSourcePatterns = [
+  /\bfrom\s+['"]boardgame\.io(?:\/[^'"]*)?['"]/,
+  /\brequire\(\s*['"]boardgame\.io(?:\/[^'"]*)?['"]\s*\)/,
+  /\bfrom\s+['"][^'"]*(?:^|\/|\.\.\/)game(?:\/[^'"]*)?['"]/,
+  /\bfrom\s+['"][^'"]*Game(?:Logic)?(?:\.[^'"]*)?['"]/,
+  /src\/game/,
+  /\/games\/zutomayo-card/,
+] as const;
+
+function platformSourceFiles(): string[] {
+  const root = new URL('../../', import.meta.url);
+  const files: string[] = [];
+
+  const visit = (directory: URL) => {
+    for (const entry of readdirSync(directory)) {
+      if (entry === '__tests__') continue;
+      const entryUrl = new URL(`${entry}${statSync(new URL(entry, directory)).isDirectory() ? '/' : ''}`, directory);
+      const stats = statSync(entryUrl);
+      if (stats.isDirectory()) {
+        visit(entryUrl);
+        continue;
+      }
+      if (entry.endsWith('.ts')) files.push(entryUrl.pathname);
+    }
+  };
+
+  visit(root);
+  return files.sort();
+}
 
 function collectForbiddenKeys(value: unknown, path = '$', found: string[] = []): string[] {
   if (!value || typeof value !== 'object') return found;
@@ -74,6 +105,18 @@ function seatToken(): string {
 }
 
 describe('platform room boundary', () => {
+  it('keeps Colyseus platform sources out of the authoritative boardgame engine', () => {
+    const violations = platformSourceFiles().flatMap((file) => {
+      const source = readFileSync(file, 'utf8');
+      return forbiddenPlatformSourcePatterns
+        .filter((pattern) => pattern.test(source))
+        .map((pattern) => `${file}: ${pattern}`);
+    });
+
+    expect(platformSourceFiles().length).toBeGreaterThan(0);
+    expect(violations).toEqual([]);
+  });
+
   it('keeps match shell snapshots and metadata free of boardgame state', async () => {
     const room = new MatchShellRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
