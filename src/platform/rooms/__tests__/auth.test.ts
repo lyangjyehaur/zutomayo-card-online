@@ -122,6 +122,27 @@ describe('platform room auth', () => {
     });
   });
 
+  it('does not accept client-reported moderator platform roles', () => {
+    expect(
+      authenticatePlatformClient({ userId: 'anon:1234', displayName: 'Guest Mod', role: 'moderator' }, authContext()),
+    ).toMatchObject({
+      userId: 'anon:1234',
+      authenticated: false,
+      role: 'spectator',
+    });
+
+    expect(
+      authenticatePlatformClient(
+        { userId: 'u_spoofed', displayName: 'Verified Mod', role: 'moderator' },
+        cookieAuthContext('u_verified'),
+      ),
+    ).toMatchObject({
+      userId: 'u_verified',
+      authenticated: true,
+      role: 'spectator',
+    });
+  });
+
   it('requires verified account identity for quick matchmaking and invites', async () => {
     const quickRoom = new QuickMatchRoom();
     const inviteRoom = new InviteRoom();

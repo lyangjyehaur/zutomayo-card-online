@@ -303,7 +303,7 @@ describe('match shell room', () => {
     );
   });
 
-  it('only lets credentialed players or moderators link the boardgame match id once', async () => {
+  it('only lets credentialed players link the boardgame match id once', async () => {
     const room = new MatchShellRoom();
     const handlers = new Map<string, LinkBoardgameMatchHandler>();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -339,9 +339,19 @@ describe('match shell room', () => {
       displayName: 'Host',
       hasBoardgameCredentials: true,
     };
+    const selfReportedModerator: PlatformClientProfile = {
+      sessionId: 'session_mod',
+      userId: 'u_mod',
+      displayName: 'Mod',
+      role: 'moderator',
+      joinedAt: 1000,
+    };
 
     linkBoardgameMatch?.({ userData: spectator } as PlatformClient, { boardgameMatchID: 'bgio-ignored-1' });
     linkBoardgameMatch?.({ userData: uncredentialedPlayer } as PlatformClient, { boardgameMatchID: 'bgio-ignored-2' });
+    linkBoardgameMatch?.({ userData: selfReportedModerator } as PlatformClient, {
+      boardgameMatchID: 'bgio-ignored-mod',
+    });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchLinked', expect.anything());
 
     linkBoardgameMatch?.({ userData: credentialedPlayer } as PlatformClient, { boardgameMatchID: ' bgio-match-1 ' });

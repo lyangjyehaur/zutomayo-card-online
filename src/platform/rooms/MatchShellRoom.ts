@@ -48,7 +48,6 @@ function normalizeStatus(value: unknown, boardgameMatchID?: string): MatchShellS
 
 function canLinkBoardgameMatch(profile: PlatformClientProfile | undefined): boolean {
   if (!profile) return false;
-  if (profile.role === 'moderator') return true;
   return profile.role === 'player' && profile.hasBoardgameCredentials === true;
 }
 

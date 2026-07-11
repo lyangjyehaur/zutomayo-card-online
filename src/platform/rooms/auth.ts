@@ -26,7 +26,7 @@ function cleanGuestUserId(value: unknown, fallback: string): string {
 }
 
 function normalizeRole(value: unknown): PlatformRole {
-  if (value === 'player' || value === 'spectator' || value === 'moderator') return value;
+  if (value === 'player' || value === 'spectator') return value;
   return 'spectator';
 }
 
