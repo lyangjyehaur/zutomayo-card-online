@@ -204,6 +204,8 @@ export function OnlineGame({
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
   const [platformShellStatus, setPlatformShellStatus] = useState<PlatformShellStatus>(null);
+  const [platformShellEvidenceReady, setPlatformShellEvidenceReady] = useState(false);
+  const [platformShellUnavailable, setPlatformShellUnavailable] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatStatus, setChatStatus] = useState<ChatStatus>('loading');
   const [chatMessages, setChatMessages] = useState<OnlineChatEntry[]>([]);
@@ -321,6 +323,13 @@ export function OnlineGame({
       };
     }
 
+    if (!platformShellEvidenceReady) {
+      if (platformShellUnavailable) setChatStatus('unavailable');
+      return () => {
+        cancelled = true;
+      };
+    }
+
     void loadMatchChatEntries().then(
       (entries) => {
         if (cancelled) return;
@@ -341,7 +350,14 @@ export function OnlineGame({
     return () => {
       cancelled = true;
     };
-  }, [chatAccount, chatAccountLoaded, loadMatchChatEntries, matchID]);
+  }, [
+    chatAccount,
+    chatAccountLoaded,
+    loadMatchChatEntries,
+    matchID,
+    platformShellEvidenceReady,
+    platformShellUnavailable,
+  ]);
 
   useEffect(() => {
     if (chatStatus !== 'ready') return;
@@ -358,6 +374,8 @@ export function OnlineGame({
     if (!chatAccountLoaded) return;
     let cancelled = false;
     let room: PlatformMatchShellRoom | undefined;
+    setPlatformShellEvidenceReady(false);
+    setPlatformShellUnavailable(false);
 
     void connectPlatformMatchShell(
       {
@@ -371,7 +389,10 @@ export function OnlineGame({
       },
       {
         onPresence: (presence) => {
-          if (!cancelled) setPlatformShellStatus({ ...presence, connected: true });
+          if (!cancelled) {
+            setPlatformShellStatus({ ...presence, connected: true });
+            setPlatformShellEvidenceReady(true);
+          }
         },
         onChatPreview: (message) => {
           if (cancelled || message.sender.userId === localPlatformUserId) return;
@@ -410,7 +431,10 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, error: err instanceof Error ? err.message : String(err) },
         });
-        if (!cancelled) setPlatformShellStatus(null);
+        if (!cancelled) {
+          setPlatformShellStatus(null);
+          setPlatformShellUnavailable(true);
+        }
       },
     );
 
@@ -418,6 +442,8 @@ export function OnlineGame({
       cancelled = true;
       platformRoomRef.current = null;
       setPlatformShellStatus(null);
+      setPlatformShellEvidenceReady(false);
+      setPlatformShellUnavailable(false);
       void room?.leave(true).catch(() => undefined);
     };
   }, [

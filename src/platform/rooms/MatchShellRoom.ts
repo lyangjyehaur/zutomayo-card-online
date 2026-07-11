@@ -169,10 +169,10 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
       hasBoardgameCredentials: role === 'player' && options.hasBoardgameCredentials === true,
     };
 
+    await this.recordParticipant(client.userData);
     await this.refreshMetadata();
     client.send('roomSnapshot', this.snapshot());
     this.broadcastPresence('join', client.userData);
-    void this.recordParticipant(client.userData);
   }
 
   async onLeave(client: PlatformClient): Promise<void> {

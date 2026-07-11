@@ -186,6 +186,40 @@ describe('match shell room', () => {
     });
   });
 
+  it('records durable match participants before sending the initial shell snapshot', async () => {
+    const events: string[] = [];
+    const recordParticipant = vi.fn(async () => {
+      events.push('recordParticipant');
+    });
+    MatchShellRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordParticipant,
+    });
+    const room = new MatchShellRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    const client = {
+      sessionId: 'session_spectator',
+      auth: {
+        userId: 'u_spectator',
+        displayName: 'Spectator',
+        role: 'spectator',
+        authenticated: true,
+      },
+      send: vi.fn(() => {
+        events.push('roomSnapshot');
+      }),
+    } as unknown as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    room.clients.push(client);
+
+    await room.onJoin(client, { boardgameMatchID: 'bgio-match-1' });
+
+    expect(events).toEqual(['recordParticipant', 'roomSnapshot']);
+  });
+
   it('records verified cookie identity instead of client-supplied match-shell ids', async () => {
     const recordParticipant = vi.fn(async () => undefined);
     MatchShellRoom.configureParticipantStore({
