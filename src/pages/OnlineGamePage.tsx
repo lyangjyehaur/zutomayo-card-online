@@ -137,6 +137,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
   const [leaving, setLeaving] = useState(false);
   const [creatingRoom, setCreatingRoom] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [platformCustomRoomReady, setPlatformCustomRoomReady] = useState(false);
   const platformCustomRoomRef = useRef<PlatformCustomRoom | null>(null);
   const latestReconnectStatusRef = useRef(reconnectStatus);
   // P2-13：Socket.IO 偵測到對手加入時設為 true，用來停止 HTTP fallback 並推進到 ready。
@@ -165,6 +166,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
     }
     void room?.leave(true).catch(() => undefined);
     platformCustomRoomRef.current = null;
+    setPlatformCustomRoomReady(false);
   }, []);
 
   useEffect(() => {
@@ -300,6 +302,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
           {
             onDisconnect: () => {
               platformCustomRoomRef.current = null;
+              setPlatformCustomRoomReady(false);
             },
           },
         ),
@@ -311,6 +314,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
             return;
           }
           platformCustomRoomRef.current = room;
+          setPlatformCustomRoomReady(true);
         },
         (err) => {
           Sentry.addBreadcrumb({
@@ -319,6 +323,10 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
             level: 'warning',
             data: { match_id: activeSession.matchID, error: err instanceof Error ? err.message : String(err) },
           });
+          if (!cancelled) {
+            setPlatformCustomRoomReady(false);
+            setReconnectStatus('connectionFailed');
+          }
         },
       );
 
@@ -402,7 +410,14 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
 
   const renderStatusPanel = (status: OnlineRoomStatus, panelSession: OnlineSession | null) => {
     const copy = onlineStatusPanelCopy(status);
+    const canShowRoomInfo =
+      status !== 'waiting' ||
+      !panelSession ||
+      panelSession.playerID !== '0' ||
+      platformCustomRoomReady ||
+      Boolean(platformCustomRoomRef.current);
     const showRoomInfo =
+      canShowRoomInfo &&
       panelSession &&
       (status === 'waiting' || status === 'reconnecting' || status === 'retrying' || status === 'ready');
     const isFailure = isOnlineFailureStatus(status);

@@ -59,6 +59,20 @@ describe('online lobby platform boundary', () => {
     expect(appSource).not.toContain('joinSharedOnlineRoom');
   });
 
+  it('does not expose game-page waiting room share links before Colyseus registration succeeds', () => {
+    const onlineGamePageSource = readRepoFile('src/pages/OnlineGamePage.tsx');
+
+    expect(onlineGamePageSource).toContain(
+      'const [platformCustomRoomReady, setPlatformCustomRoomReady] = useState(false)',
+    );
+    expect(onlineGamePageSource).toContain('setPlatformCustomRoomReady(true)');
+    expect(onlineGamePageSource).toContain("setReconnectStatus('connectionFailed')");
+    expect(onlineGamePageSource).toContain('platformCustomRoomReady ||');
+    expect(onlineGamePageSource.indexOf('const canShowRoomInfo')).toBeLessThan(
+      onlineGamePageSource.indexOf('const showRoomInfo'),
+    );
+  });
+
   it('persists stable platform identity for Colyseus participant evidence', () => {
     const appSource = readRepoFile('src/App.tsx');
     const onlineSessionSource = readRepoFile('src/onlineSession.ts');
