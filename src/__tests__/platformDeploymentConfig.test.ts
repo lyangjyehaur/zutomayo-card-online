@@ -46,7 +46,13 @@ describe('platform deployment config', () => {
     expect(platformServer).toContain(
       "gameServer.define('invite', InviteRoom).filterBy(['inviteId', 'status', 'targetUserId'])",
     );
+    expect(platformServer).not.toMatch(/\bapp\.(post|put|patch|delete)\(/);
+    expect(platformServer).not.toContain("'/api/");
+    expect(platformServer).not.toContain('"/api/');
     expect(platformServer).not.toContain('chat_messages');
+    expect(platformServer).not.toContain('chat_conversations');
+    expect(platformServer).not.toContain('chat_reports');
+    expect(platformServer).not.toContain('chat_user_sanctions');
     expect(platformServer).not.toContain('bjg_matches');
   });
 });
