@@ -43,4 +43,16 @@ describe('online lobby platform boundary', () => {
     expect(onlineGameSource).toContain('platformUserId && !spectator');
     expect(onlineGamePageSource).not.toContain('match:${activeSession.matchID}:player');
   });
+
+  it('opens unread match chats through durable history chat instead of live spectator fallback', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+    const historyPageSource = readRepoFile('src/pages/MatchHistoryPage.tsx');
+    const historySource = readRepoFile('src/components/MatchHistory.tsx');
+
+    expect(lobbySource).toContain('buildMatchHistoryChatPath(action.subjectId)');
+    expect(lobbySource).not.toContain('navigate(buildOnlineSpectatorPath(action.subjectId))');
+    expect(historyPageSource).toContain("new URLSearchParams(location.search).get('chat')");
+    expect(historySource).toContain('initialChatSourceMatchId');
+    expect(historySource).toContain('historyChatRecordFromSourceMatchId(sourceMatchId)');
+  });
 });

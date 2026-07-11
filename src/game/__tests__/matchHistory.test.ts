@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getMatchRecords, historyChatSubjectId, saveMatchRecord } from '../matchHistory';
+import { buildMatchHistoryChatPath, getMatchRecords, historyChatSubjectId, saveMatchRecord } from '../matchHistory';
 import type { GameState } from '../types';
 
 function gameState(): GameState {
@@ -59,5 +59,6 @@ describe('match history', () => {
     expect(historyChatSubjectId({ sourceMatchId: '' })).toBeNull();
     expect(historyChatSubjectId({ sourceMatchId: '   ' })).toBeNull();
     expect(historyChatSubjectId({})).toBeNull();
+    expect(buildMatchHistoryChatPath('match 1/2')).toBe('/history?chat=match%201%2F2');
   });
 });

@@ -37,6 +37,7 @@ import {
 
 interface MatchHistoryProps {
   onBack: () => void;
+  initialChatSourceMatchId?: string;
 }
 
 const PAGE_SIZE = 6;
@@ -86,6 +87,27 @@ function chatTimeLabel(createdAt: string, locale: string): string {
 
 function canShowChatMessage(message: ChatMessage): boolean {
   return message.moderationStatus !== 'blocked' && message.moderationStatus !== 'deleted';
+}
+
+function historyChatRecordFromSourceMatchId(sourceMatchId: string): MatchRecord {
+  return {
+    id: `chat:${sourceMatchId}`,
+    sourceMatchId,
+    date: new Date().toISOString(),
+    duration: 0,
+    winner: null,
+    players: [
+      { hp: 0, deckSize: 0, cardsPlayed: 0 },
+      { hp: 0, deckSize: 0, cardsPlayed: 0 },
+    ],
+    chronos: {
+      nightSidePlayer: 0,
+      finalPosition: 0,
+    },
+    turns: 0,
+    log: [],
+    actionLog: [],
+  };
 }
 
 function traceContext(entry: ActionLogEntry): string[] {
@@ -376,7 +398,7 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
   );
 }
 
-export function MatchHistory(_props: MatchHistoryProps) {
+export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
   const { showToast } = useToast();
   const [records, setRecords] = useState(() => getMatchRecords());
   const [page, setPage] = useState(0);
@@ -387,6 +409,15 @@ export function MatchHistory(_props: MatchHistoryProps) {
   const totalPages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
   const visibleRecords = records.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
+
+  useEffect(() => {
+    const sourceMatchId = initialChatSourceMatchId?.trim();
+    if (!sourceMatchId) return;
+    const matchingRecord =
+      records.find((record) => historyChatSubjectId(record) === sourceMatchId) ??
+      historyChatRecordFromSourceMatchId(sourceMatchId);
+    setChatRecord(matchingRecord);
+  }, [initialChatSourceMatchId, records]);
 
   const clearHistory = () => {
     const previousRecords = records;

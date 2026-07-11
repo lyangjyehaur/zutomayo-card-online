@@ -31,6 +31,10 @@ export function historyChatSubjectId(record: Pick<MatchRecord, 'sourceMatchId'>)
   return normalizeSourceMatchId(record.sourceMatchId) ?? null;
 }
 
+export function buildMatchHistoryChatPath(sourceMatchId: string): string {
+  return `/history?chat=${encodeURIComponent(sourceMatchId)}`;
+}
+
 function normalizeWinner(winner: MatchWinnerInput): 0 | 1 | null {
   if (winner === 0 || winner === '0') return 0;
   if (winner === 1 || winner === '1') return 1;

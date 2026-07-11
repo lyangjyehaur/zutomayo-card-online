@@ -31,7 +31,7 @@ import {
 import { buildDirectConversationSubjectId } from '../chat/directConversation';
 import { resolveUnreadConversationAction, unreadConversationLatestMessageId } from '../chat/unreadNavigation';
 import { copyText } from '../clipboard';
-import { buildOnlineRoomUrl, buildOnlineSpectatorPath } from '../components/OnlineRoomInfo';
+import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
 import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge';
 import { customRoomRelayErrorKey, resolvePlatformCustomRoomMatchID } from '../platform/customRoomRelay';
@@ -53,6 +53,7 @@ import {
 } from '../platformClient';
 import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
+import { buildMatchHistoryChatPath } from '../game/matchHistory';
 import type { OnlineSession } from '../onlineSession';
 import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
 
@@ -758,7 +759,7 @@ export function OnlineLobbyPage({
     if (!action) return;
 
     if (action.kind === 'match') {
-      navigate(buildOnlineSpectatorPath(action.subjectId));
+      navigate(buildMatchHistoryChatPath(action.subjectId));
       return;
     }
     if (action.kind === 'room') {
