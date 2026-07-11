@@ -553,6 +553,26 @@ describe('chat service', () => {
     expect(pool.query).not.toHaveBeenCalled();
   });
 
+  it('defaults chat writes to public player and spectator roles only', async () => {
+    const pool = poolWithResults([]);
+
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_1',
+        body: {
+          conversationType: 'global',
+          subjectId: 'online-lobby',
+          content: 'hello',
+          authorRole: 'moderator',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(pool.query).not.toHaveBeenCalled();
+  });
+
   it('rejects muted users before persisting any durable conversation type', async () => {
     const cases = [
       { conversationType: 'match', subjectId: 'bgio-match-1' },

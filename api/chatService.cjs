@@ -2,6 +2,7 @@
 
 const CONVERSATION_TYPES = ['match', 'room', 'direct', 'global'];
 const PARTICIPANT_ROLES = ['player', 'spectator', 'moderator'];
+const PUBLIC_AUTHOR_ROLES = ['player', 'spectator'];
 const MESSAGE_STATUSES = ['visible', 'pending_review', 'blocked', 'deleted'];
 const REVIEWABLE_MESSAGE_STATUSES = ['visible', 'blocked', 'deleted'];
 const REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'];
@@ -418,7 +419,7 @@ async function sendChatMessage({
   enforceDirectFriendship = false,
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
-  allowedAuthorRoles = PARTICIPANT_ROLES,
+  allowedAuthorRoles = PUBLIC_AUTHOR_ROLES,
 }) {
   if (!authorUserId) return { ok: false, status: 401, error: 'Unauthorized' };
   const type = normalizeConversationType(body.conversationType);
