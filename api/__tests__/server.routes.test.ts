@@ -212,6 +212,10 @@ function mockMatchParticipant() {
   mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
 }
 
+function mockRoomParticipant() {
+  mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+}
+
 function base64urlJson(value: Record<string, unknown>) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
 }
@@ -616,6 +620,9 @@ describe('server routes', () => {
         if (testCase.query.type === 'match') {
           mockMatchParticipant();
         }
+        if (testCase.query.type === 'room') {
+          mockRoomParticipant();
+        }
         if (testCase.query.type === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }
@@ -700,6 +707,9 @@ describe('server routes', () => {
         mockQuery.mockReset();
         if (testCase.expectedType === 'match') {
           mockMatchParticipant();
+        }
+        if (testCase.expectedType === 'room') {
+          mockRoomParticipant();
         }
         if (testCase.expectedType === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
@@ -867,6 +877,9 @@ describe('server routes', () => {
         if (testCase.body.conversationType === 'match') {
           mockMatchParticipant();
         }
+        if (testCase.body.conversationType === 'room') {
+          mockRoomParticipant();
+        }
         if (testCase.body.conversationType === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }
@@ -988,6 +1001,9 @@ describe('server routes', () => {
         if (testCase.type === 'match') {
           mockMatchParticipant();
         }
+        if (testCase.type === 'room') {
+          mockRoomParticipant();
+        }
         if (testCase.type === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }
@@ -1087,6 +1103,9 @@ describe('server routes', () => {
         });
         if (testCase.type === 'match') {
           mockMatchParticipant();
+        }
+        if (testCase.type === 'room') {
+          mockRoomParticipant();
         }
         if (testCase.type === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });

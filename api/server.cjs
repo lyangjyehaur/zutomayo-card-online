@@ -354,6 +354,20 @@ async function initSchema() {
     `CREATE INDEX IF NOT EXISTS idx_platform_match_participants_match_role
       ON platform_match_participants(boardgame_match_id, role)`,
 
+    `CREATE TABLE IF NOT EXISTS platform_room_participants (
+      room_code TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'spectator',
+      display_name TEXT NOT NULL DEFAULT '',
+      first_joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (room_code, user_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_platform_room_participants_user
+      ON platform_room_participants(user_id, last_seen_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_platform_room_participants_room_role
+      ON platform_room_participants(room_code, role)`,
+
     `CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -2581,6 +2595,7 @@ function handleRequest(req, res) {
         before: url.searchParams.get('before'),
         enforceDirectFriendship: true,
         enforceMatchParticipation: true,
+        enforceRoomParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -2604,6 +2619,7 @@ function handleRequest(req, res) {
         moderationRules: defaultChatModerationRules(process.env),
         enforceDirectFriendship: true,
         enforceMatchParticipation: true,
+        enforceRoomParticipation: true,
         allowedAuthorRoles: ['player', 'spectator'],
       });
       if (!result.ok) return json({ error: result.error }, result.status);
@@ -2624,6 +2640,7 @@ function handleRequest(req, res) {
         body: __parsed.data,
         enforceDirectFriendship: true,
         enforceMatchParticipation: true,
+        enforceRoomParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -2640,6 +2657,7 @@ function handleRequest(req, res) {
         limit: url.searchParams.get('limit'),
         enforceDirectFriendship: true,
         enforceMatchParticipation: true,
+        enforceRoomParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -2664,6 +2682,7 @@ function handleRequest(req, res) {
         modelName: process.env.CHAT_TRANSLATION_MODEL || '',
         enforceDirectFriendship: true,
         enforceMatchParticipation: true,
+        enforceRoomParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, result.body.translation?.status === 'ready' ? 200 : 202);
@@ -2686,6 +2705,7 @@ function handleRequest(req, res) {
         generateReportId: () => 'chat_report_' + crypto.randomBytes(12).toString('hex'),
         enforceDirectFriendship: true,
         enforceMatchParticipation: true,
+        enforceRoomParticipation: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, 201);

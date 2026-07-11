@@ -32,6 +32,7 @@ const {
     subjectId: unknown;
     enforceDirectFriendship?: boolean;
     enforceMatchParticipation?: boolean;
+    enforceRoomParticipation?: boolean;
   }) => Promise<boolean>;
   conversationKey: (type: unknown, subjectId: unknown) => string | null;
   createChatUserSanction: (input: {
@@ -56,6 +57,7 @@ const {
     before?: unknown;
     enforceDirectFriendship?: boolean;
     enforceMatchParticipation?: boolean;
+    enforceRoomParticipation?: boolean;
   }) => Promise<Record<string, unknown>>;
   listChatEvidenceMessages: (input: {
     pool: PoolLike;
@@ -70,6 +72,7 @@ const {
     limit?: unknown;
     enforceDirectFriendship?: boolean;
     enforceMatchParticipation?: boolean;
+    enforceRoomParticipation?: boolean;
   }) => Promise<Record<string, unknown>>;
   markConversationRead: (input: {
     pool: PoolLike;
@@ -77,6 +80,7 @@ const {
     body: Record<string, unknown>;
     enforceDirectFriendship?: boolean;
     enforceMatchParticipation?: boolean;
+    enforceRoomParticipation?: boolean;
   }) => Promise<{
     ok: boolean;
     body?: Record<string, unknown>;
@@ -90,6 +94,7 @@ const {
     generateReportId: () => string;
     enforceDirectFriendship?: boolean;
     enforceMatchParticipation?: boolean;
+    enforceRoomParticipation?: boolean;
   }) => Promise<Record<string, unknown>>;
   requestChatTranslation: (input: {
     pool: PoolLike;
@@ -102,6 +107,7 @@ const {
     modelName?: string;
     enforceDirectFriendship?: boolean;
     enforceMatchParticipation?: boolean;
+    enforceRoomParticipation?: boolean;
   }) => Promise<Record<string, unknown>>;
   revokeChatUserSanction: (input: {
     pool: PoolLike;
@@ -120,6 +126,7 @@ const {
     moderationRules?: { blockedWords?: string[]; reviewWords?: string[] };
     enforceDirectFriendship?: boolean;
     enforceMatchParticipation?: boolean;
+    enforceRoomParticipation?: boolean;
     allowedAuthorRoles?: string[];
   }) => Promise<Record<string, unknown>>;
 };
@@ -282,6 +289,54 @@ describe('chat service', () => {
         sanitizeText,
         generateMessageId: () => 'chat_msg_1',
         enforceMatchParticipation: true,
+      }),
+    ).resolves.toMatchObject({ ok: false, status: 403, error: 'Forbidden' });
+    expect(pool.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('can require durable custom-room participation for room chat access', async () => {
+    const participantPool = poolWithResults([{ rows: [{ exists: 1 }] }]);
+    await expect(
+      canAccessConversationWithPolicy({
+        pool: participantPool,
+        userId: 'u_1',
+        type: 'room',
+        subjectId: 'ROOM42',
+        enforceRoomParticipation: true,
+      }),
+    ).resolves.toBe(true);
+    expect(participantPool.query).toHaveBeenCalledWith(expect.stringContaining('platform_room_participants'), [
+      'ROOM42',
+      'u_1',
+    ]);
+
+    const strangerPool = poolWithResults([{ rows: [] }]);
+    await expect(
+      canAccessConversationWithPolicy({
+        pool: strangerPool,
+        userId: 'u_3',
+        type: 'room',
+        subjectId: 'ROOM42',
+        enforceRoomParticipation: true,
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('rejects room chat writes from accounts without durable participation when enforced', async () => {
+    const pool = poolWithResults([{ rows: [] }]);
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_stranger',
+        body: {
+          conversationType: 'room',
+          subjectId: 'ROOM42',
+          content: 'hello',
+          authorRole: 'spectator',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+        enforceRoomParticipation: true,
       }),
     ).resolves.toMatchObject({ ok: false, status: 403, error: 'Forbidden' });
     expect(pool.query).toHaveBeenCalledTimes(1);

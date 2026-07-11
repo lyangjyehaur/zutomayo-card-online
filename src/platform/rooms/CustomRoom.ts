@@ -1,4 +1,6 @@
 import { Room, type AuthContext } from '@colyseus/core';
+import { platformLogger as logger } from '../logger';
+import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
 import { authenticatePlatformClient } from './auth';
 import type {
   BoardgameMatchReadyMessage,
@@ -24,6 +26,7 @@ function normalizeStatus(value: unknown): CustomRoomStatus {
 }
 
 export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: PlatformClient }> {
+  private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
   maxClients = 16;
   autoDispose = false;
 
@@ -31,6 +34,10 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
   private boardgameMatchID?: string;
   private status: CustomRoomStatus = 'waiting';
   private host?: PlatformClientProfile;
+
+  static configureParticipantStore(store: PlatformMatchParticipantStore): void {
+    CustomRoom.participantStore = store;
+  }
 
   async onCreate(options: CustomRoomOptions = {}): Promise<void> {
     this.maxMessagesPerSecond = 4;
@@ -96,6 +103,16 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     }
 
     await this.refreshMetadata();
+    void CustomRoom.participantStore
+      .recordRoomParticipant({
+        roomCode: this.roomCode,
+        userId: auth.userId,
+        role: auth.role,
+        displayName: auth.displayName,
+      })
+      .catch((err) => {
+        logger.warn({ err, roomCode: this.roomCode, userId: auth.userId }, 'failed to record custom-room participant');
+      });
     this.clock.setTimeout(() => {
       client.send('customRoomSnapshot', this.snapshot());
       if (this.boardgameMatchID && this.status === 'ready') {

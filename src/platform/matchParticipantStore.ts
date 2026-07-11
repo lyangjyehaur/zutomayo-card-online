@@ -11,8 +11,16 @@ export interface PlatformMatchParticipantInput {
   displayName?: string;
 }
 
+export interface PlatformRoomParticipantInput {
+  roomCode: string | undefined;
+  userId: string;
+  role: PlatformMatchParticipantRole;
+  displayName?: string;
+}
+
 export interface PlatformMatchParticipantStore {
   recordParticipant(input: PlatformMatchParticipantInput): Promise<void>;
+  recordRoomParticipant(input: PlatformRoomParticipantInput): Promise<void>;
   close?(): Promise<void>;
 }
 
@@ -21,6 +29,11 @@ interface Queryable {
 }
 
 function cleanBoardgameMatchID(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.trim().slice(0, 128);
+}
+
+function cleanRoomCode(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, 128);
 }
@@ -37,6 +50,9 @@ function cleanBoardgamePlayerID(value: unknown): string | null {
 export function createEmptyPlatformMatchParticipantStore(): PlatformMatchParticipantStore {
   return {
     async recordParticipant() {
+      return undefined;
+    },
+    async recordRoomParticipant() {
       return undefined;
     },
   };
@@ -71,6 +87,26 @@ export function createPostgresPlatformMatchParticipantStore(
           cleanBoardgamePlayerID(input.boardgamePlayerID),
           cleanDisplayName(input.displayName),
         ],
+      );
+    },
+    async recordRoomParticipant(input) {
+      const roomCode = cleanRoomCode(input.roomCode);
+      const userId = normalizePlatformUserId(input.userId);
+      if (!roomCode || !userId || userId.startsWith('guest:') || userId.startsWith('anon:')) return;
+      await pool.query(
+        `INSERT INTO platform_room_participants (
+           room_code, user_id, role, display_name
+         )
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (room_code, user_id)
+         DO UPDATE SET
+           role = CASE
+             WHEN platform_room_participants.role = 'player' THEN 'player'
+             ELSE EXCLUDED.role
+           END,
+           display_name = EXCLUDED.display_name,
+           last_seen_at = NOW()`,
+        [roomCode, userId, input.role === 'player' ? 'player' : 'spectator', cleanDisplayName(input.displayName)],
       );
     },
     async close() {

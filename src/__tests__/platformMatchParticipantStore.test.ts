@@ -39,4 +39,41 @@ describe('platform match participant store', () => {
 
     expect(pool.query).not.toHaveBeenCalled();
   });
+
+  it('records account-backed custom-room participants', async () => {
+    const pool = { query: vi.fn(async () => ({ rows: [] })) };
+    const store = createPostgresPlatformMatchParticipantStore(pool);
+
+    await store.recordRoomParticipant({
+      roomCode: ' ROOM42 ',
+      userId: 'u_player',
+      role: 'player',
+      displayName: ' Player ',
+    });
+
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('platform_room_participants'), [
+      'ROOM42',
+      'u_player',
+      'player',
+      'Player',
+    ]);
+  });
+
+  it('does not persist anonymous custom-room presence as chat evidence', async () => {
+    const pool = { query: vi.fn(async () => ({ rows: [] })) };
+    const store = createPostgresPlatformMatchParticipantStore(pool);
+
+    await store.recordRoomParticipant({
+      roomCode: 'ROOM42',
+      userId: 'guest:session',
+      role: 'spectator',
+    });
+    await store.recordRoomParticipant({
+      roomCode: 'ROOM42',
+      userId: 'anon:session',
+      role: 'spectator',
+    });
+
+    expect(pool.query).not.toHaveBeenCalled();
+  });
 });

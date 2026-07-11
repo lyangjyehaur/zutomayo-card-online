@@ -118,7 +118,10 @@ describe('match shell room', () => {
 
   it('records authenticated match-shell participants for durable match chat access', async () => {
     const recordParticipant = vi.fn(async () => undefined);
-    MatchShellRoom.configureParticipantStore({ recordParticipant });
+    MatchShellRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordParticipant,
+    });
     const room = new MatchShellRoom();
     vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
     vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);

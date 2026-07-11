@@ -64,6 +64,7 @@ const platformFriendStoreMode = resolvePlatformFriendStoreMode();
 const platformMatchParticipantStoreMode = resolvePlatformMatchParticipantStoreMode();
 LobbyRoom.configureFriendStore(friendStore);
 InviteRoom.configureFriendStore(friendStore, { enforceFriendship: platformFriendStoreMode === 'postgres' });
+CustomRoom.configureParticipantStore(matchParticipantStore);
 MatchShellRoom.configureParticipantStore(matchParticipantStore);
 
 const gameServer = new Server({

@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createEmptyPlatformMatchParticipantStore } from '../../matchParticipantStore';
 import { CustomRoom } from '../CustomRoom';
 import { QuickMatchRoom } from '../QuickMatchRoom';
 import type { BoardgameMatchReadyMessage, PlatformAuth, PlatformClient, PlatformClientProfile } from '../types';
@@ -24,6 +25,10 @@ function profile(client: PlatformClient): PlatformClientProfile {
 }
 
 describe('platform room lifecycle', () => {
+  afterEach(() => {
+    CustomRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
+  });
+
   it('quick match pairs two players and only the host can relay the boardgame match id', async () => {
     const room = new QuickMatchRoom();
     const handlers = new Map<string, BoardgameMatchReadyHandler>();
@@ -206,6 +211,36 @@ describe('platform room lifecycle', () => {
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
     expect(setMatchmaking).not.toHaveBeenCalled();
     expect(lock).not.toHaveBeenCalled();
+  });
+
+  it('records authenticated custom-room participants for durable room chat access', async () => {
+    const recordRoomParticipant = vi.fn(async () => undefined);
+    CustomRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordRoomParticipant,
+    });
+    const room = new CustomRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const spectator = client('session_spectator', {
+      userId: 'u_spectator',
+      displayName: 'Spectator',
+      role: 'spectator',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(spectator);
+    await room.onJoin(spectator);
+
+    expect(recordRoomParticipant).toHaveBeenCalledWith({
+      roomCode: 'ROOM42',
+      userId: 'u_spectator',
+      role: 'spectator',
+      displayName: 'Spectator',
+    });
   });
 
   it('custom room keeps spectators out of player seats and relay authority', async () => {
