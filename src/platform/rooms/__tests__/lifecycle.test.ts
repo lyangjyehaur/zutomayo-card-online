@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import type { AuthContext } from '@colyseus/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyPlatformMatchParticipantStore } from '../../matchParticipantStore';
 import { CustomRoom } from '../CustomRoom';
@@ -5,6 +7,38 @@ import { QuickMatchRoom } from '../QuickMatchRoom';
 import type { BoardgameMatchReadyMessage, PlatformAuth, PlatformClient, PlatformClientProfile } from '../types';
 
 type BoardgameMatchReadyHandler = (client: PlatformClient, message: BoardgameMatchReadyMessage) => void;
+
+const originalJwtSecret = process.env.JWT_SECRET;
+
+function base64urlJson(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+function signToken(input: string, secret: string): string {
+  return crypto.createHmac('sha256', secret).update(input).digest('base64url');
+}
+
+function createJwt(userId: string, secret: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({
+    sub: userId,
+    userId,
+    iat: now,
+    exp: now + 3600,
+  });
+  const input = `${header}.${payload}`;
+  return `${input}.${signToken(input, secret)}`;
+}
+
+function cookieAuthContext(userId: string): AuthContext {
+  process.env.JWT_SECRET = 'test-platform-jwt-secret-at-least-32-characters';
+  const token = createJwt(userId, process.env.JWT_SECRET);
+  return {
+    headers: new Headers({ cookie: `zutomayo_session=${encodeURIComponent(token)}` }),
+    ip: '127.0.0.1',
+  };
+}
 
 function client(sessionId: string, auth: PlatformAuth): PlatformClient & { send: ReturnType<typeof vi.fn> } {
   return {
@@ -26,6 +60,7 @@ function profile(client: PlatformClient): PlatformClientProfile {
 
 describe('platform room lifecycle', () => {
   afterEach(() => {
+    process.env.JWT_SECRET = originalJwtSecret;
     CustomRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
   });
 
@@ -240,6 +275,40 @@ describe('platform room lifecycle', () => {
       userId: 'u_spectator',
       role: 'spectator',
       displayName: 'Spectator',
+    });
+  });
+
+  it('records verified cookie identity instead of client-supplied custom-room ids', async () => {
+    const recordRoomParticipant = vi.fn(async () => undefined);
+    CustomRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordRoomParticipant,
+    });
+    const room = new CustomRoom();
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    const auth = room.onAuth(
+      {} as PlatformClient,
+      {
+        roomCode: 'ROOM42',
+        userId: 'match:ROOM42:player:0',
+        displayName: 'Host',
+        role: 'player',
+      },
+      cookieAuthContext('u_cookie_host'),
+    );
+    const host = client('session_host', auth);
+    room.clients.push(host);
+    await room.onJoin(host);
+
+    expect(recordRoomParticipant).toHaveBeenCalledWith({
+      roomCode: 'ROOM42',
+      userId: 'u_cookie_host',
+      role: 'player',
+      displayName: 'Host',
     });
   });
 
