@@ -1137,6 +1137,64 @@ describe('chat service', () => {
     );
   });
 
+  it('allows unread match summaries from durable post-match history participation evidence', async () => {
+    const pool = poolWithResults([
+      {
+        rows: [
+          {
+            ...conversationRow,
+            unread_count: '1',
+            latest_message_at: '2026-07-10T00:00:05.000Z',
+            latest_message_id: 'chat_msg_match_latest',
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      listUnreadChat({
+        pool,
+        userId: 'u_player',
+        enforceMatchParticipation: true,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        conversations: [
+          expect.objectContaining({
+            id: 'match:bgio-match-1',
+            unreadCount: 1,
+            latestMessageAt: '2026-07-10T00:00:05.000Z',
+            latestMessageId: 'chat_msg_match_latest',
+          }),
+        ],
+      },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM platform_match_participants'), [
+      'u_player',
+      50,
+      'u_player',
+      false,
+      [],
+      true,
+      false,
+    ]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM matches played_match'), expect.any(Array));
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('played_match.source_match_id = c.subject_id'), [
+      'u_player',
+      50,
+      'u_player',
+      false,
+      [],
+      true,
+      false,
+    ]);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('(played_match.player0_id = $1 OR played_match.player1_id = $1)'),
+      expect.any(Array),
+    );
+  });
+
   it('counts only unread visible or pending messages from other authors', async () => {
     const pool = poolWithResults([{ rows: [] }]);
 
