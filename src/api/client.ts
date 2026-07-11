@@ -718,7 +718,8 @@ export async function sendOnlinePresenceHeartbeat(visitorId: string): Promise<On
 
 // ===== Chat =====
 export type ChatConversationType = 'match' | 'room' | 'direct' | 'global';
-export type ChatAuthorRole = 'player' | 'spectator' | 'moderator';
+export type ChatPublicAuthorRole = 'player' | 'spectator';
+export type ChatAuthorRole = ChatPublicAuthorRole | 'moderator';
 
 export interface ChatConversation {
   id: string;
@@ -768,7 +769,7 @@ export interface ChatMessageInput {
   content: string;
   title?: string;
   authorDisplayName?: string;
-  authorRole?: ChatAuthorRole;
+  authorRole?: ChatPublicAuthorRole;
   clientMessageId?: string;
   sourceLanguage?: string;
 }

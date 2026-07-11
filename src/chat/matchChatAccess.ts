@@ -1,4 +1,4 @@
-import type { ChatAuthorRole } from '../api/client';
+import type { ChatPublicAuthorRole } from '../api/client';
 
 export type MatchChatAccount = { id: string } | null | undefined;
 export type MatchChatAccessStatus = 'loading' | 'ready' | 'login_required';
@@ -8,7 +8,7 @@ export function matchChatAccessStatus(accountLoaded: boolean, account: MatchChat
   return account ? 'ready' : 'login_required';
 }
 
-export function matchChatAuthorRole(account: MatchChatAccount, spectator: boolean): ChatAuthorRole | null {
+export function matchChatAuthorRole(account: MatchChatAccount, spectator: boolean): ChatPublicAuthorRole | null {
   if (!account) return null;
   return spectator ? 'spectator' : 'player';
 }
