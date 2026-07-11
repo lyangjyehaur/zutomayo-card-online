@@ -798,8 +798,16 @@ describe('platform room lifecycle', () => {
 
   it('custom room cancellation is controlled by the waiting host', async () => {
     const room = new CustomRoom();
+    const handlers = new Map<string, (client: PlatformClient, message?: unknown) => void>();
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation(((
+      type: string,
+      handler: (client: PlatformClient, message?: unknown) => void,
+    ) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
     vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
 
     const host = client('session_host', {
@@ -809,10 +817,30 @@ describe('platform room lifecycle', () => {
       authenticated: true,
     });
     host.userData = profile(host);
+    const spectator = client('session_spectator', {
+      userId: 'u_spectator',
+      displayName: 'Spectator',
+      role: 'spectator',
+      authenticated: true,
+    });
 
     await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
     room.clients.push(host);
     await room.onJoin(host);
+
+    room.clients.push(spectator);
+    await room.onJoin(spectator);
+
+    handlers.get('cancelCustomRoom')?.(spectator);
+    expect(broadcast).not.toHaveBeenCalledWith('customRoomCancelled', expect.anything());
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        status: 'waiting',
+        playerCount: 1,
+        spectatorCount: 1,
+      }),
+    });
+
     await room.onLeave(host);
 
     expect(broadcast).toHaveBeenCalledWith('customRoomCancelled', { reason: 'host_left' });
