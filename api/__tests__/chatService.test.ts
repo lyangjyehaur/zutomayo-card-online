@@ -9,6 +9,7 @@ type PoolLike = {
 const require = createRequire(import.meta.url);
 const {
   canAccessConversation,
+  canAccessConversationWithPolicy,
   conversationKey,
   createChatUserSanction,
   evaluateChatModeration,
@@ -24,6 +25,13 @@ const {
   sendChatMessage,
 } = require('../chatService.cjs') as {
   canAccessConversation: (userId: string, type: unknown, subjectId: unknown) => boolean;
+  canAccessConversationWithPolicy: (input: {
+    pool: PoolLike;
+    userId: string;
+    type: unknown;
+    subjectId: unknown;
+    enforceDirectFriendship?: boolean;
+  }) => Promise<boolean>;
   conversationKey: (type: unknown, subjectId: unknown) => string | null;
   createChatUserSanction: (input: {
     pool: PoolLike;
@@ -91,6 +99,7 @@ const {
     generateMessageId: () => string;
     generateModerationEventId?: () => string;
     moderationRules?: { blockedWords?: string[]; reviewWords?: string[] };
+    enforceDirectFriendship?: boolean;
   }) => Promise<Record<string, unknown>>;
 };
 
@@ -184,6 +193,31 @@ describe('chat service', () => {
     expect(canAccessConversation('u_3', 'match', 'bgio-match-1')).toBe(true);
   });
 
+  it('can require durable friendship for direct chat access', async () => {
+    const friendPool = poolWithResults([{ rows: [{ exists: 1 }] }]);
+    await expect(
+      canAccessConversationWithPolicy({
+        pool: friendPool,
+        userId: 'u_1',
+        type: 'direct',
+        subjectId: 'v1:u_1:u_2',
+        enforceDirectFriendship: true,
+      }),
+    ).resolves.toBe(true);
+    expect(friendPool.query).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_1', 'u_2']);
+
+    const strangerPool = poolWithResults([{ rows: [] }]);
+    await expect(
+      canAccessConversationWithPolicy({
+        pool: strangerPool,
+        userId: 'u_1',
+        type: 'direct',
+        subjectId: 'v1:u_1:u_2',
+        enforceDirectFriendship: true,
+      }),
+    ).resolves.toBe(false);
+  });
+
   it('rejects direct chat writes from non-participants or invalid direct subjects', async () => {
     const cases = [
       { authorUserId: 'u_3', subjectId: 'u_1:u_2', error: 'Forbidden' },
@@ -275,6 +309,27 @@ describe('chat service', () => {
       'v1:u_1:u_2',
       '',
     ]);
+  });
+
+  it('rejects direct chat writes to non-friends when friendship enforcement is enabled', async () => {
+    const pool = poolWithResults([{ rows: [] }]);
+
+    await expect(
+      sendChatMessage({
+        pool,
+        authorUserId: 'u_1',
+        body: {
+          conversationType: 'direct',
+          subjectId: 'v1:u_1:u_2',
+          content: 'hello',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_1',
+        enforceDirectFriendship: true,
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Forbidden' });
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_1', 'u_2']);
   });
 
   it('evaluates keyword moderation rules before persistence', () => {

@@ -608,6 +608,9 @@ describe('server routes', () => {
 
       for (const testCase of cases) {
         mockQuery.mockReset();
+        if (testCase.query.type === 'direct') {
+          mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+        }
         mockQuery.mockResolvedValueOnce({
           rows: [
             {
@@ -687,6 +690,9 @@ describe('server routes', () => {
 
       for (const testCase of cases) {
         mockQuery.mockReset();
+        if (testCase.expectedType === 'direct') {
+          mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+        }
         mockQuery
           .mockResolvedValueOnce({ rows: [], rowCount: 0 })
           .mockResolvedValueOnce({
@@ -785,6 +791,26 @@ describe('server routes', () => {
       expect(mockQuery).not.toHaveBeenCalled();
     });
 
+    it('POST /api/chat/messages rejects direct messages to non-friends', async () => {
+      mockQuery.mockReset();
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/chat/messages',
+        {
+          conversationType: 'direct',
+          subjectId: 'v1:u_reader:u_stranger',
+          content: 'hello stranger',
+        },
+        userUnsafeHeaders('u_reader'),
+      );
+
+      expect(res.statusCode).toBe(403);
+      expect(parseBody(res)).toEqual({ error: 'Forbidden' });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader', 'u_stranger']);
+    });
+
     it('POST /api/chat/read marks every durable conversation type through the same route', async () => {
       const cases = [
         {
@@ -807,6 +833,9 @@ describe('server routes', () => {
 
       for (const testCase of cases) {
         mockQuery.mockClear();
+        if (testCase.body.conversationType === 'direct') {
+          mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+        }
         const res = await sendRequest('POST', '/api/chat/read', testCase.body, userUnsafeHeaders('u_reader'));
         expect(res.statusCode).toBe(200);
         expect(parseBody(res)).toEqual({ ok: true });
@@ -908,36 +937,37 @@ describe('server routes', () => {
 
       for (const testCase of cases) {
         mockQuery.mockReset();
-        mockQuery
-          .mockResolvedValueOnce({
-            rows: [
-              {
-                id: testCase.messageId,
-                conversation_id: testCase.conversationId,
-                content: `こんにちは ${testCase.type}`,
-                source_language: 'ja',
-                type: testCase.type,
-                subject_id: testCase.subjectId,
-              },
-            ],
-            rowCount: 1,
-          })
-          .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-          .mockResolvedValueOnce({
-            rows: [
-              {
-                message_id: testCase.messageId,
-                target_language: 'en',
-                translated_content: '',
-                provider: 'unconfigured',
-                model: '',
-                status: 'pending',
-                created_at: '2026-07-10T00:00:02.000Z',
-                updated_at: '2026-07-10T00:00:02.000Z',
-              },
-            ],
-            rowCount: 1,
-          });
+        mockQuery.mockResolvedValueOnce({
+          rows: [
+            {
+              id: testCase.messageId,
+              conversation_id: testCase.conversationId,
+              content: `こんにちは ${testCase.type}`,
+              source_language: 'ja',
+              type: testCase.type,
+              subject_id: testCase.subjectId,
+            },
+          ],
+          rowCount: 1,
+        });
+        if (testCase.type === 'direct') {
+          mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+        }
+        mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }).mockResolvedValueOnce({
+          rows: [
+            {
+              message_id: testCase.messageId,
+              target_language: 'en',
+              translated_content: '',
+              provider: 'unconfigured',
+              model: '',
+              status: 'pending',
+              created_at: '2026-07-10T00:00:02.000Z',
+              updated_at: '2026-07-10T00:00:02.000Z',
+            },
+          ],
+          rowCount: 1,
+        });
 
         const res = await sendRequest(
           'POST',
@@ -1000,48 +1030,50 @@ describe('server routes', () => {
 
       for (const testCase of cases) {
         mockQuery.mockReset();
-        mockQuery
-          .mockResolvedValueOnce({
-            rows: [
-              {
-                id: testCase.messageId,
-                conversation_id: testCase.conversationId,
-                author_user_id: 'u_author',
-                author_display_name: 'Author',
-                author_role: testCase.type === 'match' ? 'spectator' : 'player',
-                content: `reportable ${testCase.type}`,
-                moderation_status: 'visible',
-                created_at: '2026-07-10T00:00:01.000Z',
-                conversation_type: testCase.type,
-                conversation_subject_id: testCase.subjectId,
-              },
-            ],
-            rowCount: 1,
-          })
-          .mockResolvedValueOnce({
-            rows: [
-              {
-                id: `chat_report_${testCase.type}`,
-                message_id: testCase.messageId,
-                conversation_id: testCase.conversationId,
-                reporter_user_id: 'u_reader',
-                reason: 'abuse',
-                note: 'needs review',
-                reported_message_content: `reportable ${testCase.type}`,
-                reported_message_author_user_id: 'u_author',
-                reported_message_author_display_name: 'Author',
-                reported_message_author_role: testCase.type === 'match' ? 'spectator' : 'player',
-                reported_message_moderation_status: 'visible',
-                reported_message_created_at: '2026-07-10T00:00:01.000Z',
-                status: 'open',
-                reviewer_user_id: null,
-                resolution_note: '',
-                created_at: '2026-07-10T00:00:03.000Z',
-                reviewed_at: null,
-              },
-            ],
-            rowCount: 1,
-          });
+        mockQuery.mockResolvedValueOnce({
+          rows: [
+            {
+              id: testCase.messageId,
+              conversation_id: testCase.conversationId,
+              author_user_id: 'u_author',
+              author_display_name: 'Author',
+              author_role: testCase.type === 'match' ? 'spectator' : 'player',
+              content: `reportable ${testCase.type}`,
+              moderation_status: 'visible',
+              created_at: '2026-07-10T00:00:01.000Z',
+              conversation_type: testCase.type,
+              conversation_subject_id: testCase.subjectId,
+            },
+          ],
+          rowCount: 1,
+        });
+        if (testCase.type === 'direct') {
+          mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+        }
+        mockQuery.mockResolvedValueOnce({
+          rows: [
+            {
+              id: `chat_report_${testCase.type}`,
+              message_id: testCase.messageId,
+              conversation_id: testCase.conversationId,
+              reporter_user_id: 'u_reader',
+              reason: 'abuse',
+              note: 'needs review',
+              reported_message_content: `reportable ${testCase.type}`,
+              reported_message_author_user_id: 'u_author',
+              reported_message_author_display_name: 'Author',
+              reported_message_author_role: testCase.type === 'match' ? 'spectator' : 'player',
+              reported_message_moderation_status: 'visible',
+              reported_message_created_at: '2026-07-10T00:00:01.000Z',
+              status: 'open',
+              reviewer_user_id: null,
+              resolution_note: '',
+              created_at: '2026-07-10T00:00:03.000Z',
+              reviewed_at: null,
+            },
+          ],
+          rowCount: 1,
+        });
 
         const res = await sendRequest(
           'POST',

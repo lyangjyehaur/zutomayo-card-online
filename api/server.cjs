@@ -2564,6 +2564,7 @@ function handleRequest(req, res) {
         subjectId: url.searchParams.get('subjectId'),
         limit: url.searchParams.get('limit'),
         before: url.searchParams.get('before'),
+        enforceDirectFriendship: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -2585,6 +2586,7 @@ function handleRequest(req, res) {
         generateMessageId: () => 'chat_msg_' + crypto.randomBytes(12).toString('hex'),
         generateModerationEventId: () => 'chat_mod_' + crypto.randomBytes(12).toString('hex'),
         moderationRules: defaultChatModerationRules(process.env),
+        enforceDirectFriendship: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, 201);
@@ -2598,7 +2600,12 @@ function handleRequest(req, res) {
       const __body = await readBody(32 * 1024);
       const __parsed = validateBody(S.chatReadSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const result = await markConversationRead({ pool, userId, body: __parsed.data });
+      const result = await markConversationRead({
+        pool,
+        userId,
+        body: __parsed.data,
+        enforceDirectFriendship: true,
+      });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -2608,7 +2615,12 @@ function handleRequest(req, res) {
     if (pathname === '/api/chat/unread' && method === 'GET') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const result = await listUnreadChat({ pool, userId, limit: url.searchParams.get('limit') });
+      const result = await listUnreadChat({
+        pool,
+        userId,
+        limit: url.searchParams.get('limit'),
+        enforceDirectFriendship: true,
+      });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -2630,6 +2642,7 @@ function handleRequest(req, res) {
         translateText: translateChatMessage,
         providerName: process.env.CHAT_TRANSLATION_PROVIDER || '',
         modelName: process.env.CHAT_TRANSLATION_MODEL || '',
+        enforceDirectFriendship: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, result.body.translation?.status === 'ready' ? 200 : 202);
@@ -2650,6 +2663,7 @@ function handleRequest(req, res) {
         body: __parsed.data,
         sanitizeText,
         generateReportId: () => 'chat_report_' + crypto.randomBytes(12).toString('hex'),
+        enforceDirectFriendship: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, 201);
