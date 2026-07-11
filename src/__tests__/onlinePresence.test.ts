@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { createPresenceVisitorId, normalizePresenceVisitorId } from '../hooks/useOnlinePresence';
+import { createPresenceVisitorId, loadPresenceVisitorId, normalizePresenceVisitorId } from '../hooks/useOnlinePresence';
+
+class FakeStorage {
+  readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+}
 
 describe('online presence identity', () => {
   it('uses anonymous platform identity format for Colyseus lobby presence', () => {
@@ -14,5 +26,13 @@ describe('online presence identity', () => {
     expect(normalizePresenceVisitorId('presence:bad space')).toBeNull();
     expect(normalizePresenceVisitorId('guest:presence:abc_12345')).toBeNull();
     expect(normalizePresenceVisitorId(`presence:${'a'.repeat(83)}`)).toBeNull();
+  });
+
+  it('stores upgraded anonymous visitor ids for platform and HTTP presence reuse', () => {
+    const storage = new FakeStorage();
+    storage.setItem('zutomayo_presence_visitor_id', 'presence:abc_12345');
+
+    expect(loadPresenceVisitorId(storage)).toBe('anon:presence:abc_12345');
+    expect(storage.getItem('zutomayo_presence_visitor_id')).toBe('anon:presence:abc_12345');
   });
 });

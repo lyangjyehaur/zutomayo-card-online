@@ -8,6 +8,11 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 const PRESENCE_VISITOR_ID_PATTERN = /^anon:presence:[a-zA-Z0-9_-]{8,82}$/;
 const LEGACY_PRESENCE_VISITOR_ID_PATTERN = /^presence:[a-zA-Z0-9_-]{8,82}$/;
 
+interface PresenceVisitorStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
 export function createPresenceVisitorId(): string {
   const random =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -24,16 +29,18 @@ export function normalizePresenceVisitorId(value: string | null): string | null 
   return null;
 }
 
-function loadVisitorId(): string {
-  if (typeof localStorage === 'undefined') return createPresenceVisitorId();
-  const existing = localStorage.getItem(PRESENCE_VISITOR_ID_KEY);
+export function loadPresenceVisitorId(
+  storage: PresenceVisitorStorage | null = typeof localStorage === 'undefined' ? null : localStorage,
+): string {
+  if (!storage) return createPresenceVisitorId();
+  const existing = storage.getItem(PRESENCE_VISITOR_ID_KEY);
   const normalized = normalizePresenceVisitorId(existing);
   if (normalized) {
-    if (normalized !== existing) localStorage.setItem(PRESENCE_VISITOR_ID_KEY, normalized);
+    if (normalized !== existing) storage.setItem(PRESENCE_VISITOR_ID_KEY, normalized);
     return normalized;
   }
   const next = createPresenceVisitorId();
-  localStorage.setItem(PRESENCE_VISITOR_ID_KEY, next);
+  storage.setItem(PRESENCE_VISITOR_ID_KEY, next);
   return next;
 }
 
@@ -42,7 +49,7 @@ export function useOnlinePresence() {
 
   const refresh = useCallback(async (heartbeat = true) => {
     try {
-      const visitorId = loadVisitorId();
+      const visitorId = loadPresenceVisitorId();
       const data = heartbeat ? await sendOnlinePresenceHeartbeat(visitorId) : await fetchOnlinePresence();
       setOnlineCount(Math.max(0, Math.trunc(data.onlineCount)));
     } catch {
@@ -74,7 +81,7 @@ export function useOnlinePresence() {
 
     void connectPlatformLobby(
       {
-        userId: loadVisitorId(),
+        userId: loadPresenceVisitorId(),
         displayName: 'visitor',
         role: 'spectator',
       },

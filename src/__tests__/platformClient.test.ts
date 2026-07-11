@@ -118,6 +118,47 @@ describe('platform client helpers', () => {
     expect(requestBody).not.toHaveProperty('friendUserIds');
   });
 
+  it('sends anonymous presence identity to Colyseus lobby joins', async () => {
+    const post = vi.fn<(url: string, request: { body: string }) => Promise<{ data: Record<string, string> }>>(
+      async () => ({
+        data: {
+          name: 'lobby',
+          roomId: 'lobby_room_1',
+          sessionId: 'session_1',
+        },
+      }),
+    );
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    vi.doMock('colyseus.js', () => ({
+      Client: class {
+        http = { post };
+        consumeSeatReservation = vi.fn(() => room);
+      },
+    }));
+
+    await connectPlatformLobby(
+      {
+        userId: 'anon:presence:abc_12345',
+        displayName: 'visitor',
+      },
+      { onOnlineCount: vi.fn() },
+    );
+
+    expect(post).toHaveBeenCalledWith(
+      'matchmake/joinOrCreate/lobby',
+      expect.objectContaining({
+        body: JSON.stringify({
+          userId: 'anon:presence:abc_12345',
+          displayName: 'visitor',
+          role: 'spectator',
+        }),
+      }),
+    );
+  });
+
   it('reads match shell presence from platform messages', () => {
     expect(platformPresenceFromMatchShellMessage({ players: 2.8, spectators: 4.2 })).toEqual({
       players: 2,
