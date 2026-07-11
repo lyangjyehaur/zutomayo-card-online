@@ -1119,6 +1119,58 @@ describe('chat service', () => {
     ]);
   });
 
+  it('records pending chat translations when a configured provider fails', async () => {
+    const pendingRow = {
+      ...translationRow,
+      translated_content: '',
+      provider: 'gateway',
+      model: 'llm-model',
+      status: 'pending',
+    };
+    const pool = poolWithResults([
+      { rows: [{ ...messageRow, type: 'match', subject_id: 'bgio-match-1' }] },
+      { rows: [] },
+      { rows: [pendingRow] },
+    ]);
+    const translateText = vi.fn(async () => {
+      throw new Error('provider unavailable');
+    });
+
+    await expect(
+      requestChatTranslation({
+        pool,
+        userId: 'u_2',
+        messageId: 'chat_msg_1',
+        body: { targetLanguage: 'en' },
+        sanitizeText,
+        translateText,
+        providerName: 'gateway',
+        modelName: 'llm-model',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        cached: false,
+        translation: expect.objectContaining({
+          messageId: 'chat_msg_1',
+          targetLanguage: 'en',
+          translatedContent: '',
+          provider: 'gateway',
+          model: 'llm-model',
+          status: 'pending',
+        }),
+      },
+    });
+    expect(pool.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO chat_message_translations'), [
+      'chat_msg_1',
+      'en',
+      '',
+      'gateway',
+      'llm-model',
+      'pending',
+    ]);
+  });
+
   it('records pending chat translations when no provider is configured', async () => {
     const pendingRow = {
       ...translationRow,
