@@ -554,6 +554,65 @@ describe('match shell room', () => {
     expect(setMatchmaking).not.toHaveBeenCalled();
   });
 
+  it('backfills durable participants when a waiting match shell is linked later', async () => {
+    const recordParticipant = vi.fn(async () => undefined);
+    MatchShellRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordParticipant,
+    });
+    const room = new MatchShellRoom();
+    const handlers = new Map<string, LinkBoardgameMatchHandler>();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: LinkBoardgameMatchHandler) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+
+    await room.onCreate({ status: 'waiting' });
+    const host = {
+      sessionId: 'session_host',
+      userData: {
+        sessionId: 'session_host',
+        userId: 'u_host',
+        displayName: 'Host',
+        role: 'player',
+        joinedAt: 1000,
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+      },
+    } as unknown as PlatformClient;
+    const spectator = {
+      sessionId: 'session_spectator',
+      userData: {
+        sessionId: 'session_spectator',
+        userId: 'u_spectator',
+        displayName: 'Spectator',
+        role: 'spectator',
+        joinedAt: 1000,
+      },
+    } as unknown as PlatformClient;
+    room.clients.push(host, spectator);
+
+    handlers.get('linkBoardgameMatch')?.(host, { boardgameMatchID: ' bgio-match-1 ' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(recordParticipant).toHaveBeenCalledWith({
+      boardgameMatchID: 'bgio-match-1',
+      userId: 'u_host',
+      role: 'player',
+      boardgamePlayerID: '0',
+      displayName: 'Host',
+    });
+    expect(recordParticipant).toHaveBeenCalledWith({
+      boardgameMatchID: 'bgio-match-1',
+      userId: 'u_spectator',
+      role: 'spectator',
+      boardgamePlayerID: undefined,
+      displayName: 'Spectator',
+    });
+  });
+
   it('keeps match chat preview scoped to the shell conversation', async () => {
     const room = new MatchShellRoom();
     const handlers = new Map<string, ChatPreviewHandler>();

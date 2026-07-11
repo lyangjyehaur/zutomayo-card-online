@@ -172,20 +172,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     await this.refreshMetadata();
     client.send('roomSnapshot', this.snapshot());
     this.broadcastPresence('join', client.userData);
-    void MatchShellRoom.participantStore
-      .recordParticipant({
-        boardgameMatchID: this.boardgameMatchID,
-        userId: auth.userId,
-        role,
-        boardgamePlayerID,
-        displayName: auth.displayName,
-      })
-      .catch((err) => {
-        logger.warn(
-          { err, boardgameMatchID: this.boardgameMatchID, userId: auth.userId },
-          'failed to record match participant',
-        );
-      });
+    void this.recordParticipant(client.userData);
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
@@ -230,10 +217,36 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     this.conversationId = matchConversationId(boardgameMatchID);
     this.status = 'ready';
     await this.refreshMetadata();
+    await this.recordCurrentParticipants();
     this.broadcast('boardgameMatchLinked', {
       boardgameMatchID,
       status: this.status,
     });
+  }
+
+  private async recordCurrentParticipants(): Promise<void> {
+    await Promise.all(
+      this.profiles('player')
+        .concat(this.profiles('spectator'))
+        .map((profile) => this.recordParticipant(profile)),
+    );
+  }
+
+  private async recordParticipant(profile: PlatformClientProfile): Promise<void> {
+    await MatchShellRoom.participantStore
+      .recordParticipant({
+        boardgameMatchID: this.boardgameMatchID,
+        userId: profile.userId,
+        role: profile.role,
+        boardgamePlayerID: profile.boardgamePlayerID,
+        displayName: profile.displayName,
+      })
+      .catch((err) => {
+        logger.warn(
+          { err, boardgameMatchID: this.boardgameMatchID, userId: profile.userId },
+          'failed to record match participant',
+        );
+      });
   }
 
   private activeClients(ignoredSessionId?: string): PlatformClient[] {
