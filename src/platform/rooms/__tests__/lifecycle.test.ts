@@ -270,7 +270,6 @@ describe('platform room lifecycle', () => {
     const handlers = new Map<string, BoardgameMatchReadyHandler>();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
-    const lock = vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
     vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: BoardgameMatchReadyHandler) => {
       handlers.set(type, handler);
       return room;
@@ -302,7 +301,6 @@ describe('platform room lifecycle', () => {
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
 
     relay?.(host, { boardgameMatchID: 'bgio-match-2' });
-    expect(lock).toHaveBeenCalledOnce();
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-2' });
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
@@ -316,11 +314,9 @@ describe('platform room lifecycle', () => {
 
     broadcast.mockClear();
     setMatchmaking.mockClear();
-    lock.mockClear();
     relay?.(host, { boardgameMatchID: 'bgio-match-3' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
     expect(setMatchmaking).not.toHaveBeenCalled();
-    expect(lock).not.toHaveBeenCalled();
   });
 
   it('records authenticated custom-room participants for durable room chat access', async () => {
@@ -677,11 +673,93 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('keeps ready custom rooms open for spectator presence and durable room chat evidence', async () => {
+    const recordRoomParticipant = vi.fn(async () => undefined);
+    CustomRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordRoomParticipant,
+    });
+    const room = new CustomRoom();
+    const handlers = new Map<string, BoardgameMatchReadyHandler>();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    const lock = vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: BoardgameMatchReadyHandler) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void, timeout?: number) => {
+      if (typeof timeout === 'number' && timeout <= 100) handler();
+      return { clear: vi.fn() };
+    }) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(host);
+    await room.onJoin(host);
+    room.clients.push(guest);
+    await room.onJoin(guest);
+    handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-ready' });
+
+    const spectatorAuth = room.onAuth(
+      {} as PlatformClient,
+      {
+        roomCode: 'ROOM42',
+        userId: 'u_spectator',
+        displayName: 'Spectator',
+        role: 'spectator',
+      },
+      cookieAuthContext('u_spectator'),
+    );
+    const spectator = client('session_spectator', spectatorAuth);
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+    room.clients.push(spectator);
+    await room.onJoin(spectator);
+
+    expect(lock).not.toHaveBeenCalled();
+    expect(spectator.userData).toEqual(
+      expect.objectContaining({
+        userId: 'u_spectator',
+        role: 'spectator',
+      }),
+    );
+    expect(recordRoomParticipant).toHaveBeenLastCalledWith({
+      roomCode: 'ROOM42',
+      userId: 'u_spectator',
+      role: 'spectator',
+      displayName: 'Spectator',
+    });
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        kind: 'custom-room',
+        roomCode: 'ROOM42',
+        status: 'ready',
+        playerCount: 2,
+        spectatorCount: 1,
+        boardgameMatchID: 'bgio-match-ready',
+      }),
+    });
+    expect(spectator.send).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-ready' });
+  });
+
   it('custom room promotes a prelinked waiting host room when a guest joins', async () => {
     const room = new CustomRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
-    const lock = vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
     vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
 
     const host = client('session_host', {
@@ -707,7 +785,6 @@ describe('platform room lifecycle', () => {
     room.clients.push(guest);
     await room.onJoin(guest);
 
-    expect(lock).toHaveBeenCalledOnce();
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-3' });
     expect(setMatchmaking).toHaveBeenCalledWith({
       metadata: expect.objectContaining({
@@ -724,7 +801,6 @@ describe('platform room lifecycle', () => {
     const room = new CustomRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
-    const lock = vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
     vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
 
     const host = client('session_host', {
@@ -760,7 +836,6 @@ describe('platform room lifecycle', () => {
 
     room.clients.push(host);
     await room.onJoin(host);
-    expect(lock).not.toHaveBeenCalled();
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         status: 'waiting',
@@ -772,7 +847,6 @@ describe('platform room lifecycle', () => {
 
     room.clients.push(spectator);
     await room.onJoin(spectator);
-    expect(lock).not.toHaveBeenCalled();
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
@@ -785,7 +859,6 @@ describe('platform room lifecycle', () => {
 
     room.clients.push(guest);
     await room.onJoin(guest);
-    expect(lock).toHaveBeenCalledOnce();
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-3' });
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({

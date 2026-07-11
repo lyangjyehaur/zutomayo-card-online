@@ -67,7 +67,6 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       }
       this.boardgameMatchID = boardgameMatchID;
       this.status = 'ready';
-      this.lockReadyRoom();
       void this.refreshMetadata();
       this.broadcast('boardgameMatchReady', { boardgameMatchID });
       this.broadcastSnapshot();
@@ -115,7 +114,6 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
 
     if (this.boardgameMatchID && this.status === 'waiting' && previousHost && !isHostReconnect && role === 'player') {
       this.status = 'ready';
-      this.lockReadyRoom();
       await this.refreshMetadata();
       this.broadcast('boardgameMatchReady', { boardgameMatchID: this.boardgameMatchID });
     }
@@ -214,12 +212,6 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
 
   private broadcastSnapshot(ignoredSessionId?: string): void {
     this.broadcast('customRoomSnapshot', this.snapshot(ignoredSessionId));
-  }
-
-  private lockReadyRoom(): void {
-    if (this.status === 'ready' && !this.locked) {
-      this.lock();
-    }
   }
 
   private async cancel(reason: string, ignoredSessionId?: string): Promise<void> {
