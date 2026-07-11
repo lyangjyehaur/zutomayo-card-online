@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildPlatformFriendInviteId,
+  connectPlatformLobby,
   connectPlatformMatchShell,
   isPlatformBoardgameRelayAcknowledged,
   joinPlatformInvite,
@@ -69,6 +70,52 @@ describe('platform client helpers', () => {
     expect(platformOnlineCountFromMessage({ players: 2, spectators: 7 })).toBe(9);
     expect(platformOnlineCountFromMessage({ onlineCount: -2 })).toBe(0);
     expect(platformOnlineCountFromMessage({})).toBeNull();
+  });
+
+  it('joins lobby without browser-supplied friend ids', async () => {
+    const post = vi.fn<(url: string, request: { body: string }) => Promise<{ data: Record<string, string> }>>(
+      async () => ({
+        data: {
+          name: 'lobby',
+          roomId: 'lobby_room_1',
+          sessionId: 'session_1',
+        },
+      }),
+    );
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    vi.doMock('colyseus.js', () => ({
+      Client: class {
+        http = { post };
+        consumeSeatReservation = vi.fn(() => room);
+      },
+    }));
+
+    await connectPlatformLobby(
+      {
+        userId: 'u_alice',
+        displayName: 'Alice',
+        role: 'player',
+      },
+      { onOnlineCount: vi.fn() },
+    );
+
+    expect(post).toHaveBeenCalledWith(
+      'matchmake/joinOrCreate/lobby',
+      expect.objectContaining({
+        body: JSON.stringify({
+          userId: 'u_alice',
+          displayName: 'Alice',
+          role: 'player',
+        }),
+      }),
+    );
+    const requestBody = JSON.parse(post.mock.calls[0]?.[1]?.body as string) as Record<string, unknown>;
+    expect(requestBody).not.toHaveProperty('friends');
+    expect(requestBody).not.toHaveProperty('friendIds');
+    expect(requestBody).not.toHaveProperty('friendUserIds');
   });
 
   it('reads match shell presence from platform messages', () => {
