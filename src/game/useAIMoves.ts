@@ -3,22 +3,16 @@ import type { Ctx } from 'boardgame.io';
 import type { GameState, JankenChoice, PendingChoice, SetSlot } from './types';
 import { aiSelectCards, type AIDifficulty } from './ai';
 import { getMinimumSetCount, getRequiredSetCount } from './GameLogic';
-import { pendingChoiceSelectionError } from './pendingChoices';
+import { defaultPendingChoiceOptionIds, pendingChoiceSelectionError } from './pendingChoices';
 
 // 為 AI 挑選合法的 pendingChoice option 組合。
 // handAbyssSwap 必須含 1 個 hand: 與 1 個 abyss: option，否則 handler 判定 invalid。
 // 其餘 type 取前 N 個（N = max(min, min(max,1))）。min > options.length 時回傳 null（引擎端不應建立此種 choice）。
 function aiPickChoiceOptions(choice: PendingChoice): string[] | null {
-  if (choice.type === 'handAbyssSwap') {
-    const hand = choice.options.find((option) => option.id.startsWith('hand:'));
-    const abyss = choice.options.find((option) => option.id.startsWith('abyss:'));
-    if (!hand || !abyss) return null;
-    return [hand.id, abyss.id];
-  }
-  if (choice.min > choice.options.length) return null;
-  const want = Math.max(choice.min, Math.min(choice.max, 1));
-  const count = Math.min(want, choice.options.length);
-  return choice.options.slice(0, count).map((option) => option.id);
+  const fallback = defaultPendingChoiceOptionIds(choice);
+  if (!fallback || fallback.length > 0 || choice.max === 0) return fallback;
+  const optionalPick = choice.options[0]?.id ? [choice.options[0].id] : [];
+  return pendingChoiceSelectionError(choice, optionalPick) ? fallback : optionalPick;
 }
 
 /**

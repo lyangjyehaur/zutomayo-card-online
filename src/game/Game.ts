@@ -20,6 +20,7 @@ import {
   setTurnCard,
   setupGame,
   submitPendingChoice,
+  timeoutAdvance,
   timeoutSkip,
   undoSetCard,
   validateZutomayoSetupData,
@@ -188,6 +189,12 @@ const moves: Record<string, Move<GameState>> = {
     const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
     if (!timeoutSkip(G, target, getParsedEffects())) return INVALID_MOVE;
   },
+  timeoutAdvance: ({ G, playerID }, targetPlayer?: PlayerIndex) => {
+    const caller = playerIndex(playerID);
+    if (caller === null) return INVALID_MOVE;
+    const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
+    if (!timeoutAdvance(G, target, getParsedEffects())) return INVALID_MOVE;
+  },
   resolvePendingEffect: ({ G, playerID }, index: number) => {
     const player = playerIndex(playerID);
     if (player === null || !resolvePendingEffectChoice(G, player, index, getParsedEffects())) return INVALID_MOVE;
@@ -212,6 +219,7 @@ export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetu
     // 故每個遊戲內回合的 turnStartTime 主要由 finishTurn 更新；此處確保初始值正確。
     onBegin: ({ G }) => {
       G.turnStartTime = Date.now();
+      G.interactionStartTime = G.turnStartTime;
     },
     activePlayers: { all: 'simultaneous' },
     stages: { simultaneous: { moves } },

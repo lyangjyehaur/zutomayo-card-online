@@ -33,9 +33,14 @@ function normalizeWinner(winner: MatchWinnerInput): 0 | 1 | null {
 }
 
 // Save match record to localStorage
-export function saveMatchRecord(G: GameState, winner: MatchWinnerInput, durationSeconds = 0): void {
+export function saveMatchRecord(
+  G: GameState,
+  winner: MatchWinnerInput,
+  durationSeconds = 0,
+  recordId = `match_${Date.now()}`,
+): void {
   const record: MatchRecord = {
-    id: `match_${Date.now()}`,
+    id: recordId,
     date: new Date().toISOString(),
     duration: Math.max(0, Math.round(durationSeconds)),
     winner: normalizeWinner(winner),
@@ -54,6 +59,7 @@ export function saveMatchRecord(G: GameState, winner: MatchWinnerInput, duration
   };
 
   const records = getMatchRecords();
+  if (records.some((existing) => existing.id === record.id)) return;
   records.unshift(record); // Add to front
 
   // Keep last 50 records

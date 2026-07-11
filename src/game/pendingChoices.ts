@@ -596,6 +596,24 @@ export function pendingChoiceSelectionError(
   return null;
 }
 
+/**
+ * 為無人回應／AI 流程選出一組最小且合法的預設選項。
+ * 順序型選擇保留目前 options 順序；handAbyssSwap 則必須各取一張。
+ */
+export function defaultPendingChoiceOptionIds(choice: PendingChoice): string[] | null {
+  let optionIds: string[];
+  if (choice.type === 'handAbyssSwap') {
+    const hand = choice.options.find((option) => option.id.startsWith('hand:'));
+    const abyss = choice.options.find((option) => option.id.startsWith('abyss:'));
+    if (!hand || !abyss) return null;
+    optionIds = [hand.id, abyss.id];
+  } else {
+    if (choice.min > choice.options.length) return null;
+    optionIds = choice.options.slice(0, choice.min).map((option) => option.id);
+  }
+  return pendingChoiceSelectionError(choice, optionIds) ? null : optionIds;
+}
+
 export function applyPendingChoice(
   context: Omit<ChoiceHandlerContext, 'runtime'>,
   runtime: PendingChoiceRuntime,

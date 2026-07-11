@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pendingChoiceSelectionError } from '../pendingChoices';
+import { defaultPendingChoiceOptionIds, pendingChoiceSelectionError } from '../pendingChoices';
 import type { PendingChoice } from '../types';
 
 function handAbyssChoice(): Extract<PendingChoice, { type: 'handAbyssSwap' }> {
@@ -30,5 +30,25 @@ describe('pendingChoiceSelectionError', () => {
   it('rejects duplicate and unknown options', () => {
     expect(pendingChoiceSelectionError(handAbyssChoice(), ['hand:h1', 'hand:h1'])).toBe('duplicate');
     expect(pendingChoiceSelectionError(handAbyssChoice(), ['hand:h1', 'abyss:missing'])).toBe('unknownOption');
+  });
+
+  it('builds the minimum legal timeout selection for compound and optional choices', () => {
+    expect(defaultPendingChoiceOptionIds(handAbyssChoice())).toEqual(['hand:h1', 'abyss:a1']);
+    expect(
+      defaultPendingChoiceOptionIds({
+        id: 'optional',
+        player: 0,
+        type: 'cardMove',
+        min: 0,
+        max: 1,
+        payload: {
+          sourcePlayer: 0,
+          sourceZone: 'hand',
+          destinationPlayer: 0,
+          destinationZone: 'abyss',
+        },
+        options: [{ id: 'card-1', label: 'Card 1' }],
+      }),
+    ).toEqual([]);
   });
 });

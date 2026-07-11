@@ -498,6 +498,7 @@ const noopMoves: BoardComponentProps['moves'] = {
   undoSetCard: () => undefined,
   confirmReady: () => undefined,
   timeoutSkip: () => undefined,
+  timeoutAdvance: () => undefined,
   resolvePendingEffect: () => undefined,
   submitPendingChoice: () => undefined,
 };
@@ -647,6 +648,7 @@ export function BattleVisualQaPage() {
         isActive
         isConnected
         isMultiplayer={false}
+        useServerTimer
       />
       {showControls && (
         <QaControls selectedState={selectedState} selectedSide={selectedSide} selectedTime={selectedTime} />

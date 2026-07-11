@@ -7,6 +7,7 @@ import {
   matchDurationSeconds,
   normalizeGameOverWinner,
   onlineSourceMatchID,
+  parseStoredEloSubmission,
   signedEloChange,
 } from '../useOnlineMatchSubmission';
 
@@ -45,7 +46,7 @@ describe('useOnlineMatchSubmission helpers', () => {
 
   it('builds stable submission keys from route and final action trace', () => {
     expect(matchSubmissionKey(gameState(), 0, '/play/online/room-1')).toBe(
-      'zutomayo-match-submit:/play/online/room-1:0:3:Player 1 loses at 0 HP.:2:1000:2000:gameOver',
+      'zutomayo-match-submit-v2:/play/online/room-1:0:3:Player 1 loses at 0 HP.:2:1000:2000:gameOver',
     );
   });
 
@@ -63,5 +64,13 @@ describe('useOnlineMatchSubmission helpers', () => {
   it('uses authoritative game timestamps for duration after remount or reconnect', () => {
     const G = gameState({ matchStartedAt: 10_000, matchEndedAt: 73_500 });
     expect(matchDurationSeconds(G, 999_999)).toBe(63.5);
+  });
+
+  it('restores the exact rated result after the result screen remounts', () => {
+    expect(parseStoredEloSubmission(JSON.stringify({ status: 'rated', message: '+12' }))).toEqual({
+      status: 'rated',
+      message: '+12',
+    });
+    expect(parseStoredEloSubmission('not-json')).toBeNull();
   });
 });

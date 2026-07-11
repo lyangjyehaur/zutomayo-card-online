@@ -44,6 +44,7 @@ import {
   getChronosTime,
   getEffectiveAttack,
   getMinimumSetCount,
+  getPlayersAwaitingAction,
   getRequiredSetCount,
   isAttackPowerInsufficient,
 } from '../game/GameLogic';
@@ -356,7 +357,7 @@ function formatLogEntry(
   if (a === 'confirmReady') {
     return { segments: [seg(`${p} ${t('board.readyWaiting')}`)], tone: 'set' };
   }
-  if (a === 'timeoutSkip') {
+  if (a === 'timeoutSkip' || a === 'timeoutAdvance') {
     return { segments: [seg(`${p} ${t('board.timer')} ⏱`)], tone: 'info' };
   }
   if (a === 'chooseEffectOrder') {
@@ -1195,6 +1196,12 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions }: Props) {
           <ResultCell label={t('board.result.reason')} value={reason} />
         </div>
 
+        {eloState.status === 'failed' && eloState.retry && (
+          <Button className="mt-4" type="button" variant="secondary" onClick={eloState.retry}>
+            {t('common.retry')}
+          </Button>
+        )}
+
         {ctx.gameover &&
           (gameOverActions ? (
             <div className="mt-10 flex flex-col items-center gap-3 md:flex-row">
@@ -1824,6 +1831,8 @@ function BattleBoard({
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const previousTurnNumber = useRef(G.turnNumber);
+  const awaitingPlayers = getPlayersAwaitingAction(G);
+  const awaitingPlayersKey = awaitingPlayers.join(',');
   const hasRequiredTutorialCards =
     !tutorialRequiredSetCardDefIds ||
     tutorialRequiredSetCardDefIds.every((defId) => G.setCardsThisTurn[meIndex].some((card) => card.defId === defId));
@@ -1837,14 +1846,16 @@ function BattleBoard({
 
   useEffect(() => {
     if (useServerTimer) {
-      // P3-16：伺服器權威計時器。根據 G.turnStartTime 計算剩餘秒數，避免兩端 setInterval 漂移。
+      // 線上模式：正式回合與前置／效果互動都使用伺服器權威起始時間。
       const compute = () => {
-        if (typeof G.turnStartTime !== 'number') return TURN_TIMER_SECONDS;
-        const elapsed = Math.floor((Date.now() - G.turnStartTime) / 1000);
+        const startedAt =
+          G.step === 'turnSet' && !G.pendingChoice ? G.turnStartTime : (G.interactionStartTime ?? G.matchStartedAt);
+        if (typeof startedAt !== 'number') return TURN_TIMER_SECONDS;
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
         return Math.max(0, TURN_TIMER_SECONDS - elapsed);
       };
       setTimeLeft(compute());
-      if (G.step !== 'turnSet' || G.ready.every(Boolean)) return;
+      if (awaitingPlayersKey.length === 0) return;
       timer.current = setInterval(() => {
         const next = compute();
         setTimeLeft(next);
@@ -1871,17 +1882,36 @@ function BattleBoard({
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [G.ready, G.turnNumber, G.step, G.turnStartTime, meIndex, useServerTimer]);
+  }, [
+    G.ready,
+    G.turnNumber,
+    G.step,
+    G.turnStartTime,
+    G.interactionStartTime,
+    G.matchStartedAt,
+    G.pendingChoice,
+    meIndex,
+    useServerTimer,
+    awaitingPlayersKey,
+  ]);
 
   useEffect(() => {
-    if (G.step !== 'turnSet' || timeLeft > 0 || G.ready.every(Boolean)) return;
+    if (timeLeft > 0) return;
     // 教學流程不使用真實倒數；一般本機與線上模式皆走同一 timeoutSkip 規則，
     // 允許未達最低出牌數時跳過，避免 00 秒後仍可無限操作。
     if (onNoticeDismiss) return;
-    for (const player of [0, 1] as const) {
-      if (!G.ready[player]) moves.timeoutSkip(player);
+    if (useServerTimer) {
+      for (const value of awaitingPlayersKey.split(',')) {
+        if (value === '0' || value === '1') moves.timeoutAdvance(Number(value) as PlayerIndex);
+      }
+      return;
     }
-  }, [G.step, timeLeft, G.ready, meIndex, moves, onNoticeDismiss, retryTick]);
+    if (G.step === 'turnSet') {
+      for (const player of [0, 1] as const) {
+        if (!G.ready[player]) moves.timeoutSkip(player);
+      }
+    }
+  }, [G.step, timeLeft, G.ready, meIndex, moves, onNoticeDismiss, retryTick, useServerTimer, awaitingPlayersKey]);
 
   useEffect(() => {
     setSelectedHandIndex(null);
@@ -2064,7 +2094,9 @@ function BattleBoard({
         activePanel={activeSidePanel}
         time={time}
         timeLeft={timeLeft}
-        timerActive={G.step === 'turnSet' && !G.ready[meIndex] && !onNoticeDismiss}
+        timerActive={
+          !onNoticeDismiss && (useServerTimer ? awaitingPlayers.length > 0 : G.step === 'turnSet' && !G.ready[meIndex])
+        }
         onPause={onPause}
         onPanelChange={setActiveSidePanel}
       />
@@ -2534,12 +2566,7 @@ export function Board(props: Props) {
 
       {/* 暫停/離開按鈕 */}
       {props.G.step !== 'gameOver' && (props.G.step === 'janken' || props.G.step === 'mulligan') && (
-        <button
-          className="board-pause-button"
-          type="button"
-          onClick={requestExit}
-          aria-label={t('game.pause')}
-        >
+        <button className="board-pause-button" type="button" onClick={requestExit} aria-label={t('game.pause')}>
           <Pause className="board-pause-icon hidden size-4" aria-hidden="true" />
           <span className="board-pause-label">{t('game.pause')}</span>
         </button>

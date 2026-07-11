@@ -395,6 +395,8 @@ export interface GameState {
   // P3-16：伺服器權威回合計時器，於回合開始時記錄（毫秒，Date.now()）。
   // 客戶端據此計算剩餘時間，避免兩端 setInterval 漂移；超時後任一在線端可為未準備玩家送出 timeoutSkip。
   turnStartTime: number;
+  /** 當前需玩家互動階段的權威起始時間，供線上前置／效果流程超時恢復。 */
+  interactionStartTime: number;
   lastBattleResult: LastBattleResult;
   setCardsThisTurn: [CardInstance[], CardInstance[]];
   pendingEffects: [PendingEffect[], PendingEffect[]];
