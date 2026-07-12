@@ -17,6 +17,7 @@ const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = r
     pool: Queryable,
     matchId: string,
     sanitizeActionLog: (value: unknown) => unknown[],
+    userId: string,
   ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
   getUserMatches: (
     pool: Queryable,
@@ -46,21 +47,24 @@ const matchRow = {
 };
 
 describe('match query services', () => {
-  it('returns sanitized action logs and 404s missing matches', async () => {
+  it('returns sanitized action logs and 403s when user is not a participant', async () => {
     const sanitizeActionLog = vi.fn(() => [{ action: 'clean' }]);
     const pool = poolWithRows([{ id: 'm_1', action_log: [{ action: 'raw' }] }]);
 
-    await expect(getMatchActionLog(pool, 'm_1', sanitizeActionLog)).resolves.toEqual({
+    await expect(getMatchActionLog(pool, 'm_1', sanitizeActionLog, 'u_winner')).resolves.toEqual({
       ok: true,
       body: { matchId: 'm_1', actionLog: [{ action: 'clean' }] },
     });
     expect(sanitizeActionLog).toHaveBeenCalledWith([{ action: 'raw' }]);
-    expect(pool.query).toHaveBeenCalledWith('SELECT id, action_log FROM matches WHERE id = $1', ['m_1']);
+    expect(pool.query).toHaveBeenCalledWith(
+      'SELECT id, action_log FROM matches WHERE id = $1 AND (player0_id = $2 OR player1_id = $2)',
+      ['m_1', 'u_winner'],
+    );
 
-    await expect(getMatchActionLog(poolWithRows([]), 'missing', sanitizeActionLog)).resolves.toEqual({
+    await expect(getMatchActionLog(poolWithRows([]), 'missing', sanitizeActionLog, 'u_other')).resolves.toEqual({
       ok: false,
-      status: 404,
-      error: 'Match not found',
+      status: 403,
+      error: 'Forbidden',
     });
   });
 

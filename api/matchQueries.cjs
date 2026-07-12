@@ -24,9 +24,14 @@ function mapMatchRow(match) {
   };
 }
 
-async function getMatchActionLog(pool, matchId, sanitizeActionLog) {
-  const match = (await pool.query('SELECT id, action_log FROM matches WHERE id = $1', [matchId])).rows[0];
-  if (!match) return { ok: false, status: 404, error: 'Match not found' };
+async function getMatchActionLog(pool, matchId, sanitizeActionLog, userId) {
+  const match = (
+    await pool.query('SELECT id, action_log FROM matches WHERE id = $1 AND (player0_id = $2 OR player1_id = $2)', [
+      matchId,
+      userId,
+    ])
+  ).rows[0];
+  if (!match) return { ok: false, status: 403, error: 'Forbidden' };
   const actionLog = Array.isArray(match.action_log) ? match.action_log : [];
   return { ok: true, body: { matchId: match.id, actionLog: sanitizeActionLog(actionLog) } };
 }

@@ -2552,7 +2552,7 @@ function handleRequest(req, res) {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const matchId = matchLogRoute[1];
-      const result = await getMatchActionLog(pool, matchId, sanitizeActionLog);
+      const result = await getMatchActionLog(pool, matchId, sanitizeActionLog, userId);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
