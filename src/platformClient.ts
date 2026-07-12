@@ -542,7 +542,11 @@ export function platformCustomRoomSnapshotFromMessage(message: unknown): Platfor
 function bindPlatformCustomRoomHandlers(room: Room<unknown>, handlers: PlatformCustomRoomHandlers): PlatformCustomRoom {
   room.onMessage('customRoomSnapshot', (message) => {
     const snapshot = platformCustomRoomSnapshotFromMessage(message);
-    if (snapshot) handlers.onSnapshot?.(snapshot);
+    if (!snapshot) return;
+    handlers.onSnapshot?.(snapshot);
+    if (snapshot.status === 'ready' && snapshot.boardgameMatchID) {
+      handlers.onBoardgameMatchReady?.({ boardgameMatchID: snapshot.boardgameMatchID });
+    }
   });
   room.onMessage('boardgameMatchReady', (message) => {
     const ready = platformBoardgameMatchReadyFromMessage(message);

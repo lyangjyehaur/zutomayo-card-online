@@ -644,6 +644,63 @@ describe('platform client helpers', () => {
     );
   });
 
+  it('recovers custom-room ready relay from snapshots', async () => {
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+    const room = {
+      onMessage: vi.fn((type: string, handler: (message: unknown) => void) => {
+        messageHandlers.set(type, handler);
+      }),
+      onLeave: vi.fn(),
+    };
+    const post = vi.fn(async () => ({
+      data: {
+        name: 'custom_room',
+        roomId: 'platform_custom_room_1',
+        sessionId: 'session_1',
+      },
+    }));
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = vi.fn(() => room);
+        },
+      ),
+    }));
+    const onSnapshot = vi.fn();
+    const onBoardgameMatchReady = vi.fn();
+
+    await joinPlatformCustomRoom(
+      {
+        roomCode: 'ROOM42',
+        userId: 'u_guest',
+        displayName: 'Guest',
+      },
+      {
+        onSnapshot,
+        onBoardgameMatchReady,
+      },
+    );
+
+    messageHandlers.get('customRoomSnapshot')?.({
+      roomId: 'platform_custom_room_1',
+      roomCode: 'ROOM42',
+      status: 'ready',
+      players: [],
+      spectators: [],
+      boardgameMatchID: 'bgio-match-1',
+    });
+
+    expect(onSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomCode: 'ROOM42',
+        status: 'ready',
+        boardgameMatchID: 'bgio-match-1',
+      }),
+    );
+    expect(onBoardgameMatchReady).toHaveBeenCalledWith({ boardgameMatchID: 'bgio-match-1' });
+  });
+
   it('creates a waiting custom room only when no ready custom room exists', async () => {
     const room = {
       onMessage: vi.fn(),
