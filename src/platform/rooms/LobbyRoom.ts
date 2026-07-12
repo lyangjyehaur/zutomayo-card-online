@@ -1,6 +1,7 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
 import { platformLogger as logger } from '../logger';
+import { recordPlatformReconnect } from '../metrics';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   LobbyJoinOptions,
@@ -38,6 +39,7 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
     await assertPlatformAuthCurrent(auth);
+    const reconnectingUser = this.clients.some((item) => item.userData?.userId === auth.userId);
     client.userData = {
       sessionId: client.sessionId,
       userId: auth.userId,
@@ -45,6 +47,7 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
       role: auth.role,
       joinedAt: Date.now(),
     };
+    if (reconnectingUser) recordPlatformReconnect('lobby');
     this.friendUserIdsBySession.set(client.sessionId, await this.friendUserIdsFor(auth.userId));
     await this.refreshMetadata();
     client.send('lobbySnapshot', this.snapshot(client));

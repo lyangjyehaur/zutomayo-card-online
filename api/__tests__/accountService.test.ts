@@ -9,9 +9,11 @@ const require = createRequire(import.meta.url);
 const {
   createAvatarUrls,
   getAccountProfile,
+  getAccountSecurityCapabilities,
   linkOAuthIdentity,
   listAccountIdentities,
   loginAccount,
+  loginWithOAuthIdentity,
   mapAccountProfile,
   registerAccount,
   unlinkOAuthIdentity,
@@ -27,6 +29,10 @@ const {
     pool: Queryable,
     userId: string,
     options?: Record<string, unknown>,
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  getAccountSecurityCapabilities: (
+    pool: Queryable,
+    userId: string,
   ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
   linkOAuthIdentity: (input: {
     pool: Queryable;
@@ -47,6 +53,9 @@ const {
     currentIterations: number;
     legacyIterations: number;
   }) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  loginWithOAuthIdentity: (
+    input: Record<string, unknown>,
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
   mapAccountProfile: (user: Record<string, unknown>, options?: Record<string, unknown>) => Record<string, unknown>;
   registerAccount: (input: {
     pool: Queryable;
@@ -116,6 +125,8 @@ describe('account service', () => {
       wins: 3,
       winRate: 75,
       createdAt: '2026-06-30T00:00:00.000Z',
+      hasLocalPassword: true,
+      hasLogtoIdentity: false,
     });
   });
 
@@ -297,6 +308,45 @@ describe('account service', () => {
     ).resolves.toEqual({ ok: false, status: 401, error: 'Invalid current password' });
   });
 
+  it('rejects an OAuth principal tombstoned by account deletion before recreating a user', async () => {
+    const pool = poolWithHandler((sql) => {
+      if (sql.includes('FROM account_deletion_requests')) return { rows: [{ '?column?': 1 }] };
+      return { rows: [] };
+    });
+
+    await expect(
+      loginWithOAuthIdentity({
+        pool,
+        profile: { provider: 'logto', providerUserId: 'logto-deleted-user', email: 'deleted@example.com' },
+        sanitizeText: (value: unknown) => String(value),
+        createToken: () => 'token',
+        generateUserId: () => 'u_recreated',
+        generateDisabledPasswordHash: () => 'oauth:disabled',
+        generateSalt: () => 'salt',
+      }),
+    ).resolves.toEqual({ ok: false, status: 410, error: 'OAuth account has been deleted' });
+    expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO users'), expect.anything());
+  });
+
+  it('rejects linking a tombstoned OAuth principal to another local account', async () => {
+    const pool = poolWithHandler((sql) => {
+      if (sql.includes('FROM account_deletion_requests')) return { rows: [{ '?column?': 1 }] };
+      return { rows: [] };
+    });
+
+    await expect(
+      linkOAuthIdentity({
+        pool,
+        userId: 'u_other',
+        profile: { provider: 'logto', providerUserId: 'logto-deleted-user' },
+      }),
+    ).resolves.toEqual({ ok: false, status: 410, error: 'OAuth account has been deleted' });
+    expect(pool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO user_identities'),
+      expect.anything(),
+    );
+  });
+
   it('lists and links OAuth identities for the current user', async () => {
     const pool = poolWithHandler((sql) => {
       if (sql.includes('FROM user_identities') && sql.includes('ORDER BY')) {
@@ -426,6 +476,21 @@ describe('account service', () => {
       }),
     ).resolves.toMatchObject({ ok: true, body: { id: 'u_1' } });
     expect(pool.query).toHaveBeenCalledWith('UPDATE users SET nickname = $1 WHERE id = $2', ['New', 'u_1']);
+  });
+
+  it('reports account credential capabilities without exposing password material', async () => {
+    const pool = poolWithHandler((sql) => {
+      if (sql.includes('has_logto_identity')) {
+        return { rows: [{ password_hash: 'oauth:disabled', has_logto_identity: true }] };
+      }
+      return { rows: [] };
+    });
+
+    await expect(getAccountSecurityCapabilities(pool, 'u_oauth')).resolves.toEqual({
+      ok: true,
+      body: { hasLocalPassword: false, hasLogtoIdentity: true },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.not.stringContaining('SELECT *'), ['u_oauth']);
   });
 
   it('returns explicit errors for missing users and blank nicknames', async () => {

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Zutomayo synthetic player journey probe every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Persistent=true
+Unit=zutomayo-synthetic-probe.service
+
+[Install]
+WantedBy=timers.target

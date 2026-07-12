@@ -58,6 +58,7 @@ import {
   ToolHeader,
 } from '../ui';
 import { CardImage } from '../components/CardImage';
+import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -92,7 +93,7 @@ const ABOUT_LANGS: Array<{ code: AboutPageLocale; label: string }> = I18N_LANGS.
   label: lang.label,
 }));
 
-type AdminTab = 'cards' | 'users' | 'matches' | 'chat' | 'about';
+type AdminTab = 'cards' | 'users' | 'matches' | 'chat' | 'operations' | 'about';
 type ModalTab = 'basic' | 'engine' | 'i18n';
 type ParsedCardMeta = {
   card: CardDef;
@@ -1233,6 +1234,7 @@ export function AdminPage() {
                 { value: 'users', label: '使用者' },
                 { value: 'matches', label: '對戰' },
                 { value: 'chat', label: '聊天' },
+                { value: 'operations', label: t('admin.operations') },
                 { value: 'about', label: 'About' },
               ]}
               value={activeTab}
@@ -1800,6 +1802,12 @@ export function AdminPage() {
       {activeTab === 'about' && (
         <section className="admin-main flex-1 overflow-y-auto p-4">
           <AboutSettingsEditor />
+        </section>
+      )}
+
+      {activeTab === 'operations' && (
+        <section className="admin-main flex-1 overflow-y-auto p-4">
+          <AdminOperationsPanel token={token} />
         </section>
       )}
 

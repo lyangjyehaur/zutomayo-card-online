@@ -34,12 +34,41 @@ jobs:
       - name: Validate Compose configuration
         env:
           PG_PASSWORD: e2e-test-password
+          PG_MIGRATION_USER: zutomayo_migrator
+          PG_MIGRATION_PASSWORD: e2e-test-migration-password
+          PG_APP_USER: zutomayo_app
+          PG_APP_PASSWORD: e2e-test-app-password
           JWT_SECRET: e2e-test-jwt-secret-32chars-min
           REDIS_PASSWORD: e2e-test-redis-password
+          METRICS_TOKEN: e2e-test-metrics-token
+          PGSSLMODE: disable
+          PG_MONITOR_HOST: postgres
+          PG_MONITOR_USER: zutomayo_monitor
+          PG_MONITOR_PASSWORD: e2e-test-monitor-password
+          PG_MONITOR_DATABASE: zutomayo
+          PG_MONITOR_SSLMODE: disable
+          PG_RETENTION_HOST: postgres
+          PG_RETENTION_USER: zutomayo_retention
+          PG_RETENTION_PASSWORD: e2e-test-retention-password
+          PG_RETENTION_SSLMODE: disable
+          SLACK_ALERT_WEBHOOK: https://hooks.example.invalid/services/test
+          GRAFANA_PASSWORD: e2e-test-grafana-password
+          GAME_IMAGE: ghcr.io/example/game@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          API_IMAGE: ghcr.io/example/api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          PLATFORM_IMAGE: ghcr.io/example/platform@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          RETENTION_METRICS_GID: '991'
         run: |
+          export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
+          export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
+          npm run release:config
+          npm run ops:config
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.monitoring.yml config --quiet
 
       - name: Format check
         run: npm run format:check:tracked
@@ -81,6 +110,8 @@ jobs:
       PG_PASSWORD: e2e-test-password
       JWT_SECRET: e2e-test-jwt-secret-32chars-min
       REDIS_PASSWORD: ''
+      METRICS_TOKEN: e2e-test-metrics-token
+      PGSSLMODE: disable
 
     steps:
       - name: Checkout code
@@ -88,6 +119,10 @@ jobs:
 
       - name: Build and start service stack
         run: |
+          export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
+          export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
+          export PG_MIGRATION_USER=zutomayo_migrator PG_MIGRATION_PASSWORD=e2e-test-migration-password
+          export PG_APP_USER=zutomayo_app PG_APP_PASSWORD=e2e-test-app-password
           docker compose \
             -f docker-compose.yml \
             -f docker-compose.e2e.yml \

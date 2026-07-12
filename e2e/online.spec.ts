@@ -71,6 +71,41 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
 
       expect(spectatorSubmissions).toEqual([]);
       await expect.poll(() => spectatorPage.evaluate(() => localStorage.getItem('zutomayo_match_records'))).toBeNull();
+
+      // 完成 setup，確認兩個獨立 client 能進入正式回合；對手手牌只能以牌背呈現。
+      await Promise.all([
+        page.getByRole('button', { name: '保留手牌' }).click(),
+        guestPage.getByRole('button', { name: '保留手牌' }).click(),
+      ]);
+      await expect(page.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 });
+      await expect(guestPage.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('.bf-opponent-handbacks img')).toHaveCount(5);
+      await expect(page.locator('.bf-opponent-handbacks img').first()).toHaveAttribute('src', /card-back/);
+
+      // 每位玩家放置一張初始牌並確認，進入 turnSet 後由玩家 0 投降，驗證完整結算流程。
+      await Promise.all([
+        page.locator('[data-zone="hand"] button').first().click(),
+        guestPage.locator('[data-zone="hand"] button').first().click(),
+      ]);
+      await Promise.all([
+        page.getByRole('button', { name: /打出檢視中的牌/ }).click(),
+        guestPage.getByRole('button', { name: /打出檢視中的牌/ }).click(),
+      ]);
+      await Promise.all([
+        page.getByRole('button', { name: /確認出牌/ }).click(),
+        guestPage.getByRole('button', { name: /確認出牌/ }).click(),
+      ]);
+      await expect(page.locator('[data-game-step="turnSet"]')).toBeVisible({ timeout: 30_000 });
+      await expect(guestPage.locator('[data-game-step="turnSet"]')).toBeVisible({ timeout: 30_000 });
+
+      await page.getByRole('button', { name: '暫停' }).first().click();
+      const surrenderDialog = page.getByRole('dialog');
+      await expect(surrenderDialog).toBeVisible();
+      await surrenderDialog.getByRole('button', { name: '投降' }).click();
+      await expect(page.locator('[data-result-outcome="defeat"]')).toBeVisible({ timeout: 10_000 });
+      await expect(guestPage.locator('[data-result-outcome="victory"]')).toBeVisible({ timeout: 10_000 });
+      await expect(spectatorPage.locator('[data-result-outcome="spectator"]')).toBeVisible({ timeout: 20_000 });
+      expect(spectatorSubmissions).toEqual([]);
     } catch (error) {
       failed = true;
       throw error;

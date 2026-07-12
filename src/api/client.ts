@@ -18,6 +18,14 @@ export interface DeckResponse {
   cardIds: string[];
 }
 
+export interface DeckReservationResponse {
+  reservationId: string;
+  deckId: string;
+  deckVersion: string;
+  rulesVersion: string;
+  expiresAt: string;
+}
+
 export interface ProfileResponse {
   id: string;
   email: string;
@@ -30,6 +38,9 @@ export interface ProfileResponse {
   wins: number;
   winRate: number;
   createdAt: string;
+  /** Credential capabilities for this account, independent of AUTH_MODE. */
+  hasLocalPassword?: boolean;
+  hasLogtoIdentity?: boolean;
 }
 
 export interface FriendProfile {
@@ -87,6 +98,52 @@ export interface SeasonLeaderboardEntry {
   placementComplete: boolean;
 }
 
+export interface SeasonReward {
+  seasonId: string;
+  seasonName: string;
+  finalRank: number;
+  finalRating: number;
+  rewardTier: string;
+  rewardPayload: Record<string, unknown>;
+  grantedAt: string;
+  claimedAt: string | null;
+}
+
+export interface AdminSeason extends Season {
+  ratingDecayPercent: number;
+  rulesVersion: string;
+  rewardConfig: { tiers: Array<{ id: string; maxRank: number; payload: Record<string, unknown> }> };
+  activatedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+}
+
+export interface AdminSeasonCreateInput {
+  id: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  startingRating: number;
+  placementMatches: number;
+  ratingDecayPercent: number;
+  rulesVersion: string;
+  rewardConfig: AdminSeason['rewardConfig'];
+}
+
+export type LegalHoldSubjectType = 'account' | 'match' | 'conversation' | 'message' | 'report' | 'feedback';
+
+export interface LegalHold {
+  id: string;
+  subjectType: LegalHoldSubjectType;
+  subjectId: string;
+  reason: string;
+  owner: string;
+  expiresAt: string | null;
+  releasedAt: string | null;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface AccountExport {
   exportedAt: string;
   account: Record<string, unknown>;
@@ -94,7 +151,18 @@ export interface AccountExport {
   decks: unknown[];
   matches: unknown[];
   friends: unknown[];
+  friendRequests: unknown[];
   blocks: unknown[];
+  chatMessages: unknown[];
+  chatReports: unknown[];
+  feedbackPosts: unknown[];
+  feedbackComments: unknown[];
+  feedbackVotes: unknown[];
+  feedbackReactions: unknown[];
+  sanctions: unknown[];
+  seasonRatings: unknown[];
+  seasonRewards: unknown[];
+  seasonRewardEntitlements: unknown[];
 }
 
 export type OAuthProviderId = 'logto' | 'google' | 'github' | 'discord';
@@ -346,6 +414,19 @@ function getCsrfToken(): string {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
+async function ensureCsrfToken(): Promise<string> {
+  const existing = getCsrfToken();
+  if (existing) return existing;
+  try {
+    const response = await fetch(`${API_BASE}/csrf-token`, { credentials: 'include' });
+    if (!response.ok) return '';
+    const body = (await response.json()) as { token?: unknown };
+    return getCsrfToken() || (typeof body.token === 'string' ? body.token : '');
+  } catch {
+    return '';
+  }
+}
+
 async function tryRefreshToken(): Promise<boolean> {
   if (isRefreshing && refreshPromise) return refreshPromise;
   isRefreshing = true;
@@ -378,7 +459,7 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
   // CSRF: double-submit cookie pattern — attach X-CSRF-Token for state-changing methods
   const method = (options.method || 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') {
-    const csrfToken = getCsrfToken();
+    const csrfToken = await ensureCsrfToken();
     if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
   }
 
@@ -669,10 +750,13 @@ export async function exportAccountData(): Promise<AccountExport> {
   return request<AccountExport>('/account/export');
 }
 
-export async function deleteAccount(): Promise<{ deleted: boolean }> {
+export async function deleteAccount(stepUp: {
+  currentPassword?: string;
+  stepUpToken?: string;
+}): Promise<{ deleted: boolean }> {
   const result = await request<{ deleted: boolean }>('/account', {
     method: 'DELETE',
-    body: JSON.stringify({ confirmation: 'DELETE' }),
+    body: JSON.stringify({ confirmation: 'DELETE', ...stepUp }),
   });
   clearAccountSession();
   return result;
@@ -708,17 +792,19 @@ export async function getLogtoAccountCenter(): Promise<LogtoAccountCenterRespons
   return request('/account-center');
 }
 
-export async function verifyLogtoPassword(currentPassword: string): Promise<{ verificationRecordId: string }> {
+export async function verifyLogtoPassword(
+  currentPassword: string,
+): Promise<{ stepUpToken: string; expiresIn: number }> {
   return request('/account-center/verifications/password', {
     method: 'POST',
     body: JSON.stringify({ currentPassword }),
   });
 }
 
-export async function updateLogtoPassword(newPassword: string, verificationRecordId: string): Promise<{ ok: boolean }> {
+export async function updateLogtoPassword(newPassword: string, stepUpToken: string): Promise<{ ok: boolean }> {
   return request('/account-center/password', {
     method: 'POST',
-    body: JSON.stringify({ newPassword, verificationRecordId }),
+    body: JSON.stringify({ newPassword, stepUpToken }),
   });
 }
 
@@ -805,6 +891,13 @@ export async function getDecks(): Promise<DeckResponse[]> {
     name: deck.name,
     cardIds: deck.cardIds,
   }));
+}
+
+export async function reserveDeck(deckId: string, rulesVersion?: string): Promise<DeckReservationResponse> {
+  return request<DeckReservationResponse>('/deck-reservations', {
+    method: 'POST',
+    body: JSON.stringify({ deckId, ...(rulesVersion ? { rulesVersion } : {}) }),
+  });
 }
 
 export async function createDeck(name: string, cardIds: string[]): Promise<DeckResponse> {
@@ -930,6 +1023,39 @@ export async function getSeasonLeaderboard(limit = 100, offset = 0): Promise<Sea
     wins: Number(entry.wins),
     placementComplete: Boolean(entry.placement_complete),
   }));
+}
+
+function mapSeasonReward(reward: {
+  season_id: string;
+  season_name: string;
+  final_rank: number;
+  final_rating: number;
+  reward_tier: string;
+  reward_payload: Record<string, unknown>;
+  granted_at: string;
+  claimed_at: string | null;
+}): SeasonReward {
+  return {
+    seasonId: reward.season_id,
+    seasonName: reward.season_name,
+    finalRank: Number(reward.final_rank),
+    finalRating: Number(reward.final_rating),
+    rewardTier: reward.reward_tier,
+    rewardPayload: reward.reward_payload || {},
+    grantedAt: reward.granted_at,
+    claimedAt: reward.claimed_at,
+  };
+}
+
+export async function getSeasonRewards(): Promise<SeasonReward[]> {
+  const data = await request<{ rewards: Parameters<typeof mapSeasonReward>[0][] }>('/seasons/rewards');
+  return (data.rewards || []).map(mapSeasonReward);
+}
+
+export async function claimSeasonReward(
+  seasonId: string,
+): Promise<{ claimed: boolean; reason?: string; claimedAt?: string }> {
+  return request(`/seasons/${encodeURIComponent(seasonId)}/rewards/claim`, { method: 'POST' });
 }
 
 // ===== Presence =====
@@ -1171,6 +1297,134 @@ export async function adminGetMatches(token: string, limit = 50): Promise<{ matc
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;
+}
+
+type AdminSeasonRow = {
+  id: string;
+  name: string;
+  status: string;
+  starts_at: string;
+  ends_at: string;
+  starting_rating: number;
+  placement_matches: number;
+  rating_decay_percent: number;
+  rules_version: string;
+  reward_config: AdminSeason['rewardConfig'];
+  activated_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+};
+
+function mapAdminSeason(season: AdminSeasonRow): AdminSeason {
+  return {
+    id: season.id,
+    name: season.name,
+    status: season.status,
+    startsAt: season.starts_at,
+    endsAt: season.ends_at,
+    startingRating: Number(season.starting_rating),
+    placementMatches: Number(season.placement_matches),
+    ratingDecayPercent: Number(season.rating_decay_percent),
+    rulesVersion: season.rules_version,
+    rewardConfig: season.reward_config || { tiers: [] },
+    activatedAt: season.activated_at,
+    closedAt: season.closed_at,
+    createdAt: season.created_at,
+  };
+}
+
+export async function adminGetSeasons(token: string): Promise<AdminSeason[]> {
+  const data = await request<{ seasons: AdminSeasonRow[] }>('/admin/seasons', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return (data.seasons || []).map(mapAdminSeason);
+}
+
+export async function adminCreateSeason(token: string, input: AdminSeasonCreateInput): Promise<AdminSeason> {
+  const data = await request<{ season: AdminSeasonRow }>('/admin/seasons', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  return mapAdminSeason(data.season);
+}
+
+export async function adminActivateSeason(token: string, seasonId: string): Promise<void> {
+  await request(`/admin/seasons/${encodeURIComponent(seasonId)}/activate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function adminCloseSeason(token: string, seasonId: string): Promise<void> {
+  await request(`/admin/seasons/${encodeURIComponent(seasonId)}/close`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+type LegalHoldRow = {
+  id: string;
+  subject_type: LegalHoldSubjectType;
+  subject_id: string;
+  reason: string;
+  owner: string;
+  expires_at: string | null;
+  released_at: string | null;
+  created_at: string;
+  metadata: Record<string, unknown>;
+};
+
+function mapLegalHold(hold: LegalHoldRow): LegalHold {
+  return {
+    id: hold.id,
+    subjectType: hold.subject_type,
+    subjectId: hold.subject_id,
+    reason: hold.reason,
+    owner: hold.owner,
+    expiresAt: hold.expires_at,
+    releasedAt: hold.released_at,
+    createdAt: hold.created_at,
+    metadata: hold.metadata || {},
+  };
+}
+
+export async function adminGetLegalHolds(
+  token: string,
+  status: 'active' | 'released' | 'expired' | 'all' = 'active',
+): Promise<LegalHold[]> {
+  const data = await request<{ holds: LegalHoldRow[] }>(`/admin/legal-holds?status=${status}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return (data.holds || []).map(mapLegalHold);
+}
+
+export async function adminCreateLegalHold(
+  token: string,
+  input: {
+    subjectType: LegalHoldSubjectType;
+    subjectId: string;
+    reason: string;
+    owner: string;
+    expiresAt: string;
+    caseReference?: string;
+  },
+): Promise<LegalHold> {
+  const data = await request<{ hold: LegalHoldRow }>('/admin/legal-holds', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  return mapLegalHold(data.hold);
+}
+
+export async function adminReleaseLegalHold(token: string, holdId: string, reason: string): Promise<LegalHold> {
+  const data = await request<{ hold: LegalHoldRow }>(`/admin/legal-holds/${encodeURIComponent(holdId)}/release`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ reason }),
+  });
+  return mapLegalHold(data.hold);
 }
 
 export async function adminGetChatReports(

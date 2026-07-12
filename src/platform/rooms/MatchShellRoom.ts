@@ -1,5 +1,6 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { platformLogger as logger } from '../logger';
+import { recordPlatformReconnect } from '../metrics';
 import { verifyPlatformSeatToken } from '../seatToken';
 import { createEmptyPlatformChatPreviewStore, type PlatformChatPreviewStore } from '../chatPreviewStore';
 import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
@@ -192,6 +193,9 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     const requestedRole = auth.role === 'player' && !hasValidatedSeat ? 'spectator' : auth.role;
     const role = this.resolveRole(requestedRole, options, auth.userId);
     const boardgamePlayerID = boardgamePlayerIDFromOptions(options, role);
+    const isReconnect = Boolean(
+      boardgamePlayerID && this.playerProfileByBoardgamePlayerID(boardgamePlayerID)?.userId === auth.userId,
+    );
     const profile: PlatformClientProfile = {
       sessionId: client.sessionId,
       userId: auth.userId,
@@ -206,6 +210,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     await this.recordParticipant(profile, auth.authenticated, accessVerified);
     if (role === 'player' && boardgamePlayerID) {
       this.releaseReconnectSeat(boardgamePlayerID, auth.userId, client.sessionId);
+      if (isReconnect) recordPlatformReconnect('match_shell');
     }
     client.userData = profile;
     await this.refreshMetadata();

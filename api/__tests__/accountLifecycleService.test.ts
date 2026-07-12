@@ -132,10 +132,83 @@ describe('account lifecycle service', () => {
     expect(result.ok).toBe(true);
     expect(result.body.account).not.toHaveProperty('password_hash');
     expect(result.body.account).not.toHaveProperty('salt');
+    expect(pool.query).toHaveBeenCalledWith('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    expect(pool.query).toHaveBeenCalledWith('COMMIT');
+  });
+
+  it('rejects synchronous exports that exceed the configured byte cap', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users')) {
+        return { rows: [{ id: 'u_1', email: 'user@example.com', nickname: 'x'.repeat(70 * 1024) }] };
+      }
+      return { rows: [] };
+    });
+
+    await expect(exportAccountData({ pool, userId: 'u_1', maxBytes: 64 * 1024 })).resolves.toEqual({
+      ok: false,
+      status: 413,
+      error: 'Account export exceeds the synchronous size limit',
+    });
+  });
+
+  it('includes first-party chat, report, feedback, and social records in the export', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users')) return { rows: [{ id: 'u_1', email: 'user@example.com' }] };
+      if (sql.includes('FROM chat_messages')) return { rows: [{ id: 'msg_1' }] };
+      if (sql.includes('FROM chat_reports')) return { rows: [{ id: 'report_1' }] };
+      if (sql.includes('FROM feedback_posts')) return { rows: [{ id: 'post_1' }] };
+      if (sql.includes('FROM feedback_comments')) return { rows: [{ id: 'comment_1' }] };
+      return { rows: [] };
+    });
+
+    const result = (await exportAccountData({ pool, userId: 'u_1' })) as {
+      body: Record<string, unknown[]>;
+    };
+    expect(result.body.chatMessages).toEqual([{ id: 'msg_1' }]);
+    expect(result.body.chatReports).toEqual([{ id: 'report_1' }]);
+    expect(result.body.feedbackPosts).toEqual([{ id: 'post_1' }]);
+    expect(result.body.feedbackComments).toEqual([{ id: 'comment_1' }]);
+    expect(result.body).toHaveProperty('friendRequests');
+    expect(result.body).toHaveProperty('sanctions');
+  });
+
+  it('exports season ratings and reward records while bounding each collection query', async () => {
+    const pool = createPool((sql, params) => {
+      if (sql.includes('FROM users')) return { rows: [{ id: 'u_1', email: 'user@example.com' }] };
+      if (sql.includes('FROM season_ratings')) return { rows: [{ season_id: 's_1', rating: 1200 }] };
+      if (sql.includes('FROM season_rewards')) return { rows: [{ season_id: 's_1', reward_tier: 'gold' }] };
+      if (sql.includes('FROM season_reward_entitlements')) return { rows: [{ id: 1, season_id: 's_1' }] };
+      if (sql.includes('LIMIT $2')) expect(params).toEqual(['u_1', 3]);
+      return { rows: [] };
+    });
+
+    const result = (await exportAccountData({ pool, userId: 'u_1', maxRowsPerCollection: 2 })) as {
+      ok: boolean;
+      body: Record<string, unknown[]>;
+    };
+    expect(result.ok).toBe(true);
+    expect(result.body.seasonRatings).toEqual([{ season_id: 's_1', rating: 1200 }]);
+    expect(result.body.seasonRewards).toEqual([{ season_id: 's_1', reward_tier: 'gold' }]);
+    expect(result.body.seasonRewardEntitlements).toEqual([{ id: 1, season_id: 's_1' }]);
+  });
+
+  it('rejects a collection that exceeds the synchronous row limit before serializing it', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users')) return { rows: [{ id: 'u_1', email: 'user@example.com' }] };
+      if (sql.includes('FROM chat_messages')) return { rows: [{ id: 'm_1' }, { id: 'm_2' }, { id: 'm_3' }] };
+      return { rows: [] };
+    });
+
+    await expect(exportAccountData({ pool, userId: 'u_1', maxRowsPerCollection: 2 })).resolves.toEqual({
+      ok: false,
+      status: 413,
+      error: 'Account export exceeds the synchronous row limit for chatMessages',
+    });
   });
 
   it('anonymizes an account while retaining match referential integrity', async () => {
     const pool = createPool((sql) => {
+      if (sql.includes('FROM account_deletion_requests')) return { rows: [] };
       if (sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_1' }] };
       return { rows: [] };
     });
@@ -149,5 +222,124 @@ describe('account lifecycle service', () => {
       expect.arrayContaining(['u_1', 'deleted+u_1@invalid.local']),
     );
     expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('DELETE FROM matches'), expect.anything());
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_messages'), ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_reports'), ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('reporter_user_id = $1 OR reported_message_author_user_id = $1'),
+      ['u_1'],
+    );
+    expect(pool.query).toHaveBeenCalledWith(
+      'UPDATE chat_moderation_events SET actor_user_id = NULL WHERE actor_user_id = $1',
+      ['u_1'],
+    );
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE feedback_posts'), [
+      'u_1',
+      expect.stringMatching(/^deleted-[a-f0-9]{32}$/),
+    ]);
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM chat_read_states WHERE user_id = $1', ['u_1']);
+  });
+
+  it('does not erase an account protected by an active legal hold', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_held' }] };
+      if (sql.includes('FROM legal_holds')) return { rows: [{ id: 'legal_hold_1' }] };
+      return { rows: [] };
+    });
+
+    await expect(deleteAccount({ pool, userId: 'u_held' })).resolves.toEqual({
+      ok: false,
+      status: 409,
+      error: 'Account deletion is suspended by an active legal hold',
+    });
+    expect(pool.query).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      'legal-hold:account:u_held',
+    ]);
+    expect(pool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining("nickname = 'Deleted Player'"),
+      expect.anything(),
+    );
+  });
+
+  it('serializes deletion with retention and revokes sessions after hold checks', async () => {
+    const order: string[] = [];
+    const pool = createPool((sql) => {
+      order.push(sql);
+      if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_1' }] };
+      return { rows: [] };
+    });
+    const beforeDelete = vi.fn(async () => {
+      order.push('beforeDelete');
+    });
+
+    await expect(deleteAccount({ pool, userId: 'u_1', beforeDelete })).resolves.toMatchObject({
+      ok: true,
+      body: { deleted: true },
+    });
+    expect(beforeDelete).toHaveBeenCalledOnce();
+    expect(order.indexOf('SELECT pg_advisory_xact_lock(hashtext($1))')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('beforeDelete')).toBeLessThan(
+      order.findIndex((sql) => sql.includes('DELETE FROM user_identities')),
+    );
+    expect(pool.query).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      'zutomayo:retention-job:v1',
+    ]);
+    expect(pool.query).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(hashtext($1))', ['legal-hold:account:u_1']);
+  });
+
+  it('does not bypass an in-flight provider deletion saga', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_1' }] };
+      if (sql.includes('FROM account_deletion_requests')) {
+        return { rows: [{ id: 'delete_1', status: 'provider_deleted' }] };
+      }
+      return { rows: [] };
+    });
+
+    await expect(deleteAccount({ pool, userId: 'u_1' })).resolves.toEqual({
+      ok: false,
+      status: 409,
+      error: 'Account deletion is already in progress; complete the provider deletion first',
+    });
+    expect(pool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM user_identities'),
+      expect.anything(),
+    );
+  });
+
+  it('finishes a provider-deleted saga with local anonymization atomically', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_1' }] };
+      if (sql.includes('FROM account_deletion_requests') && sql.includes('WHERE id = $1 AND user_id = $2')) {
+        return { rows: [{ id: 'delete_1', user_id: 'u_1', provider: 'logto', status: 'provider_deleted' }] };
+      }
+      return { rows: [] };
+    });
+
+    await expect(deleteAccount({ pool, userId: 'u_1', deletionRequestId: 'delete_1' })).resolves.toEqual({
+      ok: true,
+      body: { deleted: true },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), ['delete_1', 'u_1']);
+    expect(pool.query).toHaveBeenCalledWith('COMMIT');
+  });
+
+  it('requires provider_deleted before completing a deletion saga', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_1' }] };
+      if (sql.includes('FROM account_deletion_requests') && sql.includes('WHERE id = $1 AND user_id = $2')) {
+        return { rows: [{ id: 'delete_1', user_id: 'u_1', provider: 'logto', status: 'provider_deleting' }] };
+      }
+      return { rows: [] };
+    });
+
+    await expect(deleteAccount({ pool, userId: 'u_1', deletionRequestId: 'delete_1' })).resolves.toEqual({
+      ok: false,
+      status: 409,
+      error: 'Account provider deletion has not completed',
+    });
+    expect(pool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM user_identities'),
+      expect.anything(),
+    );
   });
 });

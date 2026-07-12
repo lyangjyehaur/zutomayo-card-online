@@ -60,6 +60,7 @@ export async function authenticatePlatformClientCurrent(
 ): Promise<PlatformAuth> {
   const accessToken = platformAuthTokenFromContext(context);
   const verifiedUserId = cleanUserId(await verifyPlatformJwtUserIdAsync(accessToken), '');
+  if (accessToken && !verifiedUserId) throw new Error('Invalid or revoked authentication');
   return platformAuth(options, context, accessToken, verifiedUserId);
 }
 

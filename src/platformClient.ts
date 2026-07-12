@@ -28,6 +28,7 @@ export interface PlatformQuickMatchJoinOptions {
   userId: string;
   displayName: string;
   deckName?: string;
+  deckReservationId?: string;
 }
 
 export interface PlatformCustomRoomOptions {
@@ -105,6 +106,7 @@ export interface PlatformQuickMatchMatched {
   roomId: string;
   role: 'host' | 'guest';
   deckName?: string;
+  deckReservationId?: string;
   opponent?: PlatformClientProfile;
 }
 
@@ -493,13 +495,21 @@ export function platformQuickMatchSnapshotFromMessage(message: unknown): Platfor
 
 export function platformQuickMatchMatchedFromMessage(message: unknown): PlatformQuickMatchMatched | null {
   if (!message || typeof message !== 'object') return null;
-  const data = message as { roomId?: unknown; role?: unknown; deckName?: unknown; opponent?: unknown };
+  const data = message as {
+    roomId?: unknown;
+    role?: unknown;
+    deckName?: unknown;
+    deckReservationId?: unknown;
+    opponent?: unknown;
+  };
   if (typeof data.roomId !== 'string') return null;
   if (data.role !== 'host' && data.role !== 'guest') return null;
   return {
     roomId: data.roomId,
     role: data.role,
     deckName: typeof data.deckName === 'string' ? data.deckName.trim().slice(0, 60) : undefined,
+    deckReservationId:
+      typeof data.deckReservationId === 'string' ? data.deckReservationId.trim().slice(0, 128) : undefined,
     opponent: platformProfileFromMessage(data.opponent) ?? undefined,
   };
 }
@@ -801,6 +811,7 @@ export async function connectPlatformQuickMatch(
     displayName: options.displayName,
     role: 'player',
     deckName: options.deckName,
+    deckReservationId: options.deckReservationId,
     status: 'waiting',
   });
 

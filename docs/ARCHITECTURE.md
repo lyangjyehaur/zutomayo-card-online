@@ -585,7 +585,7 @@ flowchart TB
 | `http_request_duration_seconds` | Histogram | 兩者 | labels: `method`/`path`/`status`，path 正規化（`:id`）限制 cardinality |
 | `http_requests_total`           | Counter   | 兩者 | 同上 labels                                                            |
 | `rate_limited_requests_total`   | Counter   | api  | label: `pathname`                                                      |
-| `matchmaking_queue_depth`       | Gauge     | game | Legacy REST 配對佇列深度                                               |
+| `matchmaking_queue_depth`       | Gauge     | api  | Redis matchmaking sorted-set 的即時深度                                |
 | `active_socket_connections`     | Gauge     | game | 當前 Socket.IO 連線數                                                  |
 | Node.js default metrics         | -         | 兩者 | event loop / GC / heap（`collectDefaultMetrics`）                      |
 

@@ -49,15 +49,15 @@ const matchRow = {
 describe('match query services', () => {
   it('returns sanitized action logs and 403s when user is not a participant', async () => {
     const sanitizeActionLog = vi.fn(() => [{ action: 'clean' }]);
-    const pool = poolWithRows([{ id: 'm_1', action_log: [{ action: 'raw' }] }]);
+    const pool = poolWithRows([{ id: 'm_1', rules_version: 'rules-2026-07', action_log: [{ action: 'raw' }] }]);
 
     await expect(getMatchActionLog(pool, 'm_1', sanitizeActionLog, 'u_winner')).resolves.toEqual({
       ok: true,
-      body: { matchId: 'm_1', actionLog: [{ action: 'clean' }] },
+      body: { matchId: 'm_1', rulesVersion: 'rules-2026-07', actionLog: [{ action: 'clean' }] },
     });
     expect(sanitizeActionLog).toHaveBeenCalledWith([{ action: 'raw' }]);
     expect(pool.query).toHaveBeenCalledWith(
-      'SELECT id, action_log FROM matches WHERE id = $1 AND (player0_id = $2 OR player1_id = $2)',
+      'SELECT id, rules_version, action_log FROM matches WHERE id = $1 AND (player0_id = $2 OR player1_id = $2)',
       ['m_1', 'u_winner'],
     );
 
@@ -83,7 +83,7 @@ describe('match query services', () => {
   });
 
   it('maps user matches and clamps negative offsets to zero', async () => {
-    const pool = poolWithRows([matchRow]);
+    const pool = poolWithRows([{ ...matchRow, rules_version: 'rules-2026-07' }]);
 
     await expect(getUserMatches(pool, 'u_winner', '999', '-5')).resolves.toEqual({
       matches: [
@@ -97,6 +97,7 @@ describe('match query services', () => {
           loserEloChange: -16,
           turns: 7,
           duration: 42,
+          rulesVersion: 'rules-2026-07',
           createdAt: '2026-06-30T00:00:00.000Z',
         },
       ],

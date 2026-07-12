@@ -7,7 +7,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY migrations ./migrations
+COPY api/schemaGate.cjs ./api/schemaGate.cjs
 COPY scripts/db-migrate.cjs ./scripts/db-migrate.cjs
+COPY scripts/migration-checksums.cjs ./scripts/migration-checksums.cjs
+COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs
+COPY scripts/db-schema-gate.cjs ./scripts/db-schema-gate.cjs
 
 USER node
-CMD ["npm", "run", "db:migrate"]
+CMD ["npm", "run", "db:migrate:release"]

@@ -11,6 +11,7 @@ import {
   type MatchRecord,
 } from '../matchHistory';
 import type { GameState } from '../types';
+import { APP_VERSION_INFO } from '../../version';
 
 const storage = new Map<string, string>();
 
@@ -54,6 +55,7 @@ describe('match history', () => {
     expect(getMatchRecords()[0]).toEqual(
       expect.objectContaining({
         sourceMatchId: 'bgio-match-1',
+        rulesVersion: APP_VERSION_INFO.rulesVersion,
         turns: 4,
       }),
     );
@@ -91,6 +93,8 @@ describe('match history', () => {
         id: 'server-match-1',
         winnerId: 'user-1',
         loserId: 'user-2',
+        sourceMatchId: 'bgio-match-1',
+        rulesVersion: 'rules-2026-01',
         turns: 7,
         duration: 93,
         createdAt: '2026-07-12T08:00:00.000Z',
@@ -111,6 +115,8 @@ describe('match history', () => {
 
     expect(victory).toMatchObject({
       serverMatchId: 'server-match-1',
+      sourceMatchId: 'bgio-match-1',
+      rulesVersion: 'rules-2026-01',
       outcome: 'victory',
       detailsAvailable: false,
       turns: 7,

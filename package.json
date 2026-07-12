@@ -3,12 +3,27 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
+  "overrides": {
+    "boardgame.io": {
+      "@koa/cors": "5.0.0",
+      "svelte": "5.56.4"
+    },
+    "react-cookies": {
+      "cookie": "0.7.2"
+    },
+    "engine.io@4.1.2": {
+      "cookie": "0.7.2",
+      "ws": "8.21.0"
+    },
+    "socket.io-parser": "4.2.6",
+    "ws": "8.21.0"
+  },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "dev": "vite",
-    "verify": "npm run format:check:tracked && npm run version:check && npm run lint && npm run typecheck && npm run typecheck:scripts && npm run i18n:check && npm test && npm run test:coverage && npm run build",
+    "verify": "npm run format:check:tracked && npm run version:check && npm run release:config && npm run ops:config && npm run lint && npm run typecheck && npm run typecheck:scripts && npm run i18n:check && npm test && npm run test:coverage && npm run build",
     "build": "npm run typecheck && npm run typecheck:scripts && vite build",
     "typecheck": "tsc --noEmit",
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
@@ -34,6 +49,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "format:check:tracked": "node scripts/prettier-tracked.mjs",
+    "release:config": "node scripts/verify-release-config.mjs",
+    "ops:config": "node scripts/verify-operational-config.mjs",
     "version:check": "node scripts/check-version-sync.mjs",
     "i18n:check": "tsx scripts/check-i18n.ts",
     "test": "vitest run",
@@ -43,10 +60,17 @@
     "load:ws": "k6 run load-tests/websocket-load.js",
     "load:auth": "k6 run load-tests/auth-load.js",
     "load:matchmaking": "k6 run load-tests/matchmaking-load.js",
+    "load:operational-soak": "k6 run load-tests/operational-soak.js",
+    "chaos:probe": "node --import tsx scripts/chaos-recovery-probe.ts",
+    "chaos:compose": "bash scripts/compose-chaos-drill.sh",
+    "synthetic:probe": "node scripts/synthetic-probe.mjs",
     "db:migrate": "node scripts/db-migrate.cjs up",
+    "db:migrate:release": "node scripts/db-migrate.cjs up && node scripts/db-schema-gate.cjs",
+    "db:schema:gate": "node scripts/db-schema-gate.cjs",
     "db:migrate:down": "node scripts/db-migrate.cjs down",
     "db:migrate:make": "node scripts/db-migrate.cjs create",
     "admin:create": "node scripts/create-admin.cjs",
+    "retention:run": "node scripts/run-retention.cjs",
     "prepare": "husky",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
@@ -94,6 +118,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
     "@eslint/js": "^9.39.4",

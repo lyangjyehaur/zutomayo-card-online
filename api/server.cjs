@@ -2,6 +2,7 @@
 require('./tracing.cjs');
 const http = require('http');
 const https = require('https');
+const net = require('net');
 const Sentry = require('@sentry/node');
 const crypto = require('crypto');
 const util = require('util');
@@ -9,6 +10,7 @@ const { Pool } = require('pg');
 const Redis = require('ioredis');
 const {
   getAccountProfile,
+  getAccountSecurityCapabilities,
   linkOAuthIdentity,
   listAccountIdentities,
   loginAccount,
@@ -24,14 +26,32 @@ const {
   requestEmailVerification,
   requestPasswordReset,
   resetPassword,
+  verifyRecentPassword,
   verifyEmailToken,
 } = require('./accountLifecycleService.cjs');
 const { deliverAccountAction } = require('./accountNotificationService.cjs');
+const { consumeAccountStepUp, issueAccountStepUp } = require('./accountStepUpService.cjs');
+const { LOGTO_ACCOUNT_DELETION_SCOPE, validateLogtoAccountDeletionConfig } = require('./accountDeletionConfig.cjs');
+const {
+  listRecoverableAccountDeletions,
+  markProviderDeleted,
+  markProviderDeletionFailure,
+  markProviderDeletionStarted,
+  prepareLogtoAccountDeletion,
+} = require('./accountDeletionService.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
 const { listAdminUsers, resetUserElo } = require('./adminService.cjs');
 const { authenticateAdmin, revokeAdminSession, verifyAdminSession } = require('./adminAuthService.cjs');
+const { assertRuntimeSchema } = require('./schemaGate.cjs');
+const { metricsRequestAuthorized } = require('./metricsAuth.cjs');
 const { decryptAdminTotpSecret } = require('./adminSecretCrypto.cjs');
-const { logger, attachRequestObservability, metricsResponse, rateLimitedTotal } = require('./observability.cjs');
+const {
+  logger,
+  attachRequestObservability,
+  metricsResponse,
+  rateLimitedTotal,
+  refreshMatchmakingQueueDepth,
+} = require('./observability.cjs');
 const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
 const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigner.cjs');
@@ -58,11 +78,14 @@ const {
   revokeChatUserSanction,
   sendChatMessage,
 } = require('./chatService.cjs');
-const { createUserDeck, deleteUserDeck, listUserDecks, updateUserDeck } = require('./deckService.cjs');
+const { createUserDeck, deleteUserDeck, listUserDecks, reserveUserDeck, updateUserDeck } = require('./deckService.cjs');
 const {
+  applyMatchmakingBlock,
   getMatchmakingStatus,
   joinMatchmakingQueue,
   leaveMatchmakingQueue,
+  listMatchmakingBlockedUserIds,
+  removeMatchmakingBlock,
   reportRealMatch,
 } = require('./matchmakingService.cjs');
 const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
@@ -100,11 +123,17 @@ const {
   unblockUser,
 } = require('./socialSafetyService.cjs');
 const {
+  activateSeason,
+  claimSeasonReward,
+  closeSeason,
+  createSeason,
   getCurrentSeason,
+  getUserSeasonRewards,
   getUserSeasonRating,
+  listSeasons,
   listSeasonLeaderboard,
-  recordSeasonResult,
 } = require('./seasonService.cjs');
+const { createLegalHold, listLegalHolds, releaseLegalHold } = require('./legalHoldService.cjs');
 const { createChatTranslationProviderFromEnv } = require('./chatTranslationProvider.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
@@ -147,20 +176,9 @@ const APP_VERSION_INFO = Object.freeze({
   rulesVersion: GAME_RULES_VERSION,
 });
 
-// /metrics 端點 bearer token 認證：未設定 METRICS_TOKEN 時 warn 但允許存取（開發模式）；
-// 已設定則檢查 Authorization: Bearer <token>，不符回 401。
 const METRICS_TOKEN = process.env.METRICS_TOKEN || '';
-let metricsTokenWarned = false;
-function checkMetricsAuth(req) {
-  if (!METRICS_TOKEN) {
-    if (!metricsTokenWarned && process.env.NODE_ENV === 'production') {
-      logger.warn('METRICS_TOKEN not set - /metrics accessible without auth');
-      metricsTokenWarned = true;
-    }
-    return true;
-  }
-  const auth = req.headers.authorization || '';
-  return auth === `Bearer ${METRICS_TOKEN}`;
+function checkMetricsAuth(req, { token = METRICS_TOKEN, nodeEnv = process.env.NODE_ENV } = {}) {
+  return metricsRequestAuthorized(req.headers.authorization, { token, nodeEnv });
 }
 const AUTH_COOKIE_NAME = 'zutomayo_session';
 const ACCESS_TOKEN_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 3600;
@@ -189,6 +207,8 @@ const CSRF_EXEMPT_PATHS = new Set([
 const AUTH_MODE = process.env.AUTH_MODE || (process.env.LOGTO_ONLY_AUTH === 'true' ? 'logto' : 'hybrid');
 const LOCAL_AUTH_ENABLED = AUTH_MODE !== 'logto';
 const ACCOUNT_LINKING_ENABLED = AUTH_MODE !== 'logto';
+const ACCOUNT_STEP_UP_PURPOSE_PASSWORD = 'password-change';
+const ACCOUNT_STEP_UP_PURPOSE_DELETE = 'account-delete';
 const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || '';
 const TURNSTILE_REQUIRED = process.env.TURNSTILE_REQUIRED === 'true';
 const TURNSTILE_SITEVERIFY_URL =
@@ -210,6 +230,14 @@ const LOGTO_ACCOUNT_CENTER_URL =
     : LOGTO_ISSUER
       ? `${LOGTO_ISSUER.replace(/\/oidc$/, '')}/account/security`
       : '');
+const LOGTO_M2M_APP_ID = process.env.LOGTO_M2M_APP_ID || '';
+const LOGTO_M2M_APP_SECRET = process.env.LOGTO_M2M_APP_SECRET || '';
+const LOGTO_MANAGEMENT_RESOURCE = process.env.LOGTO_MANAGEMENT_RESOURCE || '';
+const LOGTO_MANAGEMENT_SCOPE = process.env.LOGTO_MANAGEMENT_SCOPE || '';
+const ACCOUNT_DELETION_RECOVERY_INTERVAL_MS = Math.max(
+  10_000,
+  Math.min(Number(process.env.ACCOUNT_DELETION_RECOVERY_INTERVAL_MS) || 60_000, 60 * 60 * 1000),
+);
 
 // GlitchTip/Sentry error tracking — no-op when SENTRY_DSN is unset.
 if (process.env.SENTRY_DSN) {
@@ -261,6 +289,12 @@ function validateSecurityConfig() {
   }
   if (OAUTH_TOKEN_ENCRYPTION_KEY && OAUTH_TOKEN_ENCRYPTION_KEY.length < 32) {
     logger.warn('OAUTH_TOKEN_ENCRYPTION_KEY should be at least 32 characters; falling back to JWT_SECRET-derived key');
+  }
+  try {
+    validateLogtoAccountDeletionConfig(process.env);
+  } catch (error) {
+    logger.fatal(error instanceof Error ? error.message : String(error));
+    process.exit(1);
   }
 }
 
@@ -363,7 +397,9 @@ async function initSchema() {
       loser_elo_change INTEGER NOT NULL DEFAULT 0,
       turns INTEGER,
       duration_seconds INTEGER,
+      rules_version TEXT NOT NULL DEFAULT 'legacy',
       action_log JSONB,
+      completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
     `CREATE INDEX IF NOT EXISTS idx_matches_player0 ON matches(player0_id)`,
@@ -372,6 +408,8 @@ async function initSchema() {
     `CREATE INDEX IF NOT EXISTS idx_matches_loser ON matches(loser_id)`,
     `CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC)`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS source_match_id TEXT`,
+    `ALTER TABLE matches ADD COLUMN IF NOT EXISTS rules_version TEXT NOT NULL DEFAULT 'legacy'`,
+    `ALTER TABLE matches ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_source_match_id
       ON matches(source_match_id)
       WHERE source_match_id IS NOT NULL`,
@@ -677,15 +715,21 @@ async function initSchema() {
   }
 }
 
-// 使用 node-pg-migrate 執行 schema migration（dev/CI 環境）。
-// node-pg-migrate 為 devDependency，production runtime 可能未安裝；
-// 此時 fallback 到 initSchema()（CREATE TABLE IF NOT EXISTS）確保 schema 存在。
+// Development and CI may apply migrations at startup. Production never
+// executes runtime DDL and must pass the immutable release schema gate above.
 async function runMigrations() {
+  if (process.env.NODE_ENV === 'production' || process.env.RUNTIME_SCHEMA_DDL === 'false') {
+    return assertRuntimeSchema({
+      pool,
+      expectedMigration: process.env.EXPECTED_SCHEMA_MIGRATION,
+      expectedChecksum: process.env.EXPECTED_SCHEMA_CHECKSUM,
+    });
+  }
   let runner;
   try {
     ({ runner } = require('node-pg-migrate'));
   } catch {
-    // node-pg-migrate 未安裝（production image），使用 initSchema() fallback。
+    // Local development images may omit the migration runner.
     return initSchema();
   }
 
@@ -693,7 +737,7 @@ async function runMigrations() {
   const { existsSync } = require('node:fs');
   const migrationsDir = resolve(__dirname, '..', 'migrations');
   if (!existsSync(migrationsDir)) {
-    // migrations 目錄不存在（api Docker image 未包含），使用 initSchema() fallback。
+    // Local development API-only images may omit migration sources.
     return initSchema();
   }
 
@@ -791,7 +835,7 @@ function decryptSecret(value) {
   }
 }
 
-function createToken(userId, sessionIat) {
+function createToken(userId, sessionIat, authVersion = 1) {
   const now = Math.floor(Date.now() / 1000);
   const effectiveSessionIat = Number.isFinite(sessionIat) ? Number(sessionIat) : now;
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
@@ -802,12 +846,13 @@ function createToken(userId, sessionIat) {
     exp: now + ACCESS_TOKEN_TTL_SECONDS,
     jti: crypto.randomBytes(12).toString('hex'),
     sessionIat: effectiveSessionIat,
+    authVersion: Number.isInteger(authVersion) && authVersion > 0 ? authVersion : 1,
   });
   const input = `${header}.${payload}`;
   return `${input}.${signTokenInput(input)}`;
 }
 
-function createRefreshToken(userId, sessionIat) {
+function createRefreshToken(userId, sessionIat, authVersion = 1) {
   const now = Math.floor(Date.now() / 1000);
   const effectiveSessionIat = Number.isFinite(sessionIat) ? Number(sessionIat) : now;
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
@@ -819,6 +864,7 @@ function createRefreshToken(userId, sessionIat) {
     exp: now + REFRESH_TOKEN_TTL_SECONDS,
     jti: crypto.randomBytes(12).toString('hex'),
     sessionIat: effectiveSessionIat,
+    authVersion: Number.isInteger(authVersion) && authVersion > 0 ? authVersion : 1,
   });
   const input = `${header}.${payload}`;
   return `${input}.${signTokenInput(input)}`;
@@ -860,8 +906,22 @@ function verifiedTokenPayload(token, expectedType) {
   }
 }
 
-async function issueRefreshToken(userId, sessionIat) {
-  const refreshToken = createRefreshToken(userId, sessionIat);
+async function getCurrentAuthVersion(userId) {
+  try {
+    const row = (await pool.query('SELECT auth_version, deleted_at FROM users WHERE id = $1', [userId])).rows[0];
+    if (!row || row.deleted_at) return null;
+    const version = Number(row.auth_version);
+    return Number.isInteger(version) && version > 0 ? version : 1;
+  } catch (err) {
+    logger.error({ err, userId }, 'failed to read durable auth version');
+    return null;
+  }
+}
+
+async function issueRefreshToken(userId, sessionIat, authVersion) {
+  const effectiveAuthVersion = Number.isInteger(authVersion) ? authVersion : await getCurrentAuthVersion(userId);
+  if (!effectiveAuthVersion) throw new Error('Unable to verify account session');
+  const refreshToken = createRefreshToken(userId, sessionIat, effectiveAuthVersion);
   const payload = decodeJWTPayload(refreshToken);
   if (payload && payload.jti) {
     const ttl = Number(payload.exp) - Math.floor(Date.now() / 1000);
@@ -877,10 +937,12 @@ async function issueRefreshToken(userId, sessionIat) {
   return refreshToken;
 }
 
-async function createTokenPair(userId, sessionIat) {
+async function createTokenPair(userId, sessionIat, authVersion) {
   const effectiveSessionIat = Number.isFinite(sessionIat) ? Number(sessionIat) : Math.floor(Date.now() / 1000);
-  const accessToken = createToken(userId, effectiveSessionIat);
-  const refreshToken = await issueRefreshToken(userId, effectiveSessionIat);
+  const effectiveAuthVersion = Number.isInteger(authVersion) ? authVersion : await getCurrentAuthVersion(userId);
+  if (!effectiveAuthVersion) throw new Error('Unable to verify account session');
+  const accessToken = createToken(userId, effectiveSessionIat, effectiveAuthVersion);
+  const refreshToken = await issueRefreshToken(userId, effectiveSessionIat, effectiveAuthVersion);
   return { accessToken, refreshToken };
 }
 
@@ -888,6 +950,12 @@ function sessionIatFromToken(token) {
   const payload = decodeJWTPayload(token);
   if (!payload) return undefined;
   return Number.isFinite(payload.sessionIat) ? Number(payload.sessionIat) : Number(payload.iat);
+}
+
+function authVersionFromToken(token) {
+  const payload = decodeJWTPayload(token);
+  if (!payload) return undefined;
+  return Number.isInteger(payload.authVersion) && payload.authVersion > 0 ? Number(payload.authVersion) : undefined;
 }
 
 async function isTokenBlacklisted(jti) {
@@ -928,9 +996,21 @@ async function revokeRefreshToken(token) {
   }
 }
 
-async function revokeAllUserSessions(userId) {
+async function revokeAllUserSessions(userId, { bumpAuthVersion = true } = {}) {
   const revokedBefore = Math.floor(Date.now() / 1000);
   try {
+    // Redis is an acceleration/index for revocation, not the authority. A
+    // durable auth-version bump keeps already-issued JWTs invalid after a
+    // Redis restart or key eviction. Callers that already hold the user row
+    // lock and increment auth_version in their transaction can opt out.
+    if (bumpAuthVersion) {
+      await pool.query(
+        `UPDATE users
+            SET auth_version = COALESCE(auth_version, 1) + 1
+          WHERE id = $1 AND deleted_at IS NULL`,
+        [userId],
+      );
+    }
     await redis.set(`auth:revoked-before:${userId}`, String(revokedBefore), 'EX', SESSION_REVOCATION_TTL_SECONDS);
     let cursor = '0';
     do {
@@ -945,6 +1025,17 @@ async function revokeAllUserSessions(userId) {
     logger.error({ err, userId }, 'failed to revoke all user sessions');
     throw new Error('Unable to revoke active sessions');
   }
+}
+
+async function revokeRequestAccountSessions(req, userId, { bumpAuthVersion = true } = {}) {
+  const authorization = String(req.headers.authorization || '');
+  const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length).trim() : '';
+  const cookies = parseCookies(req);
+  const cookieToken = cookies[AUTH_COOKIE_NAME] || '';
+
+  if (bearerToken) await blacklistToken(bearerToken);
+  if (cookieToken && cookieToken !== bearerToken) await blacklistToken(cookieToken);
+  await revokeAllUserSessions(userId, { bumpAuthVersion });
 }
 
 async function isUserSessionRevoked(userId, issuedAt) {
@@ -1128,6 +1219,12 @@ async function verifyToken(token) {
     if (payload.jti && (await isTokenBlacklisted(payload.jti))) return null;
     const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
     if (typeof userId !== 'string') return null;
+    // New tokens carry a durable PostgreSQL auth version. A mismatch remains
+    // revoked even when Redis loses its ephemeral blacklist/cutoff keys.
+    if (payload.authVersion !== undefined) {
+      const currentAuthVersion = await getCurrentAuthVersion(userId);
+      if (!currentAuthVersion || currentAuthVersion !== Number(payload.authVersion)) return null;
+    }
     const sessionIat = Number.isFinite(payload.sessionIat) ? Number(payload.sessionIat) : Number(payload.iat);
     if (await isUserSessionRevoked(userId, sessionIat)) return null;
     return userId;
@@ -1188,6 +1285,10 @@ async function verifyRefreshToken(token) {
     if (!payload.jti) return null;
     const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
     if (typeof userId !== 'string' || !userId) return null;
+    if (payload.authVersion !== undefined) {
+      const currentAuthVersion = await getCurrentAuthVersion(userId);
+      if (!currentAuthVersion || currentAuthVersion !== Number(payload.authVersion)) return null;
+    }
     // Atomically consume the refresh token and apply the user revocation
     // cutoff; a null result means it was used, revoked, or never registered.
     const sessionIat = Number.isFinite(payload.sessionIat)
@@ -1197,7 +1298,11 @@ async function verifyRefreshToken(token) {
         : 0;
     const registered = await consumeRefreshTokenJti(payload.jti, userId, sessionIat);
     if (!registered) return null;
-    return { userId, sessionIat };
+    return {
+      userId,
+      sessionIat,
+      authVersion: Number.isInteger(payload.authVersion) ? Number(payload.authVersion) : undefined,
+    };
   } catch {
     return null;
   }
@@ -1657,7 +1762,7 @@ async function logtoAccountRequest({ userId, path, method = 'GET', body, verific
   };
   const payload = body === undefined ? undefined : JSON.stringify(body);
   if (payload !== undefined) headers['Content-Type'] = 'application/json';
-  if (verificationId) headers['logto-verification-id'] = verificationId;
+  if (verificationId) headers['logto-verification-record-id'] = verificationId;
 
   const response = await fetch(`${base}${path}`, {
     method,
@@ -1682,6 +1787,213 @@ async function logtoAccountRequest({ userId, path, method = 'GET', body, verific
     };
   }
   return { ok: true, body: data };
+}
+
+function extractLogtoVerificationRecordId(body) {
+  const candidates = [body?.verificationRecordId, body?.id, body?.verification?.id, body?.record?.id];
+  const value = candidates.find((candidate) => typeof candidate === 'string' && candidate.trim());
+  return value ? value.trim().slice(0, 200) : '';
+}
+
+async function issueLogtoAccountStepUp({ userId, currentPassword, purpose }) {
+  const verification = await logtoAccountRequest({
+    userId,
+    path: '/api/verifications/password',
+    method: 'POST',
+    body: { password: currentPassword },
+  });
+  if (!verification.ok) {
+    return {
+      ok: false,
+      status: verification.status === 401 || verification.status === 403 ? 401 : verification.status,
+      error:
+        verification.status === 401 || verification.status === 403 ? 'Invalid current password' : verification.error,
+    };
+  }
+
+  const providerVerificationRecordId = extractLogtoVerificationRecordId(verification.body);
+  if (!providerVerificationRecordId) {
+    return { ok: false, status: 502, error: 'Logto verification response is invalid' };
+  }
+  try {
+    const issued = await issueAccountStepUp({
+      redis,
+      userId,
+      providerVerificationRecordId,
+      purpose,
+    });
+    return { ok: true, body: { stepUpToken: issued.token, expiresIn: issued.expiresIn } };
+  } catch (error) {
+    logger.error({ err: error, userId, purpose }, 'failed to persist account step-up');
+    return { ok: false, status: 503, error: 'Account verification is temporarily unavailable' };
+  }
+}
+
+async function consumeLogtoAccountStepUp({ userId, stepUpToken, purpose }) {
+  if (typeof stepUpToken !== 'string' || !stepUpToken) {
+    return { ok: false, status: 401, error: 'Account verification required' };
+  }
+  let providerVerificationRecordId;
+  try {
+    providerVerificationRecordId = await consumeAccountStepUp({
+      redis,
+      token: stepUpToken,
+      userId,
+      purpose,
+    });
+  } catch (error) {
+    logger.error({ err: error, userId, purpose }, 'failed to consume account step-up');
+    return { ok: false, status: 503, error: 'Account verification is temporarily unavailable' };
+  }
+  if (!providerVerificationRecordId) {
+    return { ok: false, status: 401, error: 'Account verification expired or already used' };
+  }
+  return { ok: true, verificationId: providerVerificationRecordId };
+}
+
+let logtoManagementTokenCache = null;
+
+async function readJsonResponse(response) {
+  const responseText = await response.text();
+  if (!responseText) return {};
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    return { error: responseText };
+  }
+}
+
+async function getLogtoManagementAccessToken({ forceRefresh = false } = {}) {
+  const base = logtoApiBase();
+  if (!base || !LOGTO_M2M_APP_ID || !LOGTO_M2M_APP_SECRET) {
+    return { ok: false, status: 503, error: 'Logto management account deletion is not configured' };
+  }
+  if (!forceRefresh && logtoManagementTokenCache?.expiresAt > Date.now() + 30_000) {
+    return { ok: true, accessToken: logtoManagementTokenCache.accessToken };
+  }
+
+  const body = new URLSearchParams();
+  body.set('grant_type', 'client_credentials');
+  body.set('client_id', LOGTO_M2M_APP_ID);
+  body.set('client_secret', LOGTO_M2M_APP_SECRET);
+  body.set('resource', LOGTO_MANAGEMENT_RESOURCE || `${base}/api`);
+  body.set('scope', LOGTO_MANAGEMENT_SCOPE || LOGTO_ACCOUNT_DELETION_SCOPE);
+
+  const response = await fetch(`${base}/oidc/token`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'zutomayo-card-online',
+    },
+    body: body.toString(),
+  });
+  const data = await readJsonResponse(response);
+  if (!response.ok || typeof data.access_token !== 'string' || !data.access_token) {
+    return {
+      ok: false,
+      status: response.status || 502,
+      error: logtoErrorMessage(data, 'Logto management token failed'),
+    };
+  }
+
+  const expiresIn = Math.max(60, Number(data.expires_in) || 3600);
+  logtoManagementTokenCache = {
+    accessToken: data.access_token,
+    expiresAt: Date.now() + expiresIn * 1000,
+  };
+  return { ok: true, accessToken: data.access_token };
+}
+
+async function deleteLogtoPrincipalWithManagementApi(providerUserId, { retryUnauthorized = true } = {}) {
+  const token = await getLogtoManagementAccessToken();
+  if (!token.ok) return token;
+  const base = logtoApiBase();
+  const response = await fetch(`${base}/api/users/${encodeURIComponent(providerUserId)}`, {
+    method: 'DELETE',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token.accessToken}`,
+      'User-Agent': 'zutomayo-card-online',
+    },
+  });
+  if (response.status === 401 && retryUnauthorized) {
+    logtoManagementTokenCache = null;
+    const refreshed = await getLogtoManagementAccessToken({ forceRefresh: true });
+    if (!refreshed.ok) return refreshed;
+    return deleteLogtoPrincipalWithManagementApi(providerUserId, { retryUnauthorized: false });
+  }
+  if (response.ok || response.status === 404) return { ok: true, alreadyDeleted: response.status === 404 };
+  const data = await readJsonResponse(response);
+  return {
+    ok: false,
+    status: response.status || 502,
+    error: logtoErrorMessage(data, 'Logto principal deletion failed'),
+  };
+}
+
+async function recoverAccountDeletionRequest(request) {
+  let currentRequest = request;
+  if (currentRequest.status === 'provider_deleting') {
+    await revokeAllUserSessions(currentRequest.userId);
+    const providerResult = await deleteLogtoPrincipalWithManagementApi(currentRequest.providerUserId);
+    if (!providerResult.ok) return providerResult;
+    const marked = await markProviderDeleted({ pool, requestId: currentRequest.id });
+    if (!marked.ok) return marked;
+    currentRequest = marked.body.request;
+  }
+
+  if (currentRequest.status !== 'provider_deleted') {
+    return { ok: false, status: 409, error: 'Account deletion request is not recoverable' };
+  }
+  return deleteAccount({
+    pool,
+    userId: currentRequest.userId,
+    deletionRequestId: currentRequest.id,
+    beforeDelete: () => revokeAllUserSessions(currentRequest.userId, { bumpAuthVersion: false }),
+  });
+}
+
+let accountDeletionRecoveryRunning = false;
+let accountDeletionRecoveryTimer = null;
+
+async function recoverAccountDeletions() {
+  if (accountDeletionRecoveryRunning) return;
+  accountDeletionRecoveryRunning = true;
+  try {
+    const requests = await listRecoverableAccountDeletions({ pool, limit: 20 });
+    for (const request of requests) {
+      try {
+        const result = await recoverAccountDeletionRequest(request);
+        if (!result.ok) {
+          logger.warn(
+            { requestId: request.id, userId: request.userId, status: result.status, error: result.error },
+            'account deletion recovery remains pending',
+          );
+        }
+      } catch (error) {
+        logger.error({ err: error, requestId: request.id, userId: request.userId }, 'account deletion recovery failed');
+      }
+    }
+  } finally {
+    accountDeletionRecoveryRunning = false;
+  }
+}
+
+function startAccountDeletionRecovery() {
+  if (accountDeletionRecoveryTimer) return;
+  void recoverAccountDeletions();
+  accountDeletionRecoveryTimer = setInterval(
+    () => void recoverAccountDeletions(),
+    ACCOUNT_DELETION_RECOVERY_INTERVAL_MS,
+  );
+  accountDeletionRecoveryTimer.unref?.();
+}
+
+function stopAccountDeletionRecovery() {
+  if (!accountDeletionRecoveryTimer) return;
+  clearInterval(accountDeletionRecoveryTimer);
+  accountDeletionRecoveryTimer = null;
 }
 
 async function verifyAuthChallenge(body, clientIp) {
@@ -1888,15 +2200,44 @@ const RATE_LIMIT_AUTH = 10;
 const RATE_LIMIT_IMGPROXY = Number(process.env.RATE_LIMIT_IMGPROXY) || 600;
 const RATE_LIMIT_DEFAULT = 120;
 const RATE_LIMIT_UPLOAD = 10;
+const REDIS_LIMITER_TIMEOUT_MS = Math.max(100, Number(process.env.REDIS_LIMITER_TIMEOUT_MS) || 750);
+const MATCHMAKING_USER_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_USER_LIMIT) || 6);
+const MATCHMAKING_IP_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_IP_LIMIT) || 30);
+const MATCHMAKING_GLOBAL_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_GLOBAL_LIMIT) || 2000);
+
+function boundedRedisCommand(command) {
+  let timer;
+  return Promise.race([
+    Promise.resolve().then(command),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Redis limiter timeout')), REDIS_LIMITER_TIMEOUT_MS);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 async function checkRateLimit(ip, limit, keyPrefix = 'ratelimit') {
   const minuteWindow = Math.floor(Date.now() / RATE_LIMIT_WINDOW_MS);
   const key = `${keyPrefix}:${ip}:${minuteWindow}`;
-  const count = await redis.incr(key);
-  if (count === 1) {
-    await redis.expire(key, 120);
+  try {
+    const count = Number(await boundedRedisCommand(() => redis.incr(key)));
+    if (count === 1) await boundedRedisCommand(() => redis.expire(key, 120));
+    return Number.isFinite(count) && count > 0 && count <= limit;
+  } catch (err) {
+    // Security-sensitive admission controls fail closed when Redis is
+    // unavailable; otherwise a short outage permits an unbounded flood.
+    logger.error({ err, key }, 'rate limiter unavailable');
+    return false;
   }
-  return count <= limit;
+}
+
+async function checkQuota({ ip, userId, namespace, ipLimit, userLimit, globalLimit }) {
+  const userKey = userId ? crypto.createHash('sha256').update(String(userId)).digest('hex').slice(0, 32) : 'anonymous';
+  const checks = await Promise.all([
+    checkRateLimit(ip || 'unknown', ipLimit, `quota:${namespace}:ip`),
+    checkRateLimit(userKey, userLimit, `quota:${namespace}:user`),
+    checkRateLimit('global', globalLimit, `quota:${namespace}:global`),
+  ]);
+  return checks.every(Boolean);
 }
 
 // 驗證上傳圖片的 magic bytes，防止偽造副檔名上傳惡意檔案。
@@ -2079,12 +2420,26 @@ for i, uid in ipairs(expired) do
   redis.call('ZREM', KEYS[1], uid)
 end
 
--- 找最早的 waiting 對手
-local opponents = redis.call('ZRANGE', KEYS[1], 0, 0)
-if #opponents == 0 or opponents[1] == userId then
-  return ''
+local requestBlocked = {}
+for i = 5, #ARGV do
+  requestBlocked[ARGV[i]] = true
 end
-local opponentId = opponents[1]
+
+-- 找最早且雙向都沒有封鎖關係的 waiting 對手。Redis block set
+-- 由 block API 即時維護，ARGV 則是本次排隊從 PostgreSQL 讀到的快照。
+local opponentId = nil
+local opponents = redis.call('ZRANGE', KEYS[1], 0, -1)
+for i, candidateId in ipairs(opponents) do
+  if candidateId ~= userId
+     and not requestBlocked[candidateId]
+     and redis.call('SISMEMBER', 'mm:blocked:' .. userId, candidateId) == 0
+     and redis.call('SISMEMBER', 'mm:blocked:' .. candidateId, userId) == 0
+     and redis.call('HGET', 'mm:' .. candidateId, 'status') == 'queued' then
+    opponentId = candidateId
+    break
+  end
+end
+if not opponentId then return '' end
 
 -- 原子移除對手
 redis.call('ZREM', KEYS[1], opponentId)
@@ -2117,8 +2472,43 @@ end
 return #expired
 `;
 
+const CANCEL_MATCHMAKING_PAIR_LUA = `
+local function cancelIfMatched(userId, opponentId)
+  local key = 'mm:' .. userId
+  if redis.call('HGET', key, 'status') ~= 'matched' then return 0 end
+  if redis.call('HGET', key, 'opponentId') ~= opponentId then return 0 end
+  redis.call('HSET', key, 'status', 'timeout')
+  redis.call('HDEL', key, 'matchId', 'opponentId', 'role', 'realMatchId')
+  redis.call('ZREM', KEYS[1], userId)
+  return 1
+end
+
+local cancelled = cancelIfMatched(ARGV[1], ARGV[2])
+cancelled = cancelled + cancelIfMatched(ARGV[2], ARGV[1])
+return cancelled
+`;
+
+const APPLY_MATCHMAKING_BLOCK_LUA = `
+redis.call('SADD', 'mm:blocked:' .. ARGV[1], ARGV[2])
+local function cancelIfMatched(userId, opponentId)
+  local key = 'mm:' .. userId
+  if redis.call('HGET', key, 'status') ~= 'matched' then return 0 end
+  if redis.call('HGET', key, 'opponentId') ~= opponentId then return 0 end
+  redis.call('HSET', key, 'status', 'timeout')
+  redis.call('HDEL', key, 'matchId', 'opponentId', 'role', 'realMatchId')
+  redis.call('ZREM', KEYS[1], userId)
+  return 1
+end
+
+local cancelled = cancelIfMatched(ARGV[1], ARGV[2])
+cancelled = cancelled + cancelIfMatched(ARGV[2], ARGV[1])
+return cancelled
+`;
+
 redis.defineCommand('mmTryMatch', { numberOfKeys: 1, lua: MATCH_LUA });
 redis.defineCommand('mmCleanExpired', { numberOfKeys: 1, lua: CLEAN_LUA });
+redis.defineCommand('mmCancelPair', { numberOfKeys: 1, lua: CANCEL_MATCHMAKING_PAIR_LUA });
+redis.defineCommand('mmApplyBlock', { numberOfKeys: 1, lua: APPLY_MATCHMAKING_BLOCK_LUA });
 
 // ===== Trusted Proxy & Client IP =====
 // E10：信任代理 IP/CIDR 列表。僅當請求來自信任代理時才使用 X-Forwarded-For，
@@ -2142,29 +2532,68 @@ function ipv4ToInt(ip) {
 
 function normalizeIp(ip) {
   if (!ip) return '';
-  // 去除 IPv6-mapped IPv4 前綴（Node.js socket 可能回傳 ::ffff:127.0.0.1）
-  return ip.replace(/^::ffff:/, '');
+  return String(ip)
+    .trim()
+    .replace(/^\[|\]$/g, '')
+    .split('%', 1)[0]
+    .toLowerCase();
+}
+
+function ipv6ToBytes(value) {
+  const ip = normalizeIp(value);
+  if (net.isIP(ip) !== 6) return null;
+  const embedded = ip.includes('.') ? ip.slice(ip.lastIndexOf(':') + 1) : '';
+  let source = ip;
+  if (embedded) {
+    const v4 = ipv4ToInt(embedded);
+    if (v4 === null) return null;
+    source = `${ip.slice(0, ip.lastIndexOf(':'))}:${(v4 >>> 16).toString(16)}:${(v4 & 0xffff).toString(16)}`;
+  }
+  const halves = source.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':').filter(Boolean) : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':').filter(Boolean) : [];
+  const missing = 8 - left.length - right.length;
+  if (missing < 0 || (halves.length === 1 && missing !== 0)) return null;
+  const groups = [...left, ...Array(missing).fill('0'), ...right];
+  if (groups.length !== 8 || groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) return null;
+  const bytes = Buffer.alloc(16);
+  groups.forEach((group, index) => bytes.writeUInt16BE(parseInt(group, 16), index * 2));
+  return bytes;
+}
+
+function ipBytes(ip) {
+  const normalized = normalizeIp(ip);
+  if (net.isIP(normalized) === 4) {
+    const value = ipv4ToInt(normalized);
+    if (value === null) return null;
+    return Buffer.from([(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff]);
+  }
+  const v6 = ipv6ToBytes(normalized);
+  if (!v6) return null;
+  // Treat IPv4-mapped IPv6 addresses as their IPv4 identity for proxy checks.
+  if (v6.subarray(0, 10).equals(Buffer.alloc(10)) && v6[10] === 0xff && v6[11] === 0xff) {
+    return Buffer.from(v6.subarray(12));
+  }
+  return v6;
 }
 
 function ipMatch(ip, range) {
-  const normalizedIp = normalizeIp(ip);
   const normalizedRange = normalizeIp(range);
-  if (normalizedRange.includes('/')) {
-    const [base, prefixStr] = normalizedRange.split('/');
-    const prefixLen = parseInt(prefixStr, 10);
-    if (isNaN(prefixLen) || prefixLen < 0) return false;
-    if (base.includes('.') && normalizedIp.includes('.')) {
-      const ipInt = ipv4ToInt(normalizedIp);
-      const baseInt = ipv4ToInt(base);
-      if (ipInt === null || baseInt === null) return false;
-      if (prefixLen > 32) return false;
-      const mask = prefixLen === 0 ? 0 : (~0 << (32 - prefixLen)) >>> 0;
-      return (ipInt & mask) === (baseInt & mask);
-    }
-    // IPv6 CIDR 尚未完整支援
-    return false;
-  }
-  return normalizedIp === normalizedRange;
+  const slash = normalizedRange.indexOf('/');
+  const base = slash >= 0 ? normalizedRange.slice(0, slash) : normalizedRange;
+  const ipBuffer = ipBytes(ip);
+  const baseBuffer = ipBytes(base);
+  if (!ipBuffer || !baseBuffer || ipBuffer.length !== baseBuffer.length) return false;
+  if (slash < 0) return ipBuffer.equals(baseBuffer);
+  const prefixLen = Number(normalizedRange.slice(slash + 1));
+  if (!Number.isInteger(prefixLen) || prefixLen < 0 || prefixLen > ipBuffer.length * 8) return false;
+  const fullBytes = Math.floor(prefixLen / 8);
+  const remainingBits = prefixLen % 8;
+  if (!ipBuffer.subarray(0, fullBytes).equals(baseBuffer.subarray(0, fullBytes))) return false;
+  if (!remainingBits) return true;
+  const mask = (0xff << (8 - remainingBits)) & 0xff;
+  return (ipBuffer[fullBytes] & mask) === (baseBuffer[fullBytes] & mask);
 }
 
 function isTrustedProxy(ip) {
@@ -2177,10 +2606,21 @@ function getClientIp(req) {
   if (isTrustedProxy(remoteAddress)) {
     const xff = req.headers['x-forwarded-for'];
     if (xff) {
-      return xff.toString().split(',')[0].trim();
+      const chain = xff
+        .toString()
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => net.isIP(normalizeIp(value)) > 0);
+      // Walk from the proxy towards the client and stop at the first
+      // untrusted hop. This prevents a client from smuggling an arbitrary
+      // left-most address through a trusted reverse-proxy chain.
+      for (let index = chain.length - 1; index >= 0; index -= 1) {
+        if (!isTrustedProxy(chain[index])) return normalizeIp(chain[index]);
+      }
+      if (chain.length > 0) return normalizeIp(chain[0]);
     }
   }
-  return remoteAddress;
+  return normalizeIp(remoteAddress);
 }
 
 // ===== HTTP Handler =====
@@ -2326,6 +2766,11 @@ function handleRequest(req, res) {
 
     if (pathname === '/metrics' && method === 'GET') {
       if (!checkMetricsAuth(req)) return json({ error: 'Unauthorized' }, 401);
+      try {
+        await refreshMatchmakingQueueDepth(redis);
+      } catch {
+        // The auxiliary queue gauge is marked unknown; metrics serving remains available.
+      }
       return metricsResponse(res);
     }
 
@@ -2348,6 +2793,29 @@ function handleRequest(req, res) {
       }
       res.writeHead(allOk ? 200 : 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ status: allOk ? 'ok' : 'degraded', checks }));
+      return;
+    }
+
+    if (pathname === '/ready' && method === 'GET') {
+      const checks = { postgres: 'down', redis: 'down', schema: 'down', draining: 'up' };
+      let ready = !shuttingDown;
+      if (shuttingDown) checks.draining = 'down';
+      if (!schemaInitError) checks.schema = 'up';
+      else ready = false;
+      try {
+        await pool.query('SELECT 1');
+        checks.postgres = 'up';
+      } catch {
+        ready = false;
+      }
+      try {
+        await boundedRedisCommand(() => redis.ping());
+        checks.redis = 'up';
+      } catch {
+        ready = false;
+      }
+      res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ready, checks }));
       return;
     }
 
@@ -2523,7 +2991,11 @@ function handleRequest(req, res) {
         generateSalt: () => crypto.randomBytes(16).toString('hex'),
       });
       if (!result.ok) return json({ error: result.error }, result.status);
-      const refreshToken = await issueRefreshToken(result.body.user.id, sessionIatFromToken(result.body.token));
+      const refreshToken = await issueRefreshToken(
+        result.body.user.id,
+        sessionIatFromToken(result.body.token),
+        authVersionFromToken(result.body.token),
+      );
       setAuthCookie(req, res, result.body.token);
       setRefreshCookie(req, res, refreshToken);
       setCsrfCookie(req, res, generateCsrfToken());
@@ -2548,7 +3020,11 @@ function handleRequest(req, res) {
         legacyIterations: PBKDF2_LEGACY_ITERATIONS,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
-      const refreshToken = await issueRefreshToken(result.body.user.id, sessionIatFromToken(result.body.token));
+      const refreshToken = await issueRefreshToken(
+        result.body.user.id,
+        sessionIatFromToken(result.body.token),
+        authVersionFromToken(result.body.token),
+      );
       setAuthCookie(req, res, result.body.token);
       setRefreshCookie(req, res, refreshToken);
       setCsrfCookie(req, res, generateCsrfToken());
@@ -2566,7 +3042,11 @@ function handleRequest(req, res) {
         return json({ error: 'Invalid or expired refresh token' }, 401);
       }
       // Rotate：verifyRefreshToken 已透過 GETDEL 原子消費舊 refresh token，發新 token pair
-      const { accessToken, refreshToken: newRefreshToken } = await createTokenPair(session.userId, session.sessionIat);
+      const { accessToken, refreshToken: newRefreshToken } = await createTokenPair(
+        session.userId,
+        session.sessionIat,
+        session.authVersion ?? 1,
+      );
       setAuthCookie(req, res, accessToken);
       setRefreshCookie(req, res, newRefreshToken);
       setCsrfCookie(req, res, generateCsrfToken());
@@ -2646,7 +3126,7 @@ function handleRequest(req, res) {
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       const consumedUserId = result.body.userId;
-      if (consumedUserId) await revokeAllUserSessions(consumedUserId);
+      if (consumedUserId) await revokeAllUserSessions(consumedUserId, { bumpAuthVersion: false });
       clearAuthCookie(req, res);
       clearRefreshCookie(req, res);
       clearCsrfCookie(req, res);
@@ -2657,8 +3137,14 @@ function handleRequest(req, res) {
     if (pathname === '/api/account/export' && method === 'GET') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const result = await exportAccountData({ pool, userId });
+      const result = await exportAccountData({
+        pool,
+        userId,
+        maxBytes: Number(process.env.ACCOUNT_EXPORT_MAX_BYTES) || undefined,
+      });
       if (!result.ok) return json({ error: result.error }, result.status);
+      res.setHeader('Cache-Control', 'no-store, private');
+      res.setHeader('Vary', 'Cookie, Authorization');
       res.setHeader('Content-Disposition', `attachment; filename="zutomayo-account-${userId}.json"`);
       json(result.body);
       return;
@@ -2670,8 +3156,129 @@ function handleRequest(req, res) {
       const body = await readBody(32 * 1024);
       const parsed = validateBody(S.accountDeleteSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
-      await revokeAllUserSessions(userId);
-      const result = await deleteAccount({ pool, userId });
+
+      const capabilities = await getAccountSecurityCapabilities(pool, userId);
+      if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
+
+      // A linked Logto principal must be removed before local anonymization,
+      // including hybrid accounts that also have a local password.
+      if (capabilities.body.hasLogtoIdentity) {
+        const prepared = await prepareLogtoAccountDeletion({ pool, userId });
+        if (!prepared.ok) return json({ error: prepared.error }, prepared.status);
+        let deletionRequest = prepared.body.request;
+
+        if (deletionRequest.status === 'provider_deleting') {
+          await revokeRequestAccountSessions(req, userId);
+          const recovered = await recoverAccountDeletionRequest(deletionRequest);
+          if (!recovered.ok) {
+            return json({ error: recovered.error, deletionPending: true }, recovered.status === 503 ? 503 : 409);
+          }
+          clearAuthCookie(req, res);
+          clearRefreshCookie(req, res);
+          clearCsrfCookie(req, res);
+          json(recovered.body);
+          return;
+        }
+
+        if (deletionRequest.status === 'provider_deleted') {
+          const result = await deleteAccount({
+            pool,
+            userId,
+            requireStepUp: true,
+            stepUpVerified: true,
+            deletionRequestId: deletionRequest.id,
+            beforeDelete: () => revokeRequestAccountSessions(req, userId, { bumpAuthVersion: false }),
+          });
+          if (!result.ok) return json({ error: result.error }, result.status);
+          clearAuthCookie(req, res);
+          clearRefreshCookie(req, res);
+          clearCsrfCookie(req, res);
+          json(result.body);
+          return;
+        }
+
+        const consumed = await consumeLogtoAccountStepUp({
+          userId,
+          stepUpToken: parsed.data.stepUpToken,
+          purpose: ACCOUNT_STEP_UP_PURPOSE_DELETE,
+        });
+        if (!consumed.ok) return json({ error: consumed.error }, consumed.status);
+
+        const started = await markProviderDeletionStarted({ pool, requestId: deletionRequest.id });
+        if (!started.ok) return json({ error: started.error }, started.status);
+        deletionRequest = started.body.request;
+
+        // Once provider deletion is durable intent, block all existing local
+        // sessions before issuing the external mutation.
+        await revokeRequestAccountSessions(req, userId);
+        let providerDeletion;
+        try {
+          providerDeletion = await logtoAccountRequest({
+            userId,
+            path: '/api/my-account',
+            method: 'DELETE',
+            verificationId: consumed.verificationId,
+          });
+        } catch (error) {
+          await markProviderDeletionFailure({
+            pool,
+            requestId: deletionRequest.id,
+            error,
+            retryable: true,
+          });
+          throw error;
+        }
+        if (!providerDeletion.ok) {
+          const retryable =
+            providerDeletion.status === 408 || providerDeletion.status === 429 || providerDeletion.status >= 500;
+          await markProviderDeletionFailure({
+            pool,
+            requestId: deletionRequest.id,
+            error: providerDeletion.error,
+            retryable,
+          });
+          return json({ error: providerDeletion.error, deletionPending: retryable }, providerDeletion.status);
+        }
+
+        const marked = await markProviderDeleted({ pool, requestId: deletionRequest.id });
+        if (!marked.ok) return json({ error: marked.error, deletionPending: true }, marked.status);
+        const result = await deleteAccount({
+          pool,
+          userId,
+          requireStepUp: true,
+          stepUpVerified: true,
+          deletionRequestId: deletionRequest.id,
+          beforeDelete: () => revokeRequestAccountSessions(req, userId, { bumpAuthVersion: false }),
+        });
+        if (!result.ok) return json({ error: result.error, deletionPending: true }, result.status);
+        clearAuthCookie(req, res);
+        clearRefreshCookie(req, res);
+        clearCsrfCookie(req, res);
+        json(result.body);
+        return;
+      }
+
+      if (capabilities.body.hasLocalPassword) {
+        const stepUp = await verifyRecentPassword({
+          pool,
+          userId,
+          currentPassword: parsed.data.currentPassword,
+          hashPassword,
+          currentIterations: PBKDF2_ITERATIONS,
+          legacyIterations: PBKDF2_LEGACY_ITERATIONS,
+        });
+        if (!stepUp.ok) return json({ error: stepUp.error }, stepUp.status);
+      } else {
+        return json({ error: 'No supported account verification method is available' }, 409);
+      }
+
+      const result = await deleteAccount({
+        pool,
+        userId,
+        requireStepUp: true,
+        stepUpVerified: true,
+        beforeDelete: () => revokeRequestAccountSessions(req, userId, { bumpAuthVersion: false }),
+      });
       if (!result.ok) return json({ error: result.error }, result.status);
       clearAuthCookie(req, res);
       clearRefreshCookie(req, res);
@@ -2689,7 +3296,9 @@ function handleRequest(req, res) {
         hashEmail: hashEmailForAvatar,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
-      json(result.body);
+      const capabilities = await getAccountSecurityCapabilities(pool, userId);
+      if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
+      json({ ...result.body, ...capabilities.body });
       return;
     }
 
@@ -2706,7 +3315,7 @@ function handleRequest(req, res) {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const account = await logtoAccountRequest({ userId, path: '/api/my-account' });
-      if (!account.ok) return json({ error: account.error, details: account.body }, account.status);
+      if (!account.ok) return json({ error: account.error }, account.status);
       const [identities, mfaVerifications, logtoConfigs] = await Promise.all([
         logtoAccountRequest({ userId, path: '/api/my-account/identities' }).catch((error) => ({
           ok: false,
@@ -2734,15 +3343,19 @@ function handleRequest(req, res) {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const body = await readBody(32 * 1024);
-      const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
-      if (!currentPassword) return json({ error: 'Current password required' }, 400);
-      const result = await logtoAccountRequest({
+      const parsed = validateBody(S.accountCenterVerificationSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const capabilities = await getAccountSecurityCapabilities(pool, userId);
+      if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
+      if (!capabilities.body.hasLogtoIdentity) {
+        return json({ error: 'Logto account verification is unavailable' }, 409);
+      }
+      const result = await issueLogtoAccountStepUp({
         userId,
-        path: '/api/verifications/password',
-        method: 'POST',
-        body: { password: currentPassword },
+        currentPassword: parsed.data.currentPassword,
+        purpose: ACCOUNT_STEP_UP_PURPOSE_PASSWORD,
       });
-      if (!result.ok) return json({ error: result.error, details: result.body }, result.status);
+      if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
     }
@@ -2751,17 +3364,35 @@ function handleRequest(req, res) {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const body = await readBody(32 * 1024);
-      const verificationRecordId = typeof body.verificationRecordId === 'string' ? body.verificationRecordId : '';
-      const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
-      if (!verificationRecordId || !newPassword) return json({ error: 'Verification and new password required' }, 400);
+      const parsed = validateBody(S.accountCenterPasswordSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const capabilities = await getAccountSecurityCapabilities(pool, userId);
+      if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
+      if (!capabilities.body.hasLogtoIdentity) {
+        return json({ error: 'Logto account password is unavailable' }, 409);
+      }
+      const consumed = await consumeLogtoAccountStepUp({
+        userId,
+        stepUpToken: parsed.data.stepUpToken,
+        purpose: ACCOUNT_STEP_UP_PURPOSE_PASSWORD,
+      });
+      if (!consumed.ok) return json({ error: consumed.error }, consumed.status);
+
+      // Revoke local sessions before the provider mutation. If Redis cannot
+      // persist the cutoff, do not change the provider password with live
+      // sessions still active.
+      await revokeAllUserSessions(userId);
       const result = await logtoAccountRequest({
         userId,
         path: '/api/my-account/password',
         method: 'POST',
-        verificationId: verificationRecordId,
-        body: { password: newPassword },
+        verificationId: consumed.verificationId,
+        body: { password: parsed.data.newPassword },
       });
-      if (!result.ok) return json({ error: result.error, details: result.body }, result.status);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      clearAuthCookie(req, res);
+      clearRefreshCookie(req, res);
+      clearCsrfCookie(req, res);
       json({ ok: true });
       return;
     }
@@ -2824,7 +3455,9 @@ function handleRequest(req, res) {
         accept: parsed.data.accept,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
-      json(result.body);
+      const capabilities = await getAccountSecurityCapabilities(pool, userId);
+      if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
+      json({ ...result.body, ...capabilities.body });
       return;
     }
 
@@ -2845,6 +3478,7 @@ function handleRequest(req, res) {
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       const result = await blockUser({ pool, userId, targetUserId: parsed.data.targetUserId });
       if (!result.ok) return json({ error: result.error }, result.status);
+      await applyMatchmakingBlock(redis, userId, parsed.data.targetUserId);
       json(result.body);
       return;
     }
@@ -2855,6 +3489,7 @@ function handleRequest(req, res) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await unblockUser({ pool, userId, targetUserId: decodeURIComponent(blockRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
+      await removeMatchmakingBlock(redis, userId, decodeURIComponent(blockRoute[1]));
       json(result.body);
       return;
     }
@@ -2895,6 +3530,26 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/seasons/rewards' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await getUserSeasonRewards({ pool, userId });
+      serviceJson(result);
+      return;
+    }
+
+    const seasonRewardClaimRoute = pathname.match(/^\/api\/seasons\/([^/]+)\/rewards\/claim$/);
+    if (seasonRewardClaimRoute && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const seasonId = decodeURIComponent(seasonRewardClaimRoute[1]);
+      const parsedSeasonId = validateBody(S.seasonIdSchema, seasonId);
+      if (!parsedSeasonId.ok) return json({ error: 'Validation failed', details: parsedSeasonId.errors }, 400);
+      const result = await claimSeasonReward({ pool, userId, seasonId: parsedSeasonId.data });
+      serviceJson(result);
+      return;
+    }
+
     // ===== Deck Routes =====
 
     // List user's decks
@@ -2915,6 +3570,25 @@ function handleRequest(req, res) {
       const result = await createUserDeck(pool, userId, __parsed.data);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
+      return;
+    }
+
+    // Reserve a server-owned deck for a single online match seat. The game
+    // server consumes this opaque id after validating the same JWT identity.
+    if ((pathname === '/api/deck-reservations' || pathname === '/api/decks/reservations') && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.deckReservationSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await reserveUserDeck(
+        pool,
+        userId,
+        parsed.data.deckId,
+        parsed.data.rulesVersion || GAME_RULES_VERSION,
+      );
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body, 201);
       return;
     }
 
@@ -2972,16 +3646,9 @@ function handleRequest(req, res) {
         body: __parsed.data,
         sanitizeActionLog,
         rankedMatchesEnabled: RANKED_MATCHES_ENABLED,
+        rulesVersion: GAME_RULES_VERSION,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
-      if (__parsed.data.sourceMatchId && !result.body.duplicate) {
-        await recordSeasonResult({
-          pool,
-          sourceMatchId: __parsed.data.sourceMatchId,
-          winnerId: result.body.winnerId,
-          loserId: result.body.loserId,
-        });
-      }
       json(result.body);
       return;
     }
@@ -3166,18 +3833,22 @@ function handleRequest(req, res) {
         hashEmail: hashEmailForAvatar,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
-      json(result.body);
+      const capabilities = await getAccountSecurityCapabilities(pool, userId);
+      if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
+      json({ ...result.body, ...capabilities.body });
       return;
     }
 
     // PUT /api/profile/password — 修改密碼。
     if (pathname === '/api/profile/password' && method === 'PUT') {
-      if (!LOCAL_AUTH_ENABLED) return json({ error: 'Password is managed by Logto' }, 403);
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody();
       const __parsed = validateBody(S.passwordChangeSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const capabilities = await getAccountSecurityCapabilities(pool, userId);
+      if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
+      if (!capabilities.body.hasLocalPassword) return json({ error: 'Password is managed by Logto' }, 403);
       const result = await updateAccountPassword({
         pool,
         userId,
@@ -3187,6 +3858,7 @@ function handleRequest(req, res) {
         currentIterations: PBKDF2_ITERATIONS,
         legacyIterations: PBKDF2_LEGACY_ITERATIONS,
         beforeUpdate: () => revokeAllUserSessions(userId),
+        incrementAuthVersion: true,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -3234,6 +3906,78 @@ function handleRequest(req, res) {
     if (pathname === '/api/admin/matches' && method === 'GET') {
       if (!(await authorizeAdmin(req, 'matches:read'))) return json({ error: 'Unauthorized' }, 401);
       json(await getAdminMatches(pool, url.searchParams.get('limit')));
+      return;
+    }
+
+    if (pathname === '/api/admin/seasons' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'seasons:read'))) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.adminSeasonListQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await listSeasons({ pool, limit: parsed.data.limit });
+      serviceJson(result);
+      return;
+    }
+
+    if (pathname === '/api/admin/seasons' && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'seasons:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(64 * 1024);
+      const parsed = validateBody(S.adminSeasonCreateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await createSeason({ pool, adminUserId: admin.adminUserId, ...parsed.data });
+      serviceJson(result, 201);
+      return;
+    }
+
+    const adminSeasonActionRoute = pathname.match(/^\/api\/admin\/seasons\/([^/]+)\/(activate|close)$/);
+    if (adminSeasonActionRoute && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'seasons:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const seasonId = decodeURIComponent(adminSeasonActionRoute[1]);
+      const parsedSeasonId = validateBody(S.seasonIdSchema, seasonId);
+      if (!parsedSeasonId.ok) return json({ error: 'Validation failed', details: parsedSeasonId.errors }, 400);
+      const operation = adminSeasonActionRoute[2] === 'activate' ? activateSeason : closeSeason;
+      const result = await operation({ pool, seasonId: parsedSeasonId.data, adminUserId: admin.adminUserId });
+      serviceJson(result);
+      return;
+    }
+
+    if (pathname === '/api/admin/legal-holds' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'legal-holds:read'))) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.legalHoldListQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await listLegalHolds({ pool, ...parsed.data });
+      serviceJson(result);
+      return;
+    }
+
+    if (pathname === '/api/admin/legal-holds' && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'legal-holds:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.legalHoldCreateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await createLegalHold({ pool, adminUserId: admin.adminUserId, ...parsed.data });
+      serviceJson(result, 201);
+      return;
+    }
+
+    const adminLegalHoldReleaseRoute = pathname.match(/^\/api\/admin\/legal-holds\/([^/]+)\/release$/);
+    if (adminLegalHoldReleaseRoute && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'legal-holds:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.legalHoldReleaseSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const holdId = decodeURIComponent(adminLegalHoldReleaseRoute[1]);
+      if (!/^legal_hold_[a-f0-9]{24}$/.test(holdId)) return json({ error: 'Invalid legal hold id' }, 400);
+      const result = await releaseLegalHold({
+        pool,
+        adminUserId: admin.adminUserId,
+        holdId,
+        reason: parsed.data.reason,
+      });
+      serviceJson(result);
       return;
     }
 
@@ -3448,9 +4192,22 @@ function handleRequest(req, res) {
     if (pathname === '/api/matchmaking/queue' && method === 'POST') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
+      if (
+        !(await checkQuota({
+          ip: clientIp,
+          userId,
+          namespace: 'matchmaking',
+          ipLimit: MATCHMAKING_IP_LIMIT,
+          userLimit: MATCHMAKING_USER_LIMIT,
+          globalLimit: MATCHMAKING_GLOBAL_LIMIT,
+        }))
+      ) {
+        return json({ error: 'Matchmaking capacity is temporarily unavailable' }, 429);
+      }
       const __body = await readBody();
       const __parsed = validateBody(S.mmQueueSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const blockedUserIds = await listMatchmakingBlockedUserIds({ pool, userId });
       json(
         await joinMatchmakingQueue({
           redis,
@@ -3461,6 +4218,7 @@ function handleRequest(req, res) {
           generateMatchId: generateMatchmakingId,
           ttlSeconds: MM_TTL_SECONDS,
           timeoutMs: MATCHMAKING_TIMEOUT_MS,
+          blockedUserIds,
         }),
       );
       return;
@@ -3470,7 +4228,8 @@ function handleRequest(req, res) {
     if (pathname === '/api/matchmaking/status' && method === 'GET') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      json(await getMatchmakingStatus(redis, userId, Date.now(), MATCHMAKING_TIMEOUT_MS));
+      const blockedUserIds = await listMatchmakingBlockedUserIds({ pool, userId });
+      json(await getMatchmakingStatus(redis, userId, Date.now(), MATCHMAKING_TIMEOUT_MS, blockedUserIds));
       return;
     }
 
@@ -3489,7 +4248,8 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.mmMatchSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const result = await reportRealMatch(redis, userId, __parsed.data.matchId);
+      const blockedUserIds = await listMatchmakingBlockedUserIds({ pool, userId });
+      const result = await reportRealMatch(redis, userId, __parsed.data.matchId, blockedUserIds);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -3856,6 +4616,7 @@ function handleRequest(req, res) {
 const server = http.createServer(handleRequest);
 
 async function closeDatabase() {
+  stopAccountDeletionRecovery();
   await pool.end();
   await redis.quit();
 }
@@ -3881,6 +4642,7 @@ if (require.main === module) {
     .then(() => {
       if (schemaInitError) throw schemaInitError;
       server.listen(PORT, () => {
+        startAccountDeletionRecovery();
         logger.info({ port: PORT }, 'Zutomayo API server running');
       });
     })
@@ -3894,5 +4656,6 @@ module.exports = {
   handleRequest,
   server,
   closeDatabase,
+  recoverAccountDeletions,
   schemaReady,
 };

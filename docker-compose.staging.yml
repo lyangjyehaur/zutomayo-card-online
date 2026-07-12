@@ -7,31 +7,37 @@
 #   - 自帶 postgres / redis 容器，可獨立運行（不依賴 1panel-network）
 #
 # 使用方式：
-#   TAG=staging docker compose -f docker-compose.staging.yml up -d
-#   TAG=<commit-sha> docker compose -f docker-compose.staging.yml up -d
+#   GAME_IMAGE=ghcr.io/...@sha256:... API_IMAGE=... docker compose -f docker-compose.staging.yml up -d
 #
 # 環境變數：
 #   PG_PASSWORD, JWT_SECRET 等必填變數請透過 .env 提供（見 .env.example）。
 #   GHCR_OWNER 可覆寫（fork 部署用），預設 lyangjyehaur。
-#   TAG 控制要拉取的 image tag，預設 staging。
+#   四個 *_IMAGE 必須是 CD 產出的、已驗證簽章與 provenance 的完整 digest。
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.4-alpine
     environment:
-      POSTGRES_USER: ${PG_USER:-zutomayo}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      POSTGRES_USER: ${PG_MIGRATION_USER:?Set PG_MIGRATION_USER in your environment or .env file}
+      POSTGRES_PASSWORD: ${PG_MIGRATION_PASSWORD:?Set PG_MIGRATION_PASSWORD in your environment or .env file}
       POSTGRES_DB: zutomayo_staging
+      PG_APP_USER: ${PG_APP_USER:?Set PG_APP_USER in your environment or .env file}
+      PG_APP_PASSWORD: ${PG_APP_PASSWORD:?Set PG_APP_PASSWORD in your environment or .env file}
     volumes:
       - pg-staging-data:/var/lib/postgresql/data
+      - ./scripts/postgres-init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${PG_USER:-zutomayo} -d zutomayo_staging']
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${PG_MIGRATION_USER:?Set PG_MIGRATION_USER in your environment or .env file} -d zutomayo_staging',
+        ]
       interval: 5s
       timeout: 3s
       retries: 10
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.2.5-alpine
     command:
       [
         'redis-server',
@@ -52,41 +58,59 @@ services:
     restart: unless-stopped
 
   migrate:
-    # migrate 需要 builder stage（含 devDependencies / node-pg-migrate），
-    # 因此仍在 server 上 build；其餘 app 服務一律使用 GHCR 預建 image。
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-migrate:${TAG:-staging}
-    command: ['npm', 'run', 'db:migrate']
+    image: ${MIGRATE_IMAGE:?Set MIGRATE_IMAGE to a verified @sha256 digest}
+    command: ['npm', 'run', 'db:migrate:release']
     env_file: .env
     environment:
       - PG_HOST=postgres
       - PG_PORT=5432
+      - PG_USER=${PG_MIGRATION_USER:?Set PG_MIGRATION_USER in your environment or .env file}
+      - PG_PASSWORD=${PG_MIGRATION_PASSWORD:?Set PG_MIGRATION_PASSWORD in your environment or .env file}
       - PG_DATABASE=zutomayo_staging
+      - PGSSLMODE=disable
+      - PG_APP_USER=${PG_APP_USER:?Set PG_APP_USER in your environment or .env file}
+      - REQUIRE_APP_ROLE_GATE=true
+      - DATABASE_URL=
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
     depends_on:
       postgres:
         condition: service_healthy
     restart: 'no'
 
   game:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-game:${TAG:-staging}
+    image: ${GAME_IMAGE:?Set GAME_IMAGE to a verified @sha256 digest}
     ports:
       - '4000:3000'
     env_file: .env
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - PG_HOST=postgres
       - PG_PORT=5432
+      - PG_USER=${PG_APP_USER:?Set PG_APP_USER in your environment or .env file}
+      - PG_PASSWORD=${PG_APP_PASSWORD:?Set PG_APP_PASSWORD in your environment or .env file}
       - PG_DATABASE=zutomayo_staging
+      - PGSSLMODE=disable
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=3
       - API_URL=${API_URL:-http://api:3001}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in your environment or .env file}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
+      - AUTH_REVOCATION_TIMEOUT_MS=${AUTH_REVOCATION_TIMEOUT_MS:-750}
+      - GAME_AUTH_DB_QUERY_TIMEOUT_MS=${GAME_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
       - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
+      - GAME_DRAIN_GRACE_MS=${GAME_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,23 +124,40 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   api:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-api:${TAG:-staging}
+    image: ${API_IMAGE:?Set API_IMAGE to a verified @sha256 digest}
     ports:
       - '4001:3001'
     env_file: .env
     environment:
       - API_PORT=3001
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - PG_HOST=postgres
       - PG_PORT=5432
+      - PG_USER=${PG_APP_USER:?Set PG_APP_USER in your environment or .env file}
+      - PG_PASSWORD=${PG_APP_PASSWORD:?Set PG_APP_PASSWORD in your environment or .env file}
       - PG_DATABASE=zutomayo_staging
+      - PGSSLMODE=disable
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=3
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in your environment or .env file}
+      - LOGTO_ENDPOINT=${LOGTO_ENDPOINT:-}
+      - LOGTO_ISSUER=${LOGTO_ISSUER:-}
+      - LOGTO_M2M_APP_ID=${LOGTO_M2M_APP_ID:-}
+      - LOGTO_M2M_APP_SECRET=${LOGTO_M2M_APP_SECRET:-}
+      - LOGTO_MANAGEMENT_RESOURCE=${LOGTO_MANAGEMENT_RESOURCE:-}
+      - LOGTO_MANAGEMENT_SCOPE=${LOGTO_MANAGEMENT_SCOPE:-}
+      - ACCOUNT_DELETION_RECOVERY_INTERVAL_MS=${ACCOUNT_DELETION_RECOVERY_INTERVAL_MS:-60000}
+      - ACCOUNT_EXPORT_MAX_BYTES=${ACCOUNT_EXPORT_MAX_BYTES:-8388608}
       - IMGPROXY_INTERNAL_BASE_URL=${IMGPROXY_INTERNAL_BASE_URL:-}
       - IMGPROXY_KEY=${IMGPROXY_KEY:-}
       - IMGPROXY_SALT=${IMGPROXY_SALT:-}
@@ -138,9 +179,10 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   platform:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-platform:${TAG:-staging}
+    image: ${PLATFORM_IMAGE:?Set PLATFORM_IMAGE to a verified @sha256 digest}
     command: ['npm', 'run', 'platform']
     ports:
       - '4002:3002'
@@ -148,20 +190,39 @@ services:
     environment:
       - PLATFORM_PORT=3002
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - PG_HOST=postgres
       - PG_PORT=5432
+      - PG_USER=${PG_APP_USER:?Set PG_APP_USER in your environment or .env file}
+      - PG_PASSWORD=${PG_APP_PASSWORD:?Set PG_APP_PASSWORD in your environment or .env file}
       - PG_DATABASE=zutomayo_staging
+      - PGSSLMODE=disable
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=3
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in your environment or .env file}
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
+      - PLATFORM_BLOCK_STORE=postgres
       - PLATFORM_MATCH_PARTICIPANT_STORE=postgres
       - PLATFORM_CHAT_PREVIEW_STORE=postgres
+      - PLATFORM_ADMISSION_IP_LIMIT=${PLATFORM_ADMISSION_IP_LIMIT:-30}
+      - PLATFORM_ADMISSION_USER_LIMIT=${PLATFORM_ADMISSION_USER_LIMIT:-10}
+      - PLATFORM_ADMISSION_GLOBAL_LIMIT=${PLATFORM_ADMISSION_GLOBAL_LIMIT:-2000}
+      - PLATFORM_ADMISSION_WINDOW_SECONDS=${PLATFORM_ADMISSION_WINDOW_SECONDS:-60}
+      - PLATFORM_ADMISSION_REDIS_TIMEOUT_MS=${PLATFORM_ADMISSION_REDIS_TIMEOUT_MS:-750}
+      - PLATFORM_AUTH_DB_POOL_MAX=${PLATFORM_AUTH_DB_POOL_MAX:-8}
+      - PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS=${PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PLATFORM_DRAIN_GRACE_MS=${PLATFORM_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -177,6 +238,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
 volumes:
   pg-staging-data:

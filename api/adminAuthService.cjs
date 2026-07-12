@@ -3,8 +3,8 @@
 const crypto = require('crypto');
 
 const ROLE_PERMISSIONS = Object.freeze({
-  viewer: ['users:read', 'matches:read', 'audit:read'],
-  moderator: ['users:read', 'matches:read', 'audit:read', 'chat:moderate', 'feedback:moderate'],
+  viewer: ['users:read', 'matches:read', 'audit:read', 'seasons:read'],
+  moderator: ['users:read', 'matches:read', 'audit:read', 'seasons:read', 'chat:moderate', 'feedback:moderate'],
   operator: [
     'users:read',
     'matches:read',
@@ -14,6 +14,9 @@ const ROLE_PERMISSIONS = Object.freeze({
     'elo:write',
     'cards:write',
     'config:write',
+    'seasons:read',
+    'seasons:write',
+    'legal-holds:read',
   ],
   admin: ['*'],
 });
@@ -122,6 +125,7 @@ async function verifyAdminSession({ pool, payload, permission }) {
        WHERE s.jti = $1
          AND s.admin_user_id = $2
          AND s.role = $3
+         AND u.role = $3
          AND s.revoked_at IS NULL
          AND s.expires_at > NOW()
          AND u.disabled_at IS NULL`,

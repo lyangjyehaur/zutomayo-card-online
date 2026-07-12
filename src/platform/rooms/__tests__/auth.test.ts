@@ -4,12 +4,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authenticatePlatformClient } from '../auth';
 import { InviteRoom, parseFriendInviteId } from '../InviteRoom';
 import {
+  configurePlatformJwtAccountStore,
   configurePlatformJwtRevocationStore,
+  createPostgresPlatformJwtAccountStore,
   platformAuthTokenFromContext,
   verifyPlatformJwtUserId,
   verifyPlatformJwtUserIdAsync,
 } from '../jwt';
 import { QuickMatchRoom } from '../QuickMatchRoom';
+import { createEmptyPlatformBlockStore } from '../../blockStore';
 
 const originalJwtSecret = process.env.JWT_SECRET;
 
@@ -24,7 +27,14 @@ function signToken(input: string, secret: string): string {
 function createJwt(
   userId: string,
   secret: string,
-  options: { expiresInSeconds?: number; typ?: string; issuedAt?: number; sessionIat?: number; jti?: string } = {},
+  options: {
+    expiresInSeconds?: number;
+    typ?: string;
+    issuedAt?: number;
+    sessionIat?: number;
+    jti?: string;
+    authVersion?: number;
+  } = {},
 ): string {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
@@ -36,6 +46,7 @@ function createJwt(
     exp: now + (options.expiresInSeconds ?? 3600),
     ...(options.typ ? { typ: options.typ } : {}),
     ...(options.jti ? { jti: options.jti } : {}),
+    ...(options.authVersion !== undefined ? { authVersion: options.authVersion } : {}),
   });
   const input = `${header}.${payload}`;
   return `${input}.${signToken(input, secret)}`;
@@ -58,6 +69,8 @@ function cookieAuthContext(userId: string): AuthContext {
 afterEach(() => {
   process.env.JWT_SECRET = originalJwtSecret;
   configurePlatformJwtRevocationStore(null);
+  configurePlatformJwtAccountStore(null);
+  QuickMatchRoom.configureBlockStore(createEmptyPlatformBlockStore());
   InviteRoom.configureFriendStore(
     {
       async listFriendUserIds() {
@@ -139,6 +152,13 @@ describe('platform room auth', () => {
       }),
     ).resolves.toBe('');
 
+    configurePlatformJwtRevocationStore(null, { timeoutMs: 5 });
+    await expect(
+      verifyPlatformJwtUserIdAsync(token, secret, {
+        get: () => new Promise(() => undefined),
+      }),
+    ).resolves.toBe('');
+
     const previousEnvironment = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
     try {
@@ -146,6 +166,64 @@ describe('platform room auth', () => {
     } finally {
       process.env.NODE_ENV = previousEnvironment;
     }
+  });
+
+  it('checks every access token against the durable account auth version', async () => {
+    const secret = 'test-platform-jwt-secret-at-least-32-characters';
+    const redis = { get: vi.fn(async () => null) };
+    const currentAuthVersion = vi.fn(async () => 2);
+    const token = createJwt('u_durable', secret, { authVersion: 2, jti: 'jti-durable' });
+
+    await expect(verifyPlatformJwtUserIdAsync(token, secret, redis, { currentAuthVersion })).resolves.toBe('u_durable');
+    expect(currentAuthVersion).toHaveBeenCalledWith('u_durable');
+
+    await expect(
+      verifyPlatformJwtUserIdAsync(createJwt('u_durable', secret, { authVersion: 1 }), secret, redis, {
+        currentAuthVersion,
+      }),
+    ).resolves.toBe('');
+  });
+
+  it('rejects deleted, missing, and unreadable durable accounts', async () => {
+    const secret = 'test-platform-jwt-secret-at-least-32-characters';
+    const token = createJwt('u_deleted', secret, { authVersion: 3 });
+    const redis = { get: vi.fn(async () => null) };
+
+    await expect(
+      verifyPlatformJwtUserIdAsync(token, secret, redis, { currentAuthVersion: async () => null }),
+    ).resolves.toBe('');
+    await expect(
+      verifyPlatformJwtUserIdAsync(token, secret, redis, {
+        currentAuthVersion: async () => {
+          throw new Error('postgres unavailable');
+        },
+      }),
+    ).resolves.toBe('');
+  });
+
+  it('reads auth_version and deleted_at from PostgreSQL', async () => {
+    const query = vi.fn(
+      async (): Promise<{
+        rows: Array<{ auth_version: string; deleted_at: Date | string | null }>;
+      }> => ({
+        rows: [{ auth_version: '4', deleted_at: null }],
+      }),
+    );
+    const store = createPostgresPlatformJwtAccountStore({ query } as never);
+
+    await expect(store.currentAuthVersion('u_postgres')).resolves.toBe(4);
+    expect(query).toHaveBeenCalledWith('SELECT auth_version, deleted_at FROM users WHERE id = $1', ['u_postgres']);
+
+    query.mockResolvedValueOnce({ rows: [{ auth_version: '4', deleted_at: new Date() }] });
+    await expect(store.currentAuthVersion('u_deleted')).resolves.toBeNull();
+  });
+
+  it('fails closed when the runtime requires a durable account store but none is configured', async () => {
+    const secret = 'test-platform-jwt-secret-at-least-32-characters';
+    configurePlatformJwtAccountStore(null, { required: true });
+    await expect(
+      verifyPlatformJwtUserIdAsync(createJwt('u_missing_store', secret), secret, { get: async () => null }),
+    ).resolves.toBe('');
   });
 
   it('uses verified cookie identity instead of client supplied user id', () => {
@@ -248,7 +326,7 @@ describe('platform room auth', () => {
     });
     await expect(
       room.onAuth({} as never, { userId: 'u_revoked_queue', displayName: 'Player' }, context),
-    ).rejects.toThrow('Authentication required');
+    ).rejects.toThrow('Invalid or revoked authentication');
 
     configurePlatformJwtRevocationStore({ get: async () => null });
     await expect(
@@ -280,6 +358,22 @@ describe('platform room auth', () => {
     await expect(
       quickRoom.onAuth({} as never, { userId: 'u_other', displayName: 'Other' }, cookieAuthContext('u_other')),
     ).resolves.toMatchObject({ userId: 'u_other', authenticated: true, role: 'player' });
+  });
+
+  it('rejects quick-match opponents when either account has blocked the other', async () => {
+    const areUsersBlocked = vi.fn(async (firstUserId: string, secondUserId: string) =>
+      [firstUserId, secondUserId].includes('u_blocked'),
+    );
+    QuickMatchRoom.configureBlockStore({ areUsersBlocked });
+    const quickRoom = new QuickMatchRoom();
+
+    await expect(
+      quickRoom.onAuth({} as never, { displayName: 'First' }, cookieAuthContext('u_first')),
+    ).resolves.toMatchObject({ userId: 'u_first' });
+    await expect(
+      quickRoom.onAuth({} as never, { displayName: 'Blocked' }, cookieAuthContext('u_blocked')),
+    ).rejects.toThrow('Quick match is not allowed');
+    expect(areUsersBlocked).toHaveBeenCalledWith('u_blocked', 'u_first');
   });
 
   it('parses directional friend invite ids', () => {

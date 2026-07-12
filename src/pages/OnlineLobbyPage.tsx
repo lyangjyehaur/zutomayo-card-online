@@ -21,6 +21,7 @@ import {
   removeFriend,
   requestChatTranslation,
   sendChatMessage,
+  reserveDeck,
   type ChatMessage,
   type ChatMessageTranslation,
   type DeckResponse,
@@ -38,7 +39,12 @@ import { customRoomRelayErrorKey, resolvePlatformCustomRoomMatchID } from '../pl
 import { AuthSection } from '../components/lobby/AuthSection';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
-import { buildDeckOptions, buildServerDeckOptions, type DeckOptionGroup } from '../components/lobby/shared';
+import {
+  buildDeckOptions,
+  buildServerDeckOptions,
+  serverDeckIdFromOption,
+  type DeckOptionGroup,
+} from '../components/lobby/shared';
 import { Alert, AppHeader, Button, Input, PageShell, Panel } from '../ui';
 import { useOnlinePresence } from '../hooks/useOnlinePresence';
 import {
@@ -68,7 +74,12 @@ interface OnlineLobbyPageProps {
   onStartOnline: (
     matchID?: string,
     playerName?: string,
-    options?: { navigate?: boolean; playerDeckName?: string; opponentDeckName?: string },
+    options?: {
+      navigate?: boolean;
+      playerDeckName?: string;
+      opponentDeckName?: string;
+      playerDeckReservationId?: string;
+    },
   ) => Promise<OnlineSession>;
   onAuthChanged: () => void | Promise<void>;
   serverDeckError?: string;
@@ -665,11 +676,14 @@ export function OnlineLobbyPage({
     phaseRef.current = 'platform-waiting';
 
     try {
+      const serverDeckId = serverDeckIdFromOption(deck0Name);
+      const deckReservation = serverDeckId ? await reserveDeck(serverDeckId) : undefined;
       const room = await connectPlatformQuickMatch(
         {
           userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
           displayName: effectivePlayerName,
           deckName: deck0Name,
+          deckReservationId: deckReservation?.reservationId,
         },
         {
           onMatched: (match) => {
@@ -680,7 +694,7 @@ export function OnlineLobbyPage({
               void onStartOnline(undefined, effectivePlayerName, {
                 navigate: false,
                 playerDeckName: match.deckName ?? deck0Name,
-                opponentDeckName: match.opponent?.deckName,
+                playerDeckReservationId: match.deckReservationId,
               })
                 .then((session) => {
                   if (cancelRef.current || phaseRef.current !== 'host-starting') return;
@@ -718,7 +732,10 @@ export function OnlineLobbyPage({
             }
             if (phaseRef.current !== 'guest-waiting-match') return;
             phaseRef.current = 'guest-joining';
-            void onStartOnline(message.boardgameMatchID, effectivePlayerName, { navigate: false })
+            void onStartOnline(message.boardgameMatchID, effectivePlayerName, {
+              navigate: false,
+              playerDeckReservationId: deckReservation?.reservationId,
+            })
               .then((session) => {
                 phaseRef.current = 'done';
                 navigateToOnlineSession(session);

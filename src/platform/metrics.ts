@@ -40,6 +40,13 @@ export const platformConnectedClients = new Gauge({
   registers: [register],
 });
 
+export const platformReconnectsTotal = new Counter({
+  name: 'platform_reconnects_total',
+  help: 'Same-user room or seat reconnects accepted by the platform',
+  labelNames: ['room_type'] as const,
+  registers: [register],
+});
+
 function normalizedPath(path: string): string {
   if (path === '/health' || path === '/ready' || path === '/metrics') return path;
   if (path.startsWith('/matchmake/')) return '/matchmake/:operation/:room';
@@ -64,7 +71,10 @@ function timingSafeTokenEqual(expected: string, received: string): boolean {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
-export function platformMetricsAuthorized(authorization: string | undefined, token = process.env.METRICS_TOKEN || ''): boolean {
+export function platformMetricsAuthorized(
+  authorization: string | undefined,
+  token = process.env.METRICS_TOKEN || '',
+): boolean {
   if (!token) return process.env.NODE_ENV !== 'production';
   const prefix = 'Bearer ';
   if (!authorization?.startsWith(prefix)) return false;
@@ -85,6 +95,10 @@ export function setPlatformRuntimeMetrics(roomCounts: Record<string, number>, co
     platformActiveRooms.labels(roomType).set(Math.max(0, Number(count) || 0));
   }
   platformConnectedClients.set(Math.max(0, Number(connectedClients) || 0));
+}
+
+export function recordPlatformReconnect(roomType: string): void {
+  platformReconnectsTotal.labels(roomType).inc();
 }
 
 export { register as platformMetricsRegister };

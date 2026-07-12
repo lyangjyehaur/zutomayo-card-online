@@ -3,7 +3,7 @@ import './server/observability/tracing.js';
 import { ZutomayoOnlineCard, resetParsedEffects } from './game/Game';
 import { initCards } from './game/cards/loader';
 import { initEffectI18n } from './game/cards/i18n';
-import type { CardDef } from './game/types';
+import type { CardDef, ZutomayoSetupData } from './game/types';
 import { APP_VERSION_INFO, isCompatibleVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 import path from 'path';
 import fs from 'fs';
@@ -21,12 +21,22 @@ import { startMatchResultOutboxWorker } from './server/matchResultOutbox';
 import * as Sentry from '@sentry/node';
 import helmet from 'koa-helmet';
 import { logger, requestLoggingMiddleware } from './server/observability/logger';
-import { metricsMiddleware, metricsEndpoint, activeSocketConnections } from './server/observability/metrics';
+import {
+  metricsMiddleware,
+  metricsEndpoint,
+  activeSocketConnections,
+  metricsRequestAuthorized,
+} from './server/observability/metrics';
 import { createRateLimit, getClientIpFromRequest } from './server/rateLimit';
 import type { IncomingHttpHeaders, IncomingMessage } from 'http';
 import { createPlatformSeatToken } from './platform/seatToken';
+import { createServiceReadiness } from './operational/serviceLifecycle';
+import { drainNetwork } from './operational/networkDrain';
+import { replayJsonRequestBody } from './server/requestBodyReplay';
 import {
+  configurePlatformJwtAccountStore,
   configurePlatformJwtRevocationStore,
+  createPostgresPlatformJwtAccountStore,
   platformAuthTokenFromCookieHeader,
   verifyPlatformJwtUserIdAsync,
 } from './platform/rooms/jwt';
@@ -34,6 +44,25 @@ import {
 const require = createRequire(import.meta.url);
 const { Server, SocketIO } = require('boardgame.io/server') as typeof import('boardgame.io/server');
 const koaBody = require('koa-body') as typeof import('koa-body');
+const { peekDeckReservation } = require('../api/deckService.cjs') as {
+  peekDeckReservation: (pool: Pool, input: { reservationId: string; userId: string }) => Promise<DeckReservationResult>;
+};
+
+interface DeckReservationResult {
+  ok: boolean;
+  status?: number;
+  error?: string;
+  body?: {
+    reservationId: string;
+    userId: string;
+    deckId: string;
+    deckVersion: string;
+    rulesVersion: string;
+    cardIds: string[];
+    matchId?: string | null;
+    playerId?: '0' | '1' | null;
+  };
+}
 
 // 擴充 Koa context 以涵蓋 koa-body（request.body）與 @koa/router（params）注入的屬性。
 interface KoaContext extends ParameterizedContext {
@@ -145,19 +174,9 @@ const configuredOrigins =
     .map((origin) => origin.trim())
     .filter(Boolean) ?? [];
 
-// /metrics 端點 bearer token 認證：未設定 METRICS_TOKEN 時 warn 但允許存取（開發模式）；
-// 已設定則檢查 Authorization: Bearer <token>，不符回 401。
 const METRICS_TOKEN = process.env.METRICS_TOKEN ?? '';
-let metricsTokenWarned = false;
 function checkMetricsAuth(authorization: string | undefined): boolean {
-  if (!METRICS_TOKEN) {
-    if (!metricsTokenWarned && process.env.NODE_ENV === 'production') {
-      logger.warn('METRICS_TOKEN not set - /metrics accessible without auth');
-      metricsTokenWarned = true;
-    }
-    return true;
-  }
-  return authorization === `Bearer ${METRICS_TOKEN}`;
+  return metricsRequestAuthorized(authorization, METRICS_TOKEN);
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -168,6 +187,10 @@ const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 // 復用服務器既有 Redis 時用 REDIS_DB 切到獨立 DB index（0-15）避免與其他服務的 key 衝突。
 // duplicate() 會繼承此選項，因此 redisAdapterSubClient / redisPubSubSubClient 也用同一 DB。
 const REDIS_DB = Number(process.env.REDIS_DB) || 0;
+const AUTH_REVOCATION_TIMEOUT_MS = Math.min(
+  5_000,
+  Math.max(100, Number(process.env.AUTH_REVOCATION_TIMEOUT_MS) || 750),
+);
 
 // === 水平擴展基礎建設 ===
 // boardgame.io 多實例需要兩個獨立的跨節點層：
@@ -177,8 +200,8 @@ const REDIS_DB = Number(process.env.REDIS_DB) || 0;
 // DB 改用 PostgresAdapter（自實作 StorageAPI.Async），解決 FlatFile 每次 move 寫整個 state 到磁碟的 I/O 瓶頸。
 
 // 共用 publish 連線（publish 不會進入 subscribe 模式，可安全共用）。
-const redisPubClient = new Redis(REDIS_URL, { db: REDIS_DB });
-configurePlatformJwtRevocationStore(redisPubClient);
+const redisPubClient = new Redis(REDIS_URL, { db: REDIS_DB, commandTimeout: AUTH_REVOCATION_TIMEOUT_MS });
+configurePlatformJwtRevocationStore(redisPubClient, { timeoutMs: AUTH_REVOCATION_TIMEOUT_MS });
 // Socket.IO adapter 專屬 subscribe 連線。
 const redisAdapterSubClient = redisPubClient.duplicate();
 // boardgame.io PubSub 專屬 subscribe 連線。
@@ -227,7 +250,10 @@ const cardPool = new Pool({
   max: 5,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
+  query_timeout: Math.min(5_000, Math.max(100, Number(process.env.GAME_AUTH_DB_QUERY_TIMEOUT_MS) || 1_500)),
+  statement_timeout: Math.min(5_000, Math.max(100, Number(process.env.GAME_AUTH_DB_QUERY_TIMEOUT_MS) || 1_500)),
 });
+configurePlatformJwtAccountStore(createPostgresPlatformJwtAccountStore(cardPool), { required: true });
 
 const CARD_SELECT_SQL = `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
                     attack_night, attack_day, power_cost, send_to_power, effect,
@@ -351,6 +377,55 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   await next();
 });
 
+// Online setup data is an untrusted transport envelope. Resolve custom decks
+// from a short-lived PostgreSQL reservation bound to the caller's JWT, then
+// strip the opaque token and any client-supplied opponent deck before the
+// boardgame router creates the match.
+const parseGameCreateBody = koaBody({ jsonLimit: '64kb' });
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  if (ctx.path !== '/games/zutomayo-card/create' || ctx.method !== 'POST') {
+    await next();
+    return;
+  }
+  await parseGameCreateBody(ctx, async () => undefined);
+  const body = (ctx.request.body ?? {}) as { setupData?: unknown; numPlayers?: unknown; unlisted?: unknown };
+  const setup = (isRecord(body.setupData) ? body.setupData : {}) as ZutomayoSetupData;
+  const requestUserId = await authenticatedRequestUserId(ctx);
+  const reservationId = typeof setup.deck0ReservationId === 'string' ? setup.deck0ReservationId : '';
+  if (Array.isArray(setup.deck0Ids) && !reservationId) {
+    ctx.throw(403, 'Custom online decks require a server reservation');
+  }
+  let reservation: DeckReservationResult['body'] | undefined;
+  if (reservationId) {
+    if (!requestUserId) ctx.throw(401, 'Authenticated deck reservation required');
+    const result = await peekDeckReservation(cardPool, { reservationId, userId: requestUserId });
+    if (!result.ok || !result.body) ctx.throw(result.status || 409, result.error || 'Invalid deck reservation');
+    if (result.body.rulesVersion !== APP_VERSION_INFO.rulesVersion) {
+      ctx.throw(409, 'Deck rules version does not match server');
+    }
+    reservation = result.body;
+  }
+  const nextSetup: ZutomayoSetupData = {
+    ...setup,
+    rulesVersion: APP_VERSION_INFO.rulesVersion,
+    ...(reservation
+      ? {
+          deck0Ids: reservation.cardIds,
+          deck0Version: reservation.deckVersion,
+        }
+      : {}),
+    deck0ReservationId: undefined,
+    // The host never supplies or chooses the guest's deck. The guest binds
+    // their own reservation during /join after authenticating its JWT.
+    deck1Ids: undefined,
+    deck1Name: undefined,
+    deck1ReservationId: undefined,
+  };
+  ctx.request.body = { ...body, setupData: nextSetup };
+  replayJsonRequestBody(ctx, ctx.request.body);
+  await next();
+});
+
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/metrics' && ctx.method === 'GET') {
     if (!checkMetricsAuth(ctx.request.headers.authorization)) {
@@ -363,27 +438,41 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   await next();
 });
 
+async function checkGameDependencies(): Promise<{ ok: boolean; checks: Record<string, string> }> {
+  const checks: Record<string, string> = {};
+  let allOk = true;
+  try {
+    await cardPool.query('SELECT 1');
+    checks.postgres = 'up';
+  } catch {
+    checks.postgres = 'down';
+    allOk = false;
+  }
+  try {
+    await redisPubClient.ping();
+    checks.redis = 'up';
+  } catch {
+    checks.redis = 'down';
+    allOk = false;
+  }
+  return { ok: allOk, checks };
+}
+
+const gameReadiness = createServiceReadiness(checkGameDependencies);
+
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/health') {
-    const checks: Record<string, string> = {};
-    let allOk = true;
-    try {
-      await cardPool.query('SELECT 1');
-      checks.postgres = 'up';
-    } catch {
-      checks.postgres = 'down';
-      allOk = false;
-    }
-    try {
-      await redisPubClient.ping();
-      checks.redis = 'up';
-    } catch {
-      checks.redis = 'down';
-      allOk = false;
-    }
-    ctx.status = allOk ? 200 : 503;
+    const result = await checkGameDependencies();
+    ctx.status = result.ok ? 200 : 503;
     ctx.set('Cache-Control', 'no-store');
-    ctx.body = { status: allOk ? 'ok' : 'degraded', checks };
+    ctx.body = { status: result.ok ? 'ok' : 'degraded', checks: result.checks };
+    return;
+  }
+  if (ctx.path === '/ready') {
+    const result = await gameReadiness.check();
+    ctx.status = result.ok ? 200 : 503;
+    ctx.set('Cache-Control', 'no-store');
+    ctx.body = result;
     return;
   }
   await next();
@@ -470,6 +559,7 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
     playerName?: unknown;
     data?: unknown;
     clientVersion?: unknown;
+    deckReservationId?: unknown;
   };
   const requestedPlayerID = body.playerID;
   const playerName = body.playerName;
@@ -478,6 +568,20 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
   );
   const requestUserId = await authenticatedRequestUserId(ctx);
   const suppliedUserId = isRecord(body.data) ? body.data.userId : undefined;
+  const deckReservationId =
+    typeof body.deckReservationId === 'string'
+      ? body.deckReservationId
+      : isRecord(body.data) && typeof body.data.deckReservationId === 'string'
+        ? body.data.deckReservationId
+        : '';
+  if (deckReservationId) {
+    if (!requestUserId) ctx.throw(401, 'Authenticated deck reservation required');
+    const result = await peekDeckReservation(cardPool, { reservationId: deckReservationId, userId: requestUserId });
+    if (!result.ok || !result.body) ctx.throw(result.status || 409, result.error || 'Invalid deck reservation');
+    if (result.body.rulesVersion !== APP_VERSION_INFO.rulesVersion) {
+      ctx.throw(409, 'Deck rules version does not match server');
+    }
+  }
   const normalizedPlayerName =
     typeof playerName === 'string' ? playerName.trim().replace(/\s+/g, ' ').slice(0, 40) : '';
 
@@ -530,6 +634,7 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
       userId: seatUserId,
       rankedEligible: Boolean(requestUserId),
       credentials: playerCredentials,
+      ...(deckReservationId ? { deckReservationId, deckRulesVersion: APP_VERSION_INFO.rulesVersion } : {}),
     });
   } catch (error) {
     throwSeatReservationError(ctx, error);
@@ -796,29 +901,96 @@ async function cleanupStaleMatches() {
   }
 }
 
-setInterval(cleanupStaleMatches, CLEANUP_INTERVAL_MS);
+const cleanupTimer = setInterval(cleanupStaleMatches, CLEANUP_INTERVAL_MS);
 logger.info(
   { ttlMin: STALE_MATCH_TTL_MS / 60000, intervalMin: CLEANUP_INTERVAL_MS / 60000 },
   'stale match cleanup configured',
 );
 
-// Graceful shutdown：關閉 PG pool 與 Redis 連線，避免重啟時連線洩漏。
+type RunningServers = Awaited<ReturnType<typeof server.run>>;
+type SocketLike = {
+  id: string;
+  handshake: { address: string };
+  on: (event: string, cb: (err?: Error) => void) => void;
+  disconnect: (close?: boolean) => void;
+};
+type SocketNamespaceLike = {
+  on: (event: string, cb: (socket: SocketLike) => void) => void;
+  emit: (event: string, payload: unknown) => void;
+  disconnectSockets: (close?: boolean) => void;
+};
+type SocketIoLike = {
+  of: (namespace: string) => SocketNamespaceLike;
+  close: () => Promise<void>;
+};
+
+const configuredDrainGraceMs = Number(process.env.GAME_DRAIN_GRACE_MS);
+const GAME_DRAIN_GRACE_MS = Number.isFinite(configuredDrainGraceMs) ? Math.max(0, configuredDrainGraceMs) : 5_000;
+const configuredShutdownTimeoutMs = Number(process.env.SHUTDOWN_TIMEOUT_MS);
+const SHUTDOWN_TIMEOUT_MS = Number.isFinite(configuredShutdownTimeoutMs)
+  ? Math.max(GAME_DRAIN_GRACE_MS + 1_000, configuredShutdownTimeoutMs)
+  : 30_000;
+let runningServers: RunningServers | undefined;
+let shutdownPromise: Promise<void> | undefined;
+
+function socketIoRuntime(): SocketIoLike | undefined {
+  return (server.app.context as unknown as { io?: SocketIoLike }).io;
+}
+
+async function performShutdown(signal: string): Promise<void> {
+  gameReadiness.beginDrain();
+  clearInterval(cleanupTimer);
+  logger.info({ signal, drainGraceMs: GAME_DRAIN_GRACE_MS }, 'shutdown received, draining traffic');
+
+  const io = socketIoRuntime();
+  const namespace = io?.of(`/${ZutomayoOnlineCard.name}`);
+  await drainNetwork({
+    httpServer: runningServers?.appServer,
+    socketNamespace: namespace,
+    socketServer: io,
+    graceMs: GAME_DRAIN_GRACE_MS,
+    onSocketCloseError: (err) => logger.warn({ err }, 'socket.io close reported an error during drain'),
+  });
+
+  await matchResultOutboxWorker?.runOnce();
+  await matchResultOutboxWorker?.stop();
+  await Promise.all([
+    db.close(),
+    cardPool.end(),
+    redisPubSub.close(),
+    redisPubClient.quit(),
+    redisAdapterSubClient.quit(),
+    Sentry.close(2_000),
+  ]);
+}
+
 async function shutdown(signal: string): Promise<void> {
-  logger.info({ signal }, 'shutdown received, closing connections');
-  try {
-    await matchResultOutboxWorker?.stop();
-    await Promise.all([
-      db.close(),
-      cardPool.end(),
-      redisPubSub.close(),
-      redisPubClient.quit(),
-      redisAdapterSubClient.quit(),
-      Sentry.close(2000),
-    ]);
-  } catch (err) {
-    logger.error({ err }, 'shutdown error');
-  }
-  process.exit(0);
+  if (shutdownPromise) return shutdownPromise;
+  shutdownPromise = (async () => {
+    let timedOut = false;
+    try {
+      await Promise.race([
+        performShutdown(signal),
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(() => {
+            timedOut = true;
+            resolve();
+          }, SHUTDOWN_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+    } catch (err) {
+      logger.error({ err }, 'shutdown error');
+      process.exit(1);
+    }
+    if (timedOut) {
+      logger.error({ timeoutMs: SHUTDOWN_TIMEOUT_MS }, 'shutdown deadline exceeded');
+      runningServers?.appServer.closeAllConnections?.();
+      process.exit(1);
+    }
+    process.exit(0);
+  })();
+  return shutdownPromise;
 }
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
@@ -843,7 +1015,7 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  server.run(PORT, () => {
+  runningServers = await server.run(PORT, () => {
     logger.info({ port: PORT }, 'Zutomayo Card server running');
 
     matchResultOutboxWorker = startMatchResultOutboxWorker({
@@ -859,22 +1031,12 @@ async function bootstrap(): Promise<void> {
     // Best-effort Socket.IO per-IP connection limiting to mitigate connection floods.
     // boardgame.io transport structure is not part of the public API; access defensively.
     try {
-      type SocketLike = {
-        id: string;
-        handshake: { address: string };
-        on: (event: string, cb: (err?: Error) => void) => void;
-        disconnect: (close?: boolean) => void;
-      };
-      const transport = server.transport as unknown as {
-        io?: {
-          on: (event: string, cb: (socket: SocketLike) => void) => void;
-        };
-      };
-      const io = transport.io;
-      if (io) {
+      const io = socketIoRuntime();
+      const namespace = io?.of(`/${ZutomayoOnlineCard.name}`);
+      if (namespace) {
         const MAX_CONN_PER_IP = Number(process.env.MAX_CONN_PER_IP) || 10;
         const connectionsPerIp = new Map<string, number>();
-        io.on('connection', (socket: SocketLike) => {
+        namespace.on('connection', (socket: SocketLike) => {
           const ip = socket.handshake.address;
           const current = connectionsPerIp.get(ip) ?? 0;
           if (current >= MAX_CONN_PER_IP) {
@@ -900,7 +1062,7 @@ async function bootstrap(): Promise<void> {
         });
         logger.info({ maxPerIp: MAX_CONN_PER_IP }, 'socket.io per-IP connection limiter attached');
       } else {
-        logger.warn('socket.io instance not accessible on transport; connection limiter skipped');
+        logger.warn('socket.io namespace not accessible; connection limiter skipped');
       }
     } catch (err) {
       logger.warn({ err }, 'failed to attach socket.io connection limiter');

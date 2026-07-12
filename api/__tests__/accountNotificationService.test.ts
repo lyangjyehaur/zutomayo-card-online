@@ -12,9 +12,9 @@ describe('account notification service', () => {
     expect(
       createActionUrl({ publicBaseUrl: 'https://game.example/', actionType: 'verify_email', token: 'a+b/c' }),
     ).toBe('https://game.example/verify-email?token=a%2Bb%2Fc');
-    expect(createActionUrl({ publicBaseUrl: 'https://game.example', actionType: 'reset_password', token: 'reset' })).toBe(
-      'https://game.example/reset-password?token=reset',
-    );
+    expect(
+      createActionUrl({ publicBaseUrl: 'https://game.example', actionType: 'reset_password', token: 'reset' }),
+    ).toBe('https://game.example/reset-password?token=reset');
   });
 
   it('fails closed when delivery is not configured', async () => {

@@ -21,6 +21,7 @@ import {
   getChronosTime,
   getPriorityPlayer,
   endGame,
+  surrenderGame,
   emptyModifiers,
   TURN_TIMER_MS,
 } from '../GameLogic';
@@ -547,6 +548,33 @@ describe('endGame', () => {
     endGame(G, null, 'Both players lost');
     expect(G.step).toBe('gameOver');
     expect(G.winner).toBeNull();
+  });
+});
+
+describe('surrenderGame', () => {
+  it('ends the match in favor of the opponent and records the authoritative reason', () => {
+    const G = setupGame();
+
+    expect(surrenderGame(G, 1)).toBe(true);
+
+    expect(G.step).toBe('gameOver');
+    expect(G.winner).toBe(0);
+    expect(G.gameoverReason).toBe('Player 1 surrendered.');
+    expect(G.actionLog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: 'surrender', player: 1, payload: { winner: 0 } }),
+        expect.objectContaining({ action: 'gameOver', payload: expect.objectContaining({ winner: 0 }) }),
+      ]),
+    );
+  });
+
+  it('rejects a surrender after the match has already ended', () => {
+    const G = setupGame();
+    endGame(G, 0, 'done');
+    const actionCount = G.actionLog.length;
+
+    expect(surrenderGame(G, 1)).toBe(false);
+    expect(G.actionLog).toHaveLength(actionCount);
   });
 });
 

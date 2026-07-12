@@ -2,14 +2,8 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const {
-  authenticateAdmin,
-  hasAdminPermission,
-  revokeAdminSession,
-  totpCode,
-  verifyAdminSession,
-  verifyTotp,
-} = require('../adminAuthService.cjs') as Record<string, (...args: unknown[]) => unknown>;
+const { authenticateAdmin, hasAdminPermission, revokeAdminSession, totpCode, verifyAdminSession, verifyTotp } =
+  require('../adminAuthService.cjs') as Record<string, (...args: unknown[]) => unknown>;
 
 function createPool(handler: (sql: string, params?: unknown[]) => { rows: Record<string, unknown>[] }) {
   return { query: vi.fn(async (sql: string, params?: unknown[]) => handler(sql, params)) };
@@ -18,9 +12,15 @@ function createPool(handler: (sql: string, params?: unknown[]) => { rows: Record
 describe('admin auth service', () => {
   it('enforces role permissions', () => {
     expect(hasAdminPermission('viewer', 'users:read')).toBe(true);
+    expect(hasAdminPermission('viewer', 'seasons:read')).toBe(true);
+    expect(hasAdminPermission('viewer', 'seasons:write')).toBe(false);
     expect(hasAdminPermission('viewer', 'elo:write')).toBe(false);
     expect(hasAdminPermission('moderator', 'chat:moderate')).toBe(true);
+    expect(hasAdminPermission('operator', 'seasons:write')).toBe(true);
+    expect(hasAdminPermission('operator', 'legal-holds:read')).toBe(true);
+    expect(hasAdminPermission('operator', 'legal-holds:write')).toBe(false);
     expect(hasAdminPermission('admin', 'admins:manage')).toBe(true);
+    expect(hasAdminPermission('admin', 'legal-holds:write')).toBe(true);
   });
 
   it('generates and verifies RFC-compatible TOTP windows', () => {
@@ -105,9 +105,7 @@ describe('admin auth service', () => {
 
   it('checks the persisted session and permission on every admin request', async () => {
     const pool = createPool((sql) =>
-      sql.includes('FROM admin_sessions')
-        ? { rows: [{ admin_user_id: 'admin_1', role: 'moderator' }] }
-        : { rows: [] },
+      sql.includes('FROM admin_sessions') ? { rows: [{ admin_user_id: 'admin_1', role: 'moderator' }] } : { rows: [] },
     );
     await expect(
       verifyAdminSession({
@@ -121,6 +119,18 @@ describe('admin auth service', () => {
         pool,
         payload: { adminUserId: 'admin_1', role: 'moderator', jti: 'jti-1' },
         permission: 'cards:write',
+      }),
+    ).resolves.toBeNull();
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('u.role = $3'), ['jti-1', 'admin_1', 'moderator']);
+  });
+
+  it('invalidates a session when the administrator role changes', async () => {
+    const pool = createPool((sql) => (sql.includes('FROM admin_sessions') ? { rows: [] } : { rows: [] }));
+    await expect(
+      verifyAdminSession({
+        pool,
+        payload: { adminUserId: 'admin_1', role: 'operator', jti: 'jti-1' },
+        permission: 'seasons:write',
       }),
     ).resolves.toBeNull();
   });

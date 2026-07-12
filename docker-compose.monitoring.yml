@@ -12,7 +12,7 @@
 
 services:
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.27.0
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
 
   blackbox-exporter:
-    image: prom/blackbox-exporter:latest
+    image: prom/blackbox-exporter:v0.25.0
     command: ['--config.file=/etc/blackbox/blackbox.yml']
     volumes:
       - ./observability/prometheus/blackbox.yml:/etc/blackbox/blackbox.yml:ro
@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.54.1
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./observability/grafana/alerting/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
@@ -47,7 +47,7 @@ services:
       - source: metrics_token
         target: /etc/prometheus/metrics_token
     ports:
-      - '9090:9090'
+      - '127.0.0.1:9090:9090'
     networks:
       - default
     restart: unless-stopped
@@ -56,16 +56,16 @@ services:
       - blackbox-exporter
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.2.0
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - ./observability/grafana/alerting/contact-points.yml:/etc/grafana/provisioning/alerting/contact-points.yml:ro
       - grafana-data:/var/lib/grafana
     ports:
-      - '3003:3000'
+      - '127.0.0.1:3003:3000'
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?Set GRAFANA_PASSWORD in your environment or .env file}
       - GF_USERS_ALLOW_SIGN_UP=false
       - SLACK_ALERT_WEBHOOK=${SLACK_ALERT_WEBHOOK:-}
       - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-}
@@ -76,9 +76,9 @@ services:
     restart: unless-stopped
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.15.0
     environment:
-      - DATA_SOURCE_NAME=postgresql://${PG_USER:-zutomayo}:${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}@postgres:5432/${PG_DATABASE:-zutomayo}?sslmode=disable
+      - DATA_SOURCE_NAME=postgresql://${PG_MONITOR_USER:?Set PG_MONITOR_USER in your environment or .env file}:${PG_MONITOR_PASSWORD:?Set PG_MONITOR_PASSWORD in your environment or .env file}@${PG_MONITOR_HOST:?Set PG_MONITOR_HOST in your environment or .env file}:${PG_MONITOR_PORT:-5432}/${PG_MONITOR_DATABASE:-zutomayo}?sslmode=${PG_MONITOR_SSLMODE:?Set PG_MONITOR_SSLMODE explicitly (verify-full in production)}
     ports:
       - '127.0.0.1:9187:9187'
     networks:
@@ -86,7 +86,7 @@ services:
     restart: unless-stopped
 
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.62.0
     command:
       - '--redis.addr=redis:6379'
       - '--redis.password=${REDIS_PASSWORD:-}'
@@ -96,8 +96,22 @@ services:
       - default
     restart: unless-stopped
 
+  backup-metrics-exporter:
+    image: prom/node-exporter:v1.8.2
+    command:
+      - '--collector.disable-defaults'
+      - '--collector.textfile'
+      - '--collector.textfile.directory=/var/lib/node_exporter/textfile_collector'
+    volumes:
+      - ${PG_BACKUP_METRICS_DIR:-/var/lib/node_exporter/textfile_collector}:/var/lib/node_exporter/textfile_collector:ro
+    ports:
+      - '127.0.0.1:9100:9100'
+    networks:
+      - default
+    restart: unless-stopped
+
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -117,9 +131,9 @@ volumes:
 
 configs:
   metrics_token:
-    content: '${METRICS_TOKEN:-}'
+    content: '${METRICS_TOKEN:?Set a strong METRICS_TOKEN for Prometheus scraping}'
   alertmanager_slack_webhook:
-    content: '${SLACK_ALERT_WEBHOOK:-http://127.0.0.1:9093}'
+    content: '${SLACK_ALERT_WEBHOOK:?Set SLACK_ALERT_WEBHOOK for alert delivery}'
 
 networks:
   default:

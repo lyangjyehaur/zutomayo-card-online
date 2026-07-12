@@ -362,6 +362,9 @@ function formatLogEntry(
   if (a === 'timeoutSkip' || a === 'timeoutAdvance') {
     return { segments: [seg(`${p} ${t('board.timer')} ⏱`)], tone: 'info' };
   }
+  if (a === 'surrender') {
+    return { segments: [seg(`${p} ${t('game.surrendered')}`)], tone: 'battle' };
+  }
   if (a === 'chooseEffectOrder') {
     return { segments: [seg(`${p} ${t('board.chooseEffect')}`)], tone: 'effect' };
   }
@@ -1087,6 +1090,7 @@ function translateGameOverReason(reason: string | null): string {
   if (reason.includes('not enough cards')) return t('board.reasonDeckEmpty');
   if (reason.includes('effect attempted to draw')) return t('board.reasonEffectDraw');
   if (reason.includes('0 HP')) return t('board.reasonHpZero');
+  if (reason.includes('surrendered')) return t('board.reasonSurrender');
   return t('board.reason');
 }
 
@@ -1185,7 +1189,11 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
       );
 
   return (
-    <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-surface-canvas px-4 font-sans text-content-primary">
+    <div
+      className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-surface-canvas px-4 font-sans text-content-primary"
+      data-game-step="gameOver"
+      data-result-outcome={outcome}
+    >
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div
           className={`absolute left-1/2 top-1/2 h-[90vh] w-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[160px] ${win ? 'bg-accent-primary/15' : 'bg-accent-action/15'}`}
@@ -2459,6 +2467,11 @@ export function Board(props: Props) {
   const gameOverFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 暫停/離開確認對話框
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const canSurrender =
+    props.useServerTimer === true &&
+    props.spectator !== true &&
+    props.isConnected === true &&
+    typeof props.moves.surrender === 'function';
 
   useEffect(
     () => () => {
@@ -2585,10 +2598,22 @@ export function Board(props: Props) {
 
   const handleExitGame = () => {
     setShowExitConfirm(false);
+    if (canSurrender) {
+      props.moves.surrender();
+      return;
+    }
+    if (props.onExitRequest) {
+      props.onExitRequest();
+      return;
+    }
     navigate('/');
   };
 
   const requestExit = () => {
+    if (canSurrender) {
+      setShowExitConfirm(true);
+      return;
+    }
     if (props.onExitRequest) {
       props.onExitRequest();
       return;
@@ -2618,12 +2643,12 @@ export function Board(props: Props) {
       {/* 離開確認對話框 */}
       <AppDrawer
         open={showExitConfirm}
-        title={t('game.confirmExit')}
-        description={t('game.exitWarning')}
+        title={canSurrender ? t('game.confirmSurrender') : t('game.confirmExit')}
+        description={canSurrender ? t('game.surrenderWarning') : t('game.exitWarning')}
         kicker="Warning"
         actions={[
           {
-            label: t('game.exitGame'),
+            label: canSurrender ? t('game.surrender') : t('game.exitGame'),
             onClick: handleExitGame,
             tone: 'danger',
             eventName: 'game-exit-confirm',

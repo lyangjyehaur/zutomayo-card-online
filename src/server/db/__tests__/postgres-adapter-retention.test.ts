@@ -38,10 +38,9 @@ describe('PostgresAdapter result retention', () => {
     await adapter.wipe('match_pending');
 
     expect(transactionClient.query).toHaveBeenCalledWith(expect.stringContaining('FOR UPDATE'), ['match_pending']);
-    expect(transactionClient.query).not.toHaveBeenCalledWith(
-      'DELETE FROM bjg_matches WHERE match_id = $1',
-      ['match_pending'],
-    );
+    expect(transactionClient.query).not.toHaveBeenCalledWith('DELETE FROM bjg_matches WHERE match_id = $1', [
+      'match_pending',
+    ]);
     expect(transactionClient.query).toHaveBeenLastCalledWith('COMMIT');
   });
 

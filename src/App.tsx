@@ -3,7 +3,7 @@ import { Menu, X } from 'lucide-react';
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { identifyAnalytics, trackPageView } from './analytics';
 import { formatAnonymousDisplayName } from './anonymousIdentity';
-import { getDecks, getProfile, isLoggedIn, type DeckResponse } from './api/client';
+import { getDecks, getProfile, isLoggedIn, reserveDeck, type DeckResponse } from './api/client';
 import { ensureCompatibleAppVersion } from './clientVersion';
 import { NetworkStatusNotifier } from './components/NetworkStatusNotifier';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
@@ -13,7 +13,13 @@ import { Button, IconButton } from './ui';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
-import { LobbyPage, aiOpponentDeckName, onlineDeckName, selectedDeckName } from './pages/LobbyPage';
+import {
+  LobbyPage,
+  aiOpponentDeckName,
+  onlineDeckName,
+  selectedDeckName,
+  serverDeckIdFromOption,
+} from './pages/LobbyPage';
 import { t, translate, useLocale, type TranslationKey } from './i18n';
 import {
   clearStoredOnlineSession,
@@ -131,6 +137,7 @@ async function joinMatch(
   matchID: string,
   playerID: '0' | '1',
   requestedPlayerName?: string,
+  deckReservationId?: string,
 ): Promise<{
   playerCredentials: string;
   platformSeatToken?: string;
@@ -152,6 +159,7 @@ async function joinMatch(
       playerName,
       data: { ...(account?.data ?? {}), clientVersion: APP_VERSION_INFO },
       clientVersion: APP_VERSION_INFO,
+      ...(deckReservationId ? { deckReservationId } : {}),
     }),
   });
   if (!response.ok) {
@@ -525,11 +533,32 @@ function RouterShell() {
   const startOnline = async (
     existingID?: string,
     playerName?: string,
-    options: { navigate?: boolean; playerDeckName?: string; opponentDeckName?: string } = {},
+    options: {
+      navigate?: boolean;
+      playerDeckName?: string;
+      opponentDeckName?: string;
+      playerDeckReservationId?: string;
+    } = {},
   ): Promise<OnlineSession> => {
+    const selectedPlayerDeck = options.playerDeckName ?? deck0Name;
+    const selectedServerDeckId = serverDeckIdFromOption(selectedPlayerDeck);
+    const playerDeckReservation = options.playerDeckReservationId
+      ? undefined
+      : selectedServerDeckId && isLoggedIn()
+        ? await reserveDeck(selectedServerDeckId, APP_VERSION_INFO.rulesVersion)
+        : undefined;
+    const effectiveDeckReservationId = options.playerDeckReservationId || playerDeckReservation?.reservationId;
     const setupData = {
       ...onlineDeckName(0, options.playerDeckName ?? deck0Name, serverDecks),
-      ...onlineDeckName(1, options.opponentDeckName ?? deck1Name, serverDecks),
+      ...(effectiveDeckReservationId
+        ? {
+            deck0Ids: undefined,
+            deck0ReservationId: effectiveDeckReservationId,
+            ...(playerDeckReservation
+              ? { deck0Version: playerDeckReservation.deckVersion, rulesVersion: playerDeckReservation.rulesVersion }
+              : {}),
+          }
+        : {}),
     };
     const matchID = existingID || (await createMatch(setupData));
     const playerID: '0' | '1' = existingID ? '1' : '0';
@@ -537,6 +566,9 @@ function RouterShell() {
       matchID,
       playerID,
       playerName,
+      playerID === '1'
+        ? options.playerDeckReservationId || playerDeckReservation?.reservationId
+        : effectiveDeckReservationId,
     );
     const session = { matchID, playerID, playerCredentials, platformSeatToken, platformUserId, platformDisplayName };
     setOnlineSession(session);

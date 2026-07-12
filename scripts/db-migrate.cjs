@@ -13,11 +13,14 @@
 'use strict';
 
 const { resolve } = require('node:path');
+const { Pool } = require('pg');
+const { recordMigrationChecksums } = require('./migration-checksums.cjs');
+const { enforceRuntimeRolePrivileges } = require('./postgres-role-gate.cjs');
 
 async function main() {
   const [, , subCommand, ...rest] = process.argv;
 
-  if (!subCommand) {
+  if (!['up', 'down', 'create'].includes(subCommand)) {
     console.error('Usage: node scripts/db-migrate.cjs <up|down|create> [name]');
     process.exit(1);
   }
@@ -47,7 +50,7 @@ async function main() {
     return;
   }
 
-  const direction = subCommand === 'down' ? 'down' : 'up';
+  const direction = subCommand;
 
   await runner({
     databaseUrl,
@@ -58,6 +61,16 @@ async function main() {
     count: direction === 'down' ? 1 : Infinity,
     log: (msg) => console.log(msg),
   });
+  const checksumPool = new Pool(typeof databaseUrl === 'string' ? { connectionString: databaseUrl } : databaseUrl);
+  try {
+    await recordMigrationChecksums(checksumPool, migrationsDir);
+    if (process.env.REQUIRE_APP_ROLE_GATE === 'true') {
+      await enforceRuntimeRolePrivileges(checksumPool, { appUser: process.env.PG_APP_USER });
+      console.log(`Runtime role gate passed for ${process.env.PG_APP_USER}`);
+    }
+  } finally {
+    await checksumPool.end();
+  }
 }
 
 main().catch((err) => {

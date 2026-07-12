@@ -12,6 +12,35 @@ import { defineConfig, devices } from '@playwright/test';
  *   需要 backend 的測試以 `@requires-backend` tag 標記， 可用 grep 過濾。
  */
 const isCI = !!process.env.CI;
+const fullBrowserMatrix = process.env.E2E_BROWSER_MATRIX === 'full';
+
+const projects = [
+  {
+    name: 'chromium',
+    use: { ...devices['Desktop Chrome'] },
+  },
+];
+
+if (fullBrowserMatrix) {
+  projects.push(
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
+      name: 'android',
+      use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'iphone',
+      use: { ...devices['iPhone 13'] },
+    },
+  );
+}
 
 export default defineConfig({
   testDir: './e2e',
@@ -32,10 +61,5 @@ export default defineConfig({
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
   },
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-  ],
+  projects,
 });

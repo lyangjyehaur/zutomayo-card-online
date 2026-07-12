@@ -1223,8 +1223,13 @@ describe('chat service', () => {
     });
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining("moderation_status IN ('visible', 'pending_review')"),
-      ['match:bgio-match-1', 200],
+      ['match:bgio-match-1', 200, 'u_1'],
     );
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM user_blocks b'), [
+      'match:bgio-match-1',
+      200,
+      'u_1',
+    ]);
   });
 
   it('marks a conversation read for unread counters', async () => {
@@ -1503,6 +1508,10 @@ describe('chat service', () => {
       false,
       false,
     ]);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM user_blocks blocked_pair'),
+      expect.any(Array),
+    );
   });
 
   it('stores ready chat translations through a provider hook', async () => {
@@ -1516,6 +1525,8 @@ describe('chat service', () => {
       provider: 'test-llm',
       model: 'test-model',
     }));
+
+    expect(pool.query).not.toHaveBeenCalled();
 
     await expect(
       requestChatTranslation({
@@ -1544,6 +1555,7 @@ describe('chat service', () => {
         },
       },
     });
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM user_blocks b'), ['chat_msg_1', 'u_2']);
     expect(translateText).toHaveBeenCalledWith(
       expect.objectContaining({ text: 'hello', targetLanguage: 'en', messageId: 'chat_msg_1' }),
     );

@@ -1,0 +1,122 @@
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { runSyntheticProbe } from '../synthetic-probe.mjs';
+
+const scripts = [
+  'pg-backup.sh',
+  'pg-base-backup.sh',
+  'pg-wal-archive.sh',
+  'pg-wal-restore.sh',
+  'pg-restore-drill.sh',
+  'compose-chaos-drill.sh',
+];
+
+describe('operational shell scripts', () => {
+  it.each(scripts)('%s has valid Bash syntax', (script) => {
+    expect(() => execFileSync('bash', ['-n', resolve('scripts', script)], { timeout: 5_000 })).not.toThrow();
+  });
+
+  it('rejects unsafe WAL archive names before invoking external upload tools', () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'zutomayo-wal-test-'));
+    const walPath = resolve(directory, 'wal');
+    writeFileSync(walPath, 'test');
+    const result = spawnSync('bash', [resolve('scripts/pg-wal-archive.sh'), walPath, '../escape'], {
+      encoding: 'utf8',
+      env: { ...process.env, PG_BACKUP_METRICS_DIR: directory },
+      timeout: 5_000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('invalid WAL file name');
+  });
+
+  it('requires a pinned image before a restore drill can start Docker', () => {
+    const result = spawnSync('bash', [resolve('scripts/pg-restore-drill.sh'), '/tmp/example.dump.age'], {
+      encoding: 'utf8',
+      env: { ...process.env, PG_RESTORE_DRILL_IMAGE: '' },
+      timeout: 5_000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('explicitly pinned @sha256 image reference');
+  });
+
+  it('rejects an unknown migration subcommand instead of defaulting to up', () => {
+    const result = spawnSync(process.execPath, [resolve('scripts/db-migrate.cjs'), 'apply'], {
+      encoding: 'utf8',
+      timeout: 5_000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('<up|down|create>');
+  });
+
+  it('fails closed when the production synthetic probe has no credentials', () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'zutomayo-synthetic-config-test-'));
+    const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'production' };
+    delete env.SYNTHETIC_EMAIL;
+    delete env.SYNTHETIC_PASSWORD;
+    delete env.SYNTHETIC_SESSION_COOKIE;
+    env.SYNTHETIC_METRICS_FILE = resolve(directory, 'synthetic.prom');
+    const result = spawnSync(process.execPath, [resolve('scripts/synthetic-probe.mjs')], {
+      encoding: 'utf8',
+      env,
+      timeout: 5_000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('synthetic production probe requires');
+  });
+});
+
+describe('synthetic probe script', () => {
+  it('has valid Node syntax', () => {
+    expect(() => execFileSync(process.execPath, ['--check', resolve('scripts/synthetic-probe.mjs')])).not.toThrow();
+  });
+
+  it('reports configuration failures without erasing the previous success timestamp', async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'zutomayo-synthetic-metrics-test-'));
+    const metricsFile = resolve(directory, 'synthetic.prom');
+    writeFileSync(metricsFile, 'zutomayo_synthetic_probe_last_success_unixtime_seconds 1700000000\n');
+
+    await expect(
+      runSyntheticProbe({
+        env: {
+          NODE_ENV: 'production',
+          SYNTHETIC_METRICS_FILE: metricsFile,
+        },
+        clock: { now: () => 1_800_000_000_000 },
+      }),
+    ).rejects.toThrow('synthetic production probe requires');
+
+    const metrics = readFileSync(metricsFile, 'utf8');
+    expect(metrics).toContain('zutomayo_synthetic_probe_success 0');
+    expect(metrics).toContain('zutomayo_synthetic_probe_last_run_unixtime_seconds 1800000000');
+    expect(metrics).toContain('zutomayo_synthetic_probe_last_success_unixtime_seconds 1700000000');
+    expect(metrics).toContain('zutomayo_synthetic_probe_step_success{step="config"} 0');
+  });
+
+  it('preserves the previous success timestamp when the player journey fails', async () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'zutomayo-synthetic-journey-test-'));
+    const metricsFile = resolve(directory, 'synthetic.prom');
+    writeFileSync(metricsFile, 'zutomayo_synthetic_probe_last_success_unixtime_seconds 1700000000\n');
+
+    await expect(
+      runSyntheticProbe({
+        env: {
+          NODE_ENV: 'production',
+          SYNTHETIC_SESSION_COOKIE: 'zutomayo_session=synthetic-token',
+          SYNTHETIC_METRICS_FILE: metricsFile,
+        },
+        fetchImpl: async () => {
+          throw new Error('synthetic network failure');
+        },
+        clock: { now: () => 1_800_000_000_000 },
+      }),
+    ).rejects.toThrow('synthetic network failure');
+
+    const metrics = readFileSync(metricsFile, 'utf8');
+    expect(metrics).toContain('zutomayo_synthetic_probe_success 0');
+    expect(metrics).toContain('zutomayo_synthetic_probe_last_success_unixtime_seconds 1700000000');
+    expect(metrics).toContain('zutomayo_synthetic_probe_step_success{step="homepage"} 0');
+  });
+});

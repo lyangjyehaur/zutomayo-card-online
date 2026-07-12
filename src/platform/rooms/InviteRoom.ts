@@ -1,6 +1,7 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
 import { platformLogger as logger } from '../logger';
+import { recordPlatformReconnect } from '../metrics';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   BoardgameMatchReadyMessage,
@@ -145,6 +146,9 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
     await assertPlatformAuthCurrent(auth);
+    const reconnectingInviter = Boolean(
+      this.inviter && this.inviter.userId === auth.userId && this.inviter.sessionId !== client.sessionId,
+    );
     client.userData = {
       sessionId: client.sessionId,
       userId: auth.userId,
@@ -152,6 +156,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
       role: 'player',
       joinedAt: Date.now(),
     };
+    if (reconnectingInviter) recordPlatformReconnect('invite');
     if (!this.inviter && this.canBecomeInviter(client.userData)) this.inviter = client.userData;
     await this.refreshMetadata();
     this.clock.setTimeout(() => client.send('inviteSnapshot', this.snapshot()), 50);

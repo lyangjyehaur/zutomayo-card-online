@@ -148,6 +148,7 @@ describe('verifyBoardgameMatchResult', () => {
       {
         state: { ctx: { gameover: { winner: 0 } }, G: { step: 'gameOver', winner: 0 } },
         metadata: {
+          setupData: { rulesVersion: 'rules-2026-07' },
           players: {
             '0': { data: { userId: 'u_winner' } },
             '1': { data: { userId: 'u_victim' } },
@@ -167,6 +168,7 @@ describe('verifyBoardgameMatchResult', () => {
       {
         state: { ctx: { gameover: { winner: '1' } }, G: { step: 'gameOver', winner: 1 } },
         metadata: {
+          setupData: { rulesVersion: 'rules-2026-07' },
           players: {
             '0': trustedSeat('u_loser'),
             '1': trustedSeat('u_winner'),
@@ -182,8 +184,9 @@ describe('verifyBoardgameMatchResult', () => {
       loserPlayer: 0,
       winnerUserId: 'u_winner',
       loserUserId: 'u_loser',
+      rulesVersion: 'rules-2026-07',
     });
-    expect(query).toHaveBeenCalledWith('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', ['match_1']);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('LEFT JOIN bjg_match_result_outbox'), ['match_1']);
   });
 
   it('allows the authenticated loser to submit the same authoritative result', async () => {

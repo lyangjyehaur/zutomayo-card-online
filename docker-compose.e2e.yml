@@ -32,8 +32,8 @@ services:
     environment:
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      - PG_USER=${PG_MIGRATION_USER:-zutomayo_migrator}
+      - PG_PASSWORD=${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
       - PG_DATABASE=zutomayo_e2e
     depends_on:
       postgres:

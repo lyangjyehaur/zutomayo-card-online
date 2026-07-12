@@ -4,6 +4,7 @@ import {
   Ban,
   Download,
   ExternalLink,
+  Gift,
   KeyRound,
   Link2,
   Mail,
@@ -21,6 +22,7 @@ import {
   blockUser,
   deleteAccount,
   exportAccountData,
+  claimSeasonReward,
   getBlocks,
   getFriendRequests,
   getFriends,
@@ -29,6 +31,7 @@ import {
   getLogtoAccountCenter,
   getOAuthStartUrl,
   getProfile,
+  getSeasonRewards,
   isLoggedIn,
   removeFriend,
   requestEmailVerification,
@@ -47,6 +50,7 @@ import {
   type OAuthIdentity,
   type OAuthProvider,
   type ProfileResponse,
+  type SeasonReward,
 } from '../api/client';
 import { UserAvatar } from '../components/UserAvatar';
 import { t } from '../i18n';
@@ -90,6 +94,12 @@ function accountValue(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value : '-';
 }
 
+function rewardPayloadSummary(payload: Record<string, unknown>): string {
+  return Object.entries(payload)
+    .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`)
+    .join(' · ');
+}
+
 export function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -117,6 +127,7 @@ export function ProfilePage() {
   const [exportingAccount, setExportingAccount] = useState(false);
   const [deletePromptOpen, setDeletePromptOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
@@ -124,6 +135,17 @@ export function ProfilePage() {
   const [friendUserId, setFriendUserId] = useState('');
   const [socialLoading, setSocialLoading] = useState(true);
   const [socialActionId, setSocialActionId] = useState('');
+  const [seasonRewards, setSeasonRewards] = useState<SeasonReward[]>([]);
+  const [seasonRewardsLoading, setSeasonRewardsLoading] = useState(true);
+  const [seasonRewardAction, setSeasonRewardAction] = useState('');
+  const [seasonRewardError, setSeasonRewardError] = useState('');
+
+  // Credential availability belongs to the account, not the deployment. The
+  // fallback keeps older API responses usable while the capability fields are
+  // rolled out.
+  const accountHasLocalPassword = profile?.hasLocalPassword ?? localAuthEnabled;
+  const accountHasLogtoIdentity =
+    profile?.hasLogtoIdentity ?? oauthIdentities.some((identity) => identity.provider === 'logto');
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -132,10 +154,15 @@ export function ProfilePage() {
     }
 
     let cancelled = false;
-    Promise.all([getProfile(), getAuthConfig().catch(() => null), getLinkedOAuthIdentities().catch(() => [])])
-      .then(async ([data, authConfig, identities]) => {
+    Promise.all([
+      getProfile(),
+      getAuthConfig().catch(() => null),
+      getLinkedOAuthIdentities().catch(() => []),
+      getSeasonRewards().catch(() => null),
+    ])
+      .then(async ([data, authConfig, identities, rewards]) => {
         const shouldLoadAccountCenter = Boolean(
-          authConfig && !authConfig.localAuthEnabled && !authConfig.accountLinkingEnabled,
+          (data.hasLogtoIdentity || identities.some((identity) => identity.provider === 'logto')) && authConfig,
         );
         const accountCenter = shouldLoadAccountCenter
           ? await getLogtoAccountCenter().catch((err) => (err instanceof Error ? err : new Error(String(err))))
@@ -157,6 +184,9 @@ export function ProfilePage() {
         setFriendRequests(requestList);
         setBlocks(blockList);
         setSocialLoading(false);
+        setSeasonRewards(rewards || []);
+        setSeasonRewardError(rewards === null ? t('profile.seasonRewardError') : '');
+        setSeasonRewardsLoading(false);
         if (accountCenter instanceof Error) {
           setLogtoAccountCenter(null);
           setLogtoAccountError(accountCenter.message);
@@ -175,6 +205,7 @@ export function ProfilePage() {
         if (!cancelled) {
           setError(t('auth.profileUnavailable'));
           setSocialLoading(false);
+          setSeasonRewardsLoading(false);
         }
       })
       .finally(() => {
@@ -215,18 +246,18 @@ export function ProfilePage() {
         setError(t('profile.passwordMismatch'));
         return;
       }
-      if (localAuthEnabled) {
+      if (accountHasLocalPassword) {
         await updatePassword(currentPassword, newPassword);
         navigate('/', { replace: true });
         return;
-      } else {
-        const verification = await verifyLogtoPassword(currentPassword);
-        await updateLogtoPassword(newPassword, verification.verificationRecordId);
       }
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setPasswordStatus(t('profile.passwordSaved'));
+      if (accountHasLogtoIdentity) {
+        const verification = await verifyLogtoPassword(currentPassword);
+        await updateLogtoPassword(newPassword, verification.stepUpToken);
+        navigate('/', { replace: true });
+        return;
+      }
+      throw new Error('No supported account password method is available');
     } catch (err) {
       setError(accountErrorMessage(err));
     } finally {
@@ -315,7 +346,15 @@ export function ProfilePage() {
     setDeletingAccount(true);
     setError('');
     try {
-      await deleteAccount();
+      // Any linked Logto principal must be deleted at the provider before the
+      // local account is anonymized, including hybrid accounts with a local password.
+      const stepUp = accountHasLogtoIdentity
+        ? { stepUpToken: (await verifyLogtoPassword(deletePassword)).stepUpToken }
+        : accountHasLocalPassword
+          ? { currentPassword: deletePassword }
+          : null;
+      if (!stepUp) throw new Error('No supported account verification method is available');
+      await deleteAccount(stepUp);
       setDeletePromptOpen(false);
       navigate('/', { replace: true });
     } catch {
@@ -324,6 +363,21 @@ export function ProfilePage() {
     } finally {
       setDeletingAccount(false);
       setDeleteConfirmation('');
+      setDeletePassword('');
+    }
+  };
+
+  const handleClaimSeasonReward = async (seasonId: string) => {
+    setSeasonRewardAction(seasonId);
+    setSeasonRewardError('');
+    try {
+      await claimSeasonReward(seasonId);
+      setSeasonRewards(await getSeasonRewards());
+      setProfileStatus(t('profile.seasonRewardClaimSuccess'));
+    } catch {
+      setSeasonRewardError(t('profile.seasonRewardError'));
+    } finally {
+      setSeasonRewardAction('');
     }
   };
   const handleOAuthLink = (provider: OAuthProvider) => {
@@ -352,7 +406,7 @@ export function ProfilePage() {
     }
   };
 
-  const accountCenterMode = !localAuthEnabled && !accountLinkingEnabled;
+  const accountCenterMode = !accountHasLocalPassword;
   const logtoIdentityEntries = Object.entries(logtoAccountCenter?.account.identities || {});
   const logtoReconnectProvider = oauthProviders.find((provider) => provider.provider === 'logto' && provider.enabled);
 
@@ -445,6 +499,65 @@ export function ProfilePage() {
             )}
             {profileStatus && <Alert tone="success">{profileStatus}</Alert>}
             {passwordStatus && <Alert tone="success">{passwordStatus}</Alert>}
+
+            <Panel size="lg">
+              <div className="mb-4 flex items-center gap-2">
+                <Gift className="size-5 text-accent-action" aria-hidden="true" />
+                <h2 className="font-display text-title-sm font-bold">{t('profile.seasonRewards')}</h2>
+              </div>
+              {seasonRewardError && (
+                <Alert className="mb-3" tone="danger" role="alert">
+                  {seasonRewardError}
+                </Alert>
+              )}
+              {seasonRewardsLoading ? (
+                <LoadingState label={t('profile.loading')} />
+              ) : seasonRewards.length === 0 ? (
+                <p className="text-body-sm text-content-muted">{t('common.empty')}</p>
+              ) : (
+                <div className="grid gap-2">
+                  {seasonRewards.map((reward) => {
+                    const payload = rewardPayloadSummary(reward.rewardPayload);
+                    return (
+                      <div
+                        key={reward.seasonId}
+                        className="flex flex-col gap-3 border-b border-border-soft py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <strong className="text-body-sm">{reward.seasonName}</strong>
+                            <Badge tone="gold">{reward.rewardTier}</Badge>
+                            {reward.claimedAt && <Badge tone="jade">{t('profile.seasonRewardClaimed')}</Badge>}
+                          </div>
+                          <p className="mt-1 text-caption text-content-muted">
+                            {t('profile.seasonRewardRank')} {reward.finalRank} · ELO {reward.finalRating}
+                          </p>
+                          {payload && (
+                            <p className="mt-1 break-words text-caption text-content-muted">
+                              {t('profile.seasonRewardPayload')}: {payload}
+                            </p>
+                          )}
+                        </div>
+                        {!reward.claimedAt && (
+                          <Button
+                            className="shrink-0"
+                            size="sm"
+                            variant="primary"
+                            disabled={Boolean(seasonRewardAction)}
+                            leftIcon={<Gift className="size-4" aria-hidden="true" />}
+                            onClick={() => void handleClaimSeasonReward(reward.seasonId)}
+                          >
+                            {seasonRewardAction === reward.seasonId
+                              ? t('auth.submitting')
+                              : t('profile.seasonRewardClaim')}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
 
             <Panel size="lg">
               <div className="mb-4 flex items-center gap-2">
@@ -624,7 +737,7 @@ export function ProfilePage() {
               </form>
             </Panel>
 
-            {!accountCenterMode && (
+            {!(accountCenterMode && !accountLinkingEnabled) && (
               <Panel size="lg">
                 <div className="mb-4 flex items-center gap-2">
                   <Link2 className="size-5 text-accent-primary" aria-hidden="true" />
@@ -676,7 +789,7 @@ export function ProfilePage() {
               </Panel>
             )}
 
-            {localAuthEnabled ? (
+            {accountHasLocalPassword ? (
               <Panel size="lg">
                 <div className="mb-4 flex items-center gap-2">
                   <KeyRound className="size-5 text-accent-primary" aria-hidden="true" />
@@ -736,6 +849,11 @@ export function ProfilePage() {
                   {t('profile.accountSecurityIntegrated')}
                 </p>
                 {logtoAccountError && (
+                  <Alert className="mt-4" tone="warning">
+                    {t('profile.logtoReconnectRequired')}
+                  </Alert>
+                )}
+                {!accountHasLogtoIdentity && (
                   <Alert className="mt-4" tone="warning">
                     {t('profile.logtoReconnectRequired')}
                   </Alert>
@@ -802,7 +920,7 @@ export function ProfilePage() {
                     <Button
                       variant="primary"
                       type="submit"
-                      disabled={savingPassword || Boolean(logtoAccountError)}
+                      disabled={savingPassword || Boolean(logtoAccountError) || !accountHasLogtoIdentity}
                       leftIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
                     >
                       {savingPassword ? t('auth.submitting') : t('profile.savePassword')}
@@ -908,7 +1026,10 @@ export function ProfilePage() {
         onOpenChange={(open) => {
           if (deletingAccount) return;
           setDeletePromptOpen(open);
-          if (!open) setDeleteConfirmation('');
+          if (!open) {
+            setDeleteConfirmation('');
+            setDeletePassword('');
+          }
         }}
         title={t('profile.deleteAccountTitle')}
         description={t('profile.deleteAccountConfirm')}
@@ -920,7 +1041,12 @@ export function ProfilePage() {
             </Button>
             <Button
               variant="danger"
-              disabled={deleteConfirmation !== 'DELETE' || deletingAccount}
+              disabled={
+                deleteConfirmation !== 'DELETE' ||
+                !deletePassword ||
+                deletingAccount ||
+                (!accountHasLocalPassword && !accountHasLogtoIdentity)
+              }
               onClick={handleDeleteAccount}
             >
               {deletingAccount ? t('auth.submitting') : t('profile.deleteAccountAction')}
@@ -935,6 +1061,15 @@ export function ProfilePage() {
             spellCheck={false}
             disabled={deletingAccount}
             onChange={(event) => setDeleteConfirmation(event.target.value)}
+          />
+        </FormField>
+        <FormField label={t('profile.currentPassword')}>
+          <Input
+            type="password"
+            value={deletePassword}
+            autoComplete="current-password"
+            disabled={deletingAccount}
+            onChange={(event) => setDeletePassword(event.target.value)}
           />
         </FormField>
       </Dialog>

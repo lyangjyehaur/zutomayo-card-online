@@ -1,0 +1,21 @@
+[Unit]
+Description=Zutomayo PostgreSQL retention worker
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+ConditionPathExists=/opt/zutomayo-card-online/.release.env
+ConditionPathExists=/opt/zutomayo-card-online/docker-compose.retention.yml
+
+[Service]
+Type=oneshot
+User=zutomayo-retention
+Group=zutomayo-retention
+SupplementaryGroups=docker zutomayo-ops-metrics
+WorkingDirectory=/opt/zutomayo-card-online
+EnvironmentFile=/etc/zutomayo/retention.env
+ExecStart=/usr/bin/docker compose --env-file /opt/zutomayo-card-online/.release.env -f /opt/zutomayo-card-online/docker-compose.retention.yml run --rm --no-deps retention
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/node_exporter/textfile_collector

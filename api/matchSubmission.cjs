@@ -3,6 +3,7 @@
 
 const crypto = require('crypto');
 const { normalizeWinnerPlayer, verifyBoardgameMatchResult } = require('./matchVerification.cjs');
+const { applyCanonicalSeasonResult } = require('./seasonResultService.cjs');
 
 function calculateElo(ratingA, ratingB, scoreA) {
   const K = 32;
@@ -28,6 +29,7 @@ async function submitMatchResult({
   body,
   sanitizeActionLog,
   rankedMatchesEnabled = false,
+  rulesVersion = 'legacy',
   generateMatchId = () => 'm_' + crypto.randomBytes(8).toString('hex'),
 }) {
   const { winnerId, loserId, turns, duration, actionLog, action_log, sourceMatchId, winnerPlayer } = body;
@@ -56,7 +58,12 @@ async function submitMatchResult({
   let resolvedLoserId = loserId;
   let resolvedTurns = turns || 0;
   let resolvedDuration = duration || 0;
+  let resolvedCompletedAt = new Date().toISOString();
   let rawActionLog = actionLog ?? action_log;
+  let resolvedRulesVersion =
+    String(rulesVersion || 'legacy')
+      .trim()
+      .slice(0, 120) || 'legacy';
   let sourceVerification = null;
   if (cleanSourceMatchId) {
     sourceVerification = await verifyBoardgameMatchResult(
@@ -73,6 +80,8 @@ async function submitMatchResult({
     resolvedTurns = sourceVerification.authoritative.turns;
     resolvedDuration = sourceVerification.authoritative.duration;
     rawActionLog = sourceVerification.authoritative.actionLog;
+    resolvedRulesVersion = sourceVerification.rulesVersion;
+    resolvedCompletedAt = sourceVerification.authoritative.completedAt || resolvedCompletedAt;
   }
 
   const sanitizedActionLog = sanitizeActionLog(rawActionLog);
@@ -83,12 +92,27 @@ async function submitMatchResult({
     await client.query('BEGIN');
     if (cleanSourceMatchId) {
       const existing = (
-        await client.query('SELECT id, winner_elo_change, loser_elo_change FROM matches WHERE source_match_id = $1', [
-          cleanSourceMatchId,
-        ])
+        await client.query(
+          `SELECT id, winner_elo_change, loser_elo_change, winner_id, loser_id,
+                  completed_at, rules_version
+             FROM matches WHERE source_match_id = $1 FOR UPDATE`,
+          [cleanSourceMatchId],
+        )
       ).rows[0];
       if (existing) {
-        await client.query('ROLLBACK');
+        const seasonResult = await applyCanonicalSeasonResult({
+          client,
+          sourceMatchId: cleanSourceMatchId,
+          canonicalMatchId: existing.id,
+          completedAt: existing.completed_at || resolvedCompletedAt,
+          rulesVersion: existing.rules_version || resolvedRulesVersion,
+          winnerId: existing.winner_id || resolvedWinnerId,
+          loserId: existing.loser_id || resolvedLoserId,
+        });
+        if (seasonResult.reason === 'season-not-settled') {
+          throw new Error(`Season result is waiting for settlement: ${seasonResult.seasonId}`);
+        }
+        await client.query('COMMIT');
         return existingMatchResponse(existing);
       }
     }
@@ -123,7 +147,7 @@ async function submitMatchResult({
     const player0Id = winner ? resolvedWinnerId : null;
     const player1Id = loser ? resolvedLoserId : null;
     await client.query(
-      'INSERT INTO matches (id, source_match_id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, action_log) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)',
+      'INSERT INTO matches (id, source_match_id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, rules_version, action_log, completed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)',
       [
         matchId,
         cleanSourceMatchId || null,
@@ -135,9 +159,26 @@ async function submitMatchResult({
         loserEloChange,
         resolvedTurns,
         resolvedDuration,
+        resolvedRulesVersion,
         JSON.stringify(sanitizedActionLog),
+        resolvedCompletedAt,
       ],
     );
+
+    if (cleanSourceMatchId) {
+      const seasonResult = await applyCanonicalSeasonResult({
+        client,
+        sourceMatchId: cleanSourceMatchId,
+        canonicalMatchId: matchId,
+        completedAt: resolvedCompletedAt,
+        rulesVersion: resolvedRulesVersion,
+        winnerId: resolvedWinnerId,
+        loserId: resolvedLoserId,
+      });
+      if (seasonResult.reason === 'season-not-settled') {
+        throw new Error(`Season result is waiting for settlement: ${seasonResult.seasonId}`);
+      }
+    }
 
     await client.query('COMMIT');
 

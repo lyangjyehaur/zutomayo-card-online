@@ -1,5 +1,28 @@
 import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
+import {
+  gameMatchCompletionsTotal,
+  matchResultOutboxMetricsLastSuccess,
+  matchResultOutboxMetricsRefreshSuccess,
+  matchResultOutboxOldestAgeSeconds,
+  matchResultOutboxPending,
+  matchResultOutboxProcessedTotal,
+  matchResultOutboxRows,
+} from './observability/metrics';
+
+const require = createRequire(import.meta.url);
+const { applyCanonicalSeasonResult } = require('../../api/seasonResultService.cjs') as {
+  applyCanonicalSeasonResult: (input: {
+    client: PoolClient;
+    sourceMatchId: string;
+    canonicalMatchId: string;
+    completedAt: string | Date;
+    rulesVersion: string;
+    winnerId: string;
+    loserId: string;
+  }) => Promise<{ applied: boolean; reason?: string; seasonId?: string; seasonStatus?: string }>;
+};
 
 export interface MatchResultOutboxRow extends QueryResultRow {
   source_match_id: string;
@@ -11,27 +34,17 @@ export interface MatchResultOutboxRow extends QueryResultRow {
   ranked_eligible: boolean;
   turns: number;
   duration_seconds: number;
+  rules_version: string;
+  completed_at: string | Date;
   action_log: unknown[];
   state_id: number | null;
-  status: 'pending' | 'processing';
+  status: 'pending' | 'processing' | 'delivered' | 'unrated';
   attempt_count: number;
 }
 
 interface UserRatingRow extends QueryResultRow {
   id: string;
   elo: number;
-}
-
-interface SeasonRow extends QueryResultRow {
-  id: string;
-  starting_rating: number;
-  placement_matches: number;
-}
-
-interface SeasonRatingRow extends QueryResultRow {
-  user_id: string;
-  rating: number;
-  match_count: number;
 }
 
 export interface ProcessMatchResultOutboxOptions {
@@ -52,6 +65,46 @@ export interface MatchResultOutboxBatchResult {
 export interface MatchResultOutboxWorker {
   runOnce(): Promise<MatchResultOutboxBatchResult>;
   stop(): Promise<void>;
+}
+
+const OUTBOX_STATUSES = ['pending', 'processing', 'delivered', 'unrated'] as const;
+
+/**
+ * Refresh gauges from durable rows instead of inferring queue health from the
+ * last worker iteration. A failed refresh is explicitly exported so a stale
+ * Prometheus sample cannot look healthy after the database is unavailable.
+ */
+export async function refreshMatchResultOutboxMetrics(pool: Pick<Pool, 'query'>): Promise<void> {
+  try {
+    const [summary, counts] = await Promise.all([
+      pool.query<{ pending_count: string; oldest_age_seconds: string }>(
+        `SELECT
+           COUNT(*) FILTER (WHERE status IN ('pending', 'processing'))::text AS pending_count,
+           COALESCE(
+             EXTRACT(EPOCH FROM (NOW() - MIN(created_at) FILTER (WHERE status IN ('pending', 'processing')))),
+             0
+           )::text AS oldest_age_seconds
+         FROM bjg_match_result_outbox`,
+      ),
+      pool.query<{ status: string; row_count: string }>(
+        `SELECT status, COUNT(*)::text AS row_count
+           FROM bjg_match_result_outbox
+          GROUP BY status`,
+      ),
+    ]);
+    const row = summary.rows[0] ?? { pending_count: '0', oldest_age_seconds: '0' };
+    matchResultOutboxPending.set(Math.max(0, Number(row.pending_count) || 0));
+    matchResultOutboxOldestAgeSeconds.set(Math.max(0, Number(row.oldest_age_seconds) || 0));
+    const countsByStatus = new Map(counts.rows.map((item) => [item.status, Math.max(0, Number(item.row_count) || 0)]));
+    for (const status of OUTBOX_STATUSES) {
+      matchResultOutboxRows.labels(status).set(countsByStatus.get(status) ?? 0);
+    }
+    matchResultOutboxMetricsRefreshSuccess.set(1);
+    matchResultOutboxMetricsLastSuccess.set(Date.now() / 1000);
+  } catch (error) {
+    matchResultOutboxMetricsRefreshSuccess.set(0);
+    throw error;
+  }
 }
 
 function calculateElo(ratingA: number, ratingB: number, scoreA: number): number {
@@ -214,91 +267,6 @@ async function withTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promis
   }
 }
 
-/**
- * Apply a delivered ranked result to the active season while the match
- * delivery transaction is still open. Keeping this on the same client means
- * a retry can never expose a delivered match without its season rating.
- */
-async function recordSeasonResultInTransaction(
-  client: PoolClient,
-  sourceMatchId: string,
-  winnerId: string,
-  loserId: string,
-): Promise<void> {
-  const season = (
-    await client.query<SeasonRow>(
-      `SELECT id, starting_rating, placement_matches
-         FROM seasons
-        WHERE status = 'active' AND starts_at <= NOW() AND ends_at > NOW()
-        FOR UPDATE`,
-    )
-  ).rows[0];
-  if (!season) return;
-
-  const existing = (
-    await client.query<{ winner_delta: number; loser_delta: number }>(
-      `SELECT winner_delta, loser_delta
-         FROM season_match_results
-        WHERE season_id = $1 AND source_match_id = $2`,
-      [season.id, sourceMatchId],
-    )
-  ).rows[0];
-  if (existing) return;
-
-  for (const userId of [winnerId, loserId]) {
-    await client.query(
-      `INSERT INTO season_ratings (season_id, user_id, rating)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (season_id, user_id) DO NOTHING`,
-      [season.id, userId, season.starting_rating],
-    );
-  }
-
-  const ratings = (
-    await client.query<SeasonRatingRow>(
-      `SELECT user_id, rating, match_count
-         FROM season_ratings
-        WHERE season_id = $1 AND user_id IN ($2, $3)
-        ORDER BY user_id
-        FOR UPDATE`,
-      [season.id, winnerId, loserId],
-    )
-  ).rows;
-  const winner = ratings.find((rating) => rating.user_id === winnerId);
-  const loser = ratings.find((rating) => rating.user_id === loserId);
-  if (!winner || !loser) throw new Error('Season rating rows missing');
-
-  const winnerNext = calculateElo(Number(winner.rating), Number(loser.rating), 1);
-  const loserNext = calculateElo(Number(loser.rating), Number(winner.rating), 0);
-  const winnerDelta = winnerNext - Number(winner.rating);
-  const loserDelta = loserNext - Number(loser.rating);
-  await client.query(
-    `UPDATE season_ratings
-        SET rating = $1,
-            match_count = match_count + 1,
-            wins = wins + 1,
-            placement_complete = match_count + 1 >= $2,
-            updated_at = NOW()
-      WHERE season_id = $3 AND user_id = $4`,
-    [winnerNext, season.placement_matches, season.id, winnerId],
-  );
-  await client.query(
-    `UPDATE season_ratings
-        SET rating = $1,
-            match_count = match_count + 1,
-            placement_complete = match_count + 1 >= $2,
-            updated_at = NOW()
-      WHERE season_id = $3 AND user_id = $4`,
-    [loserNext, season.placement_matches, season.id, loserId],
-  );
-  await client.query(
-    `INSERT INTO season_match_results
-       (season_id, source_match_id, winner_user_id, loser_user_id, winner_delta, loser_delta)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [season.id, sourceMatchId, winnerId, loserId, winnerDelta, loserDelta],
-  );
-}
-
 async function deliverOutboxRow(pool: Pool, row: MatchResultOutboxRow, generateMatchId: () => string): Promise<void> {
   await withTransaction(pool, async (client) => {
     const locked = await client.query<MatchResultOutboxRow>(
@@ -351,9 +319,11 @@ async function deliverOutboxRow(pool: Pool, row: MatchResultOutboxRow, generateM
          loser_elo_change,
          turns,
          duration_seconds,
-         action_log
+         rules_version,
+         action_log,
+         completed_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)
        ON CONFLICT (source_match_id) WHERE source_match_id IS NOT NULL DO NOTHING
        RETURNING id`,
       [
@@ -367,7 +337,9 @@ async function deliverOutboxRow(pool: Pool, row: MatchResultOutboxRow, generateM
         loserDelta,
         current.turns,
         current.duration_seconds,
+        current.rules_version || 'legacy',
         JSON.stringify(sanitizeCanonicalActionLog(current.action_log)),
+        current.completed_at,
       ],
     );
 
@@ -394,12 +366,18 @@ async function deliverOutboxRow(pool: Pool, row: MatchResultOutboxRow, generateM
       if (!deliveredMatchId) throw new Error('Idempotent match result could not be resolved');
     }
 
-    await recordSeasonResultInTransaction(
+    const seasonResult = await applyCanonicalSeasonResult({
       client,
-      current.source_match_id,
-      current.winner_user_id,
-      current.loser_user_id,
-    );
+      sourceMatchId: current.source_match_id,
+      canonicalMatchId: deliveredMatchId,
+      completedAt: current.completed_at,
+      rulesVersion: current.rules_version || 'legacy',
+      winnerId: current.winner_user_id,
+      loserId: current.loser_user_id,
+    });
+    if (seasonResult.reason === 'season-not-settled') {
+      throw new Error(`Season result is waiting for settlement: ${seasonResult.seasonId}`);
+    }
 
     await client.query(
       `UPDATE bjg_match_result_outbox
@@ -451,9 +429,12 @@ export async function processMatchResultOutboxBatch({
     try {
       await deliverOutboxRow(pool, row, generateMatchId);
       delivered++;
+      matchResultOutboxProcessedTotal.labels('delivered').inc();
+      gameMatchCompletionsTotal.labels('ranked', row.winner_player === null ? 'draw' : 'winner').inc();
     } catch (err) {
       await retainOutboxFailure(pool, row, err, baseRetryMs, maxRetryMs);
       retried++;
+      matchResultOutboxProcessedTotal.labels('retried').inc();
     }
   }
   return { claimed: rows.length, delivered, retried };
@@ -475,9 +456,14 @@ export function startMatchResultOutboxWorker({
   const runOnce = async (): Promise<MatchResultOutboxBatchResult> => {
     if (!enabled || stopped) return { claimed: 0, delivered: 0, retried: 0 };
     if (running) return running;
-    running = processMatchResultOutboxBatch({ pool }).finally(() => {
-      running = null;
-    });
+    running = processMatchResultOutboxBatch({ pool })
+      .then(async (result) => {
+        await refreshMatchResultOutboxMetrics(pool);
+        return result;
+      })
+      .finally(() => {
+        running = null;
+      });
     return running;
   };
   const timer = setInterval(

@@ -69,6 +69,12 @@ async function listFriendRequests({ pool, userId }) {
      END
      WHERE (fr.requester_user_id = $1 OR fr.recipient_user_id = $1)
        AND fr.status = 'pending'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM user_blocks b
+         WHERE (b.blocker_user_id = fr.requester_user_id AND b.blocked_user_id = fr.recipient_user_id)
+            OR (b.blocker_user_id = fr.recipient_user_id AND b.blocked_user_id = fr.requester_user_id)
+       )
      ORDER BY fr.created_at DESC`,
     [cleanUserId],
   );
@@ -86,14 +92,34 @@ async function respondToFriendRequest({ pool, userId, requestId, accept }) {
   return withTransaction(pool, async (client) => {
     const request = (
       await client.query(
-        `UPDATE friend_requests
-         SET status = $1, updated_at = NOW(), responded_at = NOW()
-         WHERE id = $2 AND recipient_user_id = $3 AND status = 'pending'
-         RETURNING requester_user_id, recipient_user_id`,
-        [accept ? 'accepted' : 'rejected', cleanRequestId, recipient],
+        `SELECT requester_user_id, recipient_user_id
+         FROM friend_requests
+         WHERE id = $1 AND recipient_user_id = $2 AND status = 'pending'
+         FOR UPDATE`,
+        [cleanRequestId, recipient],
       )
     ).rows[0];
     if (!request) return { ok: false, status: 404, error: 'Friend request not found' };
+
+    if (accept) {
+      const blocked = (
+        await client.query(
+          `SELECT 1 FROM user_blocks
+           WHERE (blocker_user_id = $1 AND blocked_user_id = $2)
+              OR (blocker_user_id = $2 AND blocked_user_id = $1)
+           LIMIT 1`,
+          [request.requester_user_id, request.recipient_user_id],
+        )
+      ).rows[0];
+      if (blocked) return { ok: false, status: 403, error: 'Friend request is not allowed' };
+    }
+
+    await client.query(
+      `UPDATE friend_requests
+       SET status = $1, updated_at = NOW(), responded_at = NOW()
+       WHERE id = $2 AND recipient_user_id = $3 AND status = 'pending'`,
+      [accept ? 'accepted' : 'rejected', cleanRequestId, recipient],
+    );
 
     if (accept) {
       await client.query(

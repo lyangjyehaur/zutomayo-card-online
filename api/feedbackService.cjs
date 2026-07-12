@@ -20,7 +20,11 @@ function voterRef(voter) {
   return null;
 }
 
-function mapPost(row) {
+function viewerAnonymousId(row, voter) {
+  return voter?.anonymousId && voter.anonymousId === row.anonymous_id ? row.anonymous_id : null;
+}
+
+function mapPost(row, voter) {
   return {
     id: row.id,
     title: row.title,
@@ -29,7 +33,9 @@ function mapPost(row) {
     tag: row.tag || '',
     authorUserId: row.author_user_id || null,
     authorNickname: row.author_nickname || null,
-    anonymousId: row.anonymous_id || null,
+    // anonymous_id is an edit/delete capability. Return it only to the
+    // browser that already proved possession through its request identity.
+    anonymousId: viewerAnonymousId(row, voter),
     voteCount: Number(row.vote_count) || 0,
     commentCount: Number(row.comment_count) || 0,
     hasVoted: Boolean(row.has_voted),
@@ -42,14 +48,14 @@ function mapPost(row) {
   };
 }
 
-function mapComment(row) {
+function mapComment(row, voter) {
   return {
     id: row.id,
     postId: row.post_id,
     content: row.content,
     authorUserId: row.author_user_id || null,
     authorNickname: row.author_nickname || null,
-    anonymousId: row.anonymous_id || null,
+    anonymousId: viewerAnonymousId(row, voter),
     isOfficial: Boolean(row.is_official),
     voteCount: Number(row.vote_count) || 0,
     hasVoted: Boolean(row.has_voted),
@@ -164,7 +170,7 @@ async function listPosts({ pool, voter, status, tag, sort, q, limit, offset }) {
     idx++;
 
   const { rows } = await pool.query(sql, params);
-  return { ok: true, body: { posts: rows.map(mapPost) } };
+  return { ok: true, body: { posts: rows.map((row) => mapPost(row, voter)) } };
 }
 
 // 取得單一文章（含留言列表，留言含按讚數、emoji 反應、是否已按讚）。
@@ -194,7 +200,7 @@ async function getPost({ pool, voter, postId }) {
 
   const postRes = await pool.query(postSql, postParams);
   if (postRes.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
-  const post = mapPost(postRes.rows[0]);
+  const post = mapPost(postRes.rows[0], voter);
 
   // 留言查詢
   const commentParams = [postId];
@@ -252,7 +258,7 @@ async function getPost({ pool, voter, postId }) {
   }
 
   post.comments = commentsRes.rows.map((row) => {
-    const c = mapComment(row);
+    const c = mapComment(row, voter);
     c.reactions = reactionsMap[row.id] || [];
     return c;
   });
@@ -463,7 +469,7 @@ async function editPost({ pool, voter, postId, body, sanitizeText }) {
       'WHERE id = $3 RETURNING *',
     [title, description, postId],
   );
-  return { ok: true, body: mapPost(rows[0]) };
+  return { ok: true, body: mapPost(rows[0], voter) };
 }
 
 // 編輯留言（作者）。
@@ -489,7 +495,7 @@ async function editComment({ pool, voter, commentId, body, sanitizeText }) {
     'UPDATE feedback_comments SET content = $1, edited_at = NOW() WHERE id = $2 RETURNING *',
     [content, commentId],
   );
-  return { ok: true, body: mapComment(rows[0]) };
+  return { ok: true, body: mapComment(rows[0], voter) };
 }
 
 // 刪除留言（作者或管理員）。

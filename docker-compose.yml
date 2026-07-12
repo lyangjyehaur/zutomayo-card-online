@@ -1,21 +1,24 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.4-alpine
     environment:
-      POSTGRES_USER: ${PG_USER:-zutomayo}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      POSTGRES_USER: ${PG_MIGRATION_USER:-zutomayo}
+      POSTGRES_PASSWORD: ${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
       POSTGRES_DB: ${PG_DATABASE:-zutomayo}
+      PG_APP_USER: ${PG_APP_USER:-zutomayo_app}
+      PG_APP_PASSWORD: ${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
     volumes:
       - pg-data:/var/lib/postgresql/data
+      - ./scripts/postgres-init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${PG_USER:-zutomayo} -d ${PG_DATABASE:-zutomayo}']
+      test: ['CMD-SHELL', 'pg_isready -U ${PG_MIGRATION_USER:-zutomayo} -d ${PG_DATABASE:-zutomayo}']
       interval: 5s
       timeout: 3s
       retries: 10
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.2.5-alpine
     command:
       [
         'redis-server',
@@ -36,7 +39,7 @@ services:
     restart: unless-stopped
 
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.59
     ports:
       - '16686:16686' # UI
       - '4318:4318' # OTLP HTTP
@@ -45,24 +48,30 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-migrate:${TAG:-latest}
+    image: ${MIGRATE_IMAGE:-zutomayo-card-online-migrate:local}
     build:
       context: .
       dockerfile: Dockerfile.migrate
-    command: ['npm', 'run', 'db:migrate']
+    command: ['npm', 'run', 'db:migrate:release']
     environment:
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      - PG_USER=${PG_MIGRATION_USER:-zutomayo}
+      - PG_PASSWORD=${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
+      - PGSSLMODE=${PGSSLMODE:-disable}
+      - PG_APP_USER=${PG_APP_USER:-zutomayo_app}
+      - REQUIRE_APP_ROLE_GATE=true
+      - DATABASE_URL=
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
     depends_on:
       postgres:
         condition: service_healthy
     restart: 'no'
 
   game:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-game:${TAG:-latest}
+    image: ${GAME_IMAGE:-zutomayo-card-online-game:local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -89,25 +98,31 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      - PG_USER=${PG_APP_USER:-zutomayo_app}
+      - PG_PASSWORD=${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
+      - PGSSLMODE=${PGSSLMODE:-disable}
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=${REDIS_DB:-0}
       - API_URL=${API_URL:-http://api:3001}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - 'JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}'
-      - METRICS_TOKEN=${METRICS_TOKEN:-}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN for production-mode services}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
       - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
       - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
+      - AUTH_REVOCATION_TIMEOUT_MS=${AUTH_REVOCATION_TIMEOUT_MS:-750}
+      - GAME_AUTH_DB_QUERY_TIMEOUT_MS=${GAME_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
+      - GAME_DRAIN_GRACE_MS=${GAME_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,9 +136,10 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   api:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-api:${TAG:-latest}
+    image: ${API_IMAGE:-zutomayo-card-online-api:local}
     build:
       context: ./api
       dockerfile: Dockerfile
@@ -136,23 +152,33 @@ services:
     environment:
       - API_PORT=3001
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      - PG_USER=${PG_APP_USER:-zutomayo_app}
+      - PG_PASSWORD=${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
+      - PGSSLMODE=${PGSSLMODE:-disable}
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=${REDIS_DB:-0}
       - 'JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}'
-      - METRICS_TOKEN=${METRICS_TOKEN:-}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN for production-mode services}
       - ADMIN_TOTP_ENCRYPTION_KEY=${ADMIN_TOTP_ENCRYPTION_KEY:-}
       - ADMIN_SESSION_TTL_SECONDS=${ADMIN_SESSION_TTL_SECONDS:-3600}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - ACCOUNT_EMAIL_WEBHOOK_URL=${ACCOUNT_EMAIL_WEBHOOK_URL:-}
       - ACCOUNT_EMAIL_WEBHOOK_SECRET=${ACCOUNT_EMAIL_WEBHOOK_SECRET:-}
+      - LOGTO_ENDPOINT=${LOGTO_ENDPOINT:-}
+      - LOGTO_ISSUER=${LOGTO_ISSUER:-}
+      - LOGTO_M2M_APP_ID=${LOGTO_M2M_APP_ID:-}
+      - LOGTO_M2M_APP_SECRET=${LOGTO_M2M_APP_SECRET:-}
+      - LOGTO_MANAGEMENT_RESOURCE=${LOGTO_MANAGEMENT_RESOURCE:-}
+      - LOGTO_MANAGEMENT_SCOPE=${LOGTO_MANAGEMENT_SCOPE:-}
+      - ACCOUNT_DELETION_RECOVERY_INTERVAL_MS=${ACCOUNT_DELETION_RECOVERY_INTERVAL_MS:-60000}
+      - ACCOUNT_EXPORT_MAX_BYTES=${ACCOUNT_EXPORT_MAX_BYTES:-8388608}
       - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
       - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
@@ -182,9 +208,10 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   platform:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-platform:${TAG:-latest}
+    image: ${PLATFORM_IMAGE:-zutomayo-card-online-platform:local}
     build:
       context: .
       dockerfile: Dockerfile
@@ -198,24 +225,37 @@ services:
     environment:
       - PLATFORM_PORT=3002
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      - PG_USER=${PG_APP_USER:-zutomayo_app}
+      - PG_PASSWORD=${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
+      - PGSSLMODE=${PGSSLMODE:-disable}
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=${REDIS_DB:-0}
       - 'JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}'
-      - METRICS_TOKEN=${METRICS_TOKEN:-}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN for production-mode services}
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
+      - PLATFORM_BLOCK_STORE=postgres
       - PLATFORM_MATCH_PARTICIPANT_STORE=postgres
       - PLATFORM_CHAT_PREVIEW_STORE=postgres
+      - PLATFORM_ADMISSION_IP_LIMIT=${PLATFORM_ADMISSION_IP_LIMIT:-30}
+      - PLATFORM_ADMISSION_USER_LIMIT=${PLATFORM_ADMISSION_USER_LIMIT:-10}
+      - PLATFORM_ADMISSION_GLOBAL_LIMIT=${PLATFORM_ADMISSION_GLOBAL_LIMIT:-2000}
+      - PLATFORM_ADMISSION_WINDOW_SECONDS=${PLATFORM_ADMISSION_WINDOW_SECONDS:-60}
+      - PLATFORM_ADMISSION_REDIS_TIMEOUT_MS=${PLATFORM_ADMISSION_REDIS_TIMEOUT_MS:-750}
+      - PLATFORM_AUTH_DB_POOL_MAX=${PLATFORM_AUTH_DB_POOL_MAX:-8}
+      - PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS=${PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PLATFORM_DRAIN_GRACE_MS=${PLATFORM_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -231,6 +271,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   # PgBouncer connection pooler. Optional — not started by default.
   # Enable with: docker compose --profile pgbouncer up
@@ -238,10 +279,10 @@ services:
   # at PgBouncer. See docs/DEPLOYMENT.md (PgBouncer section).
   pgbouncer:
     profiles: ['pgbouncer']
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:1.22.1-p1
     environment:
-      - DB_USER=${PG_USER:-postgres}
-      - DB_PASSWORD=${PG_PASSWORD:-}
+      - DB_USER=${PG_APP_USER:-zutomayo_app}
+      - DB_PASSWORD=${PG_APP_PASSWORD:-${PG_PASSWORD:-}}
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${PG_DATABASE:-zutomayo}

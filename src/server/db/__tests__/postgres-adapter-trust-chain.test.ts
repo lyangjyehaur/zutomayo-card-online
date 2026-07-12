@@ -53,7 +53,158 @@ function stateWithWinner(): State {
   } as never;
 }
 
+function stateBeforeDeckBind() {
+  const makePlayer = () => ({
+    hp: 100,
+    deck: [],
+    hand: [],
+    battleZone: null,
+  });
+  return {
+    _stateID: 0,
+    G: {
+      players: [makePlayer(), makePlayer()],
+      step: 'janken',
+      turnNumber: 1,
+    },
+    ctx: {},
+  };
+}
+
 describe('PostgresAdapter trust-chain transactions', () => {
+  it('shuffles a reserved deck and marks only the opening hand face up', async () => {
+    const initialState = stateBeforeDeckBind();
+    const state = structuredClone(initialState);
+    const matchMetadata = {
+      ...metadata(),
+      setupData: { rulesVersion: 'rules-v1' },
+    };
+    const schemaClient = mockClient();
+    const transactionClient = mockClient(async (sql) => {
+      if (sql.includes('SELECT match_id, state, initial_state, metadata')) {
+        return {
+          rows: [{ match_id: 'match_1', state, initial_state: initialState, metadata: matchMetadata }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('FROM bjg_match_seats')) {
+        return {
+          rows: [{ match_id: 'match_1', player_id: '1', user_id: 'u_bob', ranked_eligible: true }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('FROM deck_reservations')) {
+        return {
+          rows: [
+            {
+              id: 'dr_fixed',
+              user_id: 'u_bob',
+              deck_version: 'deck-v1',
+              rules_version: 'rules-v1',
+              card_ids: Array.from({ length: 20 }, (_, index) => `card-${index}`),
+              expires_at: new Date(Date.now() + 60_000),
+              match_id: null,
+              player_id: null,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = mockPool([schemaClient, transactionClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    try {
+      await adapter.bindDeckReservation({
+        matchID: 'match_1',
+        playerID: '1',
+        userId: 'u_bob',
+        reservationId: 'dr_fixed',
+        rulesVersion: 'rules-v1',
+      });
+    } finally {
+      randomSpy.mockRestore();
+    }
+
+    const update = transactionClient.query.mock.calls.find(([sql]) => String(sql).startsWith('UPDATE bjg_matches'));
+    expect(update).toBeDefined();
+    const persistedState = JSON.parse(String(update?.[1]?.[1])) as typeof state;
+    const persistedInitial = JSON.parse(String(update?.[1]?.[2])) as typeof initialState;
+    const player = persistedState.G.players[1];
+    const initialPlayer = persistedInitial.G.players[1];
+    expect(player.hand).toHaveLength(5);
+    expect(player.deck).toHaveLength(15);
+    expect(player.hand.every((card: { faceUp: boolean }) => card.faceUp)).toBe(true);
+    expect(player.deck.every((card: { faceUp: boolean }) => !card.faceUp)).toBe(true);
+    expect(
+      player.hand
+        .map((card: { defId: string }) => card.defId)
+        .concat(player.deck.map((card: { defId: string }) => card.defId)),
+    ).not.toEqual(Array.from({ length: 20 }, (_, index) => `card-${index}`));
+    expect(initialPlayer.hand).toEqual(player.hand);
+    expect(initialPlayer.deck).toEqual(player.deck);
+    expect(transactionClient.query).toHaveBeenLastCalledWith('COMMIT');
+  });
+
+  it('rolls back the seat when reservation ownership fails in the same transaction', async () => {
+    const initialState = stateBeforeDeckBind();
+    const schemaClient = mockClient();
+    const transactionClient = mockClient(async (sql) => {
+      if (sql.includes('FROM bjg_matches') && sql.includes('state, initial_state')) {
+        return {
+          rows: [
+            {
+              match_id: 'match_1',
+              state: initialState,
+              initial_state: structuredClone(initialState),
+              metadata: metadata(),
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('FROM bjg_match_seats')) return { rows: [], rowCount: 0 };
+      if (sql.includes('FROM deck_reservations')) {
+        return {
+          rows: [
+            {
+              id: 'dr_fixed',
+              user_id: 'u_other',
+              deck_version: 'deck-v1',
+              rules_version: 'rules-v1',
+              card_ids: Array.from({ length: 20 }, (_, index) => `card-${index}`),
+              expires_at: new Date(Date.now() + 60_000),
+              match_id: null,
+              player_id: null,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = mockPool([schemaClient, transactionClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+
+    await expect(
+      adapter.reserveMatchSeat({
+        matchID: 'match_1',
+        playerID: '1',
+        playerName: 'Bob',
+        playerData: { userId: 'u_bob', identitySource: 'server' },
+        userId: 'u_bob',
+        rankedEligible: true,
+        credentials: 'credential-b',
+        deckReservationId: 'dr_fixed',
+        deckRulesVersion: 'rules-v1',
+      }),
+    ).rejects.toMatchObject({ reason: 'identity_mismatch' });
+    expect(transactionClient.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(transactionClient.query).not.toHaveBeenLastCalledWith('COMMIT');
+  });
+
   it('reserves a seat and identity under one row-lock transaction', async () => {
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
@@ -151,9 +302,7 @@ describe('PostgresAdapter trust-chain transactions', () => {
 
     await adapter.setMetadata('match_1', { ...metadata(), updatedAt: 123 } as never);
 
-    const write = transactionClient.query.mock.calls.find(([sql]) =>
-      String(sql).startsWith('INSERT INTO bjg_matches'),
-    );
+    const write = transactionClient.query.mock.calls.find(([sql]) => String(sql).startsWith('INSERT INTO bjg_matches'));
     expect(write).toBeDefined();
     const persisted = JSON.parse(String(write?.[1]?.[1])) as typeof reservedMetadata & { updatedAt: number };
     expect(persisted.updatedAt).toBe(123);
@@ -221,6 +370,9 @@ describe('PostgresAdapter trust-chain transactions', () => {
   it('writes terminal state and canonical outbox row in the same transaction', async () => {
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
+      if (sql.startsWith('SELECT metadata FROM bjg_matches')) {
+        return { rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } } }], rowCount: 1 };
+      }
       if (sql.includes('FROM bjg_match_seats')) {
         return {
           rows: [
@@ -251,6 +403,8 @@ describe('PostgresAdapter trust-chain transactions', () => {
         true,
         4,
         5,
+        '1970-01-01T00:00:06.000Z',
+        'legacy',
         JSON.stringify([{ action: 'finish' }]),
         1,
         'pending',

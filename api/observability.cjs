@@ -37,6 +37,32 @@ const rateLimitedTotal = new promClient.Counter({
   registers: [register],
 });
 
+const matchmakingQueueDepth = new promClient.Gauge({
+  name: 'matchmaking_queue_depth',
+  help: 'Current number of users in the Redis matchmaking sorted set',
+  registers: [register],
+});
+
+const matchmakingQueueMetricFailuresTotal = new promClient.Counter({
+  name: 'matchmaking_queue_metric_failures_total',
+  help: 'Failed attempts to read the Redis matchmaking queue depth',
+  registers: [register],
+});
+
+async function refreshMatchmakingQueueDepth(redis) {
+  if (!redis || typeof redis.zcard !== 'function') return;
+  try {
+    const depth = Number(await redis.zcard('mm:queue'));
+    if (!Number.isFinite(depth)) throw new Error('Redis returned a non-numeric queue depth');
+    matchmakingQueueDepth.set(Math.max(0, depth));
+  } catch (error) {
+    // Do not leave an old depth sample looking healthy while Redis is down.
+    matchmakingQueueDepth.set(Number.NaN);
+    matchmakingQueueMetricFailuresTotal.inc();
+    throw error;
+  }
+}
+
 function normalizePath(path) {
   return path
     .replace(/\/api\/imgproxy\/.+/i, '/api/imgproxy/:path')
@@ -77,9 +103,9 @@ function attachRequestObservability(req, res) {
   return { log, requestId };
 }
 
-function metricsResponse(res) {
+async function metricsResponse(res) {
   res.writeHead(200, { 'Content-Type': register.contentType });
-  res.end(register.metrics());
+  res.end(await register.metrics());
 }
 
 module.exports = {
@@ -87,7 +113,10 @@ module.exports = {
   register,
   httpRequestDuration,
   httpRequestsTotal,
+  matchmakingQueueDepth,
+  matchmakingQueueMetricFailuresTotal,
   rateLimitedTotal,
+  refreshMatchmakingQueueDepth,
   attachRequestObservability,
   metricsResponse,
 };

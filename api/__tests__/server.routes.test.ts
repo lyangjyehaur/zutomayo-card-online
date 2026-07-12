@@ -6,6 +6,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters!!';
 process.env.NODE_ENV = 'test';
 process.env.APP_VERSION = '0.2.0';
+process.env.LOGTO_ENDPOINT = 'https://auth.example';
+process.env.LOGTO_M2M_APP_ID = 'logto-management-client';
+process.env.LOGTO_M2M_APP_SECRET = 'logto-management-secret';
 delete process.env.TURNSTILE_SECRET_KEY;
 delete process.env.TURNSTILE_REQUIRED;
 delete process.env.SENTRY_DSN;
@@ -15,6 +18,9 @@ delete process.env.CHAT_TRANSLATION_API_KEY;
 delete process.env.CHAT_TRANSLATION_PROVIDER;
 delete process.env.CHAT_TRANSLATION_MODEL;
 delete process.env.CHAT_TRANSLATION_TIMEOUT_MS;
+
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
 
 // ===== Mock pg and ioredis via Module._load interception =====
 const mockQuery = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
@@ -36,12 +42,17 @@ const mockRedisZcount = vi.fn().mockResolvedValue(0);
 const mockRedisZremrangebyscore = vi.fn().mockResolvedValue(0);
 const mockRedisDel = vi.fn().mockResolvedValue(1);
 const mockRedisGet = vi.fn().mockResolvedValue(null);
+const mockRedisGetdel = vi.fn().mockResolvedValue(null);
 const mockRedisSet = vi.fn().mockResolvedValue('OK');
 const mockRedisEval = vi.fn().mockResolvedValue(null);
 const mockRedisScan = vi.fn().mockResolvedValue(['0', []]);
 const mockRedisMget = vi.fn().mockResolvedValue([]);
 const mockRedisMmTryMatch = vi.fn().mockResolvedValue('');
 const mockRedisMmCleanExpired = vi.fn().mockResolvedValue(0);
+const mockRedisMmCancelPair = vi.fn().mockResolvedValue(0);
+const mockRedisMmApplyBlock = vi.fn().mockResolvedValue(0);
+const mockRedisSadd = vi.fn().mockResolvedValue(1);
+const mockRedisSrem = vi.fn().mockResolvedValue(1);
 
 const mockRedis = {
   incr: mockRedisIncr,
@@ -58,12 +69,17 @@ const mockRedis = {
   zremrangebyscore: mockRedisZremrangebyscore,
   del: mockRedisDel,
   get: mockRedisGet,
+  getdel: mockRedisGetdel,
   set: mockRedisSet,
   eval: mockRedisEval,
   scan: mockRedisScan,
   mget: mockRedisMget,
   mmTryMatch: mockRedisMmTryMatch,
   mmCleanExpired: mockRedisMmCleanExpired,
+  mmCancelPair: mockRedisMmCancelPair,
+  mmApplyBlock: mockRedisMmApplyBlock,
+  sadd: mockRedisSadd,
+  srem: mockRedisSrem,
 };
 
 // Clear cached pg and ioredis so Module._load interception returns our mocks.
@@ -97,10 +113,11 @@ Module_._load = function (request: string, parent: NodeJS.Module | undefined, is
 const require_ = createRequire(import.meta.url);
 const serverModule = require_('../server.cjs') as {
   handleRequest: (req: unknown, res: unknown) => void;
+  recoverAccountDeletions: () => Promise<void>;
 };
 Module_._load = originalLoad;
 
-const { handleRequest } = serverModule;
+const { handleRequest, recoverAccountDeletions } = serverModule;
 
 // ===== Mock req/res helpers =====
 
@@ -257,10 +274,21 @@ function createUserJwt(userId = 'u_test') {
   return `${input}.${signature}`;
 }
 
-function createRevocableUserJwt(userId = 'u_test') {
+function encryptOAuthTokenForTest(value: string): string {
+  const key = crypto
+    .createHash('sha256')
+    .update(`zutomayo-secret:${process.env.JWT_SECRET || ''}`)
+    .digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  return `${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+function createRevocableUserJwt(userId = 'u_test', jti = 'access-token-test') {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
-  const payload = base64urlJson({ sub: userId, userId, jti: 'access-token-test', iat: now, exp: now + 60 * 60 });
+  const payload = base64urlJson({ sub: userId, userId, jti, iat: now, exp: now + 60 * 60 });
   const input = `${header}.${payload}`;
   const signature = crypto
     .createHmac('sha256', process.env.JWT_SECRET || '')
@@ -322,6 +350,7 @@ function adminUnsafeHeaders() {
 describe('server routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetch.mockReset();
     // Reset default mock behavior after clearAllMocks
     mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
     mockRedisIncr.mockResolvedValue(1);
@@ -332,6 +361,7 @@ describe('server routes', () => {
     mockRedisZadd.mockResolvedValue(1);
     mockRedisHgetall.mockResolvedValue({});
     mockRedisGet.mockResolvedValue(null);
+    mockRedisGetdel.mockResolvedValue(null);
     mockRedisEval.mockResolvedValue(null);
     mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes('FROM admin_sessions')) {
@@ -520,20 +550,25 @@ describe('server routes', () => {
     });
 
     it('GET /api/profile returns the authenticated user profile', async () => {
-      mockQuery.mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'u_test',
-            email: 'user@example.com',
-            nickname: 'User',
-            elo: 1000,
-            match_count: 4,
-            wins: 3,
-            created_at: '2026-07-10T00:00:00.000Z',
-          },
-        ],
-        rowCount: 1,
-      });
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'u_test',
+              email: 'user@example.com',
+              nickname: 'User',
+              elo: 1000,
+              match_count: 4,
+              wins: 3,
+              created_at: '2026-07-10T00:00:00.000Z',
+            },
+          ],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({
+          rows: [{ password_hash: 'current-hash', has_logto_identity: false }],
+          rowCount: 1,
+        });
 
       const res = await sendRequest('GET', '/api/profile', null, {
         authorization: `Bearer ${createUserJwt()}`,
@@ -841,8 +876,13 @@ describe('server routes', () => {
         ]);
         expect(mockQuery).toHaveBeenCalledWith(
           expect.stringContaining("moderation_status IN ('visible', 'pending_review')"),
-          [testCase.expectedKey, 10],
+          [testCase.expectedKey, 10, 'u_reader'],
         );
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_blocks b'), [
+          testCase.expectedKey,
+          10,
+          'u_reader',
+        ]);
       }
     });
 
@@ -1467,6 +1507,11 @@ describe('server routes', () => {
         });
         expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('JOIN chat_conversations'), [
           testCase.messageId,
+          'u_reader',
+        ]);
+        expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM user_blocks b'), [
+          testCase.messageId,
+          'u_reader',
         ]);
         expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO chat_message_translations'), [
           testCase.messageId,
@@ -2103,6 +2148,10 @@ describe('server routes', () => {
       const currentHash = crypto.pbkdf2Sync(currentPassword, currentSalt, 100000, 64, 'sha512').toString('hex');
       mockQuery
         .mockResolvedValueOnce({
+          rows: [{ password_hash: currentHash, has_logto_identity: false }],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({
           rows: [{ id: 'u_test', password_hash: currentHash, salt: currentSalt }],
           rowCount: 1,
         })
@@ -2128,6 +2177,264 @@ describe('server routes', () => {
       expect(mockRedisScan).toHaveBeenCalledWith('0', 'MATCH', 'refresh:*', 'COUNT', 200);
       expect(mockRedisMget).toHaveBeenCalledWith(['refresh:owned', 'refresh:other']);
       expect(mockRedisDel).toHaveBeenCalledWith('refresh:owned');
+    });
+  });
+
+  describe('Logto account step-up', () => {
+    function configureLogtoAccountMocks() {
+      const encryptedAccessToken = encryptOAuthTokenForTest('logto-access-token');
+      let deletionStatus = 'prepared';
+      const deletionRequest = () => ({
+        id: 'account_delete_test',
+        user_id: 'u_test',
+        provider: 'logto',
+        provider_user_id: 'logto-user-test',
+        status: deletionStatus,
+        attempt_count: deletionStatus === 'prepared' ? 0 : 1,
+        last_error: '',
+        updated_at: new Date().toISOString(),
+      });
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('has_logto_identity')) {
+          return { rows: [{ password_hash: 'oauth:disabled', has_logto_identity: true }], rowCount: 1 };
+        }
+        if (sql.includes('access_token_ciphertext')) {
+          return {
+            rows: [
+              {
+                access_token_ciphertext: encryptedAccessToken,
+                refresh_token_ciphertext: null,
+                token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('SELECT provider_user_id FROM user_identities')) {
+          return { rows: [{ provider_user_id: 'logto-user-test' }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO account_deletion_requests')) {
+          deletionStatus = 'prepared';
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes('SELECT * FROM account_deletion_requests')) {
+          return { rows: [], rowCount: 0 };
+        }
+        if (sql.includes('SELECT id, user_id FROM account_deletion_requests')) {
+          return { rows: [{ id: 'account_delete_test', user_id: 'u_test' }], rowCount: 1 };
+        }
+        if (sql.includes("SET status = 'provider_deleting'")) {
+          deletionStatus = 'provider_deleting';
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes("SET status = 'provider_deleted'")) {
+          deletionStatus = 'provider_deleted';
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes('SELECT id, user_id, provider, status') && sql.includes('account_deletion_requests')) {
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) {
+          return { rows: [{ id: 'u_test' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+    }
+
+    it('returns only a server-issued opaque token after provider verification', async () => {
+      configureLogtoAccountMocks();
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 'provider-verification-record' }),
+      });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/account-center/verifications/password',
+        { currentPassword: 'provider-password' },
+        userUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as Record<string, unknown>;
+      expect(body).toEqual({ stepUpToken: expect.any(String), expiresIn: 300 });
+      expect(JSON.stringify(body)).not.toContain('provider-verification-record');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://auth.example/api/verifications/password',
+        expect.objectContaining({ body: JSON.stringify({ password: 'provider-password' }) }),
+      );
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        expect.stringMatching(/^account:step-up:/),
+        expect.stringContaining('provider-verification-record'),
+        'EX',
+        300,
+        'NX',
+      );
+    });
+
+    it('consumes a password step-up once and keeps the provider record server-side', async () => {
+      configureLogtoAccountMocks();
+      mockRedisGetdel.mockResolvedValueOnce(
+        JSON.stringify({
+          userId: 'u_test',
+          purpose: 'password-change',
+          providerVerificationRecordId: 'provider-verification-record',
+        }),
+      );
+      mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => '' });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/account-center/password',
+        { stepUpToken: 'opaque-step-up-token-12345678901234567890', newPassword: 'new-provider-password' },
+        userUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({ ok: true });
+      expect(mockRedisGetdel).toHaveBeenCalledWith(expect.stringMatching(/^account:step-up:/));
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://auth.example/api/my-account/password',
+        expect.objectContaining({
+          body: JSON.stringify({ password: 'new-provider-password' }),
+          headers: expect.objectContaining({ 'logto-verification-record-id': 'provider-verification-record' }),
+        }),
+      );
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        'auth:revoked-before:u_test',
+        expect.any(String),
+        'EX',
+        7 * 24 * 60 * 60,
+      );
+    });
+
+    it('rejects a raw provider record on the password route', async () => {
+      configureLogtoAccountMocks();
+      const res = await sendRequest(
+        'POST',
+        '/api/account-center/password',
+        { verificationRecordId: 'provider-verification-record', newPassword: 'new-provider-password' },
+        userUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(400);
+      expect(mockRedisGetdel).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('uses the delete purpose and revokes sessions only after the hold checks', async () => {
+      configureLogtoAccountMocks();
+      mockRedisGetdel.mockResolvedValueOnce(
+        JSON.stringify({
+          userId: 'u_test',
+          purpose: 'account-delete',
+          providerVerificationRecordId: 'provider-verification-record',
+        }),
+      );
+      mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => '{}' });
+
+      const res = await sendRequest(
+        'DELETE',
+        '/api/account',
+        { confirmation: 'DELETE', stepUpToken: 'opaque-step-up-token-12345678901234567890' },
+        {
+          ...userUnsafeHeaders(),
+          authorization: `Bearer ${createRevocableUserJwt('u_test', 'bearer-access-token-test')}`,
+          cookie: `zutomayo_csrf=valid-csrf-token-for-testing-1234567890; zutomayo_session=${encodeURIComponent(
+            createRevocableUserJwt('u_test', 'cookie-access-token-test'),
+          )}`,
+        },
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({ deleted: true });
+      expect(mockRedisGetdel).toHaveBeenCalledWith(expect.stringMatching(/^account:step-up:/));
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://auth.example/api/my-account',
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: expect.objectContaining({ 'logto-verification-record-id': 'provider-verification-record' }),
+        }),
+      );
+      const sqls = mockQuery.mock.calls.map(([sql]) => String(sql));
+      const retentionLock = sqls.indexOf('SELECT pg_advisory_xact_lock(hashtext($1))');
+      const identityDelete = sqls.findIndex((sql) => sql.includes('DELETE FROM user_identities'));
+      expect(retentionLock).toBeGreaterThanOrEqual(0);
+      expect(identityDelete).toBeGreaterThan(retentionLock);
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        'auth:revoked-before:u_test',
+        expect.any(String),
+        'EX',
+        7 * 24 * 60 * 60,
+      );
+      expect(mockRedisSet).toHaveBeenCalledWith('blacklist:bearer-access-token-test', '1', 'EX', expect.any(Number));
+      expect(mockRedisSet).toHaveBeenCalledWith('blacklist:cookie-access-token-test', '1', 'EX', expect.any(Number));
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), [
+        'account_delete_test',
+        'u_test',
+      ]);
+    });
+
+    it('recovers an ambiguous provider deletion with the least-privilege M2M client', async () => {
+      let deletionStatus = 'provider_deleting';
+      const requestRow = () => ({
+        id: 'account_delete_recovery',
+        user_id: 'u_recovery',
+        provider: 'logto',
+        provider_user_id: 'logto-recovery-user',
+        status: deletionStatus,
+        attempt_count: 1,
+        last_error: '',
+        updated_at: '2026-07-13T00:00:00.000Z',
+      });
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('WHERE status = ANY($1::text[])')) return { rows: [requestRow()], rowCount: 1 };
+        if (sql.includes('SELECT id, user_id FROM account_deletion_requests')) {
+          return { rows: [{ id: 'account_delete_recovery', user_id: 'u_recovery' }], rowCount: 1 };
+        }
+        if (sql.includes("SET status = 'provider_deleted'")) {
+          deletionStatus = 'provider_deleted';
+          return { rows: [requestRow()], rowCount: 1 };
+        }
+        if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) {
+          return { rows: [{ id: 'u_recovery' }], rowCount: 1 };
+        }
+        if (sql.includes('SELECT id, user_id, provider, status') && sql.includes('account_deletion_requests')) {
+          return { rows: [requestRow()], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ access_token: 'm2m-access-token', expires_in: 3600 }),
+        })
+        .mockResolvedValueOnce({ ok: false, status: 404, text: async () => '' });
+
+      await recoverAccountDeletions();
+
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'https://auth.example/oidc/token',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('scope=delete%3Ausers'),
+        }),
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        'https://auth.example/api/users/logto-recovery-user',
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: expect.objectContaining({ Authorization: 'Bearer m2m-access-token' }),
+        }),
+      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), [
+        'account_delete_recovery',
+        'u_recovery',
+      ]);
     });
   });
 
@@ -2211,6 +2518,81 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(200);
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.onlineCount).toBeDefined();
+    });
+  });
+
+  describe('season and legal-hold routes', () => {
+    it('requires authentication to list player rewards', async () => {
+      const res = await sendRequest('GET', '/api/seasons/rewards');
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('rejects unknown fields in an admin season request', async () => {
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/seasons',
+        {
+          id: 'season-2026-1',
+          name: 'Season 1',
+          startsAt: '2026-08-01T00:00:00.000Z',
+          endsAt: '2026-09-01T00:00:00.000Z',
+          startingRating: 1000,
+          placementMatches: 5,
+          ratingDecayPercent: 25,
+          rulesVersion: 'rules-1',
+          rewardConfig: { tiers: [] },
+          unexpected: true,
+        },
+        adminUnsafeHeaders(),
+      );
+      expect(res.statusCode).toBe(400);
+      expect(parseBody(res)).toMatchObject({ error: 'Validation failed' });
+    });
+
+    it('requires an audit-friendly reason when creating a legal hold', async () => {
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/legal-holds',
+        { subjectType: 'account', subjectId: 'u_1', owner: 'legal-team', reason: 'short' },
+        adminUnsafeHeaders(),
+      );
+      expect(res.statusCode).toBe(400);
+      expect(parseBody(res)).toMatchObject({ error: 'Validation failed' });
+    });
+
+    it('rejects malformed season ids before claiming a reward', async () => {
+      const res = await sendRequest('POST', '/api/seasons/not%20valid/rewards/claim', null, userUnsafeHeaders());
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('binds reward claims to the authenticated player', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM season_rewards') && sql.includes('FOR UPDATE')) {
+          return { rows: [{ reward_tier: 'champion', reward_payload: {}, claimed_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO season_reward_entitlements')) {
+          return {
+            rows: [{ id: 1, reward_tier: 'champion', reward_payload: {}, granted_at: '2026-07-12T00:00:00.000Z' }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('UPDATE season_rewards')) {
+          return { rows: [{ claimed_at: '2026-07-12T00:00:00.000Z' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      const res = await sendRequest(
+        'POST',
+        '/api/seasons/season-2026-1/rewards/claim',
+        null,
+        userUnsafeHeaders('u_claimant'),
+      );
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ claimed: true, reward: { reward_tier: 'champion' } });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE season_rewards'), [
+        'season-2026-1',
+        'u_claimant',
+      ]);
     });
   });
 });

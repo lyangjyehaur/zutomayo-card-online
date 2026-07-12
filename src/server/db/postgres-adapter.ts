@@ -2,6 +2,17 @@ import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import type { Server, State, LogEntry } from 'boardgame.io';
 import * as Sentry from '@sentry/node';
 import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
+import { shuffleDeck } from '../../game/cards/deckBuilder';
+
+const require = createRequire(import.meta.url);
+const { assertRuntimeSchema } = require('../../../api/schemaGate.cjs') as {
+  assertRuntimeSchema: (options: {
+    pool: Pick<PoolClient, 'query'>;
+    expectedMigration: string | undefined;
+    expectedChecksum: string | undefined;
+  }) => Promise<{ expectedMigration: string; expectedChecksum: string }>;
+};
 
 /**
  * boardgame.io StorageAPI.Async 的 Postgres 實作。
@@ -32,6 +43,12 @@ interface PostgresAdapterOptions {
   createIndexes?: boolean;
   /** Whether ranked result delivery is enabled for this process. */
   rankedMatchesEnabled?: boolean;
+  /** Allow runtime CREATE TABLE/INDEX. Production must keep this disabled. */
+  runtimeSchemaDdl?: boolean;
+  /** Migration basename required when runtime DDL is disabled. */
+  expectedSchemaMigration?: string;
+  /** SHA-256 of the required migration file. */
+  expectedSchemaChecksum?: string;
 }
 
 interface MatchRow extends QueryResultRow {
@@ -89,6 +106,8 @@ export interface ReserveMatchSeatInput {
   userId: string;
   rankedEligible: boolean;
   credentials: string;
+  deckReservationId?: string;
+  deckRulesVersion?: string;
 }
 
 export interface ResumeMatchSeatInput {
@@ -103,6 +122,25 @@ export interface ReservedMatchSeat {
   userId: string;
   rankedEligible: boolean;
   metadata: Server.MatchData;
+}
+
+export interface BindDeckReservationInput {
+  matchID: string;
+  playerID: BoardgamePlayerID;
+  userId: string;
+  reservationId: string;
+  rulesVersion: string;
+}
+
+interface DeckReservationRow extends QueryResultRow {
+  id: string;
+  user_id: string;
+  deck_version: string;
+  rules_version: string;
+  card_ids: unknown;
+  expires_at: Date | string;
+  match_id: string | null;
+  player_id: BoardgamePlayerID | null;
 }
 
 interface MatchSeatRow extends QueryResultRow {
@@ -147,12 +185,21 @@ function firstAvailablePlayerID(metadata: Server.MatchData): BoardgamePlayerID |
   return undefined;
 }
 
+function metadataRulesVersion(metadata: unknown): string {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return 'legacy';
+  const setupData = (metadata as Record<string, unknown>).setupData;
+  if (!setupData || typeof setupData !== 'object' || Array.isArray(setupData)) return 'legacy';
+  const value = (setupData as Record<string, unknown>).rulesVersion;
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, 120) : 'legacy';
+}
+
 interface CanonicalTerminalResult {
   winnerPlayer: 0 | 1 | null;
   turns: number;
   durationSeconds: number;
   actionLog: unknown[];
   stateID: number | null;
+  completedAt: string | null;
 }
 
 function canonicalTerminalResult(state: State): CanonicalTerminalResult | null {
@@ -189,12 +236,15 @@ function canonicalTerminalResult(state: State): CanonicalTerminalResult | null {
   const endedAt = Number.isFinite(G?.matchEndedAt) ? Number(G?.matchEndedAt) : 0;
   const durationSeconds =
     startedAt > 0 && endedAt >= startedAt ? Math.min(Math.floor((endedAt - startedAt) / 1000), 86400) : 0;
+  const completedAtDate = new Date(endedAt);
+  const completedAt = endedAt > 0 && Number.isFinite(completedAtDate.getTime()) ? completedAtDate.toISOString() : null;
   return {
     winnerPlayer,
     turns,
     durationSeconds,
     actionLog: Array.isArray(G?.actionLog) ? G.actionLog.slice(0, 2000) : [],
     stateID: typeof state._stateID === 'number' ? state._stateID : null,
+    completedAt,
   };
 }
 
@@ -211,6 +261,9 @@ export class PostgresAdapter {
   private pool: Pool;
   private createIndexes: boolean;
   private rankedMatchesEnabled: boolean;
+  private runtimeSchemaDdl: boolean;
+  private expectedSchemaMigration: string;
+  private expectedSchemaChecksum: string;
   private connected = false;
   private closed = false;
   private updateLocks = new Map<string, UpdateLockContext>();
@@ -233,6 +286,13 @@ export class PostgresAdapter {
     // intentionally disabled. Such results must be terminally unrated rather
     // than accumulating forever as pending rows.
     this.rankedMatchesEnabled = opts.rankedMatchesEnabled ?? process.env.RANKED_MATCHES_ENABLED !== 'false';
+    this.runtimeSchemaDdl = opts.runtimeSchemaDdl ?? process.env.RUNTIME_SCHEMA_DDL !== 'false';
+    this.expectedSchemaMigration = opts.expectedSchemaMigration ?? process.env.EXPECTED_SCHEMA_MIGRATION ?? '';
+    this.expectedSchemaChecksum = (
+      opts.expectedSchemaChecksum ??
+      process.env.EXPECTED_SCHEMA_CHECKSUM ??
+      ''
+    ).toLowerCase();
   }
 
   type() {
@@ -243,6 +303,15 @@ export class PostgresAdapter {
     if (this.closed || this.connected) return;
     const client = await this.pool.connect();
     try {
+      if (!this.runtimeSchemaDdl) {
+        await assertRuntimeSchema({
+          pool: client,
+          expectedMigration: this.expectedSchemaMigration,
+          expectedChecksum: this.expectedSchemaChecksum,
+        });
+        this.connected = true;
+        return;
+      }
       await client.query(`
         CREATE TABLE IF NOT EXISTS bjg_matches (
           match_id       TEXT PRIMARY KEY,
@@ -277,6 +346,8 @@ export class PostgresAdapter {
           ranked_eligible    BOOLEAN NOT NULL DEFAULT FALSE,
           turns              INTEGER NOT NULL DEFAULT 0,
           duration_seconds   INTEGER NOT NULL DEFAULT 0,
+          completed_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          rules_version      TEXT NOT NULL DEFAULT 'legacy',
           action_log         JSONB NOT NULL DEFAULT '[]'::jsonb,
           state_id           INTEGER,
           status             TEXT NOT NULL DEFAULT 'pending'
@@ -291,6 +362,10 @@ export class PostgresAdapter {
           delivered_at       TIMESTAMPTZ
         );
       `);
+      await client.query(
+        `ALTER TABLE bjg_match_result_outbox
+           ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+      );
       if (this.createIndexes) {
         await client.query(`CREATE INDEX IF NOT EXISTS idx_bjg_matches_updated_at ON bjg_matches (updated_at);`);
         await client.query(
@@ -302,6 +377,11 @@ export class PostgresAdapter {
         await client.query(
           `CREATE INDEX IF NOT EXISTS idx_bjg_match_result_outbox_delivery
              ON bjg_match_result_outbox (status, next_attempt_at);`,
+        );
+        await client.query(
+          `CREATE INDEX IF NOT EXISTS idx_match_result_outbox_season_settlement
+             ON bjg_match_result_outbox (rules_version, completed_at, status)
+          WHERE ranked_eligible = TRUE;`,
         );
       }
       this.connected = true;
@@ -408,14 +488,15 @@ export class PostgresAdapter {
   async reserveMatchSeat(input: ReserveMatchSeatInput): Promise<ReservedMatchSeat> {
     return this.withTransaction(async (client) => {
       const result = await client.query<MatchRow>(
-        `SELECT match_id, metadata
+        `SELECT match_id, state, initial_state, metadata
            FROM bjg_matches
           WHERE match_id = $1
           FOR UPDATE`,
         [input.matchID],
       );
-      const metadata = result.rows[0]?.metadata;
-      if (!metadata) {
+      const match = result.rows[0];
+      const metadata = match?.metadata;
+      if (!match || !metadata) {
         throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
       }
 
@@ -474,12 +555,25 @@ export class PostgresAdapter {
       player.name = input.playerName;
       player.credentials = input.credentials;
       player.data = input.playerData;
-      await client.query(
-        `UPDATE bjg_matches
-            SET metadata = $2::jsonb, updated_at = NOW()
-          WHERE match_id = $1`,
-        [input.matchID, JSON.stringify(metadata)],
-      );
+      if (input.deckReservationId) {
+        if (!input.deckRulesVersion) {
+          throw new MatchSeatReservationError('seat_taken', 'Deck rules version is required');
+        }
+        await this.bindDeckReservationWithClient(client, match, {
+          matchID: input.matchID,
+          playerID,
+          userId: input.userId,
+          reservationId: input.deckReservationId,
+          rulesVersion: input.deckRulesVersion,
+        });
+      } else {
+        await client.query(
+          `UPDATE bjg_matches
+              SET metadata = $2::jsonb, updated_at = NOW()
+            WHERE match_id = $1`,
+          [input.matchID, JSON.stringify(metadata)],
+        );
+      }
 
       return {
         playerID,
@@ -574,6 +668,142 @@ export class PostgresAdapter {
         metadata,
       };
     });
+  }
+
+  /** Bind a server-owned deck to a seat before the first move is accepted. */
+  async bindDeckReservation(input: BindDeckReservationInput): Promise<void> {
+    await this.withTransaction(async (client) => {
+      const row = (
+        await client.query<MatchRow>(
+          `SELECT match_id, state, initial_state, metadata
+             FROM bjg_matches
+            WHERE match_id = $1
+            FOR UPDATE`,
+          [input.matchID],
+        )
+      ).rows[0];
+      if (!row?.state || !row.initial_state || !row.metadata) {
+        throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
+      }
+      await this.bindDeckReservationWithClient(client, row, input);
+    });
+  }
+
+  private async bindDeckReservationWithClient(
+    client: PoolClient,
+    row: MatchRow,
+    input: BindDeckReservationInput,
+  ): Promise<void> {
+    if (!row.state || !row.initial_state || !row.metadata) {
+      throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
+    }
+    const seat = (
+      await client.query<MatchSeatRow>(
+        `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash
+             FROM bjg_match_seats
+            WHERE match_id = $1 AND player_id = $2
+            FOR UPDATE`,
+        [input.matchID, input.playerID],
+      )
+    ).rows[0];
+    if (!seat || seat.user_id !== input.userId) {
+      throw new MatchSeatReservationError('identity_mismatch', 'Deck reservation does not own this seat');
+    }
+
+    const reservation = (
+      await client.query<DeckReservationRow>(
+        `SELECT id, user_id, deck_version, rules_version, card_ids, expires_at, match_id, player_id
+             FROM deck_reservations
+            WHERE id = $1
+            FOR UPDATE`,
+        [input.reservationId],
+      )
+    ).rows[0];
+    if (!reservation || new Date(reservation.expires_at).getTime() <= Date.now()) {
+      throw new MatchSeatReservationError('seat_taken', 'Deck reservation expired or does not exist');
+    }
+    if (reservation.user_id !== input.userId) {
+      throw new MatchSeatReservationError(
+        'identity_mismatch',
+        'Deck reservation does not belong to authenticated user',
+      );
+    }
+    if (reservation.rules_version !== input.rulesVersion) {
+      throw new MatchSeatReservationError('seat_taken', 'Deck rules version does not match server');
+    }
+    if (reservation.match_id) {
+      if (reservation.match_id === input.matchID && reservation.player_id === input.playerID) return;
+      throw new MatchSeatReservationError('seat_taken', 'Deck reservation already bound');
+    }
+
+    const cardIds = reservation.card_ids;
+    const cardCounts = new Map<string, number>();
+    if (Array.isArray(cardIds)) {
+      for (const id of cardIds) {
+        if (typeof id === 'string') cardCounts.set(id, (cardCounts.get(id) ?? 0) + 1);
+      }
+    }
+    if (
+      !Array.isArray(cardIds) ||
+      cardIds.length !== 20 ||
+      cardIds.some((id) => typeof id !== 'string') ||
+      [...cardCounts.values()].some((count) => count > 2)
+    ) {
+      throw new MatchSeatReservationError('seat_taken', 'Deck reservation contains invalid cards');
+    }
+    const state = JSON.parse(JSON.stringify(row.state)) as Record<string, unknown>;
+    const initialState = JSON.parse(JSON.stringify(row.initial_state)) as Record<string, unknown>;
+    const stateG = state.G as Record<string, unknown> | undefined;
+    const initialG = initialState.G as Record<string, unknown> | undefined;
+    if (!stateG || !initialG || stateG.step !== 'janken' || stateG.turnNumber !== 1) {
+      throw new MatchSeatReservationError('seat_taken', 'Deck can only be bound before the first move');
+    }
+    // Reservations contain validated card definition IDs, but the game
+    // server still owns instance creation and shuffle. Keep this path in
+    // lockstep with setupGame: shuffle before drawing the opening hand.
+    const deck = shuffleDeck(
+      cardIds.map((defId, index) => ({
+        instanceId: `server:${input.matchID}:${input.playerID}:${index}`,
+        defId: defId as string,
+        faceUp: false,
+      })),
+    );
+    const openingHand = deck.slice(0, 5).map((card) => ({ ...card, faceUp: true }));
+    const remainingDeck = deck.slice(5);
+    const apply = (targetG: Record<string, unknown>) => {
+      const players = targetG.players as Array<Record<string, unknown>> | undefined;
+      const player = players?.[Number(input.playerID)];
+      if (!player) throw new MatchSeatReservationError('seat_not_found', 'Player seat not found');
+      player.deck = remainingDeck.map((card) => ({ ...card }));
+      player.hand = openingHand.map((card) => ({ ...card }));
+    };
+    apply(stateG);
+    apply(initialG);
+    const metadata = JSON.parse(JSON.stringify(row.metadata)) as Record<string, unknown>;
+    const setupData = (
+      metadata.setupData && typeof metadata.setupData === 'object' ? metadata.setupData : {}
+    ) as Record<string, unknown>;
+    const slot = Number(input.playerID) === 0 ? '0' : '1';
+    metadata.setupData = {
+      ...setupData,
+      [`deck${slot}Version`]: reservation.deck_version,
+      rulesVersion: reservation.rules_version,
+    };
+    await client.query(
+      `UPDATE bjg_matches
+          SET state = $2::jsonb, initial_state = $3::jsonb, metadata = $4::jsonb, updated_at = NOW()
+        WHERE match_id = $1`,
+      [input.matchID, JSON.stringify(state), JSON.stringify(initialState), JSON.stringify(metadata)],
+    );
+    const consumed = await client.query(
+      `UPDATE deck_reservations
+          SET match_id = $2, player_id = $3, consumed_at = NOW()
+        WHERE id = $1 AND user_id = $4 AND match_id IS NULL`,
+      [input.reservationId, input.matchID, input.playerID, input.userId],
+    );
+    if (consumed.rowCount !== 1) {
+      throw new MatchSeatReservationError('seat_taken', 'Deck reservation was bound concurrently');
+    }
   }
 
   async fetch<O extends FetchOpts>(
@@ -824,6 +1054,11 @@ export class PostgresAdapter {
     matchID: string,
     result: CanonicalTerminalResult,
   ): Promise<void> {
+    const match = await queryable.query<Pick<MatchRow, 'metadata'>>(
+      'SELECT metadata FROM bjg_matches WHERE match_id = $1',
+      [matchID],
+    );
+    const rulesVersion = metadataRulesVersion(match.rows[0]?.metadata);
     const seats = await queryable.query<MatchSeatRow>(
       `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash
          FROM bjg_match_seats
@@ -863,6 +1098,8 @@ export class PostgresAdapter {
          ranked_eligible,
          turns,
          duration_seconds,
+         completed_at,
+         rules_version,
          action_log,
          state_id,
          status,
@@ -871,7 +1108,7 @@ export class PostgresAdapter {
          created_at,
          updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, NOW(), $13, NOW(), NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::timestamptz, NOW()), $11, $12::jsonb, $13, $14, NOW(), $15, NOW(), NOW())
        ON CONFLICT (source_match_id) DO NOTHING`,
       [
         matchID,
@@ -883,6 +1120,8 @@ export class PostgresAdapter {
         rankedEligible,
         result.turns,
         result.durationSeconds,
+        result.completedAt,
+        rulesVersion,
         JSON.stringify(result.actionLog),
         result.stateID,
         status,

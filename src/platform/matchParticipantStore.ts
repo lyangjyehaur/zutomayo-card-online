@@ -173,7 +173,7 @@ export function resolvePlatformMatchParticipantStoreMode(env: NodeJS.ProcessEnv 
 
 function databaseUrlFromEnv(env: NodeJS.ProcessEnv): string {
   return (
-    env.DATABASE_URL ??
+    env.DATABASE_URL?.trim() ||
     `postgres://${env.PG_USER || 'postgres'}:${env.PG_PASSWORD || ''}@${env.PG_HOST || 'localhost'}:${env.PG_PORT || '5432'}/${env.PG_DATABASE || 'postgres'}`
   );
 }

@@ -1,4 +1,5 @@
 import { Room, type AuthContext } from '@colyseus/core';
+import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../blockStore';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   BoardgameMatchReadyMessage,
@@ -30,13 +31,20 @@ function quickMatchDeckName(value: unknown): string | undefined {
 }
 
 export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; client: PlatformClient }> {
+  private static blockStore: PlatformBlockStore = createEmptyPlatformBlockStore();
+
+  static configureBlockStore(store: PlatformBlockStore | null): void {
+    QuickMatchRoom.blockStore = store ?? createEmptyPlatformBlockStore();
+  }
+
   maxClients = 2;
 
   private status: QuickMatchStatus = 'waiting';
   private hostSessionId?: string;
   private boardgameMatchID?: string;
   private authenticatedUserIds = new Set<string>();
-  private deckReservations = new Map<string, string>();
+  private deckReservations = new Map<string, { deckName: string; reservationId?: string }>();
+  private authAdmissionTail: Promise<void> = Promise.resolve();
 
   async onCreate(): Promise<void> {
     this.autoDispose = true;
@@ -66,29 +74,55 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     const auth = await authenticatePlatformClientCurrent(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
     if (this.status !== 'waiting') throw new Error('Quick match is not joinable');
-    // 在 onAuth 階段原子標記 userId，避免 onJoin 前的 TOCTOU 競爭讓同一使用者重複加入。
-    // 同時保留 this.clients 檢查作為防禦深度（處理未經 onAuth 直接加入的 client）。
-    if (
-      this.authenticatedUserIds.has(auth.userId) ||
-      this.clients.some((client) => client.userData?.userId === auth.userId)
-    ) {
-      throw new Error('Already queued');
+    const reservationId = optionalText(options.deckReservationId, 128);
+    if (reservationId && !/^dr_[A-Za-z0-9_-]{16,120}$/.test(reservationId)) {
+      throw new Error('Invalid deck reservation');
     }
     const deckName =
       quickMatchDeckName(options.deckName) ||
+      (reservationId ? '__reserved__' : undefined) ||
       (process.env.NODE_ENV === 'production' ? undefined : DEFAULT_QUICK_MATCH_DECK_NAME);
     if (!deckName) throw new Error('A server-supported deck is required');
-    this.authenticatedUserIds.add(auth.userId);
-    this.deckReservations.set(auth.userId, deckName);
+    await this.reserveQuickMatchIdentity(auth.userId, deckName, reservationId);
     return { ...auth, role: 'player' };
+  }
+
+  private async reserveQuickMatchIdentity(userId: string, deckName: string, reservationId?: string): Promise<void> {
+    let releaseAdmission!: () => void;
+    const previousAdmission = this.authAdmissionTail;
+    this.authAdmissionTail = new Promise<void>((resolve) => {
+      releaseAdmission = resolve;
+    });
+    await previousAdmission;
+    try {
+      // Serialize the async PostgreSQL block check with identity reservation so
+      // two concurrent onAuth calls cannot both observe an empty room.
+      if (this.authenticatedUserIds.has(userId) || this.clients.some((client) => client.userData?.userId === userId)) {
+        throw new Error('Already queued');
+      }
+      const queuedUserIds = new Set(this.authenticatedUserIds);
+      for (const client of this.clients) {
+        if (client.userData?.userId) queuedUserIds.add(client.userData.userId);
+      }
+      for (const queuedUserId of queuedUserIds) {
+        if (await QuickMatchRoom.blockStore.areUsersBlocked(userId, queuedUserId)) {
+          throw new Error('Quick match is not allowed');
+        }
+      }
+      this.authenticatedUserIds.add(userId);
+      this.deckReservations.set(userId, { deckName, ...(reservationId ? { reservationId } : {}) });
+    } finally {
+      releaseAdmission();
+    }
   }
 
   async onJoin(client: PlatformClient, options: QuickMatchRoomOptions = {}): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
     await assertPlatformAuthCurrent(auth);
+    const reservation = this.deckReservations.get(auth.userId);
     const deckName =
-      this.deckReservations.get(auth.userId) ??
+      reservation?.deckName ??
       (process.env.NODE_ENV === 'production'
         ? undefined
         : quickMatchDeckName(options.deckName) || DEFAULT_QUICK_MATCH_DECK_NAME);
@@ -160,6 +194,9 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
         roomId: this.roomId,
         role,
         deckName: client.userData?.deckName || DEFAULT_QUICK_MATCH_DECK_NAME,
+        deckReservationId: client.userData?.userId
+          ? this.deckReservations.get(client.userData.userId)?.reservationId
+          : undefined,
         opponent,
       });
     }

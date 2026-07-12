@@ -49,11 +49,19 @@ function authoritativeMatchStats(state) {
   const endedAt = Number.isFinite(G.matchEndedAt) ? Number(G.matchEndedAt) : 0;
   const duration =
     startedAt > 0 && endedAt >= startedAt ? Math.min(Math.floor((endedAt - startedAt) / 1000), 86400) : 0;
+  const completedAt =
+    Number.isFinite(new Date(endedAt).getTime()) && endedAt > 0 ? new Date(endedAt).toISOString() : null;
   return {
     turns,
     duration,
     actionLog: Array.isArray(G.actionLog) ? G.actionLog : [],
+    completedAt,
   };
+}
+
+function authoritativeRulesVersion(metadata) {
+  const value = metadata?.setupData?.rulesVersion;
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, 120) : 'legacy';
 }
 
 async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, authUserId) {
@@ -63,7 +71,15 @@ async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, aut
   }
   let match;
   try {
-    match = (await pool.query('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', [sourceMatchId])).rows[0];
+    match = (
+      await pool.query(
+        `SELECT m.state, m.metadata, o.completed_at
+           FROM bjg_matches m
+           LEFT JOIN bjg_match_result_outbox o ON o.source_match_id = m.match_id
+          WHERE m.match_id = $1`,
+        [sourceMatchId],
+      )
+    ).rows[0];
   } catch (err) {
     if (err?.code === '42P01') return { ok: false, status: 404, error: 'Source match not found' };
     throw err;
@@ -99,7 +115,14 @@ async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, aut
     loserPlayer,
     winnerUserId,
     loserUserId,
-    authoritative: authoritativeMatchStats(match.state),
+    rulesVersion: authoritativeRulesVersion(match.metadata),
+    authoritative: {
+      ...authoritativeMatchStats(match.state),
+      completedAt:
+        typeof match.completed_at === 'string' && match.completed_at
+          ? new Date(match.completed_at).toISOString()
+          : authoritativeMatchStats(match.state).completedAt,
+    },
   };
 }
 
@@ -110,5 +133,6 @@ module.exports = {
   playerDataUserId,
   trustedPlayerSeat,
   authoritativeMatchStats,
+  authoritativeRulesVersion,
   verifyBoardgameMatchResult,
 };

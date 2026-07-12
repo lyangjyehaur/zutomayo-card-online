@@ -7,7 +7,6 @@ import {
   getMatchStats,
   historyChatSubjectId,
   matchRecordFromServer,
-  mergeMatchRecords,
   replaceMatchRecords,
   resolveInitialHistoryChatRecord,
   type MatchRecord,
@@ -18,6 +17,7 @@ import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
 import {
   fetchChatMessages,
+  getMatchLog,
   getMatches,
   getProfile,
   isLoggedIn,
@@ -29,12 +29,14 @@ import {
 } from '../api/client';
 import {
   ActionBar,
+  Alert,
   AppHeader,
   Badge,
   Button,
   Card,
   Dialog,
   FilterToolbar,
+  LoadingState,
   PageShell,
   Panel,
   StatCard,
@@ -161,6 +163,11 @@ function MatchDetail({
             <Badge tone={resultBadgeTone(record)}>{winnerLabel(record)}</Badge>
           </div>
         </header>
+        {record.rulesVersion && (
+          <p className="font-mono text-xs text-content-primary/50">
+            {t('history.rulesVersion')} {record.rulesVersion}
+          </p>
+        )}
         <div className="grid gap-3 md:grid-cols-4">
           <Panel variant="ghost">
             <span className="text-xs text-content-primary/50">{t('history.turns')}</span>
@@ -388,12 +395,17 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
 
 export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
   const { showToast } = useToast();
+  const [serverAuthoritative] = useState(isLoggedIn);
   const [localRecords, setLocalRecords] = useState(() => getMatchRecords());
   const [serverRecords, setServerRecords] = useState<MatchRecord[]>([]);
-  const [records, setRecords] = useState(() => getMatchRecords());
+  const [serverStatus, setServerStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>(() =>
+    serverAuthoritative ? 'loading' : 'idle',
+  );
+  const [records, setRecords] = useState(() => (serverAuthoritative ? [] : getMatchRecords()));
   const [page, setPage] = useState(0);
   const [selectedRecord, setSelectedRecord] = useState<MatchRecord | null>(null);
   const [chatRecord, setChatRecord] = useState<MatchRecord | null>(null);
+  const [loadingTraceId, setLoadingTraceId] = useState<string | null>(null);
   const locale = useLocale();
   const stats = getMatchStats(records);
   const totalPages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
@@ -404,28 +416,32 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
     let cancelled = false;
     const initialLocalRecords = getMatchRecords();
     setLocalRecords(initialLocalRecords);
-    setRecords(initialLocalRecords);
-    if (!isLoggedIn())
+    setRecords(serverAuthoritative ? [] : initialLocalRecords);
+    if (!serverAuthoritative)
       return () => {
         cancelled = true;
       };
 
+    setServerStatus('loading');
     void getProfile()
       .then((profile) => getMatches(PAGE_SIZE * 10, 0).then((matches) => ({ profile, matches })))
       .then(({ profile, matches }) => {
         if (cancelled) return;
         const nextServerRecords = matches.map((match) => matchRecordFromServer(match, profile.id));
         setServerRecords(nextServerRecords);
-        setRecords(mergeMatchRecords(nextServerRecords, initialLocalRecords));
+        setRecords(nextServerRecords);
+        setServerStatus('ready');
       })
       .catch(() => {
-        // 本機紀錄仍可用；server history 失敗不應遮住已完成的對局。
+        if (cancelled) return;
+        setRecords([]);
+        setServerStatus('unavailable');
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [serverAuthoritative]);
 
   useEffect(() => {
     const matchingRecord = resolveInitialHistoryChatRecord(records, initialChatSourceMatchId);
@@ -438,7 +454,7 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
     if (previousRecords.length === 0) return;
     clearMatchRecords();
     setLocalRecords([]);
-    setRecords(mergeMatchRecords(serverRecords, []));
+    setRecords(serverAuthoritative ? serverRecords : []);
     setPage(0);
     setSelectedRecord(null);
     setChatRecord(null);
@@ -451,7 +467,7 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
       onAction: () => {
         replaceMatchRecords(previousRecords);
         setLocalRecords(previousRecords);
-        setRecords(mergeMatchRecords(serverRecords, previousRecords));
+        setRecords(serverAuthoritative ? serverRecords : previousRecords);
         setPage(previousPage);
         setSelectedRecord(null);
         setChatRecord(null);
@@ -461,6 +477,27 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
         });
       },
     });
+  };
+
+  const updateRecord = (nextRecord: MatchRecord) => {
+    setServerRecords((current) => current.map((record) => (record.id === nextRecord.id ? nextRecord : record)));
+    setRecords((current) => current.map((record) => (record.id === nextRecord.id ? nextRecord : record)));
+  };
+
+  const openMatchDetail = async (record: MatchRecord) => {
+    setSelectedRecord(record);
+    if (!record.serverMatchId || (record.actionLog ?? []).length > 0) return;
+    setLoadingTraceId(record.id);
+    try {
+      const actionLog = await getMatchLog(record.serverMatchId);
+      const nextRecord = { ...record, actionLog, detailsAvailable: true };
+      updateRecord(nextRecord);
+      setSelectedRecord(nextRecord);
+    } catch {
+      showToast({ title: t('history.traceUnavailable'), kind: 'warning' });
+    } finally {
+      setLoadingTraceId(null);
+    }
   };
 
   return (
@@ -526,9 +563,15 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
               }
             />
 
-            {records.length === 0 ? (
+            {serverStatus === 'loading' && <LoadingState label={t('history.serverLoading')} />}
+            {serverStatus === 'unavailable' && (
+              <Alert tone="warning" role="alert">
+                {t('history.serverUnavailable')}
+              </Alert>
+            )}
+            {serverStatus !== 'loading' && serverStatus !== 'unavailable' && records.length === 0 ? (
               <Panel className="text-sm text-content-primary/60">{t('history.noRecords')}</Panel>
-            ) : (
+            ) : records.length > 0 ? (
               <div className="grid gap-3">
                 {visibleRecords.map((record) => (
                   <Card key={record.id} as="article" className="grid gap-3">
@@ -563,6 +606,11 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
                       <span>
                         {t('history.traceCount')} {(record.actionLog ?? []).length}
                       </span>
+                      {record.rulesVersion && (
+                        <span className="font-mono text-xs text-content-primary/50">
+                          {t('history.rulesVersion')} {record.rulesVersion}
+                        </span>
+                      )}
                     </div>
                     <ActionBar mobileLayout="grid">
                       <Button
@@ -570,9 +618,10 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
                         variant="ghost"
                         type="button"
                         className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-                        onClick={() => setSelectedRecord(record)}
+                        disabled={loadingTraceId === record.id}
+                        onClick={() => void openMatchDetail(record)}
                       >
-                        {t('history.viewTrace')}
+                        {loadingTraceId === record.id ? t('history.traceLoading') : t('history.viewTrace')}
                       </Button>
                       <Button
                         size="sm"
@@ -598,7 +647,7 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
                   </Card>
                 ))}
               </div>
-            )}
+            ) : null}
           </section>
           {selectedRecord && (
             <MatchDetail

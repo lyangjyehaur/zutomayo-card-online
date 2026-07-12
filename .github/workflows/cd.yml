@@ -13,13 +13,14 @@ on:
           - staging
           - production
         required: true
-      tag:
-        description: '部署的 image tag（staging 用 commit SHA，production 用版本號或 latest）'
+      release_ref:
+        description: '要部署的完整 commit SHA 或 release tag（production 必須是 v* tag）'
         required: true
 
 permissions:
   contents: read
   packages: read
+  actions: read
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -33,11 +34,18 @@ jobs:
   preflight:
     name: Release preflight
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     timeout-minutes: 20
+    outputs:
+      release_sha: ${{ steps.release.outputs.sha }}
+      expected_migration: ${{ steps.release.outputs.migration }}
+      expected_checksum: ${{ steps.release.outputs.checksum }}
+      release_ref: ${{ steps.release.outputs.ref }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_ref || github.sha }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -51,19 +59,90 @@ jobs:
       - name: Run required verification
         run: npm run verify
 
+      - name: Resolve and validate release ref
+        id: release
+        env:
+          TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.release_ref || github.sha }}
+          TARGET_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging') }}
+        run: |
+          set -euo pipefail
+          REF="$TARGET_REF"
+          if [[ "$REF" == refs/tags/* ]]; then REF="${REF#refs/tags/}"; fi
+          if [[ "$TARGET_ENVIRONMENT" == production && ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo 'production releases require a semver v* tag' >&2
+            exit 2
+          fi
+          if [[ "$TARGET_ENVIRONMENT" == staging && ! "$REF" =~ ^[0-9a-fA-F]{40}$ && ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo 'staging release_ref must be a full commit SHA or v* tag' >&2
+            exit 2
+          fi
+          SHA="$(git rev-parse "${REF}^{commit}")"
+          if [[ "$REF" == v* ]]; then
+            VERSION="${REF#v}"
+            PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+            [[ "$VERSION" == "$PACKAGE_VERSION" ]] || { echo "tag $REF does not match package version $PACKAGE_VERSION" >&2; exit 2; }
+          fi
+          MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
+          [[ "$MIGRATION" =~ ^[0-9]{6,}_[a-z0-9_]+$ ]] || { echo 'could not resolve latest migration' >&2; exit 2; }
+          CHECKSUM="$(sha256sum "migrations/${MIGRATION}.js" | awk '{print $1}')"
+          [[ "$CHECKSUM" =~ ^[a-f0-9]{64}$ ]] || { echo 'could not calculate migration checksum' >&2; exit 2; }
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "migration=$MIGRATION" >> "$GITHUB_OUTPUT"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "release SHA: $SHA"
+          echo "expected migration: $MIGRATION ($CHECKSUM)"
+
+      - name: Verify required CI for manual release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA="${{ steps.release.outputs.sha }}"
+          COUNT="$(gh run list --workflow ci.yml --commit "$SHA" --status success --json databaseId --jq 'length')"
+          [[ "$COUNT" -gt 0 ]] || { echo "no successful CI run found for $SHA" >&2; exit 1; }
+
       - name: Validate deployment Compose files
         env:
           PG_PASSWORD: cd-preflight-password
+          PG_MIGRATION_PASSWORD: cd-preflight-migration-password
+          PG_APP_PASSWORD: cd-preflight-app-password
+          PG_MIGRATION_USER: zutomayo_migrator
+          PG_APP_USER: zutomayo_app
           JWT_SECRET: cd-preflight-jwt-secret-32chars-min
           REDIS_PASSWORD: cd-preflight-redis-password
+          METRICS_TOKEN: cd-preflight-metrics-token
+          PGSSLMODE: verify-full
+          PG_MONITOR_HOST: postgres
+          PG_MONITOR_USER: zutomayo_monitor
+          PG_MONITOR_PASSWORD: cd-preflight-monitor-password
+          PG_MONITOR_SSLMODE: verify-full
+          PG_RETENTION_HOST: postgresql
+          PG_RETENTION_USER: zutomayo_retention
+          PG_RETENTION_PASSWORD: cd-preflight-retention-password
+          PG_RETENTION_SSLMODE: verify-full
+          SLACK_ALERT_WEBHOOK: https://hooks.example.invalid/services/preflight
+          GRAFANA_PASSWORD: cd-preflight-grafana-password
+          EXPECTED_SCHEMA_MIGRATION: ${{ steps.release.outputs.migration }}
+          EXPECTED_SCHEMA_CHECKSUM: ${{ steps.release.outputs.checksum }}
+          GAME_IMAGE: ghcr.io/example/game@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          API_IMAGE: ghcr.io/example/api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          PLATFORM_IMAGE: ghcr.io/example/platform@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          RETENTION_METRICS_GID: '991'
         run: |
+          npm run release:config
+          npm run ops:config
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.monitoring.yml config --quiet
 
   # ─────────────────────────────────────────────────────────────
-  # Build & Push：push to master → staging tag；push tag v* → production tag
+  # Build & Push：只建立 full commit SHA tag；release tag 另加 semver alias。
   # ─────────────────────────────────────────────────────────────
   build-and-push:
     name: Build & Push (${{ matrix.app }})
@@ -73,6 +152,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -89,9 +170,15 @@ jobs:
           - app: migrate
             context: .
             dockerfile: ./Dockerfile.migrate
+          - app: retention
+            context: .
+            dockerfile: ./Dockerfile.retention
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
 
       - name: Read package version
         id: pkg
@@ -107,19 +194,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine image tags
+      - name: Determine immutable image tags
         id: meta
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            # Production: tag v1.2.3 → image:1.2.3 + image:latest
-            VERSION="${GITHUB_REF#refs/tags/v}"
-            echo "tags=${IMAGE}:${VERSION},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
-          else
-            # Staging: push to master → image:staging + image:<full-sha>
-            SHA="$GITHUB_SHA"
-            echo "tags=${IMAGE}:staging,${IMAGE}:${SHA}" >> "$GITHUB_OUTPUT"
+          SHA="${{ needs.preflight.outputs.release_sha }}"
+          TAGS="${IMAGE}:${SHA}"
+          if [[ "${{ needs.preflight.outputs.release_ref }}" == v* ]]; then
+            VERSION="${{ needs.preflight.outputs.release_ref }}"
+            TAGS="${TAGS},${IMAGE}:${VERSION#v}"
           fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
+      - name: Scan source dependencies and secrets
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Set up Syft
+        uses: anchore/sbom-action/download-syft@v0.17.0
 
       - name: Build and push Docker image
         id: build
@@ -135,7 +236,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
           build-args: |
             APP_VERSION=${{ steps.pkg.outputs.version }}
-            APP_BUILD_ID=${{ github.sha }}
+            APP_BUILD_ID=${{ needs.preflight.outputs.release_sha }}
             GAME_RULES_VERSION=${{ steps.pkg.outputs.version }}
             SENTRY_URL=${{ secrets.SENTRY_URL }}
             SENTRY_ORG=${{ secrets.SENTRY_ORG }}
@@ -153,9 +254,102 @@ jobs:
           secrets: |
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
-      - name: Record immutable image digest
+      - name: Scan pushed image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ needs.preflight.outputs.release_sha }}
+          scan-type: image
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Sign image and attest provenance
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          echo "${{ matrix.app }}: ${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          echo "${{ matrix.app }}=${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish build provenance attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM artifact
+        if: always()
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ needs.preflight.outputs.release_sha }}
+        run: syft "${IMAGE}" -o spdx-json="${{ runner.temp }}/${{ matrix.app }}.spdx.json"
+
+      - name: Upload SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.app }}-${{ needs.preflight.outputs.release_sha }}
+          path: ${{ runner.temp }}/${{ matrix.app }}.spdx.json
+
+  # ─────────────────────────────────────────────────────────────
+  verify-images:
+    name: Verify signed release images
+    runs-on: ubuntu-latest
+    needs: [preflight, build-and-push]
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+      attestations: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Resolve, verify, and archive release manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          EXPECTED_SCHEMA_MIGRATION: ${{ needs.preflight.outputs.expected_migration }}
+          EXPECTED_SCHEMA_CHECKSUM: ${{ needs.preflight.outputs.expected_checksum }}
+        run: |
+          ./scripts/resolve-release-manifest.sh "$RELEASE_SHA" "$EXPECTED_SCHEMA_MIGRATION" "$EXPECTED_SCHEMA_CHECKSUM" .release.env
+
+      - name: Enforce Cosign and attestation gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          while IFS='=' read -r key ref; do
+            case "$key" in
+              GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE)
+                cosign verify --certificate-identity-regexp "https://github.com/${GH_REPOSITORY}/.github/workflows/cd\\.yml@refs/(heads/master|tags/v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?)$" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$ref" >/dev/null
+                gh attestation verify "oci://${ref}" --repo "$GH_REPOSITORY" >/dev/null
+                ;;
+            esac
+          done < .release.env
+
+      - name: Upload verified release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ needs.preflight.outputs.release_sha }}
+          path: .release.env
+          retention-days: 30
 
   # ─────────────────────────────────────────────────────────────
   # GitHub Release：tag v* 時自動建立 Release（含自動產生的 changelog）
@@ -163,7 +357,7 @@ jobs:
   release:
     name: GitHub Release
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: verify-images
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
@@ -178,68 +372,101 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
 
-  # ─────────────────────────────────────────────────────────────
-  # SSH Deploy（手動觸發）：需要配置 DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY secrets
-  #
-  # Staging server 可能尚未準備好，故 staging 不自動部署；
-  # Production 部署也可改用 scripts/deploy-server4.sh（含 rollback 支援）。
-  # ─────────────────────────────────────────────────────────────
-  deploy:
-    name: SSH Deploy (${{ inputs.environment }})
+  manual-release:
+    name: Resolve and verify manual release
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
+    needs: preflight
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+      - name: Resolve and verify release manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          EXPECTED_SCHEMA_MIGRATION: ${{ needs.preflight.outputs.expected_migration }}
+          EXPECTED_SCHEMA_CHECKSUM: ${{ needs.preflight.outputs.expected_checksum }}
+        run: ./scripts/resolve-release-manifest.sh "$RELEASE_SHA" "$EXPECTED_SCHEMA_MIGRATION" "$EXPECTED_SCHEMA_CHECKSUM" .release.env
+      - name: Upload verified release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
+          path: .release.env
+          retention-days: 30
+
+  deploy:
+    name: Deploy immutable release (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs: [preflight, manual-release]
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
     environment:
       name: ${{ inputs.environment }}
     concurrency:
       group: deploy-${{ inputs.environment }}
       cancel-in-progress: false
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          script: |
-            TAG="${{ inputs.tag }}"
-            if [[ ! "$TAG" =~ ^[A-Za-z0-9._-]+$ ]]; then
-              echo "invalid image tag" >&2
-              exit 2
-            fi
-            if [[ "${{ inputs.environment }}" == "staging" ]]; then
-              cd "${{ secrets.STAGING_REMOTE_DIR || '/opt/zutomayo-card-online-staging' }}"
-              export TAG
-              docker compose -f docker-compose.staging.yml config --quiet
-              docker compose -f docker-compose.staging.yml pull --quiet
-              docker compose -f docker-compose.staging.yml run --rm migrate
-              docker compose -f docker-compose.staging.yml up -d --wait --wait-timeout 180
-              docker compose -f docker-compose.staging.yml ps
-              for URL in \
-                http://127.0.0.1:4000/api/version \
-                http://127.0.0.1:4001/api/version \
-                http://127.0.0.1:4002/health \
-                http://127.0.0.1:4002/ready; do
-                curl --fail --silent --show-error --retry 12 --retry-delay 5 --max-time 5 "$URL" >/dev/null
-              done
-            else
-              if [[ "$TAG" == "latest" || "$TAG" == "staging" ]]; then
-                echo "production requires an immutable release tag, not $TAG" >&2
-                exit 2
-              fi
-              cd "${{ secrets.PRODUCTION_REMOTE_DIR || '/opt/zutomayo-card-online' }}"
-              export TAG
-              docker compose -f docker-compose.server4.yml config --quiet
-              docker compose -f docker-compose.server4.yml pull --quiet
-              docker compose -f docker-compose.server4.yml run --rm migrate
-              docker compose -f docker-compose.server4.yml up -d --wait --wait-timeout 180
-              docker compose -f docker-compose.server4.yml ps
-              for URL in \
-                http://127.0.0.1:3000/api/version \
-                http://127.0.0.1:3001/api/version \
-                http://127.0.0.1:3002/health \
-                http://127.0.0.1:3002/ready; do
-                curl --fail --silent --show-error --retry 12 --retry-delay 5 --max-time 5 "$URL" >/dev/null
-              done
-            fi
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+      - name: Download verified release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
+          path: .
+      - name: Configure SSH key
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_SSH_KEY || secrets.DEPLOY_SSH_KEY }}
+      - name: Configure pinned SSH host key
+        env:
+          SSH_KNOWN_HOSTS: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_KNOWN_HOSTS || secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          test -n "$SSH_KNOWN_HOSTS" || { echo 'deployment known_hosts secret is required' >&2; exit 1; }
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+      - name: Validate manifest and deploy with smoke checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SERVER_HOST: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_HOST || inputs.environment == 'production' && secrets.DEPLOY_HOST || '' }}
+          SERVER_PORT: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_PORT || inputs.environment == 'production' && secrets.DEPLOY_PORT || '' }}
+          SERVER_USER: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_USER || inputs.environment == 'production' && secrets.DEPLOY_USER || '' }}
+          REMOTE_DIR: ${{ inputs.environment == 'staging' && secrets.STAGING_REMOTE_DIR || inputs.environment == 'production' && secrets.PRODUCTION_REMOTE_DIR || '' }}
+          COMPOSE_FILE: ${{ inputs.environment == 'staging' && 'docker-compose.staging.yml' || 'docker-compose.server4.yml' }}
+          GAME_PORT: ${{ inputs.environment == 'staging' && '4000' || '3000' }}
+          API_PORT: ${{ inputs.environment == 'staging' && '4001' || '3001' }}
+          PLATFORM_PORT: ${{ inputs.environment == 'staging' && '4002' || '3002' }}
+        run: |
+          test -n "$SERVER_HOST" || { echo 'environment deploy host secret is required' >&2; exit 1; }
+          test -n "$SERVER_USER" || { echo 'environment deploy user secret is required' >&2; exit 1; }
+          test -n "$REMOTE_DIR" || { echo 'environment remote directory secret is required' >&2; exit 1; }
+          SERVER_PORT="${SERVER_PORT:-22}"
+          export SERVER_PORT
+          chmod +x scripts/deploy-server4.sh
+          ./scripts/deploy-server4.sh --manifest .release.env

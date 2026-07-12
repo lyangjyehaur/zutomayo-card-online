@@ -14,14 +14,7 @@ function createActionUrl({ publicBaseUrl, actionType, token }) {
   return url.toString();
 }
 
-async function deliverAccountAction({
-  env = process.env,
-  fetchImpl = fetch,
-  actionType,
-  email,
-  token,
-  expiresIn,
-}) {
+async function deliverAccountAction({ env = process.env, fetchImpl = fetch, actionType, email, token, expiresIn }) {
   const webhookUrl = String(env.ACCOUNT_EMAIL_WEBHOOK_URL || '');
   const webhookSecret = String(env.ACCOUNT_EMAIL_WEBHOOK_SECRET || '');
   const publicBaseUrl = String(env.PUBLIC_BASE_URL || env.OAUTH_PUBLIC_BASE_URL || '');

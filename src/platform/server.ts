@@ -58,7 +58,14 @@ process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'unhandled platform rejection');
 });
 
-await platform.gameServer.listen(platform.port);
+try {
+  await platform.schemaReady;
+  await platform.gameServer.listen(platform.port);
+} catch (err) {
+  logger.fatal({ err }, 'platform schema gate failed; refusing to listen');
+  await platform.closeStores().catch(() => undefined);
+  process.exit(1);
+}
 logger.info(
   {
     port: platform.port,

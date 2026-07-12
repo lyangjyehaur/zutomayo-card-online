@@ -1,0 +1,17 @@
+[Unit]
+Description=Zutomayo encrypted PostgreSQL physical base backup
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=zutomayo-backup
+Group=zutomayo-backup
+EnvironmentFile=/etc/zutomayo/backup.env
+ExecStart=/opt/zutomayo/scripts/pg-base-backup.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/zutomayo /var/lib/node_exporter/textfile_collector
+

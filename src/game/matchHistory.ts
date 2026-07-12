@@ -1,9 +1,11 @@
 import type { ActionLogEntry, GameState } from '../game/types';
+import { APP_VERSION_INFO } from '../version';
 
 export interface MatchRecord {
   id: string;
   serverMatchId?: string;
   sourceMatchId?: string;
+  rulesVersion?: string;
   date: string;
   duration: number; // seconds
   winner: 0 | 1 | null;
@@ -25,8 +27,10 @@ export interface MatchRecord {
 
 export interface ServerMatchSummary {
   id: string;
-  winnerId: string;
-  loserId: string;
+  winnerId?: string | null;
+  loserId?: string | null;
+  sourceMatchId?: string | null;
+  rulesVersion?: string | null;
   winnerNickname?: string | null;
   loserNickname?: string | null;
   turns?: number | null;
@@ -106,6 +110,7 @@ export function saveMatchRecord(
   const record: MatchRecord = {
     id: recordId,
     sourceMatchId: normalizeSourceMatchId(sourceMatchId),
+    rulesVersion: APP_VERSION_INFO.rulesVersion,
     date: new Date().toISOString(),
     duration: Math.max(0, Math.round(durationSeconds)),
     winner: normalizedWinner,
@@ -152,6 +157,8 @@ export function matchRecordFromServer(match: ServerMatchSummary, accountId: stri
   return {
     id: `server:${match.id}`,
     serverMatchId: match.id,
+    sourceMatchId: normalizeSourceMatchId(match.sourceMatchId ?? undefined),
+    rulesVersion: match.rulesVersion || undefined,
     date: match.createdAt,
     duration: Math.max(0, Math.round(Number(match.duration) || 0)),
     winner: outcome === 'victory' ? 0 : outcome === 'defeat' ? 1 : null,

@@ -50,10 +50,10 @@ services:
   pgbouncer:
     # Clear the `pgbouncer` profile so the service starts with this overlay.
     profiles: !reset []
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:1.22.1-p1
     environment:
-      - DB_USER=${PG_USER:-postgres}
-      - DB_PASSWORD=${PG_PASSWORD:-}
+      - DB_USER=${PG_APP_USER:-zutomayo_app}
+      - DB_PASSWORD=${PG_APP_PASSWORD:-${PG_PASSWORD:-}}
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${PG_DATABASE:-zutomayo}

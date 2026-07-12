@@ -1,59 +1,55 @@
 services:
   migrate:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-migrate:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile.migrate
-    command: ['npm', 'run', 'db:migrate']
+    image: ${MIGRATE_IMAGE:?Set MIGRATE_IMAGE to a verified @sha256 digest}
+    command: ['npm', 'run', 'db:migrate:release']
     env_file: .env
     environment:
       - PG_HOST=postgresql
       - PG_PORT=5432
+      - PG_USER=${PG_MIGRATION_USER:?Set PG_MIGRATION_USER in .env}
+      - PG_PASSWORD=${PG_MIGRATION_PASSWORD:?Set PG_MIGRATION_PASSWORD in .env}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
+      - PG_APP_USER=${PG_APP_USER:?Set PG_APP_USER in .env}
+      - REQUIRE_APP_ROLE_GATE=true
+      - DATABASE_URL=
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
     networks:
       - default
       - 1panel-network
     restart: 'no'
 
   game:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-game:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-}
-        APP_BUILD_ID: ${APP_BUILD_ID:-}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
-        VITE_UMAMI_WEBSITE_ID: ${VITE_UMAMI_WEBSITE_ID:-}
-        VITE_UMAMI_SCRIPT_URL: ${VITE_UMAMI_SCRIPT_URL:-}
-        VITE_UMAMI_HOST_URL: ${VITE_UMAMI_HOST_URL:-}
-        VITE_UMAMI_TELEMETRY_SCRIPT_URL: ${VITE_UMAMI_TELEMETRY_SCRIPT_URL:-}
-        VITE_UMAMI_SECONDARY_WEBSITE_ID: ${VITE_UMAMI_SECONDARY_WEBSITE_ID:-}
-        VITE_UMAMI_SECONDARY_HOST_URL: ${VITE_UMAMI_SECONDARY_HOST_URL:-}
-        VITE_IMGPROXY_BASE_URL: ${VITE_IMGPROXY_BASE_URL:-}
-        VITE_PLATFORM_URL: ${VITE_PLATFORM_URL:-}
-        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
-        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.1}
-        SENTRY_DSN: ${SENTRY_DSN:-}
-        SENTRY_URL: ${SENTRY_URL:-}
-        SENTRY_ORG: ${SENTRY_ORG:-}
-        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
+    image: ${GAME_IMAGE:?Set GAME_IMAGE to a verified @sha256 digest}
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     env_file: .env
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - PG_HOST=postgresql
       - PG_PORT=5432
+      - PG_USER=${PG_APP_USER:?Set PG_APP_USER in .env}
+      - PG_PASSWORD=${PG_APP_PASSWORD:?Set PG_APP_PASSWORD in .env}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
       - REDIS_DB=${REDIS_DB:-0}
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - API_URL=${API_URL:-http://api:3001}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in .env}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
+      - AUTH_REVOCATION_TIMEOUT_MS=${AUTH_REVOCATION_TIMEOUT_MS:-750}
+      - GAME_AUTH_DB_QUERY_TIMEOUT_MS=${GAME_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
       - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
+      - GAME_DRAIN_GRACE_MS=${GAME_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     networks:
       - default
       - 1panel-network
@@ -66,28 +62,38 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   api:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-api:${TAG:-latest}
-    build:
-      context: ./api
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-}
-        APP_BUILD_ID: ${APP_BUILD_ID:-}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
+    image: ${API_IMAGE:?Set API_IMAGE to a verified @sha256 digest}
     ports:
-      - '3001:3001'
+      - '127.0.0.1:3001:3001'
     env_file: .env
     environment:
       - API_PORT=3001
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - PG_HOST=postgresql
       - PG_PORT=5432
+      - PG_USER=${PG_APP_USER:?Set PG_APP_USER in .env}
+      - PG_PASSWORD=${PG_APP_PASSWORD:?Set PG_APP_PASSWORD in .env}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
       - REDIS_DB=${REDIS_DB:-0}
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in .env}
+      - LOGTO_ENDPOINT=${LOGTO_ENDPOINT:-}
+      - LOGTO_ISSUER=${LOGTO_ISSUER:-}
+      - LOGTO_M2M_APP_ID=${LOGTO_M2M_APP_ID:-}
+      - LOGTO_M2M_APP_SECRET=${LOGTO_M2M_APP_SECRET:-}
+      - LOGTO_MANAGEMENT_RESOURCE=${LOGTO_MANAGEMENT_RESOURCE:-}
+      - LOGTO_MANAGEMENT_SCOPE=${LOGTO_MANAGEMENT_SCOPE:-}
+      - ACCOUNT_DELETION_RECOVERY_INTERVAL_MS=${ACCOUNT_DELETION_RECOVERY_INTERVAL_MS:-60000}
+      - ACCOUNT_EXPORT_MAX_BYTES=${ACCOUNT_EXPORT_MAX_BYTES:-8388608}
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - IMGPROXY_INTERNAL_BASE_URL=${IMGPROXY_INTERNAL_BASE_URL:-http://imgproxy:8080}
       - IMGPROXY_KEY=${IMGPROXY_KEY:-}
       - IMGPROXY_SALT=${IMGPROXY_SALT:-}
@@ -108,35 +114,48 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   platform:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-platform:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-}
-        APP_BUILD_ID: ${APP_BUILD_ID:-}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
+    image: ${PLATFORM_IMAGE:?Set PLATFORM_IMAGE to a verified @sha256 digest}
     command: ['npm', 'run', 'platform']
     ports:
-      - '3002:3002'
+      - '127.0.0.1:3002:3002'
     env_file: .env
     environment:
       - PLATFORM_PORT=3002
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - PG_HOST=postgresql
       - PG_PORT=5432
+      - PG_USER=${PG_APP_USER:?Set PG_APP_USER in .env}
+      - PG_PASSWORD=${PG_APP_PASSWORD:?Set PG_APP_PASSWORD in .env}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
       - REDIS_DB=${REDIS_DB:-0}
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in .env}
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
+      - PLATFORM_BLOCK_STORE=postgres
       - PLATFORM_MATCH_PARTICIPANT_STORE=postgres
       - PLATFORM_CHAT_PREVIEW_STORE=postgres
+      - PLATFORM_ADMISSION_IP_LIMIT=${PLATFORM_ADMISSION_IP_LIMIT:-30}
+      - PLATFORM_ADMISSION_USER_LIMIT=${PLATFORM_ADMISSION_USER_LIMIT:-10}
+      - PLATFORM_ADMISSION_GLOBAL_LIMIT=${PLATFORM_ADMISSION_GLOBAL_LIMIT:-2000}
+      - PLATFORM_ADMISSION_WINDOW_SECONDS=${PLATFORM_ADMISSION_WINDOW_SECONDS:-60}
+      - PLATFORM_ADMISSION_REDIS_TIMEOUT_MS=${PLATFORM_ADMISSION_REDIS_TIMEOUT_MS:-750}
+      - PLATFORM_AUTH_DB_POOL_MAX=${PLATFORM_AUTH_DB_POOL_MAX:-8}
+      - PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS=${PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PLATFORM_DRAIN_GRACE_MS=${PLATFORM_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     networks:
       - default
       - 1panel-network
@@ -149,6 +168,7 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
 networks:
   1panel-network:

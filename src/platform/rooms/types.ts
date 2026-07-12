@@ -74,6 +74,7 @@ export interface PlatformClientMessages {
     roomId: string;
     role: 'host' | 'guest';
     deckName: string;
+    deckReservationId?: string;
     opponent?: PlatformClientProfile;
   };
   quickMatchCancelled: {
@@ -191,6 +192,7 @@ export interface MatchShellRoomOptions extends LobbyJoinOptions {
 
 export interface QuickMatchRoomOptions extends LobbyJoinOptions {
   deckName?: unknown;
+  deckReservationId?: unknown;
   status?: unknown;
 }
 

@@ -1,5 +1,6 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { platformLogger as logger } from '../logger';
+import { recordPlatformReconnect } from '../metrics';
 import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
@@ -107,6 +108,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       joinedAt: Date.now(),
     };
     const isHostReconnect = previousHost?.userId === profile.userId;
+    if (isHostReconnect) recordPlatformReconnect('custom_room');
 
     if (auth.authenticated && this.boardgameMatchID && CustomRoom.participantStore.authorizeMatchParticipant) {
       const authorized = await CustomRoom.participantStore.authorizeMatchParticipant({

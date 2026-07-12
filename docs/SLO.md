@@ -2,16 +2,16 @@
 
 ## 正式環境目標
 
-| SLI | SLO（每 30 天） |
-| --- | ---: |
-| API 可用率 | 99.9% |
-| Game / platform 可用率 | 99.9% |
-| 配對成功後加入對局成功率 | 99% |
-| 對局完成或在斷線期限內恢復的比例 | 99% |
-| HTTP 5xx 比例 | < 1% |
-| HTTP latency | p95 < 500 ms，p99 < 1 s |
-| WebSocket 建連 latency | p95 < 2 s |
-| Prometheus scrape 成功率 | 99.9% |
+| SLI                              |         SLO（每 30 天） |
+| -------------------------------- | ----------------------: |
+| API 可用率                       |                   99.9% |
+| Game / platform 可用率           |                   99.9% |
+| 配對成功後加入對局成功率         |                     99% |
+| 對局完成或在斷線期限內恢復的比例 |                     99% |
+| HTTP 5xx 比例                    |                    < 1% |
+| HTTP latency                     | p95 < 500 ms，p99 < 1 s |
+| WebSocket 建連 latency           |               p95 < 2 s |
+| Prometheus scrape 成功率         |                   99.9% |
 
 ## 資料復原目標
 
