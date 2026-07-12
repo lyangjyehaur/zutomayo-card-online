@@ -381,6 +381,43 @@ export function platformPresenceFromMatchShellMessage(message: unknown): Platfor
   };
 }
 
+export function platformMatchShellSnapshotFromMessage(message: unknown): PlatformMatchShellSnapshot | null {
+  if (!message || typeof message !== 'object') return null;
+  const data = message as {
+    roomId?: unknown;
+    boardgameMatchID?: unknown;
+    status?: unknown;
+    players?: unknown;
+    spectators?: unknown;
+  };
+  if (typeof data.roomId !== 'string') return null;
+  if (
+    data.status !== 'waiting' &&
+    data.status !== 'ready' &&
+    data.status !== 'in_progress' &&
+    data.status !== 'finished'
+  ) {
+    return null;
+  }
+  const players = Array.isArray(data.players)
+    ? data.players
+        .map(platformProfileFromMessage)
+        .filter((profile): profile is PlatformClientProfile => Boolean(profile && profile.role === 'player'))
+    : [];
+  const spectators = Array.isArray(data.spectators)
+    ? data.spectators
+        .map(platformProfileFromMessage)
+        .filter((profile): profile is PlatformClientProfile => Boolean(profile))
+    : [];
+  return {
+    roomId: data.roomId,
+    boardgameMatchID: typeof data.boardgameMatchID === 'string' ? data.boardgameMatchID : undefined,
+    status: data.status,
+    players,
+    spectators,
+  };
+}
+
 export function platformChatPreviewFromMessage(message: unknown): PlatformChatPreview | null {
   if (!message || typeof message !== 'object') return null;
   const data = message as {
@@ -805,7 +842,9 @@ export async function connectPlatformMatchShell(
     platformSeatToken: options.platformSeatToken,
   });
 
-  room.onMessage<PlatformMatchShellSnapshot>('roomSnapshot', (snapshot) => {
+  room.onMessage('roomSnapshot', (message) => {
+    const snapshot = platformMatchShellSnapshotFromMessage(message);
+    if (!snapshot) return;
     handlers.onSnapshot?.(snapshot);
     handlers.onPresence?.({
       players: snapshot.players.length,

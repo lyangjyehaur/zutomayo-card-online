@@ -17,6 +17,7 @@ import {
   platformInviteCancelledFromMessage,
   platformInviteDeclinedFromMessage,
   platformInviteSnapshotFromMessage,
+  platformMatchShellSnapshotFromMessage,
   platformOnlineCountFromMessage,
   platformPresenceFromMatchShellMessage,
   platformQuickMatchMatchedFromMessage,
@@ -173,6 +174,69 @@ describe('platform client helpers', () => {
       spectators: 1,
     });
     expect(platformPresenceFromMatchShellMessage({ players: 2 })).toBeNull();
+  });
+
+  it('reads match shell snapshots defensively', () => {
+    expect(
+      platformMatchShellSnapshotFromMessage({
+        roomId: 'platform_room_1',
+        boardgameMatchID: 'bgio-match-1',
+        status: 'ready',
+        players: [
+          {
+            sessionId: 's_1',
+            userId: 'u_1',
+            displayName: 'Alice',
+            role: 'player',
+            joinedAt: 1000,
+            boardgamePlayerID: '0',
+            hasBoardgameCredentials: true,
+          },
+          {
+            sessionId: 's_mod',
+            userId: 'u_mod',
+            displayName: 'Mod',
+            role: 'moderator',
+            joinedAt: 1001,
+          },
+        ],
+        spectators: [
+          {
+            sessionId: 's_2',
+            userId: 'u_2',
+            displayName: 'Bob',
+            role: 'moderator',
+            joinedAt: 2000,
+          },
+        ],
+      }),
+    ).toEqual({
+      roomId: 'platform_room_1',
+      boardgameMatchID: 'bgio-match-1',
+      status: 'ready',
+      players: [
+        {
+          sessionId: 's_1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'player',
+          joinedAt: 1000,
+          boardgamePlayerID: '0',
+          hasBoardgameCredentials: true,
+        },
+      ],
+      spectators: [
+        {
+          sessionId: 's_2',
+          userId: 'u_2',
+          displayName: 'Bob',
+          role: 'spectator',
+          joinedAt: 2000,
+        },
+      ],
+    });
+    expect(platformMatchShellSnapshotFromMessage({ roomId: 'platform_room_1', status: 'matched' })).toBeNull();
+    expect(platformMatchShellSnapshotFromMessage({ status: 'ready' })).toBeNull();
   });
 
   it('only links match shells from credentialed boardgame players', () => {
@@ -526,6 +590,85 @@ describe('platform client helpers', () => {
       }),
     );
     expect(send).toHaveBeenCalledWith('linkBoardgameMatch', { boardgameMatchID: 'bgio-match-1' });
+  });
+
+  it('filters match shell snapshots before updating presence', async () => {
+    const messageHandlers = new Map<string, (message: unknown) => void>();
+    const send = vi.fn();
+    const room = {
+      onMessage: vi.fn((type: string, handler: (message: unknown) => void) => {
+        messageHandlers.set(type, handler);
+      }),
+      onLeave: vi.fn(),
+      send,
+    };
+    const post = vi.fn(async () => ({
+      data: {
+        name: 'match_shell',
+        roomId: 'platform_room_1',
+        sessionId: 'session_1',
+      },
+    }));
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = vi.fn(() => room);
+        },
+      ),
+    }));
+    const onSnapshot = vi.fn();
+    const onPresence = vi.fn();
+
+    await connectPlatformMatchShell(
+      {
+        boardgameMatchID: 'bgio-match-1',
+        userId: 'u_1',
+        displayName: 'Alice',
+        role: 'player',
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+        platformSeatToken: 'seat-token',
+      },
+      { onSnapshot, onPresence },
+    );
+
+    messageHandlers.get('roomSnapshot')?.({
+      roomId: 'platform_room_1',
+      boardgameMatchID: 'bgio-match-1',
+      status: 'ready',
+      players: [
+        {
+          sessionId: 's_1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'player',
+          joinedAt: 1000,
+        },
+        {
+          sessionId: 's_mod',
+          userId: 'u_mod',
+          displayName: 'Mod',
+          role: 'moderator',
+          joinedAt: 1001,
+        },
+      ],
+      spectators: [],
+    });
+    messageHandlers.get('roomSnapshot')?.({
+      roomId: 'platform_room_1',
+      status: 'matched',
+      players: [],
+      spectators: [],
+    });
+
+    expect(onSnapshot).toHaveBeenCalledOnce();
+    expect(onSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        players: [expect.objectContaining({ userId: 'u_1', role: 'player' })],
+      }),
+    );
+    expect(onPresence).toHaveBeenCalledWith({ players: 1, spectators: 0 });
   });
 
   it('retries custom-room joins only through Colyseus room status filters', async () => {
