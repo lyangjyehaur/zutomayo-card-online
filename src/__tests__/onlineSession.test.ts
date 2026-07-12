@@ -5,6 +5,7 @@ import {
   ONLINE_SESSION_STORAGE_KEY,
   saveOnlineSession,
   type OnlineSession,
+  validateOnlineSession,
 } from '../onlineSession';
 
 function createStorage() {
@@ -66,5 +67,35 @@ describe('online session storage', () => {
     clearStoredOnlineSession();
 
     expect(localStorage.removeItem).toHaveBeenCalledWith(ONLINE_SESSION_STORAGE_KEY);
+  });
+
+  it('refreshes platform seat tokens without dropping stable platform identity', async () => {
+    const localStorage = createStorage();
+    vi.stubGlobal('window', { localStorage });
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ platformSeatToken: 'seat-token-refreshed' }),
+    }));
+    vi.stubGlobal('fetch', fetch);
+    const session: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      playerCredentials: 'credential-0',
+      platformSeatToken: 'seat-token-old',
+      platformUserId: 'logto:u_1',
+      platformDisplayName: 'Alice',
+    };
+
+    await expect(validateOnlineSession(session)).resolves.toEqual({ ok: true });
+
+    expect(session).toEqual({
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      playerCredentials: 'credential-0',
+      platformSeatToken: 'seat-token-refreshed',
+      platformUserId: 'logto:u_1',
+      platformDisplayName: 'Alice',
+    });
+    expect(loadOnlineSession()).toEqual(session);
   });
 });
