@@ -453,3 +453,108 @@ npm run typecheck
 npm test
 npm run build
 ```
+
+## CD / 持續部署
+
+Continuous Deployment pipeline: [.github/workflows/cd.yml](../.github/workflows/cd.yml).
+
+### 觸發條件
+
+| 事件                | 動作                                                                        |
+| ------------------- | --------------------------------------------------------------------------- |
+| push to `master`    | Build 3 images → push GHCR tag `staging` + `<short-sha>`                    |
+| push tag `v*`       | Build 3 images → push GHCR tag `<version>` + `latest` → 建立 GitHub Release |
+| `workflow_dispatch` | 手動 SSH 部署到 staging 或 production（需配置 secrets）                     |
+
+### GHCR Image 列表
+
+三個服務 image 位於 GitHub Container Registry (`ghcr.io`)：
+
+| Service    | Image                                                |
+| ---------- | ---------------------------------------------------- |
+| `game`     | `ghcr.io/lyangjyehaur/zutomayo-card-online-game`     |
+| `api`      | `ghcr.io/lyangjyehaur/zutomayo-card-online-api`      |
+| `platform` | `ghcr.io/lyangjyehaur/zutomayo-card-online-platform` |
+
+Image tag 惯例：
+
+- `latest` — 最新 production release（tag `v*` push 時更新）
+- `<version>` — 如 `0.1.3`，對應 git tag `v0.1.3`
+- `staging` — master 分支最新 build
+- `<short-sha>` — 如 `a1b2c3d`，對應 commit SHA
+- `rollback` — 部署腳本自動 tag 的上一版 image（供回滾用）
+
+GHCR 登入使用內建 `GITHUB_TOKEN`（`packages: write` permission）。在 server 上手動 pull 時需 `docker login ghcr.io -u <github-username> -p <personal-access-token>`。
+
+### Build 快取
+
+CD pipeline 使用 GitHub Actions cache（`type=gha`）加速 build。每個服務（game / api / platform）使用獨立的 cache scope，game 與 platform 共用相同 Dockerfile 但 cache 獨立管理。
+
+### GitHub Release
+
+Push tag `v*` 時自動建立 GitHub Release（使用 `softprops/action-gh-release`），含自動產生的 changelog。預發布版本（tag 含 `-rc` / `-beta` / `-alpha`）標記為 prerelease。
+
+## Staging 環境 / Staging Environment
+
+Staging compose file: [docker-compose.staging.yml](../docker-compose.staging.yml).
+
+與 production（server4）的差異：
+
+| 項目           | Production (server4)             | Staging                   |
+| -------------- | -------------------------------- | ------------------------- |
+| DB 名稱        | `zutomayo`                       | `zutomayo_staging`        |
+| Redis DB       | `0`                              | `3`                       |
+| game port      | `3000`                           | `4000`                    |
+| api port       | `3001`（expose）                 | `4001`                    |
+| platform port  | `3002`                           | `4002`                    |
+| image 來源     | server 上 `docker compose build` | GHCR 預建 image（`pull`） |
+| postgres/redis | 外部（1panel-network）           | 自帶容器（獨立 volume）   |
+
+### Staging 部署流程
+
+1. CD pipeline 在 push to master 時自動 build 並 push image 到 GHCR（tag: `staging` + SHA）。
+2. Staging server 上拉取 image 並啟動：
+
+```bash
+# 在 staging server 上
+cd /opt/zutomayo-card-online-staging
+TAG=staging docker compose -f docker-compose.staging.yml pull
+TAG=staging docker compose -f docker-compose.staging.yml up -d
+docker compose -f docker-compose.staging.yml ps
+```
+
+3. 驗證 staging 服務：
+
+```bash
+curl http://<staging-host>:4000/api/version
+curl http://<staging-host>:4001/api/version
+curl http://<staging-host>:4002/health
+```
+
+> Staging server 尚未準備好時，CD pipeline 只 build + push image，不自動部署。`workflow_dispatch` 手動觸發 SSH 部署需配置 `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_SSH_KEY` secrets。
+
+## Rollback 流程 / Rollback
+
+部署腳本 [scripts/deploy-server4.sh](../scripts/deploy-server4.sh) 支援自動與手動 rollback。
+
+### 自動 rollback
+
+部署流程中（Step 4），腳本會先將現有 `:latest` image tag 為 `:rollback`。若部署後驗證（Step 7）失敗（health check 不通過），腳本自動：
+
+1. 使用 `TAG=rollback` 重新 `docker compose up -d`
+2. 重新驗證 health check
+3. 回報 rollback 結果
+
+### 手動 rollback
+
+```bash
+./scripts/deploy-server4.sh --rollback
+```
+
+此指令會跳過 build，直接使用 `:rollback` tag 的 image 重啟服務並驗證。
+
+### 注意事項
+
+- 首次部署時無 `:latest` image，rollback tag 會被跳過（無上一版可回滾）。
+- Rollback 僅回滾 image，不回滾資料庫 migration。若新版本含 breaking migration，rollback 後可能需要手動處理 schema。
+- `:rollback` tag 存在於 server 本地 Docker image cache，不會被 GHCR 清理政策影響。
