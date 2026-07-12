@@ -16,11 +16,11 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'allkeys-lru']
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'allkeys-lru', '--requirepass', '${REDIS_PASSWORD:-}']
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD-SHELL', 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null || redis-cli ping']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -79,7 +79,7 @@ services:
       - PG_USER=${PG_USER:-zutomayo}
       - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=${REDIS_DB:-0}
       - API_URL=${API_URL:-http://api:3001}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
@@ -119,7 +119,7 @@ services:
       - PG_USER=${PG_USER:-zutomayo}
       - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=${REDIS_DB:-0}
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
@@ -173,7 +173,7 @@ services:
       - PG_USER=${PG_USER:-zutomayo}
       - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=${REDIS_DB:-0}
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
       - PLATFORM_REDIS_MODE=redis
