@@ -34,11 +34,19 @@ cleanup() {
   local exit_code=$?
   rm -rf "$work_dir"
   if [[ "$success" != 'true' ]]; then
+    local previous_success=0
+    if [[ -f "$METRICS_DIR/zutomayo_pg_base_backup.prom" ]]; then
+      previous_success="$(awk '$1 == "pg_base_backup_last_success_unixtime_seconds" {print $2; exit}' "$METRICS_DIR/zutomayo_pg_base_backup.prom" || true)"
+    fi
+    [[ "$previous_success" =~ ^[0-9]+([.][0-9]+)?$ ]] || previous_success=0
     temp_metrics="$METRICS_DIR/.pg_base_backup.prom.$$"
     printf '%s\n' \
       '# HELP pg_base_backup_last_run_success Whether the latest physical base backup succeeded.' \
       '# TYPE pg_base_backup_last_run_success gauge' \
-      'pg_base_backup_last_run_success 0' >"$temp_metrics" || true
+      'pg_base_backup_last_run_success 0' \
+      '# HELP pg_base_backup_last_success_unixtime_seconds Unix timestamp of the latest encrypted off-site base backup.' \
+      '# TYPE pg_base_backup_last_success_unixtime_seconds gauge' \
+      "pg_base_backup_last_success_unixtime_seconds $previous_success" >"$temp_metrics" || true
     mv "$temp_metrics" "$METRICS_DIR/zutomayo_pg_base_backup.prom" || true
     chmod 0644 "$METRICS_DIR/zutomayo_pg_base_backup.prom" || true
   fi

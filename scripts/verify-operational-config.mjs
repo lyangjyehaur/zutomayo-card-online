@@ -51,6 +51,10 @@ export function validateOperationalConfig() {
     '@sha256:',
     'pg_restore',
     'pg_restore_drill_success',
+    'unvalidated_constraints',
+    'invalid_outbox_status',
+    'deletion_hold_violations',
+    'deleted_social_violations',
   ]);
 
   for (const timer of ['ops/systemd/zutomayo-pg-backup.timer', 'ops/systemd/zutomayo-pg-base-backup.timer']) {
@@ -171,9 +175,12 @@ export function validateOperationalConfig() {
   requireFragments('load-tests/operational-soak.js', [
     'OBSERVED_PEAK_RPS must be the measured',
     'PEAK_MULTIPLIER || 2',
+    'TARGET_URLS must be explicit representative workload URLs',
     'dropped_iterations',
   ]);
-  requireFragments('load-tests/websocket-load.js', ['WS_TARGET_CONNECTIONS', 'ws_connecting']);
+  requireFragments('load-tests/websocket-load.js', ['WS_TARGET_CONNECTIONS', 'ws_connecting', 'ws_connect_success']);
+  requireFragments('load-tests/matchmaking-load.js', ['mm_matched']);
+  requireFragments('load-tests/auth-load.js', ['auth_refresh_success']);
   for (const workflow of ['.github/workflows/ci.yml', '.github/workflows/cd.yml']) {
     requireFragments(workflow, [
       'npm run ops:config',

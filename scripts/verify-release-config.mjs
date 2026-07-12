@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -33,6 +33,36 @@ function assertNoMutableImageTags(relativePath) {
   const mutable = lines.filter((line) => /\bimage:\s*[^\n]*(?::latest|:staging)(?:\s|$)/i.test(line));
   if (mutable.length > 0) {
     throw new Error(`${relativePath} contains mutable image tags:\n${mutable.join('\n')}`);
+  }
+}
+
+export function findUnpinnedWorkflowActions(contents) {
+  return nonCommentLines(contents).flatMap((line) => {
+    const match = line.match(/^(?:-\s*)?uses:\s*([^\s]+)$/);
+    if (!match || match[1].startsWith('./')) return [];
+    const actionReference = match[1];
+    const separator = actionReference.lastIndexOf('@');
+    const ref = separator >= 0 ? actionReference.slice(separator + 1) : '';
+    return /^[a-f0-9]{40}$/i.test(ref) ? [] : [actionReference];
+  });
+}
+
+function assertPinnedWorkflowActions() {
+  const workflowDirectory = path.join(ROOT, '.github/workflows');
+  if (!existsSync(workflowDirectory)) throw new Error('missing GitHub workflow directory');
+  const workflowFiles = readdirSync(workflowDirectory)
+    .filter((name) => /\.ya?ml$/i.test(name))
+    .sort();
+  if (workflowFiles.length === 0) throw new Error('no GitHub workflows found');
+
+  for (const name of workflowFiles) {
+    const relativePath = `.github/workflows/${name}`;
+    const unpinned = findUnpinnedWorkflowActions(read(relativePath));
+    if (unpinned.length > 0) {
+      throw new Error(
+        `${relativePath} contains actions not pinned to full 40-character commit SHAs:\n${unpinned.join('\n')}`,
+      );
+    }
   }
 }
 
@@ -308,12 +338,18 @@ function assertWorkflowContract() {
     'trivy',
     'cosign verify',
     'gh attestation verify',
-    'attest-build-provenance@v2',
-    'docker/build-push-action@v6',
+    'actions/attest-build-provenance@',
+    'docker/build-push-action@',
     'Dockerfile.retention',
     'RETENTION_IMAGE',
     '@sha256:',
     'verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss',
+    'release-gate:',
+    'staging_evidence_run_id:',
+    'npm run release:gate',
+    '--release-manifest .release.env',
+    '--evidence-run-id "$STAGING_EVIDENCE_RUN_ID"',
+    'release-gate-${{ needs.preflight.outputs.release_sha }}',
   ];
   for (const fragment of requiredFragments) {
     if (!workflow.includes(fragment)) throw new Error(`cd.yml is missing release gate: ${fragment}`);
@@ -381,6 +417,7 @@ export function validateReleaseConfig() {
   for (const relativePath of RELEASE_COMPOSE_FILES) assertDigestInputs(relativePath);
   assertRetentionDigestInput();
   assertProductionRuntimeInputs();
+  assertPinnedWorkflowActions();
   assertWorkflowContract();
   assertReleaseManifestContract();
   assertCosignIdentityPolicy();

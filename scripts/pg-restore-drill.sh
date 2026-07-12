@@ -17,6 +17,12 @@ allow_unencrypted="${PG_BACKUP_ALLOW_UNENCRYPTED:-false}"
 write_metrics() {
   local success="$1"
   local timestamp="$2"
+  local previous_success=0
+  if [[ -f "$metrics_dir/zutomayo_pg_restore_drill.prom" ]]; then
+    previous_success="$(awk '$1 == "pg_restore_drill_last_success_unixtime_seconds" {print $2; exit}' "$metrics_dir/zutomayo_pg_restore_drill.prom" || true)"
+  fi
+  [[ "$previous_success" =~ ^[0-9]+([.][0-9]+)?$ ]] || previous_success=0
+  if [[ "$timestamp" != 0 ]]; then previous_success="$timestamp"; fi
   mkdir -p "$metrics_dir"
   local temp_metrics="$metrics_dir/.pg_restore_drill.prom.$$"
   {
@@ -25,7 +31,7 @@ write_metrics() {
     echo "pg_restore_drill_success $success"
     echo '# HELP pg_restore_drill_last_success_unixtime_seconds Unix timestamp of the latest successful restore drill.'
     echo '# TYPE pg_restore_drill_last_success_unixtime_seconds gauge'
-    echo "pg_restore_drill_last_success_unixtime_seconds $timestamp"
+    echo "pg_restore_drill_last_success_unixtime_seconds $previous_success"
   } >"$temp_metrics"
   mv "$temp_metrics" "$metrics_dir/zutomayo_pg_restore_drill.prom"
   chmod 0644 "$metrics_dir/zutomayo_pg_restore_drill.prom"
@@ -124,9 +130,40 @@ counts="$(docker exec "$container_name" psql \
   --set ON_ERROR_STOP=1 \
   --tuples-only \
   --no-align \
-  --command "SELECT 'schema_migrations=' || COUNT(*) FROM schema_migrations UNION ALL SELECT 'users=' || COUNT(*) FROM users UNION ALL SELECT 'cards=' || COUNT(*) FROM cards UNION ALL SELECT 'matches=' || COUNT(*) FROM matches ORDER BY 1")"
+  --command "
+    SELECT 'schema_migrations=' || COUNT(*) FROM schema_migrations
+    UNION ALL SELECT 'users=' || COUNT(*) FROM users
+    UNION ALL SELECT 'cards=' || COUNT(*) FROM cards
+    UNION ALL SELECT 'matches=' || COUNT(*) FROM matches
+    UNION ALL SELECT 'relationship_change_outbox=' || COUNT(*) FROM relationship_change_outbox
+    UNION ALL SELECT 'legal_holds=' || COUNT(*) FROM legal_holds
+    UNION ALL SELECT 'unvalidated_constraints=' || COUNT(*)
+      FROM pg_constraint
+     WHERE connamespace = 'public'::regnamespace AND convalidated = FALSE
+    UNION ALL SELECT 'invalid_outbox_status=' || COUNT(*)
+      FROM relationship_change_outbox
+     WHERE status NOT IN ('pending', 'processing', 'delivered', 'dead_letter')
+    UNION ALL SELECT 'deletion_hold_violations=' || COUNT(*)
+      FROM account_deletion_requests d
+      JOIN legal_holds h ON h.subject_type = 'account' AND h.subject_id = d.user_id
+     WHERE d.status = 'completed'
+       AND h.released_at IS NULL
+       AND (h.expires_at IS NULL OR h.expires_at > NOW())
+    UNION ALL SELECT 'deleted_social_violations=' || COUNT(*)
+      FROM users u
+     WHERE u.deleted_at IS NOT NULL
+       AND (
+         EXISTS (SELECT 1 FROM user_friends f WHERE f.user_id = u.id OR f.friend_user_id = u.id)
+         OR EXISTS (SELECT 1 FROM friend_requests r WHERE r.requester_user_id = u.id OR r.recipient_user_id = u.id)
+         OR EXISTS (SELECT 1 FROM user_blocks b WHERE b.blocker_user_id = u.id OR b.blocked_user_id = u.id)
+       )
+    ORDER BY 1
+  ")"
 printf '%s\n' "$counts" | grep -q '^schema_migrations=[1-9][0-9]*$' || fail 'restored schema has no applied migrations'
 printf '%s\n' "$counts" | grep -q '^cards=[1-9][0-9]*$' || fail 'restored card catalog is empty'
+for invariant in unvalidated_constraints invalid_outbox_status deletion_hold_violations deleted_social_violations; do
+  printf '%s\n' "$counts" | grep -q "^${invariant}=0$" || fail "restored invariant failed: ${invariant}"
+done
 
 completed_at="$(date -u +%s)"
 report="$report_dir/restore-drill-$(date -u +%Y%m%dT%H%M%SZ).txt"

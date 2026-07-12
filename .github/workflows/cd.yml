@@ -16,6 +16,12 @@ on:
       release_ref:
         description: '要部署的完整 commit SHA 或 release tag（production 必須是 v* tag）'
         required: true
+      staging_evidence_run_id:
+        description: 'Production only: GitHub Actions run ID containing the verified staging evidence artifact'
+        required: false
+      staging_evidence_artifact:
+        description: 'Production only: artifact name containing staging/*.json and hashed raw artifacts'
+        required: false
 
 permissions:
   contents: read
@@ -42,13 +48,13 @@ jobs:
       release_ref: ${{ steps.release.outputs.ref }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_ref || github.sha }}
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
           cache: 'npm'
@@ -191,7 +197,7 @@ jobs:
             dockerfile: ./Dockerfile.retention
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
@@ -201,10 +207,10 @@ jobs:
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -223,7 +229,7 @@ jobs:
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
       - name: Scan source dependencies and secrets
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
         with:
           scan-type: fs
           scan-ref: .
@@ -233,14 +239,14 @@ jobs:
           exit-code: '1'
 
       - name: Set up Cosign
-        uses: sigstore/cosign-installer@v3.8.1
+        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a
 
       - name: Set up Syft
-        uses: anchore/sbom-action/download-syft@v0.17.0
+        uses: anchore/sbom-action/download-syft@d94f46e13c6c62f59525ac9a1e147a99dc0b9bf5
 
       - name: Build and push Docker image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -271,7 +277,7 @@ jobs:
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Scan pushed image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ needs.preflight.outputs.release_sha }}
           scan-type: image
@@ -289,7 +295,7 @@ jobs:
           echo "${{ matrix.app }}=${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish build provenance attestation
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -303,7 +309,7 @@ jobs:
 
       - name: Upload SBOM artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: sbom-${{ matrix.app }}-${{ needs.preflight.outputs.release_sha }}
           path: ${{ runner.temp }}/${{ matrix.app }}.spdx.json
@@ -320,20 +326,20 @@ jobs:
       attestations: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Cosign
-        uses: sigstore/cosign-installer@v3.8.1
+        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a
 
       - name: Resolve, verify, and archive release manifest
         env:
@@ -361,7 +367,7 @@ jobs:
           done < .release.env
 
       - name: Upload verified release manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
@@ -379,10 +385,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           generate_release_notes: true
           draft: false
@@ -399,18 +405,18 @@ jobs:
       attestations: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Cosign
-        uses: sigstore/cosign-installer@v3.8.1
+        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a
       - name: Resolve and verify release manifest
         env:
           GH_TOKEN: ${{ github.token }}
@@ -420,17 +426,93 @@ jobs:
           EXPECTED_SCHEMA_CHECKSUM: ${{ needs.preflight.outputs.expected_checksum }}
         run: ./scripts/resolve-release-manifest.sh "$RELEASE_SHA" "$EXPECTED_SCHEMA_MIGRATION" "$EXPECTED_SCHEMA_CHECKSUM" .release.env
       - name: Upload verified release manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
+          retention-days: 30
+
+  release-gate:
+    name: Release gate (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs: [preflight, manual-release]
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+      attestations: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Download verified release manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
+          path: .
+      - name: Download staging evidence artifact
+        if: inputs.staging_evidence_run_id != '' && inputs.staging_evidence_artifact != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          STAGING_EVIDENCE_RUN_ID: ${{ inputs.staging_evidence_run_id }}
+          STAGING_EVIDENCE_ARTIFACT: ${{ inputs.staging_evidence_artifact }}
+        run: |
+          set -euo pipefail
+          mkdir -p staging-evidence
+          gh run download "$STAGING_EVIDENCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$STAGING_EVIDENCE_ARTIFACT" \
+            --dir staging-evidence
+      - name: Run release gate and archive evidence
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          STAGING_EVIDENCE_RUN_ID: ${{ inputs.staging_evidence_run_id }}
+        run: |
+          set +e
+          args=(
+            --release-sha "$RELEASE_SHA"
+            --release-manifest .release.env
+            --evidence-dir artifacts/release-gate
+          )
+          if [[ -d staging-evidence ]]; then
+            args+=(--staging-evidence-dir staging-evidence)
+            args+=(--evidence-run-id "$STAGING_EVIDENCE_RUN_ID")
+          fi
+          npm run release:gate -- "${args[@]}"
+          status=$?
+          set -e
+          # Staging is allowed to deploy once to produce fresh evidence; production is fail-closed.
+          if [[ "$TARGET_ENVIRONMENT" == staging && "$status" -eq 2 ]]; then
+            echo 'staging evidence is not yet complete; continuing only to exercise staging deployment'
+            exit 0
+          fi
+          exit "$status"
+      - name: Upload release gate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-gate-${{ needs.preflight.outputs.release_sha }}
+          path: artifacts/release-gate/
+          if-no-files-found: error
           retention-days: 30
 
   deploy:
     name: Deploy immutable release (${{ inputs.environment }})
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
-    needs: [preflight, manual-release]
+    needs: [preflight, manual-release, release-gate]
     permissions:
       contents: read
       packages: read
@@ -443,17 +525,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
       - name: Download verified release manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .
       - name: Configure SSH key
-        uses: webfactory/ssh-agent@v0.9.1
+        uses: webfactory/ssh-agent@a6f90b1f127823b31d4d4a8d96047790581349bd
         with:
           ssh-private-key: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_SSH_KEY || secrets.DEPLOY_SSH_KEY }}
       - name: Configure pinned SSH host key
@@ -465,7 +547,7 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 0600 ~/.ssh/known_hosts
       - name: Set up Cosign
-        uses: sigstore/cosign-installer@v3.8.1
+        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a
       - name: Validate manifest and deploy with smoke checks
         env:
           GH_TOKEN: ${{ github.token }}

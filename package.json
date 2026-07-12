@@ -50,6 +50,7 @@
     "format:check": "prettier --check .",
     "format:check:tracked": "node scripts/prettier-tracked.mjs",
     "release:config": "node scripts/verify-release-config.mjs",
+    "release:gate": "node scripts/release-gate.mjs",
     "ops:config": "node scripts/verify-operational-config.mjs",
     "version:check": "node scripts/check-version-sync.mjs",
     "i18n:check": "tsx scripts/check-i18n.ts",

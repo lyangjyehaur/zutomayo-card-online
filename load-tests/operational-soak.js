@@ -14,8 +14,15 @@ const targetRps = Math.max(1, Math.ceil(observedPeakRps * multiplier));
 const duration = __ENV.SOAK_DURATION || '2h';
 const preAllocatedVUs = Number(__ENV.PREALLOCATED_VUS || Math.max(20, targetRps * 2));
 const maxVUs = Number(__ENV.MAX_VUS || Math.max(preAllocatedVUs, targetRps * 5));
+const allowReadinessOnly = ['1', 'true'].includes((__ENV.ALLOW_READINESS_ONLY || '').toLowerCase());
+const targetUrlsInput = __ENV.TARGET_URLS || '';
+if (!targetUrlsInput && !allowReadinessOnly) {
+  throw new Error(
+    'TARGET_URLS must be explicit representative workload URLs; set ALLOW_READINESS_ONLY=true only for a readiness smoke',
+  );
+}
 const targetUrls = (
-  __ENV.TARGET_URLS || 'http://localhost:3000/ready,http://localhost:3001/ready,http://localhost:3002/ready'
+  targetUrlsInput || 'http://localhost:3000/ready,http://localhost:3001/ready,http://localhost:3002/ready'
 )
   .split(',')
   .map((value) => value.trim())
@@ -23,6 +30,11 @@ const targetUrls = (
 
 if (targetUrls.length === 0)
   throw new Error('TARGET_URLS must contain at least one readiness or representative API URL');
+if (!allowReadinessOnly && targetUrls.some((url) => /\/ready(?:\?|$)/i.test(url))) {
+  throw new Error(
+    'TARGET_URLS must include representative API/game operations; readiness-only URLs require ALLOW_READINESS_ONLY=true',
+  );
+}
 
 const operationFailed = new Rate('operation_failed');
 const operationDuration = new Trend('operation_duration', true);

@@ -14,6 +14,12 @@ metrics_dir="${PG_BACKUP_METRICS_DIR:-/var/lib/node_exporter/textfile_collector}
 write_metrics() {
   local success="$1"
   local timestamp="$2"
+  local previous_success=0
+  if [[ -f "$metrics_dir/zutomayo_pg_wal_archive.prom" ]]; then
+    previous_success="$(awk '$1 == "pg_wal_archive_last_success_unixtime_seconds" {print $2; exit}' "$metrics_dir/zutomayo_pg_wal_archive.prom" || true)"
+  fi
+  [[ "$previous_success" =~ ^[0-9]+([.][0-9]+)?$ ]] || previous_success=0
+  if [[ "$timestamp" != 0 ]]; then previous_success="$timestamp"; fi
   mkdir -p "$metrics_dir"
   local temp_metrics="$metrics_dir/.pg_wal_archive.prom.$$"
   {
@@ -22,7 +28,7 @@ write_metrics() {
     echo "pg_wal_archive_last_run_success $success"
     echo '# HELP pg_wal_archive_last_success_unixtime_seconds Unix timestamp of the latest encrypted WAL upload.'
     echo '# TYPE pg_wal_archive_last_success_unixtime_seconds gauge'
-    echo "pg_wal_archive_last_success_unixtime_seconds $timestamp"
+    echo "pg_wal_archive_last_success_unixtime_seconds $previous_success"
   } >"$temp_metrics"
   mv "$temp_metrics" "$metrics_dir/zutomayo_pg_wal_archive.prom"
   chmod 0644 "$metrics_dir/zutomayo_pg_wal_archive.prom"

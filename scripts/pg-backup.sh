@@ -38,6 +38,12 @@ write_metrics() {
   local success="$1"
   local completed_at="${2:-0}"
   local size_bytes="${3:-0}"
+  local previous_success=0
+  if [[ -f "$METRICS_DIR/zutomayo_pg_backup.prom" ]]; then
+    previous_success="$(awk '$1 == "pg_backup_last_success_unixtime_seconds" {print $2; exit}' "$METRICS_DIR/zutomayo_pg_backup.prom" || true)"
+  fi
+  [[ "$previous_success" =~ ^[0-9]+([.][0-9]+)?$ ]] || previous_success=0
+  if [[ "$completed_at" != 0 ]]; then previous_success="$completed_at"; fi
   mkdir -p "$METRICS_DIR"
   local temp_metrics="$METRICS_DIR/.pg_backup.prom.$$"
   {
@@ -46,7 +52,7 @@ write_metrics() {
     echo "pg_backup_last_run_success $success"
     echo '# HELP pg_backup_last_success_unixtime_seconds Unix timestamp of the latest successful encrypted off-site backup.'
     echo '# TYPE pg_backup_last_success_unixtime_seconds gauge'
-    echo "pg_backup_last_success_unixtime_seconds $completed_at"
+    echo "pg_backup_last_success_unixtime_seconds $previous_success"
     echo '# HELP pg_backup_last_size_bytes Size in bytes of the latest successful encrypted backup.'
     echo '# TYPE pg_backup_last_size_bytes gauge'
     echo "pg_backup_last_size_bytes $size_bytes"

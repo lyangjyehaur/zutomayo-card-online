@@ -21,6 +21,7 @@ const loginDuration = new Trend('auth_login_duration');
 const refreshDuration = new Trend('auth_refresh_duration');
 const registerDuration = new Trend('auth_register_duration');
 const successRate = new Rate('auth_success');
+const refreshSuccessRate = new Rate('auth_refresh_success');
 const throttled = new Counter('auth_rate_limited');
 
 export const options = {
@@ -36,6 +37,7 @@ export const options = {
   },
   thresholds: {
     auth_success: ['rate>0.95'],
+    auth_refresh_success: ['rate>0.95'],
     auth_login_duration: ['p(95)<800', 'p(99)<1500'],
     auth_refresh_duration: ['p(95)<300'],
   },
@@ -94,6 +96,7 @@ export default function () {
         check(r, {
           'refresh status 200': (rr) => rr.status === 200,
         });
+        refreshSuccessRate.add(r.status === 200);
         if (r.status === 429) throttled.add(1);
       });
     }

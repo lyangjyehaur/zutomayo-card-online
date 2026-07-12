@@ -92,6 +92,8 @@ Drill 會驗證 SHA-256、解密、在不 expose port 的一次性 PostgreSQL co
 - `schema_migrations` 至少一筆。
 - `cards` 不為空。
 - `users` / `matches` 可查詢並記錄 row count。
+- `relationship_change_outbox` status 只允許已定義狀態，且沒有未驗證的 PostgreSQL constraint。
+- 還原資料不能出現 active legal hold 已完成刪帳，或 deleted account 殘留 friend/request/block 關係。
 - 完成後產生 timestamped report 與 `pg_restore_drill_*` metrics。
 
 排程系統必須保留 stdout/stderr、exit code 與 report。只有 script exit 0、metric 為 1、alert 正常恢復才算一次成功 drill。

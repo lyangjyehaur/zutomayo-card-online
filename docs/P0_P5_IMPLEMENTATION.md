@@ -126,3 +126,17 @@
 - [ ] Staging 連續三次 deploy + post-deploy smoke
 - [ ] Backup restore、alert delivery、2x soak 與 reconnect chaos drill
 - [ ] 原始 worktree 未被修改；只有隔離 worktree 包含本任務變更
+
+## 單一 Release Gate
+
+使用 `npm run release:gate -- --evidence-dir artifacts/release` 執行集中式發布檢查。Gate 會逐項執行完整 `verify`、release/operational config、Compose render/role environment，以及 Docker runtime image contract；結果會寫入 `release-gate.json` 與 `release-gate.md`。
+
+Gate 狀態嚴格區分：`passed` 代表所有必要檢查通過，`failed` 代表本機或設定檢查失敗，`blocked` 代表本機檢查沒有失敗但仍缺 staging-only 證據。缺證據永遠不會被當成通過；沒有 `--staging-evidence-dir` 時 staging gate 必然是 `blocked`。若有 staging 證據，放在該目錄的 `staging/` 下，且每份 JSON 必須包含 `schemaVersion: 1`、對應的 `evidenceType`、`status: "passed"`、`environment: "staging"`、與目前（或 `--release-sha` 指定）release 相同的 40 字元 `releaseSha`、五個完整 `game/api/platform/migrate/retention` `@sha256` image digest，以及 `startedAt`、`finishedAt`、正確相等於兩者差值的 `durationMs` 與過去 168 小時內且不得為未來時間的 `checkedAt`。每種 evidence 還必須提供該 gate 要求的數值 `metrics`、數值 `thresholds` 與全數為 true 的 `results`；Gate 會實際比較 metric/threshold。
+
+每份 staging JSON 至少要列一個 `artifacts[]` 項目，每項含 evidence 目錄內的相對 `path` 與檔案內容 `sha256`；Gate 會阻擋 path traversal、缺檔與 hash 不符。HTTP(S) `source`/`signer` 只能補充溯源，不能代替實際 artifact。退出碼為 `0`（passed）、`1`（failed）、`2`（blocked）。
+
+若由 CD 下載 GitHub Actions artifact，JSON 也必須帶 `provenance.runId`、`provenance.repository`、`provenance.runUrl`；CD 會以 `--evidence-run-id` 檢查它與下載來源一致。
+
+可用 `--format json` 或 `--format markdown` 只輸出其中一種摘要；正式發布仍應保留兩種格式與可追溯的外部 staging/production artifact。
+
+正式 CD 會以 `--release-manifest .release.env` 將證據中的五個 image digest 與已驗證 manifest 逐一比對；production dispatch 必須另外提供 staging evidence artifact 的 run ID 與名稱，否則 release gate 維持 `blocked` 並阻止部署。

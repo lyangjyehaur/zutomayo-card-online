@@ -39,6 +39,7 @@ export const options = {
   },
   thresholds: {
     mm_join_success: ['rate>0.9'],
+    mm_matched: ['rate>0.9'],
     mm_queue_duration: ['p(95)<500'],
   },
 };

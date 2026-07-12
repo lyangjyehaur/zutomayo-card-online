@@ -2,6 +2,7 @@
 
 import ws from 'k6/ws';
 import { check } from 'k6';
+import { Rate } from 'k6/metrics';
 
 // WebSocket 負載測試：對 game server（boardgame.io + socket.io）的 WebSocket 連線進行壓力測試。
 //
@@ -18,6 +19,7 @@ import { check } from 'k6';
 const targetConnections = Number(__ENV.WS_TARGET_CONNECTIONS || 200);
 const rampDuration = __ENV.WS_RAMP_DURATION || '30s';
 const soakDuration = __ENV.WS_SOAK_DURATION || '60s';
+const connectSuccess = new Rate('ws_connect_success');
 
 export const options = {
   stages: [
@@ -27,6 +29,7 @@ export const options = {
   ],
   thresholds: {
     ws_connecting: ['p(95)<2000'],
+    ws_connect_success: ['rate>0.99'],
     ws_msgs_received: ['count>0'],
   },
 };
@@ -63,7 +66,8 @@ export default function () {
     });
   });
 
-  check(res, {
+  const connected = check(res, {
     'ws connected': (r) => r && r.status === 101,
   });
+  connectSuccess.add(connected);
 }

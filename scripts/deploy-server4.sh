@@ -222,6 +222,11 @@ run_smoke() {
   return "$status"
 }
 
+rollback_and_smoke() {
+  remote_rollback || return 1
+  run_smoke
+}
+
 if [[ "$ROLLBACK" == true ]]; then
   confirm_action 'rollback to the previously verified manifest'
   if [[ "$DRY_RUN" == true ]]; then
@@ -251,12 +256,16 @@ ssh_run "test -d '$REMOTE_DIR' && test -f '$REMOTE_DIR/.env'" || die 'remote dep
 copy_release_files "$MANIFEST_FILE"
 if ! remote_deploy; then
   log 'remote deployment failed; restoring previous verified release'
-  remote_rollback || true
+  if ! rollback_and_smoke; then
+    log 'rollback verification failed; manual intervention is required'
+  fi
   exit 1
 fi
 if ! run_smoke; then
   log 'deployment smoke failed; restoring previous verified release'
-  remote_rollback || true
+  if ! rollback_and_smoke; then
+    log 'rollback verification failed; manual intervention is required'
+  fi
   exit 1
 fi
 log 'deployment completed and smoke checks passed'

@@ -69,7 +69,7 @@ npm run load:operational-soak
 OBSERVED_PEAK_RPS=40 \
 PEAK_MULTIPLIER=2 \
 SOAK_DURATION=2h \
-TARGET_URLS='https://game.example/ready,https://api.example/ready,https://platform.example/ready' \
+TARGET_URLS='https://game.example/api/version,https://api.example/api/cards,https://platform.example/health' \
 K6_SUMMARY_EXPORT=artifacts/k6-operational-soak-summary.json \
 k6 run load-tests/operational-soak.js
 ```
@@ -121,23 +121,23 @@ docker compose -f docker-compose.yml -f docker-compose.load-test.yml up \
 
 ## 環境變數
 
-| 變數                    | 預設值                                                     | 說明                                                                          |
-| ----------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `BASE_URL`              | `http://localhost:3001`                                    | API server 位址（`api-load`、`auth`、`matchmaking` 使用）。                   |
-| `WS_URL`                | `ws://localhost:3000/socket.io/?EIO=4&transport=websocket` | game server WebSocket 位址（`websocket-load` 使用）。                         |
-| `WS_HOLD_MS`            | `90000`                                                    | 每條 WebSocket 連線持有的毫秒數。                                             |
-| `LOGIN_EMAIL`           | _(空)_                                                     | 認證 / 配對測試共用的登入 email；未設則每個 VU 註冊臨時帳號。                 |
-| `LOGIN_PASSWORD`        | `loadtest123`                                              | 登入密碼。                                                                    |
-| `MM_POLL_TIMES`         | `5`                                                        | 配對測試輪詢狀態的次數。                                                      |
-| `MM_POLL_INTERVAL`      | `1`                                                        | 配對測試每次輪詢間隔（秒）。                                                  |
-| `DEBUG`                 | _(空)_                                                     | 設為任意值時印出 WebSocket 除錯訊息。                                         |
-| `OBSERVED_PEAK_RPS`     | _(required)_                                               | 從 telemetry 取得的實測 peak；`operational-soak` 用它乘上 `PEAK_MULTIPLIER`。 |
-| `PEAK_MULTIPLIER`       | `2`                                                        | 容量 gate 倍率。                                                              |
-| `SOAK_DURATION`         | `2h`                                                       | Operational soak 持續時間。                                                   |
-| `TARGET_URLS`           | 三服務本機 `/ready`                                        | 逗號分隔的 representative URLs。                                              |
-| `WS_TARGET_CONNECTIONS` | `200`                                                      | WebSocket 目標並發。                                                          |
-| `WS_RAMP_DURATION`      | `30s`                                                      | WebSocket ramp up/down 時間。                                                 |
-| `WS_SOAK_DURATION`      | `60s`                                                      | WebSocket 穩定持有階段；production gate 設 `2h`。                             |
+| 變數                    | 預設值                                                     | 說明                                                                                                       |
+| ----------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `BASE_URL`              | `http://localhost:3001`                                    | API server 位址（`api-load`、`auth`、`matchmaking` 使用）。                                                |
+| `WS_URL`                | `ws://localhost:3000/socket.io/?EIO=4&transport=websocket` | game server WebSocket 位址（`websocket-load` 使用）。                                                      |
+| `WS_HOLD_MS`            | `90000`                                                    | 每條 WebSocket 連線持有的毫秒數。                                                                          |
+| `LOGIN_EMAIL`           | _(空)_                                                     | 認證 / 配對測試共用的登入 email；未設則每個 VU 註冊臨時帳號。                                              |
+| `LOGIN_PASSWORD`        | `loadtest123`                                              | 登入密碼。                                                                                                 |
+| `MM_POLL_TIMES`         | `5`                                                        | 配對測試輪詢狀態的次數。                                                                                   |
+| `MM_POLL_INTERVAL`      | `1`                                                        | 配對測試每次輪詢間隔（秒）。                                                                               |
+| `DEBUG`                 | _(空)_                                                     | 設為任意值時印出 WebSocket 除錯訊息。                                                                      |
+| `OBSERVED_PEAK_RPS`     | _(required)_                                               | 從 telemetry 取得的實測 peak；`operational-soak` 用它乘上 `PEAK_MULTIPLIER`。                              |
+| `PEAK_MULTIPLIER`       | `2`                                                        | 容量 gate 倍率。                                                                                           |
+| `SOAK_DURATION`         | `2h`                                                       | Operational soak 持續時間。                                                                                |
+| `TARGET_URLS`           | _(required)_                                               | 逗號分隔的 representative workload URLs；沒有設定時只可用 `ALLOW_READINESS_ONLY=true` 做 readiness smoke。 |
+| `WS_TARGET_CONNECTIONS` | `200`                                                      | WebSocket 目標並發。                                                                                       |
+| `WS_RAMP_DURATION`      | `30s`                                                      | WebSocket ramp up/down 時間。                                                                              |
+| `WS_SOAK_DURATION`      | `60s`                                                      | WebSocket 穩定持有階段；production gate 設 `2h`。                                                          |
 
 ## 閾值（thresholds）解讀
 
@@ -146,9 +146,12 @@ k6 的 `thresholds` 定義測試通過條件；若任一閾值未達標，k6 會
 - `http_req_duration: ['p(95)<500', 'p(99)<1000']` — 95% 請求在 500ms 內完成、99% 在 1s 內完成。
 - `http_req_failed: ['rate<0.05']` — 錯誤率（非 2xx）低於 5%。
 - `ws_connecting: ['p(95)<2000']` — 95% WebSocket 連線在 2s 內建立。
+- `ws_connect_success: ['rate>0.99']` — 至少 99% 的連線嘗試必須成功，不能只看成功連線的 latency。
 - `ws_msgs_received: ['count>0']` — 至少收到一則訊息（確認連線雙向可用）。
 - `auth_success: ['rate>0.95']` — 認證成功率 > 95%。
+- `auth_refresh_success: ['rate>0.95']` — refresh token 成功率 > 95%。
 - `mm_join_success: ['rate>0.9']` — 加入佇列成功率 > 90%。
+- `mm_matched: ['rate>0.9']` — 配對成功率 > 90%。
 
 未通過時請檢視 k6 摘要中標示 `✗` 的指標，並對照下方「已知限制」判斷是系統瓶頸還是測試環境限制。
 
