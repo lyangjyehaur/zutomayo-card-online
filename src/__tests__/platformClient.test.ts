@@ -1211,6 +1211,49 @@ describe('platform client helpers', () => {
     expect(onBoardgameMatchReady).toHaveBeenCalledWith({ boardgameMatchID: 'bgio-match-1' });
   });
 
+  it('surfaces quick-match Colyseus join failures without legacy matchmaking fallback', async () => {
+    const post = vi.fn<(url: string, request: { body: string }) => Promise<never>>(async () => {
+      throw new Error('platform unavailable');
+    });
+    const consumeSeatReservation = vi.fn();
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await expect(
+      connectPlatformQuickMatch(
+        {
+          userId: 'u_guest',
+          displayName: 'Guest',
+          deckName: 'Deck',
+        },
+        {},
+      ),
+    ).rejects.toThrow('platform unavailable');
+
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith(
+      'matchmake/joinOrCreate/quick_match',
+      expect.objectContaining({
+        body: JSON.stringify({
+          userId: 'u_guest',
+          displayName: 'Guest',
+          role: 'player',
+          deckName: 'Deck',
+          status: 'waiting',
+        }),
+      }),
+    );
+    expect(post.mock.calls.map(([url]) => url).join('\n')).not.toContain('/matchmaking/');
+    expect(post.mock.calls.map(([, request]) => JSON.stringify(request)).join('\n')).not.toContain('realMatchId');
+    expect(consumeSeatReservation).not.toHaveBeenCalled();
+  });
+
   it('only retries finished invite joins when explicitly requested', async () => {
     const room = {
       onMessage: vi.fn(),
