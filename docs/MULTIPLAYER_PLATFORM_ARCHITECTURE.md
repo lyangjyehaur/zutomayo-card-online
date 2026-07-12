@@ -1,11 +1,11 @@
 # Multiplayer Platform Architecture
 
-Status: Draft
-Date: 2026-07-09
+Status: Implemented
+Date: 2026-07-12
 
 ## Summary
 
-The online platform should use a hybrid architecture:
+The online platform uses a hybrid architecture:
 
 ```txt
 boardgame.io = authoritative turn-based card match engine
@@ -15,11 +15,11 @@ Postgres    = source of truth for durable product data
 Redis       = pub/sub, room backing, rate limits, queues, ephemeral coordination
 ```
 
-The goal is not to replace `boardgame.io`. The game remains turn-based and benefits from `boardgame.io`'s rules engine, hidden information handling, reconnect, state sync, and action logs. Colyseus should wrap the match as a realtime platform shell.
+The implementation intentionally does not replace `boardgame.io`. The game remains turn-based and benefits from `boardgame.io`'s rules engine, hidden information handling, reconnect, state sync, and action logs. Colyseus wraps each match as a realtime platform shell.
 
-## Initial Implementation Slice
+## Current Implementation
 
-The first implementation slice adds a standalone Colyseus platform runtime without switching existing gameplay traffic:
+The repository includes a standalone Colyseus platform runtime while authoritative gameplay traffic remains on boardgame.io:
 
 - `npm run platform`
 - `src/platform/server.ts`
@@ -68,16 +68,16 @@ Player match history stores the online boardgame match ID when available. The hi
 
 Unread chat summaries are ChatService-backed across match, room, direct, and global conversations. The unread query is null-safe for durable messages whose author account has been deleted or otherwise tombstoned, so evidence-bearing history does not disappear from unread state when identity records change. The lobby can reopen each durable conversation type from the unread panel instead of treating unread state as a match-only shortcut.
 
-## Migration Plan
+## Completed Migration Milestones
 
-1. Add Colyseus runtime and room contracts.
-2. Use Colyseus for presence while keeping `/api/presence` compatibility.
-3. Move lobby shell and custom room lifecycle to Colyseus.
-4. Move quick matchmaking away from HTTP polling and Redis `realMatchId` handoff.
-5. Add spectators and ChatService-backed chat.
-6. Add friend presence, invitations, unread counts, moderation, reports, and LLM translation.
+1. [x] Add Colyseus runtime and room contracts.
+2. [x] Use Colyseus for presence while keeping `/api/presence` compatibility.
+3. [x] Move lobby shell and custom room lifecycle to Colyseus.
+4. [x] Move quick matchmaking away from HTTP polling and Redis `realMatchId` handoff.
+5. [x] Add spectators and ChatService-backed chat.
+6. [x] Add friend presence, invitations, unread counts, moderation, reports, and provider-backed translation.
 
-## Key Risks
+## Architectural Invariants and Remaining Risks
 
 - Dual connection identity: map `userId`, Colyseus `sessionId`, boardgame `matchID`, boardgame `playerID`, and boardgame credentials explicitly.
 - Split brain: do not duplicate hidden or authoritative card state in Colyseus.

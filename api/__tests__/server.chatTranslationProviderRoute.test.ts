@@ -4,7 +4,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters!!';
 process.env.NODE_ENV = 'test';
-process.env.APP_VERSION = '0.1.3';
+process.env.APP_VERSION = '0.2.0';
 process.env.CHAT_TRANSLATION_ENDPOINT = 'https://llm.example.test/translate';
 process.env.CHAT_TRANSLATION_API_KEY = 'test-translation-key';
 process.env.CHAT_TRANSLATION_PROVIDER = 'llm-gateway';

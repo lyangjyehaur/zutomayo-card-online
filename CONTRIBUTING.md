@@ -4,7 +4,7 @@
 
 ## 專案簡介
 
-ZUTOMAYO CARD Online 是一款以日本樂團「ずっと真夜中でいいのに」為主題的線上對戰卡牌遊戲（TCG）數位化平台。專案基於 [boardgame.io](https://boardgame.io/) 實作 WebSocket 即時對戰，完整實作官方規則（每人 20 張牌組、初始 HP 100、Chronos 晝夜系統）。
+ZUTOMAYO CARD Online 是一款以日本樂團「ずっと真夜中でいいのに」為主題的線上對戰卡牌遊戲（TCG）數位化平台。`boardgame.io` 負責權威卡牌對局，Colyseus 負責大廳／配對／房間／邀請／觀戰，ChatService 負責持久化聊天與審核。
 
 支援本機雙人對戰、AI 練習與線上即時對戰，前端使用 React 19 + Vite + Tailwind CSS，後端為 Node.js + Koa + PostgreSQL + Redis，並透過 PWA 提供離線可用與安裝到桌面/手機的能力，內建 6 種語系 i18n。
 
@@ -27,35 +27,46 @@ npm ci
 # 3. 啟動開發伺服器（Vite HMR）
 npm run dev
 
-# 4.（可選）啟動後端 API 與 boardgame.io server
+# 4.（可選）啟動 boardgame.io server
 npm run server
+
+# 5.（可選）啟動 Colyseus platform（預設 port 3002）
+npm run platform
+
+# 6.（可選）啟動獨立 REST API（預設 port 3001）
+cd api && npm ci && npm start
 ```
 
 環境變數請參考 `.env.example`，複製為 `.env` 後依實際需求填寫。開發時若需要 PostgreSQL / Redis，可使用 `docker-compose.yml` 啟動本地服務。
 
 ### 常用指令
 
-| 指令                        | 說明                                                                |
-| --------------------------- | ------------------------------------------------------------------- |
-| `npm run dev`               | 啟動 Vite 前端開發伺服器                                            |
-| `npm run server`            | 啟動 Node.js 後端伺服器（tsx 直接執行）                             |
-| `npm run build`             | 型別檢查 + 生產打包                                                 |
-| `npm test`                  | 執行 vitest 單元測試                                                |
-| `npm run test:watch`        | 測試監聽模式                                                        |
-| `npm run lint`              | ESLint 檢查                                                         |
-| `npm run lint:fix`          | ESLint 自動修復                                                     |
-| `npm run format`            | Prettier 格式化                                                     |
-| `npm run format:check`      | Prettier 格式檢查（不修改檔案）                                     |
-| `npm run typecheck`         | TypeScript 型別檢查（app）                                          |
-| `npm run typecheck:scripts` | TypeScript 型別檢查（scripts 目錄）                                 |
-| `npm run verify`            | 完整驗證（等同 CI：format:check → lint → typecheck → test → build） |
-| `npm run db:migrate`        | 執行 PostgreSQL schema migration                                    |
+| 指令                           | 說明                                                 |
+| ------------------------------ | ---------------------------------------------------- |
+| `npm run dev`                  | 啟動 Vite 前端開發伺服器                             |
+| `npm run server`               | 啟動 boardgame.io game server                        |
+| `npm run platform`             | 啟動 Colyseus platform server                        |
+| `npm run build`                | 型別檢查 + 生產打包                                  |
+| `npm test`                     | 執行 vitest 單元測試                                 |
+| `npm run test:watch`           | 測試監聽模式                                         |
+| `npm run lint`                 | ESLint 檢查                                          |
+| `npm run lint:fix`             | ESLint 自動修復                                      |
+| `npm run format`               | Prettier 格式化                                      |
+| `npm run format:check:tracked` | 檢查 Git 追蹤檔的 Prettier 格式                      |
+| `npm run version:check`        | 驗證 root / api package 版本與 managed fallback      |
+| `npm run typecheck`            | TypeScript 型別檢查（app）                           |
+| `npm run typecheck:scripts`    | TypeScript 型別檢查（scripts 目錄）                  |
+| `npm run verify`               | 完整驗證（format/version/lint/typecheck/test/build） |
+| `npm run db:migrate`           | 執行 PostgreSQL schema migration                     |
+| `npm run e2e`                  | 執行 Playwright 端到端測試                           |
+| `npm run e2e:ui`               | 啟動 Playwright 互動測試 UI                          |
+| `npm run load:api`             | 執行 k6 API 負載測試（需另行安裝 k6）                |
 
 ## 程式碼風格規範
 
 專案使用 **ESLint + Prettier** 維持一致的程式碼風格，並透過 `husky` + `lint-staged` 在 commit 時自動檢查與修復。
 
-- **Prettier**：設定見 `.prettierrc.json`（semi、singleQuote、trailingComma `all`、printWidth `120`、tabWidth `2`）。
+- **Prettier**：設定見 `.prettierrc.json`（semi、singleQuote、trailingComma `all`、printWidth `120`、tabWidth `2`、跨平台 EOL）。
 - **ESLint**：設定見 `eslint.config.js`，基於 `typescript-eslint` recommended 與 React recommended。
 - **禁止使用 `any` 型別**：`@typescript-eslint/no-explicit-any` 規則已啟用，請為變數與函式標注明確型別；若遇第三方型別不足，以 `unknown` 搭配型別窄化處理。
 - **未使用變數**：以底線前綴（`_foo`）標記刻意忽略的參數與變數。
@@ -64,7 +75,8 @@ npm run server
 提交前請在本機執行：
 
 ```bash
-npm run format:check
+npm run format:check:tracked
+npm run version:check
 npm run lint
 npm run typecheck
 npm run typecheck:scripts
@@ -117,6 +129,8 @@ style(format): 修正 Prettier 格式
 - **`npm test` 必須通過**：所有 PR 在合併前須通過單元測試。
 - **新功能需附測試**：新增功能或修正 bug 時，請補上對應的 vitest 單元測試（測試檔案命名 `*.test.ts` / `*.test.tsx`，與原始檔案同目錄或集中於 `__tests__`）。
 - **不修改既有測試**：除非該測試本身有誤或需求變更，否則請勿調整既有測試的斷言。
+- **使用者流程需 E2E**：涉及登入、牌組、教學或跨服務導航時，更新 `e2e/` Playwright 場景；CI 會透過 `docker-compose.e2e.yml` 執行。
+- **容量敏感改動需壓測**：API、WebSocket、認證或配對熱路徑變更時，使用 `load-tests/` 的 k6 腳本確認門檻。
 - 本機推送前可執行 `npm run verify`，完整比對 CI 流程。
 
 ## PR 流程
@@ -129,11 +143,11 @@ style(format): 修正 Prettier 格式
    - 關聯 issue（若有）
    - 測試方式（如何驗證此變更有效）
    - 是否影響部署或環境變數
-5. PR 需通過 GitHub Actions CI（format:check、lint、typecheck、typecheck:scripts、test、build）全數綠燈。
+5. PR 需通過 GitHub Actions CI（format:check:tracked、version:check、lint、typecheck、typecheck:scripts、test、build、Playwright E2E）全數綠燈。
 6. 經 review 通過後合併至 `master`。
 
 ## 部署流程
 
-生產部署使用 `docker-compose.yml`，包含 `postgres`、`redis`、`migrate`、`game`、`api` 五個服務。詳細的部署步驟、環境變數、連接埠與備份策略請參考 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+生產部署使用 `docker-compose.yml`，包含 `postgres`、`redis`、一次性的 `migrate`、`game`、`api`、`platform` 六個單元。詳細的部署步驟、環境變數、連接埠與備份策略請參考 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 CI 會在每次 push / PR 至 `master` 時執行完整驗證（見 `.github/workflows/ci.yml`）。`smoke:*` 系列腳本需要真實卡牌數據與運行中的伺服器，故未納入 CI，請在本機或部署後另行執行。

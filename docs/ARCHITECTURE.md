@@ -78,7 +78,7 @@ ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.
 | API Server      | 帳號 / OAuth / 牌組 / 對戰結果 / 聊天持久化 / 好友 / 反饋 / 管理 / 卡牌資料 / legacy REST 配對                | Node HTTP、pg、ioredis、zod、node-pg-migrate                    |
 | Platform Server | Colyseus lobby presence、quick matchmaking、custom-room lifecycle、invite、match shell、spectator presence    | Colyseus、@colyseus/ws-transport、RedisDriver、RedisPresence    |
 | PostgreSQL      | 持久資料（用戶、好友、牌組、對戰、聊天、檢舉、制裁、卡牌、反饋、boardgame.io state）                          | PostgreSQL 16                                                   |
-| Redis           | 跨節點同步、Colyseus room/presence backing、legacy 配對佇列、限流、HTTP presence fallback                     | Redis 7（AOF + allkeys-lru）                                    |
+| Redis           | 跨節點同步、Colyseus room/presence backing、refresh 原子輪替、legacy 配對佇列、限流、HTTP presence fallback   | Redis 7（密碼、AOF + allkeys-lru）                              |
 
 ### 請求/同步流向
 
@@ -626,27 +626,16 @@ flowchart TB
 
 `api/Dockerfile` 為 API server 獨立鏡像（不含 `node-pg-migrate` 與 `migrations/`，靠 `initSchema()` fallback）。
 
-### docker-compose 四服務 + migrate
+### docker-compose 六個單元（含 one-shot migrate）
 
 ```text
-┌─────────────┐   ┌──────────┐
-│  postgres   │   │  redis   │
-│  (pg-data)  │   │(redis-data)│
-└──────┬──────┘   └────┬─────┘
-       │               │
-       │  ┌────────────┴────────────┐
-       │  │                         │
-┌──────▼──▼─────┐         ┌──────────▼──────────┐
-│   migrate     │         │   game (port 3000)   │
-│ (one-shot)    │         │  boardgame.io + SPA  │
-│ npm run       │         │  + /api/* proxy      │
-│ db:migrate    │         └──────────┬──────────┘
-└──────┬────────┘                    │
-       │ depends_on                  │
-┌──────▼─────────────────────────────▼──────┐
-│              api (port 3001)              │
-│   13 service modules · OAuth · ELO        │
-└───────────────────────────────────────────┘
+postgres ─┬─> migrate (one-shot: npm run db:migrate) ─> api :3001
+          ├─> game :3000 (boardgame.io + SPA + /api proxy)
+          └─> platform :3002 (Colyseus rooms)
+
+redis ────┬─> game (Pub/Sub + Socket.IO adapter + rate limit)
+          ├─> api (rate limit + legacy compatibility queue)
+          └─> platform (RedisDriver + RedisPresence)
 ```
 
 | 服務     | 鏡像                     | healthcheck             | depends_on                                                        |
@@ -670,7 +659,7 @@ flowchart TB
   - 跨節點廣播 → `RedisPubSub` + `@socket.io/redis-adapter`。
   - Colyseus lobby / quick_match / custom_room / invite / match_shell → `RedisDriver` + `RedisPresence`。
   - Legacy REST 配對佇列 / 限流 → Redis shared。
-- **一致性要求**：所有同服務實例必須共享 `JWT_SECRET`；game / api 的 `ALLOWED_ORIGINS` 需一致，且 `APP_BUILD_ID` / `GAME_RULES_VERSION` 一致（否則 client 會被版本檢查擋下）。
+- **一致性要求**：所有同服務實例必須共享 `JWT_SECRET`、`REDIS_PASSWORD`；game / api 的 `ALLOWED_ORIGINS` 需一致，API 只應在 `TRUSTED_PROXY` 中列出真實反向代理，且 `APP_BUILD_ID` / `GAME_RULES_VERSION` 一致（否則 client 會被版本檢查擋下）。
 - **復用既有 PG/Redis**：用獨立 database（PG）與獨立 DB index（Redis）隔離，`docker-compose.override.yml` 移除內建 postgres/redis 服務。
 
 ### CI/CD pipeline
@@ -679,14 +668,18 @@ GitHub Actions（`.github/workflows/ci.yml`），`ubuntu-latest` + Node 22 + npm
 
 ```text
 checkout → setup-node → npm ci
-  → format:check   (Prettier)
+  → format:check:tracked (Prettier)
+  → version:check  (root / api package version sync)
   → lint           (ESLint)
   → typecheck      (tsc --noEmit, app)
+  → typecheck:scripts
   → test           (vitest 單元測試)
-  → build          (typecheck:scripts + vite build)
+  → build          (typecheck + typecheck:scripts + vite build)
 ```
 
-任一步驟失敗阻擋合併。`smoke:*` 腳本需要运行中的 PG/Redis/boardgame.io，故不在 CI 中執行。本機推送前可用 `npm run verify` 鏡像 CI（Prettier + ESLint + typecheck + test + build）。
+平行的 `e2e` job 以 `docker-compose.e2e.yml` 啟動隔離服務棧並執行 Playwright，失敗時上傳 report 與 test results。任一步驟失敗皆阻擋合併。`smoke:*` 與 k6 `load:*` 仍需依目標環境另行執行；本機以 `npm run verify` 對齊靜態檢查、單測與 build。
+
+`.github/workflows/cd.yml` 在 master 更新時建置 game/api/platform GHCR staging images，在 `v*` tag 建置 production images；`workflow_dispatch` 可選 staging／production SSH 部署。`docker-compose.staging.yml` 使用隔離 ports、database 與 Redis DB，正式 rollback 由 `scripts/deploy-server4.sh` 管理。
 
 ---
 

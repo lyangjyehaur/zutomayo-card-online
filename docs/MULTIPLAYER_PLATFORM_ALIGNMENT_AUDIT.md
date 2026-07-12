@@ -1,6 +1,6 @@
 # Multiplayer Platform Alignment Audit
 
-Status: In Progress
+Status: Aligned (optional live-service E2E hardening remains)
 Date: 2026-07-12
 Source: `docs/MULTIPLAYER_PLATFORM_ARCHITECTURE.md`
 
@@ -74,11 +74,11 @@ These areas are intentionally guarded by source-boundary tests because the curre
    - Goal: current provider route proves ready persistence; no-provider proves pending persistence.
    - Future asynchronous worker/queue is a product expansion rather than a required architecture-gap for this slice.
 
-## Completion Criteria
+## Completion Status
 
-This branch can be considered architecture-aligned when:
+The current implementation is architecture-aligned:
 
 - All `Open` items are zero.
-- `Needs stronger test` is zero or explicitly accepted as source-boundary coverage.
-- `npm run verify` passes after the final implementation.
-- Final audit references remain up to date with any newly added tests.
+- `Needs stronger test` is zero; the remaining source-boundary coverage is explicitly documented.
+- `npm run verify` is the required final validation gate.
+- The optional live-service, multi-browser invite E2E is additional hardening rather than a release blocker.

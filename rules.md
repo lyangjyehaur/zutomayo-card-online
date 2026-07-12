@@ -124,4 +124,4 @@ Chronos medal 所在時段對應側為優先玩家，先處理效果。
 - 每個效果處理前各自檢查當下 Power Cost。攻擊加減、傷害減免、HP、抽牌與部分 Chronos 效果會實際改變狀態。
 - 422 張卡牌資料與 250 張有效果卡已進入目前 parser/executor 覆蓋基準；267/267 效果行可解析，`unparsedLines=0`、`parsedButPartial=0`。
 - 玩家選擇效果順序、同一卡多段效果順序、傷害減免時機、Chronos transition、zone-entry events、Area Enchant 離場、手牌/移動選牌、Abyss 支付選牌、對手 Character 入替、手牌支付抽牌、Clock 選擇、deck top reorder 與持續型 modifier 皆有 runtime 支援與 smoke regression。
-- 目前規則與效果現況詳見 [RULE_ENGINE_AUDIT.md](RULE_ENGINE_AUDIT.md) 與 [CARD_EFFECT_AUDIT_FINAL.md](CARD_EFFECT_AUDIT_FINAL.md)。
+- 目前規則與效果現況由 [`npm run rule:audit`](scripts/rule-audit.ts)、[效果執行測試](src/game/effects/__tests__/executor.test.ts) 與 [game smoke](scripts/game-smoke.ts) 持續驗證。

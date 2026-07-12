@@ -5,7 +5,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 // ===== Environment setup (must happen before requiring server.cjs) =====
 process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters!!';
 process.env.NODE_ENV = 'test';
-process.env.APP_VERSION = '0.1.3';
+process.env.APP_VERSION = '0.2.0';
 delete process.env.TURNSTILE_SECRET_KEY;
 delete process.env.TURNSTILE_REQUIRED;
 delete process.env.SENTRY_DSN;
@@ -382,7 +382,7 @@ describe('server routes', () => {
       const res = await sendRequest('GET', '/api/app-version');
       expect(res.statusCode).toBe(200);
       const body = parseBody(res) as Record<string, unknown>;
-      expect(body.appVersion).toBe('0.1.3');
+      expect(body.appVersion).toBe('0.2.0');
       expect(body.buildId).toBeDefined();
       expect(body.rulesVersion).toBeDefined();
     });
@@ -391,7 +391,7 @@ describe('server routes', () => {
       const res = await sendRequest('GET', '/api/version');
       expect(res.statusCode).toBe(200);
       const body = parseBody(res) as Record<string, unknown>;
-      expect(body.appVersion).toBe('0.1.3');
+      expect(body.appVersion).toBe('0.2.0');
     });
   });
 

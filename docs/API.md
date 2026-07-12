@@ -7,13 +7,15 @@ Base URLs:
 - Through game server: `http://localhost:3000/api`
 - Direct API service: `http://localhost:3001/api`
 
-Authenticated endpoints require:
+Authenticated endpoints prefer the `zutomayo_session` HttpOnly cookie established by login or OAuth. Legacy clients may still send:
 
 ```http
 Authorization: Bearer <token>
 ```
 
-User tokens are returned by `POST /api/register` and `POST /api/login` (7-day expiry). Admin tokens are returned by `POST /api/admin/login` (24-hour expiry) and carry an `admin: true` claim.
+User tokens are returned by `POST /api/register` and `POST /api/login` for backward compatibility. Admin tokens are returned by `POST /api/admin/login` (24-hour expiry) and carry an `admin: true` claim.
+
+Cookie-authenticated `POST`, `PUT`, and `DELETE` requests use double-submit CSRF protection. Fetch `GET /api/csrf-token`, retain the `zutomayo_csrf` cookie, and send the same value in `X-CSRF-Token`. Login, registration, OAuth session exchange, and admin login are intentionally exempt because they establish authentication rather than consume an existing user session.
 
 ## Rate Limiting / 速率限制
 
@@ -134,6 +136,18 @@ Response: same shape as `GET /api/profile`.
 
 Errors: `400`, `401`.
 
+## Friends / 好友
+
+All friend endpoints require an authenticated account. Friendships are stored bidirectionally and are also used by direct-chat and Colyseus invite authorization.
+
+| Method   | Path                   | Body                          | Description                                                  |
+| -------- | ---------------------- | ----------------------------- | ------------------------------------------------------------ |
+| `GET`    | `/api/friends`         | —                             | List the current user's friends and public match statistics. |
+| `POST`   | `/api/friends`         | `{ "friendUserId": "u_..." }` | Add an existing account as a mutual friend.                  |
+| `DELETE` | `/api/friends/:userId` | —                             | Remove both directions of the friendship.                    |
+
+Errors: `400`, `401`, `404`.
+
 ## Decks / 牌組
 
 ### `GET /api/decks`
@@ -240,6 +254,8 @@ Request:
 {
   "winnerId": "u_winner",
   "loserId": "u_loser",
+  "sourceMatchId": "boardgame-match-id",
+  "winnerPlayer": 0,
   "turns": 12,
   "duration": 420,
   "actionLog": [
@@ -273,8 +289,11 @@ Response:
 
 Notes:
 
-- Requires a user JWT. The authenticated user must be the `winnerId`; otherwise the server returns `403`. This prevents clients from forging match results on behalf of another user.
-- ELO changes are `0` if either submitted user ID is not found.
+- Requires an authenticated user.
+- When `sourceMatchId` is present, the server verifies the winner and both boardgame seats from authoritative persisted match state. Either authenticated participant may submit the result; client-provided winner/loser IDs are replaced by the verified identities.
+- `sourceMatchId` is a unique idempotency key. Retries and simultaneous submissions return the previously stored ELO result with `duplicate: true` instead of applying ELO twice.
+- Legacy submissions without `sourceMatchId` require the authenticated user to equal `winnerId` and do not change ELO.
+- ELO changes are `0` when an authoritative match includes a guest or an account cannot be resolved.
 - `duration` maps to `duration_seconds` in PostgreSQL.
 - `actionLog` is sanitized before storage. Hidden card IDs, deck order, raw text, and unknown payload fields are stripped.
 - Safe trace fields are preserved: `id`, `chronosPosition`, `hp`, `pendingEffectCardDefId`, `pendingChoiceType`, `result.ok`, and `result.message`.
@@ -352,7 +371,35 @@ Response:
 }
 ```
 
-Errors: `404`.
+Requires authentication and match participation. A non-participant receives `403` even when the match ID exists. Errors: `401`, `403`.
+
+## Chat / 聊天
+
+ChatService persists all conversation types in PostgreSQL. Supported `conversationType` values are `match`, `room`, `direct`, and `global`. Direct conversations require a durable friendship; match and room conversations require durable participant evidence. Public writes accept only `player` or `spectator` roles.
+
+| Method | Path                                                 | Description                                                                            |
+| ------ | ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `GET`  | `/api/chat/messages?type=&subjectId=&limit=&before=` | Sync authorized conversation history.                                                  |
+| `POST` | `/api/chat/messages`                                 | Persist a message, run moderation rules, and return the durable message.               |
+| `POST` | `/api/chat/read`                                     | Store the user's read cursor for one conversation.                                     |
+| `GET`  | `/api/chat/unread?limit=`                            | Return cross-conversation unread summaries.                                            |
+| `POST` | `/api/chat/messages/:id/translate`                   | Request a target-language translation; returns `200` when ready or `202` when pending. |
+| `POST` | `/api/chat/messages/:id/report`                      | Report a message and persist an immutable evidence snapshot.                           |
+
+Message creation body:
+
+```json
+{
+  "conversationType": "match",
+  "subjectId": "boardgame-match-id",
+  "content": "Good game!",
+  "authorRole": "player",
+  "clientMessageId": "optional-idempotency-key",
+  "sourceLanguage": "en"
+}
+```
+
+Translation uses the configured `CHAT_TRANSLATION_ENDPOINT`. Without a provider, requests are persisted with `pending` status for a future worker. Active `chat_mute` sanctions are enforced across all conversation types.
 
 ## Leaderboard / 排行榜
 
@@ -493,6 +540,17 @@ Response:
 ```
 
 Errors: `401`.
+
+### Chat moderation endpoints
+
+| Method   | Path                                                        | Description                                                          |
+| -------- | ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| `GET`    | `/api/admin/chat/reports?status=&limit=`                    | List reports with immutable message snapshots.                       |
+| `GET`    | `/api/admin/chat/conversations/:id/messages?limit=&before=` | Load full evidence history, including blocked or deleted messages.   |
+| `POST`   | `/api/admin/chat/reports/:id`                               | Set report status to `reviewing`, `resolved`, or `dismissed`.        |
+| `POST`   | `/api/admin/chat/messages/:id/moderation`                   | Set message status to `visible`, `blocked`, or `deleted`.            |
+| `POST`   | `/api/admin/chat/sanctions`                                 | Create a durable `chat_mute`, optionally linked to a report/message. |
+| `DELETE` | `/api/admin/chat/sanctions/:id`                             | Revoke a durable chat sanction.                                      |
 
 ## Legacy Matchmaking / 舊版配對佇列
 
