@@ -1018,6 +1018,26 @@ async function verifyToken(token) {
   }
 }
 
+// 原子地讀取並刪除 refresh token，防止 refresh 路由的 TOCTOU 競態。
+// Redis 6.2+ 支援 GETDEL；舊版本或不支援時 fallback 到非原子的 GET + DEL。
+async function consumeRefreshTokenJti(jti) {
+  const key = `refresh:${jti}`;
+  if (typeof redis.getdel === 'function') {
+    try {
+      return await redis.getdel(key);
+    } catch (err) {
+      // 某些 Redis 版本不支援 getdel，fallback 到 get + del
+      if (!err || !/unknown command|ERR unknown command/i.test(err.message || '')) {
+        throw err;
+      }
+    }
+  }
+  // Fallback：非原子的 GET + DEL（Redis < 6.2 或用戶端不支援 getdel）
+  const value = await redis.get(key);
+  if (value) await redis.del(key);
+  return value;
+}
+
 async function verifyRefreshToken(token) {
   try {
     if (typeof token !== 'string') return null;
@@ -1037,7 +1057,9 @@ async function verifyRefreshToken(token) {
     if (payload.typ !== 'refresh') return null;
     if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
     if (!payload.jti) return null;
-    const registered = await redis.get(`refresh:${payload.jti}`);
+    // 原子地消費 refresh token：getdel 一次完成讀取+刪除，
+    // 若回 null 表示 token 已被使用或不存在，拒絕刷新。
+    const registered = await consumeRefreshTokenJti(payload.jti);
     if (!registered) return null;
     const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
     return typeof userId === 'string' ? userId : null;
@@ -2322,8 +2344,7 @@ function handleRequest(req, res) {
         clearCsrfCookie(req, res);
         return json({ error: 'Invalid or expired refresh token' }, 401);
       }
-      // Rotate：撤銷舊 refresh token，發新 token pair
-      await revokeRefreshToken(refreshToken);
+      // Rotate：verifyRefreshToken 已透過 GETDEL 原子消費舊 refresh token，發新 token pair
       const { accessToken, refreshToken: newRefreshToken } = await createTokenPair(userId);
       setAuthCookie(req, res, accessToken);
       setRefreshCookie(req, res, newRefreshToken);
