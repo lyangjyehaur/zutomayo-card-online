@@ -22,7 +22,7 @@ Source: `docs/MULTIPLAYER_PLATFORM_ARCHITECTURE.md`
 | Area                         | Architecture requirement                                                                                                          | Status  | Evidence                                                                                                                                                                                                 | Remaining work                                                           |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Engine ownership             | `boardgame.io` remains authoritative for turn-based match state; Colyseus must not own hidden/card/game state.                    | Covered | `src/platform/rooms/__tests__/platformBoundary.test.ts`, `src/__tests__/platformDeploymentConfig.test.ts`                                                                                                | Keep future Colyseus rooms free of board/card state.                     |
-| Platform runtime             | Add standalone Colyseus runtime with lobby, match shell, quick match, custom room, invite rooms and `npm run platform`.           | Covered | `src/platform/server.ts`, `src/platform/rooms/index.ts`, `src/__tests__/platformDeploymentConfig.test.ts`                                                                                                | Optional: add boot-level integration test for server construction.       |
+| Platform runtime             | Add standalone Colyseus runtime with lobby, match shell, quick match, custom room, invite rooms and `npm run platform`.           | Covered | `src/platform/runtime.ts`, `src/platform/server.ts`, `src/platform/__tests__/runtime.test.ts`, `src/__tests__/platformDeploymentConfig.test.ts`                                                          | None.                                                                    |
 | Redis mode                   | Local memory mode, production Redis mode, Compose platform service on `3002`.                                                     | Covered | `src/platform/config.ts`, `src/__tests__/platformFriendStore.test.ts`, `src/__tests__/platformDeploymentConfig.test.ts`                                                                                  | None for current slice.                                                  |
 | Platform endpoint            | Browser resolves `VITE_PLATFORM_URL`, local defaults to `:3002`, production keeps same host.                                      | Covered | `src/__tests__/platformClient.test.ts`                                                                                                                                                                   | None.                                                                    |
 | Presence fallback            | Colyseus lobby presence should fall back to HTTP heartbeat on connect failure/disconnect.                                         | Covered | `src/hooks/onlinePresenceConnection.ts`, `src/__tests__/onlinePresenceConnection.test.ts`, `src/__tests__/onlinePresenceFallback.test.ts`                                                                | None.                                                                    |
@@ -66,15 +66,11 @@ These areas are intentionally guarded by source-boundary tests because the curre
 
 ## Recommended Next Work
 
-1. Add a platform runtime boot integration test.
-   - Goal: instantiate the Colyseus runtime with documented room registrations/configuration without starting external Redis in local mode.
-   - Current evidence exists in config/source-boundary tests, but a boot test would catch broken room registration earlier.
-
-2. Add browser-level smoke coverage for Online Lobby chat/invite recovery when a DOM-capable test setup is available.
+1. Add browser-level smoke coverage for Online Lobby chat/invite recovery when a DOM-capable test setup is available.
    - Goal: prove unread panel, accepted invite recovery, and durable lobby/direct/room chat surfaces behave as expected from user interaction.
    - Current Node tests are acceptable for code-boundary enforcement, but not full UI verification.
 
-3. Keep the LLM translation provider contract as synchronous HTTP gateway for now.
+2. Keep the LLM translation provider contract as synchronous HTTP gateway for now.
    - Goal: current provider route proves ready persistence; no-provider proves pending persistence.
    - Future asynchronous worker/queue is a product expansion rather than a required architecture-gap for this slice.
 

@@ -1,25 +1,6 @@
-import http from 'http';
-import { Server } from '@colyseus/core';
-import { RedisDriver } from '@colyseus/redis-driver';
-import { RedisPresence } from '@colyseus/redis-presence';
-import { WebSocketTransport } from '@colyseus/ws-transport';
 import * as Sentry from '@sentry/node';
-import type { NextFunction, Request, Response } from 'express';
-import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
 import { platformLogger as logger } from './logger';
-import { createPlatformChatPreviewStoreFromEnv, resolvePlatformChatPreviewStoreMode } from './chatPreviewStore';
-import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
-import {
-  createPlatformMatchParticipantStoreFromEnv,
-  resolvePlatformMatchParticipantStoreMode,
-} from './matchParticipantStore';
-import {
-  isPlatformRedisMode,
-  redisUrlWithDb,
-  resolvePlatformCorsOrigin,
-  resolvePlatformCorsOrigins,
-  resolvePlatformRedisMode,
-} from './config';
+import { createPlatformRuntime } from './runtime';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -45,76 +26,7 @@ if (process.env.SENTRY_DSN) {
   });
 }
 
-const PLATFORM_PORT = Number(process.env.PLATFORM_PORT) || 3002;
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
-const REDIS_DB = Number(process.env.REDIS_DB) || 0;
-const configuredRedisMode = process.env.PLATFORM_REDIS_MODE;
-const PLATFORM_REDIS_MODE = resolvePlatformRedisMode(configuredRedisMode, process.env.NODE_ENV);
-const PLATFORM_CORS_ORIGINS = resolvePlatformCorsOrigins(process.env.ALLOWED_ORIGINS);
-
-if (configuredRedisMode?.trim() && !isPlatformRedisMode(configuredRedisMode)) {
-  logger.warn({ mode: configuredRedisMode }, 'unknown PLATFORM_REDIS_MODE, falling back to environment default');
-}
-
-const httpServer = http.createServer();
-
-const colyseusRedisUrl = redisUrlWithDb(REDIS_URL, REDIS_DB);
-const friendStore = createPlatformFriendStoreFromEnv();
-const matchParticipantStore = createPlatformMatchParticipantStoreFromEnv();
-const chatPreviewStore = createPlatformChatPreviewStoreFromEnv();
-const platformFriendStoreMode = resolvePlatformFriendStoreMode();
-const platformMatchParticipantStoreMode = resolvePlatformMatchParticipantStoreMode();
-const platformChatPreviewStoreMode = resolvePlatformChatPreviewStoreMode();
-LobbyRoom.configureFriendStore(friendStore);
-InviteRoom.configureFriendStore(friendStore, { enforceFriendship: platformFriendStoreMode === 'postgres' });
-CustomRoom.configureParticipantStore(matchParticipantStore);
-MatchShellRoom.configureParticipantStore(matchParticipantStore);
-MatchShellRoom.configureChatPreviewStore(chatPreviewStore);
-
-const gameServer = new Server({
-  transport: new WebSocketTransport({ server: httpServer }),
-  express: (app) => {
-    app.use((req: Request, res: Response, next: NextFunction) => {
-      const corsOrigin = resolvePlatformCorsOrigin(req.headers.origin, PLATFORM_CORS_ORIGINS);
-      if (corsOrigin) {
-        res.set('Access-Control-Allow-Origin', corsOrigin);
-        res.set('Vary', 'Origin');
-        res.set('Access-Control-Allow-Credentials', 'true');
-      }
-      res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      if (req.method === 'OPTIONS') {
-        res.sendStatus(200);
-        return;
-      }
-      next();
-    });
-    app.get('/health', (_req, res) => {
-      res.set('Cache-Control', 'no-store').json({ ok: true, service: 'platform' });
-    });
-    app.get('/ready', (_req, res) => {
-      res.set('Cache-Control', 'no-store').json({ ok: true });
-    });
-  },
-  ...(PLATFORM_REDIS_MODE === 'redis'
-    ? {
-        presence: new RedisPresence(colyseusRedisUrl),
-        driver: new RedisDriver(colyseusRedisUrl),
-      }
-    : {}),
-  greet: false,
-});
-
-gameServer.define('lobby', LobbyRoom);
-gameServer.define('match_shell', MatchShellRoom).filterBy(['boardgameMatchID', 'status']);
-gameServer.define('quick_match', QuickMatchRoom).filterBy(['status']);
-gameServer.define('custom_room', CustomRoom).filterBy(['roomCode', 'status']);
-gameServer.define('invite', InviteRoom).filterBy(['inviteId', 'status', 'targetUserId']);
-
-gameServer.onShutdown(async () => {
-  logger.info('platform server shutting down');
-  await Promise.all([friendStore.close?.(), matchParticipantStore.close?.(), chatPreviewStore.close?.()]);
-});
+const platform = createPlatformRuntime();
 
 process.on('uncaughtException', (err) => {
   Sentry.captureException(err, { tags: { layer: 'platform-process', type: 'uncaughtException' } });
@@ -127,14 +39,14 @@ process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'unhandled platform rejection');
 });
 
-await gameServer.listen(PLATFORM_PORT);
+await platform.gameServer.listen(platform.port);
 logger.info(
   {
-    port: PLATFORM_PORT,
-    redisMode: PLATFORM_REDIS_MODE,
-    friendStoreMode: platformFriendStoreMode,
-    matchParticipantStoreMode: platformMatchParticipantStoreMode,
-    chatPreviewStoreMode: platformChatPreviewStoreMode,
+    port: platform.port,
+    redisMode: platform.redisMode,
+    friendStoreMode: platform.friendStoreMode,
+    matchParticipantStoreMode: platform.matchParticipantStoreMode,
+    chatPreviewStoreMode: platform.chatPreviewStoreMode,
   },
   'Zutomayo platform server running',
 );

@@ -29,30 +29,32 @@ describe('platform deployment config', () => {
 
   it('wires the Colyseus runtime as a platform shell instead of durable game or chat state', () => {
     const platformServer = readRepoFile('src/platform/server.ts');
+    const platformRuntime = readRepoFile('src/platform/runtime.ts');
 
-    expect(platformServer).toContain('new RedisPresence(colyseusRedisUrl)');
-    expect(platformServer).toContain('new RedisDriver(colyseusRedisUrl)');
-    expect(platformServer).toContain('LobbyRoom.configureFriendStore(friendStore)');
-    expect(platformServer).toContain('InviteRoom.configureFriendStore(friendStore, { enforceFriendship:');
-    expect(platformServer).toContain('CustomRoom.configureParticipantStore(matchParticipantStore)');
-    expect(platformServer).toContain('MatchShellRoom.configureParticipantStore(matchParticipantStore)');
-    expect(platformServer).toContain('MatchShellRoom.configureChatPreviewStore(chatPreviewStore)');
-    expect(platformServer).toContain("gameServer.define('lobby', LobbyRoom)");
-    expect(platformServer).toContain(
+    expect(platformServer).toContain('createPlatformRuntime()');
+    expect(platformRuntime).toContain('new RedisPresence(colyseusRedisUrl)');
+    expect(platformRuntime).toContain('new RedisDriver(colyseusRedisUrl)');
+    expect(platformRuntime).toContain('LobbyRoom.configureFriendStore(friendStore)');
+    expect(platformRuntime).toContain('InviteRoom.configureFriendStore(friendStore, { enforceFriendship:');
+    expect(platformRuntime).toContain('CustomRoom.configureParticipantStore(matchParticipantStore)');
+    expect(platformRuntime).toContain('MatchShellRoom.configureParticipantStore(matchParticipantStore)');
+    expect(platformRuntime).toContain('MatchShellRoom.configureChatPreviewStore(chatPreviewStore)');
+    expect(platformRuntime).toContain("gameServer.define('lobby', LobbyRoom)");
+    expect(platformRuntime).toContain(
       "gameServer.define('match_shell', MatchShellRoom).filterBy(['boardgameMatchID', 'status'])",
     );
-    expect(platformServer).toContain("gameServer.define('quick_match', QuickMatchRoom).filterBy(['status'])");
-    expect(platformServer).toContain("gameServer.define('custom_room', CustomRoom).filterBy(['roomCode', 'status'])");
-    expect(platformServer).toContain(
+    expect(platformRuntime).toContain("gameServer.define('quick_match', QuickMatchRoom).filterBy(['status'])");
+    expect(platformRuntime).toContain("gameServer.define('custom_room', CustomRoom).filterBy(['roomCode', 'status'])");
+    expect(platformRuntime).toContain(
       "gameServer.define('invite', InviteRoom).filterBy(['inviteId', 'status', 'targetUserId'])",
     );
-    expect(platformServer).not.toMatch(/\bapp\.(post|put|patch|delete)\(/);
-    expect(platformServer).not.toContain("'/api/");
-    expect(platformServer).not.toContain('"/api/');
-    expect(platformServer).not.toContain('chat_messages');
-    expect(platformServer).not.toContain('chat_conversations');
-    expect(platformServer).not.toContain('chat_reports');
-    expect(platformServer).not.toContain('chat_user_sanctions');
-    expect(platformServer).not.toContain('bjg_matches');
+    expect(platformRuntime).not.toMatch(/\bapp\.(post|put|patch|delete)\(/);
+    expect(platformRuntime).not.toContain("'/api/");
+    expect(platformRuntime).not.toContain('"/api/');
+    expect(platformRuntime).not.toContain('chat_messages');
+    expect(platformRuntime).not.toContain('chat_conversations');
+    expect(platformRuntime).not.toContain('chat_reports');
+    expect(platformRuntime).not.toContain('chat_user_sanctions');
+    expect(platformRuntime).not.toContain('bjg_matches');
   });
 });
