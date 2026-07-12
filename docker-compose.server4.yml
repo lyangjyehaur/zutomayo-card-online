@@ -15,6 +15,7 @@ services:
     restart: 'no'
 
   game:
+    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-game:${TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -64,6 +65,7 @@ services:
     restart: unless-stopped
 
   api:
+    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-api:${TAG:-latest}
     build:
       context: ./api
       dockerfile: Dockerfile
@@ -101,6 +103,7 @@ services:
     restart: unless-stopped
 
   platform:
+    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-platform:${TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile

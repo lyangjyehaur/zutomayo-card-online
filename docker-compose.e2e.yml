@@ -1,0 +1,103 @@
+# E2E 測試專用 docker-compose overlay。
+# 使用方式：
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --abort-on-container-exit --exit-code-from e2e
+#
+# 與 docker-compose.yml 的差異：
+#   - PG/Redis 使用測試專用 database（zutomayo_e2e / DB 1）
+#   - 加入 seed 服務，在 migrate 後自動植入卡牌資料
+#   - 加入 e2e runner 服務，跑 Playwright 測試
+#   - report 目錄 bind-mount 到主機，方便 CI 提取 artifact
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: zutomayo_e2e
+    volumes:
+      # 使用獨立 volume，避免與 dev 資料混在一起
+      - pg-e2e-data:/var/lib/postgresql/data
+
+  redis:
+    volumes:
+      - redis-e2e-data:/data
+
+  migrate:
+    environment:
+      - PG_DATABASE=zutomayo_e2e
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: ['npm', 'run', 'seed:cards']
+    environment:
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_USER=${PG_USER:-zutomayo}
+      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      - PG_DATABASE=zutomayo_e2e
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: 'no'
+
+  game:
+    environment:
+      - PG_DATABASE=zutomayo_e2e
+      - REDIS_DB=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+  api:
+    environment:
+      - PG_DATABASE=zutomayo_e2e
+      - REDIS_DB=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
+
+  platform:
+    environment:
+      - PG_DATABASE=zutomayo_e2e
+      - REDIS_DB=1
+
+  e2e:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command:
+      - sh
+      - -c
+      - |
+        npx playwright install --with-deps chromium && \
+        npx playwright test
+    environment:
+      - E2E_BASE_URL=http://game:3000
+      - CI=true
+    depends_on:
+      game:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    volumes:
+      # bind-mount report 目錄到主機，方便 CI 提取 artifact
+      - ./playwright-report:/app/playwright-report
+      - ./test-results:/app/test-results
+    restart: 'no'
+
+volumes:
+  pg-e2e-data:
+  redis-e2e-data:

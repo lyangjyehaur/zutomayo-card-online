@@ -1,14 +1,30 @@
+# Staging 環境專用 docker-compose。
+#
+# 與 docker-compose.server4.yml 的差異：
+#   - 使用 GHCR 預建 image（game / api / platform），不在 server 上 build
+#   - 獨立的 PostgreSQL database（zutomayo_staging）與 Redis DB index（3）
+#   - port 映射避開 production：4000（game）/ 4001（api）/ 4002（platform）
+#   - 自帶 postgres / redis 容器，可獨立運行（不依賴 1panel-network）
+#
+# 使用方式：
+#   TAG=staging docker compose -f docker-compose.staging.yml up -d
+#   TAG=<commit-sha> docker compose -f docker-compose.staging.yml up -d
+#
+# 環境變數：
+#   PG_PASSWORD, JWT_SECRET 等必填變數請透過 .env 提供（見 .env.example）。
+#   GHCR_OWNER 可覆寫（fork 部署用），預設 lyangjyehaur。
+#   TAG 控制要拉取的 image tag，預設 staging。
 services:
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${PG_USER:-zutomayo}
       POSTGRES_PASSWORD: ${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
-      POSTGRES_DB: ${PG_DATABASE:-zutomayo}
+      POSTGRES_DB: zutomayo_staging
     volumes:
-      - pg-data:/var/lib/postgresql/data
+      - pg-staging-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${PG_USER:-zutomayo} -d ${PG_DATABASE:-zutomayo}']
+      test: ['CMD-SHELL', 'pg_isready -U ${PG_USER:-zutomayo} -d zutomayo_staging']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -27,7 +43,7 @@ services:
         '${REDIS_PASSWORD:-}',
       ]
     volumes:
-      - redis-data:/data
+      - redis-staging-data:/data
     healthcheck:
       test: ['CMD-SHELL', 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null || redis-cli ping']
       interval: 5s
@@ -36,48 +52,28 @@ services:
     restart: unless-stopped
 
   migrate:
+    # migrate 需要 builder stage（含 devDependencies / node-pg-migrate），
+    # 因此仍在 server 上 build；其餘 app 服務一律使用 GHCR 預建 image。
     build:
       context: .
       dockerfile: Dockerfile
       target: builder
     command: ['npm', 'run', 'db:migrate']
+    env_file: .env
     environment:
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
-      - PG_DATABASE=${PG_DATABASE:-zutomayo}
+      - PG_DATABASE=zutomayo_staging
     depends_on:
       postgres:
         condition: service_healthy
     restart: 'no'
 
   game:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-game:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-}
-        APP_BUILD_ID: ${APP_BUILD_ID:-}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
-        VITE_UMAMI_WEBSITE_ID: ${VITE_UMAMI_WEBSITE_ID:-}
-        VITE_UMAMI_SCRIPT_URL: ${VITE_UMAMI_SCRIPT_URL:-}
-        VITE_UMAMI_HOST_URL: ${VITE_UMAMI_HOST_URL:-}
-        VITE_UMAMI_TELEMETRY_SCRIPT_URL: ${VITE_UMAMI_TELEMETRY_SCRIPT_URL:-}
-        VITE_UMAMI_SECONDARY_WEBSITE_ID: ${VITE_UMAMI_SECONDARY_WEBSITE_ID:-}
-        VITE_UMAMI_SECONDARY_HOST_URL: ${VITE_UMAMI_SECONDARY_HOST_URL:-}
-        VITE_IMGPROXY_BASE_URL: ${VITE_IMGPROXY_BASE_URL:-}
-        VITE_PLATFORM_URL: ${VITE_PLATFORM_URL:-}
-        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
-        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.1}
-        SENTRY_DSN: ${SENTRY_DSN:-}
-        SENTRY_URL: ${SENTRY_URL:-}
-        SENTRY_ORG: ${SENTRY_ORG:-}
-        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
-        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-game:${TAG:-staging}
     ports:
-      - '3000:3000'
+      - '4000:3000'
+    env_file: .env
     environment:
       - PORT=3000
       - NODE_ENV=production
@@ -86,14 +82,10 @@ services:
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
-      - PG_DATABASE=${PG_DATABASE:-zutomayo}
+      - PG_DATABASE=zutomayo_staging
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
-      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_DB=3
       - API_URL=${API_URL:-http://api:3001}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
@@ -110,16 +102,10 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-api:${TAG:-latest}
-    build:
-      context: ./api
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-}
-        APP_BUILD_ID: ${APP_BUILD_ID:-}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
+    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-api:${TAG:-staging}
     ports:
-      - '3001:3001'
+      - '4001:3001'
+    env_file: .env
     environment:
       - API_PORT=3001
       - APP_VERSION=${APP_VERSION:-}
@@ -127,25 +113,15 @@ services:
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
-      - PG_DATABASE=${PG_DATABASE:-zutomayo}
+      - PG_DATABASE=zutomayo_staging
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
-      - REDIS_DB=${REDIS_DB:-0}
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - REDIS_DB=3
       - IMGPROXY_INTERNAL_BASE_URL=${IMGPROXY_INTERNAL_BASE_URL:-}
       - IMGPROXY_KEY=${IMGPROXY_KEY:-}
       - IMGPROXY_SALT=${IMGPROXY_SALT:-}
       - IMGPROXY_ALLOWED_SOURCES=${IMGPROXY_ALLOWED_SOURCES:-https://r2.dan.tw/cards/}
       - IMGPROXY_CACHE_CONTROL=${IMGPROXY_CACHE_CONTROL:-public, max-age=31536000, immutable}
       - RATE_LIMIT_IMGPROXY=${RATE_LIMIT_IMGPROXY:-600}
-      - CHAT_TRANSLATION_ENDPOINT=${CHAT_TRANSLATION_ENDPOINT:-}
-      - CHAT_TRANSLATION_API_KEY=${CHAT_TRANSLATION_API_KEY:-}
-      - CHAT_TRANSLATION_PROVIDER=${CHAT_TRANSLATION_PROVIDER:-}
-      - CHAT_TRANSLATION_MODEL=${CHAT_TRANSLATION_MODEL:-}
-      - CHAT_TRANSLATION_TIMEOUT_MS=${CHAT_TRANSLATION_TIMEOUT_MS:-10000}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
@@ -163,17 +139,11 @@ services:
     restart: unless-stopped
 
   platform:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-platform:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-}
-        APP_BUILD_ID: ${APP_BUILD_ID:-}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
+    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-platform:${TAG:-staging}
     command: ['npm', 'run', 'platform']
     ports:
-      - '3002:3002'
+      - '4002:3002'
+    env_file: .env
     environment:
       - PLATFORM_PORT=3002
       - NODE_ENV=production
@@ -182,12 +152,9 @@ services:
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
-      - PG_DATABASE=${PG_DATABASE:-zutomayo}
+      - PG_DATABASE=zutomayo_staging
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
-      - REDIS_DB=${REDIS_DB:-0}
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
+      - REDIS_DB=3
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
       - PLATFORM_MATCH_PARTICIPANT_STORE=postgres
@@ -209,5 +176,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  pg-data:
-  redis-data:
+  pg-staging-data:
+  redis-staging-data:
