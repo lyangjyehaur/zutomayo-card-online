@@ -85,9 +85,10 @@ export function saveMatchRecord(
   winner: MatchWinnerInput,
   durationSeconds = 0,
   sourceMatchId?: string,
+  recordId = `match_${Date.now()}`,
 ): void {
   const record: MatchRecord = {
-    id: `match_${Date.now()}`,
+    id: recordId,
     sourceMatchId: normalizeSourceMatchId(sourceMatchId),
     date: new Date().toISOString(),
     duration: Math.max(0, Math.round(durationSeconds)),
@@ -107,6 +108,7 @@ export function saveMatchRecord(
   };
 
   const records = getMatchRecords();
+  if (records.some((existing) => existing.id === record.id)) return;
   records.unshift(record); // Add to front
 
   // Keep last 50 records

@@ -29,6 +29,12 @@ interface AIGameProps {
   aiPaused?: boolean;
   onSetupFeedbackDismiss?: () => void;
   onNoticeDismiss?: () => void;
+  /** 教學模式：限制目前步驟可從手牌打出的卡，避免偏離固定劇本。 */
+  tutorialAllowedSetCardDefIds?: string[];
+  /** 教學模式：確認前必須已放置的卡，支援敗者回合的兩張卡引導。 */
+  tutorialRequiredSetCardDefIds?: string[];
+  /** 教學模式：僅在實作出牌的步驟開放手牌與確認操作。 */
+  tutorialSetInteractionEnabled?: boolean;
 }
 
 function AIBoard(
@@ -41,6 +47,9 @@ function AIBoard(
     aiScript?: TutorialAIScript;
     onSetupFeedbackDismiss?: () => void;
     onNoticeDismiss?: () => void;
+    tutorialAllowedSetCardDefIds?: string[];
+    tutorialRequiredSetCardDefIds?: string[];
+    tutorialSetInteractionEnabled?: boolean;
   },
 ) {
   const {
@@ -52,6 +61,9 @@ function AIBoard(
     aiScript,
     onSetupFeedbackDismiss,
     onNoticeDismiss,
+    tutorialAllowedSetCardDefIds,
+    tutorialRequiredSetCardDefIds,
+    tutorialSetInteractionEnabled,
     ...boardProps
   } = props;
   const aiMoves = useMemo<ZutomayoMoveDispatchers>(
@@ -94,6 +106,9 @@ function AIBoard(
       hideSetupOverlay={hideSetupOverlay}
       onSetupFeedbackDismiss={onSetupFeedbackDismiss}
       onNoticeDismiss={onNoticeDismiss}
+      tutorialAllowedSetCardDefIds={tutorialAllowedSetCardDefIds}
+      tutorialRequiredSetCardDefIds={tutorialRequiredSetCardDefIds}
+      tutorialSetInteractionEnabled={tutorialSetInteractionEnabled}
     />
   );
 }
@@ -112,6 +127,9 @@ export function AIGame({
   aiPaused,
   onSetupFeedbackDismiss,
   onNoticeDismiss,
+  tutorialAllowedSetCardDefIds,
+  tutorialRequiredSetCardDefIds,
+  tutorialSetInteractionEnabled,
 }: AIGameProps) {
   // 動態 props 用 ref 持有，board 回調從 ref 讀取最新值。
   // Client 只建立一次（useState 初始化），若直接在 board 回調閉包中捕獲 props，
@@ -125,6 +143,9 @@ export function AIGame({
     aiScript,
     onSetupFeedbackDismiss,
     onNoticeDismiss,
+    tutorialAllowedSetCardDefIds,
+    tutorialRequiredSetCardDefIds,
+    tutorialSetInteractionEnabled,
   });
   dynamicPropsRef.current = {
     difficulty,
@@ -135,6 +156,9 @@ export function AIGame({
     aiScript,
     onSetupFeedbackDismiss,
     onNoticeDismiss,
+    tutorialAllowedSetCardDefIds,
+    tutorialRequiredSetCardDefIds,
+    tutorialSetInteractionEnabled,
   };
 
   // 標記對戰模式（AI / tutorial），便於 Sentry 後台區分錯誤來源。
@@ -161,6 +185,9 @@ export function AIGame({
             aiScript={dp.aiScript}
             onSetupFeedbackDismiss={dp.onSetupFeedbackDismiss}
             onNoticeDismiss={dp.onNoticeDismiss}
+            tutorialAllowedSetCardDefIds={dp.tutorialAllowedSetCardDefIds}
+            tutorialRequiredSetCardDefIds={dp.tutorialRequiredSetCardDefIds}
+            tutorialSetInteractionEnabled={dp.tutorialSetInteractionEnabled}
           />
         );
       },

@@ -23,7 +23,13 @@ import type {
   TimingEvent,
   ZutomayoSetupData,
 } from './types';
-import { applyPendingChoice, choiceActionPayload, shouldPreserveChoiceSelectionCount } from './pendingChoices';
+import {
+  applyPendingChoice,
+  choiceActionPayload,
+  defaultPendingChoiceOptionIds,
+  pendingChoiceSelectionError,
+  shouldPreserveChoiceSelectionCount,
+} from './pendingChoices';
 import { getChronosTimeForPosition, normalizeChronosPosition } from './chronos';
 import { getCardDef } from './cards/loader';
 import {
@@ -45,6 +51,10 @@ const playerIndexes: PlayerIndex[] = [0, 1];
 
 // P3-16：伺服器權威回合時限（毫秒）。與 Board.tsx 的 TURN_TIMER_SECONDS 一致。
 export const TURN_TIMER_MS = 60_000;
+
+function startInteractionWindow(G: GameState): void {
+  G.interactionStartTime = Date.now();
+}
 
 interface SetupGameOptions {
   allowBrowserCustomDeckName?: boolean;
@@ -169,8 +179,12 @@ export function emptyModifiers(): CombatModifiers {
 }
 
 function drawUnchecked(player: PlayerState, count: number): void {
+  if (count < 0 || player.deck.length < count) {
+    throw new Error(`Cannot draw ${count} card(s) from a deck with ${player.deck.length} remaining.`);
+  }
   for (let i = 0; i < count; i++) {
-    const card = player.deck.shift()!;
+    const card = player.deck.shift();
+    if (!card) throw new Error('Deck became empty while drawing cards.');
     card.faceUp = true;
     player.hand.push(card);
   }
@@ -339,6 +353,7 @@ export function setupGame(
     cardsSetThisTurn: 0,
     rawAttack: 0,
   });
+  const matchStartedAt = Date.now();
   const G: GameState = {
     players: [makePlayer(), makePlayer()],
     step: 'janken',
@@ -347,7 +362,10 @@ export function setupGame(
     midnightRange: 0,
     chronosAtTurnStart: 0,
     turnNumber: 1,
-    turnStartTime: Date.now(),
+    matchStartedAt,
+    matchEndedAt: null,
+    turnStartTime: matchStartedAt,
+    interactionStartTime: matchStartedAt,
     lastBattleResult: { winner: null, damage: 0, winnerAttack: 0, loserAttack: 0 },
     setCardsThisTurn: [[], []],
     pendingEffects: [[], []],
@@ -408,6 +426,7 @@ export function resolveJanken(
     G.jankenDrawCount = (G.jankenDrawCount ?? 0) + 1;
     G.log.push('Janken draw. Choose again.');
     recordAction(G, 0, 'jankenResult', { draw: true, choice0, choice1 });
+    startInteractionWindow(G);
     return { winner: null };
   }
   const winner: PlayerIndex = beats[choice0] === choice1 ? 0 : 1;
@@ -416,6 +435,7 @@ export function resolveJanken(
   G.ready = [false, false];
   G.log.push(`Player ${winner} wins janken and takes the night side.`);
   recordAction(G, winner, 'jankenResult', { draw: false, winner, choice0, choice1 });
+  startInteractionWindow(G);
   return { winner };
 }
 
@@ -448,6 +468,7 @@ export function finishMulligan(G: GameState, player: PlayerIndex, indices: numbe
   if (G.ready[0] && G.ready[1]) {
     G.step = 'initialSet';
     G.ready = [false, false];
+    startInteractionWindow(G);
     G.log.push('Both players choose an initial battle-zone card.');
   }
   return true;
@@ -586,6 +607,63 @@ export function timeoutSkip(G: GameState, player: PlayerIndex, parsedEffects: Ma
   recordAction(G, player, 'timeoutSkip', { confirmed: true });
   if (G.ready[0] && G.ready[1]) resolveTurn(G, parsedEffects);
   return true;
+}
+
+/** 回傳目前仍需作出操作的玩家；用於線上權威超時恢復。 */
+export function getPlayersAwaitingAction(G: GameState): PlayerIndex[] {
+  if (G.pendingChoice) return [G.pendingChoice.player];
+  if (G.step === 'janken') return playerIndexes.filter((player) => G.jankenChoices[player] === null);
+  if (G.step === 'mulligan') return playerIndexes.filter((player) => !G.mulliganUsed[player]);
+  if (G.step === 'initialSet' || G.step === 'turnSet') return playerIndexes.filter((player) => !G.ready[player]);
+  if (G.step === 'effectOrder' && G.pendingEffectPlayer !== null) return [G.pendingEffectPlayer];
+  return [];
+}
+
+/**
+ * 線上模式的通用超時恢復。任一仍在線的客戶端都可替無回應玩家送出，
+ * 但規則層會再次驗證權威時間與該玩家確實正在等待操作。
+ */
+export function timeoutAdvance(
+  G: GameState,
+  player: PlayerIndex,
+  parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
+): boolean {
+  if (!getPlayersAwaitingAction(G).includes(player)) return false;
+  const startedAt =
+    G.step === 'turnSet' && !G.pendingChoice ? G.turnStartTime : (G.interactionStartTime ?? G.matchStartedAt);
+  if (typeof startedAt !== 'number' || Date.now() - startedAt < TURN_TIMER_MS) return false;
+
+  const timedOutStep = G.step;
+  let advanced = false;
+  if (G.step === 'janken') {
+    const choices: JankenChoice[] = ['rock', 'paper', 'scissors'];
+    advanced = chooseJanken(G, player, choices[Math.floor(Math.random() * choices.length)]);
+  } else if (G.step === 'mulligan') {
+    advanced = finishMulligan(G, player, []);
+  } else if (G.pendingChoice?.player === player) {
+    const optionIds = defaultPendingChoiceOptionIds(G.pendingChoice);
+    if (!optionIds) {
+      endGame(G, (1 - player) as PlayerIndex, `Player ${player} loses: pending choice cannot be resolved.`);
+      advanced = true;
+    } else {
+      advanced = submitPendingChoice(G, player, optionIds, parsedEffects);
+    }
+  } else if (G.step === 'initialSet') {
+    const state = G.players[player];
+    if (!state.battleZone) {
+      const characterIndex = state.hand.findIndex((card) => getCardDef(card.defId)?.type === 'Character');
+      const handIndex = characterIndex >= 0 ? characterIndex : 0;
+      if (!setInitialCard(G, player, handIndex)) return false;
+    }
+    advanced = confirmReady(G, player, parsedEffects);
+  } else if (G.step === 'turnSet') {
+    return timeoutSkip(G, player, parsedEffects);
+  } else if (G.step === 'effectOrder' && G.pendingEffectPlayer === player) {
+    advanced = resolvePendingEffect(G, player, 0, parsedEffects);
+  }
+
+  if (advanced) recordAction(G, player, 'timeoutAdvance', { timedOutStep });
+  return advanced;
 }
 
 export function revealCards(G: GameState): void {
@@ -1177,6 +1255,7 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
   G.step = 'gameOver';
   G.winner = winner;
   G.gameoverReason = reason;
+  G.matchEndedAt ??= Date.now();
   G.ready = [true, true];
   clearPendingEffects(G);
   G.delayedEffects = [];
@@ -1279,6 +1358,7 @@ function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = e
   G.ready = [false, false];
   // P3-16：回合開始時記錄伺服器時間，作為客戶端計時與超時判斷的權威基準。
   G.turnStartTime = Date.now();
+  G.interactionStartTime = G.turnStartTime;
   G.log.push(`Turn ${G.turnNumber}: set cards.`);
   // 推 turnStart notice，讓 UI 提示「進入第 N 回合」。
   pushGameNotice(G, {
@@ -1375,6 +1455,7 @@ function advancePendingEffectWindow(
     G.pendingEffectPlayer = nextPlayer;
     G.step = 'effectOrder';
     G.ready = [true, true];
+    startInteractionWindow(G);
     return true;
   }
   clearPendingEffects(G);
@@ -1444,7 +1525,10 @@ export function resolvePendingEffect(
     clearPendingEffects(G);
     return true;
   }
-  if (G.pendingChoice) return true;
+  if (G.pendingChoice) {
+    startInteractionWindow(G);
+    return true;
+  }
 
   advancePendingEffectWindow(G, parsedEffects);
   return true;
@@ -1458,10 +1542,7 @@ export function submitPendingChoice(
 ): boolean {
   const choice = G.pendingChoice;
   if (!choice || choice.player !== player) return false;
-  if (!Array.isArray(optionIds) || optionIds.length < choice.min || optionIds.length > choice.max) return false;
-  if (new Set(optionIds).size !== optionIds.length) return false;
-  const legal = new Set(choice.options.map((option) => option.id));
-  if (!optionIds.every((id) => legal.has(id))) return false;
+  if (pendingChoiceSelectionError(choice, optionIds)) return false;
 
   const playerState = G.players[player];
   const result = applyPendingChoice(
@@ -1487,6 +1568,7 @@ export function submitPendingChoice(
   clearPendingChoice(G);
   if (result.nextChoice) {
     G.pendingChoice = result.nextChoice;
+    startInteractionWindow(G);
     return true;
   }
   advancePendingEffectWindow(G, parsedEffects);

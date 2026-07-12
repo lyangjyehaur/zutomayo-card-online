@@ -14,15 +14,18 @@ export interface ZonePanelProps {
   children: ReactNode;
   tutId?: string;
   className?: string;
+  /** 動畫層的公開區域錨點。 */
+  animationZone?: string;
 }
 
-export function ZonePanel({ label, hint, side, children, tutId, className }: ZonePanelProps) {
+export function ZonePanel({ label, hint, side, children, tutId, className, animationZone }: ZonePanelProps) {
   return (
     <div
       className={['zonepanel', side ? `zonepanel-${side}` : '', className ?? ''].filter(Boolean).join(' ')}
       role="group"
       aria-label={hint ? `${label} · ${hint}` : label}
       data-tut={tutId}
+      data-anim-zone={animationZone}
     >
       {children}
       <span className="zonepanel-label" aria-hidden="true">

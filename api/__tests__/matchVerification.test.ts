@@ -162,4 +162,24 @@ describe('verifyBoardgameMatchResult', () => {
     });
     expect(query).toHaveBeenCalledWith('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', ['match_1']);
   });
+
+  it('allows the authenticated loser to submit the same authoritative result', async () => {
+    const { pool } = poolWithRows([
+      {
+        state: { ctx: { gameover: { winner: 0 } }, G: { step: 'gameOver', winner: 0 } },
+        metadata: {
+          players: {
+            '0': { data: { userId: 'u_winner' } },
+            '1': { data: { userId: 'u_loser' } },
+          },
+        },
+      },
+    ]);
+
+    await expect(verifyBoardgameMatchResult(pool, 'match_1', 0, 'u_loser')).resolves.toMatchObject({
+      ok: true,
+      winnerUserId: 'u_winner',
+      loserUserId: 'u_loser',
+    });
+  });
 });

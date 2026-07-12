@@ -49,17 +49,19 @@ async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, aut
   if (authoritativeWinner !== winnerPlayer) {
     return { ok: false, status: 403, error: 'Winner does not match source match' };
   }
-  if (playerDataUserId(match.metadata, winnerPlayer) !== authUserId) {
-    return { ok: false, status: 403, error: 'Winner seat is not bound to authenticated user' };
-  }
   const loserPlayer = winnerPlayer === 0 ? 1 : 0;
+  const winnerUserId = playerDataUserId(match.metadata, winnerPlayer);
+  const loserUserId = playerDataUserId(match.metadata, loserPlayer);
+  if (authUserId !== winnerUserId && authUserId !== loserUserId) {
+    return { ok: false, status: 403, error: 'Authenticated user is not a participant in the source match' };
+  }
   return {
     ok: true,
     sourceMatchId,
     winnerPlayer,
     loserPlayer,
-    winnerUserId: playerDataUserId(match.metadata, winnerPlayer),
-    loserUserId: playerDataUserId(match.metadata, loserPlayer),
+    winnerUserId,
+    loserUserId,
   };
 }
 

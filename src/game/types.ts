@@ -389,9 +389,14 @@ export interface GameState {
   midnightRange: number;
   chronosAtTurnStart: number;
   turnNumber: number;
+  /** 對局開始／結束的權威時間；保存在 G 中，重連與重新掛載不會重置。 */
+  matchStartedAt: number;
+  matchEndedAt: number | null;
   // P3-16：伺服器權威回合計時器，於回合開始時記錄（毫秒，Date.now()）。
-  // 客戶端據此計算剩餘時間，避免兩端 setInterval 漂移；超時由 timeoutSkip move 處理。
+  // 客戶端據此計算剩餘時間，避免兩端 setInterval 漂移；超時後任一在線端可為未準備玩家送出 timeoutSkip。
   turnStartTime: number;
+  /** 當前需玩家互動階段的權威起始時間，供線上前置／效果流程超時恢復。 */
+  interactionStartTime: number;
   lastBattleResult: LastBattleResult;
   setCardsThisTurn: [CardInstance[], CardInstance[]];
   pendingEffects: [PendingEffect[], PendingEffect[]];

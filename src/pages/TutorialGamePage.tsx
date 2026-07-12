@@ -1,33 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AIGame } from '../components/AIGame';
 import { GameTutorialOverlay } from '../components/GameTutorialOverlay';
-import { Button, Dialog, LoadingState, PageShell } from '../ui';
+import { Alert, Button, Dialog, LoadingState, PageShell } from '../ui';
 import { useTutorialState } from '../hooks/useTutorialState';
 import { TUTORIAL_STEPS } from '../data/tutorialSteps';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS, TUTORIAL_AI_SCRIPT } from '../data/tutorialScenario';
-import { isCardsInitialized, refreshCards } from '../game/cards/loader';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
 import '../components/GameTutorialOverlay.css';
 
-export function TutorialGamePage() {
+interface TutorialGamePageProps {
+  cardsReady: boolean;
+  cardsLoadError?: boolean;
+  onRetryCards?: () => void | Promise<void>;
+}
+
+export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: TutorialGamePageProps) {
   const navigate = useNavigate();
   const [gameState, setGameState] = useState<GameState | null>(null);
-  // 卡牌必須載入完成才能建立對戰，否則空牌組會導致開局崩潰
-  const [cardsReady, setCardsReady] = useState(isCardsInitialized());
   const [skipPromptOpen, setSkipPromptOpen] = useState(false);
-
-  useEffect(() => {
-    if (cardsReady) return;
-    let cancelled = false;
-    void refreshCards().finally(() => {
-      if (!cancelled) setCardsReady(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [cardsReady]);
 
   const { currentStep, goNext } = useTutorialState({
     steps: TUTORIAL_STEPS,
@@ -70,11 +62,27 @@ export function TutorialGamePage() {
     navigate('/');
   };
 
+  const activeStep = TUTORIAL_STEPS[currentStep];
+  const tutorialSetCards =
+    gameState?.step === 'initialSet' ? ['1st_70'] : gameState?.step === 'turnSet' ? ['1st_34', '2nd_86'] : undefined;
+  const tutorialSetInteractionEnabled = activeStep?.phase === 'initialSet' || activeStep?.phase === 'turnSet';
+
   // 卡牌未載入時顯示 loading，避免 AIGame 用空牌組崩潰
   if (!cardsReady) {
     return (
       <PageShell className="grid place-items-center px-4">
-        <LoadingState label={t('game.loading')} className="w-full max-w-sm" />
+        {cardsLoadError ? (
+          <Alert className="w-full max-w-sm" tone="danger" role="alert">
+            <div className="grid gap-4">
+              <span>{t('game.cardsUnavailable')}</span>
+              <Button type="button" variant="secondary" onClick={() => void onRetryCards?.()}>
+                {t('common.retry')}
+              </Button>
+            </div>
+          </Alert>
+        ) : (
+          <LoadingState label={t('game.loading')} className="w-full max-w-sm" />
+        )}
       </PageShell>
     );
   }
@@ -94,6 +102,9 @@ export function TutorialGamePage() {
         aiPaused={aiPaused}
         onSetupFeedbackDismiss={handleSetupFeedbackDismiss}
         onNoticeDismiss={handleNoticeDismiss}
+        tutorialAllowedSetCardDefIds={tutorialSetCards}
+        tutorialRequiredSetCardDefIds={tutorialSetCards}
+        tutorialSetInteractionEnabled={tutorialSetInteractionEnabled}
       />
 
       <GameTutorialOverlay
@@ -103,6 +114,7 @@ export function TutorialGamePage() {
         onNext={goNext}
         onComplete={handleComplete}
         onSkip={handleSkip}
+        suspendFocusManagement={skipPromptOpen}
       />
       <Dialog
         open={skipPromptOpen}

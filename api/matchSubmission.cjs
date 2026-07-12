@@ -10,6 +10,18 @@ function calculateElo(ratingA, ratingB, scoreA) {
   return Math.round(ratingA + K * (scoreA - expectedA));
 }
 
+function existingMatchResponse(existing) {
+  return {
+    ok: true,
+    body: {
+      matchId: existing.id,
+      winnerEloChange: Number(existing.winner_elo_change || 0),
+      loserEloChange: Number(existing.loser_elo_change || 0),
+      duplicate: true,
+    },
+  };
+}
+
 async function submitMatchResult({
   pool,
   authUserId,
@@ -19,12 +31,11 @@ async function submitMatchResult({
 }) {
   const { winnerId, loserId, turns, duration, actionLog, action_log, sourceMatchId, winnerPlayer } = body;
   if (!winnerId || !loserId) return { ok: false, status: 400, error: 'Winner and loser IDs required' };
-  if (winnerId !== authUserId) {
-    return { ok: false, status: 403, error: 'Forbidden: winner must match authenticated user' };
-  }
-
   const cleanSourceMatchId =
     typeof sourceMatchId === 'string' && sourceMatchId.length > 0 ? sourceMatchId.slice(0, 120) : '';
+  if (!cleanSourceMatchId && winnerId !== authUserId) {
+    return { ok: false, status: 403, error: 'Forbidden: winner must match authenticated user' };
+  }
   let resolvedWinnerId = winnerId;
   let resolvedLoserId = loserId;
   let sourceVerification = null;
@@ -49,11 +60,14 @@ async function submitMatchResult({
   try {
     await client.query('BEGIN');
     if (cleanSourceMatchId) {
-      const existing = (await client.query('SELECT id FROM matches WHERE source_match_id = $1', [cleanSourceMatchId]))
-        .rows[0];
+      const existing = (
+        await client.query('SELECT id, winner_elo_change, loser_elo_change FROM matches WHERE source_match_id = $1', [
+          cleanSourceMatchId,
+        ])
+      ).rows[0];
       if (existing) {
         await client.query('ROLLBACK');
-        return { ok: false, status: 409, error: 'Source match result already submitted' };
+        return existingMatchResponse(existing);
       }
     }
 
@@ -113,6 +127,12 @@ async function submitMatchResult({
   } catch (err) {
     await client.query('ROLLBACK');
     if (err && err.code === '23505' && cleanSourceMatchId) {
+      const existing = (
+        await client.query('SELECT id, winner_elo_change, loser_elo_change FROM matches WHERE source_match_id = $1', [
+          cleanSourceMatchId,
+        ])
+      ).rows[0];
+      if (existing) return existingMatchResponse(existing);
       return { ok: false, status: 409, error: 'Source match result already submitted' };
     }
     throw err;

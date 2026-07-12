@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   buildMatchHistoryChatPath,
   getMatchRecords,
@@ -8,6 +8,24 @@ import {
   type MatchRecord,
 } from '../matchHistory';
 import type { GameState } from '../types';
+
+const storage = new Map<string, string>();
+
+beforeEach(() => {
+  storage.clear();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storage.set(key, value);
+      },
+      removeItem: (key: string) => {
+        storage.delete(key);
+      },
+    },
+  });
+});
 
 function gameState(): GameState {
   return {
@@ -26,31 +44,8 @@ function gameState(): GameState {
   } as unknown as GameState;
 }
 
-function installLocalStorage() {
-  const store = new Map<string, string>();
-  const storage = {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      store.set(key, value);
-    },
-    removeItem: (key: string) => {
-      store.delete(key);
-    },
-  };
-  Object.defineProperty(globalThis, 'localStorage', {
-    configurable: true,
-    value: storage,
-  });
-}
-
-afterEach(() => {
-  Reflect.deleteProperty(globalThis, 'localStorage');
-});
-
 describe('match history', () => {
   it('stores the online source match id for post-match chat lookup', () => {
-    installLocalStorage();
-
     saveMatchRecord(gameState(), 0, 90, ' bgio-match-1 ');
 
     expect(getMatchRecords()[0]).toEqual(
@@ -59,6 +54,16 @@ describe('match history', () => {
         turns: 4,
       }),
     );
+  });
+
+  it('deduplicates retries by the stable submission key', () => {
+    const G = gameState();
+
+    saveMatchRecord(G, 0, 65, undefined, 'room-1-result');
+    saveMatchRecord(G, 0, 65, undefined, 'room-1-result');
+
+    expect(getMatchRecords()).toHaveLength(1);
+    expect(getMatchRecords()[0]).toMatchObject({ id: 'room-1-result', winner: 0, duration: 65 });
   });
 
   it('uses only the durable online source match id for post-match chat lookup', () => {

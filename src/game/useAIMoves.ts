@@ -3,21 +3,36 @@ import type { Ctx } from 'boardgame.io';
 import type { GameState, JankenChoice, PendingChoice, SetSlot } from './types';
 import { aiSelectCards, type AIDifficulty } from './ai';
 import { getMinimumSetCount, getRequiredSetCount } from './GameLogic';
+import { defaultPendingChoiceOptionIds, pendingChoiceSelectionError } from './pendingChoices';
 
 // 為 AI 挑選合法的 pendingChoice option 組合。
 // handAbyssSwap 必須含 1 個 hand: 與 1 個 abyss: option，否則 handler 判定 invalid。
 // 其餘 type 取前 N 個（N = max(min, min(max,1))）。min > options.length 時回傳 null（引擎端不應建立此種 choice）。
 function aiPickChoiceOptions(choice: PendingChoice): string[] | null {
-  if (choice.type === 'handAbyssSwap') {
-    const hand = choice.options.find((option) => option.id.startsWith('hand:'));
-    const abyss = choice.options.find((option) => option.id.startsWith('abyss:'));
-    if (!hand || !abyss) return null;
-    return [hand.id, abyss.id];
+  const fallback = defaultPendingChoiceOptionIds(choice);
+  if (!fallback || fallback.length > 0 || choice.max === 0) return fallback;
+  const optionalPick = choice.options[0]?.id ? [choice.options[0].id] : [];
+  return pendingChoiceSelectionError(choice, optionalPick) ? fallback : optionalPick;
+}
+
+/**
+ * 教學腳本先依 defId 一對一消費 option，避免同名卡一次展開成多個 id 超過 max；
+ * 腳本不完整或不合法時退回通用 AI 選擇，避免重複提交 INVALID_MOVE 卡死效果流程。
+ */
+export function aiChoiceOptionIds(choice: PendingChoice, scriptedDefIds?: string[]): string[] | null {
+  if (scriptedDefIds && scriptedDefIds.length > 0) {
+    const remaining = [...choice.options];
+    const scriptedIds: string[] = [];
+    for (const defId of scriptedDefIds) {
+      const index = remaining.findIndex((option) => option.cardDefId === defId);
+      if (index < 0) continue;
+      scriptedIds.push(remaining[index].id);
+      remaining.splice(index, 1);
+    }
+    if (!pendingChoiceSelectionError(choice, scriptedIds)) return scriptedIds;
   }
-  if (choice.min > choice.options.length) return null;
-  const want = Math.max(choice.min, Math.min(choice.max, 1));
-  const count = Math.min(want, choice.options.length);
-  return choice.options.slice(0, count).map((option) => option.id);
+  const fallback = aiPickChoiceOptions(choice);
+  return fallback && !pendingChoiceSelectionError(choice, fallback) ? fallback : null;
 }
 
 /**
@@ -92,18 +107,9 @@ export function useAIMoves(
       // 但 pendingEffects 已清空，必須優先處理 pendingChoice 否則遊戲會卡死。
       if (G.pendingChoice && G.pendingChoice.player === 1) {
         const choice = G.pendingChoice;
-        // 教學腳本：用 defId 匹配 option；未指定時 fallback 到 aiPickChoiceOptions
+        // 教學腳本：用 defId 一對一匹配 option；不合法時 fallback 到通用選擇。
         const scriptedDefIds = aiScript?.pendingChoiceDefIdsByTurn?.[G.turnNumber];
-        if (scriptedDefIds && scriptedDefIds.length > 0) {
-          const ids = scriptedDefIds.flatMap((defId) =>
-            choice.options.filter((o) => o.cardDefId === defId).map((o) => o.id),
-          );
-          if (ids.length > 0) {
-            moves.submitPendingChoice(ids);
-            return;
-          }
-        }
-        const ids = aiPickChoiceOptions(choice);
+        const ids = aiChoiceOptionIds(choice, scriptedDefIds);
         if (ids) moves.submitPendingChoice(ids);
         return;
       }

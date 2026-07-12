@@ -8,6 +8,7 @@ export { ZonePanel } from './ZonePanel';
 export type { ZonePanelProps } from './ZonePanel';
 export { BattleZone } from './BattleZone';
 export type { BattleZoneAttack, BattleZoneProps } from './BattleZone';
+export { BattleAnimationLayer } from './BattleAnimationLayer';
 export { AbyssZone, ChargeZone, DeckZone, SetZone } from './zones';
 export type { AbyssZoneProps, ChargeZoneProps, DeckZoneProps, SetZoneProps } from './zones';
 export { PlayerStatus, PlayerStatus as OpponentStatus } from './PlayerStatus';

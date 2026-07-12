@@ -27,6 +27,7 @@ export function PlayerStatus({ side, name, hp, meta, damageAmount, tutId, classN
     <div
       className={['playerstatus', `playerstatus-${side}`, className ?? ''].filter(Boolean).join(' ')}
       data-hp={hpLevel(hp)}
+      data-hit={damageAmount ? 'true' : undefined}
       data-tut={tutId}
       aria-label={`${name} · ${t('board.hp')} ${hp}/100`}
     >

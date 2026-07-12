@@ -328,40 +328,36 @@ function evaluateCondition(
   }
 }
 
-function loseOnEffectOverdraw(G: GameState, player: PlayerIndex, count: number): boolean {
-  if (G.players[player].deck.length >= count) return false;
+function endFromEffect(G: GameState, winner: PlayerIndex, reason: string): void {
   G.step = 'gameOver';
-  G.winner = (1 - player) as PlayerIndex;
-  G.gameoverReason = `Player ${player} loses: effect attempted to draw ${count} with only ${G.players[player].deck.length} cards.`;
+  G.winner = winner;
+  G.gameoverReason = reason;
+  G.matchEndedAt ??= Date.now();
   G.ready = [true, true];
   G.pendingEffects = [[], []];
   G.pendingEffectPlayer = null;
   G.pendingChoice = null;
-  G.log.push(G.gameoverReason);
+  G.delayedEffects = [];
+  G.log.push(reason);
+}
+
+function loseOnEffectOverdraw(G: GameState, player: PlayerIndex, count: number): boolean {
+  if (G.players[player].deck.length >= count) return false;
+  endFromEffect(
+    G,
+    (1 - player) as PlayerIndex,
+    `Player ${player} loses: effect attempted to draw ${count} with only ${G.players[player].deck.length} cards.`,
+  );
   return true;
 }
 
 function loseByHp(G: GameState, player: PlayerIndex, reason: string): void {
-  G.step = 'gameOver';
-  G.winner = (1 - player) as PlayerIndex;
-  G.gameoverReason = reason;
-  G.ready = [true, true];
-  G.pendingEffects = [[], []];
-  G.pendingEffectPlayer = null;
-  G.pendingChoice = null;
-  G.log.push(reason);
+  endFromEffect(G, (1 - player) as PlayerIndex, reason);
 }
 
 function loseByAbyssPaymentFailure(G: GameState, player: PlayerIndex, min: number, available: number): void {
   const reason = `Player ${player} loses: cannot pay Abyss-to-deck-bottom requirement (needs ${min}, has ${available}).`;
-  G.step = 'gameOver';
-  G.winner = (1 - player) as PlayerIndex;
-  G.gameoverReason = reason;
-  G.ready = [true, true];
-  G.pendingEffects = [[], []];
-  G.pendingEffectPlayer = null;
-  G.pendingChoice = null;
-  G.log.push(reason);
+  endFromEffect(G, (1 - player) as PlayerIndex, reason);
 }
 
 function isPersistentAreaEnchantEffect(card: CardInstance, effect: ParsedEffect): boolean {

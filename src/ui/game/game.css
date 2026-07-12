@@ -1313,6 +1313,7 @@
   border: none;
   border-radius: var(--radius-sm);
   overflow: hidden;
+  perspective: 60rem;
   background: var(--color-bg-surface);
   outline: 1px solid var(--color-border-subtle);
   box-shadow: var(--shadow-card);
@@ -1350,6 +1351,74 @@ button.cardview {
   height: 100%;
   object-fit: contain;
   user-select: none;
+}
+
+.cardview-inner,
+.cardview-face {
+  position: absolute;
+  inset: 0;
+}
+
+.cardview-inner {
+  display: block;
+  transform-style: preserve-3d;
+  transition: transform var(--motion-slow) var(--ease-emphasized);
+}
+
+.cardview[data-face-up='false'] .cardview-inner {
+  transform: rotateY(180deg);
+}
+
+.cardview-face {
+  overflow: hidden;
+  border-radius: inherit;
+  backface-visibility: hidden;
+}
+
+.cardview-face-back {
+  transform: rotateY(180deg);
+}
+
+.battle-animation-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  pointer-events: none;
+}
+
+.battle-animation-card,
+.battle-animation-impact,
+.battle-animation-chronos {
+  position: fixed;
+  transform-origin: top left;
+}
+
+.battle-animation-card .cardview {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.battle-animation-card-move {
+  animation: bf-card-move 420ms var(--ease-emphasized) both;
+}
+
+.battle-animation-card-lunge {
+  animation: bf-card-lunge 680ms var(--ease-emphasized) both;
+}
+
+.battle-animation-impact {
+  border-radius: var(--radius-sm);
+  background: radial-gradient(circle, rgb(255 255 255 / 0.92), rgb(255 92 92 / 0.42) 38%, transparent 72%);
+  mix-blend-mode: screen;
+  animation: bf-battle-impact 480ms var(--ease-emphasized) both;
+}
+
+.battle-animation-chronos {
+  border: 2px solid oklch(from var(--color-accent-primary) l c h / 0.78);
+  border-radius: 50%;
+  box-shadow: 0 0 1.8rem oklch(from var(--color-accent-primary) l c h / 0.55);
+  animation: bf-chronos-pulse 620ms var(--ease-emphasized) both;
 }
 
 .cardview-cost {
@@ -1956,8 +2025,85 @@ button.cardstack:focus-visible {
   }
 }
 
+@keyframes bf-card-move {
+  0% {
+    opacity: 0.98;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--battle-animation-dx), var(--battle-animation-dy), 0)
+      scale(var(--battle-animation-scale-x), var(--battle-animation-scale-y));
+  }
+}
+
+@keyframes bf-card-lunge {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.96);
+  }
+  15% {
+    opacity: 0.95;
+  }
+  52% {
+    opacity: 1;
+    transform: translate3d(var(--battle-animation-dx), var(--battle-animation-dy), 0) scale(1.06);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes bf-battle-impact {
+  0% {
+    opacity: 0;
+    transform: scale(0.68);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.13);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.32);
+  }
+}
+
+@keyframes bf-player-hit {
+  0%,
+  100% {
+    filter: none;
+  }
+  38% {
+    filter: brightness(1.35) saturate(1.45);
+  }
+}
+
+@keyframes bf-chronos-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.62);
+  }
+  35% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
+.playerstatus[data-hit='true'] {
+  animation: bf-player-hit 480ms var(--ease-emphasized) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cardview,
+  .cardview-inner,
   .cardslot,
   .handzone-fan .handzone-card,
   .playerstatus-bar-fill {
@@ -1965,7 +2111,11 @@ button.cardstack:focus-visible {
   }
 
   .cardview[data-state='playable'],
-  .bf-hud-timer[data-urgent='true'] {
+  .bf-hud-timer[data-urgent='true'],
+  .battle-animation-card,
+  .battle-animation-impact,
+  .battle-animation-chronos,
+  .playerstatus[data-hit='true'] {
     animation: none;
   }
 }

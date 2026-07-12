@@ -39,7 +39,7 @@ export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G:
       </div>
       <h2 className="carddetail-name">{def.name}</h2>
       <div className="carddetail-taxonomy">
-        {def.element} · {def.type}
+        {t(`card.element.${def.element}` as never)} · {t(`card.type.${def.type}` as never)}
       </div>
       <dl className="carddetail-stats">
         <div>
@@ -85,9 +85,9 @@ export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G:
 /** 桌面常駐側欄詳情面板 */
 export function CardDetailPanel({ focus, G, ownerName }: { focus: FocusedCard; G: GameState; ownerName?: string }) {
   return (
-    <section className="carddetail-panel battle-focus-panel" aria-label="Card detail">
+    <section className="carddetail-panel battle-focus-panel" aria-label={t('board.panel.focus')}>
       <header className="battle-panel-heading">
-        <span>Focus</span>
+        <span>{t('board.panel.focus')}</span>
       </header>
       <CardDetailBody focus={focus} G={G} ownerName={ownerName} />
     </section>

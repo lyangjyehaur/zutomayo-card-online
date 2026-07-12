@@ -3,7 +3,7 @@ import type { DeckResponse } from '../api/client';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { DifficultyButtons } from '../components/lobby/DifficultyButtons';
 import { useToast } from '../components/ToastProvider';
-import { Alert, AppHeader, PageShell } from '../ui';
+import { Alert, AppHeader, Button, PageShell } from '../ui';
 import {
   buildAIOpponentDeckOptions,
   buildDeckOptions,
@@ -23,6 +23,8 @@ interface AILobbyPageProps {
   onStartAI: (difficulty: AIDifficulty) => void;
   serverDeckError?: string;
   cardsReady: boolean;
+  cardsLoadError?: boolean;
+  onRetryCards?: () => void | Promise<void>;
 }
 
 /**
@@ -55,6 +57,8 @@ export function AILobbyPage({
   onStartAI,
   serverDeckError,
   cardsReady,
+  cardsLoadError,
+  onRetryCards,
 }: AILobbyPageProps) {
   const { showToast } = useToast();
   const locale = useLocale();
@@ -102,6 +106,16 @@ export function AILobbyPage({
           {serverDeckError && (
             <Alert tone="danger" role="alert">
               {serverDeckError}
+            </Alert>
+          )}
+          {cardsLoadError && (
+            <Alert tone="danger" role="alert">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span>{t('game.cardsUnavailable')}</span>
+                <Button type="button" variant="secondary" onClick={() => void onRetryCards?.()}>
+                  {t('common.retry')}
+                </Button>
+              </div>
             </Alert>
           )}
           <Step no="01" title={t('lobby.myDeck')}>

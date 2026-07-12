@@ -573,6 +573,47 @@ export function choiceActionPayload(choice: PendingChoice, selectedCount: number
   };
 }
 
+export type PendingChoiceSelectionError = 'count' | 'duplicate' | 'unknownOption' | 'handAbyssPair';
+
+/**
+ * UI 與規則層共用的選擇驗證。除了數量，也檢查選擇類型的組合限制，
+ * 避免按鈕看似可送出、規則層卻靜默拒絕而令玩家以為流程卡住。
+ */
+export function pendingChoiceSelectionError(
+  choice: PendingChoice,
+  optionIds: string[],
+): PendingChoiceSelectionError | null {
+  if (!Array.isArray(optionIds) || optionIds.length < choice.min || optionIds.length > choice.max) return 'count';
+  if (new Set(optionIds).size !== optionIds.length) return 'duplicate';
+  const legal = new Set(choice.options.map((option) => option.id));
+  if (!optionIds.every((id) => legal.has(id))) return 'unknownOption';
+  if (
+    choice.type === 'handAbyssSwap' &&
+    (!optionIds.some((id) => id.startsWith('hand:')) || !optionIds.some((id) => id.startsWith('abyss:')))
+  ) {
+    return 'handAbyssPair';
+  }
+  return null;
+}
+
+/**
+ * 為無人回應／AI 流程選出一組最小且合法的預設選項。
+ * 順序型選擇保留目前 options 順序；handAbyssSwap 則必須各取一張。
+ */
+export function defaultPendingChoiceOptionIds(choice: PendingChoice): string[] | null {
+  let optionIds: string[];
+  if (choice.type === 'handAbyssSwap') {
+    const hand = choice.options.find((option) => option.id.startsWith('hand:'));
+    const abyss = choice.options.find((option) => option.id.startsWith('abyss:'));
+    if (!hand || !abyss) return null;
+    optionIds = [hand.id, abyss.id];
+  } else {
+    if (choice.min > choice.options.length) return null;
+    optionIds = choice.options.slice(0, choice.min).map((option) => option.id);
+  }
+  return pendingChoiceSelectionError(choice, optionIds) ? null : optionIds;
+}
+
 export function applyPendingChoice(
   context: Omit<ChoiceHandlerContext, 'runtime'>,
   runtime: PendingChoiceRuntime,

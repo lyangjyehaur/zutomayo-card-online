@@ -139,6 +139,7 @@ function OnlineBoard(
     onConnectionStatusChange: (isConnected: boolean) => void;
     onOpponentDetected: () => void;
     onStateMismatch: (reason: OnlineStateMismatchReason) => void;
+    onExitRequest: () => void;
   },
 ) {
   const { gameOverActions, onConnectionStatusChange, onOpponentDetected, onStateMismatch, ...boardProps } = props;
@@ -190,7 +191,7 @@ export function OnlineGame({
   platformDisplayName,
   spectator = false,
   showRejoinedStatus = false,
-  onLeaveRequest: _onLeaveRequest,
+  onLeaveRequest,
   onReturnToLobby,
   onCreateNewRoom,
   onOpponentDetected,
@@ -201,6 +202,7 @@ export function OnlineGame({
   const resyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onReturnToLobbyRef = useRef(onReturnToLobby);
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
+  const onLeaveRequestRef = useRef(onLeaveRequest);
   const opponentDetectedRef = useRef<(() => void) | null>(null);
   const platformRoomRef = useRef<PlatformMatchShellRoom | null>(null);
   const spectatorPlatformUserId = useRef(Date.now().toString(36));
@@ -251,8 +253,9 @@ export function OnlineGame({
   useEffect(() => {
     onReturnToLobbyRef.current = onReturnToLobby;
     onCreateNewRoomRef.current = onCreateNewRoom;
+    onLeaveRequestRef.current = onLeaveRequest;
     opponentDetectedRef.current = onOpponentDetected ?? null;
-  }, [onReturnToLobby, onCreateNewRoom, onOpponentDetected]);
+  }, [onReturnToLobby, onCreateNewRoom, onLeaveRequest, onOpponentDetected]);
 
   useEffect(() => {
     let cancelled = false;
@@ -637,6 +640,7 @@ export function OnlineGame({
           onConnectionStatusChange={handleConnectionStatusChange}
           onOpponentDetected={handleOpponentDetected}
           onStateMismatch={handleStateMismatch}
+          onExitRequest={() => onLeaveRequestRef.current()}
         />
       ),
       loading: OnlineLoading,

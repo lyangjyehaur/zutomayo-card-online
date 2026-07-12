@@ -20,6 +20,7 @@ export interface SetZoneProps {
   state?: CardSlotState;
   onActivate?: () => void;
   onInspect?: (card: CardInstance) => void;
+  animationZone?: string;
 }
 
 export function SetZone({
@@ -31,6 +32,7 @@ export function SetZone({
   state = 'idle',
   onActivate,
   onInspect,
+  animationZone,
 }: SetZoneProps) {
   const visibleZoneName = slot === 'C' ? t('board.areaEnchant') : t('board.setZoneCompact' as never);
   const ariaZoneName = slot === 'C' ? t('board.areaEnchant') : slot === 'A' ? t('board.setZoneA') : t('board.setZoneB');
@@ -40,6 +42,7 @@ export function SetZone({
       className={`setzone setzone-${slot.toLowerCase()} setzone-${side}`}
       data-slot={slot}
       data-chronos-side={chronosSide}
+      data-anim-zone={animationZone}
     >
       <CardSlot
         label={slot}
@@ -72,11 +75,27 @@ export interface ChargeZoneProps {
   size?: 'sm' | 'md';
   onOpen?: () => void;
   tutId?: string;
+  animationZone?: string;
 }
 
-export function ChargeZone({ side, cards, totalPower, chronosSide, size = 'md', onOpen, tutId }: ChargeZoneProps) {
+export function ChargeZone({
+  side,
+  cards,
+  totalPower,
+  chronosSide,
+  size = 'md',
+  onOpen,
+  tutId,
+  animationZone,
+}: ChargeZoneProps) {
   return (
-    <ZonePanel label={t('board.powerCharger')} side={side} tutId={tutId} className="chargezone">
+    <ZonePanel
+      label={t('board.powerCharger')}
+      side={side}
+      tutId={tutId}
+      className="chargezone"
+      animationZone={animationZone}
+    >
       <span className="chargezone-total" aria-hidden="true">
         {t('board.powerTotal')} {totalPower}
       </span>
@@ -107,11 +126,12 @@ export interface AbyssZoneProps {
   size?: 'sm' | 'md';
   onOpen?: () => void;
   tutId?: string;
+  animationZone?: string;
 }
 
-export function AbyssZone({ side, cards, chronosSide, size = 'md', onOpen, tutId }: AbyssZoneProps) {
+export function AbyssZone({ side, cards, chronosSide, size = 'md', onOpen, tutId, animationZone }: AbyssZoneProps) {
   return (
-    <ZonePanel label={t('board.abyss')} side={side} tutId={tutId} className="abysszone">
+    <ZonePanel label={t('board.abyss')} side={side} tutId={tutId} className="abysszone" animationZone={animationZone}>
       <CardStack
         kind="abyss"
         size={size}
@@ -137,11 +157,12 @@ export interface DeckZoneProps {
   chronosSide?: ChronosTime;
   size?: 'sm' | 'md';
   tutId?: string;
+  animationZone?: string;
 }
 
-export function DeckZone({ side, count, chronosSide, size = 'md', tutId }: DeckZoneProps) {
+export function DeckZone({ side, count, chronosSide, size = 'md', tutId, animationZone }: DeckZoneProps) {
   return (
-    <ZonePanel label={t('board.deck')} side={side} tutId={tutId} className="deckzone">
+    <ZonePanel label={t('board.deck')} side={side} tutId={tutId} className="deckzone" animationZone={animationZone}>
       <CardStack
         kind="deck"
         size={size}
