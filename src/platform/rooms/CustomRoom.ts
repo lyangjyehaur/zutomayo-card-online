@@ -129,12 +129,18 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
-    if (this.status === 'waiting' && this.host?.sessionId === client.sessionId) {
-      const replacementHost = this.clients
+    if ((this.status === 'waiting' || this.status === 'ready') && this.host?.sessionId === client.sessionId) {
+      let replacementHost = this.clients
         .map((item) => item.userData)
         .find((profile): profile is PlatformClientProfile =>
           Boolean(profile && profile.sessionId !== client.sessionId && profile.userId === this.host?.userId),
         );
+      // ready 狀態下若找不到同 userId 的替換，讓最早已加入的 client 接管 host
+      if (!replacementHost && this.status === 'ready') {
+        replacementHost = this.clients
+          .map((c) => c.userData)
+          .find((p): p is PlatformClientProfile => Boolean(p && p.sessionId !== client.sessionId));
+      }
       if (replacementHost) {
         this.host = replacementHost;
         await this.refreshMetadata();
