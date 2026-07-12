@@ -31,6 +31,10 @@ MANIFEST_FILE="${RELEASE_MANIFEST:-$PROJECT_DIR/.release.env}"
 CONFIRM=false
 DRY_RUN=false
 ROLLBACK=false
+ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full'
+if [[ "$COMPOSE_FILE" == 'docker-compose.staging.yml' ]]; then
+  ROLE_ENV_VALIDATOR_ARGS+=' --require-rediss'
+fi
 
 usage() {
   sed -n '2,10p' "$0"
@@ -161,6 +165,7 @@ remote_deploy() {
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' pull --quiet retention;
     docker compose -f '$COMPOSE_FILE' config --quiet;
     docker compose -f '$COMPOSE_FILE' pull --quiet;
+    docker compose -f '$COMPOSE_FILE' config --format json | docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate node scripts/verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS;
     docker compose -f '$COMPOSE_FILE' run --rm migrate;
     docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout 180;
     date -u +%Y-%m-%dT%H:%M:%SZ > .release.deployed-at;

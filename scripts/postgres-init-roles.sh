@@ -1,45 +1,191 @@
 #!/usr/bin/env bash
-# Create the least-privilege application role in a fresh PostgreSQL cluster.
-# The migration runner reapplies and verifies grants after schema creation,
-# when protected migration tables exist and can be made read-only.
+# Bootstrap PostgreSQL login roles before release migrations create tables.
+# Table and sequence ACLs are applied and verified by postgres-role-gate.cjs
+# after migrations complete.
 
 set -euo pipefail
 
-: "${POSTGRES_USER:?POSTGRES_USER must be set to the migration owner}"
+: "${POSTGRES_USER:?POSTGRES_USER must be set to the bootstrap administrator}"
 : "${POSTGRES_DB:?POSTGRES_DB must be set}"
-: "${PG_APP_USER:?PG_APP_USER must be set}"
-: "${PG_APP_PASSWORD:?PG_APP_PASSWORD must be set}"
+PG_MIGRATION_USER="${PG_MIGRATION_USER:-$POSTGRES_USER}"
 
-if [[ "$POSTGRES_USER" == "$PG_APP_USER" ]]; then
-  echo 'PG_APP_USER must differ from POSTGRES_USER (migration owner)' >&2
+legacy_app_user="${PG_APP_USER:-}"
+legacy_app_password="${PG_APP_PASSWORD:-}"
+
+PG_API_USER="${PG_API_USER:-$legacy_app_user}"
+PG_API_PASSWORD="${PG_API_PASSWORD:-$legacy_app_password}"
+PG_GAME_USER="${PG_GAME_USER:-$legacy_app_user}"
+PG_GAME_PASSWORD="${PG_GAME_PASSWORD:-$legacy_app_password}"
+PG_PLATFORM_USER="${PG_PLATFORM_USER:-$legacy_app_user}"
+PG_PLATFORM_PASSWORD="${PG_PLATFORM_PASSWORD:-$legacy_app_password}"
+
+: "${PG_API_USER:?PG_API_USER or PG_APP_USER must be set}"
+: "${PG_API_PASSWORD:?PG_API_PASSWORD or PG_APP_PASSWORD must be set}"
+: "${PG_GAME_USER:?PG_GAME_USER or PG_APP_USER must be set}"
+: "${PG_GAME_PASSWORD:?PG_GAME_PASSWORD or PG_APP_PASSWORD must be set}"
+: "${PG_PLATFORM_USER:?PG_PLATFORM_USER or PG_APP_USER must be set}"
+: "${PG_PLATFORM_PASSWORD:?PG_PLATFORM_PASSWORD or PG_APP_PASSWORD must be set}"
+: "${PG_RETENTION_USER:?PG_RETENTION_USER must be set}"
+: "${PG_RETENTION_PASSWORD:?PG_RETENTION_PASSWORD must be set}"
+: "${PG_MONITOR_USER:?PG_MONITOR_USER must be set}"
+: "${PG_MONITOR_PASSWORD:?PG_MONITOR_PASSWORD must be set}"
+: "${PG_BACKUP_USER:?PG_BACKUP_USER must be set}"
+: "${PG_BACKUP_PASSWORD:?PG_BACKUP_PASSWORD must be set}"
+: "${PG_WAL_USER:?PG_WAL_USER must be set}"
+: "${PG_WAL_PASSWORD:?PG_WAL_PASSWORD must be set}"
+
+role_names=(
+  "$PG_API_USER"
+  "$PG_GAME_USER"
+  "$PG_PLATFORM_USER"
+  "$PG_RETENTION_USER"
+  "$PG_MONITOR_USER"
+  "$PG_BACKUP_USER"
+  "$PG_WAL_USER"
+)
+role_passwords=(
+  "$PG_API_PASSWORD"
+  "$PG_GAME_PASSWORD"
+  "$PG_PLATFORM_PASSWORD"
+  "$PG_RETENTION_PASSWORD"
+  "$PG_MONITOR_PASSWORD"
+  "$PG_BACKUP_PASSWORD"
+  "$PG_WAL_PASSWORD"
+)
+role_kinds=(api game platform retention monitor backup wal)
+export PG_API_PASSWORD PG_GAME_PASSWORD PG_PLATFORM_PASSWORD PG_RETENTION_PASSWORD
+export PG_MONITOR_PASSWORD PG_BACKUP_PASSWORD PG_WAL_PASSWORD
+
+seen_role_names=()
+seen_role_passwords=()
+seen_role_kinds=()
+distinct_role_passwords=()
+for index in "${!role_names[@]}"; do
+  role_name="${role_names[$index]}"
+  role_password="${role_passwords[$index]}"
+  role_kind="${role_kinds[$index]}"
+  if [[ "${REQUIRE_DISTINCT_DB_ROLES:-false}" == 'true' ]]; then
+    if (( ${#distinct_role_passwords[@]} > 0 )); then
+      for distinct_password in "${distinct_role_passwords[@]}"; do
+        if [[ "$distinct_password" == "$role_password" ]]; then
+          echo 'production PostgreSQL roles must not reuse passwords' >&2
+          exit 2
+        fi
+      done
+    fi
+    distinct_role_passwords+=("$role_password")
+  fi
+  if [[ "$role_name" == "$POSTGRES_USER" || "$role_name" == "$PG_MIGRATION_USER" ]]; then
+    role_label="$(printf '%s' "$role_kind" | tr '[:lower:]' '[:upper:]')"
+    echo "PG_${role_label}_USER must differ from the bootstrap administrator and migration owner" >&2
+    exit 2
+  fi
+  role_name_index=-1
+  if (( ${#seen_role_names[@]} > 0 )); then
+    for candidate_index in "${!seen_role_names[@]}"; do
+      if [[ "${seen_role_names[$candidate_index]}" == "$role_name" ]]; then
+        role_name_index="$candidate_index"
+        break
+      fi
+    done
+  fi
+  if (( role_name_index >= 0 )); then
+    if [[ "${seen_role_passwords[$role_name_index]}" != "$role_password" ]]; then
+      echo "aliased PostgreSQL role '$role_name' must use one password" >&2
+      exit 2
+    fi
+    if [[ "${seen_role_kinds[$role_name_index]}" != 'app-runtime' || ! "$role_kind" =~ ^(api|game|platform)$ ]]; then
+      echo "only PG_API_USER, PG_GAME_USER, and PG_PLATFORM_USER may share a local role" >&2
+      exit 2
+    fi
+  else
+    seen_role_names+=("$role_name")
+    seen_role_passwords+=("$role_password")
+    if [[ "$role_kind" =~ ^(api|game|platform)$ ]]; then
+      seen_role_kinds+=('app-runtime')
+    else
+      seen_role_kinds+=("$role_kind")
+    fi
+  fi
+done
+
+if [[ "${REQUIRE_DISTINCT_DB_ROLES:-false}" == 'true' && "${#seen_role_names[@]}" -ne "${#role_names[@]}" ]]; then
+  echo 'production PostgreSQL roles must all use distinct login names' >&2
   exit 2
 fi
 
-# Use server-side format() for identifiers and literals. This keeps role names
-# and passwords safe without interpolating untrusted values into SQL text.
-psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
-  --set=app_user="$PG_APP_USER" \
-  --set=app_password="$PG_APP_PASSWORD" \
-  --set=migration_user="$POSTGRES_USER" <<'SQL'
-SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'app_user', :'app_password')
-WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'app_user')\gexec
+# Identifiers and passwords stay in psql variables and are quoted server-side
+# with format(). DISTINCT removes the supported local api/game/platform alias.
+psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  --set=api_user="$PG_API_USER" \
+  --set=game_user="$PG_GAME_USER" \
+  --set=platform_user="$PG_PLATFORM_USER" \
+  --set=retention_user="$PG_RETENTION_USER" \
+  --set=monitor_user="$PG_MONITOR_USER" \
+  --set=backup_user="$PG_BACKUP_USER" \
+  --set=wal_user="$PG_WAL_USER" \
+  --set=migration_user="$PG_MIGRATION_USER" <<'SQL'
+\getenv api_password PG_API_PASSWORD
+\getenv game_password PG_GAME_PASSWORD
+\getenv platform_password PG_PLATFORM_PASSWORD
+\getenv retention_password PG_RETENTION_PASSWORD
+\getenv monitor_password PG_MONITOR_PASSWORD
+\getenv backup_password PG_BACKUP_PASSWORD
+\getenv wal_password PG_WAL_PASSWORD
+BEGIN;
 
-SELECT format('ALTER ROLE %I LOGIN PASSWORD %L', :'app_user', :'app_password')\gexec
-SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'app_user')\gexec
-SELECT format('GRANT USAGE ON SCHEMA public TO %I', :'app_user')\gexec
-SELECT format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I', :'app_user')\gexec
-SELECT format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO %I', :'app_user')\gexec
-SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I', :'migration_user', :'app_user')\gexec
-SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO %I', :'migration_user', :'app_user')\gexec
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
--- This protects an initialized cluster when the script is deliberately rerun.
--- Fresh clusters are finalized by postgres-role-gate.cjs after migrations.
-SELECT format('GRANT SELECT ON %I TO %I', table_name, :'app_user')
-FROM (VALUES ('schema_migrations'), ('schema_migration_checksums')) AS protected(table_name)
-WHERE to_regclass('public.' || table_name) IS NOT NULL\gexec
-SELECT format('REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON %I FROM %I', table_name, :'app_user')
-FROM (VALUES ('schema_migrations'), ('schema_migration_checksums')) AS protected(table_name)
-WHERE to_regclass('public.' || table_name) IS NOT NULL\gexec
+CREATE TEMP TABLE bootstrap_roles (
+  role_name text PRIMARY KEY,
+  role_password text NOT NULL,
+  replication boolean NOT NULL DEFAULT false
+) ON COMMIT DROP;
+
+INSERT INTO bootstrap_roles (role_name, role_password, replication)
+VALUES
+  (:'api_user', :'api_password', false),
+  (:'game_user', :'game_password', false),
+  (:'platform_user', :'platform_password', false),
+  (:'retention_user', :'retention_password', false),
+  (:'monitor_user', :'monitor_password', false),
+  (:'backup_user', :'backup_password', false),
+  (:'wal_user', :'wal_password', true)
+ON CONFLICT (role_name) DO NOTHING;
+
+SELECT format('CREATE ROLE %I', role_name)
+  FROM bootstrap_roles candidate
+ WHERE NOT EXISTS (SELECT 1 FROM pg_roles existing WHERE existing.rolname = candidate.role_name)
+\gexec
+
+SELECT format(
+  'ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE %s NOBYPASSRLS %s',
+  role_name,
+  role_password,
+  CASE WHEN replication THEN 'REPLICATION' ELSE 'NOREPLICATION' END,
+  CASE WHEN replication THEN 'NOINHERIT' ELSE 'INHERIT' END
+)
+  FROM bootstrap_roles
+\gexec
+
+SELECT format('REVOKE pg_monitor FROM %I', role_name)
+  FROM bootstrap_roles
+ WHERE role_name <> :'monitor_user'
+\gexec
+SELECT format('GRANT pg_monitor TO %I', :'monitor_user')\gexec
+
+SELECT format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', current_database())\gexec
+SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'migration_user')\gexec
+SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), role_name)
+  FROM bootstrap_roles
+ WHERE replication = false
+\gexec
+SELECT format('REVOKE CONNECT ON DATABASE %I FROM %I', current_database(), :'wal_user')\gexec
+
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+SELECT format('REVOKE ALL ON SCHEMA public FROM %I', role_name)
+  FROM bootstrap_roles
+\gexec
+
+COMMIT;
 SQL
 
-echo "PostgreSQL application role '$PG_APP_USER' is ready"
+echo "PostgreSQL role bootstrap complete for database '$POSTGRES_DB'"

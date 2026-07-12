@@ -23,6 +23,28 @@
 #   `api` and `platform` issue only short, self-contained queries and work fine
 #   in `transaction` mode.
 services:
+  # This legacy single-backend-user pool is local-development only. Refuse to
+  # start when the production role matrix is enabled so PgBouncer cannot
+  # silently collapse API/GAME/PLATFORM into PG_APP_USER.
+  pgbouncer-role-mode-gate:
+    image: postgres:16.4-alpine
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        if [ "$$REQUIRE_DISTINCT_DB_ROLES" = 'true' ] || \
+           [ "$$PG_API_USER" != "$$PG_GAME_USER" ] || \
+           [ "$$PG_API_USER" != "$$PG_PLATFORM_USER" ]; then
+          echo 'PgBouncer single-user overlay is incompatible with distinct PostgreSQL runtime roles' >&2
+          exit 78
+        fi
+    environment:
+      REQUIRE_DISTINCT_DB_ROLES: ${REQUIRE_DISTINCT_DB_ROLES:-false}
+      PG_API_USER: ${PG_API_USER:-${PG_APP_USER:-zutomayo_app}}
+      PG_GAME_USER: ${PG_GAME_USER:-${PG_APP_USER:-zutomayo_app}}
+      PG_PLATFORM_USER: ${PG_PLATFORM_USER:-${PG_APP_USER:-zutomayo_app}}
+    restart: 'no'
+
   game:
     environment:
       - PG_HOST=pgbouncer
@@ -65,6 +87,8 @@ services:
     ports:
       - '6432:6432'
     depends_on:
+      pgbouncer-role-mode-gate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     restart: unless-stopped

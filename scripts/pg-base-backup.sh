@@ -6,7 +6,8 @@ umask 077
 
 PG_HOST="${PG_HOST:-localhost}"
 PG_PORT="${PG_PORT:-5432}"
-PG_USER="${PG_BASE_BACKUP_USER:-${PG_USER:-zutomayo_backup}}"
+PG_USER="${PG_WAL_USER:-${PG_BASE_BACKUP_USER:-${PG_USER:-zutomayo_wal}}}"
+PG_PASSWORD="${PG_WAL_PASSWORD:-${PG_PASSWORD:-}}"
 BACKUP_DIR="${PG_BASE_BACKUP_DIR:-/var/backups/zutomayo/base}"
 OFFSITE_URI="${PG_BASE_BACKUP_OFFSITE_URI:-${PG_BACKUP_OFFSITE_URI:-}}"
 METRICS_DIR="${PG_BACKUP_METRICS_DIR:-/var/lib/node_exporter/textfile_collector}"

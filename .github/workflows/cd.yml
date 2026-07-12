@@ -110,17 +110,31 @@ jobs:
           PG_APP_PASSWORD: cd-preflight-app-password
           PG_MIGRATION_USER: zutomayo_migrator
           PG_APP_USER: zutomayo_app
+          PG_API_USER: zutomayo_api
+          PG_API_PASSWORD: cd-preflight-api-password
+          PG_GAME_USER: zutomayo_game
+          PG_GAME_PASSWORD: cd-preflight-game-password
+          PG_PLATFORM_USER: zutomayo_platform
+          PG_PLATFORM_PASSWORD: cd-preflight-platform-password
+          PG_RETENTION_USER: zutomayo_retention
+          PG_RETENTION_PASSWORD: cd-preflight-retention-password
+          PG_MONITOR_USER: zutomayo_monitor
+          PG_MONITOR_PASSWORD: cd-preflight-monitor-password
+          PG_BACKUP_USER: zutomayo_backup
+          PG_BACKUP_PASSWORD: cd-preflight-backup-password
+          PG_WAL_USER: zutomayo_wal
+          PG_WAL_PASSWORD: cd-preflight-wal-password
+          PG_HOST: staging-postgres.example.internal
+          PG_DATABASE: zutomayo
+          PG_CA_SECRET_NAME: zutomayo-staging-postgres-ca
+          REDIS_URL: rediss://:cd-preflight-redis-password@staging-redis.example.internal:6380
           JWT_SECRET: cd-preflight-jwt-secret-32chars-min
           REDIS_PASSWORD: cd-preflight-redis-password
           METRICS_TOKEN: cd-preflight-metrics-token
           PGSSLMODE: verify-full
           PG_MONITOR_HOST: postgres
-          PG_MONITOR_USER: zutomayo_monitor
-          PG_MONITOR_PASSWORD: cd-preflight-monitor-password
           PG_MONITOR_SSLMODE: verify-full
           PG_RETENTION_HOST: postgresql
-          PG_RETENTION_USER: zutomayo_retention
-          PG_RETENTION_PASSWORD: cd-preflight-retention-password
           PG_RETENTION_SSLMODE: verify-full
           SLACK_ALERT_WEBHOOK: https://hooks.example.invalid/services/preflight
           GRAFANA_PASSWORD: cd-preflight-grafana-password
@@ -139,6 +153,8 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full
           docker compose -f docker-compose.monitoring.yml config --quiet
 
   # ─────────────────────────────────────────────────────────────

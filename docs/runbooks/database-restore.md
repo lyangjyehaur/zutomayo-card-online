@@ -43,7 +43,7 @@ systemctl list-timers 'zutomayo-pg-*'
 
 ```bash
 export PG_HOST=db-writer.internal
-export PG_USER=zutomayo_backup
+export PG_BACKUP_USER=zutomayo_backup
 export PGPASSFILE=/run/secrets/pgpass
 export PG_DATABASE=zutomayo
 export PG_BACKUP_AGE_RECIPIENT_FILE=/run/secrets/backup-age-recipients
@@ -68,7 +68,7 @@ archive_command = '/opt/zutomayo/scripts/pg-wal-archive.sh %p %f'
 PostgreSQL service 必須注入 `PG_WAL_OFFSITE_URI`、age recipient 與只可上傳的 object-store credential。先執行一次 physical base backup：
 
 ```bash
-export PG_BASE_BACKUP_USER=zutomayo_backup
+export PG_WAL_USER=zutomayo_wal
 export PG_BASE_BACKUP_OFFSITE_URI=s3://zutomayo-prod-backups/base
 ./scripts/pg-base-backup.sh
 ```

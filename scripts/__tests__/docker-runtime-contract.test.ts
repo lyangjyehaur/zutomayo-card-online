@@ -17,6 +17,7 @@ describe('game runtime image contract', () => {
     const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
     expect(dockerfile).toContain('COPY api/schemaGate.cjs ./api/schemaGate.cjs');
     expect(dockerfile).toContain('COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs');
+    expect(dockerfile).toContain('COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs');
     expect(dockerignore).toContain('!api/schemaGate.cjs');
   });
 

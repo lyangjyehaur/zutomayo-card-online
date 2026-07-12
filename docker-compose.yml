@@ -7,6 +7,20 @@ services:
       POSTGRES_DB: ${PG_DATABASE:-zutomayo}
       PG_APP_USER: ${PG_APP_USER:-zutomayo_app}
       PG_APP_PASSWORD: ${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
+      PG_API_USER: ${PG_API_USER:-${PG_APP_USER:-zutomayo_app}}
+      PG_API_PASSWORD: ${PG_API_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_API_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
+      PG_GAME_USER: ${PG_GAME_USER:-${PG_APP_USER:-zutomayo_app}}
+      PG_GAME_PASSWORD: ${PG_GAME_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_GAME_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
+      PG_PLATFORM_USER: ${PG_PLATFORM_USER:-${PG_APP_USER:-zutomayo_app}}
+      PG_PLATFORM_PASSWORD: ${PG_PLATFORM_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_PLATFORM_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
+      PG_RETENTION_USER: ${PG_RETENTION_USER:-zutomayo_retention}
+      PG_RETENTION_PASSWORD: ${PG_RETENTION_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_RETENTION_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
+      PG_MONITOR_USER: ${PG_MONITOR_USER:-zutomayo_monitor}
+      PG_MONITOR_PASSWORD: ${PG_MONITOR_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_MONITOR_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
+      PG_BACKUP_USER: ${PG_BACKUP_USER:-zutomayo_backup}
+      PG_BACKUP_PASSWORD: ${PG_BACKUP_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_BACKUP_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
+      PG_WAL_USER: ${PG_WAL_USER:-zutomayo_wal}
+      PG_WAL_PASSWORD: ${PG_WAL_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_WAL_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
     volumes:
       - pg-data:/var/lib/postgresql/data
       - ./scripts/postgres-init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
@@ -61,7 +75,16 @@ services:
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - PGSSLMODE=${PGSSLMODE:-disable}
       - PG_APP_USER=${PG_APP_USER:-zutomayo_app}
+      - PG_API_USER=${PG_API_USER:-${PG_APP_USER:-zutomayo_app}}
+      - PG_GAME_USER=${PG_GAME_USER:-${PG_APP_USER:-zutomayo_app}}
+      - PG_PLATFORM_USER=${PG_PLATFORM_USER:-${PG_APP_USER:-zutomayo_app}}
+      - PG_RETENTION_USER=${PG_RETENTION_USER:-zutomayo_retention}
+      - PG_MONITOR_USER=${PG_MONITOR_USER:-zutomayo_monitor}
+      - PG_BACKUP_USER=${PG_BACKUP_USER:-zutomayo_backup}
+      - PG_WAL_USER=${PG_WAL_USER:-zutomayo_wal}
       - REQUIRE_APP_ROLE_GATE=true
+      - REQUIRE_ROLE_MATRIX_GATE=${REQUIRE_ROLE_MATRIX_GATE:-true}
+      - REQUIRE_DISTINCT_DB_ROLES=${REQUIRE_DISTINCT_DB_ROLES:-false}
       - DATABASE_URL=
       - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
       - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
@@ -100,8 +123,8 @@ services:
       - NODE_ENV=production
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
-      - PG_USER=${PG_APP_USER:-zutomayo_app}
-      - PG_PASSWORD=${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
+      - PG_USER=${PG_GAME_USER:-${PG_APP_USER:-zutomayo_app}}
+      - PG_PASSWORD=${PG_GAME_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_GAME_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - PGSSLMODE=${PGSSLMODE:-disable}
       - DATABASE_URL=
@@ -154,8 +177,8 @@ services:
       - NODE_ENV=production
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
-      - PG_USER=${PG_APP_USER:-zutomayo_app}
-      - PG_PASSWORD=${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
+      - PG_USER=${PG_API_USER:-${PG_APP_USER:-zutomayo_app}}
+      - PG_PASSWORD=${PG_API_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_API_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - PGSSLMODE=${PGSSLMODE:-disable}
       - DATABASE_URL=
@@ -227,8 +250,8 @@ services:
       - NODE_ENV=production
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
-      - PG_USER=${PG_APP_USER:-zutomayo_app}
-      - PG_PASSWORD=${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
+      - PG_USER=${PG_PLATFORM_USER:-${PG_APP_USER:-zutomayo_app}}
+      - PG_PASSWORD=${PG_PLATFORM_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_PLATFORM_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - PGSSLMODE=${PGSSLMODE:-disable}
       - DATABASE_URL=

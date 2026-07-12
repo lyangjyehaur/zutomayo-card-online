@@ -56,7 +56,7 @@ docker compose down
 
 Variables are passed through `docker-compose.yml` from the host environment (e.g. via a `.env` file or shell export).
 
-**REQUIRED:** production/staging require `PG_MIGRATION_USER`, `PG_MIGRATION_PASSWORD`, `PG_APP_USER`, `PG_APP_PASSWORD`, `EXPECTED_SCHEMA_MIGRATION`, the four immutable `*_IMAGE` references, and `JWT_SECRET`. Compose exits early if any is missing. Set a non-empty `REDIS_PASSWORD` for every production deployment.
+**REQUIRED:** production/staging require `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, and WAL `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the four immutable `*_IMAGE` references; and `JWT_SECRET`. `PG_APP_USER` remains a local-development compatibility alias only. Compose exits early if a production role is missing or aliased. Set a non-empty `REDIS_PASSWORD` for every production deployment.
 
 Create a `.env` file from the template:
 
@@ -64,7 +64,13 @@ Create a `.env` file from the template:
 cp .env.example .env
 # Edit .env and set secure values for:
 # - PG_MIGRATION_USER / PG_MIGRATION_PASSWORD
-# - PG_APP_USER / PG_APP_PASSWORD
+# - PG_API_USER / PG_API_PASSWORD
+# - PG_GAME_USER / PG_GAME_PASSWORD
+# - PG_PLATFORM_USER / PG_PLATFORM_PASSWORD
+# - PG_RETENTION_USER / PG_RETENTION_PASSWORD
+# - PG_MONITOR_USER / PG_MONITOR_PASSWORD
+# - PG_BACKUP_USER / PG_BACKUP_PASSWORD
+# - PG_WAL_USER / PG_WAL_PASSWORD
 # - REDIS_PASSWORD (required in production)
 # - JWT_SECRET (generate with: openssl rand -hex 32)
 # Image digests and EXPECTED_SCHEMA_* come from the verified release manifest.
@@ -72,26 +78,26 @@ cp .env.example .env
 
 ### `game`
 
-| Variable              | Default                             | Notes                                                                                                                                                                             |
-| --------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                | `3000`                              | boardgame.io/static server port inside the container.                                                                                                                             |
-| `NODE_ENV`            | `production` in Compose             | Runtime mode.                                                                                                                                                                     |
-| `PG_HOST`             | `postgres`                          | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                                   |
-| `PG_PORT`             | `5432`                              | PostgreSQL port.                                                                                                                                                                  |
-| `PG_USER`             | `PG_APP_USER` in Compose            | Least-privilege PostgreSQL runtime user.                                                                                                                                          |
-| `PG_PASSWORD`         | `PG_APP_PASSWORD` in Compose        | Runtime password; never use the migration-owner password here.                                                                                                                    |
-| `PG_DATABASE`         | `zutomayo`                          | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                                                                          |
-| `REDIS_URL`           | Compose-generated authenticated URL | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Compose builds it from `REDIS_PASSWORD`; use `redis://localhost:6379` only for passwordless local dev.     |
-| `REDIS_DB`            | `0`                                 | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                  |
-| `ALLOWED_ORIGINS`     | empty                               | Comma-separated extra origins allowed by boardgame.io CORS.                                                                                                                       |
-| `JWT_SECRET`          | **required**                        | Shared HMAC secret for JWT signing/verification. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set the same value for both `game` and `api` services. |
-| `APP_VERSION`         | `package.json` version              | App release version exposed by `/api/app-version` and baked into the frontend bundle. Leave empty to use the root package version.                                                |
-| `APP_BUILD_ID`        | `APP_VERSION`                       | Build identifier used for client/server version checks. Set this to a git SHA, image tag, or release number and change it on every deploy.                                        |
-| `GAME_RULES_VERSION`  | `APP_VERSION`                       | Rules/calculation compatibility version. Bump when online matches must not mix old and new game logic.                                                                            |
-| `LOG_LEVEL`           | `info`                              | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). Lower for debugging, raise in production to reduce noise.                                                         |
-| `MAX_CONN_PER_IP`     | `10`                                | Max concurrent Socket.IO connections per client IP on the game server. Excess connections are rejected to prevent resource exhaustion.                                            |
-| `GAME_DRAIN_GRACE_MS` | `5000`                              | On SIGTERM, stop readiness/new HTTP connections and allow existing Socket.IO clients this grace period before disconnect.                                                         |
-| `SHUTDOWN_TIMEOUT_MS` | `30000`                             | Hard shutdown deadline; deployment `stop_grace_period` must exceed it.                                                                                                            |
+| Variable              | Default                             | Notes                                                                                                                                                                                                   |
+| --------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                | `3000`                              | boardgame.io/static server port inside the container.                                                                                                                                                   |
+| `NODE_ENV`            | `production` in Compose             | Runtime mode.                                                                                                                                                                                           |
+| `PG_HOST`             | `postgres`                          | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                                                         |
+| `PG_PORT`             | `5432`                              | PostgreSQL port.                                                                                                                                                                                        |
+| `PG_USER`             | `PG_GAME_USER` in Compose           | GAME role with match-state and narrowly scoped user rating/auth column privileges.                                                                                                                      |
+| `PG_PASSWORD`         | `PG_GAME_PASSWORD` in Compose       | GAME-only runtime password; never use the migration-owner password here.                                                                                                                                |
+| `PG_DATABASE`         | `zutomayo`                          | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                                                                                                |
+| `REDIS_URL`           | Compose-generated authenticated URL | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Production/staging require an authenticated TLS URL (`rediss://`); use `redis://localhost:6379` only for passwordless local dev. |
+| `REDIS_DB`            | `0`                                 | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                                        |
+| `ALLOWED_ORIGINS`     | empty                               | Comma-separated extra origins allowed by boardgame.io CORS.                                                                                                                                             |
+| `JWT_SECRET`          | **required**                        | Shared HMAC secret for JWT signing/verification. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set the same value for both `game` and `api` services.                       |
+| `APP_VERSION`         | `package.json` version              | App release version exposed by `/api/app-version` and baked into the frontend bundle. Leave empty to use the root package version.                                                                      |
+| `APP_BUILD_ID`        | `APP_VERSION`                       | Build identifier used for client/server version checks. Set this to a git SHA, image tag, or release number and change it on every deploy.                                                              |
+| `GAME_RULES_VERSION`  | `APP_VERSION`                       | Rules/calculation compatibility version. Bump when online matches must not mix old and new game logic.                                                                                                  |
+| `LOG_LEVEL`           | `info`                              | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). Lower for debugging, raise in production to reduce noise.                                                                               |
+| `MAX_CONN_PER_IP`     | `10`                                | Max concurrent Socket.IO connections per client IP on the game server. Excess connections are rejected to prevent resource exhaustion.                                                                  |
+| `GAME_DRAIN_GRACE_MS` | `5000`                              | On SIGTERM, stop readiness/new HTTP connections and allow existing Socket.IO clients this grace period before disconnect.                                                                               |
+| `SHUTDOWN_TIMEOUT_MS` | `30000`                             | Hard shutdown deadline; deployment `stop_grace_period` must exceed it.                                                                                                                                  |
 
 Frontend build-time variables (baked into the bundle at `vite build`):
 
@@ -118,10 +124,10 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `API_PORT`                              | `3001`                              | API service port inside the container.                                                                                                                                                                         |
 | `PG_HOST`                               | `postgres`                          | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                                                                |
 | `PG_PORT`                               | `5432`                              | PostgreSQL port.                                                                                                                                                                                               |
-| `PG_USER`                               | `PG_APP_USER` in Compose            | Least-privilege PostgreSQL runtime user.                                                                                                                                                                       |
-| `PG_PASSWORD`                           | `PG_APP_PASSWORD` in Compose        | Runtime password; never use the migration-owner password here.                                                                                                                                                 |
+| `PG_USER`                               | `PG_API_USER` in Compose            | API data-plane role; it cannot perform DDL or modify migration history.                                                                                                                                        |
+| `PG_PASSWORD`                           | `PG_API_PASSWORD` in Compose        | API-only runtime password; never use the migration-owner password here.                                                                                                                                        |
 | `PG_DATABASE`                           | `zutomayo`                          | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                                                                          |
-| `REDIS_URL`                             | Compose-generated authenticated URL | Redis connection URL for refresh rotation, the compatibility queue, and rate limits. Compose builds it from `REDIS_PASSWORD`.                                                                                  |
+| `REDIS_URL`                             | Compose-generated authenticated URL | Redis connection URL for refresh rotation, the compatibility queue, and rate limits. Production/staging require an authenticated TLS URL (`rediss://`).                                                        |
 | `REDIS_DB`                              | `0`                                 | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                                               |
 | `JWT_SECRET`                            | **required**                        | HMAC key for signed user/admin tokens. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set a stable secret in production or all tokens become invalid when the API process restarts. |
 | `ADMIN_PASSWORD`                        | empty                               | Password checked by `POST /api/admin/login`. **Recommended: at least 8 characters.** When empty, admin login returns `503` and admin endpoints are effectively disabled.                                       |
@@ -145,31 +151,31 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 
 ### `platform`
 
-| Variable                           | Default                                   | Notes                                                                                                                                                                        |
-| ---------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PLATFORM_PORT`                    | `3002`                                    | Colyseus platform service port inside the container.                                                                                                                         |
-| `NODE_ENV`                         | `production` in Compose                   | Runtime mode; also controls the default Redis mode when `PLATFORM_REDIS_MODE` is unset.                                                                                      |
-| `PG_HOST`                          | `postgres`                                | PostgreSQL host used by platform Postgres stores for friend presence lookup and durable match/room chat participant evidence.                                                |
-| `PG_PORT`                          | `5432`                                    | PostgreSQL port.                                                                                                                                                             |
-| `PG_USER`                          | `PG_APP_USER` in Compose                  | Least-privilege PostgreSQL runtime user.                                                                                                                                     |
-| `PG_PASSWORD`                      | `PG_APP_PASSWORD` in Compose              | Runtime password; never use the migration-owner password here.                                                                                                               |
-| `PG_DATABASE`                      | `zutomayo`                                | PostgreSQL database name.                                                                                                                                                    |
-| `REDIS_URL`                        | Compose-generated authenticated URL       | Redis connection URL for Colyseus `RedisPresence` and `RedisDriver`, built from `REDIS_PASSWORD`. Use `redis://localhost:6379` only for passwordless local dev.              |
-| `REDIS_DB`                         | `0`                                       | Redis DB index shared with other online coordination services.                                                                                                               |
-| `JWT_SECRET`                       | **required**                              | Shared HMAC secret for validating account session cookies during Colyseus matchmaking/auth. Must match `game` and `api`.                                                     |
-| `PLATFORM_SEAT_TOKEN_SECRET`       | `JWT_SECRET`                              | Optional independent seat-token signing secret. Production startup fails when neither this nor `JWT_SECRET` is configured.                                                   |
-| `PLATFORM_REDIS_MODE`              | `redis` in production, `memory` otherwise | `memory` keeps local development dependency-light; `redis` enables multi-instance room discovery and presence in Compose/production.                                         |
-| `PLATFORM_BLOCK_STORE`             | `postgres` in production                  | PostgreSQL-backed bidirectional block checks for quick-match admission. Platform authentication fails closed if the query fails.                                             |
-| `PLATFORM_FRIEND_STORE`            | `postgres` in Compose, auto otherwise     | `postgres` resolves friend presence subscriptions from `user_friends`; `none` disables friend lookup for local development.                                                  |
-| `PLATFORM_MATCH_PARTICIPANT_STORE` | `postgres` in Compose, auto otherwise     | `postgres` records account-backed Colyseus match-shell and custom-room participants so ChatService can enforce match/room chat ACLs; `none` keeps local presence transient.  |
-| `PLATFORM_CHAT_PREVIEW_STORE`      | `postgres` in Compose, auto otherwise     | `postgres` verifies Colyseus match chat preview sync signals against durable ChatService messages; `none` disables preview broadcasts when no durable verifier is available. |
-| `PLATFORM_DRAIN_GRACE_MS`          | `5000`                                    | On Colyseus graceful shutdown, return readiness 503 and let existing rooms drain before disposal.                                                                            |
-| `PLATFORM_PG_POOL_MAX`             | `PG_POOL_MAX` or `5`                      | Optional pool size override shared by platform Postgres-backed stores.                                                                                                       |
-| `APP_VERSION`                      | `package.json` version                    | Release version used in platform logs/Sentry release metadata.                                                                                                               |
-| `APP_BUILD_ID`                     | `APP_VERSION`                             | Build identifier; keep it aligned with `game` and `api`.                                                                                                                     |
-| `GAME_RULES_VERSION`               | `APP_VERSION`                             | Rules compatibility version; keep it aligned with `game` and `api`.                                                                                                          |
-| `SENTRY_DSN`                       | empty                                     | Backend DSN. Leave empty to disable platform error reporting.                                                                                                                |
-| `LOG_LEVEL`                        | `info`                                    | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                                                              |
+| Variable                           | Default                                   | Notes                                                                                                                                                                                          |
+| ---------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PLATFORM_PORT`                    | `3002`                                    | Colyseus platform service port inside the container.                                                                                                                                           |
+| `NODE_ENV`                         | `production` in Compose                   | Runtime mode; also controls the default Redis mode when `PLATFORM_REDIS_MODE` is unset.                                                                                                        |
+| `PG_HOST`                          | `postgres`                                | PostgreSQL host used by platform Postgres stores for friend presence lookup and durable match/room chat participant evidence.                                                                  |
+| `PG_PORT`                          | `5432`                                    | PostgreSQL port.                                                                                                                                                                               |
+| `PG_USER`                          | `PG_PLATFORM_USER` in Compose             | PLATFORM role with participant writes and column-limited account revocation reads.                                                                                                             |
+| `PG_PASSWORD`                      | `PG_PLATFORM_PASSWORD` in Compose         | PLATFORM-only runtime password; never use the migration-owner password here.                                                                                                                   |
+| `PG_DATABASE`                      | `zutomayo`                                | PostgreSQL database name.                                                                                                                                                                      |
+| `REDIS_URL`                        | Compose-generated authenticated URL       | Redis connection URL for Colyseus `RedisPresence` and `RedisDriver`; production/staging require authenticated TLS (`rediss://`). Use `redis://localhost:6379` only for passwordless local dev. |
+| `REDIS_DB`                         | `0`                                       | Redis DB index shared with other online coordination services.                                                                                                                                 |
+| `JWT_SECRET`                       | **required**                              | Shared HMAC secret for validating account session cookies during Colyseus matchmaking/auth. Must match `game` and `api`.                                                                       |
+| `PLATFORM_SEAT_TOKEN_SECRET`       | `JWT_SECRET`                              | Optional independent seat-token signing secret. Production startup fails when neither this nor `JWT_SECRET` is configured.                                                                     |
+| `PLATFORM_REDIS_MODE`              | `redis` in production, `memory` otherwise | `memory` keeps local development dependency-light; `redis` enables multi-instance room discovery and presence in Compose/production.                                                           |
+| `PLATFORM_BLOCK_STORE`             | `postgres` in production                  | PostgreSQL-backed bidirectional block checks for quick-match admission. Platform authentication fails closed if the query fails.                                                               |
+| `PLATFORM_FRIEND_STORE`            | `postgres` in Compose, auto otherwise     | `postgres` resolves friend presence subscriptions from `user_friends`; `none` disables friend lookup for local development.                                                                    |
+| `PLATFORM_MATCH_PARTICIPANT_STORE` | `postgres` in Compose, auto otherwise     | `postgres` records account-backed Colyseus match-shell and custom-room participants so ChatService can enforce match/room chat ACLs; `none` keeps local presence transient.                    |
+| `PLATFORM_CHAT_PREVIEW_STORE`      | `postgres` in Compose, auto otherwise     | `postgres` verifies Colyseus match chat preview sync signals against durable ChatService messages; `none` disables preview broadcasts when no durable verifier is available.                   |
+| `PLATFORM_DRAIN_GRACE_MS`          | `5000`                                    | On Colyseus graceful shutdown, return readiness 503 and let existing rooms drain before disposal.                                                                                              |
+| `PLATFORM_PG_POOL_MAX`             | `PG_POOL_MAX` or `5`                      | Optional pool size override shared by platform Postgres-backed stores.                                                                                                                         |
+| `APP_VERSION`                      | `package.json` version                    | Release version used in platform logs/Sentry release metadata.                                                                                                                                 |
+| `APP_BUILD_ID`                     | `APP_VERSION`                             | Build identifier; keep it aligned with `game` and `api`.                                                                                                                                       |
+| `GAME_RULES_VERSION`               | `APP_VERSION`                             | Rules compatibility version; keep it aligned with `game` and `api`.                                                                                                                            |
+| `SENTRY_DSN`                       | empty                                     | Backend DSN. Leave empty to disable platform error reporting.                                                                                                                                  |
+| `LOG_LEVEL`                        | `info`                                    | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                                                                                |
 
 The platform service exposes `/health`, `/ready`, and `/api/version` over HTTP on `PLATFORM_PORT`; Colyseus websocket room traffic uses the same port. `/health` actively checks PostgreSQL and Redis whenever the configured stores/mode use them and returns `503` with dependency errors when degraded. `/ready` also checks dependencies and immediately returns `503` during graceful drain. `/api/version` returns the app/build/rules identifiers used by deployment smoke checks.
 
@@ -644,20 +650,25 @@ Staging compose file: [docker-compose.staging.yml](../docker-compose.staging.yml
 
 與 production（server4）的差異：
 
-| 項目           | Production (server4)             | Staging                   |
-| -------------- | -------------------------------- | ------------------------- |
-| DB 名稱        | `zutomayo`                       | `zutomayo_staging`        |
-| Redis DB       | `0`                              | `3`                       |
-| game port      | `3000`                           | `4000`                    |
-| api port       | `3001`（expose）                 | `4001`                    |
-| platform port  | `3002`                           | `4002`                    |
-| image 來源     | server 上 `docker compose build` | GHCR 預建 image（`pull`） |
-| postgres/redis | 外部（1panel-network）           | 自帶容器（獨立 volume）   |
+| 項目           | Production (server4)             | Staging                                                                          |
+| -------------- | -------------------------------- | -------------------------------------------------------------------------------- |
+| DB 名稱        | `zutomayo`                       | 外部 `PG_DATABASE`（建議 `zutomayo_staging`）                                    |
+| Redis DB       | `0`                              | `3`                                                                              |
+| game port      | `3000`                           | `4000`                                                                           |
+| api port       | `3001`（expose）                 | `4001`                                                                           |
+| platform port  | `3002`                           | `4002`                                                                           |
+| image 來源     | server 上 `docker compose build` | GHCR 預建 image（`pull`）                                                        |
+| postgres/redis | 外部（1panel-network）           | 外部 PostgreSQL `verify-full` + CA secret；外部 Redis `rediss://` + ACL/password |
 
 ### Staging 部署流程
 
-1. CD pipeline 在 push 或手動 `workflow_dispatch` 時完成相同 preflight。
-2. 從 verified release artifact 取得 `.release.env`，其內容包含五個 digest、
+1. 先在 staging 基礎設施建立外部 PostgreSQL/Redis：PostgreSQL 必須提供
+   `verify-full` 與 CA，Redis 必須啟用 TLS、ACL 與密碼；建立 Docker external
+   secret `PG_CA_SECRET_NAME` 指向的 CA。不要以 bundled plaintext 服務替代。
+2. 在外部 PostgreSQL 以 bootstrap administrator 執行
+   `scripts/postgres-init-roles.sh`，再執行 migration role 的 migration/schema gate。
+3. CD pipeline 在 push 或手動 `workflow_dispatch` 時完成相同 preflight。
+4. 從 verified release artifact 取得 `.release.env`，其內容包含五個 digest、
    `APP_VERSION`、`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION` 與 migration file checksum：
 
 ```bash

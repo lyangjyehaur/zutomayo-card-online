@@ -44,6 +44,8 @@ export function validateOperationalConfig() {
   ]);
   requireFragments('scripts/pg-wal-archive.sh', ['PG_WAL_OFFSITE_URI', 'pg_wal_archive_last_success_unixtime_seconds']);
   requireFragments('scripts/pg-wal-restore.sh', ['sha256', 'age --decrypt']);
+  requireFragments('scripts/pg-backup.sh', ['PG_BACKUP_USER', 'PG_BACKUP_PASSWORD']);
+  requireFragments('scripts/pg-base-backup.sh', ['PG_WAL_USER', 'PG_WAL_PASSWORD']);
   requireFragments('scripts/pg-restore-drill.sh', [
     'PG_RESTORE_DRILL_IMAGE',
     '@sha256:',
@@ -99,6 +101,14 @@ export function validateOperationalConfig() {
     'retention worker must use a dedicated PostgreSQL role',
     'poolConfig.ssl = postgresSslConfig(process.env)',
   ]);
+  requireFragments('docker-compose.pgbouncer.yml', [
+    'pgbouncer-role-mode-gate:',
+    'REQUIRE_DISTINCT_DB_ROLES',
+    '"$$PG_API_USER" != "$$PG_GAME_USER"',
+    '"$$PG_API_USER" != "$$PG_PLATFORM_USER"',
+    'incompatible with distinct PostgreSQL runtime roles',
+  ]);
+  requireFragments('scripts/run-retention.cjs', ["process.env.PGSSLMODE === 'verify-full'"]);
   requireFragments('observability/prometheus/prometheus.yml', [
     "job_name: 'zutomayo-game'",
     "job_name: 'zutomayo-api'",

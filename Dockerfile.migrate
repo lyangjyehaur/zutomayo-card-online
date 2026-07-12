@@ -12,6 +12,7 @@ COPY scripts/db-migrate.cjs ./scripts/db-migrate.cjs
 COPY scripts/migration-checksums.cjs ./scripts/migration-checksums.cjs
 COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs
 COPY scripts/db-schema-gate.cjs ./scripts/db-schema-gate.cjs
+COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs
 
 USER node
 CMD ["npm", "run", "db:migrate:release"]

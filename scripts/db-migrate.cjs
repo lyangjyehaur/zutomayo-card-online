@@ -65,8 +65,22 @@ async function main() {
   try {
     await recordMigrationChecksums(checksumPool, migrationsDir);
     if (process.env.REQUIRE_APP_ROLE_GATE === 'true') {
-      await enforceRuntimeRolePrivileges(checksumPool, { appUser: process.env.PG_APP_USER });
-      console.log(`Runtime role gate passed for ${process.env.PG_APP_USER}`);
+      const roleUsers = {
+        api: process.env.PG_API_USER || process.env.PG_APP_USER,
+        game: process.env.PG_GAME_USER || process.env.PG_APP_USER,
+        platform: process.env.PG_PLATFORM_USER || process.env.PG_APP_USER,
+        retention: process.env.PG_RETENTION_USER,
+        monitor: process.env.PG_MONITOR_USER,
+        backup: process.env.PG_BACKUP_USER,
+        wal: process.env.PG_WAL_USER,
+      };
+      await enforceRuntimeRolePrivileges(checksumPool, {
+        roleUsers,
+        appUser: roleUsers.api,
+        requireComplete: process.env.REQUIRE_ROLE_MATRIX_GATE !== 'false',
+        requireDistinct: process.env.REQUIRE_DISTINCT_DB_ROLES === 'true',
+      });
+      console.log(`Runtime PostgreSQL role matrix gate passed for ${roleUsers.api}`);
     }
   } finally {
     await checksumPool.end();

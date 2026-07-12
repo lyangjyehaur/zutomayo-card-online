@@ -7,7 +7,8 @@ umask 077
 
 PG_HOST="${PG_HOST:-localhost}"
 PG_PORT="${PG_PORT:-5432}"
-PG_USER="${PG_USER:-zutomayo}"
+PG_USER="${PG_BACKUP_USER:-${PG_USER:-zutomayo_backup}}"
+PG_PASSWORD="${PG_BACKUP_PASSWORD:-${PG_PASSWORD:-}}"
 PG_DATABASE="${PG_DATABASE:-zutomayo}"
 BACKUP_DIR="${PG_BACKUP_DIR:-/var/backups/zutomayo}"
 RETENTION_DAYS="${PG_BACKUP_RETENTION_DAYS:-7}"

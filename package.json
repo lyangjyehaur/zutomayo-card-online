@@ -69,6 +69,7 @@
     "db:schema:gate": "node scripts/db-schema-gate.cjs",
     "db:migrate:down": "node scripts/db-migrate.cjs down",
     "db:migrate:make": "node scripts/db-migrate.cjs create",
+    "db:roles:smoke": "bash scripts/postgres-role-smoke.sh",
     "admin:create": "node scripts/create-admin.cjs",
     "retention:run": "node scripts/run-retention.cjs",
     "prepare": "husky",

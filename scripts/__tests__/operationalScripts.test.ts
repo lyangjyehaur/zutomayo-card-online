@@ -11,7 +11,10 @@ const scripts = [
   'pg-wal-archive.sh',
   'pg-wal-restore.sh',
   'pg-restore-drill.sh',
+  'postgres-init-roles.sh',
+  'postgres-role-smoke.sh',
   'compose-chaos-drill.sh',
+  'deploy-server4.sh',
 ];
 
 describe('operational shell scripts', () => {
@@ -40,6 +43,22 @@ describe('operational shell scripts', () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('explicitly pinned @sha256 image reference');
+  });
+
+  it('routes logical and physical backups through separate PostgreSQL roles', () => {
+    expect(readFileSync(resolve('scripts/pg-backup.sh'), 'utf8')).toContain(
+      'PG_USER="${PG_BACKUP_USER:-${PG_USER:-zutomayo_backup}}"',
+    );
+    expect(readFileSync(resolve('scripts/pg-base-backup.sh'), 'utf8')).toContain(
+      'PG_USER="${PG_WAL_USER:-${PG_BASE_BACKUP_USER:-${PG_USER:-zutomayo_wal}}}"',
+    );
+  });
+
+  it('gates the rendered production role/TLS environment before migration', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    expect(deploy).toContain('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS');
+    expect(deploy).toContain("ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full'");
+    expect(deploy).toContain("ROLE_ENV_VALIDATOR_ARGS+=' --require-rediss'");
   });
 
   it('rejects an unknown migration subcommand instead of defaulting to up', () => {

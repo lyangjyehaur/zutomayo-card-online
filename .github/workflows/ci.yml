@@ -38,18 +38,32 @@ jobs:
           PG_MIGRATION_PASSWORD: e2e-test-migration-password
           PG_APP_USER: zutomayo_app
           PG_APP_PASSWORD: e2e-test-app-password
+          PG_API_USER: zutomayo_api
+          PG_API_PASSWORD: e2e-test-api-password
+          PG_GAME_USER: zutomayo_game
+          PG_GAME_PASSWORD: e2e-test-game-password
+          PG_PLATFORM_USER: zutomayo_platform
+          PG_PLATFORM_PASSWORD: e2e-test-platform-password
+          PG_RETENTION_USER: zutomayo_retention
+          PG_RETENTION_PASSWORD: e2e-test-retention-password
+          PG_MONITOR_USER: zutomayo_monitor
+          PG_MONITOR_PASSWORD: e2e-test-monitor-password
+          PG_BACKUP_USER: zutomayo_backup
+          PG_BACKUP_PASSWORD: e2e-test-backup-password
+          PG_WAL_USER: zutomayo_wal
+          PG_WAL_PASSWORD: e2e-test-wal-password
+          PG_HOST: staging-postgres.example.internal
+          PG_DATABASE: zutomayo
+          PG_CA_SECRET_NAME: zutomayo-staging-postgres-ca
+          REDIS_URL: rediss://:e2e-test-redis-password@staging-redis.example.internal:6380
           JWT_SECRET: e2e-test-jwt-secret-32chars-min
           REDIS_PASSWORD: e2e-test-redis-password
           METRICS_TOKEN: e2e-test-metrics-token
-          PGSSLMODE: disable
+          PGSSLMODE: verify-full
           PG_MONITOR_HOST: postgres
-          PG_MONITOR_USER: zutomayo_monitor
-          PG_MONITOR_PASSWORD: e2e-test-monitor-password
           PG_MONITOR_DATABASE: zutomayo
           PG_MONITOR_SSLMODE: disable
           PG_RETENTION_HOST: postgres
-          PG_RETENTION_USER: zutomayo_retention
-          PG_RETENTION_PASSWORD: e2e-test-retention-password
           PG_RETENTION_SSLMODE: disable
           SLACK_ALERT_WEBHOOK: https://hooks.example.invalid/services/test
           GRAFANA_PASSWORD: e2e-test-grafana-password
@@ -68,6 +82,8 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full
           docker compose -f docker-compose.monitoring.yml config --quiet
 
       - name: Format check
@@ -155,6 +171,18 @@ jobs:
             -f docker-compose.yml \
             -f docker-compose.e2e.yml \
             down -v || true
+
+  postgres-role-smoke:
+    name: Fresh PostgreSQL role matrix smoke
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run disposable fresh-cluster smoke
+        run: npm run db:roles:smoke
+        timeout-minutes: 20
 
   # Smoke tests 需要真實卡牌數據（422 張），CI 環境無法模擬
   # 本地執行: npm run smoke / smoke:api / smoke:online
