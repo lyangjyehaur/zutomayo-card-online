@@ -26,6 +26,25 @@ if (process.env.SENTRY_DSN) {
   });
 }
 
+function validateSecurityConfig(): void {
+  const hasSeatTokenSecret = Boolean(process.env.PLATFORM_SEAT_TOKEN_SECRET || process.env.JWT_SECRET);
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (!hasSeatTokenSecret) {
+    if (isProduction) {
+      logger.fatal(
+        'PLATFORM_SEAT_TOKEN_SECRET 與 JWT_SECRET 皆未設定，正式環境無法安全啟動 platform server',
+      );
+      process.exit(1);
+    } else {
+      logger.warn(
+        'PLATFORM_SEAT_TOKEN_SECRET 與 JWT_SECRET 皆未設定，seatToken 將使用開發用 fallback 密鑰，請勿用於正式環境',
+      );
+    }
+  }
+}
+
+validateSecurityConfig();
+
 const platform = createPlatformRuntime();
 
 process.on('uncaughtException', (err) => {

@@ -11,6 +11,9 @@ interface PlatformSeatTokenPayload {
 }
 
 function signingSecret(): string {
+  // 開發用 fallback：僅供本機 / 測試環境使用。
+  // 正式環境必須透過 PLATFORM_SEAT_TOKEN_SECRET 或 JWT_SECRET 提供，
+  // 並由 platform server 啟動時的 validateSecurityConfig() 強制檢查。
   return (
     process.env.PLATFORM_SEAT_TOKEN_SECRET ||
     process.env.JWT_SECRET ||
