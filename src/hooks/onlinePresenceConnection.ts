@@ -1,8 +1,4 @@
-import type {
-  PlatformLobbyHandlers,
-  PlatformLobbyJoinOptions,
-  PlatformLobbyRoom,
-} from '../platformClient';
+import type { PlatformLobbyHandlers, PlatformLobbyJoinOptions, PlatformLobbyRoom } from '../platformClient';
 import type { OnlinePresenceFallbackController } from './onlinePresenceFallback';
 
 type ConnectPlatformLobby = (
