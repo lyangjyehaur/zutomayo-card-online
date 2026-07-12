@@ -35,6 +35,7 @@
     "format:check": "prettier --check .",
     "format:check:tracked": "node scripts/prettier-tracked.mjs",
     "version:check": "node scripts/check-version-sync.mjs",
+    "i18n:check": "tsx scripts/check-i18n.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
