@@ -1,0 +1,92 @@
+# Multiplayer Platform Alignment Audit
+
+Status: In Progress
+Date: 2026-07-12
+Source: `docs/MULTIPLAYER_PLATFORM_ARCHITECTURE.md`
+
+本文檔用來對齊多人平台架構文檔與目前實作。狀態定義：
+
+- `Covered`: 已有實作與行為測試鎖定。
+- `Source-boundary`: 已用源碼邊界測試鎖定重要 wiring，但缺少完整瀏覽器/端到端行為測試。
+- `Needs stronger test`: 已有實作或局部測試，但仍應補一個更直接的行為測試。
+- `Open`: 尚未能從現有實作與測試證明完成。
+
+## Current Summary
+
+整體方向已經和架構文檔一致：`boardgame.io` 保持權威對局引擎，Colyseus 只負責平台殼，ChatService 負責可持久化聊天、翻譯、舉報、未讀與封禁審核。快速配對、自訂房、邀請、觀戰 presence、ChatService 權限邊界與管理審核都有明確測試覆蓋。
+
+目前剩餘偏差主要不是「大功能缺失」，而是驗收層級不均：部分 UI 流程仍靠 source-boundary 測試確認 wiring，尚未有完整瀏覽器級流程測試；Colyseus runtime 啟動也主要靠配置與源碼邊界測試，尚未有平台服務 boot integration 測試。
+
+## Requirement Matrix
+
+| Area                         | Architecture requirement                                                                                                          | Status              | Evidence                                                                                                                                                                                               | Remaining work                                                           |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Engine ownership             | `boardgame.io` remains authoritative for turn-based match state; Colyseus must not own hidden/card/game state.                    | Covered             | `src/platform/rooms/__tests__/platformBoundary.test.ts`, `src/__tests__/platformDeploymentConfig.test.ts`                                                                                              | Keep future Colyseus rooms free of board/card state.                     |
+| Platform runtime             | Add standalone Colyseus runtime with lobby, match shell, quick match, custom room, invite rooms and `npm run platform`.           | Covered             | `src/platform/server.ts`, `src/platform/rooms/index.ts`, `src/__tests__/platformDeploymentConfig.test.ts`                                                                                              | Optional: add boot-level integration test for server construction.       |
+| Redis mode                   | Local memory mode, production Redis mode, Compose platform service on `3002`.                                                     | Covered             | `src/platform/config.ts`, `src/__tests__/platformFriendStore.test.ts`, `src/__tests__/platformDeploymentConfig.test.ts`                                                                                | None for current slice.                                                  |
+| Platform endpoint            | Browser resolves `VITE_PLATFORM_URL`, local defaults to `:3002`, production keeps same host.                                      | Covered             | `src/__tests__/platformClient.test.ts`                                                                                                                                                                 | None.                                                                    |
+| Presence fallback            | Colyseus lobby presence should fall back to HTTP heartbeat on connect failure/disconnect.                                         | Covered             | `src/hooks/onlinePresenceConnection.ts`, `src/__tests__/onlinePresenceConnection.test.ts`, `src/__tests__/onlinePresenceFallback.test.ts`                                                              | None.                                                                    |
+| Friend presence ACL          | Browser must not send friend IDs; Colyseus resolves friends server-side from `user_friends`.                                      | Covered             | `src/platform/rooms/__tests__/lobby.test.ts`, `src/__tests__/platformClient.test.ts`, `src/__tests__/platformFriendStore.test.ts`                                                                      | None.                                                                    |
+| Account identity             | Platform rooms verify JWT session cookie; ignore client-supplied account IDs for verified accounts.                               | Covered             | `src/platform/rooms/auth.ts`, `src/platform/rooms/__tests__/auth.test.ts`, `src/platform/rooms/__tests__/lifecycle.test.ts`                                                                            | None.                                                                    |
+| Guest identity               | Unauthenticated clients are presence-only guest/anon identities where product flow allows.                                        | Covered             | `src/__tests__/onlinePresence.test.ts`, `src/__tests__/anonymousIdentity.test.ts`, `api/__tests__/chatService.test.ts`                                                                                 | None.                                                                    |
+| Durable participant evidence | Account-backed match shell and custom room joins record durable participant evidence when enabled.                                | Covered             | `src/platform/matchParticipantStore.ts`, `src/__tests__/platformMatchParticipantStore.test.ts`, `src/platform/rooms/__tests__/matchShell.test.ts`, `src/platform/rooms/__tests__/lifecycle.test.ts`    | None.                                                                    |
+| Session persistence          | Online session preserves stable platform identity and seat token state.                                                           | Covered             | `src/onlineSession.ts`, `src/__tests__/onlineSession.test.ts`                                                                                                                                          | None.                                                                    |
+| Quick match lifecycle        | Quick match queueing, pairing, cancellation and boardgame match ID relay happen through Colyseus.                                 | Covered             | `src/platform/rooms/__tests__/lifecycle.test.ts`, `src/__tests__/platformClient.test.ts`                                                                                                               | None.                                                                    |
+| Quick match no fallback      | Browser must not fall back to legacy REST matchmaking or Redis `realMatchId` handoff when Colyseus fails.                         | Covered             | `src/__tests__/platformClient.test.ts`, `src/__tests__/onlineLobbyPlatformBoundary.test.ts`                                                                                                            | None.                                                                    |
+| Custom room lifecycle        | Host waiting page registers waiting room; first non-host player promotes to ready and relays boardgame match ID.                  | Covered             | `src/platform/rooms/__tests__/lifecycle.test.ts`, `src/__tests__/platformClient.test.ts`, `src/__tests__/customRoomRelay.test.ts`                                                                      | None.                                                                    |
+| Custom room spectators       | Spectators are separate from player seats and cannot promote, cancel, or relay.                                                   | Covered             | `src/platform/rooms/__tests__/lifecycle.test.ts`                                                                                                                                                       | None.                                                                    |
+| Custom room no fallback      | Relay timeout, disconnect, cancellation, or join failure surfaces retryable room-join error instead of direct boardgame fallback. | Covered             | `src/__tests__/customRoomRelay.test.ts`, `src/__tests__/onlineLobbyPlatformBoundary.test.ts`                                                                                                           | None.                                                                    |
+| Invite lifecycle             | Friend invitations use deterministic Colyseus invite rooms for pending, accepted, relay, and recovery.                            | Covered             | `src/platform/rooms/__tests__/inviteLifecycle.test.ts`, `src/__tests__/platformClient.test.ts`, `src/__tests__/onlineLobbyPlatformBoundary.test.ts`                                                    | UI recovery remains source-boundary, see below.                          |
+| Invite friendship ACL        | Production invite auth verifies durable friendship server-side.                                                                   | Covered             | `src/platform/rooms/__tests__/inviteLifecycle.test.ts`, `src/__tests__/platformFriendStore.test.ts`                                                                                                    | None.                                                                    |
+| Duplicate room avoidance     | Invite/custom/quick coordination avoids duplicate rooms for deterministic identities/statuses.                                    | Covered             | `src/__tests__/platformClient.test.ts`, `src/platform/rooms/__tests__/lifecycle.test.ts`                                                                                                               | None.                                                                    |
+| Match shell spectators       | Players and spectators join a shared Colyseus match shell by `boardgameMatchID` and `ready` status.                               | Covered             | `src/platform/rooms/__tests__/matchShell.test.ts`, `src/__tests__/platformClient.test.ts`                                                                                                              | None.                                                                    |
+| Chat boundary                | Colyseus must not persist chat text; match shell may emit content-free sync/preview signals only.                                 | Covered             | `src/platform/rooms/__tests__/platformBoundary.test.ts`, `src/__tests__/platformClient.test.ts`, `src/__tests__/onlineLobbyPlatformBoundary.test.ts`, `src/__tests__/platformChatPreviewStore.test.ts` | None.                                                                    |
+| Public chat roles            | Evidence-bearing public chat accepts only `player` or `spectator`; `moderator` is admin-only.                                     | Covered             | `api/__tests__/chatService.test.ts`, `api/__tests__/server.routes.test.ts`, `src/platform/rooms/__tests__/auth.test.ts`                                                                                | None.                                                                    |
+| Match chat ACL               | Logged-in players/spectators can use durable match chat; anonymous spectators cannot write evidence-bearing chat.                 | Covered             | `api/__tests__/chatService.test.ts`, `src/__tests__/matchChatAccess.test.ts`, `src/platform/rooms/__tests__/matchShell.test.ts`                                                                        | None.                                                                    |
+| Global lobby chat            | Cross-room lobby chat uses durable ChatService global conversation `online-lobby`.                                                | Covered             | `api/__tests__/chatService.test.ts`, `api/__tests__/server.routes.test.ts`, `src/__tests__/unreadNavigation.test.ts`                                                                                   | None.                                                                    |
+| Room chat                    | Custom-room pregame chat uses durable ChatService room conversation keyed by room code.                                           | Covered             | `api/__tests__/chatService.test.ts`, `api/__tests__/server.routes.test.ts`                                                                                                                             | UI remains source-boundary for some lobby surfaces.                      |
+| Direct chat                  | Friend direct messages use durable ChatService direct conversation with canonical subject IDs and friendship ACL.                 | Covered             | `src/__tests__/directConversation.test.ts`, `api/__tests__/chatService.test.ts`, `api/__tests__/server.routes.test.ts`                                                                                 | None.                                                                    |
+| Chat translation             | Translation is ChatService-owned; provider endpoint persists ready rows, no-provider path records pending rows.                   | Covered             | `api/__tests__/chatTranslationProvider.test.ts`, `api/__tests__/server.chatTranslationProviderRoute.test.ts`, `api/__tests__/chatService.test.ts`, `api/__tests__/server.routes.test.ts`               | Optional: add async worker once product needs background LLM processing. |
+| Reports                      | Reports snapshot message evidence for every durable conversation type.                                                            | Covered             | `api/__tests__/chatService.test.ts`, `api/__tests__/server.routes.test.ts`                                                                                                                             | None.                                                                    |
+| Admin evidence               | Admin console loads report snapshots and full durable conversation context.                                                       | Covered             | `api/__tests__/server.routes.test.ts`, `src/__tests__/adminChatModerationBoundary.test.ts`                                                                                                             | UI is source-boundary rather than browser-driven.                        |
+| Sanctions                    | Admin mute/unmute creates durable sanctions; ChatService enforces active mutes across all conversation types.                     | Covered             | `api/__tests__/chatService.test.ts`, `api/__tests__/server.routes.test.ts`, `src/__tests__/adminChatModerationBoundary.test.ts`                                                                        | None.                                                                    |
+| Match history chat           | Player match history stores online boardgame match ID and can reopen durable match chat after game end.                           | Needs stronger test | `api/__tests__/chatService.test.ts`, `src/__tests__/onlineLobbyPlatformBoundary.test.ts`, `src/components/MatchHistory.tsx`, `src/pages/MatchHistoryPage.tsx`                                          | Add a direct test around match-history chat open action or UI boundary.  |
+| Unread summaries             | ChatService-backed unread summaries cover match, room, direct, and global conversations and tombstoned authors.                   | Covered             | `api/__tests__/chatService.test.ts`, `api/__tests__/server.routes.test.ts`, `src/__tests__/unreadNavigation.test.ts`                                                                                   | None.                                                                    |
+
+## Source-Boundary Areas
+
+These areas are intentionally guarded by source-boundary tests because the current frontend test environment is Node/Vitest oriented rather than full DOM/browser integration:
+
+- Online Lobby platform wiring: `src/__tests__/onlineLobbyPlatformBoundary.test.ts`
+- Admin chat moderation wiring: `src/__tests__/adminChatModerationBoundary.test.ts`
+- Unread navigation/open actions: `src/__tests__/unreadNavigation.test.ts`
+- Match chat identity state: `src/__tests__/matchChatAccess.test.ts`
+
+這些測試能防止重要回歸，例如重新引入 REST fallback、把聊天文字塞進 Colyseus preview、或把未讀訊息導到錯誤入口。不過若要達到更接近產品驗收的信心，下一階段應補瀏覽器級 smoke 或 component integration。
+
+## Recommended Next Work
+
+1. Add a direct Match History chat-open test.
+   - Goal: prove a persisted online boardgame match record reopens the durable ChatService match conversation after the game ends.
+   - Current evidence exists in ChatService ACL and source-boundary wiring, but this is the thinnest user-facing flow.
+
+2. Add a platform runtime boot integration test.
+   - Goal: instantiate the Colyseus runtime with documented room registrations/configuration without starting external Redis in local mode.
+   - Current evidence exists in config/source-boundary tests, but a boot test would catch broken room registration earlier.
+
+3. Add browser-level smoke coverage for Online Lobby chat/invite recovery when a DOM-capable test setup is available.
+   - Goal: prove unread panel, accepted invite recovery, and durable lobby/direct/room chat surfaces behave as expected from user interaction.
+   - Current Node tests are acceptable for code-boundary enforcement, but not full UI verification.
+
+4. Keep the LLM translation provider contract as synchronous HTTP gateway for now.
+   - Goal: current provider route proves ready persistence; no-provider proves pending persistence.
+   - Future asynchronous worker/queue is a product expansion rather than a required architecture-gap for this slice.
+
+## Completion Criteria
+
+This branch can be considered architecture-aligned when:
+
+- All `Open` items are zero.
+- `Needs stronger test` is zero or explicitly accepted as source-boundary coverage.
+- `npm run verify` passes after the final implementation.
+- Final audit references remain up to date with any newly added tests.
