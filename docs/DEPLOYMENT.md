@@ -400,6 +400,8 @@ After deployment, verify:
 ```bash
 curl http://localhost:3000/
 curl http://localhost:3001/api/leaderboard
+curl http://localhost:3002/health
+curl http://localhost:3002/ready
 ```
 
 For application-level verification, run before building the image when possible:
@@ -407,8 +409,18 @@ For application-level verification, run before building the image when possible:
 ```bash
 npm run smoke
 npm run smoke:api
+npm run smoke:platform-deployment
 npm run build
 npm run smoke:online
+```
+
+`smoke:platform-deployment` checks the Colyseus platform HTTP readiness endpoints and performs a real guest lobby
+join/leave over websocket. It defaults to `http://127.0.0.1:3002`; override the target with:
+
+```bash
+PLATFORM_SMOKE_HTTP_URL=https://battle.zutomayocard.online/platform \
+PLATFORM_SMOKE_WS_URL=wss://battle.zutomayocard.online/platform \
+npm run smoke:platform-deployment
 ```
 
 ## CI / 持續整合

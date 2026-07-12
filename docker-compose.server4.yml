@@ -124,6 +124,7 @@ services:
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
       - PLATFORM_MATCH_PARTICIPANT_STORE=postgres
+      - PLATFORM_CHAT_PREVIEW_STORE=postgres
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     networks:

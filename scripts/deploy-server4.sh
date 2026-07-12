@@ -104,7 +104,7 @@ ok "server4 .env 存在"
 # 5. 二次確認
 if [[ "$CONFIRM" == true ]]; then
     warn "即將部署 commit $HEAD_SHORT 到 $SERVER_HOST"
-    warn "影響容器: zutomayo-card-online-game-1, zutomayo-card-online-api-1"
+    warn "影響容器: zutomayo-card-online-game-1, zutomayo-card-online-api-1, zutomayo-card-online-platform-1"
     read -rp "確認繼續? [y/N] " ans
     [[ "$ans" =~ ^[Yy]$ ]] || { err "取消"; exit 1; }
 fi
@@ -200,13 +200,19 @@ log "Step 6/6: 驗證部署"
 echo ""
 GAME_VERSION=$(curl -s --max-time 5 http://$SERVER_HOST:3000/api/version 2>/dev/null || echo "FAILED")
 API_VERSION=$(curl -s --max-time 5 http://$SERVER_HOST:3001/api/version 2>/dev/null || echo "FAILED")
+PLATFORM_HEALTH=$(curl -s --max-time 5 http://$SERVER_HOST:3002/health 2>/dev/null || echo "FAILED")
+PLATFORM_READY=$(curl -s --max-time 5 http://$SERVER_HOST:3002/ready 2>/dev/null || echo "FAILED")
 GAME_HTTP=$(curl -sI --max-time 5 http://$SERVER_HOST:3000/ 2>/dev/null | head -1 || echo "FAILED")
 API_HTTP=$(curl -sI --max-time 5 http://$SERVER_HOST:3001/ 2>/dev/null | head -1 || echo "FAILED")
+PLATFORM_HTTP=$(curl -sI --max-time 5 http://$SERVER_HOST:3002/health 2>/dev/null | head -1 || echo "FAILED")
 
 echo "  game /api/version : $GAME_VERSION"
 echo "  api  /api/version : $API_VERSION"
+echo "  platform /health  : $PLATFORM_HEALTH"
+echo "  platform /ready   : $PLATFORM_READY"
 echo "  game HTTP         : $GAME_HTTP"
 echo "  api  HTTP         : $API_HTTP"
+echo "  platform HTTP     : $PLATFORM_HTTP"
 echo ""
 
 # 驗證 game log 訊息
@@ -217,6 +223,13 @@ if [[ "$DRY_RUN" != true ]]; then
     else
         warn "game 載入卡數訊息未見,請檢查 log"
     fi
+
+    PLATFORM_LOG=$(ssh_run "docker logs --tail 20 zutomayo-card-online-platform-1" 2>&1)
+    if echo "$PLATFORM_LOG" | grep -q "Zutomayo platform server running"; then
+        ok "platform 啟動訊息正常"
+    else
+        warn "platform 啟動訊息未見,請檢查 log"
+    fi
 fi
 
 echo ""
@@ -224,5 +237,6 @@ echo "================================================================"
 ok "部署完成 ★ commit=$HEAD_SHORT"
 echo "  訪問: http://$SERVER_HOST:3000"
 echo "  API:  http://$SERVER_HOST:3001"
+echo "  Platform: http://$SERVER_HOST:3002/health"
 echo "  Domain: https://battle.zutomayocard.online"
 echo "================================================================"
