@@ -1,0 +1,7 @@
+; PgBouncer auth file.
+; Replace PG_PASSWORD_PLACEHOLDER with the real PostgreSQL password at deploy
+; time. The quoted username must match the PG_USER used by the services
+; (default: zutomayo; adjust the first quoted field accordingly).
+; When using the edoburu/pgbouncer image with DB_USER/DB_PASSWORD env vars, this
+; file is auto-generated and this template is not used.
+"postgres" "PG_PASSWORD_PLACEHOLDER"
