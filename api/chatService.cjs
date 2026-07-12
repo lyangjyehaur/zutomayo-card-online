@@ -66,6 +66,10 @@ function normalizeParticipantRole(value) {
   return PARTICIPANT_ROLES.includes(value) ? value : 'spectator';
 }
 
+function normalizePublicAuthorRole(value) {
+  return PUBLIC_AUTHOR_ROLES.includes(value) ? value : 'spectator';
+}
+
 function normalizeMessageStatus(value) {
   return MESSAGE_STATUSES.includes(value) ? value : 'visible';
 }
@@ -303,7 +307,7 @@ function mapMessage(row) {
     conversationId: row.conversation_id,
     authorUserId: row.author_user_id || null,
     authorDisplayName: row.author_display_name || '',
-    authorRole: row.author_role || 'spectator',
+    authorRole: normalizePublicAuthorRole(row.author_role),
     content: row.content,
     sourceLanguage: row.source_language || '',
     moderationStatus: row.moderation_status || 'visible',
@@ -369,7 +373,7 @@ function mapReport(row) {
       content: messageContent || '',
       authorUserId: messageAuthorUserId || null,
       authorDisplayName: messageAuthorDisplayName || '',
-      authorRole: messageAuthorRole || 'spectator',
+      authorRole: normalizePublicAuthorRole(messageAuthorRole),
       moderationStatus: messageModerationStatus || 'visible',
       createdAt: messageCreatedAt || null,
     };
@@ -975,7 +979,7 @@ async function reportChatMessage({
       message.content || '',
       message.author_user_id || null,
       message.author_display_name || '',
-      message.author_role || 'spectator',
+      normalizePublicAuthorRole(message.author_role),
       message.moderation_status || 'visible',
       message.created_at || null,
     ],

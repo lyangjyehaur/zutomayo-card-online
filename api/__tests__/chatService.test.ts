@@ -1020,6 +1020,87 @@ describe('chat service', () => {
     expect(pool.query).not.toHaveBeenCalled();
   });
 
+  it('normalizes legacy moderator chat rows to public spectator evidence', async () => {
+    const legacyModeratorMessage = {
+      ...messageRow,
+      conversation_id: 'global:online-lobby',
+      author_role: 'moderator',
+    };
+    const historyPool = poolWithResults([{ rows: [legacyModeratorMessage] }]);
+
+    await expect(
+      listChatMessages({
+        pool: historyPool,
+        userId: 'u_reader',
+        conversationType: 'global',
+        subjectId: 'online-lobby',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        messages: [expect.objectContaining({ authorRole: 'spectator' })],
+      },
+    });
+
+    const reportPool = poolWithResults([
+      {
+        rows: [
+          {
+            ...legacyModeratorMessage,
+            conversation_type: 'global',
+            conversation_subject_id: 'online-lobby',
+          },
+        ],
+      },
+      {
+        rows: [
+          {
+            id: 'chat_report_legacy',
+            message_id: 'chat_msg_1',
+            conversation_id: 'global:online-lobby',
+            reporter_user_id: 'u_reader',
+            reason: 'legacy_role',
+            note: '',
+            reported_message_content: legacyModeratorMessage.content,
+            reported_message_author_user_id: legacyModeratorMessage.author_user_id,
+            reported_message_author_display_name: legacyModeratorMessage.author_display_name,
+            reported_message_author_role: 'spectator',
+            reported_message_moderation_status: legacyModeratorMessage.moderation_status,
+            reported_message_created_at: legacyModeratorMessage.created_at,
+            status: 'open',
+            reviewer_user_id: null,
+            resolution_note: '',
+            created_at: '2026-07-10T00:00:03.000Z',
+            reviewed_at: null,
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      reportChatMessage({
+        pool: reportPool,
+        reporterUserId: 'u_reader',
+        messageId: 'chat_msg_1',
+        body: { reason: 'legacy_role' },
+        sanitizeText,
+        generateReportId: () => 'chat_report_legacy',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        report: expect.objectContaining({
+          message: expect.objectContaining({ authorRole: 'spectator' }),
+        }),
+      },
+    });
+    expect(reportPool.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('reported_message_author_role'),
+      expect.arrayContaining(['spectator']),
+    );
+  });
+
   it('rejects muted users before persisting any durable conversation type', async () => {
     const cases = [
       { conversationType: 'match', subjectId: 'bgio-match-1' },
