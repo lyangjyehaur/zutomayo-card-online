@@ -57,28 +57,63 @@ async function addConversationTree(client, objects, identifiers) {
   }
 }
 
-async function resolveAccountObjects(client, objects, subjectId) {
-  const account = (await client.query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL LIMIT 1', [subjectId]))
-    .rows[0];
-  if (!account) return false;
-  addObject(objects, 'account', subjectId);
-
-  const matches = (
+/**
+ * Expand the account scope used by legal holds.  The expansion table is a
+ * useful immutable snapshot for retention, but it cannot discover a match or
+ * message created after a hold was opened.  Keep this resolver authoritative
+ * for both reconciliation and account-deletion decisions.
+ */
+async function addAccountMatchObjects(client, objects, subjectId) {
+  const linkedMatches = (
     await client.query(
       `SELECT id, source_match_id
          FROM matches
-        WHERE player0_id = $1 OR player1_id = $1 OR winner_id = $1 OR loser_id = $1`,
+        WHERE player0_id = $1 OR player1_id = $1 OR winner_id = $1 OR loser_id = $1
+       UNION
+       SELECT NULL::text AS id, boardgame_match_id AS source_match_id
+         FROM platform_match_participants
+        WHERE user_id = $1
+       UNION
+       SELECT NULL::text AS id, match_id AS source_match_id
+         FROM platform_room_participants
+        WHERE user_id = $1
+       UNION
+       SELECT NULL::text AS id, match_id AS source_match_id
+         FROM bjg_match_seats
+        WHERE user_id = $1
+       UNION
+       SELECT NULL::text AS id, match_id AS source_match_id
+         FROM deck_reservations
+        WHERE user_id = $1 AND match_id IS NOT NULL
+       UNION
+       SELECT NULL::text AS id, source_match_id
+         FROM bjg_match_result_outbox
+        WHERE player0_user_id = $1 OR player1_user_id = $1
+           OR winner_user_id = $1 OR loser_user_id = $1
+       UNION
+       SELECT NULL::text AS id, source_match_id
+         FROM season_match_results
+        WHERE winner_user_id = $1 OR loser_user_id = $1`,
       [subjectId],
     )
   ).rows;
   const matchIds = [];
-  for (const match of matches) {
+  for (const match of linkedMatches) {
     addObject(objects, 'match', match.id);
     addObject(objects, 'match', match.source_match_id);
     if (match.id) matchIds.push(match.id);
     if (match.source_match_id) matchIds.push(match.source_match_id);
   }
   await addConversationTree(client, objects, matchIds);
+}
+
+async function resolveAccountObjects(client, objects, subjectId) {
+  const account = (await client.query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL LIMIT 1', [subjectId]))
+    .rows[0];
+  if (!account) return false;
+  addObject(objects, 'account', subjectId);
+
+  await addAccountMatchObjects(client, objects, subjectId);
 
   const authored = (
     await client.query(
@@ -109,11 +144,53 @@ async function resolveAccountObjects(client, objects, subjectId) {
     addObject(objects, 'conversation', row.conversation_id);
   }
 
+  const readStates = (
+    await client.query('SELECT conversation_id FROM chat_read_states WHERE user_id = $1', [subjectId])
+  ).rows;
+  for (const row of readStates) addObject(objects, 'conversation', row.conversation_id);
+
+  const moderationEvents = (
+    await client.query(
+      `SELECT message_id, conversation_id
+         FROM chat_moderation_events
+        WHERE actor_user_id = $1`,
+      [subjectId],
+    )
+  ).rows;
+  for (const row of moderationEvents) {
+    addObject(objects, 'message', row.message_id);
+    addObject(objects, 'conversation', row.conversation_id);
+  }
+
+  const reviewedReports = (await client.query('SELECT id FROM chat_reports WHERE reviewer_user_id = $1', [subjectId]))
+    .rows;
+  for (const row of reviewedReports) addObject(objects, 'report', row.id);
+
+  const sanctions = (
+    await client.query(
+      `SELECT source_report_id, source_message_id, conversation_id
+         FROM chat_user_sanctions
+        WHERE created_by_user_id = $1 OR revoked_by_user_id = $1`,
+      [subjectId],
+    )
+  ).rows;
+  for (const row of sanctions) {
+    addObject(objects, 'report', row.source_report_id);
+    addObject(objects, 'message', row.source_message_id);
+    addObject(objects, 'conversation', row.conversation_id);
+  }
+
   const feedback = (
     await client.query(
       `SELECT id FROM feedback_posts WHERE author_user_id = $1
        UNION
-       SELECT id FROM feedback_comments WHERE author_user_id = $1`,
+       SELECT id FROM feedback_comments WHERE author_user_id = $1
+       UNION
+       SELECT post_id AS id FROM feedback_votes WHERE voter_user_id = $1
+       UNION
+       SELECT comment_id AS id FROM feedback_comment_votes WHERE voter_user_id = $1
+       UNION
+       SELECT comment_id AS id FROM feedback_comment_reactions WHERE voter_user_id = $1`,
       [subjectId],
     )
   ).rows;
@@ -227,18 +304,202 @@ async function resolveLegalHoldObjects(client, { subjectType, subjectId }) {
     report: resolveReportObjects,
     feedback: resolveFeedbackObjects,
   };
-  const exists = await resolvers[subjectType](client, objects, subjectId);
+  const resolver = resolvers[subjectType];
+  if (!resolver) return { exists: false, objects: [] };
+  const exists = await resolver(client, objects, subjectId);
   return { exists, objects: [...objects.values()] };
 }
 
 async function persistLegalHoldObjects(client, holdId, objects) {
-  await client.query(
+  return client.query(
     `INSERT INTO legal_hold_objects (hold_id, object_type, object_id)
      SELECT $1, object_type, object_id
        FROM jsonb_to_recordset($2::jsonb) AS expanded(object_type text, object_id text)
      ON CONFLICT (hold_id, object_type, object_id) DO NOTHING`,
     [holdId, JSON.stringify(objects.map((object) => ({ object_type: object.type, object_id: object.id })))],
   );
+}
+
+/**
+ * Reconcile every active hold while the caller owns the global retention
+ * lock.  Existing rows are intentionally never removed: they are an audit
+ * snapshot, while newly discovered rows extend the protected evidence set.
+ */
+async function reconcileActiveLegalHolds(client) {
+  const holds = (
+    await client.query(
+      `SELECT id, subject_type, subject_id
+         FROM legal_holds
+        WHERE released_at IS NULL
+          AND (expires_at IS NULL OR expires_at > NOW())
+        ORDER BY created_at ASC
+        FOR UPDATE`,
+    )
+  ).rows;
+  let objectCount = 0;
+  for (const hold of holds) {
+    const resolved = await resolveLegalHoldObjects(client, {
+      subjectType: hold.subject_type,
+      subjectId: hold.subject_id,
+    });
+    if (!resolved.exists || resolved.objects.length === 0) continue;
+    const result = await persistLegalHoldObjects(client, hold.id, resolved.objects);
+    objectCount += Number(result?.rowCount) || 0;
+  }
+  return { holdCount: holds.length, objectCount };
+}
+
+/**
+ * Return an active hold for any object that can be derived from an account.
+ * This is deliberately a live relational query instead of relying only on
+ * legal_hold_objects, so a deletion cannot bypass a hold created before a
+ * newly-arrived match/chat/report was snapshotted.
+ */
+async function findActiveLegalHoldForAccount(client, userId) {
+  return (
+    await client.query(
+      `WITH account_objects(object_type, object_id) AS (
+         SELECT 'account'::text, $1::text
+         UNION
+         SELECT 'match', m.id
+           FROM matches m
+          WHERE m.player0_id = $1 OR m.player1_id = $1
+             OR m.winner_id = $1 OR m.loser_id = $1
+         UNION
+         SELECT 'match', m.source_match_id
+           FROM matches m
+          WHERE m.player0_id = $1 OR m.player1_id = $1
+             OR m.winner_id = $1 OR m.loser_id = $1
+         UNION
+         SELECT 'match', p.boardgame_match_id
+           FROM platform_match_participants p
+          WHERE p.user_id = $1
+         UNION
+         SELECT 'match', p.room_code
+           FROM platform_room_participants p
+          WHERE p.user_id = $1
+         UNION
+         SELECT 'conversation', p.room_code
+           FROM platform_room_participants p
+          WHERE p.user_id = $1
+         UNION
+         SELECT 'match', s.match_id
+           FROM bjg_match_seats s
+          WHERE s.user_id = $1
+         UNION
+         SELECT 'match', d.match_id
+           FROM deck_reservations d
+          WHERE d.user_id = $1 AND d.match_id IS NOT NULL
+         UNION
+         SELECT 'match', o.source_match_id
+           FROM bjg_match_result_outbox o
+          WHERE o.player0_user_id = $1 OR o.player1_user_id = $1
+             OR o.winner_user_id = $1 OR o.loser_user_id = $1
+         UNION
+         SELECT 'match', r.source_match_id
+           FROM season_match_results r
+          WHERE r.winner_user_id = $1 OR r.loser_user_id = $1
+         UNION
+         SELECT 'conversation', c.id
+           FROM chat_messages m
+           JOIN chat_conversations c ON c.id = m.conversation_id
+          WHERE m.author_user_id = $1
+         UNION
+         SELECT 'conversation', c.subject_id
+           FROM chat_messages m
+           JOIN chat_conversations c ON c.id = m.conversation_id
+          WHERE m.author_user_id = $1 AND c.subject_id IS NOT NULL
+         UNION
+         SELECT 'message', m.id
+           FROM chat_messages m
+          WHERE m.author_user_id = $1
+         UNION
+         SELECT 'report', r.id
+           FROM chat_reports r
+          WHERE r.reporter_user_id = $1 OR r.reported_message_author_user_id = $1
+         UNION
+         SELECT 'message', r.message_id
+           FROM chat_reports r
+          WHERE r.reporter_user_id = $1 OR r.reported_message_author_user_id = $1
+         UNION
+         SELECT 'conversation', r.conversation_id
+           FROM chat_reports r
+          WHERE (r.reporter_user_id = $1 OR r.reported_message_author_user_id = $1)
+            AND r.conversation_id IS NOT NULL
+         UNION
+         SELECT 'conversation', rs.conversation_id
+           FROM chat_read_states rs
+          WHERE rs.user_id = $1
+         UNION
+         SELECT 'message', me.message_id
+           FROM chat_moderation_events me
+          WHERE me.actor_user_id = $1
+         UNION
+         SELECT 'conversation', me.conversation_id
+           FROM chat_moderation_events me
+          WHERE me.actor_user_id = $1
+         UNION
+         SELECT 'report', rr.id
+           FROM chat_reports rr
+          WHERE rr.reviewer_user_id = $1
+         UNION
+         SELECT 'report', s.source_report_id
+           FROM chat_user_sanctions s
+          WHERE s.created_by_user_id = $1 OR s.revoked_by_user_id = $1
+         UNION
+         SELECT 'message', s.source_message_id
+           FROM chat_user_sanctions s
+          WHERE s.created_by_user_id = $1 OR s.revoked_by_user_id = $1
+         UNION
+         SELECT 'conversation', s.conversation_id
+           FROM chat_user_sanctions s
+          WHERE s.created_by_user_id = $1 OR s.revoked_by_user_id = $1
+         UNION
+         SELECT 'feedback', p.id
+           FROM feedback_posts p
+          WHERE p.author_user_id = $1
+         UNION
+         SELECT 'feedback', c.id
+           FROM feedback_comments c
+          WHERE c.author_user_id = $1
+         UNION
+         SELECT 'feedback', v.post_id
+           FROM feedback_votes v
+          WHERE v.voter_user_id = $1
+         UNION
+         SELECT 'feedback', v.comment_id
+           FROM feedback_comment_votes v
+          WHERE v.voter_user_id = $1
+         UNION
+         SELECT 'feedback', r.comment_id
+           FROM feedback_comment_reactions r
+          WHERE r.voter_user_id = $1
+       )
+       SELECT h.id, h.subject_type, h.subject_id
+         FROM legal_holds h
+        WHERE h.released_at IS NULL
+          AND (h.expires_at IS NULL OR h.expires_at > NOW())
+          AND (
+            EXISTS (
+              SELECT 1
+                FROM account_objects ao
+               WHERE ao.object_type = h.subject_type
+                 AND ao.object_id = h.subject_id
+            )
+            OR EXISTS (
+              SELECT 1
+                FROM legal_hold_objects ho
+                JOIN account_objects ao
+                  ON ao.object_type = ho.object_type
+                 AND ao.object_id = ho.object_id
+               WHERE ho.hold_id = h.id
+            )
+          )
+        ORDER BY h.created_at ASC
+        LIMIT 1`,
+      [userId],
+    )
+  ).rows[0];
 }
 
 async function writeAuditLog(client, { adminUserId, action, holdId, details }) {
@@ -415,7 +676,9 @@ module.exports = {
   LEGAL_HOLD_LOCK_NAME,
   LEGAL_HOLD_SUBJECT_TYPES,
   createLegalHold,
+  findActiveLegalHoldForAccount,
   listLegalHolds,
+  reconcileActiveLegalHolds,
   releaseLegalHold,
   resolveLegalHoldObjects,
 };

@@ -76,7 +76,7 @@ describe('match query services', () => {
       leaderboard: [{ id: 'u_1', nickname: 'bAlice/b', elo: 1100, matchCount: 4, wins: 3, winRate: 75 }],
     });
     expect(pool.query).toHaveBeenCalledWith(
-      'SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT $1',
+      'SELECT id, nickname, elo, match_count, wins FROM users WHERE deleted_at IS NULL AND match_count > 0 ORDER BY elo DESC LIMIT $1',
       [500],
     );
     expect(sanitizeText).toHaveBeenCalledWith('<b>Alice</b>', 60);

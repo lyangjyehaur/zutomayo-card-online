@@ -1,6 +1,7 @@
 /* global module */
 
 const crypto = require('crypto');
+const { reconcileActiveLegalHolds } = require('./legalHoldService.cjs');
 
 const RETENTION_DAYS = Object.freeze({
   matches: 365,
@@ -48,10 +49,20 @@ function countFromResult(result) {
   return Math.max(0, Number(row.count ?? result?.rowCount ?? 0) || 0);
 }
 
-function activeHoldPredicate(objectType, objectIdExpression) {
+function activeHoldPredicate(objectType, objectIdExpression, accountExpressions = []) {
   // Keep the direct subject fallback for holds created before the expanded
   // mapping table was introduced. New holds are expanded by legalHoldService.
   const type = String(objectType).replace(/[^a-z_]/g, '');
+  const accountScope = accountExpressions.length
+    ? `OR EXISTS (
+           SELECT 1
+             FROM legal_holds account_hold
+            WHERE account_hold.released_at IS NULL
+              AND (account_hold.expires_at IS NULL OR account_hold.expires_at > NOW())
+              AND account_hold.subject_type = 'account'
+              AND account_hold.subject_id IN (${accountExpressions.join(', ')})
+         )`
+    : '';
   return `NOT EXISTS (
     SELECT 1
       FROM legal_holds h
@@ -62,24 +73,28 @@ function activeHoldPredicate(objectType, objectIdExpression) {
          OR EXISTS (
            SELECT 1
              FROM legal_hold_objects ho
-            WHERE ho.hold_id = h.id
+           WHERE ho.hold_id = h.id
               AND ho.object_type = '${type}'
               AND ho.object_id = ${objectIdExpression}
          )
-       )
+         ${accountScope}
+      )
   )`;
 }
 
-function activeHoldForAny(objectType, expressions) {
-  return expressions.map((expression) => activeHoldPredicate(objectType, expression)).join(' AND ');
+function activeHoldForAny(objectType, expressions, accountExpressions = []) {
+  return expressions.map((expression) => activeHoldPredicate(objectType, expression, accountExpressions)).join(' AND ');
 }
 
 function operationDefinitions(cutoffs) {
-  const matchHold = activeHoldPredicate('match', 'm.id');
-  const messageHold = activeHoldForAny('message', ['m.id']);
-  const conversationHold = activeHoldForAny('conversation', ['c.id', 'c.subject_id']);
-  const reportHold = activeHoldForAny('report', ['r.id']);
-  const reportMessageHold = activeHoldForAny('message', ['r.message_id']);
+  const matchAccountScope = ['m.player0_id', 'm.player1_id', 'm.winner_id', 'm.loser_id'];
+  const messageAccountScope = ['m.author_user_id'];
+  const reportAccountScope = ['r.reporter_user_id', 'r.reported_message_author_user_id'];
+  const matchHold = activeHoldForAny('match', ['m.id', 'm.source_match_id'], matchAccountScope);
+  const messageHold = activeHoldForAny('message', ['m.id'], messageAccountScope);
+  const conversationHold = activeHoldForAny('conversation', ['c.id', 'c.subject_id'], messageAccountScope);
+  const reportHold = activeHoldForAny('report', ['r.id'], reportAccountScope);
+  const reportMessageHold = activeHoldForAny('message', ['r.message_id'], reportAccountScope);
 
   return [
     {
@@ -179,8 +194,8 @@ function operationDefinitions(cutoffs) {
         JOIN chat_conversations c ON c.id = m.conversation_id
        WHERE m.created_at < $1
          AND m.retention_anonymized_at IS NOT NULL
-         AND ${activeHoldPredicate('message', 'm.id')}
-         AND ${activeHoldPredicate('conversation', 'c.id')}`,
+         AND ${activeHoldPredicate('message', 'm.id', messageAccountScope)}
+         AND ${activeHoldPredicate('conversation', 'c.id', messageAccountScope)}`,
       mutateSql: `WITH candidates AS (
         SELECT t.message_id, t.target_language
           FROM chat_message_translations t
@@ -188,8 +203,8 @@ function operationDefinitions(cutoffs) {
           JOIN chat_conversations c ON c.id = m.conversation_id
          WHERE m.created_at < $1
            AND m.retention_anonymized_at IS NOT NULL
-           AND ${activeHoldPredicate('message', 'm.id')}
-           AND ${activeHoldPredicate('conversation', 'c.id')}
+           AND ${activeHoldPredicate('message', 'm.id', messageAccountScope)}
+           AND ${activeHoldPredicate('conversation', 'c.id', messageAccountScope)}
          ORDER BY m.created_at ASC
          FOR UPDATE OF t SKIP LOCKED
          LIMIT $2
@@ -364,6 +379,10 @@ async function runRetention({
     let runStarted = false;
     let totalBatches = 0;
     try {
+      // Refresh the relational object snapshot while the global retention
+      // lock is held.  Destructive predicates still use live hold checks, but
+      // this makes future runs auditable and protects newly-arrived evidence.
+      await withTransaction(client, (tx) => reconcileActiveLegalHolds(tx));
       await withTransaction(client, async (tx) => {
         await tx.query(
           `INSERT INTO retention_runs (id, mode, status, started_at, heartbeat_at, batch_count, deleted_counts)

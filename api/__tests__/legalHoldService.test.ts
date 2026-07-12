@@ -2,13 +2,21 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { LEGAL_HOLD_LOCK_NAME, createLegalHold, listLegalHolds, releaseLegalHold } =
-  require('../legalHoldService.cjs') as {
-    LEGAL_HOLD_LOCK_NAME: string;
-    createLegalHold: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
-    listLegalHolds: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
-    releaseLegalHold: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
-  };
+const {
+  LEGAL_HOLD_LOCK_NAME,
+  createLegalHold,
+  findActiveLegalHoldForAccount,
+  listLegalHolds,
+  reconcileActiveLegalHolds,
+  releaseLegalHold,
+} = require('../legalHoldService.cjs') as {
+  LEGAL_HOLD_LOCK_NAME: string;
+  createLegalHold: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  findActiveLegalHoldForAccount: (client: Record<string, unknown>, userId: string) => Promise<Record<string, unknown>>;
+  listLegalHolds: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  reconcileActiveLegalHolds: (client: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  releaseLegalHold: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
+};
 
 function transactionPool(
   handler: (sql: string, params?: unknown[]) => { rows?: Record<string, unknown>[]; rowCount?: number },
@@ -20,6 +28,36 @@ function transactionPool(
 describe('legal hold service', () => {
   it('uses the shared retention lock namespace before expanding a hold', async () => {
     expect(LEGAL_HOLD_LOCK_NAME).toBe('zutomayo:retention-job:v1');
+  });
+
+  it('matches active holds against live account-derived objects', async () => {
+    const pool = transactionPool((sql) =>
+      sql.includes('WITH account_objects') ? { rows: [{ id: 'hold_match', subject_type: 'match' }] } : {},
+    );
+    await expect(findActiveLegalHoldForAccount(pool, 'u_1')).resolves.toMatchObject({ id: 'hold_match' });
+    const sql = pool.query.mock.calls.find(([query]) => String(query).includes('WITH account_objects'))?.[0] as string;
+    expect(sql).toContain('platform_match_participants');
+    expect(sql).toContain('bjg_match_result_outbox');
+    expect(sql).toContain('legal_hold_objects');
+    expect(pool.query).toHaveBeenLastCalledWith(expect.stringContaining('LIMIT 1'), ['u_1']);
+  });
+
+  it('reconciles newly-arrived objects into active hold snapshots', async () => {
+    const pool = transactionPool((sql) => {
+      if (sql.includes('SELECT id, subject_type, subject_id')) {
+        return { rows: [{ id: 'hold_1', subject_type: 'match', subject_id: 'm_1' }] };
+      }
+      if (sql.includes('FROM matches') && sql.includes('FROM bjg_matches')) {
+        return { rows: [{ id: 'm_1', source_match_id: 'source_1' }] };
+      }
+      if (sql.includes('INSERT INTO legal_hold_objects')) return { rowCount: 2 };
+      return {};
+    });
+    await expect(reconcileActiveLegalHolds(pool)).resolves.toEqual({ holdCount: 1, objectCount: 2 });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO legal_hold_objects'), [
+      'hold_1',
+      expect.stringContaining('source_1'),
+    ]);
   });
 
   it('creates a hold and its admin audit entry in one transaction', async () => {

@@ -219,13 +219,22 @@ describe('account lifecycle service', () => {
     });
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining("nickname = 'Deleted Player'"),
-      expect.arrayContaining(['u_1', 'deleted+u_1@invalid.local']),
+      expect.arrayContaining(['u_1', expect.stringMatching(/^deleted\+[a-f0-9]{32}@invalid\.local$/)]),
     );
     expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('DELETE FROM matches'), expect.anything());
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM deck_reservations WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM platform_match_participants WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM platform_room_participants WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM bjg_match_seats WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE bjg_match_result_outbox'), ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE matches'), ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM season_reward_entitlements WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM season_rewards WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM season_ratings WHERE user_id = $1', ['u_1']);
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_messages'), ['u_1']);
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_reports'), ['u_1']);
     expect(pool.query).toHaveBeenCalledWith(
-      expect.stringContaining('reporter_user_id = $1 OR reported_message_author_user_id = $1'),
+      expect.stringContaining('reviewer_user_id = CASE WHEN reviewer_user_id = $1 THEN NULL'),
       ['u_1'],
     );
     expect(pool.query).toHaveBeenCalledWith(
@@ -258,6 +267,25 @@ describe('account lifecycle service', () => {
       expect.stringContaining("nickname = 'Deleted Player'"),
       expect.anything(),
     );
+  });
+
+  it('blocks deletion when a related match is held even without an account hold', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_match' }] };
+      if (sql.includes('WITH account_objects')) {
+        return { rows: [{ id: 'hold_match', subject_type: 'match', subject_id: 'm_1' }] };
+      }
+      return { rows: [] };
+    });
+
+    await expect(deleteAccount({ pool, userId: 'u_match' })).resolves.toEqual({
+      ok: false,
+      status: 409,
+      error: 'Account deletion is suspended by an active legal hold',
+    });
+    expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('DELETE FROM platform_match_participants'), [
+      'u_match',
+    ]);
   });
 
   it('serializes deletion with retention and revokes sessions after hold checks', async () => {

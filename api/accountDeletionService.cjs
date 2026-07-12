@@ -1,6 +1,7 @@
 /* global module, require */
 
 const crypto = require('crypto');
+const { findActiveLegalHoldForAccount } = require('./legalHoldService.cjs');
 
 const RETENTION_LOCK_NAME = 'zutomayo:retention-job:v1';
 const RECOVERABLE_DELETION_STATUSES = ['provider_deleting', 'provider_deleted'];
@@ -45,15 +46,7 @@ async function lockAccountMutation(client, userId) {
 }
 
 async function activeAccountLegalHold(client, userId) {
-  return (
-    await client.query(
-      `SELECT id FROM legal_holds
-       WHERE subject_type = 'account' AND subject_id = $1
-         AND released_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
-       LIMIT 1`,
-      [userId],
-    )
-  ).rows[0];
+  return findActiveLegalHoldForAccount(client, userId);
 }
 
 async function prepareLogtoAccountDeletion({
@@ -68,15 +61,7 @@ async function prepareLogtoAccountDeletion({
 
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [RETENTION_LOCK_NAME]);
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`legal-hold:account:${userId}`]);
-    const activeLegalHold = (
-      await client.query(
-        `SELECT id FROM legal_holds
-         WHERE subject_type = 'account' AND subject_id = $1
-           AND released_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
-         LIMIT 1`,
-        [userId],
-      )
-    ).rows[0];
+    const activeLegalHold = await activeAccountLegalHold(client, userId);
     if (activeLegalHold) {
       return { ok: false, status: 409, error: 'Account deletion is suspended by an active legal hold' };
     }

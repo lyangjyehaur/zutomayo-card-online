@@ -66,6 +66,16 @@ describe('retention service', () => {
     );
   });
 
+  it('protects live account-owned evidence even before snapshot reconciliation', async () => {
+    const pool = createPool();
+    await runRetention({ pool, dryRun: true, runId: 'retention_live_account_scope' });
+    const matchQuery = pool.queries.find(({ sql }) => sql.includes('FROM matches m'))?.sql || '';
+    const chatQuery = pool.queries.find(({ sql }) => sql.includes('FROM chat_messages m'))?.sql || '';
+    expect(matchQuery).toContain("account_hold.subject_type = 'account'");
+    expect(matchQuery).toContain('account_hold.subject_id IN (m.player0_id');
+    expect(chatQuery).toContain('account_hold.subject_id IN (m.author_user_id)');
+  });
+
   it('uses one shared lock key for retention, hold creation, and account deletion', () => {
     expect(LEGAL_HOLD_LOCK_NAME).toBe(RETENTION_LOCK_NAME);
     expect(RETENTION_LOCK_NAME).toBe('zutomayo:retention-job:v1');

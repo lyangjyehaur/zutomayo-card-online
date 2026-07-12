@@ -49,7 +49,7 @@ async function getLeaderboard(pool, limitParam, sanitizeText) {
   const limit = clampLimit(limitParam, 100, 500);
   const entries = (
     await pool.query(
-      'SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT $1',
+      'SELECT id, nickname, elo, match_count, wins FROM users WHERE deleted_at IS NULL AND match_count > 0 ORDER BY elo DESC LIMIT $1',
       [limit],
     )
   ).rows;

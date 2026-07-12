@@ -1,6 +1,7 @@
 /* global module, require */
 
 const crypto = require('crypto');
+const { findActiveLegalHoldForAccount } = require('./legalHoldService.cjs');
 
 const ACCOUNT_ACTIONS = new Set(['verify_email', 'reset_password']);
 const DEFAULT_TOKEN_TTL_SECONDS = 30 * 60;
@@ -418,15 +419,7 @@ async function deleteAccount({
     // could otherwise remove or inspect the account's evidence concurrently.
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['zutomayo:retention-job:v1']);
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`legal-hold:account:${userId}`]);
-    const activeLegalHold = (
-      await client.query(
-        `SELECT id FROM legal_holds
-         WHERE subject_type = 'account' AND subject_id = $1
-           AND released_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
-         LIMIT 1`,
-        [userId],
-      )
-    ).rows[0];
+    const activeLegalHold = await findActiveLegalHoldForAccount(client, userId);
     if (activeLegalHold) {
       return { ok: false, status: 409, error: 'Account deletion is suspended by an active legal hold' };
     }
@@ -481,14 +474,77 @@ async function deleteAccount({
     if (typeof beforeDelete === 'function') await beforeDelete();
 
     await client.query('DELETE FROM user_identities WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM deck_reservations WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM decks WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM user_friends WHERE user_id = $1 OR friend_user_id = $1', [userId]);
     await client.query('DELETE FROM friend_requests WHERE requester_user_id = $1 OR recipient_user_id = $1', [userId]);
     await client.query('DELETE FROM user_blocks WHERE blocker_user_id = $1 OR blocked_user_id = $1', [userId]);
     await client.query('DELETE FROM account_action_tokens WHERE user_id = $1', [userId]);
+    // These rows are live access/session evidence, not immutable match
+    // history. Remove them so a tombstoned account cannot remain discoverable
+    // through platform presence, room membership, or a reconnect credential.
+    await client.query('DELETE FROM platform_match_participants WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM platform_room_participants WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM bjg_match_seats WHERE user_id = $1', [userId]);
+    // A result outbox row may still be pending when the provider deletion
+    // finishes. Preserve the delivery audit row, but make it explicitly
+    // unrated and remove all account identities so a retry cannot recreate a
+    // personal result after deletion.
+    await client.query(
+      `UPDATE bjg_match_result_outbox
+          SET player0_user_id = CASE WHEN player0_user_id = $1 THEN NULL ELSE player0_user_id END,
+              player1_user_id = CASE WHEN player1_user_id = $1 THEN NULL ELSE player1_user_id END,
+              winner_user_id = CASE WHEN winner_user_id = $1 THEN NULL ELSE winner_user_id END,
+              loser_user_id = CASE WHEN loser_user_id = $1 THEN NULL ELSE loser_user_id END,
+              ranked_eligible = FALSE,
+              status = CASE WHEN status IN ('pending', 'processing') THEN 'unrated' ELSE status END,
+              action_log = '[]'::jsonb,
+              last_error = CASE
+                WHEN status IN ('pending', 'processing') THEN 'account deleted before result delivery'
+                ELSE last_error
+              END,
+              updated_at = NOW()
+        WHERE player0_user_id = $1 OR player1_user_id = $1
+           OR winner_user_id = $1 OR loser_user_id = $1`,
+      [userId],
+    );
+    // Canonical matches retain the opponent's history, but no longer retain
+    // this account's identity. Mark the row fully anonymized only when every
+    // participant identity has been removed; retention can then safely skip it.
+    await client.query(
+      `WITH touched AS (
+             SELECT id
+               FROM matches
+              WHERE player0_id = $1 OR player1_id = $1 OR winner_id = $1 OR loser_id = $1
+           ), cleared AS (
+             UPDATE matches m
+                SET player0_id = CASE WHEN m.player0_id = $1 THEN NULL ELSE m.player0_id END,
+                    player1_id = CASE WHEN m.player1_id = $1 THEN NULL ELSE m.player1_id END,
+                    winner_id = CASE WHEN m.winner_id = $1 THEN NULL ELSE m.winner_id END,
+                    loser_id = CASE WHEN m.loser_id = $1 THEN NULL ELSE m.loser_id END
+               FROM touched
+              WHERE m.id = touched.id
+           RETURNING m.id
+           )
+       UPDATE matches m
+          SET anonymized_at = COALESCE(m.anonymized_at, NOW())
+         FROM cleared
+        WHERE m.id = cleared.id
+          AND m.anonymized_at IS NULL
+          AND m.player0_id IS NULL AND m.player1_id IS NULL
+          AND m.winner_id IS NULL AND m.loser_id IS NULL`,
+      [userId],
+    );
+    // Ratings/rewards are account-derived profile data. Immutable
+    // season_match_results remain as audit evidence and are filtered from
+    // public views through the users.deleted_at contract.
+    await client.query('DELETE FROM season_reward_entitlements WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM season_rewards WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM season_ratings WHERE user_id = $1', [userId]);
     // This value is also used by legacy feedback ownership checks. Make it
     // unpredictable even though deleted authors no longer receive it.
-    const anonymousRef = `deleted-${crypto.randomBytes(16).toString('hex')}`;
+    const tombstoneRef = crypto.randomBytes(16).toString('hex');
+    const anonymousRef = `deleted-${tombstoneRef}`;
     await client.query(
       `UPDATE chat_messages
        SET author_user_id = NULL, author_display_name = 'Deleted Player', content = '[redacted]',
@@ -499,6 +555,7 @@ async function deleteAccount({
     await client.query(
       `UPDATE chat_reports
        SET reporter_user_id = CASE WHEN reporter_user_id = $1 THEN NULL ELSE reporter_user_id END,
+           reviewer_user_id = CASE WHEN reviewer_user_id = $1 THEN NULL ELSE reviewer_user_id END,
            reported_message_author_user_id = CASE
              WHEN reported_message_author_user_id = $1 THEN NULL
              ELSE reported_message_author_user_id
@@ -507,7 +564,9 @@ async function deleteAccount({
              WHEN reported_message_author_user_id = $1 THEN 'Deleted Player'
              ELSE reported_message_author_display_name
            END
-       WHERE reporter_user_id = $1 OR reported_message_author_user_id = $1`,
+       WHERE reporter_user_id = $1
+          OR reviewer_user_id = $1
+          OR reported_message_author_user_id = $1`,
       [userId],
     );
     await client.query('UPDATE chat_moderation_events SET actor_user_id = NULL WHERE actor_user_id = $1', [userId]);
@@ -537,9 +596,12 @@ async function deleteAccount({
            salt = '',
            email_verified = FALSE,
            auth_version = auth_version + 1,
+           elo = 1000,
+           match_count = 0,
+           wins = 0,
            deleted_at = NOW()
        WHERE id = $1`,
-      [userId, `deleted+${userId}@invalid.local`, `deleted:${crypto.randomBytes(24).toString('hex')}`],
+      [userId, `deleted+${tombstoneRef}@invalid.local`, `deleted:${crypto.randomBytes(24).toString('hex')}`],
     );
     if (deletionRequest) {
       await client.query(
