@@ -756,7 +756,7 @@ async function bootstrap(): Promise<void> {
       };
       const io = transport.io;
       if (io) {
-        const MAX_CONN_PER_IP = 10;
+        const MAX_CONN_PER_IP = Number(process.env.MAX_CONN_PER_IP) || 10;
         const connectionsPerIp = new Map<string, number>();
         io.on('connection', (socket: SocketLike) => {
           const ip = socket.handshake.address;
