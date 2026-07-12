@@ -607,6 +607,8 @@ GHCR 登入使用內建 `GITHUB_TOKEN`（`packages: write` permission）。在 s
 
 CD pipeline 使用 GitHub Actions cache（`type=gha`）加速 build。每個服務（game / api / platform）使用獨立的 cache scope，game 與 platform 共用相同 Dockerfile 但 cache 獨立管理。
 
+共用 Dockerfile 的 runtime stage 以 `npm ci --omit=dev --ignore-scripts` 安裝 production dependencies，避免在未安裝 devDependencies 的映像中觸發 Husky 等開發期 lifecycle scripts；builder stage 仍執行完整的 `npm ci`。
+
 ### GitHub Release
 
 Push tag `v*` 時自動建立 GitHub Release（使用 `softprops/action-gh-release`），含自動產生的 changelog。預發布版本（tag 含 `-rc` / `-beta` / `-alpha`）標記為 prerelease。

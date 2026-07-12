@@ -53,7 +53,7 @@ ARG GAME_RULES_VERSION
 ARG SENTRY_DSN=
 # node:22-alpine 已內建非 root 的 node 使用者
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/data ./data

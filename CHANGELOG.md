@@ -35,6 +35,7 @@
 - **聊天權限**：收緊好友、對局與房間參與者 ACL，拒絕匿名持久聊天、角色冒用、文字 preview 旁路與無證據舉報。
 - **安全性**：refresh token 改用 Redis `GETDEL` 原子輪替，加入雙提交 CSRF、獨立 OAuth token 金鑰、Redis 密碼與 trusted proxy allowlist，並強化 seat token 與管理操作證據。
 - **平台健康度**：platform `/health` 實際檢查 PostgreSQL／Redis，相應部署 smoke 驗證 HTTP readiness 與 lobby WebSocket join/leave。
+- **CD 映像建置**：runtime production dependencies 安裝時停用 lifecycle scripts，避免缺少 dev-only Husky 導致 game／platform image build 失敗。
 
 ## [0.1.3] - 2026-07-09
 

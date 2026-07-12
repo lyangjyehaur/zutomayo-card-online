@@ -6,6 +6,12 @@ function readRepoFile(path: string): string {
 }
 
 describe('platform deployment config', () => {
+  it('does not run dev-only lifecycle hooks in the production image', () => {
+    const dockerfile = readRepoFile('Dockerfile');
+
+    expect(dockerfile).toContain('npm ci --omit=dev --ignore-scripts');
+  });
+
   it('enables durable platform stores in production compose', () => {
     const compose = readRepoFile('docker-compose.yml');
 
