@@ -109,6 +109,31 @@ describe('match result outbox worker', () => {
     );
   });
 
+  it('terminally marks a result unrated when a participant was deleted before delivery', async () => {
+    const row = outboxRow();
+    const claim = vi.fn(async () => ({ rows: [row] }));
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.startsWith('SELECT *')) return { rows: [row], rowCount: 1 };
+        if (sql.startsWith('SELECT id, elo')) {
+          return { rows: [{ id: 'u_bob', elo: 1000, deleted_at: null }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 1 };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { query: claim, connect: vi.fn(async () => client) } as never;
+
+    await expect(processMatchResultOutboxBatch({ pool })).resolves.toEqual({
+      claimed: 1,
+      delivered: 0,
+      retried: 0,
+    });
+    expect(client.query).toHaveBeenCalledWith(expect.stringContaining("status = 'unrated'"), ['match_1']);
+    expect(client.query).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE users'), expect.anything());
+    expect(client.query).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO matches'), expect.anything());
+  });
+
   it('retains delivery failures as pending rows with a retry timestamp', async () => {
     const row = outboxRow();
     const claim = vi.fn(async () => ({ rows: [row] }));

@@ -12,6 +12,13 @@ import {
 } from './observability/metrics';
 
 const require = createRequire(import.meta.url);
+const { acquireAccountMutationLocks } = require('../../api/accountMutationLock.cjs') as {
+  acquireAccountMutationLocks: (
+    client: PoolClient,
+    userIds: string[],
+    options?: { includeRetention?: boolean; requireLiveUsers?: boolean },
+  ) => Promise<QueryResultRow[]>;
+};
 const { applyCanonicalSeasonResult } = require('../../api/seasonResultService.cjs') as {
   applyCanonicalSeasonResult: (input: {
     client: PoolClient;
@@ -267,17 +274,54 @@ async function withTransaction<T>(pool: Pool, fn: (client: PoolClient) => Promis
   }
 }
 
-async function deliverOutboxRow(pool: Pool, row: MatchResultOutboxRow, generateMatchId: () => string): Promise<void> {
-  await withTransaction(pool, async (client) => {
+async function deliverOutboxRow(
+  pool: Pool,
+  row: MatchResultOutboxRow,
+  generateMatchId: () => string,
+): Promise<'delivered' | 'unrated' | 'skipped'> {
+  return withTransaction(pool, async (client) => {
+    // Read the identity before taking the outbox row lock. Account locks must
+    // precede business-row locks so deletion and delivery cannot deadlock.
+    const preview = await client.query<MatchResultOutboxRow>(
+      `SELECT *
+         FROM bjg_match_result_outbox
+        WHERE source_match_id = $1
+        `,
+      [row.source_match_id],
+    );
+    const previewRow = preview.rows[0];
+    if (!previewRow || previewRow.status !== 'processing') return 'skipped';
+    if (
+      !previewRow.ranked_eligible ||
+      !previewRow.player0_user_id ||
+      !previewRow.player1_user_id ||
+      !previewRow.winner_user_id ||
+      !previewRow.loser_user_id ||
+      previewRow.winner_user_id === previewRow.loser_user_id
+    ) {
+      throw new Error('Outbox row is not a valid ranked canonical result');
+    }
+    const userIds = [previewRow.winner_user_id, previewRow.loser_user_id].sort();
+    await acquireAccountMutationLocks(client, userIds, { requireLiveUsers: false });
+    const users = await client.query<UserRatingRow & { deleted_at?: Date | string | null }>(
+      `SELECT id, elo, deleted_at
+         FROM users
+        WHERE id = ANY($1::text[])
+        ORDER BY id
+        FOR UPDATE`,
+      [userIds],
+    );
+
     const locked = await client.query<MatchResultOutboxRow>(
       `SELECT *
          FROM bjg_match_result_outbox
         WHERE source_match_id = $1
+          AND status = 'processing'
         FOR UPDATE`,
       [row.source_match_id],
     );
     const current = locked.rows[0];
-    if (!current || current.status !== 'processing') return;
+    if (!current || current.status !== 'processing') return 'skipped';
     if (
       !current.ranked_eligible ||
       !current.player0_user_id ||
@@ -289,18 +333,25 @@ async function deliverOutboxRow(pool: Pool, row: MatchResultOutboxRow, generateM
       throw new Error('Outbox row is not a valid ranked canonical result');
     }
 
-    const userIds = [current.winner_user_id, current.loser_user_id].sort();
-    const users = await client.query<UserRatingRow>(
-      `SELECT id, elo
-         FROM users
-        WHERE id = ANY($1::text[])
-        ORDER BY id
-        FOR UPDATE`,
-      [userIds],
-    );
     const winner = users.rows.find((user) => user.id === current.winner_user_id);
     const loser = users.rows.find((user) => user.id === current.loser_user_id);
-    if (!winner || !loser) throw new Error('Ranked participant account no longer exists');
+    if (!winner || !loser || winner.deleted_at || loser.deleted_at) {
+      await client.query(
+        `UPDATE bjg_match_result_outbox
+            SET status = 'unrated',
+                ranked_eligible = FALSE,
+                player0_user_id = NULL,
+                player1_user_id = NULL,
+                winner_user_id = NULL,
+                loser_user_id = NULL,
+                locked_at = NULL,
+                last_error = 'account deleted before result delivery',
+                updated_at = NOW()
+          WHERE source_match_id = $1 AND status = 'processing'`,
+        [row.source_match_id],
+      );
+      return 'unrated';
+    }
 
     const winnerNewElo = calculateElo(Number(winner.elo), Number(loser.elo), 1);
     const loserNewElo = calculateElo(Number(loser.elo), Number(winner.elo), 0);
@@ -390,6 +441,7 @@ async function deliverOutboxRow(pool: Pool, row: MatchResultOutboxRow, generateM
         WHERE source_match_id = $1`,
       [current.source_match_id, deliveredMatchId],
     );
+    return 'delivered';
   });
 }
 
@@ -427,10 +479,12 @@ export async function processMatchResultOutboxBatch({
   let retried = 0;
   for (const row of rows) {
     try {
-      await deliverOutboxRow(pool, row, generateMatchId);
-      delivered++;
-      matchResultOutboxProcessedTotal.labels('delivered').inc();
-      gameMatchCompletionsTotal.labels('ranked', row.winner_player === null ? 'draw' : 'winner').inc();
+      const outcome = await deliverOutboxRow(pool, row, generateMatchId);
+      matchResultOutboxProcessedTotal.labels(outcome).inc();
+      if (outcome === 'delivered') {
+        delivered++;
+        gameMatchCompletionsTotal.labels('ranked', row.winner_player === null ? 'draw' : 'winner').inc();
+      }
     } catch (err) {
       await retainOutboxFailure(pool, row, err, baseRetryMs, maxRetryMs);
       retried++;

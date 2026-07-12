@@ -8,9 +8,18 @@ type MockClient = {
   release: ReturnType<typeof vi.fn>;
 };
 
-function mockClient(handler?: (sql: string, params?: unknown[]) => Promise<unknown>): MockClient {
+function mockClient(
+  handler?: (sql: string, params?: unknown[]) => Promise<unknown>,
+  accountRow: Record<string, unknown> | null = { deleted_at: null, elo: 1000 },
+): MockClient {
   return {
-    query: vi.fn(async (sql: string, params?: unknown[]) => handler?.(sql, params) ?? { rows: [], rowCount: 1 }),
+    query: vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+        const row = accountRow ? { id: params?.[0], ...accountRow } : null;
+        return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      }
+      return handler?.(sql, params) ?? { rows: [], rowCount: 1 };
+    }),
     release: vi.fn(),
   };
 }
@@ -238,6 +247,30 @@ describe('PostgresAdapter trust-chain transactions', () => {
       expect.any(String),
     ]);
     expect(transactionClient.query).toHaveBeenLastCalledWith('COMMIT');
+  });
+
+  it('rejects a deleted account before locking or writing the match seat', async () => {
+    const schemaClient = mockClient();
+    const transactionClient = mockClient(undefined, {
+      deleted_at: '2026-07-13T00:00:00.000Z',
+      elo: 1000,
+    });
+    const pool = mockPool([schemaClient, transactionClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+
+    await expect(
+      adapter.reserveMatchSeat({
+        matchID: 'match_1',
+        playerID: '0',
+        playerName: 'Deleted',
+        playerData: { userId: 'u_deleted', identitySource: 'server' },
+        userId: 'u_deleted',
+        rankedEligible: true,
+        credentials: 'credential-deleted',
+      }),
+    ).rejects.toMatchObject({ reason: 'identity_mismatch' });
+    expect(transactionClient.query.mock.calls.some(([sql]) => String(sql).includes('FROM bjg_matches'))).toBe(false);
+    expect(transactionClient.query).toHaveBeenCalledWith('ROLLBACK');
   });
 
   it('rejects a duplicate identity before mutating metadata', async () => {

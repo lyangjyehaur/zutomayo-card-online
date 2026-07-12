@@ -14,6 +14,14 @@ const { assertRuntimeSchema } = require('../../../api/schemaGate.cjs') as {
     expectedChecksum: string | undefined;
   }) => Promise<{ expectedMigration: string; expectedChecksum: string }>;
 };
+const { AccountMutationError, acquireAccountMutationLocks } = require('../../../api/accountMutationLock.cjs') as {
+  AccountMutationError: new (userIds: string[]) => Error;
+  acquireAccountMutationLocks: (
+    client: PoolClient,
+    userIds: string[],
+    options?: { includeRetention?: boolean; requireLiveUsers?: boolean },
+  ) => Promise<QueryResultRow[]>;
+};
 
 /**
  * boardgame.io StorageAPI.Async 的 Postgres 實作。
@@ -490,6 +498,14 @@ export class PostgresAdapter {
   /** Atomically reserves a boardgame seat across all game replicas. */
   async reserveMatchSeat(input: ReserveMatchSeatInput): Promise<ReservedMatchSeat> {
     return this.withTransaction(async (client) => {
+      try {
+        await acquireAccountMutationLocks(client, [input.userId]);
+      } catch (error) {
+        if (error instanceof AccountMutationError) {
+          throw new MatchSeatReservationError('identity_mismatch', 'Account is deleted or unavailable');
+        }
+        throw error;
+      }
       const result = await client.query<MatchRow>(
         `SELECT match_id, state, initial_state, metadata
            FROM bjg_matches
@@ -594,6 +610,16 @@ export class PostgresAdapter {
    */
   async resumeMatchSeat(input: ResumeMatchSeatInput): Promise<ReservedMatchSeat> {
     return this.withTransaction(async (client) => {
+      if (input.authenticatedUserId) {
+        try {
+          await acquireAccountMutationLocks(client, [input.authenticatedUserId]);
+        } catch (error) {
+          if (error instanceof AccountMutationError) {
+            throw new MatchSeatReservationError('identity_mismatch', 'Account is deleted or unavailable');
+          }
+          throw error;
+        }
+      }
       const result = await client.query<MatchRow>(
         `SELECT match_id, metadata
            FROM bjg_matches
@@ -676,6 +702,14 @@ export class PostgresAdapter {
   /** Bind a server-owned deck to a seat before the first move is accepted. */
   async bindDeckReservation(input: BindDeckReservationInput): Promise<void> {
     await this.withTransaction(async (client) => {
+      try {
+        await acquireAccountMutationLocks(client, [input.userId]);
+      } catch (error) {
+        if (error instanceof AccountMutationError) {
+          throw new MatchSeatReservationError('identity_mismatch', 'Account is deleted or unavailable');
+        }
+        throw error;
+      }
       const row = (
         await client.query<MatchRow>(
           `SELECT match_id, state, initial_state, metadata
@@ -1069,16 +1103,29 @@ export class PostgresAdapter {
         ORDER BY player_id`,
       [matchID],
     );
-    const player0 = seats.rows.find((seat) => seat.player_id === '0');
-    const player1 = seats.rows.find((seat) => seat.player_id === '1');
-    const winner = result.winnerPlayer === 0 ? player0 : result.winnerPlayer === 1 ? player1 : undefined;
-    const loser = result.winnerPlayer === 0 ? player1 : result.winnerPlayer === 1 ? player0 : undefined;
+    let player0 = seats.rows.find((seat) => seat.player_id === '0');
+    let player1 = seats.rows.find((seat) => seat.player_id === '1');
+    let winner = result.winnerPlayer === 0 ? player0 : result.winnerPlayer === 1 ? player1 : undefined;
+    let loser = result.winnerPlayer === 0 ? player1 : result.winnerPlayer === 1 ? player0 : undefined;
+    let accountDeleted = false;
+    const accountIds = [player0?.user_id, player1?.user_id].filter((userId): userId is string => Boolean(userId));
+    try {
+      await acquireAccountMutationLocks(queryable as PoolClient, accountIds);
+    } catch (error) {
+      if (!(error instanceof AccountMutationError)) throw error;
+      accountDeleted = true;
+      player0 = undefined;
+      player1 = undefined;
+      winner = undefined;
+      loser = undefined;
+    }
     const rankedEligible = Boolean(
       winner && loser && winner.ranked_eligible && loser.ranked_eligible && winner.user_id !== loser.user_id,
     );
     const status = rankedEligible && this.rankedMatchesEnabled ? 'pending' : 'unrated';
-    const unratedReason =
-      rankedEligible && !this.rankedMatchesEnabled
+    const unratedReason = accountDeleted
+      ? 'account_deleted'
+      : rankedEligible && !this.rankedMatchesEnabled
         ? 'ranked_disabled'
         : result.winnerPlayer === null
           ? 'draw_or_missing_winner'

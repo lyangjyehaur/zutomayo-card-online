@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { findActiveLegalHoldForAccount } = require('./legalHoldService.cjs');
+const { AccountMutationError, acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
 
 const ACCOUNT_ACTIONS = new Set(['verify_email', 'reset_password']);
 const DEFAULT_TOKEN_TTL_SECONDS = 30 * 60;
@@ -411,14 +412,15 @@ async function deleteAccount({
     return { ok: false, status: 401, error: 'Recent password verification required' };
   }
   return withTransaction(pool, async (client) => {
-    const user = (await client.query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [userId]))
-      .rows[0];
-    if (!user) return { ok: false, status: 404, error: 'User not found' };
     // Retention holds a session-level lock for the whole pruning run. Taking
     // the same lock here prevents a delete from racing a retention batch that
     // could otherwise remove or inspect the account's evidence concurrently.
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['zutomayo:retention-job:v1']);
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`legal-hold:account:${userId}`]);
+    try {
+      await acquireAccountMutationLocks(client, [userId], { includeRetention: true });
+    } catch (error) {
+      if (error instanceof AccountMutationError) return { ok: false, status: 404, error: 'User not found' };
+      throw error;
+    }
     const activeLegalHold = await findActiveLegalHoldForAccount(client, userId);
     if (activeLegalHold) {
       return { ok: false, status: 409, error: 'Account deletion is suspended by an active legal hold' };

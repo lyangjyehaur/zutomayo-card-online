@@ -5,8 +5,13 @@ import {
 } from '../platform/matchParticipantStore';
 
 function mockParticipantPool() {
+  const query = vi.fn<(sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>>(
+    async (sql, params) =>
+      sql.includes('FROM users') ? { rows: [{ id: params?.[0], deleted_at: null }] } : { rows: [] },
+  );
   return {
-    query: vi.fn<(sql: string, params?: unknown[]) => Promise<{ rows: [] }>>(async () => ({ rows: [] })),
+    query,
+    connect: vi.fn(async () => ({ query, release: vi.fn() })),
   };
 }
 
@@ -43,8 +48,9 @@ describe('platform match participant store', () => {
       'Spectator',
       false,
     ]);
-    expect(pool.query.mock.calls[0]?.[0]).toContain("WHEN platform_match_participants.role = 'player' THEN 'player'");
-    expect(pool.query.mock.calls[0]?.[0]).toContain(
+    const insert = pool.query.mock.calls.find(([sql]) => String(sql).includes('platform_match_participants'));
+    expect(insert?.[0]).toContain("WHEN platform_match_participants.role = 'player' THEN 'player'");
+    expect(insert?.[0]).toContain(
       'boardgame_player_id = COALESCE(platform_match_participants.boardgame_player_id, EXCLUDED.boardgame_player_id)',
     );
   });
@@ -67,6 +73,27 @@ describe('platform match participant store', () => {
     expect(pool.query).not.toHaveBeenCalled();
   });
 
+  it('does not recreate participant evidence for a deleted account', async () => {
+    const query = vi.fn(async (sql: string, params?: unknown[]) =>
+      sql.includes('FROM users')
+        ? { rows: [{ id: params?.[0], deleted_at: '2026-07-13T00:00:00.000Z' }] }
+        : { rows: [] },
+    );
+    const pool = {
+      query,
+      connect: vi.fn(async () => ({ query, release: vi.fn() })),
+    };
+    const store = createPostgresPlatformMatchParticipantStore(pool);
+
+    await expect(
+      store.recordParticipant({ boardgameMatchID: 'bgio-match-1', userId: 'u_deleted', role: 'spectator' }),
+    ).rejects.toMatchObject({ code: 'ACCOUNT_DELETED' });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO platform_match_participants'))).toBe(
+      false,
+    );
+    expect(query).toHaveBeenCalledWith('ROLLBACK');
+  });
+
   it('records account-backed custom-room participants', async () => {
     const pool = mockParticipantPool();
     const store = createPostgresPlatformMatchParticipantStore(pool);
@@ -85,7 +112,8 @@ describe('platform match participant store', () => {
       'Player',
       false,
     ]);
-    expect(pool.query.mock.calls[0]?.[0]).toContain("WHEN platform_room_participants.role = 'player' THEN 'player'");
+    const insert = pool.query.mock.calls.find(([sql]) => String(sql).includes('platform_room_participants'));
+    expect(insert?.[0]).toContain("WHEN platform_room_participants.role = 'player' THEN 'player'");
   });
 
   it('does not persist anonymous custom-room presence as chat evidence', async () => {

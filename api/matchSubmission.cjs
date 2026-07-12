@@ -4,6 +4,7 @@
 const crypto = require('crypto');
 const { normalizeWinnerPlayer, verifyBoardgameMatchResult } = require('./matchVerification.cjs');
 const { applyCanonicalSeasonResult } = require('./seasonResultService.cjs');
+const { AccountMutationError, acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
 
 function calculateElo(ratingA, ratingB, scoreA) {
   const K = 32;
@@ -90,16 +91,30 @@ async function submitMatchResult({
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await acquireAccountMutationLocks(client, [resolvedWinnerId, resolvedLoserId], { requireLiveUsers: false });
+    let lockedUsers;
     if (cleanSourceMatchId) {
       const existing = (
         await client.query(
           `SELECT id, winner_elo_change, loser_elo_change, winner_id, loser_id,
                   completed_at, rules_version
-             FROM matches WHERE source_match_id = $1 FOR UPDATE`,
+             FROM matches WHERE source_match_id = $1`,
           [cleanSourceMatchId],
         )
       ).rows[0];
       if (existing) {
+        try {
+          lockedUsers = await acquireAccountMutationLocks(client, [
+            existing.winner_id || resolvedWinnerId,
+            existing.loser_id || resolvedLoserId,
+          ]);
+        } catch (error) {
+          if (error instanceof AccountMutationError) {
+            await client.query('COMMIT');
+            return existingMatchResponse(existing);
+          }
+          throw error;
+        }
         const seasonResult = await applyCanonicalSeasonResult({
           client,
           sourceMatchId: cleanSourceMatchId,
@@ -117,8 +132,18 @@ async function submitMatchResult({
       }
     }
 
-    const winner = (await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [resolvedWinnerId])).rows[0];
-    const loser = (await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [resolvedLoserId])).rows[0];
+    try {
+      lockedUsers = await acquireAccountMutationLocks(client, [resolvedWinnerId, resolvedLoserId]);
+    } catch (error) {
+      if (error instanceof AccountMutationError) {
+        await client.query('ROLLBACK');
+        return { ok: false, status: 409, error: 'Ranked participants no longer exist' };
+      }
+      throw error;
+    }
+
+    const winner = lockedUsers.find((user) => user.id === resolvedWinnerId);
+    const loser = lockedUsers.find((user) => user.id === resolvedLoserId);
 
     if (cleanSourceMatchId && (!winner || !loser)) {
       await client.query('ROLLBACK');

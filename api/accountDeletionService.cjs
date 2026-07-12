@@ -2,8 +2,8 @@
 
 const crypto = require('crypto');
 const { findActiveLegalHoldForAccount } = require('./legalHoldService.cjs');
+const { AccountMutationError, acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
 
-const RETENTION_LOCK_NAME = 'zutomayo:retention-job:v1';
 const RECOVERABLE_DELETION_STATUSES = ['provider_deleting', 'provider_deleted'];
 const TOMBSTONE_DELETION_STATUSES = ['provider_deleting', 'provider_deleted', 'completed'];
 const ACTIVE_DELETION_STATUSES = ['prepared', 'provider_deleting', 'provider_deleted', 'provider_failed'];
@@ -38,11 +38,9 @@ function mapDeletionRequest(row) {
 }
 
 async function lockAccountMutation(client, userId) {
-  // Every irreversible account/retention/legal-hold operation takes these
-  // locks in the same order. This serializes a provider deletion with a
-  // legal-hold decision and the local anonymization transaction.
-  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [RETENTION_LOCK_NAME]);
-  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`legal-hold:account:${userId}`]);
+  // Provider state transitions do not mutate local account rows, so retain
+  // the historical advisory-only contract while using the shared order.
+  await acquireAccountMutationLocks(client, [userId], { includeRetention: true, requireLiveUsers: false });
 }
 
 async function activeAccountLegalHold(client, userId) {
@@ -55,12 +53,12 @@ async function prepareLogtoAccountDeletion({
   generateId = () => `account_delete_${crypto.randomBytes(12).toString('hex')}`,
 }) {
   return withTransaction(pool, async (client) => {
-    const user = (await client.query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [userId]))
-      .rows[0];
-    if (!user) return { ok: false, status: 404, error: 'User not found' };
-
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [RETENTION_LOCK_NAME]);
-    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`legal-hold:account:${userId}`]);
+    try {
+      await acquireAccountMutationLocks(client, [userId], { includeRetention: true });
+    } catch (error) {
+      if (error instanceof AccountMutationError) return { ok: false, status: 404, error: 'User not found' };
+      throw error;
+    }
     const activeLegalHold = await activeAccountLegalHold(client, userId);
     if (activeLegalHold) {
       return { ok: false, status: 409, error: 'Account deletion is suspended by an active legal hold' };
