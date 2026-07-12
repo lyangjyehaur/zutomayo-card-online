@@ -898,6 +898,91 @@ describe('server routes', () => {
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader', 'u_stranger']);
     });
 
+    it('rejects direct read, translation, and report routes for non-friends', async () => {
+      const directSubjectId = 'v1:u_reader:u_stranger';
+      const directConversationId = 'direct:v1:u_reader:u_stranger';
+      const directMessageId = 'chat_msg_direct_stranger';
+
+      mockQuery.mockReset();
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const readRes = await sendRequest(
+        'POST',
+        '/api/chat/read',
+        {
+          conversationType: 'direct',
+          subjectId: directSubjectId,
+          lastReadMessageId: directMessageId,
+        },
+        userUnsafeHeaders('u_reader'),
+      );
+      expect(readRes.statusCode).toBe(403);
+      expect(parseBody(readRes)).toEqual({ error: 'Forbidden' });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader', 'u_stranger']);
+      expect(mockQuery).not.toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO chat_read_states'),
+        expect.any(Array),
+      );
+
+      const directMessageRow = {
+        id: directMessageId,
+        conversation_id: directConversationId,
+        content: 'private direct message',
+        source_language: 'ja',
+        type: 'direct',
+        subject_id: directSubjectId,
+      };
+
+      mockQuery.mockReset();
+      mockQuery
+        .mockResolvedValueOnce({ rows: [directMessageRow], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const translateRes = await sendRequest(
+        'POST',
+        `/api/chat/messages/${directMessageId}/translate`,
+        { targetLanguage: 'en' },
+        userUnsafeHeaders('u_reader'),
+      );
+      expect(translateRes.statusCode).toBe(403);
+      expect(parseBody(translateRes)).toEqual({ error: 'Forbidden' });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader', 'u_stranger']);
+      expect(mockQuery).not.toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO chat_message_translations'),
+        expect.any(Array),
+      );
+
+      mockQuery.mockReset();
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              ...directMessageRow,
+              author_user_id: 'u_stranger',
+              author_display_name: 'Stranger',
+              author_role: 'player',
+              moderation_status: 'visible',
+              created_at: '2026-07-10T00:00:01.000Z',
+              conversation_type: 'direct',
+              conversation_subject_id: directSubjectId,
+            },
+          ],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const reportRes = await sendRequest(
+        'POST',
+        `/api/chat/messages/${directMessageId}/report`,
+        { reason: 'abuse' },
+        userUnsafeHeaders('u_reader'),
+      );
+      expect(reportRes.statusCode).toBe(403);
+      expect(parseBody(reportRes)).toEqual({ error: 'Forbidden' });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader', 'u_stranger']);
+      expect(mockQuery).not.toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO chat_reports'),
+        expect.any(Array),
+      );
+    });
+
     it('POST /api/chat/messages rejects client-reported moderator roles', async () => {
       mockQuery.mockReset();
 
