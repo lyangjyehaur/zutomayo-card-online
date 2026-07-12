@@ -22,6 +22,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private status: QuickMatchStatus = 'waiting';
   private hostSessionId?: string;
   private boardgameMatchID?: string;
+  private authenticatedUserIds = new Set<string>();
 
   async onCreate(): Promise<void> {
     this.autoDispose = true;
@@ -51,9 +52,11 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     const auth = authenticatePlatformClient(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
     if (this.status !== 'waiting') throw new Error('Quick match is not joinable');
-    if (this.clients.some((client) => client.userData?.userId === auth.userId)) {
+    // 在 onAuth 階段原子標記 userId，避免 onJoin 前的 TOCTOU 競爭讓同一使用者重複加入。
+    if (this.authenticatedUserIds.has(auth.userId)) {
       throw new Error('Already queued');
     }
+    this.authenticatedUserIds.add(auth.userId);
     return { ...auth, role: 'player' };
   }
 
@@ -85,6 +88,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
+    this.authenticatedUserIds.delete(client.userData?.userId);
     if (this.status === 'matched' && client.sessionId !== this.hostSessionId) {
       await this.refreshMetadata(client.sessionId);
       return;
