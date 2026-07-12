@@ -1641,7 +1641,7 @@ export function OnlineLobbyPage({
             </Panel>
 
             {profile && (
-              <Panel variant="ghost">
+              <Panel variant="ghost" data-chat-surface="unread">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <MessageCircle className="size-4 shrink-0 text-accent-primary/80" strokeWidth={1.25} />
@@ -1696,6 +1696,8 @@ export function OnlineLobbyPage({
                         <button
                           key={conversation.id}
                           type="button"
+                          data-unread-conversation={conversation.type}
+                          data-unread-subject={conversation.subjectId}
                           className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm border border-border-soft bg-surface-canvas/40 px-3 py-2 text-left transition hover:border-accent-primary/40 disabled:cursor-default disabled:hover:border-border-soft"
                           onClick={() => openUnreadConversation(conversation)}
                         >
@@ -1868,7 +1870,11 @@ export function OnlineLobbyPage({
                 )}
 
                 {profile && (
-                  <div className="grid min-h-72 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
+                  <div
+                    className="grid min-h-72 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30"
+                    data-chat-surface="room"
+                    data-chat-subject={roomChatSubjectId}
+                  >
                     <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border-soft px-3">
                       <div className="min-w-0">
                         <div className="text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
@@ -1910,6 +1916,7 @@ export function OnlineLobbyPage({
                         return (
                           <div
                             key={message.id}
+                            data-chat-message="room"
                             className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
                           >
                             <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
@@ -2022,7 +2029,7 @@ export function OnlineLobbyPage({
 
             {profile && (
               <div ref={directChatPanelRef}>
-                <RoomPanel mode="custom">
+                <RoomPanel mode="custom" data-chat-surface="direct">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
@@ -2087,6 +2094,7 @@ export function OnlineLobbyPage({
                       {friends.map((friend) => (
                         <div
                           key={friend.userId}
+                          data-friend-user-id={friend.userId}
                           className={`grid min-h-16 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 rounded-sm border px-3 py-2 transition ${
                             directChat?.peerUserId === friend.userId
                               ? 'border-accent-primary/50 bg-accent-primary/10'
@@ -2095,6 +2103,7 @@ export function OnlineLobbyPage({
                         >
                           <button
                             type="button"
+                            data-direct-chat-open={friend.userId}
                             className="min-w-0 text-left"
                             onClick={() => openFriendChat(friend)}
                             aria-label={`${t('chat.directTitle')} ${friend.nickname || friend.userId}`}
@@ -2110,6 +2119,8 @@ export function OnlineLobbyPage({
                             className="size-10 shrink-0 p-0 tracking-normal"
                             variant="ghost"
                             type="button"
+                            data-friend-invite-action="send"
+                            data-friend-user-id={friend.userId}
                             onClick={() => void handleInviteFriend(friend)}
                             disabled={
                               friendInviteActionId !== null ||
@@ -2128,6 +2139,8 @@ export function OnlineLobbyPage({
                             className="size-10 shrink-0 p-0 tracking-normal"
                             variant="ghost"
                             type="button"
+                            data-friend-invite-action="accept"
+                            data-friend-user-id={friend.userId}
                             onClick={() => void handleAcceptFriendInvite(friend)}
                             disabled={
                               friendInviteActionId !== null ||
@@ -2211,6 +2224,7 @@ export function OnlineLobbyPage({
                           return (
                             <div
                               key={message.id}
+                              data-chat-message="direct"
                               className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
                             >
                               <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
@@ -2316,7 +2330,7 @@ export function OnlineLobbyPage({
 
             {profile && (
               <div ref={lobbyChatPanelRef}>
-                <RoomPanel mode="custom">
+                <RoomPanel mode="custom" data-chat-surface="global">
                   <div className="flex flex-col gap-1">
                     <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
                       {t('chat.globalEyebrow')}
@@ -2348,6 +2362,7 @@ export function OnlineLobbyPage({
                         return (
                           <div
                             key={message.id}
+                            data-chat-message="global"
                             className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
                           >
                             <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
