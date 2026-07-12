@@ -21,6 +21,11 @@ export default [
       '.claude/',
       '.git/',
       'coverage/',
+      // Playwright E2E 測試使用專屬工具鏈，不納入專案 ESLint 規則
+      'e2e/',
+      'playwright.config.ts',
+      'playwright-report/',
+      'test-results/',
     ],
   },
   // Base recommended

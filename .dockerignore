@@ -33,3 +33,7 @@ schema.json
 cards.json
 data/card-effects-i18n.json
 data/vision-ocr
+
+# Playwright E2E
+playwright-report
+test-results

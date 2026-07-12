@@ -75,3 +75,7 @@ admin/
 .worktrees/
 CARD_EFFECT_AUDIT_FINAL.md
 .claude/
+
+# Playwright E2E
+playwright-report/
+test-results/
