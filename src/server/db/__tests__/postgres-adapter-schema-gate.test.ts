@@ -3,9 +3,29 @@ import { createRequire } from 'node:module';
 import { PostgresAdapter } from '../postgres-adapter';
 
 const require = createRequire(import.meta.url);
-const { REQUIRED_RUNTIME_TABLES, REQUIRED_RUNTIME_COLUMNS } = require('../../../../api/schemaGate.cjs') as {
+const {
+  REQUIRED_RUNTIME_TABLES,
+  REQUIRED_RUNTIME_COLUMNS,
+  REQUIRED_RUNTIME_COLUMN_CONTRACTS,
+  REQUIRED_RUNTIME_CONSTRAINTS,
+  REQUIRED_RUNTIME_INDEXES,
+} = require('../../../../api/schemaGate.cjs') as {
   REQUIRED_RUNTIME_TABLES: string[];
   REQUIRED_RUNTIME_COLUMNS: Record<string, string[]>;
+  REQUIRED_RUNTIME_COLUMN_CONTRACTS: Array<{
+    tableName: string;
+    columnName: string;
+    udtName: string;
+    nullable: boolean;
+    defaultToken: string | null;
+  }>;
+  REQUIRED_RUNTIME_CONSTRAINTS: Array<{
+    tableName: string;
+    constraintName?: string;
+    constraintType: string;
+    fragments: string[];
+  }>;
+  REQUIRED_RUNTIME_INDEXES: Array<{ tableName: string; indexName: string; fragments: string[] }>;
 };
 
 describe('PostgresAdapter production schema gate', () => {
@@ -24,6 +44,31 @@ describe('PostgresAdapter production schema gate', () => {
           rows: Object.entries(REQUIRED_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>
             columns.map((column_name) => ({ table_name, column_name, present: true })),
           ),
+        })
+        .mockResolvedValueOnce({
+          rows: REQUIRED_RUNTIME_COLUMN_CONTRACTS.map((contract) => ({
+            table_name: contract.tableName,
+            column_name: contract.columnName,
+            udt_name: contract.udtName,
+            is_nullable: contract.nullable ? 'YES' : 'NO',
+            column_default: contract.defaultToken,
+            present: true,
+          })),
+        })
+        .mockResolvedValueOnce({
+          rows: REQUIRED_RUNTIME_CONSTRAINTS.map((contract) => ({
+            table_name: contract.tableName,
+            constraint_name: contract.constraintName || `${contract.tableName}_${contract.constraintType}`,
+            constraint_type: contract.constraintType,
+            definition: contract.fragments.join(' '),
+          })),
+        })
+        .mockResolvedValueOnce({
+          rows: REQUIRED_RUNTIME_INDEXES.map((contract) => ({
+            table_name: contract.tableName,
+            index_name: contract.indexName,
+            index_definition: contract.fragments.join(' '),
+          })),
         }),
       release: vi.fn(),
     };
