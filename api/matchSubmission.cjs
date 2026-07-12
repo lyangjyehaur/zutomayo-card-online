@@ -71,8 +71,8 @@ async function submitMatchResult({
       }
     }
 
-    const winner = (await client.query('SELECT * FROM users WHERE id = $1', [resolvedWinnerId])).rows[0];
-    const loser = (await client.query('SELECT * FROM users WHERE id = $1', [resolvedLoserId])).rows[0];
+    const winner = (await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [resolvedWinnerId])).rows[0];
+    const loser = (await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [resolvedLoserId])).rows[0];
 
     let winnerEloChange = 0;
     let loserEloChange = 0;

@@ -36,7 +36,7 @@ function makePool(options: {
   let existingLookupCount = 0;
   const client: Client = {
     query: vi.fn(async (sql: string, params?: unknown[]) => {
-      if (sql === 'SELECT * FROM users WHERE id = $1') {
+      if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
         if (params?.[0] === options.winner?.id) return { rows: [options.winner] };
         if (params?.[0] === options.loser?.id) return { rows: [options.loser] };
         return { rows: [] };
