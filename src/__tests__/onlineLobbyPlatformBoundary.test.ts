@@ -98,7 +98,8 @@ describe('online lobby platform boundary', () => {
     expect(lobbySource).not.toContain('navigate(buildOnlineSpectatorPath(action.subjectId))');
     expect(historyPageSource).toContain("new URLSearchParams(location.search).get('chat')");
     expect(historySource).toContain('initialChatSourceMatchId');
-    expect(historySource).toContain('historyChatRecordFromSourceMatchId(sourceMatchId)');
+    expect(historySource).toContain('resolveInitialHistoryChatRecord');
+    expect(historySource).toContain('resolveInitialHistoryChatRecord(records, initialChatSourceMatchId)');
   });
 
   it('reopens non-match unread chats through durable lobby chat surfaces', () => {

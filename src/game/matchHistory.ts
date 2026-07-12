@@ -35,6 +35,39 @@ export function buildMatchHistoryChatPath(sourceMatchId: string): string {
   return `/history?chat=${encodeURIComponent(sourceMatchId)}`;
 }
 
+export function historyChatRecordFromSourceMatchId(sourceMatchId: string): MatchRecord {
+  return {
+    id: `chat:${sourceMatchId}`,
+    sourceMatchId,
+    date: new Date().toISOString(),
+    duration: 0,
+    winner: null,
+    players: [
+      { hp: 0, deckSize: 0, cardsPlayed: 0 },
+      { hp: 0, deckSize: 0, cardsPlayed: 0 },
+    ],
+    chronos: {
+      nightSidePlayer: 0,
+      finalPosition: 0,
+    },
+    turns: 0,
+    log: [],
+    actionLog: [],
+  };
+}
+
+export function resolveInitialHistoryChatRecord(
+  records: MatchRecord[],
+  initialChatSourceMatchId: string | null | undefined,
+): MatchRecord | null {
+  const sourceMatchId = normalizeSourceMatchId(initialChatSourceMatchId ?? undefined);
+  if (!sourceMatchId) return null;
+  return (
+    records.find((record) => historyChatSubjectId(record) === sourceMatchId) ??
+    historyChatRecordFromSourceMatchId(sourceMatchId)
+  );
+}
+
 function normalizeWinner(winner: MatchWinnerInput): 0 | 1 | null {
   if (winner === 0 || winner === '0') return 0;
   if (winner === 1 || winner === '1') return 1;

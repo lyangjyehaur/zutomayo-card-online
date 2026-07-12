@@ -7,6 +7,7 @@ import {
   getMatchStats,
   historyChatSubjectId,
   replaceMatchRecords,
+  resolveInitialHistoryChatRecord,
   type MatchRecord,
 } from '../game/matchHistory';
 import { CHRONOS_MAPPING, type ActionLogEntry } from '../game/types';
@@ -87,27 +88,6 @@ function chatTimeLabel(createdAt: string, locale: string): string {
 
 function canShowChatMessage(message: ChatMessage): boolean {
   return message.moderationStatus !== 'blocked' && message.moderationStatus !== 'deleted';
-}
-
-function historyChatRecordFromSourceMatchId(sourceMatchId: string): MatchRecord {
-  return {
-    id: `chat:${sourceMatchId}`,
-    sourceMatchId,
-    date: new Date().toISOString(),
-    duration: 0,
-    winner: null,
-    players: [
-      { hp: 0, deckSize: 0, cardsPlayed: 0 },
-      { hp: 0, deckSize: 0, cardsPlayed: 0 },
-    ],
-    chronos: {
-      nightSidePlayer: 0,
-      finalPosition: 0,
-    },
-    turns: 0,
-    log: [],
-    actionLog: [],
-  };
 }
 
 function traceContext(entry: ActionLogEntry): string[] {
@@ -411,12 +391,8 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
   const visibleRecords = records.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
 
   useEffect(() => {
-    const sourceMatchId = initialChatSourceMatchId?.trim();
-    if (!sourceMatchId) return;
-    const matchingRecord =
-      records.find((record) => historyChatSubjectId(record) === sourceMatchId) ??
-      historyChatRecordFromSourceMatchId(sourceMatchId);
-    setChatRecord(matchingRecord);
+    const matchingRecord = resolveInitialHistoryChatRecord(records, initialChatSourceMatchId);
+    if (matchingRecord) setChatRecord(matchingRecord);
   }, [initialChatSourceMatchId, records]);
 
   const clearHistory = () => {
