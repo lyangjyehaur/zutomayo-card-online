@@ -1,0 +1,126 @@
+# Grafana / Prometheus alerting rules for Zutomayo Card Online.
+# Can be loaded by Prometheus via `rule_files` or provisioned into Grafana.
+# Metric names assume the scrape jobs defined in observability/prometheus/prometheus.yml.
+groups:
+  - name: zutomayo-http
+    interval: 30s
+    rules:
+      # HTTP 5xx error rate > 5% for 5 minutes -> critical
+      - alert: HighErrorRate5xx
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+            / clamp_min(sum(rate(http_requests_total[5m])) by (job), 1e-9)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'High 5xx error rate on {{ $labels.job }}'
+          description: '5xx error rate is {{ $value | humanizePercentage }} (threshold 5%) on {{ $labels.job }} for the last 5 minutes.'
+
+  - name: zutomayo-postgres
+    interval: 30s
+    rules:
+      # PG pool waiting > 5 for 2 minutes -> warning
+      - alert: PgPoolWaitingHigh
+        expr: pg_pool_waiting > 5
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'PostgreSQL pool waiting connections high ({{ $labels.job }})'
+          description: 'PG pool has {{ $value }} waiting connections (threshold 5) on {{ $labels.job }}.'
+
+      # PG connections > 80% of max for 5 minutes -> critical
+      - alert: PgConnectionsNearMax
+        expr: |
+          (
+            sum(pg_stat_activity_count) by (instance)
+            / clamp_min(pg_settings_max_connections, 1)
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'PostgreSQL connections near max ({{ $labels.instance }})'
+          description: 'PostgreSQL is using {{ $value | humanizePercentage }} of max connections (threshold 80%).'
+
+  - name: zutomayo-redis
+    interval: 30s
+    rules:
+      # Redis memory > 80% of maxmemory -> warning
+      - alert: RedisMemoryNearMax
+        expr: |
+          (
+            redis_memory_used_bytes
+            / clamp_min(redis_memory_max_bytes, 1)
+          ) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'Redis memory usage near maxmemory'
+          description: 'Redis is using {{ $value | humanizePercentage }} of maxmemory (threshold 80%).'
+
+  - name: zutomayo-websocket
+    interval: 30s
+    rules:
+      # WebSocket connections > MAX_CONN_PER_IP * 0.8 -> warning
+      # MAX_CONN_PER_IP defaults to 10 (see .env.example). Adjust the threshold
+      # to match your deployment value if MAX_CONN_PER_IP is overridden.
+      - alert: WebSocketConnectionsNearLimit
+        expr: active_socket_connections > 8
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'WebSocket connections near per-IP limit'
+          description: 'Active socket connections ({{ $value }}) exceeded 80% of MAX_CONN_PER_IP (default 10). Raise MAX_CONN_PER_IP or investigate connection flooding.'
+
+  - name: zutomayo-runtime
+    interval: 30s
+    rules:
+      # Node.js event loop lag > 100ms for 1 minute -> warning
+      - alert: HighEventLoopLag
+        expr: nodejs_eventloop_lag_seconds > 0.1
+        for: 1m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'High Node.js event loop lag ({{ $labels.job }})'
+          description: 'Event loop lag is {{ $value | humanizeDuration }} (threshold 100ms) on {{ $labels.job }}.'
+
+  - name: zutomayo-availability
+    interval: 30s
+    rules:
+      # Service down: /metrics scrape (proxy for /health) returns non-200 for 1 minute -> critical
+      - alert: ServiceDown
+        expr: up{job=~"zutomayo-(game|api|platform)"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Service down ({{ $labels.job }})'
+          description: '{{ $labels.job }} has been unreachable (scrape failing) for 1 minute. Check /health endpoint and container status.'
+
+  - name: zutomayo-matchmaking
+    interval: 30s
+    rules:
+      # Matchmaking queue depth > 50 for 5 minutes -> warning
+      - alert: MatchmakingQueueDepthHigh
+        expr: matchmaking_queue_depth > 50
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'Matchmaking queue depth high'
+          description: 'Matchmaking queue depth is {{ $value }} (threshold 50) for 5 minutes. Consider scaling game server instances.'

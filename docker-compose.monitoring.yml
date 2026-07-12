@@ -1,0 +1,84 @@
+# Monitoring stack for Zutomayo Card Online.
+# Run alongside the main docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+# Or standalone (requires the app network to exist):
+#   docker compose -f docker-compose.monitoring.yml up -d
+#
+# This joins the app's default network so Prometheus and exporters can reach
+# game/api/platform/postgres/redis by service name. Adjust APP_NETWORK if your
+# compose project name differs from the default.
+#
+# Grafana is exposed on host port 3003 (avoids conflict with game:3000, api:3001).
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/grafana/alerting/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
+    ports:
+      - '9090:9090'
+    networks:
+      - default
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./observability/grafana/alerting/contact-points.yml:/etc/grafana/provisioning/alerting/contact-points.yml:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - '3003:3000'
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - default
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${PG_USER:-zutomayo}:${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}@postgres:5432/${PG_DATABASE:-zutomayo}?sslmode=disable
+    ports:
+      - '9187:9187'
+    networks:
+      - default
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    command:
+      - '--redis.addr=redis:6379'
+      - '--redis.password=${REDIS_PASSWORD:-}'
+    ports:
+      - '9121:9121'
+    networks:
+      - default
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - '8080:8080'
+    networks:
+      - default
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
+
+networks:
+  default:
+    external: true
+    name: ${APP_NETWORK:-zutomayo-card-online_default}

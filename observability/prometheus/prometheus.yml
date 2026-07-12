@@ -1,0 +1,48 @@
+# Prometheus configuration for Zutomayo Card Online.
+# Scrapes the game (3000), api (3001), and platform (3002) servers every 15s,
+# plus postgres_exporter, redis_exporter, and cAdvisor for infrastructure metrics.
+#
+# When METRICS_TOKEN is set on the app servers, create a file containing the
+# token and add `bearer_token_file: /etc/prometheus/metrics_token` to each
+# zutomayo-* scrape job, then mount it in docker-compose.monitoring.yml.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/alerts.yml
+
+scrape_configs:
+  - job_name: 'zutomayo-game'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['game:3000']
+        labels:
+          service: game
+
+  - job_name: 'zutomayo-api'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['api:3001']
+        labels:
+          service: api
+
+  - job_name: 'zutomayo-platform'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['platform:3002']
+        labels:
+          service: platform
+
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
