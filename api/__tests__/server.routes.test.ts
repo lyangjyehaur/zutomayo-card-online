@@ -898,10 +898,23 @@ describe('server routes', () => {
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader', 'u_stranger']);
     });
 
-    it('rejects direct read, translation, and report routes for non-friends', async () => {
+    it('rejects direct history, read, translation, and report routes for non-friends', async () => {
       const directSubjectId = 'v1:u_reader:u_stranger';
       const directConversationId = 'direct:v1:u_reader:u_stranger';
       const directMessageId = 'chat_msg_direct_stranger';
+
+      mockQuery.mockReset();
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const historyRes = await sendRequest(
+        'GET',
+        `/api/chat/messages?type=direct&subjectId=${encodeURIComponent(directSubjectId)}`,
+        null,
+        userUnsafeHeaders('u_reader'),
+      );
+      expect(historyRes.statusCode).toBe(403);
+      expect(parseBody(historyRes)).toEqual({ error: 'Forbidden' });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_reader', 'u_stranger']);
+      expect(mockQuery).not.toHaveBeenCalledWith(expect.stringContaining('FROM chat_messages'), expect.any(Array));
 
       mockQuery.mockReset();
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
