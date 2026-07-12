@@ -60,6 +60,8 @@ describe('schema migrations', () => {
       'account_deletion_requests',
       'provider_deleting',
       'provider_deleted',
+      'relationship_change_outbox',
+      'dead_letter',
     ]) {
       expect(migrations, `migrations missing season consistency artifact ${artifact}`).toContain(artifact);
     }

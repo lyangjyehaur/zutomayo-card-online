@@ -47,6 +47,7 @@ describe('retention service', () => {
       reports: 2,
       adminAudit: 2,
       accountTokens: 2,
+      relationshipOutbox: 2,
     });
     expect(pool.queries.some(({ sql }) => sql.startsWith('UPDATE matches'))).toBe(false);
     expect(pool.queries.some(({ sql }) => sql.startsWith('DELETE FROM chat_reports'))).toBe(false);
@@ -74,6 +75,10 @@ describe('retention service', () => {
     expect(matchQuery).toContain("account_hold.subject_type = 'account'");
     expect(matchQuery).toContain('account_hold.subject_id IN (m.player0_id');
     expect(chatQuery).toContain('account_hold.subject_id IN (m.author_user_id)');
+    const relationshipQuery =
+      pool.queries.find(({ sql }) => sql.includes('FROM relationship_change_outbox o'))?.sql || '';
+    expect(relationshipQuery).toContain("h.subject_type = 'account'");
+    expect(relationshipQuery).toContain('h.subject_id = ANY(o.user_ids)');
   });
 
   it('uses one shared lock key for retention, hold creation, and account deletion', () => {

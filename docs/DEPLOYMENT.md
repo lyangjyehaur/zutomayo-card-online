@@ -209,6 +209,20 @@ Exposed metrics include:
 - `matchmaking_queue_depth` (Gauge) — live Redis sorted-set depth, refreshed by API matchmaking operations.
 - `active_socket_connections` (Gauge) — active Socket.IO connections (game server).
 - `match_result_outbox_pending`, `match_result_outbox_oldest_age_seconds`, and `match_result_outbox_rows{status}` — durable ranked-result delivery state from PostgreSQL.
+- `relationship_change_outbox_pending`, `relationship_change_outbox_oldest_age_seconds`, `relationship_change_outbox_dead_letter`, and `relationship_change_outbox_metrics_refresh_success` — durable friend/block/account-revocation delivery health.
+
+Operators can redrive one investigated dead-letter event through the migration/operations image while explicitly using the production API database role:
+
+```bash
+docker compose run --rm --no-deps \
+  -e PG_USER="$PG_API_USER" \
+  -e PG_PASSWORD="$PG_API_PASSWORD" \
+  -e PG_API_USER="$PG_API_USER" \
+  migrate npm run relationship:outbox:redrive -- <event-id>
+```
+
+The command rejects a mismatched database role, rejects non-dead-letter rows, and does not support bulk replay.
+
 - `game_match_completions_total{rating_mode,result}` — ranked completions after durable ELO/history delivery.
 - `platform_reconnects_total{room_type}` — accepted same-user room/seat reconnects.
 - `pg_backup_*`, `pg_wal_archive_*`, and `pg_restore_drill_*` — backup host textfile metrics scraped through the backup metrics exporter.

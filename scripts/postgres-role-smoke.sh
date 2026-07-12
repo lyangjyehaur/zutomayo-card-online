@@ -76,7 +76,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Starting fresh PostgreSQL role smoke in Compose project '$project'"
-"${compose[@]}" up --detach postgres
+"${compose[@]}" up --detach postgres redis
 ready=false
 for _attempt in $(seq 1 90); do
   if "${compose[@]}" exec --no-TTY postgres pg_isready --username "$PG_MIGRATION_USER" --dbname "$PG_DATABASE" >/dev/null 2>&1; then
@@ -89,6 +89,39 @@ done
 if [[ "$ready" != 'true' ]]; then
   "${compose[@]}" logs postgres >&2 || true
   echo 'ERROR: fresh PostgreSQL role smoke did not become ready' >&2
+  exit 1
+fi
+
+# pg_isready can report the temporary server used by the PostgreSQL image
+# while init scripts are still running. Wait for the role bootstrap script to
+# finish and for the API role to be visible on the stable server before using
+# psql or launching migration containers.
+roles_ready=false
+for _attempt in $(seq 1 90); do
+  if "${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_MIGRATION_PASSWORD" postgres \
+    psql --host 127.0.0.1 --username "$PG_MIGRATION_USER" --dbname "$PG_DATABASE" \
+    --tuples-only --no-align --command "SELECT 1 FROM pg_roles WHERE rolname = '$PG_API_USER'" 2>/dev/null | grep -qx '1'; then
+    roles_ready=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$roles_ready" != 'true' ]]; then
+  "${compose[@]}" logs postgres >&2 || true
+  echo 'ERROR: PostgreSQL role bootstrap did not become queryable' >&2
+  exit 1
+fi
+redis_ready=false
+for _attempt in $(seq 1 90); do
+  if "${compose[@]}" exec --no-TTY redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null | grep -q PONG; then
+    redis_ready=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$redis_ready" != 'true' ]]; then
+  "${compose[@]}" logs redis >&2 || true
+  echo 'ERROR: relationship outbox Redis smoke did not become ready' >&2
   exit 1
 fi
 
@@ -109,6 +142,16 @@ bootstrap_password='role-smoke-bootstrap-password'
   --command "DROP ROLE $bootstrap_user" >/dev/null
 
 "${compose[@]}" run --build --rm --no-deps migrate
+
+"${compose[@]}" run --rm --no-deps \
+  --env PG_USER="$PG_API_USER" \
+  --env PG_PASSWORD="$PG_API_PASSWORD" \
+  --env PG_API_USER="$PG_API_USER" \
+  --env PG_API_PASSWORD="$PG_API_PASSWORD" \
+  --env REDIS_URL="redis://:$REDIS_PASSWORD@redis:6379" \
+  migrate npm run relationship:outbox:pg-smoke
+
+"${compose[@]}" run --build --rm --no-deps api node social-concurrency-pg-smoke.cjs
 
 "${compose[@]}" exec --no-TTY \
   --env PGPASSWORD="$PG_MIGRATION_PASSWORD" \

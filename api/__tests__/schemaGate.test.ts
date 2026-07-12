@@ -75,6 +75,11 @@ describe('production schema gate', () => {
     expect(() => normalizeExpectedChecksum('abc')).toThrow('EXPECTED_SCHEMA_CHECKSUM');
   });
 
+  it('assigns poison delivery accounting only to the relationship outbox', () => {
+    expect(REQUIRED_RUNTIME_COLUMNS.relationship_change_outbox).toContain('poison_count');
+    expect(REQUIRED_RUNTIME_COLUMNS.account_deletion_requests).not.toContain('poison_count');
+  });
+
   it('requires the release migration and every runtime table', async () => {
     const query = vi
       .fn()

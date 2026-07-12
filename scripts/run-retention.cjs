@@ -5,14 +5,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
 const { runRetention } = require('../api/retentionService.cjs');
-const { postgresConnectionString, postgresSslConfig } = require('../api/runtimeSecurityConfig.cjs');
+const {
+  assertPostgresExpectedRole,
+  postgresConnectionString,
+  postgresSslConfig,
+} = require('../api/runtimeSecurityConfig.cjs');
 
 const dryRun = process.argv.includes('--dry-run') || process.env.RETENTION_DRY_RUN === 'true';
+const retentionUser = assertPostgresExpectedRole(process.env, 'PG_RETENTION_USER');
 const connectionString = postgresConnectionString(process.env);
 if (process.env.NODE_ENV === 'production') {
-  const retentionUser = String(process.env.PG_RETENTION_USER || process.env.PG_USER || '').trim();
   const appUser = String(process.env.PG_APP_USER || '').trim();
-  if (!retentionUser) throw new Error('PG_RETENTION_USER or PG_USER is required in production');
   if (appUser && retentionUser === appUser) throw new Error('retention worker must use a dedicated PostgreSQL role');
 }
 const poolConfig = connectionString
@@ -20,7 +23,7 @@ const poolConfig = connectionString
   : {
       host: process.env.PG_HOST,
       port: Number(process.env.PG_PORT) || 5432,
-      user: process.env.PG_USER,
+      user: process.env.PG_USER || retentionUser,
       password: process.env.PG_PASSWORD,
       database: process.env.PG_DATABASE,
     };

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const {
+  assertPostgresExpectedRole,
   postgresConnectionString,
   postgresSslConfig,
   requireSecret,
@@ -10,6 +11,7 @@ const {
   resolveRedisConnectionConfig,
   validateProductionRuntimeSecurity,
 } = require('../runtimeSecurityConfig.cjs') as {
+  assertPostgresExpectedRole: (env: NodeJS.ProcessEnv, expectedRoleVariable: string) => string;
   postgresConnectionString: (env: NodeJS.ProcessEnv) => string | undefined;
   postgresSslConfig: (env: NodeJS.ProcessEnv) => false | { rejectUnauthorized: boolean };
   requireSecret: (name: string, value: unknown) => string;
@@ -83,6 +85,39 @@ describe('API runtime security connection contracts', () => {
         DATABASE_URL: 'postgres://app:secret@db.example/game?ssl=no-verify',
       }),
     ).toThrow('DATABASE_URL ssl');
+  });
+
+  it('binds production PostgreSQL URLs and PG_USER to the expected operational role', () => {
+    const baseEnv = {
+      NODE_ENV: 'production',
+      PGSSLMODE: 'verify-full',
+      PG_MIGRATION_USER: 'zutomayo_migrator',
+    };
+    expect(
+      assertPostgresExpectedRole(
+        {
+          ...baseEnv,
+          PG_USER: 'zutomayo_migrator',
+          DATABASE_URL: 'postgres://zutomayo_migrator:secret@db.example/zutomayo?sslmode=verify-full',
+        },
+        'PG_MIGRATION_USER',
+      ),
+    ).toBe('zutomayo_migrator');
+    expect(() =>
+      assertPostgresExpectedRole(
+        { ...baseEnv, DATABASE_URL: 'postgres://zutomayo_api:secret@db.example/zutomayo' },
+        'PG_MIGRATION_USER',
+      ),
+    ).toThrow('DATABASE_URL username must match PG_MIGRATION_USER');
+    expect(() => assertPostgresExpectedRole({ ...baseEnv, PG_USER: 'zutomayo_api' }, 'PG_MIGRATION_USER')).toThrow(
+      'PG_USER must match PG_MIGRATION_USER',
+    );
+    expect(() =>
+      assertPostgresExpectedRole(
+        { NODE_ENV: 'production', PGSSLMODE: 'verify-full', PG_USER: 'zutomayo_migrator' },
+        'PG_MIGRATION_USER',
+      ),
+    ).toThrow('PG_MIGRATION_USER is required');
   });
 
   it('validates the complete production contract', () => {

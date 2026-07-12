@@ -10,7 +10,12 @@ const { blockUser, createFriendRequest, listBlocks, listFriendRequests, respondT
 
 function createPool(handler: (sql: string, params?: unknown[]) => { rows: Record<string, unknown>[] }) {
   return {
-    query: vi.fn(async (sql: string, params?: unknown[]) => handler(sql, params)),
+    query: vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+        return { rows: [{ id: String(params?.[0]), deleted_at: null }] };
+      }
+      return handler(sql, params);
+    }),
   };
 }
 
@@ -47,7 +52,7 @@ describe('social safety service', () => {
 
   it('only lets the recipient accept and creates friendship in both directions', async () => {
     const pool = createPool((sql) => {
-      if (sql.includes('FROM friend_requests') && sql.includes('FOR UPDATE')) {
+      if (sql.includes('FROM friend_requests')) {
         return { rows: [{ requester_user_id: 'u_sender', recipient_user_id: 'u_me' }] };
       }
       return { rows: [] };
@@ -58,11 +63,15 @@ describe('social safety service', () => {
       body: { accepted: true, friendUserId: 'u_sender' },
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('VALUES ($1, $2), ($2, $1)'), ['u_sender', 'u_me']);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO relationship_change_outbox'),
+      expect.arrayContaining(['friend_request:9:accepted']),
+    );
   });
 
   it('rechecks bidirectional blocks after locking a pending friend request', async () => {
     const pool = createPool((sql) => {
-      if (sql.includes('FROM friend_requests') && sql.includes('FOR UPDATE')) {
+      if (sql.includes('FROM friend_requests')) {
         return { rows: [{ requester_user_id: 'u_sender', recipient_user_id: 'u_me' }] };
       }
       if (sql.includes('FROM user_blocks')) return { rows: [{ '?column?': 1 }] };
@@ -80,7 +89,9 @@ describe('social safety service', () => {
 
   it('blocking removes friendships and pending requests transactionally', async () => {
     const pool = createPool((sql) => {
-      if (sql.startsWith('SELECT id FROM users')) return { rows: [{ id: 'u_target' }] };
+      if (sql.startsWith('INSERT INTO user_blocks')) {
+        return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }] };
+      }
       return { rows: [] };
     });
 
@@ -94,6 +105,10 @@ describe('social safety service', () => {
       'u_target',
     ]);
     expect(pool.query).toHaveBeenCalledWith('COMMIT');
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO relationship_change_outbox'),
+      expect.arrayContaining(['block_created:u_me:u_target:2026-07-13T00:00:00.000Z']),
+    );
   });
 
   it('lists and removes blocks for the authenticated user', async () => {

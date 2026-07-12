@@ -72,8 +72,15 @@ describe('friend service', () => {
 
   it('adds friends symmetrically after verifying the target user exists', async () => {
     const pool: Queryable = {
-      query: vi.fn(async (sql: string) => {
-        if (sql.startsWith('SELECT id FROM users')) return { rows: [{ id: 'u_friend' }], rowCount: 1 };
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO user_friends')) {
+          return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }], rowCount: 2 };
+        }
+        if (sql.includes('INSERT INTO relationship_change_outbox'))
+          return { rows: [{ event_id: 'event-1' }], rowCount: 1 };
         return { rows: [], rowCount: 2 };
       }),
     };
@@ -82,11 +89,11 @@ describe('friend service', () => {
       ok: true,
       body: { ok: true, friendUserId: 'u_friend' },
     });
-    expect(pool.query).toHaveBeenNthCalledWith(1, 'SELECT id FROM users WHERE id = $1', ['u_friend']);
-    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('VALUES ($1, $2), ($2, $1)'), [
-      'u_me',
-      'u_friend',
-    ]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('VALUES ($1, $2), ($2, $1)'), ['u_me', 'u_friend']);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO relationship_change_outbox'),
+      expect.arrayContaining(['friendship_added:u_me:u_friend:2026-07-13T00:00:00.000Z']),
+    );
   });
 
   it('rejects invalid, self, and unknown friend targets', async () => {
@@ -110,12 +117,28 @@ describe('friend service', () => {
   });
 
   it('removes friend rows in both directions', async () => {
-    const pool = poolResult([], 2);
+    const pool: Queryable = {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('DELETE FROM user_friends')) {
+          return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }], rowCount: 2 };
+        }
+        if (sql.includes('INSERT INTO relationship_change_outbox'))
+          return { rows: [{ event_id: 'event-2' }], rowCount: 1 };
+        return { rows: [], rowCount: 1 };
+      }),
+    };
 
     await expect(removeFriend({ pool, userId: 'u_me', friendUserId: 'u_friend' })).resolves.toEqual({
       ok: true,
       body: { ok: true },
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM user_friends'), ['u_me', 'u_friend']);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO relationship_change_outbox'),
+      expect.arrayContaining(['friendship_removed:u_me:u_friend:2026-07-13T00:00:00.000Z']),
+    );
   });
 });

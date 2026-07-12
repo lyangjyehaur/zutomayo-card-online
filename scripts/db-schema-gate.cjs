@@ -3,6 +3,11 @@
 
 const { Pool } = require('pg');
 const { assertRuntimeSchema } = require('../api/schemaGate.cjs');
+const {
+  assertPostgresExpectedRole,
+  postgresConnectionString,
+  postgresSslConfig,
+} = require('../api/runtimeSecurityConfig.cjs');
 
 const expectedMigration = String(process.env.EXPECTED_SCHEMA_MIGRATION || '').trim();
 const expectedChecksum = String(process.env.EXPECTED_SCHEMA_CHECKSUM || '')
@@ -17,25 +22,32 @@ if (!/^[a-f0-9]{64}$/.test(expectedChecksum)) {
   process.exit(2);
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || undefined,
-  host: process.env.DATABASE_URL ? undefined : process.env.PG_HOST || 'localhost',
-  port: process.env.DATABASE_URL ? undefined : Number(process.env.PG_PORT) || 5432,
-  user: process.env.DATABASE_URL ? undefined : process.env.PG_USER || 'postgres',
-  password: process.env.DATABASE_URL ? undefined : process.env.PG_PASSWORD || '',
-  database: process.env.DATABASE_URL ? undefined : process.env.PG_DATABASE || 'postgres',
-  max: 1,
-  connectionTimeoutMillis: 5_000,
-});
-
 async function main() {
-  await assertRuntimeSchema({ pool, expectedMigration, expectedChecksum });
-  console.log(`schema gate: ${expectedMigration} applied (${expectedChecksum})`);
+  assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER');
+  const connectionString = postgresConnectionString(process.env);
+  const pool = new Pool({
+    ...(connectionString
+      ? { connectionString }
+      : {
+          host: process.env.PG_HOST || 'localhost',
+          port: Number(process.env.PG_PORT) || 5432,
+          user: process.env.PG_USER || process.env.PG_MIGRATION_USER || 'postgres',
+          password: process.env.PG_PASSWORD || '',
+          database: process.env.PG_DATABASE || 'postgres',
+        }),
+    ssl: postgresSslConfig(process.env),
+    max: 1,
+    connectionTimeoutMillis: 5_000,
+  });
+  try {
+    await assertRuntimeSchema({ pool, expectedMigration, expectedChecksum });
+    console.log(`schema gate: ${expectedMigration} applied (${expectedChecksum})`);
+  } finally {
+    await pool.end();
+  }
 }
 
-main()
-  .catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
-  })
-  .finally(() => pool.end());
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+});

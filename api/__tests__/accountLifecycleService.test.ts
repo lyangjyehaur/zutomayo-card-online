@@ -246,6 +246,10 @@ describe('account lifecycle service', () => {
       expect.stringMatching(/^deleted-[a-f0-9]{32}$/),
     ]);
     expect(pool.query).toHaveBeenCalledWith('DELETE FROM chat_read_states WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO relationship_change_outbox'),
+      expect.arrayContaining(['account_deleted:u_1', 'account_deleted', ['u_1']]),
+    );
   });
 
   it('does not erase an account protected by an active legal hold', async () => {
@@ -267,6 +271,18 @@ describe('account lifecycle service', () => {
       expect.stringContaining("nickname = 'Deleted Player'"),
       expect.anything(),
     );
+  });
+
+  it('rolls account deletion back when the durable revocation event cannot be enqueued', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_1' }] };
+      if (sql.includes('INSERT INTO relationship_change_outbox')) throw new Error('outbox unavailable');
+      return { rows: [] };
+    });
+
+    await expect(deleteAccount({ pool, userId: 'u_1' })).rejects.toThrow('outbox unavailable');
+    expect(pool.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(pool.query).not.toHaveBeenCalledWith('COMMIT');
   });
 
   it('blocks deletion when a related match is held even without an account hold', async () => {

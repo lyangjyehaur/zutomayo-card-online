@@ -45,6 +45,7 @@ import {
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
 import { postgresConnectionString, postgresSslConfig, resolveRedisConnectionConfig } from '../runtimeSecurityConfig';
 import type { PlatformRelationshipChange } from './rooms/types';
+import { createRelationshipChangeProcessor, createRelationshipRecoveryLoop } from './relationshipEventProcessor';
 
 const require = createRequire(import.meta.url);
 const { assertRuntimeSchema } = require('../../api/schemaGate.cjs') as {
@@ -208,6 +209,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   MatchShellRoom.configureChatPreviewStore(chatPreviewStore);
 
   let relationshipSubscriptionReady = relationshipRedis === null;
+  let relationshipSetup: Promise<void> | null = null;
   const reconcileRelationshipAuthorization = async () => {
     await Promise.all([
       LobbyRoom.reconcileAuthorization(),
@@ -215,13 +217,36 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       InviteRoom.reconcileAuthorization(),
     ]);
   };
+  const relationshipProcessor = createRelationshipChangeProcessor(async (change) => {
+    await Promise.all([
+      LobbyRoom.handleRelationshipChange(change),
+      QuickMatchRoom.handleRelationshipChange(change),
+      InviteRoom.handleRelationshipChange(change),
+    ]);
+  });
   const ensureRelationshipSubscription = async () => {
     if (!relationshipRedis) return;
-    const count = await relationshipRedis.subscribe(RELATIONSHIP_CHANGE_CHANNEL);
-    if (Number(count) < 1) throw new Error('relationship change subscription was not established');
-    relationshipSubscriptionReady = true;
-    await reconcileRelationshipAuthorization();
+    if (relationshipSetup) return relationshipSetup;
+    relationshipSubscriptionReady = false;
+    relationshipSetup = (async () => {
+      const count = await relationshipRedis.subscribe(RELATIONSHIP_CHANGE_CHANNEL);
+      if (Number(count) < 1) throw new Error('relationship change subscription was not established');
+      await reconcileRelationshipAuthorization();
+      relationshipSubscriptionReady = true;
+    })();
+    try {
+      await relationshipSetup;
+    } finally {
+      relationshipSetup = null;
+    }
   };
+  const relationshipRecovery = createRelationshipRecoveryLoop({
+    recover: ensureRelationshipSubscription,
+    onUnavailable: () => {
+      relationshipSubscriptionReady = false;
+    },
+    onError: (err) => logger.error({ err }, 'relationship authorization reconciliation retry failed'),
+  });
   relationshipRedis?.on('message', (channel, payload) => {
     if (channel !== RELATIONSHIP_CHANGE_CHANNEL) return;
     const change = parseRelationshipChange(payload);
@@ -229,23 +254,26 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       logger.warn({ channel }, 'ignored malformed relationship change event');
       return;
     }
-    void Promise.all([
-      LobbyRoom.handleRelationshipChange(change),
-      QuickMatchRoom.handleRelationshipChange(change),
-      InviteRoom.handleRelationshipChange(change),
-    ]).catch((err) => logger.error({ err, eventId: change.eventId }, 'failed to apply relationship change'));
+    void relationshipProcessor.handle(change).catch((err) => {
+      relationshipSubscriptionReady = false;
+      logger.error({ err, eventId: change.eventId }, 'failed to apply relationship change');
+      relationshipRecovery.schedule();
+    });
   });
   relationshipRedis?.on('ready', () => {
     void ensureRelationshipSubscription().catch((err) => {
       relationshipSubscriptionReady = false;
       logger.error({ err }, 'failed to restore relationship change subscription');
+      relationshipRecovery.schedule();
     });
   });
   relationshipRedis?.on('close', () => {
     relationshipSubscriptionReady = false;
+    relationshipRecovery.schedule();
   });
   relationshipRedis?.on('end', () => {
     relationshipSubscriptionReady = false;
+    relationshipRecovery.schedule();
   });
   const relationshipReady = relationshipRedis ? ensureRelationshipSubscription() : Promise.resolve();
   const schemaReady = Promise.all([assertPlatformRuntimeSchema(healthPool), relationshipReady]).then(() => undefined);
@@ -306,6 +334,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   });
 
   const closeStores = async () => {
+    relationshipRecovery.stop();
     await Promise.all([
       friendStore.close?.(),
       blockStore.close?.(),

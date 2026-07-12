@@ -10,6 +10,8 @@ const RETENTION_DAYS = Object.freeze({
   reports: 365,
   adminAudit: 365,
   accountTokens: 2,
+  relationshipOutboxDelivered: 30,
+  relationshipOutboxDeadLetter: 365,
 });
 
 const RETENTION_LOCK_NAME = 'zutomayo:retention-job:v1';
@@ -316,6 +318,43 @@ function operationDefinitions(cutoffs) {
        WHERE t.id = c.id`,
       countParams: [cutoffs.accountTokens],
       mutateParams: [cutoffs.accountTokens],
+    },
+    {
+      name: 'relationshipOutbox',
+      countSql: `SELECT COUNT(*)::int AS count
+        FROM relationship_change_outbox o
+       WHERE ((o.status = 'delivered' AND o.delivered_at < $1)
+          OR (o.status = 'dead_letter' AND o.updated_at < $2))
+         AND NOT EXISTS (
+           SELECT 1
+             FROM legal_holds h
+            WHERE h.released_at IS NULL
+              AND (h.expires_at IS NULL OR h.expires_at > NOW())
+              AND h.subject_type = 'account'
+              AND h.subject_id = ANY(o.user_ids)
+         )`,
+      mutateSql: `WITH candidates AS (
+        SELECT o.event_id
+          FROM relationship_change_outbox o
+         WHERE ((o.status = 'delivered' AND o.delivered_at < $1)
+            OR (o.status = 'dead_letter' AND o.updated_at < $2))
+           AND NOT EXISTS (
+             SELECT 1
+               FROM legal_holds h
+              WHERE h.released_at IS NULL
+                AND (h.expires_at IS NULL OR h.expires_at > NOW())
+                AND h.subject_type = 'account'
+                AND h.subject_id = ANY(o.user_ids)
+           )
+         ORDER BY COALESCE(o.delivered_at, o.updated_at) ASC
+         FOR UPDATE SKIP LOCKED
+         LIMIT $3
+      )
+      DELETE FROM relationship_change_outbox o
+       USING candidates c
+       WHERE o.event_id = c.event_id`,
+      countParams: [cutoffs.relationshipOutboxDelivered, cutoffs.relationshipOutboxDeadLetter],
+      mutateParams: [cutoffs.relationshipOutboxDelivered, cutoffs.relationshipOutboxDeadLetter],
     },
   ];
 }

@@ -14,6 +14,11 @@
 
 const { resolve } = require('node:path');
 const { Pool } = require('pg');
+const {
+  assertPostgresExpectedRole,
+  postgresConnectionString,
+  postgresSslConfig,
+} = require('../api/runtimeSecurityConfig.cjs');
 const { recordMigrationChecksums } = require('./migration-checksums.cjs');
 const { enforceRuntimeRolePrivileges } = require('./postgres-role-gate.cjs');
 
@@ -26,16 +31,6 @@ async function main() {
   }
 
   const migrationsDir = resolve(__dirname, '..', 'migrations');
-
-  // node-pg-migrate 的 runner API 接受 string（connection string）或 ClientConfig 物件。
-  // 專案用 PG_* 分開的環境變數，直接組成 ClientConfig 即可，不需要拼 URL。
-  const databaseUrl = process.env.DATABASE_URL || {
-    host: process.env.PG_HOST || 'localhost',
-    port: Number(process.env.PG_PORT) || 5432,
-    user: process.env.PG_USER || 'postgres',
-    password: process.env.PG_PASSWORD || '',
-    database: process.env.PG_DATABASE || 'postgres',
-  };
 
   const { runner, Migration } = require('node-pg-migrate');
 
@@ -50,10 +45,25 @@ async function main() {
     return;
   }
 
+  assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER');
+  const connectionString = postgresConnectionString(process.env);
+  const databaseConfig = {
+    ...(connectionString
+      ? { connectionString }
+      : {
+          host: process.env.PG_HOST || 'localhost',
+          port: Number(process.env.PG_PORT) || 5432,
+          user: process.env.PG_USER || process.env.PG_MIGRATION_USER || 'postgres',
+          password: process.env.PG_PASSWORD || '',
+          database: process.env.PG_DATABASE || 'postgres',
+        }),
+    ssl: postgresSslConfig(process.env),
+  };
+
   const direction = subCommand;
 
   await runner({
-    databaseUrl,
+    databaseUrl: databaseConfig,
     dir: migrationsDir,
     direction,
     migrationsTable: 'schema_migrations',
@@ -61,7 +71,7 @@ async function main() {
     count: direction === 'down' ? 1 : Infinity,
     log: (msg) => console.log(msg),
   });
-  const checksumPool = new Pool(typeof databaseUrl === 'string' ? { connectionString: databaseUrl } : databaseUrl);
+  const checksumPool = new Pool(databaseConfig);
   try {
     await recordMigrationChecksums(checksumPool, migrationsDir);
     if (process.env.REQUIRE_APP_ROLE_GATE === 'true') {

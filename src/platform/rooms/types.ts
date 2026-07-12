@@ -35,13 +35,21 @@ export type PlatformRelationshipChangeKind =
   | 'block_removed'
   | 'account_deleted';
 
-export interface PlatformRelationshipChange {
+interface PlatformRelationshipChangeBase {
   version: 1;
   eventId: string;
-  kind: PlatformRelationshipChangeKind;
   userIds: string[];
   occurredAt: string;
 }
+
+export type PlatformRelationshipChange = PlatformRelationshipChangeBase &
+  (
+    | { kind: 'block_created' | 'block_removed'; actorUserId: string }
+    | {
+        kind: Exclude<PlatformRelationshipChangeKind, 'block_created' | 'block_removed'>;
+        actorUserId?: string;
+      }
+  );
 
 export interface PlatformFriendPresence {
   event: PlatformFriendPresenceEvent;

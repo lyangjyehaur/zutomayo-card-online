@@ -149,6 +149,9 @@ function postgresConnectionString(env = process.env) {
   } catch {
     throw new Error('DATABASE_URL must be a valid PostgreSQL URL');
   }
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    throw new Error('DATABASE_URL must use postgres:// or postgresql://');
+  }
   for (const [key, value] of parsed.searchParams.entries()) {
     if (key.toLowerCase() === 'ssl') {
       if (!['true', '1'].includes(String(value).trim().toLowerCase())) {
@@ -166,6 +169,46 @@ function postgresConnectionString(env = process.env) {
     if (POSTGRES_SSL_QUERY_KEYS.has(key.toLowerCase())) parsed.searchParams.delete(key);
   }
   return parsed.toString();
+}
+
+function postgresUrlUsername(connectionString) {
+  if (!connectionString) return '';
+  let parsed;
+  try {
+    parsed = new URL(connectionString);
+  } catch {
+    throw new Error('DATABASE_URL must be a valid PostgreSQL URL');
+  }
+  try {
+    return decodeURIComponent(parsed.username || '').trim();
+  } catch {
+    throw new Error('DATABASE_URL username must use valid percent encoding');
+  }
+}
+
+function assertPostgresExpectedRole(env = process.env, expectedRoleVariable) {
+  const variable = String(expectedRoleVariable || '').trim();
+  if (!/^PG_[A-Z0-9_]+_USER$/.test(variable)) throw new Error('expected PostgreSQL role variable is invalid');
+  const expectedRole = String(env[variable] || '').trim();
+  if (!expectedRole) {
+    if (production(env)) throw new Error(`${variable} is required in production`);
+    return '';
+  }
+
+  const pgUser = String(env.PG_USER || '').trim();
+  if (pgUser && pgUser !== expectedRole) {
+    throw new Error(`PG_USER must match ${variable}`);
+  }
+
+  const connectionString = postgresConnectionString(env);
+  if (connectionString) {
+    const urlUser = postgresUrlUsername(connectionString);
+    if (!urlUser) throw new Error(`DATABASE_URL username must match ${variable}`);
+    if (urlUser !== expectedRole) throw new Error(`DATABASE_URL username must match ${variable}`);
+  } else if (production(env) && !pgUser) {
+    throw new Error(`PG_USER must match ${variable} in production`);
+  }
+  return expectedRole;
 }
 
 function resolveOAuthPublicBaseUrl(env = process.env) {
@@ -213,6 +256,7 @@ module.exports = {
   resolveRedisConnectionConfig,
   postgresSslConfig,
   postgresConnectionString,
+  assertPostgresExpectedRole,
   resolveOAuthPublicBaseUrl,
   validateProductionRuntimeSecurity,
 };

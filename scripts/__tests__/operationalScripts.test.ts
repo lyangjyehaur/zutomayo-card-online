@@ -54,6 +54,13 @@ describe('operational shell scripts', () => {
     );
   });
 
+  it('runs the real PostgreSQL/Redis outbox and social race smoke after role bootstrap', () => {
+    const smoke = readFileSync(resolve('scripts/postgres-role-smoke.sh'), 'utf8');
+    expect(smoke).toContain("grep -qx '1'");
+    expect(smoke).toContain('migrate npm run relationship:outbox:pg-smoke');
+    expect(smoke).toContain('api node social-concurrency-pg-smoke.cjs');
+  });
+
   it('gates the rendered production role/TLS environment before migration', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
     expect(deploy).toContain('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS');
@@ -68,6 +75,42 @@ describe('operational shell scripts', () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('<up|down|create>');
+  });
+
+  it('rejects production migration and retention URLs owned by the wrong role before connecting', () => {
+    const migrationEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      NODE_ENV: 'production',
+      PGSSLMODE: 'verify-full',
+      PG_MIGRATION_USER: 'zutomayo_migrator',
+      DATABASE_URL: 'postgres://zutomayo_api:secret@db.example/zutomayo',
+      EXPECTED_SCHEMA_MIGRATION: '000024_test',
+      EXPECTED_SCHEMA_CHECKSUM: 'a'.repeat(64),
+    };
+    delete migrationEnv.PG_USER;
+    const schemaResult = spawnSync(process.execPath, [resolve('scripts/db-schema-gate.cjs')], {
+      encoding: 'utf8',
+      env: migrationEnv,
+      timeout: 5_000,
+    });
+    expect(schemaResult.status).toBe(1);
+    expect(schemaResult.stderr).toContain('DATABASE_URL username must match PG_MIGRATION_USER');
+
+    const retentionEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      NODE_ENV: 'production',
+      PGSSLMODE: 'verify-full',
+      PG_RETENTION_USER: 'zutomayo_retention',
+      PG_USER: 'zutomayo_api',
+    };
+    delete retentionEnv.DATABASE_URL;
+    const retentionResult = spawnSync(process.execPath, [resolve('scripts/run-retention.cjs')], {
+      encoding: 'utf8',
+      env: retentionEnv,
+      timeout: 5_000,
+    });
+    expect(retentionResult.status).toBe(1);
+    expect(retentionResult.stderr).toContain('PG_USER must match PG_RETENTION_USER');
   });
 
   it('fails closed when the production synthetic probe has no credentials', () => {

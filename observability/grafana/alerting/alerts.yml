@@ -210,6 +210,52 @@ groups:
           summary: 'Durable match-result metrics are stale'
           description: 'The game server cannot refresh outbox metrics from PostgreSQL. Queue health is unknown.'
 
+  - name: zutomayo-relationship-events
+    interval: 30s
+    rules:
+      - alert: RelationshipChangeOutboxBacklog
+        expr: relationship_change_outbox_pending > 0
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'Relationship revocation events are pending'
+          description: '{{ $value }} relationship/account revocation events have waited for delivery for at least 2 minutes.'
+
+      - alert: RelationshipChangeOutboxOldestRow
+        expr: relationship_change_outbox_oldest_age_seconds > 120
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Relationship revocation delivery is stale'
+          description: 'The oldest pending relationship/account revocation event is {{ $value | humanizeDuration }} old.'
+
+      - alert: RelationshipChangeOutboxDeadLetter
+        expr: relationship_change_outbox_dead_letter > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Relationship revocation event exhausted retries'
+          description: '{{ $value }} relationship/account revocation events require operator redrive.'
+
+      - alert: RelationshipChangeOutboxMetricsStale
+        expr: |
+          absent(relationship_change_outbox_metrics_refresh_success)
+          or relationship_change_outbox_metrics_refresh_success == 0
+          or time() - relationship_change_outbox_metrics_last_success_unixtime_seconds > 120
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Relationship outbox metrics are stale'
+          description: 'The API cannot refresh relationship outbox metrics from PostgreSQL. Revocation queue health is unknown.'
+
   - name: zutomayo-backups
     interval: 1m
     rules:

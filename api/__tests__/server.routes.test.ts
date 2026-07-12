@@ -777,10 +777,16 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
-    it('publishes a block relationship event only after the database transaction succeeds', async () => {
-      mockQuery.mockImplementation(async (sql: string) => {
-        if (sql.includes('SELECT id FROM users') && sql.includes('deleted_at IS NULL')) {
-          return { rows: [{ id: 'u_target' }], rowCount: 1 };
+    it('commits a block relationship event to the outbox instead of publishing from the route', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO user_blocks')) {
+          return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO relationship_change_outbox')) {
+          return { rows: [{ event_id: 'event-1' }], rowCount: 1 };
         }
         return { rows: [], rowCount: 0 };
       });
@@ -791,14 +797,43 @@ describe('server routes', () => {
       expect(mockQuery.mock.calls.map(([sql]) => sql)).toEqual(
         expect.arrayContaining(['BEGIN', expect.stringContaining('INSERT INTO user_blocks'), 'COMMIT']),
       );
-      expect(mockRedisPublish).toHaveBeenCalledWith(
-        'zutomayo:relationship-change:v1',
-        expect.stringContaining('"kind":"block_created"'),
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO relationship_change_outbox'),
+        expect.arrayContaining(['block_created:u_test:u_target:2026-07-13T00:00:00.000Z']),
       );
+      expect(mockRedisPublish).not.toHaveBeenCalled();
       const commitIndex = mockQuery.mock.calls.findIndex(([sql]) => sql === 'COMMIT');
-      expect(mockQuery.mock.invocationCallOrder[commitIndex]).toBeLessThan(
-        mockRedisPublish.mock.invocationCallOrder[0],
+      const outboxIndex = mockQuery.mock.calls.findIndex(([sql]) =>
+        sql.includes('INSERT INTO relationship_change_outbox'),
       );
+      expect(mockQuery.mock.invocationCallOrder[outboxIndex]).toBeLessThan(
+        mockQuery.mock.invocationCallOrder[commitIndex],
+      );
+    });
+
+    it('keeps a committed block successful when the immediate Redis projection is unavailable', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO user_blocks')) {
+          return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO relationship_change_outbox')) {
+          return { rows: [{ event_id: 'event-redis-down' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      mockRedisMmApplyBlock.mockRejectedValueOnce(new Error('Redis projection unavailable'));
+
+      const res = await sendRequest('POST', '/api/blocks', { targetUserId: 'u_target' }, userUnsafeHeaders('u_test'));
+
+      expect(res.statusCode).toBe(200);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO relationship_change_outbox'),
+        expect.any(Array),
+      );
+      expect(mockRedisPublish).not.toHaveBeenCalled();
     });
 
     it('GET /api/decks returns 401 without auth', async () => {

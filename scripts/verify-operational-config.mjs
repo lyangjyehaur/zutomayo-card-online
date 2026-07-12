@@ -81,6 +81,13 @@ export function validateOperationalConfig() {
     'Unit=zutomayo-synthetic-probe.service',
   ]);
   requireFragments('package.json', ['"synthetic:probe"']);
+  requireFragments('package.json', ['"relationship:outbox:redrive"']);
+  requireFragments('package.json', ['"relationship:outbox:pg-smoke"']);
+  requireFragments('scripts/redrive-relationship-outbox.cjs', [
+    'assertPostgresExpectedRole',
+    "'PG_API_USER'",
+    'redriveRelationshipChange',
+  ]);
 
   const monitoring = read('docker-compose.monitoring.yml');
   if (monitoring.includes('sslmode=disable')) {
@@ -98,9 +105,29 @@ export function validateOperationalConfig() {
   ]);
   requireFragments('scripts/run-retention.cjs', [
     "require('../api/runtimeSecurityConfig.cjs')",
+    "assertPostgresExpectedRole(process.env, 'PG_RETENTION_USER')",
     'retention worker must use a dedicated PostgreSQL role',
     'poolConfig.ssl = postgresSslConfig(process.env)',
   ]);
+  for (const migrationScript of ['scripts/db-migrate.cjs', 'scripts/db-schema-gate.cjs']) {
+    requireFragments(migrationScript, [
+      "require('../api/runtimeSecurityConfig.cjs')",
+      "assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER')",
+      'postgresConnectionString(process.env)',
+      'postgresSslConfig(process.env)',
+    ]);
+  }
+  for (const privilegedScript of [
+    'scripts/create-admin.cjs',
+    'scripts/seed-cards-pg.ts',
+    'scripts/migrate-sqlite-to-pg.ts',
+  ]) {
+    requireFragments(privilegedScript, [
+      "assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER')",
+      'postgresConnectionString(process.env)',
+      'postgresSslConfig(process.env)',
+    ]);
+  }
   requireFragments('docker-compose.pgbouncer.yml', [
     'pgbouncer-role-mode-gate:',
     'REQUIRE_DISTINCT_DB_ROLES',
@@ -108,7 +135,6 @@ export function validateOperationalConfig() {
     '"$$PG_API_USER" != "$$PG_PLATFORM_USER"',
     'incompatible with distinct PostgreSQL runtime roles',
   ]);
-  requireFragments('scripts/run-retention.cjs', ["process.env.PGSSLMODE === 'verify-full'"]);
   requireFragments('observability/prometheus/prometheus.yml', [
     "job_name: 'zutomayo-game'",
     "job_name: 'zutomayo-api'",
@@ -126,6 +152,10 @@ export function validateOperationalConfig() {
     'ReadinessProbeFailed',
     'SyntheticPlayerJourneyFailed',
     'SyntheticPlayerJourneyStale',
+    'RelationshipChangeOutboxBacklog',
+    'RelationshipChangeOutboxOldestRow',
+    'RelationshipChangeOutboxDeadLetter',
+    'RelationshipChangeOutboxMetricsStale',
   ]);
   requireFragments('observability/prometheus/alertmanager.yml', ['api_url_file: /etc/alertmanager/slack_webhook']);
   if (read('docker-compose.monitoring.yml').includes("content: '${SLACK_ALERT_WEBHOOK:-")) {

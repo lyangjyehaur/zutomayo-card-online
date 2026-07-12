@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { findActiveLegalHoldForAccount } = require('./legalHoldService.cjs');
 const { AccountMutationError, acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
+const { enqueueRelationshipChange } = require('./relationshipOutbox.cjs');
 
 const ACCOUNT_ACTIONS = new Set(['verify_email', 'reset_password']);
 const DEFAULT_TOKEN_TTL_SECONDS = 30 * 60;
@@ -614,6 +615,9 @@ async function deleteAccount({
         [deletionRequest.id, userId],
       );
     }
+    await enqueueRelationshipChange(client, 'account_deleted', [userId], {
+      idempotencyKey: `account_deleted:${userId}`,
+    });
     return { ok: true, body: { deleted: true } };
   });
 }

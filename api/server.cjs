@@ -44,7 +44,12 @@ const { listAdminUsers, resetUserElo } = require('./adminService.cjs');
 const { authenticateAdmin, revokeAdminSession, verifyAdminSession } = require('./adminAuthService.cjs');
 const { assertRuntimeSchema } = require('./schemaGate.cjs');
 const { fetchWithResilience } = require('./oauthHttp.cjs');
-const { publishRelationshipChange } = require('./relationshipEvents.cjs');
+const {
+  createRelationshipOutboxWorker,
+  RelationshipOutboxPermanentError,
+  relationshipOutboxConfig,
+  relationshipOutboxStats,
+} = require('./relationshipOutbox.cjs');
 const {
   postgresConnectionString,
   postgresSslConfig,
@@ -60,6 +65,12 @@ const {
   metricsResponse,
   rateLimitedTotal,
   refreshMatchmakingQueueDepth,
+  relationshipOutboxDeadLetter,
+  relationshipOutboxOldestAgeSeconds,
+  relationshipOutboxPending,
+  relationshipOutboxProcessedTotal,
+  relationshipOutboxMetricsLastSuccess,
+  relationshipOutboxMetricsRefreshSuccess,
 } = require('./observability.cjs');
 const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
@@ -364,6 +375,44 @@ const redis = new Redis(REDIS_URL, {
 // 連線層錯誤（如 Redis 暫時斷線）不應變成 unhandled error event；
 // query 層錯誤仍會 reject promise 由各 handler 的 safe() 接住。
 redis.on('error', () => {});
+
+const relationshipOutboxWorker = createRelationshipOutboxWorker({
+  pool,
+  redis,
+  intervalMs: Number(process.env.RELATIONSHIP_OUTBOX_INTERVAL_MS) || 500,
+  config: relationshipOutboxConfig(process.env),
+  projectEvent: async (event) => {
+    if (event.kind === 'account_deleted') {
+      await leaveMatchmakingQueue(redis, event.userIds[0]);
+      await redis.del(`mm:blocked:${event.userIds[0]}`);
+      return;
+    }
+    if (event.kind !== 'block_created' && event.kind !== 'block_removed') return;
+    const actorUserId = event.actorUserId;
+    if (!actorUserId) {
+      throw new RelationshipOutboxPermanentError(`Relationship outbox ${event.kind} event is missing actorUserId`);
+    }
+    const targetUserId = event.userIds.find((userId) => userId !== actorUserId);
+    if (!targetUserId) {
+      throw new RelationshipOutboxPermanentError(`Relationship outbox ${event.kind} event is missing targetUserId`);
+    }
+    if (event.kind === 'block_created') await applyMatchmakingBlock(redis, actorUserId, targetUserId);
+    else await removeMatchmakingBlock(redis, actorUserId, targetUserId);
+  },
+  onResult: (result) => relationshipOutboxProcessedTotal.labels(result).inc(),
+  onBatch: async () => {
+    const stats = await relationshipOutboxStats(pool);
+    relationshipOutboxPending.set(stats.pending);
+    relationshipOutboxDeadLetter.set(stats.deadLetter);
+    relationshipOutboxOldestAgeSeconds.set(stats.oldestAgeSeconds);
+    relationshipOutboxMetricsRefreshSuccess.set(1);
+    relationshipOutboxMetricsLastSuccess.set(Date.now() / 1000);
+  },
+  onError: (error) => {
+    relationshipOutboxMetricsRefreshSuccess.set(0);
+    logger.error({ err: error }, 'relationship change outbox worker failed');
+  },
+});
 
 async function initSchema() {
   // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
@@ -742,6 +791,39 @@ async function initSchema() {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_chat_user_sanctions_target_active
       ON chat_user_sanctions(target_user_id, type, status, expires_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS relationship_change_outbox (
+      event_id TEXT PRIMARY KEY,
+      idempotency_key TEXT UNIQUE,
+      version SMALLINT NOT NULL DEFAULT 1 CHECK (version = 1),
+      kind TEXT NOT NULL CHECK (kind IN (
+        'friendship_added', 'friendship_removed', 'block_created', 'block_removed', 'account_deleted'
+      )),
+      user_ids TEXT[] NOT NULL,
+      actor_user_id TEXT,
+      occurred_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'processing', 'delivered', 'dead_letter')),
+      attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+      poison_count INTEGER NOT NULL DEFAULT 0 CHECK (poison_count >= 0),
+      next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      locked_at TIMESTAMPTZ,
+      lock_token TEXT,
+      lease_expires_at TIMESTAMPTZ,
+      last_error TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      delivered_at TIMESTAMPTZ,
+      CHECK (
+        (kind = 'account_deleted' AND cardinality(user_ids) = 1)
+        OR (kind <> 'account_deleted' AND cardinality(user_ids) = 2)
+      ),
+      CHECK (actor_user_id IS NULL OR actor_user_id = ANY(user_ids)),
+      CHECK (kind NOT IN ('block_created', 'block_removed') OR actor_user_id IS NOT NULL)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_relationship_change_outbox_delivery
+      ON relationship_change_outbox(status, next_attempt_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_relationship_change_outbox_created
+      ON relationship_change_outbox(created_at)`,
   ];
 
   for (const statement of schemaStatements) {
@@ -3679,9 +3761,6 @@ function handleRequest(req, res) {
         accept: parsed.data.accept,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
-      if (parsed.data.accept && result.body.friendUserId) {
-        await publishRelationshipChange(redis, 'friendship_added', [userId, result.body.friendUserId]);
-      }
       const capabilities = await getAccountSecurityCapabilities(pool, userId);
       if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
       json({ ...result.body, ...capabilities.body });
@@ -3705,8 +3784,12 @@ function handleRequest(req, res) {
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       const result = await blockUser({ pool, userId, targetUserId: parsed.data.targetUserId });
       if (!result.ok) return json({ error: result.error }, result.status);
-      await applyMatchmakingBlock(redis, userId, parsed.data.targetUserId);
-      await publishRelationshipChange(redis, 'block_created', [userId, parsed.data.targetUserId]);
+      await applyMatchmakingBlock(redis, userId, parsed.data.targetUserId).catch((error) =>
+        logger.error(
+          { err: error, userId, targetUserId: parsed.data.targetUserId },
+          'matchmaking block projection failed',
+        ),
+      );
       json(result.body);
       return;
     }
@@ -3717,8 +3800,9 @@ function handleRequest(req, res) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await unblockUser({ pool, userId, targetUserId: decodeURIComponent(blockRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
-      await removeMatchmakingBlock(redis, userId, decodeURIComponent(blockRoute[1]));
-      await publishRelationshipChange(redis, 'block_removed', [userId, decodeURIComponent(blockRoute[1])]);
+      await removeMatchmakingBlock(redis, userId, decodeURIComponent(blockRoute[1])).catch((error) =>
+        logger.error({ err: error, userId }, 'matchmaking unblock projection failed'),
+      );
       json(result.body);
       return;
     }
@@ -3729,7 +3813,6 @@ function handleRequest(req, res) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await removeFriend({ pool, userId, friendUserId: decodeURIComponent(friendRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
-      await publishRelationshipChange(redis, 'friendship_removed', [userId, decodeURIComponent(friendRoute[1])]);
       json(result.body);
       return;
     }
@@ -4847,6 +4930,7 @@ const server = http.createServer(handleRequest);
 
 async function closeDatabase() {
   stopAccountDeletionRecovery();
+  await relationshipOutboxWorker.stop();
   await pool.end();
   await redis.quit();
 }
@@ -4872,6 +4956,7 @@ if (require.main === module) {
     .then(() => {
       if (schemaInitError) throw schemaInitError;
       server.listen(PORT, () => {
+        relationshipOutboxWorker.start();
         startAccountDeletionRecovery();
         logger.info({ port: PORT }, 'Zutomayo API server running');
       });

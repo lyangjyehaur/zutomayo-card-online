@@ -1,6 +1,8 @@
 /* global module */
 
 const { normalizeUserId } = require('./friendService.cjs');
+const { AccountMutationError, acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
+const { enqueueRelationshipChange } = require('./relationshipOutbox.cjs');
 
 async function withTransaction(pool, operation) {
   const client = typeof pool.connect === 'function' ? await pool.connect() : pool;
@@ -18,42 +20,61 @@ async function withTransaction(pool, operation) {
   }
 }
 
+async function withRelationshipTransaction(pool, userIds, operation) {
+  try {
+    return await withTransaction(pool, async (client) => {
+      await acquireAccountMutationLocks(client, userIds);
+      return operation(client);
+    });
+  } catch (error) {
+    if (error instanceof AccountMutationError) return { ok: false, status: 404, error: 'User not found' };
+    throw error;
+  }
+}
+
 async function createFriendRequest({ pool, userId, targetUserId }) {
   const requester = normalizeUserId(userId);
   const recipient = normalizeUserId(targetUserId);
   if (!requester) return { ok: false, status: 401, error: 'Unauthorized' };
   if (!recipient || requester === recipient) return { ok: false, status: 400, error: 'Invalid friend user' };
 
-  const target = (await pool.query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL', [recipient])).rows[0];
-  if (!target) return { ok: false, status: 404, error: 'User not found' };
-
-  const blocked = (
-    await pool.query(
-      `SELECT 1 FROM user_blocks
+  return withRelationshipTransaction(pool, [requester, recipient], async (client) => {
+    const blocked = (
+      await client.query(
+        `SELECT 1 FROM user_blocks
        WHERE (blocker_user_id = $1 AND blocked_user_id = $2)
           OR (blocker_user_id = $2 AND blocked_user_id = $1)
        LIMIT 1`,
-      [requester, recipient],
-    )
-  ).rows[0];
-  if (blocked) return { ok: false, status: 403, error: 'Friend request is not allowed' };
+        [requester, recipient],
+      )
+    ).rows[0];
+    if (blocked) return { ok: false, status: 403, error: 'Friend request is not allowed' };
 
-  const existingFriend = (
-    await pool.query('SELECT 1 FROM user_friends WHERE user_id = $1 AND friend_user_id = $2', [requester, recipient])
-  ).rows[0];
-  if (existingFriend) return { ok: true, body: { accepted: true, friendUserId: recipient } };
+    const existingFriend = (
+      await client.query('SELECT created_at FROM user_friends WHERE user_id = $1 AND friend_user_id = $2', [
+        requester,
+        recipient,
+      ])
+    ).rows[0];
+    if (existingFriend) {
+      await enqueueRelationshipChange(client, 'friendship_added', [requester, recipient], {
+        idempotencyKey: `friendship_added:${requester}:${recipient}:${new Date(existingFriend.created_at).toISOString()}`,
+      });
+      return { ok: true, body: { accepted: true, friendUserId: recipient } };
+    }
 
-  const request = (
-    await pool.query(
-      `INSERT INTO friend_requests (requester_user_id, recipient_user_id, status, updated_at)
+    const request = (
+      await client.query(
+        `INSERT INTO friend_requests (requester_user_id, recipient_user_id, status, updated_at)
        VALUES ($1, $2, 'pending', NOW())
        ON CONFLICT (requester_user_id, recipient_user_id)
        DO UPDATE SET status = 'pending', updated_at = NOW()
        RETURNING id, status, created_at, updated_at`,
-      [requester, recipient],
-    )
-  ).rows[0];
-  return { ok: true, body: { request, friendUserId: recipient } };
+        [requester, recipient],
+      )
+    ).rows[0];
+    return { ok: true, body: { request, friendUserId: recipient } };
+  });
 }
 
 async function listFriendRequests({ pool, userId }) {
@@ -90,6 +111,21 @@ async function respondToFriendRequest({ pool, userId, requestId, accept }) {
   }
 
   return withTransaction(pool, async (client) => {
+    const candidate = (
+      await client.query(
+        `SELECT requester_user_id, recipient_user_id
+         FROM friend_requests
+         WHERE id = $1 AND recipient_user_id = $2`,
+        [cleanRequestId, recipient],
+      )
+    ).rows[0];
+    if (!candidate) return { ok: false, status: 404, error: 'Friend request not found' };
+    try {
+      await acquireAccountMutationLocks(client, [candidate.requester_user_id, candidate.recipient_user_id]);
+    } catch (error) {
+      if (error instanceof AccountMutationError) return { ok: false, status: 404, error: 'User not found' };
+      throw error;
+    }
     const request = (
       await client.query(
         `SELECT requester_user_id, recipient_user_id
@@ -128,6 +164,14 @@ async function respondToFriendRequest({ pool, userId, requestId, accept }) {
          ON CONFLICT (user_id, friend_user_id) DO NOTHING`,
         [request.requester_user_id, request.recipient_user_id],
       );
+      await enqueueRelationshipChange(
+        client,
+        'friendship_added',
+        [request.requester_user_id, request.recipient_user_id],
+        {
+          idempotencyKey: `friend_request:${cleanRequestId}:accepted`,
+        },
+      );
     }
     return {
       ok: true,
@@ -159,15 +203,16 @@ async function blockUser({ pool, userId, targetUserId }) {
   if (!blocker) return { ok: false, status: 401, error: 'Unauthorized' };
   if (!blocked || blocker === blocked) return { ok: false, status: 400, error: 'Invalid blocked user' };
 
-  return withTransaction(pool, async (client) => {
-    const target = (await client.query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL', [blocked])).rows[0];
-    if (!target) return { ok: false, status: 404, error: 'User not found' };
-    await client.query(
-      `INSERT INTO user_blocks (blocker_user_id, blocked_user_id)
+  return withRelationshipTransaction(pool, [blocker, blocked], async (client) => {
+    const insertedBlock = (
+      await client.query(
+        `INSERT INTO user_blocks (blocker_user_id, blocked_user_id)
        VALUES ($1, $2)
-       ON CONFLICT (blocker_user_id, blocked_user_id) DO NOTHING`,
-      [blocker, blocked],
-    );
+       ON CONFLICT (blocker_user_id, blocked_user_id) DO NOTHING
+       RETURNING created_at`,
+        [blocker, blocked],
+      )
+    ).rows[0];
     await client.query(
       `DELETE FROM user_friends
        WHERE (user_id = $1 AND friend_user_id = $2)
@@ -180,6 +225,12 @@ async function blockUser({ pool, userId, targetUserId }) {
           OR (requester_user_id = $2 AND recipient_user_id = $1)`,
       [blocker, blocked],
     );
+    if (insertedBlock) {
+      await enqueueRelationshipChange(client, 'block_created', [blocker, blocked], {
+        actorUserId: blocker,
+        idempotencyKey: `block_created:${blocker}:${blocked}:${new Date(insertedBlock.created_at).toISOString()}`,
+      });
+    }
     return { ok: true, body: { blocked: true, userId: blocked } };
   });
 }
@@ -189,8 +240,23 @@ async function unblockUser({ pool, userId, targetUserId }) {
   const blocked = normalizeUserId(targetUserId);
   if (!blocker) return { ok: false, status: 401, error: 'Unauthorized' };
   if (!blocked || blocker === blocked) return { ok: false, status: 400, error: 'Invalid blocked user' };
-  await pool.query('DELETE FROM user_blocks WHERE blocker_user_id = $1 AND blocked_user_id = $2', [blocker, blocked]);
-  return { ok: true, body: { blocked: false, userId: blocked } };
+  return withRelationshipTransaction(pool, [blocker, blocked], async (client) => {
+    const removedBlock = (
+      await client.query(
+        `DELETE FROM user_blocks
+         WHERE blocker_user_id = $1 AND blocked_user_id = $2
+         RETURNING created_at`,
+        [blocker, blocked],
+      )
+    ).rows[0];
+    if (removedBlock) {
+      await enqueueRelationshipChange(client, 'block_removed', [blocker, blocked], {
+        actorUserId: blocker,
+        idempotencyKey: `block_removed:${blocker}:${blocked}:${new Date(removedBlock.created_at).toISOString()}`,
+      });
+    }
+    return { ok: true, body: { blocked: false, userId: blocked } };
+  });
 }
 
 module.exports = {

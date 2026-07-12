@@ -5,7 +5,11 @@ const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
 const { encryptAdminTotpSecret, randomBase32 } = require('../api/adminSecretCrypto.cjs');
-const { postgresConnectionString, postgresSslConfig } = require('../api/runtimeSecurityConfig.cjs');
+const {
+  assertPostgresExpectedRole,
+  postgresConnectionString,
+  postgresSslConfig,
+} = require('../api/runtimeSecurityConfig.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 const VALID_ROLES = new Set(['viewer', 'moderator', 'operator', 'admin']);
@@ -23,6 +27,7 @@ async function main() {
   if (!/^[a-z0-9._-]{3,80}$/.test(username)) throw new Error('--username must be 3-80 safe characters');
   if (!VALID_ROLES.has(role)) throw new Error('--role must be viewer, moderator, operator, or admin');
   if (password.length < 16) throw new Error('ADMIN_BOOTSTRAP_PASSWORD must be at least 16 characters');
+  const migrationUser = assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER');
 
   const totpSecret = process.env.ADMIN_BOOTSTRAP_TOTP_SECRET || randomBase32();
   const salt = crypto.randomBytes(16).toString('hex');
@@ -35,7 +40,7 @@ async function main() {
       : {
           host: process.env.PG_HOST,
           port: Number(process.env.PG_PORT) || 5432,
-          user: process.env.PG_USER,
+          user: process.env.PG_USER || migrationUser,
           password: process.env.PG_PASSWORD,
           database: process.env.PG_DATABASE,
         }),

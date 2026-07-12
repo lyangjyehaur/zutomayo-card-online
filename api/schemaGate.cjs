@@ -44,6 +44,7 @@ const REQUIRED_RUNTIME_TABLES = Object.freeze([
   'retention_runs',
   'account_action_tokens',
   'account_deletion_requests',
+  'relationship_change_outbox',
   'admin_users',
   'admin_sessions',
   'bjg_matches',
@@ -136,6 +137,26 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'updated_at',
     'provider_deleted_at',
     'completed_at',
+  ],
+  relationship_change_outbox: [
+    'event_id',
+    'idempotency_key',
+    'version',
+    'kind',
+    'user_ids',
+    'actor_user_id',
+    'occurred_at',
+    'status',
+    'attempt_count',
+    'poison_count',
+    'next_attempt_at',
+    'locked_at',
+    'lock_token',
+    'lease_expires_at',
+    'last_error',
+    'created_at',
+    'updated_at',
+    'delivered_at',
   ],
   admin_users: ['id', 'username', 'role', 'disabled_at'],
   admin_sessions: ['jti', 'admin_user_id', 'role', 'expires_at', 'revoked_at'],
@@ -276,6 +297,41 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
     nullable: true,
     defaultToken: null,
   },
+  {
+    tableName: 'relationship_change_outbox',
+    columnName: 'status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'pending'",
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    columnName: 'attempt_count',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    columnName: 'next_attempt_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    columnName: 'poison_count',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    columnName: 'last_error',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
 ]);
 
 // These contracts cover the invariants that cannot be represented by a
@@ -325,6 +381,52 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
       'attempt_count >= 0',
     ],
   },
+  { tableName: 'relationship_change_outbox', constraintType: 'p', fragments: ['primary key (event_id)'] },
+  {
+    tableName: 'relationship_change_outbox',
+    constraintType: 'u',
+    fragments: ['unique (idempotency_key)'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    constraintType: 'c',
+    fragments: ['pending', 'processing', 'delivered', 'dead_letter'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    constraintType: 'c',
+    fragments: ['attempt_count >= 0'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    constraintType: 'c',
+    fragments: ['poison_count >= 0'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    constraintType: 'c',
+    fragments: ['version = 1'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    constraintType: 'c',
+    fragments: ['friendship_added', 'friendship_removed', 'block_created', 'block_removed', 'account_deleted'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    constraintType: 'c',
+    fragments: ['account_deleted', 'cardinality(user_ids) = 1', 'cardinality(user_ids) = 2'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    constraintType: 'c',
+    fragments: ['actor_user_id is null', 'actor_user_id = any (user_ids)'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    constraintType: 'c',
+    fragments: ['block_created', 'block_removed', 'actor_user_id is not null'],
+  },
 ]);
 
 const REQUIRED_RUNTIME_INDEXES = Object.freeze([
@@ -368,6 +470,16 @@ const REQUIRED_RUNTIME_INDEXES = Object.freeze([
     tableName: 'account_deletion_requests',
     indexName: 'idx_account_deletion_requests_recovery',
     fragments: ['status', 'updated_at'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    indexName: 'idx_relationship_change_outbox_delivery',
+    fragments: ['status', 'next_attempt_at'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    indexName: 'idx_relationship_change_outbox_created',
+    fragments: ['created_at'],
   },
 ]);
 

@@ -260,6 +260,7 @@ describe('platform room lifecycle', () => {
       version: 1,
       eventId: 'relationship-event-quick',
       kind: 'block_created',
+      actorUserId: 'u_host',
       userIds: ['u_guest', 'u_host'],
       occurredAt: new Date().toISOString(),
     });
