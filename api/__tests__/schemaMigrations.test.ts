@@ -1,5 +1,4 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = new URL('../..', import.meta.url);
@@ -13,7 +12,7 @@ function readMigrations(): string {
   return readdirSync(migrationsDir)
     .filter((file) => file.endsWith('.js'))
     .sort()
-    .map((file) => readFileSync(join(migrationsDir.pathname, file), 'utf8'))
+    .map((file) => readFileSync(new URL(file, migrationsDir), 'utf8'))
     .join('\n');
 }
 

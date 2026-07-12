@@ -147,7 +147,7 @@ export function useOnlineMatchSubmission({
     }
 
     const sourceMatchId = onlineSourceMatchID(matchID);
-    saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds, sourceMatchId);
+    saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds, sourceMatchId, submitKey);
 
     const accountPlayer = activeAccountPlayer(playerID);
     if (!isLoggedIn() || winner === null || accountPlayer === null) {

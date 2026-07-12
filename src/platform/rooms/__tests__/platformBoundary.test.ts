@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { createPlatformSeatToken } from '../../seatToken';
 import { CustomRoom } from '../CustomRoom';
@@ -62,7 +63,7 @@ function platformSourceFiles(): string[] {
         visit(entryUrl);
         continue;
       }
-      if (entry.endsWith('.ts')) files.push(entryUrl.pathname);
+      if (entry.endsWith('.ts')) files.push(fileURLToPath(entryUrl));
     }
   };
 

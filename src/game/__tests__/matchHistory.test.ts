@@ -59,11 +59,16 @@ describe('match history', () => {
   it('deduplicates retries by the stable submission key', () => {
     const G = gameState();
 
-    saveMatchRecord(G, 0, 65, undefined, 'room-1-result');
-    saveMatchRecord(G, 0, 65, undefined, 'room-1-result');
+    saveMatchRecord(G, 0, 65, 'room-1', 'room-1-result');
+    saveMatchRecord(G, 0, 65, 'room-1', 'room-1-result');
 
     expect(getMatchRecords()).toHaveLength(1);
-    expect(getMatchRecords()[0]).toMatchObject({ id: 'room-1-result', winner: 0, duration: 65 });
+    expect(getMatchRecords()[0]).toMatchObject({
+      id: 'room-1-result',
+      sourceMatchId: 'room-1',
+      winner: 0,
+      duration: 65,
+    });
   });
 
   it('uses only the durable online source match id for post-match chat lookup', () => {
