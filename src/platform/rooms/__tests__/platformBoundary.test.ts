@@ -26,6 +26,20 @@ const forbiddenBoardgameStateKeys = new Set([
   'playerView',
 ]);
 
+const forbiddenDurableChatKeys = new Set([
+  'content',
+  'text',
+  'translatedContent',
+  'sourceLanguage',
+  'moderationStatus',
+  'moderationReason',
+  'authorUserId',
+  'authorDisplayName',
+  'authorRole',
+  'reportId',
+  'translationId',
+]);
+
 const forbiddenPlatformSourcePatterns = [
   /\bfrom\s+['"]boardgame\.io(?:\/[^'"]*)?['"]/,
   /\brequire\(\s*['"]boardgame\.io(?:\/[^'"]*)?['"]\s*\)/,
@@ -71,8 +85,24 @@ function collectForbiddenKeys(value: unknown, path = '$', found: string[] = []):
   return found;
 }
 
-function expectNoBoardgameState(value: unknown): void {
+function collectForbiddenDurableChatKeys(value: unknown, path = '$', found: string[] = []): string[] {
+  if (!value || typeof value !== 'object') return found;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectForbiddenDurableChatKeys(item, `${path}[${index}]`, found));
+    return found;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    const nextPath = `${path}.${key}`;
+    if (forbiddenDurableChatKeys.has(key)) found.push(nextPath);
+    collectForbiddenDurableChatKeys(item, nextPath, found);
+  }
+  return found;
+}
+
+function expectPlatformShellOnly(value: unknown): void {
   expect(collectForbiddenKeys(value)).toEqual([]);
+  expect(collectForbiddenDurableChatKeys(value)).toEqual([]);
 }
 
 function client(sessionId: string, auth: PlatformAuth): PlatformClient & { send: ReturnType<typeof vi.fn> } {
@@ -99,6 +129,20 @@ const poisonedBoardgamePayload = {
   playerView: { hand: ['hidden-card'] },
 };
 
+const poisonedDurableChatPayload = {
+  content: 'durable chat text must stay in ChatService',
+  text: 'legacy chat text must stay in ChatService',
+  translatedContent: 'translated text must stay in ChatService',
+  sourceLanguage: 'ja',
+  moderationStatus: 'visible',
+  moderationReason: 'manual_review',
+  authorUserId: 'u_author',
+  authorDisplayName: 'Author',
+  authorRole: 'player',
+  reportId: 'chat_report_1',
+  translationId: 'chat_translation_1',
+};
+
 function seatToken(): string {
   process.env.PLATFORM_SEAT_TOKEN_SECRET = 'test-seat-token-secret-at-least-32-characters';
   return createPlatformSeatToken({ matchID: 'bgio-match-1', playerID: '0' });
@@ -117,7 +161,7 @@ describe('platform room boundary', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps match shell snapshots and metadata free of boardgame state', async () => {
+  it('keeps match shell snapshots and metadata free of boardgame state or durable chat evidence', async () => {
     const room = new MatchShellRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
@@ -134,6 +178,7 @@ describe('platform room boundary', () => {
       boardgameMatchID: 'bgio-match-1',
       conversationId: 'match:bgio-match-1',
       ...poisonedBoardgamePayload,
+      ...poisonedDurableChatPayload,
     });
     room.clients.push(player);
     await room.onJoin(player, {
@@ -141,14 +186,15 @@ describe('platform room boundary', () => {
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
       ...poisonedBoardgamePayload,
+      ...poisonedDurableChatPayload,
       platformSeatToken: seatToken(),
     });
 
-    expectNoBoardgameState(player.send.mock.calls);
-    expectNoBoardgameState(setMatchmaking.mock.calls);
+    expectPlatformShellOnly(player.send.mock.calls);
+    expectPlatformShellOnly(setMatchmaking.mock.calls);
   });
 
-  it('keeps quick match snapshots and metadata free of boardgame state', async () => {
+  it('keeps quick match snapshots and metadata free of boardgame state or durable chat evidence', async () => {
     const room = new QuickMatchRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
@@ -175,13 +221,13 @@ describe('platform room boundary', () => {
     room.clients.push(guest);
     await room.onJoin(guest);
 
-    expectNoBoardgameState(host.send.mock.calls);
-    expectNoBoardgameState(guest.send.mock.calls);
-    expectNoBoardgameState(broadcast.mock.calls);
-    expectNoBoardgameState(setMatchmaking.mock.calls);
+    expectPlatformShellOnly(host.send.mock.calls);
+    expectPlatformShellOnly(guest.send.mock.calls);
+    expectPlatformShellOnly(broadcast.mock.calls);
+    expectPlatformShellOnly(setMatchmaking.mock.calls);
   });
 
-  it('keeps custom room snapshots and metadata free of boardgame state', async () => {
+  it('keeps custom room snapshots and metadata free of boardgame state or durable chat evidence', async () => {
     const room = new CustomRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
@@ -195,16 +241,21 @@ describe('platform room boundary', () => {
       authenticated: true,
     });
 
-    await room.onCreate({ roomCode: 'ROOM42', boardgameMatchID: 'bgio-match-1', ...poisonedBoardgamePayload });
+    await room.onCreate({
+      roomCode: 'ROOM42',
+      boardgameMatchID: 'bgio-match-1',
+      ...poisonedBoardgamePayload,
+      ...poisonedDurableChatPayload,
+    });
     room.clients.push(host);
     await room.onJoin(host);
 
-    expectNoBoardgameState(host.send.mock.calls);
-    expectNoBoardgameState(broadcast.mock.calls);
-    expectNoBoardgameState(setMatchmaking.mock.calls);
+    expectPlatformShellOnly(host.send.mock.calls);
+    expectPlatformShellOnly(broadcast.mock.calls);
+    expectPlatformShellOnly(setMatchmaking.mock.calls);
   });
 
-  it('keeps invite snapshots and metadata free of boardgame state', async () => {
+  it('keeps invite snapshots and metadata free of boardgame state or durable chat evidence', async () => {
     const room = new InviteRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
@@ -223,12 +274,13 @@ describe('platform room boundary', () => {
       targetUserId: 'u_target',
       boardgameMatchID: 'bgio-match-1',
       ...poisonedBoardgamePayload,
+      ...poisonedDurableChatPayload,
     });
     room.clients.push(inviter);
     await room.onJoin(inviter);
 
-    expectNoBoardgameState(inviter.send.mock.calls);
-    expectNoBoardgameState(broadcast.mock.calls);
-    expectNoBoardgameState(setMatchmaking.mock.calls);
+    expectPlatformShellOnly(inviter.send.mock.calls);
+    expectPlatformShellOnly(broadcast.mock.calls);
+    expectPlatformShellOnly(setMatchmaking.mock.calls);
   });
 });
