@@ -209,6 +209,47 @@ scrape_configs:
 
 Both rate limiters **fail open** (allow the request through) when Redis is unavailable, to avoid blocking all traffic during a Redis outage.
 
+### Monitoring Stack (Grafana / Prometheus)
+
+A ready-to-use monitoring stack is defined in [docker-compose.monitoring.yml](../docker-compose.monitoring.yml). It launches Prometheus, Grafana, postgres-exporter, redis-exporter, and cAdvisor, and joins the app's default Docker network so scrapers can reach `game`, `api`, `platform`, `postgres`, and `redis` by service name.
+
+**Dashboards** (`observability/grafana/dashboards/`) are provisioned automatically into a `Zutomayo` folder:
+
+| Dashboard       | UID               | Key panels                                                                                                     |
+| --------------- | ----------------- | -------------------------------------------------------------------------------------------------------------- |
+| Game Server     | `game-server`     | WebSocket connections, HTTP latency P50/P95/P99, 5xx rate, event loop lag, heap, PG pool                       |
+| API Server      | `api-server`      | HTTP rate by route, latency quantiles, 5xx rate, auth success/failure, rate limit, Turnstile, DB query latency |
+| Platform Server | `platform-server` | Active rooms, connections, match participants, chat rate, Redis op latency                                     |
+| Infrastructure  | `infrastructure`  | PostgreSQL connections/query rate, Redis memory/ops/connections, Docker CPU/memory                             |
+
+**Alerting rules** (`observability/grafana/alerting/alerts.yml`) cover 5xx error rate, PG pool saturation, Redis memory, WebSocket limits, event loop lag, service availability, and matchmaking queue depth. Contact points (`contact-points.yml`) route critical alerts to Slack and warnings to email via environment-variable substitution.
+
+**Starting the monitoring stack**
+
+```bash
+# Ensure the app stack is running first (it creates the default network).
+docker compose up -d
+
+# Launch the monitoring stack.
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+Grafana is exposed on **port 3003** (avoids conflicts with game `3000`, api `3001`, platform `3002`). Default credentials are `admin / admin`; set `GRAFANA_PASSWORD` in `.env` to override.
+
+**Configuration files**
+
+| File                                                 | Purpose                                                        |
+| ---------------------------------------------------- | -------------------------------------------------------------- |
+| `observability/prometheus/prometheus.yml`            | Scrape configs for all services + exporters                    |
+| `observability/grafana/provisioning/datasources.yml` | Prometheus datasource provisioning                             |
+| `observability/grafana/provisioning/dashboards.yml`  | Dashboard file provisioning from `/var/lib/grafana/dashboards` |
+| `observability/grafana/alerting/alerts.yml`          | Alerting rule definitions (Prometheus-compatible)              |
+| `observability/grafana/alerting/contact-points.yml`  | Slack + email notification contact points and routes           |
+
+**Metrics token**: if `METRICS_TOKEN` is set on the app servers, create a file containing the token and add `bearer_token_file: /etc/prometheus/metrics_token` to each `zutomayo-*` scrape job in `prometheus.yml`, then mount the token file into the prometheus container.
+
+**Network**: the monitoring stack joins `${APP_NETWORK:-zutomayo-card-online_default}` as an external network. If your compose project name differs (e.g. running from a worktree directory), set `APP_NETWORK` in `.env` to match `docker compose ls` output.
+
 ## Volumes / 資料卷
 
 | Volume       | Mount                               | Purpose                                                                                                                                                                |
@@ -306,6 +347,81 @@ Redis serves five roles simultaneously:
 - Rate-limit counters shared across API instances: Redis `INCR` + `EXPIRE` for cross-instance counting.
 
 To scale up, increase the replica count for `game`, `api`, and/or `platform`. Both `postgres` and `redis` should remain single instances. Ensure `JWT_SECRET` is identical across all three services; keep `ALLOWED_ORIGINS` identical across `game`/`api` instances. Platform replicas must run with `PLATFORM_REDIS_MODE=redis` so Colyseus room discovery and presence are shared.
+
+## PgBouncer 連線池 / PgBouncer Connection Pooler
+
+When you scale `game`, `api`, or `platform` to multiple replicas (see [水平擴展](#水平擴展--horizontal-scaling)), each process opens its own `pg.Pool` (game/api default `PG_POOL_MAX=20`; platform stores default 5). Hundreds of idle backend connections can exhaust PostgreSQL's `max_connections` and degrade performance. [PgBouncer](https://www.pgbouncer.org/) sits between the services and PostgreSQL, multiplexing many client connections onto a small pool of backend connections.
+
+### 何時需要 PgBouncer / When to use PgBouncer
+
+- Single-instance deployment: **not needed**. Services connect directly to `postgres` (the default).
+- Multi-instance horizontal scaling: **recommended**. PgBouncer caps backend connections regardless of how many service replicas you run.
+
+PgBouncer is **optional and off by default**. The default `docker-compose.yml` keeps services pointed directly at the `postgres` service (`PG_HOST=${PG_HOST:-postgres}`, `PG_PORT=${PG_PORT:-5432}`).
+
+### 啟用 PgBouncer / Enabling PgBouncer
+
+Use the overlay compose file to repoint `game`/`api`/`platform` at PgBouncer and start the pooler:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.pgbouncer.yml up -d
+```
+
+The overlay:
+
+- Sets `PG_HOST=pgbouncer` and `PG_PORT=6432` for `game`, `api`, and `platform`.
+- Adds `pgbouncer` to their `depends_on`.
+- Clears the `pgbouncer` service profile (via `!reset []`, Compose v2.20+) so it starts automatically.
+
+The `migrate` service always connects directly to `postgres` (not through PgBouncer) to avoid any pooler interference with DDL/migration transactions.
+
+PgBouncer listens on port `6432`. It is published to the host in the default compose file for local inspection; in production you may remove the `ports` mapping and keep it internal to the Compose network.
+
+On older Compose versions that do not support `!reset`, start PgBouncer explicitly with a profile:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.pgbouncer.yml --profile pgbouncer up -d
+```
+
+### 設定檔 / Configuration files
+
+Reference config files live under [`observability/pgbouncer/`](../observability/pgbouncer):
+
+| File            | Purpose                                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `pgbouncer.ini` | Static PgBouncer config (pool mode, sizes, timeouts). Uses `${PG_USER}`/`${PG_PASSWORD}` placeholders — replace at deploy time. |
+| `userlist.txt`  | PgBouncer auth file with a password placeholder.                                                                                |
+| `Dockerfile`    | Optional custom image that bakes the two config files into `edoburu/pgbouncer:latest`.                                          |
+
+The default `docker-compose.yml` pgbouncer service uses the `edoburu/pgbouncer` image with environment variables (`DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_NAME`, `POOL_MODE`, …) which auto-generate both `pgbouncer.ini` and `userlist.txt` at container start, so the static files are only needed for custom builds.
+
+> PgBouncer's ini file does **not** perform environment variable substitution. The `${PG_USER}`/`${PG_PASSWORD}` in `pgbouncer.ini` must be replaced manually (or via the edoburu image env-var mechanism) before use.
+
+### Transaction mode vs Session mode
+
+PgBouncer defaults to **transaction mode** (`POOL_MODE=transaction`), which multiplexes connections at transaction boundaries. This is the most efficient mode but has two limitations:
+
+1. **No server-side prepared statements** — statements prepared on one backend connection may execute on a different one.
+2. **No session-scoped state** — advisory locks, `SET` session variables, and transactions held open across separate client checkouts are not supported.
+
+**`api` and `platform`** issue only short, self-contained queries (each `pg.Pool` query is independent) and work correctly in transaction mode.
+
+**`game` server (boardgame.io `PostgresAdapter`)** — caveat: [`src/server/db/postgres-adapter.ts`](../src/server/db/postgres-adapter.ts) `fetchStateForUpdate()` checks out a `PoolClient`, runs `BEGIN ... SELECT ... FOR UPDATE`, and holds that client open across the boardgame.io reducer cycle until `setState()` commits and releases it (tracked in `updateLocks`). A single transaction therefore spans the fetch→setState round-trip. In transaction mode PgBouncer reclaims the backend connection when the transaction commits, but the client is held idle between fetch and setState — long-held idle transactions can starve the pool. If you observe `StaleStateWriteError`, connection timeouts, or prepared-statement errors on the game server, switch the game server's traffic to **session mode**.
+
+#### 切換到 session mode / Switching to session mode
+
+Set `POOL_MODE=session` in `docker-compose.pgbouncer.yml` (and `pool_mode = session` in `observability/pgbouncer/pgbouncer.ini` if using the custom image). Session mode keeps a 1:1 mapping between client and backend connections, which is safe for the boardgame.io adapter but less efficient at multiplexing. A common compromise is to run **two PgBouncer instances**: one in transaction mode for `api`/`platform` and one in session mode for `game`, each on its own port.
+
+### 連線池大小建議 / Pool sizing
+
+| Parameter            | Default | Notes                                                                                 |
+| -------------------- | ------- | ------------------------------------------------------------------------------------- |
+| `MAX_CLIENT_CONN`    | `200`   | Max client connections accepted by PgBouncer.                                         |
+| `DEFAULT_POOL_SIZE`  | `20`    | Backend connections per database/user. Should cover peak concurrency of all replicas. |
+| `RESERVE_POOL_SIZE`  | `5`     | Extra connections spawned under load after `reserve_pool_timeout`.                    |
+| `max_db_connections` | `100`   | Hard cap on backend connections to PostgreSQL (in `pgbouncer.ini`).                   |
+
+Ensure PostgreSQL `max_connections` ≥ sum of `DEFAULT_POOL_SIZE` across all PgBouncer databases plus headroom for the `migrate` service and direct admin connections.
 
 ## Reusing Existing PostgreSQL / Redis
 

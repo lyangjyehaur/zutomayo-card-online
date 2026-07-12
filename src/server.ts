@@ -1,3 +1,5 @@
+// OpenTelemetry tracing 必須在所有其他 import 之前載入，讓 auto-instrumentation 能正確 patch 模組。
+import './server/observability/tracing.js';
 import { ZutomayoOnlineCard, resetParsedEffects } from './game/Game';
 import { initCards } from './game/cards/loader';
 import { initEffectI18n } from './game/cards/i18n';

@@ -35,6 +35,15 @@ services:
       retries: 10
     restart: unless-stopped
 
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - '16686:16686' # UI
+      - '4318:4318' # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+
   migrate:
     build:
       context: .
@@ -84,8 +93,8 @@ services:
       - APP_VERSION=${APP_VERSION:-}
       - APP_BUILD_ID=${APP_BUILD_ID:-}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
-      - PG_HOST=postgres
-      - PG_PORT=5432
+      - PG_HOST=${PG_HOST:-postgres}
+      - PG_PORT=${PG_PORT:-5432}
       - PG_USER=${PG_USER:-zutomayo}
       - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
@@ -125,8 +134,8 @@ services:
       - APP_VERSION=${APP_VERSION:-}
       - APP_BUILD_ID=${APP_BUILD_ID:-}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
-      - PG_HOST=postgres
-      - PG_PORT=5432
+      - PG_HOST=${PG_HOST:-postgres}
+      - PG_PORT=${PG_PORT:-5432}
       - PG_USER=${PG_USER:-zutomayo}
       - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
@@ -180,8 +189,8 @@ services:
       - APP_VERSION=${APP_VERSION:-}
       - APP_BUILD_ID=${APP_BUILD_ID:-}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
-      - PG_HOST=postgres
-      - PG_PORT=5432
+      - PG_HOST=${PG_HOST:-postgres}
+      - PG_PORT=${PG_PORT:-5432}
       - PG_USER=${PG_USER:-zutomayo}
       - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
@@ -206,6 +215,31 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # PgBouncer connection pooler. Optional — not started by default.
+  # Enable with: docker compose --profile pgbouncer up
+  # or combine with docker-compose.pgbouncer.yml to also repoint game/api/platform
+  # at PgBouncer. See docs/DEPLOYMENT.md (PgBouncer section).
+  pgbouncer:
+    profiles: ['pgbouncer']
+    image: edoburu/pgbouncer:latest
+    environment:
+      - DB_USER=${PG_USER:-postgres}
+      - DB_PASSWORD=${PG_PASSWORD:-}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${PG_DATABASE:-zutomayo}
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=200
+      - DEFAULT_POOL_SIZE=20
+      - RESERVE_POOL_SIZE=5
+      - SERVER_IDLE_TIMEOUT=300
+    ports:
+      - '6432:6432'
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

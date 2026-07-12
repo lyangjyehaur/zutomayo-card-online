@@ -1,0 +1,15 @@
+# Grafana datasource provisioning.
+# Creates a Prometheus datasource pointing to the prometheus service.
+apiVersion: 1
+
+datasources:
+  - orgId: 1
+    uid: prometheus
+    name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s

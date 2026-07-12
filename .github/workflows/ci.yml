@@ -36,6 +36,9 @@ jobs:
       - name: Typecheck (scripts)
         run: npm run typecheck:scripts
 
+      - name: Check i18n completeness
+        run: npm run i18n:check
+
       - name: Unit tests
         run: npm test
 

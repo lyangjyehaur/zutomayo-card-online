@@ -1,3 +1,5 @@
+// OpenTelemetry tracing 必須在所有其他 import 之前載入，讓 auto-instrumentation 能正確 patch 模組。
+import './tracing.js';
 import * as Sentry from '@sentry/node';
 import { platformLogger as logger } from './logger';
 import { createPlatformRuntime } from './runtime';

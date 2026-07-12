@@ -1,0 +1,70 @@
+# PgBouncer overlay — repoints game/api/platform at the PgBouncer pooler (port 6432)
+# instead of connecting directly to the `postgres` service.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.pgbouncer.yml up -d
+#
+# The `pgbouncer` service is defined in docker-compose.yml under the `pgbouncer`
+# profile (so it does not start on a plain `docker compose up`). This overlay
+# clears that profile via `!reset []` (Compose v2.20+) so PgBouncer starts
+# automatically together with the repointed services. On older Compose versions,
+# start it explicitly with: --profile pgbouncer
+#
+# IMPORTANT — pool mode caveat:
+#   PgBouncer runs in `transaction` mode by default, which does NOT support
+#   server-side prepared statements and breaks session-scoped features such as
+#   advisory locks or a transaction held open across separate client checkouts.
+#   The boardgame.io PostgresAdapter (src/server/db/postgres-adapter.ts) holds a
+#   `BEGIN ... FOR UPDATE` transaction across the fetch→setState cycle via
+#   `updateLocks`, so the `game` service may be incompatible with transaction
+#   mode. If you observe stale-state write errors or "prepared statement" errors
+#   on the game server, switch PgBouncer to `session` mode by setting
+#   `POOL_MODE=session` below (and `pool_mode = session` in pgbouncer.ini).
+#   `api` and `platform` issue only short, self-contained queries and work fine
+#   in `transaction` mode.
+services:
+  game:
+    environment:
+      - PG_HOST=pgbouncer
+      - PG_PORT=6432
+    depends_on:
+      pgbouncer:
+        condition: service_started
+
+  api:
+    environment:
+      - PG_HOST=pgbouncer
+      - PG_PORT=6432
+    depends_on:
+      pgbouncer:
+        condition: service_started
+
+  platform:
+    environment:
+      - PG_HOST=pgbouncer
+      - PG_PORT=6432
+    depends_on:
+      pgbouncer:
+        condition: service_started
+
+  pgbouncer:
+    # Clear the `pgbouncer` profile so the service starts with this overlay.
+    profiles: !reset []
+    image: edoburu/pgbouncer:latest
+    environment:
+      - DB_USER=${PG_USER:-postgres}
+      - DB_PASSWORD=${PG_PASSWORD:-}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${PG_DATABASE:-zutomayo}
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=200
+      - DEFAULT_POOL_SIZE=20
+      - RESERVE_POOL_SIZE=5
+      - SERVER_IDLE_TIMEOUT=300
+    ports:
+      - '6432:6432'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped

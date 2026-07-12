@@ -1,0 +1,50 @@
+# Grafana contact points and notification policy.
+# Environment variables are substituted by Grafana provisioning ($__env{VAR}):
+#   SLACK_ALERT_WEBHOOK  - Slack incoming webhook URL for critical alerts
+#   ALERT_EMAIL_TO       - Comma-separated recipient list for warning emails (optional)
+#
+# Copy this file into observability/grafana/provisioning/alerting/ (or mount it
+# at /etc/grafana/provisioning/alerting/) so Grafana loads it on startup.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Slack (Critical)
+    receivers:
+      - uid: slack-critical
+        type: slack
+        settings:
+          url: $__env{SLACK_ALERT_WEBHOOK}
+          title: '{{ template "default.title" . }}'
+          message: '{{ template "default.message" . }}'
+        disableResolveMessage: false
+
+  - orgId: 1
+    name: Email (Warning)
+    receivers:
+      - uid: email-warning
+        type: email
+        settings:
+          addresses: $__env{ALERT_EMAIL_TO}
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: Slack (Critical)
+    group_by: ['alertname', 'job']
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      - receiver: Slack (Critical)
+        object_matchers:
+          - - severity
+            - '='
+            - critical
+        continue: false
+      - receiver: Email (Warning)
+        object_matchers:
+          - - severity
+            - '='
+            - warning
+        continue: false

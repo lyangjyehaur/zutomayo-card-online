@@ -1,0 +1,15 @@
+# Grafana dashboard provisioning.
+# Loads all JSON dashboards from /var/lib/grafana/dashboards.
+apiVersion: 1
+
+providers:
+  - name: zutomayo-dashboards
+    orgId: 1
+    folder: Zutomayo
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
