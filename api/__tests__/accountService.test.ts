@@ -77,12 +77,14 @@ const {
     generateSalt: () => string;
     currentIterations: number;
     legacyIterations: number;
+    beforeUpdate?: () => Promise<void>;
   }) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
 };
 
 const userRow = {
   id: 'u_1',
   email: 'user@example.com',
+  email_verified: true,
   nickname: 'User',
   elo: 1000,
   match_count: 4,
@@ -105,6 +107,7 @@ describe('account service', () => {
     expect(mapAccountProfile(userRow, { hashEmail })).toEqual({
       id: 'u_1',
       email: 'user@example.com',
+      emailVerified: true,
       nickname: 'User',
       avatarUrl: `https://www.gravatar.com/avatar/${userEmailHash}?d=mp&s=160`,
       avatarFallbackUrls: [`https://cravatar.cn/avatar/${userEmailHash}?d=mp&s=160`],
@@ -131,7 +134,7 @@ describe('account service', () => {
     await expect(
       registerAccount({
         pool,
-        body: { email: 'USER@EXAMPLE.COM', password: 'secret1', nickname: '<Alice>' },
+        body: { email: 'USER@EXAMPLE.COM', password: 'a-very-long-secret', nickname: '<Alice>' },
         sanitizeText,
         hashPassword,
         createToken: (id) => `token:${id}`,
@@ -147,7 +150,7 @@ describe('account service', () => {
     });
 
     expect(sanitizeText).toHaveBeenCalledWith('<Alice>', 30);
-    expect(hashPassword).toHaveBeenCalledWith('secret1', 'salt');
+    expect(hashPassword).toHaveBeenCalledWith('a-very-long-secret', 'salt');
     expect(pool.query).toHaveBeenCalledWith(
       'INSERT INTO users (id, email, password_hash, salt, nickname) VALUES ($1, $2, $3, $4, $5)',
       ['u_fixed', 'user@example.com', 'hash', 'salt', 'Alice'],
@@ -167,7 +170,9 @@ describe('account service', () => {
       generateSalt: () => 'salt',
     };
 
-    await expect(registerAccount({ ...deps, body: { email: '', password: 'secret1' } })).resolves.toMatchObject({
+    await expect(
+      registerAccount({ ...deps, body: { email: '', password: 'a-very-long-secret' } }),
+    ).resolves.toMatchObject({
       ok: false,
       status: 400,
     });
@@ -175,7 +180,9 @@ describe('account service', () => {
       ok: false,
       status: 400,
     });
-    await expect(registerAccount({ ...deps, body: { email: 'a@b.com', password: 'secret1' } })).resolves.toMatchObject({
+    await expect(
+      registerAccount({ ...deps, body: { email: 'a@b.com', password: 'a-very-long-secret' } }),
+    ).resolves.toMatchObject({
       ok: false,
       status: 409,
     });
@@ -190,7 +197,7 @@ describe('account service', () => {
     await expect(
       loginAccount({
         pool,
-        body: { email: 'user@example.com', password: 'secret1' },
+        body: { email: 'user@example.com', password: 'a-very-long-secret' },
         hashPassword,
         createToken: (id) => `token:${id}`,
         currentIterations: 100000,
@@ -210,7 +217,7 @@ describe('account service', () => {
     await expect(
       loginAccount({
         pool,
-        body: { email: 'user@example.com', password: 'secret1' },
+        body: { email: 'user@example.com', password: 'a-very-long-secret' },
         hashPassword,
         createToken: (id) => `token:${id}`,
         currentIterations: 100000,
@@ -226,8 +233,8 @@ describe('account service', () => {
   it('updates password after verifying current password', async () => {
     const pool = poolWithHandler((sql) => (sql.startsWith('SELECT') ? { rows: [userRow] } : { rows: [] }));
     const hashPassword = vi.fn(async (password, _salt, iterations) => {
-      if (password === 'secret1' && iterations === 100000) return 'current-hash';
-      if (password === 'newsecret' && iterations === 100000) return 'next-hash';
+      if (password === 'a-very-long-secret' && iterations === 100000) return 'current-hash';
+      if (password === 'a-new-very-long-secret' && iterations === 100000) return 'next-hash';
       return 'other-hash';
     });
 
@@ -235,7 +242,7 @@ describe('account service', () => {
       updateAccountPassword({
         pool,
         userId: 'u_1',
-        body: { currentPassword: 'secret1', newPassword: 'newsecret' },
+        body: { currentPassword: 'a-very-long-secret', newPassword: 'a-new-very-long-secret' },
         hashPassword,
         generateSalt: () => 'next-salt',
         currentIterations: 100000,
@@ -249,13 +256,39 @@ describe('account service', () => {
     ]);
   });
 
+  it('runs the session revocation hook before writing the new password', async () => {
+    const pool = poolWithHandler((sql) => (sql.startsWith('SELECT') ? { rows: [userRow] } : { rows: [] }));
+    const beforeUpdate = vi.fn(async () => undefined);
+    const queryOrder: string[] = [];
+    pool.query.mockImplementation(async (sql) => {
+      queryOrder.push(sql);
+      return sql.startsWith('SELECT') ? { rows: [{ ...userRow, password_hash: 'current-hash' }] } : { rows: [] };
+    });
+
+    await expect(
+      updateAccountPassword({
+        pool,
+        userId: 'u_1',
+        body: { currentPassword: 'a-very-long-secret', newPassword: 'a-new-very-long-secret' },
+        hashPassword: async () => 'current-hash',
+        generateSalt: () => 'next-salt',
+        currentIterations: 100000,
+        legacyIterations: 10000,
+        beforeUpdate,
+      }),
+    ).resolves.toEqual({ ok: true, body: { ok: true } });
+
+    expect(beforeUpdate).toHaveBeenCalledOnce();
+    expect(queryOrder.at(-1)).toBe('UPDATE users SET password_hash = $1, salt = $2 WHERE id = $3');
+  });
+
   it('rejects password updates when current password is invalid', async () => {
     const pool = poolWithHandler((sql) => (sql.startsWith('SELECT') ? { rows: [userRow] } : { rows: [] }));
     await expect(
       updateAccountPassword({
         pool,
         userId: 'u_1',
-        body: { currentPassword: 'wrong', newPassword: 'newsecret' },
+        body: { currentPassword: 'wrong', newPassword: 'a-new-very-long-secret' },
         hashPassword: async () => 'wrong-hash',
         generateSalt: () => 'next-salt',
         currentIterations: 100000,

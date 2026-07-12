@@ -3,7 +3,12 @@ import type { AuthContext } from '@colyseus/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authenticatePlatformClient } from '../auth';
 import { InviteRoom, parseFriendInviteId } from '../InviteRoom';
-import { platformAuthTokenFromContext, verifyPlatformJwtUserId } from '../jwt';
+import {
+  configurePlatformJwtRevocationStore,
+  platformAuthTokenFromContext,
+  verifyPlatformJwtUserId,
+  verifyPlatformJwtUserIdAsync,
+} from '../jwt';
 import { QuickMatchRoom } from '../QuickMatchRoom';
 
 const originalJwtSecret = process.env.JWT_SECRET;
@@ -16,15 +21,21 @@ function signToken(input: string, secret: string): string {
   return crypto.createHmac('sha256', secret).update(input).digest('base64url');
 }
 
-function createJwt(userId: string, secret: string, options: { expiresInSeconds?: number; typ?: string } = {}): string {
+function createJwt(
+  userId: string,
+  secret: string,
+  options: { expiresInSeconds?: number; typ?: string; issuedAt?: number; sessionIat?: number; jti?: string } = {},
+): string {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
   const payload = base64urlJson({
     sub: userId,
     userId,
-    iat: now,
+    iat: options.issuedAt ?? now,
+    ...(options.sessionIat !== undefined ? { sessionIat: options.sessionIat } : {}),
     exp: now + (options.expiresInSeconds ?? 3600),
     ...(options.typ ? { typ: options.typ } : {}),
+    ...(options.jti ? { jti: options.jti } : {}),
   });
   const input = `${header}.${payload}`;
   return `${input}.${signToken(input, secret)}`;
@@ -46,6 +57,7 @@ function cookieAuthContext(userId: string): AuthContext {
 
 afterEach(() => {
   process.env.JWT_SECRET = originalJwtSecret;
+  configurePlatformJwtRevocationStore(null);
   InviteRoom.configureFriendStore(
     {
       async listFriendUserIds() {
@@ -85,6 +97,55 @@ describe('platform room auth', () => {
     expect(verifyPlatformJwtUserId(accessToken, secret)).toBe('u_verified');
     expect(verifyPlatformJwtUserId(refreshToken, secret)).toBe('');
     expect(verifyPlatformJwtUserId(accessToken, 'wrong-secret')).toBe('');
+  });
+
+  it('rejects access tokens revoked by the shared blacklist or user cutoff', async () => {
+    const secret = 'test-platform-jwt-secret-at-least-32-characters';
+    const token = createJwt('u_revoked', secret, { issuedAt: 100, jti: 'jti-revoked' });
+    const get = vi.fn(async (key: string) => {
+      if (key === 'blacklist:jti-revoked') return '1';
+      return null;
+    });
+    await expect(verifyPlatformJwtUserIdAsync(token, secret, { get })).resolves.toBe('');
+    expect(get).toHaveBeenCalledWith('blacklist:jti-revoked');
+
+    const cutoffToken = createJwt('u_cutoff', secret, { issuedAt: 100, jti: 'jti-cutoff' });
+    await expect(
+      verifyPlatformJwtUserIdAsync(cutoffToken, secret, {
+        get: async (key) => (key === 'auth:revoked-before:u_cutoff' ? '100' : null),
+      }),
+    ).resolves.toBe('');
+
+    const refreshedToken = createJwt('u_refresh_chain', secret, {
+      issuedAt: 200,
+      sessionIat: 90,
+      jti: 'jti-refresh-chain',
+    });
+    await expect(
+      verifyPlatformJwtUserIdAsync(refreshedToken, secret, {
+        get: async (key) => (key === 'auth:revoked-before:u_refresh_chain' ? '100' : null),
+      }),
+    ).resolves.toBe('');
+  });
+
+  it('fails closed when the revocation store is unavailable or missing in production', async () => {
+    const secret = 'test-platform-jwt-secret-at-least-32-characters';
+    const token = createJwt('u_store_failure', secret);
+    await expect(
+      verifyPlatformJwtUserIdAsync(token, secret, {
+        get: async () => {
+          throw new Error('redis unavailable');
+        },
+      }),
+    ).resolves.toBe('');
+
+    const previousEnvironment = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await expect(verifyPlatformJwtUserIdAsync(token, secret, null)).resolves.toBe('');
+    } finally {
+      process.env.NODE_ENV = previousEnvironment;
+    }
   });
 
   it('uses verified cookie identity instead of client supplied user id', () => {
@@ -163,9 +224,9 @@ describe('platform room auth', () => {
     const quickRoom = new QuickMatchRoom();
     const inviteRoom = new InviteRoom();
 
-    expect(() => quickRoom.onAuth({} as never, { userId: 'u_spoofed', displayName: 'Mallory' }, authContext())).toThrow(
-      'Authentication required',
-    );
+    await expect(
+      quickRoom.onAuth({} as never, { userId: 'u_spoofed', displayName: 'Mallory' }, authContext()),
+    ).rejects.toThrow('Authentication required');
     await expect(
       inviteRoom.onAuth(
         {} as never,
@@ -175,7 +236,27 @@ describe('platform room auth', () => {
     ).rejects.toThrow('Authentication required');
   });
 
-  it('prevents the same account from occupying both quick match seats', () => {
+  it('checks revocation before reserving a quick-match identity', async () => {
+    const secret = 'test-platform-jwt-secret-at-least-32-characters';
+    process.env.JWT_SECRET = secret;
+    const token = createJwt('u_revoked_queue', secret, { jti: 'jti-queue' });
+    const context = authContext({ cookie: `zutomayo_session=${encodeURIComponent(token)}` });
+    const room = new QuickMatchRoom();
+
+    configurePlatformJwtRevocationStore({
+      get: async (key) => (key === 'blacklist:jti-queue' ? '1' : null),
+    });
+    await expect(
+      room.onAuth({} as never, { userId: 'u_revoked_queue', displayName: 'Player' }, context),
+    ).rejects.toThrow('Authentication required');
+
+    configurePlatformJwtRevocationStore({ get: async () => null });
+    await expect(
+      room.onAuth({} as never, { userId: 'u_revoked_queue', displayName: 'Player' }, context),
+    ).resolves.toMatchObject({ userId: 'u_revoked_queue', authenticated: true });
+  });
+
+  it('prevents the same account from occupying both quick match seats', async () => {
     const quickRoom = new QuickMatchRoom();
     quickRoom.clients.push({
       sessionId: 'session_existing',
@@ -188,17 +269,17 @@ describe('platform room auth', () => {
       },
     } as never);
 
-    expect(() =>
+    await expect(
       quickRoom.onAuth(
         {} as never,
         { userId: 'u_spoofed', displayName: 'Queued Again' },
         cookieAuthContext('u_queued'),
       ),
-    ).toThrow('Already queued');
+    ).rejects.toThrow('Already queued');
 
-    expect(
+    await expect(
       quickRoom.onAuth({} as never, { userId: 'u_other', displayName: 'Other' }, cookieAuthContext('u_other')),
-    ).toMatchObject({ userId: 'u_other', authenticated: true, role: 'player' });
+    ).resolves.toMatchObject({ userId: 'u_other', authenticated: true, role: 'player' });
   });
 
   it('parses directional friend invite ids', () => {

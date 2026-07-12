@@ -31,6 +31,7 @@ function mapAccountProfile(user, options = {}) {
   return {
     id: user.id,
     email: user.email,
+    emailVerified: Boolean(user.email_verified ?? user.emailVerified),
     nickname: user.nickname,
     avatarUrl: avatar.avatarUrl,
     avatarFallbackUrls: avatar.avatarFallbackUrls,
@@ -56,7 +57,7 @@ function normalizeOAuthProfile(profile) {
 async function registerAccount({ pool, body, sanitizeText, hashPassword, createToken, generateUserId, generateSalt }) {
   const { email, password, nickname } = body;
   if (!email || !password) return { ok: false, status: 400, error: 'Email and password required' };
-  if (password.length < 6) return { ok: false, status: 400, error: 'Password must be at least 6 characters' };
+  if (password.length < 12) return { ok: false, status: 400, error: 'Password must be at least 12 characters' };
 
   const cleanEmail = normalizeEmail(email);
   const cleanNickname = sanitizeText(nickname || String(cleanEmail).split('@')[0], 30) || 'player';
@@ -130,13 +131,14 @@ async function updateAccountPassword({
   generateSalt,
   currentIterations,
   legacyIterations,
+  beforeUpdate,
 }) {
   const { currentPassword, newPassword } = body;
   if (!currentPassword || !newPassword) {
     return { ok: false, status: 400, error: 'Current password and new password required' };
   }
-  if (String(newPassword).length < 6) {
-    return { ok: false, status: 400, error: 'Password must be at least 6 characters' };
+  if (String(newPassword).length < 12) {
+    return { ok: false, status: 400, error: 'Password must be at least 12 characters' };
   }
 
   const user = (await pool.query('SELECT id, password_hash, salt FROM users WHERE id = $1', [userId])).rows[0];
@@ -150,6 +152,10 @@ async function updateAccountPassword({
 
   const nextSalt = generateSalt();
   const nextHash = await hashPassword(newPassword, nextSalt, currentIterations);
+  // Session revocation must succeed before the password write is committed;
+  // otherwise a Redis outage could leave a changed password with live old
+  // sessions. Callers can use this hook to perform the durable auth step.
+  if (typeof beforeUpdate === 'function') await beforeUpdate();
   await pool.query('UPDATE users SET password_hash = $1, salt = $2 WHERE id = $3', [nextHash, nextSalt, userId]);
   return { ok: true, body: { ok: true } };
 }

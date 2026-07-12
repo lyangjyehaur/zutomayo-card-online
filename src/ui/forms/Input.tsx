@@ -1,5 +1,8 @@
 import {
+  cloneElement,
   forwardRef,
+  isValidElement,
+  useId,
   type ChangeEvent,
   type HTMLAttributes,
   type InputHTMLAttributes,
@@ -110,16 +113,39 @@ export interface FormFieldProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export function FormField({ label, htmlFor, error, hint, className, children, ...props }: FormFieldProps) {
+  const generatedId = `form-field-${useId().replace(/:/g, '')}`;
+  const control = isValidElement<{
+    id?: string;
+    'aria-describedby'?: string;
+    'aria-invalid'?: boolean | 'true' | 'false' | 'grammar' | 'spelling';
+  }>(children)
+    ? children
+    : null;
+  const controlId = htmlFor ?? control?.props.id ?? generatedId;
+  const descriptionId = error || hint ? `${controlId}-description` : undefined;
+  const describedBy = [control?.props['aria-describedby'], descriptionId].filter(Boolean).join(' ') || undefined;
+  const labelledControl = control
+    ? cloneElement(control, {
+        id: controlId,
+        'aria-describedby': describedBy,
+        'aria-invalid': error ? true : control.props['aria-invalid'],
+      })
+    : children;
+
   return (
     <div className={cn('group grid gap-2', className)} {...props}>
-      {label && <FieldLabel htmlFor={htmlFor}>{label}</FieldLabel>}
-      {children}
+      {label && <FieldLabel htmlFor={control ? controlId : htmlFor}>{label}</FieldLabel>}
+      {labelledControl}
       {error && (
-        <p className="text-body-sm text-accent-danger" aria-live="assertive">
+        <p id={descriptionId} className="text-body-sm text-accent-danger" aria-live="assertive">
           {error}
         </p>
       )}
-      {!error && hint && <p className="text-body-sm text-content-dim">{hint}</p>}
+      {!error && hint && (
+        <p id={descriptionId} className="text-body-sm text-content-dim">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }

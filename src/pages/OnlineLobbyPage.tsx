@@ -65,7 +65,11 @@ interface OnlineLobbyPageProps {
   customDeckAvailable: boolean;
   serverDecks: DeckResponse[];
   setDeck0Name: (deckName: string) => void;
-  onStartOnline: (matchID?: string, playerName?: string, options?: { navigate?: boolean }) => Promise<OnlineSession>;
+  onStartOnline: (
+    matchID?: string,
+    playerName?: string,
+    options?: { navigate?: boolean; playerDeckName?: string; opponentDeckName?: string },
+  ) => Promise<OnlineSession>;
   onAuthChanged: () => void | Promise<void>;
   serverDeckError?: string;
   cardsReady: boolean;
@@ -673,7 +677,11 @@ export function OnlineLobbyPage({
             setMatchmakingCancellable(false);
             if (match.role === 'host') {
               phaseRef.current = 'host-starting';
-              void onStartOnline(undefined, effectivePlayerName, { navigate: false })
+              void onStartOnline(undefined, effectivePlayerName, {
+                navigate: false,
+                playerDeckName: match.deckName ?? deck0Name,
+                opponentDeckName: match.opponent?.deckName,
+              })
                 .then((session) => {
                   if (cancelRef.current || phaseRef.current !== 'host-starting') return;
                   pendingQuickMatchSessionRef.current = session;

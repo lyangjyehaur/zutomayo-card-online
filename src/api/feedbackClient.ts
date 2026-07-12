@@ -112,6 +112,12 @@ function requireArray<T>(value: unknown, label: string): T[] {
   throw new ApiError(`Invalid ${label} response`);
 }
 
+function csrfTokenFromCookie(): string {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/(?:^|; )zutomayo_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('zutomayo_token');
   const headers: Record<string, string> = {
@@ -119,8 +125,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const method = (options.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const csrfToken = csrfTokenFromCookie();
+    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+  }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' });
   const text = await res.text();
   let data: unknown = {};
   if (text) {

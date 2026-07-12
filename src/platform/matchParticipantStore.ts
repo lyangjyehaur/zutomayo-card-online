@@ -9,6 +9,7 @@ export interface PlatformMatchParticipantInput {
   role: PlatformMatchParticipantRole;
   boardgamePlayerID?: string;
   displayName?: string;
+  accessVerified?: boolean;
 }
 
 export interface PlatformRoomParticipantInput {
@@ -16,9 +17,11 @@ export interface PlatformRoomParticipantInput {
   userId: string;
   role: PlatformMatchParticipantRole;
   displayName?: string;
+  accessVerified?: boolean;
 }
 
 export interface PlatformMatchParticipantStore {
+  authorizeMatchParticipant?(input: PlatformMatchParticipantInput): Promise<boolean>;
   recordParticipant(input: PlatformMatchParticipantInput): Promise<void>;
   recordRoomParticipant(input: PlatformRoomParticipantInput): Promise<void>;
   close?(): Promise<void>;
@@ -62,15 +65,36 @@ export function createPostgresPlatformMatchParticipantStore(
   pool: Queryable & { end?: () => Promise<void> },
 ): PlatformMatchParticipantStore {
   return {
+    async authorizeMatchParticipant(input) {
+      const boardgameMatchID = cleanBoardgameMatchID(input.boardgameMatchID);
+      const userId = normalizePlatformUserId(input.userId);
+      if (!boardgameMatchID || !userId) return false;
+      if (input.role !== 'player') {
+        const { rows } = await pool.query('SELECT 1 FROM bjg_matches WHERE match_id = $1 LIMIT 1', [boardgameMatchID]);
+        return rows.length > 0;
+      }
+      const boardgamePlayerID = cleanBoardgamePlayerID(input.boardgamePlayerID);
+      if (!boardgamePlayerID) return false;
+      const { rows } = await pool.query(
+        `SELECT 1
+         FROM bjg_matches
+         WHERE match_id = $1
+           AND metadata->'players'->$2->'data'->>'identitySource' = 'server'
+           AND metadata->'players'->$2->'data'->>'userId' = $3
+         LIMIT 1`,
+        [boardgameMatchID, boardgamePlayerID, userId],
+      );
+      return rows.length > 0;
+    },
     async recordParticipant(input) {
       const boardgameMatchID = cleanBoardgameMatchID(input.boardgameMatchID);
       const userId = normalizePlatformUserId(input.userId);
       if (!boardgameMatchID || !userId || userId.startsWith('guest:') || userId.startsWith('anon:')) return;
       await pool.query(
         `INSERT INTO platform_match_participants (
-           boardgame_match_id, user_id, role, boardgame_player_id, display_name
+           boardgame_match_id, user_id, role, boardgame_player_id, display_name, access_verified
          )
-         VALUES ($1, $2, $3, $4, $5)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (boardgame_match_id, user_id)
          DO UPDATE SET
            role = CASE
@@ -79,6 +103,7 @@ export function createPostgresPlatformMatchParticipantStore(
            END,
            boardgame_player_id = COALESCE(platform_match_participants.boardgame_player_id, EXCLUDED.boardgame_player_id),
            display_name = EXCLUDED.display_name,
+           access_verified = platform_match_participants.access_verified OR EXCLUDED.access_verified,
            last_seen_at = NOW()`,
         [
           boardgameMatchID,
@@ -86,6 +111,7 @@ export function createPostgresPlatformMatchParticipantStore(
           input.role === 'player' ? 'player' : 'spectator',
           cleanBoardgamePlayerID(input.boardgamePlayerID),
           cleanDisplayName(input.displayName),
+          input.accessVerified === true,
         ],
       );
     },
@@ -95,9 +121,9 @@ export function createPostgresPlatformMatchParticipantStore(
       if (!roomCode || !userId || userId.startsWith('guest:') || userId.startsWith('anon:')) return;
       await pool.query(
         `INSERT INTO platform_room_participants (
-           room_code, user_id, role, display_name
+           room_code, user_id, role, display_name, access_verified
          )
-         VALUES ($1, $2, $3, $4)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (room_code, user_id)
          DO UPDATE SET
            role = CASE
@@ -105,8 +131,15 @@ export function createPostgresPlatformMatchParticipantStore(
              ELSE EXCLUDED.role
            END,
            display_name = EXCLUDED.display_name,
+           access_verified = platform_room_participants.access_verified OR EXCLUDED.access_verified,
            last_seen_at = NOW()`,
-        [roomCode, userId, input.role === 'player' ? 'player' : 'spectator', cleanDisplayName(input.displayName)],
+        [
+          roomCode,
+          userId,
+          input.role === 'player' ? 'player' : 'spectator',
+          cleanDisplayName(input.displayName),
+          input.accessVerified === true,
+        ],
       );
     },
     async close() {

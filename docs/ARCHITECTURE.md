@@ -78,7 +78,7 @@ ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.
 | API Server      | 帳號 / OAuth / 牌組 / 對戰結果 / 聊天持久化 / 好友 / 反饋 / 管理 / 卡牌資料 / legacy REST 配對                | Node HTTP、pg、ioredis、zod、node-pg-migrate                    |
 | Platform Server | Colyseus lobby presence、quick matchmaking、custom-room lifecycle、invite、match shell、spectator presence    | Colyseus、@colyseus/ws-transport、RedisDriver、RedisPresence    |
 | PostgreSQL      | 持久資料（用戶、好友、牌組、對戰、聊天、檢舉、制裁、卡牌、反饋、boardgame.io state）                          | PostgreSQL 16                                                   |
-| Redis           | 跨節點同步、Colyseus room/presence backing、refresh 原子輪替、legacy 配對佇列、限流、HTTP presence fallback   | Redis 7（密碼、AOF + allkeys-lru）                              |
+| Redis           | 跨節點同步、Colyseus room/presence backing、refresh 原子輪替、legacy 配對佇列、限流、HTTP presence fallback   | Redis 7（密碼、AOF + noeviction）                               |
 
 ### 請求/同步流向
 

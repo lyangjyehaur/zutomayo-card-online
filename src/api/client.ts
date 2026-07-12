@@ -1,3 +1,4 @@
+import type { ServerMatchSummary } from '../game/matchHistory';
 import type { ActionLogEntry, CardDef } from '../game/types';
 import { Sentry } from '../sentry';
 
@@ -20,6 +21,7 @@ export interface DeckResponse {
 export interface ProfileResponse {
   id: string;
   email: string;
+  emailVerified: boolean;
   nickname: string;
   avatarUrl?: string;
   avatarFallbackUrls?: string[];
@@ -37,6 +39,62 @@ export interface FriendProfile {
   matchCount: number;
   wins: number;
   createdAt: string;
+}
+
+export interface FriendRequest {
+  id: number;
+  requesterUserId: string;
+  recipientUserId: string;
+  nickname: string;
+  createdAt: string;
+  direction: 'incoming' | 'outgoing';
+}
+
+export interface BlockedProfile {
+  userId: string;
+  nickname: string;
+  createdAt: string;
+}
+
+export interface Season {
+  id: string;
+  name: string;
+  status: string;
+  startsAt: string;
+  endsAt: string;
+  startingRating: number;
+  placementMatches: number;
+}
+
+export interface SeasonRating {
+  seasonId: string;
+  name: string;
+  endsAt: string;
+  placementMatches: number;
+  rating: number | null;
+  matchCount: number;
+  wins: number;
+  placementComplete: boolean;
+  rank: number | null;
+}
+
+export interface SeasonLeaderboardEntry {
+  userId: string;
+  nickname: string;
+  rating: number;
+  matchCount: number;
+  wins: number;
+  placementComplete: boolean;
+}
+
+export interface AccountExport {
+  exportedAt: string;
+  account: Record<string, unknown>;
+  identities: unknown[];
+  decks: unknown[];
+  matches: unknown[];
+  friends: unknown[];
+  blocks: unknown[];
 }
 
 export type OAuthProviderId = 'logto' | 'google' | 'github' | 'discord';
@@ -572,10 +630,52 @@ export async function updateProfile(nickname: string): Promise<ProfileResponse> 
 }
 
 export async function updatePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean }> {
-  return request('/profile/password', {
+  const result = await request<{ ok: boolean }>('/profile/password', {
     method: 'PUT',
     body: JSON.stringify({ currentPassword, newPassword }),
   });
+  logout();
+  return result;
+}
+
+export async function requestEmailVerification(): Promise<{ accepted: boolean; alreadyVerified?: boolean }> {
+  return request('/auth/email-verification/request', { method: 'POST' });
+}
+
+export async function confirmEmailVerification(token: string): Promise<{ verified: boolean }> {
+  return request('/auth/email-verification/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function requestPasswordReset(email: string): Promise<{ accepted: boolean }> {
+  return request('/auth/password-reset/request', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string): Promise<{ reset: boolean }> {
+  const result = await request<{ reset: boolean }>('/auth/password-reset/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ token, newPassword }),
+  });
+  clearAccountSession();
+  return result;
+}
+
+export async function exportAccountData(): Promise<AccountExport> {
+  return request<AccountExport>('/account/export');
+}
+
+export async function deleteAccount(): Promise<{ deleted: boolean }> {
+  const result = await request<{ deleted: boolean }>('/account', {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmation: 'DELETE' }),
+  });
+  clearAccountSession();
+  return result;
 }
 
 export async function getOAuthProviders(): Promise<OAuthProvider[]> {
@@ -633,7 +733,11 @@ export async function getFriends(): Promise<FriendProfile[]> {
   return data.friends;
 }
 
-export async function addFriend(friendUserId: string): Promise<{ ok: boolean; friendUserId: string }> {
+export async function addFriend(friendUserId: string): Promise<{
+  accepted?: boolean;
+  friendUserId: string;
+  request?: { id: string | number; status: string };
+}> {
   return request('/friends', {
     method: 'POST',
     body: JSON.stringify({ friendUserId }),
@@ -642,6 +746,55 @@ export async function addFriend(friendUserId: string): Promise<{ ok: boolean; fr
 
 export async function removeFriend(friendUserId: string): Promise<{ ok: boolean }> {
   return request(`/friends/${encodeURIComponent(friendUserId)}`, { method: 'DELETE' });
+}
+
+export async function getFriendRequests(currentUserId: string): Promise<FriendRequest[]> {
+  const data = await request<{
+    requests: Array<{
+      id: string | number;
+      requester_user_id: string;
+      recipient_user_id: string;
+      nickname?: string;
+      created_at: string;
+    }>;
+  }>('/friend-requests');
+  return (data.requests || []).map((item) => ({
+    id: Number(item.id),
+    requesterUserId: item.requester_user_id,
+    recipientUserId: item.recipient_user_id,
+    nickname: item.nickname || '',
+    createdAt: item.created_at,
+    direction: item.recipient_user_id === currentUserId ? 'incoming' : 'outgoing',
+  }));
+}
+
+export async function respondToFriendRequest(requestId: number, accept: boolean): Promise<{ accepted: boolean }> {
+  return request(`/friend-requests/${requestId}`, {
+    method: 'POST',
+    body: JSON.stringify({ accept }),
+  });
+}
+
+export async function getBlocks(): Promise<BlockedProfile[]> {
+  const data = await request<{
+    blocks: Array<{ blocked_user_id: string; nickname?: string; created_at: string }>;
+  }>('/blocks');
+  return (data.blocks || []).map((item) => ({
+    userId: item.blocked_user_id,
+    nickname: item.nickname || '',
+    createdAt: item.created_at,
+  }));
+}
+
+export async function blockUser(targetUserId: string): Promise<{ blocked: boolean; userId: string }> {
+  return request('/blocks', {
+    method: 'POST',
+    body: JSON.stringify({ targetUserId }),
+  });
+}
+
+export async function unblockUser(targetUserId: string): Promise<{ blocked: boolean; userId: string }> {
+  return request(`/blocks/${encodeURIComponent(targetUserId)}`, { method: 'DELETE' });
 }
 
 // ===== Decks =====
@@ -688,6 +841,12 @@ export async function submitMatch(
   });
 }
 
+export async function getMatches(limit = 50, offset = 0): Promise<ServerMatchSummary[]> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const data = await request<{ matches: ServerMatchSummary[] }>(`/matches?${params.toString()}`);
+  return Array.isArray(data.matches) ? data.matches : [];
+}
+
 export async function getMatchLog(matchId: string): Promise<ActionLogEntry[]> {
   const data = await request<{ matchId: string; actionLog: ActionLogEntry[] }>(`/matches/${matchId}/log`);
   return data.actionLog;
@@ -697,6 +856,80 @@ export async function getMatchLog(matchId: string): Promise<ActionLogEntry[]> {
 export async function getLeaderboard(limit = 100): Promise<LeaderboardEntry[]> {
   const data = await request<LeaderboardListResponse>(`/leaderboard?limit=${limit}`);
   return data.leaderboard;
+}
+
+export async function getCurrentSeason(): Promise<Season | null> {
+  const data = await request<{
+    season: {
+      id: string;
+      name: string;
+      status: string;
+      starts_at: string;
+      ends_at: string;
+      starting_rating: number;
+      placement_matches: number;
+    } | null;
+  }>('/seasons/current');
+  if (!data.season) return null;
+  return {
+    id: data.season.id,
+    name: data.season.name,
+    status: data.season.status,
+    startsAt: data.season.starts_at,
+    endsAt: data.season.ends_at,
+    startingRating: Number(data.season.starting_rating),
+    placementMatches: Number(data.season.placement_matches),
+  };
+}
+
+export async function getMySeasonRating(): Promise<SeasonRating | null> {
+  const data = await request<{
+    rating: {
+      season_id: string;
+      name: string;
+      ends_at: string;
+      placement_matches: number;
+      rating: number | null;
+      match_count: number | null;
+      wins: number | null;
+      placement_complete: boolean | null;
+      rank: number | null;
+    } | null;
+  }>('/seasons/me');
+  if (!data.rating) return null;
+  return {
+    seasonId: data.rating.season_id,
+    name: data.rating.name,
+    endsAt: data.rating.ends_at,
+    placementMatches: Number(data.rating.placement_matches),
+    rating: data.rating.rating === null ? null : Number(data.rating.rating),
+    matchCount: Number(data.rating.match_count || 0),
+    wins: Number(data.rating.wins || 0),
+    placementComplete: Boolean(data.rating.placement_complete),
+    rank: data.rating.rank === null ? null : Number(data.rating.rank),
+  };
+}
+
+export async function getSeasonLeaderboard(limit = 100, offset = 0): Promise<SeasonLeaderboardEntry[]> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const data = await request<{
+    entries: Array<{
+      user_id: string;
+      nickname: string;
+      rating: number;
+      match_count: number;
+      wins: number;
+      placement_complete: boolean;
+    }>;
+  }>(`/seasons/leaderboard?${params.toString()}`);
+  return (data.entries || []).map((entry) => ({
+    userId: entry.user_id,
+    nickname: entry.nickname,
+    rating: Number(entry.rating),
+    matchCount: Number(entry.match_count),
+    wins: Number(entry.wins),
+    placementComplete: Boolean(entry.placement_complete),
+  }));
 }
 
 // ===== Presence =====
@@ -908,10 +1141,21 @@ export interface AdminMatch {
   createdAt: string;
 }
 
-export async function adminLogin(password: string): Promise<{ token: string }> {
-  return request<{ token: string }>('/admin/login', {
+export async function adminLogin(credentials: {
+  username: string;
+  password: string;
+  totpCode: string;
+}): Promise<{ token: string; role: string; expiresIn: number }> {
+  return request<{ token: string; role: string; expiresIn: number }>('/admin/login', {
     method: 'POST',
-    body: JSON.stringify({ password }),
+    body: JSON.stringify(credentials),
+  });
+}
+
+export async function adminLogout(token: string): Promise<void> {
+  await request('/admin/logout', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
   });
 }
 

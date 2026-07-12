@@ -1,10 +1,7 @@
 # Prometheus configuration for Zutomayo Card Online.
-# Scrapes the game (3000), api (3001), and platform (3002) servers every 15s,
-# plus postgres_exporter, redis_exporter, and cAdvisor for infrastructure metrics.
-#
-# When METRICS_TOKEN is set on the app servers, create a file containing the
-# token and add `bearer_token_file: /etc/prometheus/metrics_token` to each
-# zutomayo-* scrape job, then mount it in docker-compose.monitoring.yml.
+# Scrapes game/api/platform metrics and probes platform health every 15s, plus
+# postgres_exporter, redis_exporter, and cAdvisor infrastructure metrics.
+# docker-compose.monitoring.yml mounts the shared metrics bearer token.
 
 global:
   scrape_interval: 15s
@@ -13,9 +10,15 @@ global:
 rule_files:
   - /etc/prometheus/rules/alerts.yml
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
 scrape_configs:
   - job_name: 'zutomayo-game'
     metrics_path: /metrics
+    bearer_token_file: /etc/prometheus/metrics_token
     static_configs:
       - targets: ['game:3000']
         labels:
@@ -23,6 +26,7 @@ scrape_configs:
 
   - job_name: 'zutomayo-api'
     metrics_path: /metrics
+    bearer_token_file: /etc/prometheus/metrics_token
     static_configs:
       - targets: ['api:3001']
         labels:
@@ -30,10 +34,27 @@ scrape_configs:
 
   - job_name: 'zutomayo-platform'
     metrics_path: /metrics
+    bearer_token_file: /etc/prometheus/metrics_token
     static_configs:
       - targets: ['platform:3002']
         labels:
           service: platform
+
+  - job_name: 'zutomayo-platform-health'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ['http://platform:3002/health']
+        labels:
+          service: platform
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
 
   - job_name: 'postgres-exporter'
     static_configs:

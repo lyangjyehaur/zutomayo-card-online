@@ -164,7 +164,7 @@ async function hasMatchChatAccess({ pool, userId, subjectId }) {
   const { rows } = await pool.query(
     `SELECT 1
      FROM platform_match_participants
-     WHERE boardgame_match_id = $1 AND user_id = $2
+     WHERE boardgame_match_id = $1 AND user_id = $2 AND access_verified = TRUE
      UNION
      SELECT 1
      FROM matches
@@ -182,7 +182,7 @@ async function matchChatParticipantRole({ pool, userId, subjectId }) {
   const { rows } = await pool.query(
     `SELECT role
      FROM platform_match_participants
-     WHERE boardgame_match_id = $1 AND user_id = $2
+     WHERE boardgame_match_id = $1 AND user_id = $2 AND access_verified = TRUE
      UNION
      SELECT 'player' AS role
      FROM matches
@@ -201,7 +201,7 @@ async function hasRoomChatAccess({ pool, userId, subjectId }) {
   const { rows } = await pool.query(
     `SELECT 1
      FROM platform_room_participants
-     WHERE room_code = $1 AND user_id = $2
+     WHERE room_code = $1 AND user_id = $2 AND access_verified = TRUE
      LIMIT 1`,
     [roomCode, userId],
   );
@@ -214,7 +214,7 @@ async function roomChatParticipantRole({ pool, userId, subjectId }) {
   const { rows } = await pool.query(
     `SELECT role
      FROM platform_room_participants
-     WHERE room_code = $1 AND user_id = $2
+     WHERE room_code = $1 AND user_id = $2 AND access_verified = TRUE
      LIMIT 1`,
     [roomCode, userId],
   );
@@ -735,6 +735,7 @@ async function listUnreadChat({
            FROM platform_match_participants pmp
            WHERE pmp.boardgame_match_id = c.subject_id
              AND pmp.user_id = $1
+             AND pmp.access_verified = TRUE
          )
          OR EXISTS (
            SELECT 1
@@ -751,6 +752,7 @@ async function listUnreadChat({
            FROM platform_room_participants prp
            WHERE prp.room_code = c.subject_id
              AND prp.user_id = $1
+             AND prp.access_verified = TRUE
          )
        )
      GROUP BY c.id

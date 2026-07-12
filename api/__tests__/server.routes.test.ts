@@ -37,6 +37,9 @@ const mockRedisZremrangebyscore = vi.fn().mockResolvedValue(0);
 const mockRedisDel = vi.fn().mockResolvedValue(1);
 const mockRedisGet = vi.fn().mockResolvedValue(null);
 const mockRedisSet = vi.fn().mockResolvedValue('OK');
+const mockRedisEval = vi.fn().mockResolvedValue(null);
+const mockRedisScan = vi.fn().mockResolvedValue(['0', []]);
+const mockRedisMget = vi.fn().mockResolvedValue([]);
 const mockRedisMmTryMatch = vi.fn().mockResolvedValue('');
 const mockRedisMmCleanExpired = vi.fn().mockResolvedValue(0);
 
@@ -56,6 +59,9 @@ const mockRedis = {
   del: mockRedisDel,
   get: mockRedisGet,
   set: mockRedisSet,
+  eval: mockRedisEval,
+  scan: mockRedisScan,
+  mget: mockRedisMget,
   mmTryMatch: mockRedisMmTryMatch,
   mmCleanExpired: mockRedisMmCleanExpired,
 };
@@ -223,7 +229,14 @@ function base64urlJson(value: Record<string, unknown>) {
 function createAdminJwt() {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
-  const payload = base64urlJson({ admin: true, iat: now, exp: now + 60 * 60 });
+  const payload = base64urlJson({
+    admin: true,
+    adminUserId: 'admin_test',
+    role: 'admin',
+    jti: 'admin-session-test',
+    iat: now,
+    exp: now + 60 * 60,
+  });
   const input = `${header}.${payload}`;
   const signature = crypto
     .createHmac('sha256', process.env.JWT_SECRET || '')
@@ -242,6 +255,42 @@ function createUserJwt(userId = 'u_test') {
     .update(input)
     .digest('base64url');
   return `${input}.${signature}`;
+}
+
+function createRevocableUserJwt(userId = 'u_test') {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({ sub: userId, userId, jti: 'access-token-test', iat: now, exp: now + 60 * 60 });
+  const input = `${header}.${payload}`;
+  const signature = crypto
+    .createHmac('sha256', process.env.JWT_SECRET || '')
+    .update(input)
+    .digest('base64url');
+  return `${input}.${signature}`;
+}
+
+function createRefreshJwt(userId = 'u_test', sessionIat?: number) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({
+    sub: userId,
+    userId,
+    typ: 'refresh',
+    jti: 'refresh-token-test',
+    iat: now,
+    exp: now + 60 * 60,
+    ...(sessionIat === undefined ? {} : { sessionIat }),
+  });
+  const input = `${header}.${payload}`;
+  const signature = crypto
+    .createHmac('sha256', process.env.JWT_SECRET || '')
+    .update(input)
+    .digest('base64url');
+  return `${input}.${signature}`;
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  return JSON.parse(Buffer.from(token.split('.')[1] || '', 'base64url').toString()) as Record<string, unknown>;
 }
 
 function adminHeaders(headers: Record<string, string> = {}) {
@@ -283,7 +332,16 @@ describe('server routes', () => {
     mockRedisZadd.mockResolvedValue(1);
     mockRedisHgetall.mockResolvedValue({});
     mockRedisGet.mockResolvedValue(null);
+    mockRedisEval.mockResolvedValue(null);
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM admin_sessions')) {
+        return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
     mockRedisSet.mockResolvedValue('OK');
+    mockRedisScan.mockResolvedValue(['0', []]);
+    mockRedisMget.mockResolvedValue([]);
   });
 
   describe('security headers', () => {
@@ -408,7 +466,7 @@ describe('server routes', () => {
 
   describe('input validation', () => {
     it('POST /api/register rejects missing email', async () => {
-      const res = await sendRequest('POST', '/api/register', { password: 'secret1' });
+      const res = await sendRequest('POST', '/api/register', { password: 'a-very-long-secret' });
       expect(res.statusCode).toBe(400);
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.error).toContain('Validation');
@@ -459,6 +517,53 @@ describe('server routes', () => {
     it('GET /api/profile returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/profile');
       expect(res.statusCode).toBe(401);
+    });
+
+    it('GET /api/profile returns the authenticated user profile', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'u_test',
+            email: 'user@example.com',
+            nickname: 'User',
+            elo: 1000,
+            match_count: 4,
+            wins: 3,
+            created_at: '2026-07-10T00:00:00.000Z',
+          },
+        ],
+        rowCount: 1,
+      });
+
+      const res = await sendRequest('GET', '/api/profile', null, {
+        authorization: `Bearer ${createUserJwt()}`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual(
+        expect.objectContaining({
+          id: 'u_test',
+          email: 'user@example.com',
+          nickname: 'User',
+          elo: 1000,
+          matchCount: 4,
+          wins: 3,
+          winRate: 75,
+        }),
+      );
+      expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM users WHERE id = $1', ['u_test']);
+    });
+
+    it('rejects access tokens when the blacklist lookup is unavailable', async () => {
+      mockRedisGet.mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      const res = await sendRequest('GET', '/api/profile', null, {
+        authorization: `Bearer ${createRevocableUserJwt()}`,
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(parseBody(res)).toEqual({ error: 'Unauthorized' });
+      expect(mockQuery).not.toHaveBeenCalledWith('SELECT * FROM users WHERE id = $1', ['u_test']);
     });
 
     it('GET /api/friends returns 401 without auth', async () => {
@@ -1673,7 +1778,7 @@ describe('server routes', () => {
               source_report_id: 'chat_report_1',
               source_message_id: 'chat_msg_1',
               conversation_id: 'match:bgio-match-1',
-              created_by_user_id: 'admin',
+              created_by_user_id: 'admin_test',
               created_at: '2026-07-10T00:00:03.000Z',
               expires_at: '2026-07-10T01:00:03.000Z',
               revoked_at: null,
@@ -1715,7 +1820,7 @@ describe('server routes', () => {
       ]);
       expect(mockQuery).toHaveBeenNthCalledWith(2, expect.stringContaining('UPDATE chat_user_sanctions'), [
         'u_1',
-        'admin',
+        'admin_test',
         'chat_mute',
       ]);
       expect(mockQuery).toHaveBeenNthCalledWith(
@@ -1728,7 +1833,7 @@ describe('server routes', () => {
           'chat_report_1',
           'chat_msg_1',
           'match:bgio-match-1',
-          'admin',
+          'admin_test',
         ]),
       );
     });
@@ -1779,11 +1884,11 @@ describe('server routes', () => {
             source_report_id: 'chat_report_1',
             source_message_id: 'chat_msg_1',
             conversation_id: 'match:bgio-match-1',
-            created_by_user_id: 'admin',
+            created_by_user_id: 'admin_test',
             created_at: '2026-07-10T00:00:03.000Z',
             expires_at: '2026-07-10T01:00:03.000Z',
             revoked_at: '2026-07-10T00:30:03.000Z',
-            revoked_by_user_id: 'admin',
+            revoked_by_user_id: 'admin_test',
             revocation_reason: 'manual_revoke',
           },
         ],
@@ -1798,13 +1903,13 @@ describe('server routes', () => {
         expect.objectContaining({
           id: 'chat_sanction_1',
           status: 'revoked',
-          revokedByUserId: 'admin',
+          revokedByUserId: 'admin_test',
           revocationReason: 'manual_revoke',
         }),
       );
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_user_sanctions'), [
         'chat_sanction_1',
-        'admin',
+        'admin_test',
         'manual_revoke',
       ]);
     });
@@ -1820,7 +1925,7 @@ describe('server routes', () => {
             reason: 'spam',
             note: '',
             status: 'resolved',
-            reviewer_user_id: 'admin',
+            reviewer_user_id: 'admin_test',
             resolution_note: 'handled',
             created_at: '2026-07-10T00:00:03.000Z',
             reviewed_at: '2026-07-10T00:30:03.000Z',
@@ -1842,14 +1947,14 @@ describe('server routes', () => {
         expect.objectContaining({
           id: 'chat_report_1',
           status: 'resolved',
-          reviewerUserId: 'admin',
+          reviewerUserId: 'admin_test',
           resolutionNote: 'handled',
         }),
       );
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_reports'), [
         'chat_report_1',
         'resolved',
-        'admin',
+        'admin_test',
         'handled',
       ]);
     });
@@ -1921,7 +2026,7 @@ describe('server routes', () => {
       mockRedisIncr.mockResolvedValue(11); // > RATE_LIMIT_AUTH (10)
       const res = await sendRequest('POST', '/api/login', {
         email: 'a@b.com',
-        password: 'secret1',
+        password: 'a-very-long-secret',
       });
       expect(res.statusCode).toBe(429);
     });
@@ -1934,12 +2039,114 @@ describe('server routes', () => {
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.ok).toBe(true);
     });
+
+    it('does not report logout success when blacklist persistence fails', async () => {
+      mockRedisSet.mockRejectedValueOnce(new Error('Redis unavailable'));
+      const res = await sendRequest('POST', '/api/logout', null, {
+        cookie: `zutomayo_session=${encodeURIComponent(createRevocableUserJwt())}`,
+      });
+      expect(res.statusCode).toBe(500);
+    });
   });
 
   describe('auth refresh', () => {
     it('POST /api/auth/refresh returns 401 without refresh cookie', async () => {
       const res = await sendRequest('POST', '/api/auth/refresh');
       expect(res.statusCode).toBe(401);
+    });
+
+    it('consumes refresh tokens through the revocation-aware atomic path', async () => {
+      mockRedisEval.mockResolvedValueOnce('u_test');
+      const refreshToken = createRefreshJwt();
+      const res = await sendRequest('POST', '/api/auth/refresh', null, {
+        cookie: `zutomayo_refresh=${encodeURIComponent(refreshToken)}`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(mockRedisEval).toHaveBeenCalledWith(
+        expect.stringContaining('revokedBefore'),
+        2,
+        'refresh:refresh-token-test',
+        'auth:revoked-before:u_test',
+        expect.any(String),
+        'u_test',
+      );
+      expect(mockRedisSet).toHaveBeenCalledWith(expect.stringMatching(/^refresh:/), 'u_test', 'EX', expect.any(Number));
+    });
+
+    it('preserves the original session lineage when rotating a refresh token', async () => {
+      const sessionIat = Math.floor(Date.now() / 1000) - 120;
+      mockRedisEval.mockResolvedValueOnce('u_test');
+      const res = await sendRequest('POST', '/api/auth/refresh', null, {
+        cookie: `zutomayo_refresh=${encodeURIComponent(createRefreshJwt('u_test', sessionIat))}`,
+      });
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as { token?: string };
+      expect(body.token).toEqual(expect.any(String));
+      const payload = decodeJwtPayload(body.token as string);
+      expect(payload.sub).toBe('u_test');
+      expect(payload.sessionIat).toBe(sessionIat);
+    });
+
+    it('rejects refresh tokens consumed after a session cutoff', async () => {
+      mockRedisEval.mockResolvedValueOnce(null);
+      const res = await sendRequest('POST', '/api/auth/refresh', null, {
+        cookie: `zutomayo_refresh=${encodeURIComponent(createRefreshJwt())}`,
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  describe('password changes', () => {
+    it('revokes all user sessions after updating the password', async () => {
+      const currentPassword = 'current-password-long';
+      const currentSalt = 'current-salt';
+      const currentHash = crypto.pbkdf2Sync(currentPassword, currentSalt, 100000, 64, 'sha512').toString('hex');
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [{ id: 'u_test', password_hash: currentHash, salt: currentSalt }],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockRedisScan.mockResolvedValueOnce(['0', ['refresh:owned', 'refresh:other']]);
+      mockRedisMget.mockResolvedValueOnce(['u_test', 'u_other']);
+
+      const res = await sendRequest(
+        'PUT',
+        '/api/profile/password',
+        { currentPassword, newPassword: 'next-password-long' },
+        userUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({ ok: true });
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        'auth:revoked-before:u_test',
+        expect.stringMatching(/^\d+$/),
+        'EX',
+        7 * 24 * 60 * 60,
+      );
+      expect(mockRedisScan).toHaveBeenCalledWith('0', 'MATCH', 'refresh:*', 'COUNT', 200);
+      expect(mockRedisMget).toHaveBeenCalledWith(['refresh:owned', 'refresh:other']);
+      expect(mockRedisDel).toHaveBeenCalledWith('refresh:owned');
+    });
+  });
+
+  describe('logout token validation', () => {
+    it('does not persist a blacklist entry for a forged access cookie', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+      const payload = base64urlJson({ sub: 'u_attacker', jti: 'forged-token-identifier', iat: now, exp: now + 86400 });
+      const forged = `${header}.${payload}.not-a-valid-signature`;
+      const res = await sendRequest('POST', '/api/logout', null, {
+        cookie: `zutomayo_session=${encodeURIComponent(forged)}`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(mockRedisSet).not.toHaveBeenCalledWith(
+        expect.stringMatching(/^blacklist:/),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
     });
   });
 

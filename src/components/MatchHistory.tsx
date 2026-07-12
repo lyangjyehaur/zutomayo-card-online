@@ -6,6 +6,8 @@ import {
   getMatchRecords,
   getMatchStats,
   historyChatSubjectId,
+  matchRecordFromServer,
+  mergeMatchRecords,
   replaceMatchRecords,
   resolveInitialHistoryChatRecord,
   type MatchRecord,
@@ -16,6 +18,9 @@ import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
 import {
   fetchChatMessages,
+  getMatches,
+  getProfile,
+  isLoggedIn,
   markChatRead,
   reportChatMessage,
   requestChatTranslation,
@@ -51,6 +56,9 @@ type HistoryTranslationState = {
 };
 
 function winnerLabel(record: MatchRecord): string {
+  if (record.outcome === 'victory') return t('board.result.victory');
+  if (record.outcome === 'defeat') return t('board.result.defeat');
+  if (record.outcome === 'draw') return t('history.draw');
   if (record.winner === 0) return `${t('player.zero')} ${t('board.playerWins')}`;
   if (record.winner === 1) return `${t('player.one')} ${t('board.playerWins')}`;
   return t('history.draw');
@@ -165,13 +173,13 @@ function MatchDetail({
           <Panel variant="ghost">
             <span className="text-xs text-content-primary/50">{t('history.finalHp')}</span>
             <strong>
-              {record.players[0].hp}/{record.players[1].hp}
+              {record.detailsAvailable === false ? '—' : `${record.players[0].hp}/${record.players[1].hp}`}
             </strong>
           </Panel>
           <Panel variant="ghost">
             <span className="text-xs text-content-primary/50">{t('history.finalChronos')}</span>
             <strong>
-              {record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}
+              {record.detailsAvailable === false ? '—' : `${record.chronos.finalPosition}/${CHRONOS_MAPPING.positions}`}
             </strong>
           </Panel>
         </div>
@@ -380,15 +388,44 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
 
 export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
   const { showToast } = useToast();
+  const [localRecords, setLocalRecords] = useState(() => getMatchRecords());
+  const [serverRecords, setServerRecords] = useState<MatchRecord[]>([]);
   const [records, setRecords] = useState(() => getMatchRecords());
   const [page, setPage] = useState(0);
   const [selectedRecord, setSelectedRecord] = useState<MatchRecord | null>(null);
   const [chatRecord, setChatRecord] = useState<MatchRecord | null>(null);
   const locale = useLocale();
-  const stats = getMatchStats();
+  const stats = getMatchStats(records);
   const totalPages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
   const visibleRecords = records.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
+
+  useEffect(() => {
+    let cancelled = false;
+    const initialLocalRecords = getMatchRecords();
+    setLocalRecords(initialLocalRecords);
+    setRecords(initialLocalRecords);
+    if (!isLoggedIn())
+      return () => {
+        cancelled = true;
+      };
+
+    void getProfile()
+      .then((profile) => getMatches(PAGE_SIZE * 10, 0).then((matches) => ({ profile, matches })))
+      .then(({ profile, matches }) => {
+        if (cancelled) return;
+        const nextServerRecords = matches.map((match) => matchRecordFromServer(match, profile.id));
+        setServerRecords(nextServerRecords);
+        setRecords(mergeMatchRecords(nextServerRecords, initialLocalRecords));
+      })
+      .catch(() => {
+        // 本機紀錄仍可用；server history 失敗不應遮住已完成的對局。
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const matchingRecord = resolveInitialHistoryChatRecord(records, initialChatSourceMatchId);
@@ -396,11 +433,12 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
   }, [initialChatSourceMatchId, records]);
 
   const clearHistory = () => {
-    const previousRecords = records;
+    const previousRecords = localRecords;
     const previousPage = currentPage;
     if (previousRecords.length === 0) return;
     clearMatchRecords();
-    setRecords([]);
+    setLocalRecords([]);
+    setRecords(mergeMatchRecords(serverRecords, []));
     setPage(0);
     setSelectedRecord(null);
     setChatRecord(null);
@@ -412,7 +450,8 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
       actionLabel: t('history.undoClearAction'),
       onAction: () => {
         replaceMatchRecords(previousRecords);
-        setRecords(previousRecords);
+        setLocalRecords(previousRecords);
+        setRecords(mergeMatchRecords(serverRecords, previousRecords));
         setPage(previousPage);
         setSelectedRecord(null);
         setChatRecord(null);
@@ -438,7 +477,7 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
             variant="danger"
             size="sm"
             type="button"
-            disabled={records.length === 0}
+            disabled={localRecords.length === 0}
             onClick={clearHistory}
           >
             {t('history.clear')}
@@ -512,10 +551,14 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
                         {t('history.duration')} {formatDuration(record.duration)}
                       </span>
                       <span>
-                        {t('history.finalHp')} {record.players[0].hp}/{record.players[1].hp}
+                        {t('history.finalHp')}{' '}
+                        {record.detailsAvailable === false ? '—' : `${record.players[0].hp}/${record.players[1].hp}`}
                       </span>
                       <span>
-                        {t('history.finalChronos')} {record.chronos.finalPosition}/{CHRONOS_MAPPING.positions}
+                        {t('history.finalChronos')}{' '}
+                        {record.detailsAvailable === false
+                          ? '—'
+                          : `${record.chronos.finalPosition}/${CHRONOS_MAPPING.positions}`}
                       </span>
                       <span>
                         {t('history.traceCount')} {(record.actionLog ?? []).length}

@@ -1,7 +1,7 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
 import { platformLogger as logger } from '../logger';
-import { authenticatePlatformClient } from './auth';
+import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   BoardgameMatchReadyMessage,
   InviteResponseMessage,
@@ -125,7 +125,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   }
 
   async onAuth(_client: PlatformClient, options: InviteRoomOptions, context: AuthContext): Promise<PlatformAuth> {
-    const auth = authenticatePlatformClient(options, context);
+    const auth = await authenticatePlatformClientCurrent(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
     if (!this.isJoinableStatus(options.status)) throw new Error('Invite is not joinable');
     const inviteId = optionalText(options.inviteId, 128);
@@ -144,6 +144,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   async onJoin(client: PlatformClient): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
+    await assertPlatformAuthCurrent(auth);
     client.userData = {
       sessionId: client.sessionId,
       userId: auth.userId,

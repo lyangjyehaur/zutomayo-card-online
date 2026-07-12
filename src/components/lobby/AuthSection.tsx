@@ -265,6 +265,20 @@ export function AuthSection({
               onChange={(event) => setPassword(event.target.value)}
             />
           </label>
+          {mode === 'login' && (
+            <Button
+              className="justify-self-start px-0"
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={() => {
+                setExpanded(false);
+                navigate('/forgot-password');
+              }}
+            >
+              {t('auth.forgotPassword')}
+            </Button>
+          )}
         </>
       )}
       {error && (

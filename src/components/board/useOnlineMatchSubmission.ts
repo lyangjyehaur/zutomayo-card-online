@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getProfile, isLoggedIn, submitMatch } from '../../api/client';
-import { saveMatchRecord } from '../../game/matchHistory';
+import { linkMatchRecordToServer, saveMatchRecord } from '../../game/matchHistory';
 import type { GameState, PlayerIndex } from '../../game/types';
 import { t } from '../../i18n';
 
 type GameOverState = { winner?: string | number; draw?: boolean };
 type MatchSubmitResponse = {
+  matchId?: string;
   winnerEloChange?: number;
   loserEloChange?: number;
 };
@@ -19,6 +20,7 @@ export type OnlineMatchSubmissionOptions = {
   gameover?: GameOverState;
   matchID?: string;
   playerID?: string | null;
+  spectator?: boolean;
 };
 
 export type EloSubmissionState = {
@@ -43,7 +45,7 @@ export function activeAccountPlayer(
   playerID: string | null | undefined,
   pathname = currentPathname(),
 ): PlayerIndex | null {
-  if (playerID !== '0' && playerID !== '1') return 0;
+  if (playerID !== '0' && playerID !== '1') return pathname.startsWith('/play/online/') ? null : 0;
   const player = Number(playerID) as PlayerIndex;
   if (pathname.startsWith('/play/online/')) return player;
   return player === 0 ? 0 : null;
@@ -121,6 +123,7 @@ export function useOnlineMatchSubmission({
   gameover,
   matchID,
   playerID,
+  spectator = false,
 }: OnlineMatchSubmissionOptions): EloSubmissionState {
   const submittedAttempt = useRef(-1);
   const [attempt, setAttempt] = useState(0);
@@ -146,11 +149,18 @@ export function useOnlineMatchSubmission({
       return;
     }
 
-    const sourceMatchId = onlineSourceMatchID(matchID);
-    saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds, sourceMatchId, submitKey);
+    const accountPlayer = spectator ? null : activeAccountPlayer(playerID);
+    if (accountPlayer === null) {
+      const state: EloSubmissionState = { status: 'unrated', message: t('auth.eloUnrated') };
+      markSubmitted(submitKey, state);
+      setEloState(state);
+      return;
+    }
 
-    const accountPlayer = activeAccountPlayer(playerID);
-    if (!isLoggedIn() || winner === null || accountPlayer === null) {
+    const sourceMatchId = onlineSourceMatchID(matchID);
+    saveMatchRecord(G, gameover?.winner ?? winner, durationSeconds, sourceMatchId, submitKey, accountPlayer);
+
+    if (!isLoggedIn() || winner === null) {
       const state: EloSubmissionState = { status: 'unrated', message: t('auth.eloUnrated') };
       markSubmitted(submitKey, state);
       setEloState(state);
@@ -173,6 +183,7 @@ export function useOnlineMatchSubmission({
         ) as Promise<MatchSubmitResponse>;
       })
       .then((result) => {
+        if (result.matchId) linkMatchRecordToServer(submitKey, result.matchId);
         if ((result.winnerEloChange ?? 0) === 0 && (result.loserEloChange ?? 0) === 0) {
           const state: EloSubmissionState = { status: 'unrated', message: t('auth.eloUnrated') };
           markSubmitted(submitKey, state);
@@ -188,7 +199,7 @@ export function useOnlineMatchSubmission({
         // 不寫入 submitted marker，允許玩家立即重試或重新掛載後再次提交。
         setEloState({ status: 'failed', message: t('auth.eloFailed'), retry });
       });
-  }, [G, attempt, gameover, matchID, playerID, retry]);
+  }, [G, attempt, gameover, matchID, playerID, retry, spectator]);
 
   return eloState;
 }

@@ -20,20 +20,23 @@ groups:
           summary: 'High 5xx error rate on {{ $labels.job }}'
           description: '5xx error rate is {{ $value | humanizePercentage }} (threshold 5%) on {{ $labels.job }} for the last 5 minutes.'
 
+      - alert: PlatformHighErrorRate5xx
+        expr: |
+          (
+            sum(rate(platform_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(platform_http_requests_total[5m])), 1e-9)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'High 5xx error rate on platform'
+          description: 'Platform 5xx error rate is {{ $value | humanizePercentage }} (threshold 5%) for the last 5 minutes.'
+
   - name: zutomayo-postgres
     interval: 30s
     rules:
-      # PG pool waiting > 5 for 2 minutes -> warning
-      - alert: PgPoolWaitingHigh
-        expr: pg_pool_waiting > 5
-        for: 2m
-        labels:
-          severity: warning
-          team: backend
-        annotations:
-          summary: 'PostgreSQL pool waiting connections high ({{ $labels.job }})'
-          description: 'PG pool has {{ $value }} waiting connections (threshold 5) on {{ $labels.job }}.'
-
       # PG connections > 80% of max for 5 minutes -> critical
       - alert: PgConnectionsNearMax
         expr: |
@@ -55,10 +58,8 @@ groups:
       # Redis memory > 80% of maxmemory -> warning
       - alert: RedisMemoryNearMax
         expr: |
-          (
-            redis_memory_used_bytes
-            / clamp_min(redis_memory_max_bytes, 1)
-          ) > 0.8
+          redis_memory_max_bytes > 0
+            and (redis_memory_used_bytes / redis_memory_max_bytes) > 0.8
         for: 2m
         labels:
           severity: warning
@@ -70,18 +71,17 @@ groups:
   - name: zutomayo-websocket
     interval: 30s
     rules:
-      # WebSocket connections > MAX_CONN_PER_IP * 0.8 -> warning
-      # MAX_CONN_PER_IP defaults to 10 (see .env.example). Adjust the threshold
-      # to match your deployment value if MAX_CONN_PER_IP is overridden.
-      - alert: WebSocketConnectionsNearLimit
-        expr: active_socket_connections > 8
+      # This is a process-wide gauge, not a per-IP gauge. Keep the threshold
+      # global until a labelled per-IP metric is available.
+      - alert: WebSocketConnectionsHigh
+        expr: active_socket_connections > 80
         for: 2m
         labels:
           severity: warning
           team: backend
         annotations:
-          summary: 'WebSocket connections near per-IP limit'
-          description: 'Active socket connections ({{ $value }}) exceeded 80% of MAX_CONN_PER_IP (default 10). Raise MAX_CONN_PER_IP or investigate connection flooding.'
+          summary: 'WebSocket connections high'
+          description: 'Process-wide active Socket.IO connections ({{ $value }}) exceeded 80. Investigate capacity or connection flooding.'
 
   - name: zutomayo-runtime
     interval: 30s
@@ -110,6 +110,16 @@ groups:
         annotations:
           summary: 'Service down ({{ $labels.job }})'
           description: '{{ $labels.job }} has been unreachable (scrape failing) for 1 minute. Check /health endpoint and container status.'
+
+      - alert: PlatformHealthProbeFailed
+        expr: probe_success{job="zutomayo-platform-health"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Platform health probe failed'
+          description: 'The platform /health endpoint has failed its synthetic probe for 1 minute.'
 
   - name: zutomayo-matchmaking
     interval: 30s

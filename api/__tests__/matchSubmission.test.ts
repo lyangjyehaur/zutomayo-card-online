@@ -14,16 +14,23 @@ type Pool = {
 type SubmitResult = { ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string };
 
 const require = createRequire(import.meta.url);
-const { calculateElo, submitMatchResult } = require('../matchSubmission.cjs') as {
+const { calculateElo, submitMatchResult: submitMatchResultRaw } = require('../matchSubmission.cjs') as {
   calculateElo: (ratingA: number, ratingB: number, scoreA: number) => number;
   submitMatchResult: (input: {
     pool: Pool;
     authUserId: string;
     body: Record<string, unknown>;
     sanitizeActionLog: (value: unknown) => unknown[];
+    rankedMatchesEnabled?: boolean;
     generateMatchId?: () => string;
   }) => Promise<SubmitResult>;
 };
+
+type SubmitInput = Parameters<typeof submitMatchResultRaw>[0];
+
+function submitMatchResult(input: SubmitInput): Promise<SubmitResult> {
+  return submitMatchResultRaw({ rankedMatchesEnabled: true, ...input });
+}
 
 function makePool(options: {
   winner?: Record<string, unknown>;
@@ -63,6 +70,10 @@ function makePool(options: {
   return { pool, client };
 }
 
+function trustedSeat(userId: string) {
+  return { data: { userId, identitySource: 'server', rankedEligible: true } };
+}
+
 describe('calculateElo', () => {
   it('uses the expected K=32 Elo delta', () => {
     expect(calculateElo(1000, 1000, 1)).toBe(1016);
@@ -71,6 +82,29 @@ describe('calculateElo', () => {
 });
 
 describe('submitMatchResult', () => {
+  it('returns an explicit unrated result when ranked submissions are disabled', async () => {
+    const { pool } = makePool({});
+
+    await expect(
+      submitMatchResultRaw({
+        pool,
+        authUserId: 'u_winner',
+        body: { winnerId: 'u_winner', loserId: 'u_loser', sourceMatchId: 'match_1', winnerPlayer: 0 },
+        sanitizeActionLog: () => [],
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: {
+        winnerEloChange: 0,
+        loserEloChange: 0,
+        unrated: true,
+        reason: 'ranked_disabled',
+      },
+    });
+
+    expect(pool.query).not.toHaveBeenCalled();
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
   it('rejects missing players and auth mismatches before opening a transaction', async () => {
     const { pool } = makePool({});
     const sanitizeActionLog = vi.fn(() => []);
@@ -95,7 +129,7 @@ describe('submitMatchResult', () => {
       sourceRows: [
         {
           state: { ctx: { gameover: { winner: 1 } }, G: { step: 'gameOver', winner: 1 } },
-          metadata: { players: { '1': { data: { userId: 'u_loser' } } } },
+          metadata: { players: { '1': trustedSeat('u_loser') } },
         },
       ],
     });
@@ -120,11 +154,21 @@ describe('submitMatchResult', () => {
       loser,
       sourceRows: [
         {
-          state: { ctx: { gameover: { winner: 0 } }, G: { step: 'gameOver', winner: 0 } },
+          state: {
+            ctx: { gameover: { winner: 0 } },
+            G: {
+              step: 'gameOver',
+              winner: 0,
+              turnNumber: 7,
+              matchStartedAt: 1000,
+              matchEndedAt: 43_000,
+              actionLog: [{ action: 'server' }],
+            },
+          },
           metadata: {
             players: {
-              '0': { data: { userId: 'u_winner' } },
-              '1': { data: { userId: 'u_loser' } },
+              '0': trustedSeat('u_winner'),
+              '1': trustedSeat('u_loser'),
             },
           },
         },
@@ -152,6 +196,8 @@ describe('submitMatchResult', () => {
       ok: true,
       body: {
         matchId: 'm_fixed',
+        winnerId: 'u_winner',
+        loserId: 'u_loser',
         winnerEloChange: 16,
         loserEloChange: -16,
         winnerNewElo: 1016,
@@ -159,7 +205,7 @@ describe('submitMatchResult', () => {
       },
     });
 
-    expect(sanitizeActionLog).toHaveBeenCalledWith([{ action: 'raw' }]);
+    expect(sanitizeActionLog).toHaveBeenCalledWith([{ action: 'server' }]);
     expect(client.query).toHaveBeenCalledWith('BEGIN');
     expect(client.query).toHaveBeenCalledWith(
       'UPDATE users SET elo = $1, match_count = match_count + 1, wins = wins + 1 WHERE id = $2',
@@ -227,8 +273,8 @@ describe('submitMatchResult', () => {
           state: { ctx: { gameover: { winner: 0 } }, G: { step: 'gameOver', winner: 0 } },
           metadata: {
             players: {
-              '0': { data: { userId: 'u_winner' } },
-              '1': { data: { userId: 'u_loser' } },
+              '0': trustedSeat('u_winner'),
+              '1': trustedSeat('u_loser'),
             },
           },
         },
@@ -269,8 +315,8 @@ describe('submitMatchResult', () => {
           state: { ctx: { gameover: { winner: 0 } }, G: { step: 'gameOver', winner: 0 } },
           metadata: {
             players: {
-              '0': { data: { userId: 'u_winner' } },
-              '1': { data: { userId: 'u_loser' } },
+              '0': trustedSeat('u_winner'),
+              '1': trustedSeat('u_loser'),
             },
           },
         },

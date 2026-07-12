@@ -53,6 +53,15 @@ const LeaderboardPage = lazy(() =>
 );
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((module) => ({ default: module.FeedbackPage })));
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })));
+const VerifyEmailPage = lazy(() =>
+  import('./pages/AccountActionPage').then((module) => ({ default: module.VerifyEmailPage })),
+);
+const ForgotPasswordPage = lazy(() =>
+  import('./pages/AccountActionPage').then((module) => ({ default: module.ForgotPasswordPage })),
+);
+const ResetPasswordPage = lazy(() =>
+  import('./pages/AccountActionPage').then((module) => ({ default: module.ResetPasswordPage })),
+);
 const BattleVisualQaPage = lazy(() =>
   import('./pages/BattleVisualQaPage').then((module) => ({ default: module.BattleVisualQaPage })),
 );
@@ -77,7 +86,10 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/tutorial' ||
     pathname === '/history' ||
     pathname === '/leaderboard' ||
-    pathname === '/profile'
+    pathname === '/profile' ||
+    pathname === '/verify-email' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password'
   );
 }
 
@@ -151,10 +163,18 @@ async function joinMatch(
     });
     throw onlineRoomError('online.connectionFailed');
   }
-  const data = (await response.json()) as { playerCredentials: string; platformSeatToken?: string };
+  const data = (await response.json()) as {
+    playerCredentials: string;
+    platformSeatToken?: string;
+    platformUserId?: string;
+  };
+  const fallbackPlatformUserId = account?.platformUserId ?? `guest:match:${matchID}:player:${playerID}`;
   return {
     ...data,
-    platformUserId: account?.platformUserId ?? `guest:match:${matchID}:player:${playerID}`,
+    // Keep the legacy fallback for anonymous sessions, then prefer the
+    // server-issued identity when one is present in the join response.
+    platformUserId: account?.platformUserId ?? fallbackPlatformUserId,
+    ...(data.platformUserId ? { platformUserId: data.platformUserId } : {}),
     platformDisplayName: playerName,
   };
 }
@@ -505,11 +525,11 @@ function RouterShell() {
   const startOnline = async (
     existingID?: string,
     playerName?: string,
-    options: { navigate?: boolean } = {},
+    options: { navigate?: boolean; playerDeckName?: string; opponentDeckName?: string } = {},
   ): Promise<OnlineSession> => {
     const setupData = {
-      ...onlineDeckName(0, deck0Name, serverDecks),
-      ...onlineDeckName(1, deck1Name, serverDecks),
+      ...onlineDeckName(0, options.playerDeckName ?? deck0Name, serverDecks),
+      ...onlineDeckName(1, options.opponentDeckName ?? deck1Name, serverDecks),
     };
     const matchID = existingID || (await createMatch(setupData));
     const playerID: '0' | '1' = existingID ? '1' : '0';
@@ -666,6 +686,9 @@ function RouterShell() {
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="/admin/i18n" element={<I18nManager />} />
             <Route path="/qa/battle" element={<BattleVisualQaPage />} />

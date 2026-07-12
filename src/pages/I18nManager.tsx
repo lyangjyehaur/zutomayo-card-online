@@ -61,7 +61,9 @@ function useCompactI18nEditing() {
 export function I18nManager() {
   const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(() => Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY)));
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
   const [error, setError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [selectedLocale, setSelectedLocale] = useState<Locale>('zh-TW');
@@ -94,7 +96,7 @@ export function I18nManager() {
     setError('');
     setLoggingIn(true);
     try {
-      const { token } = await adminLogin(password);
+      const { token } = await adminLogin({ username, password, totpCode });
       sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
       setAuthenticated(true);
       setPassword('');
@@ -104,7 +106,7 @@ export function I18nManager() {
     } finally {
       setLoggingIn(false);
     }
-  }, [password]);
+  }, [password, totpCode, username]);
 
   const handleLogout = useCallback(() => {
     sessionStorage.removeItem(ADMIN_TOKEN_KEY);
@@ -136,6 +138,16 @@ export function I18nManager() {
         <Panel className="admin-login mx-auto mt-6 w-full max-w-md" size="lg">
           <h2 className="font-display text-xl font-bold">{t('admin.adminVerify')}</h2>
           <Input
+            aria-label="管理員帳號"
+            autoComplete="username"
+            placeholder="管理員帳號"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            disabled={loggingIn}
+          />
+          <Input
+            aria-label="管理員密碼"
+            autoComplete="current-password"
             type="password"
             placeholder={t('admin.passwordPlaceholder')}
             value={password}
@@ -145,7 +157,21 @@ export function I18nManager() {
             }}
             disabled={loggingIn}
           />
-          <Button size="sm" onClick={() => void handleLogin()} disabled={loggingIn || !password}>
+          <Input
+            aria-label="管理員驗證碼"
+            autoComplete="one-time-code"
+            inputMode="numeric"
+            maxLength={6}
+            placeholder="六位數驗證碼"
+            value={totpCode}
+            onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            disabled={loggingIn}
+          />
+          <Button
+            size="sm"
+            onClick={() => void handleLogin()}
+            disabled={loggingIn || !username || !password || totpCode.length !== 6}
+          >
             {loggingIn ? t('admin.verifying') : t('admin.login')}
           </Button>
           {error && (

@@ -6,6 +6,8 @@ const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
 interface PlatformSeatTokenPayload {
   matchID: string;
   playerID: '0' | '1';
+  /** Server-derived identity bound to this seat. */
+  userId?: string;
   iat: number;
   exp: number;
 }
@@ -46,6 +48,7 @@ function parsePayload(value: string): PlatformSeatTokenPayload | null {
     return {
       matchID: payload.matchID,
       playerID: payload.playerID,
+      userId: typeof payload.userId === 'string' && payload.userId.trim() ? payload.userId.trim() : undefined,
       iat: Math.trunc(iat),
       exp: Math.trunc(exp),
     };
@@ -57,17 +60,20 @@ function parsePayload(value: string): PlatformSeatTokenPayload | null {
 export function createPlatformSeatToken({
   matchID,
   playerID,
+  userId,
   now = Date.now(),
   ttlMs = DEFAULT_TTL_MS,
 }: {
   matchID: string;
   playerID: '0' | '1';
+  userId?: string;
   now?: number;
   ttlMs?: number;
 }): string {
   const payload = base64urlJson({
     matchID,
     playerID,
+    ...(typeof userId === 'string' && userId.trim() ? { userId: userId.trim().slice(0, 128) } : {}),
     iat: now,
     exp: now + ttlMs,
   } satisfies PlatformSeatTokenPayload);
@@ -79,11 +85,13 @@ export function verifyPlatformSeatToken({
   token,
   matchID,
   playerID,
+  userId,
   now = Date.now(),
 }: {
   token: unknown;
   matchID: string | undefined;
   playerID: unknown;
+  userId?: string;
   now?: number;
 }): boolean {
   if (typeof token !== 'string' || !matchID || (playerID !== '0' && playerID !== '1')) return false;
@@ -95,5 +103,11 @@ export function verifyPlatformSeatToken({
   if (!safeEqual(signature, expected)) return false;
   const payload = parsePayload(payloadPart);
   if (!payload) return false;
-  return payload.matchID === matchID && payload.playerID === playerID && payload.iat <= now && payload.exp >= now;
+  if (payload.matchID !== matchID || payload.playerID !== playerID || payload.iat > now || payload.exp < now) {
+    return false;
+  }
+  // Legacy tokens without a user binding remain verifiable for non-ranked
+  // spectators/tests. Player seat admission passes userId and therefore
+  // requires the stronger bound token.
+  return userId === undefined || payload.userId === userId;
 }

@@ -1,7 +1,7 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
 import { platformLogger as logger } from '../logger';
-import { authenticatePlatformClient } from './auth';
+import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   LobbyJoinOptions,
   LobbyRoomMetadata,
@@ -30,13 +30,14 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     });
   }
 
-  onAuth(_client: PlatformClient, options: LobbyJoinOptions, context: AuthContext): PlatformAuth {
-    return authenticatePlatformClient(options, context);
+  async onAuth(_client: PlatformClient, options: LobbyJoinOptions, context: AuthContext): Promise<PlatformAuth> {
+    return authenticatePlatformClientCurrent(options, context);
   }
 
   async onJoin(client: PlatformClient): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
+    await assertPlatformAuthCurrent(auth);
     client.userData = {
       sessionId: client.sessionId,
       userId: auth.userId,

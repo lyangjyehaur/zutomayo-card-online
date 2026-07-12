@@ -43,5 +43,10 @@ describe('schema migrations', () => {
       expect(initSchema, `initSchema fallback missing ${artifact}`).toContain(artifact);
       expect(migrations, `migrations missing ${artifact}`).toContain(artifact);
     }
+
+    for (const artifact of ['bjg_matches', 'bjg_match_seats', 'bjg_match_result_outbox']) {
+      expect(migrations, `migrations missing game trust-chain table ${artifact}`).toContain(artifact);
+    }
+    expect(initSchema, 'initSchema fallback missing verified chat membership column').toContain('access_verified');
   });
 });

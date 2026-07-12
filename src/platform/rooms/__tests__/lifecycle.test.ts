@@ -220,13 +220,13 @@ describe('platform room lifecycle', () => {
     room.clients.push(guest);
     await room.onJoin(guest);
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         { userId: 'u_late', displayName: 'Late Player', role: 'player' },
         cookieAuthContext('u_late'),
       ),
-    ).toThrow('Quick match is not joinable');
+    ).rejects.toThrow('Quick match is not joinable');
   });
 
   it('excludes the leaving quick-match session from cancellation snapshots and matchmaking counts', async () => {
@@ -466,7 +466,7 @@ describe('platform room lifecycle', () => {
     vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
 
     await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
-    const auth = room.onAuth(
+    const auth = await room.onAuth(
       {} as PlatformClient,
       {
         roomCode: 'ROOM42',
@@ -495,7 +495,7 @@ describe('platform room lifecycle', () => {
 
     await room.onCreate({ roomCode: 'ROOM42', boardgameMatchID: 'bgio-match-1', status: 'waiting' });
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -507,9 +507,9 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_player'),
       ),
-    ).toThrow('Custom room access denied');
+    ).rejects.toThrow('Custom room access denied');
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -520,9 +520,9 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_player'),
       ),
-    ).toThrow('Custom room access denied');
+    ).rejects.toThrow('Custom room access denied');
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -534,9 +534,9 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_player'),
       ),
-    ).toThrow('Custom room access denied');
+    ).rejects.toThrow('Custom room access denied');
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -548,7 +548,7 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_player'),
       ),
-    ).not.toThrow();
+    ).resolves.toBeDefined();
   });
 
   it('custom room keeps spectators out of player seats and relay authority', async () => {
@@ -713,7 +713,7 @@ describe('platform room lifecycle', () => {
     await room.onJoin(guest);
     handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-ready' });
 
-    const spectatorAuth = room.onAuth(
+    const spectatorAuth = await room.onAuth(
       {} as PlatformClient,
       {
         roomCode: 'ROOM42',
@@ -951,7 +951,7 @@ describe('platform room lifecycle', () => {
     await room.onJoin(host);
     await room.onLeave(host);
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -962,7 +962,7 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_late'),
       ),
-    ).toThrow('Custom room is not joinable');
+    ).rejects.toThrow('Custom room is not joinable');
   });
 
   it('custom room transfers waiting host ownership to a reconnect session', async () => {

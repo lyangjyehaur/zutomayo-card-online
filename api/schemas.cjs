@@ -6,7 +6,7 @@
 const { z } = require('zod');
 
 const email = z.string().email().max(120).toLowerCase();
-const password = z.string().min(6).max(200);
+const password = z.string().min(12).max(200);
 const anonymousId = z.string().regex(/^[a-zA-Z0-9_-]{8,64}$/);
 
 // ===== Auth =====
@@ -27,7 +27,22 @@ const profileUpdateSchema = z.object({
 
 const passwordChangeSchema = z.object({
   currentPassword: z.string().min(1).max(200),
-  newPassword: z.string().min(6).max(200),
+  newPassword: password,
+});
+
+const accountTokenSchema = z.object({
+  token: z.string().min(32).max(512),
+});
+
+const passwordResetRequestSchema = z.object({ email });
+
+const passwordResetConfirmSchema = z.object({
+  token: z.string().min(32).max(512),
+  newPassword: password,
+});
+
+const accountDeleteSchema = z.object({
+  confirmation: z.literal('DELETE'),
 });
 
 // ===== Deck =====
@@ -60,6 +75,10 @@ const heartbeatSchema = z.object({
 const friendCreateSchema = z.object({
   friendUserId: z.string().min(3).max(128),
 });
+
+const friendRequestResponseSchema = z.object({ accept: z.boolean() });
+
+const userBlockSchema = z.object({ targetUserId: z.string().min(3).max(128) });
 
 // ===== Chat =====
 const chatConversationType = z.enum(['match', 'room', 'direct', 'global']);
@@ -122,7 +141,9 @@ const chatTranslationRequestSchema = z
 
 // ===== Admin =====
 const adminLoginSchema = z.object({
+  username: z.string().min(3).max(80),
   password: z.string().min(1).max(200),
+  totpCode: z.string().regex(/^\d{6}$/),
 });
 
 const adminEloSchema = z.object({
@@ -183,10 +204,16 @@ module.exports = {
   loginSchema,
   profileUpdateSchema,
   passwordChangeSchema,
+  accountTokenSchema,
+  passwordResetRequestSchema,
+  passwordResetConfirmSchema,
+  accountDeleteSchema,
   deckCreateSchema,
   matchSubmitSchema,
   heartbeatSchema,
   friendCreateSchema,
+  friendRequestResponseSchema,
+  userBlockSchema,
   chatMessageCreateSchema,
   chatReadSchema,
   chatReportCreateSchema,

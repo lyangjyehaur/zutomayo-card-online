@@ -7,8 +7,22 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['src/**', 'api/**'],
-      exclude: ['**/.DS_Store', '**/__tests__/**', '**/*.test.ts', '**/node_modules/**', '**/dist/**', '**/*.cjs'],
+      // Keep the Node/Vitest gate focused on production modules exercised by
+      // unit tests. Browser-only pages/components are covered by Playwright;
+      // API CommonJS is intentionally included rather than excluded.
+      include: [
+        'src/game/**/*.{ts,tsx}',
+        'src/platform/**/*.{ts,tsx}',
+        'src/chat/**/*.ts',
+        'src/server/**/*.ts',
+        'src/online*.ts',
+        'src/anonymousIdentity.ts',
+        'src/api/**/*.ts',
+        'src/hooks/online*.ts',
+        'src/lib/**/*.ts',
+        'api/**/*.cjs',
+      ],
+      exclude: ['**/.DS_Store', '**/__tests__/**', '**/*.test.ts', '**/node_modules/**', '**/dist/**'],
       thresholds: {
         lines: 50,
         functions: 50,

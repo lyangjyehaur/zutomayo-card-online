@@ -11,6 +11,8 @@ export interface PlatformAuth {
   displayName: string;
   role: PlatformRole;
   authenticated: boolean;
+  /** Internal access token retained only for a revocation check on join. */
+  accessToken?: string;
 }
 
 export interface PlatformClientProfile {
@@ -21,6 +23,8 @@ export interface PlatformClientProfile {
   joinedAt: number;
   boardgamePlayerID?: string;
   hasBoardgameCredentials?: boolean;
+  /** Canonical deck reserved by the quick-match server. */
+  deckName?: string;
 }
 
 export type PlatformFriendPresenceEvent = 'online' | 'offline' | 'update';
@@ -69,6 +73,7 @@ export interface PlatformClientMessages {
   quickMatchMatched: {
     roomId: string;
     role: 'host' | 'guest';
+    deckName: string;
     opponent?: PlatformClientProfile;
   };
   quickMatchCancelled: {

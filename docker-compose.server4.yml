@@ -1,9 +1,9 @@
 services:
   migrate:
+    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-migrate:${TAG:-latest}
     build:
       context: .
-      dockerfile: Dockerfile
-      target: builder
+      dockerfile: Dockerfile.migrate
     command: ['npm', 'run', 'db:migrate']
     env_file: .env
     environment:
@@ -37,7 +37,6 @@ services:
         SENTRY_URL: ${SENTRY_URL:-}
         SENTRY_ORG: ${SENTRY_ORG:-}
         SENTRY_PROJECT: ${SENTRY_PROJECT:-}
-        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
     ports:
       - '3000:3000'
     env_file: .env
@@ -49,14 +48,18 @@ services:
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=postgresql
       - PG_PORT=5432
-      - REDIS_DB=0
+      - REDIS_DB=${REDIS_DB:-0}
       - API_URL=${API_URL:-http://api:3001}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
+      - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
     networks:
       - default
       - 1panel-network
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/health || exit 1']
       interval: 10s
@@ -73,17 +76,18 @@ services:
         APP_VERSION: ${APP_VERSION:-}
         APP_BUILD_ID: ${APP_BUILD_ID:-}
         GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
-    expose:
-      - '3001'
+    ports:
+      - '3001:3001'
     env_file: .env
     environment:
       - API_PORT=3001
+      - NODE_ENV=production
       - APP_VERSION=${APP_VERSION:-}
       - APP_BUILD_ID=${APP_BUILD_ID:-}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=postgresql
       - PG_PORT=5432
-      - REDIS_DB=0
+      - REDIS_DB=${REDIS_DB:-0}
       - IMGPROXY_INTERNAL_BASE_URL=${IMGPROXY_INTERNAL_BASE_URL:-http://imgproxy:8080}
       - IMGPROXY_KEY=${IMGPROXY_KEY:-}
       - IMGPROXY_SALT=${IMGPROXY_SALT:-}
@@ -95,6 +99,9 @@ services:
     networks:
       - default
       - 1panel-network
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/health || exit 1']
       interval: 10s
@@ -123,7 +130,7 @@ services:
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
       - PG_HOST=postgresql
       - PG_PORT=5432
-      - REDIS_DB=0
+      - REDIS_DB=${REDIS_DB:-0}
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
       - PLATFORM_MATCH_PARTICIPANT_STORE=postgres
@@ -133,6 +140,9 @@ services:
     networks:
       - default
       - 1panel-network
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3002/health || exit 1']
       interval: 10s

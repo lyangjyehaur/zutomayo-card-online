@@ -1,5 +1,5 @@
 import { Room, type AuthContext } from '@colyseus/core';
-import { authenticatePlatformClient } from './auth';
+import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   BoardgameMatchReadyMessage,
   PlatformAuth,
@@ -16,6 +16,19 @@ function optionalText(value: unknown, maxLength: number): string | undefined {
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
 }
 
+const DEFAULT_QUICK_MATCH_DECK_NAME = '__random__';
+const QUICK_MATCH_DECK_NAMES = new Set(
+  (process.env.QUICK_MATCH_DECK_NAMES || '__random__,dark,flame,electric,wind')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean),
+);
+
+function quickMatchDeckName(value: unknown): string | undefined {
+  const deckName = optionalText(value, 60);
+  return deckName && QUICK_MATCH_DECK_NAMES.has(deckName) ? deckName : undefined;
+}
+
 export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; client: PlatformClient }> {
   maxClients = 2;
 
@@ -23,6 +36,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private hostSessionId?: string;
   private boardgameMatchID?: string;
   private authenticatedUserIds = new Set<string>();
+  private deckReservations = new Map<string, string>();
 
   async onCreate(): Promise<void> {
     this.autoDispose = true;
@@ -48,8 +62,8 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     await this.refreshMetadata();
   }
 
-  onAuth(_client: PlatformClient, options: QuickMatchRoomOptions, context: AuthContext): PlatformAuth {
-    const auth = authenticatePlatformClient(options, context);
+  async onAuth(_client: PlatformClient, options: QuickMatchRoomOptions, context: AuthContext): Promise<PlatformAuth> {
+    const auth = await authenticatePlatformClientCurrent(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
     if (this.status !== 'waiting') throw new Error('Quick match is not joinable');
     // 在 onAuth 階段原子標記 userId，避免 onJoin 前的 TOCTOU 競爭讓同一使用者重複加入。
@@ -60,19 +74,32 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     ) {
       throw new Error('Already queued');
     }
+    const deckName =
+      quickMatchDeckName(options.deckName) ||
+      (process.env.NODE_ENV === 'production' ? undefined : DEFAULT_QUICK_MATCH_DECK_NAME);
+    if (!deckName) throw new Error('A server-supported deck is required');
     this.authenticatedUserIds.add(auth.userId);
+    this.deckReservations.set(auth.userId, deckName);
     return { ...auth, role: 'player' };
   }
 
-  async onJoin(client: PlatformClient): Promise<void> {
+  async onJoin(client: PlatformClient, options: QuickMatchRoomOptions = {}): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
+    await assertPlatformAuthCurrent(auth);
+    const deckName =
+      this.deckReservations.get(auth.userId) ??
+      (process.env.NODE_ENV === 'production'
+        ? undefined
+        : quickMatchDeckName(options.deckName) || DEFAULT_QUICK_MATCH_DECK_NAME);
+    if (!deckName) throw new Error('Missing quick-match deck reservation');
     client.userData = {
       sessionId: client.sessionId,
       userId: auth.userId,
       displayName: auth.displayName,
       role: 'player',
       joinedAt: Date.now(),
+      deckName,
     };
 
     if (this.clients.length >= 2 && this.status === 'waiting') {
@@ -93,7 +120,10 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
 
   async onLeave(client: PlatformClient): Promise<void> {
     const userId = client.userData?.userId;
-    if (userId) this.authenticatedUserIds.delete(userId);
+    if (userId) {
+      this.authenticatedUserIds.delete(userId);
+      this.deckReservations.delete(userId);
+    }
     if (this.status === 'matched' && client.sessionId !== this.hostSessionId) {
       await this.refreshMetadata(client.sessionId);
       return;
@@ -129,6 +159,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
       client.send('quickMatchMatched', {
         roomId: this.roomId,
         role,
+        deckName: client.userData?.deckName || DEFAULT_QUICK_MATCH_DECK_NAME,
         opponent,
       });
     }

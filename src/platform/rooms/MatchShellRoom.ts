@@ -3,7 +3,7 @@ import { platformLogger as logger } from '../logger';
 import { verifyPlatformSeatToken } from '../seatToken';
 import { createEmptyPlatformChatPreviewStore, type PlatformChatPreviewStore } from '../chatPreviewStore';
 import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
-import { authenticatePlatformClient } from './auth';
+import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   ChatPreviewMessage,
   LinkBoardgameMatchMessage,
@@ -32,8 +32,27 @@ function boardgamePlayerIDFromOptions(options: MatchShellRoomOptions, role: Plat
   return options.boardgamePlayerID;
 }
 
-function hasValidBoardgamePlayerSeat(options: MatchShellRoomOptions, boardgameMatchID: string | undefined): boolean {
+function hasValidBoardgamePlayerSeat(
+  options: MatchShellRoomOptions,
+  boardgameMatchID: string | undefined,
+  userId: string,
+): boolean {
+  const boundTokenValid =
+    options.hasBoardgameCredentials === true &&
+    verifyPlatformSeatToken({
+      token: options.platformSeatToken,
+      matchID: boardgameMatchID,
+      playerID: options.boardgamePlayerID,
+      userId,
+    });
+  if (boundTokenValid) return true;
+  // Existing development sessions may hold pre-binding tokens. Never allow
+  // this compatibility path in production; newly issued tokens are always
+  // user-bound. It is opt-in even for development so a default deployment
+  // cannot silently weaken the trust chain.
   return (
+    process.env.NODE_ENV !== 'production' &&
+    process.env.ALLOW_LEGACY_SEAT_TOKEN === 'true' &&
     options.hasBoardgameCredentials === true &&
     verifyPlatformSeatToken({
       token: options.platformSeatToken,
@@ -146,12 +165,12 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     });
   }
 
-  onAuth(_client: PlatformClient, options: MatchShellRoomOptions, context: AuthContext): PlatformAuth {
+  async onAuth(_client: PlatformClient, options: MatchShellRoomOptions, context: AuthContext): Promise<PlatformAuth> {
     if (!sameBoardgameMatchID(this.boardgameMatchID, options.boardgameMatchID)) {
       throw new Error('Match shell access denied');
     }
-    const auth = authenticatePlatformClient(options, context);
-    if (auth.role === 'player' && !hasValidBoardgamePlayerSeat(options, this.boardgameMatchID)) {
+    const auth = await authenticatePlatformClientCurrent(options, context);
+    if (auth.role === 'player' && !hasValidBoardgamePlayerSeat(options, this.boardgameMatchID, auth.userId)) {
       return { ...auth, role: 'spectator' };
     }
     const existingSeatHolder = this.playerProfileByBoardgamePlayerID(options.boardgamePlayerID);
@@ -168,7 +187,10 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
   async onJoin(client: PlatformClient, options: MatchShellRoomOptions): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
-    const role = this.resolveRole(auth.role, options, auth.userId);
+    await assertPlatformAuthCurrent(auth);
+    const hasValidatedSeat = hasValidBoardgamePlayerSeat(options, this.boardgameMatchID, auth.userId);
+    const requestedRole = auth.role === 'player' && !hasValidatedSeat ? 'spectator' : auth.role;
+    const role = this.resolveRole(requestedRole, options, auth.userId);
     const boardgamePlayerID = boardgamePlayerIDFromOptions(options, role);
     const profile: PlatformClientProfile = {
       sessionId: client.sessionId,
@@ -177,10 +199,11 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
       role,
       joinedAt: Date.now(),
       boardgamePlayerID,
-      hasBoardgameCredentials: role === 'player' && options.hasBoardgameCredentials === true,
+      hasBoardgameCredentials: role === 'player' && hasValidatedSeat,
     };
 
-    await this.recordParticipant(profile, auth.authenticated);
+    const accessVerified = await this.assertDurableMatchAccess(profile, auth.authenticated);
+    await this.recordParticipant(profile, auth.authenticated, accessVerified);
     if (role === 'player' && boardgamePlayerID) {
       this.releaseReconnectSeat(boardgamePlayerID, auth.userId, client.sessionId);
     }
@@ -188,6 +211,20 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     await this.refreshMetadata();
     client.send('roomSnapshot', this.snapshot());
     this.broadcastPresence('join', client.userData);
+  }
+
+  private async assertDurableMatchAccess(profile: PlatformClientProfile, authenticated: boolean): Promise<boolean> {
+    if (!authenticated) return false;
+    if (!MatchShellRoom.participantStore.authorizeMatchParticipant) return true;
+    const authorized = await MatchShellRoom.participantStore.authorizeMatchParticipant({
+      boardgameMatchID: this.boardgameMatchID,
+      userId: profile.userId,
+      role: profile.role,
+      boardgamePlayerID: profile.boardgamePlayerID,
+      displayName: profile.displayName,
+    });
+    if (!authorized) throw new Error('Match shell access denied');
+    return true;
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
@@ -243,20 +280,33 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     await Promise.all(
       this.activeClients()
         .filter((client) => client.userData)
-        .map((client) => this.recordParticipant(client.userData!, client.auth?.authenticated === true)),
+        .map(async (client) => {
+          const authenticated = client.auth?.authenticated === true;
+          const accessVerified = await this.assertDurableMatchAccess(client.userData!, authenticated);
+          await this.recordParticipant(client.userData!, authenticated, accessVerified);
+        }),
     );
   }
 
-  private async recordParticipant(profile: PlatformClientProfile, authenticated: boolean): Promise<void> {
+  private async recordParticipant(
+    profile: PlatformClientProfile,
+    authenticated: boolean,
+    accessVerified: boolean,
+  ): Promise<void> {
     if (!authenticated) return;
     try {
-      await MatchShellRoom.participantStore.recordParticipant({
+      const input = {
         boardgameMatchID: this.boardgameMatchID,
         userId: profile.userId,
         role: profile.role,
         boardgamePlayerID: profile.boardgamePlayerID,
         displayName: profile.displayName,
-      });
+      };
+      if (MatchShellRoom.participantStore.authorizeMatchParticipant) {
+        await MatchShellRoom.participantStore.recordParticipant({ ...input, accessVerified });
+      } else {
+        await MatchShellRoom.participantStore.recordParticipant(input);
+      }
     } catch (err) {
       logger.warn(
         { err, boardgameMatchID: this.boardgameMatchID, userId: profile.userId },

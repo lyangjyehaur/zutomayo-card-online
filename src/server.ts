@@ -11,18 +11,25 @@ import serve from 'koa-static';
 import type { Next, ParameterizedContext } from 'koa';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import crypto from 'node:crypto';
 import Redis from 'ioredis';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { Pool } from 'pg';
-import { PostgresAdapter } from './server/db/postgres-adapter';
+import { MatchSeatReservationError, PostgresAdapter } from './server/db/postgres-adapter';
 import { RedisPubSub } from './server/transport/redis-pubsub';
+import { startMatchResultOutboxWorker } from './server/matchResultOutbox';
 import * as Sentry from '@sentry/node';
 import helmet from 'koa-helmet';
 import { logger, requestLoggingMiddleware } from './server/observability/logger';
 import { metricsMiddleware, metricsEndpoint, activeSocketConnections } from './server/observability/metrics';
-import { createRateLimit } from './server/rateLimit';
+import { createRateLimit, getClientIpFromRequest } from './server/rateLimit';
 import type { IncomingHttpHeaders, IncomingMessage } from 'http';
 import { createPlatformSeatToken } from './platform/seatToken';
+import {
+  configurePlatformJwtRevocationStore,
+  platformAuthTokenFromCookieHeader,
+  verifyPlatformJwtUserIdAsync,
+} from './platform/rooms/jwt';
 
 const require = createRequire(import.meta.url);
 const { Server, SocketIO } = require('boardgame.io/server') as typeof import('boardgame.io/server');
@@ -34,7 +41,12 @@ interface KoaContext extends ParameterizedContext {
   request: ParameterizedContext['request'] & { body?: unknown };
 }
 
-type VersionedPlayerData = Record<string, unknown> & { clientVersion?: unknown };
+type VersionedPlayerData = Record<string, unknown> & {
+  clientVersion?: unknown;
+  userId?: string;
+  identitySource?: 'server';
+  rankedEligible?: boolean;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -53,17 +65,42 @@ function compatibleClientVersion(value: unknown): AppVersionInfo | null {
   return version && isCompatibleVersion(version) ? version : null;
 }
 
-function playerDataWithVersion(data: unknown, version: AppVersionInfo): VersionedPlayerData {
+function playerDataWithVersion(
+  _data: unknown,
+  version: AppVersionInfo,
+  identity: { userId: string; rankedEligible: boolean },
+): VersionedPlayerData {
+  // Only retain fields the game server owns. Client metadata is intentionally
+  // discarded so a join request cannot inflate durable match JSON.
   return {
-    ...(isRecord(data) ? data : {}),
     clientVersion: version,
+    userId: identity.userId,
+    identitySource: 'server',
+    rankedEligible: identity.rankedEligible,
   };
 }
 
-function firstAvailablePlayerID(players: Record<string | number, { name?: string } | undefined>): string | undefined {
-  return Object.keys(players)
-    .sort((a, b) => Number(a) - Number(b))
-    .find((id) => !players[id]?.name);
+async function authenticatedRequestUserId(ctx: KoaContext): Promise<string> {
+  const cookieHeader = firstHeaderValue(ctx.request.headers.cookie);
+  return verifyPlatformJwtUserIdAsync(platformAuthTokenFromCookieHeader(cookieHeader));
+}
+
+function serverGuestSeatUserId(matchID: string, reservationKey: string): string {
+  const suffix = crypto.createHash('sha256').update(reservationKey).digest('hex').slice(0, 20);
+  return `guest:match:${matchID}:reservation:${suffix}`.slice(0, 128);
+}
+
+function throwSeatReservationError(ctx: KoaContext, error: unknown): never {
+  if (!(error instanceof MatchSeatReservationError)) throw error;
+  const status =
+    error.reason === 'match_not_found'
+      ? 404
+      : error.reason === 'seat_taken' || error.reason === 'identity_taken'
+        ? 409
+        : error.reason === 'identity_mismatch'
+          ? 403
+          : 409;
+  ctx.throw(status, error.message);
 }
 
 function authenticateVersionedCredentials(
@@ -141,10 +178,18 @@ const REDIS_DB = Number(process.env.REDIS_DB) || 0;
 
 // 共用 publish 連線（publish 不會進入 subscribe 模式，可安全共用）。
 const redisPubClient = new Redis(REDIS_URL, { db: REDIS_DB });
+configurePlatformJwtRevocationStore(redisPubClient);
 // Socket.IO adapter 專屬 subscribe 連線。
 const redisAdapterSubClient = redisPubClient.duplicate();
 // boardgame.io PubSub 專屬 subscribe 連線。
 const redisPubSubSubClient = redisPubClient.duplicate();
+for (const [name, client] of [
+  ['publish', redisPubClient],
+  ['socket-subscribe', redisAdapterSubClient],
+  ['game-subscribe', redisPubSubSubClient],
+] as const) {
+  client.on('error', (err) => logger.error({ err, redisClient: name }, 'game Redis connection error'));
+}
 
 const socketIoAdapter = createAdapter(redisPubClient, redisAdapterSubClient);
 const redisPubSub = new RedisPubSub<unknown>({
@@ -165,6 +210,8 @@ const transport = new SocketIO({
 } as SocketOpts);
 
 const db = new PostgresAdapter();
+const RANKED_MATCHES_ENABLED = process.env.RANKED_MATCHES_ENABLED === 'true';
+let matchResultOutboxWorker: ReturnType<typeof startMatchResultOutboxWorker> | undefined;
 
 // === 卡牌資料初始化（從 PostgreSQL 載入）===
 // 卡牌資料的 source of truth 是 PG 的 cards / card_effects_i18n 表（由 api 服務
@@ -237,6 +284,7 @@ async function loadCardsFromPG(): Promise<void> {
 }
 
 const API_SERVER = process.env.API_URL || 'http://api:3001';
+const API_PROXY_MAX_BODY_BYTES = Number(process.env.API_PROXY_MAX_BODY_BYTES) || 3 * 1024 * 1024;
 
 async function verifyAdminReloadToken(authorization: string | undefined): Promise<boolean> {
   if (!authorization) return false;
@@ -394,10 +442,24 @@ server.router.post('/games/zutomayo-card/:id/resume', koaBody(), async (ctx: Koa
   });
   if (!isAuthorized) ctx.throw(409, 'Player ' + typedPlayerID + ' not available');
 
+  const requestUserId = await authenticatedRequestUserId(ctx);
+  let reservedSeat;
+  try {
+    reservedSeat = await db.resumeMatchSeat({
+      matchID,
+      playerID: typedPlayerID,
+      credentials: typedCredentials,
+      authenticatedUserId: requestUserId || undefined,
+    });
+  } catch (error) {
+    throwSeatReservationError(ctx, error);
+  }
+
   ctx.body = {
     matchID,
     playerID: typedPlayerID,
-    platformSeatToken: createPlatformSeatToken({ matchID, playerID: typedPlayerID }),
+    platformUserId: reservedSeat.userId,
+    platformSeatToken: createPlatformSeatToken({ matchID, playerID: typedPlayerID, userId: reservedSeat.userId }),
   };
 });
 
@@ -409,15 +471,32 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
     data?: unknown;
     clientVersion?: unknown;
   };
-  let playerID = body.playerID;
+  const requestedPlayerID = body.playerID;
   const playerName = body.playerName;
   const clientVersion = compatibleClientVersion(
     body.clientVersion ?? (isRecord(body.data) ? body.data.clientVersion : null),
   );
+  const requestUserId = await authenticatedRequestUserId(ctx);
+  const suppliedUserId = isRecord(body.data) ? body.data.userId : undefined;
+  const normalizedPlayerName =
+    typeof playerName === 'string' ? playerName.trim().replace(/\s+/g, ' ').slice(0, 40) : '';
 
-  if (typeof playerName !== 'string' || !playerName) ctx.throw(403, 'playerName is required');
+  if (!normalizedPlayerName) ctx.throw(403, 'playerName is required');
   if (!clientVersion) ctx.throw(426, 'Client version does not match server game version');
-  const typedPlayerName = playerName as string;
+  if (
+    requestedPlayerID !== undefined &&
+    requestedPlayerID !== null &&
+    requestedPlayerID !== '0' &&
+    requestedPlayerID !== '1' &&
+    requestedPlayerID !== 0 &&
+    requestedPlayerID !== 1
+  ) {
+    ctx.throw(404, 'Player ' + String(requestedPlayerID) + ' not found');
+  }
+  if (suppliedUserId !== undefined && (typeof suppliedUserId !== 'string' || suppliedUserId !== requestUserId)) {
+    ctx.throw(403, 'Client supplied userId does not match authenticated identity');
+  }
+  const typedPlayerName = normalizedPlayerName;
   const typedClientVersion = clientVersion as AppVersionInfo;
 
   const { metadata } = await server.db.fetch(matchID, { metadata: true });
@@ -430,33 +509,37 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
   );
   if (existingMismatch) ctx.throw(426, 'Opponent version does not match server game version');
 
-  if (playerID === undefined || playerID === null) {
-    playerID = firstAvailablePlayerID(metadata.players);
-    if (playerID === undefined) {
-      ctx.throw(409, `Match ${matchID} reached maximum number of players (${existingPlayers.length})`);
-    }
-  }
-
-  if (playerID !== '0' && playerID !== '1' && playerID !== 0 && playerID !== 1) {
-    ctx.throw(404, 'Player ' + String(playerID) + ' not found');
-  }
-
-  const typedPlayerID = String(playerID) as '0' | '1';
-  const player = metadata.players[typedPlayerID];
-  if (!player) ctx.throw(404, 'Player ' + typedPlayerID + ' not found');
-  if (player.name) ctx.throw(409, 'Player ' + typedPlayerID + ' not available');
-
-  player.data = playerDataWithVersion(body.data, typedClientVersion);
-  player.name = typedPlayerName;
   const playerCredentials = await server.auth.generateCredentials(ctx);
-  player.credentials = playerCredentials;
-
-  await server.db.setMetadata(matchID, metadata);
+  const seatUserId = requestUserId || serverGuestSeatUserId(matchID, playerCredentials.slice(0, 16));
+  const playerData = playerDataWithVersion(body.data, typedClientVersion, {
+    userId: seatUserId,
+    rankedEligible: Boolean(requestUserId),
+  });
+  let reservedSeat;
+  try {
+    reservedSeat = await db.reserveMatchSeat({
+      matchID,
+      playerID:
+        requestedPlayerID === '0' || requestedPlayerID === 0
+          ? '0'
+          : requestedPlayerID === '1' || requestedPlayerID === 1
+            ? '1'
+            : undefined,
+      playerName: typedPlayerName,
+      playerData,
+      userId: seatUserId,
+      rankedEligible: Boolean(requestUserId),
+      credentials: playerCredentials,
+    });
+  } catch (error) {
+    throwSeatReservationError(ctx, error);
+  }
 
   ctx.body = {
-    playerID: typedPlayerID,
+    playerID: reservedSeat.playerID,
     playerCredentials,
-    platformSeatToken: createPlatformSeatToken({ matchID, playerID: typedPlayerID }),
+    platformUserId: seatUserId,
+    platformSeatToken: createPlatformSeatToken({ matchID, playerID: reservedSeat.playerID, userId: seatUserId }),
   };
 });
 
@@ -526,20 +609,38 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   const shouldStreamImageProxy =
     ctx.path.startsWith('/api/imgproxy/') && (ctx.method === 'GET' || ctx.method === 'HEAD');
 
-  // Read raw body from stream (koa-body may not be applied globally)
+  // Read raw body from stream (koa-body may not be applied globally), while
+  // keeping the game proxy memory-bounded before the API's own parser runs.
   let rawBody = '';
   if (ctx.method !== 'GET' && ctx.method !== 'HEAD') {
+    const declaredLength = Number(firstHeaderValue(ctx.request.headers['content-length']));
+    if (Number.isFinite(declaredLength) && declaredLength > API_PROXY_MAX_BODY_BYTES) {
+      ctx.status = 413;
+      ctx.body = { error: 'Request body too large' };
+      return;
+    }
     const chunks: Buffer[] = [];
+    let bodyBytes = 0;
+    let bodyTooLarge = false;
     for await (const chunk of ctx.req) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bodyBytes += buffer.length;
+      if (bodyBytes <= API_PROXY_MAX_BODY_BYTES) chunks.push(buffer);
+      else bodyTooLarge = true;
+    }
+    if (bodyTooLarge) {
+      ctx.status = 413;
+      ctx.body = { error: 'Request body too large' };
+      return;
     }
     rawBody = Buffer.concat(chunks).toString('utf-8');
   }
 
   const authorization = firstHeaderValue(ctx.request.headers.authorization);
-  const forwardedFor = [firstHeaderValue(ctx.request.headers['x-forwarded-for']), ctx.ip]
-    .filter((value): value is string => Boolean(value))
-    .join(', ');
+  // Canonicalize the chain at this trust boundary. Forwarding a client-owned
+  // XFF verbatim lets callers rotate the API rate-limit key because the game
+  // container itself is a trusted proxy from the API's perspective.
+  const forwardedFor = getClientIpFromRequest(ctx.req) || ctx.ip;
   const requestHeaders: Record<string, string> = {
     host: url.host,
     'x-forwarded-for': forwardedFor,
@@ -555,6 +656,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   if (authorization) requestHeaders.authorization = authorization;
   const cookie = firstHeaderValue(ctx.request.headers.cookie);
   if (cookie) requestHeaders.cookie = cookie;
+  forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, 'x-csrf-token');
+  forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, 'origin');
   if (shouldStreamImageProxy) {
     for (const name of IMGPROXY_PROXY_FORWARD_HEADERS) {
       forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, name);
@@ -703,6 +806,7 @@ logger.info(
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'shutdown received, closing connections');
   try {
+    await matchResultOutboxWorker?.stop();
     await Promise.all([
       db.close(),
       cardPool.end(),
@@ -741,6 +845,16 @@ async function bootstrap(): Promise<void> {
 
   server.run(PORT, () => {
     logger.info({ port: PORT }, 'Zutomayo Card server running');
+
+    matchResultOutboxWorker = startMatchResultOutboxWorker({
+      pool: db.getPool(),
+      enabled: RANKED_MATCHES_ENABLED,
+      onError: (err) => {
+        logger.error({ err }, 'match result outbox worker failed');
+        Sentry.captureException(err, { tags: { layer: 'match-result-outbox' } });
+      },
+    });
+    logger.info({ enabled: RANKED_MATCHES_ENABLED }, 'match result outbox worker configured');
 
     // Best-effort Socket.IO per-IP connection limiting to mitigate connection floods.
     // boardgame.io transport structure is not part of the public API; access defensively.

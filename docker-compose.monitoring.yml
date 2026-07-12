@@ -11,16 +11,49 @@
 # Grafana is exposed on host port 3003 (avoids conflict with game:3000, api:3001).
 
 services:
+  alertmanager:
+    image: prom/alertmanager:latest
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    volumes:
+      - ./observability/prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    configs:
+      - source: alertmanager_slack_webhook
+        target: /etc/alertmanager/slack_webhook
+    ports:
+      - '127.0.0.1:9093:9093'
+    networks:
+      - default
+    restart: unless-stopped
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    command: ['--config.file=/etc/blackbox/blackbox.yml']
+    volumes:
+      - ./observability/prometheus/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks:
+      - default
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./observability/grafana/alerting/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
+      - prometheus-data:/prometheus
+    configs:
+      - source: metrics_token
+        target: /etc/prometheus/metrics_token
     ports:
       - '9090:9090'
     networks:
       - default
     restart: unless-stopped
+    depends_on:
+      - alertmanager
+      - blackbox-exporter
 
   grafana:
     image: grafana/grafana:latest
@@ -34,6 +67,8 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - SLACK_ALERT_WEBHOOK=${SLACK_ALERT_WEBHOOK:-}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-}
     networks:
       - default
     depends_on:
@@ -45,7 +80,7 @@ services:
     environment:
       - DATA_SOURCE_NAME=postgresql://${PG_USER:-zutomayo}:${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}@postgres:5432/${PG_DATABASE:-zutomayo}?sslmode=disable
     ports:
-      - '9187:9187'
+      - '127.0.0.1:9187:9187'
     networks:
       - default
     restart: unless-stopped
@@ -56,7 +91,7 @@ services:
       - '--redis.addr=redis:6379'
       - '--redis.password=${REDIS_PASSWORD:-}'
     ports:
-      - '9121:9121'
+      - '127.0.0.1:9121:9121'
     networks:
       - default
     restart: unless-stopped
@@ -70,13 +105,21 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     ports:
-      - '8080:8080'
+      - '127.0.0.1:8080:8080'
     networks:
       - default
     restart: unless-stopped
 
 volumes:
+  prometheus-data:
+  alertmanager-data:
   grafana-data:
+
+configs:
+  metrics_token:
+    content: '${METRICS_TOKEN:-}'
+  alertmanager_slack_webhook:
+    content: '${SLACK_ALERT_WEBHOOK:-http://127.0.0.1:9093}'
 
 networks:
   default:

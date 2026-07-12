@@ -38,14 +38,14 @@ services:
         '--appendonly',
         'yes',
         '--maxmemory-policy',
-        'allkeys-lru',
+        'noeviction',
         '--requirepass',
         '${REDIS_PASSWORD:-}',
       ]
     volumes:
       - redis-staging-data:/data
     healthcheck:
-      test: ['CMD-SHELL', 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null || redis-cli ping']
+      test: ['CMD-SHELL', 'redis-cli -a "${REDIS_PASSWORD:-}" --no-auth-warning ping 2>/dev/null || redis-cli ping']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -54,10 +54,7 @@ services:
   migrate:
     # migrate 需要 builder stage（含 devDependencies / node-pg-migrate），
     # 因此仍在 server 上 build；其餘 app 服務一律使用 GHCR 預建 image。
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: builder
+    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-migrate:${TAG:-staging}
     command: ['npm', 'run', 'db:migrate']
     env_file: .env
     environment:
@@ -89,11 +86,14 @@ services:
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
+      - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/health || exit 1']
       interval: 10s
@@ -108,6 +108,7 @@ services:
     env_file: .env
     environment:
       - API_PORT=3001
+      - NODE_ENV=production
       - APP_VERSION=${APP_VERSION:-}
       - APP_BUILD_ID=${APP_BUILD_ID:-}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
@@ -166,6 +167,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
     healthcheck:

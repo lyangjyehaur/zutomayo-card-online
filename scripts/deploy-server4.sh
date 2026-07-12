@@ -23,10 +23,12 @@ SERVER_PORT="${SERVER_PORT:-4649}"
 SERVER_USER="${SERVER_USER:-root}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/zutomayo-card-online}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.server4.yml}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-redis}"
 GHCR_OWNER="${GHCR_OWNER:-lyangjyehaur}"
 GAME_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-game"
 API_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-api"
 PLATFORM_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-platform"
+MIGRATE_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-migrate"
 
 # --- 旗標解析 ---
 CONFIRM=false
@@ -39,7 +41,11 @@ while [[ $# -gt 0 ]]; do
         --confirm) CONFIRM=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         --rollback) ROLLBACK=true; shift ;;
-        --sha) TARGET_SHA="$2"; shift 2 ;;
+        --sha)
+            [[ $# -ge 2 ]] || { echo "--sha 需要 commit SHA" >&2; exit 2; }
+            TARGET_SHA="$2"
+            shift 2
+            ;;
         -h|--help)
             sed -n '2,15p' "$0"
             exit 0
@@ -57,6 +63,43 @@ err()  { echo -e "${RED}[$(date +%H:%M:%S)] ✗${NC} $*" >&2; }
 
 ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 
+verify_remote_runtime_config() {
+    ssh_run "
+set -e
+cd '$REMOTE_DIR'
+CONFIG_FILE=\$(mktemp)
+trap 'rm -f \"\$CONFIG_FILE\"' EXIT
+docker compose -f '$COMPOSE_FILE' config --format json > \"\$CONFIG_FILE\"
+python3 - \"\$CONFIG_FILE\" <<'PY'
+import json
+import sys
+
+config = json.load(open(sys.argv[1], encoding='utf-8'))
+services = config.get('services', {})
+values = {}
+for name in ('game', 'api', 'platform'):
+    environment = services.get(name, {}).get('environment', {})
+    if isinstance(environment, dict):
+        values[name] = str(environment.get('REDIS_DB', ''))
+    else:
+        values[name] = next((item.split('=', 1)[1] for item in environment if item.startswith('REDIS_DB=')), '')
+if not values['game'] or len(set(values.values())) != 1:
+    raise SystemExit('Redis DB mismatch: ' + repr(values))
+print('Redis DB consistent: ' + values['game'])
+PY
+
+# server4 uses an external Redis container on 1panel-network. Refuse an
+# eviction policy that could remove blacklist/auth:revoked-before keys.
+REDIS_PASSWORD=\$(sed -n 's/^REDIS_PASSWORD=//p' .env | tail -n 1)
+POLICY=\$(docker exec -e \"REDISCLI_AUTH=\$REDIS_PASSWORD\" '$REDIS_CONTAINER' redis-cli --no-auth-warning CONFIG GET maxmemory-policy | tail -n 1)
+if [ \"\$POLICY\" != 'noeviction' ]; then
+    echo \"External Redis maxmemory-policy must be noeviction (got: \$POLICY)\" >&2
+    exit 1
+fi
+echo 'External Redis eviction policy: noeviction'
+"
+}
+
 run_or_dry() {
     if [[ "$DRY_RUN" == true ]]; then
         echo -e "${YELLOW}[DRY-RUN]${NC} $*"
@@ -68,13 +111,13 @@ run_or_dry() {
 # 驗證部署健康狀態；回傳 0 = 全部通過，1 = 有失敗
 verify_health() {
     local failed=0
-    GAME_VERSION=$(curl -s --max-time 5 "http://$SERVER_HOST:3000/api/version" 2>/dev/null || echo "FAILED")
-    API_VERSION=$(curl -s --max-time 5 "http://$SERVER_HOST:3001/api/version" 2>/dev/null || echo "FAILED")
-    PLATFORM_HEALTH=$(curl -s --max-time 5 "http://$SERVER_HOST:3002/health" 2>/dev/null || echo "FAILED")
-    PLATFORM_READY=$(curl -s --max-time 5 "http://$SERVER_HOST:3002/ready" 2>/dev/null || echo "FAILED")
-    GAME_HTTP=$(curl -sI --max-time 5 "http://$SERVER_HOST:3000/" 2>/dev/null | head -1 || echo "FAILED")
-    API_HTTP=$(curl -sI --max-time 5 "http://$SERVER_HOST:3001/" 2>/dev/null | head -1 || echo "FAILED")
-    PLATFORM_HTTP=$(curl -sI --max-time 5 "http://$SERVER_HOST:3002/health" 2>/dev/null | head -1 || echo "FAILED")
+    GAME_VERSION=$(curl -fsS --max-time 5 "http://$SERVER_HOST:3000/api/version" 2>/dev/null || echo "FAILED")
+    API_VERSION=$(curl -fsS --max-time 5 "http://$SERVER_HOST:3001/api/version" 2>/dev/null || echo "FAILED")
+    PLATFORM_HEALTH=$(curl -fsS --max-time 5 "http://$SERVER_HOST:3002/health" 2>/dev/null || echo "FAILED")
+    PLATFORM_READY=$(curl -fsS --max-time 5 "http://$SERVER_HOST:3002/ready" 2>/dev/null || echo "FAILED")
+    GAME_HTTP=$(curl -fsSI --max-time 5 "http://$SERVER_HOST:3000/" 2>/dev/null | head -1 || echo "FAILED")
+    API_HTTP=$(curl -fsSI --max-time 5 "http://$SERVER_HOST:3001/health" 2>/dev/null | head -1 || echo "FAILED")
+    PLATFORM_HTTP=$(curl -fsSI --max-time 5 "http://$SERVER_HOST:3002/health" 2>/dev/null | head -1 || echo "FAILED")
 
     echo "  game /api/version : $GAME_VERSION"
     echo "  api  /api/version : $API_VERSION"
@@ -87,6 +130,10 @@ verify_health() {
     [[ "$GAME_VERSION" == "FAILED" ]] && { warn "game /api/version 失敗"; failed=1; }
     [[ "$API_VERSION" == "FAILED" ]] && { warn "api /api/version 失敗"; failed=1; }
     [[ "$PLATFORM_HEALTH" == "FAILED" ]] && { warn "platform /health 失敗"; failed=1; }
+    [[ "$PLATFORM_READY" == "FAILED" ]] && { warn "platform /ready 失敗"; failed=1; }
+    [[ "$GAME_HTTP" == "FAILED" ]] && { warn "game HTTP 失敗"; failed=1; }
+    [[ "$API_HTTP" == "FAILED" ]] && { warn "api HTTP 失敗"; failed=1; }
+    [[ "$PLATFORM_HTTP" == "FAILED" ]] && { warn "platform HTTP 失敗"; failed=1; }
     return $failed
 }
 
@@ -95,10 +142,9 @@ perform_rollback() {
     log "回滾到 :rollback tag 的 image"
     ssh_run "
 cd $REMOTE_DIR
-TAG=rollback docker compose -f $COMPOSE_FILE up -d 2>&1 | tail -10
-sleep 8
+TAG=rollback docker compose -f $COMPOSE_FILE up -d --wait --wait-timeout 180
 docker compose -f $COMPOSE_FILE ps
-" || true
+"
 }
 
 # --- Rollback 模式（--rollback flag）---
@@ -122,6 +168,11 @@ if [[ "$ROLLBACK" == true ]]; then
         exit 1
     fi
     ok "server4 .env 存在"
+    if [[ "$DRY_RUN" != true ]]; then
+        verify_remote_runtime_config
+    else
+        warn "DRY-RUN：略過外部 Redis policy / compose runtime 驗證"
+    fi
 
     if [[ "$CONFIRM" == true ]]; then
         warn "即將回滾 $SERVER_HOST 上的服務到 :rollback image"
@@ -169,18 +220,28 @@ fi
 ok "工作樹乾淨"
 
 # 2. 確認已 push 到 origin
-HEAD_SHA=$(git rev-parse HEAD)
-HEAD_SHORT=$(git rev-parse --short HEAD)
+git fetch origin
+
+if [[ -n "$TARGET_SHA" ]]; then
+    [[ "$TARGET_SHA" =~ ^[0-9a-fA-F]{7,64}$ ]] || { err "無效的 --sha: $TARGET_SHA"; exit 2; }
+    HEAD_SHA=$(git rev-parse "${TARGET_SHA}^{commit}" 2>/dev/null) || { err "找不到 commit: $TARGET_SHA"; exit 1; }
+else
+    HEAD_SHA=$(git rev-parse HEAD)
+fi
+HEAD_SHORT=$(git rev-parse --short "$HEAD_SHA")
 
 # 確認 origin/master = HEAD(都已 push)
-git fetch origin >/dev/null 2>&1 || true
 ORIGIN_SHA=$(git rev-parse origin/master 2>/dev/null || echo "")
-if [[ -n "$ORIGIN_SHA" && "$ORIGIN_SHA" != "$HEAD_SHA" ]]; then
+if [[ -z "$TARGET_SHA" && -n "$ORIGIN_SHA" && "$ORIGIN_SHA" != "$HEAD_SHA" ]]; then
     err "本地 HEAD ($HEAD_SHORT) 跟 origin/master ($(git rev-parse --short origin/master 2>/dev/null)) 不一致"
     err "請先 git push origin master 再部署"
     exit 1
 fi
-ok "目標 commit: $HEAD_SHORT(已 push 到 origin/master)"
+if ! git branch -r --contains "$HEAD_SHA" | grep -q 'origin/'; then
+    err "目標 commit $HEAD_SHORT 尚未出現在 origin"
+    exit 1
+fi
+ok "目標 commit: $HEAD_SHORT (origin 已包含)"
 
 # 3. server4 可達
 if ! ssh_run "echo ok" >/dev/null 2>&1; then
@@ -195,6 +256,12 @@ if ! ssh_run "test -f $REMOTE_DIR/.env" >/dev/null 2>&1; then
     exit 1
 fi
 ok "server4 .env 存在"
+if [[ "$DRY_RUN" != true ]]; then
+    verify_remote_runtime_config
+    ok "server4 Redis policy 與三服務 DB 設定通過"
+else
+    warn "DRY-RUN：略過外部 Redis policy / compose runtime 驗證"
+fi
 
 # 5. 二次確認
 if [[ "$CONFIRM" == true ]]; then
@@ -218,12 +285,13 @@ ok "備份完成"
 
 # --- Step 2:server4 git 對齊 ---
 log ""
-log "Step 2/7: server4 git reset 到 origin/master"
+log "Step 2/7: server4 git reset 到 $HEAD_SHORT"
 run_or_dry ssh_run "
 set -e
 cd $REMOTE_DIR
 git config --global --add safe.directory $REMOTE_DIR 2>/dev/null || true
 git fetch origin 2>&1 | tail -3
+git cat-file -e '$HEAD_SHA^{commit}'
 
 BEHIND=\$(git rev-list --count HEAD..origin/master 2>/dev/null || echo 0)
 AHEAD=\$(git rev-list --count origin/master..HEAD 2>/dev/null || echo 0)
@@ -235,10 +303,17 @@ if [[ \$AHEAD -gt 0 ]]; then
     git log --oneline origin/master..HEAD
 fi
 
-git reset --hard origin/master
+git reset --hard $HEAD_SHA
 git log --oneline -3
 "
 ok "git reset 完成"
+
+# Re-check the checked-out compose file, not only the preflight version that
+# was present before the remote git update.
+if [[ "$DRY_RUN" != true ]]; then
+    verify_remote_runtime_config
+    ok "checked-out compose 的 Redis policy 與 DB 設定通過"
+fi
 
 # --- Step 3:更新 APP_BUILD_ID / APP_VERSION / GAME_RULES_VERSION ---
 # 三個都要從 package.json 跟 HEAD 同步，避免依賴 Docker/Compose 的空值 fallback。
@@ -274,7 +349,7 @@ log ""
 log "Step 4/7: 標記現有 image 為 :rollback（供回滾用）"
 run_or_dry ssh_run "
 cd $REMOTE_DIR
-for IMG in $GAME_IMAGE $API_IMAGE $PLATFORM_IMAGE; do
+for IMG in $GAME_IMAGE $API_IMAGE $PLATFORM_IMAGE $MIGRATE_IMAGE; do
     if docker image inspect \"\${IMG}:latest\" >/dev/null 2>&1; then
         docker tag \"\${IMG}:latest\" \"\${IMG}:rollback\"
         echo \"  tagged \${IMG}:rollback\"
@@ -299,8 +374,9 @@ log ""
 log "Step 6/7: docker compose up -d"
 run_or_dry ssh_run "
 cd $REMOTE_DIR
-docker compose -f $COMPOSE_FILE up -d 2>&1 | tail -10
-sleep 8
+docker compose -f $COMPOSE_FILE config --quiet
+docker compose -f $COMPOSE_FILE run --rm migrate
+docker compose -f $COMPOSE_FILE up -d --wait --wait-timeout 180
 docker compose -f $COMPOSE_FILE ps
 "
 ok "容器重啟完成"

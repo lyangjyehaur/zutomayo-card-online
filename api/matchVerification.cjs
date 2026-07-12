@@ -30,6 +30,32 @@ function playerDataUserId(metadata, player) {
   return typeof userId === 'string' ? userId : '';
 }
 
+function trustedPlayerSeat(metadata, player) {
+  const seat = metadata?.players?.[String(player)] || metadata?.players?.[player];
+  const data = seat?.data;
+  if (!data || typeof data !== 'object') return null;
+  const userId = typeof data.userId === 'string' ? data.userId.trim() : '';
+  if (!userId || data.identitySource !== 'server') return null;
+  return {
+    userId,
+    rankedEligible: data.rankedEligible === true,
+  };
+}
+
+function authoritativeMatchStats(state) {
+  const G = state?.G && typeof state.G === 'object' ? state.G : {};
+  const turns = Number.isInteger(G.turnNumber) && G.turnNumber >= 0 ? Math.min(G.turnNumber, 9999) : 0;
+  const startedAt = Number.isFinite(G.matchStartedAt) ? Number(G.matchStartedAt) : 0;
+  const endedAt = Number.isFinite(G.matchEndedAt) ? Number(G.matchEndedAt) : 0;
+  const duration =
+    startedAt > 0 && endedAt >= startedAt ? Math.min(Math.floor((endedAt - startedAt) / 1000), 86400) : 0;
+  return {
+    turns,
+    duration,
+    actionLog: Array.isArray(G.actionLog) ? G.actionLog : [],
+  };
+}
+
 async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, authUserId) {
   if (!sourceMatchId) return { ok: false, status: 400, error: 'sourceMatchId required for ranked match submission' };
   if (winnerPlayer !== 0 && winnerPlayer !== 1) {
@@ -50,8 +76,19 @@ async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, aut
     return { ok: false, status: 403, error: 'Winner does not match source match' };
   }
   const loserPlayer = winnerPlayer === 0 ? 1 : 0;
-  const winnerUserId = playerDataUserId(match.metadata, winnerPlayer);
-  const loserUserId = playerDataUserId(match.metadata, loserPlayer);
+  const winnerSeat = trustedPlayerSeat(match.metadata, winnerPlayer);
+  const loserSeat = trustedPlayerSeat(match.metadata, loserPlayer);
+  if (!winnerSeat || !loserSeat) {
+    return { ok: false, status: 409, error: 'Source match does not have server-bound seat identities' };
+  }
+  if (!winnerSeat.rankedEligible || !loserSeat.rankedEligible) {
+    return { ok: false, status: 409, error: 'Source match is not eligible for ranked submission' };
+  }
+  const winnerUserId = winnerSeat.userId;
+  const loserUserId = loserSeat.userId;
+  if (winnerUserId === loserUserId) {
+    return { ok: false, status: 409, error: 'Source match seats must belong to distinct accounts' };
+  }
   if (authUserId !== winnerUserId && authUserId !== loserUserId) {
     return { ok: false, status: 403, error: 'Authenticated user is not a participant in the source match' };
   }
@@ -62,6 +99,7 @@ async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, aut
     loserPlayer,
     winnerUserId,
     loserUserId,
+    authoritative: authoritativeMatchStats(match.state),
   };
 }
 
@@ -70,5 +108,7 @@ module.exports = {
   isBoardgameFinished,
   normalizeWinnerPlayer,
   playerDataUserId,
+  trustedPlayerSeat,
+  authoritativeMatchStats,
   verifyBoardgameMatchResult,
 };

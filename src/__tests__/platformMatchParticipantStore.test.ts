@@ -41,6 +41,7 @@ describe('platform match participant store', () => {
       'spectator',
       null,
       'Spectator',
+      false,
     ]);
     expect(pool.query.mock.calls[0]?.[0]).toContain("WHEN platform_match_participants.role = 'player' THEN 'player'");
     expect(pool.query.mock.calls[0]?.[0]).toContain(
@@ -82,6 +83,7 @@ describe('platform match participant store', () => {
       'u_player',
       'player',
       'Player',
+      false,
     ]);
     expect(pool.query.mock.calls[0]?.[0]).toContain("WHEN platform_room_participants.role = 'player' THEN 'player'");
   });

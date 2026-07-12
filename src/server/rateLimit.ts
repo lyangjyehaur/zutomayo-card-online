@@ -54,12 +54,13 @@ function isTrustedProxy(ip: string): boolean {
   return TRUSTED_PROXIES.some((range) => ipMatch(ip, range));
 }
 
-function getClientIpFromRequest(req: IncomingMessage): string {
+export function getClientIpFromRequest(req: IncomingMessage): string {
   const remoteAddress = req.socket.remoteAddress || '';
   if (isTrustedProxy(remoteAddress)) {
     const xff = req.headers['x-forwarded-for'];
     if (xff) {
-      return (Array.isArray(xff) ? xff[0] : xff).trim();
+      const first = Array.isArray(xff) ? xff[0] : xff;
+      return first.split(',')[0].trim();
     }
   }
   return remoteAddress;

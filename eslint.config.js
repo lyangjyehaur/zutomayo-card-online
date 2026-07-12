@@ -14,7 +14,6 @@ export default [
       'node_modules/',
       '.data/',
       'public/cards/',
-      'api/server.cjs',
       'scripts/db-migrate.cjs',
       'commitlint.config.cjs',
       'migrations/',
@@ -60,6 +59,47 @@ export default [
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
       '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
+  // The API entry point is CommonJS and intentionally remains a single file.
+  // Keep it under the base no-undef rules so route typos cannot bypass CI.
+  {
+    files: ['api/server.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-undef': 'error',
+      // The module intentionally imports node:crypto under the conventional
+      // `crypto` name, which recent globals metadata also exposes globally.
+      'no-redeclare': 'off',
+    },
+  },
+  // Other API/admin entry points are also CommonJS. Keep the same runtime
+  // globals and require policy so newly added services are linted rather than
+  // silently ignored.
+  {
+    files: ['api/**/*.cjs', 'scripts/**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+        URL: 'readonly',
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      'no-undef': 'error',
+      'no-redeclare': 'off',
     },
   },
   // Prettier: must be last to disable conflicting formatting rules

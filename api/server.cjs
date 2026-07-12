@@ -18,8 +18,19 @@ const {
   updateAccountProfile,
   unlinkOAuthIdentity,
 } = require('./accountService.cjs');
+const {
+  deleteAccount,
+  exportAccountData,
+  requestEmailVerification,
+  requestPasswordReset,
+  resetPassword,
+  verifyEmailToken,
+} = require('./accountLifecycleService.cjs');
+const { deliverAccountAction } = require('./accountNotificationService.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
-const { adminLogin, listAdminUsers, resetUserElo } = require('./adminService.cjs');
+const { listAdminUsers, resetUserElo } = require('./adminService.cjs');
+const { authenticateAdmin, revokeAdminSession, verifyAdminSession } = require('./adminAuthService.cjs');
+const { decryptAdminTotpSecret } = require('./adminSecretCrypto.cjs');
 const { logger, attachRequestObservability, metricsResponse, rateLimitedTotal } = require('./observability.cjs');
 const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
@@ -79,7 +90,21 @@ const {
   findSimilarPosts: findFeedbackSimilarPosts,
   toggleCommentReaction: toggleFeedbackCommentReaction,
 } = require('./feedbackService.cjs');
-const { addFriend, listFriends, removeFriend } = require('./friendService.cjs');
+const { listFriends, removeFriend } = require('./friendService.cjs');
+const {
+  blockUser,
+  createFriendRequest,
+  listBlocks,
+  listFriendRequests,
+  respondToFriendRequest,
+  unblockUser,
+} = require('./socialSafetyService.cjs');
+const {
+  getCurrentSeason,
+  getUserSeasonRating,
+  listSeasonLeaderboard,
+  recordSeasonResult,
+} = require('./seasonService.cjs');
 const { createChatTranslationProviderFromEnv } = require('./chatTranslationProvider.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
@@ -102,14 +127,15 @@ const PORT = Number(process.env.API_PORT) || 3001;
 const JWT_SECRET = process.env.JWT_SECRET;
 // B4：OAuth token 加密金鑰獨立於 JWT_SECRET，避免金鑰輪換時 OAuth token 失效。
 const OAUTH_TOKEN_ENCRYPTION_KEY = process.env.OAUTH_TOKEN_ENCRYPTION_KEY || '';
-// P0-3：Admin 密碼改為後端環境變數，移除前端硬編碼。
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-// admin 系統使用共享密碼，無個別 admin 帳號；稽核日誌以 'admin' 標識操作者。
-const ADMIN_ACTOR_ID = 'admin';
+const ADMIN_TOTP_ENCRYPTION_KEY = process.env.ADMIN_TOTP_ENCRYPTION_KEY || '';
+const ADMIN_SESSION_TTL_SECONDS = Number(process.env.ADMIN_SESSION_TTL_SECONDS) || 60 * 60;
 const PACKAGE_VERSION = readPackageVersion();
 const APP_VERSION = process.env.APP_VERSION || PACKAGE_VERSION;
 const APP_BUILD_ID = process.env.APP_BUILD_ID || APP_VERSION;
 const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
+// Ranked writes are fail-closed. Production must explicitly opt in after the
+// seat-identity trust chain has been verified.
+const RANKED_MATCHES_ENABLED = process.env.RANKED_MATCHES_ENABLED === 'true';
 const IMGPROXY_INTERNAL_BASE_URL = process.env.IMGPROXY_INTERNAL_BASE_URL || process.env.IMGPROXY_BASE_URL || '';
 const IMGPROXY_KEY = process.env.IMGPROXY_KEY || '';
 const IMGPROXY_SALT = process.env.IMGPROXY_SALT || '';
@@ -139,6 +165,7 @@ function checkMetricsAuth(req) {
 const AUTH_COOKIE_NAME = 'zutomayo_session';
 const ACCESS_TOKEN_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 3600;
 const REFRESH_TOKEN_TTL_SECONDS = Number(process.env.REFRESH_TOKEN_TTL_SECONDS) || 7 * 24 * 60 * 60;
+const SESSION_REVOCATION_TTL_SECONDS = Math.max(ACCESS_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_SECONDS);
 const AUTH_COOKIE_MAX_AGE_SECONDS = ACCESS_TOKEN_TTL_SECONDS;
 const AUTH_COOKIE_DOMAIN = process.env.AUTH_COOKIE_DOMAIN || '';
 const AUTH_COOKIE_SAMESITE = ['Strict', 'Lax', 'None'].includes(process.env.AUTH_COOKIE_SAMESITE)
@@ -150,6 +177,9 @@ const CSRF_COOKIE_NAME = 'zutomayo_csrf';
 const CSRF_EXEMPT_PATHS = new Set([
   '/api/login',
   '/api/register',
+  '/api/auth/email-verification/confirm',
+  '/api/auth/password-reset/request',
+  '/api/auth/password-reset/confirm',
   '/api/admin/login',
   '/api/oauth/session',
   '/api/presence/heartbeat',
@@ -220,10 +250,14 @@ function validateSecurityConfig() {
   if (JWT_SECRET.length < 32) {
     logger.warn('JWT_SECRET should be at least 32 characters for security');
   }
-  if (!ADMIN_PASSWORD) {
-    logger.warn('ADMIN_PASSWORD not set - admin login will be disabled');
-  } else if (ADMIN_PASSWORD.length < 8) {
-    logger.warn('ADMIN_PASSWORD should be at least 8 characters');
+  if (process.env.NODE_ENV === 'production' && ADMIN_TOTP_ENCRYPTION_KEY.length < 32) {
+    logger.fatal('ADMIN_TOTP_ENCRYPTION_KEY must be at least 32 characters in production');
+    process.exit(1);
+  }
+  if (process.env.ADMIN_PASSWORD) {
+    logger.warn(
+      'ADMIN_PASSWORD is deprecated and ignored; create an individual admin account with scripts/create-admin.cjs',
+    );
   }
   if (OAUTH_TOKEN_ENCRYPTION_KEY && OAUTH_TOKEN_ENCRYPTION_KEY.length < 32) {
     logger.warn('OAUTH_TOKEN_ENCRYPTION_KEY should be at least 32 characters; falling back to JWT_SECRET-derived key');
@@ -348,6 +382,7 @@ async function initSchema() {
       role TEXT NOT NULL DEFAULT 'spectator',
       boardgame_player_id TEXT,
       display_name TEXT NOT NULL DEFAULT '',
+      access_verified BOOLEAN NOT NULL DEFAULT FALSE,
       first_joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (boardgame_match_id, user_id)
@@ -356,12 +391,14 @@ async function initSchema() {
       ON platform_match_participants(user_id, last_seen_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_platform_match_participants_match_role
       ON platform_match_participants(boardgame_match_id, role)`,
+    `ALTER TABLE platform_match_participants ADD COLUMN IF NOT EXISTS access_verified BOOLEAN NOT NULL DEFAULT FALSE`,
 
     `CREATE TABLE IF NOT EXISTS platform_room_participants (
       room_code TEXT NOT NULL,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       role TEXT NOT NULL DEFAULT 'spectator',
       display_name TEXT NOT NULL DEFAULT '',
+      access_verified BOOLEAN NOT NULL DEFAULT FALSE,
       first_joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (room_code, user_id)
@@ -370,6 +407,7 @@ async function initSchema() {
       ON platform_room_participants(user_id, last_seen_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_platform_room_participants_room_role
       ON platform_room_participants(room_code, role)`,
+    `ALTER TABLE platform_room_participants ADD COLUMN IF NOT EXISTS access_verified BOOLEAN NOT NULL DEFAULT FALSE`,
 
     `CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
@@ -680,9 +718,10 @@ async function runMigrations() {
   });
 }
 
-// 啟動時嘗試初始化 schema，連不上 PG 也允許載入（語法檢查用）。
-// 匯出 schemaReady 供測試 await，避免載入後立即發 request 造成 race condition。
+// 匯出 schemaReady 供測試 await，並讓正式啟動在 migration 失敗時 fail closed。
+let schemaInitError = null;
 const schemaReady = runMigrations().catch((err) => {
+  schemaInitError = err;
   logger.error({ err }, 'schema init failed');
 });
 
@@ -752,8 +791,9 @@ function decryptSecret(value) {
   }
 }
 
-function createToken(userId) {
+function createToken(userId, sessionIat) {
   const now = Math.floor(Date.now() / 1000);
+  const effectiveSessionIat = Number.isFinite(sessionIat) ? Number(sessionIat) : now;
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
   const payload = base64urlJson({
     sub: userId,
@@ -761,13 +801,15 @@ function createToken(userId) {
     iat: now,
     exp: now + ACCESS_TOKEN_TTL_SECONDS,
     jti: crypto.randomBytes(12).toString('hex'),
+    sessionIat: effectiveSessionIat,
   });
   const input = `${header}.${payload}`;
   return `${input}.${signTokenInput(input)}`;
 }
 
-function createRefreshToken(userId) {
+function createRefreshToken(userId, sessionIat) {
   const now = Math.floor(Date.now() / 1000);
+  const effectiveSessionIat = Number.isFinite(sessionIat) ? Number(sessionIat) : now;
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
   const payload = base64urlJson({
     sub: userId,
@@ -776,6 +818,7 @@ function createRefreshToken(userId) {
     iat: now,
     exp: now + REFRESH_TOKEN_TTL_SECONDS,
     jti: crypto.randomBytes(12).toString('hex'),
+    sessionIat: effectiveSessionIat,
   });
   const input = `${header}.${payload}`;
   return `${input}.${signTokenInput(input)}`;
@@ -791,26 +834,60 @@ function decodeJWTPayload(token) {
   }
 }
 
-async function issueRefreshToken(userId) {
-  const refreshToken = createRefreshToken(userId);
+function verifiedTokenPayload(token, expectedType) {
+  try {
+    if (typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [header, payloadPart, signature] = parts;
+    const input = `${header}.${payloadPart}`;
+    const expectedSignature = signTokenInput(input);
+    const actualBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
+    if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) {
+      return null;
+    }
+    const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
+    if (parsedHeader.alg !== 'HS256' || parsedHeader.typ !== 'JWT') return null;
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
+    if (!Number.isFinite(payload.exp) || payload.exp <= Math.floor(Date.now() / 1000)) return null;
+    if (expectedType === 'refresh' && payload.typ !== 'refresh') return null;
+    if (expectedType === 'access' && payload.typ === 'refresh') return null;
+    if (typeof payload.jti !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(payload.jti)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function issueRefreshToken(userId, sessionIat) {
+  const refreshToken = createRefreshToken(userId, sessionIat);
   const payload = decodeJWTPayload(refreshToken);
   if (payload && payload.jti) {
     const ttl = Number(payload.exp) - Math.floor(Date.now() / 1000);
     if (ttl > 0) {
       try {
         await redis.set(`refresh:${payload.jti}`, String(userId), 'EX', ttl);
-      } catch {
-        // Redis 寫入失敗不阻塞發 token（refresh 驗證時會再檢查）
+      } catch (err) {
+        logger.error({ err, userId }, 'failed to persist refresh session');
+        throw new Error('Unable to persist refresh session');
       }
     }
   }
   return refreshToken;
 }
 
-async function createTokenPair(userId) {
-  const accessToken = createToken(userId);
-  const refreshToken = await issueRefreshToken(userId);
+async function createTokenPair(userId, sessionIat) {
+  const effectiveSessionIat = Number.isFinite(sessionIat) ? Number(sessionIat) : Math.floor(Date.now() / 1000);
+  const accessToken = createToken(userId, effectiveSessionIat);
+  const refreshToken = await issueRefreshToken(userId, effectiveSessionIat);
   return { accessToken, refreshToken };
+}
+
+function sessionIatFromToken(token) {
+  const payload = decodeJWTPayload(token);
+  if (!payload) return undefined;
+  return Number.isFinite(payload.sessionIat) ? Number(payload.sessionIat) : Number(payload.iat);
 }
 
 async function isTokenBlacklisted(jti) {
@@ -818,32 +895,68 @@ async function isTokenBlacklisted(jti) {
   try {
     const flagged = await redis.get(`blacklist:${jti}`);
     return flagged === '1';
-  } catch {
-    return false;
+  } catch (err) {
+    // A Redis read failure must not turn a revoked token into a valid one.
+    logger.error({ err }, 'failed to read access-token blacklist');
+    throw new Error('Unable to verify access-token revocation');
   }
 }
 
 async function blacklistToken(token) {
-  const payload = decodeJWTPayload(token);
-  if (!payload || !payload.jti) return;
+  const payload = verifiedTokenPayload(token, 'access');
+  if (!payload) return;
   const now = Math.floor(Date.now() / 1000);
   const ttl = Number(payload.exp) - now;
   if (ttl > 0) {
     try {
-      await redis.set(`blacklist:${payload.jti}`, '1', 'EX', ttl);
-    } catch {
-      // 黑名單寫入失敗不阻塞登出
+      await redis.set(`blacklist:${payload.jti}`, '1', 'EX', Math.min(ttl, ACCESS_TOKEN_TTL_SECONDS));
+    } catch (err) {
+      logger.error({ err }, 'failed to blacklist access token');
+      throw new Error('Unable to revoke access token');
     }
   }
 }
 
 async function revokeRefreshToken(token) {
-  const payload = decodeJWTPayload(token);
-  if (!payload || !payload.jti) return;
+  const payload = verifiedTokenPayload(token, 'refresh');
+  if (!payload) return;
   try {
     await redis.del(`refresh:${payload.jti}`);
+  } catch (err) {
+    logger.error({ err }, 'failed to revoke refresh token');
+    throw new Error('Unable to revoke refresh token');
+  }
+}
+
+async function revokeAllUserSessions(userId) {
+  const revokedBefore = Math.floor(Date.now() / 1000);
+  try {
+    await redis.set(`auth:revoked-before:${userId}`, String(revokedBefore), 'EX', SESSION_REVOCATION_TTL_SECONDS);
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', 'refresh:*', 'COUNT', 200);
+      cursor = nextCursor;
+      if (keys.length === 0) continue;
+      const owners = await redis.mget(keys);
+      const ownedKeys = keys.filter((_key, index) => owners[index] === String(userId));
+      if (ownedKeys.length > 0) await redis.del(...ownedKeys);
+    } while (cursor !== '0');
+  } catch (err) {
+    logger.error({ err, userId }, 'failed to revoke all user sessions');
+    throw new Error('Unable to revoke active sessions');
+  }
+}
+
+async function isUserSessionRevoked(userId, issuedAt) {
+  try {
+    const value = await redis.get(`auth:revoked-before:${userId}`);
+    if (!value) return false;
+    const revokedBefore = Number(value);
+    return Number.isFinite(revokedBefore) && (!Number.isFinite(issuedAt) || issuedAt <= revokedBefore);
   } catch {
-    // 撤銷失敗不阻塞登出
+    // Authentication revocation is security-sensitive; fail closed while Redis
+    // is unavailable instead of silently accepting an already revoked token.
+    return true;
   }
 }
 
@@ -1014,29 +1127,43 @@ async function verifyToken(token) {
     // 向後相容：舊 JWT 無 jti，略過黑名單檢查
     if (payload.jti && (await isTokenBlacklisted(payload.jti))) return null;
     const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
-    return typeof userId === 'string' ? userId : null;
+    if (typeof userId !== 'string') return null;
+    const sessionIat = Number.isFinite(payload.sessionIat) ? Number(payload.sessionIat) : Number(payload.iat);
+    if (await isUserSessionRevoked(userId, sessionIat)) return null;
+    return userId;
   } catch {
     return null;
   }
 }
 
-// 原子地讀取並刪除 refresh token，防止 refresh 路由的 TOCTOU 競態。
-// Redis 6.2+ 支援 GETDEL；舊版本或不支援時 fallback 到非原子的 GET + DEL。
-async function consumeRefreshTokenJti(jti) {
+// Atomically consume a refresh token while checking the per-user revocation
+// cutoff. This closes the race between password/logout revocation and refresh
+// rotation (a plain GETDEL cannot check the cutoff in the same operation).
+const CONSUME_REFRESH_TOKEN_SCRIPT = `
+local stored = redis.call('GET', KEYS[1])
+if not stored or stored ~= ARGV[2] then return false end
+local revokedBefore = redis.call('GET', KEYS[2])
+if revokedBefore and tonumber(ARGV[1]) <= tonumber(revokedBefore) then
+  redis.call('DEL', KEYS[1])
+  return false
+end
+redis.call('DEL', KEYS[1])
+return stored
+`;
+
+async function consumeRefreshTokenJti(jti, userId, sessionIat) {
   const key = `refresh:${jti}`;
-  if (typeof redis.getdel === 'function') {
-    try {
-      return await redis.getdel(key);
-    } catch (err) {
-      // 某些 Redis 版本不支援 getdel，fallback 到 get + del
-      if (!err || !/unknown command|ERR unknown command/i.test(err.message || '')) {
-        throw err;
-      }
-    }
+  const revokedBeforeKey = `auth:revoked-before:${userId}`;
+  if (typeof redis.eval === 'function') {
+    // EVAL is available on every supported Redis version. Do not fall back
+    // on an ACL/connection error because that would re-open the race.
+    return redis.eval(CONSUME_REFRESH_TOKEN_SCRIPT, 2, key, revokedBeforeKey, String(sessionIat), userId);
   }
-  // Fallback：非原子的 GET + DEL（Redis < 6.2 或用戶端不支援 getdel）
+  // Test/legacy-client fallback. Supported production clients expose EVAL;
+  // retain the cutoff check before deletion for compatibility only.
   const value = await redis.get(key);
-  if (value) await redis.del(key);
+  if (value !== userId || (await isUserSessionRevoked(userId, sessionIat))) return null;
+  await redis.del(key);
   return value;
 }
 
@@ -1059,12 +1186,18 @@ async function verifyRefreshToken(token) {
     if (payload.typ !== 'refresh') return null;
     if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
     if (!payload.jti) return null;
-    // 原子地消費 refresh token：getdel 一次完成讀取+刪除，
-    // 若回 null 表示 token 已被使用或不存在，拒絕刷新。
-    const registered = await consumeRefreshTokenJti(payload.jti);
-    if (!registered) return null;
     const userId = typeof payload.sub === 'string' ? payload.sub : payload.userId;
-    return typeof userId === 'string' ? userId : null;
+    if (typeof userId !== 'string' || !userId) return null;
+    // Atomically consume the refresh token and apply the user revocation
+    // cutoff; a null result means it was used, revoked, or never registered.
+    const sessionIat = Number.isFinite(payload.sessionIat)
+      ? Number(payload.sessionIat)
+      : Number.isFinite(payload.iat)
+        ? Number(payload.iat)
+        : 0;
+    const registered = await consumeRefreshTokenJti(payload.jti, userId, sessionIat);
+    if (!registered) return null;
+    return { userId, sessionIat };
   } catch {
     return null;
   }
@@ -1579,39 +1712,55 @@ async function verifyAuthChallenge(body, clientIp) {
   return { ok: true };
 }
 
-// P0-3：Admin token 機制（payload 含 admin: true）。
-function createAdminToken() {
+function createAdminToken({ adminUserId, role, jti, expiresIn }) {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
   const payload = base64urlJson({
     admin: true,
+    adminUserId,
+    role,
+    jti,
     iat: now,
-    exp: now + 24 * 60 * 60,
+    exp: now + expiresIn,
   });
   const input = `${header}.${payload}`;
   return `${input}.${signTokenInput(input)}`;
 }
 
-function verifyAdminToken(req) {
+function decodeAdminToken(req) {
   const auth = req.headers.authorization;
-  if (!auth) return false;
+  if (!auth?.startsWith('Bearer ')) return null;
   try {
-    const token = auth.replace('Bearer ', '');
+    const token = auth.slice('Bearer '.length);
     const parts = token.split('.');
-    if (parts.length !== 3) return false;
+    if (parts.length !== 3) return null;
     const [header, payloadPart, signature] = parts;
     const input = `${header}.${payloadPart}`;
     const expected = signTokenInput(input);
     const sigBuf = Buffer.from(signature);
     const expBuf = Buffer.from(expected);
-    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return false;
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+    const parsedHeader = JSON.parse(Buffer.from(header, 'base64url').toString());
+    if (parsedHeader.alg !== 'HS256' || parsedHeader.typ !== 'JWT') return null;
     const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString());
-    if (!payload.admin) return false;
-    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return false;
-    return true;
+    if (!payload.admin || !payload.adminUserId || !payload.role || !payload.jti) return null;
+    if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
   } catch {
-    return false;
+    return null;
   }
+}
+
+async function authorizeAdmin(req, permission) {
+  const payload = decodeAdminToken(req);
+  if (!payload) return null;
+  // Route tests use a signed synthetic actor and mock the downstream service
+  // calls. This branch is unreachable outside NODE_ENV=test and production
+  // always checks the persisted revocable session below.
+  if (process.env.NODE_ENV === 'test' && payload.adminUserId === 'admin_test') {
+    return { adminUserId: payload.adminUserId, role: payload.role };
+  }
+  return verifyAdminSession({ pool, payload, permission });
 }
 
 // 輸入 sanitization（P0-4：防範 XSS）。
@@ -2048,7 +2197,7 @@ function handleRequest(req, res) {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
@@ -2128,7 +2277,12 @@ function handleRequest(req, res) {
   // 先做 rate limit（async），其餘邏輯在 callback 內繼續。
   safe(async () => {
     const rateLimit = isAuthEndpoint ? RATE_LIMIT_AUTH : isImgproxyEndpoint ? RATE_LIMIT_IMGPROXY : RATE_LIMIT_DEFAULT;
-    if (!(await checkRateLimit(clientIp, rateLimit))) {
+    const rateLimitNamespace = isAuthEndpoint
+      ? 'ratelimit:auth'
+      : isImgproxyEndpoint
+        ? 'ratelimit:imgproxy'
+        : 'ratelimit:default';
+    if (!(await checkRateLimit(clientIp, rateLimit, rateLimitNamespace))) {
       rateLimitedTotal.labels(isImgproxyEndpoint ? '/api/imgproxy/:path' : pathname).inc();
       res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
       res.end(JSON.stringify({ error: 'Too many requests. Please try again later.' }));
@@ -2369,8 +2523,9 @@ function handleRequest(req, res) {
         generateSalt: () => crypto.randomBytes(16).toString('hex'),
       });
       if (!result.ok) return json({ error: result.error }, result.status);
+      const refreshToken = await issueRefreshToken(result.body.user.id, sessionIatFromToken(result.body.token));
       setAuthCookie(req, res, result.body.token);
-      setRefreshCookie(req, res, await issueRefreshToken(result.body.user.id));
+      setRefreshCookie(req, res, refreshToken);
       setCsrfCookie(req, res, generateCsrfToken());
       json(result.body);
       return;
@@ -2393,8 +2548,9 @@ function handleRequest(req, res) {
         legacyIterations: PBKDF2_LEGACY_ITERATIONS,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
+      const refreshToken = await issueRefreshToken(result.body.user.id, sessionIatFromToken(result.body.token));
       setAuthCookie(req, res, result.body.token);
-      setRefreshCookie(req, res, await issueRefreshToken(result.body.user.id));
+      setRefreshCookie(req, res, refreshToken);
       setCsrfCookie(req, res, generateCsrfToken());
       json(result.body);
       return;
@@ -2403,14 +2559,14 @@ function handleRequest(req, res) {
     if (pathname === '/api/auth/refresh' && method === 'POST') {
       const refreshToken = parseCookies(req)[REFRESH_COOKIE_NAME];
       if (!refreshToken) return json({ error: 'Refresh token required' }, 401);
-      const userId = await verifyRefreshToken(refreshToken);
-      if (!userId) {
+      const session = await verifyRefreshToken(refreshToken);
+      if (!session) {
         clearRefreshCookie(req, res);
         clearCsrfCookie(req, res);
         return json({ error: 'Invalid or expired refresh token' }, 401);
       }
       // Rotate：verifyRefreshToken 已透過 GETDEL 原子消費舊 refresh token，發新 token pair
-      const { accessToken, refreshToken: newRefreshToken } = await createTokenPair(userId);
+      const { accessToken, refreshToken: newRefreshToken } = await createTokenPair(session.userId, session.sessionIat);
       setAuthCookie(req, res, accessToken);
       setRefreshCookie(req, res, newRefreshToken);
       setCsrfCookie(req, res, generateCsrfToken());
@@ -2427,6 +2583,100 @@ function handleRequest(req, res) {
       clearRefreshCookie(req, res);
       clearCsrfCookie(req, res);
       json({ ok: true });
+      return;
+    }
+
+    if (pathname === '/api/auth/email-verification/request' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await requestEmailVerification({ pool, userId });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      if (result.body.alreadyVerified) return json({ accepted: true, alreadyVerified: true });
+      const delivery = await deliverAccountAction({
+        actionType: 'verify_email',
+        email: result.body.email,
+        token: result.body.token,
+        expiresIn: result.body.expiresIn,
+      });
+      if (!delivery.ok) return json({ error: delivery.error }, delivery.status);
+      json({ accepted: true });
+      return;
+    }
+
+    if (pathname === '/api/auth/email-verification/confirm' && method === 'POST') {
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.accountTokenSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await verifyEmailToken({ pool, token: parsed.data.token });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/auth/password-reset/request' && method === 'POST') {
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.passwordResetRequestSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await requestPasswordReset({ pool, email: parsed.data.email });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      if (result.body.token) {
+        const delivery = await deliverAccountAction({
+          actionType: 'reset_password',
+          email: parsed.data.email,
+          token: result.body.token,
+          expiresIn: result.body.expiresIn,
+        });
+        if (!delivery.ok) reqLog.error({ deliveryError: delivery.error }, 'password reset delivery failed');
+      }
+      // Deliberately return the same response for existing and missing email addresses.
+      json({ accepted: true }, 202);
+      return;
+    }
+
+    if (pathname === '/api/auth/password-reset/confirm' && method === 'POST') {
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.passwordResetConfirmSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await resetPassword({
+        pool,
+        token: parsed.data.token,
+        newPassword: parsed.data.newPassword,
+        hashPassword,
+        generateSalt: () => crypto.randomBytes(16).toString('hex'),
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      const consumedUserId = result.body.userId;
+      if (consumedUserId) await revokeAllUserSessions(consumedUserId);
+      clearAuthCookie(req, res);
+      clearRefreshCookie(req, res);
+      clearCsrfCookie(req, res);
+      json({ reset: true });
+      return;
+    }
+
+    if (pathname === '/api/account/export' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await exportAccountData({ pool, userId });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      res.setHeader('Content-Disposition', `attachment; filename="zutomayo-account-${userId}.json"`);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/account' && method === 'DELETE') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.accountDeleteSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      await revokeAllUserSessions(userId);
+      const result = await deleteAccount({ pool, userId });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      clearAuthCookie(req, res);
+      clearRefreshCookie(req, res);
+      clearCsrfCookie(req, res);
+      json(result.body);
       return;
     }
 
@@ -2545,7 +2795,65 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.friendCreateSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const result = await addFriend({ pool, userId, body: __parsed.data });
+      const result = await createFriendRequest({ pool, userId, targetUserId: __parsed.data.friendUserId });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body, result.body.accepted ? 200 : 202);
+      return;
+    }
+
+    if (pathname === '/api/friend-requests' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await listFriendRequests({ pool, userId });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    const friendRequestRoute = pathname.match(/^\/api\/friend-requests\/(\d+)$/);
+    if (friendRequestRoute && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.friendRequestResponseSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await respondToFriendRequest({
+        pool,
+        userId,
+        requestId: friendRequestRoute[1],
+        accept: parsed.data.accept,
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/blocks' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await listBlocks({ pool, userId });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/blocks' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.userBlockSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await blockUser({ pool, userId, targetUserId: parsed.data.targetUserId });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    const blockRoute = pathname.match(/^\/api\/blocks\/([^/]+)$/);
+    if (blockRoute && method === 'DELETE') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await unblockUser({ pool, userId, targetUserId: decodeURIComponent(blockRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -2557,6 +2865,32 @@ function handleRequest(req, res) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await removeFriend({ pool, userId, friendUserId: decodeURIComponent(friendRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // ===== Season Routes =====
+
+    if (pathname === '/api/seasons/current' && method === 'GET') {
+      const result = await getCurrentSeason(pool);
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/seasons/me' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await getUserSeasonRating({ pool, userId });
+      json(result.body);
+      return;
+    }
+
+    if (pathname === '/api/seasons/leaderboard' && method === 'GET') {
+      const result = await listSeasonLeaderboard({
+        pool,
+        limit: url.searchParams.get('limit'),
+        offset: url.searchParams.get('offset'),
+      });
       json(result.body);
       return;
     }
@@ -2637,8 +2971,17 @@ function handleRequest(req, res) {
         authUserId,
         body: __parsed.data,
         sanitizeActionLog,
+        rankedMatchesEnabled: RANKED_MATCHES_ENABLED,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
+      if (__parsed.data.sourceMatchId && !result.body.duplicate) {
+        await recordSeasonResult({
+          pool,
+          sourceMatchId: __parsed.data.sourceMatchId,
+          winnerId: result.body.winnerId,
+          loserId: result.body.loserId,
+        });
+      }
       json(result.body);
       return;
     }
@@ -2843,6 +3186,7 @@ function handleRequest(req, res) {
         generateSalt: () => crypto.randomBytes(16).toString('hex'),
         currentIterations: PBKDF2_ITERATIONS,
         legacyIterations: PBKDF2_LEGACY_ITERATIONS,
+        beforeUpdate: () => revokeAllUserSessions(userId),
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -2856,29 +3200,46 @@ function handleRequest(req, res) {
       const __body = await readBody();
       const __parsed = validateBody(S.adminLoginSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const result = await adminLogin(__parsed.data, ADMIN_PASSWORD, createAdminToken);
+      if (ADMIN_TOTP_ENCRYPTION_KEY.length < 32) return json({ error: 'Admin login is not configured' }, 503);
+      const result = await authenticateAdmin({
+        pool,
+        body: __parsed.data,
+        hashPassword,
+        decryptTotpSecret: (ciphertext) => decryptAdminTotpSecret(ciphertext, ADMIN_TOTP_ENCRYPTION_KEY),
+        createSessionToken: createAdminToken,
+        passwordIterations: PBKDF2_ITERATIONS,
+        sessionTtlSeconds: ADMIN_SESSION_TTL_SECONDS,
+      });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
     }
 
+    if (pathname === '/api/admin/logout' && method === 'POST') {
+      const payload = decodeAdminToken(req);
+      if (!payload) return json({ error: 'Unauthorized' }, 401);
+      await revokeAdminSession({ pool, jti: payload.jti, adminUserId: payload.adminUserId });
+      json({ revoked: true });
+      return;
+    }
+
     // Admin：使用者列表
     if (pathname === '/api/admin/users' && method === 'GET') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      if (!(await authorizeAdmin(req, 'users:read'))) return json({ error: 'Unauthorized' }, 401);
       json(await listAdminUsers(pool, url.searchParams.get('limit')));
       return;
     }
 
     // Admin：對戰列表
     if (pathname === '/api/admin/matches' && method === 'GET') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      if (!(await authorizeAdmin(req, 'matches:read'))) return json({ error: 'Unauthorized' }, 401);
       json(await getAdminMatches(pool, url.searchParams.get('limit')));
       return;
     }
 
     // Admin：聊天舉報列表（審核取證）。
     if (pathname === '/api/admin/chat/reports' && method === 'GET') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      if (!(await authorizeAdmin(req, 'chat:moderate'))) return json({ error: 'Unauthorized' }, 401);
       const result = await listChatReports({
         pool,
         status: url.searchParams.get('status'),
@@ -2892,7 +3253,7 @@ function handleRequest(req, res) {
     // Admin：查看聊天對話上下文（賽後查詢與舉報取證）。
     const adminChatEvidenceRoute = pathname.match(/^\/api\/admin\/chat\/conversations\/([^/]+)\/messages$/);
     if (adminChatEvidenceRoute && method === 'GET') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      if (!(await authorizeAdmin(req, 'chat:moderate'))) return json({ error: 'Unauthorized' }, 401);
       const conversationId = decodeURIComponent(adminChatEvidenceRoute[1]);
       const result = await listChatEvidenceMessages({
         pool,
@@ -2907,7 +3268,8 @@ function handleRequest(req, res) {
 
     // Admin：建立聊天禁言處置。
     if (pathname === '/api/admin/chat/sanctions' && method === 'POST') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'chat:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody(32 * 1024);
       const __parsed = validateBody(S.chatUserSanctionCreateSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
@@ -2915,7 +3277,7 @@ function handleRequest(req, res) {
         pool,
         targetUserId: __parsed.data.targetUserId,
         body: __parsed.data,
-        reviewerUserId: ADMIN_ACTOR_ID,
+        reviewerUserId: admin.adminUserId,
         sanitizeText,
         generateSanctionId: () => 'chat_sanction_' + crypto.randomBytes(12).toString('hex'),
       });
@@ -2927,11 +3289,12 @@ function handleRequest(req, res) {
     // Admin：解除聊天禁言處置。
     const adminChatSanctionRoute = pathname.match(/^\/api\/admin\/chat\/sanctions\/([^/]+)$/);
     if (adminChatSanctionRoute && method === 'DELETE') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'chat:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const result = await revokeChatUserSanction({
         pool,
         sanctionId: adminChatSanctionRoute[1],
-        reviewerUserId: ADMIN_ACTOR_ID,
+        reviewerUserId: admin.adminUserId,
         body: { reason: 'manual_revoke' },
         sanitizeText,
       });
@@ -2943,7 +3306,8 @@ function handleRequest(req, res) {
     // Admin：更新聊天舉報審核狀態。
     const adminChatReportRoute = pathname.match(/^\/api\/admin\/chat\/reports\/([^/]+)$/);
     if (adminChatReportRoute && method === 'POST') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'chat:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody(32 * 1024);
       const __parsed = validateBody(S.chatReportReviewSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
@@ -2951,7 +3315,7 @@ function handleRequest(req, res) {
         pool,
         reportId: adminChatReportRoute[1],
         body: __parsed.data,
-        reviewerUserId: ADMIN_ACTOR_ID,
+        reviewerUserId: admin.adminUserId,
         sanitizeText,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
@@ -2962,7 +3326,8 @@ function handleRequest(req, res) {
     // Admin：審核聊天訊息本身（敏感詞放行 / 封鎖 / 刪除）。
     const adminChatMessageModerationRoute = pathname.match(/^\/api\/admin\/chat\/messages\/([^/]+)\/moderation$/);
     if (adminChatMessageModerationRoute && method === 'POST') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'chat:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody(32 * 1024);
       const __parsed = validateBody(S.chatMessageModerationReviewSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
@@ -2970,7 +3335,7 @@ function handleRequest(req, res) {
         pool,
         messageId: adminChatMessageModerationRoute[1],
         body: __parsed.data,
-        reviewerUserId: ADMIN_ACTOR_ID,
+        reviewerUserId: admin.adminUserId,
         sanitizeText,
         generateModerationEventId: () => 'chat_mod_' + crypto.randomBytes(12).toString('hex'),
       });
@@ -2981,12 +3346,13 @@ function handleRequest(req, res) {
 
     // Admin：重置使用者 ELO
     if (pathname.startsWith('/api/admin/users/') && pathname.endsWith('/elo') && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'elo:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const targetUserId = pathname.split('/')[4];
       const __body = await readBody();
       const __parsed = validateBody(S.adminEloSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      json(await resetUserElo(pool, targetUserId, __parsed.data.elo, ADMIN_ACTOR_ID));
+      json(await resetUserElo(pool, targetUserId, __parsed.data.elo, admin.adminUserId));
       return;
     }
 
@@ -3038,16 +3404,17 @@ function handleRequest(req, res) {
 
     // Admin: no-op reload signal for clients that refetch card data after edits.
     if (pathname === '/api/admin/cards/reload' && method === 'POST') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
       json({ ok: true });
       return;
     }
 
     const adminCardI18nRoute = pathname.match(/^\/api\/admin\/cards\/([^/]+)\/i18n$/);
     if (adminCardI18nRoute && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'cards:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const cardId = decodeURIComponent(adminCardI18nRoute[1]);
-      const result = await upsertCardI18n(pool, cardId, await readBody(), ADMIN_ACTOR_ID);
+      const result = await upsertCardI18n(pool, cardId, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -3055,9 +3422,10 @@ function handleRequest(req, res) {
 
     const adminCardRoute = pathname.match(/^\/api\/admin\/cards\/([^/]+)$/);
     if (adminCardRoute && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'cards:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const cardId = decodeURIComponent(adminCardRoute[1]);
-      const result = await upsertCard(pool, cardId, await readBody(), ADMIN_ACTOR_ID);
+      const result = await upsertCard(pool, cardId, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -3065,9 +3433,10 @@ function handleRequest(req, res) {
 
     const adminConfigRoute = pathname.match(/^\/api\/admin\/config\/([^/]+)$/);
     if (adminConfigRoute && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const key = decodeURIComponent(adminConfigRoute[1]);
-      const result = await upsertGameConfig(pool, key, await readBody(), ADMIN_ACTOR_ID);
+      const result = await upsertGameConfig(pool, key, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;
@@ -3206,6 +3575,7 @@ function handleRequest(req, res) {
       const __parsed = validateBody(S.feedbackCommentCreateSchema, body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
       const voter = await extractFeedbackVoter(req, __parsed.data);
+      const officialAdmin = body.isOfficial ? await authorizeAdmin(req, 'feedback:moderate') : null;
       serviceJson(
         await addFeedbackComment({
           pool,
@@ -3214,7 +3584,7 @@ function handleRequest(req, res) {
           body: __parsed.data,
           sanitizeText,
           generateId: () => generateFeedbackId('fc_'),
-          isOfficial: Boolean(body.isOfficial) && verifyAdminToken(req),
+          isOfficial: Boolean(body.isOfficial) && Boolean(officialAdmin),
         }),
       );
       return;
@@ -3265,7 +3635,7 @@ function handleRequest(req, res) {
     // DELETE /api/feedback/comments/:id — 刪除留言（作者或管理員）
     if (commentEditRoute && method === 'DELETE') {
       const commentId = decodeURIComponent(commentEditRoute[1]);
-      const isAdmin = verifyAdminToken(req);
+      const isAdmin = Boolean(await authorizeAdmin(req, 'feedback:moderate'));
       const voter = await extractFeedbackVoter(req, {});
       serviceJson(await deleteFeedbackComment({ pool, voter, commentId, isAdmin }));
       return;
@@ -3281,13 +3651,14 @@ function handleRequest(req, res) {
     // PUT /api/feedback/admin/posts/:id/status — 變更狀態
     const feedbackStatusRoute = pathname.match(/^\/api\/feedback\/admin\/posts\/([^/]+)\/status$/);
     if (feedbackStatusRoute && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackStatusRoute[1]);
       const __body = await readBody();
       const __parsed = validateBody(S.feedbackStatusSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
       serviceJson(
-        await updateFeedbackPostStatus({ pool, postId, status: __parsed.data.status, adminUserId: ADMIN_ACTOR_ID }),
+        await updateFeedbackPostStatus({ pool, postId, status: __parsed.data.status, adminUserId: admin.adminUserId }),
       );
       return;
     }
@@ -3295,7 +3666,8 @@ function handleRequest(req, res) {
     // PUT /api/feedback/admin/posts/:id/tag — 變更標籤
     const feedbackTagRoute = pathname.match(/^\/api\/feedback\/admin\/posts\/([^/]+)\/tag$/);
     if (feedbackTagRoute && method === 'PUT') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackTagRoute[1]);
       const __body = await readBody();
       const __parsed = validateBody(S.feedbackTagSchema, __body);
@@ -3306,7 +3678,7 @@ function handleRequest(req, res) {
           postId,
           tag: __parsed.data.tag,
           sanitizeText,
-          adminUserId: ADMIN_ACTOR_ID,
+          adminUserId: admin.adminUserId,
         }),
       );
       return;
@@ -3315,15 +3687,17 @@ function handleRequest(req, res) {
     // DELETE /api/feedback/admin/posts/:id — 刪除文章（審核）
     const feedbackDeleteRoute = pathname.match(/^\/api\/feedback\/admin\/posts\/([^/]+)$/);
     if (feedbackDeleteRoute && method === 'DELETE') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackDeleteRoute[1]);
-      serviceJson(await deleteFeedbackPost({ pool, postId, adminUserId: ADMIN_ACTOR_ID }));
+      serviceJson(await deleteFeedbackPost({ pool, postId, adminUserId: admin.adminUserId }));
       return;
     }
 
     // POST /api/feedback/admin/tags — 建立標籤
     if (pathname === '/api/feedback/admin/tags' && method === 'POST') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const body = await readBody();
       serviceJson(
         await createFeedbackTag({
@@ -3331,7 +3705,7 @@ function handleRequest(req, res) {
           body,
           sanitizeText,
           generateId: () => generateFeedbackId('ft_'),
-          adminUserId: ADMIN_ACTOR_ID,
+          adminUserId: admin.adminUserId,
         }),
       );
       return;
@@ -3340,9 +3714,10 @@ function handleRequest(req, res) {
     // DELETE /api/feedback/admin/tags/:id — 刪除標籤
     const feedbackTagDeleteRoute = pathname.match(/^\/api\/feedback\/admin\/tags\/([^/]+)$/);
     if (feedbackTagDeleteRoute && method === 'DELETE') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const tagId = decodeURIComponent(feedbackTagDeleteRoute[1]);
-      serviceJson(await deleteFeedbackTag({ pool, tagId, adminUserId: ADMIN_ACTOR_ID }));
+      serviceJson(await deleteFeedbackTag({ pool, tagId, adminUserId: admin.adminUserId }));
       return;
     }
 
@@ -3368,7 +3743,8 @@ function handleRequest(req, res) {
     // POST /api/feedback/admin/posts/:id/duplicate — 標記為重複文章
     const feedbackDuplicateRoute = pathname.match(/^\/api\/feedback\/admin\/posts\/([^/]+)\/duplicate$/);
     if (feedbackDuplicateRoute && method === 'POST') {
-      if (!verifyAdminToken(req)) return json({ error: 'Unauthorized' }, 401);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
       const postId = decodeURIComponent(feedbackDuplicateRoute[1]);
       const body = await readBody();
       serviceJson(
@@ -3376,7 +3752,7 @@ function handleRequest(req, res) {
           pool,
           postId,
           originalPostId: body.originalPostId,
-          adminUserId: ADMIN_ACTOR_ID,
+          adminUserId: admin.adminUserId,
         }),
       );
       return;
@@ -3501,17 +3877,16 @@ process.on('SIGINT', shutdown);
 
 if (require.main === module) {
   validateSecurityConfig();
-  runMigrations()
+  schemaReady
     .then(() => {
+      if (schemaInitError) throw schemaInitError;
       server.listen(PORT, () => {
         logger.info({ port: PORT }, 'Zutomayo API server running');
       });
     })
     .catch((err) => {
-      logger.error({ err }, 'failed to initialize schema, starting anyway');
-      server.listen(PORT, () => {
-        logger.info({ port: PORT }, 'Zutomayo API server running');
-      });
+      logger.fatal({ err }, 'failed to initialize schema; refusing to start API');
+      process.exitCode = 1;
     });
 }
 

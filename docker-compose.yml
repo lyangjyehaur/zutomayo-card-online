@@ -22,14 +22,14 @@ services:
         '--appendonly',
         'yes',
         '--maxmemory-policy',
-        'allkeys-lru',
+        'noeviction',
         '--requirepass',
         '${REDIS_PASSWORD:-}',
       ]
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ['CMD-SHELL', 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null || redis-cli ping']
+      test: ['CMD-SHELL', 'redis-cli -a "${REDIS_PASSWORD:-}" --no-auth-warning ping 2>/dev/null || redis-cli ping']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -45,10 +45,10 @@ services:
     restart: unless-stopped
 
   migrate:
+    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-migrate:${TAG:-latest}
     build:
       context: .
-      dockerfile: Dockerfile
-      target: builder
+      dockerfile: Dockerfile.migrate
     command: ['npm', 'run', 'db:migrate']
     environment:
       - PG_HOST=postgres
@@ -84,7 +84,6 @@ services:
         SENTRY_URL: ${SENTRY_URL:-}
         SENTRY_ORG: ${SENTRY_ORG:-}
         SENTRY_PROJECT: ${SENTRY_PROJECT:-}
-        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
     ports:
       - '3000:3000'
     environment:
@@ -102,15 +101,20 @@ services:
       - REDIS_DB=${REDIS_DB:-0}
       - API_URL=${API_URL:-http://api:3001}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
+      - 'JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}'
+      - METRICS_TOKEN=${METRICS_TOKEN:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
+      - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/health || exit 1']
       interval: 10s
@@ -131,6 +135,7 @@ services:
       - '3001:3001'
     environment:
       - API_PORT=3001
+      - NODE_ENV=production
       - APP_VERSION=${APP_VERSION:-}
       - APP_BUILD_ID=${APP_BUILD_ID:-}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
@@ -141,8 +146,15 @@ services:
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=${REDIS_DB:-0}
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - 'JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}'
+      - METRICS_TOKEN=${METRICS_TOKEN:-}
+      - ADMIN_TOTP_ENCRYPTION_KEY=${ADMIN_TOTP_ENCRYPTION_KEY:-}
+      - ADMIN_SESSION_TTL_SECONDS=${ADMIN_SESSION_TTL_SECONDS:-3600}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - ACCOUNT_EMAIL_WEBHOOK_URL=${ACCOUNT_EMAIL_WEBHOOK_URL:-}
+      - ACCOUNT_EMAIL_WEBHOOK_SECRET=${ACCOUNT_EMAIL_WEBHOOK_SECRET:-}
+      - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - IMGPROXY_INTERNAL_BASE_URL=${IMGPROXY_INTERNAL_BASE_URL:-}
       - IMGPROXY_KEY=${IMGPROXY_KEY:-}
@@ -196,7 +208,8 @@ services:
       - PG_DATABASE=${PG_DATABASE:-zutomayo}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
       - REDIS_DB=${REDIS_DB:-0}
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}
+      - 'JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file (generate with: openssl rand -hex 32)}'
+      - METRICS_TOKEN=${METRICS_TOKEN:-}
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
       - PLATFORM_MATCH_PARTICIPANT_STORE=postgres
@@ -208,6 +221,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
     healthcheck:

@@ -1,6 +1,7 @@
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import type { Server, State, LogEntry } from 'boardgame.io';
 import * as Sentry from '@sentry/node';
+import crypto from 'node:crypto';
 
 /**
  * boardgame.io StorageAPI.Async 的 Postgres 實作。
@@ -29,6 +30,8 @@ interface PostgresAdapterOptions {
   connectionString?: string;
   /** schema 初始化時是否建立索引（預設 true）。 */
   createIndexes?: boolean;
+  /** Whether ranked result delivery is enabled for this process. */
+  rankedMatchesEnabled?: boolean;
 }
 
 interface MatchRow extends QueryResultRow {
@@ -68,6 +71,133 @@ interface UpdateLockContext {
   released: boolean;
 }
 
+export type BoardgamePlayerID = '0' | '1';
+
+export type MatchSeatReservationErrorReason =
+  | 'match_not_found'
+  | 'seat_not_found'
+  | 'seat_taken'
+  | 'identity_taken'
+  | 'invalid_credentials'
+  | 'identity_mismatch';
+
+export interface ReserveMatchSeatInput {
+  matchID: string;
+  playerID?: BoardgamePlayerID;
+  playerName: string;
+  playerData: Record<string, unknown>;
+  userId: string;
+  rankedEligible: boolean;
+  credentials: string;
+}
+
+export interface ResumeMatchSeatInput {
+  matchID: string;
+  playerID: BoardgamePlayerID;
+  credentials: string;
+  authenticatedUserId?: string;
+}
+
+export interface ReservedMatchSeat {
+  playerID: BoardgamePlayerID;
+  userId: string;
+  rankedEligible: boolean;
+  metadata: Server.MatchData;
+}
+
+interface MatchSeatRow extends QueryResultRow {
+  match_id: string;
+  player_id: BoardgamePlayerID;
+  user_id: string;
+  ranked_eligible: boolean;
+  credential_hash: string;
+}
+
+interface MutableMatchPlayer {
+  name?: string;
+  credentials?: string;
+  data?: unknown;
+}
+
+export class MatchSeatReservationError extends Error {
+  constructor(
+    public readonly reason: MatchSeatReservationErrorReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'MatchSeatReservationError';
+  }
+}
+
+function credentialHash(credentials: string): string {
+  return crypto.createHash('sha256').update(credentials).digest('hex');
+}
+
+function safeCredentialHashEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function firstAvailablePlayerID(metadata: Server.MatchData): BoardgamePlayerID | undefined {
+  const players = metadata.players as Record<string, { name?: string } | undefined>;
+  for (const playerID of ['0', '1'] as const) {
+    if (players[playerID] && !players[playerID]?.name) return playerID;
+  }
+  return undefined;
+}
+
+interface CanonicalTerminalResult {
+  winnerPlayer: 0 | 1 | null;
+  turns: number;
+  durationSeconds: number;
+  actionLog: unknown[];
+  stateID: number | null;
+}
+
+function canonicalTerminalResult(state: State): CanonicalTerminalResult | null {
+  const candidate = state as State & {
+    G?: {
+      step?: unknown;
+      winner?: unknown;
+      turnNumber?: unknown;
+      matchStartedAt?: unknown;
+      matchEndedAt?: unknown;
+      actionLog?: unknown;
+    };
+    ctx?: { gameover?: unknown };
+  };
+  const G = candidate.G;
+  const gameover = candidate.ctx?.gameover;
+  if (!gameover && G?.step !== 'gameOver') return null;
+
+  let winnerPlayer: 0 | 1 | null = null;
+  if (gameover && typeof gameover === 'object' && !Array.isArray(gameover)) {
+    const result = gameover as { draw?: unknown; winner?: unknown };
+    if (result.draw !== true) {
+      if (result.winner === 0 || result.winner === '0') winnerPlayer = 0;
+      if (result.winner === 1 || result.winner === '1') winnerPlayer = 1;
+    }
+  } else if (G?.winner === 0 || G?.winner === '0') {
+    winnerPlayer = 0;
+  } else if (G?.winner === 1 || G?.winner === '1') {
+    winnerPlayer = 1;
+  }
+
+  const turns = Number.isInteger(G?.turnNumber) ? Math.max(0, Math.min(Number(G?.turnNumber), 9999)) : 0;
+  const startedAt = Number.isFinite(G?.matchStartedAt) ? Number(G?.matchStartedAt) : 0;
+  const endedAt = Number.isFinite(G?.matchEndedAt) ? Number(G?.matchEndedAt) : 0;
+  const durationSeconds =
+    startedAt > 0 && endedAt >= startedAt ? Math.min(Math.floor((endedAt - startedAt) / 1000), 86400) : 0;
+  return {
+    winnerPlayer,
+    turns,
+    durationSeconds,
+    actionLog: Array.isArray(G?.actionLog) ? G.actionLog.slice(0, 2000) : [],
+    stateID: typeof state._stateID === 'number' ? state._stateID : null,
+  };
+}
+
 export class StaleStateWriteError extends Error {
   constructor(matchID: string, expectedStateID: number, nextStateID: number) {
     super(
@@ -80,6 +210,7 @@ export class StaleStateWriteError extends Error {
 export class PostgresAdapter {
   private pool: Pool;
   private createIndexes: boolean;
+  private rankedMatchesEnabled: boolean;
   private connected = false;
   private closed = false;
   private updateLocks = new Map<string, UpdateLockContext>();
@@ -97,6 +228,11 @@ export class PostgresAdapter {
         connectionTimeoutMillis: 5_000,
       });
     this.createIndexes = opts.createIndexes ?? true;
+    // Keep unit-test/dev defaults backwards compatible, while production
+    // Compose explicitly sets RANKED_MATCHES_ENABLED=false when the worker is
+    // intentionally disabled. Such results must be terminally unrated rather
+    // than accumulating forever as pending rows.
+    this.rankedMatchesEnabled = opts.rankedMatchesEnabled ?? process.env.RANKED_MATCHES_ENABLED !== 'false';
   }
 
   type() {
@@ -117,10 +253,55 @@ export class PostgresAdapter {
           updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
       `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS bjg_match_seats (
+          match_id         TEXT NOT NULL REFERENCES bjg_matches(match_id) ON DELETE CASCADE,
+          player_id        TEXT NOT NULL CHECK (player_id IN ('0', '1')),
+          user_id          TEXT NOT NULL,
+          ranked_eligible  BOOLEAN NOT NULL DEFAULT FALSE,
+          credential_hash  TEXT NOT NULL,
+          reserved_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_resumed_at  TIMESTAMPTZ,
+          PRIMARY KEY (match_id, player_id),
+          UNIQUE (match_id, user_id)
+        );
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS bjg_match_result_outbox (
+          source_match_id    TEXT PRIMARY KEY REFERENCES bjg_matches(match_id) ON DELETE CASCADE,
+          player0_user_id    TEXT,
+          player1_user_id    TEXT,
+          winner_player      SMALLINT CHECK (winner_player IS NULL OR winner_player IN (0, 1)),
+          winner_user_id     TEXT,
+          loser_user_id      TEXT,
+          ranked_eligible    BOOLEAN NOT NULL DEFAULT FALSE,
+          turns              INTEGER NOT NULL DEFAULT 0,
+          duration_seconds   INTEGER NOT NULL DEFAULT 0,
+          action_log         JSONB NOT NULL DEFAULT '[]'::jsonb,
+          state_id           INTEGER,
+          status             TEXT NOT NULL DEFAULT 'pending'
+                             CHECK (status IN ('pending', 'processing', 'delivered', 'unrated')),
+          attempt_count      INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          locked_at          TIMESTAMPTZ,
+          last_error         TEXT,
+          delivered_match_id TEXT,
+          created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          delivered_at       TIMESTAMPTZ
+        );
+      `);
       if (this.createIndexes) {
         await client.query(`CREATE INDEX IF NOT EXISTS idx_bjg_matches_updated_at ON bjg_matches (updated_at);`);
         await client.query(
           `CREATE INDEX IF NOT EXISTS idx_bjg_matches_game_name ON bjg_matches ((metadata->>'gameName'));`,
+        );
+        await client.query(
+          `CREATE INDEX IF NOT EXISTS idx_bjg_match_seats_user ON bjg_match_seats (user_id, reserved_at DESC);`,
+        );
+        await client.query(
+          `CREATE INDEX IF NOT EXISTS idx_bjg_match_result_outbox_delivery
+             ON bjg_match_result_outbox (status, next_attempt_at);`,
         );
       }
       this.connected = true;
@@ -166,19 +347,233 @@ export class PostgresAdapter {
       return;
     }
 
+    if (canonicalTerminalResult(state)) {
+      await this.withTransaction(async (client) => {
+        await this.writeState(client, matchID, state, deltalog);
+      });
+      return;
+    }
     await this.writeState(this.pool, matchID, state, deltalog);
   }
 
   async setMetadata(matchID: string, metadata: Server.MatchData): Promise<void> {
     if (this.closed) return;
     await this.connect();
-    await this.pool.query(
-      `INSERT INTO bjg_matches (match_id, metadata, log, updated_at)
-       VALUES ($1, $2, '[]'::jsonb, NOW())
-       ON CONFLICT (match_id)
-       DO UPDATE SET metadata = EXCLUDED.metadata, updated_at = NOW()`,
-      [matchID, JSON.stringify(metadata)],
-    );
+    await this.withTransaction(async (client) => {
+      const currentResult = await client.query<Pick<MatchRow, 'metadata'>>(
+        `SELECT metadata
+           FROM bjg_matches
+          WHERE match_id = $1
+          FOR UPDATE`,
+        [matchID],
+      );
+      let nextMetadata = metadata;
+      const currentMetadata = currentResult.rows[0]?.metadata;
+      if (currentMetadata?.players && metadata.players) {
+        const reservedSeats = await client.query<{ player_id: BoardgamePlayerID }>(
+          `SELECT player_id
+             FROM bjg_match_seats
+            WHERE match_id = $1
+            FOR SHARE`,
+          [matchID],
+        );
+        if (reservedSeats.rows.length > 0) {
+          const currentPlayers = currentMetadata.players as Record<string, MutableMatchPlayer | undefined>;
+          const incomingPlayers = { ...(metadata.players as Record<string, MutableMatchPlayer | undefined>) };
+          for (const { player_id: playerID } of reservedSeats.rows) {
+            const currentSeat = currentPlayers[playerID];
+            if (!currentSeat) continue;
+            const incomingSeat = incomingPlayers[playerID] || {};
+            incomingPlayers[playerID] = {
+              ...incomingSeat,
+              name: currentSeat.name,
+              credentials: currentSeat.credentials,
+              data: currentSeat.data,
+            };
+          }
+          nextMetadata = { ...metadata, players: incomingPlayers } as Server.MatchData;
+        }
+      }
+      await client.query(
+        `INSERT INTO bjg_matches (match_id, metadata, log, updated_at)
+         VALUES ($1, $2, '[]'::jsonb, NOW())
+         ON CONFLICT (match_id)
+         DO UPDATE SET metadata = EXCLUDED.metadata, updated_at = NOW()`,
+        [matchID, JSON.stringify(nextMetadata)],
+      );
+    });
+  }
+
+  /** Atomically reserves a boardgame seat across all game replicas. */
+  async reserveMatchSeat(input: ReserveMatchSeatInput): Promise<ReservedMatchSeat> {
+    return this.withTransaction(async (client) => {
+      const result = await client.query<MatchRow>(
+        `SELECT match_id, metadata
+           FROM bjg_matches
+          WHERE match_id = $1
+          FOR UPDATE`,
+        [input.matchID],
+      );
+      const metadata = result.rows[0]?.metadata;
+      if (!metadata) {
+        throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
+      }
+
+      const playerID = input.playerID ?? firstAvailablePlayerID(metadata);
+      if (!playerID) {
+        throw new MatchSeatReservationError('seat_taken', `Match ${input.matchID} has no available seats`);
+      }
+      const players = metadata.players as Record<string, MutableMatchPlayer | undefined>;
+      const player = players[playerID];
+      if (!player) {
+        throw new MatchSeatReservationError('seat_not_found', `Player ${playerID} not found`);
+      }
+      if (player.name || player.credentials) {
+        throw new MatchSeatReservationError('seat_taken', `Player ${playerID} is not available`);
+      }
+
+      const metadataIdentityTaken = Object.entries(players).some(([seatID, seat]) => {
+        if (seatID === playerID || !seat?.data || typeof seat.data !== 'object' || Array.isArray(seat.data))
+          return false;
+        const data = seat.data as Record<string, unknown>;
+        return data.identitySource === 'server' && data.userId === input.userId;
+      });
+      if (metadataIdentityTaken) {
+        throw new MatchSeatReservationError(
+          'identity_taken',
+          `Identity ${input.userId} already owns a seat in match ${input.matchID}`,
+        );
+      }
+
+      const existingReservation = await client.query<MatchSeatRow>(
+        `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash
+           FROM bjg_match_seats
+          WHERE match_id = $1 AND (player_id = $2 OR user_id = $3)
+          FOR UPDATE`,
+        [input.matchID, playerID, input.userId],
+      );
+      const occupiedSeat = existingReservation.rows.find((seat) => seat.player_id === playerID);
+      if (occupiedSeat) {
+        throw new MatchSeatReservationError('seat_taken', `Player ${playerID} is not available`);
+      }
+      if (existingReservation.rows.length > 0) {
+        throw new MatchSeatReservationError(
+          'identity_taken',
+          `Identity ${input.userId} already owns a seat in match ${input.matchID}`,
+        );
+      }
+
+      await client.query(
+        `INSERT INTO bjg_match_seats (
+           match_id, player_id, user_id, ranked_eligible, credential_hash, reserved_at
+         )
+         VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [input.matchID, playerID, input.userId, input.rankedEligible, credentialHash(input.credentials)],
+      );
+
+      player.name = input.playerName;
+      player.credentials = input.credentials;
+      player.data = input.playerData;
+      await client.query(
+        `UPDATE bjg_matches
+            SET metadata = $2::jsonb, updated_at = NOW()
+          WHERE match_id = $1`,
+        [input.matchID, JSON.stringify(metadata)],
+      );
+
+      return {
+        playerID,
+        userId: input.userId,
+        rankedEligible: input.rankedEligible,
+        metadata,
+      };
+    });
+  }
+
+  /**
+   * Locks and verifies a reservation before issuing a fresh platform seat
+   * proof. A trusted metadata-only seat from the previous release is
+   * backfilled once so active sessions survive the migration.
+   */
+  async resumeMatchSeat(input: ResumeMatchSeatInput): Promise<ReservedMatchSeat> {
+    return this.withTransaction(async (client) => {
+      const result = await client.query<MatchRow>(
+        `SELECT match_id, metadata
+           FROM bjg_matches
+          WHERE match_id = $1
+          FOR UPDATE`,
+        [input.matchID],
+      );
+      const metadata = result.rows[0]?.metadata;
+      if (!metadata) {
+        throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
+      }
+      const players = metadata.players as Record<string, MutableMatchPlayer | undefined>;
+      const player = players[input.playerID];
+      if (!player?.name || !player.credentials) {
+        throw new MatchSeatReservationError('seat_not_found', `Player ${input.playerID} is not reserved`);
+      }
+
+      const expectedHash = credentialHash(input.credentials);
+      let seat = (
+        await client.query<MatchSeatRow>(
+          `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash
+             FROM bjg_match_seats
+            WHERE match_id = $1 AND player_id = $2
+            FOR UPDATE`,
+          [input.matchID, input.playerID],
+        )
+      ).rows[0];
+
+      if (!seat) {
+        const playerData =
+          player.data && typeof player.data === 'object' && !Array.isArray(player.data)
+            ? (player.data as Record<string, unknown>)
+            : {};
+        const userId = typeof playerData.userId === 'string' ? playerData.userId : '';
+        if (
+          playerData.identitySource !== 'server' ||
+          !userId ||
+          !safeCredentialHashEqual(credentialHash(player.credentials), expectedHash)
+        ) {
+          throw new MatchSeatReservationError('invalid_credentials', 'Seat reservation proof is invalid');
+        }
+        const rankedEligible = playerData.rankedEligible === true;
+        await client.query(
+          `INSERT INTO bjg_match_seats (
+             match_id, player_id, user_id, ranked_eligible, credential_hash, reserved_at, last_resumed_at
+           )
+           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+          [input.matchID, input.playerID, userId, rankedEligible, expectedHash],
+        );
+        seat = {
+          match_id: input.matchID,
+          player_id: input.playerID,
+          user_id: userId,
+          ranked_eligible: rankedEligible,
+          credential_hash: expectedHash,
+        };
+      }
+
+      if (!safeCredentialHashEqual(seat.credential_hash, expectedHash)) {
+        throw new MatchSeatReservationError('invalid_credentials', 'Seat reservation proof is invalid');
+      }
+      if (seat.ranked_eligible && input.authenticatedUserId !== seat.user_id) {
+        throw new MatchSeatReservationError('identity_mismatch', 'Authenticated identity does not own this seat');
+      }
+      await client.query(
+        `UPDATE bjg_match_seats
+            SET last_resumed_at = NOW()
+          WHERE match_id = $1 AND player_id = $2`,
+        [input.matchID, input.playerID],
+      );
+      return {
+        playerID: input.playerID,
+        userId: seat.user_id,
+        rankedEligible: seat.ranked_eligible,
+        metadata,
+      };
+    });
   }
 
   async fetch<O extends FetchOpts>(
@@ -229,8 +624,21 @@ export class PostgresAdapter {
 
   async wipe(matchID: string): Promise<void> {
     if (this.closed) return;
-    await this.connect();
-    await this.pool.query(`DELETE FROM bjg_matches WHERE match_id = $1`, [matchID]);
+    await this.withTransaction(async (client) => {
+      // A stale-room sweep must never cascade-delete a result that has not
+      // reached the durable API result tables yet. Lock the outbox row while
+      // checking so a concurrent worker claim cannot race the delete.
+      const pendingResult = await client.query<{ status: 'pending' | 'processing' | 'delivered' | 'unrated' }>(
+        `SELECT status
+           FROM bjg_match_result_outbox
+          WHERE source_match_id = $1
+            AND status IN ('pending', 'processing')
+          FOR UPDATE`,
+        [matchID],
+      );
+      if (pendingResult.rows.length > 0) return;
+      await client.query(`DELETE FROM bjg_matches WHERE match_id = $1`, [matchID]);
+    });
   }
 
   async listMatches(opts?: ListMatchesOpts): Promise<string[]> {
@@ -404,5 +812,82 @@ export class PostgresAdapter {
     if (expectedStateID !== null && result.rowCount === 0) {
       throw new StaleStateWriteError(matchID, expectedStateID, nextStateID ?? expectedStateID + 1);
     }
+
+    const terminalResult = canonicalTerminalResult(state);
+    if (terminalResult) {
+      await this.enqueueTerminalResult(queryable, matchID, terminalResult);
+    }
+  }
+
+  private async enqueueTerminalResult(
+    queryable: Pick<Pool | PoolClient, 'query'>,
+    matchID: string,
+    result: CanonicalTerminalResult,
+  ): Promise<void> {
+    const seats = await queryable.query<MatchSeatRow>(
+      `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash
+         FROM bjg_match_seats
+        WHERE match_id = $1
+        ORDER BY player_id`,
+      [matchID],
+    );
+    const player0 = seats.rows.find((seat) => seat.player_id === '0');
+    const player1 = seats.rows.find((seat) => seat.player_id === '1');
+    const winner = result.winnerPlayer === 0 ? player0 : result.winnerPlayer === 1 ? player1 : undefined;
+    const loser = result.winnerPlayer === 0 ? player1 : result.winnerPlayer === 1 ? player0 : undefined;
+    const rankedEligible = Boolean(
+      winner && loser && winner.ranked_eligible && loser.ranked_eligible && winner.user_id !== loser.user_id,
+    );
+    const status = rankedEligible && this.rankedMatchesEnabled ? 'pending' : 'unrated';
+    const unratedReason =
+      rankedEligible && !this.rankedMatchesEnabled
+        ? 'ranked_disabled'
+        : result.winnerPlayer === null
+          ? 'draw_or_missing_winner'
+          : !player0 || !player1
+            ? 'missing_atomic_seat_reservation'
+            : !player0.ranked_eligible || !player1.ranked_eligible
+              ? 'guest_or_unranked_seat'
+              : player0.user_id === player1.user_id
+                ? 'duplicate_account_seats'
+                : 'unrated';
+
+    await queryable.query(
+      `INSERT INTO bjg_match_result_outbox (
+         source_match_id,
+         player0_user_id,
+         player1_user_id,
+         winner_player,
+         winner_user_id,
+         loser_user_id,
+         ranked_eligible,
+         turns,
+         duration_seconds,
+         action_log,
+         state_id,
+         status,
+         next_attempt_at,
+         last_error,
+         created_at,
+         updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, NOW(), $13, NOW(), NOW())
+       ON CONFLICT (source_match_id) DO NOTHING`,
+      [
+        matchID,
+        player0?.user_id ?? null,
+        player1?.user_id ?? null,
+        result.winnerPlayer,
+        winner?.user_id ?? null,
+        loser?.user_id ?? null,
+        rankedEligible,
+        result.turns,
+        result.durationSeconds,
+        JSON.stringify(result.actionLog),
+        result.stateID,
+        status,
+        status === 'pending' ? null : unratedReason,
+      ],
+    );
   }
 }

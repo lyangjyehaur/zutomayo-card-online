@@ -55,6 +55,7 @@ export interface PlatformClientProfile {
   joinedAt: number;
   boardgamePlayerID?: string;
   hasBoardgameCredentials?: boolean;
+  deckName?: string;
 }
 
 export type PlatformFriendPresenceEvent = 'online' | 'offline' | 'update';
@@ -103,6 +104,7 @@ export interface PlatformQuickMatchSnapshot {
 export interface PlatformQuickMatchMatched {
   roomId: string;
   role: 'host' | 'guest';
+  deckName?: string;
   opponent?: PlatformClientProfile;
 }
 
@@ -252,6 +254,9 @@ function platformProfileFromMessage(value: unknown): PlatformClientProfile | nul
   }
   if (data.hasBoardgameCredentials === true) {
     profile.hasBoardgameCredentials = true;
+  }
+  if (typeof data.deckName === 'string' && data.deckName.trim()) {
+    profile.deckName = data.deckName.trim().slice(0, 60);
   }
   return profile;
 }
@@ -488,12 +493,13 @@ export function platformQuickMatchSnapshotFromMessage(message: unknown): Platfor
 
 export function platformQuickMatchMatchedFromMessage(message: unknown): PlatformQuickMatchMatched | null {
   if (!message || typeof message !== 'object') return null;
-  const data = message as { roomId?: unknown; role?: unknown; opponent?: unknown };
+  const data = message as { roomId?: unknown; role?: unknown; deckName?: unknown; opponent?: unknown };
   if (typeof data.roomId !== 'string') return null;
   if (data.role !== 'host' && data.role !== 'guest') return null;
   return {
     roomId: data.roomId,
     role: data.role,
+    deckName: typeof data.deckName === 'string' ? data.deckName.trim().slice(0, 60) : undefined,
     opponent: platformProfileFromMessage(data.opponent) ?? undefined,
   };
 }
@@ -508,6 +514,7 @@ export function platformQuickMatchMatchedFromSnapshot(
   return {
     roomId: snapshot.roomId,
     role: snapshot.hostSessionId === sessionId ? 'host' : 'guest',
+    deckName: self.deckName,
     opponent: snapshot.players.find((profile) => profile.sessionId !== sessionId),
   };
 }

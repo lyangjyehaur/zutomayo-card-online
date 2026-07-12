@@ -1,5 +1,5 @@
 import http from 'http';
-import { Server } from '@colyseus/core';
+import { matchMaker, Server } from '@colyseus/core';
 import { RedisDriver } from '@colyseus/redis-driver';
 import { RedisPresence } from '@colyseus/redis-presence';
 import { WebSocketTransport } from '@colyseus/ws-transport';
@@ -20,6 +20,14 @@ import {
   createPlatformMatchParticipantStoreFromEnv,
   resolvePlatformMatchParticipantStoreMode,
 } from './matchParticipantStore';
+import {
+  platformMetricsAuthorized,
+  platformMetricsMiddleware,
+  platformMetricsText,
+  recordPlatformDependencyFailure,
+  setPlatformRuntimeMetrics,
+} from './metrics';
+import { configurePlatformJwtRevocationStore } from './rooms/jwt';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
 
 interface CreatePlatformRuntimeOptions {
@@ -75,6 +83,15 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     : null;
   const healthRedis =
     redisMode === 'redis' ? new Redis(colyseusRedisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: true }) : null;
+  // The API service writes access-token revocation markers to this shared DB.
+  // Keep a dedicated command connection so health checks/Colyseus presence do
+  // not starve authentication reads, and make the verifier fail closed when
+  // this dependency is unavailable.
+  const authRevocationRedis =
+    redisMode === 'redis' ? new Redis(colyseusRedisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: true }) : null;
+  healthRedis?.on('error', (err) => logger.warn({ err }, 'platform health Redis connection error'));
+  authRevocationRedis?.on('error', (err) => logger.warn({ err }, 'platform auth Redis connection error'));
+  configurePlatformJwtRevocationStore(authRevocationRedis);
 
   async function checkHealth(): Promise<{ ok: boolean; errors: string[] }> {
     const checks: { name: string; promise: Promise<unknown> }[] = [];
@@ -87,6 +104,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
         const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        recordPlatformDependencyFailure(checks[i].name);
         errors.push(`${checks[i].name}: ${reason}`);
       }
     });
@@ -106,12 +124,15 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       chatPreviewStore.close?.(),
       healthPool?.end(),
       healthRedis?.quit(),
+      authRevocationRedis?.quit(),
     ]);
+    configurePlatformJwtRevocationStore(null);
   };
 
   const gameServer = new Server({
     transport: new WebSocketTransport({ server: httpServer }),
     express: (app) => {
+      app.use(platformMetricsMiddleware);
       app.use((req: Request, res: Response, next: NextFunction) => {
         const corsOrigin = resolvePlatformCorsOrigin(req.headers.origin, corsOrigins);
         if (corsOrigin) {
@@ -120,7 +141,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
           res.set('Access-Control-Allow-Credentials', 'true');
         }
         res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+        res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
         if (req.method === 'OPTIONS') {
           res.sendStatus(200);
           return;
@@ -140,6 +161,15 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       });
       app.get('/ready', (_req, res) => {
         res.set('Cache-Control', 'no-store').json({ ok: true });
+      });
+      app.get('/metrics', async (req, res) => {
+        if (!platformMetricsAuthorized(req.headers.authorization)) {
+          res.status(401).set('Cache-Control', 'no-store').json({ error: 'Unauthorized' });
+          return;
+        }
+        setPlatformRuntimeMetrics({ all: matchMaker.stats.local.roomCount }, matchMaker.stats.local.ccu);
+        const metrics = await platformMetricsText();
+        res.set('Cache-Control', 'no-store').type(metrics.contentType).send(metrics.body);
       });
     },
     ...(redisMode === 'redis'

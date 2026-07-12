@@ -27,17 +27,36 @@ async function submitMatchResult({
   authUserId,
   body,
   sanitizeActionLog,
+  rankedMatchesEnabled = false,
   generateMatchId = () => 'm_' + crypto.randomBytes(8).toString('hex'),
 }) {
   const { winnerId, loserId, turns, duration, actionLog, action_log, sourceMatchId, winnerPlayer } = body;
   if (!winnerId || !loserId) return { ok: false, status: 400, error: 'Winner and loser IDs required' };
+  if (winnerId === loserId) return { ok: false, status: 400, error: 'Winner and loser must be different users' };
   const cleanSourceMatchId =
     typeof sourceMatchId === 'string' && sourceMatchId.length > 0 ? sourceMatchId.slice(0, 120) : '';
+  if (cleanSourceMatchId && rankedMatchesEnabled !== true) {
+    // Ranked may be intentionally disabled during beta or maintenance. Treat
+    // the finished game as a successful unrated submission so the client does
+    // not enter a retry/error loop; no player history or rating is mutated.
+    return {
+      ok: true,
+      body: {
+        winnerEloChange: 0,
+        loserEloChange: 0,
+        unrated: true,
+        reason: 'ranked_disabled',
+      },
+    };
+  }
   if (!cleanSourceMatchId && winnerId !== authUserId) {
     return { ok: false, status: 403, error: 'Forbidden: winner must match authenticated user' };
   }
   let resolvedWinnerId = winnerId;
   let resolvedLoserId = loserId;
+  let resolvedTurns = turns || 0;
+  let resolvedDuration = duration || 0;
+  let rawActionLog = actionLog ?? action_log;
   let sourceVerification = null;
   if (cleanSourceMatchId) {
     sourceVerification = await verifyBoardgameMatchResult(
@@ -50,10 +69,13 @@ async function submitMatchResult({
       return { ok: false, status: sourceVerification.status, error: sourceVerification.error };
     }
     resolvedWinnerId = sourceVerification.winnerUserId;
-    resolvedLoserId = sourceVerification.loserUserId || `guest-player-${sourceVerification.loserPlayer}`;
+    resolvedLoserId = sourceVerification.loserUserId;
+    resolvedTurns = sourceVerification.authoritative.turns;
+    resolvedDuration = sourceVerification.authoritative.duration;
+    rawActionLog = sourceVerification.authoritative.actionLog;
   }
 
-  const sanitizedActionLog = sanitizeActionLog(actionLog ?? action_log);
+  const sanitizedActionLog = sanitizeActionLog(rawActionLog);
   const matchId = generateMatchId();
 
   const client = await pool.connect();
@@ -73,6 +95,11 @@ async function submitMatchResult({
 
     const winner = (await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [resolvedWinnerId])).rows[0];
     const loser = (await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [resolvedLoserId])).rows[0];
+
+    if (cleanSourceMatchId && (!winner || !loser)) {
+      await client.query('ROLLBACK');
+      return { ok: false, status: 409, error: 'Ranked participants no longer exist' };
+    }
 
     let winnerEloChange = 0;
     let loserEloChange = 0;
@@ -106,8 +133,8 @@ async function submitMatchResult({
         resolvedLoserId,
         winnerEloChange,
         loserEloChange,
-        turns || 0,
-        duration || 0,
+        resolvedTurns,
+        resolvedDuration,
         JSON.stringify(sanitizedActionLog),
       ],
     );
@@ -118,6 +145,8 @@ async function submitMatchResult({
       ok: true,
       body: {
         matchId,
+        winnerId: resolvedWinnerId,
+        loserId: resolvedLoserId,
         winnerEloChange,
         loserEloChange,
         winnerNewElo: (winner?.elo || 1000) + winnerEloChange,
