@@ -88,7 +88,8 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
-    this.authenticatedUserIds.delete(client.userData?.userId);
+    const userId = client.userData?.userId;
+    if (userId) this.authenticatedUserIds.delete(userId);
     if (this.status === 'matched' && client.sessionId !== this.hostSessionId) {
       await this.refreshMetadata(client.sessionId);
       return;

@@ -31,9 +31,7 @@ function validateSecurityConfig(): void {
   const isProduction = process.env.NODE_ENV === 'production';
   if (!hasSeatTokenSecret) {
     if (isProduction) {
-      logger.fatal(
-        'PLATFORM_SEAT_TOKEN_SECRET 與 JWT_SECRET 皆未設定，正式環境無法安全啟動 platform server',
-      );
+      logger.fatal('PLATFORM_SEAT_TOKEN_SECRET 與 JWT_SECRET 皆未設定，正式環境無法安全啟動 platform server');
       process.exit(1);
     } else {
       logger.warn(
