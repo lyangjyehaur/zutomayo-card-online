@@ -1007,6 +1007,65 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('custom room host transfer also moves relay and cancellation authority', async () => {
+    const room = new CustomRoom();
+    const handlers = new Map<string, (client: PlatformClient, message?: unknown) => void>();
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation(((
+      type: string,
+      handler: (client: PlatformClient, message?: unknown) => void,
+    ) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
+
+    const oldHost = client('session_host_old', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const newHost = client('session_host_new', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
+    room.clients.push(oldHost);
+    await room.onJoin(oldHost);
+    room.clients.push(newHost);
+    await room.onJoin(newHost);
+    await room.onLeave(oldHost);
+
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+
+    handlers.get('cancelCustomRoom')?.(oldHost);
+    handlers.get('boardgameMatchReady')?.(oldHost, { boardgameMatchID: 'bgio-old-host-ignored' });
+
+    expect(broadcast).not.toHaveBeenCalledWith('customRoomCancelled', expect.anything());
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(setMatchmaking).not.toHaveBeenCalledWith({
+      metadata: expect.objectContaining({ status: 'cancelled' }),
+    });
+
+    handlers.get('boardgameMatchReady')?.(newHost, { boardgameMatchID: ' bgio-match-1 ' });
+
+    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({
+        kind: 'custom-room',
+        roomCode: 'ROOM42',
+        status: 'ready',
+        boardgameMatchID: 'bgio-match-1',
+      }),
+    });
+  });
+
   it('excludes leaving custom-room spectators from snapshots and matchmaking counts', async () => {
     const room = new CustomRoom();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
