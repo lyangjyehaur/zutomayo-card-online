@@ -71,8 +71,8 @@ services:
         APP_VERSION: ${APP_VERSION:-}
         APP_BUILD_ID: ${APP_BUILD_ID:-}
         GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
-    ports:
-      - '3001:3001'
+    expose:
+      - '3001'
     env_file: .env
     environment:
       - API_PORT=3001

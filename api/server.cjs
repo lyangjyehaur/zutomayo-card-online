@@ -1969,6 +1969,69 @@ return #expired
 redis.defineCommand('mmTryMatch', { numberOfKeys: 1, lua: MATCH_LUA });
 redis.defineCommand('mmCleanExpired', { numberOfKeys: 1, lua: CLEAN_LUA });
 
+// ===== Trusted Proxy & Client IP =====
+// E10：信任代理 IP/CIDR 列表。僅當請求來自信任代理時才使用 X-Forwarded-For，
+// 防止攻擊者偽造 header 繞過 rate limit。未設定時固定使用 req.socket.remoteAddress。
+const TRUSTED_PROXIES = (process.env.TRUSTED_PROXY || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function ipv4ToInt(ip) {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return null;
+  let result = 0;
+  for (const part of parts) {
+    const num = parseInt(part, 10);
+    if (isNaN(num) || num < 0 || num > 255) return null;
+    result = (result << 8) | num;
+  }
+  return result >>> 0;
+}
+
+function normalizeIp(ip) {
+  if (!ip) return '';
+  // 去除 IPv6-mapped IPv4 前綴（Node.js socket 可能回傳 ::ffff:127.0.0.1）
+  return ip.replace(/^::ffff:/, '');
+}
+
+function ipMatch(ip, range) {
+  const normalizedIp = normalizeIp(ip);
+  const normalizedRange = normalizeIp(range);
+  if (normalizedRange.includes('/')) {
+    const [base, prefixStr] = normalizedRange.split('/');
+    const prefixLen = parseInt(prefixStr, 10);
+    if (isNaN(prefixLen) || prefixLen < 0) return false;
+    if (base.includes('.') && normalizedIp.includes('.')) {
+      const ipInt = ipv4ToInt(normalizedIp);
+      const baseInt = ipv4ToInt(base);
+      if (ipInt === null || baseInt === null) return false;
+      if (prefixLen > 32) return false;
+      const mask = prefixLen === 0 ? 0 : (~0 << (32 - prefixLen)) >>> 0;
+      return (ipInt & mask) === (baseInt & mask);
+    }
+    // IPv6 CIDR 尚未完整支援
+    return false;
+  }
+  return normalizedIp === normalizedRange;
+}
+
+function isTrustedProxy(ip) {
+  if (!ip || TRUSTED_PROXIES.length === 0) return false;
+  return TRUSTED_PROXIES.some((range) => ipMatch(ip, range));
+}
+
+function getClientIp(req) {
+  const remoteAddress = req.socket.remoteAddress || '';
+  if (isTrustedProxy(remoteAddress)) {
+    const xff = req.headers['x-forwarded-for'];
+    if (xff) {
+      return xff.toString().split(',')[0].trim();
+    }
+  }
+  return remoteAddress;
+}
+
 // ===== HTTP Handler =====
 function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -1999,7 +2062,7 @@ function handleRequest(req, res) {
   const { log: reqLog, requestId } = attachRequestObservability(req, res);
 
   // Rate limiting (P0-4, Redis)
-  const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
+  const clientIp = getClientIp(req);
   const isAuthEndpoint = pathname === '/api/login' || pathname === '/api/register' || pathname === '/api/admin/login';
   const isImgproxyEndpoint = pathname.startsWith('/api/imgproxy/');
 
