@@ -808,7 +808,7 @@ describe('match shell room', () => {
     );
   });
 
-  it('broadcasts match chat preview as content-free durable sync signals', async () => {
+  it('broadcasts only content-free match chat preview sync signals', async () => {
     allowChatPreviewBroadcasts();
     const room = new MatchShellRoom();
     const handlers = new Map<string, ChatPreviewHandler>();
@@ -839,10 +839,7 @@ describe('match shell room', () => {
       {
         messageId: 'chat_msg_persisted',
         conversationId: 'match:bgio-match-1',
-        content: 'this text must stay in ChatService',
-        translatedContent: 'this translation must stay in ChatService',
-        metadata: { moderationStatus: 'visible' },
-      } as unknown as ChatPreviewMessage,
+      },
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -862,6 +859,35 @@ describe('match shell room', () => {
     expect(previewPayload).not.toHaveProperty('authorDisplayName');
     expect(previewPayload).not.toHaveProperty('authorRole');
     expect(previewPayload).not.toHaveProperty('createdAt');
+
+    broadcast.mockClear();
+    handlers.get('chatPreview')?.(
+      {
+        auth: {
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'spectator',
+          authenticated: true,
+        },
+        userData: {
+          sessionId: 'session_1',
+          userId: 'u_1',
+          displayName: 'Alice',
+          role: 'spectator',
+          joinedAt: 1000,
+        },
+      } as PlatformClient,
+      {
+        messageId: 'chat_msg_persisted',
+        conversationId: 'match:bgio-match-1',
+        content: 'this text must stay in ChatService',
+        translatedContent: 'this translation must stay in ChatService',
+        metadata: { moderationStatus: 'visible' },
+      } as unknown as ChatPreviewMessage,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(broadcast).not.toHaveBeenCalledWith('chatPreview', expect.anything());
   });
 
   it('does not broadcast chat preview without durable verification', async () => {

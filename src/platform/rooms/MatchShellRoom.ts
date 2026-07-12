@@ -70,6 +70,21 @@ function normalizeMatchConversationId(value: unknown, boardgameMatchID: string |
   return suppliedConversationId === expectedConversationId ? suppliedConversationId : expectedConversationId;
 }
 
+function carriesChatPreviewContent(message: ChatPreviewMessage): boolean {
+  const candidate = message as Record<string, unknown>;
+  return (
+    candidate.content !== undefined ||
+    candidate.text !== undefined ||
+    candidate.translatedContent !== undefined ||
+    candidate.metadata !== undefined ||
+    candidate.sender !== undefined ||
+    candidate.authorUserId !== undefined ||
+    candidate.authorDisplayName !== undefined ||
+    candidate.authorRole !== undefined ||
+    candidate.createdAt !== undefined
+  );
+}
+
 export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; client: PlatformClient }> {
   private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
   private static chatPreviewStore: PlatformChatPreviewStore = createEmptyPlatformChatPreviewStore();
@@ -112,6 +127,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
   }
 
   private async broadcastChatPreview(client: PlatformClient, message: ChatPreviewMessage): Promise<void> {
+    if (carriesChatPreviewContent(message)) return;
     const messageId = optionalText(message.messageId, 128);
     if (!messageId || !client.userData || !client.auth?.authenticated) return;
     if (client.userData.userId !== client.auth.userId) return;
