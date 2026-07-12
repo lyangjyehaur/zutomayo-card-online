@@ -20,8 +20,19 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/schemaGate.cjs');
   });
 
+  it('ships the runtime TLS/role contract in the retention image', () => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile.retention'), 'utf8');
+    expect(dockerfile).toContain('COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs');
+    const worker = readFileSync(resolve(root, 'scripts/run-retention.cjs'), 'utf8');
+    expect(worker).toContain('PG_RETENTION_USER');
+    expect(worker).toContain('poolConfig.ssl = postgresSslConfig(process.env)');
+  });
+
   it('ships the shared schema gate helper in game and platform runtime images', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
     expect(dockerfile).toContain('COPY --from=builder /app/api/schemaGate.cjs ./api/schemaGate.cjs');
+    expect(dockerfile).toContain('COPY --from=builder /app/api/relationshipEvents.cjs ./api/relationshipEvents.cjs');
+    expect(dockerignore).toContain('!api/relationshipEvents.cjs');
   });
 });

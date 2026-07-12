@@ -1,4 +1,5 @@
 import { Pool, type QueryResultRow } from 'pg';
+import { postgresConnectionString, postgresSslConfig } from '../runtimeSecurityConfig';
 
 export const MAX_PLATFORM_FRIEND_PRESENCE_IDS = 100;
 
@@ -81,6 +82,7 @@ export function createPlatformFriendStoreFromEnv(env: NodeJS.ProcessEnv = proces
       max: Number(env.PLATFORM_PG_POOL_MAX || env.PG_POOL_MAX) || 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 3_000,
+      ssl: postgresSslConfig(env),
     }),
   );
 }
@@ -95,7 +97,7 @@ export function resolvePlatformFriendStoreMode(env: NodeJS.ProcessEnv = process.
 
 function databaseUrlFromEnv(env: NodeJS.ProcessEnv): string {
   return (
-    env.DATABASE_URL?.trim() ||
+    postgresConnectionString(env) ||
     `postgres://${env.PG_USER || 'postgres'}:${env.PG_PASSWORD || ''}@${env.PG_HOST || 'localhost'}:${env.PG_PORT || '5432'}/${env.PG_DATABASE || 'postgres'}`
   );
 }

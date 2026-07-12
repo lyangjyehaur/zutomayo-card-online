@@ -1,5 +1,6 @@
 import { Pool, type QueryResultRow } from 'pg';
 import { normalizePlatformUserId } from './friendStore';
+import { postgresConnectionString, postgresSslConfig } from '../runtimeSecurityConfig';
 
 export interface PlatformBlockStore {
   areUsersBlocked(firstUserId: string, secondUserId: string): Promise<boolean>;
@@ -55,7 +56,7 @@ export function resolvePlatformBlockStoreMode(env: NodeJS.ProcessEnv = process.e
 export function createPlatformBlockStoreFromEnv(env: NodeJS.ProcessEnv = process.env): PlatformBlockStore {
   if (resolvePlatformBlockStoreMode(env) === 'none') return createEmptyPlatformBlockStore();
   const databaseUrl =
-    env.DATABASE_URL?.trim() ||
+    postgresConnectionString(env) ||
     `postgres://${env.PG_USER || 'postgres'}:${env.PG_PASSWORD || ''}@${env.PG_HOST || 'localhost'}:${env.PG_PORT || '5432'}/${env.PG_DATABASE || 'postgres'}`;
   return createPostgresPlatformBlockStore(
     new Pool({
@@ -63,6 +64,7 @@ export function createPlatformBlockStoreFromEnv(env: NodeJS.ProcessEnv = process
       max: Number(env.PLATFORM_PG_POOL_MAX || env.PG_POOL_MAX) || 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 3_000,
+      ssl: postgresSslConfig(env),
     }),
   );
 }

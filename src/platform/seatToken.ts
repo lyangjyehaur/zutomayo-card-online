@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { requireSecret } from '../runtimeSecurityConfig';
 
 const TOKEN_PREFIX = 'pst1';
 const DEFAULT_TTL_MS = 12 * 60 * 60 * 1000;
@@ -16,11 +17,10 @@ function signingSecret(): string {
   // 開發用 fallback：僅供本機 / 測試環境使用。
   // 正式環境必須透過 PLATFORM_SEAT_TOKEN_SECRET 或 JWT_SECRET 提供，
   // 並由 platform server 啟動時的 validateSecurityConfig() 強制檢查。
-  return (
-    process.env.PLATFORM_SEAT_TOKEN_SECRET ||
-    process.env.JWT_SECRET ||
-    'development-platform-seat-token-secret-change-me'
-  );
+  const configured = process.env.PLATFORM_SEAT_TOKEN_SECRET || process.env.JWT_SECRET || '';
+  if (process.env.NODE_ENV === 'production')
+    return requireSecret('PLATFORM_SEAT_TOKEN_SECRET or JWT_SECRET', configured);
+  return configured || 'development-platform-seat-token-secret-change-me';
 }
 
 function base64urlJson(value: unknown): string {

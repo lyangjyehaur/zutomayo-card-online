@@ -9,10 +9,12 @@ import type {
   PlatformAuth,
   PlatformClient,
   PlatformFriendPresenceEvent,
+  PlatformRelationshipChange,
 } from './types';
 
 export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: PlatformClient }> {
   static friendStore: PlatformFriendStore = createEmptyPlatformFriendStore();
+  private static readonly activeRooms = new Set<LobbyRoom>();
 
   maxClients = 1_000;
   autoDispose = false;
@@ -22,6 +24,18 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     LobbyRoom.friendStore = friendStore;
   }
 
+  static async handleRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
+    await Promise.all([...LobbyRoom.activeRooms].map((room) => room.applyRelationshipChange(change)));
+  }
+
+  static async reconcileAuthorization(): Promise<void> {
+    await Promise.all([...LobbyRoom.activeRooms].map((room) => room.reconcileAuthorization()));
+  }
+
+  static clearActiveRoomsForTests(): void {
+    LobbyRoom.activeRooms.clear();
+  }
+
   async onCreate(): Promise<void> {
     await this.setMatchmaking({
       metadata: {
@@ -29,6 +43,11 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
         onlineCount: 0,
       },
     });
+    LobbyRoom.activeRooms.add(this);
+  }
+
+  onDispose(): void {
+    LobbyRoom.activeRooms.delete(this);
   }
 
   async onAuth(_client: PlatformClient, options: LobbyJoinOptions, context: AuthContext): Promise<PlatformAuth> {
@@ -48,11 +67,17 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
       joinedAt: Date.now(),
     };
     if (reconnectingUser) recordPlatformReconnect('lobby');
-    this.friendUserIdsBySession.set(client.sessionId, await this.friendUserIdsFor(auth.userId));
+    const friendUserIds = await this.friendUserIdsFor(auth.userId);
+    this.friendUserIdsBySession.set(client.sessionId, friendUserIds);
     await this.refreshMetadata();
     client.send('lobbySnapshot', this.snapshot(client));
     this.broadcast('presence', this.presencePayload('join'));
-    this.broadcastFriendPresence(this.onlineSessionCount(auth.userId) > 1 ? 'update' : 'online', client.userData);
+    await this.broadcastFriendPresence(
+      this.onlineSessionCount(auth.userId) > 1 ? 'update' : 'online',
+      client.userData,
+      undefined,
+      friendUserIds,
+    );
   }
 
   async onLeave(client: PlatformClient): Promise<void> {
@@ -61,7 +86,7 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     await this.refreshMetadata(client.sessionId);
     if (profile) {
       this.broadcast('presence', this.presencePayload('leave', client.sessionId));
-      this.broadcastFriendPresence(
+      await this.broadcastFriendPresence(
         this.onlineSessionCount(profile.userId, client.sessionId) > 0 ? 'update' : 'offline',
         profile,
         client.sessionId,
@@ -103,15 +128,34 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
     });
   }
 
-  private broadcastFriendPresence(
+  private async broadcastFriendPresence(
     event: PlatformFriendPresenceEvent,
     profile: NonNullable<PlatformClient['userData']>,
     ignoredSessionId?: string,
-  ) {
+    currentProfileFriendUserIds?: Set<string>,
+  ): Promise<void> {
     const payload = this.friendPresencePayload(event, profile.userId, ignoredSessionId);
+    const profileFriendUserIds = currentProfileFriendUserIds ?? (await this.friendUserIdsFor(profile.userId));
     this.clients.forEach((client) => {
-      if (!this.friendUserIdsBySession.get(client.sessionId)?.has(profile.userId)) return;
-      client.send('friendPresence', payload);
+      if (client.sessionId === ignoredSessionId || !client.userData?.userId) return;
+      const subscriptions = this.friendUserIdsBySession.get(client.sessionId) ?? new Set<string>();
+      const wasVisible = subscriptions.has(profile.userId);
+      const isVisible = profileFriendUserIds.has(client.userData.userId);
+      if (isVisible) subscriptions.add(profile.userId);
+      else subscriptions.delete(profile.userId);
+      this.friendUserIdsBySession.set(client.sessionId, subscriptions);
+      if (isVisible) {
+        client.send('friendPresence', payload);
+      } else if (wasVisible) {
+        client.send('friendPresence', {
+          event: 'offline',
+          userId: profile.userId,
+          online: false,
+          activeSessionCount: 0,
+          profiles: [],
+          updatedAt: Date.now(),
+        });
+      }
     });
   }
 
@@ -149,5 +193,70 @@ export class LobbyRoom extends Room<{ metadata: LobbyRoomMetadata; client: Platf
       logger.warn({ err, userId }, 'failed to load lobby friend presence subscriptions');
       return new Set();
     }
+  }
+
+  private sendFriendOffline(client: PlatformClient, userId: string): void {
+    client.send('friendPresence', {
+      event: 'offline',
+      userId,
+      online: false,
+      activeSessionCount: 0,
+      profiles: [],
+      updatedAt: Date.now(),
+    });
+  }
+
+  private async applyRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
+    const affectedUserIds = new Set(change.userIds);
+    if (change.kind === 'account_deleted') {
+      const deletedUserId = change.userIds[0];
+      for (const client of this.clients) {
+        if (client.userData?.userId === deletedUserId) {
+          client.leave(4001, 'account_deleted');
+          continue;
+        }
+        const subscriptions = this.friendUserIdsBySession.get(client.sessionId);
+        if (!subscriptions?.delete(deletedUserId)) continue;
+        this.sendFriendOffline(client, deletedUserId);
+      }
+      return;
+    }
+
+    await Promise.all(
+      this.clients.map(async (client) => {
+        const userId = client.userData?.userId;
+        if (!userId || !affectedUserIds.has(userId)) return;
+        await this.refreshClientFriendSubscriptions(client, userId);
+      }),
+    );
+  }
+
+  private async refreshClientFriendSubscriptions(client: PlatformClient, userId: string): Promise<void> {
+    const previous = this.friendUserIdsBySession.get(client.sessionId) ?? new Set<string>();
+    const next = await this.friendUserIdsFor(userId);
+    for (const removedUserId of previous) {
+      if (!next.has(removedUserId)) this.sendFriendOffline(client, removedUserId);
+    }
+    for (const friendUserId of next) {
+      client.send('friendPresence', this.friendPresencePayload('update', friendUserId, client.sessionId));
+    }
+    this.friendUserIdsBySession.set(client.sessionId, next);
+  }
+
+  private async reconcileAuthorization(): Promise<void> {
+    await Promise.all(
+      this.clients.map(async (client) => {
+        const auth = client.auth;
+        const userId = client.userData?.userId;
+        if (!auth || !userId) return;
+        try {
+          await assertPlatformAuthCurrent(auth);
+        } catch {
+          client.leave(4001, 'authorization_revoked');
+          return;
+        }
+        await this.refreshClientFriendSubscriptions(client, userId);
+      }),
+    );
   }
 }

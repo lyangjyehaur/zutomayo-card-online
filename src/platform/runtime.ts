@@ -43,6 +43,8 @@ import {
   createPostgresPlatformJwtAccountStore,
 } from './rooms/jwt';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
+import { postgresConnectionString, postgresSslConfig, resolveRedisConnectionConfig } from '../runtimeSecurityConfig';
+import type { PlatformRelationshipChange } from './rooms/types';
 
 const require = createRequire(import.meta.url);
 const { assertRuntimeSchema } = require('../../api/schemaGate.cjs') as {
@@ -51,6 +53,10 @@ const { assertRuntimeSchema } = require('../../api/schemaGate.cjs') as {
     expectedMigration: string | undefined;
     expectedChecksum: string | undefined;
   }) => Promise<{ expectedMigration: string; expectedChecksum: string }>;
+};
+const { RELATIONSHIP_CHANGE_CHANNEL, parseRelationshipChange } = require('../../api/relationshipEvents.cjs') as {
+  RELATIONSHIP_CHANGE_CHANNEL: string;
+  parseRelationshipChange: (value: unknown) => PlatformRelationshipChange | null;
 };
 
 interface CreatePlatformRuntimeOptions {
@@ -92,7 +98,9 @@ export async function assertPlatformRuntimeSchema(
 
 export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}): PlatformRuntime {
   const port = Number(process.env.PLATFORM_PORT) || 3002;
-  const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+  const redisConnection = resolveRedisConnectionConfig(process.env);
+  const redisUrl = redisConnection.url;
+  const redisTls = redisConnection.tls ? { rejectUnauthorized: true } : undefined;
   const redisDb = Number(process.env.REDIS_DB) || 0;
   const configuredRedisMode = process.env.PLATFORM_REDIS_MODE;
   const redisMode = resolvePlatformRedisMode(configuredRedisMode, process.env.NODE_ENV);
@@ -142,7 +150,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     chatPreviewStoreMode === 'postgres';
   const requiresPostgres = usesPostgres || process.env.NODE_ENV === 'production';
   const databaseUrl =
-    process.env.DATABASE_URL?.trim() ||
+    postgresConnectionString(process.env) ||
     `postgres://${process.env.PG_USER || 'postgres'}:${process.env.PG_PASSWORD || ''}@${process.env.PG_HOST || 'localhost'}:${process.env.PG_PORT || '5432'}/${process.env.PG_DATABASE || 'postgres'}`;
   const authPoolMax = Math.min(20, Math.max(1, Number(process.env.PLATFORM_AUTH_DB_POOL_MAX) || 8));
   const authQueryTimeoutMs = Math.min(
@@ -157,10 +165,17 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
         connectionTimeoutMillis: 3_000,
         query_timeout: authQueryTimeoutMs,
         statement_timeout: authQueryTimeoutMs,
+        ssl: postgresSslConfig(process.env),
       })
     : null;
   const healthRedis =
-    redisMode === 'redis' ? new Redis(colyseusRedisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: true }) : null;
+    redisMode === 'redis'
+      ? new Redis(colyseusRedisUrl, {
+          maxRetriesPerRequest: 1,
+          enableReadyCheck: true,
+          ...(redisTls ? { tls: redisTls } : {}),
+        })
+      : null;
   // The API service writes access-token revocation markers to this shared DB.
   // Keep a dedicated command connection so health checks/Colyseus presence do
   // not starve authentication reads, and make the verifier fail closed when
@@ -172,15 +187,74 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
           maxRetriesPerRequest: 1,
           enableReadyCheck: true,
           commandTimeout: admissionLimits.timeoutMs,
+          ...(redisTls ? { tls: redisTls } : {}),
+        })
+      : null;
+  const relationshipRedis =
+    redisMode === 'redis'
+      ? new Redis(colyseusRedisUrl, {
+          maxRetriesPerRequest: 1,
+          enableReadyCheck: true,
+          ...(redisTls ? { tls: redisTls } : {}),
         })
       : null;
   const runtimeSchemaRequired = platformRequiresRuntimeSchema();
-  const schemaReady = assertPlatformRuntimeSchema(healthPool);
+
+  LobbyRoom.configureFriendStore(friendStore);
+  InviteRoom.configureFriendStore(friendStore, { enforceFriendship: friendStoreMode === 'postgres' });
+  QuickMatchRoom.configureBlockStore(blockStore);
+  CustomRoom.configureParticipantStore(matchParticipantStore);
+  MatchShellRoom.configureParticipantStore(matchParticipantStore);
+  MatchShellRoom.configureChatPreviewStore(chatPreviewStore);
+
+  let relationshipSubscriptionReady = relationshipRedis === null;
+  const reconcileRelationshipAuthorization = async () => {
+    await Promise.all([
+      LobbyRoom.reconcileAuthorization(),
+      QuickMatchRoom.reconcileAuthorization(),
+      InviteRoom.reconcileAuthorization(),
+    ]);
+  };
+  const ensureRelationshipSubscription = async () => {
+    if (!relationshipRedis) return;
+    const count = await relationshipRedis.subscribe(RELATIONSHIP_CHANGE_CHANNEL);
+    if (Number(count) < 1) throw new Error('relationship change subscription was not established');
+    relationshipSubscriptionReady = true;
+    await reconcileRelationshipAuthorization();
+  };
+  relationshipRedis?.on('message', (channel, payload) => {
+    if (channel !== RELATIONSHIP_CHANGE_CHANNEL) return;
+    const change = parseRelationshipChange(payload);
+    if (!change) {
+      logger.warn({ channel }, 'ignored malformed relationship change event');
+      return;
+    }
+    void Promise.all([
+      LobbyRoom.handleRelationshipChange(change),
+      QuickMatchRoom.handleRelationshipChange(change),
+      InviteRoom.handleRelationshipChange(change),
+    ]).catch((err) => logger.error({ err, eventId: change.eventId }, 'failed to apply relationship change'));
+  });
+  relationshipRedis?.on('ready', () => {
+    void ensureRelationshipSubscription().catch((err) => {
+      relationshipSubscriptionReady = false;
+      logger.error({ err }, 'failed to restore relationship change subscription');
+    });
+  });
+  relationshipRedis?.on('close', () => {
+    relationshipSubscriptionReady = false;
+  });
+  relationshipRedis?.on('end', () => {
+    relationshipSubscriptionReady = false;
+  });
+  const relationshipReady = relationshipRedis ? ensureRelationshipSubscription() : Promise.resolve();
+  const schemaReady = Promise.all([assertPlatformRuntimeSchema(healthPool), relationshipReady]).then(() => undefined);
   // server.ts awaits this before listen; attach a handler immediately so a
   // synchronous configuration rejection cannot become an unhandled promise.
   void schemaReady.catch(() => undefined);
   healthRedis?.on('error', (err) => logger.warn({ err }, 'platform health Redis connection error'));
   authRevocationRedis?.on('error', (err) => logger.warn({ err }, 'platform auth Redis connection error'));
+  relationshipRedis?.on('error', (err) => logger.warn({ err }, 'platform relationship Redis connection error'));
   configurePlatformJwtRevocationStore(authRevocationRedis, { timeoutMs: admissionLimits.timeoutMs });
   configurePlatformJwtAccountStore(healthPool ? createPostgresPlatformJwtAccountStore(healthPool) : null, {
     required: requiresPostgres,
@@ -200,6 +274,14 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     }
     if (runtimeSchemaRequired) checks.push({ name: 'schema', promise: schemaReady });
     if (healthRedis) checks.push({ name: 'redis', promise: healthRedis.ping() });
+    if (relationshipRedis) {
+      checks.push({
+        name: 'relationship-events',
+        promise: relationshipSubscriptionReady
+          ? relationshipRedis.ping()
+          : Promise.reject(new Error('relationship change subscription is unavailable')),
+      });
+    }
     if (checks.length === 0) return { ok: true, errors: [], checks: {} };
 
     const results = await Promise.allSettled(checks.map((c) => c.promise));
@@ -223,13 +305,6 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     return { ok: result.ok, checks: result.checks };
   });
 
-  LobbyRoom.configureFriendStore(friendStore);
-  InviteRoom.configureFriendStore(friendStore, { enforceFriendship: friendStoreMode === 'postgres' });
-  QuickMatchRoom.configureBlockStore(blockStore);
-  CustomRoom.configureParticipantStore(matchParticipantStore);
-  MatchShellRoom.configureParticipantStore(matchParticipantStore);
-  MatchShellRoom.configureChatPreviewStore(chatPreviewStore);
-
   const closeStores = async () => {
     await Promise.all([
       friendStore.close?.(),
@@ -239,10 +314,14 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       healthPool?.end(),
       healthRedis?.quit(),
       authRevocationRedis?.quit(),
+      relationshipRedis?.quit(),
     ]);
     configurePlatformJwtRevocationStore(null);
     configurePlatformJwtAccountStore(null);
     QuickMatchRoom.configureBlockStore(null);
+    LobbyRoom.clearActiveRoomsForTests();
+    QuickMatchRoom.clearActiveRoomsForTests();
+    InviteRoom.clearActiveRoomsForTests();
   };
 
   const gameServer = new Server({

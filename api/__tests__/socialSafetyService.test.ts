@@ -55,7 +55,7 @@ describe('social safety service', () => {
 
     await expect(respondToFriendRequest({ pool, userId: 'u_me', requestId: 9, accept: true })).resolves.toEqual({
       ok: true,
-      body: { accepted: true },
+      body: { accepted: true, friendUserId: 'u_sender' },
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('VALUES ($1, $2), ($2, $1)'), ['u_sender', 'u_me']);
   });

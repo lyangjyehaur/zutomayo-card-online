@@ -28,6 +28,20 @@ export interface PlatformClientProfile {
 }
 
 export type PlatformFriendPresenceEvent = 'online' | 'offline' | 'update';
+export type PlatformRelationshipChangeKind =
+  | 'friendship_added'
+  | 'friendship_removed'
+  | 'block_created'
+  | 'block_removed'
+  | 'account_deleted';
+
+export interface PlatformRelationshipChange {
+  version: 1;
+  eventId: string;
+  kind: PlatformRelationshipChangeKind;
+  userIds: string[];
+  occurredAt: string;
+}
 
 export interface PlatformFriendPresence {
   event: PlatformFriendPresenceEvent;

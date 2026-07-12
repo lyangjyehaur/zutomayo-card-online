@@ -9,6 +9,7 @@ import type {
   QuickMatchRoomMetadata,
   QuickMatchRoomOptions,
   QuickMatchStatus,
+  PlatformRelationshipChange,
 } from './types';
 
 function optionalText(value: unknown, maxLength: number): string | undefined {
@@ -18,6 +19,10 @@ function optionalText(value: unknown, maxLength: number): string | undefined {
 }
 
 const DEFAULT_QUICK_MATCH_DECK_NAME = '__random__';
+const QUICK_MATCH_AUTH_RESERVATION_TTL_MS = Math.min(
+  30_000,
+  Math.max(2_000, Number(process.env.QUICK_MATCH_AUTH_RESERVATION_TTL_MS) || 10_000),
+);
 const QUICK_MATCH_DECK_NAMES = new Set(
   (process.env.QUICK_MATCH_DECK_NAMES || '__random__,dark,flame,electric,wind')
     .split(',')
@@ -32,9 +37,22 @@ function quickMatchDeckName(value: unknown): string | undefined {
 
 export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; client: PlatformClient }> {
   private static blockStore: PlatformBlockStore = createEmptyPlatformBlockStore();
+  private static readonly activeRooms = new Set<QuickMatchRoom>();
 
   static configureBlockStore(store: PlatformBlockStore | null): void {
     QuickMatchRoom.blockStore = store ?? createEmptyPlatformBlockStore();
+  }
+
+  static async handleRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
+    await Promise.all([...QuickMatchRoom.activeRooms].map((room) => room.applyRelationshipChange(change)));
+  }
+
+  static async reconcileAuthorization(): Promise<void> {
+    await Promise.all([...QuickMatchRoom.activeRooms].map((room) => room.reconcileAuthorization()));
+  }
+
+  static clearActiveRoomsForTests(): void {
+    QuickMatchRoom.activeRooms.clear();
   }
 
   maxClients = 2;
@@ -43,7 +61,12 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private hostSessionId?: string;
   private boardgameMatchID?: string;
   private authenticatedUserIds = new Set<string>();
-  private deckReservations = new Map<string, { deckName: string; reservationId?: string }>();
+  private deckReservations = new Map<
+    string,
+    { deckName: string; reservationId?: string; sessionId?: string; expiresAt: number }
+  >();
+  private joinedSessionIds = new Set<string>();
+  private failedTransitionSessionIds = new Set<string>();
   private authAdmissionTail: Promise<void> = Promise.resolve();
 
   async onCreate(): Promise<void> {
@@ -68,6 +91,11 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     });
 
     await this.refreshMetadata();
+    QuickMatchRoom.activeRooms.add(this);
+  }
+
+  onDispose(): void {
+    QuickMatchRoom.activeRooms.delete(this);
   }
 
   async onAuth(_client: PlatformClient, options: QuickMatchRoomOptions, context: AuthContext): Promise<PlatformAuth> {
@@ -83,11 +111,16 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
       (reservationId ? '__reserved__' : undefined) ||
       (process.env.NODE_ENV === 'production' ? undefined : DEFAULT_QUICK_MATCH_DECK_NAME);
     if (!deckName) throw new Error('A server-supported deck is required');
-    await this.reserveQuickMatchIdentity(auth.userId, deckName, reservationId);
+    await this.reserveQuickMatchIdentity(auth.userId, deckName, reservationId, _client.sessionId);
     return { ...auth, role: 'player' };
   }
 
-  private async reserveQuickMatchIdentity(userId: string, deckName: string, reservationId?: string): Promise<void> {
+  private async reserveQuickMatchIdentity(
+    userId: string,
+    deckName: string,
+    reservationId?: string,
+    sessionId?: string,
+  ): Promise<void> {
     let releaseAdmission!: () => void;
     const previousAdmission = this.authAdmissionTail;
     this.authAdmissionTail = new Promise<void>((resolve) => {
@@ -95,6 +128,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     });
     await previousAdmission;
     try {
+      this.pruneExpiredReservations();
       // Serialize the async PostgreSQL block check with identity reservation so
       // two concurrent onAuth calls cannot both observe an empty room.
       if (this.authenticatedUserIds.has(userId) || this.clients.some((client) => client.userData?.userId === userId)) {
@@ -110,7 +144,12 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
         }
       }
       this.authenticatedUserIds.add(userId);
-      this.deckReservations.set(userId, { deckName, ...(reservationId ? { reservationId } : {}) });
+      this.deckReservations.set(userId, {
+        deckName,
+        ...(reservationId ? { reservationId } : {}),
+        ...(sessionId ? { sessionId } : {}),
+        expiresAt: Date.now() + QUICK_MATCH_AUTH_RESERVATION_TTL_MS,
+      });
     } finally {
       releaseAdmission();
     }
@@ -121,6 +160,14 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     if (!auth) throw new Error('Missing platform auth');
     await assertPlatformAuthCurrent(auth);
     const reservation = this.deckReservations.get(auth.userId);
+    if (reservation && reservation.expiresAt <= Date.now()) {
+      this.authenticatedUserIds.delete(auth.userId);
+      this.deckReservations.delete(auth.userId);
+      throw new Error('Expired quick-match reservation');
+    }
+    if (reservation?.sessionId && reservation.sessionId !== client.sessionId) {
+      throw new Error('Stale quick-match reservation');
+    }
     const deckName =
       reservation?.deckName ??
       (process.env.NODE_ENV === 'production'
@@ -136,15 +183,41 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
       deckName,
     };
 
+    try {
+      await this.assertCurrentPairAllowed();
+    } catch (error) {
+      this.authenticatedUserIds.delete(auth.userId);
+      this.deckReservations.delete(auth.userId);
+      client.userData = undefined;
+      throw error;
+    }
+    this.joinedSessionIds.add(client.sessionId);
+
     if (this.clients.length >= 2 && this.status === 'waiting') {
       this.status = 'matched';
       this.hostSessionId = this.clients[0]?.sessionId;
-      this.lock();
-      await this.refreshMetadata();
-      this.clock.setTimeout(() => {
+      try {
+        await this.lock();
+        await this.refreshMetadata();
         this.sendMatchedMessages();
         this.broadcastSnapshot();
-      }, 50);
+      } catch (error) {
+        this.failedTransitionSessionIds.add(client.sessionId);
+        this.status = 'waiting';
+        this.hostSessionId = undefined;
+        try {
+          await this.unlock();
+        } catch {
+          // The room may already be disposed; the metadata rollback below is
+          // still attempted so a later admission cannot observe "matched".
+        }
+        try {
+          await this.refreshMetadata();
+        } catch {
+          // Preserve the original admission error for the client.
+        }
+        throw error;
+      }
       return;
     }
 
@@ -152,11 +225,26 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     client.send('quickMatchSnapshot', this.snapshot());
   }
 
+  private pruneExpiredReservations(now = Date.now()): void {
+    for (const [userId, reservation] of this.deckReservations) {
+      if (reservation.expiresAt > now) continue;
+      if (this.clients.some((client) => client.userData?.userId === userId)) continue;
+      this.deckReservations.delete(userId);
+      this.authenticatedUserIds.delete(userId);
+    }
+  }
+
   async onLeave(client: PlatformClient): Promise<void> {
+    const completedJoin = this.joinedSessionIds.delete(client.sessionId);
+    const failedTransition = this.failedTransitionSessionIds.delete(client.sessionId);
     const userId = client.userData?.userId;
     if (userId) {
       this.authenticatedUserIds.delete(userId);
       this.deckReservations.delete(userId);
+    }
+    if (!completedJoin || failedTransition) {
+      await this.refreshMetadata(client.sessionId);
+      return;
     }
     if (this.status === 'matched' && client.sessionId !== this.hostSessionId) {
       await this.refreshMetadata(client.sessionId);
@@ -202,6 +290,20 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     }
   }
 
+  private async assertCurrentPairAllowed(): Promise<void> {
+    const userIds = [
+      ...new Set(
+        this.clients
+          .map((client) => client.userData?.userId || client.auth?.userId)
+          .filter((userId): userId is string => Boolean(userId)),
+      ),
+    ];
+    if (userIds.length < 2) return;
+    if (await QuickMatchRoom.blockStore.areUsersBlocked(userIds[0], userIds[1])) {
+      throw new Error('Quick match is not allowed');
+    }
+  }
+
   private broadcastSnapshot(ignoredSessionId?: string): void {
     this.broadcast('quickMatchSnapshot', this.snapshot(ignoredSessionId));
   }
@@ -212,6 +314,51 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     await this.refreshMetadata(ignoredSessionId);
     this.broadcast('quickMatchCancelled', { reason });
     this.broadcastSnapshot(ignoredSessionId);
+  }
+
+  private roomUserIds(): Set<string> {
+    const userIds = new Set(this.authenticatedUserIds);
+    for (const client of this.clients) {
+      const userId = client.userData?.userId || client.auth?.userId;
+      if (userId) userIds.add(userId);
+    }
+    return userIds;
+  }
+
+  private async applyRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
+    const roomUserIds = this.roomUserIds();
+    if (change.kind === 'account_deleted') {
+      const deletedUserId = change.userIds[0];
+      if (!roomUserIds.has(deletedUserId)) return;
+      await this.cancel('account_deleted');
+      for (const client of this.clients) {
+        if ((client.userData?.userId || client.auth?.userId) === deletedUserId) {
+          client.leave(4001, 'account_deleted');
+        }
+      }
+      return;
+    }
+    if (change.kind === 'block_created' && change.userIds.every((userId) => roomUserIds.has(userId))) {
+      await this.cancel('relationship_changed');
+    }
+  }
+
+  private async reconcileAuthorization(): Promise<void> {
+    for (const client of this.clients) {
+      if (!client.auth) continue;
+      try {
+        await assertPlatformAuthCurrent(client.auth);
+      } catch {
+        await this.cancel('authorization_revoked');
+        client.leave(4001, 'authorization_revoked');
+      }
+    }
+    if (this.status !== 'waiting' && this.status !== 'matched') return;
+    try {
+      await this.assertCurrentPairAllowed();
+    } catch {
+      await this.cancel('relationship_changed');
+    }
   }
 
   private async refreshMetadata(ignoredSessionId?: string): Promise<void> {

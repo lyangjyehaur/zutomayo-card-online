@@ -9,6 +9,8 @@ process.env.APP_VERSION = '0.2.0';
 process.env.LOGTO_ENDPOINT = 'https://auth.example';
 process.env.LOGTO_M2M_APP_ID = 'logto-management-client';
 process.env.LOGTO_M2M_APP_SECRET = 'logto-management-secret';
+process.env.GOOGLE_OAUTH_CLIENT_ID = 'google-test-client';
+process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'google-test-secret';
 delete process.env.TURNSTILE_SECRET_KEY;
 delete process.env.TURNSTILE_REQUIRED;
 delete process.env.SENTRY_DSN;
@@ -53,6 +55,7 @@ const mockRedisMmCancelPair = vi.fn().mockResolvedValue(0);
 const mockRedisMmApplyBlock = vi.fn().mockResolvedValue(0);
 const mockRedisSadd = vi.fn().mockResolvedValue(1);
 const mockRedisSrem = vi.fn().mockResolvedValue(1);
+const mockRedisPublish = vi.fn().mockResolvedValue(1);
 
 const mockRedis = {
   incr: mockRedisIncr,
@@ -80,6 +83,7 @@ const mockRedis = {
   mmApplyBlock: mockRedisMmApplyBlock,
   sadd: mockRedisSadd,
   srem: mockRedisSrem,
+  publish: mockRedisPublish,
 };
 
 // Clear cached pg and ioredis so Module._load interception returns our mocks.
@@ -492,6 +496,173 @@ describe('server routes', () => {
       expect(body.localAuthEnabled).toBe(true);
       expect(Array.isArray(body.providers)).toBe(true);
     });
+
+    it('binds OAuth state to HttpOnly cookies and sends an S256 PKCE challenge', async () => {
+      const res = await sendRequest('GET', '/api/oauth/google/start?returnTo=/profile');
+      expect(res.statusCode).toBe(302);
+      const location = new URL(String(res.headers.location));
+      expect(location.searchParams.get('code_challenge_method')).toBe('S256');
+      expect(location.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(location.searchParams.get('state')).toBeTruthy();
+      const setCookie = res.headers['set-cookie'];
+      const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+      expect(
+        cookies.some(
+          (cookie) => String(cookie).includes('zutomayo_oauth_state_') && String(cookie).includes('HttpOnly'),
+        ),
+      ).toBe(true);
+      expect(
+        cookies.some(
+          (cookie) => String(cookie).includes('zutomayo_oauth_pkce_') && String(cookie).includes('HttpOnly'),
+        ),
+      ).toBe(true);
+      const state = location.searchParams.get('state') || '';
+      const statePayload = JSON.parse(Buffer.from(state.split('.')[0], 'base64url').toString()) as {
+        returnTo?: string;
+      };
+      expect(statePayload.returnTo).toBe('/profile');
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+
+    it('normalizes protocol-relative OAuth return paths to a local route', async () => {
+      const res = await sendRequest('GET', '/api/oauth/google/start?returnTo=%2F%2Fevil.example%2Flogin');
+      expect(res.statusCode).toBe(302);
+      const state = new URL(String(res.headers.location)).searchParams.get('state') || '';
+      const statePayload = JSON.parse(Buffer.from(state.split('.')[0], 'base64url').toString()) as {
+        returnTo?: string;
+      };
+      expect(statePayload.returnTo).toBe('/');
+    });
+
+    it('rejects an OAuth callback when the original browser cookies are missing', async () => {
+      const start = await sendRequest('GET', '/api/oauth/google/start');
+      const state = new URL(String(start.headers.location)).searchParams.get('state');
+      const callback = await sendRequest(
+        'GET',
+        `/api/oauth/google/callback?code=provider-code&state=${encodeURIComponent(String(state))}`,
+      );
+
+      expect(callback.statusCode).toBe(400);
+      expect(callback._body).toContain('Invalid_OAuth_state');
+      expect(callback.headers['cache-control']).toContain('no-store');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('redeems a successful OAuth session ticket exactly once', async () => {
+      const oauthValues = new Map<string, string>();
+      mockRedisSet.mockImplementation(async (key: string, value: string) => {
+        if (key.startsWith('oauth:')) oauthValues.set(key, value);
+        return 'OK';
+      });
+      mockRedisEval.mockImplementation(async (_script: string, _keyCount: number, key: string) => {
+        if (!key.startsWith('oauth:')) return null;
+        const value = oauthValues.get(key) || null;
+        oauthValues.delete(key);
+        return value;
+      });
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('account_deletion_requests') && sql.includes('provider_user_id')) {
+          return { rows: [], rowCount: 0 };
+        }
+        if (sql.includes('SELECT user_id FROM user_identities')) return { rows: [], rowCount: 0 };
+        if (sql.includes('SELECT id FROM users WHERE email')) return { rows: [], rowCount: 0 };
+        if (sql.includes('INSERT INTO users')) return { rows: [], rowCount: 1 };
+        if (sql.includes('SELECT auth_version, deleted_at FROM users')) {
+          return { rows: [{ auth_version: 1, deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('SELECT provider_user_id FROM user_identities')) return { rows: [], rowCount: 0 };
+        if (sql.includes('INSERT INTO user_identities')) return { rows: [], rowCount: 1 };
+        if (sql.includes('SELECT * FROM users')) {
+          return {
+            rows: [
+              {
+                id: 'u_oauth',
+                email: 'oauth@example.com',
+                nickname: 'OAuth User',
+                elo: 1000,
+                wins: 0,
+                match_count: 0,
+                password_hash: 'oauth:disabled',
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ access_token: 'provider-access-token' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            sub: 'google-user-1',
+            email: 'oauth@example.com',
+            email_verified: true,
+            name: 'OAuth User',
+          }),
+        });
+
+      const start = await sendRequest('GET', '/api/oauth/google/start?returnTo=/profile');
+      const location = new URL(String(start.headers.location));
+      const state = location.searchParams.get('state') || '';
+      const setCookie = start.headers['set-cookie'];
+      const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+      const browserCookie = cookies.map((cookie) => String(cookie).split(';', 1)[0]).join('; ');
+      const callback = await sendRequest(
+        'GET',
+        `/api/oauth/google/callback?code=provider-code&state=${encodeURIComponent(state)}`,
+        undefined,
+        { cookie: browserCookie },
+      );
+
+      expect(callback.statusCode).toBe(200);
+      expect(callback.headers['cache-control']).toContain('no-store');
+      const ticket = callback._body.match(/body: JSON\.stringify\(\{ ticket: "([^"]+)" \}\)/)?.[1];
+      expect(ticket).toBeTruthy();
+
+      const firstRedeem = await sendRequest('POST', '/api/oauth/session', { ticket });
+      expect(firstRedeem.statusCode).toBe(200);
+      const secondRedeem = await sendRequest('POST', '/api/oauth/session', { ticket });
+      expect(secondRedeem.statusCode).toBe(401);
+    });
+
+    it('rejects account linking when the initiating session is no longer current', async () => {
+      const oauthValues = new Map<string, string>();
+      mockRedisSet.mockImplementation(async (key: string, value: string) => {
+        if (key.startsWith('oauth:')) oauthValues.set(key, value);
+        return 'OK';
+      });
+      mockRedisEval.mockImplementation(async (_script: string, _keyCount: number, key: string) => {
+        const value = oauthValues.get(key) || null;
+        oauthValues.delete(key);
+        return value;
+      });
+
+      const start = await sendRequest('GET', '/api/oauth/google/start?mode=link&returnTo=/profile', undefined, {
+        authorization: `Bearer ${createUserJwt('u_link')}`,
+      });
+      expect(start.statusCode).toBe(302);
+      const state = new URL(String(start.headers.location)).searchParams.get('state') || '';
+      const setCookie = start.headers['set-cookie'];
+      const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+      const oauthCookies = cookies.map((cookie) => String(cookie).split(';', 1)[0]).join('; ');
+
+      const callback = await sendRequest(
+        'GET',
+        `/api/oauth/google/callback?code=provider-code&state=${encodeURIComponent(state)}`,
+        undefined,
+        { cookie: oauthCookies },
+      );
+
+      expect(callback.statusCode).toBe(401);
+      expect(callback._body).toContain('Account_linking_session_expired');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('input validation', () => {
@@ -604,6 +775,30 @@ describe('server routes', () => {
     it('GET /api/friends returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/friends');
       expect(res.statusCode).toBe(401);
+    });
+
+    it('publishes a block relationship event only after the database transaction succeeds', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('SELECT id FROM users') && sql.includes('deleted_at IS NULL')) {
+          return { rows: [{ id: 'u_target' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('POST', '/api/blocks', { targetUserId: 'u_target' }, userUnsafeHeaders('u_test'));
+
+      expect(res.statusCode).toBe(200);
+      expect(mockQuery.mock.calls.map(([sql]) => sql)).toEqual(
+        expect.arrayContaining(['BEGIN', expect.stringContaining('INSERT INTO user_blocks'), 'COMMIT']),
+      );
+      expect(mockRedisPublish).toHaveBeenCalledWith(
+        'zutomayo:relationship-change:v1',
+        expect.stringContaining('"kind":"block_created"'),
+      );
+      const commitIndex = mockQuery.mock.calls.findIndex(([sql]) => sql === 'COMMIT');
+      expect(mockQuery.mock.invocationCallOrder[commitIndex]).toBeLessThan(
+        mockRedisPublish.mock.invocationCallOrder[0],
+      );
     });
 
     it('GET /api/decks returns 401 without auth', async () => {

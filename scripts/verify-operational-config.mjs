@@ -94,7 +94,11 @@ export function validateOperationalConfig() {
     'PG_HOST: ${PG_RETENTION_HOST:?',
     'RETENTION_METRICS_FILE:',
   ]);
-  requireFragments('scripts/run-retention.cjs', ["process.env.PGSSLMODE === 'verify-full'"]);
+  requireFragments('scripts/run-retention.cjs', [
+    "require('../api/runtimeSecurityConfig.cjs')",
+    'retention worker must use a dedicated PostgreSQL role',
+    'poolConfig.ssl = postgresSslConfig(process.env)',
+  ]);
   requireFragments('observability/prometheus/prometheus.yml', [
     "job_name: 'zutomayo-game'",
     "job_name: 'zutomayo-api'",

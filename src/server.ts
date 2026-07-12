@@ -30,6 +30,13 @@ import {
 import { createRateLimit, getClientIpFromRequest } from './server/rateLimit';
 import type { IncomingHttpHeaders, IncomingMessage } from 'http';
 import { createPlatformSeatToken } from './platform/seatToken';
+import {
+  postgresConnectionString,
+  postgresSslConfig,
+  requireSecret,
+  resolveRedisConnectionConfig,
+  validateProductionRuntimeSecurity,
+} from './runtimeSecurityConfig';
 import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
 import { replayJsonRequestBody } from './server/requestBodyReplay';
@@ -183,7 +190,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, '..');
 const adminRoot = path.join(root, 'admin');
 
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+const REDIS_CONNECTION = resolveRedisConnectionConfig(process.env);
+const REDIS_URL = REDIS_CONNECTION.url;
+const REDIS_TLS = REDIS_CONNECTION.tls ? { rejectUnauthorized: true } : undefined;
 // 復用服務器既有 Redis 時用 REDIS_DB 切到獨立 DB index（0-15）避免與其他服務的 key 衝突。
 // duplicate() 會繼承此選項，因此 redisAdapterSubClient / redisPubSubSubClient 也用同一 DB。
 const REDIS_DB = Number(process.env.REDIS_DB) || 0;
@@ -200,7 +209,11 @@ const AUTH_REVOCATION_TIMEOUT_MS = Math.min(
 // DB 改用 PostgresAdapter（自實作 StorageAPI.Async），解決 FlatFile 每次 move 寫整個 state 到磁碟的 I/O 瓶頸。
 
 // 共用 publish 連線（publish 不會進入 subscribe 模式，可安全共用）。
-const redisPubClient = new Redis(REDIS_URL, { db: REDIS_DB, commandTimeout: AUTH_REVOCATION_TIMEOUT_MS });
+const redisPubClient = new Redis(REDIS_URL, {
+  db: REDIS_DB,
+  commandTimeout: AUTH_REVOCATION_TIMEOUT_MS,
+  ...(REDIS_TLS ? { tls: REDIS_TLS } : {}),
+});
 configurePlatformJwtRevocationStore(redisPubClient, { timeoutMs: AUTH_REVOCATION_TIMEOUT_MS });
 // Socket.IO adapter 專屬 subscribe 連線。
 const redisAdapterSubClient = redisPubClient.duplicate();
@@ -241,17 +254,23 @@ let matchResultOutboxWorker: ReturnType<typeof startMatchResultOutboxWorker> | u
 // 的 seed-cards-pg.ts 或 admin 上傳寫入）。game 服務的 boardgame.io server-side
 // 邏輯需要卡牌定義來初始化牌組，啟動時直接從 PG 讀取，不依賴檔案系統靜態卡表。
 // 瀏覽器端則透過 /api/cards 動態載入（參見 App.tsx refreshCards）。
+const gameDatabaseUrl = postgresConnectionString(process.env);
 const cardPool = new Pool({
-  host: process.env.PG_HOST || 'localhost',
-  port: Number(process.env.PG_PORT) || 5432,
-  user: process.env.PG_USER || 'postgres',
-  password: process.env.PG_PASSWORD || '',
-  database: process.env.PG_DATABASE || 'postgres',
+  ...(gameDatabaseUrl
+    ? { connectionString: gameDatabaseUrl }
+    : {
+        host: process.env.PG_HOST || 'localhost',
+        port: Number(process.env.PG_PORT) || 5432,
+        user: process.env.PG_USER || 'postgres',
+        password: process.env.PG_PASSWORD || '',
+        database: process.env.PG_DATABASE || 'postgres',
+      }),
   max: 5,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
   query_timeout: Math.min(5_000, Math.max(100, Number(process.env.GAME_AUTH_DB_QUERY_TIMEOUT_MS) || 1_500)),
   statement_timeout: Math.min(5_000, Math.max(100, Number(process.env.GAME_AUTH_DB_QUERY_TIMEOUT_MS) || 1_500)),
+  ssl: postgresSslConfig(process.env),
 });
 configurePlatformJwtAccountStore(createPostgresPlatformJwtAccountStore(cardPool), { required: true });
 
@@ -868,8 +887,16 @@ function validateSecurityConfig(): void {
     logger.fatal('Generate one with: openssl rand -hex 32');
     process.exit(1);
   }
-  if (JWT_SECRET.length < 32) {
-    logger.warn('JWT_SECRET should be at least 32 characters for security');
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      requireSecret('JWT_SECRET', JWT_SECRET);
+      validateProductionRuntimeSecurity(process.env);
+    } catch (error) {
+      logger.fatal(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  } else if (Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
+    logger.warn('JWT_SECRET should be at least 32 bytes for security');
   }
 }
 

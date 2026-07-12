@@ -5,6 +5,7 @@ api/*
 !api/retentionService.cjs
 !api/deckService.cjs
 !api/schemaGate.cjs
+!api/relationshipEvents.cjs
 dist
 dist-server
 coverage

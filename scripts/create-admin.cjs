@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const util = require('util');
 const { Pool } = require('pg');
 const { encryptAdminTotpSecret, randomBase32 } = require('../api/adminSecretCrypto.cjs');
+const { postgresConnectionString, postgresSslConfig } = require('../api/runtimeSecurityConfig.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 const VALID_ROLES = new Set(['viewer', 'moderator', 'operator', 'admin']);
@@ -27,13 +28,18 @@ async function main() {
   const salt = crypto.randomBytes(16).toString('hex');
   const passwordHash = (await pbkdf2(password, salt, 100_000, 64, 'sha512')).toString('hex');
   const ciphertext = encryptAdminTotpSecret(totpSecret, encryptionSecret);
+  const databaseUrl = postgresConnectionString(process.env);
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    host: process.env.PG_HOST,
-    port: Number(process.env.PG_PORT) || 5432,
-    user: process.env.PG_USER,
-    password: process.env.PG_PASSWORD,
-    database: process.env.PG_DATABASE,
+    ...(databaseUrl
+      ? { connectionString: databaseUrl }
+      : {
+          host: process.env.PG_HOST,
+          port: Number(process.env.PG_PORT) || 5432,
+          user: process.env.PG_USER,
+          password: process.env.PG_PASSWORD,
+          database: process.env.PG_DATABASE,
+        }),
+    ssl: postgresSslConfig(process.env),
   });
 
   try {

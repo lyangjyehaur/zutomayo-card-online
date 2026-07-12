@@ -376,6 +376,43 @@ describe('platform room auth', () => {
     expect(areUsersBlocked).toHaveBeenCalledWith('u_blocked', 'u_first');
   });
 
+  it('prunes an expired pre-join quick-match reservation after an auth disconnect', async () => {
+    const quickRoom = new QuickMatchRoom();
+    await expect(
+      quickRoom.onAuth(
+        { sessionId: 'session_disconnected' } as never,
+        { displayName: 'First' },
+        cookieAuthContext('u_reconnect'),
+      ),
+    ).resolves.toMatchObject({ userId: 'u_reconnect' });
+    const reservation = quickRoom['deckReservations'].get('u_reconnect');
+    expect(reservation).toBeDefined();
+    if (reservation) reservation.expiresAt = 0;
+
+    await expect(
+      quickRoom.onAuth(
+        { sessionId: 'session_retry' } as never,
+        { displayName: 'Retry' },
+        cookieAuthContext('u_reconnect'),
+      ),
+    ).resolves.toMatchObject({ userId: 'u_reconnect' });
+    expect(quickRoom['deckReservations'].get('u_reconnect')?.sessionId).toBe('session_retry');
+  });
+
+  it('rejects a quick-match join after its auth reservation expires', async () => {
+    const quickRoom = new QuickMatchRoom();
+    const client = { sessionId: 'session_expired' } as never;
+    const auth = await quickRoom.onAuth(client, { displayName: 'Expired' }, cookieAuthContext('u_expired'));
+    const reservation = quickRoom['deckReservations'].get('u_expired');
+    expect(reservation).toBeDefined();
+    if (reservation) reservation.expiresAt = Date.now() - 1;
+    Object.assign(client, { auth });
+
+    await expect(quickRoom.onJoin(client)).rejects.toThrow('Expired quick-match reservation');
+    expect(quickRoom['deckReservations'].has('u_expired')).toBe(false);
+    expect(quickRoom['authenticatedUserIds'].has('u_expired')).toBe(false);
+  });
+
   it('parses directional friend invite ids', () => {
     expect(parseFriendInviteId('friend:v1:logto%3Au_1:u%202')).toEqual({
       inviterUserId: 'logto:u_1',

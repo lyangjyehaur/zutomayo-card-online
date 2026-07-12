@@ -43,6 +43,15 @@ const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardSer
 const { listAdminUsers, resetUserElo } = require('./adminService.cjs');
 const { authenticateAdmin, revokeAdminSession, verifyAdminSession } = require('./adminAuthService.cjs');
 const { assertRuntimeSchema } = require('./schemaGate.cjs');
+const { fetchWithResilience } = require('./oauthHttp.cjs');
+const { publishRelationshipChange } = require('./relationshipEvents.cjs');
+const {
+  postgresConnectionString,
+  postgresSslConfig,
+  resolveOAuthPublicBaseUrl,
+  resolveRedisConnectionConfig,
+  validateProductionRuntimeSecurity,
+} = require('./runtimeSecurityConfig.cjs');
 const { metricsRequestAuthorized } = require('./metricsAuth.cjs');
 const { decryptAdminTotpSecret } = require('./adminSecretCrypto.cjs');
 const {
@@ -181,6 +190,13 @@ function checkMetricsAuth(req, { token = METRICS_TOKEN, nodeEnv = process.env.NO
   return metricsRequestAuthorized(req.headers.authorization, { token, nodeEnv });
 }
 const AUTH_COOKIE_NAME = 'zutomayo_session';
+const OAUTH_STATE_COOKIE_PREFIX = 'zutomayo_oauth_state_';
+const OAUTH_PKCE_COOKIE_PREFIX = 'zutomayo_oauth_pkce_';
+const OAUTH_STATE_TTL_SECONDS = 10 * 60;
+const OAUTH_SESSION_TICKET_TTL_SECONDS = 2 * 60;
+const OAUTH_HTTP_TIMEOUT_MS = Math.min(15_000, Math.max(1_000, Number(process.env.OAUTH_HTTP_TIMEOUT_MS) || 8_000));
+const OAUTH_REDIS_TIMEOUT_MS = Math.min(5_000, Math.max(250, Number(process.env.OAUTH_REDIS_TIMEOUT_MS) || 1_500));
+const OAUTH_HTTP_MAX_ATTEMPTS = Math.min(3, Math.max(1, Number(process.env.OAUTH_HTTP_MAX_ATTEMPTS) || 2));
 const ACCESS_TOKEN_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS) || 3600;
 const REFRESH_TOKEN_TTL_SECONDS = Number(process.env.REFRESH_TOKEN_TTL_SECONDS) || 7 * 24 * 60 * 60;
 const SESSION_REVOCATION_TTL_SECONDS = Math.max(ACCESS_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_SECONDS);
@@ -213,7 +229,7 @@ const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || '';
 const TURNSTILE_REQUIRED = process.env.TURNSTILE_REQUIRED === 'true';
 const TURNSTILE_SITEVERIFY_URL =
   process.env.TURNSTILE_SITEVERIFY_URL || 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-const OAUTH_PUBLIC_BASE_URL = process.env.OAUTH_PUBLIC_BASE_URL || '';
+const OAUTH_PUBLIC_BASE_URL = resolveOAuthPublicBaseUrl(process.env);
 const LOGTO_ISSUER = (process.env.LOGTO_ISSUER || '').replace(/\/$/, '');
 const LOGTO_ENDPOINT = (process.env.LOGTO_ENDPOINT || '').replace(/\/$/, '');
 const LOGTO_DISCOVERY_URL =
@@ -272,11 +288,18 @@ if (process.env.SENTRY_DSN) {
 function validateSecurityConfig() {
   if (!JWT_SECRET) {
     logger.fatal('JWT_SECRET environment variable is required');
-    logger.fatal('Generate one with: openssl rand -hex 32');
+    logger.fatal('Generate secrets with: openssl rand -hex 32');
     process.exit(1);
   }
-  if (JWT_SECRET.length < 32) {
-    logger.warn('JWT_SECRET should be at least 32 characters for security');
+  try {
+    validateProductionRuntimeSecurity(process.env);
+  } catch (error) {
+    logger.fatal(error instanceof Error ? error.message : String(error));
+    logger.fatal('Generate secrets with: openssl rand -hex 32');
+    process.exit(1);
+  }
+  if (process.env.NODE_ENV !== 'production' && Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
+    logger.warn('JWT_SECRET should be at least 32 bytes for security');
   }
   if (process.env.NODE_ENV === 'production' && ADMIN_TOTP_ENCRYPTION_KEY.length < 32) {
     logger.fatal('ADMIN_TOTP_ENCRYPTION_KEY must be at least 32 characters in production');
@@ -307,25 +330,36 @@ const PG_DATABASE = process.env.PG_DATABASE || 'postgres';
 
 // Redis 設定（matchmaking 佇列 + rate limit）
 // 復用服務器既有 Redis 時用 REDIS_DB 切到獨立 DB index（0-15）避免與其他服務的 key 衝突。
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const REDIS_CONNECTION = resolveRedisConnectionConfig(process.env);
+const REDIS_URL = REDIS_CONNECTION.url;
+const REDIS_TLS = REDIS_CONNECTION.tls ? { rejectUnauthorized: true } : undefined;
 const REDIS_DB = Number(process.env.REDIS_DB) || 0;
 
 // ===== Database (PG + Redis) =====
+const DATABASE_CONNECTION_URL = postgresConnectionString(process.env);
 const pool = new Pool({
-  host: PG_HOST,
-  port: PG_PORT,
-  user: PG_USER,
-  password: PG_PASSWORD,
-  database: PG_DATABASE,
+  ...(DATABASE_CONNECTION_URL
+    ? { connectionString: DATABASE_CONNECTION_URL }
+    : {
+        host: PG_HOST,
+        port: PG_PORT,
+        user: PG_USER,
+        password: PG_PASSWORD,
+        database: PG_DATABASE,
+      }),
   max: Number(process.env.PG_POOL_MAX) || 20,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
+  ssl: postgresSslConfig(process.env),
 });
 
 const redis = new Redis(REDIS_URL, {
   db: REDIS_DB,
-  maxRetriesPerRequest: null,
+  maxRetriesPerRequest: 1,
+  commandTimeout: Math.min(5_000, Math.max(250, Number(process.env.REDIS_COMMAND_TIMEOUT_MS) || 1_500)),
+  enableOfflineQueue: false,
   enableReadyCheck: true,
+  ...(REDIS_TLS ? { tls: REDIS_TLS } : {}),
 });
 // 連線層錯誤（如 Redis 暫時斷線）不應變成 unhandled error event；
 // query 層錯誤仍會 reject promise 由各 handler 的 safe() 接住。
@@ -1397,17 +1431,54 @@ const OAUTH_PROVIDERS = {
 };
 
 let logtoDiscoveryCache = null;
+const oauthOneTimeMemory = new Map();
+
+async function fetchOAuthWithTimeout(url, options = {}, timeoutMs = OAUTH_HTTP_TIMEOUT_MS) {
+  const method = String(options.method || 'GET').toUpperCase();
+  return fetchWithResilience(fetch, url, options, {
+    timeoutMs,
+    maxAttempts: OAUTH_HTTP_MAX_ATTEMPTS,
+    retry: method === 'GET' || method === 'HEAD' || method === 'DELETE',
+  });
+}
 
 async function resolveLogtoProvider(config) {
   if (!config.discoveryUrl || !config.clientId || !config.clientSecret) return config;
   if (!logtoDiscoveryCache) {
-    const response = await fetch(config.discoveryUrl, { headers: { Accept: 'application/json' } });
+    const configuredDiscovery = new URL(config.discoveryUrl);
+    if (process.env.NODE_ENV === 'production' && configuredDiscovery.protocol !== 'https:') {
+      throw new Error('Logto discovery URL must use HTTPS in production');
+    }
+    const response = await fetchOAuthWithTimeout(config.discoveryUrl, { headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error('Logto discovery failed');
     const discovery = await response.json();
+    const expectedIssuer = LOGTO_ISSUER || (LOGTO_ENDPOINT ? `${LOGTO_ENDPOINT}/oidc` : '');
+    const normalizeIssuer = (value) => String(value || '').replace(/\/$/, '');
+    if (
+      process.env.NODE_ENV === 'production' &&
+      (!discovery.issuer || normalizeIssuer(discovery.issuer) !== normalizeIssuer(expectedIssuer))
+    ) {
+      throw new Error('Logto discovery issuer mismatch');
+    }
+    const endpoint = (value, name) => {
+      let parsed;
+      try {
+        parsed = new URL(String(value || ''));
+      } catch {
+        throw new Error(`Logto discovery ${name} endpoint is invalid`);
+      }
+      if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') {
+        throw new Error(`Logto discovery ${name} endpoint must use HTTPS`);
+      }
+      if (process.env.NODE_ENV === 'production' && parsed.origin !== configuredDiscovery.origin) {
+        throw new Error(`Logto discovery ${name} endpoint origin mismatch`);
+      }
+      return parsed.toString();
+    };
     logtoDiscoveryCache = {
-      authUrl: discovery.authorization_endpoint || '',
-      tokenUrl: discovery.token_endpoint || '',
-      userInfoUrl: discovery.userinfo_endpoint || '',
+      authUrl: endpoint(discovery.authorization_endpoint, 'authorization'),
+      tokenUrl: endpoint(discovery.token_endpoint, 'token'),
+      userInfoUrl: endpoint(discovery.userinfo_endpoint, 'userinfo'),
     };
   }
   return { ...config, ...logtoDiscoveryCache };
@@ -1446,6 +1517,9 @@ function visibleOAuthProviderEntries() {
 
 function getPublicBaseUrl(req) {
   if (OAUTH_PUBLIC_BASE_URL) return OAUTH_PUBLIC_BASE_URL.replace(/\/$/, '');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('OAuth public base URL is unavailable in production');
+  }
   const proto = String(req.headers['x-forwarded-proto'] || 'http')
     .split(',')[0]
     .trim();
@@ -1478,18 +1552,126 @@ function verifyOAuthState(state) {
   }
 }
 
-function createOAuthSessionTicket(userId) {
+function oauthCookieName(prefix, nonce) {
+  return `${prefix}${String(nonce || '')
+    .replace(/[^a-f0-9]/gi, '')
+    .slice(0, 48)}`;
+}
+
+function serializeOAuthCookie(req, name, value, maxAge = OAUTH_STATE_TTL_SECONDS) {
+  const parts = [`${name}=${encodeURIComponent(value)}`, 'Path=/', `Max-Age=${maxAge}`, 'HttpOnly', 'SameSite=Lax'];
+  if (isSecureRequest(req)) parts.push('Secure');
+  return parts.join('; ');
+}
+
+function setOAuthCookie(req, res, name, value, maxAge = OAUTH_STATE_TTL_SECONDS) {
+  appendSetCookie(res, serializeOAuthCookie(req, name, value, maxAge));
+}
+
+function clearOAuthCookies(req, res, nonce) {
+  setOAuthCookie(req, res, oauthCookieName(OAUTH_STATE_COOKIE_PREFIX, nonce), '', 0);
+  setOAuthCookie(req, res, oauthCookieName(OAUTH_PKCE_COOKIE_PREFIX, nonce), '', 0);
+}
+
+function oauthCodeVerifier() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function oauthCodeChallenge(verifier) {
+  return crypto.createHash('sha256').update(verifier).digest('base64url');
+}
+
+function safeStringEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+async function storeOAuthOneTimeValue(key, value, ttlSeconds) {
+  try {
+    const stored = await boundedRedisCommand(
+      () => redis.set(key, value, 'EX', ttlSeconds, 'NX'),
+      OAUTH_REDIS_TIMEOUT_MS,
+    );
+    if (stored !== 'OK') throw new Error('OAuth state already exists');
+    return;
+  } catch (error) {
+    if (process.env.NODE_ENV === 'production') throw new Error('OAuth state store unavailable');
+    oauthOneTimeMemory.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+  }
+}
+
+async function consumeOAuthOneTimeValue(key) {
+  try {
+    if (typeof redis.eval === 'function') {
+      const result = await boundedRedisCommand(
+        () =>
+          redis.eval(
+            'local value = redis.call("GET", KEYS[1]); if value then redis.call("DEL", KEYS[1]) end; return value',
+            1,
+            key,
+          ),
+        OAUTH_REDIS_TIMEOUT_MS,
+      );
+      return typeof result === 'string' ? result : null;
+    }
+    if (process.env.NODE_ENV === 'production') throw new Error('OAuth one-time consume is unavailable');
+  } catch (error) {
+    if (process.env.NODE_ENV === 'production') throw new Error('OAuth state store unavailable');
+  }
+  const entry = oauthOneTimeMemory.get(key);
+  oauthOneTimeMemory.delete(key);
+  if (!entry || entry.expiresAt < Date.now()) return null;
+  return entry.value;
+}
+
+async function issueOAuthState(req, res, payload) {
+  const nonce = crypto.randomBytes(24).toString('hex');
+  const verifier = oauthCodeVerifier();
+  await storeOAuthOneTimeValue(`oauth:state:${nonce}`, verifier, OAUTH_STATE_TTL_SECONDS);
+  setOAuthCookie(req, res, oauthCookieName(OAUTH_STATE_COOKIE_PREFIX, nonce), nonce);
+  setOAuthCookie(req, res, oauthCookieName(OAUTH_PKCE_COOKIE_PREFIX, nonce), verifier);
+  return signOAuthState({ ...payload, nonce, codeChallenge: oauthCodeChallenge(verifier) });
+}
+
+async function consumeOAuthState(req, res, stateValue) {
+  const payload = verifyOAuthState(stateValue);
+  if (
+    !payload ||
+    typeof payload.nonce !== 'string' ||
+    !/^[a-f0-9]{48}$/i.test(payload.nonce) ||
+    typeof payload.codeChallenge !== 'string'
+  )
+    return null;
+  const cookies = parseCookies(req);
+  const cookieNonce = cookies[oauthCookieName(OAUTH_STATE_COOKIE_PREFIX, payload.nonce)] || '';
+  const cookieVerifier = cookies[oauthCookieName(OAUTH_PKCE_COOKIE_PREFIX, payload.nonce)] || '';
+  if (!cookieNonce || !safeStringEqual(cookieNonce, payload.nonce) || !cookieVerifier) return null;
+  const verifier = await consumeOAuthOneTimeValue(`oauth:state:${payload.nonce}`);
+  clearOAuthCookies(req, res, payload.nonce);
+  if (
+    !verifier ||
+    !safeStringEqual(verifier, cookieVerifier) ||
+    !safeStringEqual(oauthCodeChallenge(verifier), payload.codeChallenge)
+  )
+    return null;
+  return { ...payload, codeVerifier: verifier };
+}
+
+async function createOAuthSessionTicket(userId) {
   const now = Math.floor(Date.now() / 1000);
+  const nonce = crypto.randomBytes(12).toString('hex');
+  await storeOAuthOneTimeValue(`oauth:session:${nonce}`, userId, OAUTH_SESSION_TICKET_TTL_SECONDS);
   const body = base64urlJson({
     sub: userId,
     iat: now,
-    exp: now + 2 * 60,
-    nonce: crypto.randomBytes(12).toString('hex'),
+    exp: now + OAUTH_SESSION_TICKET_TTL_SECONDS,
+    nonce,
   });
   return `${body}.${signTokenInput(`oauth-session.${body}`)}`;
 }
 
-function verifyOAuthSessionTicket(ticket) {
+async function consumeOAuthSessionTicket(ticket) {
   try {
     const [body, signature] = String(ticket || '').split('.');
     if (!body || !signature) return null;
@@ -1499,7 +1681,9 @@ function verifyOAuthSessionTicket(ticket) {
     if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
     if (!Number.isFinite(payload.exp) || payload.exp < Math.floor(Date.now() / 1000)) return null;
-    return typeof payload.sub === 'string' ? payload.sub : null;
+    if (typeof payload.sub !== 'string' || typeof payload.nonce !== 'string') return null;
+    const userId = await consumeOAuthOneTimeValue(`oauth:session:${payload.nonce}`);
+    return userId === payload.sub ? userId : null;
   } catch {
     return null;
   }
@@ -1514,8 +1698,23 @@ function oauthErrorReason(error) {
   return reason || 'unknown_error';
 }
 
+function normalizeOAuthReturnTo(value, fallback = '/') {
+  if (typeof value !== 'string') return fallback;
+  const candidate = value.trim();
+  // Reject protocol-relative and backslash variants before URL parsing; both
+  // can be interpreted as an external origin by browser navigation APIs.
+  if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\')) return fallback;
+  try {
+    const parsed = new URL(candidate, 'https://oauth.local.invalid');
+    if (parsed.origin !== 'https://oauth.local.invalid') return fallback;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}` || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function oauthReturnScript({ sessionTicket, returnTo, error }) {
-  const safeReturnTo = typeof returnTo === 'string' && returnTo.startsWith('/') ? returnTo : '/';
+  const safeReturnTo = normalizeOAuthReturnTo(returnTo);
   const url = new URL(`http://localhost${safeReturnTo}`);
   if (error) url.searchParams.set('oauth', 'error');
   if (!error && sessionTicket) url.searchParams.set('oauth', 'login');
@@ -1547,14 +1746,6 @@ function oauthReturnScript({ sessionTicket, returnTo, error }) {
       location.replace(failedUrl.pathname + failedUrl.search + failedUrl.hash);
       return;
     }
-    const response = await fetch('/api/profile', { credentials: 'include', cache: 'no-store' });
-    if (!response.ok) {
-      localStorage.removeItem('zutomayo_session');
-      const failedUrl = new URL(errorTarget, location.origin);
-      failedUrl.searchParams.set('oauth_error', 'session_check_failed_' + response.status);
-      location.replace(failedUrl.pathname + failedUrl.search + failedUrl.hash);
-      return;
-    }
     localStorage.setItem('zutomayo_session', '1');`
         : ''
     }
@@ -1569,15 +1760,26 @@ function oauthReturnScript({ sessionTicket, returnTo, error }) {
 </script>`;
 }
 
-async function exchangeOAuthCode(req, providerConfig, code) {
+function sendOAuthHtml(res, status, body) {
+  res.writeHead(status, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+  });
+  res.end(body);
+}
+
+async function exchangeOAuthCode(req, providerConfig, code, codeVerifier) {
   const body = new URLSearchParams();
   body.set('client_id', providerConfig.clientId);
   body.set('client_secret', providerConfig.clientSecret);
   body.set('code', code);
   body.set('grant_type', 'authorization_code');
   body.set('redirect_uri', oauthRedirectUri(req, providerConfig.provider));
+  if (codeVerifier) body.set('code_verifier', codeVerifier);
 
-  const response = await fetch(providerConfig.tokenUrl, {
+  const response = await fetchOAuthWithTimeout(providerConfig.tokenUrl, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -1598,7 +1800,7 @@ async function exchangeOAuthCode(req, providerConfig, code) {
 }
 
 async function fetchJsonWithBearer(url, accessToken) {
-  const response = await fetch(url, {
+  const response = await fetchOAuthWithTimeout(url, {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${accessToken}`,
@@ -1706,7 +1908,7 @@ async function refreshOAuthTokenSet(providerConfig, refreshToken) {
   body.set('grant_type', 'refresh_token');
   body.set('refresh_token', refreshToken);
 
-  const response = await fetch(providerConfig.tokenUrl, {
+  const response = await fetchOAuthWithTimeout(providerConfig.tokenUrl, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -1764,7 +1966,7 @@ async function logtoAccountRequest({ userId, path, method = 'GET', body, verific
   if (payload !== undefined) headers['Content-Type'] = 'application/json';
   if (verificationId) headers['logto-verification-record-id'] = verificationId;
 
-  const response = await fetch(`${base}${path}`, {
+  const response = await fetchOAuthWithTimeout(`${base}${path}`, {
     method,
     headers,
     body: payload,
@@ -1879,7 +2081,7 @@ async function getLogtoManagementAccessToken({ forceRefresh = false } = {}) {
   body.set('resource', LOGTO_MANAGEMENT_RESOURCE || `${base}/api`);
   body.set('scope', LOGTO_MANAGEMENT_SCOPE || LOGTO_ACCOUNT_DELETION_SCOPE);
 
-  const response = await fetch(`${base}/oidc/token`, {
+  const response = await fetchOAuthWithTimeout(`${base}/oidc/token`, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -1909,7 +2111,7 @@ async function deleteLogtoPrincipalWithManagementApi(providerUserId, { retryUnau
   const token = await getLogtoManagementAccessToken();
   if (!token.ok) return token;
   const base = logtoApiBase();
-  const response = await fetch(`${base}/api/users/${encodeURIComponent(providerUserId)}`, {
+  const response = await fetchOAuthWithTimeout(`${base}/api/users/${encodeURIComponent(providerUserId)}`, {
     method: 'DELETE',
     headers: {
       Accept: 'application/json',
@@ -2012,7 +2214,7 @@ async function verifyAuthChallenge(body, clientIp) {
   form.set('response', token);
   if (clientIp) form.set('remoteip', clientIp);
 
-  const response = await fetch(TURNSTILE_SITEVERIFY_URL, {
+  const response = await fetchOAuthWithTimeout(TURNSTILE_SITEVERIFY_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form.toString(),
@@ -2205,12 +2407,12 @@ const MATCHMAKING_USER_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_USER_L
 const MATCHMAKING_IP_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_IP_LIMIT) || 30);
 const MATCHMAKING_GLOBAL_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_GLOBAL_LIMIT) || 2000);
 
-function boundedRedisCommand(command) {
+function boundedRedisCommand(command, timeoutMs = REDIS_LIMITER_TIMEOUT_MS) {
   let timer;
   return Promise.race([
     Promise.resolve().then(command),
     new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('Redis limiter timeout')), REDIS_LIMITER_TIMEOUT_MS);
+      timer = setTimeout(() => reject(new Error('Redis command timeout')), timeoutMs);
     }),
   ]).finally(() => clearTimeout(timer));
 }
@@ -2841,8 +3043,9 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/oauth/session' && method === 'POST') {
+      res.setHeader('Cache-Control', 'no-store');
       const body = await readBody(32 * 1024);
-      const userId = verifyOAuthSessionTicket(body.ticket);
+      const userId = await consumeOAuthSessionTicket(body.ticket);
       if (!userId) return json({ error: 'Invalid OAuth session ticket' }, 401);
       const { accessToken, refreshToken } = await createTokenPair(userId);
       setAuthCookie(req, res, accessToken);
@@ -2867,11 +3070,11 @@ function handleRequest(req, res) {
       if (mode === 'link' && !userId) return json({ error: 'Unauthorized' }, 401);
       const returnTo = url.searchParams.get('returnTo') || (mode === 'link' ? '/profile' : '/');
       const now = Math.floor(Date.now() / 1000);
-      const state = signOAuthState({
+      const state = await issueOAuthState(req, res, {
         mode,
         provider: providerConfig.provider,
         userId: mode === 'link' ? userId : undefined,
-        returnTo: returnTo.startsWith('/') ? returnTo : '/',
+        returnTo: normalizeOAuthReturnTo(returnTo, mode === 'link' ? '/profile' : '/'),
         nonce: crypto.randomBytes(12).toString('hex'),
         iat: now,
         exp: now + 10 * 60,
@@ -2883,10 +3086,15 @@ function handleRequest(req, res) {
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('scope', providerConfig.scope);
       authUrl.searchParams.set('state', state);
+      const statePayload = verifyOAuthState(state);
+      if (statePayload?.codeChallenge) {
+        authUrl.searchParams.set('code_challenge', statePayload.codeChallenge);
+        authUrl.searchParams.set('code_challenge_method', 'S256');
+      }
       if (providerConfig.provider === 'google') authUrl.searchParams.set('prompt', 'select_account');
       if (providerConfig.provider === 'logto' && mode === 'login') authUrl.searchParams.set('prompt', 'login');
 
-      res.writeHead(302, { Location: authUrl.toString() });
+      res.writeHead(302, { Location: authUrl.toString(), 'Cache-Control': 'no-store' });
       res.end();
       return;
     }
@@ -2898,18 +3106,16 @@ function handleRequest(req, res) {
         Sentry.captureException(new Error('OAuth callback: unknown provider'), {
           tags: { action: 'oauth-callback', provider },
         });
-        res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(oauthReturnScript({ returnTo: '/', error: 'Unknown OAuth provider' }));
+        sendOAuthHtml(res, 404, oauthReturnScript({ returnTo: '/', error: 'Unknown OAuth provider' }));
         return;
       }
       const providerConfig = await getResolvedOAuthProvider(provider);
-      const state = verifyOAuthState(url.searchParams.get('state'));
+      const state = await consumeOAuthState(req, res, url.searchParams.get('state'));
       if (!providerConfig || !state || state.provider !== providerConfig.provider) {
         Sentry.captureException(new Error('OAuth callback: invalid state'), {
           tags: { action: 'oauth-callback', provider },
         });
-        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(oauthReturnScript({ returnTo: state?.returnTo || '/', error: 'Invalid OAuth state' }));
+        sendOAuthHtml(res, 400, oauthReturnScript({ returnTo: state?.returnTo || '/', error: 'Invalid OAuth state' }));
         return;
       }
       const code = url.searchParams.get('code');
@@ -2917,22 +3123,39 @@ function handleRequest(req, res) {
         Sentry.captureException(new Error('OAuth callback: missing code'), {
           tags: { action: 'oauth-callback', provider },
         });
-        res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(oauthReturnScript({ returnTo: state.returnTo, error: 'Missing OAuth code' }));
+        sendOAuthHtml(res, 400, oauthReturnScript({ returnTo: state.returnTo, error: 'Missing OAuth code' }));
         return;
       }
 
-      const tokenSet = await exchangeOAuthCode(req, providerConfig, code);
+      if (state.mode === 'link') {
+        const currentUserId = await getAuthUserId(req);
+        if (!currentUserId || currentUserId !== state.userId) {
+          sendOAuthHtml(
+            res,
+            401,
+            oauthReturnScript({ returnTo: state.returnTo, error: 'Account linking session expired' }),
+          );
+          return;
+        }
+      }
+
+      const tokenSet = await exchangeOAuthCode(req, providerConfig, code, state.codeVerifier);
       const oauthProfile = await fetchOAuthProfile(providerConfig, tokenSet.accessToken);
       if (state.mode === 'link') {
         if (!ACCOUNT_LINKING_ENABLED) {
-          res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(oauthReturnScript({ returnTo: state.returnTo, error: 'Account linking is managed by Logto' }));
+          sendOAuthHtml(
+            res,
+            403,
+            oauthReturnScript({ returnTo: state.returnTo, error: 'Account linking is managed by Logto' }),
+          );
           return;
         }
         const result = await linkOAuthIdentity({ pool, userId: state.userId, profile: oauthProfile });
-        res.writeHead(result.ok ? 200 : result.status || 400, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(oauthReturnScript({ returnTo: state.returnTo, error: result.ok ? '' : result.error }));
+        sendOAuthHtml(
+          res,
+          result.ok ? 200 : result.status || 400,
+          oauthReturnScript({ returnTo: state.returnTo, error: result.ok ? '' : result.error }),
+        );
         return;
       }
 
@@ -2952,10 +3175,11 @@ function handleRequest(req, res) {
       if (loginOk && providerConfig.provider === 'logto') {
         await storeOAuthTokenSet({ userId: localUserId, provider: providerConfig.provider, tokenSet });
       }
-      res.writeHead(loginOk ? 200 : result.status || 400, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(
+      sendOAuthHtml(
+        res,
+        loginOk ? 200 : result.status || 400,
         oauthReturnScript({
-          sessionTicket: loginOk ? createOAuthSessionTicket(localUserId) : '',
+          sessionTicket: loginOk ? await createOAuthSessionTicket(localUserId) : '',
           returnTo: state.returnTo,
           error: loginOk ? '' : result.error || 'Missing local account id',
         }),
@@ -3455,6 +3679,9 @@ function handleRequest(req, res) {
         accept: parsed.data.accept,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
+      if (parsed.data.accept && result.body.friendUserId) {
+        await publishRelationshipChange(redis, 'friendship_added', [userId, result.body.friendUserId]);
+      }
       const capabilities = await getAccountSecurityCapabilities(pool, userId);
       if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
       json({ ...result.body, ...capabilities.body });
@@ -3479,6 +3706,7 @@ function handleRequest(req, res) {
       const result = await blockUser({ pool, userId, targetUserId: parsed.data.targetUserId });
       if (!result.ok) return json({ error: result.error }, result.status);
       await applyMatchmakingBlock(redis, userId, parsed.data.targetUserId);
+      await publishRelationshipChange(redis, 'block_created', [userId, parsed.data.targetUserId]);
       json(result.body);
       return;
     }
@@ -3490,6 +3718,7 @@ function handleRequest(req, res) {
       const result = await unblockUser({ pool, userId, targetUserId: decodeURIComponent(blockRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
       await removeMatchmakingBlock(redis, userId, decodeURIComponent(blockRoute[1]));
+      await publishRelationshipChange(redis, 'block_removed', [userId, decodeURIComponent(blockRoute[1])]);
       json(result.body);
       return;
     }
@@ -3500,6 +3729,7 @@ function handleRequest(req, res) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await removeFriend({ pool, userId, friendUserId: decodeURIComponent(friendRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
+      await publishRelationshipChange(redis, 'friendship_removed', [userId, decodeURIComponent(friendRoute[1])]);
       json(result.body);
       return;
     }

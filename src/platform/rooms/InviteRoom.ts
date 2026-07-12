@@ -12,6 +12,7 @@ import type {
   PlatformAuth,
   PlatformClient,
   PlatformClientProfile,
+  PlatformRelationshipChange,
 } from './types';
 
 const INVITE_TTL_MS = 10 * 60 * 1000;
@@ -38,6 +39,7 @@ export function parseFriendInviteId(inviteId: string): { inviterUserId: string; 
 export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: PlatformClient }> {
   static friendStore: PlatformFriendStore = createEmptyPlatformFriendStore();
   static enforceFriendship = false;
+  private static readonly activeRooms = new Set<InviteRoom>();
 
   maxClients = 8;
   autoDispose = false;
@@ -55,6 +57,18 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   static configureFriendStore(friendStore: PlatformFriendStore, options: { enforceFriendship?: boolean } = {}): void {
     InviteRoom.friendStore = friendStore;
     InviteRoom.enforceFriendship = options.enforceFriendship === true;
+  }
+
+  static async handleRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
+    await Promise.all([...InviteRoom.activeRooms].map((room) => room.applyRelationshipChange(change)));
+  }
+
+  static async reconcileAuthorization(): Promise<void> {
+    await Promise.all([...InviteRoom.activeRooms].map((room) => room.reconcileAuthorization()));
+  }
+
+  static clearActiveRoomsForTests(): void {
+    InviteRoom.activeRooms.clear();
   }
 
   async onCreate(options: InviteRoomOptions = {}): Promise<void> {
@@ -79,16 +93,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     }, INVITE_TTL_MS);
 
     this.onMessage<InviteResponseMessage>('acceptInvite', (client) => {
-      if (!this.canRespond(client)) return;
-      this.status = 'accepted';
-      void this.refreshMetadata();
-      this.broadcast('inviteAccepted', {
-        inviteId: this.inviteId,
-        acceptedBy: client.userData,
-        roomCode: this.roomCode,
-        boardgameMatchID: this.boardgameMatchID,
-      });
-      this.broadcastSnapshot();
+      void this.acceptInvite(client);
     });
 
     this.onMessage<InviteResponseMessage>('declineInvite', (client, message) => {
@@ -123,6 +128,11 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     });
 
     await this.refreshMetadata();
+    InviteRoom.activeRooms.add(this);
+  }
+
+  onDispose(): void {
+    InviteRoom.activeRooms.delete(this);
   }
 
   async onAuth(_client: PlatformClient, options: InviteRoomOptions, context: AuthContext): Promise<PlatformAuth> {
@@ -146,6 +156,9 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
     await assertPlatformAuthCurrent(auth);
+    const friendInvite = parseFriendInviteId(this.inviteId);
+    if (!friendInvite) throw new Error('Invalid invite id');
+    await this.assertFriendInvitePairAllowed(friendInvite);
     const reconnectingInviter = Boolean(
       this.inviter && this.inviter.userId === auth.userId && this.inviter.sessionId !== client.sessionId,
     );
@@ -218,6 +231,31 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     return true;
   }
 
+  private async acceptInvite(client: PlatformClient): Promise<void> {
+    if (!this.canRespond(client)) return;
+    const friendInvite = parseFriendInviteId(this.inviteId);
+    if (!friendInvite) return;
+    if (InviteRoom.enforceFriendship) {
+      try {
+        await this.assertFriendInvitePairAllowed(friendInvite);
+      } catch (err) {
+        logger.warn({ err, inviteId: this.inviteId }, 'friend invite relationship changed before acceptance');
+        await this.cancel('relationship_changed');
+        return;
+      }
+    }
+    if (!this.canRespond(client)) return;
+    this.status = 'accepted';
+    void this.refreshMetadata();
+    this.broadcast('inviteAccepted', {
+      inviteId: this.inviteId,
+      acceptedBy: client.userData,
+      roomCode: this.roomCode,
+      boardgameMatchID: this.boardgameMatchID,
+    });
+    this.broadcastSnapshot();
+  }
+
   private canBecomeInviter(profile: PlatformClientProfile): boolean {
     return this.inviterUserId ? profile.userId === this.inviterUserId : true;
   }
@@ -241,6 +279,15 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     }
     if (friendUserIds.includes(peerUserId)) return;
     throw new Error('Invite friendship required');
+  }
+
+  private async assertFriendInvitePairAllowed(friendInvite: {
+    inviterUserId: string;
+    targetUserId: string;
+  }): Promise<void> {
+    if (!InviteRoom.enforceFriendship) return;
+    await this.assertFriendInviteAllowed(friendInvite.inviterUserId, friendInvite);
+    await this.assertFriendInviteAllowed(friendInvite.targetUserId, friendInvite);
   }
 
   private snapshot(): PlatformClient['~messages']['inviteSnapshot'] {
@@ -272,5 +319,48 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
         boardgameMatchID: this.boardgameMatchID,
       },
     });
+  }
+
+  private async applyRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
+    const inviteUserIds = new Set(
+      [this.inviterUserId, this.targetUserId].filter((value): value is string => Boolean(value)),
+    );
+    if (change.kind === 'account_deleted') {
+      const deletedUserId = change.userIds[0];
+      if (!inviteUserIds.has(deletedUserId)) return;
+      await this.cancel('account_deleted');
+      for (const client of this.clients) {
+        if ((client.userData?.userId || client.auth?.userId) === deletedUserId) {
+          client.leave(4001, 'account_deleted');
+        }
+      }
+      return;
+    }
+    if (
+      (change.kind === 'block_created' || change.kind === 'friendship_removed') &&
+      change.userIds.every((userId) => inviteUserIds.has(userId))
+    ) {
+      await this.cancel('relationship_changed');
+    }
+  }
+
+  private async reconcileAuthorization(): Promise<void> {
+    for (const client of this.clients) {
+      if (!client.auth) continue;
+      try {
+        await assertPlatformAuthCurrent(client.auth);
+      } catch {
+        await this.cancel('authorization_revoked');
+        client.leave(4001, 'authorization_revoked');
+      }
+    }
+    if (!this.canCancel()) return;
+    const friendInvite = parseFriendInviteId(this.inviteId);
+    if (!friendInvite) return;
+    try {
+      await this.assertFriendInvitePairAllowed(friendInvite);
+    } catch {
+      await this.cancel('relationship_changed');
+    }
   }
 }

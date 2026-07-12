@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/node';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { shuffleDeck } from '../../game/cards/deckBuilder';
+import { postgresConnectionString, postgresSslConfig } from '../../runtimeSecurityConfig';
 
 const require = createRequire(import.meta.url);
 const { assertRuntimeSchema } = require('../../../api/schemaGate.cjs') as {
@@ -273,12 +274,14 @@ export class PostgresAdapter {
       opts.pool ??
       new Pool({
         connectionString:
-          opts.connectionString ??
-          process.env.DATABASE_URL ??
+          (opts.connectionString
+            ? postgresConnectionString({ ...process.env, DATABASE_URL: opts.connectionString })
+            : postgresConnectionString(process.env)) ||
           `postgres://${process.env.PG_USER || 'postgres'}:${process.env.PG_PASSWORD || ''}@${process.env.PG_HOST || 'localhost'}:${process.env.PG_PORT || '5432'}/${process.env.PG_DATABASE || 'postgres'}`,
         max: Number(process.env.PG_POOL_MAX) || 20,
         idleTimeoutMillis: 30_000,
         connectionTimeoutMillis: 5_000,
+        ssl: postgresSslConfig(process.env),
       });
     this.createIndexes = opts.createIndexes ?? true;
     // Keep unit-test/dev defaults backwards compatible, while production

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { AuthContext } from '@colyseus/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createEmptyPlatformFriendStore } from '../../friendStore';
 import { InviteRoom } from '../InviteRoom';
 import type { BoardgameMatchReadyMessage, InviteResponseMessage, PlatformAuth, PlatformClient } from '../types';
 
@@ -38,12 +39,16 @@ function cookieAuthContext(userId: string): AuthContext {
   };
 }
 
-function client(sessionId: string, auth: PlatformAuth): PlatformClient & { send: ReturnType<typeof vi.fn> } {
+function client(
+  sessionId: string,
+  auth: PlatformAuth,
+): PlatformClient & { send: ReturnType<typeof vi.fn>; leave: ReturnType<typeof vi.fn> } {
   return {
     sessionId,
     auth,
     send: vi.fn(),
-  } as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    leave: vi.fn(),
+  } as PlatformClient & { send: ReturnType<typeof vi.fn>; leave: ReturnType<typeof vi.fn> };
 }
 
 function inviteId(inviterUserId = 'u_inviter', targetUserId = 'u_target'): string {
@@ -112,6 +117,8 @@ async function setupInviteRoom() {
 describe('invite room lifecycle', () => {
   afterEach(() => {
     process.env.JWT_SECRET = originalJwtSecret;
+    InviteRoom.configureFriendStore(createEmptyPlatformFriendStore());
+    InviteRoom.clearActiveRoomsForTests();
   });
 
   it('lets the target accept and then lets the inviter relay the boardgame match id once', async () => {
@@ -154,6 +161,33 @@ describe('invite room lifecycle', () => {
     boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-match-2' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
     expect(setMatchmaking).not.toHaveBeenCalled();
+  });
+
+  it('cancels an invite when friendship is removed before acceptance', async () => {
+    let allowed = true;
+    InviteRoom.configureFriendStore(
+      {
+        listFriendUserIds: async (userId) => {
+          if (!allowed) return [];
+          return userId === 'u_inviter' ? ['u_target'] : ['u_inviter'];
+        },
+      },
+      { enforceFriendship: true },
+    );
+    const { inviteHandlers, broadcast, target } = await setupInviteRoom();
+
+    allowed = false;
+    inviteHandlers.get('acceptInvite')?.(target, {});
+    await flushAsyncHandlers();
+    await flushAsyncHandlers();
+    await flushAsyncHandlers();
+    await flushAsyncHandlers();
+
+    expect(broadcast).not.toHaveBeenCalledWith('inviteAccepted', expect.anything());
+    expect(broadcast).toHaveBeenCalledWith('inviteCancelled', {
+      inviteId: inviteId(),
+      reason: 'relationship_changed',
+    });
   });
 
   it('derives the inviter from directional invite ids instead of first join order', async () => {
@@ -357,6 +391,23 @@ describe('invite room lifecycle', () => {
     );
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({ status: 'declined' }),
+    });
+  });
+
+  it('cancels a pending invite immediately when friendship is removed', async () => {
+    const { broadcast } = await setupInviteRoom();
+
+    await InviteRoom.handleRelationshipChange({
+      version: 1,
+      eventId: 'relationship-event-invite',
+      kind: 'friendship_removed',
+      userIds: ['u_inviter', 'u_target'],
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(broadcast).toHaveBeenCalledWith('inviteCancelled', {
+      inviteId: inviteId(),
+      reason: 'relationship_changed',
     });
   });
 

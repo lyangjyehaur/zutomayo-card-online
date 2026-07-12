@@ -129,7 +129,13 @@ async function respondToFriendRequest({ pool, userId, requestId, accept }) {
         [request.requester_user_id, request.recipient_user_id],
       );
     }
-    return { ok: true, body: { accepted: Boolean(accept) } };
+    return {
+      ok: true,
+      body: {
+        accepted: Boolean(accept),
+        friendUserId: request.requester_user_id,
+      },
+    };
   });
 }
 

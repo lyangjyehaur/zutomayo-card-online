@@ -5,9 +5,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
 const { runRetention } = require('../api/retentionService.cjs');
+const { postgresConnectionString, postgresSslConfig } = require('../api/runtimeSecurityConfig.cjs');
 
 const dryRun = process.argv.includes('--dry-run') || process.env.RETENTION_DRY_RUN === 'true';
-const connectionString = process.env.DATABASE_URL?.trim();
+const connectionString = postgresConnectionString(process.env);
+if (process.env.NODE_ENV === 'production') {
+  const retentionUser = String(process.env.PG_RETENTION_USER || process.env.PG_USER || '').trim();
+  const appUser = String(process.env.PG_APP_USER || '').trim();
+  if (!retentionUser) throw new Error('PG_RETENTION_USER or PG_USER is required in production');
+  if (appUser && retentionUser === appUser) throw new Error('retention worker must use a dedicated PostgreSQL role');
+}
 const poolConfig = connectionString
   ? { connectionString }
   : {
@@ -17,12 +24,7 @@ const poolConfig = connectionString
       password: process.env.PG_PASSWORD,
       database: process.env.PG_DATABASE,
     };
-if (process.env.PGSSLMODE === 'verify-full') {
-  poolConfig.ssl = {
-    rejectUnauthorized: true,
-    ca: process.env.PG_SSLROOTCERT ? fs.readFileSync(process.env.PG_SSLROOTCERT, 'utf8') : undefined,
-  };
-}
+poolConfig.ssl = postgresSslConfig(process.env);
 const pool = new Pool({ ...poolConfig, max: 2 });
 
 const metricsFile = process.env.RETENTION_METRICS_FILE?.trim() || '';

@@ -62,6 +62,7 @@ COPY --from=builder /app/data ./data
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/api/deckService.cjs ./api/deckService.cjs
 COPY --from=builder /app/api/schemaGate.cjs ./api/schemaGate.cjs
+COPY --from=builder /app/api/relationshipEvents.cjs ./api/relationshipEvents.cjs
 ENV PORT=3000
 ENV PLATFORM_PORT=3002
 ENV APP_VERSION=$APP_VERSION

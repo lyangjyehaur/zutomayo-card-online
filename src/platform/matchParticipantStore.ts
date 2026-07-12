@@ -1,5 +1,6 @@
 import { Pool, type QueryResultRow } from 'pg';
 import { normalizePlatformUserId } from './friendStore';
+import { postgresConnectionString, postgresSslConfig } from '../runtimeSecurityConfig';
 
 export type PlatformMatchParticipantRole = 'player' | 'spectator';
 
@@ -159,6 +160,7 @@ export function createPlatformMatchParticipantStoreFromEnv(
       max: Number(env.PLATFORM_PG_POOL_MAX || env.PG_POOL_MAX) || 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 3_000,
+      ssl: postgresSslConfig(env),
     }),
   );
 }
@@ -173,7 +175,7 @@ export function resolvePlatformMatchParticipantStoreMode(env: NodeJS.ProcessEnv 
 
 function databaseUrlFromEnv(env: NodeJS.ProcessEnv): string {
   return (
-    env.DATABASE_URL?.trim() ||
+    postgresConnectionString(env) ||
     `postgres://${env.PG_USER || 'postgres'}:${env.PG_PASSWORD || ''}@${env.PG_HOST || 'localhost'}:${env.PG_PORT || '5432'}/${env.PG_DATABASE || 'postgres'}`
   );
 }
