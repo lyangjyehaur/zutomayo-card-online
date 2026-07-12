@@ -1,0 +1,25 @@
+# 負載測試用的 compose 覆蓋檔：在基礎 docker-compose.yml 之上加入 k6 服務。
+#
+# 使用方式（疊加在基礎 compose 之上）：
+#   docker compose -f docker-compose.yml -f docker-compose.load-test.yml up \
+#     --abort-on-container-exit --exit-code-from k6
+#
+# 需先設定 PG_PASSWORD / JWT_SECRET 等環境變數（或透過 .env），與基礎 compose 相同。
+# 預設執行 API 負載測試；要更換腳本請修改下方 command，例如：
+#   command: ['run', '/scripts/websocket-load.js']
+services:
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./load-tests:/scripts
+    environment:
+      - BASE_URL=http://api:3001
+      - WS_URL=ws://game:3000/socket.io/?EIO=4&transport=websocket
+    command: ['run', '/scripts/api-load.js']
+    depends_on:
+      api:
+        condition: service_healthy
+      game:
+        condition: service_healthy
+    networks:
+      - default
