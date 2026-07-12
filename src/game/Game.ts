@@ -84,6 +84,9 @@ function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerI
     battleZone: redactHiddenCard(player.battleZone, `hidden-p${owner}-battle`),
     setZoneA: redactHiddenCard(player.setZoneA, `hidden-p${owner}-set-a`),
     setZoneB: redactHiddenCard(player.setZoneB, `hidden-p${owner}-set-b`),
+    setZoneC: redactHiddenCard(player.setZoneC, `hidden-p${owner}-set-c`),
+    powerCharger: player.powerCharger.map((card, i) => redactHiddenCard(card, `hidden-p${owner}-power-${i}`)),
+    abyss: player.abyss.map((card, i) => redactHiddenCard(card, `hidden-p${owner}-abyss-${i}`)),
   };
 }
 
