@@ -1,14 +1,24 @@
 import pino, { type Logger } from 'pino';
 import { AsyncLocalStorage } from 'async_hooks';
 import crypto from 'crypto';
+import { trace, context } from '@opentelemetry/api';
 import type { Next, ParameterizedContext } from 'koa';
 
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
+
+/** 從 OpenTelemetry active span 提取 traceId/spanId，未啟動 SDK 時回傳空物件（no-op）。 */
+function traceContextMixin(): Record<string, string> {
+  const span = trace.getSpan(context.active());
+  if (!span) return {};
+  const { traceId, spanId } = span.spanContext();
+  return { traceId, spanId };
+}
 
 export const logger: Logger = pino({
   level: LOG_LEVEL,
   base: { service: 'game-server' },
   redact: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.token'],
+  mixin: traceContextMixin,
 });
 
 // Koa 的 ParameterizedContext 已涵蓋 method/path/status/get/set/body/ip 等委派屬性，

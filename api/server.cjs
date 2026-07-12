@@ -1,3 +1,5 @@
+// OpenTelemetry tracing 必須在所有其他 require 之前載入，讓 auto-instrumentation 能正確 patch 模組。
+require('./tracing.cjs');
 const http = require('http');
 const https = require('https');
 const Sentry = require('@sentry/node');
