@@ -53,7 +53,11 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     if (!auth.authenticated) throw new Error('Authentication required');
     if (this.status !== 'waiting') throw new Error('Quick match is not joinable');
     // 在 onAuth 階段原子標記 userId，避免 onJoin 前的 TOCTOU 競爭讓同一使用者重複加入。
-    if (this.authenticatedUserIds.has(auth.userId)) {
+    // 同時保留 this.clients 檢查作為防禦深度（處理未經 onAuth 直接加入的 client）。
+    if (
+      this.authenticatedUserIds.has(auth.userId) ||
+      this.clients.some((client) => client.userData?.userId === auth.userId)
+    ) {
       throw new Error('Already queued');
     }
     this.authenticatedUserIds.add(auth.userId);
