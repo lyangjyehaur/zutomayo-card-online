@@ -719,11 +719,7 @@ export function OnlineGame({
                         )}
                         {message.persisted && !message.self && (
                           <IconButton
-                            label={
-                              reportedMessageIds.has(message.id)
-                                ? t('chat.matchReported')
-                                : t('chat.matchReport')
-                            }
+                            label={reportedMessageIds.has(message.id) ? t('chat.matchReported') : t('chat.matchReport')}
                             icon={<Flag className="size-3" aria-hidden="true" />}
                             size="sm"
                             className="online-chat-report-button"
