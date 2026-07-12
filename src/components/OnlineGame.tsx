@@ -77,11 +77,11 @@ type OnlineChatTranslationState = {
 };
 
 function playerDisplayName(playerID: string): string {
-  return `Player ${Number(playerID) + 1}`;
+  return t('chat.playerN').replace('{n}', String(Number(playerID) + 1));
 }
 
 function participantDisplayName(playerID: string | undefined, spectator: boolean): string {
-  if (spectator || playerID === undefined) return 'Spectator';
+  if (spectator || playerID === undefined) return t('chat.spectator');
   return playerDisplayName(playerID);
 }
 
@@ -96,7 +96,7 @@ function mapChatMessage(message: ChatMessage, localUserId: string, localDisplayN
   const sameDisplayName = Boolean(!localUserId && localDisplayName && message.authorDisplayName === localDisplayName);
   return {
     id: message.id,
-    authorDisplayName: message.authorDisplayName || 'Player',
+    authorDisplayName: message.authorDisplayName || t('player.self'),
     authorRole: message.authorRole,
     content: message.content,
     createdAt: message.createdAt,
@@ -110,16 +110,16 @@ function canShowChatMessage(message: ChatMessage): boolean {
 }
 
 function chatStatusLabel(status: ChatStatus): string {
-  if (status === 'loading') return 'SYNCING';
-  if (status === 'login_required') return 'LOGIN REQUIRED';
-  if (status === 'unavailable') return 'OFFLINE';
-  return 'MATCH CHAT';
+  if (status === 'loading') return t('chat.matchSyncing');
+  if (status === 'login_required') return t('chat.matchLoginRequired');
+  if (status === 'unavailable') return t('chat.matchOffline');
+  return t('chat.matchChat');
 }
 
 function chatEmptyLabel(status: ChatStatus): string {
-  if (status === 'loading') return 'SYNCING';
-  if (status === 'login_required') return 'LOGIN TO CHAT';
-  return 'NO MESSAGES';
+  if (status === 'loading') return t('chat.matchSyncing');
+  if (status === 'login_required') return t('chat.matchLoginToChat');
+  return t('chat.matchNoMessages');
 }
 
 function OnlineLoading() {
@@ -682,7 +682,7 @@ export function OnlineGame({
       <div className={`online-chat-panel ${chatOpen ? 'open' : 'collapsed'}`}>
         <div className="online-chat-header">
           <IconButton
-            label={chatOpen ? 'Hide match chat' : 'Show match chat'}
+            label={chatOpen ? t('chat.matchHide') : t('chat.matchShow')}
             icon={
               chatOpen ? (
                 <ChevronDown className="size-4" aria-hidden="true" />
@@ -709,7 +709,7 @@ export function OnlineGame({
                         {chatTimeLabel(message.createdAt)}
                         {message.persisted && (
                           <IconButton
-                            label="Translate match chat message"
+                            label={t('chat.matchTranslate')}
                             icon={<Languages className="size-3" aria-hidden="true" />}
                             size="sm"
                             className="online-chat-translate-button"
@@ -721,8 +721,8 @@ export function OnlineGame({
                           <IconButton
                             label={
                               reportedMessageIds.has(message.id)
-                                ? 'Match chat message reported'
-                                : 'Report match chat message'
+                                ? t('chat.matchReported')
+                                : t('chat.matchReport')
                             }
                             icon={<Flag className="size-3" aria-hidden="true" />}
                             size="sm"
@@ -743,10 +743,10 @@ export function OnlineGame({
                         {message.translation.status === 'ready' && message.translation.content
                           ? message.translation.content
                           : message.translation.status === 'loading'
-                            ? 'TRANSLATING'
+                            ? t('chat.translationTranslating')
                             : message.translation.status === 'unavailable'
-                              ? 'TRANSLATION OFFLINE'
-                              : 'TRANSLATION PENDING'}
+                              ? t('chat.translationOffline')
+                              : t('chat.translationPending')}
                       </div>
                     )}
                   </div>
@@ -759,10 +759,10 @@ export function OnlineGame({
                 onChange={(event) => setChatDraft(event.target.value.slice(0, 500))}
                 maxLength={500}
                 disabled={chatStatus === 'loading' || chatStatus === 'unavailable' || chatStatus === 'login_required'}
-                aria-label="Match chat message"
+                aria-label={t('chat.matchInput')}
               />
               <IconButton
-                label="Send match chat message"
+                label={t('chat.matchSend')}
                 icon={<Send className="size-4" aria-hidden="true" />}
                 type="submit"
                 variant="secondary"
