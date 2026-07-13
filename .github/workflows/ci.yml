@@ -81,6 +81,7 @@ jobs:
           RELEASE_SHA: '0000000000000000000000000000000000000000'
           GAME_RULES_VERSION: '0.2.0'
         run: |
+          touch .env
           export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
           export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
           npm run release:config

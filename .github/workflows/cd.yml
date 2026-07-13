@@ -161,6 +161,7 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
           GAME_RULES_VERSION: '0.2.0'
         run: |
+          touch .env
           npm run release:config
           npm run ops:config
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml config --quiet
@@ -489,6 +490,7 @@ jobs:
           STAGING_EVIDENCE_RUN_ID: ${{ inputs.staging_evidence_run_id }}
         run: |
           set +e
+          touch .env
           args=(
             --release-sha "$RELEASE_SHA"
             --release-manifest .release.env
