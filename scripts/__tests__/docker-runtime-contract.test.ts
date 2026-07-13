@@ -1,10 +1,25 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = resolve(import.meta.dirname, '../..');
 
+function runtimeSourceFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) return entry.name === '__tests__' ? [] : runtimeSourceFiles(path);
+    return /\.[cm]?[jt]sx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
 describe('game runtime image contract', () => {
+  it('keeps shared host env files out of immutable release containers', () => {
+    for (const composeFile of ['docker-compose.server4.yml', 'docker-compose.staging.yml']) {
+      const compose = readFileSync(resolve(root, composeFile), 'utf8');
+      expect(compose).not.toContain('env_file:');
+    }
+  });
+
   it('skips development lifecycle hooks in the production dependency layer', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     expect(dockerfile).toContain('RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force');
@@ -60,5 +75,34 @@ describe('game runtime image contract', () => {
       'COPY --from=builder /app/api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs',
     );
     expect(dockerignore).toContain('!api/runtimeSecurityConfig.cjs');
+  });
+
+  it('ships every CommonJS API helper imported by a game or platform runtime source', () => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
+    const helpers = new Set(
+      runtimeSourceFiles(resolve(root, 'src')).flatMap((file) =>
+        [...readFileSync(file, 'utf8').matchAll(/(?:\.\.\/)+api\/([A-Za-z0-9_.-]+\.cjs)/g)].map(([, helper]) => helper),
+      ),
+    );
+    expect(helpers.size).toBeGreaterThan(0);
+    for (const helper of helpers) {
+      expect(dockerfile).toContain(`COPY --from=builder /app/api/${helper} ./api/${helper}`);
+      expect(dockerignore).toContain(`!api/${helper}`);
+    }
+  });
+
+  it('declares every OpenTelemetry package required by the API tracing entrypoint', () => {
+    const tracing = readFileSync(resolve(root, 'api/tracing.cjs'), 'utf8');
+    const packageJson = JSON.parse(readFileSync(resolve(root, 'api/package.json'), 'utf8')) as {
+      dependencies: Record<string, string>;
+    };
+    const requiredPackages = [...tracing.matchAll(/require\('(@opentelemetry\/[^']+)'\)/g)].map(
+      ([, packageName]) => packageName,
+    );
+    expect(requiredPackages.length).toBeGreaterThan(0);
+    for (const packageName of requiredPackages) {
+      expect(packageJson.dependencies).toHaveProperty(packageName);
+    }
   });
 });

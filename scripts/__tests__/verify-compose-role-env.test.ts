@@ -1,25 +1,22 @@
+import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { validateRenderedRoleEnvironment } from '../verify-compose-role-env.mjs';
 
-function service(roleUser: string, rolePassword: string, password: string) {
-  const rolePasswords = {
-    PG_MIGRATION_PASSWORD: '',
-    PG_APP_PASSWORD: '',
-    PG_API_PASSWORD: '',
-    PG_GAME_PASSWORD: '',
-    PG_PLATFORM_PASSWORD: '',
-    PG_RETENTION_PASSWORD: '',
-    PG_MONITOR_PASSWORD: '',
-    PG_BACKUP_PASSWORD: '',
-    PG_WAL_PASSWORD: '',
-  };
-  rolePasswords[rolePassword as keyof typeof rolePasswords] = password;
+const hasJq = spawnSync('jq', ['--version'], { encoding: 'utf8' }).status === 0;
+
+function service(
+  roleUserVariable: string,
+  roleUser: string,
+  rolePassword: string,
+  password: string,
+): { environment: Record<string, string> } {
   return {
     environment: {
       PG_USER: roleUser,
       PG_PASSWORD: password,
+      [roleUserVariable]: roleUser,
       [rolePassword]: password,
-      ...rolePasswords,
       DATABASE_URL: '',
       PGSSLMODE: 'verify-full',
       REDIS_URL: '',
@@ -29,10 +26,10 @@ function service(roleUser: string, rolePassword: string, password: string) {
 
 function validConfig() {
   const services = {
-    migrate: service('zutomayo_migrator', 'PG_MIGRATION_PASSWORD', 'migration-secret'),
-    game: service('zutomayo_game', 'PG_GAME_PASSWORD', 'game-secret'),
-    api: service('zutomayo_api', 'PG_API_PASSWORD', 'api-secret'),
-    platform: service('zutomayo_platform', 'PG_PLATFORM_PASSWORD', 'platform-secret'),
+    migrate: service('PG_MIGRATION_USER', 'zutomayo_migrator', 'PG_MIGRATION_PASSWORD', 'migration-secret'),
+    game: service('PG_GAME_USER', 'zutomayo_game', 'PG_GAME_PASSWORD', 'game-secret'),
+    api: service('PG_API_USER', 'zutomayo_api', 'PG_API_PASSWORD', 'api-secret'),
+    platform: service('PG_PLATFORM_USER', 'zutomayo_platform', 'PG_PLATFORM_PASSWORD', 'platform-secret'),
   };
   return { services };
 }
@@ -46,6 +43,16 @@ describe('rendered PostgreSQL role environment gate', () => {
     const config = validConfig();
     config.services.game.environment.PG_API_PASSWORD = 'api-secret';
     expect(() => validateRenderedRoleEnvironment(config)).toThrow('PG_API_PASSWORD');
+  });
+
+  it('requires each named role user to match its canonical PG user', () => {
+    const missingNamedUser = validConfig();
+    delete missingNamedUser.services.migrate.environment.PG_MIGRATION_USER;
+    expect(() => validateRenderedRoleEnvironment(missingNamedUser)).toThrow('PG_MIGRATION_USER');
+
+    const mismatchedNamedPassword = validConfig();
+    mismatchedNamedPassword.services.game.environment.PG_GAME_PASSWORD = 'wrong-secret';
+    expect(() => validateRenderedRoleEnvironment(mismatchedNamedPassword)).toThrow('PG_GAME_PASSWORD');
   });
 
   it('rejects aliased role credentials and an unexpected TLS mode', () => {
@@ -70,5 +77,55 @@ describe('rendered PostgreSQL role environment gate', () => {
 
     config.services.api.environment.REDIS_URL = 'redis://redis.example.test:6379';
     expect(() => validateRenderedRoleEnvironment(config, { requireRediss: true })).toThrow('rediss://');
+  });
+
+  it.skipIf(!hasJq)('projects only redacted role data before entering the migration container', () => {
+    const config = validConfig();
+    const jwtSecret = 'jwt-secret-marker-at-least-32-characters';
+    const seatSecret = 'seat-secret-marker-at-least-32-characters';
+    config.services.game.environment.JWT_SECRET = jwtSecret;
+    config.services.api.environment.JWT_SECRET = jwtSecret;
+    config.services.platform.environment.JWT_SECRET = jwtSecret;
+    config.services.game.environment.PLATFORM_SEAT_TOKEN_SECRET = seatSecret;
+    config.services.platform.environment.PLATFORM_SEAT_TOKEN_SECRET = seatSecret;
+    config.services.api.environment.ADMIN_TOTP_ENCRYPTION_KEY = 'admin-secret-marker-at-least-32-characters';
+    config.services.api.environment.OAUTH_TOKEN_ENCRYPTION_KEY = 'oauth-secret-marker-at-least-32-characters';
+    config.services.api.environment.LOGTO_APP_SECRET = 'api-owned-marker-must-not-leave-host';
+    for (const serviceName of ['game', 'api', 'platform'] as const) {
+      config.services[serviceName].environment.REDIS_URL = `rediss://:${serviceName}-redis-secret@redis.example:6380`;
+    }
+
+    const result = spawnSync('jq', ['-c', '-f', resolve('scripts/project-compose-role-env.jq')], {
+      encoding: 'utf8',
+      input: JSON.stringify(config),
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('secret-marker');
+    expect(result.stdout).not.toContain('redis-secret');
+    expect(result.stdout).not.toContain('api-owned-marker');
+    expect(
+      validateRenderedRoleEnvironment(result.stdout, { requiredPgSslMode: 'verify-full', requireRediss: true }),
+    ).toBe(true);
+  });
+
+  it.skipIf(!hasJq)('rejects secret ownership violations before redaction', () => {
+    const config = validConfig();
+    const jwtSecret = 'jwt-secret-marker-at-least-32-characters';
+    config.services.game.environment.JWT_SECRET = jwtSecret;
+    config.services.api.environment.JWT_SECRET = jwtSecret;
+    config.services.platform.environment.JWT_SECRET = jwtSecret;
+    config.services.game.environment.PLATFORM_SEAT_TOKEN_SECRET = 'seat-secret-marker-at-least-32-characters';
+    config.services.platform.environment.PLATFORM_SEAT_TOKEN_SECRET = 'seat-secret-marker-at-least-32-characters';
+    config.services.api.environment.ADMIN_TOTP_ENCRYPTION_KEY = 'admin-secret-marker-at-least-32-characters';
+    config.services.api.environment.OAUTH_TOKEN_ENCRYPTION_KEY = 'oauth-secret-marker-at-least-32-characters';
+    config.services.game.environment.LOGTO_APP_SECRET = 'do-not-print-this-secret';
+
+    const result = spawnSync('jq', ['-c', '-f', resolve('scripts/project-compose-role-env.jq')], {
+      encoding: 'utf8',
+      input: JSON.stringify(config),
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('game must not receive API-owned LOGTO_APP_SECRET');
+    expect(result.stderr).not.toContain('do-not-print-this-secret');
   });
 });

@@ -54,9 +54,11 @@ docker compose down
 
 ## Environment / 環境變數
 
-Variables are passed through `docker-compose.yml` from the host environment (e.g. via a `.env` file or shell export).
+Compose reads host variables from a `.env` file or shell export for interpolation. Immutable staging/production Compose files do not mount that shared file into containers; every runtime receives only its explicit per-service allowlist.
 
-**REQUIRED:** production/staging require `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, and WAL `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the four immutable `*_IMAGE` references; and `JWT_SECRET`. `PG_APP_USER` remains a local-development compatibility alias only. Compose exits early if a production role is missing or aliased. Set a non-empty `REDIS_PASSWORD` for every production deployment.
+Feedback image attachments are stored in the Compose-managed `feedback_uploads` volume mounted at `/app/data/feedback-uploads`; include that volume in host-level backups together with PostgreSQL logical backups.
+
+**REQUIRED:** production/staging require `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, and WAL `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the five immutable `*_IMAGE` references; `JWT_SECRET`; the game/platform-only `PLATFORM_SEAT_TOKEN_SECRET`; API-only `ADMIN_TOTP_ENCRYPTION_KEY` and `OAUTH_TOKEN_ENCRYPTION_KEY`; and either `OAUTH_PUBLIC_BASE_URL` or `PUBLIC_BASE_URL`. The four security keys must be pairwise distinct. `PG_APP_USER` remains a local-development compatibility alias only. Compose exits early if a production role is missing or aliased. Production/staging `REDIS_URL` must use `rediss://` and include Redis ACL/password credentials in the URL authority.
 
 Create a `.env` file from the template:
 
@@ -168,7 +170,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `REDIS_URL`                        | Compose-generated authenticated URL       | Redis connection URL for Colyseus `RedisPresence` and `RedisDriver`; production/staging require authenticated TLS (`rediss://`). Use `redis://localhost:6379` only for passwordless local dev. |
 | `REDIS_DB`                         | `0`                                       | Redis DB index shared with other online coordination services.                                                                                                                                 |
 | `JWT_SECRET`                       | **required**                              | Shared HMAC secret for validating account session cookies during Colyseus matchmaking/auth. Must match `game` and `api`.                                                                       |
-| `PLATFORM_SEAT_TOKEN_SECRET`       | `JWT_SECRET`                              | Optional independent seat-token signing secret. Production startup fails when neither this nor `JWT_SECRET` is configured.                                                                     |
+| `PLATFORM_SEAT_TOKEN_SECRET`       | **required in release Compose**           | Independent seat-token signing secret shared only by `game` and `platform`, allowing rotation separately from account-session JWTs.                                                            |
 | `PLATFORM_REDIS_MODE`              | `redis` in production, `memory` otherwise | `memory` keeps local development dependency-light; `redis` enables multi-instance room discovery and presence in Compose/production.                                                           |
 | `PLATFORM_BLOCK_STORE`             | `postgres` in production                  | PostgreSQL-backed bidirectional block checks for quick-match admission. Platform authentication fails closed if the query fails.                                                               |
 | `PLATFORM_FRIEND_STORE`            | `postgres` in Compose, auto otherwise     | `postgres` resolves friend presence subscriptions from `user_friends`; `none` disables friend lookup for local development.                                                                    |
@@ -671,15 +673,15 @@ Staging compose file: [docker-compose.staging.yml](../docker-compose.staging.yml
 
 與 production（server4）的差異：
 
-| 項目           | Production (server4)             | Staging                                                                          |
-| -------------- | -------------------------------- | -------------------------------------------------------------------------------- |
-| DB 名稱        | `zutomayo_card`                  | 外部 `PG_DATABASE`（建議 `zutomayo_staging`）                                    |
-| Redis DB       | `0`                              | `3`                                                                              |
-| game port      | `3000`                           | `4000`                                                                           |
-| api port       | `3001`（expose）                 | `4001`                                                                           |
-| platform port  | `3002`                           | `4002`                                                                           |
-| image 來源     | server 上 `docker compose build` | GHCR 預建 image（`pull`）                                                        |
-| postgres/redis | 外部（1panel-network）           | 外部 PostgreSQL `verify-full` + CA secret；外部 Redis `rediss://` + ACL/password |
+| 項目           | Production (server4)           | Staging                                                                          |
+| -------------- | ------------------------------ | -------------------------------------------------------------------------------- |
+| DB 名稱        | `zutomayo_card`                | 外部 `PG_DATABASE`（建議 `zutomayo_staging`）                                    |
+| Redis DB       | `0`                            | `3`                                                                              |
+| game port      | `3000`                         | `4000`                                                                           |
+| api port       | `3001`（expose）               | `4001`                                                                           |
+| platform port  | `3002`                         | `4002`                                                                           |
+| image 來源     | GHCR verified digest（`pull`） | GHCR verified digest（`pull`）                                                   |
+| postgres/redis | 外部（1panel-network）         | 外部 PostgreSQL `verify-full` + CA secret；外部 Redis `rediss://` + ACL/password |
 
 ### Staging 部署流程
 
@@ -714,8 +716,9 @@ DEPLOY_HOST=<staging-host> GAME_PORT=4000 API_PORT=4001 PLATFORM_PORT=4002 \
 ## Rollback 流程 / Rollback
 
 部署腳本 [scripts/deploy-server4.sh](../scripts/deploy-server4.sh) 會在遠端保留
-上一個 verified manifest 為 `.release.previous.env`。新版本 smoke 失敗時只切回
-該 manifest，不建立或拉取 mutable rollback tag。
+上一個 verified manifest、兩份 Compose 與 PostgreSQL role bootstrap script。
+只有完整 snapshot 建立後才允許自動 rollback；新版本 smoke 失敗時切回該組
+immutable release files，不建立或拉取 mutable rollback tag。
 
 ### 手動 rollback
 
@@ -727,7 +730,7 @@ DEPLOY_HOST=<staging-host> GAME_PORT=4000 API_PORT=4001 PLATFORM_PORT=4002 \
 
 ### 注意事項
 
-- 首次部署若沒有 `.release.previous.env`，rollback 會拒絕執行。
+- 缺少 `.release.previous.env`、任一 `.previous` Compose 或 `scripts/postgres-init-roles.sh.previous` 時，rollback 會拒絕執行。
 - 首次 immutable cutover 必須明確使用 `--bootstrap`，並保留人工回退方案；成功後後續部署才會有可驗證的 `.release.previous.env`。
 - Rollback 不執行 destructive down migration；schema 必須採 expand/contract，或先發布向後相容修復。
 - 每次 rollout/rollback 應保留 manifest、migration、操作者、時間與 smoke 結果。

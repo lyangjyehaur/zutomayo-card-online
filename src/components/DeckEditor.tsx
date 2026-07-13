@@ -375,7 +375,7 @@ export function DeckEditor({
     return (
       <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 rounded-sm border border-content-primary/10 bg-surface-base/55 p-2">
         <label className="grid min-w-0 gap-1">
-          <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-primary/35">
+          <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-dim">
             {t('deckEditor.deckLibrary')}
           </span>
           <div className="relative min-w-0">
@@ -452,8 +452,8 @@ export function DeckEditor({
     const compact = mode === 'compact';
     const fieldsetClass = compact ? 'flex min-w-0 items-center gap-2' : 'flex flex-wrap items-center gap-3';
     const legendClass = compact
-      ? 'shrink-0 text-minutia uppercase tracking-[var(--tracking-control)] text-content-primary/35'
-      : 'w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 sm:w-auto';
+      ? 'shrink-0 text-minutia uppercase tracking-[var(--tracking-control)] text-content-dim'
+      : 'w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-dim sm:w-auto';
     const chipGroupClass = compact ? 'deck-filter-chip-group gap-1' : 'deck-filter-chip-group';
     const chipOptionClass = compact ? 'px-2' : undefined;
     const chipSize = compact ? 'sm' : 'md';
@@ -549,22 +549,20 @@ export function DeckEditor({
         </div>
       </div>
 
-      <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-normal text-content-primary/40">
+      <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-normal text-content-dim">
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleCharacters')}</span>
-          <span
-            className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-accent-action/70'}
-          >
+          <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-accent-action'}>
             {characterCount}
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleCopies')}</span>
-          <span className={copyLimitValid ? 'text-accent-primary' : 'text-accent-action/70'}>×{MAX_COPIES}</span>
+          <span className={copyLimitValid ? 'text-accent-primary' : 'text-accent-action'}>×{MAX_COPIES}</span>
         </div>
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleSize')}</span>
-          <span className={deck.length === DECK_SIZE ? 'text-accent-primary' : 'text-accent-action/70'}>
+          <span className={deck.length === DECK_SIZE ? 'text-accent-primary' : 'text-accent-action'}>
             {deck.length}/{DECK_SIZE}
           </span>
         </div>
@@ -588,7 +586,7 @@ export function DeckEditor({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span
-                className="font-mono text-caption text-content-primary/40"
+                className="font-mono text-caption text-content-dim"
                 aria-label={`${t('deckEditor.copyCount')} ${count}`}
               >
                 ×{count}
@@ -605,7 +603,7 @@ export function DeckEditor({
         {Array.from({ length: emptySlotCount }, (_, index) => (
           <div
             key={`empty-${index}`}
-            className="rounded-xs border border-dashed border-content-primary/10 px-3 py-2 text-caption text-content-primary/20"
+            className="rounded-xs border border-dashed border-content-primary/10 px-3 py-2 text-caption text-content-dim"
             role="listitem"
             aria-label={t('deckEditor.emptySlot')}
           >
@@ -616,7 +614,7 @@ export function DeckEditor({
 
       <div
         className={`mt-3 border-t border-content-primary/10 pt-3 font-mono text-caption uppercase tracking-normal ${
-          isValid ? 'text-accent-primary' : 'text-accent-action/70'
+          isValid ? 'text-accent-primary' : 'text-accent-action'
         }`}
       >
         {isValid ? t('deckEditor.valid') : t('deckEditor.invalid')} · {deck.length}/{DECK_SIZE}
@@ -686,7 +684,7 @@ export function DeckEditor({
               )}
               {syncLabel && (
                 <span
-                  className={`hidden font-mono text-caption uppercase tracking-[var(--tracking-kicker)] sm:inline ${synced ? 'text-accent-primary' : 'text-content-primary/40'}`}
+                  className={`hidden font-mono text-caption uppercase tracking-[var(--tracking-kicker)] sm:inline ${synced ? 'text-accent-primary' : 'text-content-dim'}`}
                   aria-live="polite"
                 >
                   {syncLabel}
@@ -787,8 +785,8 @@ export function DeckEditor({
               className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] lg:hidden"
               aria-live="polite"
             >
-              <span className={isValid ? 'text-accent-primary/70' : 'text-accent-action/70'}>{deckStatusLabel}</span>
-              <span className="min-w-0 truncate text-content-primary/35">{filterSummary}</span>
+              <span className={isValid ? 'text-accent-primary/70' : 'text-accent-action'}>{deckStatusLabel}</span>
+              <span className="min-w-0 truncate text-content-dim">{filterSummary}</span>
             </div>
           }
         />
@@ -797,7 +795,7 @@ export function DeckEditor({
 
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span
-            className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/40 md:tracking-[var(--tracking-kicker)]"
+            className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-dim md:tracking-[var(--tracking-kicker)]"
             aria-live="polite"
           >
             {t('deck.foundCards').replace('{count}', String(filteredCards.length))} · {currentPage + 1}/{totalPages}

@@ -1,4 +1,4 @@
-import type { Game, Move } from 'boardgame.io';
+import type { Game, Move, MoveFn } from 'boardgame.io';
 import type {
   ActionLogEntry,
   CardInstance,
@@ -55,6 +55,14 @@ export function resetParsedEffects(): void {
 
 function playerIndex(playerID: string | null): PlayerIndex | null {
   return playerID === '0' || playerID === '1' ? (Number(playerID) as PlayerIndex) : null;
+}
+
+function concurrentServerMove(move: MoveFn<GameState>): Move<GameState> {
+  return {
+    move,
+    client: false,
+    ignoreStaleStateID: true,
+  };
 }
 
 function hiddenCard(instanceId: string): CardInstance {
@@ -156,34 +164,34 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
 }
 
 const moves: Record<string, Move<GameState>> = {
-  janken: ({ G, playerID }, choice: JankenChoice) => {
+  janken: concurrentServerMove(({ G, playerID }, choice: JankenChoice) => {
     const player = playerIndex(playerID);
     if (player === null || !chooseJanken(G, player, choice)) return INVALID_MOVE;
-  },
-  mulligan: ({ G, playerID }, indices: number[]) => {
+  }),
+  mulligan: concurrentServerMove(({ G, playerID }, indices: number[]) => {
     const player = playerIndex(playerID);
     if (player === null || !Array.isArray(indices) || !finishMulligan(G, player, indices)) return INVALID_MOVE;
-  },
-  keepHand: ({ G, playerID }) => {
+  }),
+  keepHand: concurrentServerMove(({ G, playerID }) => {
     const player = playerIndex(playerID);
     if (player === null || !finishMulligan(G, player, [])) return INVALID_MOVE;
-  },
-  setInitialCard: ({ G, playerID }, handIndex: number) => {
+  }),
+  setInitialCard: concurrentServerMove(({ G, playerID }, handIndex: number) => {
     const player = playerIndex(playerID);
     if (player === null || !setInitialCard(G, player, handIndex)) return INVALID_MOVE;
-  },
-  setTurnCard: ({ G, playerID }, handIndex: number, slot: SetSlot) => {
+  }),
+  setTurnCard: concurrentServerMove(({ G, playerID }, handIndex: number, slot: SetSlot) => {
     const player = playerIndex(playerID);
     if (player === null || !setTurnCard(G, player, handIndex, slot)) return INVALID_MOVE;
-  },
-  undoSetCard: ({ G, playerID }, slot: SetSlot) => {
+  }),
+  undoSetCard: concurrentServerMove(({ G, playerID }, slot: SetSlot) => {
     const player = playerIndex(playerID);
     if (player === null || !undoSetCard(G, player, slot)) return INVALID_MOVE;
-  },
-  confirmReady: ({ G, playerID }) => {
+  }),
+  confirmReady: concurrentServerMove(({ G, playerID }) => {
     const player = playerIndex(playerID);
     if (player === null || !confirmReady(G, player, getParsedEffects())) return INVALID_MOVE;
-  },
+  }),
   // P3-16：線上回合超時由伺服器權威判斷，強制跳過該玩家回合（避免卡死）。
   timeoutSkip: ({ G, playerID }, targetPlayer?: PlayerIndex) => {
     const caller = playerIndex(playerID);

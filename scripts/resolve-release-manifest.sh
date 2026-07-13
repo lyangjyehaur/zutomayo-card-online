@@ -86,7 +86,7 @@ verify_image() {
     --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
     --certificate-oidc-issuer "$COSIGN_OIDC_ISSUER" \
     "$ref" >/dev/null
-  gh attestation verify "oci://${ref}" --repo "$GH_REPOSITORY" >/dev/null
+  gh attestation verify "oci://${ref}" --repo "$GH_REPOSITORY" --source-digest "$RELEASE_SHA" >/dev/null
 }
 
 mkdir -p "$(dirname "$OUTPUT_FILE")"

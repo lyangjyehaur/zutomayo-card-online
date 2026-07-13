@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * 教學模式 E2E 測試。
@@ -11,8 +11,14 @@ import { test, expect } from '@playwright/test';
  */
 test.describe.configure({ mode: 'serial' });
 
-test.describe('教學頁面載入', () => {
+async function simulateCardDataOutage(page: Page): Promise<void> {
+  await page.route('**/api/cards', (route) => route.abort());
+  await page.route('**/cards.json', (route) => route.abort());
+}
+
+test.describe('教學卡牌資料故障處理', () => {
   test.beforeEach(async ({ page }) => {
+    await simulateCardDataOutage(page);
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
     });
@@ -27,8 +33,8 @@ test.describe('教學頁面載入', () => {
     await expect(page.getByText(/卡牌資料載入失敗|載入對戰中/)).toBeVisible({ timeout: 30_000 });
   });
 
-  test('無後端時顯示卡牌載入失敗訊息', async ({ page }) => {
-    // 沒有後端 API 時，卡牌無法載入，應顯示錯誤狀態與重試按鈕
+  test('卡牌 API 不可用時顯示載入失敗訊息', async ({ page }) => {
+    // 卡牌 API 與靜態 fallback 都不可用時，應顯示錯誤狀態與重試按鈕
     await page.goto('/tutorial');
 
     // 等待卡牌載入失敗（可能需要等 boot timeout）

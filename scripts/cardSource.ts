@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import type { CardDef } from '../src/game/types';
 import { postgresConnectionString, postgresSslConfig } from '../src/runtimeSecurityConfig';
+import { E2E_SEED_CARDS, E2E_SEED_CARD_I18N } from './fixtures/e2eCards';
 
 export type CardEffectsI18n = Record<string, Record<string, string>>;
 
@@ -76,6 +77,14 @@ function poolFromEnv(): Pool {
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
+  if (url.startsWith('fixture:')) {
+    if (process.env.NODE_ENV !== 'test') {
+      throw new Error('Synthetic seed fixtures are only available when NODE_ENV=test.');
+    }
+    if (url === 'fixture:e2e/cards') return structuredClone(E2E_SEED_CARDS) as T;
+    if (url === 'fixture:e2e/cards/i18n') return structuredClone(E2E_SEED_CARD_I18N) as T;
+    throw new Error(`Unknown synthetic seed fixture: ${url}`);
+  }
   const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error(`${url} failed with HTTP ${response.status}`);
   return (await response.json()) as T;

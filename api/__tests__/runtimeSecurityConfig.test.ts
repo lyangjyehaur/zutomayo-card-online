@@ -126,6 +126,8 @@ describe('API runtime security connection contracts', () => {
         NODE_ENV: 'production',
         JWT_SECRET: '0123456789abcdef'.repeat(4),
         PLATFORM_SEAT_TOKEN_SECRET: 'fedcba9876543210'.repeat(4),
+        OAUTH_TOKEN_ENCRYPTION_KEY: '89abcdef01234567'.repeat(4),
+        ADMIN_TOTP_ENCRYPTION_KEY: '76543210fedcba98'.repeat(4),
         REDIS_URL: 'rediss://:secret@redis.example:6379',
         PGSSLMODE: 'verify-full',
         OAUTH_PUBLIC_BASE_URL: 'https://game.example',
@@ -135,6 +137,8 @@ describe('API runtime security connection contracts', () => {
       validateProductionRuntimeSecurity({
         NODE_ENV: 'production',
         JWT_SECRET: '0123456789abcdef'.repeat(4),
+        OAUTH_TOKEN_ENCRYPTION_KEY: '89abcdef01234567'.repeat(4),
+        ADMIN_TOTP_ENCRYPTION_KEY: '76543210fedcba98'.repeat(4),
         REDIS_URL: 'rediss://:secret@redis.example:6379',
         PGSSLMODE: 'verify-full',
         OAUTH_PUBLIC_BASE_URL: 'https://game.example',
@@ -145,11 +149,37 @@ describe('API runtime security connection contracts', () => {
       validateProductionRuntimeSecurity({
         NODE_ENV: 'production',
         JWT_SECRET: 'j'.repeat(64),
+        OAUTH_TOKEN_ENCRYPTION_KEY: '89abcdef01234567'.repeat(4),
+        ADMIN_TOTP_ENCRYPTION_KEY: '76543210fedcba98'.repeat(4),
         REDIS_URL: 'rediss://:secret@redis.example:6379',
         PGSSLMODE: 'verify-full',
         OAUTH_PUBLIC_BASE_URL: 'https://game.example',
       }),
     ).toThrow('estimated entropy');
+    expect(() =>
+      validateProductionRuntimeSecurity({
+        NODE_ENV: 'production',
+        JWT_SECRET: '0123456789abcdef'.repeat(4),
+        PLATFORM_SEAT_TOKEN_SECRET: 'fedcba9876543210'.repeat(4),
+        OAUTH_TOKEN_ENCRYPTION_KEY: '0123456789abcdef'.repeat(4),
+        ADMIN_TOTP_ENCRYPTION_KEY: '76543210fedcba98'.repeat(4),
+        REDIS_URL: 'rediss://:secret@redis.example:6379',
+        PGSSLMODE: 'verify-full',
+        OAUTH_PUBLIC_BASE_URL: 'https://game.example',
+      }),
+    ).toThrow('OAUTH_TOKEN_ENCRYPTION_KEY must be distinct');
+    expect(() =>
+      validateProductionRuntimeSecurity({
+        NODE_ENV: 'production',
+        JWT_SECRET: '0123456789abcdef'.repeat(4),
+        PLATFORM_SEAT_TOKEN_SECRET: 'fedcba9876543210'.repeat(4),
+        OAUTH_TOKEN_ENCRYPTION_KEY: '89abcdef01234567'.repeat(4),
+        ADMIN_TOTP_ENCRYPTION_KEY: '89abcdef01234567'.repeat(4),
+        REDIS_URL: 'rediss://:secret@redis.example:6379',
+        PGSSLMODE: 'verify-full',
+        OAUTH_PUBLIC_BASE_URL: 'https://game.example',
+      }),
+    ).toThrow('ADMIN_TOTP_ENCRYPTION_KEY must be distinct');
   });
 
   it('requires a canonical HTTPS OAuth origin in production', () => {

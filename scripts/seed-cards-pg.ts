@@ -49,6 +49,8 @@ const SCHEMA_SQL = `
     errata TEXT DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT DEFAULT '';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT DEFAULT '';
 
   CREATE TABLE IF NOT EXISTS card_effects_i18n (
     card_id TEXT NOT NULL,

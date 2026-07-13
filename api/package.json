@@ -6,6 +6,13 @@
     "start": "node server.cjs"
   },
   "dependencies": {
+    "@opentelemetry/exporter-trace-otlp-http": "^0.220.0",
+    "@opentelemetry/instrumentation-http": "^0.220.0",
+    "@opentelemetry/instrumentation-ioredis": "^0.68.0",
+    "@opentelemetry/instrumentation-pg": "^0.72.0",
+    "@opentelemetry/resources": "^2.9.0",
+    "@opentelemetry/sdk-node": "^0.220.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
     "@sentry/node": "^10.63.0",
     "ioredis": "^5.4.2",
     "pg": "^8.13.1",

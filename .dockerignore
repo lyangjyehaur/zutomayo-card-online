@@ -9,6 +9,7 @@ api/*
 !api/accountMutationLock.cjs
 !api/relationshipOutbox.cjs
 !api/runtimeSecurityConfig.cjs
+!api/seasonResultService.cjs
 dist
 dist-server
 coverage
@@ -22,6 +23,10 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
+.release.env
+.release-evidence
+staging-evidence
+artifacts/release-gate
 .claude
 .hermes
 .omh

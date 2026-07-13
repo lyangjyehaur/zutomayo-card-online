@@ -533,6 +533,7 @@ async function initSchema() {
     `CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      en_name_official TEXT DEFAULT '',
       pack TEXT NOT NULL,
       song TEXT DEFAULT '',
       illustrator TEXT DEFAULT '',
@@ -545,10 +546,13 @@ async function initSchema() {
       power_cost INTEGER DEFAULT 0,
       send_to_power INTEGER DEFAULT 0,
       effect TEXT DEFAULT '',
+      en_effect_official TEXT DEFAULT '',
       image TEXT DEFAULT '',
       errata TEXT DEFAULT '',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT DEFAULT ''`,
 
     `CREATE TABLE IF NOT EXISTS card_effects_i18n (
       card_id TEXT NOT NULL,

@@ -54,8 +54,8 @@ test.describe('首頁煙霧測試', () => {
     await expect(page.getByText('Channels')).toBeVisible({ timeout: 30_000 });
 
     // Hero 區的線上對戰與教學按鈕
-    await expect(page.getByRole('button', { name: /線上房間/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /新手教學/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: '線上房間 →', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '新手教學', exact: true })).toBeVisible();
   });
 
   test('能導覽到牌組編輯器頁面', async ({ page }) => {
@@ -74,10 +74,7 @@ test.describe('首頁煙霧測試', () => {
     await expect(page.getByText('Channels')).toBeVisible({ timeout: 30_000 });
 
     // 點擊 Hero 區的教學按鈕
-    await page
-      .getByRole('button', { name: /新手教學/ })
-      .first()
-      .click();
+    await page.getByRole('button', { name: '新手教學', exact: true }).click();
     await expect(page).toHaveURL(/\/tutorial/);
   });
 

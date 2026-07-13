@@ -59,7 +59,11 @@ jobs:
           NODE_EXTRA_CA_CERTS: /run/secrets/zutomayo-service-ca.crt
           PG_CA_SECRET_NAME: zutomayo-staging-postgres-ca
           REDIS_URL: rediss://:e2e-test-redis-password@staging-redis.example.internal:6380
-          JWT_SECRET: e2e-test-jwt-secret-32chars-min
+          JWT_SECRET: e2e-test-jwt-secret-at-least-32-bytes
+          PLATFORM_SEAT_TOKEN_SECRET: e2e-test-seat-token-secret-at-least-32-bytes
+          ADMIN_TOTP_ENCRYPTION_KEY: e2e-test-admin-totp-key-at-least-32-bytes
+          OAUTH_TOKEN_ENCRYPTION_KEY: e2e-test-oauth-token-key-at-least-32-bytes
+          OAUTH_PUBLIC_BASE_URL: https://game.example.invalid
           REDIS_PASSWORD: e2e-test-redis-password
           METRICS_TOKEN: e2e-test-metrics-token
           PGSSLMODE: verify-full
@@ -90,8 +94,8 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
-          docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
-          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.monitoring.yml config --quiet
 
       - name: Format check
@@ -132,7 +136,9 @@ jobs:
     needs: lint-and-test
     env:
       PG_PASSWORD: e2e-test-password
-      JWT_SECRET: e2e-test-jwt-secret-32chars-min
+      PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap
+      PG_BOOTSTRAP_PASSWORD: e2e-test-bootstrap-password
+      JWT_SECRET: e2e-test-jwt-secret-at-least-32-bytes
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
@@ -141,19 +147,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - name: Build and start service stack
+      - name: Build and run E2E service stack
         run: |
           export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
           export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
           export PG_MIGRATION_USER=zutomayo_migrator PG_MIGRATION_PASSWORD=e2e-test-migration-password
           export PG_APP_USER=zutomayo_app PG_APP_PASSWORD=e2e-test-app-password
-          docker compose \
-            -f docker-compose.yml \
-            -f docker-compose.e2e.yml \
-            up \
-            --abort-on-container-exit \
-            --exit-code-from e2e \
-            --build
+          compose=(docker compose -f docker-compose.yml -f docker-compose.e2e.yml)
+          "${compose[@]}" build
+          "${compose[@]}" run --rm e2e
         timeout-minutes: 20
 
       - name: Upload Playwright report

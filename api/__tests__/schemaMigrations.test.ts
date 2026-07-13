@@ -74,4 +74,20 @@ describe('schema migrations', () => {
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');
     expect(consistencyMigration).not.toContain('WHERE claimed_at IS NOT NULL');
   });
+
+  it('adopts existing official English card fields without a destructive rollback', () => {
+    const initSchema = readRepoFile('api/server.cjs');
+    const seedSchema = readRepoFile('scripts/seed-cards-pg.ts');
+    const migration = readRepoFile('migrations/000025_card_official_english.js');
+    for (const field of ['en_name_official', 'en_effect_official']) {
+      expect(migration).toContain(`${field}: { type: 'text', default: '' }`);
+      expect(initSchema).toContain(`${field} TEXT DEFAULT ''`);
+      expect(seedSchema).toContain(`${field} TEXT DEFAULT ''`);
+      expect(initSchema).toContain(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS ${field} TEXT DEFAULT ''`);
+      expect(seedSchema).toContain(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS ${field} TEXT DEFAULT ''`);
+    }
+    expect(migration).toContain('{ ifNotExists: true }');
+    expect(migration).toContain('export const down = false;');
+    expect(migration).not.toContain('dropColumns');
+  });
 });

@@ -226,6 +226,10 @@ function composeFixtureEnv() {
     REDIS_URL: 'rediss://:release-gate-redis-password@staging-redis.example.internal:6380',
     REDIS_PASSWORD: 'release-gate-redis-password',
     JWT_SECRET: 'release-gate-jwt-secret-32chars-minimum',
+    PLATFORM_SEAT_TOKEN_SECRET: 'release-gate-seat-token-secret-32chars-minimum',
+    ADMIN_TOTP_ENCRYPTION_KEY: 'release-gate-admin-totp-key-32chars-minimum',
+    OAUTH_TOKEN_ENCRYPTION_KEY: 'release-gate-oauth-token-key-32chars-minimum',
+    OAUTH_PUBLIC_BASE_URL: 'https://game.example.invalid',
     METRICS_TOKEN: 'release-gate-metrics-token',
     SLACK_ALERT_WEBHOOK: 'https://hooks.example.invalid/services/release-gate',
     GRAFANA_PASSWORD: 'release-gate-grafana-password',
@@ -720,6 +724,10 @@ function localChecks(run = runCommand, pipeline = runPipeline) {
             args: ['compose', '-f', 'docker-compose.staging.yml', 'config', '--no-env-resolution', '--format', 'json'],
           },
           {
+            command: 'jq',
+            args: ['-c', '-f', 'scripts/project-compose-role-env.jq'],
+          },
+          {
             command: process.execPath,
             args: ['scripts/verify-compose-role-env.mjs', '--require-pgsslmode=verify-full', '--require-rediss'],
           },
@@ -738,6 +746,10 @@ function localChecks(run = runCommand, pipeline = runPipeline) {
           {
             command: 'docker',
             args: ['compose', '-f', 'docker-compose.server4.yml', 'config', '--no-env-resolution', '--format', 'json'],
+          },
+          {
+            command: 'jq',
+            args: ['-c', '-f', 'scripts/project-compose-role-env.jq'],
           },
           {
             command: process.execPath,

@@ -71,7 +71,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'action_log_purged_at',
     'anonymized_at',
   ],
-  cards: ['id', 'name', 'element', 'type', 'updated_at'],
+  cards: ['id', 'name', 'en_name_official', 'en_effect_official', 'element', 'type', 'updated_at'],
   card_effects_i18n: ['card_id', 'lang', 'effect_text'],
   game_config: ['key', 'value'],
   preset_decks: ['id', 'card_ids'],
@@ -179,6 +179,20 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
 // integrity critical. `udtName` uses PostgreSQL's stable internal names
 // (for example `timestamptz` and `int4`) instead of localized display text.
 const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
+  {
+    tableName: 'cards',
+    columnName: 'en_name_official',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'cards',
+    columnName: 'en_effect_official',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: "''",
+  },
   { tableName: 'matches', columnName: 'completed_at', udtName: 'timestamptz', nullable: false, defaultToken: 'now()' },
   { tableName: 'matches', columnName: 'rules_version', udtName: 'text', nullable: false, defaultToken: "'legacy'" },
   {

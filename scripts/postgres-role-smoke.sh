@@ -27,6 +27,8 @@ docker compose version >/dev/null 2>&1 || {
 project="${ROLE_SMOKE_COMPOSE_PROJECT:-zutomayo-role-smoke-$$}"
 compose=(docker compose --project-name "$project" --file docker-compose.yml)
 
+PG_BOOTSTRAP_USER="${PG_BOOTSTRAP_USER:-z_role_bootstrap_executor}"
+PG_BOOTSTRAP_PASSWORD="${PG_BOOTSTRAP_PASSWORD:-role-smoke-bootstrap-password}"
 PG_MIGRATION_USER="${PG_MIGRATION_USER:-z_role_migrator}"
 PG_MIGRATION_PASSWORD="${PG_MIGRATION_PASSWORD:-role-smoke-migration-password}"
 PG_DATABASE="${PG_DATABASE:-zutomayo_role_smoke}"
@@ -53,7 +55,8 @@ JWT_SECRET="${JWT_SECRET:-role-smoke-jwt-secret-32-characters-min}"
 METRICS_TOKEN="${METRICS_TOKEN:-role-smoke-metrics-token}"
 REDIS_PASSWORD="${REDIS_PASSWORD:-role-smoke-redis-password}"
 
-export PG_MIGRATION_USER PG_MIGRATION_PASSWORD PG_DATABASE PG_APP_USER PG_APP_PASSWORD
+export PG_BOOTSTRAP_USER PG_BOOTSTRAP_PASSWORD PG_MIGRATION_USER PG_MIGRATION_PASSWORD
+export PG_DATABASE PG_APP_USER PG_APP_PASSWORD
 export PG_API_USER PG_API_PASSWORD PG_GAME_USER PG_GAME_PASSWORD
 export PG_PLATFORM_USER PG_PLATFORM_PASSWORD
 export PG_RETENTION_USER PG_RETENTION_PASSWORD PG_MONITOR_USER PG_MONITOR_PASSWORD
@@ -125,21 +128,14 @@ if [[ "$redis_ready" != 'true' ]]; then
   exit 1
 fi
 
-bootstrap_user='z_role_bootstrap_executor'
-bootstrap_password='role-smoke-bootstrap-password'
-"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_MIGRATION_PASSWORD" postgres \
-  psql --host 127.0.0.1 --username "$PG_MIGRATION_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
-  --command "CREATE ROLE $bootstrap_user LOGIN SUPERUSER PASSWORD '$bootstrap_password'" >/dev/null
 "${compose[@]}" exec --no-TTY \
-  --env POSTGRES_USER="$bootstrap_user" \
+  --env POSTGRES_USER="$PG_BOOTSTRAP_USER" \
   --env PG_MIGRATION_USER="$PG_MIGRATION_USER" \
+  --env PG_MIGRATION_PASSWORD="$PG_MIGRATION_PASSWORD" \
   --env POSTGRES_DB="$PG_DATABASE" \
   --env PGHOST=127.0.0.1 \
-  --env PGPASSWORD="$bootstrap_password" \
+  --env PGPASSWORD="$PG_BOOTSTRAP_PASSWORD" \
   postgres /docker-entrypoint-initdb.d/10-roles.sh >/dev/null
-"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_MIGRATION_PASSWORD" postgres \
-  psql --host 127.0.0.1 --username "$PG_MIGRATION_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
-  --command "DROP ROLE $bootstrap_user" >/dev/null
 
 "${compose[@]}" run --build --rm --no-deps migrate
 
@@ -163,7 +159,9 @@ bootstrap_password='role-smoke-bootstrap-password'
   --set=retention_user="$PG_RETENTION_USER" \
   --set=monitor_user="$PG_MONITOR_USER" \
   --set=backup_user="$PG_BACKUP_USER" \
-  --set=wal_user="$PG_WAL_USER" <<'SQL'
+  --set=wal_user="$PG_WAL_USER" \
+  --set=bootstrap_user="$PG_BOOTSTRAP_USER" \
+  --set=migration_user="$PG_MIGRATION_USER" <<'SQL'
 CREATE TEMP TABLE role_expectations (role_name text PRIMARY KEY, replication boolean NOT NULL);
 INSERT INTO role_expectations (role_name, replication)
 VALUES
@@ -186,6 +184,8 @@ SELECT
       AND r.rolbypassrls IS FALSE
       AND r.rolreplication = e.replication
       AND r.rolinherit = (NOT e.replication)) AS role_attributes_ok,
+  (SELECT rolsuper FROM pg_roles WHERE rolname = :'bootstrap_user') AS bootstrap_super,
+  NOT (SELECT rolsuper FROM pg_roles WHERE rolname = :'migration_user') AS migration_not_super,
   has_table_privilege(:'api_user', 'public.users', 'INSERT') AS api_insert_ok,
   has_column_privilege(:'game_user', 'public.users', 'auth_version', 'SELECT') AS game_auth_read,
   NOT has_column_privilege(:'game_user', 'public.users', 'email', 'SELECT') AS game_no_email_read,
@@ -210,6 +210,16 @@ SELECT
 \if :role_attributes_ok
 \else
   \echo 'role attribute smoke failed' >&2
+  \quit 3
+\endif
+\if :bootstrap_super
+\else
+  \echo 'bootstrap administrator is not a superuser' >&2
+  \quit 3
+\endif
+\if :migration_not_super
+\else
+  \echo 'migration owner is still a superuser' >&2
   \quit 3
 \endif
 \if :api_insert_ok

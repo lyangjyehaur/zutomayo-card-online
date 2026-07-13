@@ -17,10 +17,6 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
     });
     const guestPage = await guestContext.newPage();
     const spectatorPage = await spectatorContext.newPage();
-    await Promise.all([
-      guestContext.tracing.start({ screenshots: true, snapshots: true, sources: true }),
-      spectatorContext.tracing.start({ screenshots: true, snapshots: true, sources: true }),
-    ]);
     const guestVideo = guestPage.video();
     const spectatorVideo = spectatorPage.video();
     const spectatorSubmissions: string[] = [];
@@ -111,10 +107,6 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
       throw error;
     } finally {
       await context.setOffline(false).catch(() => undefined);
-      await Promise.all([
-        guestContext.tracing.stop(failed ? { path: testInfo.outputPath('guest-trace.zip') } : undefined),
-        spectatorContext.tracing.stop(failed ? { path: testInfo.outputPath('spectator-trace.zip') } : undefined),
-      ]);
       await Promise.all([guestContext.close(), spectatorContext.close()]);
       if (!failed) await Promise.all([guestVideo?.delete(), spectatorVideo?.delete()]);
     }

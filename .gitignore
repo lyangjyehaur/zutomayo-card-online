@@ -66,6 +66,12 @@ data/vision-ocr/
 .env.*
 !.env.example
 
+# Generated release manifests and evidence artifacts
+.release.env
+.release-evidence/
+staging-evidence/
+artifacts/release-gate/
+
 # Standalone admin HTML (replaced by React admin)
 admin/
 

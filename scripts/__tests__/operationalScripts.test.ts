@@ -16,6 +16,7 @@ const scripts = [
   'compose-chaos-drill.sh',
   'deploy-server4.sh',
 ];
+const hasDockerCompose = spawnSync('docker', ['compose', 'version'], { stdio: 'ignore' }).status === 0;
 
 describe('operational shell scripts', () => {
   it.each(scripts)('%s has valid Bash syntax', (script) => {
@@ -56,16 +57,82 @@ describe('operational shell scripts', () => {
 
   it('runs the real PostgreSQL/Redis outbox and social race smoke after role bootstrap', () => {
     const smoke = readFileSync(resolve('scripts/postgres-role-smoke.sh'), 'utf8');
+    const compose = readFileSync(resolve('docker-compose.yml'), 'utf8');
+    expect(smoke).toContain('PG_BOOTSTRAP_USER');
+    expect(smoke).toContain('migration owner is still a superuser');
+    expect(compose).toContain('POSTGRES_USER: ${PG_BOOTSTRAP_USER:-${PG_MIGRATION_USER:-zutomayo}}');
     expect(smoke).toContain("grep -qx '1'");
     expect(smoke).toContain('migrate npm run relationship:outbox:pg-smoke');
     expect(smoke).toContain('api node social-concurrency-pg-smoke.cjs');
   });
 
+  it.skipIf(!hasDockerCompose)('renders the E2E PostgreSQL healthcheck against the overlay database', () => {
+    const result = spawnSync(
+      'docker',
+      [
+        'compose',
+        '-f',
+        'docker-compose.yml',
+        '-f',
+        'docker-compose.e2e.yml',
+        'config',
+        '--no-interpolate',
+        '--format',
+        'json',
+      ],
+      { encoding: 'utf8', timeout: 10_000 },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const config = JSON.parse(result.stdout);
+    expect(config.services.postgres.environment).toContain('POSTGRES_DB=zutomayo_e2e');
+    expect(config.services.postgres.healthcheck.test).toEqual([
+      'CMD-SHELL',
+      'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"',
+    ]);
+  });
+
+  it('runs the E2E runner separately from successful one-shot dependencies', () => {
+    const workflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8');
+    const browserMatrix = readFileSync(resolve('.github/workflows/e2e-matrix.yml'), 'utf8');
+    expect(workflow).toContain('"${compose[@]}" build');
+    expect(workflow).toContain('"${compose[@]}" run --rm e2e');
+    expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
+    expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
+    expect(workflow).not.toContain('--abort-on-container-exit');
+    expect(workflow).not.toContain('--exit-code-from e2e');
+  });
+
   it('gates the rendered production role/TLS environment before migration', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
     expect(deploy).toContain('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS');
+    expect(deploy).toContain('jq -c -f scripts/project-compose-role-env.jq');
     expect(deploy).toContain("ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full --require-rediss'");
     expect(deploy).toContain('--bootstrap');
+  });
+
+  it('validates the active release and smokes its build id after automatic rollback', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    expect(deploy).toContain('validate_remote_manifest \'.release.env\' "$current_manifest"');
+    expect(deploy).toContain('ROLLBACK_RELEASE_SHA="$RELEASE_SHA"');
+    expect(deploy).toContain('RELEASE_SHA="$ROLLBACK_RELEASE_SHA"');
+    expect(deploy).toContain("test -s '$COMPOSE_FILE.previous'");
+    expect(deploy).toContain('test -s scripts/postgres-init-roles.sh.previous');
+    expect(deploy).toContain('cp -p scripts/postgres-init-roles.sh.previous scripts/postgres-init-roles.sh');
+    expect(deploy).toContain('--source-digest "$RELEASE_SHA"');
+    expect(deploy).toContain('.release.rollback-ready');
+  });
+
+  it('rolls an N image back over an N+1 schema without running the old migration image', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    const rollbackStart = deploy.indexOf('remote_rollback()');
+    const rollbackEnd = deploy.indexOf('run_smoke()', rollbackStart);
+    const rollback = deploy.slice(rollbackStart, rollbackEnd);
+
+    expect(rollback).toContain(
+      "docker compose -f '$COMPOSE_FILE' up -d --no-deps --wait --wait-timeout 180 game api platform",
+    );
+    expect(rollback).not.toContain("docker compose -f '$COMPOSE_FILE' run --rm migrate");
+    expect(rollback).not.toContain("docker compose -f '$COMPOSE_FILE' up -d --wait");
   });
 
   it('rejects an unknown migration subcommand instead of defaulting to up', () => {

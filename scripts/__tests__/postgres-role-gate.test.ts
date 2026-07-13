@@ -315,18 +315,13 @@ describe('PostgreSQL role provisioning contract', () => {
     expect(result.stderr).toContain('must not reuse passwords');
   });
 
-  it('masks non-own role secrets while retaining optional env-file configuration', () => {
+  it('uses explicit runtime allowlists without importing the shared env file', () => {
     for (const composeFile of ['docker-compose.server4.yml', 'docker-compose.staging.yml']) {
       const compose = readFileSync(composeFile, 'utf8');
-      expect(compose).toContain('env_file: .env');
+      expect(compose).not.toContain('env_file:');
       expect(compose).toContain('PG_GAME_PASSWORD');
       expect(compose).toContain('PG_API_PASSWORD');
       expect(compose).toContain('PG_PLATFORM_PASSWORD');
-      expect(compose).toContain('PG_MIGRATION_PASSWORD=');
-      expect(compose).toContain('PG_RETENTION_PASSWORD=');
-      expect(compose).toContain('PG_MONITOR_PASSWORD=');
-      expect(compose).toContain('PG_BACKUP_PASSWORD=');
-      expect(compose).toContain('PG_WAL_PASSWORD=');
     }
   });
 });

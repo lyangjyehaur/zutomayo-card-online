@@ -138,6 +138,10 @@ jobs:
           PG_CA_SECRET_NAME: zutomayo-staging-postgres-ca
           REDIS_URL: rediss://:cd-preflight-redis-password@staging-redis.example.internal:6380
           JWT_SECRET: cd-preflight-jwt-secret-32chars-min
+          PLATFORM_SEAT_TOKEN_SECRET: cd-preflight-seat-token-secret-32chars-min
+          ADMIN_TOTP_ENCRYPTION_KEY: cd-preflight-admin-totp-key-32chars-min
+          OAUTH_TOKEN_ENCRYPTION_KEY: cd-preflight-oauth-token-key-32chars-min
+          OAUTH_PUBLIC_BASE_URL: https://game.example.invalid
           REDIS_PASSWORD: cd-preflight-redis-password
           METRICS_TOKEN: cd-preflight-metrics-token
           PGSSLMODE: verify-full
@@ -168,8 +172,8 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
-          docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
-          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.monitoring.yml config --quiet
 
   # ─────────────────────────────────────────────────────────────
@@ -370,7 +374,7 @@ jobs:
             case "$key" in
               GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE)
                 cosign verify --certificate-identity-regexp "https://github.com/${GH_REPOSITORY}/.github/workflows/cd\\.yml@refs/(heads/master|tags/v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?)$" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$ref" >/dev/null
-                gh attestation verify "oci://${ref}" --repo "$GH_REPOSITORY" >/dev/null
+                gh attestation verify "oci://${ref}" --repo "$GH_REPOSITORY" --source-digest "${{ needs.preflight.outputs.release_sha }}" >/dev/null
                 ;;
             esac
           done < .release.env
@@ -380,6 +384,8 @@ jobs:
         with:
           name: release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
+          if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
 
   # ─────────────────────────────────────────────────────────────
@@ -439,6 +445,8 @@ jobs:
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
+          if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
 
   release-gate:

@@ -35,6 +35,7 @@ import {
   postgresSslConfig,
   requireSecret,
   resolveRedisConnectionConfig,
+  shouldUpgradeInsecureRequests,
   validateProductionRuntimeSecurity,
 } from './runtimeSecurityConfig';
 import { createServiceReadiness } from './operational/serviceLifecycle';
@@ -379,6 +380,7 @@ server.app.use(
         connectSrc: ["'self'", 'wss:', 'https:'],
         fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
         frameAncestors: ["'none'"],
+        upgradeInsecureRequests: shouldUpgradeInsecureRequests(process.env) ? [] : null,
       },
     },
   }),
@@ -961,7 +963,7 @@ let runningServers: RunningServers | undefined;
 let shutdownPromise: Promise<void> | undefined;
 
 function socketIoRuntime(): SocketIoLike | undefined {
-  return (server.app.context as unknown as { io?: SocketIoLike }).io;
+  return (server.app as unknown as { _io?: SocketIoLike })._io;
 }
 
 async function performShutdown(signal: string): Promise<void> {

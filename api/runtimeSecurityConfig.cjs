@@ -239,8 +239,26 @@ function validateProductionRuntimeSecurity(env = process.env) {
   if (String(env.NODE_TLS_REJECT_UNAUTHORIZED || '').trim() === '0') {
     throw new Error('NODE_TLS_REJECT_UNAUTHORIZED=0 is forbidden in production');
   }
-  requireStrongSecret('JWT_SECRET', env.JWT_SECRET);
-  requireStrongSecret('PLATFORM_SEAT_TOKEN_SECRET or JWT_SECRET', env.PLATFORM_SEAT_TOKEN_SECRET || env.JWT_SECRET);
+  const jwtSecret = requireStrongSecret('JWT_SECRET', env.JWT_SECRET);
+  const seatSecret = requireStrongSecret(
+    'PLATFORM_SEAT_TOKEN_SECRET or JWT_SECRET',
+    env.PLATFORM_SEAT_TOKEN_SECRET || env.JWT_SECRET,
+  );
+  const oauthTokenEncryptionKey = requireStrongSecret('OAUTH_TOKEN_ENCRYPTION_KEY', env.OAUTH_TOKEN_ENCRYPTION_KEY);
+  const adminTotpEncryptionKey = requireStrongSecret('ADMIN_TOTP_ENCRYPTION_KEY', env.ADMIN_TOTP_ENCRYPTION_KEY);
+  if (env.PLATFORM_SEAT_TOKEN_SECRET && seatSecret === jwtSecret) {
+    throw new Error('PLATFORM_SEAT_TOKEN_SECRET must be distinct from JWT_SECRET');
+  }
+  if (oauthTokenEncryptionKey === jwtSecret || oauthTokenEncryptionKey === seatSecret) {
+    throw new Error('OAUTH_TOKEN_ENCRYPTION_KEY must be distinct from JWT and seat-token secrets');
+  }
+  if (
+    adminTotpEncryptionKey === jwtSecret ||
+    adminTotpEncryptionKey === seatSecret ||
+    adminTotpEncryptionKey === oauthTokenEncryptionKey
+  ) {
+    throw new Error('ADMIN_TOTP_ENCRYPTION_KEY must be distinct from JWT, seat-token, and OAuth token secrets');
+  }
   resolveRedisConnectionConfig(env);
   postgresSslConfig(env);
   resolveOAuthPublicBaseUrl(env);

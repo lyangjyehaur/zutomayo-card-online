@@ -109,13 +109,13 @@ verify_manifest_artifacts() {
       --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
       --certificate-oidc-issuer "$COSIGN_OIDC_ISSUER" \
       "$ref" >/dev/null
-    gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY" >/dev/null
+    gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY" --source-digest "$RELEASE_SHA" >/dev/null
   done
 }
 
-validate_remote_previous_manifest() {
-  local file="$1"
-  ssh_run "cat '$REMOTE_DIR/.release.previous.env'" > "$file" || die 'remote previous release manifest is unreadable'
+validate_remote_manifest() {
+  local remote_name="$1" file="$2"
+  ssh_run "cat '$REMOTE_DIR/$remote_name'" > "$file" || die "remote release manifest is unreadable: $remote_name"
   validate_manifest "$file"
   local migration_file="${PROJECT_DIR}/migrations/${EXPECTED_SCHEMA_MIGRATION}.js"
   [[ -f "$migration_file" ]] || die "rollback migration file is missing: $migration_file"
@@ -137,62 +137,76 @@ confirm_action() {
 
 copy_release_files() {
   local source="$1" compose_source="$PROJECT_DIR/$COMPOSE_FILE" retention_compose_source="$PROJECT_DIR/$RETENTION_COMPOSE_FILE"
+  local role_projection_source="$PROJECT_DIR/scripts/project-compose-role-env.jq"
   [[ -f "$compose_source" ]] || die "local compose file not found: $compose_source"
   [[ -f "$retention_compose_source" ]] || die "local retention compose file not found: $retention_compose_source"
+  [[ -f "$role_projection_source" ]] || die "local role environment projection is missing: $role_projection_source"
   scp -P "$SERVER_PORT" "$source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.release.env.incoming"
   scp -P "$SERVER_PORT" "$compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.compose.incoming"
   scp -P "$SERVER_PORT" "$retention_compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.retention-compose.incoming"
   scp -P "$SERVER_PORT" "$PROJECT_DIR/scripts/postgres-init-roles.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.postgres-init-roles.incoming"
+  scp -P "$SERVER_PORT" "$role_projection_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.role-env-projection.incoming"
 }
 
 remote_deploy() {
   ssh_run "set -euo pipefail;
     cd '$REMOTE_DIR';
     test -f .env;
+    command -v jq >/dev/null || { echo 'jq is required for secret-safe Compose role validation' >&2; exit 1; };
     getent group '$RETENTION_SERVICE_GROUP' >/dev/null || { echo 'retention service group is missing' >&2; exit 1; };
     if test -f .release.env; then cp -p .release.env .release.previous.env; chgrp '$RETENTION_SERVICE_GROUP' .release.previous.env; chmod 0640 .release.previous.env; fi;
     if test -f '$COMPOSE_FILE'; then cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.previous'; fi;
     if test -f '$RETENTION_COMPOSE_FILE'; then cp -p '$RETENTION_COMPOSE_FILE' '$RETENTION_COMPOSE_FILE.previous'; fi;
+    if test -f scripts/postgres-init-roles.sh; then cp -p scripts/postgres-init-roles.sh scripts/postgres-init-roles.sh.previous; fi;
+    if test -s .release.previous.env && test -s '$COMPOSE_FILE.previous' && test -s '$RETENTION_COMPOSE_FILE.previous' && test -s scripts/postgres-init-roles.sh.previous; then touch .release.rollback-ready; fi;
     install -m 0640 .release.env.incoming .release.env;
     chgrp '$RETENTION_SERVICE_GROUP' .release.env;
     install -m 0644 .compose.incoming '$COMPOSE_FILE';
     install -m 0644 .retention-compose.incoming '$RETENTION_COMPOSE_FILE';
     install -d -m 0755 scripts;
     install -m 0755 .postgres-init-roles.incoming scripts/postgres-init-roles.sh;
-    rm -f .release.env.incoming .compose.incoming .retention-compose.incoming .postgres-init-roles.incoming;
+    install -m 0644 .role-env-projection.incoming scripts/project-compose-role-env.jq;
+    rm -f .release.env.incoming .compose.incoming .retention-compose.incoming .postgres-init-roles.incoming .role-env-projection.incoming;
     set -a; . ./.release.env; set +a;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' pull --quiet retention;
     docker compose -f '$COMPOSE_FILE' config --quiet;
     docker compose -f '$COMPOSE_FILE' pull --quiet;
-    docker compose -f '$COMPOSE_FILE' config --format json | docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate node scripts/verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS;
+    docker compose -f '$COMPOSE_FILE' config --format json | jq -c -f scripts/project-compose-role-env.jq | docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate node scripts/verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS;
     docker compose -f '$COMPOSE_FILE' run --rm migrate;
     docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout 180;
     date -u +%Y-%m-%dT%H:%M:%SZ > .release.deployed-at;
-    docker compose -f '$COMPOSE_FILE' ps"
+    docker compose -f '$COMPOSE_FILE' ps;
+    rm -f .release.rollback-ready"
 }
 
 remote_rollback() {
   ssh_run "set -euo pipefail;
     cd '$REMOTE_DIR';
     test -s .release.previous.env || { echo 'no verified previous release manifest' >&2; exit 1; };
+    test -s '$COMPOSE_FILE.previous' || { echo 'no previous deployment compose file' >&2; exit 1; };
     test -s '$RETENTION_COMPOSE_FILE.previous' || { echo 'no verified previous retention compose file' >&2; exit 1; };
+    test -s scripts/postgres-init-roles.sh.previous || { echo 'no previous PostgreSQL role bootstrap script' >&2; exit 1; };
     getent group '$RETENTION_SERVICE_GROUP' >/dev/null || { echo 'retention service group is missing' >&2; exit 1; };
     cp -p .release.env .release.failed.env 2>/dev/null || true;
     cp -p .release.previous.env .release.env;
     chgrp '$RETENTION_SERVICE_GROUP' .release.env;
     chmod 0640 .release.env;
-    if test -f '$COMPOSE_FILE.previous'; then cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.failed'; cp -p '$COMPOSE_FILE.previous' '$COMPOSE_FILE'; fi;
+    cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.failed' 2>/dev/null || true;
+    cp -p '$COMPOSE_FILE.previous' '$COMPOSE_FILE';
     cp -p '$RETENTION_COMPOSE_FILE' '$RETENTION_COMPOSE_FILE.failed' 2>/dev/null || true;
     cp -p '$RETENTION_COMPOSE_FILE.previous' '$RETENTION_COMPOSE_FILE';
+    cp -p scripts/postgres-init-roles.sh scripts/postgres-init-roles.sh.failed 2>/dev/null || true;
+    cp -p scripts/postgres-init-roles.sh.previous scripts/postgres-init-roles.sh;
     set -a; . ./.release.env; set +a;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' pull --quiet retention;
     docker compose -f '$COMPOSE_FILE' config --quiet;
     docker compose -f '$COMPOSE_FILE' pull --quiet;
-    docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout 180;
+    docker compose -f '$COMPOSE_FILE' up -d --no-deps --wait --wait-timeout 180 game api platform;
     date -u +%Y-%m-%dT%H:%M:%SZ > .release.rolled-back-at;
-    docker compose -f '$COMPOSE_FILE' ps"
+    docker compose -f '$COMPOSE_FILE' ps;
+    rm -f .release.rollback-ready"
 }
 
 run_smoke() {
@@ -223,8 +237,17 @@ run_smoke() {
 }
 
 rollback_and_smoke() {
+  local failed_release_sha="$RELEASE_SHA" status
+  [[ "${ROLLBACK_RELEASE_SHA:-}" =~ ^[[:xdigit:]]{40}$ ]] || return 1
   remote_rollback || return 1
-  run_smoke
+  RELEASE_SHA="$ROLLBACK_RELEASE_SHA"
+  if run_smoke; then
+    status=0
+  else
+    status=$?
+  fi
+  RELEASE_SHA="$failed_release_sha"
+  return "$status"
 }
 
 if [[ "$ROLLBACK" == true ]]; then
@@ -235,8 +258,8 @@ if [[ "$ROLLBACK" == true ]]; then
   fi
   previous_manifest="$(mktemp)"
   trap 'rm -f "$previous_manifest"' EXIT
-  ssh_run "test -s '$REMOTE_DIR/.release.previous.env'" || die 'remote previous release manifest is missing'
-  validate_remote_previous_manifest "$previous_manifest"
+  ssh_run "test -s '$REMOTE_DIR/.release.previous.env' && test -s '$REMOTE_DIR/$COMPOSE_FILE.previous' && test -s '$REMOTE_DIR/$RETENTION_COMPOSE_FILE.previous' && test -s '$REMOTE_DIR/scripts/postgres-init-roles.sh.previous'" || die 'remote previous release files are incomplete'
+  validate_remote_manifest '.release.previous.env' "$previous_manifest"
   remote_rollback
   run_smoke
   log 'rollback completed'
@@ -253,10 +276,18 @@ fi
 
 ssh_run 'echo connected' >/dev/null || die 'SSH connection failed'
 ssh_run "test -d '$REMOTE_DIR' && test -f '$REMOTE_DIR/.env'" || die 'remote deployment directory or .env is missing'
-if ssh_run "test -s '$REMOTE_DIR/.release.previous.env' && test -s '$REMOTE_DIR/$RETENTION_COMPOSE_FILE.previous'"; then
+ssh_run "test ! -e '$REMOTE_DIR/.release.rollback-ready'" || die 'an incomplete prior rollout requires manual inspection or rollback'
+if ssh_run "test -s '$REMOTE_DIR/.release.env' && test -s '$REMOTE_DIR/$COMPOSE_FILE' && test -s '$REMOTE_DIR/$RETENTION_COMPOSE_FILE' && test -s '$REMOTE_DIR/scripts/postgres-init-roles.sh'"; then
   HAS_PREVIOUS=true
+  current_manifest="$(mktemp)"
+  trap 'rm -f "$current_manifest"' EXIT
+  validate_remote_manifest '.release.env' "$current_manifest"
+  ROLLBACK_RELEASE_SHA="$RELEASE_SHA"
+  # Restore the incoming release values after validating the active rollback target.
+  validate_manifest "$MANIFEST_FILE"
 else
   HAS_PREVIOUS=false
+  ROLLBACK_RELEASE_SHA=''
 fi
 if [[ "$HAS_PREVIOUS" != true && "$BOOTSTRAP" != true ]]; then
   die 'no verified previous release is present; use --bootstrap for the one-time cutover with a manual rollback plan'
@@ -264,9 +295,13 @@ fi
 copy_release_files "$MANIFEST_FILE"
 if ! remote_deploy; then
   if [[ "$HAS_PREVIOUS" == true ]]; then
-    log 'remote deployment failed; restoring previous verified release'
-    if ! rollback_and_smoke; then
-      log 'rollback verification failed; manual intervention is required'
+    if ssh_run "test -e '$REMOTE_DIR/.release.rollback-ready'"; then
+      log 'remote deployment failed; restoring previous verified release'
+      if ! rollback_and_smoke; then
+        log 'rollback verification failed; manual intervention is required'
+      fi
+    else
+      log 'deployment failed before a complete rollback snapshot was confirmed; inspect the active release manually'
     fi
   else
     log 'bootstrap deployment failed; no automatic rollback is available, manual intervention is required'

@@ -2,9 +2,11 @@ services:
   postgres:
     image: postgres:16.4-alpine
     environment:
-      POSTGRES_USER: ${PG_MIGRATION_USER:-zutomayo}
-      POSTGRES_PASSWORD: ${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
+      POSTGRES_USER: ${PG_BOOTSTRAP_USER:-${PG_MIGRATION_USER:-zutomayo}}
+      POSTGRES_PASSWORD: ${PG_BOOTSTRAP_PASSWORD:-${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_BOOTSTRAP_PASSWORD, PG_MIGRATION_PASSWORD, or PG_PASSWORD in your environment or .env file}}}
       POSTGRES_DB: ${PG_DATABASE:-zutomayo}
+      PG_MIGRATION_USER: ${PG_MIGRATION_USER:-zutomayo}
+      PG_MIGRATION_PASSWORD: ${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
       PG_APP_USER: ${PG_APP_USER:-zutomayo_app}
       PG_APP_PASSWORD: ${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
       PG_API_USER: ${PG_API_USER:-${PG_APP_USER:-zutomayo_app}}
@@ -25,7 +27,7 @@ services:
       - pg-data:/var/lib/postgresql/data
       - ./scripts/postgres-init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${PG_MIGRATION_USER:-zutomayo} -d ${PG_DATABASE:-zutomayo}']
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 5s
       timeout: 3s
       retries: 10

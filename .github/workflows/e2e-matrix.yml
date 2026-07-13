@@ -22,11 +22,13 @@ jobs:
         browser: [chromium, firefox, webkit, android, iphone]
     env:
       PG_PASSWORD: e2e-test-password
+      PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap
+      PG_BOOTSTRAP_PASSWORD: e2e-test-bootstrap-password
       PG_MIGRATION_USER: zutomayo_migrator
       PG_MIGRATION_PASSWORD: e2e-test-migration-password
       PG_APP_USER: zutomayo_app
       PG_APP_PASSWORD: e2e-test-app-password
-      JWT_SECRET: e2e-test-jwt-secret-32chars-min
+      JWT_SECRET: e2e-test-jwt-secret-at-least-32-bytes
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable

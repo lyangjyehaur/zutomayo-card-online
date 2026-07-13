@@ -100,6 +100,7 @@ export function ChronosDial({ chronos, currentTime, currentPlayer }: ChronosDial
       data-time={currentTime}
       data-night-side={nightSide}
       data-face-art={hasFaceArt}
+      role="img"
       aria-label={`${t('chronos.title')} ${position}/${POSITIONS} · ${timeLabel}`}
     >
       <img

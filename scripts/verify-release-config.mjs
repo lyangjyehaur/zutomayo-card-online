@@ -111,19 +111,7 @@ function serviceBlock(relativePath, serviceName) {
   return block.join('\n');
 }
 
-const ROLE_PASSWORDS = [
-  'PG_MIGRATION_PASSWORD',
-  'PG_APP_PASSWORD',
-  'PG_API_PASSWORD',
-  'PG_GAME_PASSWORD',
-  'PG_PLATFORM_PASSWORD',
-  'PG_RETENTION_PASSWORD',
-  'PG_MONITOR_PASSWORD',
-  'PG_BACKUP_PASSWORD',
-  'PG_WAL_PASSWORD',
-];
-
-function assertRoleEnvFileMasks(relativePath) {
+function assertRoleEnvironmentIsolation(relativePath) {
   const serviceRoles = {
     migrate: { user: 'PG_MIGRATION_USER', password: 'PG_MIGRATION_PASSWORD' },
     game: { user: 'PG_GAME_USER', password: 'PG_GAME_PASSWORD' },
@@ -132,11 +120,14 @@ function assertRoleEnvFileMasks(relativePath) {
   };
   for (const [serviceName, role] of Object.entries(serviceRoles)) {
     const block = serviceBlock(relativePath, serviceName);
-    if (!/\n {4}env_file:\s+\.env(?:\n|$)/.test(`\n${block}\n`)) {
-      throw new Error(`${relativePath} ${serviceName} must retain env_file: .env for optional runtime configuration`);
+    if (/\n {4}env_file:/m.test(`\n${block}\n`)) {
+      throw new Error(`${relativePath} ${serviceName} must not import a shared env_file into the container`);
     }
     if (!block.includes(`PG_USER=\${${role.user}:?`)) {
       throw new Error(`${relativePath} ${serviceName} must bind PG_USER to ${role.user}`);
+    }
+    if (!block.includes(`${role.user}=\${${role.user}:?`)) {
+      throw new Error(`${relativePath} ${serviceName} must expose its named role identity ${role.user}`);
     }
     if (!block.includes(`PG_PASSWORD=\${${role.password}:?`)) {
       throw new Error(`${relativePath} ${serviceName} must bind PG_PASSWORD to ${role.password}`);
@@ -144,17 +135,33 @@ function assertRoleEnvFileMasks(relativePath) {
     if (!block.includes('DATABASE_URL=')) {
       throw new Error(`${relativePath} ${serviceName} must clear DATABASE_URL`);
     }
-    for (const variable of ROLE_PASSWORDS) {
-      if (variable === role.password) continue;
-      if (!block.includes(`${variable}=`)) {
-        throw new Error(`${relativePath} ${serviceName} must explicitly mask ${variable} inherited from env_file`);
+    for (const variable of [
+      'PG_MIGRATION_PASSWORD',
+      'PG_APP_PASSWORD',
+      'PG_API_PASSWORD',
+      'PG_GAME_PASSWORD',
+      'PG_PLATFORM_PASSWORD',
+      'PG_RETENTION_PASSWORD',
+      'PG_MONITOR_PASSWORD',
+      'PG_BACKUP_PASSWORD',
+      'PG_WAL_PASSWORD',
+    ]) {
+      if (variable !== role.password && block.includes(`${variable}=`)) {
+        throw new Error(`${relativePath} ${serviceName} must not receive non-own ${variable}`);
       }
     }
   }
 }
 
 function assertRuntimeEnvironmentInventory(relativePath) {
+  const migrate = serviceBlock(relativePath, 'migrate');
+  if (!migrate.includes('NODE_ENV=production')) {
+    throw new Error(`${relativePath} migrate must enforce production runtime security gates`);
+  }
+
+  const game = serviceBlock(relativePath, 'game');
   const api = serviceBlock(relativePath, 'api');
+  const platform = serviceBlock(relativePath, 'platform');
   const requiredApiVariables = [
     'AUTH_MODE',
     'TURNSTILE_SECRET_KEY',
@@ -162,6 +169,9 @@ function assertRuntimeEnvironmentInventory(relativePath) {
     'TURNSTILE_SITEVERIFY_URL',
     'OAUTH_TOKEN_ENCRYPTION_KEY',
     'OAUTH_PUBLIC_BASE_URL',
+    'OAUTH_HTTP_TIMEOUT_MS',
+    'OAUTH_REDIS_TIMEOUT_MS',
+    'OAUTH_HTTP_MAX_ATTEMPTS',
     'ACCESS_TOKEN_TTL_SECONDS',
     'REFRESH_TOKEN_TTL_SECONDS',
     'AUTH_COOKIE_DOMAIN',
@@ -186,10 +196,88 @@ function assertRuntimeEnvironmentInventory(relativePath) {
     'CHAT_TRANSLATION_PROVIDER',
     'CHAT_TRANSLATION_MODEL',
     'CHAT_TRANSLATION_TIMEOUT_MS',
+    'REDIS_COMMAND_TIMEOUT_MS',
+    'RELATIONSHIP_OUTBOX_INTERVAL_MS',
+    'RELATIONSHIP_OUTBOX_BATCH_SIZE',
+    'RELATIONSHIP_OUTBOX_LEASE_MS',
+    'RELATIONSHIP_OUTBOX_MAX_ATTEMPTS',
+    'RELATIONSHIP_OUTBOX_BASE_RETRY_MS',
+    'RELATIONSHIP_OUTBOX_MAX_RETRY_MS',
+    'RELATIONSHIP_OUTBOX_RETRY_JITTER_RATIO',
+    'REDIS_LIMITER_TIMEOUT_MS',
+    'MATCHMAKING_USER_LIMIT',
+    'MATCHMAKING_IP_LIMIT',
+    'MATCHMAKING_GLOBAL_LIMIT',
+    'PRESENCE_TTL_MS',
   ];
   for (const variable of requiredApiVariables) {
     if (!api.includes(`${variable}=\${${variable}`)) {
       throw new Error(`${relativePath} API runtime must explicitly map ${variable}`);
+    }
+  }
+  if (!api.includes('FEEDBACK_UPLOAD_DIR=/app/data/feedback-uploads')) {
+    throw new Error(`${relativePath} API runtime must use the persistent feedback upload path`);
+  }
+  if (!api.includes('feedback_uploads:/app/data/feedback-uploads')) {
+    throw new Error(`${relativePath} API runtime must mount the persistent feedback upload volume`);
+  }
+
+  for (const requiredVariable of ['ADMIN_TOTP_ENCRYPTION_KEY', 'OAUTH_TOKEN_ENCRYPTION_KEY']) {
+    if (!api.includes(`${requiredVariable}=\${${requiredVariable}:?`)) {
+      throw new Error(`${relativePath} API runtime must require ${requiredVariable}`);
+    }
+  }
+  if (!api.includes('OAUTH_PUBLIC_BASE_URL=${OAUTH_PUBLIC_BASE_URL:-${PUBLIC_BASE_URL:?')) {
+    throw new Error(`${relativePath} API runtime must require OAUTH_PUBLIC_BASE_URL or PUBLIC_BASE_URL`);
+  }
+
+  for (const [serviceName, block] of [
+    ['game', game],
+    ['platform', platform],
+  ]) {
+    if (!block.includes('PLATFORM_SEAT_TOKEN_SECRET=${PLATFORM_SEAT_TOKEN_SECRET:?')) {
+      throw new Error(`${relativePath} ${serviceName} must require the independent seat-token signing secret`);
+    }
+  }
+  if (api.includes('PLATFORM_SEAT_TOKEN_SECRET=') || migrate.includes('PLATFORM_SEAT_TOKEN_SECRET=')) {
+    throw new Error(`${relativePath} must expose PLATFORM_SEAT_TOKEN_SECRET only to game and platform`);
+  }
+
+  const apiOwnedSecrets = [
+    'ADMIN_TOTP_ENCRYPTION_KEY',
+    'ACCOUNT_EMAIL_WEBHOOK_SECRET',
+    'TURNSTILE_SECRET_KEY',
+    'OAUTH_TOKEN_ENCRYPTION_KEY',
+    'LOGTO_APP_SECRET',
+    'LOGTO_M2M_APP_SECRET',
+    'GOOGLE_OAUTH_CLIENT_SECRET',
+    'GITHUB_OAUTH_CLIENT_SECRET',
+    'DISCORD_OAUTH_CLIENT_SECRET',
+    'CHAT_TRANSLATION_API_KEY',
+    'IMGPROXY_KEY',
+    'IMGPROXY_SALT',
+  ];
+  for (const variable of apiOwnedSecrets) {
+    if (!api.includes(`${variable}=`)) throw new Error(`${relativePath} API runtime must explicitly map ${variable}`);
+    for (const [serviceName, block] of [
+      ['migrate', migrate],
+      ['game', game],
+      ['platform', platform],
+    ]) {
+      if (block.includes(`${variable}=`)) {
+        throw new Error(`${relativePath} must not expose API-owned ${variable} to ${serviceName}`);
+      }
+    }
+  }
+
+  for (const variable of ['API_PROXY_MAX_BODY_BYTES', 'STALE_MATCH_TTL_MS', 'CLEANUP_INTERVAL_MS']) {
+    if (!game.includes(`${variable}=\${${variable}`)) {
+      throw new Error(`${relativePath} game runtime must explicitly map ${variable}`);
+    }
+  }
+  for (const variable of ['PLATFORM_PG_POOL_MAX', 'QUICK_MATCH_AUTH_RESERVATION_TTL_MS', 'QUICK_MATCH_DECK_NAMES']) {
+    if (!platform.includes(`${variable}=\${${variable}`)) {
+      throw new Error(`${relativePath} platform runtime must explicitly map ${variable}`);
     }
   }
   for (const serviceName of ['game', 'api', 'platform']) {
@@ -200,12 +288,31 @@ function assertRuntimeEnvironmentInventory(relativePath) {
       'SENTRY_TRACES_SAMPLE_RATE',
       'OTEL_EXPORTER_OTLP_ENDPOINT',
       'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
-      'OTEL_SERVICE_NAME',
       'OTEL_RESOURCE_ATTRIBUTES',
       'PG_POOL_MAX',
     ]) {
       if (!block.includes(`${variable}=\${${variable}`)) {
         throw new Error(`${relativePath} ${serviceName} must explicitly map ${variable}`);
+      }
+    }
+  }
+
+  for (const [serviceName, block, prefix] of [
+    ['game', game, 'GAME'],
+    ['api', api, 'API'],
+    ['platform', platform, 'PLATFORM'],
+  ]) {
+    const variable = `${prefix}_OTEL_SERVICE_NAME`;
+    if (!block.includes(`OTEL_SERVICE_NAME=\${${variable}:-`)) {
+      throw new Error(`${relativePath} ${serviceName} must use its own ${variable} trace identity`);
+    }
+    for (const [containerVariable, hostSuffix] of [
+      ['OTEL_EXPORTER_OTLP_HEADERS', 'OTEL_EXPORTER_OTLP_HEADERS'],
+      ['OTEL_EXPORTER_OTLP_TRACES_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS'],
+    ]) {
+      const hostVariable = `${prefix}_${hostSuffix}`;
+      if (!block.includes(`${containerVariable}=\${${hostVariable}:-`)) {
+        throw new Error(`${relativePath} ${serviceName} must use its own ${hostVariable}`);
       }
     }
   }
@@ -231,7 +338,7 @@ function assertProductionRuntimeInputs() {
   }
 
   for (const relativePath of RELEASE_COMPOSE_FILES) {
-    assertRoleEnvFileMasks(relativePath);
+    assertRoleEnvironmentIsolation(relativePath);
     assertRuntimeEnvironmentInventory(relativePath);
     for (const variable of roleUserInputs) {
       if (countFragment(relativePath, `${variable}=\${${variable}:?`) < 1) {
@@ -247,6 +354,7 @@ function assertProductionRuntimeInputs() {
   }
 
   const rolePasswordInputs = [
+    'PG_MIGRATION_PASSWORD',
     'PG_API_PASSWORD',
     'PG_GAME_PASSWORD',
     'PG_PLATFORM_PASSWORD',
@@ -255,12 +363,25 @@ function assertProductionRuntimeInputs() {
     'PG_BACKUP_PASSWORD',
     'PG_WAL_PASSWORD',
   ];
-  const configuredPasswords = rolePasswordInputs.map((name) => process.env[name]?.trim()).filter(Boolean);
+  const configuredPasswords = rolePasswordInputs.map((name) => [name, process.env[name]?.trim()]);
+  const nonEmptyPasswords = configuredPasswords.filter((entry) => Boolean(entry[1]));
   if (
-    configuredPasswords.length === rolePasswordInputs.length &&
-    new Set(configuredPasswords).size !== configuredPasswords.length
+    nonEmptyPasswords.length > 1 &&
+    new Set(nonEmptyPasswords.map((entry) => entry[1])).size !== nonEmptyPasswords.length
   ) {
     throw new Error('production PostgreSQL role passwords must be pairwise distinct');
+  }
+
+  const releaseSecuritySecrets = [
+    'JWT_SECRET',
+    'PLATFORM_SEAT_TOKEN_SECRET',
+    'ADMIN_TOTP_ENCRYPTION_KEY',
+    'OAUTH_TOKEN_ENCRYPTION_KEY',
+  ]
+    .map((name) => process.env[name]?.trim())
+    .filter(Boolean);
+  if (releaseSecuritySecrets.length > 1 && new Set(releaseSecuritySecrets).size !== releaseSecuritySecrets.length) {
+    throw new Error('JWT, seat-token, admin TOTP, and OAuth token secrets must be pairwise distinct');
   }
 
   if (countFragment('docker-compose.server4.yml', 'PGSSLMODE=${PGSSLMODE:?') !== 4) {
@@ -356,6 +477,8 @@ function assertWorkflowContract() {
     'trivy',
     'cosign verify',
     'gh attestation verify',
+    '--source-digest',
+    'include-hidden-files: true',
     'actions/attest-build-provenance@',
     'docker/build-push-action@',
     'Dockerfile.retention',
@@ -393,8 +516,14 @@ function assertReleaseManifestContract() {
     }
     if (!deploy.includes(key)) throw new Error(`deployment manifest validator must require ${key}`);
   }
+  if (!deploy.includes('jq -c -f scripts/project-compose-role-env.jq')) {
+    throw new Error('deployment must redact resolved Compose secrets before role validation');
+  }
   if (!deploy.includes('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS')) {
     throw new Error('deployment must validate the rendered PostgreSQL role/TLS environment before migration');
+  }
+  if (/config --format json\s*\|\s*docker compose/.test(deploy)) {
+    throw new Error('deployment must not pipe the full resolved Compose JSON into a service container');
   }
   if (!read('Dockerfile.migrate').includes('COPY scripts/verify-compose-role-env.mjs')) {
     throw new Error('migration image must contain the rendered role environment validator');
@@ -426,6 +555,9 @@ function assertScripts() {
   }
   if (!existsSync(path.join(ROOT, 'scripts/verify-compose-role-env.mjs'))) {
     throw new Error('missing rendered Compose role environment validator');
+  }
+  if (!existsSync(path.join(ROOT, 'scripts/project-compose-role-env.jq'))) {
+    throw new Error('missing secret-safe Compose role environment projection');
   }
   if (!existsSync(path.join(ROOT, 'Dockerfile.retention'))) throw new Error('missing retention worker Dockerfile');
 }

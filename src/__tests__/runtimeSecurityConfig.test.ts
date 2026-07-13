@@ -6,10 +6,17 @@ import {
   requireSecret,
   resolveRedisConnectionConfig,
   secretByteLength,
+  shouldUpgradeInsecureRequests,
   validateProductionRuntimeSecurity,
 } from '../runtimeSecurityConfig';
 
 describe('runtime security connection contracts', () => {
+  it('upgrades insecure subresources only for production HTTPS deployments', () => {
+    expect(shouldUpgradeInsecureRequests({ NODE_ENV: 'production' })).toBe(true);
+    expect(shouldUpgradeInsecureRequests({ NODE_ENV: 'test' })).toBe(false);
+    expect(shouldUpgradeInsecureRequests({ NODE_ENV: 'development' })).toBe(false);
+  });
+
   it('measures secret entropy by UTF-8 bytes and rejects short values', () => {
     expect(secretByteLength('密')).toBe(3);
     expect(() => requireSecret('JWT_SECRET', 'short')).toThrow('at least 32 bytes');
@@ -131,6 +138,9 @@ describe('runtime security connection contracts', () => {
     );
     expect(() => validateProductionRuntimeSecurity({ ...env, NODE_TLS_REJECT_UNAUTHORIZED: '0' })).toThrow(
       'NODE_TLS_REJECT_UNAUTHORIZED',
+    );
+    expect(() => validateProductionRuntimeSecurity({ ...env, PLATFORM_SEAT_TOKEN_SECRET: env.JWT_SECRET })).toThrow(
+      'PLATFORM_SEAT_TOKEN_SECRET must be distinct',
     );
   });
 });

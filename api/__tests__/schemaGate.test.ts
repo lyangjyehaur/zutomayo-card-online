@@ -80,6 +80,28 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_COLUMNS.account_deletion_requests).not.toContain('poison_count');
   });
 
+  it('requires the official English card fields used by API, game, and seed readers', () => {
+    expect(REQUIRED_RUNTIME_COLUMNS.cards).toEqual(expect.arrayContaining(['en_name_official', 'en_effect_official']));
+    expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toEqual(
+      expect.arrayContaining([
+        {
+          tableName: 'cards',
+          columnName: 'en_name_official',
+          udtName: 'text',
+          nullable: true,
+          defaultToken: "''",
+        },
+        {
+          tableName: 'cards',
+          columnName: 'en_effect_official',
+          udtName: 'text',
+          nullable: true,
+          defaultToken: "''",
+        },
+      ]),
+    );
+  });
+
   it('requires the release migration and every runtime table', async () => {
     const query = vi
       .fn()

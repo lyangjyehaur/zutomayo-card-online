@@ -11,6 +11,7 @@ ARG GAME_RULES_VERSION
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY ./*.cjs ./
+RUN mkdir -p /app/data/feedback-uploads && chown -R node:node /app/data
 ENV API_PORT=3001
 ENV NODE_ENV=production
 ENV APP_VERSION=$APP_VERSION

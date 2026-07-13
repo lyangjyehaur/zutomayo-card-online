@@ -1,6 +1,7 @@
 # E2E 測試專用 docker-compose overlay。
 # 使用方式：
-#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --abort-on-container-exit --exit-code-from e2e
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml run --rm e2e
 #
 # 與 docker-compose.yml 的差異：
 #   - PG/Redis 使用測試專用 database（zutomayo_e2e / DB 1）
@@ -30,6 +31,9 @@ services:
       target: builder
     command: ['npm', 'run', 'seed:cards']
     environment:
+      - NODE_ENV=test
+      - SEED_CARDS_URL=fixture:e2e/cards
+      - SEED_CARD_I18N_URL=fixture:e2e/cards/i18n
       - PG_HOST=postgres
       - PG_PORT=5432
       - PG_USER=${PG_MIGRATION_USER:-zutomayo_migrator}
@@ -47,6 +51,7 @@ services:
       args:
         VITE_PLATFORM_URL: ws://platform:3002
     environment:
+      - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
       - ALLOWED_ORIGINS=http://game:3000
@@ -62,6 +67,7 @@ services:
 
   api:
     environment:
+      - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
     depends_on:
@@ -76,6 +82,7 @@ services:
 
   platform:
     environment:
+      - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
       - ALLOWED_ORIGINS=http://game:3000

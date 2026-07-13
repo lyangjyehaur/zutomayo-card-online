@@ -56,6 +56,7 @@ import {
   normalizeGameOverWinner,
   useOnlineMatchSubmission,
 } from './board/useOnlineMatchSubmission';
+import { handSelectionResetKey } from './board/handSelection';
 
 export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
@@ -468,18 +469,18 @@ function LogBreakdown({ breakdown }: { breakdown: HpChangeBreakdown }) {
       {breakdown.lines.map((line, idx) => {
         const valueDisplay = line.value.startsWith('board.') ? t(line.value as never) : line.value;
         return (
-          <div key={idx} className="flex items-baseline gap-1 text-micro text-content-primary/45">
-            <span className="text-content-primary/30">{t(line.label as never)}:</span>
+          <div key={idx} className="flex items-baseline gap-1 text-micro text-content-muted">
+            <span>{t(line.label as never)}:</span>
             {line.cardDefId ? (
               <LogCardChip cardDefId={line.cardDefId} />
             ) : (
               <span
                 className={
                   line.value.startsWith('-')
-                    ? 'text-accent-action/70'
+                    ? 'text-accent-action'
                     : line.value.startsWith('+')
-                      ? 'text-accent-info/70'
-                      : 'text-content-primary/55'
+                      ? 'text-accent-info'
+                      : 'text-content-muted'
                 }
               >
                 {valueDisplay}
@@ -1526,7 +1527,7 @@ function BattleLogSidebarPanel({ G, compact = false }: { G: GameState; compact?:
   return (
     <div className="battle-log-panel flex min-h-0 flex-1 flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary">
           {t('board.panel.log')}
         </span>
         <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
@@ -1539,24 +1540,24 @@ function BattleLogSidebarPanel({ G, compact = false }: { G: GameState; compact?:
             const { segments, tone, breakdown } = formatLogEntry(entry, locale);
             const toneClass =
               tone === 'battle'
-                ? 'text-accent-action/80'
+                ? 'text-accent-action'
                 : tone === 'set'
-                  ? 'text-accent-primary/60'
+                  ? 'text-accent-primary'
                   : tone === 'effect'
-                    ? 'text-content-primary/70'
-                    : 'text-content-primary/40';
+                    ? 'text-content-primary'
+                    : 'text-content-muted';
             return (
               <div key={entry.id}>
                 <p className={toneClass}>
-                  <span className="text-content-primary/20">T{entry.turn}</span> {renderLogSegments(segments)}
+                  <span className="text-content-muted">T{entry.turn}</span> {renderLogSegments(segments)}
                   {entry.hp && tone !== 'battle' && (
-                    <span className="text-content-primary/25">
+                    <span className="text-content-muted">
                       {' '}
                       [{entry.hp[0]}/{entry.hp[1]}]
                     </span>
                   )}
                   {typeof entry.chronosPosition === 'number' && (
-                    <span className="text-content-primary/25">
+                    <span className="text-content-muted">
                       {' '}
                       ⏱{entry.chronosPosition}/{CHRONOS_MAPPING.positions}
                     </span>
@@ -1567,7 +1568,7 @@ function BattleLogSidebarPanel({ G, compact = false }: { G: GameState; compact?:
             );
           })}
         {(!G.actionLog || G.actionLog.length === 0) && (
-          <p className="text-content-primary/20">{t('board.waitingOpponent')}</p>
+          <p className="text-content-muted">{t('board.waitingOpponent')}</p>
         )}
       </div>
     </div>
@@ -1860,6 +1861,13 @@ function BattleBoard({
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [zoneSheet, setZoneSheet] = useState<{ kind: 'abyss' | 'power'; owner: PlayerIndex } | null>(null);
   const [damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
+  const selectionResetKey = handSelectionResetKey({
+    step: G.step,
+    turnNumber: G.turnNumber,
+    ready: G.ready,
+    playerIndex: meIndex,
+    playerID: playerID ?? null,
+  });
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const previousTurnNumber = useRef(G.turnNumber);
@@ -1965,7 +1973,7 @@ function BattleBoard({
   useEffect(() => {
     setSelectedHandIndex(null);
     setInteractionMessage('');
-  }, [G.step, G.turnNumber, G.ready, meIndex]);
+  }, [selectionResetKey]);
 
   useEffect(() => {
     if (focusedCard || me.hand.length === 0) return;
@@ -2170,7 +2178,7 @@ function BattleBoard({
               />
               {mobileAbyssButton(opponentIndex, opponent.abyss.length)}
             </div>
-            <div className="bf-opponent-handbacks" aria-label={`${t('board.hand')} ${opponent.hand.length}`}>
+            <div className="bf-opponent-handbacks" role="img" aria-label={`${t('board.hand')} ${opponent.hand.length}`}>
               {opponent.hand.map((card) => (
                 <img key={card.instanceId} src="/card-back.jpg" alt="" loading="lazy" decoding="async" />
               ))}
