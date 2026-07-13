@@ -132,6 +132,9 @@ jobs:
           PG_WAL_PASSWORD: cd-preflight-wal-password
           PG_HOST: staging-postgres.example.internal
           PG_DATABASE: zutomayo
+          PG_CA_FILE: /tmp/zutomayo-service-ca.crt
+          PG_SSLROOTCERT: /run/secrets/zutomayo-service-ca.crt
+          NODE_EXTRA_CA_CERTS: /run/secrets/zutomayo-service-ca.crt
           PG_CA_SECRET_NAME: zutomayo-staging-postgres-ca
           REDIS_URL: rediss://:cd-preflight-redis-password@staging-redis.example.internal:6380
           JWT_SECRET: cd-preflight-jwt-secret-32chars-min
@@ -139,8 +142,10 @@ jobs:
           METRICS_TOKEN: cd-preflight-metrics-token
           PGSSLMODE: verify-full
           PG_MONITOR_HOST: postgres
+          PG_MONITOR_DATABASE: zutomayo
           PG_MONITOR_SSLMODE: verify-full
           PG_RETENTION_HOST: postgresql
+          PG_RETENTION_DATABASE: zutomayo
           PG_RETENTION_SSLMODE: verify-full
           SLACK_ALERT_WEBHOOK: https://hooks.example.invalid/services/preflight
           GRAFANA_PASSWORD: cd-preflight-grafana-password
@@ -152,6 +157,9 @@ jobs:
           MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
           RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
           RETENTION_METRICS_GID: '991'
+          APP_VERSION: '0.2.0'
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          GAME_RULES_VERSION: '0.2.0'
         run: |
           npm run release:config
           npm run ops:config
@@ -160,7 +168,7 @@ jobs:
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
-          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full
+          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.monitoring.yml config --quiet
 
   # ─────────────────────────────────────────────────────────────

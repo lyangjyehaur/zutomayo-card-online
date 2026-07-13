@@ -54,6 +54,9 @@ jobs:
           PG_WAL_PASSWORD: e2e-test-wal-password
           PG_HOST: staging-postgres.example.internal
           PG_DATABASE: zutomayo
+          PG_CA_FILE: /tmp/zutomayo-service-ca.crt
+          PG_SSLROOTCERT: /run/secrets/zutomayo-service-ca.crt
+          NODE_EXTRA_CA_CERTS: /run/secrets/zutomayo-service-ca.crt
           PG_CA_SECRET_NAME: zutomayo-staging-postgres-ca
           REDIS_URL: rediss://:e2e-test-redis-password@staging-redis.example.internal:6380
           JWT_SECRET: e2e-test-jwt-secret-32chars-min
@@ -62,9 +65,10 @@ jobs:
           PGSSLMODE: verify-full
           PG_MONITOR_HOST: postgres
           PG_MONITOR_DATABASE: zutomayo
-          PG_MONITOR_SSLMODE: disable
+          PG_MONITOR_SSLMODE: verify-full
           PG_RETENTION_HOST: postgres
-          PG_RETENTION_SSLMODE: disable
+          PG_RETENTION_DATABASE: zutomayo
+          PG_RETENTION_SSLMODE: verify-full
           SLACK_ALERT_WEBHOOK: https://hooks.example.invalid/services/test
           GRAFANA_PASSWORD: e2e-test-grafana-password
           GAME_IMAGE: ghcr.io/example/game@sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -73,6 +77,9 @@ jobs:
           MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
           RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
           RETENTION_METRICS_GID: '991'
+          APP_VERSION: '0.2.0'
+          RELEASE_SHA: '0000000000000000000000000000000000000000'
+          GAME_RULES_VERSION: '0.2.0'
         run: |
           export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
           export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
@@ -83,7 +90,7 @@ jobs:
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
-          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full
+          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.monitoring.yml config --quiet
 
       - name: Format check
