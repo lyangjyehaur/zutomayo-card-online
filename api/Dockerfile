@@ -12,6 +12,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY ./*.cjs ./
 ENV API_PORT=3001
+ENV NODE_ENV=production
 ENV APP_VERSION=$APP_VERSION
 ENV APP_BUILD_ID=$APP_BUILD_ID
 ENV GAME_RULES_VERSION=$GAME_RULES_VERSION

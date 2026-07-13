@@ -17,6 +17,12 @@ import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
+const { assertPostgresExpectedRole, postgresConnectionString, postgresSslConfig } =
+  require('../api/runtimeSecurityConfig.cjs') as {
+    assertPostgresExpectedRole: (env: NodeJS.ProcessEnv, expectedRoleVariable: string) => string;
+    postgresConnectionString: (env: NodeJS.ProcessEnv) => string | undefined;
+    postgresSslConfig: (env: NodeJS.ProcessEnv) => false | { rejectUnauthorized: boolean; ca?: string };
+  };
 
 // 動態載入 better-sqlite3（遷移用，非生產依賴；未安裝時提示）。
 type BetterSqlite3 = {
@@ -40,12 +46,19 @@ const { Pool } = require('pg') as typeof import('pg');
 
 const SQLITE_PATH = process.env.SQLITE_PATH || process.env.DB_PATH || '/data/zutomayo.db';
 
+const migrationUser = assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER');
+const databaseUrl = postgresConnectionString(process.env);
 const pool = new Pool({
-  host: process.env.PG_HOST || 'localhost',
-  port: Number(process.env.PG_PORT) || 5432,
-  user: process.env.PG_USER || 'postgres',
-  password: process.env.PG_PASSWORD || '',
-  database: process.env.PG_DATABASE || 'postgres',
+  ...(databaseUrl
+    ? { connectionString: databaseUrl }
+    : {
+        host: process.env.PG_HOST || 'localhost',
+        port: Number(process.env.PG_PORT) || 5432,
+        user: process.env.PG_USER || migrationUser || 'postgres',
+        password: process.env.PG_PASSWORD || '',
+        database: process.env.PG_DATABASE || 'postgres',
+      }),
+  ssl: postgresSslConfig(process.env),
 });
 
 // PG schema（與 api/server.cjs initSchema 一致，確保目標 table 存在）。

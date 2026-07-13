@@ -19,6 +19,8 @@ function authContext(): AuthContext {
 
 const originalSeatTokenSecret = process.env.PLATFORM_SEAT_TOKEN_SECRET;
 const originalJwtSecret = process.env.JWT_SECRET;
+const originalLegacySeatTokenFlag = process.env.ALLOW_LEGACY_SEAT_TOKEN;
+const originalNodeEnv = process.env.NODE_ENV;
 
 function base64urlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -52,6 +54,7 @@ function cookieAuthContext(userId: string): AuthContext {
 
 function seatToken(matchID = 'bgio-match-1', playerID: '0' | '1' = '0'): string {
   process.env.PLATFORM_SEAT_TOKEN_SECRET = 'test-seat-token-secret-at-least-32-characters';
+  process.env.ALLOW_LEGACY_SEAT_TOKEN = 'true';
   return createPlatformSeatToken({ matchID, playerID });
 }
 
@@ -66,11 +69,37 @@ function allowChatPreviewBroadcasts(): void {
 afterEach(() => {
   process.env.PLATFORM_SEAT_TOKEN_SECRET = originalSeatTokenSecret;
   process.env.JWT_SECRET = originalJwtSecret;
+  process.env.ALLOW_LEGACY_SEAT_TOKEN = originalLegacySeatTokenFlag;
+  process.env.NODE_ENV = originalNodeEnv;
   MatchShellRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
   MatchShellRoom.configureChatPreviewStore(createEmptyPlatformChatPreviewStore());
 });
 
 describe('match shell room', () => {
+  it('never accepts an unbound legacy seat token in production', async () => {
+    process.env.NODE_ENV = 'production';
+    const room = new MatchShellRoom();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+
+    const auth = await room.onAuth(
+      {} as PlatformClient,
+      {
+        userId: 'guest:player',
+        displayName: 'Player',
+        role: 'player',
+        boardgameMatchID: 'bgio-match-1',
+        boardgamePlayerID: '0',
+        hasBoardgameCredentials: true,
+        platformSeatToken: seatToken(),
+      },
+      authContext(),
+    );
+
+    expect(auth.role).toBe('spectator');
+  });
+
   it('demotes player joins without boardgame credentials to spectator presence', async () => {
     const room = new MatchShellRoom();
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
@@ -78,7 +107,7 @@ describe('match shell room', () => {
     vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
 
     await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
-    const auth = room.onAuth(
+    const auth = await room.onAuth(
       {} as PlatformClient,
       {
         userId: 'guest:player',
@@ -122,7 +151,7 @@ describe('match shell room', () => {
     vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
 
     await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
-    const auth = room.onAuth(
+    const auth = await room.onAuth(
       {} as PlatformClient,
       {
         userId: 'guest:player',
@@ -317,7 +346,7 @@ describe('match shell room', () => {
     vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
 
     await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
-    const auth = room.onAuth(
+    const auth = await room.onAuth(
       {} as PlatformClient,
       {
         boardgameMatchID: 'bgio-match-1',
@@ -361,7 +390,7 @@ describe('match shell room', () => {
 
     await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
 
-    const auth = room.onAuth(
+    const auth = await room.onAuth(
       {} as PlatformClient,
       {
         userId: 'guest:spoofed',
@@ -401,7 +430,7 @@ describe('match shell room', () => {
 
     await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -415,7 +444,7 @@ describe('match shell room', () => {
         },
         authContext(),
       ),
-    ).toThrow('Match shell access denied');
+    ).rejects.toThrow('Match shell access denied');
   });
 
   it('demotes duplicate boardgame player seats from different users', async () => {
@@ -443,7 +472,7 @@ describe('match shell room', () => {
       platformSeatToken: seatToken(),
     });
 
-    const duplicateAuth = room.onAuth(
+    const duplicateAuth = await room.onAuth(
       {} as PlatformClient,
       {
         userId: 'guest:duplicate',
@@ -496,7 +525,7 @@ describe('match shell room', () => {
       platformSeatToken: seatToken(),
     });
 
-    const reconnectAuth = room.onAuth(
+    const reconnectAuth = await room.onAuth(
       {} as PlatformClient,
       {
         userId: 'guest:player',

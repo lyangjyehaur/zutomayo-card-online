@@ -36,7 +36,13 @@ import { t, useLocale, type TranslationKey } from '../i18n';
 import type { CardDef } from '../game/types';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
-export { DEFAULT_DECK_NAME, aiOpponentDeckName, onlineDeckName, selectedDeckName } from '../components/lobby/shared';
+export {
+  DEFAULT_DECK_NAME,
+  aiOpponentDeckName,
+  onlineDeckName,
+  selectedDeckName,
+  serverDeckIdFromOption,
+} from '../components/lobby/shared';
 
 interface LobbyPageProps {
   onAuthChanged: () => void | Promise<void>;

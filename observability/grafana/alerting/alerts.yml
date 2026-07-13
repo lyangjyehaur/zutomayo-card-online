@@ -20,20 +20,23 @@ groups:
           summary: 'High 5xx error rate on {{ $labels.job }}'
           description: '5xx error rate is {{ $value | humanizePercentage }} (threshold 5%) on {{ $labels.job }} for the last 5 minutes.'
 
+      - alert: PlatformHighErrorRate5xx
+        expr: |
+          (
+            sum(rate(platform_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(platform_http_requests_total[5m])), 1e-9)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'High 5xx error rate on platform'
+          description: 'Platform 5xx error rate is {{ $value | humanizePercentage }} (threshold 5%) for the last 5 minutes.'
+
   - name: zutomayo-postgres
     interval: 30s
     rules:
-      # PG pool waiting > 5 for 2 minutes -> warning
-      - alert: PgPoolWaitingHigh
-        expr: pg_pool_waiting > 5
-        for: 2m
-        labels:
-          severity: warning
-          team: backend
-        annotations:
-          summary: 'PostgreSQL pool waiting connections high ({{ $labels.job }})'
-          description: 'PG pool has {{ $value }} waiting connections (threshold 5) on {{ $labels.job }}.'
-
       # PG connections > 80% of max for 5 minutes -> critical
       - alert: PgConnectionsNearMax
         expr: |
@@ -55,10 +58,8 @@ groups:
       # Redis memory > 80% of maxmemory -> warning
       - alert: RedisMemoryNearMax
         expr: |
-          (
-            redis_memory_used_bytes
-            / clamp_min(redis_memory_max_bytes, 1)
-          ) > 0.8
+          redis_memory_max_bytes > 0
+            and (redis_memory_used_bytes / redis_memory_max_bytes) > 0.8
         for: 2m
         labels:
           severity: warning
@@ -70,18 +71,17 @@ groups:
   - name: zutomayo-websocket
     interval: 30s
     rules:
-      # WebSocket connections > MAX_CONN_PER_IP * 0.8 -> warning
-      # MAX_CONN_PER_IP defaults to 10 (see .env.example). Adjust the threshold
-      # to match your deployment value if MAX_CONN_PER_IP is overridden.
-      - alert: WebSocketConnectionsNearLimit
-        expr: active_socket_connections > 8
+      # This is a process-wide gauge, not a per-IP gauge. Keep the threshold
+      # global until a labelled per-IP metric is available.
+      - alert: WebSocketConnectionsHigh
+        expr: active_socket_connections > 80
         for: 2m
         labels:
           severity: warning
           team: backend
         annotations:
-          summary: 'WebSocket connections near per-IP limit'
-          description: 'Active socket connections ({{ $value }}) exceeded 80% of MAX_CONN_PER_IP (default 10). Raise MAX_CONN_PER_IP or investigate connection flooding.'
+          summary: 'WebSocket connections high'
+          description: 'Process-wide active Socket.IO connections ({{ $value }}) exceeded 80. Investigate capacity or connection flooding.'
 
   - name: zutomayo-runtime
     interval: 30s
@@ -111,6 +111,46 @@ groups:
           summary: 'Service down ({{ $labels.job }})'
           description: '{{ $labels.job }} has been unreachable (scrape failing) for 1 minute. Check /health endpoint and container status.'
 
+      - alert: PlatformHealthProbeFailed
+        expr: probe_success{job="zutomayo-platform-health"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Platform health probe failed'
+          description: 'The platform /health endpoint has failed its synthetic probe for 1 minute.'
+
+      - alert: ReadinessProbeFailed
+        expr: probe_success{job="zutomayo-readiness"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Service readiness probe failed ({{ $labels.service }})'
+          description: '{{ $labels.service }} /ready has failed its synthetic probe for 1 minute.'
+
+      - alert: SyntheticPlayerJourneyFailed
+        expr: absent(zutomayo_synthetic_probe_success) or zutomayo_synthetic_probe_success == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Synthetic player journey failed'
+          description: 'The homepage/login/create/join synthetic flow has failed for at least 2 minutes.'
+
+      - alert: SyntheticPlayerJourneyStale
+        expr: absent(zutomayo_synthetic_probe_last_run_unixtime_seconds) or time() - zutomayo_synthetic_probe_last_run_unixtime_seconds > 180
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Synthetic player journey is stale'
+          description: 'No synthetic player journey result has been written for more than 3 minutes.'
+
   - name: zutomayo-matchmaking
     interval: 30s
     rules:
@@ -124,3 +164,174 @@ groups:
         annotations:
           summary: 'Matchmaking queue depth high'
           description: 'Matchmaking queue depth is {{ $value }} (threshold 50) for 5 minutes. Consider scaling game server instances.'
+
+      - alert: MatchmakingQueueMetricReadFailed
+        expr: rate(matchmaking_queue_metric_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'Matchmaking queue metric read failed'
+          description: 'The API could not read the Redis matchmaking queue depth. Treat queue depth as unknown until the metric recovers.'
+
+  - name: zutomayo-match-results
+    interval: 30s
+    rules:
+      - alert: MatchResultOutboxBacklog
+        expr: match_result_outbox_pending > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'Ranked match-result outbox has pending rows'
+          description: '{{ $value }} ranked match results are waiting for durable delivery for at least 5 minutes.'
+
+      - alert: MatchResultOutboxOldestRow
+        expr: match_result_outbox_oldest_age_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Ranked match-result outbox delivery is stale'
+          description: 'The oldest pending ranked result is {{ $value | humanizeDuration }} old. ELO/history delivery may be delayed.'
+
+      - alert: MatchResultOutboxMetricsStale
+        expr: |
+          match_result_outbox_metrics_refresh_success == 0
+          or time() - match_result_outbox_metrics_last_success_unixtime_seconds > 120
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Durable match-result metrics are stale'
+          description: 'The game server cannot refresh outbox metrics from PostgreSQL. Queue health is unknown.'
+
+  - name: zutomayo-relationship-events
+    interval: 30s
+    rules:
+      - alert: RelationshipChangeOutboxBacklog
+        expr: relationship_change_outbox_pending > 0
+        for: 2m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'Relationship revocation events are pending'
+          description: '{{ $value }} relationship/account revocation events have waited for delivery for at least 2 minutes.'
+
+      - alert: RelationshipChangeOutboxOldestRow
+        expr: relationship_change_outbox_oldest_age_seconds > 120
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Relationship revocation delivery is stale'
+          description: 'The oldest pending relationship/account revocation event is {{ $value | humanizeDuration }} old.'
+
+      - alert: RelationshipChangeOutboxDeadLetter
+        expr: relationship_change_outbox_dead_letter > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Relationship revocation event exhausted retries'
+          description: '{{ $value }} relationship/account revocation events require operator redrive.'
+
+      - alert: RelationshipChangeOutboxMetricsStale
+        expr: |
+          absent(relationship_change_outbox_metrics_refresh_success)
+          or relationship_change_outbox_metrics_refresh_success == 0
+          or time() - relationship_change_outbox_metrics_last_success_unixtime_seconds > 120
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Relationship outbox metrics are stale'
+          description: 'The API cannot refresh relationship outbox metrics from PostgreSQL. Revocation queue health is unknown.'
+
+  - name: zutomayo-backups
+    interval: 1m
+    rules:
+      # These textfile metrics are emitted by scripts/pg-backup.sh and
+      # scripts/pg-wal-archive.sh through the node-exporter textfile collector.
+      # A missing metric is intentionally critical in production; configure a
+      # separate rule group or silence this group in local development.
+      - alert: PostgresBackupMissingOrStale
+        expr: absent(pg_backup_last_success_unixtime_seconds) or time() - pg_backup_last_success_unixtime_seconds > 93600
+        for: 15m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'PostgreSQL encrypted backup is missing or stale'
+          description: 'No successful encrypted off-site PostgreSQL backup has been recorded within 26 hours.'
+
+      - alert: PostgresWalArchiveMissingOrStale
+        expr: absent(pg_wal_archive_last_success_unixtime_seconds) or time() - pg_wal_archive_last_success_unixtime_seconds > 900
+        for: 10m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'PostgreSQL WAL archiving is missing or stale'
+          description: 'No successful encrypted WAL archive has been recorded within 15 minutes; PITR RPO is at risk.'
+
+      - alert: PostgresRestoreDrillFailed
+        expr: absent(pg_restore_drill_success) or pg_restore_drill_success == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Latest PostgreSQL restore drill failed'
+          description: 'The most recent restore drill did not verify checksum, schema, and core row counts.'
+
+      - alert: PostgresRestoreDrillMissingOrStale
+        expr: absent(pg_restore_drill_last_success_unixtime_seconds) or pg_restore_drill_last_success_unixtime_seconds == 0 or time() - pg_restore_drill_last_success_unixtime_seconds > 691200
+        for: 30m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'PostgreSQL restore drill is missing or stale'
+          description: 'No successful isolated restore drill has been recorded within 8 days.'
+
+      - alert: PostgresBaseBackupMissingOrStale
+        expr: absent(pg_base_backup_last_success_unixtime_seconds) or time() - pg_base_backup_last_success_unixtime_seconds > 691200
+        for: 30m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'PostgreSQL physical base backup is missing or stale'
+          description: 'No successful encrypted physical base backup has been recorded within 8 days; WAL PITR coverage is at risk.'
+
+  - name: zutomayo-retention
+    interval: 1m
+    rules:
+      - alert: RetentionJobMissingOrStale
+        expr: absent(retention_last_success_unixtime_seconds) or retention_last_success_unixtime_seconds == 0 or time() - retention_last_success_unixtime_seconds > 93600
+        for: 15m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Retention job is missing or stale'
+          description: 'No successful account/data retention run has completed within 26 hours.'
+
+      - alert: RetentionJobFailed
+        expr: retention_last_run_success == 0 and retention_last_run_skipped == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Retention job failed'
+          description: 'The latest retention run failed; legal holds and policy deletion are not advancing.'

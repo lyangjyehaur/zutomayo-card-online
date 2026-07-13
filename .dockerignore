@@ -1,5 +1,14 @@
 node_modules
 api
+!api/
+api/*
+!api/retentionService.cjs
+!api/deckService.cjs
+!api/schemaGate.cjs
+!api/relationshipEvents.cjs
+!api/accountMutationLock.cjs
+!api/relationshipOutbox.cjs
+!api/runtimeSecurityConfig.cjs
 dist
 dist-server
 coverage

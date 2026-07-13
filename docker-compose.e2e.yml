@@ -32,8 +32,8 @@ services:
     environment:
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_USER=${PG_USER:-zutomayo}
-      - PG_PASSWORD=${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
+      - PG_USER=${PG_MIGRATION_USER:-zutomayo_migrator}
+      - PG_PASSWORD=${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
       - PG_DATABASE=zutomayo_e2e
     depends_on:
       postgres:
@@ -43,14 +43,20 @@ services:
     restart: 'no'
 
   game:
+    build:
+      args:
+        VITE_PLATFORM_URL: ws://platform:3002
     environment:
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
+      - ALLOWED_ORIGINS=http://game:3000
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       seed:
         condition: service_completed_successfully
 
@@ -72,18 +78,13 @@ services:
     environment:
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
+      - ALLOWED_ORIGINS=http://game:3000
 
   e2e:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: builder
-    command:
-      - sh
-      - -c
-      - |
-        npx playwright install --with-deps chromium && \
-        npx playwright test
+      dockerfile: Dockerfile.e2e
+    command: ['npx', 'playwright', 'test']
     environment:
       - E2E_BASE_URL=http://game:3000
       - CI=true
@@ -91,6 +92,8 @@ services:
       game:
         condition: service_healthy
       api:
+        condition: service_healthy
+      platform:
         condition: service_healthy
     volumes:
       # bind-mount report 目錄到主機，方便 CI 提取 artifact

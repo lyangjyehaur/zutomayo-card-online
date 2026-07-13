@@ -149,6 +149,12 @@ export interface ZutomayoSetupData {
   deck1Name?: string;
   deck0Ids?: string[];
   deck1Ids?: string[];
+  /** Opaque server reservation consumed by the online game service. */
+  deck0ReservationId?: string;
+  deck1ReservationId?: string;
+  deck0Version?: string;
+  deck1Version?: string;
+  rulesVersion?: string;
   clientVersion?: AppVersionInfo;
   /**
    * 教學模式專用：跳過 setupGame 與 finishMulligan 的洗牌，

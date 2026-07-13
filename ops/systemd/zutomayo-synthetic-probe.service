@@ -1,0 +1,18 @@
+[Unit]
+Description=Zutomayo synthetic player journey probe
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=zutomayo-synthetic
+Group=zutomayo-synthetic
+Environment=NODE_ENV=production
+Environment=SYNTHETIC_REQUIRED=true
+EnvironmentFile=/etc/zutomayo/synthetic.env
+ExecStart=/usr/bin/node /opt/zutomayo/scripts/synthetic-probe.mjs
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/node_exporter/textfile_collector

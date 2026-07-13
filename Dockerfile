@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:22-alpine AS builder
 WORKDIR /app
 # APP_BUILD_ID 建議在 CI/部署時設為 git commit hash，確保每次部署有獨立 Sentry release。
@@ -19,7 +21,6 @@ ARG VITE_SENTRY_TRACES_SAMPLE_RATE=0.1
 ARG SENTRY_URL=
 ARG SENTRY_ORG=
 ARG SENTRY_PROJECT=
-ARG SENTRY_AUTH_TOKEN=
 ENV APP_VERSION=$APP_VERSION
 ENV APP_BUILD_ID=$APP_BUILD_ID
 ENV GAME_RULES_VERSION=$GAME_RULES_VERSION
@@ -39,11 +40,12 @@ ENV VITE_SENTRY_TRACES_SAMPLE_RATE=$VITE_SENTRY_TRACES_SAMPLE_RATE
 ENV SENTRY_URL=$SENTRY_URL
 ENV SENTRY_ORG=$SENTRY_ORG
 ENV SENTRY_PROJECT=$SENTRY_PROJECT
-ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build && find dist -name "*.map" -type f -delete
+RUN --mount=type=secret,id=sentry_auth_token,required=false \
+    SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" npm run build \
+    && find dist -name "*.map" -type f -delete
 
 FROM node:22-alpine
 WORKDIR /app
@@ -56,8 +58,13 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src ./src
-COPY --from=builder /app/data ./data
 COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/api/deckService.cjs ./api/deckService.cjs
+COPY --from=builder /app/api/schemaGate.cjs ./api/schemaGate.cjs
+COPY --from=builder /app/api/relationshipEvents.cjs ./api/relationshipEvents.cjs
+COPY --from=builder /app/api/accountMutationLock.cjs ./api/accountMutationLock.cjs
+COPY --from=builder /app/api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs
+COPY --from=builder /app/api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 ENV PORT=3000
 ENV PLATFORM_PORT=3002
 ENV APP_VERSION=$APP_VERSION

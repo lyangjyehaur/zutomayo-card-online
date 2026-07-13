@@ -1,0 +1,30 @@
+services:
+  retention:
+    image: ${RETENTION_IMAGE:?Set RETENTION_IMAGE to a verified @sha256 digest}
+    command: ['node', 'scripts/run-retention.cjs']
+    networks:
+      - default
+      - 1panel-network
+    group_add:
+      - ${RETENTION_METRICS_GID:?Set RETENTION_METRICS_GID to the host metrics group id}
+    volumes:
+      - ${PG_BACKUP_METRICS_DIR:-/var/lib/node_exporter/textfile_collector}:/var/lib/node_exporter/textfile_collector
+    environment:
+      NODE_ENV: production
+      DATABASE_URL:
+      PG_HOST: ${PG_RETENTION_HOST:?Set PG_RETENTION_HOST explicitly for the retention database}
+      PG_PORT: ${PG_RETENTION_PORT:-5432}
+      PG_USER: ${PG_RETENTION_USER:?Set PG_RETENTION_USER in your environment or .env file}
+      PG_PASSWORD: ${PG_RETENTION_PASSWORD:?Set PG_RETENTION_PASSWORD in your environment or .env file}
+      PG_DATABASE: ${PG_RETENTION_DATABASE:-zutomayo}
+      PGSSLMODE: ${PG_RETENTION_SSLMODE:?Set PG_RETENTION_SSLMODE explicitly (verify-full in production)}
+      PG_SSLROOTCERT: ${PG_SSLROOTCERT:-}
+      RETENTION_DRY_RUN: ${RETENTION_DRY_RUN:-false}
+      RETENTION_BATCH_SIZE: ${RETENTION_BATCH_SIZE:-5000}
+      RETENTION_MAX_RUNTIME_MS: ${RETENTION_MAX_RUNTIME_MS:-600000}
+      RETENTION_METRICS_FILE: ${RETENTION_METRICS_FILE:-/var/lib/node_exporter/textfile_collector/zutomayo_retention.prom}
+    restart: 'no'
+
+networks:
+  1panel-network:
+    external: true

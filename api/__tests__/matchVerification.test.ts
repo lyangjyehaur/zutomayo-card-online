@@ -36,6 +36,10 @@ function poolWithRows(rows: unknown[]): { pool: Queryable; query: ReturnType<typ
   return { pool: { query }, query };
 }
 
+function trustedSeat(userId: string, rankedEligible = true) {
+  return { data: { userId, identitySource: 'server', rankedEligible } };
+}
+
 describe('match verification helpers', () => {
   it('normalizes boardgame player ids from numbers and strings', () => {
     expect(normalizeWinnerPlayer(0)).toBe(0);
@@ -116,7 +120,7 @@ describe('verifyBoardgameMatchResult', () => {
         poolWithRows([
           {
             state: { ctx: { gameover: { winner: 0 } }, G: { step: 'gameOver', winner: 0 } },
-            metadata: { players: { '0': { data: { userId: 'u_other' } } } },
+            metadata: { players: { '0': trustedSeat('u_other'), '1': trustedSeat('u_other_2') } },
           },
         ]).pool,
         'm',
@@ -139,14 +143,35 @@ describe('verifyBoardgameMatchResult', () => {
     });
   });
 
+  it('rejects client-shaped seat metadata without server identity provenance', async () => {
+    const { pool } = poolWithRows([
+      {
+        state: { ctx: { gameover: { winner: 0 } }, G: { step: 'gameOver', winner: 0 } },
+        metadata: {
+          setupData: { rulesVersion: 'rules-2026-07' },
+          players: {
+            '0': { data: { userId: 'u_winner' } },
+            '1': { data: { userId: 'u_victim' } },
+          },
+        },
+      },
+    ]);
+
+    await expect(verifyBoardgameMatchResult(pool, 'match_1', 0, 'u_winner')).resolves.toMatchObject({
+      ok: false,
+      status: 409,
+    });
+  });
+
   it('accepts a finished source match whose winner seat belongs to the authenticated user', async () => {
     const { pool, query } = poolWithRows([
       {
         state: { ctx: { gameover: { winner: '1' } }, G: { step: 'gameOver', winner: 1 } },
         metadata: {
+          setupData: { rulesVersion: 'rules-2026-07' },
           players: {
-            '0': { data: { userId: 'u_loser' } },
-            '1': { data: { userId: 'u_winner' } },
+            '0': trustedSeat('u_loser'),
+            '1': trustedSeat('u_winner'),
           },
         },
       },
@@ -159,8 +184,9 @@ describe('verifyBoardgameMatchResult', () => {
       loserPlayer: 0,
       winnerUserId: 'u_winner',
       loserUserId: 'u_loser',
+      rulesVersion: 'rules-2026-07',
     });
-    expect(query).toHaveBeenCalledWith('SELECT state, metadata FROM bjg_matches WHERE match_id = $1', ['match_1']);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('LEFT JOIN bjg_match_result_outbox'), ['match_1']);
   });
 
   it('allows the authenticated loser to submit the same authoritative result', async () => {
@@ -169,8 +195,8 @@ describe('verifyBoardgameMatchResult', () => {
         state: { ctx: { gameover: { winner: 0 } }, G: { step: 'gameOver', winner: 0 } },
         metadata: {
           players: {
-            '0': { data: { userId: 'u_winner' } },
-            '1': { data: { userId: 'u_loser' } },
+            '0': trustedSeat('u_winner'),
+            '1': trustedSeat('u_loser'),
           },
         },
       },

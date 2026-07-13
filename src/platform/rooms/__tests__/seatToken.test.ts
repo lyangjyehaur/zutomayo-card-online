@@ -22,4 +22,22 @@ describe('platform seat tokens', () => {
     expect(verifyPlatformSeatToken({ token, matchID: 'bgio-match-1', playerID: '1', now: 2000 })).toBe(false);
     expect(verifyPlatformSeatToken({ token, matchID: 'bgio-match-1', playerID: '0', now: 7000 })).toBe(false);
   });
+
+  it('binds a seat proof to the server-derived account identity', () => {
+    process.env.PLATFORM_SEAT_TOKEN_SECRET = 'test-seat-token-secret-at-least-32-characters';
+    const token = createPlatformSeatToken({
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      userId: 'u_alice',
+      now: 1000,
+      ttlMs: 5000,
+    });
+
+    expect(
+      verifyPlatformSeatToken({ token, matchID: 'bgio-match-1', playerID: '0', userId: 'u_alice', now: 2000 }),
+    ).toBe(true);
+    expect(verifyPlatformSeatToken({ token, matchID: 'bgio-match-1', playerID: '0', userId: 'u_bob', now: 2000 })).toBe(
+      false,
+    );
+  });
 });

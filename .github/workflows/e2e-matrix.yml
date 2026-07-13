@@ -1,0 +1,62 @@
+name: E2E Browser Matrix
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 2 * * 2,5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-matrix:
+    name: Playwright ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit, android, iphone]
+    env:
+      PG_PASSWORD: e2e-test-password
+      PG_MIGRATION_USER: zutomayo_migrator
+      PG_MIGRATION_PASSWORD: e2e-test-migration-password
+      PG_APP_USER: zutomayo_app
+      PG_APP_PASSWORD: e2e-test-app-password
+      JWT_SECRET: e2e-test-jwt-secret-32chars-min
+      REDIS_PASSWORD: ''
+      METRICS_TOKEN: e2e-test-metrics-token
+      PGSSLMODE: disable
+      E2E_BROWSER_MATRIX: full
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Run browser-specific E2E stack
+        run: |
+          export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
+          export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.e2e.yml \
+            run --build --rm \
+            -e E2E_BROWSER_MATRIX=full \
+            e2e npx playwright test --project=${{ matrix.browser }}
+        timeout-minutes: 30
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: playwright-${{ matrix.browser }}
+          path: playwright-report/
+          retention-days: 14
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml down -v || true

@@ -14,6 +14,7 @@ import {
   adminGetMatches,
   adminGetUsers,
   adminLogin,
+  adminLogout,
   adminRevokeChatUserSanction,
   adminReviewChatMessageModeration,
   adminReviewChatReport,
@@ -57,6 +58,7 @@ import {
   ToolHeader,
 } from '../ui';
 import { CardImage } from '../components/CardImage';
+import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -91,7 +93,7 @@ const ABOUT_LANGS: Array<{ code: AboutPageLocale; label: string }> = I18N_LANGS.
   label: lang.label,
 }));
 
-type AdminTab = 'cards' | 'users' | 'matches' | 'chat' | 'about';
+type AdminTab = 'cards' | 'users' | 'matches' | 'chat' | 'operations' | 'about';
 type ModalTab = 'basic' | 'engine' | 'i18n';
 type ParsedCardMeta = {
   card: CardDef;
@@ -738,7 +740,9 @@ function AboutSettingsEditor() {
 export function AdminPage() {
   const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(() => Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY)));
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
   const [error, setError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [activeTab, setActiveTab] = useState<AdminTab>('cards');
@@ -863,7 +867,7 @@ export function AdminPage() {
     setLoggingIn(true);
     setError('');
     try {
-      const { token: tok } = await adminLogin(password);
+      const { token: tok } = await adminLogin({ username, password, totpCode });
       sessionStorage.setItem(ADMIN_TOKEN_KEY, tok);
       setAuthenticated(true);
     } catch (e) {
@@ -871,12 +875,13 @@ export function AdminPage() {
     } finally {
       setLoggingIn(false);
     }
-  }, [password]);
+  }, [password, totpCode, username]);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+    if (token) await adminLogout(token).catch(() => undefined);
     sessionStorage.removeItem(ADMIN_TOKEN_KEY);
     setAuthenticated(false);
-  }, []);
+  }, [token]);
 
   const refreshUsers = useCallback(async () => {
     if (!token) return;
@@ -1082,6 +1087,16 @@ export function AdminPage() {
           <div className="grid gap-4">
             <h2 className="font-display text-xl font-bold">管理員驗證</h2>
             <Input
+              aria-label="管理員帳號"
+              autoComplete="username"
+              placeholder="管理員帳號"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={loggingIn}
+            />
+            <Input
+              aria-label="管理員密碼"
+              autoComplete="current-password"
               type="password"
               placeholder="輸入管理密碼"
               value={password}
@@ -1091,7 +1106,25 @@ export function AdminPage() {
               }}
               disabled={loggingIn}
             />
-            <Button fullWidth onClick={() => void handleLogin()} disabled={loggingIn || !password}>
+            <Input
+              aria-label="管理員驗證碼"
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              maxLength={6}
+              pattern="[0-9]{6}"
+              placeholder="六位數驗證碼"
+              value={totpCode}
+              onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !loggingIn) void handleLogin();
+              }}
+              disabled={loggingIn}
+            />
+            <Button
+              fullWidth
+              onClick={() => void handleLogin()}
+              disabled={loggingIn || !username || !password || totpCode.length !== 6}
+            >
               {loggingIn ? '驗證中…' : '登入'}
             </Button>
             {error && (
@@ -1201,6 +1234,7 @@ export function AdminPage() {
                 { value: 'users', label: '使用者' },
                 { value: 'matches', label: '對戰' },
                 { value: 'chat', label: '聊天' },
+                { value: 'operations', label: t('admin.operations') },
                 { value: 'about', label: 'About' },
               ]}
               value={activeTab}
@@ -1212,7 +1246,7 @@ export function AdminPage() {
                 className="admin-logout-button size-11 p-0 sm:size-auto sm:min-h-11 sm:px-3"
                 variant="secondary"
                 size="sm"
-                onClick={handleLogout}
+                onClick={() => void handleLogout()}
               >
                 <LogOut className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">登出</span>
@@ -1768,6 +1802,12 @@ export function AdminPage() {
       {activeTab === 'about' && (
         <section className="admin-main flex-1 overflow-y-auto p-4">
           <AboutSettingsEditor />
+        </section>
+      )}
+
+      {activeTab === 'operations' && (
+        <section className="admin-main flex-1 overflow-y-auto p-4">
+          <AdminOperationsPanel token={token} />
         </section>
       )}
 

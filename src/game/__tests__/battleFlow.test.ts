@@ -103,6 +103,21 @@ describe('complete battle flow', () => {
     expect(G.actionLog.some((entry) => entry.action === 'timeoutSkip' && entry.player === 1)).toBe(true);
     expect(G.step).not.toBe('effectOrder');
   });
+
+  it('only allows a seated player to surrender through the game move', () => {
+    const { G } = createFlowGame();
+    const surrenderMove = ZutomayoCard.moves?.surrender as unknown as (context: {
+      G: GameState;
+      playerID: string | null;
+    }) => unknown;
+
+    expect(surrenderMove({ G, playerID: null })).toBe('INVALID_MOVE');
+    expect(G.step).not.toBe('gameOver');
+
+    surrenderMove({ G, playerID: '0' });
+    expect(G.step).toBe('gameOver');
+    expect(G.winner).toBe(1);
+  });
 });
 
 describe('online inactivity recovery', () => {

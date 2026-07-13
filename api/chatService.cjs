@@ -137,9 +137,15 @@ function directConversationSubjectForUsers(userId, peerUserId) {
 
 async function directFriendConversationSubjects({ pool, userId }) {
   const { rows } = await pool.query(
-    `SELECT friend_user_id
-     FROM user_friends
-     WHERE user_id = $1`,
+    `SELECT f.friend_user_id
+       FROM user_friends f
+      WHERE f.user_id = $1
+        AND NOT EXISTS (
+          SELECT 1
+            FROM user_blocks b
+           WHERE (b.blocker_user_id = $1 AND b.blocked_user_id = f.friend_user_id)
+              OR (b.blocker_user_id = f.friend_user_id AND b.blocked_user_id = $1)
+        )`,
     [userId],
   );
   return rows.map((row) => directConversationSubjectForUsers(userId, row.friend_user_id)).filter(Boolean);
@@ -150,9 +156,15 @@ async function hasDirectFriendship({ pool, userId, subjectId }) {
   if (!peerUserId) return false;
   const { rows } = await pool.query(
     `SELECT 1
-     FROM user_friends
-     WHERE user_id = $1 AND friend_user_id = $2
-     LIMIT 1`,
+       FROM user_friends f
+      WHERE f.user_id = $1 AND f.friend_user_id = $2
+        AND NOT EXISTS (
+          SELECT 1
+            FROM user_blocks b
+           WHERE (b.blocker_user_id = $1 AND b.blocked_user_id = $2)
+              OR (b.blocker_user_id = $2 AND b.blocked_user_id = $1)
+        )
+      LIMIT 1`,
     [userId, peerUserId],
   );
   return rows.length > 0;
@@ -164,7 +176,7 @@ async function hasMatchChatAccess({ pool, userId, subjectId }) {
   const { rows } = await pool.query(
     `SELECT 1
      FROM platform_match_participants
-     WHERE boardgame_match_id = $1 AND user_id = $2
+     WHERE boardgame_match_id = $1 AND user_id = $2 AND access_verified = TRUE
      UNION
      SELECT 1
      FROM matches
@@ -182,7 +194,7 @@ async function matchChatParticipantRole({ pool, userId, subjectId }) {
   const { rows } = await pool.query(
     `SELECT role
      FROM platform_match_participants
-     WHERE boardgame_match_id = $1 AND user_id = $2
+     WHERE boardgame_match_id = $1 AND user_id = $2 AND access_verified = TRUE
      UNION
      SELECT 'player' AS role
      FROM matches
@@ -201,7 +213,7 @@ async function hasRoomChatAccess({ pool, userId, subjectId }) {
   const { rows } = await pool.query(
     `SELECT 1
      FROM platform_room_participants
-     WHERE room_code = $1 AND user_id = $2
+     WHERE room_code = $1 AND user_id = $2 AND access_verified = TRUE
      LIMIT 1`,
     [roomCode, userId],
   );
@@ -214,7 +226,7 @@ async function roomChatParticipantRole({ pool, userId, subjectId }) {
   const { rows } = await pool.query(
     `SELECT role
      FROM platform_room_participants
-     WHERE room_code = $1 AND user_id = $2
+     WHERE room_code = $1 AND user_id = $2 AND access_verified = TRUE
      LIMIT 1`,
     [roomCode, userId],
   );
@@ -599,12 +611,12 @@ async function listChatMessages({
     return { ok: false, status: 403, error: 'Forbidden' };
   }
   const lim = clampLimit(limit, 50, 200);
-  const params = [key, lim];
+  const params = [key, lim, userId];
   let beforeClause = '';
   if (before) {
     params.push(String(before));
     beforeClause =
-      "AND created_at < COALESCE((SELECT created_at FROM chat_messages WHERE id = $3), NOW() + INTERVAL '1 second')";
+      "AND created_at < COALESCE((SELECT created_at FROM chat_messages WHERE id = $4), NOW() + INTERVAL '1 second')";
   }
   const { rows } = await pool.query(
     `SELECT *
@@ -612,6 +624,15 @@ async function listChatMessages({
      WHERE conversation_id = $1
        AND deleted_at IS NULL
        AND moderation_status IN ('visible', 'pending_review')
+       AND NOT EXISTS (
+         SELECT 1
+           FROM user_blocks b
+          WHERE chat_messages.author_user_id IS NOT NULL
+            AND (
+              (b.blocker_user_id = $3 AND b.blocked_user_id = chat_messages.author_user_id)
+              OR (b.blocker_user_id = chat_messages.author_user_id AND b.blocked_user_id = $3)
+            )
+       )
        ${beforeClause}
      ORDER BY created_at DESC
      LIMIT $2`,
@@ -705,6 +726,15 @@ async function listUnreadChat({
      WHERE m.author_user_id IS DISTINCT FROM $1
        AND m.deleted_at IS NULL
        AND m.moderation_status IN ('visible', 'pending_review')
+       AND NOT EXISTS (
+         SELECT 1
+           FROM user_blocks blocked_pair
+          WHERE m.author_user_id IS NOT NULL
+            AND (
+              (blocked_pair.blocker_user_id = $1 AND blocked_pair.blocked_user_id = m.author_user_id)
+              OR (blocked_pair.blocker_user_id = m.author_user_id AND blocked_pair.blocked_user_id = $1)
+            )
+       )
        AND (r.read_at IS NULL OR m.created_at > r.read_at)
        AND (c.type <> 'global' OR c.subject_id = 'online-lobby')
        AND (
@@ -735,6 +765,7 @@ async function listUnreadChat({
            FROM platform_match_participants pmp
            WHERE pmp.boardgame_match_id = c.subject_id
              AND pmp.user_id = $1
+             AND pmp.access_verified = TRUE
          )
          OR EXISTS (
            SELECT 1
@@ -751,6 +782,7 @@ async function listUnreadChat({
            FROM platform_room_participants prp
            WHERE prp.room_code = c.subject_id
              AND prp.user_id = $1
+             AND prp.access_verified = TRUE
          )
        )
      GROUP BY c.id
@@ -823,8 +855,17 @@ async function requestChatTranslation({
        JOIN chat_conversations c ON c.id = m.conversation_id
        WHERE m.id = $1
          AND m.deleted_at IS NULL
-         AND m.moderation_status IN ('visible', 'pending_review')`,
-      [cleanMessageId],
+         AND m.moderation_status IN ('visible', 'pending_review')
+         AND NOT EXISTS (
+           SELECT 1
+           FROM user_blocks b
+           WHERE m.author_user_id IS NOT NULL
+             AND (
+               (b.blocker_user_id = $2 AND b.blocked_user_id = m.author_user_id)
+               OR (b.blocker_user_id = m.author_user_id AND b.blocked_user_id = $2)
+             )
+         )`,
+      [cleanMessageId, userId],
     )
   ).rows[0];
   if (!message) return { ok: false, status: 404, error: 'Message not found' };

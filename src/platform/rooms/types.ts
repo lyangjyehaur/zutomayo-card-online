@@ -11,6 +11,8 @@ export interface PlatformAuth {
   displayName: string;
   role: PlatformRole;
   authenticated: boolean;
+  /** Internal access token retained only for a revocation check on join. */
+  accessToken?: string;
 }
 
 export interface PlatformClientProfile {
@@ -21,9 +23,33 @@ export interface PlatformClientProfile {
   joinedAt: number;
   boardgamePlayerID?: string;
   hasBoardgameCredentials?: boolean;
+  /** Canonical deck reserved by the quick-match server. */
+  deckName?: string;
 }
 
 export type PlatformFriendPresenceEvent = 'online' | 'offline' | 'update';
+export type PlatformRelationshipChangeKind =
+  | 'friendship_added'
+  | 'friendship_removed'
+  | 'block_created'
+  | 'block_removed'
+  | 'account_deleted';
+
+interface PlatformRelationshipChangeBase {
+  version: 1;
+  eventId: string;
+  userIds: string[];
+  occurredAt: string;
+}
+
+export type PlatformRelationshipChange = PlatformRelationshipChangeBase &
+  (
+    | { kind: 'block_created' | 'block_removed'; actorUserId: string }
+    | {
+        kind: Exclude<PlatformRelationshipChangeKind, 'block_created' | 'block_removed'>;
+        actorUserId?: string;
+      }
+  );
 
 export interface PlatformFriendPresence {
   event: PlatformFriendPresenceEvent;
@@ -69,6 +95,8 @@ export interface PlatformClientMessages {
   quickMatchMatched: {
     roomId: string;
     role: 'host' | 'guest';
+    deckName: string;
+    deckReservationId?: string;
     opponent?: PlatformClientProfile;
   };
   quickMatchCancelled: {
@@ -186,6 +214,7 @@ export interface MatchShellRoomOptions extends LobbyJoinOptions {
 
 export interface QuickMatchRoomOptions extends LobbyJoinOptions {
   deckName?: unknown;
+  deckReservationId?: unknown;
   status?: unknown;
 }
 

@@ -78,7 +78,7 @@ ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.
 | API Server      | 帳號 / OAuth / 牌組 / 對戰結果 / 聊天持久化 / 好友 / 反饋 / 管理 / 卡牌資料 / legacy REST 配對                | Node HTTP、pg、ioredis、zod、node-pg-migrate                    |
 | Platform Server | Colyseus lobby presence、quick matchmaking、custom-room lifecycle、invite、match shell、spectator presence    | Colyseus、@colyseus/ws-transport、RedisDriver、RedisPresence    |
 | PostgreSQL      | 持久資料（用戶、好友、牌組、對戰、聊天、檢舉、制裁、卡牌、反饋、boardgame.io state）                          | PostgreSQL 16                                                   |
-| Redis           | 跨節點同步、Colyseus room/presence backing、refresh 原子輪替、legacy 配對佇列、限流、HTTP presence fallback   | Redis 7（密碼、AOF + allkeys-lru）                              |
+| Redis           | 跨節點同步、Colyseus room/presence backing、refresh 原子輪替、legacy 配對佇列、限流、HTTP presence fallback   | Redis 7（密碼、AOF + noeviction）                               |
 
 ### 請求/同步流向
 
@@ -585,7 +585,7 @@ flowchart TB
 | `http_request_duration_seconds` | Histogram | 兩者 | labels: `method`/`path`/`status`，path 正規化（`:id`）限制 cardinality |
 | `http_requests_total`           | Counter   | 兩者 | 同上 labels                                                            |
 | `rate_limited_requests_total`   | Counter   | api  | label: `pathname`                                                      |
-| `matchmaking_queue_depth`       | Gauge     | game | Legacy REST 配對佇列深度                                               |
+| `matchmaking_queue_depth`       | Gauge     | api  | Redis matchmaking sorted-set 的即時深度                                |
 | `active_socket_connections`     | Gauge     | game | 當前 Socket.IO 連線數                                                  |
 | Node.js default metrics         | -         | 兩者 | event loop / GC / heap（`collectDefaultMetrics`）                      |
 
@@ -679,7 +679,7 @@ checkout → setup-node → npm ci
 
 平行的 `e2e` job 以 `docker-compose.e2e.yml` 啟動隔離服務棧並執行 Playwright，失敗時上傳 report 與 test results。任一步驟失敗皆阻擋合併。`smoke:*` 與 k6 `load:*` 仍需依目標環境另行執行；本機以 `npm run verify` 對齊靜態檢查、單測與 build。
 
-`.github/workflows/cd.yml` 在 master 更新時建置 game/api/platform GHCR staging images，在 `v*` tag 建置 production images；`workflow_dispatch` 可選 staging／production SSH 部署。`docker-compose.staging.yml` 使用隔離 ports、database 與 Redis DB，正式 rollback 由 `scripts/deploy-server4.sh` 管理。
+`.github/workflows/cd.yml` 在 master 更新時建置 game/api/platform GHCR staging images，在 `v*` tag 建置 production images；`workflow_dispatch` 可選 staging／production SSH 部署。`docker-compose.staging.yml` 使用隔離 ports，但連接外部 PostgreSQL（`verify-full` + CA secret）與 Redis（`rediss://` + ACL/password）；bundled plaintext DB 只保留於 development Compose，正式 rollback 由 `scripts/deploy-server4.sh` 管理。
 
 ---
 

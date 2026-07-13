@@ -186,6 +186,8 @@ export type BoardGameOverActions = {
 
 type Props = BoardProps<GameState> & {
   gameOverActions?: BoardGameOverActions;
+  // 線上觀戰者沒有玩家座位，不應以 player 0 視角顯示或提交結算。
+  spectator?: boolean;
   // 線上對戰由頁面層接管離開確認與房間清理；未提供時使用本地確認抽屜。
   onExitRequest?: () => void;
   // P3-16：線上模式用伺服器權威計時器（G.turnStartTime）；本機/AI 維持客戶端 setInterval。
@@ -359,6 +361,9 @@ function formatLogEntry(
   }
   if (a === 'timeoutSkip' || a === 'timeoutAdvance') {
     return { segments: [seg(`${p} ${t('board.timer')} ⏱`)], tone: 'info' };
+  }
+  if (a === 'surrender') {
+    return { segments: [seg(`${p} ${t('game.surrendered')}`)], tone: 'battle' };
   }
   if (a === 'chooseEffectOrder') {
     return { segments: [seg(`${p} ${t('board.chooseEffect')}`)], tone: 'effect' };
@@ -1085,6 +1090,7 @@ function translateGameOverReason(reason: string | null): string {
   if (reason.includes('not enough cards')) return t('board.reasonDeckEmpty');
   if (reason.includes('effect attempted to draw')) return t('board.reasonEffectDraw');
   if (reason.includes('0 HP')) return t('board.reasonHpZero');
+  if (reason.includes('surrendered')) return t('board.reasonSurrender');
   return t('board.reason');
 }
 
@@ -1137,32 +1143,57 @@ function ResultCell({ label, value, accent }: { label: string; value: string; ac
   );
 }
 
-function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions }: Props) {
+function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator = false }: Props) {
   const eloState = useOnlineMatchSubmission({
     G,
     gameover: ctx.gameover as { winner?: string | number; draw?: boolean } | undefined,
     matchID,
     playerID,
+    spectator,
   });
 
   const gameover = ctx.gameover as { winner?: string | number; draw?: boolean } | undefined;
   const winner = normalizeGameOverWinner(G, gameover);
   const myPlayer = myPlayerIndex(playerID);
-  const outcome: 'victory' | 'defeat' | 'draw' = winner === null ? 'draw' : winner === myPlayer ? 'victory' : 'defeat';
+  const outcome: 'victory' | 'defeat' | 'draw' | 'spectator' = spectator
+    ? 'spectator'
+    : winner === null
+      ? 'draw'
+      : winner === myPlayer
+        ? 'victory'
+        : 'defeat';
   const win = outcome === 'victory';
   const durationSeconds = matchDurationSeconds(G);
   const reason = translateGameOverReason(G.gameoverReason);
-  const glyphKey =
-    outcome === 'victory'
-      ? 'board.result.glyph.victory'
-      : outcome === 'defeat'
-        ? 'board.result.glyph.defeat'
-        : 'board.result.glyph.draw';
-  const titleKey =
-    outcome === 'victory' ? 'board.result.victory' : outcome === 'defeat' ? 'board.result.defeat' : 'board.result.draw';
+  const glyph = spectator
+    ? winner === null
+      ? t('board.result.glyph.draw')
+      : playerName(winner)
+    : t(
+        outcome === 'victory'
+          ? 'board.result.glyph.victory'
+          : outcome === 'defeat'
+            ? 'board.result.glyph.defeat'
+            : 'board.result.glyph.draw',
+      );
+  const title = spectator
+    ? winner === null
+      ? t('board.result.draw')
+      : `${t('board.winner')} · ${playerName(winner)}`
+    : t(
+        outcome === 'victory'
+          ? 'board.result.victory'
+          : outcome === 'defeat'
+            ? 'board.result.defeat'
+            : 'board.result.draw',
+      );
 
   return (
-    <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-surface-canvas px-4 font-sans text-content-primary">
+    <div
+      className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden bg-surface-canvas px-4 font-sans text-content-primary"
+      data-game-step="gameOver"
+      data-result-outcome={outcome}
+    >
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div
           className={`absolute left-1/2 top-1/2 h-[90vh] w-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[160px] ${win ? 'bg-accent-primary/15' : 'bg-accent-action/15'}`}
@@ -1179,10 +1210,10 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions }: Props) {
         <h1
           className={`mt-4 font-display text-battle-result-title font-bold leading-none md:text-battle-result-title-lg ${win ? 'text-content-primary' : 'text-content-primary/70'}`}
         >
-          {t(glyphKey)}
+          {glyph}
         </h1>
         <div className="mt-2 font-display text-2xl font-bold tracking-wide">
-          {t(titleKey)} · {t('board.turn')} {G.turnNumber}
+          {title} · {t('board.turn')} {G.turnNumber}
         </div>
 
         <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-content-primary/10 py-6 md:grid-cols-4">
@@ -1617,9 +1648,9 @@ const BATTLE_SIDE_PANELS: Array<{
   { id: 'log', labelKey: 'board.panel.log', Icon: BookOpen },
 ];
 
-function BoardLayout({ time, children }: { time: ChronosTime; children: ReactNode }) {
+function BoardLayout({ time, step, children }: { time: ChronosTime; step: GameState['step']; children: ReactNode }) {
   return (
-    <div className={`bf-root chrono-${time}`} data-board-layout="responsive">
+    <div className={`bf-root chrono-${time}`} data-board-layout="responsive" data-game-step={step}>
       {children}
     </div>
   );
@@ -1785,6 +1816,7 @@ function BattleBoard({
   G,
   moves,
   playerID,
+  spectator = false,
   useServerTimer = false,
   opponentLabel,
   selfLabel,
@@ -1845,6 +1877,10 @@ function BattleBoard({
   useEffect(() => () => clearPhaseTimers(), [clearPhaseTimers]);
 
   useEffect(() => {
+    if (spectator) {
+      setTimeLeft(TURN_TIMER_SECONDS);
+      return;
+    }
     if (useServerTimer) {
       // 線上模式：正式回合與前置／效果互動都使用伺服器權威起始時間。
       const compute = () => {
@@ -1893,9 +1929,11 @@ function BattleBoard({
     meIndex,
     useServerTimer,
     awaitingPlayersKey,
+    spectator,
   ]);
 
   useEffect(() => {
+    if (spectator) return;
     if (timeLeft > 0) return;
     // 教學流程不使用真實倒數；一般本機與線上模式皆走同一 timeoutSkip 規則，
     // 允許未達最低出牌數時跳過，避免 00 秒後仍可無限操作。
@@ -1911,7 +1949,18 @@ function BattleBoard({
         if (!G.ready[player]) moves.timeoutSkip(player);
       }
     }
-  }, [G.step, timeLeft, G.ready, meIndex, moves, onNoticeDismiss, retryTick, useServerTimer, awaitingPlayersKey]);
+  }, [
+    G.step,
+    timeLeft,
+    G.ready,
+    meIndex,
+    moves,
+    onNoticeDismiss,
+    retryTick,
+    useServerTimer,
+    awaitingPlayersKey,
+    spectator,
+  ]);
 
   useEffect(() => {
     setSelectedHandIndex(null);
@@ -1939,6 +1988,7 @@ function BattleBoard({
   const time = getChronosTime(G);
   const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
   const canAct =
+    !spectator &&
     tutorialSetInteractionEnabled &&
     (G.step === 'initialSet' || G.step === 'turnSet') &&
     !G.ready[meIndex] &&
@@ -1968,6 +2018,7 @@ function BattleBoard({
     setSelectedHandIndex(null);
   };
   const canConfirm =
+    !spectator &&
     tutorialSetInteractionEnabled &&
     !G.ready[meIndex] &&
     me.cardsSetThisTurn >= minimum &&
@@ -2088,7 +2139,7 @@ function BattleBoard({
     ) : null;
 
   return (
-    <BoardLayout time={time}>
+    <BoardLayout time={time} step={G.step}>
       <BattleHud
         G={G}
         activePanel={activeSidePanel}
@@ -2342,7 +2393,7 @@ function BattleBoard({
       </div>
 
       {/* 效果結算 — 居中覆蓋層 */}
-      {(G.step === 'effectOrder' || G.pendingChoice) && (
+      {!spectator && (G.step === 'effectOrder' || G.pendingChoice) && (
         <BattleOverlayLayer>
           {G.pendingChoice ? (
             <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
@@ -2416,6 +2467,11 @@ export function Board(props: Props) {
   const gameOverFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 暫停/離開確認對話框
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const canSurrender =
+    props.useServerTimer === true &&
+    props.spectator !== true &&
+    props.isConnected === true &&
+    typeof props.moves.surrender === 'function';
 
   useEffect(
     () => () => {
@@ -2542,10 +2598,22 @@ export function Board(props: Props) {
 
   const handleExitGame = () => {
     setShowExitConfirm(false);
+    if (canSurrender) {
+      props.moves.surrender();
+      return;
+    }
+    if (props.onExitRequest) {
+      props.onExitRequest();
+      return;
+    }
     navigate('/');
   };
 
   const requestExit = () => {
+    if (canSurrender) {
+      setShowExitConfirm(true);
+      return;
+    }
     if (props.onExitRequest) {
       props.onExitRequest();
       return;
@@ -2575,12 +2643,12 @@ export function Board(props: Props) {
       {/* 離開確認對話框 */}
       <AppDrawer
         open={showExitConfirm}
-        title={t('game.confirmExit')}
-        description={t('game.exitWarning')}
+        title={canSurrender ? t('game.confirmSurrender') : t('game.confirmExit')}
+        description={canSurrender ? t('game.surrenderWarning') : t('game.exitWarning')}
         kicker="Warning"
         actions={[
           {
-            label: t('game.exitGame'),
+            label: canSurrender ? t('game.surrender') : t('game.exitGame'),
             onClick: handleExitGame,
             tone: 'danger',
             eventName: 'game-exit-confirm',
@@ -2601,17 +2669,18 @@ export function Board(props: Props) {
   }
   // janken/mulligan 階段也渲染 BattleBoard 場地，操作面板作為浮層疊加
   // 教學模式時，若 hideSetupOverlay=true 則隱藏浮層（等教學進度到了才顯示）
-  const setupOverlay = props.hideSetupOverlay ? null : props.G.step === 'janken' ? (
-    <JankenScreen {...props} floating />
-  ) : props.G.step === 'mulligan' ? (
-    <MulliganScreen
-      {...props}
-      focusedCard={mulliganFocusedCard}
-      onFocusCard={setMulliganFocusedCard}
-      onMulliganFeedback={showMulliganFeedback}
-      floating
-    />
-  ) : null;
+  const setupOverlay =
+    props.spectator || props.hideSetupOverlay ? null : props.G.step === 'janken' ? (
+      <JankenScreen {...props} floating />
+    ) : props.G.step === 'mulligan' ? (
+      <MulliganScreen
+        {...props}
+        focusedCard={mulliganFocusedCard}
+        onFocusCard={setMulliganFocusedCard}
+        onMulliganFeedback={showMulliganFeedback}
+        floating
+      />
+    ) : null;
   return renderWithSetupFeedback(
     <>
       <BattleBoard

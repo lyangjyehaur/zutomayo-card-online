@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import promClient, { Counter, Gauge, Histogram, Registry } from 'prom-client';
 import type { Next, ParameterizedContext } from 'koa';
 import type { ObsMiddleware } from './logger';
@@ -20,17 +21,69 @@ export const httpRequestsTotal = new Counter({
   registers: [register],
 });
 
-export const matchmakingQueueDepth = new Gauge({
-  name: 'matchmaking_queue_depth',
-  help: 'Current matchmaking queue depth',
-  registers: [register],
-});
-
 export const activeSocketConnections = new Gauge({
   name: 'active_socket_connections',
   help: 'Active Socket.IO connections',
   registers: [register],
 });
+
+export const matchResultOutboxPending = new Gauge({
+  name: 'match_result_outbox_pending',
+  help: 'Current number of ranked match results awaiting delivery',
+  registers: [register],
+});
+
+export const matchResultOutboxOldestAgeSeconds = new Gauge({
+  name: 'match_result_outbox_oldest_age_seconds',
+  help: 'Age in seconds of the oldest ranked match result awaiting delivery',
+  registers: [register],
+});
+
+export const matchResultOutboxRows = new Gauge({
+  name: 'match_result_outbox_rows',
+  help: 'Current durable match-result rows grouped by delivery status',
+  labelNames: ['status'] as const,
+  registers: [register],
+});
+
+export const matchResultOutboxProcessedTotal = new Counter({
+  name: 'match_result_outbox_processed_total',
+  help: 'Ranked match-result delivery attempts grouped by outcome',
+  labelNames: ['outcome'] as const,
+  registers: [register],
+});
+
+export const gameMatchCompletionsTotal = new Counter({
+  name: 'game_match_completions_total',
+  help: 'Durably delivered ranked game completions grouped by rating mode and result',
+  labelNames: ['rating_mode', 'result'] as const,
+  registers: [register],
+});
+
+export const matchResultOutboxMetricsRefreshSuccess = new Gauge({
+  name: 'match_result_outbox_metrics_refresh_success',
+  help: 'Whether the most recent durable outbox metrics refresh succeeded',
+  registers: [register],
+});
+
+export const matchResultOutboxMetricsLastSuccess = new Gauge({
+  name: 'match_result_outbox_metrics_last_success_unixtime_seconds',
+  help: 'Unix timestamp of the most recent successful durable outbox metrics refresh',
+  registers: [register],
+});
+
+export function metricsRequestAuthorized(
+  authorization: string | undefined,
+  token = process.env.METRICS_TOKEN || '',
+  nodeEnv = process.env.NODE_ENV,
+): boolean {
+  if (!token) return nodeEnv !== 'production';
+  const prefix = 'Bearer ';
+  if (!authorization?.startsWith(prefix)) return false;
+  const expected = Buffer.from(token);
+  const received = Buffer.from(authorization.slice(prefix.length));
+  return expected.length === received.length && crypto.timingSafeEqual(expected, received);
+}
 
 /** Normalize dynamic path segments to keep label cardinality bounded. */
 function normalizePath(path: string): string {

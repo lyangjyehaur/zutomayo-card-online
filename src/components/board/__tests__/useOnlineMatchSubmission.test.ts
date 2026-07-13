@@ -36,6 +36,7 @@ describe('useOnlineMatchSubmission helpers', () => {
     expect(activeAccountPlayer('0', '/play/ai')).toBe(0);
     expect(activeAccountPlayer('1', '/play/ai')).toBeNull();
     expect(activeAccountPlayer('1', '/play/online/abc')).toBe(1);
+    expect(activeAccountPlayer(undefined, '/play/online/abc')).toBeNull();
   });
 
   it('only sends source match IDs for real online rooms', () => {

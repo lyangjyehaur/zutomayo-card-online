@@ -9,7 +9,7 @@
 #   command: ['run', '/scripts/websocket-load.js']
 services:
   k6:
-    image: grafana/k6:latest
+    image: grafana/k6:0.52.0
     volumes:
       - ./load-tests:/scripts
     environment:

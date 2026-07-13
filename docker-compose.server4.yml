@@ -1,144 +1,289 @@
 services:
   migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: builder
-    command: ['npm', 'run', 'db:migrate']
+    image: ${MIGRATE_IMAGE:?Set MIGRATE_IMAGE to a verified @sha256 digest}
+    command: ['npm', 'run', 'db:migrate:release']
     env_file: .env
     environment:
       - PG_HOST=postgresql
       - PG_PORT=5432
+      - PG_USER=${PG_MIGRATION_USER:?Set PG_MIGRATION_USER in .env}
+      - PG_PASSWORD=${PG_MIGRATION_PASSWORD:?Set PG_MIGRATION_PASSWORD in .env}
+      - PG_APP_PASSWORD=
+      - PG_API_PASSWORD=
+      - PG_GAME_PASSWORD=
+      - PG_PLATFORM_PASSWORD=
+      - PG_RETENTION_PASSWORD=
+      - PG_MONITOR_PASSWORD=
+      - PG_BACKUP_PASSWORD=
+      - PG_WAL_PASSWORD=
+      - PG_DATABASE=${PG_DATABASE:?Set PG_DATABASE in .env}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-}
+      - PG_APP_USER=${PG_APP_USER:?Set PG_APP_USER in .env}
+      - PG_API_USER=${PG_API_USER:?Set PG_API_USER in .env}
+      - PG_GAME_USER=${PG_GAME_USER:?Set PG_GAME_USER in .env}
+      - PG_PLATFORM_USER=${PG_PLATFORM_USER:?Set PG_PLATFORM_USER in .env}
+      - PG_RETENTION_USER=${PG_RETENTION_USER:?Set PG_RETENTION_USER in .env}
+      - PG_MONITOR_USER=${PG_MONITOR_USER:?Set PG_MONITOR_USER in .env}
+      - PG_BACKUP_USER=${PG_BACKUP_USER:?Set PG_BACKUP_USER in .env}
+      - PG_WAL_USER=${PG_WAL_USER:?Set PG_WAL_USER in .env}
+      - REQUIRE_APP_ROLE_GATE=true
+      - REQUIRE_ROLE_MATRIX_GATE=true
+      - REQUIRE_DISTINCT_DB_ROLES=true
+      - DATABASE_URL=
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
     networks:
       - default
       - 1panel-network
     restart: 'no'
 
   game:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-game:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-}
-        APP_BUILD_ID: ${APP_BUILD_ID:-}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
-        VITE_UMAMI_WEBSITE_ID: ${VITE_UMAMI_WEBSITE_ID:-}
-        VITE_UMAMI_SCRIPT_URL: ${VITE_UMAMI_SCRIPT_URL:-}
-        VITE_UMAMI_HOST_URL: ${VITE_UMAMI_HOST_URL:-}
-        VITE_UMAMI_TELEMETRY_SCRIPT_URL: ${VITE_UMAMI_TELEMETRY_SCRIPT_URL:-}
-        VITE_UMAMI_SECONDARY_WEBSITE_ID: ${VITE_UMAMI_SECONDARY_WEBSITE_ID:-}
-        VITE_UMAMI_SECONDARY_HOST_URL: ${VITE_UMAMI_SECONDARY_HOST_URL:-}
-        VITE_IMGPROXY_BASE_URL: ${VITE_IMGPROXY_BASE_URL:-}
-        VITE_PLATFORM_URL: ${VITE_PLATFORM_URL:-}
-        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
-        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.1}
-        SENTRY_DSN: ${SENTRY_DSN:-}
-        SENTRY_URL: ${SENTRY_URL:-}
-        SENTRY_ORG: ${SENTRY_ORG:-}
-        SENTRY_PROJECT: ${SENTRY_PROJECT:-}
-        SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+    image: ${GAME_IMAGE:?Set GAME_IMAGE to a verified @sha256 digest}
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     env_file: .env
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - PG_HOST=postgresql
       - PG_PORT=5432
-      - REDIS_DB=0
+      - PG_USER=${PG_GAME_USER:?Set PG_GAME_USER in .env}
+      - PG_PASSWORD=${PG_GAME_PASSWORD:?Set PG_GAME_PASSWORD in .env}
+      - PG_MIGRATION_PASSWORD=
+      - PG_APP_PASSWORD=
+      - PG_API_PASSWORD=
+      - PG_PLATFORM_PASSWORD=
+      - PG_RETENTION_PASSWORD=
+      - PG_MONITOR_PASSWORD=
+      - PG_BACKUP_PASSWORD=
+      - PG_WAL_PASSWORD=
+      - PG_DATABASE=${PG_DATABASE:?Set PG_DATABASE in .env}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-}
+      - REDIS_URL=${REDIS_URL:?Set REDIS_URL in .env}
+      - REDIS_DB=${REDIS_DB:-0}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-zutomayo-game}
+      - OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=production}
+      - PG_POOL_MAX=${PG_POOL_MAX:-20}
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - API_URL=${API_URL:-http://api:3001}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in .env}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
+      - AUTH_REVOCATION_TIMEOUT_MS=${AUTH_REVOCATION_TIMEOUT_MS:-750}
+      - GAME_AUTH_DB_QUERY_TIMEOUT_MS=${GAME_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
+      - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
+      - GAME_DRAIN_GRACE_MS=${GAME_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     networks:
       - default
       - 1panel-network
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/health || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   api:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-api:${TAG:-latest}
-    build:
-      context: ./api
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-}
-        APP_BUILD_ID: ${APP_BUILD_ID:-}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
-    expose:
-      - '3001'
+    image: ${API_IMAGE:?Set API_IMAGE to a verified @sha256 digest}
+    ports:
+      - '127.0.0.1:3001:3001'
     env_file: .env
     environment:
       - API_PORT=3001
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - NODE_ENV=production
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - PG_HOST=postgresql
       - PG_PORT=5432
-      - REDIS_DB=0
+      - PG_USER=${PG_API_USER:?Set PG_API_USER in .env}
+      - PG_PASSWORD=${PG_API_PASSWORD:?Set PG_API_PASSWORD in .env}
+      - PG_MIGRATION_PASSWORD=
+      - PG_APP_PASSWORD=
+      - PG_GAME_PASSWORD=
+      - PG_PLATFORM_PASSWORD=
+      - PG_RETENTION_PASSWORD=
+      - PG_MONITOR_PASSWORD=
+      - PG_BACKUP_PASSWORD=
+      - PG_WAL_PASSWORD=
+      - PG_DATABASE=${PG_DATABASE:?Set PG_DATABASE in .env}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-}
+      - REDIS_URL=${REDIS_URL:?Set REDIS_URL in .env}
+      - REDIS_DB=${REDIS_DB:-0}
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in .env}
+      - AUTH_MODE=${AUTH_MODE:-hybrid}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      - TURNSTILE_REQUIRED=${TURNSTILE_REQUIRED:-false}
+      - TURNSTILE_SITEVERIFY_URL=${TURNSTILE_SITEVERIFY_URL:-https://challenges.cloudflare.com/turnstile/v0/siteverify}
+      - OAUTH_TOKEN_ENCRYPTION_KEY=${OAUTH_TOKEN_ENCRYPTION_KEY:-}
+      - OAUTH_PUBLIC_BASE_URL=${OAUTH_PUBLIC_BASE_URL:-}
+      - ACCESS_TOKEN_TTL_SECONDS=${ACCESS_TOKEN_TTL_SECONDS:-3600}
+      - REFRESH_TOKEN_TTL_SECONDS=${REFRESH_TOKEN_TTL_SECONDS:-604800}
+      - AUTH_COOKIE_DOMAIN=${AUTH_COOKIE_DOMAIN:-}
+      - AUTH_COOKIE_SAMESITE=${AUTH_COOKIE_SAMESITE:-Lax}
+      - ADMIN_TOTP_ENCRYPTION_KEY=${ADMIN_TOTP_ENCRYPTION_KEY:-}
+      - ADMIN_SESSION_TTL_SECONDS=${ADMIN_SESSION_TTL_SECONDS:-3600}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - ACCOUNT_EMAIL_WEBHOOK_URL=${ACCOUNT_EMAIL_WEBHOOK_URL:-}
+      - ACCOUNT_EMAIL_WEBHOOK_SECRET=${ACCOUNT_EMAIL_WEBHOOK_SECRET:-}
+      - LOGTO_ENDPOINT=${LOGTO_ENDPOINT:-}
+      - LOGTO_ISSUER=${LOGTO_ISSUER:-}
+      - LOGTO_DISCOVERY_URL=${LOGTO_DISCOVERY_URL:-}
+      - LOGTO_APP_ID=${LOGTO_APP_ID:-}
+      - LOGTO_APP_SECRET=${LOGTO_APP_SECRET:-}
+      - LOGTO_OAUTH_SCOPE=${LOGTO_OAUTH_SCOPE:-openid profile email}
+      - LOGTO_ACCOUNT_CENTER_URL=${LOGTO_ACCOUNT_CENTER_URL:-}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      - GITHUB_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID:-}
+      - GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET:-}
+      - DISCORD_OAUTH_CLIENT_ID=${DISCORD_OAUTH_CLIENT_ID:-}
+      - DISCORD_OAUTH_CLIENT_SECRET=${DISCORD_OAUTH_CLIENT_SECRET:-}
+      - LOGTO_M2M_APP_ID=${LOGTO_M2M_APP_ID:-}
+      - LOGTO_M2M_APP_SECRET=${LOGTO_M2M_APP_SECRET:-}
+      - LOGTO_MANAGEMENT_RESOURCE=${LOGTO_MANAGEMENT_RESOURCE:-}
+      - LOGTO_MANAGEMENT_SCOPE=${LOGTO_MANAGEMENT_SCOPE:-}
+      - ACCOUNT_DELETION_RECOVERY_INTERVAL_MS=${ACCOUNT_DELETION_RECOVERY_INTERVAL_MS:-60000}
+      - ACCOUNT_EXPORT_MAX_BYTES=${ACCOUNT_EXPORT_MAX_BYTES:-8388608}
+      - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - IMGPROXY_INTERNAL_BASE_URL=${IMGPROXY_INTERNAL_BASE_URL:-http://imgproxy:8080}
       - IMGPROXY_KEY=${IMGPROXY_KEY:-}
       - IMGPROXY_SALT=${IMGPROXY_SALT:-}
       - IMGPROXY_ALLOWED_SOURCES=${IMGPROXY_ALLOWED_SOURCES:-https://r2.dan.tw/cards/}
       - IMGPROXY_CACHE_CONTROL=${IMGPROXY_CACHE_CONTROL:-public, max-age=31536000, immutable}
       - RATE_LIMIT_IMGPROXY=${RATE_LIMIT_IMGPROXY:-600}
+      - CHAT_TRANSLATION_ENDPOINT=${CHAT_TRANSLATION_ENDPOINT:-}
+      - CHAT_TRANSLATION_API_KEY=${CHAT_TRANSLATION_API_KEY:-}
+      - CHAT_TRANSLATION_PROVIDER=${CHAT_TRANSLATION_PROVIDER:-}
+      - CHAT_TRANSLATION_MODEL=${CHAT_TRANSLATION_MODEL:-}
+      - CHAT_TRANSLATION_TIMEOUT_MS=${CHAT_TRANSLATION_TIMEOUT_MS:-10000}
+      - CHAT_BLOCKED_WORDS=${CHAT_BLOCKED_WORDS:-}
+      - CHAT_REVIEW_WORDS=${CHAT_REVIEW_WORDS:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-zutomayo-api}
+      - OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=production}
+      - PG_POOL_MAX=${PG_POOL_MAX:-20}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     networks:
       - default
       - 1panel-network
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/health || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   platform:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-platform:${TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-}
-        APP_BUILD_ID: ${APP_BUILD_ID:-}
-        GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
+    image: ${PLATFORM_IMAGE:?Set PLATFORM_IMAGE to a verified @sha256 digest}
     command: ['npm', 'run', 'platform']
     ports:
-      - '3002:3002'
+      - '127.0.0.1:3002:3002'
     env_file: .env
     environment:
       - PLATFORM_PORT=3002
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - PG_HOST=postgresql
       - PG_PORT=5432
-      - REDIS_DB=0
+      - PG_USER=${PG_PLATFORM_USER:?Set PG_PLATFORM_USER in .env}
+      - PG_PASSWORD=${PG_PLATFORM_PASSWORD:?Set PG_PLATFORM_PASSWORD in .env}
+      - PG_MIGRATION_PASSWORD=
+      - PG_APP_PASSWORD=
+      - PG_API_PASSWORD=
+      - PG_GAME_PASSWORD=
+      - PG_RETENTION_PASSWORD=
+      - PG_MONITOR_PASSWORD=
+      - PG_BACKUP_PASSWORD=
+      - PG_WAL_PASSWORD=
+      - PG_DATABASE=${PG_DATABASE:?Set PG_DATABASE in .env}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-}
+      - REDIS_URL=${REDIS_URL:?Set REDIS_URL in .env}
+      - REDIS_DB=${REDIS_DB:-0}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-zutomayo-platform}
+      - OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=production}
+      - PG_POOL_MAX=${PG_POOL_MAX:-20}
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in .env}
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
+      - PLATFORM_BLOCK_STORE=postgres
       - PLATFORM_MATCH_PARTICIPANT_STORE=postgres
       - PLATFORM_CHAT_PREVIEW_STORE=postgres
+      - PLATFORM_ADMISSION_IP_LIMIT=${PLATFORM_ADMISSION_IP_LIMIT:-30}
+      - PLATFORM_ADMISSION_USER_LIMIT=${PLATFORM_ADMISSION_USER_LIMIT:-10}
+      - PLATFORM_ADMISSION_GLOBAL_LIMIT=${PLATFORM_ADMISSION_GLOBAL_LIMIT:-2000}
+      - PLATFORM_ADMISSION_WINDOW_SECONDS=${PLATFORM_ADMISSION_WINDOW_SECONDS:-60}
+      - PLATFORM_ADMISSION_REDIS_TIMEOUT_MS=${PLATFORM_ADMISSION_REDIS_TIMEOUT_MS:-750}
+      - PLATFORM_AUTH_DB_POOL_MAX=${PLATFORM_AUTH_DB_POOL_MAX:-8}
+      - PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS=${PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PLATFORM_DRAIN_GRACE_MS=${PLATFORM_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     networks:
       - default
       - 1panel-network
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3002/health || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
 networks:
   1panel-network:

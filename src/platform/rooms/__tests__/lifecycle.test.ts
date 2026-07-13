@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { AuthContext } from '@colyseus/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createEmptyPlatformBlockStore } from '../../blockStore';
 import { createEmptyPlatformMatchParticipantStore } from '../../matchParticipantStore';
 import { CustomRoom } from '../CustomRoom';
 import { QuickMatchRoom } from '../QuickMatchRoom';
@@ -40,12 +41,16 @@ function cookieAuthContext(userId: string): AuthContext {
   };
 }
 
-function client(sessionId: string, auth: PlatformAuth): PlatformClient & { send: ReturnType<typeof vi.fn> } {
+function client(
+  sessionId: string,
+  auth: PlatformAuth,
+): PlatformClient & { send: ReturnType<typeof vi.fn>; leave: ReturnType<typeof vi.fn> } {
   return {
     sessionId,
     auth,
     send: vi.fn(),
-  } as PlatformClient & { send: ReturnType<typeof vi.fn> };
+    leave: vi.fn(),
+  } as PlatformClient & { send: ReturnType<typeof vi.fn>; leave: ReturnType<typeof vi.fn> };
 }
 
 function profile(client: PlatformClient): PlatformClientProfile {
@@ -62,6 +67,8 @@ describe('platform room lifecycle', () => {
   afterEach(() => {
     process.env.JWT_SECRET = originalJwtSecret;
     CustomRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
+    QuickMatchRoom.configureBlockStore(createEmptyPlatformBlockStore());
+    QuickMatchRoom.clearActiveRoomsForTests();
   });
 
   it('quick match pairs two players and only the host can relay the boardgame match id', async () => {
@@ -123,6 +130,41 @@ describe('platform room lifecycle', () => {
         boardgameMatchID: 'bgio-match-1',
       }),
     });
+  });
+
+  it('rechecks blocks when the second quick-match player joins', async () => {
+    let blocked = false;
+    QuickMatchRoom.configureBlockStore({ areUsersBlocked: async () => blocked });
+    const room = new QuickMatchRoom();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate();
+    room.clients.push(host);
+    await room.onJoin(host);
+    blocked = true;
+    room.clients.push(guest);
+
+    await expect(room.onJoin(guest)).rejects.toThrow('Quick match is not allowed');
+    expect(host.send).not.toHaveBeenCalledWith('quickMatchMatched', expect.anything());
+    await room.onLeave(guest);
+    expect(room['status']).toBe('waiting');
+    expect(broadcast).not.toHaveBeenCalledWith('quickMatchCancelled', expect.anything());
   });
 
   it('keeps guest cancellation and leave from interrupting a matched quick match relay', async () => {
@@ -190,6 +232,75 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('cancels an active quick match immediately when a block event arrives', async () => {
+    const room = new QuickMatchRoom();
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+    await room.onCreate();
+    room.clients.push(host);
+    await room.onJoin(host);
+    room.clients.push(guest);
+    await room.onJoin(guest);
+
+    await QuickMatchRoom.handleRelationshipChange({
+      version: 1,
+      eventId: 'relationship-event-quick',
+      kind: 'block_created',
+      actorUserId: 'u_host',
+      userIds: ['u_guest', 'u_host'],
+      occurredAt: new Date().toISOString(),
+    });
+
+    expect(broadcast).toHaveBeenCalledWith('quickMatchCancelled', { reason: 'relationship_changed' });
+  });
+
+  it('rolls back a failed matched metadata commit without cancelling the host room', async () => {
+    const room = new QuickMatchRoom();
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+    vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'unlock').mockImplementation(() => undefined as never);
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockImplementation(async (value) => {
+      if (value.metadata?.status === 'matched') throw new Error('redis metadata unavailable');
+    });
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+
+    await room.onCreate();
+    room.clients.push(host);
+    await room.onJoin(host);
+    room.clients.push(guest);
+    await expect(room.onJoin(guest)).rejects.toThrow('redis metadata unavailable');
+    await room.onLeave(guest);
+
+    expect(room['status']).toBe('waiting');
+    expect(setMatchmaking).toHaveBeenLastCalledWith({ metadata: expect.objectContaining({ status: 'waiting' }) });
+  });
+
   it('rejects quick-match joins once the room is no longer waiting', async () => {
     const room = new QuickMatchRoom();
     vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -220,13 +331,13 @@ describe('platform room lifecycle', () => {
     room.clients.push(guest);
     await room.onJoin(guest);
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         { userId: 'u_late', displayName: 'Late Player', role: 'player' },
         cookieAuthContext('u_late'),
       ),
-    ).toThrow('Quick match is not joinable');
+    ).rejects.toThrow('Quick match is not joinable');
   });
 
   it('excludes the leaving quick-match session from cancellation snapshots and matchmaking counts', async () => {
@@ -466,7 +577,7 @@ describe('platform room lifecycle', () => {
     vi.spyOn(room.clock, 'setTimeout').mockImplementation(((_handler: () => void) => ({ clear: vi.fn() })) as never);
 
     await room.onCreate({ roomCode: 'ROOM42', status: 'waiting' });
-    const auth = room.onAuth(
+    const auth = await room.onAuth(
       {} as PlatformClient,
       {
         roomCode: 'ROOM42',
@@ -495,7 +606,7 @@ describe('platform room lifecycle', () => {
 
     await room.onCreate({ roomCode: 'ROOM42', boardgameMatchID: 'bgio-match-1', status: 'waiting' });
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -507,9 +618,9 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_player'),
       ),
-    ).toThrow('Custom room access denied');
+    ).rejects.toThrow('Custom room access denied');
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -520,9 +631,9 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_player'),
       ),
-    ).toThrow('Custom room access denied');
+    ).rejects.toThrow('Custom room access denied');
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -534,9 +645,9 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_player'),
       ),
-    ).toThrow('Custom room access denied');
+    ).rejects.toThrow('Custom room access denied');
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -548,7 +659,7 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_player'),
       ),
-    ).not.toThrow();
+    ).resolves.toBeDefined();
   });
 
   it('custom room keeps spectators out of player seats and relay authority', async () => {
@@ -713,7 +824,7 @@ describe('platform room lifecycle', () => {
     await room.onJoin(guest);
     handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-ready' });
 
-    const spectatorAuth = room.onAuth(
+    const spectatorAuth = await room.onAuth(
       {} as PlatformClient,
       {
         roomCode: 'ROOM42',
@@ -951,7 +1062,7 @@ describe('platform room lifecycle', () => {
     await room.onJoin(host);
     await room.onLeave(host);
 
-    expect(() =>
+    await expect(
       room.onAuth(
         {} as PlatformClient,
         {
@@ -962,7 +1073,7 @@ describe('platform room lifecycle', () => {
         },
         cookieAuthContext('u_late'),
       ),
-    ).toThrow('Custom room is not joinable');
+    ).rejects.toThrow('Custom room is not joinable');
   });
 
   it('custom room transfers waiting host ownership to a reconnect session', async () => {

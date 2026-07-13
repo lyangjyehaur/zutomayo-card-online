@@ -1,5 +1,12 @@
 import { Pool, type QueryResultRow } from 'pg';
+import { createRequire } from 'node:module';
 import { normalizePlatformUserId } from './friendStore';
+import { postgresConnectionString, postgresSslConfig } from '../runtimeSecurityConfig';
+
+const require = createRequire(import.meta.url);
+const { acquireAccountMutationLocks } = require('../../api/accountMutationLock.cjs') as {
+  acquireAccountMutationLocks: (client: Queryable, userIds: string[]) => Promise<QueryResultRow[]>;
+};
 
 export type PlatformMatchParticipantRole = 'player' | 'spectator';
 
@@ -9,6 +16,7 @@ export interface PlatformMatchParticipantInput {
   role: PlatformMatchParticipantRole;
   boardgamePlayerID?: string;
   displayName?: string;
+  accessVerified?: boolean;
 }
 
 export interface PlatformRoomParticipantInput {
@@ -16,9 +24,11 @@ export interface PlatformRoomParticipantInput {
   userId: string;
   role: PlatformMatchParticipantRole;
   displayName?: string;
+  accessVerified?: boolean;
 }
 
 export interface PlatformMatchParticipantStore {
+  authorizeMatchParticipant?(input: PlatformMatchParticipantInput): Promise<boolean>;
   recordParticipant(input: PlatformMatchParticipantInput): Promise<void>;
   recordRoomParticipant(input: PlatformRoomParticipantInput): Promise<void>;
   close?(): Promise<void>;
@@ -26,6 +36,30 @@ export interface PlatformMatchParticipantStore {
 
 interface Queryable {
   query(sql: string, params?: unknown[]): Promise<{ rows: QueryResultRow[] }>;
+}
+
+interface TransactionPool extends Queryable {
+  connect: () => Promise<Queryable & { release?: () => void }>;
+}
+
+async function withAccountMutation<T>(
+  pool: TransactionPool,
+  userId: string,
+  operation: (client: Queryable) => Promise<T>,
+) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await acquireAccountMutationLocks(client, [userId]);
+    const result = await operation(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release?.();
+  }
 }
 
 function cleanBoardgameMatchID(value: unknown): string {
@@ -59,54 +93,88 @@ export function createEmptyPlatformMatchParticipantStore(): PlatformMatchPartici
 }
 
 export function createPostgresPlatformMatchParticipantStore(
-  pool: Queryable & { end?: () => Promise<void> },
+  pool: TransactionPool & { end?: () => Promise<void> },
 ): PlatformMatchParticipantStore {
   return {
+    async authorizeMatchParticipant(input) {
+      const boardgameMatchID = cleanBoardgameMatchID(input.boardgameMatchID);
+      const userId = normalizePlatformUserId(input.userId);
+      if (!boardgameMatchID || !userId) return false;
+      if (input.role !== 'player') {
+        const { rows } = await pool.query('SELECT 1 FROM bjg_matches WHERE match_id = $1 LIMIT 1', [boardgameMatchID]);
+        return rows.length > 0;
+      }
+      const boardgamePlayerID = cleanBoardgamePlayerID(input.boardgamePlayerID);
+      if (!boardgamePlayerID) return false;
+      const { rows } = await pool.query(
+        `SELECT 1
+         FROM bjg_matches
+         WHERE match_id = $1
+           AND metadata->'players'->$2->'data'->>'identitySource' = 'server'
+           AND metadata->'players'->$2->'data'->>'userId' = $3
+         LIMIT 1`,
+        [boardgameMatchID, boardgamePlayerID, userId],
+      );
+      return rows.length > 0;
+    },
     async recordParticipant(input) {
       const boardgameMatchID = cleanBoardgameMatchID(input.boardgameMatchID);
       const userId = normalizePlatformUserId(input.userId);
       if (!boardgameMatchID || !userId || userId.startsWith('guest:') || userId.startsWith('anon:')) return;
-      await pool.query(
-        `INSERT INTO platform_match_participants (
-           boardgame_match_id, user_id, role, boardgame_player_id, display_name
-         )
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (boardgame_match_id, user_id)
-         DO UPDATE SET
-           role = CASE
-             WHEN platform_match_participants.role = 'player' THEN 'player'
-             ELSE EXCLUDED.role
-           END,
-           boardgame_player_id = COALESCE(platform_match_participants.boardgame_player_id, EXCLUDED.boardgame_player_id),
-           display_name = EXCLUDED.display_name,
-           last_seen_at = NOW()`,
-        [
-          boardgameMatchID,
-          userId,
-          input.role === 'player' ? 'player' : 'spectator',
-          cleanBoardgamePlayerID(input.boardgamePlayerID),
-          cleanDisplayName(input.displayName),
-        ],
+      await withAccountMutation(pool, userId, (client) =>
+        client.query(
+          `INSERT INTO platform_match_participants (
+             boardgame_match_id, user_id, role, boardgame_player_id, display_name, access_verified
+           )
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (boardgame_match_id, user_id)
+           DO UPDATE SET
+             role = CASE
+               WHEN platform_match_participants.role = 'player' THEN 'player'
+               ELSE EXCLUDED.role
+             END,
+             boardgame_player_id = COALESCE(platform_match_participants.boardgame_player_id, EXCLUDED.boardgame_player_id),
+             display_name = EXCLUDED.display_name,
+             access_verified = platform_match_participants.access_verified OR EXCLUDED.access_verified,
+             last_seen_at = NOW()`,
+          [
+            boardgameMatchID,
+            userId,
+            input.role === 'player' ? 'player' : 'spectator',
+            cleanBoardgamePlayerID(input.boardgamePlayerID),
+            cleanDisplayName(input.displayName),
+            input.accessVerified === true,
+          ],
+        ),
       );
     },
     async recordRoomParticipant(input) {
       const roomCode = cleanRoomCode(input.roomCode);
       const userId = normalizePlatformUserId(input.userId);
       if (!roomCode || !userId || userId.startsWith('guest:') || userId.startsWith('anon:')) return;
-      await pool.query(
-        `INSERT INTO platform_room_participants (
-           room_code, user_id, role, display_name
-         )
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (room_code, user_id)
-         DO UPDATE SET
-           role = CASE
-             WHEN platform_room_participants.role = 'player' THEN 'player'
-             ELSE EXCLUDED.role
-           END,
-           display_name = EXCLUDED.display_name,
-           last_seen_at = NOW()`,
-        [roomCode, userId, input.role === 'player' ? 'player' : 'spectator', cleanDisplayName(input.displayName)],
+      await withAccountMutation(pool, userId, (client) =>
+        client.query(
+          `INSERT INTO platform_room_participants (
+             room_code, user_id, role, display_name, access_verified
+           )
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (room_code, user_id)
+           DO UPDATE SET
+             role = CASE
+               WHEN platform_room_participants.role = 'player' THEN 'player'
+               ELSE EXCLUDED.role
+             END,
+             display_name = EXCLUDED.display_name,
+             access_verified = platform_room_participants.access_verified OR EXCLUDED.access_verified,
+             last_seen_at = NOW()`,
+          [
+            roomCode,
+            userId,
+            input.role === 'player' ? 'player' : 'spectator',
+            cleanDisplayName(input.displayName),
+            input.accessVerified === true,
+          ],
+        ),
       );
     },
     async close() {
@@ -126,6 +194,7 @@ export function createPlatformMatchParticipantStoreFromEnv(
       max: Number(env.PLATFORM_PG_POOL_MAX || env.PG_POOL_MAX) || 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 3_000,
+      ssl: postgresSslConfig(env),
     }),
   );
 }
@@ -140,7 +209,7 @@ export function resolvePlatformMatchParticipantStoreMode(env: NodeJS.ProcessEnv 
 
 function databaseUrlFromEnv(env: NodeJS.ProcessEnv): string {
   return (
-    env.DATABASE_URL ??
+    postgresConnectionString(env) ||
     `postgres://${env.PG_USER || 'postgres'}:${env.PG_PASSWORD || ''}@${env.PG_HOST || 'localhost'}:${env.PG_PORT || '5432'}/${env.PG_DATABASE || 'postgres'}`
   );
 }

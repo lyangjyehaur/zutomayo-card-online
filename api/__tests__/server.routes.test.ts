@@ -6,6 +6,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters!!';
 process.env.NODE_ENV = 'test';
 process.env.APP_VERSION = '0.2.0';
+process.env.LOGTO_ENDPOINT = 'https://auth.example';
+process.env.LOGTO_M2M_APP_ID = 'logto-management-client';
+process.env.LOGTO_M2M_APP_SECRET = 'logto-management-secret';
+process.env.GOOGLE_OAUTH_CLIENT_ID = 'google-test-client';
+process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'google-test-secret';
 delete process.env.TURNSTILE_SECRET_KEY;
 delete process.env.TURNSTILE_REQUIRED;
 delete process.env.SENTRY_DSN;
@@ -15,6 +20,9 @@ delete process.env.CHAT_TRANSLATION_API_KEY;
 delete process.env.CHAT_TRANSLATION_PROVIDER;
 delete process.env.CHAT_TRANSLATION_MODEL;
 delete process.env.CHAT_TRANSLATION_TIMEOUT_MS;
+
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
 
 // ===== Mock pg and ioredis via Module._load interception =====
 const mockQuery = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
@@ -36,9 +44,18 @@ const mockRedisZcount = vi.fn().mockResolvedValue(0);
 const mockRedisZremrangebyscore = vi.fn().mockResolvedValue(0);
 const mockRedisDel = vi.fn().mockResolvedValue(1);
 const mockRedisGet = vi.fn().mockResolvedValue(null);
+const mockRedisGetdel = vi.fn().mockResolvedValue(null);
 const mockRedisSet = vi.fn().mockResolvedValue('OK');
+const mockRedisEval = vi.fn().mockResolvedValue(null);
+const mockRedisScan = vi.fn().mockResolvedValue(['0', []]);
+const mockRedisMget = vi.fn().mockResolvedValue([]);
 const mockRedisMmTryMatch = vi.fn().mockResolvedValue('');
 const mockRedisMmCleanExpired = vi.fn().mockResolvedValue(0);
+const mockRedisMmCancelPair = vi.fn().mockResolvedValue(0);
+const mockRedisMmApplyBlock = vi.fn().mockResolvedValue(0);
+const mockRedisSadd = vi.fn().mockResolvedValue(1);
+const mockRedisSrem = vi.fn().mockResolvedValue(1);
+const mockRedisPublish = vi.fn().mockResolvedValue(1);
 
 const mockRedis = {
   incr: mockRedisIncr,
@@ -55,9 +72,18 @@ const mockRedis = {
   zremrangebyscore: mockRedisZremrangebyscore,
   del: mockRedisDel,
   get: mockRedisGet,
+  getdel: mockRedisGetdel,
   set: mockRedisSet,
+  eval: mockRedisEval,
+  scan: mockRedisScan,
+  mget: mockRedisMget,
   mmTryMatch: mockRedisMmTryMatch,
   mmCleanExpired: mockRedisMmCleanExpired,
+  mmCancelPair: mockRedisMmCancelPair,
+  mmApplyBlock: mockRedisMmApplyBlock,
+  sadd: mockRedisSadd,
+  srem: mockRedisSrem,
+  publish: mockRedisPublish,
 };
 
 // Clear cached pg and ioredis so Module._load interception returns our mocks.
@@ -91,10 +117,11 @@ Module_._load = function (request: string, parent: NodeJS.Module | undefined, is
 const require_ = createRequire(import.meta.url);
 const serverModule = require_('../server.cjs') as {
   handleRequest: (req: unknown, res: unknown) => void;
+  recoverAccountDeletions: () => Promise<void>;
 };
 Module_._load = originalLoad;
 
-const { handleRequest } = serverModule;
+const { handleRequest, recoverAccountDeletions } = serverModule;
 
 // ===== Mock req/res helpers =====
 
@@ -223,7 +250,14 @@ function base64urlJson(value: Record<string, unknown>) {
 function createAdminJwt() {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
-  const payload = base64urlJson({ admin: true, iat: now, exp: now + 60 * 60 });
+  const payload = base64urlJson({
+    admin: true,
+    adminUserId: 'admin_test',
+    role: 'admin',
+    jti: 'admin-session-test',
+    iat: now,
+    exp: now + 60 * 60,
+  });
   const input = `${header}.${payload}`;
   const signature = crypto
     .createHmac('sha256', process.env.JWT_SECRET || '')
@@ -242,6 +276,53 @@ function createUserJwt(userId = 'u_test') {
     .update(input)
     .digest('base64url');
   return `${input}.${signature}`;
+}
+
+function encryptOAuthTokenForTest(value: string): string {
+  const key = crypto
+    .createHash('sha256')
+    .update(`zutomayo-secret:${process.env.JWT_SECRET || ''}`)
+    .digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  return `${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+function createRevocableUserJwt(userId = 'u_test', jti = 'access-token-test') {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({ sub: userId, userId, jti, iat: now, exp: now + 60 * 60 });
+  const input = `${header}.${payload}`;
+  const signature = crypto
+    .createHmac('sha256', process.env.JWT_SECRET || '')
+    .update(input)
+    .digest('base64url');
+  return `${input}.${signature}`;
+}
+
+function createRefreshJwt(userId = 'u_test', sessionIat?: number) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+  const payload = base64urlJson({
+    sub: userId,
+    userId,
+    typ: 'refresh',
+    jti: 'refresh-token-test',
+    iat: now,
+    exp: now + 60 * 60,
+    ...(sessionIat === undefined ? {} : { sessionIat }),
+  });
+  const input = `${header}.${payload}`;
+  const signature = crypto
+    .createHmac('sha256', process.env.JWT_SECRET || '')
+    .update(input)
+    .digest('base64url');
+  return `${input}.${signature}`;
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  return JSON.parse(Buffer.from(token.split('.')[1] || '', 'base64url').toString()) as Record<string, unknown>;
 }
 
 function adminHeaders(headers: Record<string, string> = {}) {
@@ -273,6 +354,7 @@ function adminUnsafeHeaders() {
 describe('server routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetch.mockReset();
     // Reset default mock behavior after clearAllMocks
     mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
     mockRedisIncr.mockResolvedValue(1);
@@ -283,7 +365,17 @@ describe('server routes', () => {
     mockRedisZadd.mockResolvedValue(1);
     mockRedisHgetall.mockResolvedValue({});
     mockRedisGet.mockResolvedValue(null);
+    mockRedisGetdel.mockResolvedValue(null);
+    mockRedisEval.mockResolvedValue(null);
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM admin_sessions')) {
+        return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
     mockRedisSet.mockResolvedValue('OK');
+    mockRedisScan.mockResolvedValue(['0', []]);
+    mockRedisMget.mockResolvedValue([]);
   });
 
   describe('security headers', () => {
@@ -404,11 +496,178 @@ describe('server routes', () => {
       expect(body.localAuthEnabled).toBe(true);
       expect(Array.isArray(body.providers)).toBe(true);
     });
+
+    it('binds OAuth state to HttpOnly cookies and sends an S256 PKCE challenge', async () => {
+      const res = await sendRequest('GET', '/api/oauth/google/start?returnTo=/profile');
+      expect(res.statusCode).toBe(302);
+      const location = new URL(String(res.headers.location));
+      expect(location.searchParams.get('code_challenge_method')).toBe('S256');
+      expect(location.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(location.searchParams.get('state')).toBeTruthy();
+      const setCookie = res.headers['set-cookie'];
+      const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+      expect(
+        cookies.some(
+          (cookie) => String(cookie).includes('zutomayo_oauth_state_') && String(cookie).includes('HttpOnly'),
+        ),
+      ).toBe(true);
+      expect(
+        cookies.some(
+          (cookie) => String(cookie).includes('zutomayo_oauth_pkce_') && String(cookie).includes('HttpOnly'),
+        ),
+      ).toBe(true);
+      const state = location.searchParams.get('state') || '';
+      const statePayload = JSON.parse(Buffer.from(state.split('.')[0], 'base64url').toString()) as {
+        returnTo?: string;
+      };
+      expect(statePayload.returnTo).toBe('/profile');
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+
+    it('normalizes protocol-relative OAuth return paths to a local route', async () => {
+      const res = await sendRequest('GET', '/api/oauth/google/start?returnTo=%2F%2Fevil.example%2Flogin');
+      expect(res.statusCode).toBe(302);
+      const state = new URL(String(res.headers.location)).searchParams.get('state') || '';
+      const statePayload = JSON.parse(Buffer.from(state.split('.')[0], 'base64url').toString()) as {
+        returnTo?: string;
+      };
+      expect(statePayload.returnTo).toBe('/');
+    });
+
+    it('rejects an OAuth callback when the original browser cookies are missing', async () => {
+      const start = await sendRequest('GET', '/api/oauth/google/start');
+      const state = new URL(String(start.headers.location)).searchParams.get('state');
+      const callback = await sendRequest(
+        'GET',
+        `/api/oauth/google/callback?code=provider-code&state=${encodeURIComponent(String(state))}`,
+      );
+
+      expect(callback.statusCode).toBe(400);
+      expect(callback._body).toContain('Invalid_OAuth_state');
+      expect(callback.headers['cache-control']).toContain('no-store');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('redeems a successful OAuth session ticket exactly once', async () => {
+      const oauthValues = new Map<string, string>();
+      mockRedisSet.mockImplementation(async (key: string, value: string) => {
+        if (key.startsWith('oauth:')) oauthValues.set(key, value);
+        return 'OK';
+      });
+      mockRedisEval.mockImplementation(async (_script: string, _keyCount: number, key: string) => {
+        if (!key.startsWith('oauth:')) return null;
+        const value = oauthValues.get(key) || null;
+        oauthValues.delete(key);
+        return value;
+      });
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('account_deletion_requests') && sql.includes('provider_user_id')) {
+          return { rows: [], rowCount: 0 };
+        }
+        if (sql.includes('SELECT user_id FROM user_identities')) return { rows: [], rowCount: 0 };
+        if (sql.includes('SELECT id FROM users WHERE email')) return { rows: [], rowCount: 0 };
+        if (sql.includes('INSERT INTO users')) return { rows: [], rowCount: 1 };
+        if (sql.includes('SELECT auth_version, deleted_at FROM users')) {
+          return { rows: [{ auth_version: 1, deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('SELECT provider_user_id FROM user_identities')) return { rows: [], rowCount: 0 };
+        if (sql.includes('INSERT INTO user_identities')) return { rows: [], rowCount: 1 };
+        if (sql.includes('SELECT * FROM users')) {
+          return {
+            rows: [
+              {
+                id: 'u_oauth',
+                email: 'oauth@example.com',
+                nickname: 'OAuth User',
+                elo: 1000,
+                wins: 0,
+                match_count: 0,
+                password_hash: 'oauth:disabled',
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ access_token: 'provider-access-token' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            sub: 'google-user-1',
+            email: 'oauth@example.com',
+            email_verified: true,
+            name: 'OAuth User',
+          }),
+        });
+
+      const start = await sendRequest('GET', '/api/oauth/google/start?returnTo=/profile');
+      const location = new URL(String(start.headers.location));
+      const state = location.searchParams.get('state') || '';
+      const setCookie = start.headers['set-cookie'];
+      const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+      const browserCookie = cookies.map((cookie) => String(cookie).split(';', 1)[0]).join('; ');
+      const callback = await sendRequest(
+        'GET',
+        `/api/oauth/google/callback?code=provider-code&state=${encodeURIComponent(state)}`,
+        undefined,
+        { cookie: browserCookie },
+      );
+
+      expect(callback.statusCode).toBe(200);
+      expect(callback.headers['cache-control']).toContain('no-store');
+      const ticket = callback._body.match(/body: JSON\.stringify\(\{ ticket: "([^"]+)" \}\)/)?.[1];
+      expect(ticket).toBeTruthy();
+
+      const firstRedeem = await sendRequest('POST', '/api/oauth/session', { ticket });
+      expect(firstRedeem.statusCode).toBe(200);
+      const secondRedeem = await sendRequest('POST', '/api/oauth/session', { ticket });
+      expect(secondRedeem.statusCode).toBe(401);
+    });
+
+    it('rejects account linking when the initiating session is no longer current', async () => {
+      const oauthValues = new Map<string, string>();
+      mockRedisSet.mockImplementation(async (key: string, value: string) => {
+        if (key.startsWith('oauth:')) oauthValues.set(key, value);
+        return 'OK';
+      });
+      mockRedisEval.mockImplementation(async (_script: string, _keyCount: number, key: string) => {
+        const value = oauthValues.get(key) || null;
+        oauthValues.delete(key);
+        return value;
+      });
+
+      const start = await sendRequest('GET', '/api/oauth/google/start?mode=link&returnTo=/profile', undefined, {
+        authorization: `Bearer ${createUserJwt('u_link')}`,
+      });
+      expect(start.statusCode).toBe(302);
+      const state = new URL(String(start.headers.location)).searchParams.get('state') || '';
+      const setCookie = start.headers['set-cookie'];
+      const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+      const oauthCookies = cookies.map((cookie) => String(cookie).split(';', 1)[0]).join('; ');
+
+      const callback = await sendRequest(
+        'GET',
+        `/api/oauth/google/callback?code=provider-code&state=${encodeURIComponent(state)}`,
+        undefined,
+        { cookie: oauthCookies },
+      );
+
+      expect(callback.statusCode).toBe(401);
+      expect(callback._body).toContain('Account_linking_session_expired');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('input validation', () => {
     it('POST /api/register rejects missing email', async () => {
-      const res = await sendRequest('POST', '/api/register', { password: 'secret1' });
+      const res = await sendRequest('POST', '/api/register', { password: 'a-very-long-secret' });
       expect(res.statusCode).toBe(400);
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.error).toContain('Validation');
@@ -461,9 +720,120 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('GET /api/profile returns the authenticated user profile', async () => {
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'u_test',
+              email: 'user@example.com',
+              nickname: 'User',
+              elo: 1000,
+              match_count: 4,
+              wins: 3,
+              created_at: '2026-07-10T00:00:00.000Z',
+            },
+          ],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({
+          rows: [{ password_hash: 'current-hash', has_logto_identity: false }],
+          rowCount: 1,
+        });
+
+      const res = await sendRequest('GET', '/api/profile', null, {
+        authorization: `Bearer ${createUserJwt()}`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual(
+        expect.objectContaining({
+          id: 'u_test',
+          email: 'user@example.com',
+          nickname: 'User',
+          elo: 1000,
+          matchCount: 4,
+          wins: 3,
+          winRate: 75,
+        }),
+      );
+      expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM users WHERE id = $1', ['u_test']);
+    });
+
+    it('rejects access tokens when the blacklist lookup is unavailable', async () => {
+      mockRedisGet.mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      const res = await sendRequest('GET', '/api/profile', null, {
+        authorization: `Bearer ${createRevocableUserJwt()}`,
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(parseBody(res)).toEqual({ error: 'Unauthorized' });
+      expect(mockQuery).not.toHaveBeenCalledWith('SELECT * FROM users WHERE id = $1', ['u_test']);
+    });
+
     it('GET /api/friends returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/friends');
       expect(res.statusCode).toBe(401);
+    });
+
+    it('commits a block relationship event to the outbox instead of publishing from the route', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO user_blocks')) {
+          return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO relationship_change_outbox')) {
+          return { rows: [{ event_id: 'event-1' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('POST', '/api/blocks', { targetUserId: 'u_target' }, userUnsafeHeaders('u_test'));
+
+      expect(res.statusCode).toBe(200);
+      expect(mockQuery.mock.calls.map(([sql]) => sql)).toEqual(
+        expect.arrayContaining(['BEGIN', expect.stringContaining('INSERT INTO user_blocks'), 'COMMIT']),
+      );
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO relationship_change_outbox'),
+        expect.arrayContaining(['block_created:u_test:u_target:2026-07-13T00:00:00.000Z']),
+      );
+      expect(mockRedisPublish).not.toHaveBeenCalled();
+      const commitIndex = mockQuery.mock.calls.findIndex(([sql]) => sql === 'COMMIT');
+      const outboxIndex = mockQuery.mock.calls.findIndex(([sql]) =>
+        sql.includes('INSERT INTO relationship_change_outbox'),
+      );
+      expect(mockQuery.mock.invocationCallOrder[outboxIndex]).toBeLessThan(
+        mockQuery.mock.invocationCallOrder[commitIndex],
+      );
+    });
+
+    it('keeps a committed block successful when the immediate Redis projection is unavailable', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO user_blocks')) {
+          return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO relationship_change_outbox')) {
+          return { rows: [{ event_id: 'event-redis-down' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      mockRedisMmApplyBlock.mockRejectedValueOnce(new Error('Redis projection unavailable'));
+
+      const res = await sendRequest('POST', '/api/blocks', { targetUserId: 'u_target' }, userUnsafeHeaders('u_test'));
+
+      expect(res.statusCode).toBe(200);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO relationship_change_outbox'),
+        expect.any(Array),
+      );
+      expect(mockRedisPublish).not.toHaveBeenCalled();
     });
 
     it('GET /api/decks returns 401 without auth', async () => {
@@ -736,8 +1106,13 @@ describe('server routes', () => {
         ]);
         expect(mockQuery).toHaveBeenCalledWith(
           expect.stringContaining("moderation_status IN ('visible', 'pending_review')"),
-          [testCase.expectedKey, 10],
+          [testCase.expectedKey, 10, 'u_reader'],
         );
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_blocks b'), [
+          testCase.expectedKey,
+          10,
+          'u_reader',
+        ]);
       }
     });
 
@@ -1362,6 +1737,11 @@ describe('server routes', () => {
         });
         expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('JOIN chat_conversations'), [
           testCase.messageId,
+          'u_reader',
+        ]);
+        expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM user_blocks b'), [
+          testCase.messageId,
+          'u_reader',
         ]);
         expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO chat_message_translations'), [
           testCase.messageId,
@@ -1673,7 +2053,7 @@ describe('server routes', () => {
               source_report_id: 'chat_report_1',
               source_message_id: 'chat_msg_1',
               conversation_id: 'match:bgio-match-1',
-              created_by_user_id: 'admin',
+              created_by_user_id: 'admin_test',
               created_at: '2026-07-10T00:00:03.000Z',
               expires_at: '2026-07-10T01:00:03.000Z',
               revoked_at: null,
@@ -1715,7 +2095,7 @@ describe('server routes', () => {
       ]);
       expect(mockQuery).toHaveBeenNthCalledWith(2, expect.stringContaining('UPDATE chat_user_sanctions'), [
         'u_1',
-        'admin',
+        'admin_test',
         'chat_mute',
       ]);
       expect(mockQuery).toHaveBeenNthCalledWith(
@@ -1728,7 +2108,7 @@ describe('server routes', () => {
           'chat_report_1',
           'chat_msg_1',
           'match:bgio-match-1',
-          'admin',
+          'admin_test',
         ]),
       );
     });
@@ -1779,11 +2159,11 @@ describe('server routes', () => {
             source_report_id: 'chat_report_1',
             source_message_id: 'chat_msg_1',
             conversation_id: 'match:bgio-match-1',
-            created_by_user_id: 'admin',
+            created_by_user_id: 'admin_test',
             created_at: '2026-07-10T00:00:03.000Z',
             expires_at: '2026-07-10T01:00:03.000Z',
             revoked_at: '2026-07-10T00:30:03.000Z',
-            revoked_by_user_id: 'admin',
+            revoked_by_user_id: 'admin_test',
             revocation_reason: 'manual_revoke',
           },
         ],
@@ -1798,13 +2178,13 @@ describe('server routes', () => {
         expect.objectContaining({
           id: 'chat_sanction_1',
           status: 'revoked',
-          revokedByUserId: 'admin',
+          revokedByUserId: 'admin_test',
           revocationReason: 'manual_revoke',
         }),
       );
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_user_sanctions'), [
         'chat_sanction_1',
-        'admin',
+        'admin_test',
         'manual_revoke',
       ]);
     });
@@ -1820,7 +2200,7 @@ describe('server routes', () => {
             reason: 'spam',
             note: '',
             status: 'resolved',
-            reviewer_user_id: 'admin',
+            reviewer_user_id: 'admin_test',
             resolution_note: 'handled',
             created_at: '2026-07-10T00:00:03.000Z',
             reviewed_at: '2026-07-10T00:30:03.000Z',
@@ -1842,14 +2222,14 @@ describe('server routes', () => {
         expect.objectContaining({
           id: 'chat_report_1',
           status: 'resolved',
-          reviewerUserId: 'admin',
+          reviewerUserId: 'admin_test',
           resolutionNote: 'handled',
         }),
       );
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_reports'), [
         'chat_report_1',
         'resolved',
-        'admin',
+        'admin_test',
         'handled',
       ]);
     });
@@ -1921,7 +2301,7 @@ describe('server routes', () => {
       mockRedisIncr.mockResolvedValue(11); // > RATE_LIMIT_AUTH (10)
       const res = await sendRequest('POST', '/api/login', {
         email: 'a@b.com',
-        password: 'secret1',
+        password: 'a-very-long-secret',
       });
       expect(res.statusCode).toBe(429);
     });
@@ -1934,12 +2314,376 @@ describe('server routes', () => {
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.ok).toBe(true);
     });
+
+    it('does not report logout success when blacklist persistence fails', async () => {
+      mockRedisSet.mockRejectedValueOnce(new Error('Redis unavailable'));
+      const res = await sendRequest('POST', '/api/logout', null, {
+        cookie: `zutomayo_session=${encodeURIComponent(createRevocableUserJwt())}`,
+      });
+      expect(res.statusCode).toBe(500);
+    });
   });
 
   describe('auth refresh', () => {
     it('POST /api/auth/refresh returns 401 without refresh cookie', async () => {
       const res = await sendRequest('POST', '/api/auth/refresh');
       expect(res.statusCode).toBe(401);
+    });
+
+    it('consumes refresh tokens through the revocation-aware atomic path', async () => {
+      mockRedisEval.mockResolvedValueOnce('u_test');
+      const refreshToken = createRefreshJwt();
+      const res = await sendRequest('POST', '/api/auth/refresh', null, {
+        cookie: `zutomayo_refresh=${encodeURIComponent(refreshToken)}`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(mockRedisEval).toHaveBeenCalledWith(
+        expect.stringContaining('revokedBefore'),
+        2,
+        'refresh:refresh-token-test',
+        'auth:revoked-before:u_test',
+        expect.any(String),
+        'u_test',
+      );
+      expect(mockRedisSet).toHaveBeenCalledWith(expect.stringMatching(/^refresh:/), 'u_test', 'EX', expect.any(Number));
+    });
+
+    it('preserves the original session lineage when rotating a refresh token', async () => {
+      const sessionIat = Math.floor(Date.now() / 1000) - 120;
+      mockRedisEval.mockResolvedValueOnce('u_test');
+      const res = await sendRequest('POST', '/api/auth/refresh', null, {
+        cookie: `zutomayo_refresh=${encodeURIComponent(createRefreshJwt('u_test', sessionIat))}`,
+      });
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as { token?: string };
+      expect(body.token).toEqual(expect.any(String));
+      const payload = decodeJwtPayload(body.token as string);
+      expect(payload.sub).toBe('u_test');
+      expect(payload.sessionIat).toBe(sessionIat);
+    });
+
+    it('rejects refresh tokens consumed after a session cutoff', async () => {
+      mockRedisEval.mockResolvedValueOnce(null);
+      const res = await sendRequest('POST', '/api/auth/refresh', null, {
+        cookie: `zutomayo_refresh=${encodeURIComponent(createRefreshJwt())}`,
+      });
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
+  describe('password changes', () => {
+    it('revokes all user sessions after updating the password', async () => {
+      const currentPassword = 'current-password-long';
+      const currentSalt = 'current-salt';
+      const currentHash = crypto.pbkdf2Sync(currentPassword, currentSalt, 100000, 64, 'sha512').toString('hex');
+      mockQuery
+        .mockResolvedValueOnce({
+          rows: [{ password_hash: currentHash, has_logto_identity: false }],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({
+          rows: [{ id: 'u_test', password_hash: currentHash, salt: currentSalt }],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockRedisScan.mockResolvedValueOnce(['0', ['refresh:owned', 'refresh:other']]);
+      mockRedisMget.mockResolvedValueOnce(['u_test', 'u_other']);
+
+      const res = await sendRequest(
+        'PUT',
+        '/api/profile/password',
+        { currentPassword, newPassword: 'next-password-long' },
+        userUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({ ok: true });
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        'auth:revoked-before:u_test',
+        expect.stringMatching(/^\d+$/),
+        'EX',
+        7 * 24 * 60 * 60,
+      );
+      expect(mockRedisScan).toHaveBeenCalledWith('0', 'MATCH', 'refresh:*', 'COUNT', 200);
+      expect(mockRedisMget).toHaveBeenCalledWith(['refresh:owned', 'refresh:other']);
+      expect(mockRedisDel).toHaveBeenCalledWith('refresh:owned');
+    });
+  });
+
+  describe('Logto account step-up', () => {
+    function configureLogtoAccountMocks() {
+      const encryptedAccessToken = encryptOAuthTokenForTest('logto-access-token');
+      let deletionStatus = 'prepared';
+      const deletionRequest = () => ({
+        id: 'account_delete_test',
+        user_id: 'u_test',
+        provider: 'logto',
+        provider_user_id: 'logto-user-test',
+        status: deletionStatus,
+        attempt_count: deletionStatus === 'prepared' ? 0 : 1,
+        last_error: '',
+        updated_at: new Date().toISOString(),
+      });
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('has_logto_identity')) {
+          return { rows: [{ password_hash: 'oauth:disabled', has_logto_identity: true }], rowCount: 1 };
+        }
+        if (sql.includes('access_token_ciphertext')) {
+          return {
+            rows: [
+              {
+                access_token_ciphertext: encryptedAccessToken,
+                refresh_token_ciphertext: null,
+                token_expires_at: new Date(Date.now() + 60_000).toISOString(),
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('SELECT provider_user_id FROM user_identities')) {
+          return { rows: [{ provider_user_id: 'logto-user-test' }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO account_deletion_requests')) {
+          deletionStatus = 'prepared';
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes('SELECT * FROM account_deletion_requests')) {
+          return { rows: [], rowCount: 0 };
+        }
+        if (sql.includes('SELECT id, user_id FROM account_deletion_requests')) {
+          return { rows: [{ id: 'account_delete_test', user_id: 'u_test' }], rowCount: 1 };
+        }
+        if (sql.includes("SET status = 'provider_deleting'")) {
+          deletionStatus = 'provider_deleting';
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes("SET status = 'provider_deleted'")) {
+          deletionStatus = 'provider_deleted';
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes('SELECT id, user_id, provider, status') && sql.includes('account_deletion_requests')) {
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) {
+          return { rows: [{ id: 'u_test' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+    }
+
+    it('returns only a server-issued opaque token after provider verification', async () => {
+      configureLogtoAccountMocks();
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 'provider-verification-record' }),
+      });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/account-center/verifications/password',
+        { currentPassword: 'provider-password' },
+        userUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      const body = parseBody(res) as Record<string, unknown>;
+      expect(body).toEqual({ stepUpToken: expect.any(String), expiresIn: 300 });
+      expect(JSON.stringify(body)).not.toContain('provider-verification-record');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://auth.example/api/verifications/password',
+        expect.objectContaining({ body: JSON.stringify({ password: 'provider-password' }) }),
+      );
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        expect.stringMatching(/^account:step-up:/),
+        expect.stringContaining('provider-verification-record'),
+        'EX',
+        300,
+        'NX',
+      );
+    });
+
+    it('consumes a password step-up once and keeps the provider record server-side', async () => {
+      configureLogtoAccountMocks();
+      mockRedisGetdel.mockResolvedValueOnce(
+        JSON.stringify({
+          userId: 'u_test',
+          purpose: 'password-change',
+          providerVerificationRecordId: 'provider-verification-record',
+        }),
+      );
+      mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => '' });
+
+      const res = await sendRequest(
+        'POST',
+        '/api/account-center/password',
+        { stepUpToken: 'opaque-step-up-token-12345678901234567890', newPassword: 'new-provider-password' },
+        userUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({ ok: true });
+      expect(mockRedisGetdel).toHaveBeenCalledWith(expect.stringMatching(/^account:step-up:/));
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://auth.example/api/my-account/password',
+        expect.objectContaining({
+          body: JSON.stringify({ password: 'new-provider-password' }),
+          headers: expect.objectContaining({ 'logto-verification-record-id': 'provider-verification-record' }),
+        }),
+      );
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        'auth:revoked-before:u_test',
+        expect.any(String),
+        'EX',
+        7 * 24 * 60 * 60,
+      );
+    });
+
+    it('rejects a raw provider record on the password route', async () => {
+      configureLogtoAccountMocks();
+      const res = await sendRequest(
+        'POST',
+        '/api/account-center/password',
+        { verificationRecordId: 'provider-verification-record', newPassword: 'new-provider-password' },
+        userUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(400);
+      expect(mockRedisGetdel).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('uses the delete purpose and revokes sessions only after the hold checks', async () => {
+      configureLogtoAccountMocks();
+      mockRedisGetdel.mockResolvedValueOnce(
+        JSON.stringify({
+          userId: 'u_test',
+          purpose: 'account-delete',
+          providerVerificationRecordId: 'provider-verification-record',
+        }),
+      );
+      mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => '{}' });
+
+      const res = await sendRequest(
+        'DELETE',
+        '/api/account',
+        { confirmation: 'DELETE', stepUpToken: 'opaque-step-up-token-12345678901234567890' },
+        {
+          ...userUnsafeHeaders(),
+          authorization: `Bearer ${createRevocableUserJwt('u_test', 'bearer-access-token-test')}`,
+          cookie: `zutomayo_csrf=valid-csrf-token-for-testing-1234567890; zutomayo_session=${encodeURIComponent(
+            createRevocableUserJwt('u_test', 'cookie-access-token-test'),
+          )}`,
+        },
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({ deleted: true });
+      expect(mockRedisGetdel).toHaveBeenCalledWith(expect.stringMatching(/^account:step-up:/));
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://auth.example/api/my-account',
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: expect.objectContaining({ 'logto-verification-record-id': 'provider-verification-record' }),
+        }),
+      );
+      const sqls = mockQuery.mock.calls.map(([sql]) => String(sql));
+      const retentionLock = sqls.indexOf('SELECT pg_advisory_xact_lock(hashtext($1))');
+      const identityDelete = sqls.findIndex((sql) => sql.includes('DELETE FROM user_identities'));
+      expect(retentionLock).toBeGreaterThanOrEqual(0);
+      expect(identityDelete).toBeGreaterThan(retentionLock);
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        'auth:revoked-before:u_test',
+        expect.any(String),
+        'EX',
+        7 * 24 * 60 * 60,
+      );
+      expect(mockRedisSet).toHaveBeenCalledWith('blacklist:bearer-access-token-test', '1', 'EX', expect.any(Number));
+      expect(mockRedisSet).toHaveBeenCalledWith('blacklist:cookie-access-token-test', '1', 'EX', expect.any(Number));
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), [
+        'account_delete_test',
+        'u_test',
+      ]);
+    });
+
+    it('recovers an ambiguous provider deletion with the least-privilege M2M client', async () => {
+      let deletionStatus = 'provider_deleting';
+      const requestRow = () => ({
+        id: 'account_delete_recovery',
+        user_id: 'u_recovery',
+        provider: 'logto',
+        provider_user_id: 'logto-recovery-user',
+        status: deletionStatus,
+        attempt_count: 1,
+        last_error: '',
+        updated_at: '2026-07-13T00:00:00.000Z',
+      });
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('WHERE status = ANY($1::text[])')) return { rows: [requestRow()], rowCount: 1 };
+        if (sql.includes('SELECT id, user_id FROM account_deletion_requests')) {
+          return { rows: [{ id: 'account_delete_recovery', user_id: 'u_recovery' }], rowCount: 1 };
+        }
+        if (sql.includes("SET status = 'provider_deleted'")) {
+          deletionStatus = 'provider_deleted';
+          return { rows: [requestRow()], rowCount: 1 };
+        }
+        if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) {
+          return { rows: [{ id: 'u_recovery' }], rowCount: 1 };
+        }
+        if (sql.includes('SELECT id, user_id, provider, status') && sql.includes('account_deletion_requests')) {
+          return { rows: [requestRow()], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ access_token: 'm2m-access-token', expires_in: 3600 }),
+        })
+        .mockResolvedValueOnce({ ok: false, status: 404, text: async () => '' });
+
+      await recoverAccountDeletions();
+
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'https://auth.example/oidc/token',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('scope=delete%3Ausers'),
+        }),
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        'https://auth.example/api/users/logto-recovery-user',
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: expect.objectContaining({ Authorization: 'Bearer m2m-access-token' }),
+        }),
+      );
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), [
+        'account_delete_recovery',
+        'u_recovery',
+      ]);
+    });
+  });
+
+  describe('logout token validation', () => {
+    it('does not persist a blacklist entry for a forged access cookie', async () => {
+      const now = Math.floor(Date.now() / 1000);
+      const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
+      const payload = base64urlJson({ sub: 'u_attacker', jti: 'forged-token-identifier', iat: now, exp: now + 86400 });
+      const forged = `${header}.${payload}.not-a-valid-signature`;
+      const res = await sendRequest('POST', '/api/logout', null, {
+        cookie: `zutomayo_session=${encodeURIComponent(forged)}`,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(mockRedisSet).not.toHaveBeenCalledWith(
+        expect.stringMatching(/^blacklist:/),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
     });
   });
 
@@ -2004,6 +2748,81 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(200);
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.onlineCount).toBeDefined();
+    });
+  });
+
+  describe('season and legal-hold routes', () => {
+    it('requires authentication to list player rewards', async () => {
+      const res = await sendRequest('GET', '/api/seasons/rewards');
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('rejects unknown fields in an admin season request', async () => {
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/seasons',
+        {
+          id: 'season-2026-1',
+          name: 'Season 1',
+          startsAt: '2026-08-01T00:00:00.000Z',
+          endsAt: '2026-09-01T00:00:00.000Z',
+          startingRating: 1000,
+          placementMatches: 5,
+          ratingDecayPercent: 25,
+          rulesVersion: 'rules-1',
+          rewardConfig: { tiers: [] },
+          unexpected: true,
+        },
+        adminUnsafeHeaders(),
+      );
+      expect(res.statusCode).toBe(400);
+      expect(parseBody(res)).toMatchObject({ error: 'Validation failed' });
+    });
+
+    it('requires an audit-friendly reason when creating a legal hold', async () => {
+      const res = await sendRequest(
+        'POST',
+        '/api/admin/legal-holds',
+        { subjectType: 'account', subjectId: 'u_1', owner: 'legal-team', reason: 'short' },
+        adminUnsafeHeaders(),
+      );
+      expect(res.statusCode).toBe(400);
+      expect(parseBody(res)).toMatchObject({ error: 'Validation failed' });
+    });
+
+    it('rejects malformed season ids before claiming a reward', async () => {
+      const res = await sendRequest('POST', '/api/seasons/not%20valid/rewards/claim', null, userUnsafeHeaders());
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('binds reward claims to the authenticated player', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM season_rewards') && sql.includes('FOR UPDATE')) {
+          return { rows: [{ reward_tier: 'champion', reward_payload: {}, claimed_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO season_reward_entitlements')) {
+          return {
+            rows: [{ id: 1, reward_tier: 'champion', reward_payload: {}, granted_at: '2026-07-12T00:00:00.000Z' }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('UPDATE season_rewards')) {
+          return { rows: [{ claimed_at: '2026-07-12T00:00:00.000Z' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      const res = await sendRequest(
+        'POST',
+        '/api/seasons/season-2026-1/rewards/claim',
+        null,
+        userUnsafeHeaders('u_claimant'),
+      );
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ claimed: true, reward: { reward_tier: 'champion' } });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('UPDATE season_rewards'), [
+        'season-2026-1',
+        'u_claimant',
+      ]);
     });
   });
 });

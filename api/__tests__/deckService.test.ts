@@ -6,29 +6,49 @@ type Queryable = {
 };
 
 const require = createRequire(import.meta.url);
-const { createUserDeck, deleteUserDeck, listUserDecks, mapDeckRow, updateUserDeck, validateDeckInput } =
-  require('../deckService.cjs') as {
-    createUserDeck: (
-      pool: Queryable,
-      userId: string,
-      body: Record<string, unknown>,
-      generateDeckId?: () => string,
-    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-    deleteUserDeck: (
-      pool: Queryable,
-      userId: string,
-      deckId: string,
-    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-    listUserDecks: (pool: Queryable, userId: string) => Promise<Record<string, unknown>>;
-    mapDeckRow: (deck: Record<string, unknown>) => Record<string, unknown>;
-    updateUserDeck: (
-      pool: Queryable,
-      userId: string,
-      deckId: string,
-      body: Record<string, unknown>,
-    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-    validateDeckInput: (pool: Queryable, name: unknown, cardIds: unknown) => Promise<string | null>;
-  };
+const {
+  consumeDeckReservation,
+  createUserDeck,
+  deleteUserDeck,
+  listUserDecks,
+  mapDeckRow,
+  reserveUserDeck,
+  updateUserDeck,
+  validateDeckInput,
+} = require('../deckService.cjs') as {
+  consumeDeckReservation: (
+    pool: Queryable & { connect: () => Promise<Queryable & { release: () => void }> },
+    input: { reservationId: string; userId: string; matchId: string; playerId: '0' | '1' },
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  createUserDeck: (
+    pool: Queryable,
+    userId: string,
+    body: Record<string, unknown>,
+    generateDeckId?: () => string,
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  deleteUserDeck: (
+    pool: Queryable,
+    userId: string,
+    deckId: string,
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  listUserDecks: (pool: Queryable, userId: string) => Promise<Record<string, unknown>>;
+  mapDeckRow: (deck: Record<string, unknown>) => Record<string, unknown>;
+  updateUserDeck: (
+    pool: Queryable,
+    userId: string,
+    deckId: string,
+    body: Record<string, unknown>,
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  reserveUserDeck: (
+    pool: Queryable,
+    userId: string,
+    deckId: string,
+    rulesVersion: string,
+    generateReservationId?: () => string,
+    ttlSeconds?: number,
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  validateDeckInput: (pool: Queryable, name: unknown, cardIds: unknown) => Promise<string | null>;
+};
 
 function makeCardIds(): string[] {
   return Array.from({ length: 20 }, (_, i) => `card-${Math.floor(i / 2)}`);
@@ -166,5 +186,108 @@ describe('deck service', () => {
       status: 404,
       error: 'Deck not found',
     });
+  });
+
+  it('creates a short-lived reservation from a deck owned by the caller', async () => {
+    const cardIds = makeCardIds();
+    const pool: Queryable = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM decks')) {
+          return { rows: [{ id: 'd_1', card_ids: cardIds, updated_at: '2026-07-12T00:00:00.000Z' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 1 };
+      }),
+    };
+
+    await expect(reserveUserDeck(pool, 'u_1', 'd_1', 'rules-v1', () => 'dr_fixed', 60)).resolves.toMatchObject({
+      ok: true,
+      body: {
+        reservationId: 'dr_fixed',
+        deckId: 'd_1',
+        rulesVersion: 'rules-v1',
+        deckVersion: expect.any(String),
+        expiresAt: expect.any(String),
+      },
+    });
+    expect(pool.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO deck_reservations'), [
+      'dr_fixed',
+      'u_1',
+      'd_1',
+      expect.any(String),
+      'rules-v1',
+      JSON.stringify(cardIds),
+      expect.any(Date),
+    ]);
+  });
+
+  it('binds a reservation once and rejects ownership or seat replays', async () => {
+    const row = {
+      id: 'dr_fixed',
+      user_id: 'u_1',
+      deck_id: 'd_1',
+      deck_version: 'deck-v1',
+      rules_version: 'rules-v1',
+      card_ids: makeCardIds(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      match_id: null,
+      player_id: null,
+    };
+    const client: Queryable & { release: () => void } = {
+      query: vi.fn(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [], rowCount: 1 };
+        if (sql.includes('FROM deck_reservations')) return { rows: [row], rowCount: 1 };
+        return { rows: [], rowCount: 1 };
+      }),
+      release: vi.fn(),
+    };
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => client),
+    } as Queryable & { connect: () => Promise<typeof client> };
+
+    await expect(
+      consumeDeckReservation(pool, {
+        reservationId: 'dr_fixed',
+        userId: 'u_1',
+        matchId: 'match_1',
+        playerId: '1',
+      }),
+    ).resolves.toMatchObject({ ok: true, body: { userId: 'u_1', deckId: 'd_1' } });
+    expect(client.query).toHaveBeenCalledWith(expect.stringContaining('SET match_id = $2'), [
+      'dr_fixed',
+      'match_1',
+      '1',
+    ]);
+
+    const boundRow = { ...row, match_id: 'match_1', player_id: '1' };
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [], rowCount: 1 };
+      if (sql.includes('FROM deck_reservations')) return { rows: [boundRow], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+    await expect(
+      consumeDeckReservation(pool, {
+        reservationId: 'dr_fixed',
+        userId: 'u_1',
+        matchId: 'match_1',
+        playerId: '1',
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(client.query.mock.calls.filter(([sql]) => String(sql).includes('SET match_id = $2'))).toHaveLength(1);
+
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [], rowCount: 1 };
+      if (sql.includes('FROM deck_reservations')) return { rows: [boundRow], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+    await expect(
+      consumeDeckReservation(pool, {
+        reservationId: 'dr_fixed',
+        userId: 'u_attacker',
+        matchId: 'match_2',
+        playerId: '0',
+      }),
+    ).resolves.toMatchObject({ ok: false, status: 403 });
+    expect(client.query).toHaveBeenLastCalledWith('ROLLBACK');
   });
 });
