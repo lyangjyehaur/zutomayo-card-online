@@ -86,6 +86,55 @@ const relationshipOutboxMetricsLastSuccess = new promClient.Gauge({
   registers: [register],
 });
 
+const accountExportJobsPending = new promClient.Gauge({
+  name: 'account_export_jobs_pending',
+  help: 'Asynchronous account export jobs waiting or currently processing.',
+  registers: [register],
+});
+
+const accountExportJobsFailed = new promClient.Gauge({
+  name: 'account_export_jobs_failed',
+  help: 'Account export jobs that exhausted their retry budget.',
+  registers: [register],
+});
+
+const accountExportOldestAgeSeconds = new promClient.Gauge({
+  name: 'account_export_oldest_age_seconds',
+  help: 'Age of the oldest queued or processing account export job.',
+  registers: [register],
+});
+
+const accountExportProcessedTotal = new promClient.Counter({
+  name: 'account_export_processed_total',
+  help: 'Account export worker outcomes.',
+  labelNames: ['result'],
+  registers: [register],
+});
+
+const accountExportPurgePending = new promClient.Gauge({
+  name: 'account_export_purge_pending',
+  help: 'Expired account export objects currently due for physical deletion.',
+  registers: [register],
+});
+
+const accountExportPurgeRetrying = new promClient.Gauge({
+  name: 'account_export_purge_retrying',
+  help: 'Account export objects whose physical deletion is retrying after an error.',
+  registers: [register],
+});
+
+const accountExportMetricsRefreshSuccess = new promClient.Gauge({
+  name: 'account_export_metrics_refresh_success',
+  help: 'Whether the latest account export PostgreSQL metrics refresh succeeded.',
+  registers: [register],
+});
+
+const accountExportMetricsLastSuccess = new promClient.Gauge({
+  name: 'account_export_metrics_last_success_unixtime_seconds',
+  help: 'Unix timestamp of the latest successful account export metrics refresh.',
+  registers: [register],
+});
+
 async function refreshMatchmakingQueueDepth(redis) {
   if (!redis || typeof redis.zcard !== 'function') return;
   try {
@@ -106,6 +155,8 @@ function normalizePath(path) {
     .replace(/\/api\/cards\/[^/]+/i, '/api/cards/:id')
     .replace(/\/api\/decks\/[^/]+/i, '/api/decks/:id')
     .replace(/\/api\/matches\/[^/]+/i, '/api/matches/:id')
+    .replace(/\/api\/account\/exports\/[^/]+\/download/i, '/api/account/exports/:id/download')
+    .replace(/\/api\/account\/exports\/[^/]+/i, '/api/account/exports/:id')
     .replace(/\/api\/feedback\/posts\/[^/]+/i, '/api/feedback/posts/:id')
     .replace(/\/api\/feedback\/comments\/[^/]+/i, '/api/feedback/comments/:id')
     .replace(/\/api\/admin\/cards\/[^/]+/i, '/api/admin/cards/:id')
@@ -123,7 +174,11 @@ function normalizePath(path) {
  */
 function attachRequestObservability(req, res) {
   const start = Date.now();
-  const requestId = (req.headers['x-request-id'] || crypto.randomUUID()).toString();
+  const suppliedRequestId = String(req.headers['x-request-id'] || '').trim();
+  const requestId =
+    suppliedRequestId.length >= 8 && suppliedRequestId.length <= 200 && !/[\r\n\t]/.test(suppliedRequestId)
+      ? suppliedRequestId
+      : crypto.randomUUID();
   res.setHeader('X-Request-Id', requestId);
   const log = logger.child({ requestId });
   const url = new URL(req.url, `http://localhost:${req.socket.localPort || 3001}`);
@@ -158,6 +213,14 @@ module.exports = {
   relationshipOutboxProcessedTotal,
   relationshipOutboxMetricsRefreshSuccess,
   relationshipOutboxMetricsLastSuccess,
+  accountExportJobsPending,
+  accountExportJobsFailed,
+  accountExportOldestAgeSeconds,
+  accountExportProcessedTotal,
+  accountExportPurgePending,
+  accountExportPurgeRetrying,
+  accountExportMetricsRefreshSuccess,
+  accountExportMetricsLastSuccess,
   rateLimitedTotal,
   refreshMatchmakingQueueDepth,
   attachRequestObservability,

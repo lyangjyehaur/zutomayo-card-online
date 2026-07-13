@@ -70,6 +70,7 @@ services:
       - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
+      - ACCOUNT_EXPORT_STORAGE_MODE=disabled
     depends_on:
       postgres:
         condition: service_healthy

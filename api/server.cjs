@@ -3,6 +3,9 @@ require('./tracing.cjs');
 const http = require('http');
 const https = require('https');
 const net = require('net');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const Sentry = require('@sentry/node');
 const crypto = require('crypto');
 const util = require('util');
@@ -22,13 +25,27 @@ const {
 } = require('./accountService.cjs');
 const {
   deleteAccount,
-  exportAccountData,
   requestEmailVerification,
   requestPasswordReset,
   resetPassword,
   verifyRecentPassword,
   verifyEmailToken,
 } = require('./accountLifecycleService.cjs');
+const {
+  accountExportStats,
+  createAccountExportJob,
+  createAccountExportWorker,
+  getAccountExportJob,
+  listAccountExportJobs,
+  recordAccountExportDownloadEvent,
+} = require('./accountExportService.cjs');
+const {
+  cleanupStaleAccountExportArtifacts,
+  createAccountExportArtifact,
+  resolveAccountExportPseudonymKey,
+} = require('./accountExportArtifact.cjs');
+const { stageAccountExportDownload } = require('./accountExportDownload.cjs');
+const { createAccountExportStorageFromEnv } = require('./accountExportStorage.cjs');
 const { deliverAccountAction } = require('./accountNotificationService.cjs');
 const { consumeAccountStepUp, issueAccountStepUp } = require('./accountStepUpService.cjs');
 const { LOGTO_ACCOUNT_DELETION_SCOPE, validateLogtoAccountDeletionConfig } = require('./accountDeletionConfig.cjs');
@@ -71,6 +88,14 @@ const {
   relationshipOutboxProcessedTotal,
   relationshipOutboxMetricsLastSuccess,
   relationshipOutboxMetricsRefreshSuccess,
+  accountExportJobsPending,
+  accountExportJobsFailed,
+  accountExportOldestAgeSeconds,
+  accountExportProcessedTotal,
+  accountExportPurgePending,
+  accountExportPurgeRetrying,
+  accountExportMetricsRefreshSuccess,
+  accountExportMetricsLastSuccess,
 } = require('./observability.cjs');
 const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
@@ -265,6 +290,31 @@ const ACCOUNT_DELETION_RECOVERY_INTERVAL_MS = Math.max(
   10_000,
   Math.min(Number(process.env.ACCOUNT_DELETION_RECOVERY_INTERVAL_MS) || 60_000, 60 * 60 * 1000),
 );
+const ACCOUNT_EXPORT_INTERVAL_MS = Math.max(
+  250,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_INTERVAL_MS) || 1_000, 60_000),
+);
+const ACCOUNT_EXPORT_LEASE_MS = Math.max(
+  30_000,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_LEASE_MS) || 5 * 60 * 1000, 30 * 60 * 1000),
+);
+const ACCOUNT_EXPORT_BATCH_SIZE = Math.max(1, Math.min(Number(process.env.ACCOUNT_EXPORT_BATCH_SIZE) || 2, 20));
+const ACCOUNT_EXPORT_EXPIRY_SECONDS = Math.max(
+  60 * 60,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_EXPIRY_SECONDS) || 7 * 24 * 60 * 60, 30 * 24 * 60 * 60),
+);
+const ACCOUNT_EXPORT_MAX_BYTES = Math.max(
+  1024 * 1024,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_MAX_BYTES) || 100 * 1024 * 1024, 100 * 1024 * 1024),
+);
+const ACCOUNT_EXPORT_DOWNLOAD_MAX_BYTES = Math.min(101 * 1024 * 1024, ACCOUNT_EXPORT_MAX_BYTES + 1024 * 1024);
+const ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY = Math.max(
+  1,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY) || 1, 4),
+);
+const ACCOUNT_EXPORT_TMP_DIR = process.env.ACCOUNT_EXPORT_TMP_DIR || path.join(os.tmpdir(), 'zutomayo-account-exports');
+const ACCOUNT_EXPORT_PSEUDONYM_KEY = resolveAccountExportPseudonymKey(process.env);
+let activeAccountExportDownloads = 0;
 
 // GlitchTip/Sentry error tracking — no-op when SENTRY_DSN is unset.
 if (process.env.SENTRY_DSN) {
@@ -413,6 +463,43 @@ const relationshipOutboxWorker = createRelationshipOutboxWorker({
     logger.error({ err: error }, 'relationship change outbox worker failed');
   },
 });
+
+const accountExportStorage = createAccountExportStorageFromEnv(process.env);
+const accountExportWorker = accountExportStorage.configured
+  ? createAccountExportWorker({
+      pool,
+      storage: accountExportStorage,
+      buildArtifact: (input) =>
+        createAccountExportArtifact({
+          ...input,
+          maxBytes: ACCOUNT_EXPORT_MAX_BYTES,
+          pseudonymKey: ACCOUNT_EXPORT_PSEUDONYM_KEY,
+        }),
+      logger,
+      intervalMs: ACCOUNT_EXPORT_INTERVAL_MS,
+      leaseMs: ACCOUNT_EXPORT_LEASE_MS,
+      batchSize: ACCOUNT_EXPORT_BATCH_SIZE,
+      expirySeconds: ACCOUNT_EXPORT_EXPIRY_SECONDS,
+      baseRetryMs: Number(process.env.ACCOUNT_EXPORT_BASE_RETRY_MS) || 5_000,
+      maxRetryMs: Number(process.env.ACCOUNT_EXPORT_MAX_RETRY_MS) || 5 * 60 * 1000,
+      onResult: (result) => accountExportProcessedTotal.labels(result).inc(),
+      onBatch: async () => {
+        const stats = await accountExportStats(pool);
+        accountExportJobsPending.set(stats.pending);
+        accountExportJobsFailed.set(stats.failed);
+        accountExportOldestAgeSeconds.set(stats.oldestAgeSeconds);
+        accountExportPurgePending.set(stats.purgePending);
+        accountExportPurgeRetrying.set(stats.purgeRetrying);
+        accountExportMetricsRefreshSuccess.set(1);
+        accountExportMetricsLastSuccess.set(Date.now() / 1000);
+      },
+      onError: () => accountExportMetricsRefreshSuccess.set(0),
+    })
+  : {
+      start() {},
+      async stop() {},
+      async tick() {},
+    };
 
 async function initSchema() {
   // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
@@ -3445,18 +3532,273 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/account/export' && method === 'GET') {
+      res.setHeader('Deprecation', 'true');
+      res.setHeader('Sunset', 'Wed, 14 Oct 2026 00:00:00 GMT');
+      res.setHeader('Link', '</api/account/exports>; rel="successor-version"');
+      json({ error: 'Synchronous account export was removed; create an asynchronous export job instead' }, 410);
+      return;
+    }
+
+    if (pathname === '/api/account/exports' && method === 'POST') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const result = await exportAccountData({
+      if (!accountExportStorage.configured) return json({ error: 'Account export storage is not configured' }, 503);
+      const result = await createAccountExportJob({
         pool,
         userId,
-        maxBytes: Number(process.env.ACCOUNT_EXPORT_MAX_BYTES) || undefined,
+        maxAttempts: Number(process.env.ACCOUNT_EXPORT_MAX_ATTEMPTS) || undefined,
+        requestId,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       res.setHeader('Cache-Control', 'no-store, private');
       res.setHeader('Vary', 'Cookie, Authorization');
-      res.setHeader('Content-Disposition', `attachment; filename="zutomayo-account-${userId}.json"`);
+      res.setHeader('Location', `/api/account/exports/${result.body.job.id}`);
+      res.setHeader('Retry-After', result.body.job.status === 'ready' ? '0' : '2');
+      json(result.body, result.body.job.status === 'ready' ? 200 : 202);
+      return;
+    }
+
+    if (pathname === '/api/account/exports' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await listAccountExportJobs({ pool, userId });
+      res.setHeader('Cache-Control', 'no-store, private');
+      res.setHeader('Vary', 'Cookie, Authorization');
       json(result.body);
+      return;
+    }
+
+    const accountExportRoute = pathname.match(/^\/api\/account\/exports\/([A-Za-z0-9-]{16,128})(\/download)?$/);
+    if (accountExportRoute && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const jobId = accountExportRoute[1];
+      const download = accountExportRoute[2] === '/download';
+      if (!download) {
+        const result = await getAccountExportJob({ pool, userId, jobId });
+        if (!result.ok) return json({ error: result.error }, result.status);
+        res.setHeader('Cache-Control', 'no-store, private');
+        res.setHeader('Vary', 'Cookie, Authorization');
+        json(result.body);
+        return;
+      }
+
+      if (!accountExportStorage.configured) return json({ error: 'Account export storage is not configured' }, 503);
+      const lookup = await getAccountExportJob({ pool, userId, jobId, includeObjectKey: true });
+      if (!lookup.ok) return json({ error: lookup.error }, lookup.status);
+      if (lookup.body.job.status !== 'ready' || !lookup.body.objectKey) {
+        return json({ error: 'Account export is not ready' }, lookup.body.job.status === 'expired' ? 410 : 409);
+      }
+      if (activeAccountExportDownloads >= ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY) {
+        res.setHeader('Retry-After', '5');
+        return json({ error: 'Account export download capacity is busy; retry shortly' }, 503);
+      }
+      activeAccountExportDownloads += 1;
+      let downloadSlotReleased = false;
+      const releaseDownloadSlot = () => {
+        if (downloadSlotReleased) return;
+        downloadSlotReleased = true;
+        activeAccountExportDownloads = Math.max(0, activeAccountExportDownloads - 1);
+      };
+      const fetchAbortController = new AbortController();
+      let preStreamClosed = false;
+      const abortFetch = () => fetchAbortController.abort(new Error('Account export download client disconnected'));
+      const handlePreStreamClose = () => {
+        preStreamClosed = true;
+        abortFetch();
+      };
+      req.once?.('aborted', abortFetch);
+      res.once('close', handlePreStreamClose);
+      const removePreStreamListeners = () => {
+        req.off?.('aborted', abortFetch);
+        res.off?.('close', handlePreStreamClose);
+      };
+      let started;
+      try {
+        started = await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_started',
+          requestId,
+        });
+      } catch (error) {
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        throw error;
+      }
+      if (!started.ok) {
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        return json({ error: started.error }, started.status);
+      }
+      if (preStreamClosed || req.destroyed || res.destroyed) {
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase: 'before_object_fetch' },
+        }).catch(() => undefined);
+        return;
+      }
+      let object;
+      try {
+        object = await accountExportStorage.getObject({
+          key: lookup.body.objectKey,
+          versionId: lookup.body.objectVersionId,
+          signal: fetchAbortController.signal,
+        });
+      } catch (error) {
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase: 'object_fetch' },
+        }).catch(() => undefined);
+        reqLog.error({ err: error, jobId }, 'account export object fetch failed');
+        if (preStreamClosed || req.destroyed || res.destroyed) return;
+        return json({ error: 'Account export object is temporarily unavailable' }, 502);
+      }
+      const expectedSize = Number(lookup.body.job.sizeBytes);
+      const actualSize = Number(object.contentLength);
+      const expectedSha256 = String(lookup.body.job.contentSha256 || '').toLowerCase();
+      const actualSha256 = String(object.metadata?.sha256 || '').toLowerCase();
+      if (actualSize !== expectedSize || actualSha256 !== expectedSha256) {
+        object.body?.destroy?.();
+        object.cleanup?.();
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'integrity_failed',
+          requestId,
+          details: { sizeMatched: actualSize === expectedSize, checksumMatched: actualSha256 === expectedSha256 },
+        });
+        if (preStreamClosed || req.destroyed || res.destroyed) return;
+        return json({ error: 'Account export integrity verification failed' }, 502);
+      }
+      let staged;
+      try {
+        staged = await stageAccountExportDownload({
+          body: object.body,
+          expectedSize,
+          expectedSha256,
+          refreshTimeout: object.refreshTimeout,
+          maxBytes: ACCOUNT_EXPORT_DOWNLOAD_MAX_BYTES,
+          tempRoot: ACCOUNT_EXPORT_TMP_DIR,
+        });
+      } catch (error) {
+        object.body?.destroy?.();
+        object.cleanup?.();
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        const integrityFailure = error?.code === 'ACCOUNT_EXPORT_INTEGRITY';
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: integrityFailure ? 'integrity_failed' : 'download_interrupted',
+          requestId,
+          details: integrityFailure ? error.details : { phase: 'object_stage' },
+        }).catch(() => undefined);
+        reqLog.error({ err: error, jobId }, 'account export object staging failed');
+        if (preStreamClosed || req.destroyed || res.destroyed) return;
+        return json(
+          {
+            error: integrityFailure
+              ? 'Account export integrity verification failed'
+              : 'Account export object is temporarily unavailable',
+          },
+          502,
+        );
+      }
+      object.cleanup?.();
+      removePreStreamListeners();
+      if (preStreamClosed || req.destroyed || res.destroyed) {
+        releaseDownloadSlot();
+        await staged.cleanup().catch(() => undefined);
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase: 'after_object_stage' },
+        }).catch(() => undefined);
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'application/gzip',
+        'Content-Length': String(expectedSize),
+        'Content-Disposition': `attachment; filename="zutomayo-account-${jobId}.json.gz"`,
+        'Cache-Control': 'no-store, private',
+        Vary: 'Cookie, Authorization',
+        'X-Content-SHA256': expectedSha256,
+      });
+      const stream = fs.createReadStream(staged.filePath);
+      let downloadFinished = false;
+      let terminalAuditRecorded = false;
+      const recordInterrupted = (phase = 'stream') => {
+        if (downloadFinished || terminalAuditRecorded) return;
+        terminalAuditRecorded = true;
+        releaseDownloadSlot();
+        void staged.cleanup().catch(() => undefined);
+        void recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase },
+        }).catch((error) => logger.error({ err: error, jobId }, 'failed to audit interrupted account export'));
+      };
+      res.once('finish', () => {
+        downloadFinished = true;
+        if (terminalAuditRecorded) return;
+        terminalAuditRecorded = true;
+        releaseDownloadSlot();
+        void staged.cleanup().catch(() => undefined);
+        void recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_completed',
+          requestId,
+        }).catch((error) => logger.error({ err: error, jobId }, 'failed to audit completed account export'));
+      });
+      res.once('close', () => {
+        stream.destroy?.();
+        recordInterrupted('client_close');
+      });
+      stream.once('error', (error) => {
+        if (terminalAuditRecorded) return;
+        terminalAuditRecorded = true;
+        releaseDownloadSlot();
+        void staged.cleanup().catch(() => undefined);
+        void recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase: 'verified_file_stream' },
+        }).catch((auditError) =>
+          logger.error({ err: auditError, jobId }, 'failed to audit failed account export download'),
+        );
+        logger.error({ err: error, jobId }, 'account export download stream failed');
+        res.destroy(error);
+      });
+      stream.pipe(res);
       return;
     }
 
@@ -4934,6 +5276,7 @@ const server = http.createServer(handleRequest);
 
 async function closeDatabase() {
   stopAccountDeletionRecovery();
+  await accountExportWorker.stop();
   await relationshipOutboxWorker.stop();
   await pool.end();
   await redis.quit();
@@ -4957,10 +5300,14 @@ process.on('SIGINT', shutdown);
 if (require.main === module) {
   validateSecurityConfig();
   schemaReady
-    .then(() => {
+    .then(async () => {
       if (schemaInitError) throw schemaInitError;
+      if (accountExportStorage.configured) {
+        await cleanupStaleAccountExportArtifacts({ tempRoot: ACCOUNT_EXPORT_TMP_DIR });
+      }
       server.listen(PORT, () => {
         relationshipOutboxWorker.start();
+        accountExportWorker.start();
         startAccountDeletionRecovery();
         logger.info({ port: PORT }, 'Zutomayo API server running');
       });

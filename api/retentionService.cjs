@@ -9,6 +9,8 @@ const RETENTION_DAYS = Object.freeze({
   chat: 180,
   reports: 365,
   adminAudit: 365,
+  accountExportJobs: 365,
+  accountExportAudit: 365,
   accountTokens: 2,
   relationshipOutboxDelivered: 30,
   relationshipOutboxDeadLetter: 365,
@@ -318,6 +320,77 @@ function operationDefinitions(cutoffs) {
        WHERE t.id = c.id`,
       countParams: [cutoffs.accountTokens],
       mutateParams: [cutoffs.accountTokens],
+    },
+    {
+      // Legal holds preserve the database evidence only. Artifact expiry and
+      // object deletion remain owned by accountExportService and are never
+      // extended by retention or by an active hold.
+      name: 'accountExportJobs',
+      countSql: `SELECT COUNT(*)::int AS count
+        FROM account_export_jobs j
+       WHERE j.status IN ('failed', 'expired')
+         AND j.object_key IS NULL
+         AND j.object_version_id IS NULL
+         AND j.updated_at < $1
+         AND ${activeHoldPredicate('account', 'j.user_id')}`,
+      mutateSql: `WITH candidates AS (
+        SELECT j.id
+          FROM account_export_jobs j
+         WHERE j.status IN ('failed', 'expired')
+           AND j.object_key IS NULL
+           AND j.object_version_id IS NULL
+           AND j.updated_at < $1
+           AND ${activeHoldPredicate('account', 'j.user_id')}
+         ORDER BY j.updated_at ASC
+         FOR UPDATE SKIP LOCKED
+         LIMIT $2
+      )
+      DELETE FROM account_export_jobs j
+       USING candidates c
+       WHERE j.id = c.id`,
+      countParams: [cutoffs.accountExportJobs],
+      mutateParams: [cutoffs.accountExportJobs],
+    },
+    {
+      name: 'accountExportAudit',
+      countSql: `SELECT COUNT(*)::int AS count
+        FROM account_export_audit a
+        LEFT JOIN account_export_jobs j ON j.id = a.job_id
+       WHERE a.created_at < $1
+         AND (
+           a.job_id IS NULL
+           OR (
+             j.status IN ('failed', 'expired')
+             AND j.object_key IS NULL
+             AND j.object_version_id IS NULL
+             AND j.updated_at < $1
+           )
+         )
+         AND ${activeHoldPredicate('account', 'a.user_id')}`,
+      mutateSql: `WITH candidates AS (
+        SELECT a.id
+          FROM account_export_audit a
+          LEFT JOIN account_export_jobs j ON j.id = a.job_id
+         WHERE a.created_at < $1
+           AND (
+             a.job_id IS NULL
+             OR (
+               j.status IN ('failed', 'expired')
+               AND j.object_key IS NULL
+               AND j.object_version_id IS NULL
+               AND j.updated_at < $1
+             )
+           )
+           AND ${activeHoldPredicate('account', 'a.user_id')}
+         ORDER BY a.created_at ASC
+         FOR UPDATE OF a SKIP LOCKED
+         LIMIT $2
+      )
+      DELETE FROM account_export_audit a
+       USING candidates c
+       WHERE a.id = c.id`,
+      countParams: [cutoffs.accountExportAudit],
+      mutateParams: [cutoffs.accountExportAudit],
     },
     {
       name: 'relationshipOutbox',

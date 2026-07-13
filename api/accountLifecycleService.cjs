@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { findActiveLegalHoldForAccount } = require('./legalHoldService.cjs');
 const { AccountMutationError, acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
+const { expireAccountExportJobsForUser } = require('./accountExportService.cjs');
 const { enqueueRelationshipChange } = require('./relationshipOutbox.cjs');
 
 const ACCOUNT_ACTIONS = new Set(['verify_email', 'reset_password']);
@@ -214,7 +215,7 @@ async function verifyRecentPassword({
   return { ok: true };
 }
 
-async function exportAccountData({
+async function collectAccountData({
   pool,
   userId,
   maxBytes = DEFAULT_ACCOUNT_EXPORT_MAX_BYTES,
@@ -238,7 +239,9 @@ async function exportAccountData({
     ).rows[0];
     if (!user) return { ok: false, status: 404, error: 'User not found' };
 
-    const queryCollection = (sql) => client.query(sql, [userId, rowLimit + 1]);
+    const queryCollection = (sql) => {
+      return client.query(sql, [userId, rowLimit + 1]);
+    };
     const [
       identities,
       decks,
@@ -257,68 +260,59 @@ async function exportAccountData({
       seasonRewards,
       seasonRewardEntitlements,
     ] = await Promise.all([
-      client.query(
+      queryCollection(
         `SELECT provider, email, email_verified, display_name, created_at, updated_at
        FROM user_identities WHERE user_id = $1 ORDER BY created_at LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         'SELECT id, name, card_ids, created_at, updated_at FROM decks WHERE user_id = $1 ORDER BY created_at LIMIT $2',
       ),
-      client.query(
+      queryCollection(
         `SELECT id, source_match_id, player0_id, player1_id, winner_id, loser_id,
               winner_elo_change, loser_elo_change, turns, duration_seconds, rules_version, created_at
        FROM matches WHERE player0_id = $1 OR player1_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         'SELECT friend_user_id, created_at FROM user_friends WHERE user_id = $1 ORDER BY created_at LIMIT $2',
       ),
-      client.query(
+      queryCollection(
         `SELECT id, requester_user_id, recipient_user_id, status, created_at, updated_at, responded_at
        FROM friend_requests
        WHERE requester_user_id = $1 OR recipient_user_id = $1 ORDER BY created_at LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         'SELECT blocked_user_id, created_at FROM user_blocks WHERE blocker_user_id = $1 ORDER BY created_at LIMIT $2',
       ),
-      client.query(
+      queryCollection(
         `SELECT m.id, c.type AS conversation_type, m.author_display_name, m.author_role,
               m.content, m.source_language, m.moderation_status, m.created_at, m.edited_at, m.deleted_at
        FROM chat_messages m JOIN chat_conversations c ON c.id = m.conversation_id
        WHERE m.author_user_id = $1 ORDER BY m.created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
-      client.query(
+      queryCollection(
         `SELECT id, message_id, conversation_id, reason, note, status, created_at, reviewed_at
        FROM chat_reports WHERE reporter_user_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
-      client.query(
+      queryCollection(
         `SELECT id, title, description, status, tag, created_at, updated_at, edited_at
        FROM feedback_posts WHERE author_user_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
-      client.query(
+      queryCollection(
         `SELECT id, post_id, content, is_official, created_at, edited_at
        FROM feedback_comments WHERE author_user_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         'SELECT post_id, created_at FROM feedback_votes WHERE voter_user_id = $1 ORDER BY created_at DESC LIMIT $2',
       ),
-      client.query(
+      queryCollection(
         `SELECT comment_id, emoji, created_at
        FROM feedback_comment_reactions WHERE voter_user_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
-      client.query(
+      queryCollection(
         `SELECT id, type, status, reason, source_report_id, source_message_id, conversation_id,
               created_at, expires_at, revoked_at, revocation_reason
        FROM chat_user_sanctions WHERE target_user_id = $1 OR created_by_user_id = $1
        ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         `SELECT sr.season_id, s.name AS season_name, s.status AS season_status,
@@ -375,6 +369,7 @@ async function exportAccountData({
     }
 
     const body = {
+      formatVersion: 1,
       exportedAt: new Date().toISOString(),
       account: user,
       identities: identities.rows,
@@ -395,10 +390,18 @@ async function exportAccountData({
       seasonRewardEntitlements: seasonRewardEntitlements.rows,
     };
     if (Buffer.byteLength(JSON.stringify(body), 'utf8') > byteLimit) {
-      return { ok: false, status: 413, error: 'Account export exceeds the synchronous size limit' };
+      return {
+        ok: false,
+        status: 413,
+        error: 'Account export exceeds the synchronous size limit',
+      };
     }
     return { ok: true, body };
   });
+}
+
+async function exportAccountData(options) {
+  return collectAccountData(options);
 }
 
 async function deleteAccount({
@@ -475,6 +478,11 @@ async function deleteAccount({
     // before mutating the account. This keeps legacy JWTs safe if the durable
     // delete later commits, and avoids logging a held account out needlessly.
     if (typeof beforeDelete === 'function') await beforeDelete();
+
+    // Revoke queued downloads in the same transaction as anonymization. Ready
+    // objects are denied immediately and removed asynchronously by the export
+    // worker, so deletion never leaves a still-authorized DSAR artifact.
+    await expireAccountExportJobsForUser({ client, userId });
 
     await client.query('DELETE FROM user_identities WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM deck_reservations WHERE user_id = $1', [userId]);

@@ -90,4 +90,27 @@ describe('schema migrations', () => {
     expect(migration).toContain('export const down = false;');
     expect(migration).not.toContain('dropColumns');
   });
+
+  it('keeps asynchronous account exports durable, fenced, and physically purgeable', () => {
+    const migration = readRepoFile('migrations/000026_account_export_jobs.js');
+    for (const artifact of [
+      'account_export_jobs',
+      'account_export_audit',
+      'lease_token',
+      'lease_expires_at',
+      'object_version_id',
+      'content_sha256',
+      'purged_at',
+      'idx_account_export_jobs_retention',
+      'idx_account_export_audit_retention',
+      'uq_account_export_audit_request_event',
+      'uq_account_export_audit_request_terminal',
+    ]) {
+      expect(migration).toContain(artifact);
+    }
+    expect(migration).toContain('export const down = false;');
+    expect(migration).toContain("onDelete: 'RESTRICT'");
+    expect(migration).toContain('Compliance audit evidence must not cascade away');
+    expect(migration).not.toMatch(/account_export_audit[\s\S]*user_id:[^\n]*onDelete: 'CASCADE'/);
+  });
 });

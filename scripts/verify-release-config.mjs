@@ -246,6 +246,13 @@ function assertRuntimeEnvironmentInventory(relativePath) {
   const apiOwnedSecrets = [
     'ADMIN_TOTP_ENCRYPTION_KEY',
     'ACCOUNT_EMAIL_WEBHOOK_SECRET',
+    'ACCOUNT_EXPORT_PSEUDONYM_KEY',
+    'ACCOUNT_EXPORT_S3_ACCESS_KEY_ID',
+    'ACCOUNT_EXPORT_S3_ACCESS_KEY_ID_FILE',
+    'ACCOUNT_EXPORT_S3_SECRET_ACCESS_KEY',
+    'ACCOUNT_EXPORT_S3_SECRET_ACCESS_KEY_FILE',
+    'ACCOUNT_EXPORT_S3_SESSION_TOKEN',
+    'ACCOUNT_EXPORT_S3_SESSION_TOKEN_FILE',
     'TURNSTILE_SECRET_KEY',
     'OAUTH_TOKEN_ENCRYPTION_KEY',
     'LOGTO_APP_SECRET',
@@ -318,6 +325,80 @@ function assertRuntimeEnvironmentInventory(relativePath) {
   }
 }
 
+function assertAccountExportStorageContract(relativePath) {
+  const api = serviceBlock(relativePath, 'api');
+  const requiredInputs = [
+    'ACCOUNT_EXPORT_S3_BUCKET',
+    'ACCOUNT_EXPORT_S3_REGION',
+    'ACCOUNT_EXPORT_S3_CREDENTIALS_MODE',
+    'ACCOUNT_EXPORT_S3_VERSIONING_MODE',
+    'ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED',
+    'ACCOUNT_EXPORT_PSEUDONYM_KEY',
+  ];
+  for (const variable of requiredInputs) {
+    if (!api.includes(`${variable}=\${${variable}:?`)) {
+      throw new Error(`${relativePath} API runtime must require ${variable}`);
+    }
+  }
+
+  const mappedInputs = [
+    'ACCOUNT_EXPORT_S3_PREFIX',
+    'ACCOUNT_EXPORT_S3_ENDPOINT',
+    'ACCOUNT_EXPORT_S3_FORCE_PATH_STYLE',
+    'ACCOUNT_EXPORT_S3_ACCESS_KEY_ID',
+    'ACCOUNT_EXPORT_S3_ACCESS_KEY_ID_FILE',
+    'ACCOUNT_EXPORT_S3_SECRET_ACCESS_KEY',
+    'ACCOUNT_EXPORT_S3_SECRET_ACCESS_KEY_FILE',
+    'ACCOUNT_EXPORT_S3_SESSION_TOKEN',
+    'ACCOUNT_EXPORT_S3_SESSION_TOKEN_FILE',
+    'ACCOUNT_EXPORT_S3_SERVER_SIDE_ENCRYPTION',
+    'ACCOUNT_EXPORT_S3_KMS_KEY_ID',
+    'ACCOUNT_EXPORT_S3_TIMEOUT_MS',
+    'ACCOUNT_EXPORT_INTERVAL_MS',
+    'ACCOUNT_EXPORT_LEASE_MS',
+    'ACCOUNT_EXPORT_BATCH_SIZE',
+    'ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY',
+    'ACCOUNT_EXPORT_EXPIRY_SECONDS',
+    'ACCOUNT_EXPORT_MAX_ATTEMPTS',
+    'ACCOUNT_EXPORT_BASE_RETRY_MS',
+    'ACCOUNT_EXPORT_MAX_RETRY_MS',
+    'ACCOUNT_EXPORT_MAX_BYTES',
+  ];
+  for (const variable of mappedInputs) {
+    if (!api.includes(`${variable}=\${${variable}`)) {
+      throw new Error(`${relativePath} API runtime must explicitly map ${variable}`);
+    }
+  }
+
+  for (const fragment of [
+    'ACCOUNT_EXPORT_STORAGE_MODE=s3',
+    'ACCOUNT_EXPORT_S3_PREFIX=${ACCOUNT_EXPORT_S3_PREFIX:-account-exports}',
+    'ACCOUNT_EXPORT_S3_SERVER_SIDE_ENCRYPTION=${ACCOUNT_EXPORT_S3_SERVER_SIDE_ENCRYPTION:-AES256}',
+    'ACCOUNT_EXPORT_TMP_DIR=/app/data/account-exports',
+    'ACCOUNT_EXPORT_INTERVAL_MS=${ACCOUNT_EXPORT_INTERVAL_MS:-1000}',
+    'ACCOUNT_EXPORT_LEASE_MS=${ACCOUNT_EXPORT_LEASE_MS:-300000}',
+    'ACCOUNT_EXPORT_BATCH_SIZE=${ACCOUNT_EXPORT_BATCH_SIZE:-2}',
+    'ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY=${ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY:-1}',
+    'ACCOUNT_EXPORT_EXPIRY_SECONDS=${ACCOUNT_EXPORT_EXPIRY_SECONDS:-604800}',
+    'ACCOUNT_EXPORT_MAX_ATTEMPTS=${ACCOUNT_EXPORT_MAX_ATTEMPTS:-5}',
+    'ACCOUNT_EXPORT_BASE_RETRY_MS=${ACCOUNT_EXPORT_BASE_RETRY_MS:-5000}',
+    'ACCOUNT_EXPORT_MAX_RETRY_MS=${ACCOUNT_EXPORT_MAX_RETRY_MS:-300000}',
+    'ACCOUNT_EXPORT_MAX_BYTES=${ACCOUNT_EXPORT_MAX_BYTES:-104857600}',
+    '/app/data/account-exports:rw,noexec,nosuid,nodev,size=268435456,mode=0700,uid=1000,gid=1000',
+  ]) {
+    if (!api.includes(fragment)) {
+      throw new Error(`${relativePath} API account export contract is missing: ${fragment}`);
+    }
+  }
+
+  for (const serviceName of ['migrate', 'game', 'platform']) {
+    const block = serviceBlock(relativePath, serviceName);
+    if (block.includes('ACCOUNT_EXPORT_')) {
+      throw new Error(`${relativePath} must expose account export configuration only to the API runtime`);
+    }
+  }
+}
+
 function assertProductionRuntimeInputs() {
   const roleUserInputs = [
     'PG_API_USER',
@@ -329,6 +410,7 @@ function assertProductionRuntimeInputs() {
     'PG_WAL_USER',
   ];
   for (const relativePath of ['docker-compose.yml', ...RELEASE_COMPOSE_FILES]) {
+    assertAccountExportStorageContract(relativePath);
     if (countFragment(relativePath, 'METRICS_TOKEN=${METRICS_TOKEN:?') !== 3) {
       throw new Error(`${relativePath} must require METRICS_TOKEN for all three runtime services`);
     }
@@ -377,11 +459,12 @@ function assertProductionRuntimeInputs() {
     'PLATFORM_SEAT_TOKEN_SECRET',
     'ADMIN_TOTP_ENCRYPTION_KEY',
     'OAUTH_TOKEN_ENCRYPTION_KEY',
+    'ACCOUNT_EXPORT_PSEUDONYM_KEY',
   ]
     .map((name) => process.env[name]?.trim())
     .filter(Boolean);
   if (releaseSecuritySecrets.length > 1 && new Set(releaseSecuritySecrets).size !== releaseSecuritySecrets.length) {
-    throw new Error('JWT, seat-token, admin TOTP, and OAuth token secrets must be pairwise distinct');
+    throw new Error('JWT, seat-token, admin TOTP, OAuth token, and export pseudonym secrets must be pairwise distinct');
   }
 
   if (countFragment('docker-compose.server4.yml', 'PGSSLMODE=${PGSSLMODE:?') !== 4) {
@@ -446,12 +529,31 @@ function assertProductionRuntimeInputs() {
     }
   }
   for (const dockerfile of ['Dockerfile', 'Dockerfile.migrate', 'api/Dockerfile']) {
-    if (read(dockerfile).includes('LOGTO_M2M_APP_SECRET')) {
-      throw new Error(`${dockerfile} must not bake LOGTO_M2M_APP_SECRET into an image`);
+    for (const secret of [
+      'LOGTO_M2M_APP_SECRET',
+      'ACCOUNT_EXPORT_PSEUDONYM_KEY',
+      'ACCOUNT_EXPORT_S3_SECRET_ACCESS_KEY',
+    ]) {
+      if (read(dockerfile).includes(secret)) {
+        throw new Error(`${dockerfile} must not bake ${secret} into an image`);
+      }
     }
   }
   if (!read('.env.example').includes('LOGTO_MANAGEMENT_SCOPE=delete:users')) {
     throw new Error('.env.example must document the least-privilege Logto account deletion scope');
+  }
+  for (const fragment of [
+    'ACCOUNT_EXPORT_STORAGE_MODE=s3',
+    'ACCOUNT_EXPORT_S3_CREDENTIALS_MODE=default',
+    'ACCOUNT_EXPORT_S3_SERVER_SIDE_ENCRYPTION=AES256',
+    'ACCOUNT_EXPORT_S3_VERSIONING_MODE=disabled',
+    'ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED=',
+    'ACCOUNT_EXPORT_PSEUDONYM_KEY=',
+    'ACCOUNT_EXPORT_MAX_BYTES=104857600',
+  ]) {
+    if (!read('.env.example').includes(fragment)) {
+      throw new Error(`.env.example must document the account export contract: ${fragment}`);
+    }
   }
   const retention = read('docker-compose.retention.yml');
   if (!retention.includes('PGSSLMODE: ${PG_RETENTION_SSLMODE:?')) {

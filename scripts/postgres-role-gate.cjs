@@ -44,6 +44,8 @@ const APPLICATION_TABLES = Object.freeze([
   'retention_runs',
   'account_action_tokens',
   'account_deletion_requests',
+  'account_export_jobs',
+  'account_export_audit',
   'relationship_change_outbox',
   'admin_users',
   'admin_sessions',
@@ -53,6 +55,7 @@ const APPLICATION_TABLES = Object.freeze([
 ]);
 
 const ALL_TABLES = Object.freeze([...PROTECTED_SCHEMA_TABLES, ...APPLICATION_TABLES]);
+const API_CRUD_TABLES = Object.freeze(APPLICATION_TABLES.filter((tableName) => tableName !== 'account_export_audit'));
 const ROLE_TYPES = Object.freeze(['api', 'game', 'platform', 'retention', 'monitor', 'backup', 'wal']);
 const APP_ALIAS_TYPES = Object.freeze(new Set(['api', 'game', 'platform']));
 const TABLE_PRIVILEGES = Object.freeze(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']);
@@ -117,6 +120,8 @@ const RETENTION_TABLE_PRIVILEGES = Object.freeze({
   legal_hold_objects: ['SELECT', 'INSERT'],
   admin_audit_log: ['SELECT', 'DELETE'],
   account_action_tokens: ['SELECT', 'DELETE'],
+  account_export_jobs: ['SELECT', 'DELETE'],
+  account_export_audit: ['SELECT', 'DELETE'],
   relationship_change_outbox: ['SELECT', 'DELETE'],
   retention_runs: ['INSERT', 'UPDATE'],
   schema_migrations: ['SELECT'],
@@ -228,7 +233,8 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
 
   // API owns the HTTP data plane. It gets row-level application CRUD but no
   // DDL, privilege-management, or writes to migration history.
-  grant('api', APPLICATION_TABLES, ['SELECT', 'INSERT', 'UPDATE', 'DELETE']);
+  grant('api', API_CRUD_TABLES, ['SELECT', 'INSERT', 'UPDATE', 'DELETE']);
+  grant('api', ['account_export_audit'], ['SELECT', 'INSERT']);
   grant('api', PROTECTED_SCHEMA_TABLES, ['SELECT']);
 
   grant('game', GAME_READ_TABLES, ['SELECT']);

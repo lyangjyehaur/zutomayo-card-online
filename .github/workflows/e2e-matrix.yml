@@ -29,6 +29,12 @@ jobs:
       PG_APP_USER: zutomayo_app
       PG_APP_PASSWORD: e2e-test-app-password
       JWT_SECRET: e2e-test-jwt-secret-at-least-32-bytes
+      ACCOUNT_EXPORT_S3_BUCKET: zutomayo-e2e-account-exports
+      ACCOUNT_EXPORT_S3_REGION: us-east-1
+      ACCOUNT_EXPORT_S3_CREDENTIALS_MODE: default
+      ACCOUNT_EXPORT_S3_VERSIONING_MODE: disabled
+      ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true'
+      ACCOUNT_EXPORT_PSEUDONYM_KEY: e2e-test-export-pseudonym-key-at-least-32-bytes
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable

@@ -111,6 +111,15 @@ describe('PostgreSQL runtime role gate', () => {
     expect(statements).toContain('GRANT SELECT, UPDATE ON TABLE public."matches" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."chat_message_translations" TO "z_retention"');
     expect(statements).toContain('GRANT INSERT, UPDATE ON TABLE public."retention_runs" TO "z_retention"');
+    expect(statements).toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."account_export_jobs" TO "z_api"',
+    );
+    expect(statements).toContain('GRANT SELECT, INSERT ON TABLE public."account_export_audit" TO "z_api"');
+    expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."account_export_jobs" TO "z_retention"');
+    expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."account_export_audit" TO "z_retention"');
+    expect(statements).not.toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."account_export_audit" TO "z_api"',
+    );
     expect(statements).not.toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."matches" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."users" TO "z_backup"');
     expect(statements).toContain('GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO "z_backup"');

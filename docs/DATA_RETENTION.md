@@ -1,21 +1,27 @@
 # 資料保存與刪除政策
 
-| 資料                 | 正常保存期限 | 刪除／匿名化方式                                           |
-| -------------------- | ------------ | ---------------------------------------------------------- |
-| 帳號與牌組           | 帳號有效期間 | 刪除請求確認後 30 天內刪除或匿名化                         |
-| 完成對局與排名異動   | 365 天       | 移除直接帳號資料後保留匿名統計與完整性證據                 |
-| Action log / replay  | 180 天       | 逾期刪除；遭舉報或爭議中的對局例外                         |
-| 聊天訊息             | 180 天       | 逾期刪除或匿名化；審核證據另計                             |
-| 舉報、制裁與管理稽核 | 365 天       | 逾期刪除或匿名化；法律義務例外                             |
-| 應用程式日誌與 trace | 30 天        | 自動 lifecycle 刪除                                        |
-| Metrics              | 90 天        | 聚合後刪除原始高基數資料                                   |
-| 加密備份             | 35 天        | lifecycle policy 自動刪除；immutable window 內不可提前刪除 |
+| 資料                  | 正常保存期限 | 刪除／匿名化方式                                           |
+| --------------------- | ------------ | ---------------------------------------------------------- |
+| 帳號與牌組            | 帳號有效期間 | 刪除請求確認後 30 天內刪除或匿名化                         |
+| 完成對局與排名異動    | 365 天       | 移除直接帳號資料後保留匿名統計與完整性證據                 |
+| Action log / replay   | 180 天       | 逾期刪除；遭舉報或爭議中的對局例外                         |
+| 聊天訊息              | 180 天       | 逾期刪除或匿名化；審核證據另計                             |
+| 舉報、制裁與管理稽核  | 365 天       | 逾期刪除或匿名化；法律義務例外                             |
+| 帳號匯出物件          | 7 天         | 到期後依 object key + `object_version_id` 實體刪除         |
+| 帳號匯出工作 metadata | 365 天       | 僅在 terminal 且物件已 purge 後刪除                        |
+| 帳號匯出稽核事件      | 365 天       | 保留請求、處理、下載、中斷、完整性與 purge 證據            |
+| 應用程式日誌與 trace  | 30 天        | 自動 lifecycle 刪除                                        |
+| Metrics               | 90 天        | 聚合後刪除原始高基數資料                                   |
+| 加密備份              | 35 天        | lifecycle policy 自動刪除；immutable window 內不可提前刪除 |
 
 ## 執行要求
 
 - 每日執行 retention job，記錄刪除筆數、批次數、耗時與錯誤；失敗、重入跳過或超過 26 小時未成功必須告警。
 - 帳號刪除先撤銷 session，再刪除登入身分、牌組、社交關係與未完成 token，最後匿名化 user row。
 - 使用者資料匯出不得包含 password hash、salt、OAuth token、IP、其他使用者私人資料或管理員備註。
+- 匯出物件預設只可下載 7 天；到期由 API worker 先以資料庫保存的完整 key 與 `object_version_id` 刪除，再把 job 標為已 purge。`ACCOUNT_EXPORT_S3_VERSIONING_MODE=required` 時不得只建立 delete marker。
+- `account_export_jobs` 只可在 `failed`/`expired` 等 terminal 狀態、`object_key` 與 `object_version_id` 已清空且已達 365 天時刪除；`account_export_audit` 使用獨立 365 天 cutoff，不可因 job 提前 cascade 消失。
+- Bucket lifecycle 必須強制涵蓋設定 prefix 下的 orphan/expired objects，期限長於下載期限，並在版本化時處理 non-current versions/delete markers；只有驗證後才可設 `ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED=true`。Lifecycle 是 safety net，不得取代 worker purge 與稽核。
 - Backup restore 後必須重新執行 retention job，避免已過期資料永久復活。
 - 法律保留必須記錄範圍、理由、owner 與到期日，不能用無期限標記取代；建立時會驗證 subject 存在並展開當下的衍生資料。上線前仍須補上持續 reconciliation，確保 hold 建立後新增的對局、訊息與舉報也被納入。
 
@@ -33,3 +39,5 @@ session-level advisory lock，逐批使用 `FOR UPDATE SKIP LOCKED` 排空資料
 在 180 天先清理，直接帳號識別在 365 天再匿名化；聊天會以 `[redacted]` 匿名化並保留必要的
 moderation/report evidence。`legal_hold_objects` 保存 hold 的衍生 subject mapping，避免只比對單一
 root id 而漏保留關聯資料。
+
+帳號匯出由 API 內建 worker 執行，不授予 retention worker S3 credentials。每次 upload、download、integrity failure、expiry 與 purge retry 都留下 `account_export_audit`；Prometheus/Grafana 必須監控最老待處理 job、永久失敗、待 purge、purge retry 與 metrics freshness。若 restore 復原出已過期但仍有 `object_key` 的 job，API worker 必須先完成版本感知的實體刪除，之後 retention job 才能清除 terminal metadata。

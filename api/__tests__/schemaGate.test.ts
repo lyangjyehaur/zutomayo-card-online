@@ -102,6 +102,36 @@ describe('production schema gate', () => {
     );
   });
 
+  it('requires the complete asynchronous account export schema contract', () => {
+    expect(REQUIRED_RUNTIME_TABLES).toEqual(expect.arrayContaining(['account_export_jobs', 'account_export_audit']));
+    expect(REQUIRED_RUNTIME_COLUMNS.account_export_jobs).toEqual(
+      expect.arrayContaining(['lease_token', 'lease_expires_at', 'object_version_id', 'content_sha256', 'purged_at']),
+    );
+    expect(REQUIRED_RUNTIME_INDEXES.map(({ indexName }) => indexName)).toEqual(
+      expect.arrayContaining([
+        'uq_account_export_jobs_active_user',
+        'idx_account_export_jobs_purge',
+        'idx_account_export_jobs_retention',
+        'idx_account_export_audit_retention',
+        'uq_account_export_audit_request_event',
+        'uq_account_export_audit_request_terminal',
+      ]),
+    );
+    const auditConstraint = REQUIRED_RUNTIME_CONSTRAINTS.find(
+      ({ tableName, constraintType }) => tableName === 'account_export_audit' && constraintType === 'c',
+    );
+    expect(auditConstraint?.fragments).toEqual(
+      expect.arrayContaining([
+        'download_started',
+        'download_completed',
+        'download_interrupted',
+        'integrity_failed',
+        'expired',
+        'purged',
+      ]),
+    );
+  });
+
   it('requires the release migration and every runtime table', async () => {
     const query = vi
       .fn()

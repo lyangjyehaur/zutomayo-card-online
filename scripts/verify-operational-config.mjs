@@ -168,6 +168,28 @@ export function validateOperationalConfig() {
     'RelationshipChangeOutboxOldestRow',
     'RelationshipChangeOutboxDeadLetter',
     'RelationshipChangeOutboxMetricsStale',
+    'AccountExportOldestJob',
+    'AccountExportJobFailed',
+    'AccountExportPurgeDelayed',
+    'AccountExportPurgeRetrying',
+    'AccountExportOrphanCleanupFailed',
+    'AccountExportMetricsStale',
+  ]);
+  requireFragments('docs/DEPLOYMENT.md', [
+    'ACCOUNT_EXPORT_STORAGE_MODE',
+    'ACCOUNT_EXPORT_S3_VERSIONING_MODE',
+    'ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED',
+    'Public Access Block',
+    's3:DeleteObjectVersion',
+    '000026_account_export_jobs',
+    '256 MiB',
+  ]);
+  requireFragments('docs/DATA_RETENTION.md', [
+    'account_export_jobs',
+    'account_export_audit',
+    'object_version_id',
+    '365 天',
+    'orphan',
   ]);
   requireFragments('observability/prometheus/alertmanager.yml', ['api_url_file: /etc/alertmanager/slack_webhook']);
   if (read('docker-compose.monitoring.yml').includes("content: '${SLACK_ALERT_WEBHOOK:-")) {

@@ -141,6 +141,12 @@ jobs:
           PLATFORM_SEAT_TOKEN_SECRET: cd-preflight-seat-token-secret-32chars-min
           ADMIN_TOTP_ENCRYPTION_KEY: cd-preflight-admin-totp-key-32chars-min
           OAUTH_TOKEN_ENCRYPTION_KEY: cd-preflight-oauth-token-key-32chars-min
+          ACCOUNT_EXPORT_S3_BUCKET: zutomayo-cd-account-exports
+          ACCOUNT_EXPORT_S3_REGION: us-east-1
+          ACCOUNT_EXPORT_S3_CREDENTIALS_MODE: default
+          ACCOUNT_EXPORT_S3_VERSIONING_MODE: disabled
+          ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true'
+          ACCOUNT_EXPORT_PSEUDONYM_KEY: cd-preflight-export-pseudonym-key-32chars-min
           OAUTH_PUBLIC_BASE_URL: https://game.example.invalid
           REDIS_PASSWORD: cd-preflight-redis-password
           METRICS_TOKEN: cd-preflight-metrics-token
