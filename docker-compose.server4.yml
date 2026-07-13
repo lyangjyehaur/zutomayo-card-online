@@ -18,7 +18,8 @@ services:
       - PG_WAL_PASSWORD=
       - PG_DATABASE=${PG_DATABASE:?Set PG_DATABASE in .env}
       - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
-      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-}
+      - PG_SSLROOTCERT=${PG_SSLROOTCERT:?Set PG_SSLROOTCERT to the mounted PostgreSQL CA}
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:?Set NODE_EXTRA_CA_CERTS to the mounted service CA}
       - PG_APP_USER=${PG_APP_USER:?Set PG_APP_USER in .env}
       - PG_API_USER=${PG_API_USER:?Set PG_API_USER in .env}
       - PG_GAME_USER=${PG_GAME_USER:?Set PG_GAME_USER in .env}
@@ -36,6 +37,8 @@ services:
     networks:
       - default
       - 1panel-network
+    volumes:
+      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
     restart: 'no'
 
   game:
@@ -63,7 +66,8 @@ services:
       - PG_WAL_PASSWORD=
       - PG_DATABASE=${PG_DATABASE:?Set PG_DATABASE in .env}
       - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
-      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-}
+      - PG_SSLROOTCERT=${PG_SSLROOTCERT:?Set PG_SSLROOTCERT to the mounted PostgreSQL CA}
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:?Set NODE_EXTRA_CA_CERTS to the mounted service CA}
       - REDIS_URL=${REDIS_URL:?Set REDIS_URL in .env}
       - REDIS_DB=${REDIS_DB:-0}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
@@ -93,6 +97,8 @@ services:
     networks:
       - default
       - 1panel-network
+    volumes:
+      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -129,7 +135,8 @@ services:
       - PG_WAL_PASSWORD=
       - PG_DATABASE=${PG_DATABASE:?Set PG_DATABASE in .env}
       - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
-      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-}
+      - PG_SSLROOTCERT=${PG_SSLROOTCERT:?Set PG_SSLROOTCERT to the mounted PostgreSQL CA}
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:?Set NODE_EXTRA_CA_CERTS to the mounted service CA}
       - REDIS_URL=${REDIS_URL:?Set REDIS_URL in .env}
       - REDIS_DB=${REDIS_DB:-0}
       - DATABASE_URL=
@@ -200,6 +207,8 @@ services:
     networks:
       - default
       - 1panel-network
+    volumes:
+      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -237,7 +246,8 @@ services:
       - PG_WAL_PASSWORD=
       - PG_DATABASE=${PG_DATABASE:?Set PG_DATABASE in .env}
       - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
-      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:-}
+      - PG_SSLROOTCERT=${PG_SSLROOTCERT:?Set PG_SSLROOTCERT to the mounted PostgreSQL CA}
+      - NODE_EXTRA_CA_CERTS=${NODE_EXTRA_CA_CERTS:?Set NODE_EXTRA_CA_CERTS to the mounted service CA}
       - REDIS_URL=${REDIS_URL:?Set REDIS_URL in .env}
       - REDIS_DB=${REDIS_DB:-0}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
@@ -274,6 +284,8 @@ services:
     networks:
       - default
       - 1panel-network
+    volumes:
+      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

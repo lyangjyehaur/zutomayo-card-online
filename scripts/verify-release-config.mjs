@@ -266,6 +266,12 @@ function assertProductionRuntimeInputs() {
   if (countFragment('docker-compose.server4.yml', 'PGSSLMODE=${PGSSLMODE:?') !== 4) {
     throw new Error('docker-compose.server4.yml must require an explicit PostgreSQL TLS mode for every DB client');
   }
+  if (countFragment('docker-compose.server4.yml', 'PG_SSLROOTCERT=${PG_SSLROOTCERT:?') !== 4) {
+    throw new Error('docker-compose.server4.yml must require a PostgreSQL CA path for every DB client');
+  }
+  if (countFragment('docker-compose.server4.yml', 'PG_CA_FILE:?') !== 4) {
+    throw new Error('docker-compose.server4.yml must mount the host service CA into every DB client');
+  }
   if (countFragment('docker-compose.staging.yml', 'PGSSLMODE=${PGSSLMODE:?') !== 4) {
     throw new Error('docker-compose.staging.yml must require an explicit PostgreSQL TLS mode for every DB client');
   }
@@ -290,6 +296,15 @@ function assertProductionRuntimeInputs() {
   const monitoring = read('docker-compose.monitoring.yml');
   if (!monitoring.includes('sslmode=${PG_MONITOR_SSLMODE:?') || monitoring.includes('sslmode=disable')) {
     throw new Error('monitoring PostgreSQL TLS mode must be explicit and must not default to disabled');
+  }
+  if (
+    !monitoring.includes('PG_MONITOR_DATABASE:?') ||
+    !monitoring.includes('PGSSLROOTCERT=${PG_SSLROOTCERT:?') ||
+    !monitoring.includes('--redis.addr=rediss://') ||
+    !monitoring.includes('--tls-ca-cert-file=') ||
+    !monitoring.includes('--skip-tls-verification=false')
+  ) {
+    throw new Error('monitoring database exporters must require explicit databases and trusted TLS CAs');
   }
   if (!monitoring.includes("content: '${METRICS_TOKEN:?")) {
     throw new Error('monitoring Compose must require the shared metrics token');
@@ -320,6 +335,9 @@ function assertProductionRuntimeInputs() {
   const retention = read('docker-compose.retention.yml');
   if (!retention.includes('PGSSLMODE: ${PG_RETENTION_SSLMODE:?')) {
     throw new Error('retention worker must require an explicit PostgreSQL TLS mode');
+  }
+  if (!retention.includes('PG_RETENTION_DATABASE:?') || !retention.includes('PG_CA_FILE:?')) {
+    throw new Error('retention worker must require an explicit database and mounted PostgreSQL CA');
   }
   if (!retention.includes('RETENTION_METRICS_GID:?')) {
     throw new Error('retention worker must declare its metrics group contract');

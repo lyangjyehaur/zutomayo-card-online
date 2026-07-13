@@ -99,12 +99,20 @@ export function validateOperationalConfig() {
   }
   requireFragments('docker-compose.monitoring.yml', [
     'PG_MONITOR_SSLMODE:?',
+    'PG_MONITOR_DATABASE:?',
+    'PGSSLROOTCERT=${PG_SSLROOTCERT:?',
+    '--redis.addr=rediss://',
+    '--tls-ca-cert-file=',
+    '--skip-tls-verification=false',
     'METRICS_TOKEN:?',
     'backup-metrics-exporter:',
   ]);
   requireFragments('docker-compose.retention.yml', [
     'PGSSLMODE:',
     'PG_HOST: ${PG_RETENTION_HOST:?',
+    'PG_RETENTION_DATABASE:?',
+    'PG_CA_FILE:?',
+    'PG_SSLROOTCERT:',
     'RETENTION_METRICS_FILE:',
   ]);
   requireFragments('scripts/run-retention.cjs', [

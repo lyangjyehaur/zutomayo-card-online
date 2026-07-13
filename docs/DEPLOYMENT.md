@@ -72,6 +72,9 @@ cp .env.example .env
 # - PG_BACKUP_USER / PG_BACKUP_PASSWORD
 # - PG_WAL_USER / PG_WAL_PASSWORD
 # - REDIS_PASSWORD (required in production)
+# - REDIS_URL=rediss://:<password>@redis:6380 (required in production)
+# - PG_CA_FILE (host path to the trusted PostgreSQL/Redis CA)
+# - PG_SSLROOTCERT and NODE_EXTRA_CA_CERTS=/run/secrets/zutomayo-service-ca.crt
 # - JWT_SECRET (generate with: openssl rand -hex 32)
 # Image digests and EXPECTED_SCHEMA_* come from the verified release manifest.
 ```
@@ -87,6 +90,7 @@ cp .env.example .env
 | `PG_USER`             | `PG_GAME_USER` in Compose           | GAME role with match-state and narrowly scoped user rating/auth column privileges.                                                                                                                      |
 | `PG_PASSWORD`         | `PG_GAME_PASSWORD` in Compose       | GAME-only runtime password; never use the migration-owner password here.                                                                                                                                |
 | `PG_DATABASE`         | `zutomayo`                          | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                                                                                                |
+| `PGSSLMODE`           | `verify-full` in production         | Server4 mounts `PG_CA_FILE`; `PG_SSLROOTCERT` points to `/run/secrets/zutomayo-service-ca.crt`.                                                                                                         |
 | `REDIS_URL`           | Compose-generated authenticated URL | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Production/staging require an authenticated TLS URL (`rediss://`); use `redis://localhost:6379` only for passwordless local dev. |
 | `REDIS_DB`            | `0`                                 | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                                        |
 | `ALLOWED_ORIGINS`     | empty                               | Comma-separated extra origins allowed by boardgame.io CORS.                                                                                                                                             |
@@ -127,6 +131,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `PG_USER`                               | `PG_API_USER` in Compose            | API data-plane role; it cannot perform DDL or modify migration history.                                                                                                                                        |
 | `PG_PASSWORD`                           | `PG_API_PASSWORD` in Compose        | API-only runtime password; never use the migration-owner password here.                                                                                                                                        |
 | `PG_DATABASE`                           | `zutomayo`                          | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                                                                          |
+| `PGSSLMODE`                             | `verify-full` in production         | The server4 Compose requires the mounted trusted CA and does not permit a plaintext fallback.                                                                                                                  |
 | `REDIS_URL`                             | Compose-generated authenticated URL | Redis connection URL for refresh rotation, the compatibility queue, and rate limits. Production/staging require an authenticated TLS URL (`rediss://`).                                                        |
 | `REDIS_DB`                              | `0`                                 | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                                               |
 | `JWT_SECRET`                            | **required**                        | HMAC key for signed user/admin tokens. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set a stable secret in production or all tokens become invalid when the API process restarts. |
@@ -668,7 +673,7 @@ Staging compose file: [docker-compose.staging.yml](../docker-compose.staging.yml
 
 | 項目           | Production (server4)             | Staging                                                                          |
 | -------------- | -------------------------------- | -------------------------------------------------------------------------------- |
-| DB 名稱        | `zutomayo`                       | 外部 `PG_DATABASE`（建議 `zutomayo_staging`）                                    |
+| DB 名稱        | `zutomayo_card`                  | 外部 `PG_DATABASE`（建議 `zutomayo_staging`）                                    |
 | Redis DB       | `0`                              | `3`                                                                              |
 | game port      | `3000`                           | `4000`                                                                           |
 | api port       | `3001`（expose）                 | `4001`                                                                           |
@@ -723,5 +728,6 @@ DEPLOY_HOST=<staging-host> GAME_PORT=4000 API_PORT=4001 PLATFORM_PORT=4002 \
 ### 注意事項
 
 - 首次部署若沒有 `.release.previous.env`，rollback 會拒絕執行。
+- 首次 immutable cutover 必須明確使用 `--bootstrap`，並保留人工回退方案；成功後後續部署才會有可驗證的 `.release.previous.env`。
 - Rollback 不執行 destructive down migration；schema 必須採 expand/contract，或先發布向後相容修復。
 - 每次 rollout/rollback 應保留 manifest、migration、操作者、時間與 smoke 結果。

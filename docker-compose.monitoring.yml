@@ -78,22 +78,29 @@ services:
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     environment:
-      - DATA_SOURCE_NAME=postgresql://${PG_MONITOR_USER:?Set PG_MONITOR_USER in your environment or .env file}:${PG_MONITOR_PASSWORD:?Set PG_MONITOR_PASSWORD in your environment or .env file}@${PG_MONITOR_HOST:?Set PG_MONITOR_HOST in your environment or .env file}:${PG_MONITOR_PORT:-5432}/${PG_MONITOR_DATABASE:-zutomayo}?sslmode=${PG_MONITOR_SSLMODE:?Set PG_MONITOR_SSLMODE explicitly (verify-full in production)}
+      - DATA_SOURCE_NAME=postgresql://${PG_MONITOR_USER:?Set PG_MONITOR_USER in your environment or .env file}:${PG_MONITOR_PASSWORD:?Set PG_MONITOR_PASSWORD in your environment or .env file}@${PG_MONITOR_HOST:?Set PG_MONITOR_HOST in your environment or .env file}:${PG_MONITOR_PORT:-5432}/${PG_MONITOR_DATABASE:?Set PG_MONITOR_DATABASE explicitly to the production database}?sslmode=${PG_MONITOR_SSLMODE:?Set PG_MONITOR_SSLMODE explicitly (verify-full in production)}
+      - PGSSLROOTCERT=${PG_SSLROOTCERT:?Set PG_SSLROOTCERT to the mounted PostgreSQL CA}
     ports:
       - '127.0.0.1:9187:9187'
     networks:
       - default
+    volumes:
+      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
     restart: unless-stopped
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.62.0
     command:
-      - '--redis.addr=redis:6379'
-      - '--redis.password=${REDIS_PASSWORD:-}'
+      - '--redis.addr=rediss://redis:6380'
+      - '--redis.password=${REDIS_PASSWORD:?Set REDIS_PASSWORD for Redis TLS monitoring}'
+      - '--tls-ca-cert-file=/run/secrets/zutomayo-service-ca.crt'
+      - '--skip-tls-verification=false'
     ports:
       - '127.0.0.1:9121:9121'
     networks:
       - default
+    volumes:
+      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted service CA}:/run/secrets/zutomayo-service-ca.crt:ro
     restart: unless-stopped
 
   backup-metrics-exporter:

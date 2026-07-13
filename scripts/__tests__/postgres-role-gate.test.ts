@@ -273,10 +273,14 @@ describe('PostgreSQL role provisioning contract', () => {
       expect(script).toContain(variable);
     }
     expect(script).toContain('--set=ON_ERROR_STOP=1');
+    expect(script).toContain('\\getenv migration_password PG_MIGRATION_PASSWORD');
     expect(script).toContain('\\getenv api_password PG_API_PASSWORD');
     expect(script).not.toContain('--set=api_password=');
     expect(script).toContain('PG_MIGRATION_USER="${PG_MIGRATION_USER:-$POSTGRES_USER}"');
     expect(script).toContain('--set=migration_user="$PG_MIGRATION_USER"');
+    expect(script).toContain('ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER');
+    expect(script).toContain('ALTER DATABASE %I OWNER TO %I');
+    expect(script).toContain('ALTER TABLE %I.%I OWNER TO %I');
     expect(script).toMatch(/<<'SQL'\n(?:\\getenv[^\n]+\n)+BEGIN;[\s\S]+COMMIT;\nSQL/);
     expect(script).toContain("CASE WHEN replication THEN 'REPLICATION' ELSE 'NOREPLICATION' END");
     expect(script).toContain("CASE WHEN replication THEN 'NOINHERIT' ELSE 'INHERIT' END");
@@ -288,6 +292,7 @@ describe('PostgreSQL role provisioning contract', () => {
       ...process.env,
       POSTGRES_USER: 'z_bootstrap',
       PG_MIGRATION_USER: 'z_migrator',
+      PG_MIGRATION_PASSWORD: 'migration-secret',
       POSTGRES_DB: 'zutomayo',
       REQUIRE_DISTINCT_DB_ROLES: 'true',
       PG_API_USER: 'z_api',

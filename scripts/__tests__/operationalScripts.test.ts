@@ -64,8 +64,8 @@ describe('operational shell scripts', () => {
   it('gates the rendered production role/TLS environment before migration', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
     expect(deploy).toContain('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS');
-    expect(deploy).toContain("ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full'");
-    expect(deploy).toContain("ROLE_ENV_VALIDATOR_ARGS+=' --require-rediss'");
+    expect(deploy).toContain("ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full --require-rediss'");
+    expect(deploy).toContain('--bootstrap');
   });
 
   it('rejects an unknown migration subcommand instead of defaulting to up', () => {

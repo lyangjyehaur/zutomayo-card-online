@@ -4,6 +4,7 @@
 #
 # Usage:
 #   ./scripts/deploy-server4.sh --manifest .release.env --confirm
+#   ./scripts/deploy-server4.sh --manifest .release.env --bootstrap --confirm
 #   ./scripts/deploy-server4.sh --rollback --confirm
 #   ./scripts/deploy-server4.sh --manifest .release.env --dry-run
 
@@ -31,10 +32,8 @@ MANIFEST_FILE="${RELEASE_MANIFEST:-$PROJECT_DIR/.release.env}"
 CONFIRM=false
 DRY_RUN=false
 ROLLBACK=false
-ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full'
-if [[ "$COMPOSE_FILE" == 'docker-compose.staging.yml' ]]; then
-  ROLE_ENV_VALIDATOR_ARGS+=' --require-rediss'
-fi
+BOOTSTRAP=false
+ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full --require-rediss'
 
 usage() {
   sed -n '2,10p' "$0"
@@ -51,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --confirm) CONFIRM=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --rollback) ROLLBACK=true; shift ;;
+    --bootstrap) BOOTSTRAP=true; shift ;;
     -h|--help) usage ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -253,18 +253,34 @@ fi
 
 ssh_run 'echo connected' >/dev/null || die 'SSH connection failed'
 ssh_run "test -d '$REMOTE_DIR' && test -f '$REMOTE_DIR/.env'" || die 'remote deployment directory or .env is missing'
+if ssh_run "test -s '$REMOTE_DIR/.release.previous.env' && test -s '$REMOTE_DIR/$RETENTION_COMPOSE_FILE.previous'"; then
+  HAS_PREVIOUS=true
+else
+  HAS_PREVIOUS=false
+fi
+if [[ "$HAS_PREVIOUS" != true && "$BOOTSTRAP" != true ]]; then
+  die 'no verified previous release is present; use --bootstrap for the one-time cutover with a manual rollback plan'
+fi
 copy_release_files "$MANIFEST_FILE"
 if ! remote_deploy; then
-  log 'remote deployment failed; restoring previous verified release'
-  if ! rollback_and_smoke; then
-    log 'rollback verification failed; manual intervention is required'
+  if [[ "$HAS_PREVIOUS" == true ]]; then
+    log 'remote deployment failed; restoring previous verified release'
+    if ! rollback_and_smoke; then
+      log 'rollback verification failed; manual intervention is required'
+    fi
+  else
+    log 'bootstrap deployment failed; no automatic rollback is available, manual intervention is required'
   fi
   exit 1
 fi
 if ! run_smoke; then
-  log 'deployment smoke failed; restoring previous verified release'
-  if ! rollback_and_smoke; then
-    log 'rollback verification failed; manual intervention is required'
+  if [[ "$HAS_PREVIOUS" == true ]]; then
+    log 'deployment smoke failed; restoring previous verified release'
+    if ! rollback_and_smoke; then
+      log 'rollback verification failed; manual intervention is required'
+    fi
+  else
+    log 'bootstrap smoke failed; no automatic rollback is available, manual intervention is required'
   fi
   exit 1
 fi

@@ -8,6 +8,14 @@ set -euo pipefail
 : "${POSTGRES_USER:?POSTGRES_USER must be set to the bootstrap administrator}"
 : "${POSTGRES_DB:?POSTGRES_DB must be set}"
 PG_MIGRATION_USER="${PG_MIGRATION_USER:-$POSTGRES_USER}"
+PG_MIGRATION_PASSWORD="${PG_MIGRATION_PASSWORD:-${POSTGRES_PASSWORD:-}}"
+if [[ "$PG_MIGRATION_USER" != "$POSTGRES_USER" ]]; then
+  : "${PG_MIGRATION_PASSWORD:?PG_MIGRATION_PASSWORD must be set for a dedicated migration role}"
+fi
+if [[ "${REQUIRE_DISTINCT_DB_ROLES:-false}" == 'true' && "$PG_MIGRATION_USER" == "$POSTGRES_USER" ]]; then
+  echo 'production PG_MIGRATION_USER must differ from the bootstrap administrator' >&2
+  exit 2
+fi
 
 legacy_app_user="${PG_APP_USER:-}"
 legacy_app_password="${PG_APP_PASSWORD:-}"
@@ -54,12 +62,15 @@ role_passwords=(
 )
 role_kinds=(api game platform retention monitor backup wal)
 export PG_API_PASSWORD PG_GAME_PASSWORD PG_PLATFORM_PASSWORD PG_RETENTION_PASSWORD
-export PG_MONITOR_PASSWORD PG_BACKUP_PASSWORD PG_WAL_PASSWORD
+export PG_MONITOR_PASSWORD PG_BACKUP_PASSWORD PG_WAL_PASSWORD PG_MIGRATION_PASSWORD
 
 seen_role_names=()
 seen_role_passwords=()
 seen_role_kinds=()
 distinct_role_passwords=()
+if [[ "${REQUIRE_DISTINCT_DB_ROLES:-false}" == 'true' && -n "$PG_MIGRATION_PASSWORD" ]]; then
+  distinct_role_passwords+=("$PG_MIGRATION_PASSWORD")
+fi
 for index in "${!role_names[@]}"; do
   role_name="${role_names[$index]}"
   role_password="${role_passwords[$index]}"
@@ -125,6 +136,7 @@ psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
   --set=backup_user="$PG_BACKUP_USER" \
   --set=wal_user="$PG_WAL_USER" \
   --set=migration_user="$PG_MIGRATION_USER" <<'SQL'
+\getenv migration_password PG_MIGRATION_PASSWORD
 \getenv api_password PG_API_PASSWORD
 \getenv game_password PG_GAME_PASSWORD
 \getenv platform_password PG_PLATFORM_PASSWORD
@@ -133,6 +145,57 @@ psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
 \getenv backup_password PG_BACKUP_PASSWORD
 \getenv wal_password PG_WAL_PASSWORD
 BEGIN;
+
+SELECT format('CREATE ROLE %I', :'migration_user')
+ WHERE :'migration_user' <> current_user
+   AND NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'migration_user')
+\gexec
+SELECT format(
+  'ALTER ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT NOBYPASSRLS',
+  :'migration_user',
+  :'migration_password'
+)
+ WHERE :'migration_user' <> current_user
+\gexec
+
+SELECT format('ALTER DATABASE %I OWNER TO %I', current_database(), :'migration_user')
+ WHERE :'migration_user' <> current_user
+\gexec
+SELECT format('ALTER SCHEMA public OWNER TO %I', :'migration_user')
+ WHERE :'migration_user' <> current_user
+\gexec
+SELECT format('ALTER TABLE %I.%I OWNER TO %I', namespace.nspname, relation.relname, :'migration_user')
+ FROM pg_class relation
+  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+ WHERE namespace.nspname = 'public'
+   AND relation.relkind IN ('r', 'p', 'f')
+   AND relation.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+   AND :'migration_user' <> current_user
+\gexec
+SELECT format('ALTER VIEW %I.%I OWNER TO %I', namespace.nspname, relation.relname, :'migration_user')
+  FROM pg_class relation
+  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+ WHERE namespace.nspname = 'public'
+   AND relation.relkind = 'v'
+   AND relation.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+   AND :'migration_user' <> current_user
+\gexec
+SELECT format('ALTER MATERIALIZED VIEW %I.%I OWNER TO %I', namespace.nspname, relation.relname, :'migration_user')
+  FROM pg_class relation
+  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+ WHERE namespace.nspname = 'public'
+   AND relation.relkind = 'm'
+   AND relation.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+   AND :'migration_user' <> current_user
+\gexec
+SELECT format('ALTER SEQUENCE %I.%I OWNER TO %I', namespace.nspname, relation.relname, :'migration_user')
+  FROM pg_class relation
+  JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+ WHERE namespace.nspname = 'public'
+   AND relation.relkind = 'S'
+   AND relation.relowner = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+   AND :'migration_user' <> current_user
+\gexec
 
 CREATE TEMP TABLE bootstrap_roles (
   role_name text PRIMARY KEY,
