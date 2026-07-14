@@ -28,13 +28,16 @@ export function validateOperationalConfig() {
     'scripts/pg-base-backup.sh',
     'scripts/pg-wal-archive.sh',
     'scripts/pg-wal-restore.sh',
+    'scripts/pg-wal-operational-smoke.sh',
     'scripts/pg-restore-drill.sh',
+    'scripts/pg-pitr-drill.sh',
   ];
   for (const relativePath of backupScripts) assertExecutable(relativePath);
   requireFragments('scripts/pg-backup.sh', [
     'PG_BACKUP_OFFSITE_URI',
     'PG_BACKUP_AGE_RECIPIENT',
     'pg_restore --list',
+    'recovery-point-at=',
     'pg_backup_last_success_unixtime_seconds',
   ]);
   requireFragments('scripts/pg-base-backup.sh', [
@@ -44,11 +47,40 @@ export function validateOperationalConfig() {
   ]);
   requireFragments('scripts/pg-wal-archive.sh', ['PG_WAL_OFFSITE_URI', 'pg_wal_archive_last_success_unixtime_seconds']);
   requireFragments('scripts/pg-wal-restore.sh', ['sha256', 'age --decrypt']);
+  requireFragments('scripts/pg-wal-operational-smoke.sh', [
+    'zutomayo_ops.switch_wal',
+    'FROM pg_stat_archiver',
+    'FROM pg_stat_ssl',
+    'verify-full',
+    'PG_WAL_RESTORE_COMMAND',
+    'pg_waldump',
+    'zutomayo-pg-wal-operational-smoke',
+  ]);
   requireFragments('scripts/pg-backup.sh', ['PG_BACKUP_USER', 'PG_BACKUP_PASSWORD']);
   requireFragments('scripts/pg-base-backup.sh', ['PG_WAL_USER', 'PG_WAL_PASSWORD']);
   requireFragments('scripts/pg-restore-drill.sh', [
     'PG_RESTORE_DRILL_IMAGE',
     '@sha256:',
+    'RELEASE_SHA',
+    'EXPECTED_SCHEMA_MIGRATION',
+    'EXPECTED_SCHEMA_CHECKSUM',
+    'PG_RESTORE_DRILL_OBJECT_VERSION_ID',
+    'PG_RESTORE_DRILL_CHECKSUM_VERSION_ID',
+    'MIGRATE_IMAGE',
+    's3api get-object',
+    '.VersionId == $versionId',
+    'recovery-point-at',
+    'objectLastModifiedAt',
+    'zutomayo-encrypted-offsite-restore-raw',
+    'coreDataInvariantPassed',
+    'observations:',
+    'schemaMigrations:',
+    'expectedSchemaBinding:',
+    'users:',
+    'cards:',
+    'matches:',
+    'relationshipChangeOutbox:',
+    'legalHolds:',
     'pg_restore',
     'pg_restore_drill_success',
     'unvalidated_constraints',
@@ -56,6 +88,23 @@ export function validateOperationalConfig() {
     'deletion_hold_violations',
     'deleted_social_violations',
   ]);
+  requireFragments('scripts/pg-pitr-drill.sh', [
+    'PG_PITR_DRILL_MIGRATE_IMAGE',
+    'pull --quiet migrate',
+    'PITR artifact directory already exists',
+    'mkdir -m 0700',
+    'checks?.migrateImage === process.env.PG_PITR_DRILL_MIGRATE_IMAGE',
+  ]);
+  requireFragments('docker-compose.pitr-drill.yml', [
+    'artifact-init:',
+    'chmod 0770 /artifacts',
+    'PG_PITR_ARTIFACT_GID',
+    'PG_PITR_DRILL_MIGRATE_IMAGE',
+    'user: postgres',
+  ]);
+  if (/\bchmod\s+0?777\b/.test(read('docker-compose.pitr-drill.yml'))) {
+    throw new Error('PITR artifact directory must not be world-writable');
+  }
 
   for (const timer of ['ops/systemd/zutomayo-pg-backup.timer', 'ops/systemd/zutomayo-pg-base-backup.timer']) {
     requireFragments(timer, ['Persistent=true', 'OnCalendar=', 'Unit=']);

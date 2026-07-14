@@ -23,7 +23,8 @@ def role_passwords:
     "PG_RETENTION_PASSWORD",
     "PG_MONITOR_PASSWORD",
     "PG_BACKUP_PASSWORD",
-    "PG_WAL_PASSWORD"
+    "PG_WAL_PASSWORD",
+    "PG_WAL_OPERATOR_PASSWORD"
   ];
 
 def api_owned_secrets:

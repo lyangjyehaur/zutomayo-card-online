@@ -5,6 +5,18 @@ import { pathToFileURL } from 'node:url';
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 
+export const SERVER4_CANARY_POLICY = Object.freeze({
+  requiredStages: 3,
+  stageWeights: Object.freeze([10, 50, 100]),
+  maxRollbackSeconds: 300,
+  maxRollbackObservationDelaySeconds: 60,
+  maxRollbackObservationSeconds: 600,
+  minStageDwellSeconds: 300,
+  minHttpSamplesPerStage: 1_000,
+  minWebsocketSamplesPerStage: 100,
+  minReadyReplicaCount: 2,
+});
+
 function parseCsvLine(line) {
   const values = [];
   let value = '';
@@ -111,6 +123,19 @@ function rollbackDurationSeconds(startedAt, finishedAt) {
   return (finished - started) / 1_000;
 }
 
+function observationDurationSeconds(startedAt, finishedAt) {
+  if (typeof startedAt !== 'string' || typeof finishedAt !== 'string') {
+    throw new Error('rollout policy requires observationStartedAt and observationFinishedAt ISO timestamps');
+  }
+  const started = Date.parse(startedAt);
+  const finished = Date.parse(finishedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(finished)) {
+    throw new Error('observationStartedAt and observationFinishedAt must be ISO timestamps');
+  }
+  if (finished <= started) throw new Error('observationFinishedAt must be after observationStartedAt');
+  return (finished - started) / 1_000;
+}
+
 export function collectServer4CanaryMetrics({
   gatewayArtifact,
   activeConfigMarker,
@@ -118,6 +143,8 @@ export function collectServer4CanaryMetrics({
   endStatsCsv,
   rollbackStartedAt,
   rollbackFinishedAt,
+  observationStartedAt,
+  observationFinishedAt,
 }) {
   const gateway = plainObject(gatewayArtifact, 'gatewayArtifact');
   if (gateway.schemaVersion !== 1 || gateway.artifactType !== 'zutomayo-canary-gateway-config') {
@@ -176,10 +203,53 @@ export function collectServer4CanaryMetrics({
   };
   if (gateway.phase === 'rollback') {
     metrics.rollbackSeconds = rollbackDurationSeconds(rollbackStartedAt, rollbackFinishedAt);
+    metrics.observation = {
+      startedAt: observationStartedAt,
+      finishedAt: observationFinishedAt,
+      dwellSeconds: observationDurationSeconds(observationStartedAt, observationFinishedAt),
+    };
   } else if (rollbackStartedAt !== undefined || rollbackFinishedAt !== undefined) {
     throw new Error('rollback timestamps are only valid for rollback metrics');
   }
   return metrics;
+}
+
+export function verifyServer4CanaryStage({ observationStartedAt, observationFinishedAt, ...input }) {
+  const metrics = collectServer4CanaryMetrics(input);
+  const stageIndex = SERVER4_CANARY_POLICY.stageWeights.indexOf(metrics.candidateWeightPercent);
+  if (metrics.phase !== 'rollout' || stageIndex === -1) {
+    throw new Error('rollout policy can only verify a 10%, 50%, or 100% rollout stage');
+  }
+  if (metrics.sequence !== stageIndex + 1 || metrics.stableWeightPercent !== 100 - metrics.candidateWeightPercent) {
+    throw new Error('rollout policy requires the canonical stage sequence and stable/candidate weights');
+  }
+  const dwellSeconds = observationDurationSeconds(observationStartedAt, observationFinishedAt);
+  const failures = [];
+  if (dwellSeconds < SERVER4_CANARY_POLICY.minStageDwellSeconds) {
+    failures.push(`dwell ${dwellSeconds}s < ${SERVER4_CANARY_POLICY.minStageDwellSeconds}s`);
+  }
+  if (metrics.httpSamples < SERVER4_CANARY_POLICY.minHttpSamplesPerStage) {
+    failures.push(`HTTP samples ${metrics.httpSamples} < ${SERVER4_CANARY_POLICY.minHttpSamplesPerStage}`);
+  }
+  if (metrics.websocketSamples < SERVER4_CANARY_POLICY.minWebsocketSamplesPerStage) {
+    failures.push(
+      `WebSocket samples ${metrics.websocketSamples} < ${SERVER4_CANARY_POLICY.minWebsocketSamplesPerStage}`,
+    );
+  }
+  if (metrics.readyReplicaCount < SERVER4_CANARY_POLICY.minReadyReplicaCount) {
+    failures.push(`ready replicas ${metrics.readyReplicaCount} < ${SERVER4_CANARY_POLICY.minReadyReplicaCount}`);
+  }
+  if (failures.length > 0) throw new Error(`canary stage policy failed: ${failures.join('; ')}`);
+  return {
+    ...metrics,
+    observation: {
+      startedAt: observationStartedAt,
+      finishedAt: observationFinishedAt,
+      dwellSeconds,
+    },
+    policy: SERVER4_CANARY_POLICY,
+    policyPassed: true,
+  };
 }
 
 function parseArguments(argv) {
@@ -187,6 +257,10 @@ function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--help') return { help: true };
+    if (argument === '--enforce-rollout-policy') {
+      options.enforceRolloutPolicy = true;
+      continue;
+    }
     const value = argv[index + 1];
     if (!value || value.startsWith('--')) throw new Error(`${argument} requires a value`);
     index += 1;
@@ -197,17 +271,29 @@ function parseArguments(argv) {
     else if (argument === '--output') options.output = path.resolve(process.cwd(), value);
     else if (argument === '--rollback-started-at') options.rollbackStartedAt = value;
     else if (argument === '--rollback-finished-at') options.rollbackFinishedAt = value;
-    else throw new Error(`unknown argument: ${argument}`);
+    else if (argument === '--observation-started-at-file') {
+      options.observationStartedAtFile = path.resolve(process.cwd(), value);
+    } else if (argument === '--observation-finished-at-file') {
+      options.observationFinishedAtFile = path.resolve(process.cwd(), value);
+    } else throw new Error(`unknown argument: ${argument}`);
   }
   for (const name of ['gatewayArtifact', 'activeMarker', 'startStats', 'endStats', 'output']) {
     if (!options[name])
       throw new Error(`--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)} is required`);
   }
+  if (options.enforceRolloutPolicy && (!options.observationStartedAtFile || !options.observationFinishedAtFile)) {
+    throw new Error(
+      '--enforce-rollout-policy requires --observation-started-at-file and --observation-finished-at-file',
+    );
+  }
+  if (Boolean(options.observationStartedAtFile) !== Boolean(options.observationFinishedAtFile)) {
+    throw new Error('--observation-started-at-file and --observation-finished-at-file must be provided together');
+  }
   return options;
 }
 
 function usage() {
-  return 'Usage: node scripts/collect-server4-canary-metrics.mjs --gateway-artifact FILE --active-marker FILE --start-stats FILE --end-stats FILE --output FILE [--rollback-started-at ISO --rollback-finished-at ISO]';
+  return 'Usage: node scripts/collect-server4-canary-metrics.mjs --gateway-artifact FILE --active-marker FILE --start-stats FILE --end-stats FILE --output FILE [--rollback-started-at ISO --rollback-finished-at ISO] [--enforce-rollout-policy --observation-started-at-file FILE --observation-finished-at-file FILE]';
 }
 
 function main(argv) {
@@ -217,14 +303,27 @@ function main(argv) {
     return;
   }
   const gatewayArtifactContents = readFileSync(options.gatewayArtifact, 'utf8');
-  const artifact = collectServer4CanaryMetrics({
+  const input = {
     gatewayArtifact: JSON.parse(gatewayArtifactContents),
     activeConfigMarker: readFileSync(options.activeMarker, 'utf8'),
     startStatsCsv: readFileSync(options.startStats, 'utf8'),
     endStatsCsv: readFileSync(options.endStats, 'utf8'),
     rollbackStartedAt: options.rollbackStartedAt,
     rollbackFinishedAt: options.rollbackFinishedAt,
-  });
+    observationStartedAt: options.observationStartedAtFile
+      ? readFileSync(options.observationStartedAtFile, 'utf8').trim()
+      : undefined,
+    observationFinishedAt: options.observationFinishedAtFile
+      ? readFileSync(options.observationFinishedAtFile, 'utf8').trim()
+      : undefined,
+  };
+  const artifact = options.enforceRolloutPolicy
+    ? verifyServer4CanaryStage({
+        ...input,
+        observationStartedAt: input.observationStartedAt,
+        observationFinishedAt: input.observationFinishedAt,
+      })
+    : collectServer4CanaryMetrics(input);
   // Hash the exact on-disk artifact bytes expected by release-gate rather than
   // relying on JSON key ordering chosen by an upstream producer.
   artifact.gatewayConfigSha256 = sha256(gatewayArtifactContents);

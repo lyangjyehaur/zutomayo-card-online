@@ -4,9 +4,9 @@
 # Or standalone (requires the app network to exist):
 #   docker compose -f docker-compose.monitoring.yml up -d
 #
-# This joins the app's default network so Prometheus and exporters can reach
-# game/api/platform/postgres/redis by service name. Adjust APP_NETWORK if your
-# compose project name differs from the default.
+# This joins the app's default network for legacy service names and the release
+# edge network for blue/green slot discovery. Adjust APP_NETWORK or
+# GATEWAY_EDGE_NETWORK if the corresponding external network name differs.
 #
 # Grafana is exposed on host port 3003 (avoids conflict with game:3000, api:3001).
 
@@ -35,6 +35,7 @@ services:
       - ./observability/prometheus/blackbox.yml:/etc/blackbox/blackbox.yml:ro
     networks:
       - default
+      - release-edge
     restart: unless-stopped
 
   prometheus:
@@ -50,6 +51,7 @@ services:
       - '127.0.0.1:9090:9090'
     networks:
       - default
+      - release-edge
     restart: unless-stopped
     depends_on:
       - alertmanager
@@ -146,3 +148,6 @@ networks:
   default:
     external: true
     name: ${APP_NETWORK:-zutomayo-card-online_default}
+  release-edge:
+    external: true
+    name: ${GATEWAY_EDGE_NETWORK:-zutomayo-release-edge}

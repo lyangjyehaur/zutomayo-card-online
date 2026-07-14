@@ -49,12 +49,14 @@ services:
   game:
     build:
       args:
-        VITE_PLATFORM_URL: ws://platform:3002
+        VITE_PLATFORM_URL: ws://platform.e2e.test:3002
     environment:
       - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
-      - ALLOWED_ORIGINS=http://game:3000
+      - ALLOWED_ORIGINS=http://game.e2e.test:3000
+      - RANKED_MATCHES_ENABLED=true
+      - GAME_BACKGROUND_WORKERS_ENABLED=true
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +66,10 @@ services:
         condition: service_completed_successfully
       seed:
         condition: service_completed_successfully
+    networks:
+      default:
+        aliases:
+          - game.e2e.test
 
   api:
     environment:
@@ -71,6 +77,11 @@ services:
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
       - ACCOUNT_EXPORT_STORAGE_MODE=disabled
+      - AUTH_COOKIE_DOMAIN=.e2e.test
+      - RANKED_MATCHES_ENABLED=true
+      - RATE_LIMIT_AUTH=1000
+      - RATE_LIMIT_DEFAULT=10000
+      - RATE_LIMIT_UPLOAD=1000
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,7 +97,12 @@ services:
       - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
-      - ALLOWED_ORIGINS=http://game:3000
+      - ALLOWED_ORIGINS=http://game.e2e.test:3000
+      - PLATFORM_PUBLIC_ADDRESS=ws://platform.e2e.test:3002
+    networks:
+      default:
+        aliases:
+          - platform.e2e.test
 
   e2e:
     build:
@@ -94,7 +110,11 @@ services:
       dockerfile: Dockerfile.e2e
     command: ['npx', 'playwright', 'test']
     environment:
-      - E2E_BASE_URL=http://game:3000
+      - E2E_BASE_URL=http://game.e2e.test:3000
+      - E2E_PLATFORM_URL=ws://platform.e2e.test:3002
+      - E2E_PLATFORM_COOKIE_SHARED=1
+      - E2E_AUTHENTICATED_MULTIPLAYER=1
+      - E2E_RANKED_MATCHES_ENABLED=1
       - CI=true
     depends_on:
       game:

@@ -1247,6 +1247,11 @@ describe('chat service', () => {
       'u_1',
       'chat_msg_1',
     ]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM chat_conversations'), [
+      'match:bgio-match-1',
+      'u_1',
+      'chat_msg_1',
+    ]);
   });
 
   it('lists unread chat summaries across conversations', async () => {

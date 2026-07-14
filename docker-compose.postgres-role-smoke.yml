@@ -1,0 +1,83 @@
+x-postgres-role-tls-smoke: &postgres-role-tls-smoke
+  image: ${MIGRATE_IMAGE:?Set MIGRATE_IMAGE to a verified immutable @sha256 digest}
+  profiles: [postgres-role-tls-smoke]
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=16777216,mode=0700,uid=1000,gid=1000
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  networks:
+    - 1panel-network
+  volumes:
+    - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
+  restart: 'no'
+
+x-postgres-role-tls-environment: &postgres-role-tls-environment
+  NODE_ENV: production
+  DATABASE_URL: ''
+  PG_HOST: ${PG_DEPLOY_GATE_HOST:-postgresql}
+  PG_PORT: ${PG_DEPLOY_GATE_PORT:-5432}
+  PG_DATABASE: ${PG_DATABASE:?Set PG_DATABASE in .env}
+  PGSSLMODE: ${PGSSLMODE:?Set PGSSLMODE=verify-full for production PostgreSQL}
+  PG_SSLROOTCERT: ${PG_SSLROOTCERT:?Set PG_SSLROOTCERT to the mounted PostgreSQL CA}
+  NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS:?Set NODE_EXTRA_CA_CERTS to the mounted service CA}
+
+services:
+  postgres-role-tls-api:
+    <<: *postgres-role-tls-smoke
+    command: ['node', 'scripts/postgres-role-tls-smoke.cjs', '--role=api']
+    environment:
+      <<: *postgres-role-tls-environment
+      PG_USER: ${PG_API_USER:?Set PG_API_USER in .env}
+      PG_PASSWORD: ${PG_API_PASSWORD:?Set PG_API_PASSWORD in .env}
+      PG_API_USER: ${PG_API_USER:?Set PG_API_USER in .env}
+
+  postgres-role-tls-game:
+    <<: *postgres-role-tls-smoke
+    command: ['node', 'scripts/postgres-role-tls-smoke.cjs', '--role=game']
+    environment:
+      <<: *postgres-role-tls-environment
+      PG_USER: ${PG_GAME_USER:?Set PG_GAME_USER in .env}
+      PG_PASSWORD: ${PG_GAME_PASSWORD:?Set PG_GAME_PASSWORD in .env}
+      PG_GAME_USER: ${PG_GAME_USER:?Set PG_GAME_USER in .env}
+
+  postgres-role-tls-platform:
+    <<: *postgres-role-tls-smoke
+    command: ['node', 'scripts/postgres-role-tls-smoke.cjs', '--role=platform']
+    environment:
+      <<: *postgres-role-tls-environment
+      PG_USER: ${PG_PLATFORM_USER:?Set PG_PLATFORM_USER in .env}
+      PG_PASSWORD: ${PG_PLATFORM_PASSWORD:?Set PG_PLATFORM_PASSWORD in .env}
+      PG_PLATFORM_USER: ${PG_PLATFORM_USER:?Set PG_PLATFORM_USER in .env}
+
+  postgres-role-tls-retention:
+    <<: *postgres-role-tls-smoke
+    command: ['node', 'scripts/postgres-role-tls-smoke.cjs', '--role=retention']
+    environment:
+      <<: *postgres-role-tls-environment
+      PG_USER: ${PG_RETENTION_USER:?Set PG_RETENTION_USER in .env}
+      PG_PASSWORD: ${PG_RETENTION_PASSWORD:?Set PG_RETENTION_PASSWORD in .env}
+      PG_RETENTION_USER: ${PG_RETENTION_USER:?Set PG_RETENTION_USER in .env}
+
+  postgres-role-tls-monitor:
+    <<: *postgres-role-tls-smoke
+    command: ['node', 'scripts/postgres-role-tls-smoke.cjs', '--role=monitor']
+    environment:
+      <<: *postgres-role-tls-environment
+      PG_USER: ${PG_MONITOR_USER:?Set PG_MONITOR_USER in .env}
+      PG_PASSWORD: ${PG_MONITOR_PASSWORD:?Set PG_MONITOR_PASSWORD in .env}
+      PG_MONITOR_USER: ${PG_MONITOR_USER:?Set PG_MONITOR_USER in .env}
+
+  postgres-role-tls-backup:
+    <<: *postgres-role-tls-smoke
+    command: ['node', 'scripts/postgres-role-tls-smoke.cjs', '--role=backup']
+    environment:
+      <<: *postgres-role-tls-environment
+      PG_USER: ${PG_BACKUP_USER:?Set PG_BACKUP_USER in .env}
+      PG_PASSWORD: ${PG_BACKUP_PASSWORD:?Set PG_BACKUP_PASSWORD in .env}
+      PG_BACKUP_USER: ${PG_BACKUP_USER:?Set PG_BACKUP_USER in .env}
+
+networks:
+  1panel-network:
+    external: true

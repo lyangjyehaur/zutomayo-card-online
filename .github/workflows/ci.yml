@@ -52,6 +52,15 @@ jobs:
           PG_BACKUP_PASSWORD: e2e-test-backup-password
           PG_WAL_USER: zutomayo_wal
           PG_WAL_PASSWORD: e2e-test-wal-password
+          PG_WAL_OPERATOR_USER: zutomayo_wal_operator
+          PG_WAL_OPERATOR_PASSWORD: e2e-test-wal-operator-password
+          PG_WAL_OPERATOR_DATABASE: zutomayo
+          PG_WAL_OPERATOR_PGPASS_FILE: /tmp/postgres-operator.pgpass
+          PG_WAL_AGE_IDENTITY_FILE: /tmp/wal-age-identity
+          PG_WAL_S3_CREDENTIALS_FILE: /tmp/wal-s3-credentials
+          PG_WAL_OFFSITE_URI: s3://zutomayo-ci-wal
+          PG_WAL_S3_REGION: us-east-1
+          POSTGRES_OPS_SECRETS_GID: '992'
           PG_HOST: staging-postgres.example.internal
           PG_DATABASE: zutomayo
           PG_CA_FILE: /tmp/zutomayo-service-ca.crt
@@ -89,6 +98,7 @@ jobs:
           MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
           RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
           GATEWAY_IMAGE: ghcr.io/example/gateway@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          OPS_IMAGE: ghcr.io/example/ops@sha256:0000000000000000000000000000000000000000000000000000000000000000
           COLYSEUS_REDIS_IMAGE: redis@sha256:0000000000000000000000000000000000000000000000000000000000000000
           COLYSEUS_REDIS_PASSWORD: ci-colyseus-redis-password
           FEEDBACK_UPLOADS_VOLUME: zutomayo-ci-feedback-uploads
@@ -111,6 +121,8 @@ jobs:
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4-gateway.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.postgres-ops.yml --profile postgres-ops config --quiet
+          docker compose -f docker-compose.postgres-role-smoke.yml config --no-interpolate --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss

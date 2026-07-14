@@ -32,10 +32,13 @@ FEEDBACK_UPLOADS_VOLUME_DEFAULT="${FEEDBACK_UPLOADS_VOLUME_DEFAULT:-zutomayo-fee
 SLOT_COMPOSE_FILE="docker-compose.server4-slot.yml"
 GATEWAY_COMPOSE_FILE="docker-compose.server4-gateway.yml"
 RETENTION_COMPOSE_FILE="docker-compose.retention.yml"
+ROLE_TLS_SMOKE_COMPOSE_FILE="docker-compose.postgres-role-smoke.yml"
+POSTGRES_OPS_COMPOSE_FILE="docker-compose.postgres-ops.yml"
 RETENTION_SERVICE_GROUP="${RETENTION_SERVICE_GROUP:-zutomayo-retention}"
 MANAGED_MARKER=".zutomayo-parallel-runtime-v1"
 REMOTE_LOCK_FILE="${REMOTE_DIR}.deploy.lock"
 GATEWAY_ACTIVE_STATE="gateway-active.json"
+GATEWAY_OBSERVATION_STATE="gateway-observation.json"
 VERIFY_RELEASE_ARTIFACTS="${VERIFY_RELEASE_ARTIFACTS:-true}"
 PG_SLOT_WEB_CONNECTION_BUDGET="${PG_SLOT_WEB_CONNECTION_BUDGET:-20}"
 PG_SLOT_CONNECTION_BUDGET="${PG_SLOT_CONNECTION_BUDGET:-25}"
@@ -60,6 +63,7 @@ WEIGHT=''
 MANIFEST_FILE=''
 STABLE_MANIFEST_FILE=''
 CANDIDATE_MANIFEST_FILE=''
+MANIFEST_FORMAT=''
 
 usage() {
   sed -n '2,18p' "$0"
@@ -144,7 +148,7 @@ other_slot() {
 }
 
 validate_manifest() {
-  local file="$1" key value app
+  local file="$1" allow_legacy_six="${2:-false}" key value app ops_seen=false seen_keys='|'
   [[ -f "$file" ]] || die "release manifest not found: $file"
   RELEASE_SHA=''
   APP_VERSION=''
@@ -157,12 +161,15 @@ validate_manifest() {
   MIGRATE_IMAGE=''
   RETENTION_IMAGE=''
   GATEWAY_IMAGE=''
+  OPS_IMAGE=''
   while IFS='=' read -r key value || [[ -n "$key" ]]; do
     [[ -z "$key" ]] && continue
     case "$key" in
-      RELEASE_SHA|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE|GATEWAY_IMAGE)
-        [[ -z "${!key:-}" ]] || die "duplicate manifest key: $key"
+      RELEASE_SHA|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE|GATEWAY_IMAGE|OPS_IMAGE)
+        [[ "$seen_keys" != *"|$key|"* ]] || die "duplicate manifest key: $key"
+        seen_keys="${seen_keys}${key}|"
         printf -v "$key" '%s' "$value"
+        [[ "$key" != OPS_IMAGE ]] || ops_seen=true
         ;;
       *) die "invalid manifest key: $key" ;;
     esac
@@ -180,6 +187,15 @@ validate_manifest() {
       die "manifest $key must be an immutable GHCR digest"
     }
   done
+  if [[ "$ops_seen" == true ]]; then
+    [[ "$OPS_IMAGE" =~ ^ghcr\.io/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+-ops@sha256:[[:xdigit:]]{64}$ ]] || {
+      die 'manifest OPS_IMAGE must be an immutable GHCR digest'
+    }
+    MANIFEST_FORMAT='current-seven'
+  else
+    [[ "$allow_legacy_six" == true ]] || die 'manifest OPS_IMAGE is required for a new release'
+    MANIFEST_FORMAT='legacy-six'
+  fi
 }
 
 verify_manifest_artifacts() {
@@ -188,7 +204,9 @@ verify_manifest_artifacts() {
   command -v cosign >/dev/null 2>&1 || die 'cosign is required for artifact verification'
   command -v gh >/dev/null 2>&1 || die 'gh is required for artifact verification'
   local key ref
-  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE GATEWAY_IMAGE; do
+  local image_keys=(GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE GATEWAY_IMAGE)
+  [[ "$MANIFEST_FORMAT" != current-seven ]] || image_keys+=(OPS_IMAGE)
+  for key in "${image_keys[@]}"; do
     ref="${!key}"
     cosign verify --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
       --certificate-oidc-issuer "$COSIGN_OIDC_ISSUER" "$ref" >/dev/null
@@ -391,8 +409,12 @@ install_control_plane() {
   scp_to "$PROJECT_DIR/$SLOT_COMPOSE_FILE" "$incoming/$SLOT_COMPOSE_FILE"
   scp_to "$PROJECT_DIR/$GATEWAY_COMPOSE_FILE" "$incoming/$GATEWAY_COMPOSE_FILE"
   scp_to "$PROJECT_DIR/$RETENTION_COMPOSE_FILE" "$incoming/$RETENTION_COMPOSE_FILE"
+  scp_to "$PROJECT_DIR/$ROLE_TLS_SMOKE_COMPOSE_FILE" "$incoming/$ROLE_TLS_SMOKE_COMPOSE_FILE"
+  scp_to "$PROJECT_DIR/$POSTGRES_OPS_COMPOSE_FILE" "$incoming/$POSTGRES_OPS_COMPOSE_FILE"
   scp_to "$PROJECT_DIR/scripts/project-compose-role-env.jq" "$incoming/project-compose-role-env.jq"
   scp_to "$PROJECT_DIR/scripts/verify-compose-role-env.mjs" "$incoming/verify-compose-role-env.mjs"
+  scp_to "$PROJECT_DIR/scripts/collect-server4-canary-metrics.mjs" "$incoming/collect-server4-canary-metrics.mjs"
+  scp_to "$PROJECT_DIR/scripts/verify-server4-active-canary.sh" "$incoming/verify-server4-active-canary.sh"
   ssh_run "set -euo pipefail
     exec 9>'$REMOTE_LOCK_FILE'
     flock -n 9 || { echo 'another parallel deployment mutation is already running' >&2; exit 1; }
@@ -400,10 +422,14 @@ install_control_plane() {
     install -m 0644 '$incoming/$SLOT_COMPOSE_FILE' '$REMOTE_DIR/$SLOT_COMPOSE_FILE'
     install -m 0644 '$incoming/$GATEWAY_COMPOSE_FILE' '$REMOTE_DIR/$GATEWAY_COMPOSE_FILE'
     install -m 0644 '$incoming/$RETENTION_COMPOSE_FILE' '$REMOTE_DIR/$RETENTION_COMPOSE_FILE'
+    install -m 0644 '$incoming/$ROLE_TLS_SMOKE_COMPOSE_FILE' '$REMOTE_DIR/$ROLE_TLS_SMOKE_COMPOSE_FILE'
+    install -m 0644 '$incoming/$POSTGRES_OPS_COMPOSE_FILE' '$REMOTE_DIR/$POSTGRES_OPS_COMPOSE_FILE'
     install -m 0644 '$incoming/project-compose-role-env.jq' '$REMOTE_DIR/scripts/project-compose-role-env.jq'
     install -m 0644 '$incoming/verify-compose-role-env.mjs' '$REMOTE_DIR/scripts/verify-compose-role-env.mjs'
+    install -m 0644 '$incoming/collect-server4-canary-metrics.mjs' '$REMOTE_DIR/scripts/collect-server4-canary-metrics.mjs'
+    install -m 0755 '$incoming/verify-server4-active-canary.sh' '$REMOTE_DIR/scripts/verify-server4-active-canary.sh'
     rmdir '$incoming'
-    for key in PUBLIC_BASE_URL PUBLIC_HOST COLYSEUS_REDIS_IMAGE COLYSEUS_REDIS_PASSWORD FEEDBACK_UPLOADS_VOLUME GATEWAY_EDGE_NETWORK METRICS_TOKEN ADMIN_TOTP_ENCRYPTION_KEY OAUTH_TOKEN_ENCRYPTION_KEY PLATFORM_SEAT_TOKEN_SECRET ACCOUNT_EXPORT_PSEUDONYM_KEY; do
+    for key in PUBLIC_BASE_URL PUBLIC_HOST COLYSEUS_REDIS_IMAGE COLYSEUS_REDIS_PASSWORD FEEDBACK_UPLOADS_VOLUME GATEWAY_EDGE_NETWORK METRICS_TOKEN ADMIN_TOTP_ENCRYPTION_KEY OAUTH_TOKEN_ENCRYPTION_KEY PLATFORM_SEAT_TOKEN_SECRET ACCOUNT_EXPORT_PSEUDONYM_KEY PG_WAL_OPERATOR_USER PG_WAL_OPERATOR_DATABASE PG_WAL_OPERATOR_PGPASS_FILE PG_WAL_AGE_IDENTITY_FILE PG_WAL_S3_CREDENTIALS_FILE PG_WAL_OFFSITE_URI PG_WAL_S3_REGION POSTGRES_OPS_SECRETS_GID; do
       grep -Eq \"^\${key}=.+\" '$REMOTE_DIR/.env' || { echo \"runtime .env is missing \${key}\" >&2; exit 1; }
     done
     docker volume inspect \"\$(sed -n 's/^FEEDBACK_UPLOADS_VOLUME=//p' '$REMOTE_DIR/.env')\" >/dev/null
@@ -418,7 +444,7 @@ stage_slot() {
   require_confirm
   validate_slot "$SLOT"
   [[ -n "$MANIFEST_FILE" ]] || die 'stage-slot requires --manifest'
-  validate_manifest "$MANIFEST_FILE"
+  validate_manifest "$MANIFEST_FILE" false
   verify_manifest_artifacts
   if [[ "$WITH_WORKERS" == true ]]; then
     evaluate_pg_budget "$SLOT" true "$PG_SLOT_CONNECTION_BUDGET"
@@ -480,8 +506,11 @@ stage_slot() {
     expected_api_image=\$(manifest_value API_IMAGE)
     expected_platform_image=\$(manifest_value PLATFORM_IMAGE)
     expected_retention_image=\$(manifest_value RETENTION_IMAGE)
+    expected_ops_image=\$(manifest_value OPS_IMAGE)
     SLOT='$SLOT'
     PROJECT='zutomayo-$SLOT'
+    role_tls_smoke_compose() { docker compose --env-file .env --env-file \"\$release_manifest\" -p \"\$PROJECT-role-tls\" -f '$ROLE_TLS_SMOKE_COMPOSE_FILE' --profile postgres-role-tls-smoke \"\$@\"; }
+    postgres_ops_compose() { docker compose --env-file .env --env-file \"\$release_manifest\" -p \"\$PROJECT-postgres-ops\" -f '$POSTGRES_OPS_COMPOSE_FILE' --profile postgres-ops \"\$@\"; }
     compose() { RELEASE_SLOT=\"\$SLOT\" COMPOSE_PROJECT_NAME=\"\$PROJECT\" docker compose --env-file .env --env-file \"\$release_manifest\" -p \"\$PROJECT\" -f '$SLOT_COMPOSE_FILE' \"\$@\"; }
     assert_runtime_service() {
       service=\$1
@@ -504,13 +533,34 @@ stage_slot() {
       done
     }
     compose --profile background-workers config --no-env-resolution --quiet
+    PG_DEPLOY_GATE_HOST=\$(compose config --format json | jq -er '.services.migrate.environment.PG_HOST | select(type == \"string\" and length > 0)')
+    PG_DEPLOY_GATE_PORT=\$(compose config --format json | jq -er '.services.migrate.environment.PG_PORT | tostring | select(test(\"^[0-9]+$\"))')
+    test \"\$PG_DEPLOY_GATE_PORT\" -ge 1 && test \"\$PG_DEPLOY_GATE_PORT\" -le 65535
+    export PG_DEPLOY_GATE_HOST PG_DEPLOY_GATE_PORT
+    role_tls_smoke_compose config --quiet
+    postgres_ops_compose config --quiet
     compose --profile background-workers pull --quiet
     docker pull \"\$expected_retention_image\" >/dev/null
     docker image inspect \"\$expected_retention_image\" >/dev/null
+    docker pull \"\$expected_ops_image\" >/dev/null
+    docker image inspect \"\$expected_ops_image\" >/dev/null
     compose --profile background-workers config --no-env-resolution --format json \
       | jq -c -f scripts/project-compose-role-env.jq \
       | compose run --rm --no-deps -T migrate node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
     compose run --rm --no-deps migrate
+    role_tls_evidence='.slot.$SLOT.role-tls.next.'\$\$
+    : > \"\$role_tls_evidence\"
+    for role in api game platform retention monitor backup; do
+      report=\$(role_tls_smoke_compose run --rm --no-deps -T \"postgres-role-tls-\$role\")
+      printf '%s\n' \"\$report\" | jq -e --arg role \"\$role\" '.schemaVersion == 1 and .artifactType == \"zutomayo-postgres-role-tls-smoke\" and .ok == true and .role == \$role' >/dev/null
+      printf '%s\n' \"\$report\" >> \"\$role_tls_evidence\"
+      printf '%s\n' \"\$report\"
+    done
+    mv -f \"\$role_tls_evidence\" '.slot.$SLOT.role-tls.jsonl'
+    wal_report=\$(postgres_ops_compose run --rm --no-deps -T postgres-wal-operational-smoke)
+    wal_evidence=\$(printf '%s\n' \"\$wal_report\" | jq -ce --arg releaseSha \"\$expected_release_sha\" --arg opsImage \"\$expected_ops_image\" 'select(.schemaVersion == 1 and .artifactType == \"zutomayo-pg-wal-operational-smoke\" and .ok == true) | . + {releaseSha:\$releaseSha,opsImage:\$opsImage}')
+    printf '%s\n' \"\$wal_evidence\" > '.slot.$SLOT.wal-operational-smoke.json'
+    printf '%s\n' \"\$wal_evidence\"
     compose up -d --no-deps --wait --wait-timeout 120 colyseus-redis
     compose up -d --no-deps --wait --wait-timeout 180 game api platform-p1 platform-p2
     assert_runtime_service game 2 \"\$expected_game_image\"
@@ -527,8 +577,9 @@ stage_slot() {
       --arg apiImage \"\$expected_api_image\" \
       --arg platformImage \"\$expected_platform_image\" \
       --arg retentionImage \"\$expected_retention_image\" \
+      --arg opsImage \"\$expected_ops_image\" \
       --arg verifiedAt \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \
-      '{schemaVersion:1,slot:\$slot,releaseSha:\$releaseSha,manifestSha256:\$manifestSha256,images:{game:\$gameImage,api:\$apiImage,platform:\$platformImage,retention:\$retentionImage},verifiedAt:\$verifiedAt}' > \"\$state_next\"
+      '{schemaVersion:1,manifestFormat:"current-seven",slot:\$slot,releaseSha:\$releaseSha,manifestSha256:\$manifestSha256,images:{game:\$gameImage,api:\$apiImage,platform:\$platformImage,retention:\$retentionImage,ops:\$opsImage},verifiedAt:\$verifiedAt}' > \"\$state_next\"
     manifest_next='$remote_manifest.next.'\$\$
     install -m 0640 \"\$release_manifest\" \"\$manifest_next\"
     mv -f \"\$manifest_next\" '$remote_manifest'
@@ -544,6 +595,7 @@ render_and_apply_gateway() {
   require_confirm
   local mode="$1" temp_dir config_file artifact_file remote_prefix active_config_id gateway_image stable_gateway_image
   local stable_manifest_sha256 candidate_manifest_sha256 remote_config_incoming remote_artifact_incoming
+  local stable_manifest_format
   temp_dir="$(mktemp -d)"
   config_file="$temp_dir/haproxy.cfg"
   artifact_file="$temp_dir/gateway-config.json"
@@ -552,8 +604,9 @@ render_and_apply_gateway() {
   if [[ "$mode" == bootstrap ]]; then
     validate_slot "$STABLE_SLOT"
     [[ -n "$MANIFEST_FILE" ]] || die 'bootstrap-gateway requires --manifest'
-    validate_manifest "$MANIFEST_FILE"
+    validate_manifest "$MANIFEST_FILE" false
     verify_manifest_artifacts
+    stable_manifest_format="$MANIFEST_FORMAT"
     gateway_image="$GATEWAY_IMAGE"
     stable_manifest_sha256="$(sha256_file "$MANIFEST_FILE")"
     node "$SCRIPT_DIR/render-server4-gateway.mjs" --bootstrap-manifest "$MANIFEST_FILE" \
@@ -566,12 +619,14 @@ render_and_apply_gateway() {
     [[ -n "$STABLE_MANIFEST_FILE" && -n "$CANDIDATE_MANIFEST_FILE" ]] || {
       die 'switch requires --stable-manifest and --candidate-manifest'
     }
-    validate_manifest "$STABLE_MANIFEST_FILE"
+    validate_manifest "$STABLE_MANIFEST_FILE" true
     verify_manifest_artifacts
+    stable_manifest_format="$MANIFEST_FORMAT"
     stable_gateway_image="$GATEWAY_IMAGE"
     stable_manifest_sha256="$(sha256_file "$STABLE_MANIFEST_FILE")"
-    validate_manifest "$CANDIDATE_MANIFEST_FILE"
+    validate_manifest "$CANDIDATE_MANIFEST_FILE" false
     verify_manifest_artifacts
+    [[ "$MANIFEST_FORMAT" == current-seven ]] || die 'candidate manifest must use the current seven-image format'
     candidate_manifest_sha256="$(sha256_file "$CANDIDATE_MANIFEST_FILE")"
     gateway_image="$stable_gateway_image"
     node "$SCRIPT_DIR/render-server4-gateway.mjs" --stable-manifest "$STABLE_MANIFEST_FILE" \
@@ -595,6 +650,10 @@ render_and_apply_gateway() {
     trap \"rm -f -- '$remote_config_incoming' '$remote_artifact_incoming'\" EXIT
     test -e '$MANAGED_MARKER'
     test -f .env
+    rollback_started_at=''
+    if test '$mode' = canary && test '$WEIGHT' = 0; then
+      rollback_started_at=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+    fi
 
     manifest_value() {
       manifest=\$1
@@ -641,6 +700,7 @@ render_and_apply_gateway() {
       slot=\$1
       expected_manifest_sha=\$2
       require_runtime=\$3
+      manifest_format=\$4
       manifest_file=\".release.\$slot.env\"
       state_file=\".slot.\$slot.state.json\"
       test -f \"\$manifest_file\" || { echo \"slot \$slot has no active release manifest\" >&2; exit 1; }
@@ -652,16 +712,36 @@ render_and_apply_gateway() {
       api_image=\$(manifest_value \"\$manifest_file\" API_IMAGE)
       platform_image=\$(manifest_value \"\$manifest_file\" PLATFORM_IMAGE)
       retention_image=\$(manifest_value \"\$manifest_file\" RETENTION_IMAGE)
-      jq -e \
-        --arg slot \"\$slot\" \
-        --arg releaseSha \"\$release_sha\" \
-        --arg manifestSha256 \"\$actual_manifest_sha\" \
-        --arg gameImage \"\$game_image\" \
-        --arg apiImage \"\$api_image\" \
-        --arg platformImage \"\$platform_image\" \
-        --arg retentionImage \"\$retention_image\" \
-        '.schemaVersion == 1 and .slot == \$slot and .releaseSha == \$releaseSha and .manifestSha256 == \$manifestSha256 and .images.game == \$gameImage and .images.api == \$apiImage and .images.platform == \$platformImage and .images.retention == \$retentionImage' \
-        \"\$state_file\" >/dev/null
+      if test \"\$manifest_format\" = current-seven; then
+        ops_image=\$(manifest_value \"\$manifest_file\" OPS_IMAGE)
+        jq -e \
+          --arg slot \"\$slot\" \
+          --arg releaseSha \"\$release_sha\" \
+          --arg manifestSha256 \"\$actual_manifest_sha\" \
+          --arg gameImage \"\$game_image\" \
+          --arg apiImage \"\$api_image\" \
+          --arg platformImage \"\$platform_image\" \
+          --arg retentionImage \"\$retention_image\" \
+          --arg opsImage \"\$ops_image\" \
+          '.schemaVersion == 1 and .manifestFormat == \"current-seven\" and .slot == \$slot and .releaseSha == \$releaseSha and .manifestSha256 == \$manifestSha256 and .images.game == \$gameImage and .images.api == \$apiImage and .images.platform == \$platformImage and .images.retention == \$retentionImage and .images.ops == \$opsImage' \
+          \"\$state_file\" >/dev/null
+        docker image inspect \"\$ops_image\" >/dev/null || { echo \"slot \$slot OPS image is not present locally\" >&2; exit 1; }
+      elif test \"\$manifest_format\" = legacy-six; then
+        test \"\$(grep -Ec '^OPS_IMAGE=' \"\$manifest_file\" || true)\" = 0 || { echo \"legacy slot \$slot must not contain OPS_IMAGE\" >&2; exit 1; }
+        jq -e \
+          --arg slot \"\$slot\" \
+          --arg releaseSha \"\$release_sha\" \
+          --arg manifestSha256 \"\$actual_manifest_sha\" \
+          --arg gameImage \"\$game_image\" \
+          --arg apiImage \"\$api_image\" \
+          --arg platformImage \"\$platform_image\" \
+          --arg retentionImage \"\$retention_image\" \
+          '.schemaVersion == 1 and (.manifestFormat == null or .manifestFormat == \"legacy-six\") and .slot == \$slot and .releaseSha == \$releaseSha and .manifestSha256 == \$manifestSha256 and .images.game == \$gameImage and .images.api == \$apiImage and .images.platform == \$platformImage and .images.retention == \$retentionImage and (.images | has(\"ops\") | not)' \
+          \"\$state_file\" >/dev/null
+      else
+        echo \"slot \$slot manifest format is invalid\" >&2
+        exit 1
+      fi
       docker image inspect \"\$retention_image\" >/dev/null || { echo \"slot \$slot retention image is not present locally\" >&2; exit 1; }
       assert_service_runtime \"\$slot\" game 2 \"\$game_image\" \"\$release_sha\" \"\$require_runtime\"
       assert_service_runtime \"\$slot\" api 2 \"\$api_image\" \"\$release_sha\" \"\$require_runtime\"
@@ -669,10 +749,10 @@ render_and_apply_gateway() {
       assert_service_runtime \"\$slot\" platform-p2 1 \"\$platform_image\" \"\$release_sha\" \"\$require_runtime\"
     }
 
-    assert_slot_release '$STABLE_SLOT' '$stable_manifest_sha256' true
+    assert_slot_release '$STABLE_SLOT' '$stable_manifest_sha256' true '$stable_manifest_format'
     if test '$mode' = canary; then
       if test '$WEIGHT' = 0; then candidate_runtime_required=false; else candidate_runtime_required=true; fi
-      assert_slot_release '$CANDIDATE_SLOT' '$candidate_manifest_sha256' \"\$candidate_runtime_required\"
+      assert_slot_release '$CANDIDATE_SLOT' '$candidate_manifest_sha256' \"\$candidate_runtime_required\" current-seven
     fi
 
     gateway_ids=\$(docker ps -q \
@@ -711,12 +791,32 @@ render_and_apply_gateway() {
             10:0|10:10|10:50|50:0|50:50|50:100|100:0|100:100|0:0) ;;
             *) echo \"invalid canary transition: \$current_weight -> $WEIGHT\" >&2; exit 1 ;;
           esac
+          case \"\$current_weight:$WEIGHT\" in
+            10:50|50:100)
+              scripts/verify-server4-active-canary.sh \
+                --expected-weight \"\$current_weight\" \
+                --expected-stable-slot '$STABLE_SLOT' \
+                --expected-candidate-slot '$CANDIDATE_SLOT'
+              ;;
+            10:0|50:0|100:0)
+              scripts/verify-server4-active-canary.sh \
+                --expected-weight \"\$current_weight\" \
+                --expected-stable-slot '$STABLE_SLOT' \
+                --expected-candidate-slot '$CANDIDATE_SLOT' \
+                --best-effort \
+                || echo 'warning: rollback is proceeding without a complete pre-rollback observation' >&2
+              ;;
+          esac
         fi
       else
         if test \"\$current_mode\" = bootstrap; then
           test \"\$current_stable\" = '$STABLE_SLOT' || { echo 'bootstrap cannot replace a different active stable slot' >&2; exit 1; }
         elif test \"\$current_weight\" = 100; then
           test \"\$current_candidate\" = '$STABLE_SLOT' || { echo 'post-promotion bootstrap must target the promoted candidate slot' >&2; exit 1; }
+          scripts/verify-server4-active-canary.sh \
+            --expected-weight 100 \
+            --expected-stable-slot \"\$current_stable\" \
+            --expected-candidate-slot '$STABLE_SLOT'
           for service in game-worker api-worker; do
             owner_ids=\$(docker ps -q --filter \"label=com.docker.compose.service=\$service\")
             owner_count=\$(printf '%s\\n' \"\$owner_ids\" | sed '/^\$/d' | wc -l | tr -d ' ')
@@ -869,9 +969,27 @@ render_and_apply_gateway() {
     install -m 0644 '$remote_artifact_incoming' 'evidence/$remote_prefix.json'
     install -m 0644 '$remote_config_incoming' 'evidence/$remote_prefix.cfg'
     active_marker > 'evidence/$remote_prefix.active-config.txt'
-    docker exec \"\$gateway_id\" wget -qO- 'http://127.0.0.1:8405/stats;csv' > 'evidence/$remote_prefix.stats-start.csv'
     docker inspect \"\$gateway_id\" | jq '.[0] | {containerId:.Id,imageId:.Image,imageReference:.Config.Image,restartCount:.RestartCount,state:{status:.State.Status,running:.State.Running,startedAt:.State.StartedAt,pid:.State.Pid}}' > 'evidence/$remote_prefix.container.json'
-    date -u +%Y-%m-%dT%H:%M:%SZ > 'evidence/$remote_prefix.applied-at'
+    if test '$mode' = canary && test '$WEIGHT' = 0; then
+      printf '%s\n' \"\$rollback_started_at\" > 'evidence/$remote_prefix.rollback-started-at'
+      date -u +%Y-%m-%dT%H:%M:%S.000Z > 'evidence/$remote_prefix.rollback-finished-at'
+    fi
+    docker exec \"\$gateway_id\" wget -qO- 'http://127.0.0.1:8405/stats;csv' > 'evidence/$remote_prefix.stats-start.csv'
+    date -u +%Y-%m-%dT%H:%M:%S.000Z > 'evidence/$remote_prefix.applied-at'
+    if test '$mode' = canary && test '$WEIGHT' != 0; then
+      observation_state_next='.$GATEWAY_OBSERVATION_STATE.next.'\$\$
+      jq -n \
+        --arg activeConfigId '$active_config_id' \
+        --arg evidencePrefix '$remote_prefix' \
+        --arg gatewayConfigSha256 \"\$(sha256sum 'evidence/$remote_prefix.json' | awk '{print \$1}')\" \
+        --arg startedAt \"\$(cat 'evidence/$remote_prefix.applied-at')\" \
+        --argjson candidateWeightPercent '$WEIGHT' \
+        '{schemaVersion:1,activeConfigId:\$activeConfigId,evidencePrefix:\$evidencePrefix,gatewayConfigSha256:\$gatewayConfigSha256,candidateWeightPercent:\$candidateWeightPercent,startedAt:\$startedAt}' \
+        > \"\$observation_state_next\"
+      mv -f \"\$observation_state_next\" '$GATEWAY_OBSERVATION_STATE'
+    else
+      rm -f '$GATEWAY_OBSERVATION_STATE'
+    fi
     echo 'gateway config applied: $remote_prefix'"
   trap - EXIT RETURN
 }
@@ -952,6 +1070,25 @@ transfer_workers() {
     cd '$REMOTE_DIR'
     test -f '.release.$FROM_SLOT.env'
     test -f '.release.$TO_SLOT.env'
+    active_weight=\$(jq -r '.traffic.candidateWeightPercent // empty' '$GATEWAY_ACTIVE_STATE')
+    case \"\$active_weight\" in
+      100)
+        scripts/verify-server4-active-canary.sh \
+          --expected-weight 100 \
+          --expected-stable-slot '$FROM_SLOT' \
+          --expected-candidate-slot '$TO_SLOT'
+        ;;
+      0)
+        scripts/verify-server4-active-canary.sh \
+          --expected-weight 0 \
+          --expected-stable-slot '$TO_SLOT' \
+          --expected-candidate-slot '$FROM_SLOT'
+        ;;
+      *)
+        echo \"worker transfer requires an active 100% rollout or 0% rollback, found \${active_weight:-unknown}%\" >&2
+        exit 1
+        ;;
+    esac
     from_compose() { RELEASE_SLOT='$FROM_SLOT' COMPOSE_PROJECT_NAME='zutomayo-$FROM_SLOT' docker compose --env-file .env --env-file '.release.$FROM_SLOT.env' -p 'zutomayo-$FROM_SLOT' -f '$SLOT_COMPOSE_FILE' --profile background-workers \"\$@\"; }
     to_compose() { RELEASE_SLOT='$TO_SLOT' COMPOSE_PROJECT_NAME='zutomayo-$TO_SLOT' docker compose --env-file .env --env-file '.release.$TO_SLOT.env' -p 'zutomayo-$TO_SLOT' -f '$SLOT_COMPOSE_FILE' --profile background-workers \"\$@\"; }
     healthy_service() {

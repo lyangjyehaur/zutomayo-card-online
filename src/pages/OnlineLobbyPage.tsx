@@ -52,9 +52,13 @@ import {
   connectPlatformQuickMatch,
   createPlatformCustomRoom,
   createPlatformInvite,
+  discoverPlatformPendingInvite,
   isPlatformBoardgameRelayAcknowledged,
+  joinDiscoveredPlatformInvite,
   joinPlatformCustomRoom,
   joinPlatformInvite,
+  PLATFORM_PENDING_INVITE_POLL_MS,
+  retainDiscoveredPlatformInviteRoom,
   type PlatformCustomRoom,
   type PlatformInviteSnapshot,
   type PlatformInviteRoom,
@@ -179,6 +183,7 @@ export function OnlineLobbyPage({
   const [friendInvitePeerId, setFriendInvitePeerId] = useState<string | null>(null);
   const [friendInviteMode, setFriendInviteMode] = useState<'incoming' | 'outgoing' | null>(null);
   const platformInviteRoomRef = useRef<PlatformInviteRoom | null>(null);
+  const pendingInviteJoinRef = useRef<Promise<PlatformInviteRoom | null> | null>(null);
   const activeOutgoingInviteIdRef = useRef<string | null>(null);
   const pendingInviteHostSessionRef = useRef<{
     inviteId: string;
@@ -1168,96 +1173,139 @@ export function OnlineLobbyPage({
   useEffect(() => {
     if (!profile || friendStatus !== 'ready' || friends.length === 0) return;
     if (friendInviteActionId || friendInvitePeerId || matchmakingActive || platformInviteRoomRef.current) return;
+    const profileUserId = profile.id;
 
     let cancelled = false;
+    let retryTimer: number | null = null;
 
-    const scanIncomingInvites = async () => {
-      for (const friend of friends) {
-        if (cancelled || platformInviteRoomRef.current) return;
-        const inviteId = buildPlatformFriendInviteId(friend.userId, profile.id);
-        let room: PlatformInviteRoom | null = null;
-        const snapshot = await new Promise<{ ok: boolean }>((resolve) => {
-          let settled = false;
-          const settle = (ok: boolean) => {
-            if (settled) return;
-            settled = true;
-            window.clearTimeout(timer);
-            resolve({ ok });
-          };
-          const timer = window.setTimeout(() => settle(false), 900);
-          void joinPlatformInvite(
-            {
-              inviteId,
-              targetUserId: profile.id,
-              userId: profile.id,
-              displayName: effectivePlayerName,
-            },
-            {
-              onSnapshot: (nextSnapshot) => {
-                settle(
-                  nextSnapshot.status === 'pending' &&
-                    nextSnapshot.targetUserId === profile.id &&
-                    nextSnapshot.inviter?.userId === friend.userId,
-                );
-              },
-              onAccepted: (message) => {
-                if (message.boardgameMatchID) joinAcceptedInviteMatch(friend, message.boardgameMatchID);
-              },
-              onBoardgameMatchReady: (message) => {
-                joinAcceptedInviteMatch(friend, message.boardgameMatchID);
-              },
-              onCancelled: () => {
-                if (!settled) {
-                  settle(false);
-                  return;
-                }
-                setFriendInviteActionId(null);
-                setFriendInvitePeerId(null);
-                setFriendInviteMode(null);
-                platformInviteRoomRef.current = null;
-                showToast({ title: t('friend.inviteCancelled'), kind: 'error' });
-              },
-              onDisconnect: () => {
-                if (!settled) {
-                  settle(false);
-                  return;
-                }
-                setFriendInviteActionId(null);
-                setFriendInvitePeerId(null);
-                setFriendInviteMode(null);
-                platformInviteRoomRef.current = null;
-              },
-            },
-          ).then(
-            (nextRoom) => {
-              room = nextRoom;
-            },
-            () => settle(false),
-          );
-        });
-
-        if (cancelled) {
-          leaveObservedInviteRoom(room);
-          return;
-        }
-
-        if (snapshot.ok && room) {
-          platformInviteRoomRef.current = room;
-          setFriendInvitePeerId(friend.userId);
-          setFriendInviteMode('incoming');
-          setFriendInviteActionId(null);
-          showToast({ title: t('friend.inviteIncoming'), kind: 'success' });
-          return;
-        }
-
-        leaveObservedInviteRoom(room);
-      }
+    const scheduleRetry = () => {
+      if (cancelled || platformInviteRoomRef.current) return;
+      retryTimer = window.setTimeout(() => void scanIncomingInvites(), PLATFORM_PENDING_INVITE_POLL_MS);
     };
+
+    async function scanIncomingInvites() {
+      if (pendingInviteJoinRef.current) {
+        scheduleRetry();
+        return;
+      }
+      let pendingInvite: Awaited<ReturnType<typeof discoverPlatformPendingInvite>>;
+      try {
+        pendingInvite = await discoverPlatformPendingInvite();
+      } catch {
+        scheduleRetry();
+        return;
+      }
+      if (cancelled || platformInviteRoomRef.current) return;
+      if (!pendingInvite) {
+        scheduleRetry();
+        return;
+      }
+      if (pendingInviteJoinRef.current) {
+        scheduleRetry();
+        return;
+      }
+
+      let room: PlatformInviteRoom | null = null;
+      let inviteFriend: FriendProfile | undefined;
+      let resolveSnapshot: (snapshot: { ok: boolean }) => void = () => undefined;
+      const snapshotRequest = new Promise<{ ok: boolean }>((resolve) => {
+        resolveSnapshot = resolve;
+      });
+      let settled = false;
+      let snapshotOk = false;
+      let snapshotTimer: number | null = null;
+      const settle = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        snapshotOk = ok;
+        if (snapshotTimer !== null) window.clearTimeout(snapshotTimer);
+        resolveSnapshot({ ok });
+      };
+      snapshotTimer = window.setTimeout(() => settle(false), 900);
+      const joinRequest = retainDiscoveredPlatformInviteRoom(
+        joinDiscoveredPlatformInvite(
+          {
+            roomId: pendingInvite.roomId,
+            displayName: effectivePlayerName,
+          },
+          {
+            onSnapshot: (nextSnapshot) => {
+              inviteFriend = friends.find((friend) => friend.userId === nextSnapshot.inviter?.userId);
+              settle(
+                nextSnapshot.status === 'pending' &&
+                  nextSnapshot.targetUserId === profileUserId &&
+                  Boolean(inviteFriend),
+              );
+            },
+            onAccepted: (message) => {
+              if (inviteFriend && message.boardgameMatchID) {
+                joinAcceptedInviteMatch(inviteFriend, message.boardgameMatchID);
+              }
+            },
+            onBoardgameMatchReady: (message) => {
+              if (inviteFriend) joinAcceptedInviteMatch(inviteFriend, message.boardgameMatchID);
+            },
+            onCancelled: () => {
+              if (!settled) {
+                settle(false);
+                return;
+              }
+              setFriendInviteActionId(null);
+              setFriendInvitePeerId(null);
+              setFriendInviteMode(null);
+              platformInviteRoomRef.current = null;
+              showToast({ title: t('friend.inviteCancelled'), kind: 'error' });
+            },
+            onDisconnect: () => {
+              if (!settled) {
+                settle(false);
+                return;
+              }
+              setFriendInviteActionId(null);
+              setFriendInvitePeerId(null);
+              setFriendInviteMode(null);
+              platformInviteRoomRef.current = null;
+            },
+          },
+        ),
+        () => !cancelled && !platformInviteRoomRef.current && (!settled || snapshotOk),
+      );
+      pendingInviteJoinRef.current = joinRequest;
+      void joinRequest.then(
+        (nextRoom) => {
+          room = nextRoom;
+          if (!nextRoom) settle(false);
+        },
+        () => settle(false),
+      );
+
+      const snapshot = await snapshotRequest;
+      await joinRequest.catch(() => null);
+      if (pendingInviteJoinRef.current === joinRequest) pendingInviteJoinRef.current = null;
+
+      if (cancelled) {
+        leaveObservedInviteRoom(room);
+        return;
+      }
+
+      if (snapshot.ok && room && inviteFriend) {
+        platformInviteRoomRef.current = room;
+        setFriendInvitePeerId(inviteFriend.userId);
+        setFriendInviteMode('incoming');
+        setFriendInviteActionId(null);
+        showToast({ title: t('friend.inviteIncoming'), kind: 'success' });
+        return;
+      }
+
+      leaveObservedInviteRoom(room);
+      scheduleRetry();
+    }
 
     void scanIncomingInvites();
 
     return () => {
       cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, [
     effectivePlayerName,

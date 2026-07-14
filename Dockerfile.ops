@@ -1,0 +1,11 @@
+FROM postgres:16-alpine@sha256:e013e867e712fec275706a6c51c966f0bb0c93cfa8f51000f85a15f9865a28cb
+
+USER root
+RUN apk add --no-cache age aws-cli
+
+COPY --chmod=0755 scripts/pg-wal-operational-smoke.sh /opt/zutomayo/scripts/pg-wal-operational-smoke.sh
+COPY --chmod=0755 scripts/pg-wal-restore.sh /opt/zutomayo/scripts/pg-wal-restore.sh
+COPY --chmod=0755 scripts/postgres-ops-entrypoint.sh /opt/zutomayo/scripts/postgres-ops-entrypoint.sh
+
+USER postgres
+ENTRYPOINT ["/opt/zutomayo/scripts/postgres-ops-entrypoint.sh"]

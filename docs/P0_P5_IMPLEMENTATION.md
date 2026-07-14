@@ -14,13 +14,13 @@
 
 ### P0：Release blockers
 
-1. 建立 database role matrix 與 bootstrap/gate：game、api、platform、retention、monitor、logical backup、base backup/WAL 各自最小權限；fresh cluster 必須能直接跑 migration、retention、backup 與監控 smoke。
+1. 建立 database role matrix 與 bootstrap/gate：game、api、platform、retention、monitor、logical backup、base backup/WAL replication 與獨立 WAL switch operator 各自最小權限；fresh cluster 必須能直接跑 migration、retention、backup 與監控 smoke。
 2. 擴充 schema gate，驗證 retention、season result、account deletion 關鍵欄位的 type、nullability、default、PK/FK/unique/check/index；已套用 migration 缺本地檔案時 fail closed。
 3. 統一 PostgreSQL/Redis production connection contract：`PGSSLMODE`、CA、required `REDIS_URL`、TLS/ACL，不允許 localhost/passwordless fallback；rendered Compose 與真實連線 smoke 都要通過。
 4. 完成 legal-hold 持續 reconciliation 與 account deletion hold gate；任何 account 衍生 match/conversation/message/report/feedback hold 都必須阻擋破壞性刪除。
 5. 完成帳號刪除全表策略：platform participants、boardgame seats/outbox、season data、match/leaderboard identifier 都必須刪除或不可逆匿名化。
 6. 加固 OAuth：state 綁 browser session、PKCE、session ticket 一次性 consume；所有 provider/Logto request 有 timeout、retry budget 與 recovery circuit breaker。
-7. 以 fresh staging 驗證六個 signed image（含 gateway）、migration、retention timer、synthetic failure metric、rollback 與 post-deploy build ID；第三方 image/action 全部 pin digest/full SHA。
+7. 以 fresh staging 驗證七個 signed image（含 gateway 與 non-root PostgreSQL OPS）、migration、retention timer、synthetic failure metric、rollback 與 post-deploy build ID；第三方 image/action 全部 pin digest/full SHA。
 
 ### P1：Security and data correctness
 
@@ -71,6 +71,7 @@
 ## P2：資料復原與高可用
 
 - [ ] PostgreSQL encrypted off-site backup + WAL/PITR：腳本與 runbook 已有，尚缺真實 off-site/restore 證據。
+- [ ] server4 維護窗口內啟用並重啟 PostgreSQL continuous archive（`wal_level=replica`、`archive_mode=on`、正式 `archive_command`/provider pipeline），掛入 root-owned PGPASS、age identity、S3 credentials 後，使用 signed `OPS_IMAGE` 取得 live archive/restore gate 證據。OPS runner 不會自行修改 database config 或 production container。
 - [ ] Backup checksum、成功告警、每日 age 檢查與自動 restore 驗證。
 - [ ] Beta RPO 24h / RTO 4h；production RPO 15m / RTO 30m 有實測報告。
 - [x] Expand/contract migration 與 schema checksum gate。
@@ -131,9 +132,13 @@
 
 使用 `npm run release:gate -- --evidence-dir artifacts/release` 執行集中式發布檢查。Gate 會逐項執行完整 `verify`、release/operational config、Compose render/role environment，以及 Docker runtime image contract；結果會寫入 `release-gate.json` 與 `release-gate.md`。
 
-Gate 狀態嚴格區分：`passed` 代表所有必要檢查通過，`failed` 代表本機或設定檢查失敗，`blocked` 代表本機檢查沒有失敗但仍缺 staging-only 證據。缺證據永遠不會被當成通過；沒有 `--staging-evidence-dir` 時 staging gate 必然是 `blocked`。若有 staging 證據，放在該目錄的 `staging/` 下，且每份 JSON 必須包含 `schemaVersion: 1`、對應的 `evidenceType`、`status: "passed"`、`environment: "staging"`、與目前（或 `--release-sha` 指定）release 相同的 40 字元 `releaseSha`、六個完整 `game/api/platform/migrate/retention/gateway` `@sha256` image digest，以及 `startedAt`、`finishedAt`、正確相等於兩者差值的 `durationMs` 與過去 168 小時內且不得為未來時間的 `checkedAt`。每種 evidence 還必須提供該 gate 要求的數值 `metrics`、數值 `thresholds` 與全數為 true 的 `results`；Gate 會實際比較 metric/threshold。
+Gate 狀態嚴格區分：`passed` 代表所有必要檢查通過，`failed` 代表本機或設定檢查失敗，`blocked` 代表本機檢查沒有失敗但仍缺 staging-only 證據。缺證據永遠不會被當成通過；沒有 `--staging-evidence-dir` 時 staging gate 必然是 `blocked`。若有 staging 證據，放在該目錄的 `staging/` 下，且每份 JSON 必須包含 `schemaVersion: 1`、對應的 `evidenceType`、`status: "passed"`、`environment: "staging"`、與目前（或 `--release-sha` 指定）release 相同的 40 字元 `releaseSha`、七個完整 `game/api/platform/migrate/retention/gateway/ops` `@sha256` image digest，以及 `startedAt`、`finishedAt`、正確相等於兩者差值的 `durationMs` 與過去 168 小時內且不得為未來時間的 `checkedAt`。每種 evidence 還必須提供該 gate 要求的數值 `metrics`、數值 `thresholds` 與全數為 true 的 `results`；Gate 會實際比較 metric/threshold。
 
-`canary-rollback` 另有不可由 evidence 降級的 repository policy：必須依序完成且只完成 10%、50%、100% 三階段，任何跳階都會阻擋；每階段至少觀察 300 秒、1,000 個 HTTP samples、100 個 WebSocket samples，且 candidate 至少有 2 個 ready replicas。`rollout.stableReleaseSet` 與 `rollout.candidateReleaseSet` 至少都要完整列出 game/api/platform immutable `@sha256` references；candidate 三項必須逐一等於本次 `imageDigests`，stable 每一服務都必須使用相同 image repository、但 digest 必須與 candidate 不同，禁止跨 service 混槽。Stable 另外必須提供不同於 candidate 的完整 `stableReleaseSha`，以及 hash-verified `stableManifestArtifact`；Gate 會解析 manifest 中唯一且未加引號的 `RELEASE_SHA`、`GAME_IMAGE`、`API_IMAGE`、`PLATFORM_IMAGE`，並逐項綁定 stable SHA/release set，不能用任意 digest 自稱可回滾版本。每階段要提供 ISO 起訖時間、`gatewayConfigSha256`、對應的 gateway config artifact 與 raw metrics artifact；artifact reference 必須和經 hash 驗證的 `artifacts[]` 相符，三個 traffic weight 的 gateway config hash 也必須不同。
+`restore-drill`、`chaos-reconnect`、`load-soak` 與 `alertmanager-delivery` 不採信 evidence 自填政策。它們維持 `schemaVersion: 1`，但 `thresholds` 必須精確等於 repository policy：PITR RPO 15 分鐘、RTO 60 分鐘；failover/reconnect 最長 300 秒且 duplicate delivery 為 0；2x peak 至少 30 分鐘、soak 至少 120 分鐘、每一階段 HTTP p95 嚴格小於 500 ms 且 error rate 嚴格小於 1%；firing/resolved alert 都必須在 300 秒內送達。只把 summary threshold 放寬，即使 summary 比較會通過，仍會被阻擋。
+
+這四種 evidence 都必須增加 `rawArtifact: { path, sha256 }`，且 reference 必須逐項等於已通過 path containment、檔案存在與 SHA-256 驗證的 `artifacts[]` entry。Raw JSON 共用 `schemaVersion: 1`、對應的 `artifactType`、`releaseSha`、`startedAt` 與 `finishedAt`。Chaos/load/alert 的 raw interval 必須和外層 evidence 完全一致；restore 外層 interval 則必須涵蓋下述兩份獨立 artifact。Gate 會解析內容並重算 summary，而不是只檢查 hash：restore 的 `rawArtifact` 只負責 physical PITR mechanics，由 target/recovered-through 與實際起訖重算 RPO/RTO，並要求 verified base backup、至少一個 WAL segment、target reached/promoted 與三項 integrity checks；它不能單獨取得 release approval。Restore 另須提供 hash-verified `offsiteArtifact`，由 `pg-restore-drill.sh` 從明確的 artifact/checksum S3 version IDs 產生 `zutomayo-encrypted-offsite-restore-raw`，綁定同一 release SHA，並實證 age checksum/decrypt、expected migration/checksum、core-data 與 legal-hold invariants。Physical PITR raw 單獨負責 marker `fixtureRoundTripPassed`，off-site logical restore 不重複聲稱。Chaos 由 PostgreSQL/Redis outage probes 的三個連續 healthy samples、WebSocket timeline 及 outbox message IDs 重算 recovery/duplicate；load 由 peak/soak 的 target RPS、status counts 與 latency distribution 重算兩階段中最差的 p95/error，要求零 dropped iteration 且 request samples 足以覆蓋 target RPS 乘實測時長；alert 則由同一 alert ID 的 firing/resolved emitted/delivered pair 重算最慢 delivery。修改 artifact 後即使同步更新 hash，語義、樣本或 summary 不一致仍會 fail closed。
+
+`canary-rollback` 另有不可由 evidence 降級的 repository policy：必須依序完成且只完成 10%、50%、100% 三階段，任何跳階都會阻擋；每階段至少觀察 300 秒、1,000 個 HTTP samples、100 個 WebSocket samples，且 candidate 至少有 2 個 ready replicas。`rollout.stableReleaseSet` 與 `rollout.candidateReleaseSet` 至少都要完整列出 game/api/platform immutable `@sha256` references；candidate 三項必須逐一等於本次 `imageDigests`，stable 每一服務都必須使用相同 image repository、但 digest 必須與 candidate 不同，禁止跨 service 混槽。Stable 另外必須提供不同於 candidate 的完整 `stableReleaseSha`，以及 hash-verified `stableManifestArtifact`；Gate 會解析 manifest 中唯一且未加引號的 `RELEASE_SHA`、`GAME_IMAGE`、`API_IMAGE`、`PLATFORM_IMAGE`，並逐項綁定 stable SHA/release set，不能用任意 digest 自稱可回滾版本。每階段要提供 ISO 起訖時間、`gatewayConfigSha256`、對應的 gateway config artifact 與 raw metrics artifact；rollout raw metrics 另須包含和外層 stage 完全一致的 `observation` 起訖、repository policy snapshot 與 `policyPassed: true`，避免用 non-enforcing collector 輸出冒充已通過 dwell gate。Artifact reference 必須和經 hash 驗證的 `artifacts[]` 相符，三個 traffic weight 的 gateway config hash 也必須不同。
 
 Gateway config artifact 不是任意文字檔。Gate 會在驗證 SHA-256 後解析下列 repository-owned JSON schema；`traffic` 必須逐階段精確為 90/10、50/50、0/100，且 artifact 內的兩組 release set 必須和 evidence 宣告完全相符：
 
@@ -173,4 +178,4 @@ Raw metrics artifact 同樣必須是 `schemaVersion: 1`、`artifactType: "zutoma
 
 可用 `--format json` 或 `--format markdown` 只輸出其中一種摘要；正式發布仍應保留兩種格式與可追溯的外部 staging/production artifact。
 
-正式 CD 會以 `--release-manifest .release.env` 將證據中的六個 image digest 與已驗證 manifest 逐一比對；production dispatch 必須另外提供 staging evidence artifact 的 run ID 與名稱，否則 release gate 維持 `blocked` 並阻止部署。
+正式 CD 會以 `--release-manifest .release.env` 將證據中的七個 image digest 與已驗證 manifest 逐一比對；production dispatch 必須另外提供 staging evidence artifact 的 run ID 與名稱，否則 release gate 維持 `blocked` 並阻止部署。

@@ -58,7 +58,7 @@ Compose reads host variables from a `.env` file or shell export for interpolatio
 
 Feedback image attachments are stored in the Compose-managed `feedback_uploads` volume mounted at `/app/data/feedback-uploads`; include that volume in host-level backups together with PostgreSQL logical backups.
 
-**REQUIRED:** production/staging require `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, and WAL `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the six immutable `*_IMAGE` references (including the release gateway); `JWT_SECRET`; the game/platform-only `PLATFORM_SEAT_TOKEN_SECRET`; a process/slot-specific `PLATFORM_PUBLIC_ADDRESS`; API-only `ADMIN_TOTP_ENCRYPTION_KEY` and `OAUTH_TOKEN_ENCRYPTION_KEY`; and either `OAUTH_PUBLIC_BASE_URL` or `PUBLIC_BASE_URL`. The four security keys must be pairwise distinct. `PG_APP_USER` remains a local-development compatibility alias only. Compose exits early if a production role is missing or aliased. Production/staging `REDIS_URL` must use `rediss://` and include Redis ACL/password credentials in the URL authority.
+**REQUIRED:** production/staging require `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, WAL replication, and WAL operator `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the seven immutable `*_IMAGE` references (including release gateway and PostgreSQL OPS); `JWT_SECRET`; the game/platform-only `PLATFORM_SEAT_TOKEN_SECRET`; a process/slot-specific `PLATFORM_PUBLIC_ADDRESS`; API-only `ADMIN_TOTP_ENCRYPTION_KEY` and `OAUTH_TOKEN_ENCRYPTION_KEY`; and either `OAUTH_PUBLIC_BASE_URL` or `PUBLIC_BASE_URL`. The four security keys must be pairwise distinct. `PG_APP_USER` remains a local-development compatibility alias only. Compose exits early if a production role is missing or aliased. Production/staging `REDIS_URL` must use `rediss://` and include Redis ACL/password credentials in the URL authority.
 
 Create a `.env` file from the template:
 
@@ -73,6 +73,7 @@ cp .env.example .env
 # - PG_MONITOR_USER / PG_MONITOR_PASSWORD
 # - PG_BACKUP_USER / PG_BACKUP_PASSWORD
 # - PG_WAL_USER / PG_WAL_PASSWORD
+# - PG_WAL_OPERATOR_USER / PG_WAL_OPERATOR_PASSWORD
 # - REDIS_PASSWORD (required in production)
 # - REDIS_URL=rediss://:<password>@redis:6380 (required in production)
 # - PG_CA_FILE (host path to the trusted PostgreSQL/Redis CA)
@@ -85,6 +86,8 @@ cp .env.example .env
 # - ACCOUNT_EXPORT_PSEUDONYM_KEY (independent; generate with: openssl rand -hex 32)
 # Image digests and EXPECTED_SCHEMA_* come from the verified release manifest.
 ```
+
+PostgreSQL WAL deploy gate 另外要求 `PG_WAL_OPERATOR_DATABASE`、`PG_WAL_OFFSITE_URI`、`PG_WAL_S3_REGION` 與三個 host file path：`PG_WAL_OPERATOR_PGPASS_FILE`、`PG_WAL_AGE_IDENTITY_FILE`、`PG_WAL_S3_CREDENTIALS_FILE`。三個 source 檔案必須為 `root:<POSTGRES_OPS_SECRETS_GID>`、mode `0440`；entrypoint 會在 tmpfs 建立 OPS UID 所有、mode `0600` 的 runtime PGPASS，避免 libpq 忽略 group-readable password file。Compose 只把 source 唯讀掛入 non-root OPS container，不接受 `PGPASSWORD`、AWS access key 或 age identity 明文環境變數。部署腳本會從主 Compose 的 migration service 取得 gate 使用的 host/port；直接執行輔助 Compose 時可用 `PG_DEPLOY_GATE_HOST`、`PG_DEPLOY_GATE_PORT` 覆寫，production 預設為 `postgresql:5432`。
 
 ### `game`
 
@@ -295,7 +298,7 @@ Both rate limiters **fail open** (allow the request through) when Redis is unava
 
 ### Monitoring Stack (Grafana / Prometheus)
 
-A ready-to-use monitoring stack is defined in [docker-compose.monitoring.yml](../docker-compose.monitoring.yml). It launches Prometheus, Grafana, postgres-exporter, redis-exporter, a node-exporter textfile collector for backup, retention, restore, and synthetic metrics, and cAdvisor, and joins the app's default Docker network so scrapers can reach `game`, `api`, `platform`, `postgres`, and `redis` by service name.
+A ready-to-use monitoring stack is defined in [docker-compose.monitoring.yml](../docker-compose.monitoring.yml). It launches Prometheus, Grafana, postgres-exporter, redis-exporter, a node-exporter textfile collector for backup, retention, restore, and synthetic metrics, and cAdvisor. Prometheus and blackbox-exporter join both the legacy app network and the blue/green release-edge network. Legacy app targets use the dedicated `game-legacy`, `api-legacy`, and `platform-legacy` aliases; slot replicas are discovered from `game-<slot>`, `api-<slot>`, and `platform-<slot>-p[12]` DNS A records.
 
 **Dashboards** (`observability/grafana/dashboards/`) are provisioned automatically into a `Zutomayo` folder:
 
@@ -314,9 +317,15 @@ A ready-to-use monitoring stack is defined in [docker-compose.monitoring.yml](..
 # Ensure the app stack is running first (it creates the default network).
 docker compose up -d
 
+# The monitoring and blue/green slot Compose files share this external network.
+docker network inspect "${GATEWAY_EDGE_NETWORK:-zutomayo-release-edge}" >/dev/null 2>&1 || \
+  docker network create "${GATEWAY_EDGE_NETWORK:-zutomayo-release-edge}"
+
 # Launch the monitoring stack.
 docker compose -f docker-compose.monitoring.yml up -d
 ```
+
+When upgrading an existing server4 legacy stack, its running containers do not gain new network aliases merely because the Compose YAML changed. Recreate `game`, `api`, and `platform` under the reviewed legacy manifest before switching Prometheus to this config, then verify that `game-legacy`, `api-legacy`, and `platform-legacy` resolve from `${APP_NETWORK}`. Keep the existing monitoring config running until all three names resolve; this avoids a scrape blackout during the control-plane installation.
 
 Grafana is exposed on **port 3003** (avoids conflicts with game `3000`, api `3001`, platform `3002`). Default credentials are `admin / admin`; set `GRAFANA_PASSWORD` in `.env` to override.
 
@@ -332,7 +341,7 @@ Grafana is exposed on **port 3003** (avoids conflicts with game `3000`, api `300
 
 **Metrics token**: if `METRICS_TOKEN` is set on the app servers, create a file containing the token and add `bearer_token_file: /etc/prometheus/metrics_token` to each `zutomayo-*` scrape job in `prometheus.yml`, then mount the token file into the prometheus container.
 
-**Network**: the monitoring stack joins `${APP_NETWORK:-zutomayo-card-online_default}` as an external network. If your compose project name differs (e.g. running from a worktree directory), set `APP_NETWORK` in `.env` to match `docker compose ls` output.
+**Network**: the monitoring stack joins `${APP_NETWORK:-zutomayo-card-online_default}` and `${GATEWAY_EDGE_NETWORK:-zutomayo-release-edge}` as external networks. If your compose project name differs (e.g. running from a worktree directory), set `APP_NETWORK` in `.env` to match `docker compose ls` output. `GATEWAY_EDGE_NETWORK` must exactly match the network installed by the parallel server4 control plane.
 
 Install the one-minute homepage/login/create/join synthetic timer using [`docs/runbooks/synthetic-probe.md`](./runbooks/synthetic-probe.md). The timer writes into the same node-exporter textfile directory. Its local success proves the journey and metric contract only; verify Alertmanager delivery and recovery in staging before treating the alert path as operational.
 
@@ -352,8 +361,12 @@ Production backups must be encrypted, checksummed, copied off-site, monitored fo
 ```bash
 ./scripts/pg-backup.sh
 ./scripts/pg-base-backup.sh
+./scripts/pg-wal-operational-smoke.sh
+# Set RELEASE_SHA, EXPECTED_SCHEMA_*, and the exact artifact/checksum S3 version IDs first.
 ./scripts/pg-restore-drill.sh s3://bucket/path/zutomayo_<timestamp>.dump.age
 ```
+
+The restore drill never resolves a mutable latest object: it requires `PG_RESTORE_DRILL_OBJECT_VERSION_ID` and `PG_RESTORE_DRILL_CHECKSUM_VERSION_ID`, downloads both with `s3api get-object --version-id`, and emits the release-bound `zutomayo-encrypted-offsite-restore-raw` artifact only after checksum, age decryption, isolated restore, expected migration/checksum, core-data, and legal-hold checks pass.
 
 The repository Compose database remains single-instance and is not a production HA topology. See [`docs/runbooks/ha-capacity.md`](./runbooks/ha-capacity.md) before setting replica counts or claiming the documented RPO/RTO.
 
@@ -695,7 +708,7 @@ Production dispatch 還必須選擇 `production_slot=blue|green`。CD 僅在
 
 ### GHCR Image 列表
 
-六個 release image 位於 GitHub Container Registry (`ghcr.io`)：
+七個 release image 位於 GitHub Container Registry (`ghcr.io`)：
 
 | Service     | Image                                                 |
 | ----------- | ----------------------------------------------------- |
@@ -705,17 +718,18 @@ Production dispatch 還必須選擇 `production_slot=blue|green`。CD 僅在
 | `migrate`   | `ghcr.io/lyangjyehaur/zutomayo-card-online-migrate`   |
 | `retention` | `ghcr.io/lyangjyehaur/zutomayo-card-online-retention` |
 | `gateway`   | `ghcr.io/lyangjyehaur/zutomayo-card-online-gateway`   |
+| `ops`       | `ghcr.io/lyangjyehaur/zutomayo-card-online-ops`       |
 
 部署不可直接使用 tag。CD 會以完整 commit SHA 建立可追溯 tag，然後
 解析成 `image@sha256:<digest>`，驗證 Cosign keyless signature 與 GitHub
 build provenance，最後才寫入 `.release.env`。staging/production Compose
-只接受六個完整 digest；`latest`、`staging`、`rollback` 均被禁止。
+只接受七個完整 digest；`latest`、`staging`、`rollback` 均被禁止。
 
 GHCR 登入使用內建 `GITHUB_TOKEN`（`packages: write` permission）。在 server 上手動 pull 時需 `docker login ghcr.io -u <github-username> -p <personal-access-token>`。
 
 ### Build 快取
 
-CD pipeline 使用 GitHub Actions cache（`type=gha`）加速 build。game、api、platform、migrate、retention 與 gateway 都使用獨立的 cache scope；game 與 platform 共用相同 Dockerfile，但 cache 仍分開管理。
+CD pipeline 使用 GitHub Actions cache（`type=gha`）加速 build。game、api、platform、migrate、retention、gateway 與 ops 都使用獨立的 cache scope；game 與 platform 共用相同 Dockerfile，但 cache 仍分開管理。
 
 共用 Dockerfile 的 runtime stage 以 `npm ci --omit=dev --ignore-scripts` 安裝 production dependencies，避免在未安裝 devDependencies 的映像中觸發 Husky 等開發期 lifecycle scripts；builder stage 仍執行完整的 `npm ci`。
 
@@ -747,7 +761,7 @@ Staging compose file: [docker-compose.staging.yml](../docker-compose.staging.yml
 2. 在外部 PostgreSQL 以 bootstrap administrator 執行
    `scripts/postgres-init-roles.sh`，再執行 migration role 的 migration/schema gate。
 3. CD pipeline 在 push 或手動 `workflow_dispatch` 時完成相同 preflight。
-4. 從 verified release artifact 取得 `.release.env`，其內容包含六個 digest、
+4. 從 verified release artifact 取得 `.release.env`，其內容包含七個 digest、
    `APP_VERSION`、`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION` 與 migration file checksum：
 
 ```bash

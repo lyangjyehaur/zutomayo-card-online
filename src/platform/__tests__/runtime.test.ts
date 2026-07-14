@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { matchMaker } from '@colyseus/core';
 import { createRequire } from 'node:module';
-import { assertPlatformRuntimeSchema, createPlatformRuntime } from '../runtime';
+import type { WebSocketTransport } from '@colyseus/ws-transport';
+import { assertPlatformRuntimeSchema, createPlatformRuntime, platformPendingInviteRedisOptions } from '../runtime';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from '../rooms';
+import { PLATFORM_PENDING_INVITE_DISCOVERY_PATH } from '../../platformInviteDiscovery';
 
 const require = createRequire(import.meta.url);
 const {
@@ -46,6 +48,8 @@ const PLATFORM_ENV_KEYS = [
   'RUNTIME_SCHEMA_DDL',
   'EXPECTED_SCHEMA_MIGRATION',
   'EXPECTED_SCHEMA_CHECKSUM',
+  'PLATFORM_INVITE_DISCOVERY_QUERY_TIMEOUT_MS',
+  'PLATFORM_MATCHMAKER_REDIS_COMMAND_TIMEOUT_MS',
 ] as const;
 
 const originalEnv = new Map<string, string | undefined>(
@@ -85,6 +89,31 @@ afterEach(() => {
 });
 
 describe('platform runtime', () => {
+  it('builds the dedicated pending invite Redis client options with a command timeout', () => {
+    expect(platformPendingInviteRedisOptions(1_234, { rejectUnauthorized: true })).toEqual({
+      maxRetriesPerRequest: 1,
+      enableReadyCheck: true,
+      commandTimeout: 1_234,
+      tls: { rejectUnauthorized: true },
+    });
+  });
+
+  it.each([
+    ['PLATFORM_INVITE_DISCOVERY_QUERY_TIMEOUT_MS', 'abc'],
+    ['PLATFORM_INVITE_DISCOVERY_QUERY_TIMEOUT_MS', '99'],
+    ['PLATFORM_INVITE_DISCOVERY_QUERY_TIMEOUT_MS', '5001'],
+    ['PLATFORM_MATCHMAKER_REDIS_COMMAND_TIMEOUT_MS', 'abc'],
+    ['PLATFORM_MATCHMAKER_REDIS_COMMAND_TIMEOUT_MS', '99'],
+    ['PLATFORM_MATCHMAKER_REDIS_COMMAND_TIMEOUT_MS', '5001'],
+  ] as const)('rejects invalid runtime timeout %s=%s before constructing services', (key, value) => {
+    setLocalPlatformEnv();
+    process.env[key] = value;
+
+    expect(() => createPlatformRuntime({ gracefullyShutdown: false })).toThrow(
+      `${key} must be an integer between 100 and 5000`,
+    );
+  });
+
   it('constructs the documented Colyseus platform shell in local memory mode', async () => {
     setLocalPlatformEnv();
 
@@ -135,6 +164,33 @@ describe('platform runtime', () => {
     expect(platform.publicAddress).toBe('wss://platform-blue.example.test/colyseus/blue');
     expect(platform.gameServer.options.publicAddress).toBe('platform-blue.example.test/colyseus/blue');
     await expect(platform.schemaReady).resolves.toBeUndefined();
+    await platform.closeStores();
+  });
+
+  it('registers authenticated pending invite discovery on the platform HTTP runtime', async () => {
+    setLocalPlatformEnv();
+    const verifyUserId = vi.fn(async () => 'u_runtime');
+    const queryRooms = vi.fn(async () => [
+      {
+        name: 'invite',
+        roomId: 'runtime_invite_room',
+        locked: false,
+        metadata: { kind: 'invite', status: 'pending', targetUserId: 'u_runtime' },
+      },
+    ]);
+    const platform = createPlatformRuntime({
+      gracefullyShutdown: false,
+      pendingInviteDiscovery: { verifyUserId, queryRooms },
+    });
+    await expect(platform.schemaReady).resolves.toBeUndefined();
+    const expressApp = (platform.gameServer.transport as WebSocketTransport).getExpressApp();
+    const router = expressApp as unknown as {
+      router: { stack: Array<{ route?: { path?: string; methods?: Record<string, boolean> } }> };
+    };
+    const route = router.router.stack.find(
+      (layer) => layer.route?.path === PLATFORM_PENDING_INVITE_DISCOVERY_PATH,
+    )?.route;
+    expect(route?.methods?.get).toBe(true);
     await platform.closeStores();
   });
 

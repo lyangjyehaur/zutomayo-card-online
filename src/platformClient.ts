@@ -1,4 +1,13 @@
 import type { Room, SeatReservation } from 'colyseus.js';
+import {
+  PLATFORM_PENDING_INVITE_DISCOVERY_PATH,
+  PLATFORM_PENDING_INVITE_FETCH_TIMEOUT_MS,
+  isPlatformInviteRoomId,
+  platformPendingInviteDiscoveryFromMessage,
+  type PlatformPendingInviteDiscovery,
+} from './platformInviteDiscovery';
+
+export { PLATFORM_PENDING_INVITE_POLL_MS } from './platformInviteDiscovery';
 
 export type PlatformRole = 'player' | 'spectator';
 
@@ -174,6 +183,16 @@ export interface PlatformInviteJoinOptions {
   includeFinished?: boolean;
 }
 
+export interface PlatformDiscoveredInviteJoinOptions {
+  roomId: string;
+  displayName: string;
+}
+
+export interface PlatformPendingInviteDiscoveryOptions {
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}
+
 export interface PlatformQuickMatchHandlers {
   onSnapshot?: (snapshot: PlatformQuickMatchSnapshot) => void;
   onMatched?: (match: PlatformQuickMatchMatched) => void;
@@ -229,6 +248,50 @@ export function resolvePlatformEndpoint(
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const port = location.port === '3000' || location.port === '5173' ? '3002' : location.port;
   return `${protocol}//${location.hostname}${port ? `:${port}` : ''}`;
+}
+
+export function resolvePlatformHttpEndpoint(
+  configuredUrl = readConfiguredPlatformUrl(),
+  location: LocationLike | undefined = typeof window === 'undefined' ? undefined : window.location,
+): string {
+  const endpoint = new URL(resolvePlatformEndpoint(configuredUrl, location));
+  if (endpoint.protocol === 'ws:') endpoint.protocol = 'http:';
+  else if (endpoint.protocol === 'wss:') endpoint.protocol = 'https:';
+  else if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
+    throw new Error('Platform endpoint must use ws, wss, http, or https');
+  }
+  return endpoint.toString().replace(/\/$/, '');
+}
+
+export async function discoverPlatformPendingInvite(
+  options: PlatformPendingInviteDiscoveryOptions = {},
+): Promise<PlatformPendingInviteDiscovery['pendingInvite']> {
+  const endpoint = `${resolvePlatformHttpEndpoint()}/`;
+  const path = PLATFORM_PENDING_INVITE_DISCOVERY_PATH.replace(/^\//, '');
+  const controller = new AbortController();
+  const timeoutMs = Math.min(
+    30_000,
+    Math.max(1, Math.floor(options.timeoutMs ?? PLATFORM_PENDING_INVITE_FETCH_TIMEOUT_MS)),
+  );
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await (options.fetchImpl ?? fetch)(new URL(path, endpoint), {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Platform pending invite discovery failed (${response.status})`);
+    const discovery = platformPendingInviteDiscoveryFromMessage(await response.json());
+    if (!discovery) throw new Error('Platform pending invite discovery returned an invalid response');
+    return discovery.pendingInvite;
+  } catch (err) {
+    if (controller.signal.aborted) throw new Error('Platform pending invite discovery timed out');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function platformOnlineCountFromMessage(message: unknown): number | null {
@@ -332,11 +395,11 @@ export function normalizeSeatReservation(response: FlatSeatReservation | SeatRes
 async function joinPlatformRoom(
   roomName: string,
   options: Record<string, unknown>,
-  method: 'joinOrCreate' | 'create' | 'join' = 'joinOrCreate',
+  method: 'joinOrCreate' | 'create' | 'join' | 'joinById' = 'joinOrCreate',
 ): Promise<Room<unknown>> {
   const { Client } = await import('colyseus.js');
   const client = new Client(resolvePlatformEndpoint());
-  const response = await client.http.post(`matchmake/${method}/${roomName}`, {
+  const response = await client.http.post(`matchmake/${method}/${encodeURIComponent(roomName)}`, {
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -804,6 +867,32 @@ export async function joinPlatformInvite(
   return bindPlatformInviteHandlers(room, handlers);
 }
 
+export async function joinDiscoveredPlatformInvite(
+  options: PlatformDiscoveredInviteJoinOptions,
+  handlers: PlatformInviteHandlers = {},
+): Promise<PlatformInviteRoom> {
+  if (!isPlatformInviteRoomId(options.roomId)) throw new Error('Invalid platform invite room id');
+  const room = await joinPlatformRoom(
+    options.roomId,
+    {
+      displayName: options.displayName,
+      role: 'player',
+    },
+    'joinById',
+  );
+  return bindPlatformInviteHandlers(room, handlers);
+}
+
+export async function retainDiscoveredPlatformInviteRoom(
+  roomPromise: Promise<PlatformInviteRoom>,
+  shouldRetain: () => boolean,
+): Promise<PlatformInviteRoom | null> {
+  const room = await roomPromise;
+  if (shouldRetain()) return room;
+  await room.leave(true).catch(() => undefined);
+  return null;
+}
+
 export async function connectPlatformQuickMatch(
   options: PlatformQuickMatchJoinOptions,
   handlers: PlatformQuickMatchHandlers,
@@ -843,6 +932,7 @@ export async function connectPlatformQuickMatch(
     handlers.onCancelled?.(reason);
   });
   room.onLeave(() => handlers.onDisconnect?.());
+  room.send('requestQuickMatchSnapshot', {});
 
   return room;
 }

@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createPlatformAdmissionLimiter,
   createPlatformAdmissionMiddleware,
+  createPlatformPendingInviteDiscoveryLimiter,
   platformAdmissionClientIp,
+  platformPendingInviteDiscoveryLimitsFromEnv,
   RedisPlatformAdmissionLimiter,
   type PlatformAdmissionLimits,
 } from '../admission';
@@ -68,6 +70,26 @@ describe('platform admission limiter', () => {
       true,
     );
   });
+
+  it('uses an independent, wider Redis quota namespace for invite discovery reads', async () => {
+    const evalCommand = vi.fn(async () => [1, 1, 1]);
+    const discoveryLimits = platformPendingInviteDiscoveryLimitsFromEnv({});
+    const limiter = createPlatformPendingInviteDiscoveryLimiter(
+      { eval: evalCommand },
+      { nodeEnv: 'production', limits: discoveryLimits },
+    );
+
+    await expect(limiter.check({ ip: '203.0.113.8', userId: 'u_reader' }, 120_000)).resolves.toBe(true);
+
+    const args = evalCommand.mock.calls[0] as unknown as Array<unknown>;
+    expect(args.slice(2, 5)).toEqual([
+      expect.stringMatching(/^platform:invite-discovery:\{v1:2\}:ip:[a-f0-9]{32}$/),
+      expect.stringMatching(/^platform:invite-discovery:\{v1:2\}:user:[a-f0-9]{32}$/),
+      'platform:invite-discovery:{v1:2}:global',
+    ]);
+    expect(args.join(' ')).not.toContain('platform:admission:');
+    expect(args.slice(-4)).toEqual([120, 20_000, 600, 30]);
+  });
 });
 
 describe('platform admission IP boundary', () => {
@@ -112,6 +134,26 @@ describe('platform admission middleware', () => {
 
     expect(limiter.check).toHaveBeenCalledWith({ ip: '203.0.113.9' });
     expect(req.headers).toMatchObject({ 'x-forwarded-for': '203.0.113.9' });
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('does not consume room admission quota for pending invite discovery GETs', async () => {
+    const limiter = { check: vi.fn(async () => true) };
+    const middleware = createPlatformAdmissionMiddleware({ limiter });
+    const next = vi.fn();
+
+    await middleware(
+      {
+        method: 'GET',
+        path: '/matchmake/invites/pending',
+        socket: { remoteAddress: '203.0.113.9' },
+        headers: { cookie: 'zutomayo_session=signed-token' },
+      } as never,
+      response() as never,
+      next,
+    );
+
+    expect(limiter.check).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledOnce();
   });
 

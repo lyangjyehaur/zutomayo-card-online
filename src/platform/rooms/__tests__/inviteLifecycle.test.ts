@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { AuthContext } from '@colyseus/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createEmptyPlatformBlockStore } from '../../blockStore';
 import { createEmptyPlatformFriendStore } from '../../friendStore';
 import { InviteRoom } from '../InviteRoom';
 import type { BoardgameMatchReadyMessage, InviteResponseMessage, PlatformAuth, PlatformClient } from '../types';
@@ -117,6 +118,7 @@ async function setupInviteRoom() {
 describe('invite room lifecycle', () => {
   afterEach(() => {
     process.env.JWT_SECRET = originalJwtSecret;
+    InviteRoom.configureBlockStore(createEmptyPlatformBlockStore());
     InviteRoom.configureFriendStore(createEmptyPlatformFriendStore());
     InviteRoom.clearActiveRoomsForTests();
   });

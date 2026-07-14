@@ -20,6 +20,7 @@
   --color-accent-primary-soft: var(--accent-primary-soft);
   --color-accent-action: var(--accent-action);
   --color-accent-danger: var(--accent-danger);
+  --color-accent-danger-surface: var(--accent-danger-surface);
   --color-accent-success: var(--accent-success);
   --color-accent-info: var(--accent-info);
   --color-border-default: var(--border-default);
@@ -986,7 +987,6 @@ input:focus {
   padding: 1rem;
   background: rgba(5, 7, 16, 0.62);
   backdrop-filter: blur(8px);
-  animation: motion-overlay-enter var(--motion-duration-base) var(--motion-ease-out);
 }
 
 .app-drawer-panel {
@@ -1147,11 +1147,9 @@ input:focus {
 
 @keyframes drawer-rise {
   from {
-    opacity: 0;
     transform: translateY(0.65rem);
   }
   to {
-    opacity: 1;
     transform: translateY(0);
   }
 }

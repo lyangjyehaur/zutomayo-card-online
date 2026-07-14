@@ -1,4 +1,4 @@
-import type { APIRequestContext, APIResponse, BrowserContext, Page } from '@playwright/test';
+import { expect, type APIRequestContext, type APIResponse, type BrowserContext, type Page } from '@playwright/test';
 
 const ONLINE_SESSION_STORAGE_KEY = 'zutomayo_online_session';
 
@@ -29,6 +29,11 @@ export interface AuthenticatedOnlineAccount {
   email: string;
   nickname: string;
   elo: number;
+  deck: {
+    id: string;
+    name: string;
+    cardIds: string[];
+  };
 }
 
 export interface AuthenticatedMatchHistoryEntry {
@@ -118,11 +123,43 @@ export async function registerAuthenticatedOnlineAccount(
     localStorage.setItem('zutomayo_deck_intro_seen', 'true');
   });
 
+  const cardsResponse = await context.request.get('/api/cards');
+  if (!cardsResponse.ok()) throw await responseError(cardsResponse);
+  const cards = (await cardsResponse.json()) as Array<{ id?: unknown; type?: unknown; effect?: unknown }>;
+  const cardIds = cards
+    .filter(
+      (card) =>
+        card.type === 'Character' &&
+        (typeof card.effect !== 'string' || card.effect.trim() === '') &&
+        typeof card.id === 'string' &&
+        card.id.length > 0,
+    )
+    .map((card) => card.id as string)
+    .slice(0, 10)
+    .flatMap((id) => [id, id]);
+  if (cardIds.length !== 20) throw new Error('Card fixture did not provide ten effect-free Character card IDs');
+
+  const deckName = `${nickname} Server Deck`;
+  const deck = await postAuthenticatedJson<{ id?: unknown; name?: unknown; cardIds?: unknown }>(context, '/api/decks', {
+    name: deckName,
+    cardIds,
+  });
+  if (
+    typeof deck.id !== 'string' ||
+    typeof deck.name !== 'string' ||
+    !Array.isArray(deck.cardIds) ||
+    deck.cardIds.length !== 20 ||
+    !deck.cardIds.every((id) => typeof id === 'string')
+  ) {
+    throw new Error('Server deck creation did not return a complete legal deck');
+  }
+
   return {
     id: body.user.id,
     email,
     nickname: body.user.nickname,
     elo: body.user.elo,
+    deck: { id: deck.id, name: deck.name, cardIds: deck.cardIds as string[] },
   };
 }
 
@@ -168,6 +205,13 @@ export async function openAuthenticatedOnlineLobby(page: Page): Promise<void> {
   await page.goto('/online');
 }
 
+export async function selectAuthenticatedServerDeck(page: Page, account: AuthenticatedOnlineAccount): Promise<void> {
+  const deckButton = page.getByRole('button', { name: new RegExp(account.deck.name) });
+  await expect(deckButton).toBeVisible({ timeout: 30_000 });
+  await deckButton.click();
+  await expect(deckButton).toHaveAttribute('aria-pressed', 'true');
+}
+
 function isAppVersionInfo(value: unknown): value is AppVersionInfo {
   if (!value || typeof value !== 'object') return false;
   const data = value as Partial<AppVersionInfo>;
@@ -182,6 +226,7 @@ async function joinSeat(
   playerID: OnlinePlayerID,
   playerName: string,
   clientVersion: AppVersionInfo,
+  deckReservationId?: string,
 ): Promise<OnlineSeat> {
   const joined = await postJson<{
     playerID?: OnlinePlayerID;
@@ -193,6 +238,7 @@ async function joinSeat(
     playerName,
     data: { clientVersion },
     clientVersion,
+    ...(deckReservationId ? { deckReservationId } : {}),
   });
   if (joined.playerID && joined.playerID !== playerID) {
     throw new Error(`Expected player ${playerID}, server joined player ${joined.playerID}`);
@@ -213,6 +259,51 @@ export async function provisionOnlineMatch(request: APIRequestContext): Promise<
 
   const seat0 = await joinSeat(request, created.matchID, '0', 'E2E Host', version);
   const seat1 = await joinSeat(request, created.matchID, '1', 'E2E Guest', version);
+  return {
+    matchID: created.matchID,
+    clientVersion: version,
+    seats: { '0': seat0, '1': seat1 },
+  };
+}
+
+async function reserveAuthenticatedOnlineDeck(
+  context: BrowserContext,
+  account: AuthenticatedOnlineAccount,
+  rulesVersion: string,
+): Promise<string> {
+  const reservation = await postAuthenticatedJson<{ reservationId?: unknown }>(context, '/api/deck-reservations', {
+    deckId: account.deck.id,
+    rulesVersion,
+  });
+  if (typeof reservation.reservationId !== 'string' || !reservation.reservationId) {
+    throw new Error('Server deck reservation did not return an opaque reservation id');
+  }
+  return reservation.reservationId;
+}
+
+export async function provisionAuthenticatedOnlineMatch(
+  hostContext: BrowserContext,
+  hostAccount: AuthenticatedOnlineAccount,
+  guestContext: BrowserContext,
+  guestAccount: AuthenticatedOnlineAccount,
+): Promise<ProvisionedOnlineMatch> {
+  const version = await getJson<unknown>(hostContext.request, '/api/app-version');
+  if (!isAppVersionInfo(version)) throw new Error('Game server returned an invalid app version');
+
+  const [hostReservationId, guestReservationId] = await Promise.all([
+    reserveAuthenticatedOnlineDeck(hostContext, hostAccount, version.rulesVersion),
+    reserveAuthenticatedOnlineDeck(guestContext, guestAccount, version.rulesVersion),
+  ]);
+  const created = await postJson<{ matchID?: string }>(hostContext.request, '/games/zutomayo-card/create', {
+    numPlayers: 2,
+    setupData: { clientVersion: version, deck0ReservationId: hostReservationId },
+  });
+  if (!created.matchID) throw new Error('Game server did not return a match id');
+
+  const [seat0, seat1] = await Promise.all([
+    joinSeat(hostContext.request, created.matchID, '0', hostAccount.nickname, version, hostReservationId),
+    joinSeat(guestContext.request, created.matchID, '1', guestAccount.nickname, version, guestReservationId),
+  ]);
   return {
     matchID: created.matchID,
     clientVersion: version,

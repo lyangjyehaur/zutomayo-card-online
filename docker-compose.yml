@@ -23,6 +23,8 @@ services:
       PG_BACKUP_PASSWORD: ${PG_BACKUP_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_BACKUP_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
       PG_WAL_USER: ${PG_WAL_USER:-zutomayo_wal}
       PG_WAL_PASSWORD: ${PG_WAL_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_WAL_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
+      PG_WAL_OPERATOR_USER: ${PG_WAL_OPERATOR_USER:-zutomayo_wal_operator}
+      PG_WAL_OPERATOR_PASSWORD: ${PG_WAL_OPERATOR_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_WAL_OPERATOR_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
     volumes:
       - pg-data:/var/lib/postgresql/data
       - ./scripts/postgres-init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
@@ -84,6 +86,7 @@ services:
       - PG_MONITOR_USER=${PG_MONITOR_USER:-zutomayo_monitor}
       - PG_BACKUP_USER=${PG_BACKUP_USER:-zutomayo_backup}
       - PG_WAL_USER=${PG_WAL_USER:-zutomayo_wal}
+      - PG_WAL_OPERATOR_USER=${PG_WAL_OPERATOR_USER:-zutomayo_wal_operator}
       - REQUIRE_APP_ROLE_GATE=true
       - REQUIRE_ROLE_MATRIX_GATE=${REQUIRE_ROLE_MATRIX_GATE:-true}
       - REQUIRE_DISTINCT_DB_ROLES=${REQUIRE_DISTINCT_DB_ROLES:-false}
@@ -120,6 +123,10 @@ services:
         SENTRY_PROJECT: ${SENTRY_PROJECT:-}
     ports:
       - '3000:3000'
+    networks:
+      default:
+        aliases:
+          - game-legacy
     environment:
       - PORT=3000
       - NODE_ENV=production
@@ -174,6 +181,10 @@ services:
         GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
     ports:
       - '3001:3001'
+    networks:
+      default:
+        aliases:
+          - api-legacy
     environment:
       - API_PORT=3001
       - NODE_ENV=production
@@ -279,6 +290,10 @@ services:
     command: ['npm', 'run', 'platform']
     ports:
       - '3002:3002'
+    networks:
+      default:
+        aliases:
+          - platform-legacy
     environment:
       - PLATFORM_PORT=3002
       - PLATFORM_PUBLIC_ADDRESS=${PLATFORM_PUBLIC_ADDRESS:-ws://localhost:3002}

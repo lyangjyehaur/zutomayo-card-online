@@ -89,6 +89,7 @@ function manifest(sha: string, imageDigit: string) {
     `MIGRATE_IMAGE=ghcr.io/example/migrate@sha256:${digest(imageDigit)}`,
     `RETENTION_IMAGE=ghcr.io/example/retention@sha256:${digest(imageDigit)}`,
     `GATEWAY_IMAGE=ghcr.io/example/gateway@sha256:${digest(imageDigit)}`,
+    `OPS_IMAGE=ghcr.io/example/ops@sha256:${digest(imageDigit)}`,
     '',
   ].join('\n');
 }
@@ -137,6 +138,33 @@ describe('server4 HAProxy gateway renderer', () => {
         candidateWeightPercent: 10,
       }),
     ).toThrow('different RELEASE_SHA');
+  });
+
+  it('accepts a verified legacy-six stable manifest but never a legacy candidate', () => {
+    const stableManifest = manifest('b'.repeat(40), '1').replace(/^OPS_IMAGE=.*\n/m, '');
+    const candidateManifest = manifest('a'.repeat(40), '2');
+
+    expect(
+      gatewayInputFromReleaseManifests({
+        stableManifest,
+        candidateManifest,
+        stableSlot: 'blue',
+        candidateSlot: 'green',
+        candidateWeightPercent: 10,
+      }),
+    ).toMatchObject({ candidateReleaseSha: 'a'.repeat(40) });
+    expect(() =>
+      gatewayInputFromReleaseManifests({
+        stableManifest: candidateManifest,
+        candidateManifest: stableManifest,
+        stableSlot: 'blue',
+        candidateSlot: 'green',
+        candidateWeightPercent: 10,
+      }),
+    ).toThrow(/OPS_IMAGE/);
+    expect(() => gatewayInputFromBootstrapManifest({ manifest: stableManifest, stableSlot: 'blue' })).toThrow(
+      /OPS_IMAGE/,
+    );
   });
 
   it('renders a one-slot bootstrap gateway without pretending it is canary evidence', () => {

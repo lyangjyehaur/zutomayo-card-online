@@ -169,7 +169,7 @@ describe('online lobby platform boundary', () => {
     const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
     const resumeIndex = lobbySource.indexOf('const resumeJoinedInviteMatch =');
     const acceptIndex = lobbySource.indexOf('const handleAcceptFriendInvite =');
-    const scanIndex = lobbySource.indexOf('const scanIncomingInvites =');
+    const scanIndex = lobbySource.indexOf('const scheduleRetry =');
     const acceptSource = lobbySource.slice(acceptIndex, scanIndex);
 
     expect(resumeIndex).toBeGreaterThan(-1);
@@ -179,5 +179,27 @@ describe('online lobby platform boundary', () => {
     expect(acceptSource).toContain('{ includeFinished: true }');
     expect(acceptSource).toContain('joinAcceptedInviteMatch(friend, message.boardgameMatchID)');
     expect(lobbySource.slice(scanIndex)).not.toContain('resumeJoinedInviteMatch(friend, nextSnapshot)');
+  });
+
+  it('polls authenticated invite discovery before joining one opaque pending room', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+    const scanIndex = lobbySource.indexOf('const scheduleRetry =');
+    const scanSource = lobbySource.slice(scanIndex, lobbySource.indexOf('const handleDirectChatSubmit ='));
+
+    expect(scanIndex).toBeGreaterThan(-1);
+    expect(scanSource).toContain('async function scanIncomingInvites()');
+    expect(scanSource).toContain(
+      'window.setTimeout(() => void scanIncomingInvites(), PLATFORM_PENDING_INVITE_POLL_MS)',
+    );
+    expect(scanSource).toContain('if (retryTimer !== null) window.clearTimeout(retryTimer)');
+    expect(scanSource).toContain('pendingInvite = await discoverPlatformPendingInvite()');
+    expect(scanSource).toContain('if (!pendingInvite)');
+    expect(scanSource).toContain('joinDiscoveredPlatformInvite(');
+    expect(scanSource).toContain('pendingInviteJoinRef.current = joinRequest');
+    expect(scanSource).toContain('await joinRequest.catch(() => null)');
+    expect(scanSource).toContain('retainDiscoveredPlatformInviteRoom(');
+    expect(scanSource.indexOf('if (!pendingInvite)')).toBeLessThan(scanSource.indexOf('joinDiscoveredPlatformInvite('));
+    expect(scanSource).not.toContain('for (const friend of friends)');
+    expect(scanSource).not.toContain('joinPlatformInvite(');
   });
 });

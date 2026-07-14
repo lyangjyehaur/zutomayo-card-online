@@ -20,6 +20,7 @@ services:
       - PG_MONITOR_USER=${PG_MONITOR_USER:?Set PG_MONITOR_USER in .env}
       - PG_BACKUP_USER=${PG_BACKUP_USER:?Set PG_BACKUP_USER in .env}
       - PG_WAL_USER=${PG_WAL_USER:?Set PG_WAL_USER in .env}
+      - PG_WAL_OPERATOR_USER=${PG_WAL_OPERATOR_USER:?Set PG_WAL_OPERATOR_USER in .env}
       - REQUIRE_APP_ROLE_GATE=true
       - REQUIRE_ROLE_MATRIX_GATE=true
       - REQUIRE_DISTINCT_DB_ROLES=true
@@ -85,8 +86,12 @@ services:
       - GAME_DRAIN_GRACE_MS=${GAME_DRAIN_GRACE_MS:-5000}
       - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     networks:
-      - default
-      - 1panel-network
+      default:
+        aliases:
+          - game-legacy
+      1panel-network:
+        aliases:
+          - game-legacy
     volumes:
       - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
     depends_on:
@@ -236,8 +241,12 @@ services:
       - API_HTTP_DRAIN_TIMEOUT_MS=${API_HTTP_DRAIN_TIMEOUT_MS:-10000}
       - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     networks:
-      - default
-      - 1panel-network
+      default:
+        aliases:
+          - api-legacy
+      1panel-network:
+        aliases:
+          - api-legacy
     volumes:
       - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
       - feedback_uploads:/app/data/feedback-uploads
@@ -314,8 +323,12 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - PLATFORM_DRAIN_GRACE_MS=${PLATFORM_DRAIN_GRACE_MS:-5000}
     networks:
-      - default
-      - 1panel-network
+      default:
+        aliases:
+          - platform-legacy
+      1panel-network:
+        aliases:
+          - platform-legacy
     volumes:
       - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
     depends_on:

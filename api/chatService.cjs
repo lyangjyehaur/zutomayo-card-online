@@ -695,7 +695,9 @@ async function markConversationRead({
   const lastReadMessageId = typeof body.lastReadMessageId === 'string' ? body.lastReadMessageId.slice(0, 80) : null;
   await pool.query(
     `INSERT INTO chat_read_states (conversation_id, user_id, last_read_message_id, read_at)
-     VALUES ($1, $2, $3, NOW())
+     SELECT id, $2, $3, NOW()
+       FROM chat_conversations
+      WHERE id = $1
      ON CONFLICT (conversation_id, user_id)
      DO UPDATE SET last_read_message_id = EXCLUDED.last_read_message_id, read_at = NOW()`,
     [key, userId, lastReadMessageId],

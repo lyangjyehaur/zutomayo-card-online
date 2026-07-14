@@ -31,7 +31,9 @@ const RELEASE_MANIFEST_KEYS = Object.freeze([
   'MIGRATE_IMAGE',
   'RETENTION_IMAGE',
   'GATEWAY_IMAGE',
+  'OPS_IMAGE',
 ]);
+const LEGACY_RELEASE_MANIFEST_KEYS = Object.freeze(RELEASE_MANIFEST_KEYS.filter((key) => key !== 'OPS_IMAGE'));
 
 function isPlainObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -56,7 +58,7 @@ function imageRepository(reference) {
   return reference.slice(0, reference.toLowerCase().lastIndexOf('@sha256:'));
 }
 
-export function parseGatewayReleaseManifest(contents, label = 'release manifest') {
+export function parseGatewayReleaseManifest(contents, label = 'release manifest', { allowLegacySix = false } = {}) {
   if (typeof contents !== 'string') throw new Error(`${label} must be text`);
   const values = {};
   for (const [index, rawLine] of contents.split(/\r?\n/).entries()) {
@@ -72,7 +74,10 @@ export function parseGatewayReleaseManifest(contents, label = 'release manifest'
     if (Object.hasOwn(values, key)) throw new Error(`${label} contains duplicate key ${key}`);
     values[key] = value;
   }
-  for (const key of RELEASE_MANIFEST_KEYS) {
+  const expectedKeys =
+    allowLegacySix && !Object.hasOwn(values, 'OPS_IMAGE') ? LEGACY_RELEASE_MANIFEST_KEYS : RELEASE_MANIFEST_KEYS;
+  assertExactKeys(values, expectedKeys, label);
+  for (const key of expectedKeys) {
     if (!Object.hasOwn(values, key) || !values[key]) throw new Error(`${label} is missing ${key}`);
   }
   if (!RELEASE_SHA_PATTERN.test(values.RELEASE_SHA)) throw new Error(`${label} RELEASE_SHA must be a full Git SHA`);
@@ -86,14 +91,9 @@ export function parseGatewayReleaseManifest(contents, label = 'release manifest'
   if (!SHA256_PATTERN.test(values.EXPECTED_SCHEMA_CHECKSUM)) {
     throw new Error(`${label} EXPECTED_SCHEMA_CHECKSUM must be a SHA-256 digest`);
   }
-  for (const key of [
-    'GAME_IMAGE',
-    'API_IMAGE',
-    'PLATFORM_IMAGE',
-    'MIGRATE_IMAGE',
-    'RETENTION_IMAGE',
-    'GATEWAY_IMAGE',
-  ]) {
+  const imageKeys = ['GAME_IMAGE', 'API_IMAGE', 'PLATFORM_IMAGE', 'MIGRATE_IMAGE', 'RETENTION_IMAGE', 'GATEWAY_IMAGE'];
+  if (Object.hasOwn(values, 'OPS_IMAGE')) imageKeys.push('OPS_IMAGE');
+  for (const key of imageKeys) {
     if (!IMAGE_DIGEST_PATTERN.test(values[key])) {
       throw new Error(`${label} ${key} must be a complete immutable image @sha256 reference`);
     }
@@ -108,7 +108,7 @@ export function gatewayInputFromReleaseManifests({
   candidateSlot,
   candidateWeightPercent,
 }) {
-  const stable = parseGatewayReleaseManifest(stableManifest, 'stable manifest');
+  const stable = parseGatewayReleaseManifest(stableManifest, 'stable manifest', { allowLegacySix: true });
   const candidate = parseGatewayReleaseManifest(candidateManifest, 'candidate manifest');
   if (stable.RELEASE_SHA.toLowerCase() === candidate.RELEASE_SHA.toLowerCase()) {
     throw new Error('stable and candidate manifests must use different RELEASE_SHA values');

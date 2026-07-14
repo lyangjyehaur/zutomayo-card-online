@@ -149,6 +149,15 @@ jobs:
           PG_BACKUP_PASSWORD: cd-preflight-backup-password
           PG_WAL_USER: zutomayo_wal
           PG_WAL_PASSWORD: cd-preflight-wal-password
+          PG_WAL_OPERATOR_USER: zutomayo_wal_operator
+          PG_WAL_OPERATOR_PASSWORD: cd-preflight-wal-operator-password
+          PG_WAL_OPERATOR_DATABASE: zutomayo
+          PG_WAL_OPERATOR_PGPASS_FILE: /tmp/postgres-operator.pgpass
+          PG_WAL_AGE_IDENTITY_FILE: /tmp/wal-age-identity
+          PG_WAL_S3_CREDENTIALS_FILE: /tmp/wal-s3-credentials
+          PG_WAL_OFFSITE_URI: s3://zutomayo-cd-wal
+          PG_WAL_S3_REGION: us-east-1
+          POSTGRES_OPS_SECRETS_GID: '992'
           PG_HOST: staging-postgres.example.internal
           PG_DATABASE: zutomayo
           PG_CA_FILE: /tmp/zutomayo-service-ca.crt
@@ -188,6 +197,7 @@ jobs:
           MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
           RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
           GATEWAY_IMAGE: ghcr.io/example/gateway@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          OPS_IMAGE: ghcr.io/example/ops@sha256:0000000000000000000000000000000000000000000000000000000000000000
           COLYSEUS_REDIS_IMAGE: redis@sha256:0000000000000000000000000000000000000000000000000000000000000000
           COLYSEUS_REDIS_PASSWORD: cd-preflight-colyseus-redis-password
           FEEDBACK_UPLOADS_VOLUME: zutomayo-cd-feedback-uploads
@@ -207,6 +217,8 @@ jobs:
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4-gateway.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.postgres-ops.yml --profile postgres-ops config --quiet
+          docker compose -f docker-compose.postgres-role-smoke.yml config --no-interpolate --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.monitoring.yml config --quiet
@@ -246,6 +258,9 @@ jobs:
           - app: gateway
             context: .
             dockerfile: ./Dockerfile.gateway
+          - app: ops
+            context: .
+            dockerfile: ./Dockerfile.ops
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -413,7 +428,7 @@ jobs:
           set -euo pipefail
           while IFS='=' read -r key ref; do
             case "$key" in
-              GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE|GATEWAY_IMAGE)
+              GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE|GATEWAY_IMAGE|OPS_IMAGE)
                 cosign verify --certificate-identity-regexp "https://github.com/${GH_REPOSITORY}/.github/workflows/cd\\.yml@refs/(heads/master|tags/v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?)$" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$ref" >/dev/null
                 gh attestation verify "oci://${ref}" --repo "$GH_REPOSITORY" --source-digest "${{ needs.preflight.outputs.release_sha }}" >/dev/null
                 ;;

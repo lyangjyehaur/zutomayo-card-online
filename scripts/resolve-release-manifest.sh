@@ -99,7 +99,7 @@ trap 'rm -f "$tmp_file"' EXIT
   printf 'GAME_RULES_VERSION=%s\n' "$APP_VERSION"
   printf 'EXPECTED_SCHEMA_MIGRATION=%s\n' "$EXPECTED_SCHEMA_MIGRATION"
   printf 'EXPECTED_SCHEMA_CHECKSUM=%s\n' "$EXPECTED_SCHEMA_CHECKSUM"
-  for app in game api platform migrate retention gateway; do
+  for app in game api platform migrate retention gateway ops; do
     image="${REGISTRY}/${IMAGE_PREFIX}-${app}"
     tag_ref="${image}:${RELEASE_SHA}"
     digest="$(resolve_digest "$tag_ref")"

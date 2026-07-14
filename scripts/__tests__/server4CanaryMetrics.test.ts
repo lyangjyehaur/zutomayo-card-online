@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { collectServer4CanaryMetrics } from '../collect-server4-canary-metrics.mjs';
+import {
+  collectServer4CanaryMetrics,
+  SERVER4_CANARY_POLICY,
+  verifyServer4CanaryStage,
+} from '../collect-server4-canary-metrics.mjs';
 
 const header = '# pxname,svname,stot,status,hrsp_1xx,';
 
@@ -66,6 +70,8 @@ describe('server4 raw canary metrics collector', () => {
         endStatsCsv: stats(1_250, 135, 'blue', 60_000, 6_000),
         rollbackStartedAt: '2026-07-14T01:00:00.000Z',
         rollbackFinishedAt: '2026-07-14T01:04:00.000Z',
+        observationStartedAt: '2026-07-14T01:04:05.000Z',
+        observationFinishedAt: '2026-07-14T01:09:05.000Z',
       }),
     ).toMatchObject({
       phase: 'rollback',
@@ -76,6 +82,11 @@ describe('server4 raw canary metrics collector', () => {
       websocketSamples: 115,
       readyReplicaCount: 2,
       rollbackSeconds: 240,
+      observation: {
+        startedAt: '2026-07-14T01:04:05.000Z',
+        finishedAt: '2026-07-14T01:09:05.000Z',
+        dwellSeconds: 300,
+      },
       source: { observedSlot: 'blue' },
     });
   });
@@ -93,6 +104,8 @@ describe('server4 raw canary metrics collector', () => {
         ...input,
         rollbackStartedAt: '2026-07-14T01:05:00.000Z',
         rollbackFinishedAt: '2026-07-14T01:04:00.000Z',
+        observationStartedAt: '2026-07-14T01:05:00.000Z',
+        observationFinishedAt: '2026-07-14T01:06:00.000Z',
       }),
     ).toThrow('after rollbackStartedAt');
   });
@@ -114,5 +127,81 @@ describe('server4 raw canary metrics collector', () => {
         endStatsCsv: stats(100, 10),
       }),
     ).toThrow('counters moved backwards');
+  });
+
+  it('enforces the repository-owned dwell, traffic, and replica policy at the exact boundary', () => {
+    expect(SERVER4_CANARY_POLICY).toEqual({
+      requiredStages: 3,
+      stageWeights: [10, 50, 100],
+      maxRollbackSeconds: 300,
+      maxRollbackObservationDelaySeconds: 60,
+      maxRollbackObservationSeconds: 600,
+      minStageDwellSeconds: 300,
+      minHttpSamplesPerStage: 1_000,
+      minWebsocketSamplesPerStage: 100,
+      minReadyReplicaCount: 2,
+    });
+    for (const [weight, sequence] of [
+      [10, 1],
+      [50, 2],
+      [100, 3],
+    ] as const) {
+      const artifact = gatewayArtifact();
+      artifact.sequence = sequence;
+      artifact.traffic = { stableWeightPercent: 100 - weight, candidateWeightPercent: weight };
+      artifact.gateway.activeConfigId = 'canary-aaaaaaaaaaaa-' + weight + '-blue-green';
+      expect(
+        verifyServer4CanaryStage({
+          gatewayArtifact: artifact,
+          activeConfigMarker: artifact.gateway.activeConfigId,
+          startStatsCsv: stats(100, 10),
+          endStatsCsv: stats(1_100, 110),
+          observationStartedAt: '2026-07-14T01:00:00.000Z',
+          observationFinishedAt: '2026-07-14T01:05:00.000Z',
+        }),
+      ).toMatchObject({
+        sequence,
+        candidateWeightPercent: weight,
+        httpSamples: 1_000,
+        websocketSamples: 100,
+        readyReplicaCount: 2,
+        observation: { dwellSeconds: 300 },
+        policyPassed: true,
+      });
+    }
+  });
+
+  it('reports every failed rollout threshold and rejects non-canonical stage metadata', () => {
+    const oneReadyReplica = stats(1_099, 109).replaceAll('_2,10,UP,0,', '_2,10,DOWN,0,');
+    try {
+      verifyServer4CanaryStage({
+        gatewayArtifact: gatewayArtifact(),
+        activeConfigMarker: 'canary-aaaaaaaaaaaa-10-blue-green',
+        startStatsCsv: stats(100, 10),
+        endStatsCsv: oneReadyReplica,
+        observationStartedAt: '2026-07-14T01:00:00.000Z',
+        observationFinishedAt: '2026-07-14T01:04:59.000Z',
+      });
+      throw new Error('expected rollout policy to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain('dwell 299s < 300s');
+      expect((error as Error).message).toContain('HTTP samples 999 < 1000');
+      expect((error as Error).message).toContain('WebSocket samples 99 < 100');
+      expect((error as Error).message).toContain('ready replicas 1 < 2');
+    }
+
+    const invalidSequence = gatewayArtifact();
+    invalidSequence.sequence = 2;
+    expect(() =>
+      verifyServer4CanaryStage({
+        gatewayArtifact: invalidSequence,
+        activeConfigMarker: 'canary-aaaaaaaaaaaa-10-blue-green',
+        startStatsCsv: stats(100, 10),
+        endStatsCsv: stats(1_100, 110),
+        observationStartedAt: '2026-07-14T01:00:00.000Z',
+        observationFinishedAt: '2026-07-14T01:05:00.000Z',
+      }),
+    ).toThrow('canonical stage sequence');
   });
 });

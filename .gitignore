@@ -71,6 +71,7 @@ data/vision-ocr/
 .release-evidence/
 staging-evidence/
 artifacts/release-gate/
+artifacts/pg-pitr-drill/
 
 # Standalone admin HTML (replaced by React admin)
 admin/

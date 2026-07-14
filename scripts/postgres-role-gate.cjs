@@ -56,7 +56,7 @@ const APPLICATION_TABLES = Object.freeze([
 
 const ALL_TABLES = Object.freeze([...PROTECTED_SCHEMA_TABLES, ...APPLICATION_TABLES]);
 const API_CRUD_TABLES = Object.freeze(APPLICATION_TABLES.filter((tableName) => tableName !== 'account_export_audit'));
-const ROLE_TYPES = Object.freeze(['api', 'game', 'platform', 'retention', 'monitor', 'backup', 'wal']);
+const ROLE_TYPES = Object.freeze(['api', 'game', 'platform', 'retention', 'monitor', 'backup', 'wal', 'walOperator']);
 const APP_ALIAS_TYPES = Object.freeze(new Set(['api', 'game', 'platform']));
 const TABLE_PRIVILEGES = Object.freeze(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']);
 const SEQUENCE_PRIVILEGES = Object.freeze(['USAGE', 'SELECT', 'UPDATE']);
@@ -144,6 +144,7 @@ function normalizeRoleUsers({ appUser, roleUsers = {}, requireComplete = false }
     monitor: String(roleUsers.monitor || '').trim(),
     backup: String(roleUsers.backup || '').trim(),
     wal: String(roleUsers.wal || '').trim(),
+    walOperator: String(roleUsers.walOperator || '').trim(),
   };
   const missing = requireComplete ? ROLE_TYPES.filter((type) => !values[type]) : [];
   if (missing.length > 0) throw new Error(`PostgreSQL role matrix is incomplete: ${missing.join(', ')}`);
@@ -203,6 +204,8 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
         connect: false,
         monitor: false,
         replication: false,
+        inherit: true,
+        walSwitch: false,
       });
     }
     return rules.get(roleName);
@@ -212,9 +215,11 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
     const rule = ensure(roleUsers[type]);
     for (const table of tables) addTablePrivileges(rule.tables, table, privileges);
     rule.connect = type !== 'wal';
-    rule.schemaUsage = type !== 'monitor' && type !== 'wal';
+    rule.schemaUsage = type !== 'monitor' && type !== 'wal' && type !== 'walOperator';
     rule.monitor = type === 'monitor';
     rule.replication = type === 'wal';
+    rule.inherit = type !== 'wal' && type !== 'walOperator';
+    rule.walSwitch = type === 'walOperator';
   };
   const grantTableRules = (type, tableRules) => {
     if (!requiredRoleTypes.includes(type) || !roleUsers[type]) return;
@@ -258,9 +263,11 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
     if (!roleUsers[type]) continue;
     const rule = ensure(roleUsers[type]);
     rule.connect = type !== 'wal';
-    rule.schemaUsage = type !== 'monitor' && type !== 'wal';
+    rule.schemaUsage = type !== 'monitor' && type !== 'wal' && type !== 'walOperator';
     rule.monitor = type === 'monitor';
     rule.replication = type === 'wal';
+    rule.inherit = type !== 'wal' && type !== 'walOperator';
+    rule.walSwitch = type === 'walOperator';
     if (type === 'api') {
       rule.sequences = new Set(SEQUENCE_PRIVILEGES);
     } else if (type === 'backup') {
@@ -374,7 +381,7 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
       attrs.rolcreaterole !== false ||
       attrs.rolbypassrls !== false ||
       attrs.rolreplication !== expectedReplication ||
-      attrs.rolinherit !== !expectedReplication
+      attrs.rolinherit !== rule.inherit
     ) {
       throw new Error(`PostgreSQL role attributes are unsafe or mismatched: ${roleName}`);
     }
@@ -522,6 +529,64 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
       return !rule || row.can_connect !== rule.connect;
     });
     if (badDatabase.length > 0) throw new Error('PostgreSQL role database privileges do not match the declared matrix');
+
+    const walWrapper = await client.query(
+      `SELECT procedure.oid AS function_oid,
+              procedure.prosecdef AS security_definer,
+              language.lanname AS language_name,
+              btrim(procedure.prosrc) AS source,
+              procedure.proconfig AS configuration,
+              owner.rolsuper AS owner_superuser
+         FROM pg_proc procedure
+         JOIN pg_namespace namespace ON namespace.oid = procedure.pronamespace
+         JOIN pg_language language ON language.oid = procedure.prolang
+         JOIN pg_roles owner ON owner.oid = procedure.proowner
+        WHERE namespace.nspname = 'zutomayo_ops'
+          AND procedure.proname = 'switch_wal'
+          AND procedure.pronargs = 0
+          AND procedure.prorettype = 'pg_lsn'::regtype`,
+    );
+    const wrapper = walWrapper.rows?.[0];
+    if (
+      walWrapper.rows?.length !== 1 ||
+      wrapper?.security_definer !== true ||
+      wrapper?.language_name !== 'sql' ||
+      wrapper?.source !== 'SELECT pg_catalog.pg_switch_wal()' ||
+      wrapper?.owner_superuser !== true ||
+      !Array.isArray(wrapper?.configuration) ||
+      !wrapper.configuration.includes('search_path=pg_catalog')
+    ) {
+      throw new Error('PostgreSQL WAL switch wrapper is missing or unsafe');
+    }
+
+    const walSchemaVerification = await client.query(
+      `SELECT role_name,
+              has_schema_privilege(role_name, 'zutomayo_ops', 'USAGE') AS can_use,
+              has_schema_privilege(role_name, 'zutomayo_ops', 'CREATE') AS can_create
+         FROM unnest($1::text[]) AS roles(role_name)`,
+      [uniqueUsers],
+    );
+    const badWalSchema = (walSchemaVerification.rows || []).filter((row) => {
+      const rule = rules.get(row.role_name);
+      return !rule || row.can_use !== rule.walSwitch || row.can_create === true;
+    });
+    if (badWalSchema.length > 0) {
+      throw new Error('PostgreSQL WAL operations schema privileges do not match the declared matrix');
+    }
+
+    const walSwitchVerification = await client.query(
+      `SELECT role_name,
+              has_function_privilege(role_name, $2::oid, 'EXECUTE') AS can_switch_wal
+         FROM unnest($1::text[]) AS roles(role_name)`,
+      [uniqueUsers, wrapper.function_oid],
+    );
+    const badWalSwitch = (walSwitchVerification.rows || []).filter((row) => {
+      const rule = rules.get(row.role_name);
+      return !rule || row.can_switch_wal !== rule.walSwitch;
+    });
+    if (badWalSwitch.length > 0) {
+      throw new Error('PostgreSQL WAL switch privilege does not match the declared matrix');
+    }
 
     const monitorRole = await client.query("SELECT rolcanlogin FROM pg_roles WHERE rolname = 'pg_monitor'");
     if (monitorRole.rows?.[0]?.rolcanlogin !== false)

@@ -18,6 +18,8 @@ SERVER_USER="${SERVER_USER:-root}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/zutomayo-card-online}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.server4.yml}"
 RETENTION_COMPOSE_FILE="${RETENTION_COMPOSE_FILE:-docker-compose.retention.yml}"
+ROLE_TLS_SMOKE_COMPOSE_FILE="${ROLE_TLS_SMOKE_COMPOSE_FILE:-docker-compose.postgres-role-smoke.yml}"
+POSTGRES_OPS_COMPOSE_FILE="${POSTGRES_OPS_COMPOSE_FILE:-docker-compose.postgres-ops.yml}"
 RETENTION_SERVICE_GROUP="${RETENTION_SERVICE_GROUP:-zutomayo-retention}"
 GAME_PORT="${GAME_PORT:-3000}"
 API_PORT="${API_PORT:-3001}"
@@ -34,6 +36,8 @@ CONFIRM=false
 DRY_RUN=false
 ROLLBACK=false
 BOOTSTRAP=false
+MANIFEST_FORMAT=''
+ROLLBACK_MANIFEST_FORMAT=''
 ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full --require-rediss'
 
 usage() {
@@ -64,7 +68,7 @@ ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 [[ "$RETENTION_SERVICE_GROUP" =~ ^[a-z_][a-z0-9_-]*$ ]] || die 'RETENTION_SERVICE_GROUP is invalid'
 
 validate_manifest() {
-  local file="$1" key value app
+  local file="$1" allow_legacy_six="${2:-false}" key value app ops_seen=false seen_keys='|'
   [[ -f "$file" ]] || die "release manifest not found: $file"
   RELEASE_SHA=''
   APP_VERSION=''
@@ -77,11 +81,15 @@ validate_manifest() {
   MIGRATE_IMAGE=''
   RETENTION_IMAGE=''
   GATEWAY_IMAGE=''
+  OPS_IMAGE=''
   while IFS='=' read -r key value || [[ -n "$key" ]]; do
     [[ -z "$key" ]] && continue
     case "$key" in
-      RELEASE_SHA|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE|GATEWAY_IMAGE)
+      RELEASE_SHA|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE|GATEWAY_IMAGE|OPS_IMAGE)
+        [[ "$seen_keys" != *"|$key|"* ]] || die "duplicate manifest key: $key"
+        seen_keys="${seen_keys}${key}|"
         printf -v "$key" '%s' "$value"
+        [[ "$key" != OPS_IMAGE ]] || ops_seen=true
         ;;
       *) die "invalid manifest key: $key" ;;
     esac
@@ -97,6 +105,15 @@ validate_manifest() {
     value="${!key}"
     [[ "$value" =~ ^ghcr\.io/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+-${app}@sha256:[[:xdigit:]]{64}$ ]] || die "manifest $key must be an immutable GHCR digest"
   done
+  if [[ "$ops_seen" == true ]]; then
+    [[ "$OPS_IMAGE" =~ ^ghcr\.io/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+-ops@sha256:[[:xdigit:]]{64}$ ]] || {
+      die 'manifest OPS_IMAGE must be an immutable GHCR digest'
+    }
+    MANIFEST_FORMAT='current-seven'
+  else
+    [[ "$allow_legacy_six" == true ]] || die 'manifest OPS_IMAGE is required for a new release'
+    MANIFEST_FORMAT='legacy-six'
+  fi
 }
 
 verify_manifest_artifacts() {
@@ -105,7 +122,9 @@ verify_manifest_artifacts() {
   command -v cosign >/dev/null 2>&1 || die 'cosign is required for release artifact verification'
   command -v gh >/dev/null 2>&1 || die 'gh is required for release attestation verification'
   local key ref
-  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE GATEWAY_IMAGE; do
+  local image_keys=(GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE GATEWAY_IMAGE)
+  [[ "$MANIFEST_FORMAT" != current-seven ]] || image_keys+=(OPS_IMAGE)
+  for key in "${image_keys[@]}"; do
     ref="${!key}"
     cosign verify \
       --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
@@ -116,9 +135,9 @@ verify_manifest_artifacts() {
 }
 
 validate_remote_manifest() {
-  local remote_name="$1" file="$2"
+  local remote_name="$1" file="$2" allow_legacy_six="${3:-false}"
   ssh_run "cat '$REMOTE_DIR/$remote_name'" > "$file" || die "remote release manifest is unreadable: $remote_name"
-  validate_manifest "$file"
+  validate_manifest "$file" "$allow_legacy_six"
   local migration_file="${PROJECT_DIR}/migrations/${EXPECTED_SCHEMA_MIGRATION}.js"
   [[ -f "$migration_file" ]] || die "rollback migration file is missing: $migration_file"
   local actual_checksum
@@ -139,13 +158,19 @@ confirm_action() {
 
 copy_release_files() {
   local source="$1" compose_source="$PROJECT_DIR/$COMPOSE_FILE" retention_compose_source="$PROJECT_DIR/$RETENTION_COMPOSE_FILE"
+  local role_tls_smoke_compose_source="$PROJECT_DIR/$ROLE_TLS_SMOKE_COMPOSE_FILE"
+  local postgres_ops_compose_source="$PROJECT_DIR/$POSTGRES_OPS_COMPOSE_FILE"
   local role_projection_source="$PROJECT_DIR/scripts/project-compose-role-env.jq"
   [[ -f "$compose_source" ]] || die "local compose file not found: $compose_source"
   [[ -f "$retention_compose_source" ]] || die "local retention compose file not found: $retention_compose_source"
+  [[ -f "$role_tls_smoke_compose_source" ]] || die "local role TLS smoke compose file not found: $role_tls_smoke_compose_source"
+  [[ -f "$postgres_ops_compose_source" ]] || die "local PostgreSQL ops compose file not found: $postgres_ops_compose_source"
   [[ -f "$role_projection_source" ]] || die "local role environment projection is missing: $role_projection_source"
   scp -P "$SERVER_PORT" "$source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.release.env.incoming"
   scp -P "$SERVER_PORT" "$compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.compose.incoming"
   scp -P "$SERVER_PORT" "$retention_compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.retention-compose.incoming"
+  scp -P "$SERVER_PORT" "$role_tls_smoke_compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.role-tls-smoke-compose.incoming"
+  scp -P "$SERVER_PORT" "$postgres_ops_compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.postgres-ops-compose.incoming"
   scp -P "$SERVER_PORT" "$PROJECT_DIR/scripts/postgres-init-roles.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.postgres-init-roles.incoming"
   scp -P "$SERVER_PORT" "$role_projection_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.role-env-projection.incoming"
 }
@@ -156,26 +181,49 @@ remote_deploy() {
     test -f .env;
     command -v jq >/dev/null || { echo 'jq is required for secret-safe Compose role validation' >&2; exit 1; };
     getent group '$RETENTION_SERVICE_GROUP' >/dev/null || { echo 'retention service group is missing' >&2; exit 1; };
-    if test -f .release.env; then cp -p .release.env .release.previous.env; chgrp '$RETENTION_SERVICE_GROUP' .release.previous.env; chmod 0640 .release.previous.env; fi;
+    if test -f .release.env; then case '$ROLLBACK_MANIFEST_FORMAT' in current-seven|legacy-six) ;; *) echo 'active release manifest format was not validated' >&2; exit 1;; esac; cp -p .release.env .release.previous.env; chgrp '$RETENTION_SERVICE_GROUP' .release.previous.env; chmod 0640 .release.previous.env; printf '%s\n' '$ROLLBACK_MANIFEST_FORMAT' > .release.previous.format; fi;
     if test -f '$COMPOSE_FILE'; then cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.previous'; fi;
     if test -f '$RETENTION_COMPOSE_FILE'; then cp -p '$RETENTION_COMPOSE_FILE' '$RETENTION_COMPOSE_FILE.previous'; fi;
     if test -f scripts/postgres-init-roles.sh; then cp -p scripts/postgres-init-roles.sh scripts/postgres-init-roles.sh.previous; fi;
-    if test -s .release.previous.env && test -s '$COMPOSE_FILE.previous' && test -s '$RETENTION_COMPOSE_FILE.previous' && test -s scripts/postgres-init-roles.sh.previous; then touch .release.rollback-ready; fi;
+    if test -s .release.previous.env && test -s .release.previous.format && test -s '$COMPOSE_FILE.previous' && test -s '$RETENTION_COMPOSE_FILE.previous' && test -s scripts/postgres-init-roles.sh.previous; then touch .release.rollback-ready; fi;
     install -m 0640 .release.env.incoming .release.env;
     chgrp '$RETENTION_SERVICE_GROUP' .release.env;
+    printf '%s\n' current-seven > .release.format;
     install -m 0644 .compose.incoming '$COMPOSE_FILE';
     install -m 0644 .retention-compose.incoming '$RETENTION_COMPOSE_FILE';
+    install -m 0644 .role-tls-smoke-compose.incoming '$ROLE_TLS_SMOKE_COMPOSE_FILE';
+    install -m 0644 .postgres-ops-compose.incoming '$POSTGRES_OPS_COMPOSE_FILE';
     install -d -m 0755 scripts;
     install -m 0755 .postgres-init-roles.incoming scripts/postgres-init-roles.sh;
     install -m 0644 .role-env-projection.incoming scripts/project-compose-role-env.jq;
-    rm -f .release.env.incoming .compose.incoming .retention-compose.incoming .postgres-init-roles.incoming .role-env-projection.incoming;
+    rm -f .release.env.incoming .compose.incoming .retention-compose.incoming .role-tls-smoke-compose.incoming .postgres-ops-compose.incoming .postgres-init-roles.incoming .role-env-projection.incoming;
     set -a; . ./.release.env; set +a;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
+    PG_DEPLOY_GATE_HOST=\$(docker compose -f '$COMPOSE_FILE' config --format json | jq -er '.services.migrate.environment.PG_HOST | select(type == \"string\" and length > 0)');
+    PG_DEPLOY_GATE_PORT=\$(docker compose -f '$COMPOSE_FILE' config --format json | jq -er '.services.migrate.environment.PG_PORT | tostring | select(test(\"^[0-9]+$\"))');
+    test \"\$PG_DEPLOY_GATE_PORT\" -ge 1 && test \"\$PG_DEPLOY_GATE_PORT\" -le 65535;
+    export PG_DEPLOY_GATE_HOST PG_DEPLOY_GATE_PORT;
+    docker compose --env-file .env --env-file .release.env -f '$ROLE_TLS_SMOKE_COMPOSE_FILE' --profile postgres-role-tls-smoke config --quiet;
+    docker compose --env-file .env --env-file .release.env -f '$POSTGRES_OPS_COMPOSE_FILE' --profile postgres-ops config --quiet;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' pull --quiet retention;
     docker compose -f '$COMPOSE_FILE' config --quiet;
     docker compose -f '$COMPOSE_FILE' pull --quiet;
+    docker pull "\$OPS_IMAGE" >/dev/null;
     docker compose -f '$COMPOSE_FILE' config --format json | jq -c -f scripts/project-compose-role-env.jq | docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate node scripts/verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS;
     docker compose -f '$COMPOSE_FILE' run --rm migrate;
+    role_tls_evidence='.release.role-tls.next.'\$\$;
+    : > \"\$role_tls_evidence\";
+    for role in api game platform retention monitor backup; do
+      report=\$(docker compose --env-file .env --env-file .release.env -f '$ROLE_TLS_SMOKE_COMPOSE_FILE' --profile postgres-role-tls-smoke run --rm --no-deps -T \"postgres-role-tls-\$role\");
+      printf '%s\n' \"\$report\" | jq -e --arg role \"\$role\" '.schemaVersion == 1 and .artifactType == \"zutomayo-postgres-role-tls-smoke\" and .ok == true and .role == \$role' >/dev/null;
+      printf '%s\n' \"\$report\" >> \"\$role_tls_evidence\";
+      printf '%s\n' \"\$report\";
+    done;
+    mv -f \"\$role_tls_evidence\" .release.role-tls.jsonl;
+    wal_report=\$(docker compose --env-file .env --env-file .release.env -f '$POSTGRES_OPS_COMPOSE_FILE' --profile postgres-ops run --rm --no-deps -T postgres-wal-operational-smoke);
+    wal_evidence=\$(printf '%s\n' \"\$wal_report\" | jq -ce --arg releaseSha \"\$RELEASE_SHA\" --arg opsImage \"\$OPS_IMAGE\" 'select(.schemaVersion == 1 and .artifactType == \"zutomayo-pg-wal-operational-smoke\" and .ok == true) | . + {releaseSha:\$releaseSha,opsImage:\$opsImage}');
+    printf '%s\n' \"\$wal_evidence\" > .release.wal-operational-smoke.json;
+    printf '%s\n' \"\$wal_evidence\";
     docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout 180;
     date -u +%Y-%m-%dT%H:%M:%SZ > .release.deployed-at;
     docker compose -f '$COMPOSE_FILE' ps;
@@ -194,6 +242,7 @@ remote_rollback() {
     cp -p .release.previous.env .release.env;
     chgrp '$RETENTION_SERVICE_GROUP' .release.env;
     chmod 0640 .release.env;
+    printf '%s\n' '$ROLLBACK_MANIFEST_FORMAT' > .release.format;
     cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.failed' 2>/dev/null || true;
     cp -p '$COMPOSE_FILE.previous' '$COMPOSE_FILE';
     cp -p '$RETENTION_COMPOSE_FILE' '$RETENTION_COMPOSE_FILE.failed' 2>/dev/null || true;
@@ -277,14 +326,15 @@ if [[ "$ROLLBACK" == true ]]; then
   previous_manifest="$(mktemp)"
   trap 'rm -f "$previous_manifest"' EXIT
   ssh_run "test -s '$REMOTE_DIR/.release.previous.env' && test -s '$REMOTE_DIR/$COMPOSE_FILE.previous' && test -s '$REMOTE_DIR/$RETENTION_COMPOSE_FILE.previous' && test -s '$REMOTE_DIR/scripts/postgres-init-roles.sh.previous'" || die 'remote previous release files are incomplete'
-  validate_remote_manifest '.release.previous.env' "$previous_manifest"
+  validate_remote_manifest '.release.previous.env' "$previous_manifest" true
+  ROLLBACK_MANIFEST_FORMAT="$MANIFEST_FORMAT"
   remote_rollback
   run_smoke
   log 'rollback completed'
   exit 0
 fi
 
-validate_manifest "$MANIFEST_FILE"
+validate_manifest "$MANIFEST_FILE" false
 verify_manifest_artifacts
 confirm_action "deploy $(sed -n 's/^RELEASE_SHA=//p' "$MANIFEST_FILE" | cut -c1-12)"
 if [[ "$DRY_RUN" == true ]]; then
@@ -299,10 +349,11 @@ if ssh_run "test -s '$REMOTE_DIR/.release.env' && test -s '$REMOTE_DIR/$COMPOSE_
   HAS_PREVIOUS=true
   current_manifest="$(mktemp)"
   trap 'rm -f "$current_manifest"' EXIT
-  validate_remote_manifest '.release.env' "$current_manifest"
+  validate_remote_manifest '.release.env' "$current_manifest" true
+  ROLLBACK_MANIFEST_FORMAT="$MANIFEST_FORMAT"
   ROLLBACK_RELEASE_SHA="$RELEASE_SHA"
   # Restore the incoming release values after validating the active rollback target.
-  validate_manifest "$MANIFEST_FILE"
+  validate_manifest "$MANIFEST_FILE" false
 else
   HAS_PREVIOUS=false
   ROLLBACK_RELEASE_SHA=''

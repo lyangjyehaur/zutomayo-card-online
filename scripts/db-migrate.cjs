@@ -83,6 +83,7 @@ async function main() {
         monitor: process.env.PG_MONITOR_USER,
         backup: process.env.PG_BACKUP_USER,
         wal: process.env.PG_WAL_USER,
+        walOperator: process.env.PG_WAL_OPERATOR_USER,
       };
       await enforceRuntimeRolePrivileges(checksumPool, {
         roleUsers,

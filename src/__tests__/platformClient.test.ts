@@ -6,7 +6,9 @@ import {
   connectPlatformQuickMatch,
   createPlatformCustomRoom,
   createPlatformInvite,
+  discoverPlatformPendingInvite,
   isPlatformBoardgameRelayAcknowledged,
+  joinDiscoveredPlatformInvite,
   joinPlatformInvite,
   joinPlatformCustomRoom,
   normalizeSeatReservation,
@@ -23,12 +25,18 @@ import {
   platformQuickMatchMatchedFromMessage,
   platformQuickMatchMatchedFromSnapshot,
   platformQuickMatchSnapshotFromMessage,
+  retainDiscoveredPlatformInviteRoom,
   resolvePlatformEndpoint,
+  resolvePlatformHttpEndpoint,
   shouldLinkPlatformMatchShell,
+  type PlatformInviteRoom,
 } from '../platformClient';
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.doUnmock('colyseus.js');
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe('platform client helpers', () => {
@@ -68,6 +76,70 @@ describe('platform client helpers', () => {
         port: '',
       }),
     ).toBe('wss://battle.example.test');
+  });
+
+  it('derives the pending invite HTTP endpoint without dropping a process-specific platform path', () => {
+    expect(
+      resolvePlatformHttpEndpoint('wss://battle.example.test/_platform/blue/p1', {
+        protocol: 'https:',
+        hostname: 'battle.example.test',
+        port: '',
+      }),
+    ).toBe('https://battle.example.test/_platform/blue/p1');
+    expect(
+      resolvePlatformHttpEndpoint('ws://127.0.0.1:3002', {
+        protocol: 'http:',
+        hostname: '127.0.0.1',
+        port: '3000',
+      }),
+    ).toBe('http://127.0.0.1:3002');
+  });
+
+  it('discovers only the authenticated pending invite through a credentialed GET', async () => {
+    vi.stubEnv('VITE_PLATFORM_URL', 'wss://battle.example.test/_platform/blue/p1');
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ pendingInvite: { roomId: 'pending_room_1' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(discoverPlatformPendingInvite()).resolves.toEqual({ roomId: 'pending_room_1' });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://battle.example.test/_platform/blue/p1/matchmake/invites/pending',
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ method: 'GET', credentials: 'include', cache: 'no-store' }),
+    );
+
+    fetchMock.mockResolvedValueOnce(Response.json({ pendingInvite: null }));
+    await expect(discoverPlatformPendingInvite()).resolves.toBeNull();
+  });
+
+  it('fails closed on rejected or malformed pending invite discovery responses', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({ pendingInvite: { roomId: 'should_not_be_used' } }, { status: 401 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(discoverPlatformPendingInvite()).rejects.toThrow('failed (401)');
+
+    fetchMock.mockResolvedValueOnce(Response.json({ pendingInvite: { roomId: '../not-opaque' } }));
+    await expect(discoverPlatformPendingInvite()).rejects.toThrow('invalid response');
+  });
+
+  it('aborts stalled pending invite discovery within a bounded timeout', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn<typeof fetch>(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    const discovery = discoverPlatformPendingInvite({ fetchImpl, timeoutMs: 25 });
+    const rejected = expect(discovery).rejects.toThrow('timed out');
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejected;
+    const observedSignal = fetchImpl.mock.calls[0]?.[1]?.signal;
+    expect(observedSignal?.aborted).toBe(true);
   });
 
   it('reads lobby online count from platform messages', () => {
@@ -958,6 +1030,71 @@ describe('platform client helpers', () => {
     );
   });
 
+  it('joins a discovered opaque invite room without sending user or invite metadata', async () => {
+    const room = {
+      onMessage: vi.fn(),
+      onLeave: vi.fn(),
+    };
+    const post = vi.fn().mockResolvedValueOnce({
+      data: {
+        name: 'invite',
+        roomId: 'platform_invite_pending_1',
+        sessionId: 'session_1',
+      },
+    });
+    const consumeSeatReservation = vi.fn(() => room);
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+          consumeSeatReservation = consumeSeatReservation;
+        },
+      ),
+    }));
+
+    await joinDiscoveredPlatformInvite({
+      roomId: 'platform_invite_pending_1',
+      displayName: 'Target',
+    });
+
+    expect(post).toHaveBeenCalledOnce();
+    expect(post).toHaveBeenCalledWith(
+      'matchmake/joinById/platform_invite_pending_1',
+      expect.objectContaining({
+        body: JSON.stringify({ displayName: 'Target', role: 'player' }),
+      }),
+    );
+    const body = JSON.parse(post.mock.calls[0]?.[1]?.body as string) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('userId');
+    expect(body).not.toHaveProperty('targetUserId');
+    expect(body).not.toHaveProperty('inviteId');
+
+    await expect(joinDiscoveredPlatformInvite({ roomId: '../other-room', displayName: 'Target' })).rejects.toThrow(
+      'Invalid platform invite room id',
+    );
+  });
+
+  it('leaves a discovered room that resolves after its observation is no longer current', async () => {
+    const leave = vi.fn(async () => undefined);
+    const room = { leave } as unknown as PlatformInviteRoom;
+    let resolveRoom: ((value: PlatformInviteRoom) => void) | undefined;
+    const roomPromise = new Promise<PlatformInviteRoom>((resolve) => {
+      resolveRoom = resolve;
+    });
+    const retained = retainDiscoveredPlatformInviteRoom(roomPromise, () => false);
+
+    resolveRoom?.(room);
+
+    await expect(retained).resolves.toBeNull();
+    expect(leave).toHaveBeenCalledWith(true);
+
+    const currentRoom = { leave: vi.fn(async () => undefined) } as unknown as PlatformInviteRoom;
+    await expect(retainDiscoveredPlatformInviteRoom(Promise.resolve(currentRoom), () => true)).resolves.toBe(
+      currentRoom,
+    );
+    expect(currentRoom.leave).not.toHaveBeenCalled();
+  });
+
   it('creates a pending invite only when pending and accepted invite rooms do not exist', async () => {
     const room = {
       onMessage: vi.fn(),
@@ -1128,6 +1265,7 @@ describe('platform client helpers', () => {
         messageHandlers.set(type, handler);
       }),
       onLeave: vi.fn(),
+      send: vi.fn(),
     };
     const post = vi.fn(async () => ({
       data: {
@@ -1211,6 +1349,7 @@ describe('platform client helpers', () => {
       opponent: expect.objectContaining({ sessionId: 'session_host', userId: 'u_host' }),
     });
     expect(onBoardgameMatchReady).toHaveBeenCalledWith({ boardgameMatchID: 'bgio-match-1' });
+    expect(room.send).toHaveBeenCalledWith('requestQuickMatchSnapshot', {});
   });
 
   it('surfaces quick-match Colyseus join failures without legacy matchmaking fallback', async () => {

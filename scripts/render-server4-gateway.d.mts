@@ -5,7 +5,11 @@ export interface RenderedServer4Gateway {
 }
 
 export function validateGatewayInput(value: unknown): Record<string, unknown>;
-export function parseGatewayReleaseManifest(contents: string, label?: string): Record<string, string>;
+export function parseGatewayReleaseManifest(
+  contents: string,
+  label?: string,
+  options?: { allowLegacySix?: boolean },
+): Record<string, string>;
 export function gatewayInputFromReleaseManifests(value: {
   stableManifest: string;
   candidateManifest: string;

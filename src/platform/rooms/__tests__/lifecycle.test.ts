@@ -117,6 +117,15 @@ describe('platform room lifecycle', () => {
       }),
     });
 
+    host.send.mockClear();
+    handlers.get('requestQuickMatchSnapshot')?.(host, {});
+    expect(host.send).toHaveBeenNthCalledWith(1, 'quickMatchMatched', expect.objectContaining({ role: 'host' }));
+    expect(host.send).toHaveBeenNthCalledWith(
+      2,
+      'quickMatchSnapshot',
+      expect.objectContaining({ status: 'matched', hostSessionId: 'session_host' }),
+    );
+
     const relay = handlers.get('boardgameMatchReady');
     expect(relay).toBeDefined();
     relay?.(guest, { boardgameMatchID: 'bgio-match-ignored' });

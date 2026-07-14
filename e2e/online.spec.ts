@@ -1,10 +1,16 @@
 import { expect, test } from '@playwright/test';
-import { getOnlineRoom, openOnlineSeat, openOnlineSpectator, provisionOnlineMatch } from './helpers/online';
+import {
+  getOnlineRoom,
+  openOnlineSeat,
+  openOnlineSpectator,
+  provisionAuthenticatedOnlineMatch,
+  registerAuthenticatedOnlineAccount,
+} from './helpers/online';
 
 test.describe.configure({ mode: 'serial' });
 
 test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
-  test('建立房間、加入、唯讀觀戰與斷線重連', async ({ browser, context, page, request }, testInfo) => {
+  test('建立房間、加入、唯讀觀戰與斷線重連', async ({ browser, context, page }, testInfo) => {
     test.setTimeout(90_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
     const guestContext = await browser.newContext({
@@ -29,8 +35,12 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
 
     let failed = false;
     try {
-      const match = await provisionOnlineMatch(request);
-      const room = await getOnlineRoom(request, match.matchID);
+      const [hostAccount, guestAccount] = await Promise.all([
+        registerAuthenticatedOnlineAccount(context, 'E2E Host'),
+        registerAuthenticatedOnlineAccount(guestContext, 'E2E Guest'),
+      ]);
+      const match = await provisionAuthenticatedOnlineMatch(context, hostAccount, guestContext, guestAccount);
+      const room = await getOnlineRoom(context.request, match.matchID);
       expect(room.players).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ id: 0, name: 'E2E Host' }),

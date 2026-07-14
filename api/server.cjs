@@ -58,6 +58,7 @@ const {
   withAccountDeletionRecoveryLease,
 } = require('./accountDeletionService.cjs');
 const { resolveBackgroundWorkersEnabled } = require('./backgroundWorkerConfig.cjs');
+const { apiRateLimitConfig } = require('./rateLimitConfig.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
 const { listAdminUsers, resetUserElo } = require('./adminService.cjs');
 const { authenticateAdmin, revokeAdminSession, verifyAdminSession } = require('./adminAuthService.cjs');
@@ -2603,11 +2604,12 @@ function sanitizeActionLog(actionLog) {
 }
 
 // ===== Rate Limiting (P0-4, Redis INCR + TTL) =====
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_AUTH = 10;
-const RATE_LIMIT_IMGPROXY = Number(process.env.RATE_LIMIT_IMGPROXY) || 600;
-const RATE_LIMIT_DEFAULT = 120;
-const RATE_LIMIT_UPLOAD = 10;
+const API_RATE_LIMITS = apiRateLimitConfig();
+const RATE_LIMIT_WINDOW_MS = API_RATE_LIMITS.windowMs;
+const RATE_LIMIT_AUTH = API_RATE_LIMITS.auth;
+const RATE_LIMIT_IMGPROXY = API_RATE_LIMITS.imgproxy;
+const RATE_LIMIT_DEFAULT = API_RATE_LIMITS.default;
+const RATE_LIMIT_UPLOAD = API_RATE_LIMITS.upload;
 const REDIS_LIMITER_TIMEOUT_MS = Math.max(100, Number(process.env.REDIS_LIMITER_TIMEOUT_MS) || 750);
 const MATCHMAKING_USER_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_USER_LIMIT) || 6);
 const MATCHMAKING_IP_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_IP_LIMIT) || 30);

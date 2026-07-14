@@ -38,10 +38,22 @@ describe('platform deployment config', () => {
   it('wires the Colyseus runtime as a platform shell instead of durable game or chat state', () => {
     const platformServer = readRepoFile('src/platform/server.ts');
     const platformRuntime = readRepoFile('src/platform/runtime.ts');
+    const closeStoresStart = platformRuntime.indexOf('const closeStores =');
+    const gameServerStart = platformRuntime.indexOf('const gameServer =');
+    const closeStoresSource = platformRuntime.slice(closeStoresStart, gameServerStart);
 
     expect(platformServer).toContain('createPlatformRuntime()');
+    expect(closeStoresStart).toBeGreaterThan(-1);
+    expect(gameServerStart).toBeGreaterThan(closeStoresStart);
     expect(platformRuntime).toContain('new RedisPresence(colyseusRedisUrl)');
+    expect(platformRuntime).toContain('commandTimeout: commandTimeoutMs');
     expect(platformRuntime).toContain('new RedisDriver(colyseusRedisUrl)');
+    expect(platformRuntime).toContain('createRedisPendingInviteRoomQuery(pendingInviteDiscoveryRedis)');
+    expect(platformRuntime).toContain('queryRooms: pendingInviteRedisQuery');
+    expect(platformRuntime).toContain('driver: colyseusDriver');
+    expect(platformRuntime).toContain('queryTimeoutMs: pendingInviteTimeouts.queryTimeoutMs');
+    expect(closeStoresSource).toContain('pendingInviteDiscoveryRedis?.quit()');
+    expect(platformRuntime).not.toContain('new RedisDriver(pendingInviteDiscoveryRedis)');
     expect(platformRuntime).toContain('LobbyRoom.configureFriendStore(friendStore)');
     expect(platformRuntime).toContain('InviteRoom.configureFriendStore(friendStore, { enforceFriendship:');
     expect(platformRuntime).toContain('CustomRoom.configureParticipantStore(matchParticipantStore)');

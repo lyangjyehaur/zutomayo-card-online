@@ -100,9 +100,10 @@ groups:
   - name: zutomayo-availability
     interval: 30s
     rules:
-      # Service down: /metrics scrape (proxy for /health) returns non-200 for 1 minute -> critical
+      # Blue/green and legacy targets coexist during rollout. Alert only when no
+      # discovered target for the logical service is reachable.
       - alert: ServiceDown
-        expr: up{job=~"zutomayo-(game|api|platform)"} == 0
+        expr: max by (job, service) (up{job=~"zutomayo-(game|api|platform)"}) == 0
         for: 1m
         labels:
           severity: critical
@@ -112,7 +113,7 @@ groups:
           description: '{{ $labels.job }} has been unreachable (scrape failing) for 1 minute. Check /health endpoint and container status.'
 
       - alert: PlatformHealthProbeFailed
-        expr: probe_success{job="zutomayo-platform-health"} == 0
+        expr: max by (job, service) (probe_success{job="zutomayo-platform-health"}) == 0
         for: 1m
         labels:
           severity: critical
@@ -122,7 +123,7 @@ groups:
           description: 'The platform /health endpoint has failed its synthetic probe for 1 minute.'
 
       - alert: ReadinessProbeFailed
-        expr: probe_success{job="zutomayo-readiness"} == 0
+        expr: max by (job, service) (probe_success{job="zutomayo-readiness"}) == 0
         for: 1m
         labels:
           severity: critical

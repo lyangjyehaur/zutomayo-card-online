@@ -1,18 +1,13 @@
-import { expect, test, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import {
   establishAuthenticatedFriendship,
   getAuthenticatedMatchHistory,
   openAuthenticatedOnlineLobby,
   registerAuthenticatedOnlineAccount,
+  selectAuthenticatedServerDeck,
 } from './helpers/online';
 
-/**
- * These tests require the API and Colyseus endpoint to receive the same
- * HttpOnly account session. The stock Docker E2E overlay serves the app from
- * `game` but builds the platform URL as `platform`, so its host-only Lax cookie
- * cannot authenticate cross-host matchmaking. A staging/reverse-proxy run
- * must opt in explicitly and describe the endpoint topology below.
- */
+/** These tests fail closed unless the runner declares a shared account-cookie topology. */
 const AUTHENTICATED_MULTIPLAYER_FLAG = 'E2E_AUTHENTICATED_MULTIPLAYER';
 const RANKED_HISTORY_FLAG = 'E2E_RANKED_MATCHES_ENABLED';
 
@@ -49,12 +44,10 @@ function authenticatedMultiplayerBlockers(baseURL: string, requireRankedHistory:
   return blockers;
 }
 
-function skipWhenBlocked(testInfo: TestInfo, baseURL: string, requireRankedHistory: boolean): void {
+function requireAuthenticatedMultiplayer(baseURL: string, requireRankedHistory: boolean): void {
   const blockers = authenticatedMultiplayerBlockers(baseURL, requireRankedHistory);
   if (blockers.length === 0) return;
-  const description = `Authenticated multiplayer blocked: ${blockers.join('; ')}`;
-  testInfo.annotations.push({ type: 'blocked', description });
-  test.skip(true, description);
+  throw new Error(`Authenticated multiplayer is required but misconfigured: ${blockers.join('; ')}`);
 }
 
 async function expectAuthenticatedLobby(page: Page, nickname: string): Promise<void> {
@@ -120,8 +113,7 @@ async function completeSetupAndSurrender(loser: Page, winner: Page): Promise<voi
   ]);
 }
 
-async function closeGuestContext(context: BrowserContext, failed: boolean, testInfo: TestInfo): Promise<void> {
-  await context.tracing.stop(failed ? { path: testInfo.outputPath('guest-trace.zip') } : undefined);
+async function closeGuestContext(context: BrowserContext, failed: boolean): Promise<void> {
   const pages = context.pages();
   const videos = pages.map((page) => page.video()).filter((video) => video !== null);
   await context.close();
@@ -134,13 +126,12 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
   test('Quick Match、聊天、重連、完整結算與雙方 server history', async ({ browser, context, page }, testInfo) => {
     test.setTimeout(150_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
-    skipWhenBlocked(testInfo, baseURL, true);
+    requireAuthenticatedMultiplayer(baseURL, true);
 
     const guestContext = await browser.newContext({
       baseURL,
       recordVideo: { dir: testInfo.outputPath('guest-video') },
     });
-    await guestContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
     let failed = false;
     try {
       const [hostAccount, guestAccount] = await Promise.all([
@@ -149,6 +140,10 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       ]);
       const guestPage = await guestContext.newPage();
       await Promise.all([openAuthenticatedOnlineLobby(page), openAuthenticatedOnlineLobby(guestPage)]);
+      await Promise.all([
+        selectAuthenticatedServerDeck(page, hostAccount),
+        selectAuthenticatedServerDeck(guestPage, guestAccount),
+      ]);
       await Promise.all([
         expectAuthenticatedLobby(page, hostAccount.nickname),
         expectAuthenticatedLobby(guestPage, guestAccount.nickname),
@@ -207,20 +202,19 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       throw error;
     } finally {
       await context.setOffline(false).catch(() => undefined);
-      await closeGuestContext(guestContext, failed, testInfo);
+      await closeGuestContext(guestContext, failed);
     }
   });
 
   test('好友邀請由兩個已登入帳號接力到同一個 boardgame 對局', async ({ browser, context, page }, testInfo) => {
     test.setTimeout(120_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
-    skipWhenBlocked(testInfo, baseURL, false);
+    requireAuthenticatedMultiplayer(baseURL, false);
 
     const guestContext = await browser.newContext({
       baseURL,
       recordVideo: { dir: testInfo.outputPath('guest-video') },
     });
-    await guestContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
     let failed = false;
     try {
       const [inviter, recipient] = await Promise.all([
@@ -231,6 +225,10 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
 
       const guestPage = await guestContext.newPage();
       await Promise.all([openAuthenticatedOnlineLobby(page), openAuthenticatedOnlineLobby(guestPage)]);
+      await Promise.all([
+        selectAuthenticatedServerDeck(page, inviter),
+        selectAuthenticatedServerDeck(guestPage, recipient),
+      ]);
       await Promise.all([
         expectAuthenticatedLobby(page, inviter.nickname),
         expectAuthenticatedLobby(guestPage, recipient.nickname),
@@ -243,7 +241,7 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       await expect(sendInvite).toBeVisible({ timeout: 20_000 });
       await expect(acceptInvite).toBeVisible({ timeout: 20_000 });
       await sendInvite.click();
-      await expect(guestPage.getByText('收到好友對戰邀請', { exact: true })).toBeVisible({ timeout: 20_000 });
+      await expect(acceptInvite).toHaveAttribute('title', '收到好友對戰邀請', { timeout: 30_000 });
       await acceptInvite.click();
 
       await expectSharedOnlineMatch(page, guestPage);
@@ -251,7 +249,7 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       failed = true;
       throw error;
     } finally {
-      await closeGuestContext(guestContext, failed, testInfo);
+      await closeGuestContext(guestContext, failed);
     }
   });
 });

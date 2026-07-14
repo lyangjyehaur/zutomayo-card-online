@@ -90,6 +90,11 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
       void this.cancel('player_left');
     });
 
+    this.onMessage('requestQuickMatchSnapshot', (client) => {
+      if (!client.userData || !this.joinedSessionIds.has(client.sessionId)) return;
+      this.sendCurrentState(client);
+    });
+
     await this.refreshMetadata();
     QuickMatchRoom.activeRooms.add(this);
   }
@@ -222,7 +227,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     }
 
     await this.refreshMetadata();
-    client.send('quickMatchSnapshot', this.snapshot());
+    this.sendCurrentState(client);
   }
 
   private pruneExpiredReservations(now = Date.now()): void {
@@ -274,20 +279,26 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     };
   }
 
+  private sendMatchedMessage(client: PlatformClient): void {
+    if (!this.hostSessionId || !client.userData) return;
+    const role = client.sessionId === this.hostSessionId ? 'host' : 'guest';
+    const opponent = this.clients.find((item) => item.sessionId !== client.sessionId)?.userData;
+    client.send('quickMatchMatched', {
+      roomId: this.roomId,
+      role,
+      deckName: client.userData.deckName || DEFAULT_QUICK_MATCH_DECK_NAME,
+      deckReservationId: this.deckReservations.get(client.userData.userId)?.reservationId,
+      opponent,
+    });
+  }
+
   private sendMatchedMessages(): void {
-    for (const client of this.clients) {
-      const role = client.sessionId === this.hostSessionId ? 'host' : 'guest';
-      const opponent = this.clients.find((item) => item.sessionId !== client.sessionId)?.userData;
-      client.send('quickMatchMatched', {
-        roomId: this.roomId,
-        role,
-        deckName: client.userData?.deckName || DEFAULT_QUICK_MATCH_DECK_NAME,
-        deckReservationId: client.userData?.userId
-          ? this.deckReservations.get(client.userData.userId)?.reservationId
-          : undefined,
-        opponent,
-      });
-    }
+    for (const client of this.clients) this.sendMatchedMessage(client);
+  }
+
+  private sendCurrentState(client: PlatformClient): void {
+    if (this.status === 'matched' || this.status === 'finished') this.sendMatchedMessage(client);
+    client.send('quickMatchSnapshot', this.snapshot());
   }
 
   private async assertCurrentPairAllowed(): Promise<void> {

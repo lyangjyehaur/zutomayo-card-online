@@ -17,6 +17,7 @@ const ROLE_PASSWORDS = Object.freeze([
   'PG_MONITOR_PASSWORD',
   'PG_BACKUP_PASSWORD',
   'PG_WAL_PASSWORD',
+  'PG_WAL_OPERATOR_PASSWORD',
 ]);
 
 function parseArguments(argv) {

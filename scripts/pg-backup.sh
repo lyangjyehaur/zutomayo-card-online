@@ -102,6 +102,7 @@ cleanup() {
 trap cleanup EXIT
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+recovery_point_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 base_name="zutomayo_${timestamp}.dump"
 plain_dump="$work_dir/$base_name"
 
@@ -141,7 +142,8 @@ size_bytes="$(wc -c <"$artifact" | tr -d ' ')"
 
 if [[ -n "$OFFSITE_URI" ]]; then
   remote_prefix="${OFFSITE_URI%/}"
-  aws s3 cp --only-show-errors "$artifact" "$remote_prefix/$artifact_name"
+  aws s3 cp --only-show-errors --metadata "recovery-point-at=$recovery_point_at" \
+    "$artifact" "$remote_prefix/$artifact_name"
   aws s3 cp --only-show-errors "${artifact}.sha256" "$remote_prefix/${artifact_name}.sha256"
 fi
 

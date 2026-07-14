@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { openOnlineSeat, provisionOnlineMatch } from './helpers/online';
+import {
+  openOnlineSeat,
+  provisionAuthenticatedOnlineMatch,
+  registerAuthenticatedOnlineAccount,
+} from './helpers/online';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -89,14 +93,18 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
 });
 
 test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
-  test('正式 Battle 與結算 Result 通過 axe，且 Battle drawer 維持焦點隔離', async ({ browser, page, request }) => {
+  test('正式 Battle 與結算 Result 通過 axe，且 Battle drawer 維持焦點隔離', async ({ browser, page }) => {
     test.setTimeout(120_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
     const guestContext = await browser.newContext({ baseURL });
     const guestPage = await guestContext.newPage();
 
     try {
-      const match = await provisionOnlineMatch(request);
+      const [hostAccount, guestAccount] = await Promise.all([
+        registerAuthenticatedOnlineAccount(page.context(), 'E2E A11y Host'),
+        registerAuthenticatedOnlineAccount(guestContext, 'E2E A11y Guest'),
+      ]);
+      const match = await provisionAuthenticatedOnlineMatch(page.context(), hostAccount, guestContext, guestAccount);
       await Promise.all([openOnlineSeat(page, match, '0'), openOnlineSeat(guestPage, match, '1')]);
       await expect(page.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 30_000 });
       await expect(guestPage.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 30_000 });

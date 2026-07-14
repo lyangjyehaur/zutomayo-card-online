@@ -9,8 +9,11 @@ const COMPOSE_FILES = [
   'docker-compose.server4.yml',
   'docker-compose.server4-slot.yml',
   'docker-compose.server4-gateway.yml',
+  'docker-compose.postgres-role-smoke.yml',
   'docker-compose.monitoring.yml',
   'docker-compose.retention.yml',
+  'docker-compose.postgres-role-smoke.yml',
+  'docker-compose.postgres-ops.yml',
   'docker-compose.load-test.yml',
   'docker-compose.pgbouncer.yml',
 ];
@@ -95,6 +98,54 @@ function assertRetentionDigestInput() {
   const matches = lines.filter((line) => line.startsWith('image:') && line.includes('${RETENTION_IMAGE:?'));
   if (matches.length !== 1)
     throw new Error('docker-compose.retention.yml must require exactly one RETENTION_IMAGE digest input');
+}
+
+function assertPostgresOpsImageContract() {
+  const compose = read('docker-compose.postgres-ops.yml');
+  const dockerfile = read('Dockerfile.ops');
+  const entrypoint = read('scripts/postgres-ops-entrypoint.sh');
+  if (countFragment('docker-compose.postgres-ops.yml', 'image: ${OPS_IMAGE:?') !== 1) {
+    throw new Error('docker-compose.postgres-ops.yml must require exactly one immutable OPS_IMAGE');
+  }
+  for (const fragment of [
+    "user: '70:70'",
+    'read_only: true',
+    'cap_drop: [ALL]',
+    'no-new-privileges:true',
+    'create_host_path: false',
+    'PGPASSFILE: /run/secrets/postgres-operator.pgpass',
+    'PG_BACKUP_AGE_IDENTITY_FILE: /run/secrets/wal-age-identity',
+    'AWS_SHARED_CREDENTIALS_FILE: /run/secrets/wal-s3-credentials',
+    'PG_WAL_SWITCH_FUNCTION: zutomayo_ops.switch_wal',
+  ]) {
+    if (!compose.includes(fragment)) throw new Error(`PostgreSQL OPS Compose contract is missing: ${fragment}`);
+  }
+  for (const forbidden of [
+    'PGPASSWORD:',
+    'PG_PASSWORD:',
+    'PG_WAL_PROBE_PASSWORD:',
+    'AWS_ACCESS_KEY_ID:',
+    'AWS_SECRET_ACCESS_KEY:',
+  ]) {
+    if (compose.includes(forbidden)) throw new Error(`PostgreSQL OPS Compose must not expose ${forbidden}`);
+  }
+  if (!/^FROM\s+\S+@sha256:[a-f0-9]{64}$/im.test(dockerfile)) {
+    throw new Error('Dockerfile.ops must pin its PostgreSQL 16 upstream image by SHA-256 digest');
+  }
+  for (const fragment of ['apk add --no-cache age aws-cli', 'USER postgres', 'postgres-ops-entrypoint.sh']) {
+    if (!dockerfile.includes(fragment)) throw new Error(`Dockerfile.ops is missing: ${fragment}`);
+  }
+  for (const fragment of [
+    '[[ "$(id -u)" != 0 ]]',
+    'AWS_EC2_METADATA_DISABLED',
+    'assert_private_source_file',
+    "RUNTIME_PGPASS_FILE='/tmp/postgres-operator.pgpass'",
+    'chmod 0600 "$RUNTIME_PGPASS_FILE"',
+    'export PGPASSFILE="$RUNTIME_PGPASS_FILE"',
+    'exec /opt/zutomayo/scripts/pg-wal-operational-smoke.sh',
+  ]) {
+    if (!entrypoint.includes(fragment)) throw new Error(`PostgreSQL OPS entrypoint is missing: ${fragment}`);
+  }
 }
 
 function assertParallelServer4Contract() {
@@ -480,6 +531,7 @@ function assertProductionRuntimeInputs() {
     'PG_MONITOR_USER',
     'PG_BACKUP_USER',
     'PG_WAL_USER',
+    'PG_WAL_OPERATOR_USER',
   ];
   for (const relativePath of ['docker-compose.yml', ...RELEASE_COMPOSE_FILES]) {
     assertAccountExportStorageContract(relativePath);
@@ -519,6 +571,7 @@ function assertProductionRuntimeInputs() {
     'PG_MONITOR_PASSWORD',
     'PG_BACKUP_PASSWORD',
     'PG_WAL_PASSWORD',
+    'PG_WAL_OPERATOR_PASSWORD',
   ];
   const configuredPasswords = rolePasswordInputs.map((name) => [name, process.env[name]?.trim()]);
   const nonEmptyPasswords = configuredPasswords.filter((entry) => Boolean(entry[1]));
@@ -725,8 +778,10 @@ function assertWorkflowContract() {
     'docker/build-push-action@',
     'Dockerfile.retention',
     'Dockerfile.gateway',
+    'Dockerfile.ops',
     'RETENTION_IMAGE',
     'GATEWAY_IMAGE',
+    'OPS_IMAGE',
     '@sha256:',
     'verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss',
     'release-gate:',
@@ -739,6 +794,7 @@ function assertWorkflowContract() {
     'VITE_PLATFORM_URL=',
     'docker-compose.server4-slot.yml config --no-env-resolution',
     'docker-compose.server4-gateway.yml config --no-env-resolution',
+    'docker-compose.postgres-ops.yml --profile postgres-ops config',
   ];
   for (const fragment of requiredFragments) {
     if (!workflow.includes(fragment)) throw new Error(`cd.yml is missing release gate: ${fragment}`);
@@ -790,12 +846,14 @@ function assertReleaseManifestContract() {
   if (!read('Dockerfile.migrate').includes('COPY scripts/verify-compose-role-env.mjs')) {
     throw new Error('migration image must contain the rendered role environment validator');
   }
-  if (!resolver.includes('game api platform migrate retention gateway')) {
-    throw new Error('release manifest resolver must include the signed gateway image');
+  if (!resolver.includes('game api platform migrate retention gateway ops')) {
+    throw new Error('release manifest resolver must include signed gateway and PostgreSQL OPS images');
   }
   for (const deploymentScript of [deploy, canaryDeploy]) {
-    if (!deploymentScript.includes('GATEWAY_IMAGE')) {
-      throw new Error('every server4 deployment path must validate GATEWAY_IMAGE');
+    for (const image of ['GATEWAY_IMAGE', 'OPS_IMAGE']) {
+      if (!deploymentScript.includes(image)) {
+        throw new Error(`every server4 deployment path must validate ${image}`);
+      }
     }
   }
   if (!canaryDeploy.includes('check-server4-pg-budget.mjs')) {
@@ -819,7 +877,11 @@ function assertCosignIdentityPolicy() {
 }
 
 function assertScripts() {
-  for (const relativePath of ['scripts/resolve-release-manifest.sh', 'scripts/postgres-init-roles.sh']) {
+  for (const relativePath of [
+    'scripts/resolve-release-manifest.sh',
+    'scripts/postgres-init-roles.sh',
+    'scripts/postgres-ops-entrypoint.sh',
+  ]) {
     const absolutePath = path.join(ROOT, relativePath);
     if (!existsSync(absolutePath)) throw new Error(`missing release script: ${relativePath}`);
     if ((statSync(absolutePath).mode & 0o111) === 0) throw new Error(`${relativePath} must be executable`);
@@ -835,11 +897,15 @@ function assertScripts() {
   }
   if (!existsSync(path.join(ROOT, 'Dockerfile.retention'))) throw new Error('missing retention worker Dockerfile');
   if (!existsSync(path.join(ROOT, 'Dockerfile.gateway'))) throw new Error('missing release gateway Dockerfile');
+  if (!existsSync(path.join(ROOT, 'Dockerfile.ops'))) throw new Error('missing PostgreSQL OPS Dockerfile');
   if (!existsSync(path.join(ROOT, 'scripts/check-server4-pg-budget.mjs'))) {
     throw new Error('missing server4 PostgreSQL connection budget gate');
   }
   if (!existsSync(path.join(ROOT, 'scripts/collect-server4-canary-metrics.mjs'))) {
     throw new Error('missing server4 raw canary metrics collector');
+  }
+  if (!existsSync(path.join(ROOT, 'scripts/assemble-server4-canary-evidence.mjs'))) {
+    throw new Error('missing server4 canary evidence assembler');
   }
 }
 
@@ -847,6 +913,7 @@ export function validateReleaseConfig() {
   for (const relativePath of COMPOSE_FILES) assertNoMutableImageTags(relativePath);
   for (const relativePath of RELEASE_COMPOSE_FILES) assertDigestInputs(relativePath);
   assertRetentionDigestInput();
+  assertPostgresOpsImageContract();
   assertParallelServer4Contract();
   assertProductionRuntimeInputs();
   assertPinnedWorkflowActions();

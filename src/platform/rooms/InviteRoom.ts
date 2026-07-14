@@ -1,4 +1,5 @@
 import { Room, type AuthContext } from '@colyseus/core';
+import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../blockStore';
 import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
 import { platformLogger as logger } from '../logger';
 import { recordPlatformReconnect } from '../metrics';
@@ -38,6 +39,7 @@ export function parseFriendInviteId(inviteId: string): { inviterUserId: string; 
 
 export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: PlatformClient }> {
   static friendStore: PlatformFriendStore = createEmptyPlatformFriendStore();
+  static blockStore: PlatformBlockStore = createEmptyPlatformBlockStore();
   static enforceFriendship = false;
   private static readonly activeRooms = new Set<InviteRoom>();
 
@@ -57,6 +59,10 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   static configureFriendStore(friendStore: PlatformFriendStore, options: { enforceFriendship?: boolean } = {}): void {
     InviteRoom.friendStore = friendStore;
     InviteRoom.enforceFriendship = options.enforceFriendship === true;
+  }
+
+  static configureBlockStore(blockStore: PlatformBlockStore | null): void {
+    InviteRoom.blockStore = blockStore ?? createEmptyPlatformBlockStore();
   }
 
   static async handleRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
@@ -139,16 +145,20 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     const auth = await authenticatePlatformClientCurrent(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
     if (!this.isJoinableStatus(options.status)) throw new Error('Invite is not joinable');
-    const inviteId = optionalText(options.inviteId, 128);
+    const suppliedInviteId = optionalText(options.inviteId, 128);
+    const inviteId = suppliedInviteId ?? this.inviteId;
     const friendInvite = inviteId ? parseFriendInviteId(inviteId) : null;
     if (!inviteId || !friendInvite) throw new Error('Invalid invite id');
-    if (this.inviteId && inviteId !== this.inviteId) throw new Error('Invite access denied');
+    if (suppliedInviteId && this.inviteId && suppliedInviteId !== this.inviteId) {
+      throw new Error('Invite access denied');
+    }
     const targetUserId = optionalText(options.targetUserId, 128);
     if (targetUserId && targetUserId !== friendInvite.targetUserId) throw new Error('Invalid invite target');
     if (auth.userId !== friendInvite.inviterUserId && auth.userId !== friendInvite.targetUserId) {
       throw new Error('Invite access denied');
     }
     await this.assertFriendInviteAllowed(auth.userId, friendInvite);
+    await this.assertFriendInviteNotBlocked(friendInvite);
     return { ...auth, role: 'player' };
   }
 
@@ -285,9 +295,24 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     inviterUserId: string;
     targetUserId: string;
   }): Promise<void> {
-    if (!InviteRoom.enforceFriendship) return;
-    await this.assertFriendInviteAllowed(friendInvite.inviterUserId, friendInvite);
-    await this.assertFriendInviteAllowed(friendInvite.targetUserId, friendInvite);
+    if (InviteRoom.enforceFriendship) {
+      await this.assertFriendInviteAllowed(friendInvite.inviterUserId, friendInvite);
+      await this.assertFriendInviteAllowed(friendInvite.targetUserId, friendInvite);
+    }
+    await this.assertFriendInviteNotBlocked(friendInvite);
+  }
+
+  private async assertFriendInviteNotBlocked(friendInvite: {
+    inviterUserId: string;
+    targetUserId: string;
+  }): Promise<void> {
+    try {
+      if (!(await InviteRoom.blockStore.areUsersBlocked(friendInvite.inviterUserId, friendInvite.targetUserId))) return;
+    } catch (err) {
+      logger.warn({ err, inviteId: this.inviteId }, 'failed to verify friend invite block relationship');
+      throw new Error('Invite block check unavailable');
+    }
+    throw new Error('Invite blocked');
   }
 
   private snapshot(): PlatformClient['~messages']['inviteSnapshot'] {

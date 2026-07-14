@@ -104,8 +104,31 @@ describe('operational shell scripts', () => {
       'EXPECTED_SCHEMA_CHECKSUM: 784bb5983d6b97e9419d2b5ecd76dc9f9916311224d1dec660906fa86b5de814',
     );
     expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
+    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000026_account_export_jobs');
+    expect(browserMatrix).toContain(
+      'EXPECTED_SCHEMA_CHECKSUM: 784bb5983d6b97e9419d2b5ecd76dc9f9916311224d1dec660906fa86b5de814',
+    );
+    expect(browserMatrix).not.toContain('export EXPECTED_SCHEMA_MIGRATION=');
     expect(workflow).not.toContain('--abort-on-container-exit');
     expect(workflow).not.toContain('--exit-code-from e2e');
+  });
+
+  it('makes authenticated ranked multiplayer mandatory in the Docker E2E stack', () => {
+    const compose = readFileSync(resolve('docker-compose.e2e.yml'), 'utf8');
+    const spec = readFileSync(resolve('e2e/authenticated-multiplayer.spec.ts'), 'utf8');
+
+    expect(compose).toContain('VITE_PLATFORM_URL: ws://platform.e2e.test:3002');
+    expect(compose).toContain('AUTH_COOKIE_DOMAIN=.e2e.test');
+    expect(compose).toContain('PLATFORM_PUBLIC_ADDRESS=ws://platform.e2e.test:3002');
+    expect(compose).toContain('ALLOWED_ORIGINS=http://game.e2e.test:3000');
+    expect(compose).toContain('E2E_BASE_URL=http://game.e2e.test:3000');
+    expect(compose).toContain('E2E_PLATFORM_COOKIE_SHARED=1');
+    expect(compose).toContain('E2E_AUTHENTICATED_MULTIPLAYER=1');
+    expect(compose).toContain('E2E_RANKED_MATCHES_ENABLED=1');
+    expect(compose).toContain('RANKED_MATCHES_ENABLED=true');
+    expect(compose).toContain('GAME_BACKGROUND_WORKERS_ENABLED=true');
+    expect(spec).toContain('Authenticated multiplayer is required but misconfigured');
+    expect(spec).not.toContain('test.skip');
   });
 
   it('gates the rendered production role/TLS environment before migration', () => {
@@ -128,6 +151,39 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('cp -p scripts/postgres-init-roles.sh.previous scripts/postgres-init-roles.sh');
     expect(deploy).toContain('--source-digest "$RELEASE_SHA"');
     expect(deploy).toContain('.release.rollback-ready');
+    expect(deploy).toContain('validate_remote_manifest \'.release.env\' "$current_manifest" true');
+    expect(deploy).toContain("MANIFEST_FORMAT='legacy-six'");
+    expect(deploy).toContain('ROLLBACK_MANIFEST_FORMAT="$MANIFEST_FORMAT"');
+    expect(deploy).toContain("printf '%s\\n' '$ROLLBACK_MANIFEST_FORMAT' > .release.previous.format");
+  });
+
+  it('keeps new legacy deployments strict while allowing only verified rollback targets to be legacy-six', () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'zutomayo-release-transition-'));
+    const sixManifest = resolve(directory, 'legacy-six.env');
+    const sevenManifest = resolve(directory, 'current-seven.env');
+    const image = (app: string) => 'ghcr.io/example/zutomayo-card-online-' + app + '@sha256:' + 'a'.repeat(64);
+    const lines = [
+      'RELEASE_SHA=' + 'a'.repeat(40),
+      'APP_VERSION=1.2.3',
+      'GAME_RULES_VERSION=1.2.3',
+      'EXPECTED_SCHEMA_MIGRATION=000026_account_export_jobs',
+      'EXPECTED_SCHEMA_CHECKSUM=' + 'b'.repeat(64),
+      ...['game', 'api', 'platform', 'migrate', 'retention', 'gateway'].map(
+        (app) => app.toUpperCase() + '_IMAGE=' + image(app),
+      ),
+    ];
+    writeFileSync(sixManifest, lines.join('\n') + '\n');
+    writeFileSync(sevenManifest, [...lines, 'OPS_IMAGE=' + image('ops')].join('\n') + '\n');
+    const run = (manifest: string) =>
+      spawnSync('bash', [resolve('scripts/deploy-server4.sh'), '--manifest', manifest, '--dry-run'], {
+        encoding: 'utf8',
+        env: { ...process.env, VERIFY_RELEASE_ARTIFACTS: 'false' },
+      });
+
+    const rejected = run(sixManifest);
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).toContain('OPS_IMAGE is required for a new release');
+    expect(run(sevenManifest).status).toBe(0);
   });
 
   it('rolls an N image back over an N+1 schema without running the old migration image', () => {

@@ -49,6 +49,8 @@ PG_BACKUP_USER="${PG_BACKUP_USER:-z_role_backup}"
 PG_BACKUP_PASSWORD="${PG_BACKUP_PASSWORD:-role-smoke-backup-password}"
 PG_WAL_USER="${PG_WAL_USER:-z_role_wal}"
 PG_WAL_PASSWORD="${PG_WAL_PASSWORD:-role-smoke-wal-password}"
+PG_WAL_OPERATOR_USER="${PG_WAL_OPERATOR_USER:-z_role_wal_operator}"
+PG_WAL_OPERATOR_PASSWORD="${PG_WAL_OPERATOR_PASSWORD:-role-smoke-wal-operator-password}"
 PGSSLMODE="${PGSSLMODE:-disable}"
 REQUIRE_DISTINCT_DB_ROLES=true
 REQUIRE_ROLE_MATRIX_GATE=true
@@ -68,6 +70,7 @@ export PG_API_USER PG_API_PASSWORD PG_GAME_USER PG_GAME_PASSWORD
 export PG_PLATFORM_USER PG_PLATFORM_PASSWORD
 export PG_RETENTION_USER PG_RETENTION_PASSWORD PG_MONITOR_USER PG_MONITOR_PASSWORD
 export PG_BACKUP_USER PG_BACKUP_PASSWORD PG_WAL_USER PG_WAL_PASSWORD
+export PG_WAL_OPERATOR_USER PG_WAL_OPERATOR_PASSWORD
 export PGSSLMODE REQUIRE_DISTINCT_DB_ROLES REQUIRE_ROLE_MATRIX_GATE JWT_SECRET METRICS_TOKEN REDIS_PASSWORD
 export ACCOUNT_EXPORT_S3_BUCKET ACCOUNT_EXPORT_S3_REGION ACCOUNT_EXPORT_S3_CREDENTIALS_MODE
 export ACCOUNT_EXPORT_S3_VERSIONING_MODE ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED
@@ -170,21 +173,27 @@ fi
   --set=monitor_user="$PG_MONITOR_USER" \
   --set=backup_user="$PG_BACKUP_USER" \
   --set=wal_user="$PG_WAL_USER" \
+  --set=wal_operator_user="$PG_WAL_OPERATOR_USER" \
   --set=bootstrap_user="$PG_BOOTSTRAP_USER" \
   --set=migration_user="$PG_MIGRATION_USER" <<'SQL'
-CREATE TEMP TABLE role_expectations (role_name text PRIMARY KEY, replication boolean NOT NULL);
-INSERT INTO role_expectations (role_name, replication)
+CREATE TEMP TABLE role_expectations (
+  role_name text PRIMARY KEY,
+  replication boolean NOT NULL,
+  inherit_role boolean NOT NULL
+);
+INSERT INTO role_expectations (role_name, replication, inherit_role)
 VALUES
-  (:'api_user', false),
-  (:'game_user', false),
-  (:'platform_user', false),
-  (:'retention_user', false),
-  (:'monitor_user', false),
-  (:'backup_user', false),
-  (:'wal_user', true);
+  (:'api_user', false, true),
+  (:'game_user', false, true),
+  (:'platform_user', false, true),
+  (:'retention_user', false, true),
+  (:'monitor_user', false, true),
+  (:'backup_user', false, true),
+  (:'wal_user', true, false),
+  (:'wal_operator_user', false, false);
 
 SELECT
-  (SELECT COUNT(*) = 7
+  (SELECT COUNT(*) = 8
      FROM role_expectations e
      JOIN pg_roles r ON r.rolname = e.role_name
     WHERE r.rolcanlogin IS TRUE
@@ -193,7 +202,7 @@ SELECT
       AND r.rolcreaterole IS FALSE
       AND r.rolbypassrls IS FALSE
       AND r.rolreplication = e.replication
-      AND r.rolinherit = (NOT e.replication)) AS role_attributes_ok,
+      AND r.rolinherit = e.inherit_role) AS role_attributes_ok,
   (SELECT rolsuper FROM pg_roles WHERE rolname = :'bootstrap_user') AS bootstrap_super,
   NOT (SELECT rolsuper FROM pg_roles WHERE rolname = :'migration_user') AS migration_not_super,
   has_table_privilege(:'api_user', 'public.users', 'INSERT') AS api_insert_ok,
@@ -213,6 +222,21 @@ SELECT
   NOT has_table_privilege(:'monitor_user', 'public.users', 'SELECT') AS monitor_no_table_read,
   pg_has_role(:'monitor_user', 'pg_monitor', 'member') AS monitor_member,
   NOT has_database_privilege(:'wal_user', current_database(), 'CONNECT') AS wal_no_connect,
+  has_database_privilege(:'wal_operator_user', current_database(), 'CONNECT') AS wal_operator_connect,
+  NOT has_schema_privilege(:'wal_operator_user', 'public', 'USAGE') AS wal_operator_no_public_schema,
+  has_schema_privilege(:'wal_operator_user', 'zutomayo_ops', 'USAGE') AS wal_operator_ops_schema,
+  NOT has_schema_privilege(:'wal_operator_user', 'zutomayo_ops', 'CREATE') AS wal_operator_no_ops_create,
+  has_function_privilege(
+    :'wal_operator_user',
+    (SELECT procedure.oid
+       FROM pg_proc procedure
+       JOIN pg_namespace namespace ON namespace.oid = procedure.pronamespace
+      WHERE namespace.nspname = 'zutomayo_ops'
+        AND procedure.proname = 'switch_wal'
+        AND procedure.pronargs = 0),
+    'EXECUTE'
+  ) AS wal_operator_wrapper,
+  NOT pg_has_role(:'wal_operator_user', 'pg_monitor', 'member') AS wal_operator_no_monitor,
   has_table_privilege(:'api_user', 'public.schema_migrations', 'SELECT') AS api_schema_read,
   NOT has_table_privilege(:'api_user', 'public.schema_migrations', 'UPDATE') AS api_schema_no_write
 \gset
@@ -317,6 +341,36 @@ SELECT
   \echo 'WAL role can connect to the application database' >&2
   \quit 3
 \endif
+\if :wal_operator_connect
+\else
+  \echo 'WAL operator cannot connect to the application database' >&2
+  \quit 3
+\endif
+\if :wal_operator_no_public_schema
+\else
+  \echo 'WAL operator can use the public application schema' >&2
+  \quit 3
+\endif
+\if :wal_operator_ops_schema
+\else
+  \echo 'WAL operator cannot use the operations schema' >&2
+  \quit 3
+\endif
+\if :wal_operator_no_ops_create
+\else
+  \echo 'WAL operator can create objects in the operations schema' >&2
+  \quit 3
+\endif
+\if :wal_operator_wrapper
+\else
+  \echo 'WAL operator cannot execute the WAL switch wrapper' >&2
+  \quit 3
+\endif
+\if :wal_operator_no_monitor
+\else
+  \echo 'WAL operator unexpectedly inherits pg_monitor' >&2
+  \quit 3
+\endif
 \if :api_schema_read
 \else
   \echo 'API role cannot read schema history' >&2
@@ -335,12 +389,23 @@ for role_and_password in \
   "$PG_PLATFORM_USER:$PG_PLATFORM_PASSWORD" \
   "$PG_RETENTION_USER:$PG_RETENTION_PASSWORD" \
   "$PG_MONITOR_USER:$PG_MONITOR_PASSWORD" \
-  "$PG_BACKUP_USER:$PG_BACKUP_PASSWORD"; do
+  "$PG_BACKUP_USER:$PG_BACKUP_PASSWORD" \
+  "$PG_WAL_OPERATOR_USER:$PG_WAL_OPERATOR_PASSWORD"; do
   role="${role_and_password%%:*}"
   password="${role_and_password#*:}"
   "${compose[@]}" exec --no-TTY --env PGPASSWORD="$password" postgres \
     psql --host 127.0.0.1 --username "$role" --dbname "$PG_DATABASE" --command 'SELECT 1' >/dev/null
 done
+
+if "${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_WAL_OPERATOR_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_WAL_OPERATOR_USER" --dbname "$PG_DATABASE" \
+  --set=ON_ERROR_STOP=1 --command 'SELECT pg_catalog.pg_switch_wal()' >/dev/null 2>&1; then
+  echo 'ERROR: WAL operator can call pg_catalog.pg_switch_wal() directly' >&2
+  exit 1
+fi
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_WAL_OPERATOR_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_WAL_OPERATOR_USER" --dbname "$PG_DATABASE" \
+  --set=ON_ERROR_STOP=1 --command 'SELECT zutomayo_ops.switch_wal()' >/dev/null
 
 "${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_GAME_PASSWORD" postgres \
   psql --host 127.0.0.1 --username "$PG_GAME_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
