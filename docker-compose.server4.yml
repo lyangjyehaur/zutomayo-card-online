@@ -31,7 +31,10 @@ services:
       - default
       - 1panel-network
     volumes:
-      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
+      - type: bind
+        source: ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}
+        target: /run/secrets/zutomayo-service-ca.crt
+        read_only: true
     restart: 'no'
 
   game:
@@ -93,7 +96,10 @@ services:
         aliases:
           - game-legacy
     volumes:
-      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
+      - type: bind
+        source: ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}
+        target: /run/secrets/zutomayo-service-ca.crt
+        read_only: true
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -248,7 +254,10 @@ services:
         aliases:
           - api-legacy
     volumes:
-      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
+      - type: bind
+        source: ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}
+        target: /run/secrets/zutomayo-service-ca.crt
+        read_only: true
       - feedback_uploads:/app/data/feedback-uploads
     tmpfs:
       - /app/data/account-exports:rw,noexec,nosuid,nodev,size=268435456,mode=0700,uid=1000,gid=1000
@@ -330,7 +339,10 @@ services:
         aliases:
           - platform-legacy
     volumes:
-      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
+      - type: bind
+        source: ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}
+        target: /run/secrets/zutomayo-service-ca.crt
+        read_only: true
     depends_on:
       migrate:
         condition: service_completed_successfully

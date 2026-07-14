@@ -87,7 +87,10 @@ services:
     networks:
       - default
     volumes:
-      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
+      - type: bind
+        source: ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}
+        target: /run/secrets/zutomayo-service-ca.crt
+        read_only: true
     restart: unless-stopped
 
   redis-exporter:
@@ -102,7 +105,10 @@ services:
     networks:
       - default
     volumes:
-      - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted service CA}:/run/secrets/zutomayo-service-ca.crt:ro
+      - type: bind
+        source: ${PG_CA_FILE:?Set PG_CA_FILE to the mounted service CA}
+        target: /run/secrets/zutomayo-service-ca.crt
+        read_only: true
     restart: unless-stopped
 
   backup-metrics-exporter:
@@ -112,7 +118,10 @@ services:
       - '--collector.textfile'
       - '--collector.textfile.directory=/var/lib/node_exporter/textfile_collector'
     volumes:
-      - ${PG_BACKUP_METRICS_DIR:-/var/lib/node_exporter/textfile_collector}:/var/lib/node_exporter/textfile_collector:ro
+      - type: bind
+        source: ${PG_BACKUP_METRICS_DIR:-/var/lib/node_exporter/textfile_collector}
+        target: /var/lib/node_exporter/textfile_collector
+        read_only: true
     ports:
       - '127.0.0.1:9100:9100'
     networks:

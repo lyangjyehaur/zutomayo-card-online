@@ -10,7 +10,10 @@ x-postgres-role-tls-smoke: &postgres-role-tls-smoke
   networks:
     - 1panel-network
   volumes:
-    - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
+    - type: bind
+      source: ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}
+      target: /run/secrets/zutomayo-service-ca.crt
+      read_only: true
   restart: 'no'
 
 x-postgres-role-tls-environment: &postgres-role-tls-environment
