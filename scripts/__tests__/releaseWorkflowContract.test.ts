@@ -4,13 +4,16 @@ import { describe, expect, it } from 'vitest';
 
 type ReleaseConfigModule = {
   validateCdDeploymentWorkflowContract(workflow: string): true;
+  validateComposeValidationFixtureContract(workflow: string, workflowName: string, stepName: string): true;
 };
 
 // @ts-expect-error The runtime MJS module intentionally has no generated declarations.
-const { validateCdDeploymentWorkflowContract } = (await import('../verify-release-config.mjs')) as ReleaseConfigModule;
+const releaseConfig = (await import('../verify-release-config.mjs')) as ReleaseConfigModule;
+const { validateCdDeploymentWorkflowContract, validateComposeValidationFixtureContract } = releaseConfig;
 
 const root = resolve(import.meta.dirname, '../..');
 const workflow = readFileSync(resolve(root, '.github/workflows/cd.yml'), 'utf8');
+const ciWorkflow = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8');
 
 describe('CD release workflow contract', () => {
   it('uses exact release tags, master ancestry, and a production-only candidate slot stage', () => {
@@ -34,5 +37,20 @@ describe('CD release workflow contract', () => {
       'COMPOSE_FILE=docker-compose.server4.yml ./scripts/deploy-server4.sh --manifest .release.env',
     );
     expect(() => validateCdDeploymentWorkflowContract(legacyProduction)).toThrow(/production release contract|legacy/);
+  });
+});
+
+describe('Compose validation workflow fixtures', () => {
+  const requiredVariables = ['PUBLIC_BASE_URL', 'OAUTH_PUBLIC_BASE_URL', 'PLATFORM_PUBLIC_ADDRESS'];
+
+  it.each([
+    ['ci.yml', ciWorkflow, 'Validate Compose configuration'],
+    ['cd.yml', workflow, 'Validate deployment Compose files'],
+  ])('keeps %s fixture inputs complete', (workflowName, workflowContents, stepName) => {
+    expect(validateComposeValidationFixtureContract(workflowContents, workflowName, stepName)).toBe(true);
+    for (const variable of requiredVariables) {
+      const withoutVariable = workflowContents.replace(new RegExp(`^\\s+${variable}:.*\\n`, 'm'), '');
+      expect(() => validateComposeValidationFixtureContract(withoutVariable, workflowName, stepName)).toThrow(variable);
+    }
   });
 });

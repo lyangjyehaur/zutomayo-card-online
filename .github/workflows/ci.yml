@@ -63,12 +63,14 @@ jobs:
           PLATFORM_SEAT_TOKEN_SECRET: e2e-test-seat-token-secret-at-least-32-bytes
           ADMIN_TOTP_ENCRYPTION_KEY: e2e-test-admin-totp-key-at-least-32-bytes
           OAUTH_TOKEN_ENCRYPTION_KEY: e2e-test-oauth-token-key-at-least-32-bytes
+          PLATFORM_PUBLIC_ADDRESS: wss://game.example.invalid/_platform/p1
           ACCOUNT_EXPORT_S3_BUCKET: zutomayo-ci-account-exports
           ACCOUNT_EXPORT_S3_REGION: us-east-1
           ACCOUNT_EXPORT_S3_CREDENTIALS_MODE: default
           ACCOUNT_EXPORT_S3_VERSIONING_MODE: disabled
           ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true'
           ACCOUNT_EXPORT_PSEUDONYM_KEY: e2e-test-export-pseudonym-key-at-least-32-bytes
+          PUBLIC_BASE_URL: https://game.example.invalid
           OAUTH_PUBLIC_BASE_URL: https://game.example.invalid
           REDIS_PASSWORD: e2e-test-redis-password
           METRICS_TOKEN: e2e-test-metrics-token

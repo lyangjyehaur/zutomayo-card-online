@@ -689,8 +689,26 @@ export function validateCdDeploymentWorkflowContract(workflow) {
   return true;
 }
 
+export function validateComposeValidationFixtureContract(workflow, workflowName, stepName) {
+  if (typeof workflow !== 'string' || workflow.trim() === '') {
+    throw new Error(`${workflowName} workflow must be non-empty text`);
+  }
+  const stepMarker = `- name: ${stepName}`;
+  const stepStart = workflow.indexOf(stepMarker);
+  if (stepStart < 0) throw new Error(`${workflowName} is missing the ${stepName} step`);
+  const nextStep = workflow.indexOf('\n      - name:', stepStart + stepMarker.length);
+  const step = workflow.slice(stepStart, nextStep < 0 ? undefined : nextStep);
+  for (const variable of ['PUBLIC_BASE_URL', 'OAUTH_PUBLIC_BASE_URL', 'PLATFORM_PUBLIC_ADDRESS']) {
+    if (!new RegExp(`^\\s+${variable}:\\s*\\S+`, 'm').test(step)) {
+      throw new Error(`${workflowName} ${stepName} fixture must define ${variable}`);
+    }
+  }
+  return true;
+}
+
 function assertWorkflowContract() {
   const workflow = read('.github/workflows/cd.yml');
+  const ciWorkflow = read('.github/workflows/ci.yml');
   const requiredFragments = [
     'workflow_dispatch:',
     'release_ref:',
@@ -732,15 +750,13 @@ function assertWorkflowContract() {
     throw new Error('cd.yml must not bake a mutable VITE_PLATFORM_URL secret into immutable game images');
   }
   validateCdDeploymentWorkflowContract(workflow);
-  if (
-    !read('.github/workflows/ci.yml').includes(
-      'verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss',
-    )
-  ) {
+  validateComposeValidationFixtureContract(workflow, 'cd.yml', 'Validate deployment Compose files');
+  validateComposeValidationFixtureContract(ciWorkflow, 'ci.yml', 'Validate Compose configuration');
+  if (!ciWorkflow.includes('verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss')) {
     throw new Error('ci.yml must validate the rendered staging TLS/role environment');
   }
   for (const composeFile of ['docker-compose.server4-slot.yml', 'docker-compose.server4-gateway.yml']) {
-    if (!read('.github/workflows/ci.yml').includes(`${composeFile} config --no-env-resolution`)) {
+    if (!ciWorkflow.includes(`${composeFile} config --no-env-resolution`)) {
       throw new Error(`ci.yml must validate ${composeFile}`);
     }
   }
