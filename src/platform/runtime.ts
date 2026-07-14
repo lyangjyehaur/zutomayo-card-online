@@ -19,11 +19,13 @@ import { createPlatformBlockStoreFromEnv, resolvePlatformBlockStoreMode } from '
 import { createPlatformChatPreviewStoreFromEnv, resolvePlatformChatPreviewStoreMode } from './chatPreviewStore';
 import {
   isPlatformRedisMode,
+  platformRedisHealthChecks,
   redisUrlWithDb,
   resolvePlatformCorsOrigin,
   resolvePlatformCorsOrigins,
   resolvePlatformPublicAddress,
   resolvePlatformRedisMode,
+  resolvePlatformRedisRoleConnections,
 } from './config';
 import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
 import { platformLogger as logger } from './logger';
@@ -44,7 +46,7 @@ import {
   createPostgresPlatformJwtAccountStore,
 } from './rooms/jwt';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
-import { postgresConnectionString, postgresSslConfig, resolveRedisConnectionConfig } from '../runtimeSecurityConfig';
+import { postgresConnectionString, postgresSslConfig } from '../runtimeSecurityConfig';
 import type { PlatformRelationshipChange } from './rooms/types';
 import { createRelationshipChangeProcessor, createRelationshipRecoveryLoop } from './relationshipEventProcessor';
 
@@ -102,9 +104,7 @@ export async function assertPlatformRuntimeSchema(
 export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}): PlatformRuntime {
   const port = Number(process.env.PLATFORM_PORT) || 3002;
   const publicAddress = resolvePlatformPublicAddress(process.env.PLATFORM_PUBLIC_ADDRESS, process.env.NODE_ENV);
-  const redisConnection = resolveRedisConnectionConfig(process.env);
-  const redisUrl = redisConnection.url;
-  const redisTls = redisConnection.tls ? { rejectUnauthorized: true } : undefined;
+  const redisConnections = resolvePlatformRedisRoleConnections(process.env);
   const redisDb = Number(process.env.REDIS_DB) || 0;
   const configuredRedisMode = process.env.PLATFORM_REDIS_MODE;
   const redisMode = resolvePlatformRedisMode(configuredRedisMode, process.env.NODE_ENV);
@@ -134,7 +134,10 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       request.headers['x-real-ip'] = ip;
     }
   });
-  const colyseusRedisUrl = redisUrlWithDb(redisUrl, redisDb);
+  const sharedRedisUrl = redisUrlWithDb(redisConnections.shared.url, redisDb);
+  const colyseusRedisUrl = redisUrlWithDb(redisConnections.colyseus.url, redisDb);
+  const sharedRedisTls = redisConnections.shared.tls ? { rejectUnauthorized: true } : undefined;
+  const colyseusRedisTls = redisConnections.colyseus.tls ? { rejectUnauthorized: true } : undefined;
   const friendStore = createPlatformFriendStoreFromEnv();
   const blockStore = createPlatformBlockStoreFromEnv();
   const matchParticipantStore = createPlatformMatchParticipantStoreFromEnv();
@@ -171,12 +174,20 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
         ssl: postgresSslConfig(process.env),
       })
     : null;
-  const healthRedis =
+  const sharedHealthRedis =
+    redisMode === 'redis'
+      ? new Redis(sharedRedisUrl, {
+          maxRetriesPerRequest: 1,
+          enableReadyCheck: true,
+          ...(sharedRedisTls ? { tls: sharedRedisTls } : {}),
+        })
+      : null;
+  const colyseusHealthRedis =
     redisMode === 'redis'
       ? new Redis(colyseusRedisUrl, {
           maxRetriesPerRequest: 1,
           enableReadyCheck: true,
-          ...(redisTls ? { tls: redisTls } : {}),
+          ...(colyseusRedisTls ? { tls: colyseusRedisTls } : {}),
         })
       : null;
   // The API service writes access-token revocation markers to this shared DB.
@@ -186,19 +197,19 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   const admissionLimits = platformAdmissionLimitsFromEnv();
   const authRevocationRedis =
     redisMode === 'redis'
-      ? new Redis(colyseusRedisUrl, {
+      ? new Redis(sharedRedisUrl, {
           maxRetriesPerRequest: 1,
           enableReadyCheck: true,
           commandTimeout: admissionLimits.timeoutMs,
-          ...(redisTls ? { tls: redisTls } : {}),
+          ...(sharedRedisTls ? { tls: sharedRedisTls } : {}),
         })
       : null;
   const relationshipRedis =
     redisMode === 'redis'
-      ? new Redis(colyseusRedisUrl, {
+      ? new Redis(sharedRedisUrl, {
           maxRetriesPerRequest: 1,
           enableReadyCheck: true,
-          ...(redisTls ? { tls: redisTls } : {}),
+          ...(sharedRedisTls ? { tls: sharedRedisTls } : {}),
         })
       : null;
   const runtimeSchemaRequired = platformRequiresRuntimeSchema();
@@ -282,7 +293,8 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   // server.ts awaits this before listen; attach a handler immediately so a
   // synchronous configuration rejection cannot become an unhandled promise.
   void schemaReady.catch(() => undefined);
-  healthRedis?.on('error', (err) => logger.warn({ err }, 'platform health Redis connection error'));
+  sharedHealthRedis?.on('error', (err) => logger.warn({ err }, 'platform shared health Redis connection error'));
+  colyseusHealthRedis?.on('error', (err) => logger.warn({ err }, 'platform Colyseus health Redis connection error'));
   authRevocationRedis?.on('error', (err) => logger.warn({ err }, 'platform auth Redis connection error'));
   relationshipRedis?.on('error', (err) => logger.warn({ err }, 'platform relationship Redis connection error'));
   configurePlatformJwtRevocationStore(authRevocationRedis, { timeoutMs: admissionLimits.timeoutMs });
@@ -303,7 +315,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       });
     }
     if (runtimeSchemaRequired) checks.push({ name: 'schema', promise: schemaReady });
-    if (healthRedis) checks.push({ name: 'redis', promise: healthRedis.ping() });
+    checks.push(...platformRedisHealthChecks(sharedHealthRedis, colyseusHealthRedis));
     if (relationshipRedis) {
       checks.push({
         name: 'relationship-events',
@@ -343,7 +355,8 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       matchParticipantStore.close?.(),
       chatPreviewStore.close?.(),
       healthPool?.end(),
-      healthRedis?.quit(),
+      sharedHealthRedis?.quit(),
+      colyseusHealthRedis?.quit(),
       authRevocationRedis?.quit(),
       relationshipRedis?.quit(),
     ]);

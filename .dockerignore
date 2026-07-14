@@ -7,6 +7,7 @@ api/*
 !api/schemaGate.cjs
 !api/relationshipEvents.cjs
 !api/accountMutationLock.cjs
+!api/backgroundWorkerConfig.cjs
 !api/relationshipOutbox.cjs
 !api/runtimeSecurityConfig.cjs
 !api/seasonResultService.cjs

@@ -40,7 +40,7 @@ function authenticatedEvidence(directory: string) {
     evidenceType: 'authenticated-e2e',
     releaseSha: 'a'.repeat(40),
     imageDigests: Object.fromEntries(
-      ['game', 'api', 'platform', 'migrate', 'retention'].map((name) => [
+      ['game', 'api', 'platform', 'migrate', 'retention', 'gateway'].map((name) => [
         name,
         `ghcr.io/example/${name}@sha256:${'0'.repeat(64)}`,
       ]),
@@ -77,7 +77,7 @@ function writeEvidenceArtifact(directory: string, artifactPath: string, contents
 
 function canaryEvidence(directory: string) {
   const imageDigests = Object.fromEntries(
-    ['game', 'api', 'platform', 'migrate', 'retention'].map((name) => [
+    ['game', 'api', 'platform', 'migrate', 'retention', 'gateway'].map((name) => [
       name,
       `ghcr.io/example/${name}@sha256:${'0'.repeat(64)}`,
     ]),

@@ -14,7 +14,15 @@ on:
           - production
         required: true
       release_ref:
-        description: '要部署的完整 commit SHA 或 release tag（production 必須是 v* tag）'
+        description: '要部署的完整 commit SHA 或 v<semver> tag（production 只接受已存在的 exact tag）'
+        required: true
+      production_slot:
+        description: 'Production only: stage candidate into this inactive slot; this does not switch traffic'
+        type: choice
+        options:
+          - blue
+          - green
+        default: green
         required: true
       staging_evidence_run_id:
         description: 'Production only: GitHub Actions run ID containing the verified staging evidence artifact'
@@ -50,7 +58,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_ref || github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'production' && format('refs/tags/{0}', inputs.release_ref) || github.event_name == 'workflow_dispatch' && inputs.release_ref || github.ref_type == 'tag' && github.ref || github.sha }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -68,21 +76,32 @@ jobs:
       - name: Resolve and validate release ref
         id: release
         env:
-          TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.release_ref || github.sha }}
-          TARGET_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging') }}
+          TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.release_ref || github.ref_type == 'tag' && github.ref_name || github.sha }}
+          TARGET_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_type == 'tag' && 'production' || 'staging') }}
         run: |
           set -euo pipefail
           REF="$TARGET_REF"
-          if [[ "$REF" == refs/tags/* ]]; then REF="${REF#refs/tags/}"; fi
-          if [[ "$TARGET_ENVIRONMENT" == production && ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo 'production releases require a semver v* tag' >&2
+          SEMVER_TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'
+          TAG_REF=''
+          if [[ "$TARGET_ENVIRONMENT" == production ]]; then
+            [[ "$REF" =~ $SEMVER_TAG_PATTERN ]] || { echo 'production releases require a v<semver> tag name' >&2; exit 2; }
+            TAG_REF="refs/tags/$REF"
+            git show-ref --verify --quiet "$TAG_REF" || { echo "production tag does not exist: $TAG_REF" >&2; exit 2; }
+            SHA="$(git rev-parse "${TAG_REF}^{commit}")"
+          elif [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            SHA="$(git rev-parse "${REF}^{commit}")"
+          elif [[ "$REF" =~ $SEMVER_TAG_PATTERN ]]; then
+            TAG_REF="refs/tags/$REF"
+            git show-ref --verify --quiet "$TAG_REF" || { echo "staging tag does not exist: $TAG_REF" >&2; exit 2; }
+            SHA="$(git rev-parse "${TAG_REF}^{commit}")"
+          else
+            echo 'staging release_ref must be a full commit SHA or v<semver> tag' >&2
             exit 2
           fi
-          if [[ "$TARGET_ENVIRONMENT" == staging && ! "$REF" =~ ^[0-9a-fA-F]{40}$ && ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo 'staging release_ref must be a full commit SHA or v* tag' >&2
-            exit 2
-          fi
-          SHA="$(git rev-parse "${REF}^{commit}")"
+          [[ "$(git rev-parse HEAD)" == "$SHA" ]] || { echo 'checked out commit does not match the exact requested ref' >&2; exit 2; }
+          MASTER_REF='refs/remotes/origin/master'
+          git show-ref --verify --quiet "$MASTER_REF" || { echo 'origin/master is unavailable for release ancestry verification' >&2; exit 2; }
+          git merge-base --is-ancestor "$SHA" "$MASTER_REF" || { echo "release SHA $SHA is not contained in master" >&2; exit 2; }
           if [[ "$REF" == v* ]]; then
             VERSION="${REF#v}"
             PACKAGE_VERSION="$(node -p "require('./package.json').version")"
@@ -166,6 +185,13 @@ jobs:
           PLATFORM_IMAGE: ghcr.io/example/platform@sha256:0000000000000000000000000000000000000000000000000000000000000000
           MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
           RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          GATEWAY_IMAGE: ghcr.io/example/gateway@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          COLYSEUS_REDIS_IMAGE: redis@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          COLYSEUS_REDIS_PASSWORD: cd-preflight-colyseus-redis-password
+          FEEDBACK_UPLOADS_VOLUME: zutomayo-cd-feedback-uploads
+          PUBLIC_HOST: game.example.invalid
+          RELEASE_SLOT: blue
+          COMPOSE_PROJECT_NAME: zutomayo-blue
           RETENTION_METRICS_GID: '991'
           APP_VERSION: '0.2.0'
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
@@ -177,9 +203,10 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
-          docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.server4-gateway.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
-          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.monitoring.yml config --quiet
 
   # ─────────────────────────────────────────────────────────────
@@ -214,6 +241,9 @@ jobs:
           - app: retention
             context: .
             dockerfile: ./Dockerfile.retention
+          - app: gateway
+            context: .
+            dockerfile: ./Dockerfile.gateway
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -381,7 +411,7 @@ jobs:
           set -euo pipefail
           while IFS='=' read -r key ref; do
             case "$key" in
-              GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE)
+              GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE|GATEWAY_IMAGE)
                 cosign verify --certificate-identity-regexp "https://github.com/${GH_REPOSITORY}/.github/workflows/cd\\.yml@refs/(heads/master|tags/v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?)$" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$ref" >/dev/null
                 gh attestation verify "oci://${ref}" --repo "$GH_REPOSITORY" --source-digest "${{ needs.preflight.outputs.release_sha }}" >/dev/null
                 ;;
@@ -536,7 +566,7 @@ jobs:
           retention-days: 30
 
   deploy:
-    name: Deploy immutable release (${{ inputs.environment }})
+    name: Deploy staging / stage production candidate (${{ inputs.environment }})
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     needs: [preflight, manual-release, release-gate]
@@ -582,23 +612,45 @@ jobs:
           chmod 0600 ~/.ssh/known_hosts
       - name: Set up Cosign
         uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a
-      - name: Validate manifest and deploy with smoke checks
+      - name: Deploy staging immutable release with smoke checks
+        if: inputs.environment == 'staging'
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          SERVER_HOST: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_HOST || inputs.environment == 'production' && secrets.DEPLOY_HOST || '' }}
-          SERVER_PORT: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_PORT || inputs.environment == 'production' && secrets.DEPLOY_PORT || '' }}
-          SERVER_USER: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_USER || inputs.environment == 'production' && secrets.DEPLOY_USER || '' }}
-          REMOTE_DIR: ${{ inputs.environment == 'staging' && secrets.STAGING_REMOTE_DIR || inputs.environment == 'production' && secrets.PRODUCTION_REMOTE_DIR || '' }}
-          COMPOSE_FILE: ${{ inputs.environment == 'staging' && 'docker-compose.staging.yml' || 'docker-compose.server4.yml' }}
-          GAME_PORT: ${{ inputs.environment == 'staging' && '4000' || '3000' }}
-          API_PORT: ${{ inputs.environment == 'staging' && '4001' || '3001' }}
-          PLATFORM_PORT: ${{ inputs.environment == 'staging' && '4002' || '3002' }}
+          SERVER_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          SERVER_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          SERVER_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          REMOTE_DIR: ${{ secrets.STAGING_REMOTE_DIR }}
+          COMPOSE_FILE: docker-compose.staging.yml
+          GAME_PORT: '4000'
+          API_PORT: '4001'
+          PLATFORM_PORT: '4002'
         run: |
-          test -n "$SERVER_HOST" || { echo 'environment deploy host secret is required' >&2; exit 1; }
-          test -n "$SERVER_USER" || { echo 'environment deploy user secret is required' >&2; exit 1; }
-          test -n "$REMOTE_DIR" || { echo 'environment remote directory secret is required' >&2; exit 1; }
+          test -n "$SERVER_HOST" || { echo 'staging deploy host secret is required' >&2; exit 1; }
+          test -n "$SERVER_USER" || { echo 'staging deploy user secret is required' >&2; exit 1; }
+          test -n "$REMOTE_DIR" || { echo 'staging remote directory secret is required' >&2; exit 1; }
           SERVER_PORT="${SERVER_PORT:-22}"
           export SERVER_PORT
           chmod +x scripts/deploy-server4.sh
           ./scripts/deploy-server4.sh --manifest .release.env
+
+      - name: Stage production candidate slot (no traffic switch)
+        if: inputs.environment == 'production'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SERVER_HOST: ${{ secrets.DEPLOY_HOST }}
+          SERVER_PORT: ${{ secrets.DEPLOY_PORT }}
+          SERVER_USER: ${{ secrets.DEPLOY_USER }}
+          REMOTE_DIR: /opt/zutomayo-card-runtime
+          PRODUCTION_SLOT: ${{ inputs.production_slot }}
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST" || { echo 'production deploy host secret is required' >&2; exit 1; }
+          test -n "$SERVER_USER" || { echo 'production deploy user secret is required' >&2; exit 1; }
+          [[ "$PRODUCTION_SLOT" == blue || "$PRODUCTION_SLOT" == green ]] || { echo 'production_slot must be blue or green' >&2; exit 1; }
+          SERVER_PORT="${SERVER_PORT:-22}"
+          export SERVER_PORT
+          chmod +x scripts/deploy-server4-canary.sh
+          ./scripts/deploy-server4-canary.sh stage-slot --slot "$PRODUCTION_SLOT" --manifest .release.env --confirm
+          echo 'Candidate slot staged and verified. This job does not switch gateway traffic or mutate OpenResty.'

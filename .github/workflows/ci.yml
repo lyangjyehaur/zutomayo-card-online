@@ -86,6 +86,13 @@ jobs:
           PLATFORM_IMAGE: ghcr.io/example/platform@sha256:0000000000000000000000000000000000000000000000000000000000000000
           MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
           RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          GATEWAY_IMAGE: ghcr.io/example/gateway@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          COLYSEUS_REDIS_IMAGE: redis@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          COLYSEUS_REDIS_PASSWORD: ci-colyseus-redis-password
+          FEEDBACK_UPLOADS_VOLUME: zutomayo-ci-feedback-uploads
+          PUBLIC_HOST: game.example.invalid
+          RELEASE_SLOT: blue
+          COMPOSE_PROJECT_NAME: zutomayo-blue
           RETENTION_METRICS_GID: '991'
           APP_VERSION: '0.2.0'
           RELEASE_SHA: '0000000000000000000000000000000000000000'
@@ -100,8 +107,11 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.server4-gateway.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.monitoring.yml config --quiet
 
       - name: Format check

@@ -27,8 +27,11 @@ function hashAccountToken(token) {
 }
 
 async function withTransaction(pool, operation) {
-  const client = typeof pool.connect === 'function' ? await pool.connect() : pool;
-  const release = typeof client.release === 'function' ? () => client.release() : () => undefined;
+  // A pg PoolClient exposes both connect() and release(); a Pool exposes only
+  // connect(). Keep a caller-owned lease client checked out across transactions.
+  const ownsClient = typeof pool.connect === 'function' && typeof pool.release !== 'function';
+  const client = ownsClient ? await pool.connect() : pool;
+  const release = ownsClient && typeof client.release === 'function' ? () => client.release() : () => undefined;
   try {
     await client.query('BEGIN');
     const result = await operation(client);

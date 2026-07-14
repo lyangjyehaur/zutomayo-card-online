@@ -76,10 +76,11 @@ validate_manifest() {
   PLATFORM_IMAGE=''
   MIGRATE_IMAGE=''
   RETENTION_IMAGE=''
+  GATEWAY_IMAGE=''
   while IFS='=' read -r key value || [[ -n "$key" ]]; do
     [[ -z "$key" ]] && continue
     case "$key" in
-      RELEASE_SHA|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE)
+      RELEASE_SHA|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE|GATEWAY_IMAGE)
         printf -v "$key" '%s' "$value"
         ;;
       *) die "invalid manifest key: $key" ;;
@@ -90,7 +91,7 @@ validate_manifest() {
   [[ "$GAME_RULES_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || die 'manifest GAME_RULES_VERSION is invalid'
   [[ "$EXPECTED_SCHEMA_MIGRATION" =~ ^[0-9]{6,}_[a-z0-9_]+$ ]] || die 'manifest EXPECTED_SCHEMA_MIGRATION is invalid'
   [[ "$EXPECTED_SCHEMA_CHECKSUM" =~ ^[a-f0-9]{64}$ ]] || die 'manifest EXPECTED_SCHEMA_CHECKSUM is invalid'
-  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE; do
+  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE GATEWAY_IMAGE; do
     app="${key%_IMAGE}"
     app="$(printf '%s' "$app" | tr '[:upper:]' '[:lower:]')"
     value="${!key}"
@@ -104,7 +105,7 @@ verify_manifest_artifacts() {
   command -v cosign >/dev/null 2>&1 || die 'cosign is required for release artifact verification'
   command -v gh >/dev/null 2>&1 || die 'gh is required for release attestation verification'
   local key ref
-  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE; do
+  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE GATEWAY_IMAGE; do
     ref="${!key}"
     cosign verify \
       --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \

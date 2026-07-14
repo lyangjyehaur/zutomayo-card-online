@@ -55,7 +55,9 @@ const {
   markProviderDeletionFailure,
   markProviderDeletionStarted,
   prepareLogtoAccountDeletion,
+  withAccountDeletionRecoveryLease,
 } = require('./accountDeletionService.cjs');
+const { resolveBackgroundWorkersEnabled } = require('./backgroundWorkerConfig.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
 const { listAdminUsers, resetUserElo } = require('./adminService.cjs');
 const { authenticateAdmin, revokeAdminSession, verifyAdminSession } = require('./adminAuthService.cjs');
@@ -210,6 +212,7 @@ const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
 // Ranked writes are fail-closed. Production must explicitly opt in after the
 // seat-identity trust chain has been verified.
 const RANKED_MATCHES_ENABLED = process.env.RANKED_MATCHES_ENABLED === 'true';
+const API_BACKGROUND_WORKERS_ENABLED = resolveBackgroundWorkersEnabled(process.env, 'API_BACKGROUND_WORKERS_ENABLED');
 const IMGPROXY_INTERNAL_BASE_URL = process.env.IMGPROXY_INTERNAL_BASE_URL || process.env.IMGPROXY_BASE_URL || '';
 const IMGPROXY_KEY = process.env.IMGPROXY_KEY || '';
 const IMGPROXY_SALT = process.env.IMGPROXY_SALT || '';
@@ -1212,7 +1215,7 @@ async function revokeRefreshToken(token) {
   }
 }
 
-async function revokeAllUserSessions(userId, { bumpAuthVersion = true } = {}) {
+async function revokeAllUserSessions(userId, { bumpAuthVersion = true, dbPool = pool } = {}) {
   const revokedBefore = Math.floor(Date.now() / 1000);
   try {
     // Redis is an acceleration/index for revocation, not the authority. A
@@ -1220,7 +1223,7 @@ async function revokeAllUserSessions(userId, { bumpAuthVersion = true } = {}) {
     // Redis restart or key eviction. Callers that already hold the user row
     // lock and increment auth_version in their transaction can opt out.
     if (bumpAuthVersion) {
-      await pool.query(
+      await dbPool.query(
         `UPDATE users
             SET auth_version = COALESCE(auth_version, 1) + 1
           WHERE id = $1 AND deleted_at IS NULL`,
@@ -1243,7 +1246,7 @@ async function revokeAllUserSessions(userId, { bumpAuthVersion = true } = {}) {
   }
 }
 
-async function revokeRequestAccountSessions(req, userId, { bumpAuthVersion = true } = {}) {
+async function revokeRequestAccountSessions(req, userId, { bumpAuthVersion = true, dbPool = pool } = {}) {
   const authorization = String(req.headers.authorization || '');
   const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length).trim() : '';
   const cookies = parseCookies(req);
@@ -1251,7 +1254,7 @@ async function revokeRequestAccountSessions(req, userId, { bumpAuthVersion = tru
 
   if (bearerToken) await blacklistToken(bearerToken);
   if (cookieToken && cookieToken !== bearerToken) await blacklistToken(cookieToken);
-  await revokeAllUserSessions(userId, { bumpAuthVersion });
+  await revokeAllUserSessions(userId, { bumpAuthVersion, dbPool });
 }
 
 async function isUserSessionRevoked(userId, issuedAt) {
@@ -2317,25 +2320,39 @@ async function deleteLogtoPrincipalWithManagementApi(providerUserId, { retryUnau
 }
 
 async function recoverAccountDeletionRequest(request) {
-  let currentRequest = request;
-  if (currentRequest.status === 'provider_deleting') {
-    await revokeAllUserSessions(currentRequest.userId);
-    const providerResult = await deleteLogtoPrincipalWithManagementApi(currentRequest.providerUserId);
-    if (!providerResult.ok) return providerResult;
-    const marked = await markProviderDeleted({ pool, requestId: currentRequest.id });
-    if (!marked.ok) return marked;
-    currentRequest = marked.body.request;
-  }
+  const leased = await withAccountDeletionRecoveryLease({
+    pool,
+    requestId: request.id,
+    operation: async (leasedRequest, leaseClient) => {
+      let currentRequest = leasedRequest;
+      if (currentRequest.status === 'provider_deleting') {
+        await revokeAllUserSessions(currentRequest.userId, { dbPool: leaseClient });
+        const providerResult = await deleteLogtoPrincipalWithManagementApi(currentRequest.providerUserId);
+        if (!providerResult.ok) return providerResult;
+        const marked = await markProviderDeleted({ pool: leaseClient, requestId: currentRequest.id });
+        if (!marked.ok) return marked;
+        currentRequest = marked.body.request;
+      }
 
-  if (currentRequest.status !== 'provider_deleted') {
+      if (currentRequest.status !== 'provider_deleted') {
+        return { ok: false, status: 409, error: 'Account deletion request is not recoverable' };
+      }
+      return deleteAccount({
+        pool: leaseClient,
+        userId: currentRequest.userId,
+        deletionRequestId: currentRequest.id,
+        beforeDelete: () =>
+          revokeAllUserSessions(currentRequest.userId, { bumpAuthVersion: false, dbPool: leaseClient }),
+      });
+    },
+  });
+  if (!leased.acquired) {
+    return { ok: false, status: 409, error: 'Account deletion recovery is already in progress' };
+  }
+  if (!leased.request) {
     return { ok: false, status: 409, error: 'Account deletion request is not recoverable' };
   }
-  return deleteAccount({
-    pool,
-    userId: currentRequest.userId,
-    deletionRequestId: currentRequest.id,
-    beforeDelete: () => revokeAllUserSessions(currentRequest.userId, { bumpAuthVersion: false }),
-  });
+  return leased.result;
 }
 
 let accountDeletionRecoveryTimer = null;
@@ -3879,53 +3896,76 @@ function handleRequest(req, res) {
         });
         if (!consumed.ok) return json({ error: consumed.error }, consumed.status);
 
-        const started = await markProviderDeletionStarted({ pool, requestId: deletionRequest.id });
-        if (!started.ok) return json({ error: started.error }, started.status);
-        deletionRequest = started.body.request;
-
-        // Once provider deletion is durable intent, block all existing local
-        // sessions before issuing the external mutation.
-        await revokeRequestAccountSessions(req, userId);
-        let providerDeletion;
-        try {
-          providerDeletion = await logtoAccountRequest({
-            userId,
-            path: '/api/my-account',
-            method: 'DELETE',
-            verificationId: consumed.verificationId,
-          });
-        } catch (error) {
-          await markProviderDeletionFailure({
-            pool,
-            requestId: deletionRequest.id,
-            error,
-            retryable: true,
-          });
-          throw error;
-        }
-        if (!providerDeletion.ok) {
-          const retryable =
-            providerDeletion.status === 408 || providerDeletion.status === 429 || providerDeletion.status >= 500;
-          await markProviderDeletionFailure({
-            pool,
-            requestId: deletionRequest.id,
-            error: providerDeletion.error,
-            retryable,
-          });
-          return json({ error: providerDeletion.error, deletionPending: retryable }, providerDeletion.status);
-        }
-
-        const marked = await markProviderDeleted({ pool, requestId: deletionRequest.id });
-        if (!marked.ok) return json({ error: marked.error, deletionPending: true }, marked.status);
-        const result = await deleteAccount({
+        const leased = await withAccountDeletionRecoveryLease({
           pool,
-          userId,
-          requireStepUp: true,
-          stepUpVerified: true,
-          deletionRequestId: deletionRequest.id,
-          beforeDelete: () => revokeRequestAccountSessions(req, userId, { bumpAuthVersion: false }),
+          requestId: deletionRequest.id,
+          statuses: ['prepared'],
+          operation: async (leasedRequest, leaseClient) => {
+            const started = await markProviderDeletionStarted({ pool: leaseClient, requestId: leasedRequest.id });
+            if (!started.ok) return started;
+
+            // Once provider deletion is durable intent, block all existing
+            // sessions before issuing the external mutation. The session-level
+            // advisory lease prevents a recovery worker from issuing the same
+            // irreversible provider call concurrently.
+            await revokeRequestAccountSessions(req, userId, { dbPool: leaseClient });
+            let providerDeletion;
+            try {
+              providerDeletion = await logtoAccountRequest({
+                userId,
+                path: '/api/my-account',
+                method: 'DELETE',
+                verificationId: consumed.verificationId,
+              });
+            } catch (error) {
+              await markProviderDeletionFailure({
+                pool: leaseClient,
+                requestId: leasedRequest.id,
+                error,
+                retryable: true,
+              });
+              throw error;
+            }
+            if (!providerDeletion.ok) {
+              const retryable =
+                providerDeletion.status === 408 || providerDeletion.status === 429 || providerDeletion.status >= 500;
+              await markProviderDeletionFailure({
+                pool: leaseClient,
+                requestId: leasedRequest.id,
+                error: providerDeletion.error,
+                retryable,
+              });
+              return {
+                ok: false,
+                status: providerDeletion.status,
+                error: providerDeletion.error,
+                deletionPending: retryable,
+              };
+            }
+
+            const marked = await markProviderDeleted({ pool: leaseClient, requestId: leasedRequest.id });
+            if (!marked.ok) return { ...marked, deletionPending: true };
+            return deleteAccount({
+              pool: leaseClient,
+              userId,
+              requireStepUp: true,
+              stepUpVerified: true,
+              deletionRequestId: leasedRequest.id,
+              beforeDelete: () =>
+                revokeRequestAccountSessions(req, userId, { bumpAuthVersion: false, dbPool: leaseClient }),
+            });
+          },
         });
-        if (!result.ok) return json({ error: result.error, deletionPending: true }, result.status);
+        if (!leased.acquired || !leased.request) {
+          return json({ error: 'Account deletion is already in progress', deletionPending: true }, 409);
+        }
+        const result = leased.result;
+        if (!result.ok) {
+          return json(
+            { error: result.error, deletionPending: result.deletionPending ?? true },
+            result.status === 503 ? 503 : result.status,
+          );
+        }
         clearAuthCookie(req, res);
         clearRefreshCookie(req, res);
         clearCsrfCookie(req, res);
@@ -5462,10 +5502,15 @@ if (require.main === module) {
         // SIGTERM can arrive after listen() is called but before its callback
         // runs. Do not resurrect background work once the drain has begun.
         if (shuttingDown) return;
-        relationshipOutboxWorker.start();
-        accountExportWorker.start();
-        startAccountDeletionRecovery();
-        logger.info({ port: PORT }, 'Zutomayo API server running');
+        if (API_BACKGROUND_WORKERS_ENABLED) {
+          relationshipOutboxWorker.start();
+          accountExportWorker.start();
+          startAccountDeletionRecovery();
+        }
+        logger.info(
+          { port: PORT, backgroundWorkersEnabled: API_BACKGROUND_WORKERS_ENABLED },
+          'Zutomayo API server running',
+        );
       });
     })
     .catch((err) => {

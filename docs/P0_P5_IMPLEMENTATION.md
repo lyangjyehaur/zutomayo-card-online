@@ -1,6 +1,6 @@
 # P0-P5 生產成熟化實作追蹤
 
-> 分支：`codex/p0-p5-production`
+> 分支：`codex/integration-p0-p5`
 >
 > 原則：只有程式、測試與實際 gate 都能證明行為時才標記完成。既有 roadmap 的「已完成」不自動沿用。
 
@@ -20,7 +20,7 @@
 4. 完成 legal-hold 持續 reconciliation 與 account deletion hold gate；任何 account 衍生 match/conversation/message/report/feedback hold 都必須阻擋破壞性刪除。
 5. 完成帳號刪除全表策略：platform participants、boardgame seats/outbox、season data、match/leaderboard identifier 都必須刪除或不可逆匿名化。
 6. 加固 OAuth：state 綁 browser session、PKCE、session ticket 一次性 consume；所有 provider/Logto request 有 timeout、retry budget 與 recovery circuit breaker。
-7. 以 fresh staging 驗證五個 signed image、migration、retention timer、synthetic failure metric、rollback 與 post-deploy build ID；第三方 image/action 全部 pin digest/full SHA。
+7. 以 fresh staging 驗證六個 signed image（含 gateway）、migration、retention timer、synthetic failure metric、rollback 與 post-deploy build ID；第三方 image/action 全部 pin digest/full SHA。
 
 ### P1：Security and data correctness
 
@@ -59,7 +59,7 @@
 
 ## P1：發布與供應鏈
 
-- [x] Base、E2E、staging、server4、monitoring Compose config 全部通過並進 CI。
+- [x] Base、E2E、staging、legacy server4、parallel slot、gateway、monitoring Compose config 全部通過並進 CI。
 - [x] E2E 失敗會阻擋 merge；CD 只部署已通過 CI 的 commit。
 - [x] Migration 使用同一 release digest，失敗時 app 不啟動。
 - [x] Deploy `--sha`、health port 與 post-deploy smoke 正確。
@@ -74,8 +74,8 @@
 - [ ] Backup checksum、成功告警、每日 age 檢查與自動 restore 驗證。
 - [ ] Beta RPO 24h / RTO 4h；production RPO 15m / RTO 30m 有實測報告。
 - [x] Expand/contract migration 與 schema checksum gate。
-- [ ] 至少兩個 app replica、graceful drain 與連線恢復：game/API/platform 已有 readiness 與 drain；API 會先停新 HTTP、等待 in-flight requests，再停 workers/DB/Redis。現有 Compose 仍未部署 replicas／readiness gateway。
-- [ ] Canary 10% → 50% → 100%，能在 5 分鐘內切回已驗證 digest：release gate 已固定不可降級的 stage／sample／replica／rollback policy，但尚無 repo-owned traffic controller、warm previous slot 與真實證據。
+- [ ] 至少兩個 app replica、graceful drain 與連線恢復：parallel slot 已定義 game/API 各 2 replicas、platform p1/p2、獨立 Redis、readiness gateway、WebSocket-only transport 與單一 worker owner；HAProxy 3.2 non-root startup/SIGUSR2 reload，以及 Docker DNS 對 2 game + 2 API + p1/p2 的 `nbsrv` readiness contract 已在 server4 隔離 network 實測，尚缺正式 slot 部署與斷線恢復 evidence。
+- [ ] Canary 10% → 50% → 100%，能在 5 分鐘內切回已驗證 digest：repo-owned HAProxy controller、warm slots、nested cohort/slot-pin cookies、active config/container/stats evidence 與 raw metrics collector 已完成；仍缺不同 SHA 的 10/50/100 dwell/sample 及 candidate → stable rollback 真實證據。
 - [ ] 2x 預估峰值、2 小時 soak 達到 SLO。
 
 ## P3：可觀測性與營運流程
@@ -121,8 +121,8 @@
 - [x] `npm run test:coverage`（statements 60.45%、branches 52.31%、functions 63.59%、lines 63.69%）
 - [ ] `npm run e2e`
 - [ ] `npm run rule:audit` 並在 unsupported effect 時失敗
-- [ ] 五套 Compose config gate
-- [ ] Migration up / app start / rollback compatibility rehearsal
+- [x] 所有 production/development Compose config gate（含 parallel slot 與 gateway）
+- [ ] Migration up / app start / rollback compatibility rehearsal：2026-07-14 已由 production-copy `zutomayo` 建立隔離 DB，完整套用 000001→000026、schema checksum gate 通過、第二次執行為 `No migrations to run`，users/cards/matches 仍為 2/422/1；尚缺 signed release images 的 app start 與 N+1 rollback smoke。
 - [ ] Staging 連續三次 deploy + post-deploy smoke
 - [ ] Backup restore、alert delivery、2x soak 與 reconnect chaos drill
 - [ ] 原始 worktree 未被修改；只有隔離 worktree 包含本任務變更
@@ -131,7 +131,7 @@
 
 使用 `npm run release:gate -- --evidence-dir artifacts/release` 執行集中式發布檢查。Gate 會逐項執行完整 `verify`、release/operational config、Compose render/role environment，以及 Docker runtime image contract；結果會寫入 `release-gate.json` 與 `release-gate.md`。
 
-Gate 狀態嚴格區分：`passed` 代表所有必要檢查通過，`failed` 代表本機或設定檢查失敗，`blocked` 代表本機檢查沒有失敗但仍缺 staging-only 證據。缺證據永遠不會被當成通過；沒有 `--staging-evidence-dir` 時 staging gate 必然是 `blocked`。若有 staging 證據，放在該目錄的 `staging/` 下，且每份 JSON 必須包含 `schemaVersion: 1`、對應的 `evidenceType`、`status: "passed"`、`environment: "staging"`、與目前（或 `--release-sha` 指定）release 相同的 40 字元 `releaseSha`、五個完整 `game/api/platform/migrate/retention` `@sha256` image digest，以及 `startedAt`、`finishedAt`、正確相等於兩者差值的 `durationMs` 與過去 168 小時內且不得為未來時間的 `checkedAt`。每種 evidence 還必須提供該 gate 要求的數值 `metrics`、數值 `thresholds` 與全數為 true 的 `results`；Gate 會實際比較 metric/threshold。
+Gate 狀態嚴格區分：`passed` 代表所有必要檢查通過，`failed` 代表本機或設定檢查失敗，`blocked` 代表本機檢查沒有失敗但仍缺 staging-only 證據。缺證據永遠不會被當成通過；沒有 `--staging-evidence-dir` 時 staging gate 必然是 `blocked`。若有 staging 證據，放在該目錄的 `staging/` 下，且每份 JSON 必須包含 `schemaVersion: 1`、對應的 `evidenceType`、`status: "passed"`、`environment: "staging"`、與目前（或 `--release-sha` 指定）release 相同的 40 字元 `releaseSha`、六個完整 `game/api/platform/migrate/retention/gateway` `@sha256` image digest，以及 `startedAt`、`finishedAt`、正確相等於兩者差值的 `durationMs` 與過去 168 小時內且不得為未來時間的 `checkedAt`。每種 evidence 還必須提供該 gate 要求的數值 `metrics`、數值 `thresholds` 與全數為 true 的 `results`；Gate 會實際比較 metric/threshold。
 
 `canary-rollback` 另有不可由 evidence 降級的 repository policy：必須依序完成且只完成 10%、50%、100% 三階段，任何跳階都會阻擋；每階段至少觀察 300 秒、1,000 個 HTTP samples、100 個 WebSocket samples，且 candidate 至少有 2 個 ready replicas。`rollout.stableReleaseSet` 與 `rollout.candidateReleaseSet` 至少都要完整列出 game/api/platform immutable `@sha256` references；candidate 三項必須逐一等於本次 `imageDigests`，stable 每一服務都必須使用相同 image repository、但 digest 必須與 candidate 不同，禁止跨 service 混槽。Stable 另外必須提供不同於 candidate 的完整 `stableReleaseSha`，以及 hash-verified `stableManifestArtifact`；Gate 會解析 manifest 中唯一且未加引號的 `RELEASE_SHA`、`GAME_IMAGE`、`API_IMAGE`、`PLATFORM_IMAGE`，並逐項綁定 stable SHA/release set，不能用任意 digest 自稱可回滾版本。每階段要提供 ISO 起訖時間、`gatewayConfigSha256`、對應的 gateway config artifact 與 raw metrics artifact；artifact reference 必須和經 hash 驗證的 `artifacts[]` 相符，三個 traffic weight 的 gateway config hash 也必須不同。
 
@@ -173,4 +173,4 @@ Raw metrics artifact 同樣必須是 `schemaVersion: 1`、`artifactType: "zutoma
 
 可用 `--format json` 或 `--format markdown` 只輸出其中一種摘要；正式發布仍應保留兩種格式與可追溯的外部 staging/production artifact。
 
-正式 CD 會以 `--release-manifest .release.env` 將證據中的五個 image digest 與已驗證 manifest 逐一比對；production dispatch 必須另外提供 staging evidence artifact 的 run ID 與名稱，否則 release gate 維持 `blocked` 並阻止部署。
+正式 CD 會以 `--release-manifest .release.env` 將證據中的六個 image digest 與已驗證 manifest 逐一比對；production dispatch 必須另外提供 staging evidence artifact 的 run ID 與名稱，否則 release gate 維持 `blocked` 並阻止部署。

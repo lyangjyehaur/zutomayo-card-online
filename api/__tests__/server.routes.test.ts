@@ -28,7 +28,14 @@ vi.stubGlobal('fetch', mockFetch);
 const mockQuery = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
 const mockPoolEnd = vi.fn().mockResolvedValue(undefined);
 const mockPoolOn = vi.fn();
-const mockPool = { query: mockQuery, end: mockPoolEnd, on: mockPoolOn };
+const mockPoolRelease = vi.fn();
+const leaseQueryCalls: unknown[][] = [];
+const mockLeaseQuery = vi.fn(async (sql: string, params?: unknown[]) => {
+  leaseQueryCalls.push([sql, params]);
+  return params === undefined ? mockQuery(sql) : mockQuery(sql, params);
+});
+const mockPoolConnect = vi.fn(async () => ({ query: mockLeaseQuery, release: mockPoolRelease }));
+const mockPool = { query: mockQuery, connect: mockPoolConnect, end: mockPoolEnd, on: mockPoolOn };
 
 const mockRedisIncr = vi.fn().mockResolvedValue(1);
 const mockRedisExpire = vi.fn().mockResolvedValue(1);
@@ -376,6 +383,7 @@ function adminUnsafeHeaders() {
 describe('server routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    leaseQueryCalls.length = 0;
     mockFetch.mockReset();
     // Reset default mock behavior after clearAllMocks
     mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
@@ -2447,6 +2455,7 @@ describe('server routes', () => {
         updated_at: new Date().toISOString(),
       });
       mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: true }], rowCount: 1 };
         if (sql.includes('has_logto_identity')) {
           return { rows: [{ password_hash: 'oauth:disabled', has_logto_identity: true }], rowCount: 1 };
         }
@@ -2467,6 +2476,9 @@ describe('server routes', () => {
         }
         if (sql.includes('INSERT INTO account_deletion_requests')) {
           deletionStatus = 'prepared';
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes('SELECT * FROM account_deletion_requests') && sql.includes('WHERE id = $1')) {
           return { rows: [deletionRequest()], rowCount: 1 };
         }
         if (sql.includes('SELECT * FROM account_deletion_requests')) {
@@ -2622,6 +2634,9 @@ describe('server routes', () => {
       );
       expect(mockRedisSet).toHaveBeenCalledWith('blacklist:bearer-access-token-test', '1', 'EX', expect.any(Number));
       expect(mockRedisSet).toHaveBeenCalledWith('blacklist:cookie-access-token-test', '1', 'EX', expect.any(Number));
+      expect(
+        leaseQueryCalls.some(([sql]) => String(sql).includes('UPDATE users') && String(sql).includes('auth_version')),
+      ).toBe(true);
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), [
         'account_delete_test',
         'u_test',
@@ -2641,7 +2656,11 @@ describe('server routes', () => {
         updated_at: '2026-07-13T00:00:00.000Z',
       });
       mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: true }], rowCount: 1 };
         if (sql.includes('WHERE status = ANY($1::text[])')) return { rows: [requestRow()], rowCount: 1 };
+        if (sql.includes('WHERE id = $1 AND status = ANY($2::text[])')) {
+          return { rows: [requestRow()], rowCount: 1 };
+        }
         if (sql.includes('SELECT id, user_id FROM account_deletion_requests')) {
           return { rows: [{ id: 'account_delete_recovery', user_id: 'u_recovery' }], rowCount: 1 };
         }
@@ -2686,6 +2705,10 @@ describe('server routes', () => {
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), [
         'account_delete_recovery',
         'u_recovery',
+      ]);
+      expect(mockQuery).toHaveBeenCalledWith('SELECT pg_advisory_unlock(hashtext($1), hashtext($2))', [
+        'zutomayo:account-deletion-recovery:v1',
+        'account_delete_recovery',
       ]);
     });
   });

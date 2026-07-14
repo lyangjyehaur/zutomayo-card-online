@@ -367,6 +367,34 @@ describe('account lifecycle service', () => {
     expect(pool.query).toHaveBeenCalledWith('COMMIT');
   });
 
+  it('uses a caller-owned lease client for local anonymization without reconnecting or releasing it', async () => {
+    const connect = vi.fn(async () => {
+      throw new Error('lease client must not be reconnected');
+    });
+    const release = vi.fn(() => {
+      throw new Error('lease client must not be released by the nested transaction');
+    });
+    const client = {
+      connect,
+      release,
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_1' }] };
+        if (sql.includes('FROM account_deletion_requests') && sql.includes('WHERE id = $1 AND user_id = $2')) {
+          return { rows: [{ id: 'delete_1', user_id: 'u_1', provider: 'logto', status: 'provider_deleted' }] };
+        }
+        return { rows: [] };
+      }),
+    };
+    await expect(deleteAccount({ pool: client, userId: 'u_1', deletionRequestId: 'delete_1' })).resolves.toEqual({
+      ok: true,
+      body: { deleted: true },
+    });
+    expect(connect).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+    expect(client.query).toHaveBeenCalledWith('BEGIN');
+    expect(client.query).toHaveBeenCalledWith('COMMIT');
+  });
+
   it('requires provider_deleted before completing a deletion saga', async () => {
     const pool = createPool((sql) => {
       if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_1' }] };

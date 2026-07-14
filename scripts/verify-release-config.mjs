@@ -7,6 +7,8 @@ const COMPOSE_FILES = [
   'docker-compose.yml',
   'docker-compose.staging.yml',
   'docker-compose.server4.yml',
+  'docker-compose.server4-slot.yml',
+  'docker-compose.server4-gateway.yml',
   'docker-compose.monitoring.yml',
   'docker-compose.retention.yml',
   'docker-compose.load-test.yml',
@@ -93,6 +95,42 @@ function assertRetentionDigestInput() {
   const matches = lines.filter((line) => line.startsWith('image:') && line.includes('${RETENTION_IMAGE:?'));
   if (matches.length !== 1)
     throw new Error('docker-compose.retention.yml must require exactly one RETENTION_IMAGE digest input');
+}
+
+function assertParallelServer4Contract() {
+  const slot = read('docker-compose.server4-slot.yml');
+  const gateway = read('docker-compose.server4-gateway.yml');
+  for (const image of REQUIRED_IMAGES) {
+    if (!slot.includes(`image: \${${image}:?`)) {
+      throw new Error(`docker-compose.server4-slot.yml must require immutable ${image}`);
+    }
+  }
+  for (const fragment of [
+    "API_BACKGROUND_WORKERS_ENABLED: 'false'",
+    "GAME_BACKGROUND_WORKERS_ENABLED: 'false'",
+    "PLATFORM_REQUIRE_ISOLATED_REDIS: 'true'",
+    'PLATFORM_COLYSEUS_REDIS_URL:',
+    "PG_POOL_MAX: '2'",
+    "GAME_CARD_PG_POOL_MAX: '1'",
+    'com.zutomayo.pg-pool-budget:',
+    'deploy:',
+    'replicas: 2',
+  ]) {
+    if (!slot.includes(fragment)) throw new Error(`parallel server4 slot is missing contract: ${fragment}`);
+  }
+  if (!gateway.includes('image: ${GATEWAY_IMAGE:?')) {
+    throw new Error('docker-compose.server4-gateway.yml must require an immutable GATEWAY_IMAGE');
+  }
+  if (!gateway.includes('host_ip: 127.0.0.1') || !gateway.includes("published: '3080'")) {
+    throw new Error('server4 gateway must bind only 127.0.0.1:3080');
+  }
+  const gatewayDockerfile = read('Dockerfile.gateway');
+  if (!/^FROM\s+\S+@sha256:[a-f0-9]{64}$/im.test(gatewayDockerfile)) {
+    throw new Error('Dockerfile.gateway must pin its upstream image by SHA-256 digest');
+  }
+  if (!gatewayDockerfile.includes('USER haproxy')) {
+    throw new Error('Dockerfile.gateway must run HAProxy as its non-root user');
+  }
 }
 
 function countFragment(relativePath, fragment) {
@@ -604,6 +642,53 @@ function assertProductionRuntimeInputs() {
   }
 }
 
+export function validateCdDeploymentWorkflowContract(workflow) {
+  if (typeof workflow !== 'string' || workflow.trim() === '') {
+    throw new Error('cd.yml workflow must be non-empty text');
+  }
+  for (const fragment of [
+    'production_slot:',
+    "github.ref_type == 'tag' && github.ref_name || github.sha",
+    "format('refs/tags/{0}', inputs.release_ref)",
+    'TAG_REF="refs/tags/$REF"',
+    'git show-ref --verify --quiet "$TAG_REF"',
+    "MASTER_REF='refs/remotes/origin/master'",
+    'git merge-base --is-ancestor "$SHA" "$MASTER_REF"',
+    './scripts/deploy-server4-canary.sh stage-slot --slot "$PRODUCTION_SLOT" --manifest .release.env --confirm',
+    'This job does not switch gateway traffic or mutate OpenResty.',
+  ]) {
+    if (!workflow.includes(fragment)) throw new Error(`cd.yml is missing production release contract: ${fragment}`);
+  }
+  if (workflow.includes('docker-compose.server4.yml')) {
+    throw new Error('cd.yml must not invoke the legacy docker-compose.server4.yml path');
+  }
+
+  const deployMarker = '\n  deploy:\n';
+  const deployStart = workflow.indexOf(deployMarker);
+  if (deployStart < 0) throw new Error('cd.yml is missing the deploy job');
+  const deploymentJob = workflow.slice(deployStart);
+  if (deploymentJob.includes('docker-compose.server4.yml')) {
+    throw new Error('production deploy job must not invoke legacy docker-compose.server4.yml');
+  }
+  if (
+    !deploymentJob.includes("if: inputs.environment == 'staging'") ||
+    !deploymentJob.includes('./scripts/deploy-server4.sh --manifest .release.env')
+  ) {
+    throw new Error('staging deployment must continue to use deploy-server4.sh explicitly');
+  }
+  const productionStepMarker = '- name: Stage production candidate slot (no traffic switch)';
+  const productionStepStart = deploymentJob.indexOf(productionStepMarker);
+  if (productionStepStart < 0) throw new Error('cd.yml is missing the production candidate staging step');
+  const productionStep = deploymentJob.slice(productionStepStart);
+  if (!productionStep.includes("if: inputs.environment == 'production'")) {
+    throw new Error('production candidate staging step must be production-only');
+  }
+  if (productionStep.includes('deploy-server4.sh')) {
+    throw new Error('production deployment must not call legacy deploy-server4.sh');
+  }
+  return true;
+}
+
 function assertWorkflowContract() {
   const workflow = read('.github/workflows/cd.yml');
   const requiredFragments = [
@@ -621,7 +706,9 @@ function assertWorkflowContract() {
     'actions/attest-build-provenance@',
     'docker/build-push-action@',
     'Dockerfile.retention',
+    'Dockerfile.gateway',
     'RETENTION_IMAGE',
+    'GATEWAY_IMAGE',
     '@sha256:',
     'verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss',
     'release-gate:',
@@ -632,6 +719,8 @@ function assertWorkflowContract() {
     'release-gate-${{ needs.preflight.outputs.release_sha }}',
     'npm ci --omit=dev --ignore-scripts',
     'VITE_PLATFORM_URL=',
+    'docker-compose.server4-slot.yml config --no-env-resolution',
+    'docker-compose.server4-gateway.yml config --no-env-resolution',
   ];
   for (const fragment of requiredFragments) {
     if (!workflow.includes(fragment)) throw new Error(`cd.yml is missing release gate: ${fragment}`);
@@ -642,6 +731,7 @@ function assertWorkflowContract() {
   if (/VITE_PLATFORM_URL=\$\{\{\s*secrets\./.test(workflow)) {
     throw new Error('cd.yml must not bake a mutable VITE_PLATFORM_URL secret into immutable game images');
   }
+  validateCdDeploymentWorkflowContract(workflow);
   if (
     !read('.github/workflows/ci.yml').includes(
       'verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss',
@@ -649,11 +739,17 @@ function assertWorkflowContract() {
   ) {
     throw new Error('ci.yml must validate the rendered staging TLS/role environment');
   }
+  for (const composeFile of ['docker-compose.server4-slot.yml', 'docker-compose.server4-gateway.yml']) {
+    if (!read('.github/workflows/ci.yml').includes(`${composeFile} config --no-env-resolution`)) {
+      throw new Error(`ci.yml must validate ${composeFile}`);
+    }
+  }
 }
 
 function assertReleaseManifestContract() {
   const resolver = read('scripts/resolve-release-manifest.sh');
   const deploy = read('scripts/deploy-server4.sh');
+  const canaryDeploy = read('scripts/deploy-server4-canary.sh');
   for (const key of ['RELEASE_SHA', 'APP_VERSION', 'GAME_RULES_VERSION']) {
     if (!resolver.includes(`printf '${key}=%s\\n'`)) {
       throw new Error(`release manifest resolver must emit ${key}`);
@@ -678,6 +774,17 @@ function assertReleaseManifestContract() {
   if (!read('Dockerfile.migrate').includes('COPY scripts/verify-compose-role-env.mjs')) {
     throw new Error('migration image must contain the rendered role environment validator');
   }
+  if (!resolver.includes('game api platform migrate retention gateway')) {
+    throw new Error('release manifest resolver must include the signed gateway image');
+  }
+  for (const deploymentScript of [deploy, canaryDeploy]) {
+    if (!deploymentScript.includes('GATEWAY_IMAGE')) {
+      throw new Error('every server4 deployment path must validate GATEWAY_IMAGE');
+    }
+  }
+  if (!canaryDeploy.includes('check-server4-pg-budget.mjs')) {
+    throw new Error('parallel server4 deployment must enforce the PostgreSQL connection budget gate');
+  }
 }
 
 function assertCosignIdentityPolicy() {
@@ -685,6 +792,7 @@ function assertCosignIdentityPolicy() {
     '.github/workflows/cd.yml',
     'scripts/resolve-release-manifest.sh',
     'scripts/deploy-server4.sh',
+    'scripts/deploy-server4-canary.sh',
   ]) {
     const contents = read(relativePath);
     if (!contents.includes('refs/(heads/master|tags/v[0-9]+')) {
@@ -710,12 +818,20 @@ function assertScripts() {
     throw new Error('missing secret-safe Compose role environment projection');
   }
   if (!existsSync(path.join(ROOT, 'Dockerfile.retention'))) throw new Error('missing retention worker Dockerfile');
+  if (!existsSync(path.join(ROOT, 'Dockerfile.gateway'))) throw new Error('missing release gateway Dockerfile');
+  if (!existsSync(path.join(ROOT, 'scripts/check-server4-pg-budget.mjs'))) {
+    throw new Error('missing server4 PostgreSQL connection budget gate');
+  }
+  if (!existsSync(path.join(ROOT, 'scripts/collect-server4-canary-metrics.mjs'))) {
+    throw new Error('missing server4 raw canary metrics collector');
+  }
 }
 
 export function validateReleaseConfig() {
   for (const relativePath of COMPOSE_FILES) assertNoMutableImageTags(relativePath);
   for (const relativePath of RELEASE_COMPOSE_FILES) assertDigestInputs(relativePath);
   assertRetentionDigestInput();
+  assertParallelServer4Contract();
   assertProductionRuntimeInputs();
   assertPinnedWorkflowActions();
   assertWorkflowContract();

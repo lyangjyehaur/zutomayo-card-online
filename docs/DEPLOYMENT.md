@@ -58,7 +58,7 @@ Compose reads host variables from a `.env` file or shell export for interpolatio
 
 Feedback image attachments are stored in the Compose-managed `feedback_uploads` volume mounted at `/app/data/feedback-uploads`; include that volume in host-level backups together with PostgreSQL logical backups.
 
-**REQUIRED:** production/staging require `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, and WAL `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the five immutable `*_IMAGE` references; `JWT_SECRET`; the game/platform-only `PLATFORM_SEAT_TOKEN_SECRET`; a process/slot-specific `PLATFORM_PUBLIC_ADDRESS`; API-only `ADMIN_TOTP_ENCRYPTION_KEY` and `OAUTH_TOKEN_ENCRYPTION_KEY`; and either `OAUTH_PUBLIC_BASE_URL` or `PUBLIC_BASE_URL`. The four security keys must be pairwise distinct. `PG_APP_USER` remains a local-development compatibility alias only. Compose exits early if a production role is missing or aliased. Production/staging `REDIS_URL` must use `rediss://` and include Redis ACL/password credentials in the URL authority.
+**REQUIRED:** production/staging require `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, and WAL `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the six immutable `*_IMAGE` references (including the release gateway); `JWT_SECRET`; the game/platform-only `PLATFORM_SEAT_TOKEN_SECRET`; a process/slot-specific `PLATFORM_PUBLIC_ADDRESS`; API-only `ADMIN_TOTP_ENCRYPTION_KEY` and `OAUTH_TOKEN_ENCRYPTION_KEY`; and either `OAUTH_PUBLIC_BASE_URL` or `PUBLIC_BASE_URL`. The four security keys must be pairwise distinct. `PG_APP_USER` remains a local-development compatibility alias only. Compose exits early if a production role is missing or aliased. Production/staging `REDIS_URL` must use `rediss://` and include Redis ACL/password credentials in the URL authority.
 
 Create a `.env` file from the template:
 
@@ -675,15 +675,27 @@ Continuous Deployment pipeline: [.github/workflows/cd.yml](../.github/workflows/
 
 ### 觸發條件
 
-| 事件                | 動作                                                                    |
-| ------------------- | ----------------------------------------------------------------------- |
-| push to `master`    | 同一 preflight、verify、Trivy、build、Cosign、provenance、digest gate   |
-| push tag `v*`       | 上述 gate 後建立 semver alias 與 GitHub Release                         |
-| `workflow_dispatch` | 輸入 `release_ref`，重新跑 preflight，驗證 CI、簽章、attestation 後部署 |
+| 事件                | 動作                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| push to `master`    | 同一 preflight、verify、Trivy、build、Cosign、provenance、digest gate               |
+| push tag `v*`       | 上述 gate 後建立 semver alias 與 GitHub Release                                     |
+| `workflow_dispatch` | 輸入 `release_ref`；staging 部署完整 stack，production 只 stage 指定 candidate slot |
+
+Tag push 與 production dispatch 都會將 `v<semver>` 精確解析為
+`refs/tags/<tag>`，不接受同名 branch；release commit 必須在
+`origin/master` ancestry 內，tag version 也必須和 `package.json` 一致。
+Master push 則始終使用 event 的完整 40 字元 commit SHA。
+
+Production dispatch 還必須選擇 `production_slot=blue|green`。CD 僅在
+`/opt/zutomayo-card-runtime` 執行 `deploy-server4-canary.sh stage-slot`，
+確認 candidate replicas、build ID 與 immutable image digest；該 job 不執行
+`switch`、不修改 OpenResty，也不會改變公開流量。流量切換仍必須
+依 canary evidence gate 和 [deployment/rollback runbook](runbooks/deployment-rollback.md)
+另行執行。
 
 ### GHCR Image 列表
 
-五個服務 image 位於 GitHub Container Registry (`ghcr.io`)：
+六個 release image 位於 GitHub Container Registry (`ghcr.io`)：
 
 | Service     | Image                                                 |
 | ----------- | ----------------------------------------------------- |
@@ -692,17 +704,18 @@ Continuous Deployment pipeline: [.github/workflows/cd.yml](../.github/workflows/
 | `platform`  | `ghcr.io/lyangjyehaur/zutomayo-card-online-platform`  |
 | `migrate`   | `ghcr.io/lyangjyehaur/zutomayo-card-online-migrate`   |
 | `retention` | `ghcr.io/lyangjyehaur/zutomayo-card-online-retention` |
+| `gateway`   | `ghcr.io/lyangjyehaur/zutomayo-card-online-gateway`   |
 
 部署不可直接使用 tag。CD 會以完整 commit SHA 建立可追溯 tag，然後
 解析成 `image@sha256:<digest>`，驗證 Cosign keyless signature 與 GitHub
 build provenance，最後才寫入 `.release.env`。staging/production Compose
-只接受五個完整 digest；`latest`、`staging`、`rollback` 均被禁止。
+只接受六個完整 digest；`latest`、`staging`、`rollback` 均被禁止。
 
 GHCR 登入使用內建 `GITHUB_TOKEN`（`packages: write` permission）。在 server 上手動 pull 時需 `docker login ghcr.io -u <github-username> -p <personal-access-token>`。
 
 ### Build 快取
 
-CD pipeline 使用 GitHub Actions cache（`type=gha`）加速 build。game、api、platform、migrate 與 retention 都使用獨立的 cache scope；game 與 platform 共用相同 Dockerfile，但 cache 仍分開管理。
+CD pipeline 使用 GitHub Actions cache（`type=gha`）加速 build。game、api、platform、migrate、retention 與 gateway 都使用獨立的 cache scope；game 與 platform 共用相同 Dockerfile，但 cache 仍分開管理。
 
 共用 Dockerfile 的 runtime stage 以 `npm ci --omit=dev --ignore-scripts` 安裝 production dependencies，避免在未安裝 devDependencies 的映像中觸發 Husky 等開發期 lifecycle scripts；builder stage 仍執行完整的 `npm ci`。
 
@@ -734,7 +747,7 @@ Staging compose file: [docker-compose.staging.yml](../docker-compose.staging.yml
 2. 在外部 PostgreSQL 以 bootstrap administrator 執行
    `scripts/postgres-init-roles.sh`，再執行 migration role 的 migration/schema gate。
 3. CD pipeline 在 push 或手動 `workflow_dispatch` 時完成相同 preflight。
-4. 從 verified release artifact 取得 `.release.env`，其內容包含五個 digest、
+4. 從 verified release artifact 取得 `.release.env`，其內容包含六個 digest、
    `APP_VERSION`、`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION` 與 migration file checksum：
 
 ```bash
@@ -755,7 +768,10 @@ DEPLOY_HOST=<staging-host> GAME_PORT=4000 API_PORT=4001 PLATFORM_PORT=4002 \
 需要配置 GitHub Environment 的 `STAGING_DEPLOY_HOST`、
 `STAGING_DEPLOY_USER`、`STAGING_DEPLOY_SSH_KEY` 與
 `STAGING_DEPLOY_KNOWN_HOSTS` secrets；production 使用 `DEPLOY_*` 對應值，
-並要求 `v*` release tag。`*_KNOWN_HOSTS` 必須是預先核對過的 server host key，
+並要求 exact `v<semver>` release tag 與 `production_slot`。Production parallel
+runtime 必須先以 runbook 的 `install` 流程建立，CD 不會自動執行首次
+OpenResty cutover，也不會代替 `activate-retention` 將既有 systemd timer 指向
+parallel runtime 的 stable manifest。`*_KNOWN_HOSTS` 必須是預先核對過的 server host key，
 部署流程不使用 `ssh-keyscan` 動態信任未知主機。
 
 ## Rollback 流程 / Rollback

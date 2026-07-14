@@ -13,7 +13,7 @@ const RELEASE_SHA_PATTERN = /^[a-f0-9]{40}$/i;
 const RUN_ID_PATTERN = /^\d+$/;
 const IMAGE_DIGEST_PATTERN = /^\S+@sha256:[a-f0-9]{64}$/i;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
-const REQUIRED_IMAGE_DIGESTS = Object.freeze(['game', 'api', 'platform', 'migrate', 'retention']);
+const REQUIRED_IMAGE_DIGESTS = Object.freeze(['game', 'api', 'platform', 'migrate', 'retention', 'gateway']);
 const CANARY_RUNTIME_SERVICES = Object.freeze(['game', 'api', 'platform']);
 const CANARY_GATEWAY_ARTIFACT_TYPE = 'zutomayo-canary-gateway-config';
 const CANARY_RAW_METRICS_ARTIFACT_TYPE = 'zutomayo-canary-raw-metrics';
@@ -57,6 +57,16 @@ const COMPOSE_FILES = Object.freeze([
     id: 'compose-server4',
     title: 'Compose production/server4 configuration',
     args: ['compose', '-f', 'docker-compose.server4.yml', 'config', '--no-env-resolution', '--quiet'],
+  },
+  {
+    id: 'compose-server4-slot',
+    title: 'Compose production/server4 parallel slot configuration',
+    args: ['compose', '-f', 'docker-compose.server4-slot.yml', 'config', '--no-env-resolution', '--quiet'],
+  },
+  {
+    id: 'compose-server4-gateway',
+    title: 'Compose production/server4 release gateway configuration',
+    args: ['compose', '-f', 'docker-compose.server4-gateway.yml', 'config', '--no-env-resolution', '--quiet'],
   },
   {
     id: 'compose-monitoring',
@@ -262,6 +272,13 @@ function composeFixtureEnv() {
     PLATFORM_IMAGE: 'ghcr.io/example/platform@sha256:' + '0'.repeat(64),
     MIGRATE_IMAGE: 'ghcr.io/example/migrate@sha256:' + '0'.repeat(64),
     RETENTION_IMAGE: 'ghcr.io/example/retention@sha256:' + '0'.repeat(64),
+    GATEWAY_IMAGE: 'ghcr.io/example/gateway@sha256:' + '0'.repeat(64),
+    COLYSEUS_REDIS_IMAGE: 'redis@sha256:' + '0'.repeat(64),
+    COLYSEUS_REDIS_PASSWORD: 'release-gate-colyseus-redis-password',
+    FEEDBACK_UPLOADS_VOLUME: 'zutomayo-release-gate-feedback-uploads',
+    PUBLIC_HOST: 'game.example.invalid',
+    RELEASE_SLOT: 'blue',
+    COMPOSE_PROJECT_NAME: 'zutomayo-blue',
     RETENTION_METRICS_GID: '991',
   };
 }
@@ -961,7 +978,7 @@ function readReleaseManifestImageDigests(manifestPath) {
     throw new Error('release manifest is missing a full RELEASE_SHA');
   }
   for (const line of contents.split(/\r?\n/)) {
-    const match = line.match(/^(GAME|API|PLATFORM|MIGRATE|RETENTION)_IMAGE=(\S+)$/);
+    const match = line.match(/^(GAME|API|PLATFORM|MIGRATE|RETENTION|GATEWAY)_IMAGE=(\S+)$/);
     if (match) imageDigests[match[1].toLowerCase()] = match[2];
   }
   for (const image of REQUIRED_IMAGE_DIGESTS) {
@@ -1235,6 +1252,38 @@ function localChecks(run = runCommand, pipeline = runPipeline) {
           {
             command: 'docker',
             args: ['compose', '-f', 'docker-compose.server4.yml', 'config', '--no-env-resolution', '--format', 'json'],
+          },
+          {
+            command: 'jq',
+            args: ['-c', '-f', 'scripts/project-compose-role-env.jq'],
+          },
+          {
+            command: process.execPath,
+            args: ['scripts/verify-compose-role-env.mjs', '--require-pgsslmode=verify-full', '--require-rediss'],
+          },
+        ],
+        fixtureEnv,
+      ),
+    ),
+  );
+  checks.push(
+    withCheckMetadata(
+      'compose-server4-slot-role-env',
+      'config',
+      'Rendered parallel server4 PostgreSQL/TLS/Redis role environment',
+      pipeline(
+        [
+          {
+            command: 'docker',
+            args: [
+              'compose',
+              '-f',
+              'docker-compose.server4-slot.yml',
+              'config',
+              '--no-env-resolution',
+              '--format',
+              'json',
+            ],
           },
           {
             command: 'jq',

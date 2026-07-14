@@ -55,6 +55,9 @@ const koaBody = require('koa-body') as typeof import('koa-body');
 const { peekDeckReservation } = require('../api/deckService.cjs') as {
   peekDeckReservation: (pool: Pool, input: { reservationId: string; userId: string }) => Promise<DeckReservationResult>;
 };
+const { resolveBackgroundWorkersEnabled } = require('../api/backgroundWorkerConfig.cjs') as {
+  resolveBackgroundWorkersEnabled: (env: NodeJS.ProcessEnv, variableName: string) => boolean;
+};
 
 interface DeckReservationResult {
   ok: boolean;
@@ -248,6 +251,7 @@ const transport = new SocketIO({
 
 const db = new PostgresAdapter();
 const RANKED_MATCHES_ENABLED = process.env.RANKED_MATCHES_ENABLED === 'true';
+const GAME_BACKGROUND_WORKERS_ENABLED = resolveBackgroundWorkersEnabled(process.env, 'GAME_BACKGROUND_WORKERS_ENABLED');
 let matchResultOutboxWorker: ReturnType<typeof startMatchResultOutboxWorker> | undefined;
 
 // === 卡牌資料初始化（從 PostgreSQL 載入）===
@@ -266,7 +270,7 @@ const cardPool = new Pool({
         password: process.env.PG_PASSWORD || '',
         database: process.env.PG_DATABASE || 'postgres',
       }),
-  max: 5,
+  max: Math.min(5, Math.max(1, Number(process.env.GAME_CARD_PG_POOL_MAX) || 5)),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
   query_timeout: Math.min(5_000, Math.max(100, Number(process.env.GAME_AUTH_DB_QUERY_TIMEOUT_MS) || 1_500)),
@@ -930,11 +934,34 @@ async function cleanupStaleMatches() {
   }
 }
 
-const cleanupTimer = setInterval(cleanupStaleMatches, CLEANUP_INTERVAL_MS);
-logger.info(
-  { ttlMin: STALE_MATCH_TTL_MS / 60000, intervalMin: CLEANUP_INTERVAL_MS / 60000 },
-  'stale match cleanup configured',
-);
+let cleanupTimer: ReturnType<typeof setInterval> | undefined;
+
+function startBackgroundWorkers(): void {
+  if (cleanupTimer || matchResultOutboxWorker) return;
+  if (!GAME_BACKGROUND_WORKERS_ENABLED) {
+    logger.info({ enabled: false }, 'game background workers disabled');
+    return;
+  }
+  cleanupTimer = setInterval(cleanupStaleMatches, CLEANUP_INTERVAL_MS);
+  cleanupTimer.unref?.();
+  matchResultOutboxWorker = startMatchResultOutboxWorker({
+    pool: db.getPool(),
+    enabled: RANKED_MATCHES_ENABLED,
+    onError: (err) => {
+      logger.error({ err }, 'match result outbox worker failed');
+      Sentry.captureException(err, { tags: { layer: 'match-result-outbox' } });
+    },
+  });
+  logger.info(
+    {
+      enabled: true,
+      rankedMatchesEnabled: RANKED_MATCHES_ENABLED,
+      staleMatchTtlMin: STALE_MATCH_TTL_MS / 60000,
+      cleanupIntervalMin: CLEANUP_INTERVAL_MS / 60000,
+    },
+    'game background workers configured',
+  );
+}
 
 type RunningServers = Awaited<ReturnType<typeof server.run>>;
 type SocketLike = {
@@ -968,7 +995,8 @@ function socketIoRuntime(): SocketIoLike | undefined {
 
 async function performShutdown(signal: string): Promise<void> {
   gameReadiness.beginDrain();
-  clearInterval(cleanupTimer);
+  if (cleanupTimer) clearInterval(cleanupTimer);
+  cleanupTimer = undefined;
   logger.info({ signal, drainGraceMs: GAME_DRAIN_GRACE_MS }, 'shutdown received, draining traffic');
 
   const io = socketIoRuntime();
@@ -1046,16 +1074,8 @@ async function bootstrap(): Promise<void> {
 
   runningServers = await server.run(PORT, () => {
     logger.info({ port: PORT }, 'Zutomayo Card server running');
-
-    matchResultOutboxWorker = startMatchResultOutboxWorker({
-      pool: db.getPool(),
-      enabled: RANKED_MATCHES_ENABLED,
-      onError: (err) => {
-        logger.error({ err }, 'match result outbox worker failed');
-        Sentry.captureException(err, { tags: { layer: 'match-result-outbox' } });
-      },
-    });
-    logger.info({ enabled: RANKED_MATCHES_ENABLED }, 'match result outbox worker configured');
+    if (shutdownPromise) return;
+    startBackgroundWorkers();
 
     // Best-effort Socket.IO per-IP connection limiting to mitigate connection floods.
     // boardgame.io transport structure is not part of the public API; access defensively.

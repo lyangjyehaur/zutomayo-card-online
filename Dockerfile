@@ -63,6 +63,7 @@ COPY --from=builder /app/api/deckService.cjs ./api/deckService.cjs
 COPY --from=builder /app/api/schemaGate.cjs ./api/schemaGate.cjs
 COPY --from=builder /app/api/relationshipEvents.cjs ./api/relationshipEvents.cjs
 COPY --from=builder /app/api/accountMutationLock.cjs ./api/accountMutationLock.cjs
+COPY --from=builder /app/api/backgroundWorkerConfig.cjs ./api/backgroundWorkerConfig.cjs
 COPY --from=builder /app/api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs
 COPY --from=builder /app/api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 COPY --from=builder /app/api/seasonResultService.cjs ./api/seasonResultService.cjs

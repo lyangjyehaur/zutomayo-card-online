@@ -42,10 +42,17 @@ def api_owned_secrets:
     "IMGPROXY_SALT"
   ];
 
+def actual_service_name($root; $canonical):
+  if ($root.services | has($canonical)) then $canonical
+  elif $canonical == "platform" and ($root.services | has("platform-p1")) then "platform-p1"
+  else error("rendered Compose is missing service " + $canonical)
+  end;
+
 def assert_no_non_own_role_password($root; $service; $own_password):
-  [
+  actual_service_name($root; $service) as $actual
+  | [
     role_passwords[] as $variable
-    | select($variable != $own_password and ($root.services[$service].environment | has($variable)))
+    | select($variable != $own_password and ($root.services[$actual].environment | has($variable)))
     | $variable
   ] as $unexpected
   | if ($unexpected | length) == 0 then true
@@ -55,16 +62,32 @@ def assert_no_non_own_role_password($root; $service; $own_password):
 def assert_api_secret_ownership($root):
   [
     ["migrate", "game", "platform"][] as $service
+    | actual_service_name($root; $service) as $actual
     | api_owned_secrets[] as $variable
-    | select($root.services[$service].environment | has($variable))
+    | select($root.services[$actual].environment | has($variable))
     | { service: $service, variable: $variable }
   ] as $unexpected
   | if ($unexpected | length) == 0 then true
     else error($unexpected[0].service + " must not receive API-owned " + $unexpected[0].variable)
     end;
 
+def assert_parallel_platform_parity($root):
+  if ($root.services | has("platform-p2")) then
+    $root.services["platform-p1"].environment as $p1
+    | $root.services["platform-p2"].environment as $p2
+    | if ($p1 | del(.PLATFORM_PUBLIC_ADDRESS)) != ($p2 | del(.PLATFORM_PUBLIC_ADDRESS)) then
+        error("platform-p1 and platform-p2 must have identical runtime/security environments except PLATFORM_PUBLIC_ADDRESS")
+      elif required_string($p1.PLATFORM_PUBLIC_ADDRESS; "platform-p1 PLATFORM_PUBLIC_ADDRESS is required")
+        == required_string($p2.PLATFORM_PUBLIC_ADDRESS; "platform-p2 PLATFORM_PUBLIC_ADDRESS is required") then
+        error("platform-p1 and platform-p2 must advertise different process addresses")
+      else true
+      end
+  else true
+  end;
+
 def projected_service($root; $service; $role_user):
-  $root.services[$service].environment as $environment
+  actual_service_name($root; $service) as $actual
+  | $root.services[$actual].environment as $environment
   | {
       environment: {
         PG_USER: required_string($environment.PG_USER; ($service + " PG_USER is required")),
@@ -78,25 +101,28 @@ def projected_service($root; $service; $role_user):
 
 . as $root
 | ["migrate", "game", "api", "platform"] as $services
+| actual_service_name($root; "platform") as $platform
 | [
     assert_no_non_own_role_password($root; "migrate"; "PG_MIGRATION_PASSWORD"),
     assert_no_non_own_role_password($root; "game"; "PG_GAME_PASSWORD"),
     assert_no_non_own_role_password($root; "api"; "PG_API_PASSWORD"),
     assert_no_non_own_role_password($root; "platform"; "PG_PLATFORM_PASSWORD"),
-    assert_api_secret_ownership($root)
+    assert_api_secret_ownership($root),
+    assert_parallel_platform_parity($root)
   ]
 | [
     $services[] as $service
-    | required_string($root.services[$service].environment.PG_PASSWORD; ($service + " PG_PASSWORD is required"))
+    | actual_service_name($root; $service) as $actual
+    | required_string($root.services[$actual].environment.PG_PASSWORD; ($service + " PG_PASSWORD is required"))
   ] as $passwords
 | if ($passwords | unique | length) != ($passwords | length) then
     error("rendered runtime and migration PostgreSQL passwords must be pairwise distinct")
   elif (
     $root.services.game.environment.JWT_SECRET != $root.services.api.environment.JWT_SECRET
-    or $root.services.platform.environment.JWT_SECRET != $root.services.api.environment.JWT_SECRET
+    or $root.services[$platform].environment.JWT_SECRET != $root.services.api.environment.JWT_SECRET
   ) then
     error("JWT_SECRET must match across game, API, and platform")
-  elif $root.services.game.environment.PLATFORM_SEAT_TOKEN_SECRET != $root.services.platform.environment.PLATFORM_SEAT_TOKEN_SECRET then
+  elif $root.services.game.environment.PLATFORM_SEAT_TOKEN_SECRET != $root.services[$platform].environment.PLATFORM_SEAT_TOKEN_SECRET then
     error("PLATFORM_SEAT_TOKEN_SECRET must match across game and platform")
   elif (
     [

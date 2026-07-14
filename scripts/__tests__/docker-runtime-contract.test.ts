@@ -14,10 +14,26 @@ function runtimeSourceFiles(directory: string): string[] {
 
 describe('game runtime image contract', () => {
   it('keeps shared host env files out of immutable release containers', () => {
-    for (const composeFile of ['docker-compose.server4.yml', 'docker-compose.staging.yml']) {
+    for (const composeFile of [
+      'docker-compose.server4.yml',
+      'docker-compose.server4-slot.yml',
+      'docker-compose.server4-gateway.yml',
+      'docker-compose.staging.yml',
+    ]) {
       const compose = readFileSync(resolve(root, composeFile), 'utf8');
       expect(compose).not.toContain('env_file:');
     }
+  });
+
+  it('pins and de-privileges the repository-owned HAProxy gateway runtime', () => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile.gateway'), 'utf8');
+    const compose = readFileSync(resolve(root, 'docker-compose.server4-gateway.yml'), 'utf8');
+    expect(dockerfile).toMatch(/^FROM\s+\S+@sha256:[a-f0-9]{64}$/m);
+    expect(dockerfile).toContain('USER haproxy');
+    expect(compose).toContain('cap_drop:');
+    expect(compose).toContain('no-new-privileges:true');
+    expect(compose).toContain('host_ip: 127.0.0.1');
+    expect(compose).toContain('uid=99,gid=99');
   });
 
   it('skips development lifecycle hooks in the production dependency layer', () => {
@@ -68,7 +84,11 @@ describe('game runtime image contract', () => {
     expect(dockerfile).toContain('COPY --from=builder /app/api/relationshipEvents.cjs ./api/relationshipEvents.cjs');
     expect(dockerignore).toContain('!api/relationshipEvents.cjs');
     expect(dockerfile).toContain('COPY --from=builder /app/api/accountMutationLock.cjs ./api/accountMutationLock.cjs');
+    expect(dockerfile).toContain(
+      'COPY --from=builder /app/api/backgroundWorkerConfig.cjs ./api/backgroundWorkerConfig.cjs',
+    );
     expect(dockerignore).toContain('!api/accountMutationLock.cjs');
+    expect(dockerignore).toContain('!api/backgroundWorkerConfig.cjs');
     expect(dockerfile).toContain('COPY --from=builder /app/api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs');
     expect(dockerignore).toContain('!api/relationshipOutbox.cjs');
     expect(dockerfile).toContain(
