@@ -17,7 +17,8 @@ describe('platform deployment config', () => {
 
     expect(compose).toContain("command: ['npm', 'run', 'platform']");
     expect(compose).toContain("'3002:3002'");
-    expect(compose).toContain('http://localhost:3002/health');
+    expect(compose).toContain('http://localhost:3002/ready');
+    expect(compose).toContain('PLATFORM_PUBLIC_ADDRESS=${PLATFORM_PUBLIC_ADDRESS:-ws://localhost:3002}');
     expect(compose).toContain('PLATFORM_REDIS_MODE=redis');
     expect(compose).toContain('PLATFORM_FRIEND_STORE=postgres');
     expect(compose).toContain('PLATFORM_MATCH_PARTICIPANT_STORE=postgres');
@@ -28,6 +29,7 @@ describe('platform deployment config', () => {
     const envExample = readRepoFile('.env.example');
 
     expect(envExample).toContain('PLATFORM_REDIS_MODE=memory');
+    expect(envExample).toContain('PLATFORM_PUBLIC_ADDRESS=ws://localhost:3002');
     expect(envExample).toContain('PLATFORM_FRIEND_STORE=none');
     expect(envExample).toContain('PLATFORM_MATCH_PARTICIPANT_STORE=none');
     expect(envExample).toContain('PLATFORM_CHAT_PREVIEW_STORE=none');

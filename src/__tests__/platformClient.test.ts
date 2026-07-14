@@ -515,6 +515,7 @@ describe('platform client helpers', () => {
         roomId: 'room_1',
         sessionId: 'session_1',
         processId: 'process_1',
+        publicAddress: 'platform-blue.example.test/colyseus/blue',
       }),
     ).toEqual({
       sessionId: 'session_1',
@@ -522,6 +523,7 @@ describe('platform client helpers', () => {
         name: 'lobby',
         roomId: 'room_1',
         processId: 'process_1',
+        publicAddress: 'platform-blue.example.test/colyseus/blue',
         clients: 0,
         maxClients: 0,
       },

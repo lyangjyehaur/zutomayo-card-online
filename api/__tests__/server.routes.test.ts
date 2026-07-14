@@ -117,11 +117,33 @@ Module_._load = function (request: string, parent: NodeJS.Module | undefined, is
 const require_ = createRequire(import.meta.url);
 const serverModule = require_('../server.cjs') as {
   handleRequest: (req: unknown, res: unknown) => void;
+  createGracefulShutdown: (options: {
+    httpServer: {
+      listening?: boolean;
+      close: (callback: (error?: Error) => void) => void;
+      closeIdleConnections?: () => void;
+      closeAllConnections?: () => void;
+    };
+    beginDrain: () => void;
+    stopWorkers: () => Promise<void>;
+    closeResources: () => Promise<void>;
+    closeTelemetry?: () => Promise<void>;
+    httpDrainTimeoutMs?: number;
+    shutdownTimeoutMs?: number;
+    log?: {
+      info: (...args: unknown[]) => void;
+      warn: (...args: unknown[]) => void;
+      error: (...args: unknown[]) => void;
+    };
+    setExitCode?: (code: number) => void;
+    forceExit?: (code: number) => void;
+  }) => (signal?: string) => Promise<void>;
+  markApiDraining: () => void;
   recoverAccountDeletions: () => Promise<void>;
 };
 Module_._load = originalLoad;
 
-const { handleRequest, recoverAccountDeletions } = serverModule;
+const { createGracefulShutdown, handleRequest, markApiDraining, recoverAccountDeletions } = serverModule;
 
 // ===== Mock req/res helpers =====
 
@@ -2823,6 +2845,202 @@ describe('server routes', () => {
         'season-2026-1',
         'u_claimant',
       ]);
+    });
+  });
+
+  describe('API graceful shutdown', () => {
+    function shutdownLog() {
+      return { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    }
+
+    it('marks readiness down synchronously, drains HTTP, then stops workers and dependencies in order', async () => {
+      const events: string[] = [];
+      let finishHttpDrain: ((error?: Error) => void) | undefined;
+      const setExitCode = vi.fn();
+      const httpServer = {
+        listening: true,
+        close: vi.fn((callback: (error?: Error) => void) => {
+          events.push('server.close');
+          finishHttpDrain = callback;
+        }),
+        closeIdleConnections: vi.fn(() => events.push('server.closeIdleConnections')),
+        closeAllConnections: vi.fn(),
+      };
+      const shutdown = createGracefulShutdown({
+        httpServer,
+        beginDrain: () => events.push('readiness-down'),
+        stopWorkers: async () => {
+          events.push('workers');
+        },
+        closeResources: async () => {
+          events.push('postgres-redis');
+        },
+        closeTelemetry: async () => {
+          events.push('telemetry');
+        },
+        httpDrainTimeoutMs: 1_000,
+        shutdownTimeoutMs: 2_000,
+        log: shutdownLog(),
+        setExitCode,
+        forceExit: vi.fn(),
+      });
+
+      const shutdownPromise = shutdown('SIGTERM');
+
+      expect(events).toEqual(['readiness-down', 'server.close', 'server.closeIdleConnections']);
+      expect(setExitCode).not.toHaveBeenCalled();
+      finishHttpDrain?.();
+      await shutdownPromise;
+
+      expect(events).toEqual([
+        'readiness-down',
+        'server.close',
+        'server.closeIdleConnections',
+        'workers',
+        'postgres-redis',
+        'telemetry',
+      ]);
+      expect(setExitCode).toHaveBeenCalledWith(0);
+    });
+
+    it('bounds HTTP drain time before stopping workers', async () => {
+      const events: string[] = [];
+      const httpServer = {
+        listening: true,
+        close: vi.fn(() => events.push('server.close')),
+        closeIdleConnections: vi.fn(),
+        closeAllConnections: vi.fn(() => events.push('forced-connections')),
+      };
+      const shutdown = createGracefulShutdown({
+        httpServer,
+        beginDrain: () => events.push('readiness-down'),
+        stopWorkers: async () => {
+          events.push('workers');
+        },
+        closeResources: async () => {
+          events.push('resources');
+        },
+        httpDrainTimeoutMs: 5,
+        shutdownTimeoutMs: 1_000,
+        log: shutdownLog(),
+        setExitCode: vi.fn(),
+        forceExit: vi.fn(),
+      });
+
+      await shutdown();
+
+      expect(events).toEqual(['readiness-down', 'server.close', 'forced-connections', 'workers', 'resources']);
+    });
+
+    it('coalesces repeated shutdown signals into the same drain', async () => {
+      let finishHttpDrain: (() => void) | undefined;
+      const beginDrain = vi.fn();
+      const stopWorkers = vi.fn(async () => undefined);
+      const closeResources = vi.fn(async () => undefined);
+      const setExitCode = vi.fn();
+      const httpServer = {
+        listening: true,
+        close: vi.fn((callback: () => void) => {
+          finishHttpDrain = callback;
+        }),
+        closeIdleConnections: vi.fn(),
+        closeAllConnections: vi.fn(),
+      };
+      const shutdown = createGracefulShutdown({
+        httpServer,
+        beginDrain,
+        stopWorkers,
+        closeResources,
+        httpDrainTimeoutMs: 1_000,
+        shutdownTimeoutMs: 2_000,
+        log: shutdownLog(),
+        setExitCode,
+        forceExit: vi.fn(),
+      });
+
+      const sigtermShutdown = shutdown('SIGTERM');
+      const sigintShutdown = shutdown('SIGINT');
+
+      expect(sigintShutdown).toBe(sigtermShutdown);
+      expect(beginDrain).toHaveBeenCalledOnce();
+      expect(httpServer.close).toHaveBeenCalledOnce();
+
+      finishHttpDrain?.();
+      await Promise.all([sigtermShutdown, sigintShutdown]);
+
+      expect(stopWorkers).toHaveBeenCalledOnce();
+      expect(closeResources).toHaveBeenCalledOnce();
+      expect(setExitCode).toHaveBeenCalledOnce();
+    });
+
+    it('uses the hard watchdog without stopping dependencies ahead of in-flight HTTP', async () => {
+      let finishHttpDrain: ((error?: Error) => void) | undefined;
+      const stopWorkers = vi.fn(async () => undefined);
+      const closeResources = vi.fn(async () => undefined);
+      const forceExit = vi.fn();
+      const httpServer = {
+        listening: true,
+        close: vi.fn((callback: (error?: Error) => void) => {
+          finishHttpDrain = callback;
+        }),
+        closeIdleConnections: vi.fn(),
+        closeAllConnections: vi.fn(() => finishHttpDrain?.()),
+      };
+      const shutdown = createGracefulShutdown({
+        httpServer,
+        beginDrain: vi.fn(),
+        stopWorkers,
+        closeResources,
+        httpDrainTimeoutMs: 1_000,
+        shutdownTimeoutMs: 5,
+        log: shutdownLog(),
+        setExitCode: vi.fn(),
+        forceExit,
+      });
+
+      await shutdown();
+
+      expect(httpServer.closeAllConnections).toHaveBeenCalledOnce();
+      expect(forceExit).toHaveBeenCalledWith(1);
+      expect(stopWorkers).not.toHaveBeenCalled();
+      expect(closeResources).not.toHaveBeenCalled();
+    });
+
+    it('returns readiness 503 when drain begins during a dependency probe while keeping health available', async () => {
+      let resolvePostgresProbe: ((value: { rows: Array<Record<string, number>> }) => void) | undefined;
+      let signalPostgresProbeStarted: (() => void) | undefined;
+      const postgresProbeStarted = new Promise<void>((resolve) => {
+        signalPostgresProbeStarted = resolve;
+      });
+      let deferNextPostgresProbe = true;
+      mockQuery.mockImplementation((sql: string) => {
+        if (sql === 'SELECT 1' && deferNextPostgresProbe) {
+          deferNextPostgresProbe = false;
+          signalPostgresProbeStarted?.();
+          return new Promise((resolve) => {
+            resolvePostgresProbe = resolve;
+          });
+        }
+        if (sql === 'SELECT 1') return Promise.resolve({ rows: [{ '?column?': 1 }], rowCount: 1 });
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      });
+      mockRedisPing.mockResolvedValue('PONG');
+
+      const readyResponsePromise = sendRequest('GET', '/ready');
+      await postgresProbeStarted;
+      markApiDraining();
+      resolvePostgresProbe?.({ rows: [{ '?column?': 1 }] });
+
+      const readyResponse = await readyResponsePromise;
+      expect(readyResponse.statusCode).toBe(503);
+      expect(parseBody(readyResponse)).toMatchObject({
+        ready: false,
+        checks: { draining: 'down', postgres: 'up', redis: 'up' },
+      });
+
+      const healthResponse = await sendRequest('GET', '/health');
+      expect(healthResponse.statusCode).toBe(200);
+      expect(parseBody(healthResponse)).toMatchObject({ status: 'ok' });
     });
   });
 });

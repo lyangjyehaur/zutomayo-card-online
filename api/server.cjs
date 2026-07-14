@@ -1,5 +1,5 @@
 // OpenTelemetry tracing 必須在所有其他 require 之前載入，讓 auto-instrumentation 能正確 patch 模組。
-require('./tracing.cjs');
+const { shutdownTracing } = require('./tracing.cjs');
 const http = require('http');
 const https = require('https');
 const net = require('net');
@@ -290,6 +290,15 @@ const ACCOUNT_DELETION_RECOVERY_INTERVAL_MS = Math.max(
   10_000,
   Math.min(Number(process.env.ACCOUNT_DELETION_RECOVERY_INTERVAL_MS) || 60_000, 60 * 60 * 1000),
 );
+const configuredShutdownTimeoutMs = Number(process.env.SHUTDOWN_TIMEOUT_MS);
+const SHUTDOWN_TIMEOUT_MS = Number.isFinite(configuredShutdownTimeoutMs)
+  ? Math.max(1_000, configuredShutdownTimeoutMs)
+  : 30_000;
+const MAX_API_HTTP_DRAIN_TIMEOUT_MS = Math.max(0, SHUTDOWN_TIMEOUT_MS - 1_000);
+const configuredHttpDrainTimeoutMs = Number(process.env.API_HTTP_DRAIN_TIMEOUT_MS);
+const API_HTTP_DRAIN_TIMEOUT_MS = Number.isFinite(configuredHttpDrainTimeoutMs)
+  ? Math.max(0, Math.min(configuredHttpDrainTimeoutMs, MAX_API_HTTP_DRAIN_TIMEOUT_MS))
+  : Math.min(10_000, MAX_API_HTTP_DRAIN_TIMEOUT_MS);
 const ACCOUNT_EXPORT_INTERVAL_MS = Math.max(
   250,
   Math.min(Number(process.env.ACCOUNT_EXPORT_INTERVAL_MS) || 1_000, 60_000),
@@ -2329,30 +2338,35 @@ async function recoverAccountDeletionRequest(request) {
   });
 }
 
-let accountDeletionRecoveryRunning = false;
 let accountDeletionRecoveryTimer = null;
+let accountDeletionRecoveryPromise = null;
 
-async function recoverAccountDeletions() {
-  if (accountDeletionRecoveryRunning) return;
-  accountDeletionRecoveryRunning = true;
-  try {
-    const requests = await listRecoverableAccountDeletions({ pool, limit: 20 });
-    for (const request of requests) {
-      try {
-        const result = await recoverAccountDeletionRequest(request);
-        if (!result.ok) {
-          logger.warn(
-            { requestId: request.id, userId: request.userId, status: result.status, error: result.error },
-            'account deletion recovery remains pending',
+function recoverAccountDeletions() {
+  if (accountDeletionRecoveryPromise) return accountDeletionRecoveryPromise;
+  accountDeletionRecoveryPromise = (async () => {
+    try {
+      const requests = await listRecoverableAccountDeletions({ pool, limit: 20 });
+      for (const request of requests) {
+        try {
+          const result = await recoverAccountDeletionRequest(request);
+          if (!result.ok) {
+            logger.warn(
+              { requestId: request.id, userId: request.userId, status: result.status, error: result.error },
+              'account deletion recovery remains pending',
+            );
+          }
+        } catch (error) {
+          logger.error(
+            { err: error, requestId: request.id, userId: request.userId },
+            'account deletion recovery failed',
           );
         }
-      } catch (error) {
-        logger.error({ err: error, requestId: request.id, userId: request.userId }, 'account deletion recovery failed');
       }
+    } finally {
+      accountDeletionRecoveryPromise = null;
     }
-  } finally {
-    accountDeletionRecoveryRunning = false;
-  }
+  })();
+  return accountDeletionRecoveryPromise;
 }
 
 function startAccountDeletionRecovery() {
@@ -2365,10 +2379,12 @@ function startAccountDeletionRecovery() {
   accountDeletionRecoveryTimer.unref?.();
 }
 
-function stopAccountDeletionRecovery() {
-  if (!accountDeletionRecoveryTimer) return;
-  clearInterval(accountDeletionRecoveryTimer);
-  accountDeletionRecoveryTimer = null;
+async function stopAccountDeletionRecovery() {
+  if (accountDeletionRecoveryTimer) {
+    clearInterval(accountDeletionRecoveryTimer);
+    accountDeletionRecoveryTimer = null;
+  }
+  await accountDeletionRecoveryPromise;
 }
 
 async function verifyAuthChallenge(body, clientIp) {
@@ -3188,6 +3204,13 @@ function handleRequest(req, res) {
         checks.redis = 'up';
       } catch {
         ready = false;
+      }
+      // A drain may begin while either dependency probe is in flight. Re-read
+      // the flag immediately before responding so an overlapping probe can
+      // never advertise this process as ready after SIGTERM/SIGINT.
+      if (shuttingDown) {
+        ready = false;
+        checks.draining = 'down';
       }
       res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ ready, checks }));
@@ -5274,38 +5297,171 @@ function handleRequest(req, res) {
 // ===== Start =====
 const server = http.createServer(handleRequest);
 
-async function closeDatabase() {
-  stopAccountDeletionRecovery();
-  await accountExportWorker.stop();
-  await relationshipOutboxWorker.stop();
-  await pool.end();
-  await redis.quit();
+async function settleShutdownOperations(operations) {
+  const results = await Promise.allSettled(operations.map((operation) => Promise.resolve().then(operation)));
+  const failures = results.filter((result) => result.status === 'rejected').map((result) => result.reason);
+  if (failures.length > 0) throw new AggregateError(failures, 'one or more shutdown operations failed');
 }
 
-// Graceful shutdown
-let shuttingDown = false;
-async function shutdown() {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  try {
-    await closeDatabase();
-    await Sentry.close(2000);
-  } catch {}
-  server.close();
-  process.exit(0);
+async function stopBackgroundWorkers() {
+  await settleShutdownOperations([
+    () => stopAccountDeletionRecovery(),
+    () => accountExportWorker.stop(),
+    () => relationshipOutboxWorker.stop(),
+  ]);
 }
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+
+async function closeInfrastructure() {
+  await settleShutdownOperations([() => pool.end(), () => redis.quit()]);
+}
+
+async function closeDatabase() {
+  await stopBackgroundWorkers();
+  await closeInfrastructure();
+}
+
+function drainHttpServer(
+  httpServer,
+  { timeoutMs, setTimer = setTimeout, clearTimer = clearTimeout, onTimeout = () => {} },
+) {
+  if (!httpServer?.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimer(timer);
+      if (error) reject(error);
+      else resolve();
+    };
+
+    timer = setTimer(() => {
+      onTimeout();
+      httpServer.closeAllConnections?.();
+      finish();
+    }, timeoutMs);
+    timer.unref?.();
+
+    try {
+      httpServer.close((error) => finish(error));
+      httpServer.closeIdleConnections?.();
+    } catch (error) {
+      finish(error);
+    }
+  });
+}
+
+function createGracefulShutdown({
+  httpServer,
+  beginDrain,
+  stopWorkers,
+  closeResources,
+  closeTelemetry = async () => {},
+  httpDrainTimeoutMs = 10_000,
+  shutdownTimeoutMs = 30_000,
+  log = logger,
+  setExitCode = (code) => {
+    process.exitCode = code;
+  },
+  forceExit = (code) => process.exit(code),
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+}) {
+  let shutdownPromise;
+
+  return function shutdown(signal = 'SIGTERM') {
+    if (shutdownPromise) return shutdownPromise;
+
+    // This must be synchronous so a concurrent /ready probe fails before any
+    // asynchronous drain work begins.
+    beginDrain();
+    log.info({ signal, httpDrainTimeoutMs, shutdownTimeoutMs }, 'shutdown received, draining API traffic');
+
+    shutdownPromise = new Promise((resolve) => {
+      let completed = false;
+      const watchdog = setTimer(() => {
+        if (completed) return;
+        completed = true;
+        log.error({ timeoutMs: shutdownTimeoutMs }, 'API shutdown deadline exceeded');
+        httpServer?.closeAllConnections?.();
+        forceExit(1);
+        resolve();
+      }, shutdownTimeoutMs);
+
+      void (async () => {
+        let failed = false;
+        const runPhase = async (phase, operation) => {
+          try {
+            await operation();
+          } catch (error) {
+            failed = true;
+            log.error({ err: error, phase }, 'API shutdown phase failed');
+          }
+        };
+
+        await runPhase('http-drain', () =>
+          drainHttpServer(httpServer, {
+            timeoutMs: httpDrainTimeoutMs,
+            setTimer,
+            clearTimer,
+            onTimeout: () => log.warn({ timeoutMs: httpDrainTimeoutMs }, 'API HTTP drain deadline exceeded'),
+          }),
+        );
+        if (completed) return;
+
+        await runPhase('workers', stopWorkers);
+        if (completed) return;
+
+        await runPhase('resources', closeResources);
+        if (completed) return;
+
+        await runPhase('telemetry', closeTelemetry);
+        if (completed) return;
+
+        completed = true;
+        clearTimer(watchdog);
+        if (failed) forceExit(1);
+        else setExitCode(0);
+        resolve();
+      })();
+    });
+
+    return shutdownPromise;
+  };
+}
+
+let shuttingDown = false;
+function markApiDraining() {
+  shuttingDown = true;
+}
+
+const shutdown = createGracefulShutdown({
+  httpServer: server,
+  beginDrain: markApiDraining,
+  stopWorkers: stopBackgroundWorkers,
+  closeResources: closeInfrastructure,
+  closeTelemetry: () => settleShutdownOperations([() => Sentry.close(2_000), () => shutdownTracing()]),
+  httpDrainTimeoutMs: API_HTTP_DRAIN_TIMEOUT_MS,
+  shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
+});
 
 if (require.main === module) {
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
   validateSecurityConfig();
   schemaReady
     .then(async () => {
       if (schemaInitError) throw schemaInitError;
+      if (shuttingDown) return;
       if (accountExportStorage.configured) {
         await cleanupStaleAccountExportArtifacts({ tempRoot: ACCOUNT_EXPORT_TMP_DIR });
       }
+      if (shuttingDown) return;
       server.listen(PORT, () => {
+        // SIGTERM can arrive after listen() is called but before its callback
+        // runs. Do not resurrect background work once the drain has begun.
+        if (shuttingDown) return;
         relationshipOutboxWorker.start();
         accountExportWorker.start();
         startAccountDeletionRecovery();
@@ -5322,6 +5478,9 @@ module.exports = {
   handleRequest,
   server,
   closeDatabase,
+  createGracefulShutdown,
+  drainHttpServer,
+  markApiDraining,
   recoverAccountDeletions,
   schemaReady,
 };

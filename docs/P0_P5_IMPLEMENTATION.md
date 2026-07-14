@@ -74,8 +74,8 @@
 - [ ] Backup checksum、成功告警、每日 age 檢查與自動 restore 驗證。
 - [ ] Beta RPO 24h / RTO 4h；production RPO 15m / RTO 30m 有實測報告。
 - [x] Expand/contract migration 與 schema checksum gate。
-- [ ] 至少兩個 app replica、graceful drain 與連線恢復：程式有 drain，現有 Compose 未部署 replicas。
-- [ ] Canary 10% → 50% → 100%，能在 5 分鐘內切回已驗證 digest：目前只有 runbook，尚無 rollout 實作／證據。
+- [ ] 至少兩個 app replica、graceful drain 與連線恢復：game/API/platform 已有 readiness 與 drain；API 會先停新 HTTP、等待 in-flight requests，再停 workers/DB/Redis。現有 Compose 仍未部署 replicas／readiness gateway。
+- [ ] Canary 10% → 50% → 100%，能在 5 分鐘內切回已驗證 digest：release gate 已固定不可降級的 stage／sample／replica／rollback policy，但尚無 repo-owned traffic controller、warm previous slot 與真實證據。
 - [ ] 2x 預估峰值、2 小時 soak 達到 SLO。
 
 ## P3：可觀測性與營運流程
@@ -132,6 +132,40 @@
 使用 `npm run release:gate -- --evidence-dir artifacts/release` 執行集中式發布檢查。Gate 會逐項執行完整 `verify`、release/operational config、Compose render/role environment，以及 Docker runtime image contract；結果會寫入 `release-gate.json` 與 `release-gate.md`。
 
 Gate 狀態嚴格區分：`passed` 代表所有必要檢查通過，`failed` 代表本機或設定檢查失敗，`blocked` 代表本機檢查沒有失敗但仍缺 staging-only 證據。缺證據永遠不會被當成通過；沒有 `--staging-evidence-dir` 時 staging gate 必然是 `blocked`。若有 staging 證據，放在該目錄的 `staging/` 下，且每份 JSON 必須包含 `schemaVersion: 1`、對應的 `evidenceType`、`status: "passed"`、`environment: "staging"`、與目前（或 `--release-sha` 指定）release 相同的 40 字元 `releaseSha`、五個完整 `game/api/platform/migrate/retention` `@sha256` image digest，以及 `startedAt`、`finishedAt`、正確相等於兩者差值的 `durationMs` 與過去 168 小時內且不得為未來時間的 `checkedAt`。每種 evidence 還必須提供該 gate 要求的數值 `metrics`、數值 `thresholds` 與全數為 true 的 `results`；Gate 會實際比較 metric/threshold。
+
+`canary-rollback` 另有不可由 evidence 降級的 repository policy：必須依序完成且只完成 10%、50%、100% 三階段，任何跳階都會阻擋；每階段至少觀察 300 秒、1,000 個 HTTP samples、100 個 WebSocket samples，且 candidate 至少有 2 個 ready replicas。`rollout.stableReleaseSet` 與 `rollout.candidateReleaseSet` 至少都要完整列出 game/api/platform immutable `@sha256` references；candidate 三項必須逐一等於本次 `imageDigests`，stable 每一服務都必須使用相同 image repository、但 digest 必須與 candidate 不同，禁止跨 service 混槽。Stable 另外必須提供不同於 candidate 的完整 `stableReleaseSha`，以及 hash-verified `stableManifestArtifact`；Gate 會解析 manifest 中唯一且未加引號的 `RELEASE_SHA`、`GAME_IMAGE`、`API_IMAGE`、`PLATFORM_IMAGE`，並逐項綁定 stable SHA/release set，不能用任意 digest 自稱可回滾版本。每階段要提供 ISO 起訖時間、`gatewayConfigSha256`、對應的 gateway config artifact 與 raw metrics artifact；artifact reference 必須和經 hash 驗證的 `artifacts[]` 相符，三個 traffic weight 的 gateway config hash 也必須不同。
+
+Gateway config artifact 不是任意文字檔。Gate 會在驗證 SHA-256 後解析下列 repository-owned JSON schema；`traffic` 必須逐階段精確為 90/10、50/50、0/100，且 artifact 內的兩組 release set 必須和 evidence 宣告完全相符：
+
+```json
+{
+  "schemaVersion": 1,
+  "artifactType": "zutomayo-canary-gateway-config",
+  "phase": "rollout",
+  "sequence": 1,
+  "activeReleaseSet": "mixed",
+  "traffic": {
+    "stableWeightPercent": 90,
+    "candidateWeightPercent": 10
+  },
+  "releaseSets": {
+    "stable": {
+      "game": "ghcr.io/example/game@sha256:<stable-digest>",
+      "api": "ghcr.io/example/api@sha256:<stable-digest>",
+      "platform": "ghcr.io/example/platform@sha256:<stable-digest>"
+    },
+    "candidate": {
+      "game": "ghcr.io/example/game@sha256:<candidate-digest>",
+      "api": "ghcr.io/example/api@sha256:<candidate-digest>",
+      "platform": "ghcr.io/example/platform@sha256:<candidate-digest>"
+    }
+  }
+}
+```
+
+Raw metrics artifact 同樣必須是 `schemaVersion: 1`、`artifactType: "zutomayo-canary-raw-metrics"` 的 JSON。每個 rollout stage 都要逐欄提供 `phase`、`sequence`、stable/candidate weights、`httpSamples`、`websocketSamples`、`readyReplicaCount` 與 `gatewayConfigSha256`；Gate 會和 stage evidence 及已驗證 gateway artifact hash 交叉比對。Rollback raw metrics 另須提供 `rollbackSeconds`，並以相同方式交叉驗證 100/0 weights、post-rollback HTTP/WS samples、ready replicas 與 gateway hash。只更新 evidence 摘要或 artifact hash、但內容語意不一致，仍會被阻擋。
+
+回滾證據必須在 100% 階段後由 candidate 切回 stable，實測不超過 300 秒，完成後至少 2 個 replicas ready，並提供 rollback gateway config 與 raw metrics artifact。Rollback artifact 必須使用同一 schema，並精確宣告 `phase: "rollback"`、`sequence: 4`、`activeReleaseSet: "stable"`、stable/candidate weights 100/0；`fromReleaseSet` 與 `toReleaseSet` 也必須分別等於 candidate 與 stable set。為了讓報表清楚顯示採用的政策，JSON `thresholds` 仍須精確列出 `requiredStages: 3`、`maxRollbackSeconds: 300`、`minStageDwellSeconds: 300`、`minHttpSamplesPerStage: 1000`、`minWebsocketSamplesPerStage: 100`、`minReadyReplicaCount: 2`；但 gate 判定使用的是程式內常數，不信任 evidence 自填值。舊的 schemaVersion 1 evidence 對其他 gate 保持相容，缺少這些 canary 欄位的既有證據則 fail closed 為 `blocked`。
 
 每份 staging JSON 至少要列一個 `artifacts[]` 項目，每項含 evidence 目錄內的相對 `path` 與檔案內容 `sha256`；Gate 會阻擋 path traversal、缺檔與 hash 不符。HTTP(S) `source`/`signer` 只能補充溯源，不能代替實際 artifact。退出碼為 `0`（passed）、`1`（failed）、`2`（blocked）。
 

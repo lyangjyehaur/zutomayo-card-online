@@ -6,7 +6,16 @@
 2. preflight 必須找到該 SHA 的成功 CI；五個 image 必須通過 Trivy、SBOM、Cosign signature 與 GitHub provenance attestation。
 3. 從 verified artifact 取得 `.release.env`，確認五個值都是 `ghcr.io/...@sha256:...`，並記錄 `EXPECTED_SCHEMA_MIGRATION` 與 `EXPECTED_SCHEMA_CHECKSUM`。
 4. 建立並驗證 PostgreSQL backup。migration 以 `PG_MIGRATION_USER` 執行；API、GAME、PLATFORM、retention、monitor、logical backup、WAL 使用各自角色；role/schema gate 失敗時不啟動新 app。
-5. 先以 staging smoke（health、ready、三服務 build ID、登入/建房/對局）驗證，再進 production。真實環境可用 10% → 50% → 100% canary 放量。
+5. 先以 staging smoke（health、ready、三服務 build ID、登入/建房/對局）驗證，再進 production。正式流量必須依序使用 10% → 50% → 100% canary 放量；缺少下列可驗證 evidence 時 release gate 會維持 `blocked`。
+
+## Canary evidence
+
+- 三階段都至少 dwell 300 秒，逐階段累積至少 1,000 個 HTTP samples 與 100 個 WebSocket samples，candidate 全程至少 2 個 replicas ready。
+- stable/candidate release set 都要列出 game/api/platform immutable image digests。Candidate 必須逐項等於本次 manifest；stable 必須使用各服務相同 image repository 的不同 digest，禁止 game/api/platform 互相混槽。Stable 還要保存完整 release SHA 與原始 `.release.env` manifest artifact；Gate 會在驗 hash 後解析 `RELEASE_SHA`、`GAME_IMAGE`、`API_IMAGE`、`PLATFORM_IMAGE` 並逐項比對。
+- 每一階段保存 gateway config JSON 原檔、其 SHA-256、raw metrics artifact、開始／結束 UTC；三個權重的 config hash 不可相同。JSON 必須採 `zutomayo-canary-gateway-config` schema，Gate 會解析並精確核對 90/10、50/50、0/100 weights 及兩組 release set，不只檢查檔案 hash。
+- Raw metrics 必須採 `zutomayo-canary-raw-metrics` JSON schema，逐 stage 綁定 weights、HTTP/WS samples、ready replica count 與 gateway config hash；Gate 會解析內容和 evidence 交叉比對，不接受只換 hash 的任意檔案。
+- 100% 階段完成後實際演練 candidate → stable rollback，量測時間必須不超過 300 秒；rollback 完成後至少 2 個 replicas ready，並保存 rollback gateway config 與 raw metrics。Rollback JSON 必須是 stable/candidate 100/0，且 `toReleaseSet` 指回原 stable set；raw metrics 另須交叉驗證 `rollbackSeconds` 及 post-rollback HTTP/WS samples。
+- `staging/canary-rollback.json` 的 `thresholds` 只用來呈現 repo policy，不能自行放寬。Gate 固定要求 3 stages、10/50/100 weights、300 秒 rollback 上限及上述 dwell/sample/replica 下限。
 
 ## 回滾
 

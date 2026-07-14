@@ -25,6 +25,7 @@ PLATFORM_PORT="${PLATFORM_PORT:-3002}"
 SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
+PLATFORM_SMOKE_TIMEOUT_MS="${PLATFORM_SMOKE_TIMEOUT_MS:-15000}"
 VERIFY_RELEASE_ARTIFACTS="${VERIFY_RELEASE_ARTIFACTS:-true}"
 COSIGN_IDENTITY_REGEXP="${COSIGN_IDENTITY_REGEXP:-https://github.com/${GITHUB_REPOSITORY:-}/.github/workflows/cd\\.yml@refs/(heads/master|tags/v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?)$}"
 COSIGN_OIDC_ISSUER="${COSIGN_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
@@ -210,7 +211,15 @@ remote_rollback() {
 }
 
 run_smoke() {
-  local tunnel_pid status
+  local tunnel_pid status platform_public_address
+  platform_public_address="$(ssh_run "set -euo pipefail;
+    cd '$REMOTE_DIR';
+    set -a; . ./.release.env; set +a;
+    docker compose -f '$COMPOSE_FILE' config --format json | jq -r '.services.platform.environment.PLATFORM_PUBLIC_ADDRESS'")"
+  [[ "$platform_public_address" =~ ^wss?://[^[:space:]]+$ ]] || {
+    log 'rendered platform public address is missing or invalid'
+    return 1
+  }
   ssh -p "$SERVER_PORT" -o ExitOnForwardFailure=yes -N -T \
     -L "${SMOKE_LOCAL_GAME_PORT}:127.0.0.1:${GAME_PORT}" \
     -L "${SMOKE_LOCAL_API_PORT}:127.0.0.1:${API_PORT}" \
@@ -230,6 +239,14 @@ run_smoke() {
     --platform-port "$SMOKE_LOCAL_PLATFORM_PORT" \
     --expected-build-id "$RELEASE_SHA"
   status=$?
+  if [[ "$status" -eq 0 ]]; then
+    node --import tsx "$SCRIPT_DIR/platform-deployment-smoke.ts" \
+      --http-url "http://127.0.0.1:${SMOKE_LOCAL_PLATFORM_PORT}" \
+      --ws-url "$platform_public_address" \
+      --expected-public-address "$platform_public_address" \
+      --timeout-ms "$PLATFORM_SMOKE_TIMEOUT_MS"
+    status=$?
+  fi
   set -e
   kill "$tunnel_pid" >/dev/null 2>&1 || true
   wait "$tunnel_pid" >/dev/null 2>&1 || true

@@ -206,6 +206,7 @@ interface FlatSeatReservation {
   roomId: string;
   sessionId: string;
   processId?: string;
+  publicAddress?: string;
   protocol?: string;
   reconnectionToken?: string;
   devMode?: boolean;
@@ -314,9 +315,10 @@ export function normalizeSeatReservation(response: FlatSeatReservation | SeatRes
     name: response.name,
     roomId: response.roomId,
     processId: response.processId,
+    ...(response.publicAddress ? { publicAddress: response.publicAddress } : {}),
     clients: 0,
     maxClients: 0,
-  } as SeatReservation['room'] & { processId?: string };
+  } as SeatReservation['room'] & { processId?: string; publicAddress?: string };
 
   return {
     sessionId: response.sessionId,

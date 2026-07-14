@@ -22,6 +22,7 @@ import {
   redisUrlWithDb,
   resolvePlatformCorsOrigin,
   resolvePlatformCorsOrigins,
+  resolvePlatformPublicAddress,
   resolvePlatformRedisMode,
 } from './config';
 import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
@@ -68,6 +69,7 @@ export interface PlatformRuntime {
   gameServer: Server;
   httpServer: http.Server;
   port: number;
+  publicAddress: string | undefined;
   redisMode: ReturnType<typeof resolvePlatformRedisMode>;
   friendStoreMode: ReturnType<typeof resolvePlatformFriendStoreMode>;
   blockStoreMode: ReturnType<typeof resolvePlatformBlockStoreMode>;
@@ -99,6 +101,7 @@ export async function assertPlatformRuntimeSchema(
 
 export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}): PlatformRuntime {
   const port = Number(process.env.PLATFORM_PORT) || 3002;
+  const publicAddress = resolvePlatformPublicAddress(process.env.PLATFORM_PUBLIC_ADDRESS, process.env.NODE_ENV);
   const redisConnection = resolveRedisConnectionConfig(process.env);
   const redisUrl = redisConnection.url;
   const redisTls = redisConnection.tls ? { rejectUnauthorized: true } : undefined;
@@ -115,7 +118,6 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   if (configuredRedisMode?.trim() && !isPlatformRedisMode(configuredRedisMode)) {
     logger.warn({ mode: configuredRedisMode }, 'unknown PLATFORM_REDIS_MODE, falling back to environment default');
   }
-
   const httpServer = http.createServer();
   const trustedProxy = process.env.TRUSTED_PROXY;
   // WebSocketTransport handles upgrade events outside Express. Canonicalize
@@ -354,6 +356,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   };
 
   const gameServer = new Server({
+    publicAddress: publicAddress?.colyseusAddress,
     transport: new WebSocketTransport({ server: httpServer }),
     express: (app) => {
       app.use(platformMetricsMiddleware);
@@ -441,6 +444,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     gameServer,
     httpServer,
     port,
+    publicAddress: publicAddress?.url,
     redisMode,
     friendStoreMode,
     blockStoreMode,

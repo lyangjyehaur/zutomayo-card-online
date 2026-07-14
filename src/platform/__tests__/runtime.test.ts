@@ -33,6 +33,7 @@ const {
 const PLATFORM_ENV_KEYS = [
   'NODE_ENV',
   'PLATFORM_PORT',
+  'PLATFORM_PUBLIC_ADDRESS',
   'PLATFORM_REDIS_MODE',
   'PLATFORM_FRIEND_STORE',
   'PLATFORM_BLOCK_STORE',
@@ -54,6 +55,7 @@ const originalEnv = new Map<string, string | undefined>(
 function setLocalPlatformEnv() {
   process.env.NODE_ENV = 'test';
   delete process.env.PLATFORM_PORT;
+  delete process.env.PLATFORM_PUBLIC_ADDRESS;
   process.env.PLATFORM_REDIS_MODE = 'memory';
   process.env.PLATFORM_FRIEND_STORE = 'none';
   process.env.PLATFORM_BLOCK_STORE = 'none';
@@ -121,6 +123,18 @@ describe('platform runtime', () => {
       expect(handler.filterOptions).toEqual(filterOptions);
     }
 
+    await platform.closeStores();
+  });
+
+  it('advertises the process-specific Colyseus address from an absolute WebSocket URL', async () => {
+    setLocalPlatformEnv();
+    process.env.PLATFORM_PUBLIC_ADDRESS = 'wss://platform-blue.example.test/colyseus/blue/';
+
+    const platform = createPlatformRuntime({ gracefullyShutdown: false });
+
+    expect(platform.publicAddress).toBe('wss://platform-blue.example.test/colyseus/blue');
+    expect(platform.gameServer.options.publicAddress).toBe('platform-blue.example.test/colyseus/blue');
+    await expect(platform.schemaReady).resolves.toBeUndefined();
     await platform.closeStores();
   });
 

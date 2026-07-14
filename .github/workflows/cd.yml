@@ -291,7 +291,10 @@ jobs:
             VITE_UMAMI_SECONDARY_WEBSITE_ID=${{ secrets.VITE_UMAMI_SECONDARY_WEBSITE_ID }}
             VITE_UMAMI_SECONDARY_HOST_URL=${{ secrets.VITE_UMAMI_SECONDARY_HOST_URL }}
             VITE_IMGPROXY_BASE_URL=${{ secrets.VITE_IMGPROXY_BASE_URL }}
-            VITE_PLATFORM_URL=${{ secrets.VITE_PLATFORM_URL }}
+            # Production/staging use the same-origin gateway. Keeping this
+            # empty makes the browser derive wss://<current-host> and prevents
+            # a mutable repository secret from changing an immutable image.
+            VITE_PLATFORM_URL=
           secrets: |
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
@@ -558,6 +561,13 @@ jobs:
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .
+      - name: Set up Node.js for deployment smoke
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install production smoke dependencies
+        run: npm ci --omit=dev --ignore-scripts
       - name: Configure SSH key
         uses: webfactory/ssh-agent@a6f90b1f127823b31d4d4a8d96047790581349bd
         with:

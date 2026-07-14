@@ -107,6 +107,8 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS');
     expect(deploy).toContain('jq -c -f scripts/project-compose-role-env.jq');
     expect(deploy).toContain("ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full --require-rediss'");
+    expect(deploy).toContain('node --import tsx "$SCRIPT_DIR/platform-deployment-smoke.ts"');
+    expect(deploy).toContain('--expected-public-address "$platform_public_address"');
     expect(deploy).toContain('--bootstrap');
   });
 

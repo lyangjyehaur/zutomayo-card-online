@@ -624,7 +624,7 @@ flowchart TB
 1. **builder**（`node:22-alpine`）：`npm ci` → `COPY . .` → `npm run build`（含 typecheck + vite build）→ 刪除 source map。可選上傳 source map 到 GlitchTip（`SENTRY_URL`/`SENTRY_AUTH_TOKEN`）。
 2. **runtime**（`node:22-alpine`）：`npm ci --omit=dev` → 從 builder COPY `dist` / `src` / `data` / `scripts` → `USER node` → `CMD ["npm", "run", "server"]`。
 
-`api/Dockerfile` 為 API server 獨立鏡像（不含 `node-pg-migrate` 與 `migrations/`，靠 `initSchema()` fallback）。
+`api/Dockerfile` 為 API server 獨立鏡像（不含 `node-pg-migrate` 與 `migrations/`）；production/staging 禁止 runtime DDL，必須先由 signed migration image 完成 migration 與 schema gate。
 
 ### docker-compose 六個單元（含 one-shot migrate）
 
@@ -638,14 +638,16 @@ redis ────┬─> game (Pub/Sub + Socket.IO adapter + rate limit)
           └─> platform (RedisDriver + RedisPresence)
 ```
 
-| 服務     | 鏡像                     | healthcheck             | depends_on                                                        |
-| -------- | ------------------------ | ----------------------- | ----------------------------------------------------------------- |
-| postgres | `postgres:16-alpine`     | `pg_isready`            | -                                                                 |
-| redis    | `redis:7-alpine`         | `redis-cli ping`        | -                                                                 |
-| migrate  | builder stage            | -                       | postgres healthy                                                  |
-| game     | 自建                     | `wget --spider /health` | postgres healthy + redis healthy                                  |
-| api      | 自建（`api/Dockerfile`） | `wget --spider /health` | postgres healthy + redis healthy + migrate completed_successfully |
-| platform | 自建                     | `wget --spider /health` | postgres healthy + redis healthy + api healthy                    |
+| 服務     | 鏡像                     | healthcheck            | depends_on                                                        |
+| -------- | ------------------------ | ---------------------- | ----------------------------------------------------------------- |
+| postgres | `postgres:16-alpine`     | `pg_isready`           | -                                                                 |
+| redis    | `redis:7-alpine`         | `redis-cli ping`       | -                                                                 |
+| migrate  | builder stage            | -                      | postgres healthy                                                  |
+| game     | 自建                     | `wget --spider /ready` | postgres healthy + redis healthy                                  |
+| api      | 自建（`api/Dockerfile`） | `wget --spider /ready` | postgres healthy + redis healthy + migrate completed_successfully |
+| platform | 自建                     | `wget --spider /ready` | postgres healthy + redis healthy + api healthy                    |
+
+`/health` 保留給 liveness／依賴診斷；Docker、gateway 與 load balancer 必須以 `/ready` 判斷是否接收新流量，drain 開始時 readiness 會先轉為 `503`。Release frontend 不烘焙可變的 platform URL，而是由瀏覽器推導同源 `wss://<current-host>` 進入 gateway。每個 platform process／release slot 必須設定可由 gateway 精確路由回該實例的 `PLATFORM_PUBLIC_ADDRESS`，訂位後的 WebSocket 不可再任意負載平衡。
 
 - **必要環境變數**：`PG_PASSWORD`、`JWT_SECRET`（≥32 字元，建議 `openssl rand -hex 32`）。
 - **Volumes**：`pg-data`（PG 資料目錄，唯一真實來源）、`redis-data`（AOF 持久化，遺失可接受＝冷重啟）。

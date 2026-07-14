@@ -1,5 +1,4 @@
 /* global require, process, console */
-/* eslint-disable @typescript-eslint/no-require-imports */
 // OpenTelemetry 分散式追蹤配置（API server, CommonJS）。
 // 必須在所有其他應用程式碼之前 require，讓 auto-instrumentation 能 patch http/ioredis/pg。
 // 未設定 OTEL_EXPORTER_OTLP_ENDPOINT 時為 no-op，不啟動 SDK。
@@ -14,6 +13,8 @@ const { IORedisInstrumentation } = require('@opentelemetry/instrumentation-iored
 const { PgInstrumentation } = require('@opentelemetry/instrumentation-pg');
 
 const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+let sdk;
+let shutdownPromise;
 
 /** 解析 OTEL_RESOURCE_ATTRIBUTES 環境變數（格式：key1=value1,key2=value2）。 */
 function parseResourceAttributes(raw) {
@@ -39,7 +40,7 @@ if (otlpEndpoint) {
   const appVersion = process.env.APP_VERSION || '0.0.0';
   const buildId = process.env.APP_BUILD_ID || 'local';
 
-  const sdk = new NodeSDK({
+  sdk = new NodeSDK({
     resource: resourceFromAttributes({
       [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
       [SemanticResourceAttributes.SERVICE_VERSION]: appVersion + '@' + buildId,
@@ -52,7 +53,12 @@ if (otlpEndpoint) {
 
   sdk.start();
   console.log('[tracing] OpenTelemetry SDK started (service: ' + serviceName + ', endpoint: ' + traceUrl + ')');
-
-  process.on('SIGTERM', () => sdk.shutdown().catch(() => {}));
-  process.on('SIGINT', () => sdk.shutdown().catch(() => {}));
 }
+
+function shutdownTracing() {
+  if (!sdk) return Promise.resolve();
+  if (!shutdownPromise) shutdownPromise = sdk.shutdown();
+  return shutdownPromise;
+}
+
+module.exports = { shutdownTracing };

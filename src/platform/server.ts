@@ -59,8 +59,6 @@ function validateSecurityConfig(): void {
 
 validateSecurityConfig();
 
-const platform = createPlatformRuntime();
-
 process.on('uncaughtException', (err) => {
   Sentry.captureException(err, { tags: { layer: 'platform-process', type: 'uncaughtException' } });
   logger.fatal({ err }, 'uncaught platform exception');
@@ -72,17 +70,20 @@ process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'unhandled platform rejection');
 });
 
+let platform: ReturnType<typeof createPlatformRuntime> | undefined;
 try {
+  platform = createPlatformRuntime();
   await platform.schemaReady;
   await platform.gameServer.listen(platform.port);
 } catch (err) {
-  logger.fatal({ err }, 'platform schema gate failed; refusing to listen');
-  await platform.closeStores().catch(() => undefined);
+  logger.fatal({ err }, 'platform startup gate failed; refusing to listen');
+  await platform?.closeStores().catch(() => undefined);
   process.exit(1);
 }
 logger.info(
   {
     port: platform.port,
+    publicAddress: platform.publicAddress,
     redisMode: platform.redisMode,
     friendStoreMode: platform.friendStoreMode,
     matchParticipantStoreMode: platform.matchParticipantStoreMode,

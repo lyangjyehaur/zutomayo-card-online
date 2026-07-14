@@ -399,6 +399,40 @@ function assertAccountExportStorageContract(relativePath) {
   }
 }
 
+function assertReadinessHealthchecks(relativePath) {
+  for (const [serviceName, port] of [
+    ['game', 3000],
+    ['api', 3001],
+    ['platform', 3002],
+  ]) {
+    const block = serviceBlock(relativePath, serviceName);
+    if (!block.includes(`wget --spider -q http://localhost:${port}/ready`)) {
+      throw new Error(`${relativePath} ${serviceName} healthcheck must use /ready`);
+    }
+  }
+}
+
+function assertPlatformPublicAddress(relativePath, required) {
+  const platform = serviceBlock(relativePath, 'platform');
+  const expected = required
+    ? 'PLATFORM_PUBLIC_ADDRESS=${PLATFORM_PUBLIC_ADDRESS:?'
+    : 'PLATFORM_PUBLIC_ADDRESS=${PLATFORM_PUBLIC_ADDRESS:-ws://localhost:3002}';
+  if (!platform.includes(expected)) {
+    throw new Error(`${relativePath} platform must ${required ? 'require' : 'provide'} PLATFORM_PUBLIC_ADDRESS`);
+  }
+}
+
+function assertApiDrainContract(relativePath) {
+  const api = serviceBlock(relativePath, 'api');
+  for (const fragment of [
+    'API_HTTP_DRAIN_TIMEOUT_MS=${API_HTTP_DRAIN_TIMEOUT_MS:-10000}',
+    'SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}',
+    'stop_grace_period: 45s',
+  ]) {
+    if (!api.includes(fragment)) throw new Error(`${relativePath} API drain contract is missing: ${fragment}`);
+  }
+}
+
 function assertProductionRuntimeInputs() {
   const roleUserInputs = [
     'PG_API_USER',
@@ -411,6 +445,9 @@ function assertProductionRuntimeInputs() {
   ];
   for (const relativePath of ['docker-compose.yml', ...RELEASE_COMPOSE_FILES]) {
     assertAccountExportStorageContract(relativePath);
+    assertReadinessHealthchecks(relativePath);
+    assertPlatformPublicAddress(relativePath, RELEASE_COMPOSE_FILES.includes(relativePath));
+    assertApiDrainContract(relativePath);
     if (countFragment(relativePath, 'METRICS_TOKEN=${METRICS_TOKEN:?') !== 3) {
       throw new Error(`${relativePath} must require METRICS_TOKEN for all three runtime services`);
     }
@@ -593,12 +630,17 @@ function assertWorkflowContract() {
     '--release-manifest .release.env',
     '--evidence-run-id "$STAGING_EVIDENCE_RUN_ID"',
     'release-gate-${{ needs.preflight.outputs.release_sha }}',
+    'npm ci --omit=dev --ignore-scripts',
+    'VITE_PLATFORM_URL=',
   ];
   for (const fragment of requiredFragments) {
     if (!workflow.includes(fragment)) throw new Error(`cd.yml is missing release gate: ${fragment}`);
   }
   if (/\bTAG\b/.test(workflow) || /:latest|:staging/.test(workflow)) {
     throw new Error('cd.yml must not deploy mutable TAG/latest/staging references');
+  }
+  if (/VITE_PLATFORM_URL=\$\{\{\s*secrets\./.test(workflow)) {
+    throw new Error('cd.yml must not bake a mutable VITE_PLATFORM_URL secret into immutable game images');
   }
   if (
     !read('.github/workflows/ci.yml').includes(
@@ -623,6 +665,12 @@ function assertReleaseManifestContract() {
   }
   if (!deploy.includes('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS')) {
     throw new Error('deployment must validate the rendered PostgreSQL role/TLS environment before migration');
+  }
+  if (!deploy.includes('node --import tsx "$SCRIPT_DIR/platform-deployment-smoke.ts"')) {
+    throw new Error('deployment must exercise a Colyseus reservation through its advertised public process route');
+  }
+  if (!deploy.includes('--expected-public-address "$platform_public_address"')) {
+    throw new Error('deployment must bind the Colyseus smoke to the rendered public process address');
   }
   if (/config --format json\s*\|\s*docker compose/.test(deploy)) {
     throw new Error('deployment must not pipe the full resolved Compose JSON into a service container');

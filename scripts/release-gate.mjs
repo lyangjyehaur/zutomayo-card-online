@@ -14,6 +14,18 @@ const RUN_ID_PATTERN = /^\d+$/;
 const IMAGE_DIGEST_PATTERN = /^\S+@sha256:[a-f0-9]{64}$/i;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const REQUIRED_IMAGE_DIGESTS = Object.freeze(['game', 'api', 'platform', 'migrate', 'retention']);
+const CANARY_RUNTIME_SERVICES = Object.freeze(['game', 'api', 'platform']);
+const CANARY_GATEWAY_ARTIFACT_TYPE = 'zutomayo-canary-gateway-config';
+const CANARY_RAW_METRICS_ARTIFACT_TYPE = 'zutomayo-canary-raw-metrics';
+const CANARY_POLICY = Object.freeze({
+  requiredStages: 3,
+  stageWeights: Object.freeze([10, 50, 100]),
+  maxRollbackSeconds: 300,
+  minStageDwellSeconds: 300,
+  minHttpSamplesPerStage: 1_000,
+  minWebsocketSamplesPerStage: 100,
+  minReadyReplicaCount: 2,
+});
 
 const COMPOSE_FILES = Object.freeze([
   {
@@ -227,6 +239,7 @@ function composeFixtureEnv() {
     REDIS_PASSWORD: 'release-gate-redis-password',
     JWT_SECRET: 'release-gate-jwt-secret-32chars-minimum',
     PLATFORM_SEAT_TOKEN_SECRET: 'release-gate-seat-token-secret-32chars-minimum',
+    PLATFORM_PUBLIC_ADDRESS: 'wss://platform.example.invalid/colyseus/release-gate-1',
     ADMIN_TOTP_ENCRYPTION_KEY: 'release-gate-admin-totp-key-32chars-minimum',
     OAUTH_TOKEN_ENCRYPTION_KEY: 'release-gate-oauth-token-key-32chars-minimum',
     ACCOUNT_EXPORT_S3_BUCKET: 'zutomayo-release-gate-account-exports',
@@ -436,9 +449,10 @@ function isoTimestamp(value) {
 }
 
 function validateArtifacts(evidence, stagingEvidenceDir, missing) {
+  const verifiedArtifacts = new Map();
   if (!Array.isArray(evidence?.artifacts) || evidence.artifacts.length === 0) {
     missing.push('artifacts[] with at least one path + sha256 entry');
-    return;
+    return verifiedArtifacts;
   }
   for (const [index, artifact] of evidence.artifacts.entries()) {
     const artifactPath = artifact?.path;
@@ -464,13 +478,478 @@ function validateArtifacts(evidence, stagingEvidenceDir, missing) {
         missing.push(`artifacts[${index}].path contained within the evidence directory`);
         continue;
       }
-      const actualHash = createHash('sha256').update(readFileSync(realArtifactPath)).digest('hex');
+      const contents = readFileSync(realArtifactPath);
+      const actualHash = createHash('sha256').update(contents).digest('hex');
       if (actualHash !== artifactHash.toLowerCase()) {
         missing.push(`artifacts[${index}].sha256 matching file contents`);
+        continue;
       }
+      verifiedArtifacts.set(`${artifactPath}\0${actualHash}`, { contents });
     } catch {
       missing.push(`artifacts[${index}] readable file: ${artifactPath}`);
     }
+  }
+  return verifiedArtifacts;
+}
+
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validateCanaryArtifactReference(evidence, reference, label, missing, verifiedArtifacts) {
+  if (!isPlainObject(reference)) {
+    missing.push(`${label} artifact reference`);
+    return undefined;
+  }
+  if (typeof reference.path !== 'string' || reference.path.trim() === '') {
+    missing.push(`${label}.path`);
+  }
+  if (!SHA256_PATTERN.test(reference.sha256 ?? '')) {
+    missing.push(`${label}.sha256`);
+  }
+  if (
+    typeof reference.path !== 'string' ||
+    !SHA256_PATTERN.test(reference.sha256 ?? '') ||
+    !Array.isArray(evidence?.artifacts)
+  ) {
+    return undefined;
+  }
+  const matchesVerifiedArtifact = evidence.artifacts.some(
+    (artifact) =>
+      artifact?.path === reference.path &&
+      typeof artifact.sha256 === 'string' &&
+      artifact.sha256.toLowerCase() === reference.sha256.toLowerCase(),
+  );
+  if (!matchesVerifiedArtifact) {
+    missing.push(`${label} matching artifacts[]`);
+    return undefined;
+  }
+  const verifiedArtifact = verifiedArtifacts.get(`${reference.path}\0${reference.sha256.toLowerCase()}`);
+  if (!verifiedArtifact) {
+    missing.push(`${label} referencing a hash-verified artifact`);
+    return undefined;
+  }
+  return verifiedArtifact;
+}
+
+function imageRepository(imageDigest) {
+  return typeof imageDigest === 'string' ? imageDigest.slice(0, imageDigest.toLowerCase().lastIndexOf('@sha256:')) : '';
+}
+
+function validateReleaseSet(releaseSet, label, missing) {
+  if (!isPlainObject(releaseSet)) {
+    missing.push(`${label} object`);
+    return;
+  }
+  for (const service of CANARY_RUNTIME_SERVICES) {
+    if (!IMAGE_DIGEST_PATTERN.test(releaseSet[service] ?? '')) {
+      missing.push(`${label}.${service} (complete @sha256 reference)`);
+    }
+  }
+  for (const [service, imageDigest] of Object.entries(releaseSet)) {
+    if (!IMAGE_DIGEST_PATTERN.test(imageDigest ?? '')) {
+      missing.push(`${label}.${service} (complete @sha256 reference)`);
+    }
+  }
+}
+
+function validateReleaseSetMatch(actual, expected, label, missing) {
+  if (!isPlainObject(actual)) {
+    missing.push(`${label} object`);
+    return;
+  }
+  for (const service of CANARY_RUNTIME_SERVICES) {
+    if (
+      typeof actual[service] !== 'string' ||
+      typeof expected?.[service] !== 'string' ||
+      actual[service].toLowerCase() !== expected[service].toLowerCase()
+    ) {
+      missing.push(`${label}.${service} matching the declared release set`);
+    }
+  }
+}
+
+function parseStableReleaseManifest(verifiedArtifact, label, missing) {
+  const lines = verifiedArtifact.contents.toString('utf8').split(/\r?\n/);
+  const values = {};
+  for (const key of ['RELEASE_SHA', 'GAME_IMAGE', 'API_IMAGE', 'PLATFORM_IMAGE']) {
+    const matches = lines.filter((line) => line.startsWith(`${key}=`));
+    if (matches.length !== 1 || !matches[0].match(new RegExp(`^${key}=\\S+$`))) {
+      missing.push(`${label} containing exactly one unquoted ${key}= value`);
+      continue;
+    }
+    values[key] = matches[0].slice(key.length + 1);
+  }
+  return values;
+}
+
+function validateStableReleaseManifest(evidence, rollout, stableReleaseSet, missing, verifiedArtifacts) {
+  if (!RELEASE_SHA_PATTERN.test(rollout.stableReleaseSha ?? '')) {
+    missing.push('rollout.stableReleaseSha (full 40-character SHA)');
+  } else if (
+    RELEASE_SHA_PATTERN.test(evidence?.releaseSha ?? '') &&
+    rollout.stableReleaseSha.toLowerCase() === evidence.releaseSha.toLowerCase()
+  ) {
+    missing.push('rollout.stableReleaseSha different from candidate releaseSha');
+  }
+  const stableManifestArtifact = validateCanaryArtifactReference(
+    evidence,
+    rollout.stableManifestArtifact,
+    'rollout.stableManifestArtifact',
+    missing,
+    verifiedArtifacts,
+  );
+  if (!stableManifestArtifact) return;
+  const manifest = parseStableReleaseManifest(stableManifestArtifact, 'rollout.stableManifestArtifact', missing);
+  if (
+    RELEASE_SHA_PATTERN.test(manifest.RELEASE_SHA ?? '') &&
+    RELEASE_SHA_PATTERN.test(rollout.stableReleaseSha ?? '') &&
+    manifest.RELEASE_SHA.toLowerCase() !== rollout.stableReleaseSha.toLowerCase()
+  ) {
+    missing.push('rollout.stableManifestArtifact RELEASE_SHA matching rollout.stableReleaseSha');
+  }
+  const manifestKeys = { game: 'GAME_IMAGE', api: 'API_IMAGE', platform: 'PLATFORM_IMAGE' };
+  for (const service of CANARY_RUNTIME_SERVICES) {
+    const manifestImage = manifest[manifestKeys[service]];
+    if (!IMAGE_DIGEST_PATTERN.test(manifestImage ?? '')) {
+      missing.push(`rollout.stableManifestArtifact ${manifestKeys[service]} immutable digest`);
+    } else if (
+      typeof stableReleaseSet?.[service] !== 'string' ||
+      manifestImage.toLowerCase() !== stableReleaseSet[service].toLowerCase()
+    ) {
+      missing.push(`rollout.stableManifestArtifact ${manifestKeys[service]} matching stableReleaseSet.${service}`);
+    }
+  }
+}
+
+function validateGatewayConfig(config, expectations, label, missing) {
+  if (!isPlainObject(config)) {
+    missing.push(`${label} JSON object`);
+    return;
+  }
+  if (config.schemaVersion !== 1) missing.push(`${label}.schemaVersion exactly 1`);
+  if (config.artifactType !== CANARY_GATEWAY_ARTIFACT_TYPE) {
+    missing.push(`${label}.artifactType exactly "${CANARY_GATEWAY_ARTIFACT_TYPE}"`);
+  }
+  if (config.phase !== expectations.phase) missing.push(`${label}.phase exactly "${expectations.phase}"`);
+  if (config.sequence !== expectations.sequence) {
+    missing.push(`${label}.sequence exactly ${expectations.sequence}`);
+  }
+  const expectedActiveReleaseSet =
+    expectations.candidateWeightPercent === 0
+      ? 'stable'
+      : expectations.candidateWeightPercent === 100
+        ? 'candidate'
+        : 'mixed';
+  if (config.activeReleaseSet !== expectedActiveReleaseSet) {
+    missing.push(`${label}.activeReleaseSet exactly "${expectedActiveReleaseSet}"`);
+  }
+  const traffic = config.traffic;
+  if (!isPlainObject(traffic)) {
+    missing.push(`${label}.traffic object`);
+  } else {
+    if (traffic.stableWeightPercent !== expectations.stableWeightPercent) {
+      missing.push(`${label}.traffic.stableWeightPercent exactly ${expectations.stableWeightPercent}`);
+    }
+    if (traffic.candidateWeightPercent !== expectations.candidateWeightPercent) {
+      missing.push(`${label}.traffic.candidateWeightPercent exactly ${expectations.candidateWeightPercent}`);
+    }
+  }
+  if (!isPlainObject(config.releaseSets)) {
+    missing.push(`${label}.releaseSets object`);
+  } else {
+    validateReleaseSetMatch(
+      config.releaseSets.stable,
+      expectations.stableReleaseSet,
+      `${label}.releaseSets.stable`,
+      missing,
+    );
+    validateReleaseSetMatch(
+      config.releaseSets.candidate,
+      expectations.candidateReleaseSet,
+      `${label}.releaseSets.candidate`,
+      missing,
+    );
+  }
+}
+
+function validateRawMetrics(metrics, expectations, label, missing) {
+  if (!isPlainObject(metrics)) {
+    missing.push(`${label} JSON object`);
+    return;
+  }
+  if (metrics.schemaVersion !== 1) missing.push(`${label}.schemaVersion exactly 1`);
+  if (metrics.artifactType !== CANARY_RAW_METRICS_ARTIFACT_TYPE) {
+    missing.push(`${label}.artifactType exactly "${CANARY_RAW_METRICS_ARTIFACT_TYPE}"`);
+  }
+  if (metrics.phase !== expectations.phase) missing.push(`${label}.phase exactly "${expectations.phase}"`);
+  if (metrics.sequence !== expectations.sequence) missing.push(`${label}.sequence exactly ${expectations.sequence}`);
+  if (metrics.stableWeightPercent !== expectations.stableWeightPercent) {
+    missing.push(`${label}.stableWeightPercent exactly ${expectations.stableWeightPercent}`);
+  }
+  if (metrics.candidateWeightPercent !== expectations.candidateWeightPercent) {
+    missing.push(`${label}.candidateWeightPercent exactly ${expectations.candidateWeightPercent}`);
+  }
+  if (metrics.httpSamples !== expectations.httpSamples) {
+    missing.push(`${label}.httpSamples matching evidence value ${expectations.httpSamples}`);
+  }
+  if (metrics.websocketSamples !== expectations.websocketSamples) {
+    missing.push(`${label}.websocketSamples matching evidence value ${expectations.websocketSamples}`);
+  }
+  if (metrics.readyReplicaCount !== expectations.readyReplicaCount) {
+    missing.push(`${label}.readyReplicaCount matching evidence value ${expectations.readyReplicaCount}`);
+  }
+  if (
+    typeof metrics.gatewayConfigSha256 !== 'string' ||
+    typeof expectations.gatewayConfigSha256 !== 'string' ||
+    metrics.gatewayConfigSha256.toLowerCase() !== expectations.gatewayConfigSha256.toLowerCase()
+  ) {
+    missing.push(`${label}.gatewayConfigSha256 matching the gateway config artifact`);
+  }
+  if (expectations.phase === 'rollback' && metrics.rollbackSeconds !== expectations.rollbackSeconds) {
+    missing.push(`${label}.rollbackSeconds matching evidence value ${expectations.rollbackSeconds}`);
+  }
+}
+
+function validateCanaryStageArtifacts(evidence, stage, label, missing, verifiedArtifacts, gatewayExpectations) {
+  if (!SHA256_PATTERN.test(stage?.gatewayConfigSha256 ?? '')) {
+    missing.push(`${label}.gatewayConfigSha256`);
+  }
+  const gatewayArtifact = validateCanaryArtifactReference(
+    evidence,
+    stage?.gatewayConfigArtifact,
+    `${label}.gatewayConfigArtifact`,
+    missing,
+    verifiedArtifacts,
+  );
+  if (
+    SHA256_PATTERN.test(stage?.gatewayConfigSha256 ?? '') &&
+    SHA256_PATTERN.test(stage?.gatewayConfigArtifact?.sha256 ?? '') &&
+    stage.gatewayConfigSha256.toLowerCase() !== stage.gatewayConfigArtifact.sha256.toLowerCase()
+  ) {
+    missing.push(`${label}.gatewayConfigSha256 matching gatewayConfigArtifact.sha256`);
+  }
+  const rawMetricsArtifact = validateCanaryArtifactReference(
+    evidence,
+    stage?.rawMetricsArtifact,
+    `${label}.rawMetricsArtifact`,
+    missing,
+    verifiedArtifacts,
+  );
+  if (gatewayArtifact) {
+    try {
+      const gatewayConfig = JSON.parse(gatewayArtifact.contents.toString('utf8'));
+      validateGatewayConfig(gatewayConfig, gatewayExpectations, `${label}.gatewayConfigArtifact`, missing);
+    } catch (error) {
+      missing.push(
+        `${label}.gatewayConfigArtifact valid JSON (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+  }
+  if (rawMetricsArtifact) {
+    try {
+      const rawMetrics = JSON.parse(rawMetricsArtifact.contents.toString('utf8'));
+      validateRawMetrics(rawMetrics, gatewayExpectations, `${label}.rawMetricsArtifact`, missing);
+    } catch (error) {
+      missing.push(
+        `${label}.rawMetricsArtifact valid JSON (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+  }
+}
+
+function validateCanaryEvidence(evidence, missing, verifiedArtifacts) {
+  const metrics = isPlainObject(evidence?.metrics) ? evidence.metrics : {};
+  const thresholds = isPlainObject(evidence?.thresholds) ? evidence.thresholds : {};
+  const expectedThresholds = {
+    requiredStages: CANARY_POLICY.requiredStages,
+    maxRollbackSeconds: CANARY_POLICY.maxRollbackSeconds,
+    minStageDwellSeconds: CANARY_POLICY.minStageDwellSeconds,
+    minHttpSamplesPerStage: CANARY_POLICY.minHttpSamplesPerStage,
+    minWebsocketSamplesPerStage: CANARY_POLICY.minWebsocketSamplesPerStage,
+    minReadyReplicaCount: CANARY_POLICY.minReadyReplicaCount,
+  };
+  for (const [name, value] of Object.entries(expectedThresholds)) {
+    if (thresholds[name] !== value) missing.push(`thresholds.${name} exactly ${value} (repository policy)`);
+  }
+  if (metrics.stagesCompleted !== CANARY_POLICY.requiredStages) {
+    missing.push(`metrics.stagesCompleted exactly ${CANARY_POLICY.requiredStages} (repository policy)`);
+  }
+  if (!Number.isFinite(metrics.rollbackSeconds) || metrics.rollbackSeconds > CANARY_POLICY.maxRollbackSeconds) {
+    missing.push(`metrics.rollbackSeconds <= ${CANARY_POLICY.maxRollbackSeconds} (repository policy)`);
+  }
+
+  const rollout = evidence?.rollout;
+  if (!isPlainObject(rollout)) {
+    missing.push('rollout object');
+    return;
+  }
+  const stableReleaseSet = rollout.stableReleaseSet;
+  const candidateReleaseSet = rollout.candidateReleaseSet;
+  validateReleaseSet(stableReleaseSet, 'rollout.stableReleaseSet', missing);
+  validateReleaseSet(candidateReleaseSet, 'rollout.candidateReleaseSet', missing);
+  validateStableReleaseManifest(evidence, rollout, stableReleaseSet, missing, verifiedArtifacts);
+  for (const service of CANARY_RUNTIME_SERVICES) {
+    const stableImage = stableReleaseSet?.[service];
+    const candidateImage = candidateReleaseSet?.[service];
+    const evidenceImage = evidence?.imageDigests?.[service];
+    if (
+      IMAGE_DIGEST_PATTERN.test(candidateImage ?? '') &&
+      IMAGE_DIGEST_PATTERN.test(evidenceImage ?? '') &&
+      candidateImage.toLowerCase() !== evidenceImage.toLowerCase()
+    ) {
+      missing.push(`rollout.candidateReleaseSet.${service} matching imageDigests.${service}`);
+    }
+    if (IMAGE_DIGEST_PATTERN.test(stableImage ?? '') && IMAGE_DIGEST_PATTERN.test(candidateImage ?? '')) {
+      if (stableImage.toLowerCase() === candidateImage.toLowerCase()) {
+        missing.push(`rollout.stableReleaseSet.${service} different from candidate release`);
+      }
+      if (imageRepository(stableImage).toLowerCase() !== imageRepository(candidateImage).toLowerCase()) {
+        missing.push(`rollout.stableReleaseSet.${service} using the same image repository as candidate ${service}`);
+      }
+    }
+  }
+
+  if (!Array.isArray(rollout.stages) || rollout.stages.length !== CANARY_POLICY.requiredStages) {
+    missing.push(`rollout.stages containing exactly ${CANARY_POLICY.requiredStages} stages`);
+    return;
+  }
+
+  const evidenceStartedAt = isoTimestamp(evidence?.startedAt);
+  const evidenceFinishedAt = isoTimestamp(evidence?.finishedAt);
+  let previousFinishedAt;
+  const gatewayConfigHashes = new Set();
+  for (const [index, expectedWeight] of CANARY_POLICY.stageWeights.entries()) {
+    const stage = rollout.stages[index];
+    const label = `rollout.stages[${index}]`;
+    if (!isPlainObject(stage)) {
+      missing.push(`${label} object`);
+      continue;
+    }
+    if (stage.sequence !== index + 1) missing.push(`${label}.sequence exactly ${index + 1}`);
+    if (stage.weightPercent !== expectedWeight) {
+      missing.push(`${label}.weightPercent exactly ${expectedWeight} without skipped stages`);
+    }
+    const startedAt = isoTimestamp(stage.startedAt);
+    const finishedAt = isoTimestamp(stage.finishedAt);
+    if (startedAt === undefined) missing.push(`${label}.startedAt (ISO timestamp)`);
+    if (finishedAt === undefined) missing.push(`${label}.finishedAt (ISO timestamp)`);
+    if (startedAt !== undefined && finishedAt !== undefined) {
+      if (finishedAt <= startedAt) missing.push(`${label}.finishedAt after startedAt`);
+      else if (finishedAt - startedAt < CANARY_POLICY.minStageDwellSeconds * 1_000) {
+        missing.push(`${label} dwell >= ${CANARY_POLICY.minStageDwellSeconds} seconds (repository policy)`);
+      }
+      if (previousFinishedAt !== undefined && startedAt < previousFinishedAt) {
+        missing.push(`${label}.startedAt after the previous stage finished`);
+      }
+      if (
+        evidenceStartedAt !== undefined &&
+        evidenceFinishedAt !== undefined &&
+        (startedAt < evidenceStartedAt || finishedAt > evidenceFinishedAt)
+      ) {
+        missing.push(`${label} timestamps within the evidence interval`);
+      }
+      previousFinishedAt = finishedAt;
+    }
+    if (!Number.isInteger(stage.httpSamples) || stage.httpSamples < CANARY_POLICY.minHttpSamplesPerStage) {
+      missing.push(`${label}.httpSamples >= ${CANARY_POLICY.minHttpSamplesPerStage} (repository policy)`);
+    }
+    if (
+      !Number.isInteger(stage.websocketSamples) ||
+      stage.websocketSamples < CANARY_POLICY.minWebsocketSamplesPerStage
+    ) {
+      missing.push(`${label}.websocketSamples >= ${CANARY_POLICY.minWebsocketSamplesPerStage} (repository policy)`);
+    }
+    if (!Number.isInteger(stage.readyReplicaCount) || stage.readyReplicaCount < CANARY_POLICY.minReadyReplicaCount) {
+      missing.push(`${label}.readyReplicaCount >= ${CANARY_POLICY.minReadyReplicaCount} (repository policy)`);
+    }
+    validateCanaryStageArtifacts(evidence, stage, label, missing, verifiedArtifacts, {
+      phase: 'rollout',
+      sequence: index + 1,
+      stableWeightPercent: 100 - expectedWeight,
+      candidateWeightPercent: expectedWeight,
+      httpSamples: stage.httpSamples,
+      websocketSamples: stage.websocketSamples,
+      readyReplicaCount: stage.readyReplicaCount,
+      gatewayConfigSha256: stage.gatewayConfigSha256,
+      stableReleaseSet,
+      candidateReleaseSet,
+    });
+    if (SHA256_PATTERN.test(stage.gatewayConfigSha256 ?? '')) {
+      const gatewayHash = stage.gatewayConfigSha256.toLowerCase();
+      if (gatewayConfigHashes.has(gatewayHash)) {
+        missing.push(`${label}.gatewayConfigSha256 unique for its traffic weight`);
+      }
+      gatewayConfigHashes.add(gatewayHash);
+    }
+  }
+
+  const rollback = rollout.rollback;
+  if (!isPlainObject(rollback)) {
+    missing.push('rollout.rollback object');
+    return;
+  }
+  validateReleaseSetMatch(rollback.fromReleaseSet, candidateReleaseSet, 'rollout.rollback.fromReleaseSet', missing);
+  validateReleaseSetMatch(rollback.toReleaseSet, stableReleaseSet, 'rollout.rollback.toReleaseSet', missing);
+  const rollbackStartedAt = isoTimestamp(rollback.startedAt);
+  const rollbackFinishedAt = isoTimestamp(rollback.finishedAt);
+  if (rollbackStartedAt === undefined) missing.push('rollout.rollback.startedAt (ISO timestamp)');
+  if (rollbackFinishedAt === undefined) missing.push('rollout.rollback.finishedAt (ISO timestamp)');
+  if (rollbackStartedAt !== undefined && rollbackFinishedAt !== undefined) {
+    const rollbackDurationSeconds = (rollbackFinishedAt - rollbackStartedAt) / 1_000;
+    if (rollbackFinishedAt <= rollbackStartedAt) missing.push('rollout.rollback.finishedAt after startedAt');
+    if (rollbackDurationSeconds > CANARY_POLICY.maxRollbackSeconds) {
+      missing.push(`rollout.rollback duration <= ${CANARY_POLICY.maxRollbackSeconds} seconds (repository policy)`);
+    }
+    if (metrics.rollbackSeconds !== rollbackDurationSeconds) {
+      missing.push('metrics.rollbackSeconds matching rollout.rollback timestamp duration');
+    }
+    if (previousFinishedAt !== undefined && rollbackStartedAt < previousFinishedAt) {
+      missing.push('rollout.rollback.startedAt after the 100% stage finished');
+    }
+    if (
+      evidenceStartedAt !== undefined &&
+      evidenceFinishedAt !== undefined &&
+      (rollbackStartedAt < evidenceStartedAt || rollbackFinishedAt > evidenceFinishedAt)
+    ) {
+      missing.push('rollout.rollback timestamps within the evidence interval');
+    }
+  }
+  if (
+    !Number.isInteger(rollback.readyReplicaCount) ||
+    rollback.readyReplicaCount < CANARY_POLICY.minReadyReplicaCount
+  ) {
+    missing.push(`rollout.rollback.readyReplicaCount >= ${CANARY_POLICY.minReadyReplicaCount} (repository policy)`);
+  }
+  if (!Number.isInteger(rollback.httpSamples) || rollback.httpSamples < CANARY_POLICY.minHttpSamplesPerStage) {
+    missing.push(`rollout.rollback.httpSamples >= ${CANARY_POLICY.minHttpSamplesPerStage} (repository policy)`);
+  }
+  if (
+    !Number.isInteger(rollback.websocketSamples) ||
+    rollback.websocketSamples < CANARY_POLICY.minWebsocketSamplesPerStage
+  ) {
+    missing.push(
+      `rollout.rollback.websocketSamples >= ${CANARY_POLICY.minWebsocketSamplesPerStage} (repository policy)`,
+    );
+  }
+  validateCanaryStageArtifacts(evidence, rollback, 'rollout.rollback', missing, verifiedArtifacts, {
+    phase: 'rollback',
+    sequence: CANARY_POLICY.requiredStages + 1,
+    stableWeightPercent: 100,
+    candidateWeightPercent: 0,
+    httpSamples: rollback.httpSamples,
+    websocketSamples: rollback.websocketSamples,
+    readyReplicaCount: rollback.readyReplicaCount,
+    rollbackSeconds: metrics.rollbackSeconds,
+    gatewayConfigSha256: rollback.gatewayConfigSha256,
+    stableReleaseSet,
+    candidateReleaseSet,
+  });
+  if (
+    SHA256_PATTERN.test(rollback.gatewayConfigSha256 ?? '') &&
+    gatewayConfigHashes.has(rollback.gatewayConfigSha256.toLowerCase())
+  ) {
+    missing.push('rollout.rollback.gatewayConfigSha256 different from every candidate traffic stage');
   }
 }
 
@@ -632,7 +1111,10 @@ function inspectStagingEvidence(descriptor, stagingEvidenceDir, options) {
   }
   validateProvenance(evidence, options, missing);
   validateMeasurements(evidence, descriptor, missing);
-  validateArtifacts(evidence, stagingEvidenceDir, missing);
+  const verifiedArtifacts = validateArtifacts(evidence, stagingEvidenceDir, missing);
+  if (descriptor.evidenceType === 'canary-rollback') {
+    validateCanaryEvidence(evidence, missing, verifiedArtifacts);
+  }
   if (missing.length > 0) {
     const problems = [...new Set(missing)];
     return {
@@ -657,6 +1139,7 @@ function inspectStagingEvidence(descriptor, stagingEvidenceDir, options) {
     thresholds: evidence.thresholds,
     results: evidence.results,
     provenance: evidence.provenance,
+    ...(evidence.rollout === undefined ? {} : { rollout: evidence.rollout }),
   };
 }
 

@@ -101,7 +101,7 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/health || exit 1']
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/ready || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -247,11 +247,13 @@ services:
       - OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=staging}
       - PG_POOL_MAX=${PG_POOL_MAX:-20}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - API_HTTP_DRAIN_TIMEOUT_MS=${API_HTTP_DRAIN_TIMEOUT_MS:-10000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     depends_on:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/health || exit 1']
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/ready || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -267,6 +269,7 @@ services:
       - postgres_ca
     environment:
       - PLATFORM_PORT=3002
+      - PLATFORM_PUBLIC_ADDRESS=${PLATFORM_PUBLIC_ADDRESS:?Set the absolute wss:// address advertised by this platform instance}
       - NODE_ENV=production
       - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
       - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
@@ -324,7 +327,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3002/health || exit 1']
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3002/ready || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
