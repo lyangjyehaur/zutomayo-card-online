@@ -59,6 +59,8 @@ describe('operational shell scripts', () => {
     const smoke = readFileSync(resolve('scripts/postgres-role-smoke.sh'), 'utf8');
     const compose = readFileSync(resolve('docker-compose.yml'), 'utf8');
     expect(smoke).toContain('PG_BOOTSTRAP_USER');
+    expect(smoke).toContain('PG_PASSWORD="${PG_PASSWORD:-$PG_APP_PASSWORD}"');
+    expect(smoke).toContain('export PG_DATABASE PG_APP_USER PG_APP_PASSWORD PG_PASSWORD');
     expect(smoke).toContain('migration owner is still a superuser');
     expect(compose).toContain('POSTGRES_USER: ${PG_BOOTSTRAP_USER:-${PG_MIGRATION_USER:-zutomayo}}');
     expect(smoke).toContain("grep -qx '1'");
