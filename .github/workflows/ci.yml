@@ -166,6 +166,12 @@ jobs:
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
+      EXPECTED_SCHEMA_MIGRATION: 000026_account_export_jobs
+      EXPECTED_SCHEMA_CHECKSUM: 784bb5983d6b97e9419d2b5ecd76dc9f9916311224d1dec660906fa86b5de814
+      PG_MIGRATION_USER: zutomayo_migrator
+      PG_MIGRATION_PASSWORD: e2e-test-migration-password
+      PG_APP_USER: zutomayo_app
+      PG_APP_PASSWORD: e2e-test-app-password
 
     steps:
       - name: Checkout code
@@ -173,10 +179,8 @@ jobs:
 
       - name: Build and run E2E service stack
         run: |
-          export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
-          export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
-          export PG_MIGRATION_USER=zutomayo_migrator PG_MIGRATION_PASSWORD=e2e-test-migration-password
-          export PG_APP_USER=zutomayo_app PG_APP_PASSWORD=e2e-test-app-password
+          test "$EXPECTED_SCHEMA_MIGRATION" = "$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
+          test "$EXPECTED_SCHEMA_CHECKSUM" = "$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
           compose=(docker compose -f docker-compose.yml -f docker-compose.e2e.yml)
           "${compose[@]}" build
           "${compose[@]}" run --rm e2e

@@ -8,6 +8,7 @@ import {
   secretByteLength,
   shouldUpgradeInsecureRequests,
   validateProductionRuntimeSecurity,
+  websocketConnectSources,
 } from '../runtimeSecurityConfig';
 
 describe('runtime security connection contracts', () => {
@@ -15,6 +16,11 @@ describe('runtime security connection contracts', () => {
     expect(shouldUpgradeInsecureRequests({ NODE_ENV: 'production' })).toBe(true);
     expect(shouldUpgradeInsecureRequests({ NODE_ENV: 'test' })).toBe(false);
     expect(shouldUpgradeInsecureRequests({ NODE_ENV: 'development' })).toBe(false);
+  });
+
+  it('allows plaintext browser transports only outside production', () => {
+    expect(websocketConnectSources({ NODE_ENV: 'test' })).toEqual(['ws:', 'wss:', 'http:', 'https:']);
+    expect(websocketConnectSources({ NODE_ENV: 'production' })).toEqual(['wss:', 'https:']);
   });
 
   it('measures secret entropy by UTF-8 bytes and rejects short values', () => {

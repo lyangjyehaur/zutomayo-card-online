@@ -37,6 +37,7 @@ import {
   resolveRedisConnectionConfig,
   shouldUpgradeInsecureRequests,
   validateProductionRuntimeSecurity,
+  websocketConnectSources,
 } from './runtimeSecurityConfig';
 import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
@@ -247,7 +248,11 @@ type SocketOpts = NonNullable<ConstructorParameters<typeof SocketIO>[0]>;
 const transport = new SocketIO({
   socketAdapter: socketIoAdapter,
   pubSub: redisPubSub,
-} as SocketOpts);
+  socketOpts: {
+    transports: ['websocket'],
+    allowUpgrades: false,
+  },
+} as unknown as SocketOpts);
 
 const db = new PostgresAdapter();
 const RANKED_MATCHES_ENABLED = process.env.RANKED_MATCHES_ENABLED === 'true';
@@ -381,7 +386,7 @@ server.app.use(
           'data:',
           'blob:',
         ],
-        connectSrc: ["'self'", 'wss:', 'https:'],
+        connectSrc: ["'self'", ...websocketConnectSources(process.env)],
         fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
         frameAncestors: ["'none'"],
         upgradeInsecureRequests: shouldUpgradeInsecureRequests(process.env) ? [] : null,

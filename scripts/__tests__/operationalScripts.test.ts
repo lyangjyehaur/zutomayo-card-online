@@ -99,6 +99,10 @@ describe('operational shell scripts', () => {
     expect(workflow).toContain('"${compose[@]}" build');
     expect(workflow).toContain('"${compose[@]}" run --rm e2e');
     expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
+    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000026_account_export_jobs');
+    expect(workflow).toContain(
+      'EXPECTED_SCHEMA_CHECKSUM: 784bb5983d6b97e9419d2b5ecd76dc9f9916311224d1dec660906fa86b5de814',
+    );
     expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
     expect(workflow).not.toContain('--abort-on-container-exit');
     expect(workflow).not.toContain('--exit-code-from e2e');

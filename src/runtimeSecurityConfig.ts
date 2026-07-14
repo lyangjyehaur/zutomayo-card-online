@@ -45,6 +45,10 @@ export function shouldUpgradeInsecureRequests(env: RuntimeEnvironment = process.
   return isProduction(env);
 }
 
+export function websocketConnectSources(env: RuntimeEnvironment = process.env): string[] {
+  return isProduction(env) ? ['wss:', 'https:'] : ['ws:', 'wss:', 'http:', 'https:'];
+}
+
 function isLocalRedisHost(hostname: string): boolean {
   const rawHost = String(hostname || '')
     .replace(/^\[|\]$/g, '')
