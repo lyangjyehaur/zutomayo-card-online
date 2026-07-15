@@ -138,9 +138,17 @@ bootstrap_password='role-smoke-bootstrap-password'
   --env PGHOST=127.0.0.1 \
   --env PGPASSWORD="$bootstrap_password" \
   postgres /docker-entrypoint-initdb.d/10-roles.sh >/dev/null
-"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_MIGRATION_PASSWORD" postgres \
-  psql --host 127.0.0.1 --username "$PG_MIGRATION_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
-  --command "DROP ROLE $bootstrap_user" >/dev/null
+migration_is_superuser="$(
+  "${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_MIGRATION_PASSWORD" postgres \
+    psql --host 127.0.0.1 --username "$PG_MIGRATION_USER" --dbname "$PG_DATABASE" \
+    --tuples-only --no-align --command "SELECT rolsuper FROM pg_roles WHERE rolname = '$PG_MIGRATION_USER'"
+)"
+if [[ "$migration_is_superuser" != 'f' ]]; then
+  echo 'ERROR: bootstrap did not demote the migration role' >&2
+  exit 1
+fi
+# The bootstrap role remains only inside this disposable cluster. A deliberately
+# demoted migration role cannot and should not be able to drop a superuser.
 
 "${compose[@]}" run --build --rm --no-deps migrate
 

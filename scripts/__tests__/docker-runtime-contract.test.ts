@@ -10,7 +10,8 @@ describe('production Node image supply chain', () => {
     for (const relativePath of ['Dockerfile', 'Dockerfile.migrate', 'Dockerfile.retention', 'api/Dockerfile']) {
       const dockerfile = readFileSync(resolve(root, relativePath), 'utf8');
       expect(dockerfile).toContain(`FROM ${nodeImage}`);
-      expect(dockerfile).toContain('npm install --global npm@12.0.1');
+      expect(dockerfile).toContain('npm install --global --prefix /opt/npm npm@12.0.1');
+      expect(dockerfile).toContain('rm -rf /usr/local/lib/node_modules/npm');
     }
   });
 });
