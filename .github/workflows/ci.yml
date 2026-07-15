@@ -158,6 +158,10 @@ jobs:
           fi
           service_status="$("${compose[@]}" ps --all --format '{{.Service}}={{.State}}/{{.ExitCode}}' | tr '\n' ' ')"
           echo "::error title=E2E service status::$service_status"
+          for service in game api platform e2e; do
+            service_log="$("${compose[@]}" logs --no-color --tail 40 "$service" | tr '\n' ' ' | sed 's/%/%25/g')"
+            echo "::error title=E2E $service log::$service_log"
+          done
           "${compose[@]}" logs --no-color --tail 80 migrate seed game api platform e2e \
             2>&1 | tee -a "$log_file" || true
           details="$(tail -n 60 "$log_file" | tr '\n' ' ' | sed 's/%/%25/g')"
