@@ -2,7 +2,6 @@
 
 // ===== 反饋功能服務（參考 Fider）=====
 
- 
 const { writeAuditLog } = require('./adminService.cjs');
 // 支援匿名（anonymousId，前端 localStorage 產生）與登入用戶（JWT userId）雙軌。
 // 投票/留言/發文皆以「用戶或匿名擇一」作為身份識別，避免重複投票。

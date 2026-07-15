@@ -1,4 +1,3 @@
- 
 /* global module, require */
 
 const crypto = require('crypto');

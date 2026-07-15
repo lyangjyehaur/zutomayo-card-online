@@ -1,5 +1,5 @@
 /* global module, require, process, URL */
- 
+
 const pino = require('pino');
 const promClient = require('prom-client');
 const crypto = require('crypto');
