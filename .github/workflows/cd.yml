@@ -380,6 +380,7 @@ jobs:
         with:
           name: release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
+          include-hidden-files: true
           retention-days: 30
 
   # ─────────────────────────────────────────────────────────────
@@ -439,6 +440,7 @@ jobs:
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
+          include-hidden-files: true
           retention-days: 30
 
   release-gate:
