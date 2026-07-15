@@ -15,6 +15,7 @@ test.describe('牌組編輯器頁面', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+      localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
   });
 
@@ -51,7 +52,7 @@ test.describe('牌組編輯器頁面', () => {
     await expect(page.getByRole('button', { name: '新牌組' })).toBeVisible({ timeout: 30_000 });
 
     // 彈數篩選與屬性篩選的 legend 文字
-    await expect(page.getByText('彈數')).toBeVisible();
+    await expect(page.getByText('彈數', { exact: true })).toBeVisible();
   });
 
   test('導入與導出按鈕存在', async ({ page }) => {
@@ -67,6 +68,7 @@ test.describe('牌組編輯 — 卡牌操作 @requires-backend', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+      localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
   });
 

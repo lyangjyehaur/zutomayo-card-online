@@ -120,8 +120,7 @@ async function completeSetupAndSurrender(loser: Page, winner: Page): Promise<voi
   ]);
 }
 
-async function closeGuestContext(context: BrowserContext, failed: boolean, testInfo: TestInfo): Promise<void> {
-  await context.tracing.stop(failed ? { path: testInfo.outputPath('guest-trace.zip') } : undefined);
+async function closeGuestContext(context: BrowserContext, failed: boolean): Promise<void> {
   const pages = context.pages();
   const videos = pages.map((page) => page.video()).filter((video) => video !== null);
   await context.close();
@@ -140,7 +139,6 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       baseURL,
       recordVideo: { dir: testInfo.outputPath('guest-video') },
     });
-    await guestContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
     let failed = false;
     try {
       const [hostAccount, guestAccount] = await Promise.all([
@@ -207,7 +205,7 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       throw error;
     } finally {
       await context.setOffline(false).catch(() => undefined);
-      await closeGuestContext(guestContext, failed, testInfo);
+      await closeGuestContext(guestContext, failed);
     }
   });
 
@@ -220,7 +218,6 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       baseURL,
       recordVideo: { dir: testInfo.outputPath('guest-video') },
     });
-    await guestContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
     let failed = false;
     try {
       const [inviter, recipient] = await Promise.all([
@@ -251,7 +248,7 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       failed = true;
       throw error;
     } finally {
-      await closeGuestContext(guestContext, failed, testInfo);
+      await closeGuestContext(guestContext, failed);
     }
   });
 });

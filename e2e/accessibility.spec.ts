@@ -44,6 +44,10 @@ test.describe('核心頁面無障礙 @a11y', () => {
 
 test.describe('登入 dialog 無障礙 @a11y', () => {
   test('登入 dialog 通過 axe 並維持焦點循環與背景 inert', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+      localStorage.setItem('zutomayo_locale', 'zh-TW');
+    });
     // 讓純前端 E2E 不依賴 OAuth provider 的環境設定，仍保留 local auth 表單。
     await page.route('**/api/oauth/providers', async (route) => {
       await route.fulfill({
@@ -53,7 +57,7 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
       });
     });
     await page.goto('/');
-    await expect(page.getByText('Channels')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
 
     const trigger = page.getByRole('button', { name: /^登入$/ }).first();
     await trigger.focus();

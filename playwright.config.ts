@@ -55,6 +55,7 @@ export default defineConfig({
   outputDir: 'test-results',
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
+    locale: 'zh-TW',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
