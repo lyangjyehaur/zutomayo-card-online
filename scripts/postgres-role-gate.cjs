@@ -12,6 +12,8 @@ const APPLICATION_TABLES = Object.freeze([
   'matches',
   'cards',
   'card_effects_i18n',
+  'card_texts_i18n',
+  'card_official_errata',
   'game_config',
   'preset_decks',
   'admin_audit_log',
@@ -73,7 +75,14 @@ const USER_COLUMNS = Object.freeze([
   'deleted_at',
 ]);
 
-const GAME_READ_TABLES = Object.freeze(['cards', 'card_effects_i18n', 'seasons', ...PROTECTED_SCHEMA_TABLES]);
+const GAME_READ_TABLES = Object.freeze([
+  'cards',
+  'card_effects_i18n',
+  'card_texts_i18n',
+  'card_official_errata',
+  'seasons',
+  ...PROTECTED_SCHEMA_TABLES,
+]);
 const GAME_TABLE_PRIVILEGES = Object.freeze({
   deck_reservations: ['SELECT', 'UPDATE'],
   matches: ['SELECT', 'INSERT'],

@@ -80,6 +80,15 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_COLUMNS.account_deletion_requests).not.toContain('poison_count');
   });
 
+  it('requires official and localized card text schema', () => {
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata');
+    expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
+    expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('has_official_errata');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_texts_i18n).toContain('review_status');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('corrected_english_source');
+  });
+
   it('requires the release migration and every runtime table', async () => {
     const query = vi
       .fn()

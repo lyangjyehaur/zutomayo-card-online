@@ -238,7 +238,7 @@ jobs:
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
       - name: Scan source dependencies and secrets
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           scan-type: fs
           scan-ref: .
@@ -286,7 +286,7 @@ jobs:
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Scan pushed image
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ needs.preflight.outputs.release_sha }}
           scan-type: image
