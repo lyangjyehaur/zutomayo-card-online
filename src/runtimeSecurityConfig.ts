@@ -41,6 +41,14 @@ function isProduction(env: RuntimeEnvironment): boolean {
   return env.NODE_ENV === 'production';
 }
 
+export function shouldUpgradeInsecureRequests(env: RuntimeEnvironment = process.env): boolean {
+  return isProduction(env);
+}
+
+export function websocketConnectSources(env: RuntimeEnvironment = process.env): string[] {
+  return isProduction(env) ? ['wss:', 'https:'] : ['ws:', 'wss:', 'http:', 'https:'];
+}
+
 function isLocalRedisHost(hostname: string): boolean {
   const rawHost = String(hostname || '')
     .replace(/^\[|\]$/g, '')
