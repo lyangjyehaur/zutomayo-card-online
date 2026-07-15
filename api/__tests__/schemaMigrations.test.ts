@@ -68,6 +68,7 @@ describe('schema migrations', () => {
       'corrected_japanese_text',
       'corrected_english_text',
       'corrected_english_status',
+      'corrected_english_source',
       'idx_cards_has_official_errata',
     ];
 
@@ -85,10 +86,12 @@ describe('schema migrations', () => {
         fields: Array<'name' | 'effect'>;
         correctedJapaneseText: string;
         correctedEnglishText: string;
+        correctedEnglishStatus: string;
+        correctedEnglishSource: string;
       }>;
     };
     const extraction = JSON.parse(readRepoFile('data/card-english-extraction.json')) as {
-      cards: Array<{ id: string; japaneseName: string; japaneseEffect: string }>;
+      cards: Array<{ id: string; japaneseName: string; japaneseEffect: string; enEffectOfficial: string }>;
     };
     const cardsById = new Map(extraction.cards.map((card) => [card.id, card]));
 
@@ -107,5 +110,25 @@ describe('schema migrations', () => {
     expect(errata.errata.find((entry) => entry.cardId === '4th_76')?.correctedEnglishText).toBe(
       'GUREKUMA-KUN (Pain Give Form)',
     );
+    expect(errata.errata.find((entry) => entry.cardId === '4th_61')).toMatchObject({
+      correctedEnglishText:
+        'Place any number of cards from your hand at the bottom of the deck. If you do, draw the same number of cards from the deck.',
+      correctedEnglishStatus: 'verified',
+      correctedEnglishSource: 'official_card_print_unaffected',
+    });
+    expect(errata.errata.find((entry) => entry.cardId === '4th_61')?.correctedEnglishText).toBe(
+      cardsById.get('4th_61')?.enEffectOfficial,
+    );
+    for (const cardId of ['3rd_8', '3rd_22']) {
+      const correctedEnglish = errata.errata.find((entry) => entry.cardId === cardId)?.correctedEnglishText;
+      expect(correctedEnglish).toContain('cards of the four attributes');
+      expect(correctedEnglish).not.toContain('all four attributes');
+    }
+    const effectErrata = errata.errata.filter((entry) => entry.fields.includes('effect'));
+    expect(effectErrata).toHaveLength(10);
+    expect(effectErrata.every((entry) => entry.correctedEnglishStatus === 'verified')).toBe(true);
+    for (const entry of effectErrata) {
+      expect(entry.correctedEnglishText).not.toMatch(/\b(?:1|a) card\b/i);
+    }
   });
 });

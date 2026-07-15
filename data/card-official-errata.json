@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "sourceUrl": "https://zutomayocard.net/errata/",
   "errata": [
     {
@@ -9,8 +9,9 @@
       "fields": ["effect"],
       "incorrectText": "アビスのカードの中から自由に１枚選び、このターンで使う",
       "correctedJapaneseText": "アビスにあるエンチャントカードの中から自由に１枚選び、このカードの効果として使う",
-      "correctedEnglishText": "Choose 1 Enchant card from the Abyss and use it as this card's effect.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishText": "Choose one Enchant card from the Abyss and use it as this card's effect.",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_japanese_errata_translation",
       "sourceUrl": "https://zutomayocard.net/errata/001/"
     },
     {
@@ -20,8 +21,9 @@
       "fields": ["effect"],
       "incorrectText": "手札１枚とアビスの一番上のカード１枚を入れ替える",
       "correctedJapaneseText": "手札１枚とアビスの好きなカード１枚を入れ替える",
-      "correctedEnglishText": "Swap 1 card in your hand with any 1 card in the Abyss.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishText": "Swap one card in hand with any one card in the Abyss.",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_japanese_errata_translation",
       "sourceUrl": "https://zutomayocard.net/errata/002/"
     },
     {
@@ -32,7 +34,8 @@
       "incorrectText": "同時に出す自分のキャラクターカードのパワーコストが-２の状態で出せる",
       "correctedJapaneseText": "このターン、同時にセットした自分のキャラクターカードのパワーコストを★２減らす",
       "correctedEnglishText": "This turn, reduce the Power Cost of your Character card set at the same time by ★2.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_japanese_errata_translation",
       "sourceUrl": "https://zutomayocard.net/errata/003/"
     },
     {
@@ -42,8 +45,9 @@
       "fields": ["effect"],
       "incorrectText": "自分のキャラクターカードの属性が電気なら、相手のパワーチャージャーから合計SEND TO POWER★２までのカードを選び、相手のデッキの底に置く",
       "correctedJapaneseText": "自分のキャラクターカードの属性が電気なら、相手のパワーチャージャーからSEND TO POWER★★のカードを１枚選び、相手のデッキの底に置く",
-      "correctedEnglishText": "If your Character card is electric, choose 1 card with SEND TO POWER ★★ from your opponent's Power Charger and place it at the bottom of your opponent's deck.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishText": "If your character card's attribute is electric, choose one SEND TO POWER ★★ card from your opponent's Power charger and place it at the bottom of your opponent's deck.",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_card_print_corrected",
       "sourceUrl": "https://zutomayocard.net/errata/004/"
     },
     {
@@ -53,8 +57,9 @@
       "fields": ["effect"],
       "incorrectText": "相手のアビスのカードを1枚選んでデッキに戻させる",
       "correctedJapaneseText": "相手のアビスのカードを1枚選んでデッキの底に戻させる",
-      "correctedEnglishText": "Choose 1 card from your opponent's Abyss and have them return it to the bottom of their deck.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishText": "Select one of your opponent's Abyss cards and have it returned to the bottom of the deck.",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_card_print_corrected",
       "sourceUrl": "https://zutomayocard.net/errata/005/"
     },
     {
@@ -66,6 +71,7 @@
       "correctedJapaneseText": "劇・うにぐり（ハゼ馳せる果てるまで）",
       "correctedEnglishText": "GEKI-UNIGURI-KUN (Haze Haseru Haterumade)",
       "correctedEnglishStatus": "official",
+      "correctedEnglishSource": "official_errata_notice",
       "sourceUrl": "https://zutomayocard.net/errata/006/"
     },
     {
@@ -75,8 +81,9 @@
       "fields": ["effect"],
       "incorrectText": "アビスに４属性すべてのカードがあるなら攻撃力+100",
       "correctedJapaneseText": "アビスに闇・炎・電気・風の４属性のカードがあるなら攻撃力+100",
-      "correctedEnglishText": "Attack +100 if the Abyss contains cards of all four attributes: darkness, flame, electric, and wind.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishText": "Attack +100 if there are cards of the four attributes (darkness, flame, electric, and wind) in the Abyss.",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_card_print_corrected",
       "sourceUrl": "https://zutomayocard.net/errata/007/"
     },
     {
@@ -86,8 +93,9 @@
       "fields": ["effect"],
       "incorrectText": "アビスに４属性すべてのカードがあるなら攻撃力+40",
       "correctedJapaneseText": "アビスに闇・炎・電気・風の４属性のカードがあるなら攻撃力+40",
-      "correctedEnglishText": "Attack +40 if the Abyss contains cards of all four attributes: darkness, flame, electric, and wind.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishText": "Attack +40 if there are cards of the four attributes (darkness, flame, electric, and wind) in the Abyss.",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_card_print_corrected",
       "sourceUrl": "https://zutomayocard.net/errata/008/"
     },
     {
@@ -97,8 +105,9 @@
       "fields": ["effect"],
       "incorrectText": "with or without Power",
       "correctedJapaneseText": "手札からパワーの有無に関わらずカード１枚を選び、アビスに置く。\nデッキからカードを１枚引く",
-      "correctedEnglishText": "Choose a card from your hand, regardless of its Power, and place it in the Abyss. Draw a card from the deck.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishText": "Choose one card from your hand, regardless of its Power, and place it in the Abyss. Draw one card from the deck.",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_card_print_corrected",
       "sourceUrl": "https://zutomayocard.net/errata/009/"
     },
     {
@@ -108,8 +117,9 @@
       "fields": ["effect"],
       "incorrectText": "手札をからカードを好きな枚数選び、デッキの底に置く。そうしたなら、同じ数だけデッキからカードを引く",
       "correctedJapaneseText": "手札からカードを好きな枚数選び、デッキの底に置く。そうしたなら、同じ数だけデッキからカードを引く",
-      "correctedEnglishText": "Choose any number of cards from your hand and place them at the bottom of your deck. If you do, draw the same number of cards from your deck.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishText": "Place any number of cards from your hand at the bottom of the deck. If you do, draw the same number of cards from the deck.",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_card_print_unaffected",
       "sourceUrl": "https://zutomayocard.net/errata/010/"
     },
     {
@@ -121,6 +131,7 @@
       "correctedJapaneseText": "グレくまくん (形)",
       "correctedEnglishText": "GUREKUMA-KUN (Pain Give Form)",
       "correctedEnglishStatus": "official",
+      "correctedEnglishSource": "official_errata_notice",
       "sourceUrl": "https://zutomayocard.net/errata/011/"
     },
     {
@@ -130,8 +141,9 @@
       "fields": ["effect"],
       "incorrectText": "アビスのカードを１枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。相手のデッキの上から３枚を見て、好きな順番に入れ替えて戻す",
       "correctedJapaneseText": "アビスのカードを１枚選び、デッキの底に置く。そうしない場合、ゲームに敗北する。相手のデッキの上から３枚を見て、好きな順番に入れ替えて戻す",
-      "correctedEnglishText": "Choose 1 card from the Abyss and place it at the bottom of your deck. Otherwise, you lose the game. Look at the top 3 cards of your opponent's deck, rearrange them in any order, and return them to the deck.",
-      "correctedEnglishStatus": "pending_review",
+      "correctedEnglishText": "Select one card from the Abyss and place it at the bottom of your deck. Otherwise, you lose the game. Look at the top three cards of your opponent's deck, rearrange them in any order you like, and return them to the deck.",
+      "correctedEnglishStatus": "verified",
+      "correctedEnglishSource": "official_card_print_corrected",
       "sourceUrl": "https://zutomayocard.net/errata/012/"
     }
   ]

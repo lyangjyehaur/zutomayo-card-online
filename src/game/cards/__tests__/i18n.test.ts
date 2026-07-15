@@ -131,4 +131,22 @@ describe('localized card text policy', () => {
     expect(getLocalizedCardEffect(errataCard, 'ko')).toBe('수정된 효과');
     expect(getLocalizedCardName(errataCard, 'zh-CN')).toBe('CORRECTED ENGLISH NAME');
   });
+
+  it('allows reviewed card-print English when the errata did not affect it', () => {
+    const errataCard = { ...card, officialErrataAffectsEffect: true };
+    initCardTextsI18n({
+      test_1: {
+        en: {
+          name: 'OFFICIAL ENGLISH NAME',
+          effect: 'UNCHANGED PRINTED ENGLISH EFFECT',
+          nameSource: 'official_card_print',
+          effectSource: 'official_card_print_unaffected',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+      },
+    });
+
+    expect(getLocalizedCardEffect(errataCard, 'en')).toBe('UNCHANGED PRINTED ENGLISH EFFECT');
+  });
 });

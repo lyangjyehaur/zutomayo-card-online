@@ -71,7 +71,12 @@ function reviewedTranslation(cardId: string, locale: string): CardTextI18nEntry 
 }
 
 function isCorrectedErrataSource(source: string): boolean {
-  return source === 'official_errata_notice' || source === 'official_japanese_errata_translation';
+  return (
+    source === 'official_errata_notice' ||
+    source === 'official_card_print_unaffected' ||
+    source === 'official_card_print_corrected' ||
+    source === 'official_japanese_errata_translation'
+  );
 }
 
 function correctedTranslation(cardId: string, locale: string, field: 'name' | 'effect'): CardTextI18nEntry | null {

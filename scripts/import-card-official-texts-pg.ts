@@ -23,6 +23,11 @@ type OfficialErrata = {
   correctedJapaneseText: string;
   correctedEnglishText: string;
   correctedEnglishStatus: 'official' | 'verified' | 'pending_review';
+  correctedEnglishSource:
+    | 'official_errata_notice'
+    | 'official_card_print_unaffected'
+    | 'official_card_print_corrected'
+    | 'official_japanese_errata_translation';
   sourceUrl: string;
 };
 
@@ -85,6 +90,12 @@ async function main(): Promise<void> {
       if (correctedJapanese !== entry.correctedJapaneseText) {
         mismatches.push(`${entry.cardId}: corrected Japanese does not match official card data`);
       }
+      if (entry.correctedEnglishSource === 'official_card_print_unaffected') {
+        const printedEnglish = entry.fields.includes('name') ? card.enNameOfficial : card.enEffectOfficial;
+        if (entry.correctedEnglishText !== printedEnglish) {
+          mismatches.push(`${entry.cardId}: unaffected English does not exactly match reviewed card print`);
+        }
+      }
     }
     if (mismatches.length > 0) {
       throw new Error(`Refusing import due to official errata mismatch:\n${mismatches.join('\n')}`);
@@ -132,9 +143,12 @@ async function main(): Promise<void> {
       if (!card) throw new Error(`${entry.cardId}: missing extraction after validation`);
       const affectsName = entry.fields.includes('name');
       const affectsEffect = entry.fields.includes('effect');
-      const correctedSource =
-        entry.correctedEnglishStatus === 'official' ? 'official_errata_notice' : 'official_japanese_errata_translation';
-
+      const correctedEnglish =
+        entry.correctedEnglishSource === 'official_card_print_unaffected'
+          ? affectsName
+            ? card.enNameOfficial
+            : card.enEffectOfficial
+          : entry.correctedEnglishText;
       await client.query(
         `UPDATE cards
          SET has_official_errata = TRUE,
@@ -150,9 +164,9 @@ async function main(): Promise<void> {
         `INSERT INTO card_official_errata (
            errata_id, card_id, published_at, affects_name, affects_effect,
            incorrect_text, corrected_japanese_text, corrected_english_text,
-           corrected_english_status, source_url
+           corrected_english_status, corrected_english_source, source_url
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           entry.errataId,
           entry.cardId,
@@ -161,8 +175,9 @@ async function main(): Promise<void> {
           affectsEffect,
           entry.incorrectText,
           entry.correctedJapaneseText,
-          entry.correctedEnglishText,
+          correctedEnglish,
           entry.correctedEnglishStatus,
+          entry.correctedEnglishSource,
           entry.sourceUrl,
         ],
       );
@@ -189,10 +204,10 @@ async function main(): Promise<void> {
           affectsName ? 'official_errata_notice' : 'official_card_print',
           affectsEffect ? 'official_errata_notice' : 'official_card_print',
           `Official errata ${entry.errataId}: ${entry.sourceUrl}`,
-          affectsName ? entry.correctedEnglishText : card.enNameOfficial,
-          affectsEffect ? entry.correctedEnglishText : card.enEffectOfficial,
-          affectsName ? correctedSource : 'official_card_print',
-          affectsEffect ? correctedSource : 'official_card_print',
+          affectsName ? correctedEnglish : card.enNameOfficial,
+          affectsEffect ? correctedEnglish : card.enEffectOfficial,
+          affectsName ? entry.correctedEnglishSource : 'official_card_print',
+          affectsEffect ? entry.correctedEnglishSource : 'official_card_print',
           entry.correctedEnglishStatus,
         ],
       );

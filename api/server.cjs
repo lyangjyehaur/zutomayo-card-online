@@ -412,10 +412,14 @@ async function initSchema() {
       corrected_english_text TEXT NOT NULL DEFAULT '',
       corrected_english_status TEXT NOT NULL DEFAULT 'pending_review'
         CHECK (corrected_english_status IN ('official', 'verified', 'pending_review')),
+      corrected_english_source TEXT NOT NULL,
       source_url TEXT NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CHECK (affects_name OR affects_effect)
     )`,
+    `ALTER TABLE card_official_errata
+      ADD COLUMN IF NOT EXISTS corrected_english_source TEXT NOT NULL
+      DEFAULT 'official_japanese_errata_translation'`,
 
     `CREATE TABLE IF NOT EXISTS card_effects_i18n (
       card_id TEXT NOT NULL,
