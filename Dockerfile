@@ -71,6 +71,7 @@ COPY --from=builder /app/api/relationshipEvents.cjs ./api/relationshipEvents.cjs
 COPY --from=builder /app/api/accountMutationLock.cjs ./api/accountMutationLock.cjs
 COPY --from=builder /app/api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs
 COPY --from=builder /app/api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
+COPY --from=builder /app/api/seasonResultService.cjs ./api/seasonResultService.cjs
 ENV PORT=3000
 ENV PLATFORM_PORT=3002
 ENV APP_VERSION=$APP_VERSION

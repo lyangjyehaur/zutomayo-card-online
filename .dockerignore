@@ -9,6 +9,7 @@ api/*
 !api/accountMutationLock.cjs
 !api/relationshipOutbox.cjs
 !api/runtimeSecurityConfig.cjs
+!api/seasonResultService.cjs
 dist
 dist-server
 coverage
