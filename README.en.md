@@ -180,6 +180,7 @@ Primary pages include `/online`, `/ai`, `/tutorial`, `/deck-builder`, `/history`
 
 - [Full architecture](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
+- [Card-text i18n maintenance guide (Traditional Chinese)](docs/card-text-i18n.md)
 - [Deployment guide](docs/DEPLOYMENT.md)
 - [Multiplayer platform architecture](docs/MULTIPLAYER_PLATFORM_ARCHITECTURE.md)
 - [Multiplayer alignment audit](docs/MULTIPLAYER_PLATFORM_ALIGNMENT_AUDIT.md)

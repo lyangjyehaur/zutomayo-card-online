@@ -180,6 +180,7 @@ docs/                 架構、API、部署、多人平台與 UI/UX 文檔
 
 - [完整架構](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
+- [卡牌文本 i18n 維護指南](docs/card-text-i18n.md)
 - [部署指南](docs/DEPLOYMENT.md)
 - [多人平台架構](docs/MULTIPLAYER_PLATFORM_ARCHITECTURE.md)
 - [多人平台對齊審計](docs/MULTIPLAYER_PLATFORM_ALIGNMENT_AUDIT.md)
