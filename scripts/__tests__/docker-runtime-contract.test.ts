@@ -15,6 +15,25 @@ describe('production Node image supply chain', () => {
       expect(dockerfile).toContain('rm -rf /usr/local/lib/node_modules/npm');
     }
   });
+
+  it('declares every API tracing module as a production dependency', () => {
+    const manifest = JSON.parse(readFileSync(resolve(root, 'api/package.json'), 'utf8')) as {
+      dependencies: Record<string, string>;
+    };
+    const tracing = readFileSync(resolve(root, 'api/tracing.cjs'), 'utf8');
+    for (const moduleName of [
+      '@opentelemetry/sdk-node',
+      '@opentelemetry/exporter-trace-otlp-http',
+      '@opentelemetry/resources',
+      '@opentelemetry/semantic-conventions',
+      '@opentelemetry/instrumentation-http',
+      '@opentelemetry/instrumentation-ioredis',
+      '@opentelemetry/instrumentation-pg',
+    ]) {
+      expect(tracing).toContain(`require('${moduleName}')`);
+      expect(manifest.dependencies).toHaveProperty(moduleName);
+    }
+  });
 });
 
 describe('game runtime image contract', () => {
