@@ -1565,39 +1565,3 @@ export async function adminReloadGameCards(): Promise<void> {
     headers: adminAuthHeaders(),
   });
 }
-
-// ===== Matchmaking =====
-export interface MatchmakingQueueResponse {
-  queueId: string;
-  status: 'queued' | 'matched';
-}
-
-export interface MatchmakingStatusResponse {
-  status: 'queued' | 'matched' | 'timeout';
-  matchId?: string;
-  opponentId?: string;
-  role?: 'host' | 'guest';
-  realMatchId?: string;
-}
-
-export async function matchmakingQueue(deckName?: string, deckIds?: string[]): Promise<MatchmakingQueueResponse> {
-  return request<MatchmakingQueueResponse>('/matchmaking/queue', {
-    method: 'POST',
-    body: JSON.stringify({ deckName, deckIds }),
-  });
-}
-
-export async function matchmakingStatus(): Promise<MatchmakingStatusResponse> {
-  return request<MatchmakingStatusResponse>('/matchmaking/status');
-}
-
-export async function matchmakingLeave(): Promise<void> {
-  await request<{ deleted: boolean }>('/matchmaking/queue', { method: 'DELETE' });
-}
-
-export async function matchmakingReportMatch(realMatchId: string): Promise<void> {
-  await request<{ ok: boolean }>('/matchmaking/match', {
-    method: 'PUT',
-    body: JSON.stringify({ matchId: realMatchId }),
-  });
-}

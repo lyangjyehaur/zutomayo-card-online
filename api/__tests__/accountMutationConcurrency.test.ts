@@ -8,9 +8,16 @@ const { deleteAccount } = require('../accountLifecycleService.cjs') as {
 const { submitMatchResult } = require('../matchSubmission.cjs') as {
   submitMatchResult: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
 };
-const { acquireAccountMutationLocks } = require('../accountMutationLock.cjs') as {
+const { acquireAccountMutationLocks, withAccountMutationTransaction } = require('../accountMutationLock.cjs') as {
   acquireAccountMutationLocks: (client: Record<string, unknown>, userIds: string[]) => Promise<unknown[]>;
+  withAccountMutationTransaction: (
+    pool: Record<string, unknown>,
+    userIds: string[],
+    operation: (client: Record<string, unknown>) => Promise<unknown>,
+  ) => Promise<unknown>;
 };
+
+const ACCOUNT_ROW_LOCK_SQL = 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE';
 
 function deferred() {
   let resolve!: () => void;
@@ -52,10 +59,13 @@ function lockCoordinator() {
 }
 
 describe('account mutation concurrency', () => {
-  it('normalizes reversed participants into one deterministic lock order', async () => {
+  it('normalizes reversed participants and locks only the required account columns in deterministic order', async () => {
     const query = vi.fn(async (sql: string, params?: unknown[]) => {
-      if (sql.startsWith('SELECT * FROM users')) {
-        return { rows: [{ id: params?.[0], deleted_at: null }], rowCount: 1 };
+      if (sql === ACCOUNT_ROW_LOCK_SQL) {
+        return {
+          rows: [{ id: params?.[0], deleted_at: null, elo: 1000, match_count: 0, wins: 0 }],
+          rowCount: 1,
+        };
       }
       return { rows: [], rowCount: 1 };
     });
@@ -65,11 +75,39 @@ describe('account mutation concurrency', () => {
     const advisoryKeys = query.mock.calls
       .filter(([sql]) => String(sql).includes('pg_advisory_xact_lock'))
       .map(([, params]) => params?.[0]);
-    const rowIds = query.mock.calls
-      .filter(([sql]) => String(sql).startsWith('SELECT * FROM users'))
-      .map(([, params]) => params?.[0]);
+    const rowIds = query.mock.calls.filter(([sql]) => sql === ACCOUNT_ROW_LOCK_SQL).map(([, params]) => params?.[0]);
     expect(advisoryKeys).toEqual(['legal-hold:account:u_alice', 'legal-hold:account:u_zed']);
     expect(rowIds).toEqual(['u_alice', 'u_zed']);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('SELECT *'))).toBe(false);
+  });
+
+  it('pins live-account writes to one transaction client and rolls back before release on failure', async () => {
+    const release = vi.fn();
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql === ACCOUNT_ROW_LOCK_SQL) {
+        return { rows: [{ id: params?.[0], deleted_at: null }], rowCount: 1 };
+      }
+      if (sql === 'INSERT TEST') throw new Error('write failed');
+      return { rows: [], rowCount: 1 };
+    });
+    const connect = vi.fn(async () => ({ query, release }));
+    const poolQuery = vi.fn();
+
+    await expect(
+      withAccountMutationTransaction({ query: poolQuery, connect }, ['u_1'], (client) =>
+        (client.query as typeof query)('INSERT TEST'),
+      ),
+    ).rejects.toThrow('write failed');
+
+    expect(query.mock.calls.map(([sql]) => sql)).toEqual([
+      'BEGIN',
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      ACCOUNT_ROW_LOCK_SQL,
+      'INSERT TEST',
+      'ROLLBACK',
+    ]);
+    expect(poolQuery).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it('blocks match writes behind deletion and rechecks deleted_at after the lock is released', async () => {
@@ -92,7 +130,7 @@ describe('account mutation concurrency', () => {
           await coordinator.acquire(clientId, String(params?.[0]));
           return { rows: [], rowCount: 1 };
         }
-        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+        if (sql === ACCOUNT_ROW_LOCK_SQL) {
           if (clientId === 'deletion') {
             deletionLocked.resolve();
             await continueDeletion.promise;

@@ -77,7 +77,16 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
   card_effects_i18n: ['card_id', 'lang', 'effect_text'],
   game_config: ['key', 'value'],
   preset_decks: ['id', 'card_ids'],
-  admin_audit_log: ['id', 'action', 'target_type', 'created_at'],
+  admin_audit_log: [
+    'id',
+    'admin_user_id',
+    'action',
+    'target_type',
+    'target_id',
+    'details',
+    'created_at',
+    'identity_anonymized_at',
+  ],
   feedback_posts: ['id', 'title', 'description', 'status', 'created_at'],
   feedback_votes: ['post_id', 'created_at'],
   feedback_comments: ['id', 'post_id', 'content', 'created_at'],
@@ -113,6 +122,8 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'season_id',
     'source_match_id',
     'canonical_match_id',
+    'winner_user_id',
+    'loser_user_id',
     'completed_at',
     'rules_version',
     'winner_rating_before',
@@ -120,6 +131,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'loser_rating_before',
     'loser_rating_after',
     'applied_at',
+    'identity_anonymized_at',
   ],
   season_rewards: ['season_id', 'user_id', 'reward_tier', 'reward_payload', 'claimed_at'],
   season_reward_entitlements: ['season_id', 'user_id', 'reward_tier', 'reward_payload', 'granted_at'],
@@ -139,6 +151,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'updated_at',
     'provider_deleted_at',
     'completed_at',
+    'identity_anonymized_at',
   ],
   account_export_jobs: [
     'id',
@@ -169,8 +182,18 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'download_count',
     'purged_at',
     'updated_at',
+    'identity_anonymized_at',
   ],
-  account_export_audit: ['id', 'job_id', 'user_id', 'event_type', 'request_id', 'details', 'created_at'],
+  account_export_audit: [
+    'id',
+    'job_id',
+    'user_id',
+    'event_type',
+    'request_id',
+    'details',
+    'created_at',
+    'identity_anonymized_at',
+  ],
   relationship_change_outbox: [
     'event_id',
     'idempotency_key',
@@ -190,9 +213,19 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'created_at',
     'updated_at',
     'delivered_at',
+    'identities_redacted_at',
   ],
-  admin_users: ['id', 'username', 'role', 'disabled_at'],
-  admin_sessions: ['jti', 'admin_user_id', 'role', 'expires_at', 'revoked_at'],
+  admin_users: [
+    'id',
+    'username',
+    'password_hash',
+    'salt',
+    'role',
+    'totp_secret_ciphertext',
+    'updated_at',
+    'disabled_at',
+  ],
+  admin_sessions: ['jti', 'admin_user_id', 'role', 'expires_at', 'created_at', 'revoked_at', 'last_seen_at'],
   bjg_matches: ['match_id', 'state', 'initial_state', 'metadata', 'log', 'updated_at'],
   bjg_match_seats: ['match_id', 'player_id', 'user_id', 'ranked_eligible', 'credential_hash', 'last_resumed_at'],
   bjg_match_result_outbox: [
@@ -208,10 +241,297 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
   ],
 });
 
+// The game process runs under a least-privilege PostgreSQL role. Keep this
+// contract limited to the tables and columns touched by PostgresAdapter and
+// its account/deck mutation dependencies; information_schema intentionally
+// hides API-only columns from that role.
+const REQUIRED_BOARDGAME_RUNTIME_TABLES = Object.freeze([
+  'users',
+  'deck_reservations',
+  'bjg_matches',
+  'bjg_match_seats',
+  'bjg_match_result_outbox',
+]);
+
+const REQUIRED_BOARDGAME_RUNTIME_COLUMNS = Object.freeze({
+  users: ['id', 'deleted_at', 'elo', 'match_count', 'wins'],
+  deck_reservations: [
+    'id',
+    'user_id',
+    'deck_version',
+    'rules_version',
+    'card_ids',
+    'expires_at',
+    'match_id',
+    'player_id',
+    'consumed_at',
+  ],
+  bjg_matches: ['match_id', 'state', 'initial_state', 'metadata', 'log', 'updated_at'],
+  bjg_match_seats: [
+    'match_id',
+    'player_id',
+    'user_id',
+    'ranked_eligible',
+    'credential_hash',
+    'reserved_at',
+    'last_resumed_at',
+  ],
+  bjg_match_result_outbox: [
+    'source_match_id',
+    'player0_user_id',
+    'player1_user_id',
+    'winner_player',
+    'winner_user_id',
+    'loser_user_id',
+    'ranked_eligible',
+    'turns',
+    'duration_seconds',
+    'completed_at',
+    'rules_version',
+    'action_log',
+    'state_id',
+    'status',
+    'attempt_count',
+    'next_attempt_at',
+    'locked_at',
+    'last_error',
+    'delivered_match_id',
+    'created_at',
+    'updated_at',
+    'delivered_at',
+  ],
+});
+
+const REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
+  { tableName: 'users', columnName: 'id', udtName: 'text', nullable: false, defaultToken: null },
+  { tableName: 'users', columnName: 'deleted_at', udtName: 'timestamptz', nullable: true, defaultToken: null },
+  { tableName: 'users', columnName: 'elo', udtName: 'int4', nullable: false, defaultToken: '1000' },
+  { tableName: 'users', columnName: 'match_count', udtName: 'int4', nullable: false, defaultToken: '0' },
+  { tableName: 'users', columnName: 'wins', udtName: 'int4', nullable: false, defaultToken: '0' },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'card_ids',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'expires_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'match_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'player_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'consumed_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'state',
+    udtName: 'jsonb',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'initial_state',
+    udtName: 'jsonb',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'metadata',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'log',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: "'[]'::jsonb",
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'updated_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'bjg_match_seats',
+    columnName: 'ranked_eligible',
+    udtName: 'bool',
+    nullable: false,
+    defaultToken: 'false',
+  },
+  {
+    tableName: 'bjg_match_seats',
+    columnName: 'reserved_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'bjg_match_seats',
+    columnName: 'last_resumed_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'winner_player',
+    udtName: 'int2',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'ranked_eligible',
+    udtName: 'bool',
+    nullable: false,
+    defaultToken: 'false',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'turns',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'duration_seconds',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'completed_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'rules_version',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'legacy'",
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'action_log',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: "'[]'::jsonb",
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'pending'",
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'attempt_count',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'next_attempt_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+]);
+
 // Catalog-level contracts for the fields whose shape is security or data-
 // integrity critical. `udtName` uses PostgreSQL's stable internal names
 // (for example `timestamptz` and `int4`) instead of localized display text.
 const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
+  {
+    tableName: 'admin_audit_log',
+    columnName: 'details',
+    udtName: 'jsonb',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'admin_audit_log',
+    columnName: 'created_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'admin_audit_log',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'admin_users',
+    columnName: 'password_hash',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  { tableName: 'admin_users', columnName: 'salt', udtName: 'text', nullable: false, defaultToken: null },
+  {
+    tableName: 'admin_users',
+    columnName: 'totp_secret_ciphertext',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'admin_users',
+    columnName: 'updated_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'admin_sessions',
+    columnName: 'expires_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'admin_sessions',
+    columnName: 'revoked_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
   {
     tableName: 'cards',
     columnName: 'en_name_official',
@@ -239,6 +559,20 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
   { tableName: 'season_ratings', columnName: 'rating', udtName: 'int4', nullable: false, defaultToken: null },
   { tableName: 'season_ratings', columnName: 'match_count', udtName: 'int4', nullable: false, defaultToken: '0' },
   { tableName: 'season_ratings', columnName: 'wins', udtName: 'int4', nullable: false, defaultToken: '0' },
+  {
+    tableName: 'season_match_results',
+    columnName: 'winner_user_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'season_match_results',
+    columnName: 'loser_user_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
   {
     tableName: 'season_ratings',
     columnName: 'placement_complete',
@@ -296,6 +630,13 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
     defaultToken: 'now()',
   },
   {
+    tableName: 'season_match_results',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
     tableName: 'account_deletion_requests',
     columnName: 'status',
     udtName: 'text',
@@ -329,6 +670,20 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
     udtName: 'timestamptz',
     nullable: false,
     defaultToken: 'now()',
+  },
+  {
+    tableName: 'account_deletion_requests',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'user_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
   },
   {
     tableName: 'account_deletion_requests',
@@ -408,11 +763,32 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
     defaultToken: '0',
   },
   {
+    tableName: 'account_export_jobs',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'account_export_audit',
+    columnName: 'user_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
     tableName: 'account_export_audit',
     columnName: 'details',
     udtName: 'jsonb',
     nullable: false,
     defaultToken: "'{}'::jsonb",
+  },
+  {
+    tableName: 'account_export_audit',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
   },
   {
     tableName: 'relationship_change_outbox',
@@ -449,12 +825,32 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
     nullable: false,
     defaultToken: "''",
   },
+  {
+    tableName: 'relationship_change_outbox',
+    columnName: 'identities_redacted_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
 ]);
 
 // These contracts cover the invariants that cannot be represented by a
 // column-presence check. Definitions are matched against pg_get_constraintdef
 // / pg_indexes output after identifier and whitespace normalization.
 const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
+  { tableName: 'admin_users', constraintType: 'p', fragments: ['primary key (id)'] },
+  { tableName: 'admin_users', constraintType: 'u', fragments: ['unique (username)'] },
+  {
+    tableName: 'admin_users',
+    constraintType: 'c',
+    fragments: ['role', 'viewer', 'moderator', 'operator', 'admin'],
+  },
+  { tableName: 'admin_sessions', constraintType: 'p', fragments: ['primary key (jti)'] },
+  {
+    tableName: 'admin_sessions',
+    constraintType: 'f',
+    fragments: ['foreign key (admin_user_id)', 'references admin_users(id)', 'on delete cascade'],
+  },
   { tableName: 'season_ratings', constraintType: 'p', fragments: ['primary key (season_id, user_id)'] },
   {
     tableName: 'season_ratings',
@@ -502,7 +898,7 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
   {
     tableName: 'account_export_jobs',
     constraintType: 'f',
-    fragments: ['foreign key (user_id)', 'references users(id)', 'on delete restrict'],
+    fragments: ['foreign key (user_id)', 'references users(id)', 'on delete set null'],
   },
   {
     tableName: 'account_export_jobs',
@@ -606,11 +1002,89 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
   },
 ]);
 
+const REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS = Object.freeze([
+  { tableName: 'users', constraintType: 'p', fragments: ['primary key (id)'] },
+  { tableName: 'deck_reservations', constraintType: 'p', fragments: ['primary key (id)'] },
+  {
+    tableName: 'deck_reservations',
+    constraintType: 'f',
+    fragments: ['foreign key (user_id)', 'references users(id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'deck_reservations',
+    constraintType: 'c',
+    fragments: ['player_id is null', 'player_id', "'0'", "'1'"],
+  },
+  { tableName: 'bjg_matches', constraintType: 'p', fragments: ['primary key (match_id)'] },
+  { tableName: 'bjg_match_seats', constraintType: 'p', fragments: ['primary key (match_id, player_id)'] },
+  { tableName: 'bjg_match_seats', constraintType: 'u', fragments: ['unique (match_id, user_id)'] },
+  {
+    tableName: 'bjg_match_seats',
+    constraintType: 'f',
+    fragments: ['foreign key (match_id)', 'references bjg_matches(match_id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'bjg_match_seats',
+    constraintType: 'c',
+    fragments: ['player_id', "'0'", "'1'"],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    constraintType: 'p',
+    fragments: ['primary key (source_match_id)'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    constraintType: 'f',
+    fragments: ['foreign key (source_match_id)', 'references bjg_matches(match_id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    constraintType: 'c',
+    fragments: ['status', 'pending', 'processing', 'delivered', 'unrated'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    constraintType: 'c',
+    fragments: ['winner_player is null', 'winner_player', '0', '1'],
+  },
+]);
+
 const REQUIRED_RUNTIME_INDEXES = Object.freeze([
+  {
+    tableName: 'admin_audit_log',
+    indexName: 'idx_admin_audit_log_target_id',
+    fragments: ['target_id', 'target_id is not null'],
+  },
+  {
+    tableName: 'admin_sessions',
+    indexName: 'idx_admin_sessions_user_expiry',
+    fragments: ['admin_user_id', 'expires_at'],
+  },
   {
     tableName: 'matches',
     indexName: 'idx_matches_action_log_retention',
     fragments: ['action_log_purged_at', 'completed_at', 'action_log_purged_at is null'],
+  },
+  {
+    tableName: 'season_match_results',
+    indexName: 'idx_season_match_results_winner_user',
+    fragments: ['winner_user_id', 'winner_user_id is not null'],
+  },
+  {
+    tableName: 'season_match_results',
+    indexName: 'idx_season_match_results_loser_user',
+    fragments: ['loser_user_id', 'loser_user_id is not null'],
+  },
+  {
+    tableName: 'account_deletion_requests',
+    indexName: 'idx_account_deletion_requests_user_all',
+    fragments: ['user_id'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    indexName: 'idx_relationship_change_outbox_user_ids',
+    fragments: ['using gin (user_ids)'],
   },
   {
     tableName: 'matches',
@@ -722,6 +1196,39 @@ const REQUIRED_RUNTIME_INDEXES = Object.freeze([
   },
 ]);
 
+const REQUIRED_BOARDGAME_RUNTIME_INDEXES = Object.freeze([
+  {
+    tableName: 'deck_reservations',
+    indexName: 'uq_deck_reservations_match_seat',
+    fragments: ['unique index', 'match_id', 'player_id', 'match_id is not null', 'player_id is not null'],
+  },
+  {
+    tableName: 'bjg_matches',
+    indexName: 'idx_bjg_matches_updated_at',
+    fragments: ['updated_at'],
+  },
+  {
+    tableName: 'bjg_matches',
+    indexName: 'idx_bjg_matches_game_name',
+    fragments: ["metadata ->> 'gamename'"],
+  },
+  {
+    tableName: 'bjg_match_seats',
+    indexName: 'idx_bjg_match_seats_user',
+    fragments: ['user_id', 'reserved_at desc'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    indexName: 'idx_bjg_match_result_outbox_delivery',
+    fragments: ['status', 'next_attempt_at'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    indexName: 'idx_match_result_outbox_season_settlement',
+    fragments: ['rules_version', 'completed_at', 'status', 'ranked_eligible = true'],
+  },
+]);
+
 function normalizeExpectedMigration(value) {
   const migration = String(value || '').trim();
   if (!/^\d{6,}_[a-z0-9_]+$/i.test(migration)) {
@@ -788,7 +1295,7 @@ function indexMatches(row, contract) {
   );
 }
 
-async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }) {
+async function assertExpectedMigration({ pool, expectedMigration, expectedChecksum }) {
   const migration = normalizeExpectedMigration(expectedMigration);
   const checksum = normalizeExpectedChecksum(expectedChecksum);
   let applied;
@@ -806,18 +1313,29 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
     throw new Error(`Schema migration checksum mismatch: ${migration}`);
   }
 
+  return { expectedMigration: migration, expectedChecksum: checksum };
+}
+
+async function assertSchemaContracts({
+  pool,
+  requiredTables,
+  requiredColumns,
+  requiredColumnContracts,
+  requiredConstraints,
+  requiredIndexes,
+}) {
   const tableCheck = await pool.query(
     `SELECT required.table_name,
             to_regclass('public.' || required.table_name) IS NOT NULL AS present
        FROM unnest($1::text[]) AS required(table_name)`,
-    [REQUIRED_RUNTIME_TABLES],
+    [requiredTables],
   );
   const missing = tableCheck.rows.filter((row) => row.present !== true).map((row) => row.table_name);
   if (missing.length > 0) throw new Error(`Required runtime tables are missing: ${missing.join(', ')}`);
 
   const requiredTableNames = [];
   const requiredColumnNames = [];
-  for (const [tableName, columns] of Object.entries(REQUIRED_RUNTIME_COLUMNS)) {
+  for (const [tableName, columns] of Object.entries(requiredColumns)) {
     for (const columnName of columns) {
       requiredTableNames.push(tableName);
       requiredColumnNames.push(columnName);
@@ -841,8 +1359,8 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
     .map((row) => `${row.table_name}.${row.column_name}`);
   if (missingColumns.length > 0) throw new Error(`Required runtime columns are missing: ${missingColumns.join(', ')}`);
 
-  const contractTableNames = REQUIRED_RUNTIME_COLUMN_CONTRACTS.map(({ tableName }) => tableName);
-  const contractColumnNames = REQUIRED_RUNTIME_COLUMN_CONTRACTS.map(({ columnName }) => columnName);
+  const contractTableNames = requiredColumnContracts.map(({ tableName }) => tableName);
+  const contractColumnNames = requiredColumnContracts.map(({ columnName }) => columnName);
   const contractCheck = await pool.query(
     `SELECT required.table_name,
             required.column_name,
@@ -857,17 +1375,19 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
         AND columns.column_name = required.column_name`,
     [contractTableNames, contractColumnNames],
   );
-  const invalidColumns = REQUIRED_RUNTIME_COLUMN_CONTRACTS.filter((contract) => {
-    const row = contractCheck.rows.find(
-      (candidate) => candidate.table_name === contract.tableName && candidate.column_name === contract.columnName,
-    );
-    return !row || !contractMatches(row, contract);
-  }).map((contract) => `${contract.tableName}.${contract.columnName}`);
+  const invalidColumns = requiredColumnContracts
+    .filter((contract) => {
+      const row = contractCheck.rows.find(
+        (candidate) => candidate.table_name === contract.tableName && candidate.column_name === contract.columnName,
+      );
+      return !row || !contractMatches(row, contract);
+    })
+    .map((contract) => `${contract.tableName}.${contract.columnName}`);
   if (invalidColumns.length > 0) {
     throw new Error(`Runtime column contracts are invalid: ${invalidColumns.join(', ')}`);
   }
 
-  const constraintTableNames = [...new Set(REQUIRED_RUNTIME_CONSTRAINTS.map(({ tableName }) => tableName))];
+  const constraintTableNames = [...new Set(requiredConstraints.map(({ tableName }) => tableName))];
   const constraintCheck = await pool.query(
     `SELECT tables.relname AS table_name,
             constraints.conname AS constraint_name,
@@ -880,14 +1400,14 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
         AND tables.relname = ANY($1::text[])`,
     [constraintTableNames],
   );
-  const missingConstraints = REQUIRED_RUNTIME_CONSTRAINTS.filter(
-    (contract) => !constraintCheck.rows.some((row) => constraintMatches(row, contract)),
-  ).map((contract) => `${contract.tableName}:${contract.constraintName || contract.constraintType}`);
+  const missingConstraints = requiredConstraints
+    .filter((contract) => !constraintCheck.rows.some((row) => constraintMatches(row, contract)))
+    .map((contract) => `${contract.tableName}:${contract.constraintName || contract.constraintType}`);
   if (missingConstraints.length > 0) {
     throw new Error(`Runtime constraints are missing or invalid: ${missingConstraints.join(', ')}`);
   }
 
-  const indexTableNames = [...new Set(REQUIRED_RUNTIME_INDEXES.map(({ tableName }) => tableName))];
+  const indexTableNames = [...new Set(requiredIndexes.map(({ tableName }) => tableName))];
   const indexCheck = await pool.query(
     `SELECT tablename AS table_name,
             indexname AS index_name,
@@ -897,21 +1417,52 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
         AND tablename = ANY($1::text[])`,
     [indexTableNames],
   );
-  const missingIndexes = REQUIRED_RUNTIME_INDEXES.filter(
-    (contract) => !indexCheck.rows.some((row) => indexMatches(row, contract)),
-  ).map((contract) => `${contract.tableName}.${contract.indexName}`);
+  const missingIndexes = requiredIndexes
+    .filter((contract) => !indexCheck.rows.some((row) => indexMatches(row, contract)))
+    .map((contract) => `${contract.tableName}.${contract.indexName}`);
   if (missingIndexes.length > 0) {
     throw new Error(`Runtime indexes are missing or invalid: ${missingIndexes.join(', ')}`);
   }
-  return { expectedMigration: migration, expectedChecksum: checksum };
+}
+
+async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }) {
+  const expected = await assertExpectedMigration({ pool, expectedMigration, expectedChecksum });
+  await assertSchemaContracts({
+    pool,
+    requiredTables: REQUIRED_RUNTIME_TABLES,
+    requiredColumns: REQUIRED_RUNTIME_COLUMNS,
+    requiredColumnContracts: REQUIRED_RUNTIME_COLUMN_CONTRACTS,
+    requiredConstraints: REQUIRED_RUNTIME_CONSTRAINTS,
+    requiredIndexes: REQUIRED_RUNTIME_INDEXES,
+  });
+  return expected;
+}
+
+async function assertBoardgameRuntimeSchema({ pool, expectedMigration, expectedChecksum }) {
+  const expected = await assertExpectedMigration({ pool, expectedMigration, expectedChecksum });
+  await assertSchemaContracts({
+    pool,
+    requiredTables: REQUIRED_BOARDGAME_RUNTIME_TABLES,
+    requiredColumns: REQUIRED_BOARDGAME_RUNTIME_COLUMNS,
+    requiredColumnContracts: REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS,
+    requiredConstraints: REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS,
+    requiredIndexes: REQUIRED_BOARDGAME_RUNTIME_INDEXES,
+  });
+  return expected;
 }
 
 module.exports = {
+  REQUIRED_BOARDGAME_RUNTIME_TABLES,
+  REQUIRED_BOARDGAME_RUNTIME_COLUMNS,
+  REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS,
+  REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS,
+  REQUIRED_BOARDGAME_RUNTIME_INDEXES,
   REQUIRED_RUNTIME_TABLES,
   REQUIRED_RUNTIME_COLUMNS,
   REQUIRED_RUNTIME_COLUMN_CONTRACTS,
   REQUIRED_RUNTIME_CONSTRAINTS,
   REQUIRED_RUNTIME_INDEXES,
+  assertBoardgameRuntimeSchema,
   assertRuntimeSchema,
   normalizeExpectedChecksum,
   normalizeExpectedMigration,

@@ -55,9 +55,10 @@ describe('operational shell scripts', () => {
     );
   });
 
-  it('runs the real PostgreSQL/Redis outbox and social race smoke after role bootstrap', () => {
+  it('runs real PostgreSQL outbox, social race, and deletion anonymization smokes after role bootstrap', () => {
     const smoke = readFileSync(resolve('scripts/postgres-role-smoke.sh'), 'utf8');
     const compose = readFileSync(resolve('docker-compose.yml'), 'utf8');
+    const concurrencySmoke = readFileSync(resolve('docker-compose.postgres-concurrency-smoke.yml'), 'utf8');
     expect(smoke).toContain('PG_BOOTSTRAP_USER');
     expect(smoke).toContain('PG_PASSWORD="${PG_PASSWORD:-$PG_APP_PASSWORD}"');
     expect(smoke).toContain('export PG_DATABASE PG_APP_USER PG_APP_PASSWORD PG_PASSWORD');
@@ -65,7 +66,18 @@ describe('operational shell scripts', () => {
     expect(compose).toContain('POSTGRES_USER: ${PG_BOOTSTRAP_USER:-${PG_MIGRATION_USER:-zutomayo}}');
     expect(smoke).toContain("grep -qx '1'");
     expect(smoke).toContain('migrate npm run relationship:outbox:pg-smoke');
+    expect(smoke).toContain('REDIS_DB="${REDIS_DB:-7}"');
+    expect(smoke).toContain('--env REDIS_DB="$REDIS_DB"');
     expect(smoke).toContain('api node social-concurrency-pg-smoke.cjs');
+    expect(smoke).toContain('--env NODE_ENV=test api node account-deletion-pg-smoke.cjs');
+    expect(smoke).toContain('"${source_smoke_compose[@]}" run --build --rm --no-deps boardgame-metadata-pg-smoke');
+    expect(smoke).toContain('migrate node scripts/admin-credential-pg-smoke.cjs');
+    expect(smoke).toContain('ADMIN_CREDENTIAL_PG_SMOKE_ALLOW_REMOTE=true');
+    expect(concurrencySmoke).toContain('target: builder');
+    expect(concurrencySmoke).toContain(
+      "command: ['node', '--import', 'tsx', 'scripts/boardgame-metadata-pg-smoke.ts']",
+    );
+    expect(concurrencySmoke).not.toContain('target: runtime');
   });
 
   it.skipIf(!hasDockerCompose)('renders the E2E PostgreSQL healthcheck against the overlay database', () => {
@@ -99,14 +111,14 @@ describe('operational shell scripts', () => {
     expect(workflow).toContain('"${compose[@]}" build');
     expect(workflow).toContain('"${compose[@]}" run --rm e2e');
     expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
-    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000026_account_export_jobs');
+    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000027_account_deletion_anonymization');
     expect(workflow).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: 784bb5983d6b97e9419d2b5ecd76dc9f9916311224d1dec660906fa86b5de814',
+      'EXPECTED_SCHEMA_CHECKSUM: b84cc250db64d46591bb9fb5441098f132384b9291d0968cae51dfb0c57e4b2c',
     );
     expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
-    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000026_account_export_jobs');
+    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000027_account_deletion_anonymization');
     expect(browserMatrix).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: 784bb5983d6b97e9419d2b5ecd76dc9f9916311224d1dec660906fa86b5de814',
+      'EXPECTED_SCHEMA_CHECKSUM: b84cc250db64d46591bb9fb5441098f132384b9291d0968cae51dfb0c57e4b2c',
     );
     expect(browserMatrix).not.toContain('export EXPECTED_SCHEMA_MIGRATION=');
     expect(workflow).not.toContain('--abort-on-container-exit');
@@ -166,7 +178,7 @@ describe('operational shell scripts', () => {
       'RELEASE_SHA=' + 'a'.repeat(40),
       'APP_VERSION=1.2.3',
       'GAME_RULES_VERSION=1.2.3',
-      'EXPECTED_SCHEMA_MIGRATION=000026_account_export_jobs',
+      'EXPECTED_SCHEMA_MIGRATION=000027_account_deletion_anonymization',
       'EXPECTED_SCHEMA_CHECKSUM=' + 'b'.repeat(64),
       ...['game', 'api', 'platform', 'migrate', 'retention', 'gateway'].map(
         (app) => app.toUpperCase() + '_IMAGE=' + image(app),

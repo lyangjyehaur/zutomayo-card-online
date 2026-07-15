@@ -365,7 +365,7 @@ describe('platform room auth', () => {
     const areUsersBlocked = vi.fn(async (firstUserId: string, secondUserId: string) =>
       [firstUserId, secondUserId].includes('u_blocked'),
     );
-    QuickMatchRoom.configureBlockStore({ areUsersBlocked });
+    QuickMatchRoom.configureBlockStore({ ...createEmptyPlatformBlockStore(), areUsersBlocked });
     const quickRoom = new QuickMatchRoom();
 
     await expect(
@@ -517,7 +517,7 @@ describe('platform room auth', () => {
     ).rejects.toThrow('Invite access denied');
 
     const areUsersBlocked = vi.fn(async () => true);
-    InviteRoom.configureBlockStore({ areUsersBlocked });
+    InviteRoom.configureBlockStore({ ...createEmptyPlatformBlockStore(), areUsersBlocked });
     await expect(
       inviteRoom.onAuth({} as never, { displayName: 'Target' }, cookieAuthContext('u_target')),
     ).rejects.toThrow('Invite blocked');

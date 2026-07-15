@@ -39,7 +39,10 @@ async function acquireAccountMutationLocks(
 
   const rows = [];
   for (const id of ids) {
-    const result = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [id]);
+    const result = await client.query(
+      'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE',
+      [id],
+    );
     if (result.rows[0]) rows.push(result.rows[0]);
   }
   const liveIds = new Set(rows.filter((row) => !row.deleted_at).map((row) => row.id));
@@ -49,10 +52,34 @@ async function acquireAccountMutationLocks(
   return rows;
 }
 
+async function withAccountMutationTransaction(pool, userIds, operation, lockOptions = {}) {
+  if (!pool || typeof pool.query !== 'function' || typeof operation !== 'function') {
+    throw new TypeError('Account mutation transaction requires a PostgreSQL pool and operation');
+  }
+  const client = typeof pool.connect === 'function' ? await pool.connect() : pool;
+  const release = typeof client.release === 'function' ? () => client.release() : () => undefined;
+  let transactionStarted = false;
+  try {
+    await client.query('BEGIN');
+    transactionStarted = true;
+    await acquireAccountMutationLocks(client, userIds, lockOptions);
+    const result = await operation(client);
+    await client.query('COMMIT');
+    transactionStarted = false;
+    return result;
+  } catch (error) {
+    if (transactionStarted) await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    release();
+  }
+}
+
 module.exports = {
   ACCOUNT_LOCK_PREFIX,
   AccountMutationError,
   RETENTION_LOCK_NAME,
   acquireAccountMutationLocks,
   normalizeUserIds,
+  withAccountMutationTransaction,
 };

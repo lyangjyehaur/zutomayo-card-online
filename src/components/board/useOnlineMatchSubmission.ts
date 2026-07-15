@@ -115,7 +115,7 @@ export function signedEloChange(value: number): string {
 export function matchDurationSeconds(G: GameState, now = Date.now()): number {
   const startedAt = Number.isFinite(G.matchStartedAt) ? G.matchStartedAt : now;
   const endedAt = Number.isFinite(G.matchEndedAt) ? (G.matchEndedAt as number) : now;
-  return Math.max(0, (endedAt - startedAt) / 1000);
+  return Math.min(86_400, Math.floor(Math.max(0, endedAt - startedAt) / 1000));
 }
 
 export function useOnlineMatchSubmission({

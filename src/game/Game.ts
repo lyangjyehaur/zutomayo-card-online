@@ -65,6 +65,13 @@ function concurrentServerMove(move: MoveFn<GameState>): Move<GameState> {
   };
 }
 
+function authoritativeServerMove(move: MoveFn<GameState>): Move<GameState> {
+  return {
+    move,
+    client: false,
+  };
+}
+
 function hiddenCard(instanceId: string): CardInstance {
   return { instanceId, defId: '__hidden__', faceUp: false };
 }
@@ -193,32 +200,32 @@ const moves: Record<string, Move<GameState>> = {
     if (player === null || !confirmReady(G, player, getParsedEffects())) return INVALID_MOVE;
   }),
   // P3-16：線上回合超時由伺服器權威判斷，強制跳過該玩家回合（避免卡死）。
-  timeoutSkip: ({ G, playerID }, targetPlayer?: PlayerIndex) => {
+  timeoutSkip: authoritativeServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
     const caller = playerIndex(playerID);
     if (caller === null) return INVALID_MOVE;
     // 權威時間到後，允許仍在線的一方代為跳過斷線／無回應的玩家。
     // timeoutSkip 本身仍會驗證 turnSet、ready 與伺服器時間，不能提前強制對手結束操作。
     const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
     if (!timeoutSkip(G, target, getParsedEffects())) return INVALID_MOVE;
-  },
-  timeoutAdvance: ({ G, playerID }, targetPlayer?: PlayerIndex) => {
+  }),
+  timeoutAdvance: authoritativeServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
     const caller = playerIndex(playerID);
     if (caller === null) return INVALID_MOVE;
     const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
     if (!timeoutAdvance(G, target, getParsedEffects())) return INVALID_MOVE;
-  },
-  surrender: ({ G, playerID }) => {
+  }),
+  surrender: concurrentServerMove(({ G, playerID }) => {
     const player = playerIndex(playerID);
     if (player === null || !surrenderGame(G, player)) return INVALID_MOVE;
-  },
-  resolvePendingEffect: ({ G, playerID }, index: number) => {
+  }),
+  resolvePendingEffect: authoritativeServerMove(({ G, playerID }, index: number) => {
     const player = playerIndex(playerID);
     if (player === null || !resolvePendingEffectChoice(G, player, index, getParsedEffects())) return INVALID_MOVE;
-  },
-  submitPendingChoice: ({ G, playerID }, optionIds: string[]) => {
+  }),
+  submitPendingChoice: authoritativeServerMove(({ G, playerID }, optionIds: string[]) => {
     const player = playerIndex(playerID);
     if (player === null || !submitPendingChoice(G, player, optionIds, getParsedEffects())) return INVALID_MOVE;
-  },
+  }),
 };
 
 export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetupData> = {

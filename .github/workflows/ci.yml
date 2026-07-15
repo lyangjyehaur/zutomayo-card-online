@@ -178,8 +178,8 @@ jobs:
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
-      EXPECTED_SCHEMA_MIGRATION: 000026_account_export_jobs
-      EXPECTED_SCHEMA_CHECKSUM: 784bb5983d6b97e9419d2b5ecd76dc9f9916311224d1dec660906fa86b5de814
+      EXPECTED_SCHEMA_MIGRATION: 000027_account_deletion_anonymization
+      EXPECTED_SCHEMA_CHECKSUM: b84cc250db64d46591bb9fb5441098f132384b9291d0968cae51dfb0c57e4b2c
       PG_MIGRATION_USER: zutomayo_migrator
       PG_MIGRATION_PASSWORD: e2e-test-migration-password
       PG_APP_USER: zutomayo_app

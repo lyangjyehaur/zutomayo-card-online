@@ -1,5 +1,7 @@
 /* global module */
 
+const { AccountMutationError, withAccountMutationTransaction } = require('./accountMutationLock.cjs');
+
 const CONVERSATION_TYPES = ['match', 'room', 'direct', 'global'];
 const PARTICIPANT_ROLES = ['player', 'spectator', 'moderator'];
 const PUBLIC_AUTHOR_ROLES = ['player', 'spectator'];
@@ -91,6 +93,22 @@ function isPresenceOnlyUserId(value) {
 
 function hasAccountBackedUserId(value) {
   return typeof value === 'string' && value.trim() !== '' && !isPresenceOnlyUserId(value);
+}
+
+function conversationMutationUserIds(userId, type, subjectId) {
+  if (type !== 'direct') return [userId];
+  return [...new Set([userId, ...directConversationParticipants(canonicalConversationSubjectId(type, subjectId))])];
+}
+
+async function runAccountMutation(pool, userIds, operation) {
+  try {
+    return await withAccountMutationTransaction(pool, userIds, operation);
+  } catch (error) {
+    if (error instanceof AccountMutationError) {
+      return { ok: false, status: 409, error: 'Account is deleted or unavailable' };
+    }
+    throw error;
+  }
 }
 
 function canonicalConversationSubjectId(type, subjectId) {
@@ -510,77 +528,78 @@ async function sendChatMessage({
   if (!type || !subjectId) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (!conversationKey(type, subjectId)) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (!allowedAuthorRoles.includes(role)) return { ok: false, status: 403, error: 'Forbidden' };
-  const writableAuthorRole = await writableAuthorRoleWithPolicy({
-    pool,
-    userId: authorUserId,
-    type,
-    subjectId,
-    requestedRole: role,
-    enforceDirectFriendship,
-    enforceMatchParticipation,
-    enforceRoomParticipation,
-  });
-  if (!writableAuthorRole || !allowedAuthorRoles.includes(writableAuthorRole)) {
-    return { ok: false, status: 403, error: 'Forbidden' };
-  }
   if (!content) return { ok: false, status: 400, error: 'Message content is required' };
-  const activeSanction = await getActiveChatSanction({ pool, userId: authorUserId });
-  if (activeSanction) {
-    return {
-      ok: false,
-      status: 403,
-      error: activeSanction.expiresAt ? `Chat muted until ${activeSanction.expiresAt}` : 'Chat muted',
-      body: { sanction: activeSanction },
-    };
-  }
-
-  const conversation = await getOrCreateConversation({
-    pool,
-    type,
-    subjectId,
-    title: sanitizeText(body.title || '', 120),
-  });
-  if (!conversation.ok) return conversation;
-
-  const id = generateMessageId();
   const displayName = sanitizeText(body.authorDisplayName || '', 60);
   const moderation = evaluateChatModeration(content, moderationRules);
   const status = normalizeMessageStatus(moderation.status);
   const metadata = body.clientMessageId
     ? { clientMessageId: sanitizeText(body.clientMessageId, 120), transport: body.transport || 'api' }
     : { transport: body.transport || 'api' };
+  return runAccountMutation(pool, conversationMutationUserIds(authorUserId, type, subjectId), async (client) => {
+    const writableAuthorRole = await writableAuthorRoleWithPolicy({
+      pool: client,
+      userId: authorUserId,
+      type,
+      subjectId,
+      requestedRole: role,
+      enforceDirectFriendship,
+      enforceMatchParticipation,
+      enforceRoomParticipation,
+    });
+    if (!writableAuthorRole || !allowedAuthorRoles.includes(writableAuthorRole)) {
+      return { ok: false, status: 403, error: 'Forbidden' };
+    }
+    const activeSanction = await getActiveChatSanction({ pool: client, userId: authorUserId });
+    if (activeSanction) {
+      return {
+        ok: false,
+        status: 403,
+        error: activeSanction.expiresAt ? `Chat muted until ${activeSanction.expiresAt}` : 'Chat muted',
+        body: { sanction: activeSanction },
+      };
+    }
 
-  const { rows } = await pool.query(
-    `INSERT INTO chat_messages (
-       id, conversation_id, author_user_id, author_display_name, author_role,
-       content, source_language, moderation_status, moderation_reason, metadata
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     RETURNING *`,
-    [
-      id,
-      conversation.body.id,
-      authorUserId,
-      displayName,
-      writableAuthorRole,
-      content,
-      normalizeLanguage(body.sourceLanguage),
-      status,
-      sanitizeText(moderation.reason || body.moderationReason || '', 240),
-      metadata,
-    ],
-  );
+    const conversation = await getOrCreateConversation({
+      pool: client,
+      type,
+      subjectId,
+      title: sanitizeText(body.title || '', 120),
+    });
+    if (!conversation.ok) return conversation;
 
-  await writeModerationEvent({
-    pool,
-    generateModerationEventId,
-    messageId: id,
-    conversationId: conversation.body.id,
-    actorUserId: authorUserId,
-    moderation,
+    const id = generateMessageId();
+    const { rows } = await client.query(
+      `INSERT INTO chat_messages (
+           id, conversation_id, author_user_id, author_display_name, author_role,
+           content, source_language, moderation_status, moderation_reason, metadata
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING *`,
+      [
+        id,
+        conversation.body.id,
+        authorUserId,
+        displayName,
+        writableAuthorRole,
+        content,
+        normalizeLanguage(body.sourceLanguage),
+        status,
+        sanitizeText(moderation.reason || body.moderationReason || '', 240),
+        metadata,
+      ],
+    );
+
+    await writeModerationEvent({
+      pool: client,
+      generateModerationEventId,
+      messageId: id,
+      conversationId: conversation.body.id,
+      actorUserId: authorUserId,
+      moderation,
+    });
+    await client.query('UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1', [conversation.body.id]);
+    return { ok: true, body: { message: mapMessage(rows[0]), conversation: conversation.body } };
   });
-  await pool.query('UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1', [conversation.body.id]);
-  return { ok: true, body: { message: mapMessage(rows[0]), conversation: conversation.body } };
 }
 
 async function listChatMessages({
@@ -679,30 +698,36 @@ async function markConversationRead({
   if (!hasAccountBackedUserId(userId)) return { ok: false, status: 401, error: 'Unauthorized' };
   const key = conversationKey(body.conversationType, body.subjectId);
   if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
-  if (
-    !(await canAccessConversationWithPolicy({
-      pool,
-      userId,
-      type: body.conversationType,
-      subjectId: body.subjectId,
-      enforceDirectFriendship,
-      enforceMatchParticipation,
-      enforceRoomParticipation,
-    }))
-  ) {
-    return { ok: false, status: 403, error: 'Forbidden' };
-  }
   const lastReadMessageId = typeof body.lastReadMessageId === 'string' ? body.lastReadMessageId.slice(0, 80) : null;
-  await pool.query(
-    `INSERT INTO chat_read_states (conversation_id, user_id, last_read_message_id, read_at)
-     SELECT id, $2, $3, NOW()
-       FROM chat_conversations
-      WHERE id = $1
-     ON CONFLICT (conversation_id, user_id)
-     DO UPDATE SET last_read_message_id = EXCLUDED.last_read_message_id, read_at = NOW()`,
-    [key, userId, lastReadMessageId],
+  return runAccountMutation(
+    pool,
+    conversationMutationUserIds(userId, body.conversationType, body.subjectId),
+    async (client) => {
+      if (
+        !(await canAccessConversationWithPolicy({
+          pool: client,
+          userId,
+          type: body.conversationType,
+          subjectId: body.subjectId,
+          enforceDirectFriendship,
+          enforceMatchParticipation,
+          enforceRoomParticipation,
+        }))
+      ) {
+        return { ok: false, status: 403, error: 'Forbidden' };
+      }
+      await client.query(
+        `INSERT INTO chat_read_states (conversation_id, user_id, last_read_message_id, read_at)
+         SELECT id, $2, $3, NOW()
+           FROM chat_conversations
+          WHERE id = $1
+         ON CONFLICT (conversation_id, user_id)
+         DO UPDATE SET last_read_message_id = EXCLUDED.last_read_message_id, read_at = NOW()`,
+        [key, userId, lastReadMessageId],
+      );
+      return { ok: true, body: { ok: true } };
+    },
   );
-  return { ok: true, body: { ok: true } };
 }
 
 async function listUnreadChat({
@@ -832,6 +857,69 @@ async function upsertChatTranslation({ pool, messageId, targetLanguage, translat
   return mapTranslation(rows[0]);
 }
 
+async function persistChatTranslationWithAccountFence({
+  pool,
+  userId,
+  initialMessage,
+  targetLanguage,
+  translatedContent,
+  provider,
+  model,
+  status,
+  cached,
+  enforceDirectFriendship,
+  enforceMatchParticipation,
+  enforceRoomParticipation,
+}) {
+  return runAccountMutation(pool, [userId, initialMessage.author_user_id], async (client) => {
+    const currentMessage = (
+      await client.query(
+        `SELECT m.id, m.author_user_id, m.conversation_id, m.content, m.source_language,
+                m.moderation_status, m.deleted_at, c.type, c.subject_id
+           FROM chat_messages m
+           JOIN chat_conversations c ON c.id = m.conversation_id
+          WHERE m.id = $1
+          FOR SHARE OF m, c`,
+        [initialMessage.id],
+      )
+    ).rows[0];
+    if (
+      !currentMessage ||
+      currentMessage.author_user_id !== initialMessage.author_user_id ||
+      currentMessage.conversation_id !== initialMessage.conversation_id ||
+      currentMessage.content !== initialMessage.content ||
+      currentMessage.source_language !== initialMessage.source_language ||
+      currentMessage.deleted_at ||
+      !['visible', 'pending_review'].includes(currentMessage.moderation_status)
+    ) {
+      return { ok: false, status: 409, error: 'Message changed before translation was stored' };
+    }
+    if (
+      !(await canAccessConversationWithPolicy({
+        pool: client,
+        userId,
+        type: currentMessage.type,
+        subjectId: currentMessage.subject_id,
+        enforceDirectFriendship,
+        enforceMatchParticipation,
+        enforceRoomParticipation,
+      }))
+    ) {
+      return { ok: false, status: 403, error: 'Forbidden' };
+    }
+    const translation = await upsertChatTranslation({
+      pool: client,
+      messageId: initialMessage.id,
+      targetLanguage,
+      translatedContent,
+      provider,
+      model,
+      status,
+    });
+    return { ok: true, body: { translation, cached } };
+  });
+}
+
 async function requestChatTranslation({
   pool,
   userId,
@@ -852,7 +940,7 @@ async function requestChatTranslation({
 
   const message = (
     await pool.query(
-      `SELECT m.id, m.conversation_id, m.content, m.source_language, c.type, c.subject_id
+      `SELECT m.id, m.conversation_id, m.author_user_id, m.content, m.source_language, c.type, c.subject_id
        FROM chat_messages m
        JOIN chat_conversations c ON c.id = m.conversation_id
        WHERE m.id = $1
@@ -871,6 +959,9 @@ async function requestChatTranslation({
     )
   ).rows[0];
   if (!message) return { ok: false, status: 404, error: 'Message not found' };
+  if (!hasAccountBackedUserId(message.author_user_id)) {
+    return { ok: false, status: 404, error: 'Message not found' };
+  }
   if (
     !(await canAccessConversationWithPolicy({
       pool,
@@ -899,66 +990,98 @@ async function requestChatTranslation({
 
   const sourceLanguage = normalizeLanguage(message.source_language);
   if (sourceLanguage && sourceLanguage === targetLanguage) {
-    const translation = await upsertChatTranslation({
+    return persistChatTranslationWithAccountFence({
       pool,
-      messageId: cleanMessageId,
+      userId,
+      initialMessage: message,
       targetLanguage,
       translatedContent: message.content,
       provider: 'source',
       model: '',
       status: 'ready',
+      cached: Boolean(existing),
+      enforceDirectFriendship,
+      enforceMatchParticipation,
+      enforceRoomParticipation,
     });
-    return { ok: true, body: { translation, cached: Boolean(existing) } };
   }
 
   if (typeof translateText !== 'function') {
-    const translation =
-      existing && existing.status === 'pending'
-        ? mapTranslation(existing)
-        : await upsertChatTranslation({
-            pool,
-            messageId: cleanMessageId,
-            targetLanguage,
-            translatedContent: '',
-            provider: providerName || 'unconfigured',
-            model: modelName || '',
-            status: 'pending',
-          });
-    return { ok: true, body: { translation, cached: Boolean(existing) } };
+    if (existing && existing.status === 'pending') {
+      return { ok: true, body: { translation: mapTranslation(existing), cached: true } };
+    }
+    return persistChatTranslationWithAccountFence({
+      pool,
+      userId,
+      initialMessage: message,
+      targetLanguage,
+      translatedContent: '',
+      provider: providerName || 'unconfigured',
+      model: modelName || '',
+      status: 'pending',
+      cached: false,
+      enforceDirectFriendship,
+      enforceMatchParticipation,
+      enforceRoomParticipation,
+    });
   }
 
+  let result;
   try {
-    const result = await translateText({
+    result = await translateText({
       text: message.content,
       sourceLanguage,
       targetLanguage,
       messageId: cleanMessageId,
       conversationId: message.conversation_id,
     });
-    const translatedContent = sanitizeText(result?.translatedContent || '', 4000).trim();
-    if (!translatedContent) throw new Error('Empty translation result');
-    const translation = await upsertChatTranslation({
-      pool,
-      messageId: cleanMessageId,
-      targetLanguage,
-      translatedContent,
-      provider: sanitizeText(result?.provider || providerName || 'llm', 60),
-      model: sanitizeText(result?.model || modelName || '', 120),
-      status: 'ready',
-    });
-    return { ok: true, body: { translation, cached: false } };
   } catch {
-    const translation = await upsertChatTranslation({
+    return persistChatTranslationWithAccountFence({
       pool,
-      messageId: cleanMessageId,
+      userId,
+      initialMessage: message,
       targetLanguage,
       translatedContent: existing?.translated_content || '',
       provider: providerName || 'llm',
       model: modelName || '',
       status: 'pending',
+      cached: Boolean(existing),
+      enforceDirectFriendship,
+      enforceMatchParticipation,
+      enforceRoomParticipation,
     });
-    return { ok: true, body: { translation, cached: Boolean(existing) } };
   }
+  const translatedContent = sanitizeText(result?.translatedContent || '', 4000).trim();
+  if (!translatedContent) {
+    return persistChatTranslationWithAccountFence({
+      pool,
+      userId,
+      initialMessage: message,
+      targetLanguage,
+      translatedContent: existing?.translated_content || '',
+      provider: providerName || 'llm',
+      model: modelName || '',
+      status: 'pending',
+      cached: Boolean(existing),
+      enforceDirectFriendship,
+      enforceMatchParticipation,
+      enforceRoomParticipation,
+    });
+  }
+  return persistChatTranslationWithAccountFence({
+    pool,
+    userId,
+    initialMessage: message,
+    targetLanguage,
+    translatedContent,
+    provider: sanitizeText(result?.provider || providerName || 'llm', 60),
+    model: sanitizeText(result?.model || modelName || '', 120),
+    status: 'ready',
+    cached: false,
+    enforceDirectFriendship,
+    enforceMatchParticipation,
+    enforceRoomParticipation,
+  });
 }
 
 async function reportChatMessage({
@@ -977,7 +1100,7 @@ async function reportChatMessage({
   const reason = sanitizeText(body.reason || '', 60);
   if (!cleanMessageId || !reason) return { ok: false, status: 400, error: 'Report reason is required' };
 
-  const message = (
+  const initialMessage = (
     await pool.query(
       `SELECT m.id, m.conversation_id, m.author_user_id, m.author_display_name, m.author_role,
               m.content, m.moderation_status, m.created_at,
@@ -988,46 +1111,66 @@ async function reportChatMessage({
       [cleanMessageId],
     )
   ).rows[0];
-  if (!message) return { ok: false, status: 404, error: 'Message not found' };
-  if (
-    !(await canAccessConversationWithPolicy({
-      pool,
-      userId: reporterUserId,
-      type: message.conversation_type,
-      subjectId: message.conversation_subject_id,
-      enforceDirectFriendship,
-      enforceMatchParticipation,
-      enforceRoomParticipation,
-    }))
-  ) {
-    return { ok: false, status: 403, error: 'Forbidden' };
-  }
+  if (!initialMessage) return { ok: false, status: 404, error: 'Message not found' };
+  const mutationUserIds = [reporterUserId];
+  if (hasAccountBackedUserId(initialMessage.author_user_id)) mutationUserIds.push(initialMessage.author_user_id);
 
-  const id = generateReportId();
-  const { rows } = await pool.query(
-    `INSERT INTO chat_reports (
-       id, message_id, conversation_id, reporter_user_id, reason, note,
-       reported_message_content, reported_message_author_user_id, reported_message_author_display_name,
-       reported_message_author_role, reported_message_moderation_status, reported_message_created_at
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-     RETURNING *`,
-    [
-      id,
-      cleanMessageId,
-      message.conversation_id,
-      reporterUserId,
-      reason,
-      sanitizeText(body.note || '', 1000),
-      message.content || '',
-      message.author_user_id || null,
-      message.author_display_name || '',
-      normalizePublicAuthorRole(message.author_role),
-      message.moderation_status || 'visible',
-      message.created_at || null,
-    ],
-  );
-  return { ok: true, body: { report: mapReport(rows[0]) } };
+  return runAccountMutation(pool, mutationUserIds, async (client) => {
+    const message = (
+      await client.query(
+        `SELECT m.id, m.conversation_id, m.author_user_id, m.author_display_name, m.author_role,
+                m.content, m.moderation_status, m.created_at,
+                c.type AS conversation_type, c.subject_id AS conversation_subject_id
+         FROM chat_messages m
+         JOIN chat_conversations c ON c.id = m.conversation_id
+         WHERE m.id = $1
+         FOR SHARE OF m, c`,
+        [cleanMessageId],
+      )
+    ).rows[0];
+    if (!message || message.author_user_id !== initialMessage.author_user_id) {
+      return { ok: false, status: 409, error: 'Message changed while creating report evidence' };
+    }
+    if (
+      !(await canAccessConversationWithPolicy({
+        pool: client,
+        userId: reporterUserId,
+        type: message.conversation_type,
+        subjectId: message.conversation_subject_id,
+        enforceDirectFriendship,
+        enforceMatchParticipation,
+        enforceRoomParticipation,
+      }))
+    ) {
+      return { ok: false, status: 403, error: 'Forbidden' };
+    }
+
+    const id = generateReportId();
+    const { rows } = await client.query(
+      `INSERT INTO chat_reports (
+         id, message_id, conversation_id, reporter_user_id, reason, note,
+         reported_message_content, reported_message_author_user_id, reported_message_author_display_name,
+         reported_message_author_role, reported_message_moderation_status, reported_message_created_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING *`,
+      [
+        id,
+        cleanMessageId,
+        message.conversation_id,
+        reporterUserId,
+        reason,
+        sanitizeText(body.note || '', 1000),
+        message.content || '',
+        message.author_user_id || null,
+        message.author_display_name || '',
+        normalizePublicAuthorRole(message.author_role),
+        message.moderation_status || 'visible',
+        message.created_at || null,
+      ],
+    );
+    return { ok: true, body: { report: mapReport(rows[0]) } };
+  });
 }
 
 async function listChatReports({ pool, status, limit }) {
@@ -1086,76 +1229,79 @@ async function createChatUserSanction({ pool, targetUserId, body, reviewerUserId
   const sourceReportId = typeof body.sourceReportId === 'string' ? body.sourceReportId.slice(0, 80) : '';
   const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId.slice(0, 80) : '';
   const sourceConversationId = typeof body.conversationId === 'string' ? body.conversationId.slice(0, 340) : '';
-  if (sourceReportId || sourceMessageId) {
-    const source = (
-      await pool.query(
-        `SELECT r.id AS report_id,
-                r.message_id AS report_message_id,
-                r.conversation_id AS report_conversation_id,
-                r.reported_message_author_user_id,
-                m.id AS message_id,
-                m.conversation_id AS message_conversation_id,
-                m.author_user_id AS message_author_user_id
-         FROM chat_reports r
-         LEFT JOIN chat_messages m ON m.id = r.message_id
-         WHERE ($1::text = '' OR r.id = $1)
-           AND ($2::text = '' OR r.message_id = $2)
-         LIMIT 1`,
-        [sourceReportId, sourceMessageId],
-      )
-    ).rows[0];
-    if (!source) return { ok: false, status: 404, error: 'Report evidence not found' };
-    if (sourceReportId && source.report_id !== sourceReportId) {
-      return { ok: false, status: 400, error: 'Report evidence mismatch' };
+  return runAccountMutation(pool, [cleanTargetUserId], async (client) => {
+    if (sourceReportId || sourceMessageId) {
+      const source = (
+        await client.query(
+          `SELECT r.id AS report_id,
+                  r.message_id AS report_message_id,
+                  r.conversation_id AS report_conversation_id,
+                  r.reported_message_author_user_id,
+                  m.id AS message_id,
+                  m.conversation_id AS message_conversation_id,
+                  m.author_user_id AS message_author_user_id
+           FROM chat_reports r
+           LEFT JOIN chat_messages m ON m.id = r.message_id
+           WHERE ($1::text = '' OR r.id = $1)
+             AND ($2::text = '' OR r.message_id = $2)
+           LIMIT 1
+           FOR SHARE OF r`,
+          [sourceReportId, sourceMessageId],
+        )
+      ).rows[0];
+      if (!source) return { ok: false, status: 404, error: 'Report evidence not found' };
+      if (sourceReportId && source.report_id !== sourceReportId) {
+        return { ok: false, status: 400, error: 'Report evidence mismatch' };
+      }
+      if (sourceMessageId && source.report_message_id !== sourceMessageId) {
+        return { ok: false, status: 400, error: 'Report evidence mismatch' };
+      }
+      const evidenceConversationId = source.report_conversation_id || source.message_conversation_id || '';
+      if (sourceConversationId && evidenceConversationId !== sourceConversationId) {
+        return { ok: false, status: 400, error: 'Report evidence mismatch' };
+      }
+      const evidenceAuthorUserId = source.reported_message_author_user_id || source.message_author_user_id || '';
+      if (!evidenceAuthorUserId || evidenceAuthorUserId !== cleanTargetUserId) {
+        return { ok: false, status: 400, error: 'Report target mismatch' };
+      }
     }
-    if (sourceMessageId && source.report_message_id !== sourceMessageId) {
-      return { ok: false, status: 400, error: 'Report evidence mismatch' };
-    }
-    const evidenceConversationId = source.report_conversation_id || source.message_conversation_id || '';
-    if (sourceConversationId && evidenceConversationId !== sourceConversationId) {
-      return { ok: false, status: 400, error: 'Report evidence mismatch' };
-    }
-    const evidenceAuthorUserId = source.reported_message_author_user_id || source.message_author_user_id || '';
-    if (!evidenceAuthorUserId || evidenceAuthorUserId !== cleanTargetUserId) {
-      return { ok: false, status: 400, error: 'Report target mismatch' };
-    }
-  }
-  const id = generateSanctionId();
+    const id = generateSanctionId();
 
-  await pool.query(
-    `UPDATE chat_user_sanctions
-     SET status = 'revoked',
-         revoked_at = NOW(),
-         revoked_by_user_id = $2,
-         revocation_reason = 'superseded'
-     WHERE target_user_id = $1
-       AND type = $3
-       AND status = 'active'
-       AND revoked_at IS NULL
-       AND (expires_at IS NULL OR expires_at > NOW())`,
-    [cleanTargetUserId, reviewerUserId || null, type],
-  );
+    await client.query(
+      `UPDATE chat_user_sanctions
+       SET status = 'revoked',
+           revoked_at = NOW(),
+           revoked_by_user_id = $2,
+           revocation_reason = 'superseded'
+       WHERE target_user_id = $1
+         AND type = $3
+         AND status = 'active'
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())`,
+      [cleanTargetUserId, reviewerUserId || null, type],
+    );
 
-  const { rows } = await pool.query(
-    `INSERT INTO chat_user_sanctions (
-       id, target_user_id, type, status, reason, source_report_id, source_message_id,
-       conversation_id, created_by_user_id, expires_at
-     )
-     VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9)
-     RETURNING *`,
-    [
-      id,
-      cleanTargetUserId,
-      type,
-      reason,
-      sourceReportId || null,
-      sourceMessageId || null,
-      sourceConversationId || null,
-      reviewerUserId || null,
-      expiresAt,
-    ],
-  );
-  return { ok: true, body: { sanction: mapSanction(rows[0]) } };
+    const { rows } = await client.query(
+      `INSERT INTO chat_user_sanctions (
+         id, target_user_id, type, status, reason, source_report_id, source_message_id,
+         conversation_id, created_by_user_id, expires_at
+       )
+       VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        id,
+        cleanTargetUserId,
+        type,
+        reason,
+        sourceReportId || null,
+        sourceMessageId || null,
+        sourceConversationId || null,
+        reviewerUserId || null,
+        expiresAt,
+      ],
+    );
+    return { ok: true, body: { sanction: mapSanction(rows[0]) } };
+  });
 }
 
 async function revokeChatUserSanction({ pool, sanctionId, reviewerUserId, body, sanitizeText }) {

@@ -13,7 +13,7 @@ Authenticated endpoints prefer the `zutomayo_session` HttpOnly cookie establishe
 Authorization: Bearer <token>
 ```
 
-User tokens are returned by `POST /api/register` and `POST /api/login` for backward compatibility. Admin tokens are returned by `POST /api/admin/login` (24-hour expiry) and carry an `admin: true` claim.
+User tokens are returned by `POST /api/register` and `POST /api/login` for backward compatibility. Admin tokens are returned by `POST /api/admin/login`; they carry an individual admin identity, role, and persisted jti with a configurable one-hour default lifetime.
 
 Cookie-authenticated `POST`, `PUT`, and `DELETE` requests use double-submit CSRF protection. Fetch `GET /api/csrf-token`, retain the `zutomayo_csrf` cookie, and send the same value in `X-CSRF-Token`. Login, registration, OAuth session exchange, and admin login are intentionally exempt because they establish authentication rather than consume an existing user session.
 
@@ -430,17 +430,19 @@ Response:
 
 ## Admin / 管理後台
 
-All admin endpoints require an admin token in the `Authorization: Bearer <token>` header, obtained from `POST /api/admin/login`. The admin password is configured via the `ADMIN_PASSWORD` environment variable on the API service; if unset, `POST /api/admin/login` returns `503`.
+All admin endpoints require an admin token in the `Authorization: Bearer <token>` header, obtained from `POST /api/admin/login`. Each request checks the persisted jti, account role, expiry, revocation, and disabled state. Admin accounts are provisioned in PostgreSQL with the transaction-safe `admin:create`, `admin:rotate`, and `admin:recover` commands documented in [DEPLOYMENT.md](./DEPLOYMENT.md#admin-bootstrap-rotation-and-recovery); the legacy shared `ADMIN_PASSWORD` is ignored.
 
 ### `POST /api/admin/login`
 
-Exchange the configured admin password for an admin token (24-hour expiry). Subject to the auth rate limit (10/min).
+Verify an individual admin username, password, and six-digit TOTP code, then issue a persisted revocable admin session. The default lifetime is one hour and is bounded to five minutes through eight hours by `ADMIN_SESSION_TTL_SECONDS`. Subject to the auth rate limit (10/min).
 
 Request:
 
 ```json
 {
-  "password": "admin-secret"
+  "username": "operator",
+  "password": "individual-admin-password",
+  "totpCode": "123456"
 }
 ```
 
@@ -448,11 +450,13 @@ Response:
 
 ```json
 {
-  "token": "<admin-token>"
+  "token": "<admin-token>",
+  "role": "operator",
+  "expiresIn": 3600
 }
 ```
 
-Errors: `401` (wrong password), `503` (admin not configured).
+Errors: `401` (unknown/disabled account, wrong password, invalid MFA, or credentials changed concurrently), `403` (MFA is not configured), `503` (admin TOTP encryption is not configured).
 
 ### `GET /api/admin/users`
 
@@ -554,105 +558,21 @@ Errors: `401`.
 
 ## Legacy Matchmaking / 舊版配對佇列
 
-These REST endpoints are kept as a compatibility surface for older clients and service-level tests. The current browser quick-match flow uses the Colyseus `quick_match` room for queueing, cancellation, pairing, and boardgame.io match ID relay; see [MULTIPLAYER_PLATFORM_ARCHITECTURE.md](./MULTIPLAYER_PLATFORM_ARCHITECTURE.md). All endpoints require a user JWT.
+The Redis-backed REST queue was retired on 2026-07-15. The browser and supported clients use the Colyseus `quick_match` room for queueing, cancellation, pairing, and boardgame.io match ID relay; see [MULTIPLAYER_PLATFORM_ARCHITECTURE.md](./MULTIPLAYER_PLATFORM_ARCHITECTURE.md).
 
-The legacy queue is Redis-backed and keyed by user ID. Entries expire after 60 seconds without a match, with a 10-second grace window before deletion.
+The following authenticated routes remain as tombstones so old clients fail explicitly without reading or writing Redis:
 
-### `POST /api/matchmaking/queue`
-
-Join the legacy matchmaking queue (or refresh an existing entry). If a compatible opponent is already queued, both entries are immediately marked `matched` and assigned a shared `matchId`; the user with the lexicographically smaller ID becomes `host`.
-
-Request:
-
-```json
-{
-  "deckName": "Dark Test",
-  "deckIds": ["1st_9", "1st_9", "..."]
-}
-```
-
-- `deckName` and `deckIds` are optional metadata used by the client. `deckIds` is capped at 20 string entries.
-
-Response (queued):
-
-```json
-{
-  "queueId": "q_...",
-  "status": "queued"
-}
-```
-
-Response (matched immediately):
-
-```json
-{
-  "queueId": "q_...",
-  "status": "matched"
-}
-```
-
-Errors: `401`.
-
-### `GET /api/matchmaking/status`
-
-Poll the caller's current legacy queue entry. Expired entries are cleaned up before the lookup.
-
-Response (queued or matched):
-
-```json
-{
-  "status": "matched",
-  "matchId": "mm_...",
-  "opponentId": "u_...",
-  "role": "host",
-  "realMatchId": null
-}
-```
-
-Response (no entry / timed out):
-
-```json
-{
-  "status": "timeout"
-}
-```
-
-`role` is `"host"` or `"guest"`. `realMatchId` is the boardgame.io match ID once the legacy REST host reports it via `PUT /api/matchmaking/match`.
-
-Errors: `401`.
-
-### `DELETE /api/matchmaking/queue`
-
-Leave the queue. If the caller was already matched, the opponent's entry is marked `timeout` so they detect the cancellation on their next poll.
+- `POST /api/matchmaking/queue`
+- `GET /api/matchmaking/status`
+- `DELETE /api/matchmaking/queue`
+- `PUT /api/matchmaking/match`
 
 Response:
 
 ```json
 {
-  "deleted": true
+  "error": "Legacy REST matchmaking was removed; use the Colyseus quick_match room"
 }
 ```
 
-Errors: `401`.
-
-### `PUT /api/matchmaking/match`
-
-Called by the host on the legacy REST flow after creating the boardgame.io match to publish the real match ID so the guest can join. The Colyseus quick-match flow relays this through `boardgameMatchReady` on the `quick_match` room instead.
-
-Request:
-
-```json
-{
-  "matchId": "boardgameio-match-id"
-}
-```
-
-Response:
-
-```json
-{
-  "ok": true
-}
-```
-
-Errors: `400` (missing `matchId` or not in a `matched` state), `401`.
+Errors: `401` without a valid user session; otherwise `410 Gone`. The response includes `Deprecation: true`, `Sunset`, and `Cache-Control: no-store`.

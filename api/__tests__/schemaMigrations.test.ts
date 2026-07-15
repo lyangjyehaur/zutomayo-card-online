@@ -113,4 +113,38 @@ describe('schema migrations', () => {
     expect(migration).toContain('Compliance audit evidence must not cascade away');
     expect(migration).not.toMatch(/account_export_audit[\s\S]*user_id:[^\n]*onDelete: 'CASCADE'/);
   });
+
+  it('makes every retained deletion audit surface explicitly anonymizable', () => {
+    const migration = readRepoFile('migrations/000027_account_deletion_anonymization.js');
+    for (const artifact of [
+      'season_match_results',
+      'account_export_jobs',
+      'account_export_audit',
+      'admin_audit_log',
+      'account_deletion_requests',
+      'relationship_change_outbox',
+      'identity_anonymized_at',
+      'identities_redacted_at',
+      'idx_season_match_results_winner_user',
+      'idx_season_match_results_loser_user',
+      'idx_account_deletion_requests_user_all',
+      'idx_relationship_change_outbox_user_ids',
+      'idx_admin_audit_log_target_id',
+      'idx_bjg_matches_updated_at',
+      'idx_bjg_matches_game_name',
+      "onDelete: 'SET NULL'",
+    ]) {
+      expect(migration).toContain(artifact);
+    }
+    expect(migration).toContain('ALTER COLUMN winner_user_id DROP NOT NULL');
+    expect(migration).toContain('ALTER COLUMN loser_user_id DROP NOT NULL');
+    expect(migration.match(/ALTER COLUMN user_id DROP NOT NULL/g)).toHaveLength(2);
+    expect(migration).toContain('reviewed legacy tombstone backfill');
+    expect(migration).toContain('account export audit anonymization requires a deleted account');
+    expect(migration).toContain('admin audit anonymization requires a deleted account');
+    expect(migration).toContain('request_id = NULL');
+    expect(migration.match(/details = '\{\}'::jsonb/g)).toHaveLength(2);
+    expect(migration).toContain("COALESCE(p_replacement, '') !~");
+    expect(migration).toContain('export const down = false;');
+  });
 });

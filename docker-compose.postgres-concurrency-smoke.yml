@@ -1,0 +1,29 @@
+services:
+  boardgame-metadata-pg-smoke:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: ['node', '--import', 'tsx', 'scripts/boardgame-metadata-pg-smoke.ts']
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: ''
+      PG_HOST: postgres
+      PG_PORT: 5432
+      PG_DATABASE: ${PG_DATABASE:?Set PG_DATABASE for the PostgreSQL concurrency smoke}
+      PGSSLMODE: ${PGSSLMODE:-disable}
+      PG_API_USER: ${PG_API_USER:?Set PG_API_USER for the PostgreSQL concurrency smoke}
+      PG_API_PASSWORD: ${PG_API_PASSWORD:?Set PG_API_PASSWORD for the PostgreSQL concurrency smoke}
+      PG_GAME_USER: ${PG_GAME_USER:?Set PG_GAME_USER for the PostgreSQL concurrency smoke}
+      PG_GAME_PASSWORD: ${PG_GAME_PASSWORD:?Set PG_GAME_PASSWORD for the PostgreSQL concurrency smoke}
+      EXPECTED_SCHEMA_MIGRATION: ${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION}
+      EXPECTED_SCHEMA_CHECKSUM: ${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM}
+      RUNTIME_SCHEMA_DDL: 'false'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=16777216,mode=0700,uid=1000,gid=1000
+    user: node
+    restart: 'no'

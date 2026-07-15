@@ -93,12 +93,11 @@ describe('complete battle flow', () => {
     const { G } = createFlowGame();
     G.ready = [true, false];
     G.turnStartTime = Date.now() - TURN_TIMER_MS - 1;
-    const timeoutMove = ZutomayoCard.moves?.timeoutAdvance as unknown as (
-      context: { G: GameState; playerID: string },
-      target: PlayerIndex,
-    ) => unknown;
+    const timeoutMove = ZutomayoCard.moves?.timeoutAdvance as unknown as {
+      move: (context: { G: GameState; playerID: string }, target: PlayerIndex) => unknown;
+    };
 
-    timeoutMove({ G, playerID: '0' }, 1);
+    timeoutMove.move({ G, playerID: '0' }, 1);
 
     expect(G.actionLog.some((entry) => entry.action === 'timeoutSkip' && entry.player === 1)).toBe(true);
     expect(G.step).not.toBe('effectOrder');
@@ -106,15 +105,14 @@ describe('complete battle flow', () => {
 
   it('only allows a seated player to surrender through the game move', () => {
     const { G } = createFlowGame();
-    const surrenderMove = ZutomayoCard.moves?.surrender as unknown as (context: {
-      G: GameState;
-      playerID: string | null;
-    }) => unknown;
+    const surrenderMove = ZutomayoCard.moves?.surrender as unknown as {
+      move: (context: { G: GameState; playerID: string | null }) => unknown;
+    };
 
-    expect(surrenderMove({ G, playerID: null })).toBe('INVALID_MOVE');
+    expect(surrenderMove.move({ G, playerID: null })).toBe('INVALID_MOVE');
     expect(G.step).not.toBe('gameOver');
 
-    surrenderMove({ G, playerID: '0' });
+    surrenderMove.move({ G, playerID: '0' });
     expect(G.step).toBe('gameOver');
     expect(G.winner).toBe(1);
   });

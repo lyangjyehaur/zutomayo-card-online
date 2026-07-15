@@ -26,6 +26,11 @@ docker compose version >/dev/null 2>&1 || {
 
 project="${ROLE_SMOKE_COMPOSE_PROJECT:-zutomayo-role-smoke-$$}"
 compose=(docker compose --project-name "$project" --file docker-compose.yml)
+source_smoke_compose=(
+  docker compose --project-name "$project"
+  --file docker-compose.yml
+  --file docker-compose.postgres-concurrency-smoke.yml
+)
 
 PG_BOOTSTRAP_USER="${PG_BOOTSTRAP_USER:-z_role_bootstrap_executor}"
 PG_BOOTSTRAP_PASSWORD="${PG_BOOTSTRAP_PASSWORD:-role-smoke-bootstrap-password}"
@@ -57,6 +62,7 @@ REQUIRE_ROLE_MATRIX_GATE=true
 JWT_SECRET="${JWT_SECRET:-role-smoke-jwt-secret-32-characters-min}"
 METRICS_TOKEN="${METRICS_TOKEN:-role-smoke-metrics-token}"
 REDIS_PASSWORD="${REDIS_PASSWORD:-role-smoke-redis-password}"
+REDIS_DB="${REDIS_DB:-7}"
 ACCOUNT_EXPORT_S3_BUCKET="${ACCOUNT_EXPORT_S3_BUCKET:-zutomayo-role-smoke-account-exports}"
 ACCOUNT_EXPORT_S3_REGION="${ACCOUNT_EXPORT_S3_REGION:-us-east-1}"
 ACCOUNT_EXPORT_S3_CREDENTIALS_MODE="${ACCOUNT_EXPORT_S3_CREDENTIALS_MODE:-default}"
@@ -71,7 +77,7 @@ export PG_PLATFORM_USER PG_PLATFORM_PASSWORD
 export PG_RETENTION_USER PG_RETENTION_PASSWORD PG_MONITOR_USER PG_MONITOR_PASSWORD
 export PG_BACKUP_USER PG_BACKUP_PASSWORD PG_WAL_USER PG_WAL_PASSWORD
 export PG_WAL_OPERATOR_USER PG_WAL_OPERATOR_PASSWORD
-export PGSSLMODE REQUIRE_DISTINCT_DB_ROLES REQUIRE_ROLE_MATRIX_GATE JWT_SECRET METRICS_TOKEN REDIS_PASSWORD
+export PGSSLMODE REQUIRE_DISTINCT_DB_ROLES REQUIRE_ROLE_MATRIX_GATE JWT_SECRET METRICS_TOKEN REDIS_PASSWORD REDIS_DB
 export ACCOUNT_EXPORT_S3_BUCKET ACCOUNT_EXPORT_S3_REGION ACCOUNT_EXPORT_S3_CREDENTIALS_MODE
 export ACCOUNT_EXPORT_S3_VERSIONING_MODE ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED
 export ACCOUNT_EXPORT_PSEUDONYM_KEY
@@ -158,9 +164,20 @@ fi
   --env PG_API_USER="$PG_API_USER" \
   --env PG_API_PASSWORD="$PG_API_PASSWORD" \
   --env REDIS_URL="redis://:$REDIS_PASSWORD@redis:6379" \
+  --env REDIS_DB="$REDIS_DB" \
   migrate npm run relationship:outbox:pg-smoke
 
 "${compose[@]}" run --build --rm --no-deps api node social-concurrency-pg-smoke.cjs
+
+"${compose[@]}" run --rm --no-deps --env NODE_ENV=test api node account-deletion-pg-smoke.cjs
+
+"${source_smoke_compose[@]}" run --build --rm --no-deps boardgame-metadata-pg-smoke
+
+"${compose[@]}" run --rm --no-deps \
+  --env NODE_ENV=test \
+  --env ADMIN_CREDENTIAL_PG_SMOKE_ALLOW_REMOTE=true \
+  --env ADMIN_CREDENTIAL_PG_SMOKE_URL="postgresql://$PG_MIGRATION_USER:$PG_MIGRATION_PASSWORD@postgres:5432/$PG_DATABASE" \
+  migrate node scripts/admin-credential-pg-smoke.cjs
 
 "${compose[@]}" exec --no-TTY \
   --env PGPASSWORD="$PG_MIGRATION_PASSWORD" \

@@ -6,7 +6,15 @@ api/*
 !api/deckService.cjs
 !api/schemaGate.cjs
 !api/relationshipEvents.cjs
+!api/observability.cjs
+!api/matchmakingService.cjs
 !api/accountMutationLock.cjs
+!api/accountLifecycleService.cjs
+!api/accountExportService.cjs
+!api/legalHoldService.cjs
+!api/adminAuthService.cjs
+!api/adminCredentialService.cjs
+!api/adminSecretCrypto.cjs
 !api/backgroundWorkerConfig.cjs
 !api/relationshipOutbox.cjs
 !api/runtimeSecurityConfig.cjs

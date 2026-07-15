@@ -1,5 +1,6 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../blockStore';
+import { platformLogger as logger } from '../logger';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   BoardgameMatchReadyMessage,
@@ -59,6 +60,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
 
   private status: QuickMatchStatus = 'waiting';
   private hostSessionId?: string;
+  private matchedUserIds?: readonly [string, string];
   private boardgameMatchID?: string;
   private authenticatedUserIds = new Set<string>();
   private deckReservations = new Map<
@@ -68,20 +70,14 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private joinedSessionIds = new Set<string>();
   private failedTransitionSessionIds = new Set<string>();
   private authAdmissionTail: Promise<void> = Promise.resolve();
+  private finalRelayInFlight = false;
 
   async onCreate(): Promise<void> {
     this.autoDispose = true;
     this.maxMessagesPerSecond = 4;
 
     this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
-      if (client.sessionId !== this.hostSessionId) return;
-      const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
-      if (!boardgameMatchID || this.status !== 'matched') return;
-      this.boardgameMatchID = boardgameMatchID;
-      this.status = 'finished';
-      void this.refreshMetadata();
-      this.broadcast('boardgameMatchReady', { boardgameMatchID });
-      this.broadcastSnapshot();
+      void this.finishBoardgameMatch(client, message);
     });
 
     this.onMessage('cancelQuickMatch', (client) => {
@@ -199,8 +195,11 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     this.joinedSessionIds.add(client.sessionId);
 
     if (this.clients.length >= 2 && this.status === 'waiting') {
+      const matchedUserIds = this.currentPairUserIds();
+      if (!matchedUserIds) throw new Error('Quick-match pair is unavailable');
       this.status = 'matched';
       this.hostSessionId = this.clients[0]?.sessionId;
+      this.matchedUserIds = matchedUserIds;
       try {
         await this.lock();
         await this.refreshMetadata();
@@ -210,6 +209,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
         this.failedTransitionSessionIds.add(client.sessionId);
         this.status = 'waiting';
         this.hostSessionId = undefined;
+        this.matchedUserIds = undefined;
         try {
           await this.unlock();
         } catch {
@@ -302,6 +302,14 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   }
 
   private async assertCurrentPairAllowed(): Promise<void> {
+    const userIds = this.currentPairUserIds();
+    if (!userIds) return;
+    if (await QuickMatchRoom.blockStore.areUsersBlocked(userIds[0], userIds[1])) {
+      throw new Error('Quick match is not allowed');
+    }
+  }
+
+  private currentPairUserIds(): [string, string] | undefined {
     const userIds = [
       ...new Set(
         this.clients
@@ -309,10 +317,49 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
           .filter((userId): userId is string => Boolean(userId)),
       ),
     ];
-    if (userIds.length < 2) return;
-    if (await QuickMatchRoom.blockStore.areUsersBlocked(userIds[0], userIds[1])) {
-      throw new Error('Quick match is not allowed');
+    return userIds.length >= 2 ? [userIds[0], userIds[1]] : undefined;
+  }
+
+  private async finishBoardgameMatch(client: PlatformClient, message: BoardgameMatchReadyMessage): Promise<void> {
+    if (client.sessionId !== this.hostSessionId || this.status !== 'matched' || this.finalRelayInFlight) return;
+    const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
+    if (!boardgameMatchID) return;
+    const pair = this.matchedUserIds;
+    if (!pair) {
+      await this.cancel('relationship_check_unavailable');
+      return;
     }
+    this.finalRelayInFlight = true;
+
+    try {
+      const transitioned = await QuickMatchRoom.blockStore.withPairTransitionFence(pair[0], pair[1], async () => {
+        if (client.sessionId !== this.hostSessionId || this.status !== 'matched') return false;
+        this.boardgameMatchID = boardgameMatchID;
+        this.status = 'finished';
+        return true;
+      });
+      if (!transitioned) {
+        if (this.status === 'matched') await this.cancel('relationship_changed');
+        return;
+      }
+
+      await this.refreshMetadata();
+      this.broadcast('boardgameMatchReady', { boardgameMatchID });
+      this.broadcastSnapshot();
+    } catch (err) {
+      logger.warn({ err, roomId: this.roomId }, 'quick-match final relationship fence failed');
+      if (this.isFinishedTransition(boardgameMatchID)) {
+        this.status = 'matched';
+        this.boardgameMatchID = undefined;
+      }
+      if (this.status === 'matched') await this.cancel('relationship_check_unavailable');
+    } finally {
+      this.finalRelayInFlight = false;
+    }
+  }
+
+  private isFinishedTransition(boardgameMatchID: string): boolean {
+    return this.status === 'finished' && this.boardgameMatchID === boardgameMatchID;
   }
 
   private broadcastSnapshot(ignoredSessionId?: string): void {
@@ -322,13 +369,23 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private async cancel(reason: string, ignoredSessionId?: string): Promise<void> {
     if (this.status === 'cancelled' || this.status === 'finished') return;
     this.status = 'cancelled';
-    await this.refreshMetadata(ignoredSessionId);
+    this.hostSessionId = undefined;
+    this.matchedUserIds = undefined;
+    this.boardgameMatchID = undefined;
+    this.authenticatedUserIds.clear();
+    this.deckReservations.clear();
+    try {
+      await this.refreshMetadata(ignoredSessionId);
+    } catch (err) {
+      logger.warn({ err, roomId: this.roomId, reason }, 'quick-match cancellation metadata update failed');
+    }
     this.broadcast('quickMatchCancelled', { reason });
     this.broadcastSnapshot(ignoredSessionId);
   }
 
   private roomUserIds(): Set<string> {
     const userIds = new Set(this.authenticatedUserIds);
+    for (const userId of this.matchedUserIds ?? []) userIds.add(userId);
     for (const client of this.clients) {
       const userId = client.userData?.userId || client.auth?.userId;
       if (userId) userIds.add(userId);

@@ -231,6 +231,10 @@ describe('account lifecycle service', () => {
     expect(pool.query).toHaveBeenCalledWith('DELETE FROM season_reward_entitlements WHERE user_id = $1', ['u_1']);
     expect(pool.query).toHaveBeenCalledWith('DELETE FROM season_rewards WHERE user_id = $1', ['u_1']);
     expect(pool.query).toHaveBeenCalledWith('DELETE FROM season_ratings WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE season_match_results'), ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith('SELECT public.zutomayo_anonymize_account_export_audit($1)', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE account_export_jobs'), ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM chat_message_translations'), ['u_1']);
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_messages'), ['u_1']);
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE chat_reports'), ['u_1']);
     expect(pool.query).toHaveBeenCalledWith(
@@ -243,13 +247,251 @@ describe('account lifecycle service', () => {
     );
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE feedback_posts'), [
       'u_1',
-      expect.stringMatching(/^deleted-[a-f0-9]{32}$/),
+      expect.stringMatching(/^deleted-feedback-[a-f0-9]{32}$/),
     ]);
     expect(pool.query).toHaveBeenCalledWith('DELETE FROM chat_read_states WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM chat_user_sanctions WHERE target_user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE legal_hold_objects'), [
+      'u_1',
+      expect.stringMatching(/^deleted-hold-[a-f0-9]{32}$/),
+    ]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE account_deletion_requests'), [
+      'u_1',
+      expect.stringMatching(/^deleted-request-[a-f0-9]{32}$/),
+      expect.stringMatching(/^deleted-provider-[a-f0-9]{32}$/),
+    ]);
+    expect(pool.query).toHaveBeenCalledWith(
+      'SELECT public.zutomayo_anonymize_admin_audit_identity($1, $2) AS affected',
+      ['u_1', expect.stringMatching(/^deleted-admin-audit-[a-f0-9]{32}$/)],
+    );
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("idempotency_key = 'redacted:' || event_id"), [
+      'u_1',
+    ]);
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO relationship_change_outbox'),
-      expect.arrayContaining(['account_deleted:u_1', 'account_deleted', ['u_1']]),
+      expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/), 'account_deleted', ['u_1']]),
     );
+
+    const usersUpdate = pool.query.mock.calls.find(([sql]) => String(sql).includes("nickname = 'Deleted Player'"));
+    const feedbackUpdate = pool.query.mock.calls.find(([sql]) => String(sql).includes('UPDATE feedback_posts'));
+    const holdObjectUpdate = pool.query.mock.calls.find(([sql]) =>
+      String(sql).includes('UPDATE legal_hold_objects AS object'),
+    );
+    const deletionRequestUpdate = pool.query.mock.calls.find(([sql]) =>
+      String(sql).includes('UPDATE account_deletion_requests'),
+    );
+    const adminAuditCall = pool.query.mock.calls.find(([sql]) =>
+      String(sql).includes('zutomayo_anonymize_admin_audit_identity'),
+    );
+    const usersUpdateIndex = pool.query.mock.calls.findIndex(([sql]) =>
+      String(sql).includes("nickname = 'Deleted Player'"),
+    );
+    const exportAuditIndex = pool.query.mock.calls.findIndex(([sql]) =>
+      String(sql).includes('zutomayo_anonymize_account_export_audit'),
+    );
+    const adminAuditIndex = pool.query.mock.calls.findIndex(([sql]) =>
+      String(sql).includes('zutomayo_anonymize_admin_audit_identity'),
+    );
+    expect(usersUpdateIndex).toBeGreaterThanOrEqual(0);
+    expect(usersUpdateIndex).toBeLessThan(exportAuditIndex);
+    expect(usersUpdateIndex).toBeLessThan(adminAuditIndex);
+    const persistedRefs = [
+      usersUpdate?.[1]?.[1],
+      feedbackUpdate?.[1]?.[1],
+      holdObjectUpdate?.[1]?.[1],
+      deletionRequestUpdate?.[1]?.[1],
+      deletionRequestUpdate?.[1]?.[2],
+      adminAuditCall?.[1]?.[1],
+    ];
+    expect(persistedRefs.every((value) => typeof value === 'string' && value.length > 0)).toBe(true);
+    expect(new Set(persistedRefs).size).toBe(persistedRefs.length);
+  });
+
+  it('structurally anonymizes arbitrary game JSON and rekeys direct conversation primary/foreign keys', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM account_deletion_requests')) return { rows: [] };
+      if (sql.includes('FROM bjg_matches AS m') && sql.includes('FOR UPDATE OF m')) {
+        return {
+          rows: [
+            {
+              match_id: 'bg_1',
+              state: {
+                _stateID: 4,
+                G: {
+                  step: 'turnSet',
+                  [`owner:u_1`]: { userId: 'u_1' },
+                  composite: 'actor:u_1:turn',
+                },
+                ctx: { turn: 2 },
+              },
+              initial_state: {
+                _stateID: 0,
+                G: { step: 'janken', owner: 'u_1' },
+                ctx: { turn: 0 },
+              },
+              metadata: {
+                gameName: 'zutomayo',
+                players: {
+                  0: {
+                    id: 0,
+                    name: 'Player u_1',
+                    credentials: 'credential:u_1',
+                    data: { userId: 'u_1' },
+                    isConnected: true,
+                  },
+                  1: { id: 1, name: 'Peer', data: { userId: 'u_2' } },
+                },
+                setupData: { 'deck:u_1': 'reservation:u_1' },
+              },
+              log: [{ action: { payload: { actorUserId: 'u_1' } } }],
+              deleted_player_ids: ['0'],
+            },
+            {
+              match_id: 'bg_2',
+              state: { _stateID: 8, G: { step: 'gameOver', winner: 'u_1' }, ctx: { turn: 4 } },
+              initial_state: { _stateID: 0, G: { step: 'janken', userId: 'u_1' }, ctx: { turn: 0 } },
+              metadata: {
+                gameName: 'zutomayo',
+                players: {
+                  0: { id: 0, name: 'Peer' },
+                  1: { id: 1, name: 'u_1', credentials: 'u_1-secret', data: { userId: 'u_1' } },
+                },
+              },
+              log: [{ actor: 'turn:u_1:final' }],
+              deleted_player_ids: ['1'],
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM chat_conversations') && sql.includes("type = 'direct'")) {
+        return {
+          rows: [
+            {
+              id: 'direct:v1:u_1:u_2',
+              subject_id: 'v1:u_1:u_2',
+              title: 'private',
+              status: 'active',
+              created_at: '2026-07-13T00:00:00.000Z',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM legal_holds') && sql.includes('released_at')) return { rows: [] };
+      if (sql.includes('FROM admin_audit_log')) return { rows: [] };
+      if (sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_1' }] };
+      return { rows: [] };
+    });
+
+    await expect(deleteAccount({ pool, userId: 'u_1' })).resolves.toMatchObject({ ok: true });
+
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FOR UPDATE OF m'), ['u_1']);
+    const boardgameUpdates = pool.query.mock.calls.filter(([sql]) => String(sql).includes('SET state = $2::jsonb'));
+    expect(boardgameUpdates).toHaveLength(2);
+    const boardgameRefs = new Set<string>();
+    for (const [, params] of boardgameUpdates) {
+      const serialized = JSON.stringify(params);
+      expect(serialized).not.toContain('u_1');
+      expect(params?.slice(1)).not.toContain(null);
+      const refs = serialized.match(/deleted-boardgame-[a-f0-9]{32}/g) ?? [];
+      expect(new Set(refs).size).toBe(1);
+      boardgameRefs.add(refs[0]);
+    }
+    expect(boardgameRefs.size).toBe(2);
+
+    const firstBoardgameUpdate = boardgameUpdates.find(([, params]) => params?.[0] === 'bg_1');
+    const firstState = JSON.parse(String(firstBoardgameUpdate?.[1]?.[1])) as Record<string, unknown>;
+    const firstInitialState = JSON.parse(String(firstBoardgameUpdate?.[1]?.[2])) as Record<string, unknown>;
+    const firstMetadata = JSON.parse(String(firstBoardgameUpdate?.[1]?.[3])) as {
+      players: Record<string, Record<string, unknown>>;
+    };
+    expect(firstState).toMatchObject({ _stateID: 4, G: { step: 'turnSet' }, ctx: { turn: 2 } });
+    expect(firstInitialState).toMatchObject({ _stateID: 0, G: { step: 'janken' }, ctx: { turn: 0 } });
+    expect(firstMetadata.players['0']).toEqual({ id: 0, isConnected: true });
+    expect(firstMetadata.players['1']).toEqual({ id: 1, name: 'Peer', data: { userId: 'u_2' } });
+    expect(firstMetadata).toMatchObject({ accountDeletionLocked: true });
+    expect(Object.keys((firstState.G ?? {}) as Record<string, unknown>)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^owner:deleted-boardgame-[a-f0-9]{32}$/)]),
+    );
+    const conversationInsert = pool.query.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO chat_conversations'),
+    );
+    expect(conversationInsert?.[1]?.[0]).toMatch(
+      /^direct:v1:(deleted-conversation-[a-f0-9]{32}:u_2|u_2:deleted-conversation-[a-f0-9]{32})$/,
+    );
+    expect(JSON.stringify(conversationInsert?.[1])).not.toContain('u_1');
+    for (const tableName of [
+      'chat_messages',
+      'chat_read_states',
+      'chat_reports',
+      'chat_moderation_events',
+      'chat_user_sanctions',
+    ]) {
+      expect(pool.query).toHaveBeenCalledWith(
+        expect.stringContaining(`UPDATE ${tableName} SET conversation_id`),
+        expect.arrayContaining(['direct:v1:u_1:u_2', expect.stringMatching(/^direct:v1:/)]),
+      );
+    }
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM chat_conversations WHERE id = $1', ['direct:v1:u_1:u_2']);
+  });
+
+  it('clears a legacy metadata identity when no durable seat row exists', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM account_deletion_requests')) return { rows: [] };
+      if (sql.includes('FROM bjg_matches AS m') && sql.includes('FOR UPDATE OF m')) {
+        return {
+          rows: [
+            {
+              match_id: 'bg_legacy_no_seat',
+              state: { _stateID: 2, G: { step: 'turnSet' }, ctx: { turn: 1 } },
+              initial_state: { _stateID: 0, G: { step: 'janken' }, ctx: { turn: 0 } },
+              metadata: {
+                gameName: 'zutomayo',
+                players: {
+                  0: {
+                    id: 0,
+                    name: 'Legacy Player',
+                    credentials: 'legacy-secret',
+                    data: { userId: 'u_legacy', identitySource: 'server', rankedEligible: true },
+                    isConnected: false,
+                  },
+                  1: {
+                    id: 1,
+                    name: 'Peer',
+                    credentials: 'peer-secret',
+                    data: { userId: 'u_peer', identitySource: 'server' },
+                    isConnected: true,
+                  },
+                },
+              },
+              log: [],
+              deleted_player_ids: [],
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM chat_conversations') && sql.includes("type = 'direct'")) return { rows: [] };
+      if (sql.includes('FROM legal_holds') && sql.includes('released_at')) return { rows: [] };
+      if (sql.includes('FROM users') && sql.includes('FOR UPDATE')) return { rows: [{ id: 'u_legacy' }] };
+      return { rows: [] };
+    });
+
+    await expect(deleteAccount({ pool, userId: 'u_legacy' })).resolves.toMatchObject({ ok: true });
+
+    const update = pool.query.mock.calls.find(([sql]) => String(sql).includes('SET state = $2::jsonb'));
+    const metadata = JSON.parse(String(update?.[1]?.[3])) as {
+      accountDeletionLocked?: boolean;
+      players: Record<string, Record<string, unknown>>;
+    };
+    expect(metadata.accountDeletionLocked).toBe(true);
+    expect(metadata.players['0']).toEqual({ id: 0, isConnected: false });
+    expect(metadata.players['1']).toEqual({
+      id: 1,
+      name: 'Peer',
+      credentials: 'peer-secret',
+      data: { userId: 'u_peer', identitySource: 'server' },
+      isConnected: true,
+    });
+    expect(JSON.stringify(metadata)).not.toContain('u_legacy');
   });
 
   it('does not erase an account protected by an active legal hold', async () => {

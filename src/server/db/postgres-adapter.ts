@@ -7,8 +7,8 @@ import { shuffleDeck } from '../../game/cards/deckBuilder';
 import { postgresConnectionString, postgresSslConfig } from '../../runtimeSecurityConfig';
 
 const require = createRequire(import.meta.url);
-const { assertRuntimeSchema } = require('../../../api/schemaGate.cjs') as {
-  assertRuntimeSchema: (options: {
+const { assertBoardgameRuntimeSchema } = require('../../../api/schemaGate.cjs') as {
+  assertBoardgameRuntimeSchema: (options: {
     pool: Pick<PoolClient, 'query'>;
     expectedMigration: string | undefined;
     expectedChecksum: string | undefined;
@@ -42,6 +42,9 @@ const { AccountMutationError, acquireAccountMutationLocks } = require('../../../
  */
 
 const TYPE_ASYNC = 1;
+const STATE_WRITE_MAX_ATTEMPTS = 4;
+const STATE_TRANSACTION_CONFIG_SQL = `SELECT set_config('lock_timeout', '5000ms', true),
+       set_config('statement_timeout', '10000ms', true)`;
 
 interface PostgresAdapterOptions {
   /** pg.Pool 完整設定（host/port/user/password/database/...）。 */
@@ -93,8 +96,16 @@ interface CreateMatchOpts {
 interface UpdateLockContext {
   matchID: string;
   client: PoolClient;
+  lockedMatch: LockedMatchForStateWrite;
   timeout: ReturnType<typeof setTimeout>;
+  writing: boolean;
   released: boolean;
+}
+
+interface LockedMatchForStateWrite {
+  matchID: string;
+  match: MatchRow;
+  seats: MatchSeatRow[];
 }
 
 export type BoardgamePlayerID = '0' | '1';
@@ -194,6 +205,68 @@ function firstAvailablePlayerID(metadata: Server.MatchData): BoardgamePlayerID |
   return undefined;
 }
 
+function hasPlayerIdentity(player: Server.PlayerMetadata | undefined): boolean {
+  return Boolean(
+    player && (player.name !== undefined || player.credentials !== undefined || player.data !== undefined),
+  );
+}
+
+function isAccountDeletionLocked(metadata: Server.MatchData | null | undefined): boolean {
+  return Boolean(
+    metadata && (metadata as Server.MatchData & { accountDeletionLocked?: unknown }).accountDeletionLocked,
+  );
+}
+
+function normalizedGameover(value: unknown): { draw: true } | { winner: '0' | '1' } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const result = value as { draw?: unknown; winner?: unknown };
+  if (result.draw === true) return { draw: true };
+  if (result.winner === 0 || result.winner === '0') return { winner: '0' };
+  if (result.winner === 1 || result.winner === '1') return { winner: '1' };
+  return undefined;
+}
+
+function mergeAuthoritativeMatchMetadata(
+  current: Server.MatchData,
+  incoming: Server.MatchData,
+  reservedPlayerIDs: Set<string>,
+): Server.MatchData | null {
+  const currentPlayers = current.players as Record<string, Server.PlayerMetadata | undefined>;
+  const incomingPlayers = incoming.players as Record<string, Server.PlayerMetadata | undefined>;
+
+  // A deleted seat no longer has a reservation. Reject the entire stale write
+  // if it still carries identity material; otherwise top-level setupData could
+  // be restored alongside a merely stripped player object.
+  for (const [playerID, player] of Object.entries(incomingPlayers || {})) {
+    if (!reservedPlayerIDs.has(playerID) && hasPlayerIdentity(player)) return null;
+  }
+
+  const players = {} as Server.MatchData['players'];
+  for (const [playerID, currentPlayer] of Object.entries(currentPlayers || {})) {
+    if (!currentPlayer) continue;
+    const incomingPlayer = incomingPlayers?.[playerID];
+    const nextPlayer = { ...currentPlayer };
+    if (typeof incomingPlayer?.isConnected === 'boolean') nextPlayer.isConnected = incomingPlayer.isConnected;
+    if (!reservedPlayerIDs.has(playerID)) {
+      delete nextPlayer.name;
+      delete nextPlayer.credentials;
+      delete nextPlayer.data;
+    }
+    players[Number(playerID)] = nextPlayer;
+  }
+
+  // setupData, gameName, createdAt, and unknown extensions are persisted from
+  // the locked row. Only boardgame.io runtime fields may move forward.
+  const nextMetadata = { ...current, players };
+  if (Number.isFinite(incoming.updatedAt)) nextMetadata.updatedAt = incoming.updatedAt;
+  const gameover = normalizedGameover(incoming.gameover);
+  if (gameover) nextMetadata.gameover = gameover;
+  if (typeof incoming.nextMatchID === 'string' && incoming.nextMatchID) {
+    nextMetadata.nextMatchID = incoming.nextMatchID;
+  }
+  return nextMetadata;
+}
+
 function metadataRulesVersion(metadata: unknown): string {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return 'legacy';
   const setupData = (metadata as Record<string, unknown>).setupData;
@@ -266,6 +339,26 @@ export class StaleStateWriteError extends Error {
   }
 }
 
+export class MatchAccountDeletionLockedError extends Error {
+  readonly code = 'MATCH_ACCOUNT_DELETION_LOCKED';
+  readonly matchID: string;
+
+  constructor(matchID: string) {
+    super(`Match ${matchID} is immutable because an account identity was deleted`);
+    this.name = 'MatchAccountDeletionLockedError';
+    this.matchID = matchID;
+  }
+}
+
+class MatchSeatSetChangedError extends Error {
+  readonly code = 'MATCH_SEAT_SET_CHANGED';
+
+  constructor(matchID: string) {
+    super(`Match ${matchID} seat set changed while acquiring account-first state locks`);
+    this.name = 'MatchSeatSetChangedError';
+  }
+}
+
 export class PostgresAdapter {
   private pool: Pool;
   private createIndexes: boolean;
@@ -315,7 +408,7 @@ export class PostgresAdapter {
     const client = await this.pool.connect();
     try {
       if (!this.runtimeSchemaDdl) {
-        await assertRuntimeSchema({
+        await assertBoardgameRuntimeSchema({
           pool: client,
           expectedMigration: this.expectedSchemaMigration,
           expectedChecksum: this.expectedSchemaChecksum,
@@ -427,9 +520,14 @@ export class PostgresAdapter {
     await this.connect();
 
     const lock = this.updateLocks.get(matchID);
-    if (lock && !lock.released) {
+    if (lock && !lock.released && !lock.writing) {
+      // Claim the retained transaction synchronously. The idle watchdog may
+      // only roll back a fetch that never reached setState; active writes are
+      // bounded by the PostgreSQL transaction-local timeouts instead.
+      lock.writing = true;
+      clearTimeout(lock.timeout);
       try {
-        await this.writeState(lock.client, matchID, state, deltalog);
+        await this.writeState(lock.client, lock.lockedMatch, state, deltalog);
         await this.releaseUpdateLock(lock, 'commit');
       } catch (err) {
         await this.releaseUpdateLock(lock, 'rollback');
@@ -438,19 +536,40 @@ export class PostgresAdapter {
       return;
     }
 
-    if (canonicalTerminalResult(state)) {
-      await this.withTransaction(async (client) => {
-        await this.writeState(client, matchID, state, deltalog);
-      });
-      return;
-    }
-    await this.writeState(this.pool, matchID, state, deltalog);
+    // A direct setState is an exceptional fallback; normal Master updates hold
+    // updateLocks from fetchStateForUpdate. Fence the fallback as strictly as
+    // the normal path so a stale process cannot write after account deletion.
+    await this.withStateWriteRetry(async (client) => {
+      const lockedMatch = await this.lockMatchForStateWrite(client, matchID);
+      if (!lockedMatch) return;
+      await this.writeState(client, lockedMatch, state, deltalog);
+    });
   }
 
   async setMetadata(matchID: string, metadata: Server.MatchData): Promise<void> {
     if (this.closed) return;
     await this.connect();
     await this.withTransaction(async (client) => {
+      // Read identities without locking seat rows, then take account locks
+      // before the match row. Every account deletion and seat writer follows
+      // the same account -> match ordering.
+      const seatAccounts = await client.query<Pick<MatchSeatRow, 'player_id' | 'user_id'>>(
+        `SELECT player_id, user_id
+           FROM bjg_match_seats
+          WHERE match_id = $1
+          ORDER BY user_id, player_id`,
+        [matchID],
+      );
+      try {
+        await acquireAccountMutationLocks(
+          client,
+          seatAccounts.rows.map((seat) => seat.user_id),
+        );
+      } catch (error) {
+        if (error instanceof AccountMutationError) return;
+        throw error;
+      }
+
       const currentResult = await client.query<Pick<MatchRow, 'metadata'>>(
         `SELECT metadata
            FROM bjg_matches
@@ -458,38 +577,30 @@ export class PostgresAdapter {
           FOR UPDATE`,
         [matchID],
       );
-      let nextMetadata = metadata;
       const currentMetadata = currentResult.rows[0]?.metadata;
-      if (currentMetadata?.players && metadata.players) {
-        const reservedSeats = await client.query<{ player_id: BoardgamePlayerID }>(
-          `SELECT player_id
-             FROM bjg_match_seats
-            WHERE match_id = $1
-            FOR SHARE`,
-          [matchID],
-        );
-        if (reservedSeats.rows.length > 0) {
-          const currentPlayers = currentMetadata.players as Record<string, MutableMatchPlayer | undefined>;
-          const incomingPlayers = { ...(metadata.players as Record<string, MutableMatchPlayer | undefined>) };
-          for (const { player_id: playerID } of reservedSeats.rows) {
-            const currentSeat = currentPlayers[playerID];
-            if (!currentSeat) continue;
-            const incomingSeat = incomingPlayers[playerID] || {};
-            incomingPlayers[playerID] = {
-              ...incomingSeat,
-              name: currentSeat.name,
-              credentials: currentSeat.credentials,
-              data: currentSeat.data,
-            };
-          }
-          nextMetadata = { ...metadata, players: incomingPlayers } as Server.MatchData;
-        }
-      }
+      if (!currentMetadata?.players || isAccountDeletionLocked(currentMetadata)) return;
+
+      const reservedSeats = await client.query<Pick<MatchSeatRow, 'player_id' | 'user_id'>>(
+        `SELECT player_id, user_id
+           FROM bjg_match_seats
+          WHERE match_id = $1
+          ORDER BY player_id`,
+        [matchID],
+      );
+      const before = new Set(seatAccounts.rows.map((seat) => `${seat.player_id}:${seat.user_id}`));
+      const after = new Set(reservedSeats.rows.map((seat) => `${seat.player_id}:${seat.user_id}`));
+      if (before.size !== after.size || [...before].some((seat) => !after.has(seat))) return;
+
+      const nextMetadata = mergeAuthoritativeMatchMetadata(
+        currentMetadata,
+        metadata,
+        new Set(reservedSeats.rows.map((seat) => seat.player_id)),
+      );
+      if (!nextMetadata) return;
       await client.query(
-        `INSERT INTO bjg_matches (match_id, metadata, log, updated_at)
-         VALUES ($1, $2, '[]'::jsonb, NOW())
-         ON CONFLICT (match_id)
-         DO UPDATE SET metadata = EXCLUDED.metadata, updated_at = NOW()`,
+        `UPDATE bjg_matches
+            SET metadata = $2::jsonb, updated_at = NOW()
+          WHERE match_id = $1`,
         [matchID, JSON.stringify(nextMetadata)],
       );
     });
@@ -517,6 +628,9 @@ export class PostgresAdapter {
       const metadata = match?.metadata;
       if (!match || !metadata) {
         throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
+      }
+      if (isAccountDeletionLocked(metadata)) {
+        throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} is unavailable`);
       }
 
       const playerID = input.playerID ?? firstAvailablePlayerID(metadata);
@@ -631,6 +745,9 @@ export class PostgresAdapter {
       if (!metadata) {
         throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
       }
+      if (isAccountDeletionLocked(metadata)) {
+        throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} is unavailable`);
+      }
       const players = metadata.players as Record<string, MutableMatchPlayer | undefined>;
       const player = players[input.playerID];
       if (!player?.name || !player.credentials) {
@@ -722,6 +839,9 @@ export class PostgresAdapter {
       if (!row?.state || !row.initial_state || !row.metadata) {
         throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
       }
+      if (isAccountDeletionLocked(row.metadata)) {
+        throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} is unavailable`);
+      }
       await this.bindDeckReservationWithClient(client, row, input);
     });
   }
@@ -733,6 +853,9 @@ export class PostgresAdapter {
   ): Promise<void> {
     if (!row.state || !row.initial_state || !row.metadata) {
       throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
+    }
+    if (isAccountDeletionLocked(row.metadata)) {
+      throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} is unavailable`);
     }
     const seat = (
       await client.query<MatchSeatRow>(
@@ -869,9 +992,15 @@ export class PostgresAdapter {
     if (opts.metadata) cols.push('metadata');
     if (opts.initialState) cols.push('initial_state');
 
-    const result = await this.pool.query<MatchRow>(`SELECT ${cols.join(', ')} FROM bjg_matches WHERE match_id = $1`, [
-      matchID,
-    ]);
+    // Reconnect/sync fetches include state plus metadata/log. A row-level
+    // shared lock makes them wait for an in-flight update transaction on any
+    // game-server instance, then READ COMMITTED returns the committed row.
+    // Metadata-only lobby reads do not need to join this serialization path.
+    const lockClause = opts.state ? ' FOR SHARE' : '';
+    const result = await this.pool.query<MatchRow>(
+      `SELECT ${cols.join(', ')} FROM bjg_matches WHERE match_id = $1${lockClause}`,
+      [matchID],
+    );
     if (result.rows.length === 0) {
       return {} as { state?: State; log?: LogEntry[]; metadata?: Server.MatchData; initialState?: State };
     }
@@ -986,42 +1115,104 @@ export class PostgresAdapter {
   }
 
   private async fetchStateForUpdate(matchID: string): Promise<{ state?: State }> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const result = await client.query<MatchRow>(
-        `SELECT match_id, state FROM bjg_matches WHERE match_id = $1 FOR UPDATE`,
-        [matchID],
-      );
-      if (result.rows.length === 0) {
-        await client.query('COMMIT');
-        client.release();
-        return {};
-      }
+    for (let attempt = 1; attempt <= STATE_WRITE_MAX_ATTEMPTS; attempt += 1) {
+      const client = await this.pool.connect();
+      try {
+        await client.query('BEGIN');
+        await this.configureStateWriteTransaction(client);
+        const lockedMatch = await this.lockMatchForStateWrite(client, matchID);
+        if (!lockedMatch) {
+          await client.query('COMMIT');
+          client.release();
+          return {};
+        }
 
-      const lock: UpdateLockContext = {
-        matchID,
-        client,
-        released: false,
-        timeout: setTimeout(() => {
-          this.releaseUpdateLock(lock, 'rollback').catch((err) => {
-            Sentry.captureException(err, {
-              tags: { layer: 'postgres', op: 'lock-release-timeout', match_id: matchID },
+        const lock: UpdateLockContext = {
+          matchID,
+          client,
+          lockedMatch,
+          writing: false,
+          released: false,
+          timeout: setTimeout(() => {
+            if (lock.writing || lock.released) return;
+            this.releaseUpdateLock(lock, 'rollback').catch((err) => {
+              Sentry.captureException(err, {
+                tags: { layer: 'postgres', op: 'lock-release-timeout', match_id: matchID },
+              });
+              console.error(`[PostgresAdapter] timed-out update lock release failed for ${matchID}:`, err);
             });
-            console.error(`[PostgresAdapter] timed-out update lock release failed for ${matchID}:`, err);
-          });
-        }, 5000),
-      };
-      lock.timeout.unref?.();
-      this.updateLocks.set(matchID, lock);
-      return { state: result.rows[0].state as State };
-    } catch (err) {
-      await client.query('ROLLBACK').catch(() => {
-        /* ignore rollback failure from the original error path */
-      });
-      client.release();
-      throw err;
+          }, 5000),
+        };
+        lock.timeout.unref?.();
+        this.updateLocks.set(matchID, lock);
+        return { state: lockedMatch.match.state as State };
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {
+          /* ignore rollback failure from the original error path */
+        });
+        client.release();
+        if (err instanceof MatchSeatSetChangedError && attempt < STATE_WRITE_MAX_ATTEMPTS) continue;
+        throw err;
+      }
     }
+    return {};
+  }
+
+  private async lockMatchForStateWrite(client: PoolClient, matchID: string): Promise<LockedMatchForStateWrite | null> {
+    // Read identities without locking seat rows, then use the universal
+    // account -> match order shared by deletion, seat, state, and metadata.
+    const seatsBeforeLock = await client.query<Pick<MatchSeatRow, 'player_id' | 'user_id'>>(
+      `SELECT player_id, user_id
+         FROM bjg_match_seats
+        WHERE match_id = $1
+        ORDER BY user_id, player_id`,
+      [matchID],
+    );
+    await acquireAccountMutationLocks(
+      client,
+      seatsBeforeLock.rows.map((seat) => seat.user_id),
+    );
+    const result = await client.query<MatchRow>(
+      `SELECT match_id, state, metadata FROM bjg_matches WHERE match_id = $1 FOR UPDATE`,
+      [matchID],
+    );
+    const match = result.rows[0];
+    if (match && isAccountDeletionLocked(match.metadata)) {
+      throw new MatchAccountDeletionLockedError(matchID);
+    }
+    if (!match) return null;
+
+    const seatsAfterLock = await client.query<MatchSeatRow>(
+      `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash
+         FROM bjg_match_seats
+        WHERE match_id = $1
+        ORDER BY player_id`,
+      [matchID],
+    );
+    const before = new Set(seatsBeforeLock.rows.map((seat) => `${seat.player_id}:${seat.user_id}`));
+    const after = new Set(seatsAfterLock.rows.map((seat) => `${seat.player_id}:${seat.user_id}`));
+    if (before.size !== after.size || [...before].some((seat) => !after.has(seat))) {
+      throw new MatchSeatSetChangedError(matchID);
+    }
+    return { matchID, match, seats: seatsAfterLock.rows };
+  }
+
+  private async withStateWriteRetry<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {
+    for (let attempt = 1; attempt <= STATE_WRITE_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.withTransaction(async (client) => {
+          await this.configureStateWriteTransaction(client);
+          return operation(client);
+        });
+      } catch (error) {
+        if (!(error instanceof MatchSeatSetChangedError) || attempt === STATE_WRITE_MAX_ATTEMPTS) throw error;
+      }
+    }
+    throw new Error('State write retry loop exhausted');
+  }
+
+  private async configureStateWriteTransaction(client: PoolClient): Promise<void> {
+    await client.query(STATE_TRANSACTION_CONFIG_SQL);
   }
 
   private async releaseUpdateLock(lock: UpdateLockContext, mode: 'commit' | 'rollback'): Promise<void> {
@@ -1041,11 +1232,12 @@ export class PostgresAdapter {
   }
 
   private async writeState(
-    queryable: Pick<Pool | PoolClient, 'query'>,
-    matchID: string,
+    queryable: PoolClient,
+    lockedMatch: LockedMatchForStateWrite,
     state: State,
     deltalog?: LogEntry[],
   ): Promise<void> {
+    const { matchID } = lockedMatch;
     const nextStateID = typeof state._stateID === 'number' ? state._stateID : null;
     const expectedStateID = this.expectedPreviousStateID(state);
     const hasDeltalog = Boolean(deltalog && deltalog.length > 0);
@@ -1082,50 +1274,27 @@ export class PostgresAdapter {
 
     const terminalResult = canonicalTerminalResult(state);
     if (terminalResult) {
-      await this.enqueueTerminalResult(queryable, matchID, terminalResult);
+      await this.enqueueTerminalResult(queryable, lockedMatch, terminalResult);
     }
   }
 
   private async enqueueTerminalResult(
-    queryable: Pick<Pool | PoolClient, 'query'>,
-    matchID: string,
+    queryable: PoolClient,
+    lockedMatch: LockedMatchForStateWrite,
     result: CanonicalTerminalResult,
   ): Promise<void> {
-    const match = await queryable.query<Pick<MatchRow, 'metadata'>>(
-      'SELECT metadata FROM bjg_matches WHERE match_id = $1',
-      [matchID],
-    );
-    const rulesVersion = metadataRulesVersion(match.rows[0]?.metadata);
-    const seats = await queryable.query<MatchSeatRow>(
-      `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash
-         FROM bjg_match_seats
-        WHERE match_id = $1
-        ORDER BY player_id`,
-      [matchID],
-    );
-    let player0 = seats.rows.find((seat) => seat.player_id === '0');
-    let player1 = seats.rows.find((seat) => seat.player_id === '1');
-    let winner = result.winnerPlayer === 0 ? player0 : result.winnerPlayer === 1 ? player1 : undefined;
-    let loser = result.winnerPlayer === 0 ? player1 : result.winnerPlayer === 1 ? player0 : undefined;
-    let accountDeleted = false;
-    const accountIds = [player0?.user_id, player1?.user_id].filter((userId): userId is string => Boolean(userId));
-    try {
-      await acquireAccountMutationLocks(queryable as PoolClient, accountIds);
-    } catch (error) {
-      if (!(error instanceof AccountMutationError)) throw error;
-      accountDeleted = true;
-      player0 = undefined;
-      player1 = undefined;
-      winner = undefined;
-      loser = undefined;
-    }
+    const { matchID } = lockedMatch;
+    const rulesVersion = metadataRulesVersion(lockedMatch.match.metadata);
+    const player0 = lockedMatch.seats.find((seat) => seat.player_id === '0');
+    const player1 = lockedMatch.seats.find((seat) => seat.player_id === '1');
+    const winner = result.winnerPlayer === 0 ? player0 : result.winnerPlayer === 1 ? player1 : undefined;
+    const loser = result.winnerPlayer === 0 ? player1 : result.winnerPlayer === 1 ? player0 : undefined;
     const rankedEligible = Boolean(
       winner && loser && winner.ranked_eligible && loser.ranked_eligible && winner.user_id !== loser.user_id,
     );
     const status = rankedEligible && this.rankedMatchesEnabled ? 'pending' : 'unrated';
-    const unratedReason = accountDeleted
-      ? 'account_deleted'
-      : rankedEligible && !this.rankedMatchesEnabled
+    const unratedReason =
+      rankedEligible && !this.rankedMatchesEnabled
         ? 'ranked_disabled'
         : result.winnerPlayer === null
           ? 'draw_or_missing_winner'

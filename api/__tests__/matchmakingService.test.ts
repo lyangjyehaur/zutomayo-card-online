@@ -10,6 +10,7 @@ const {
   joinMatchmakingQueue,
   leaveMatchmakingQueue,
   listMatchmakingBlockedUserIds,
+  purgeDeletedMatchmakingAccount,
   reportRealMatch,
 } = require('../matchmakingService.cjs') as {
   applyMatchmakingBlock: (redis: RedisLike, blockerUserId: string, blockedUserId: string) => Promise<void>;
@@ -37,6 +38,7 @@ const {
     pool: { query: ReturnType<typeof vi.fn> };
     userId: string;
   }) => Promise<string[]>;
+  purgeDeletedMatchmakingAccount: (redis: RedisLike, userId: string) => Promise<void>;
   reportRealMatch: (
     redis: RedisLike,
     userId: string,
@@ -57,6 +59,8 @@ function makeRedis(entries: Record<string, Record<string, string>> = {}): RedisL
     del: vi.fn(async () => 1),
     sadd: vi.fn(async () => 1),
     srem: vi.fn(async () => 1),
+    scan: vi.fn(async () => ['0', []]),
+    eval: vi.fn(async () => 0),
   };
 }
 
@@ -157,6 +161,93 @@ describe('matchmaking service', () => {
     redis.mmApplyBlock = vi.fn(async () => 2);
     await applyMatchmakingBlock(redis, 'u_1', 'u_2');
     expect(redis.mmApplyBlock).toHaveBeenCalledWith('mm:queue', 'u_1', 'u_2');
+  });
+
+  it('purges own state, reverse blocks, and fenced peer references across every scan page on retries', async () => {
+    const redis = makeRedis();
+    redis.scan = vi.fn(async (cursor: string, _match: string, pattern: string) => {
+      if (pattern === 'mm:blocked:*') {
+        if (cursor === '0') return ['7', ['mm:blocked:u_deleted', 'mm:blocked:u_alice']];
+        if (cursor === '7') return ['12', []];
+        return ['0', ['mm:blocked:u_bob']];
+      }
+      if (cursor === '0') return ['5', ['mm:u_deleted', 'mm:u_alice']];
+      if (cursor === '5') return ['8', []];
+      return ['0', ['mm:u_bob']];
+    });
+
+    await purgeDeletedMatchmakingAccount(redis, 'u_deleted');
+    await purgeDeletedMatchmakingAccount(redis, 'u_deleted');
+
+    const blockScans = redis.scan.mock.calls.filter((call) => call[2] === 'mm:blocked:*');
+    const peerScans = redis.scan.mock.calls.filter((call) => call[2] === 'mm:*');
+    expect(blockScans.map((call) => call[0])).toEqual(['0', '7', '12', '0', '7', '12']);
+    expect(peerScans.map((call) => call[0])).toEqual(['0', '5', '8', '0', '5', '8']);
+    expect(peerScans.every((call) => call.join(' ') === `${call[0]} MATCH mm:* COUNT 200 TYPE hash`)).toBe(true);
+    expect(redis.srem.mock.calls).toEqual([
+      ['mm:blocked:u_alice', 'u_deleted'],
+      ['mm:blocked:u_bob', 'u_deleted'],
+      ['mm:blocked:u_alice', 'u_deleted'],
+      ['mm:blocked:u_bob', 'u_deleted'],
+    ]);
+    const peerLua = String(redis.eval.mock.calls[0]?.[0]);
+    expect(redis.eval.mock.calls.map((call) => call.slice(1))).toEqual([
+      [2, 'mm:queue', 'mm:u_alice', 'u_deleted', 'u_alice'],
+      [2, 'mm:queue', 'mm:u_bob', 'u_deleted', 'u_bob'],
+      [2, 'mm:queue', 'mm:u_alice', 'u_deleted', 'u_alice'],
+      [2, 'mm:queue', 'mm:u_bob', 'u_deleted', 'u_bob'],
+    ]);
+    expect(redis.eval.mock.calls.every((call) => call[0] === peerLua)).toBe(true);
+    expect(redis.zrem.mock.calls).toEqual([
+      ['mm:queue', 'u_deleted'],
+      ['mm:queue', 'u_deleted'],
+    ]);
+    expect(redis.del.mock.calls).toEqual([
+      ['mm:u_deleted'],
+      ['mm:blocked:u_deleted'],
+      ['mm:u_deleted'],
+      ['mm:blocked:u_deleted'],
+    ]);
+
+    const fenceIndex = peerLua.indexOf("HGET', peerKey, 'opponentId'");
+    const mutationIndex = peerLua.indexOf("HDEL', peerKey");
+    expect(fenceIndex).toBeGreaterThanOrEqual(0);
+    expect(fenceIndex).toBeLessThan(mutationIndex);
+    expect(peerLua).toContain("'opponentId', 'matchId', 'role', 'realMatchId'");
+    expect(peerLua).toContain("if status == 'matched' then");
+  });
+
+  it('propagates reverse-index mutation failures so the outbox can retry without deleting the own block key', async () => {
+    const redis = makeRedis();
+    const failure = new Error('Redis SREM unavailable');
+    redis.scan = vi.fn(async (_cursor: string, _match: string, pattern: string) =>
+      pattern === 'mm:blocked:*' ? ['0', ['mm:blocked:u_alice']] : ['0', []],
+    );
+    redis.srem = vi.fn().mockRejectedValueOnce(failure).mockResolvedValueOnce(1);
+
+    await expect(purgeDeletedMatchmakingAccount(redis, 'u_deleted')).rejects.toBe(failure);
+    expect(redis.del).not.toHaveBeenCalledWith('mm:blocked:u_deleted');
+
+    await expect(purgeDeletedMatchmakingAccount(redis, 'u_deleted')).resolves.toBeUndefined();
+    expect(redis.srem).toHaveBeenLastCalledWith('mm:blocked:u_alice', 'u_deleted');
+    expect(redis.del).toHaveBeenCalledWith('mm:blocked:u_deleted');
+  });
+
+  it('propagates scan and conditional peer mutation errors instead of acknowledging partial cleanup', async () => {
+    const scanRedis = makeRedis();
+    const scanFailure = new Error('Redis SCAN unavailable');
+    scanRedis.scan = vi.fn().mockRejectedValue(scanFailure);
+    await expect(purgeDeletedMatchmakingAccount(scanRedis, 'u_deleted')).rejects.toBe(scanFailure);
+    expect(scanRedis.del).not.toHaveBeenCalledWith('mm:blocked:u_deleted');
+
+    const peerRedis = makeRedis();
+    const peerFailure = new Error('Redis EVAL unavailable');
+    peerRedis.scan = vi.fn(async (_cursor: string, _match: string, pattern: string) =>
+      pattern === 'mm:blocked:*' ? ['0', []] : ['0', ['mm:u_peer']],
+    );
+    peerRedis.eval = vi.fn().mockRejectedValue(peerFailure);
+    await expect(purgeDeletedMatchmakingAccount(peerRedis, 'u_deleted')).rejects.toBe(peerFailure);
+    expect(peerRedis.del).not.toHaveBeenCalledWith('mm:blocked:u_deleted');
   });
 
   it('reports matchmaking status after cleaning expired queue entries', async () => {

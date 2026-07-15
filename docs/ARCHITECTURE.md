@@ -499,33 +499,14 @@ connectPlatformQuickMatch()
 
 這條路徑避免舊 REST polling + Redis `realMatchId` handoff 在 lobby unmount 時讓 guest 卡住；配對 lifecycle、取消、match ID relay 都由 Colyseus 房間承擔，boardgame.io 仍只負責實際卡牌對局。
 
-### Legacy REST 配對（相容端點）
+### Legacy REST 配對（已退役）
 
-`api/matchmakingService.cjs` + `api/server.cjs` 的 Lua 腳本：
-
-```text
-POST /api/matchmaking/queue
-  ├─ HSET mm:{userId} {queueId, joinedAt, deckName, deckIds, status:'queued'}
-  ├─ ZADD mm:queue {now} {userId}
-  └─ redis.mmTryMatch('mm:queue', userId, now, matchId, timeoutMs)
-        │  Lua 原子操作：
-        │  1. ZRANGEBYSCORE 清掉過期 queued 玩家（轉 timeout）
-        │  2. ZRANGE 取最早 waiting 對手
-        │  3. ZREM 雙方
-        │  4. userId 字串較小者為 host，較大者為 guest
-        │  5. HSET 雙方 mm:{userId} status='matched' + matchId + opponentId + role
-        ▼
-GET /api/matchmaking/status
-  ├─ redis.mmCleanExpired（清過期）
-  └─ 回 { status, matchId, opponentId, role, realMatchId }
-```
-
-Lua 保證多 API 實例下不會把同一人配給兩人（原子 ZREM + HSET）。這組 `/api/matchmaking/*` endpoint 目前保留為 legacy compatibility / 測試面；瀏覽器 quick match UI 不再以它作為主流程。
+`POST /api/matchmaking/queue`、`GET /api/matchmaking/status`、`DELETE /api/matchmaking/queue` 與 `PUT /api/matchmaking/match` 只保留 `410 Gone` tombstone，不再讀寫 Redis。這避免已驗證但尚未完成的舊請求在帳戶刪除 purge 後重新建立 user ID。`api/matchmakingService.cjs` 只保留 outbox 投影與部署升級期間清理既有 legacy key 所需的操作。
 
 ### 建房 / 加入
 
 - Colyseus quick match 成功後 **host** 用 boardgame.io lobby API `createMatch`（setupData 帶 `clientVersion`、雙方 deck 名/ids），取得 `matchID`。
-- host 透過 `quick_match` room 的 `boardgameMatchReady` 訊息回報 boardgame.io `matchID`，雙方再進入同一個 boardgame.io match。Legacy REST 路徑才使用 `PUT /api/matchmaking/match` / `realMatchId`。
+- host 透過 `quick_match` room 的 `boardgameMatchReady` 訊息回報 boardgame.io `matchID`，雙方再進入同一個 boardgame.io match。
 - 雙方各自 `POST /games/zutomayo-card/:id/join`：帶 `playerName` / `data` / `clientVersion`，server 驗版本後 `generateCredentials` 並 `setMetadata`。
 - client 將 `{ matchID, playerID, playerCredentials }` 存入 localStorage（`onlineSession.ts`）。
 

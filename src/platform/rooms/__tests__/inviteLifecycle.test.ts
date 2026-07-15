@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { AuthContext } from '@colyseus/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createEmptyPlatformBlockStore } from '../../blockStore';
+import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../../blockStore';
 import { createEmptyPlatformFriendStore } from '../../friendStore';
 import { InviteRoom } from '../InviteRoom';
 import type { BoardgameMatchReadyMessage, InviteResponseMessage, PlatformAuth, PlatformClient } from '../types';
@@ -58,6 +58,37 @@ function inviteId(inviterUserId = 'u_inviter', targetUserId = 'u_target'): strin
 
 async function flushAsyncHandlers(): Promise<void> {
   await Promise.resolve();
+}
+
+function delayedCommittedBlockStore(): {
+  store: PlatformBlockStore;
+  fenceEntered: Promise<void>;
+  commitBlock: () => void;
+} {
+  let resolveFenceEntered!: () => void;
+  let resolveCommit!: () => void;
+  let committed = false;
+  const fenceEntered = new Promise<void>((resolve) => {
+    resolveFenceEntered = resolve;
+  });
+  const commit = new Promise<void>((resolve) => {
+    resolveCommit = resolve;
+  });
+  return {
+    store: {
+      areUsersBlocked: async () => false,
+      async withPairTransitionFence(_firstUserId, _secondUserId, transition) {
+        resolveFenceEntered();
+        await commit;
+        return committed ? false : transition();
+      },
+    },
+    fenceEntered,
+    commitBlock() {
+      committed = true;
+      resolveCommit();
+    },
+  };
 }
 
 async function setupInviteRoom() {
@@ -149,7 +180,9 @@ describe('invite room lifecycle', () => {
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-ignored' });
 
     boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: ' bgio-match-1 ' });
-    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
+    await vi.waitFor(() =>
+      expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' }),
+    );
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         status: 'finished',
@@ -163,6 +196,102 @@ describe('invite room lifecycle', () => {
     boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-match-2' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
     expect(setMatchmaking).not.toHaveBeenCalled();
+  });
+
+  it('rejects the final invite relay when a block commits before delayed outbox delivery', async () => {
+    const delayedBlock = delayedCommittedBlockStore();
+    InviteRoom.configureBlockStore(delayedBlock.store);
+    InviteRoom.configureFriendStore(
+      {
+        listFriendUserIds: async (userId) => (userId === 'u_inviter' ? ['u_target'] : ['u_inviter']),
+        areUsersFriends: async () => true,
+      },
+      { enforceFriendship: true },
+    );
+    const { room, inviteHandlers, boardgameHandlers, broadcast, setMatchmaking, inviter, target } =
+      await setupInviteRoom();
+
+    inviteHandlers.get('acceptInvite')?.(target, {});
+    await vi.waitFor(() => expect(room['status']).toBe('accepted'));
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+
+    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-must-not-start' });
+    await delayedBlock.fenceEntered;
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(room['status']).toBe('accepted');
+
+    // The outbox projection remains delayed; the final DB fence alone must
+    // observe the committed block and revoke the relay.
+    delayedBlock.commitBlock();
+    await vi.waitFor(() =>
+      expect(broadcast).toHaveBeenCalledWith('inviteCancelled', {
+        inviteId: inviteId(),
+        reason: 'relationship_changed',
+      }),
+    );
+
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(room['status']).toBe('cancelled');
+    expect(room['boardgameMatchID']).toBeUndefined();
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({ status: 'cancelled', boardgameMatchID: undefined }),
+    });
+  });
+
+  it('fails the final invite relay closed when authoritative friendship is unavailable', async () => {
+    InviteRoom.configureFriendStore(
+      {
+        listFriendUserIds: async (userId) => (userId === 'u_inviter' ? ['u_target'] : ['u_inviter']),
+        areUsersFriends: async () => {
+          throw new Error('postgres unavailable');
+        },
+      },
+      { enforceFriendship: true },
+    );
+    const { room, inviteHandlers, boardgameHandlers, broadcast, inviter, target } = await setupInviteRoom();
+    inviteHandlers.get('acceptInvite')?.(target, {});
+    await vi.waitFor(() => expect(room['status']).toBe('accepted'));
+    broadcast.mockClear();
+
+    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-must-not-start' });
+    await vi.waitFor(() =>
+      expect(broadcast).toHaveBeenCalledWith('inviteCancelled', {
+        inviteId: inviteId(),
+        reason: 'relationship_check_unavailable',
+      }),
+    );
+
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(room['status']).toBe('cancelled');
+    expect(room['boardgameMatchID']).toBeUndefined();
+  });
+
+  it('rechecks committed friendship removal even when its outbox event is delayed', async () => {
+    let friendshipCurrent = true;
+    InviteRoom.configureFriendStore(
+      {
+        listFriendUserIds: async (userId) => (userId === 'u_inviter' ? ['u_target'] : ['u_inviter']),
+        areUsersFriends: async () => friendshipCurrent,
+      },
+      { enforceFriendship: true },
+    );
+    const { room, inviteHandlers, boardgameHandlers, broadcast, inviter, target } = await setupInviteRoom();
+    inviteHandlers.get('acceptInvite')?.(target, {});
+    await vi.waitFor(() => expect(room['status']).toBe('accepted'));
+    broadcast.mockClear();
+
+    friendshipCurrent = false;
+    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-must-not-start' });
+    await vi.waitFor(() =>
+      expect(broadcast).toHaveBeenCalledWith('inviteCancelled', {
+        inviteId: inviteId(),
+        reason: 'relationship_changed',
+      }),
+    );
+
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(room['status']).toBe('cancelled');
   });
 
   it('cancels an invite when friendship is removed before acceptance', async () => {
@@ -301,8 +430,9 @@ describe('invite room lifecycle', () => {
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
 
     boardgameHandlers.get('boardgameMatchReady')?.(reconnectingInviter, { boardgameMatchID: ' bgio-match-1 ' });
-
-    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
+    await vi.waitFor(() =>
+      expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' }),
+    );
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         status: 'finished',
@@ -326,6 +456,7 @@ describe('invite room lifecycle', () => {
     ).resolves.toMatchObject({ userId: 'u_inviter', authenticated: true, role: 'player' });
 
     boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-match-1' });
+    await vi.waitFor(() => expect(room['status']).toBe('finished'));
 
     await expect(
       room.onAuth(

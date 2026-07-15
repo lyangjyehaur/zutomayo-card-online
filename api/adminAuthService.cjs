@@ -71,6 +71,18 @@ function verifyTotp(secret, suppliedCode, timestamp = Date.now()) {
   return [-1, 0, 1].some((window) => timingSafeTextEqual(totpCode(secret, timestamp + window * 30_000), suppliedCode));
 }
 
+function sameCredentialSnapshot(current, authenticated) {
+  return (
+    current &&
+    !current.disabled_at &&
+    current.id === authenticated.id &&
+    current.role === authenticated.role &&
+    timingSafeTextEqual(current.password_hash, authenticated.password_hash) &&
+    timingSafeTextEqual(current.salt, authenticated.salt) &&
+    timingSafeTextEqual(current.totp_secret_ciphertext, authenticated.totp_secret_ciphertext)
+  );
+}
+
 async function authenticateAdmin({
   pool,
   body,
@@ -102,16 +114,45 @@ async function authenticateAdmin({
   const totpSecret = await decryptTotpSecret(user.totp_secret_ciphertext);
   if (!verifyTotp(totpSecret, body.totpCode)) return { ok: false, status: 401, error: 'Invalid admin MFA code' };
 
-  const jti = generateJti();
-  const ttl = Math.max(300, Math.min(Number(sessionTtlSeconds) || 3600, 8 * 60 * 60));
-  const token = createSessionToken({ adminUserId: user.id, role: user.role, jti, expiresIn: ttl });
-  await pool.query(
-    `INSERT INTO admin_sessions (jti, admin_user_id, role, expires_at)
-     VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 second'))`,
-    [jti, user.id, user.role, ttl],
-  );
-  await pool.query('UPDATE admin_users SET last_login_at = NOW() WHERE id = $1', [user.id]);
-  return { ok: true, body: { token, role: user.role, expiresIn: ttl } };
+  if (typeof pool.connect !== 'function') throw new Error('admin authentication requires a PostgreSQL pool');
+  const client = await pool.connect();
+  let transactionOpen = false;
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const lockedUser = (
+      await client.query(
+        `SELECT id, username, password_hash, salt, role, totp_secret_ciphertext, disabled_at
+         FROM admin_users
+         WHERE username = $1
+         FOR UPDATE`,
+        [username],
+      )
+    ).rows[0];
+    if (!sameCredentialSnapshot(lockedUser, user)) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return { ok: false, status: 401, error: 'Invalid admin credentials' };
+    }
+
+    const jti = generateJti();
+    const ttl = Math.max(300, Math.min(Number(sessionTtlSeconds) || 3600, 8 * 60 * 60));
+    const token = createSessionToken({ adminUserId: user.id, role: user.role, jti, expiresIn: ttl });
+    await client.query(
+      `INSERT INTO admin_sessions (jti, admin_user_id, role, expires_at)
+       VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 second'))`,
+      [jti, user.id, user.role, ttl],
+    );
+    await client.query('UPDATE admin_users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+    await client.query('COMMIT');
+    transactionOpen = false;
+    return { ok: true, body: { token, role: user.role, expiresIn: ttl } };
+  } catch (error) {
+    if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function verifyAdminSession({ pool, payload, permission }) {
@@ -152,6 +193,7 @@ module.exports = {
   decodeBase32,
   hasAdminPermission,
   revokeAdminSession,
+  sameCredentialSnapshot,
   timingSafeTextEqual,
   totpCode,
   verifyAdminSession,

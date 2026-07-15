@@ -10,14 +10,22 @@ COPY migrations ./migrations
 COPY api/schemaGate.cjs ./api/schemaGate.cjs
 COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs
+COPY api/observability.cjs ./api/observability.cjs
+COPY api/matchmakingService.cjs ./api/matchmakingService.cjs
+COPY api/accountMutationLock.cjs ./api/accountMutationLock.cjs
 COPY api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs
+COPY api/adminAuthService.cjs ./api/adminAuthService.cjs
+COPY api/adminCredentialService.cjs ./api/adminCredentialService.cjs
+COPY api/adminSecretCrypto.cjs ./api/adminSecretCrypto.cjs
 COPY scripts/db-migrate.cjs ./scripts/db-migrate.cjs
 COPY scripts/migration-checksums.cjs ./scripts/migration-checksums.cjs
 COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs
 COPY scripts/postgres-role-tls-smoke.cjs ./scripts/postgres-role-tls-smoke.cjs
 COPY scripts/db-schema-gate.cjs ./scripts/db-schema-gate.cjs
 COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs
+COPY scripts/create-admin.cjs ./scripts/create-admin.cjs
 COPY scripts/relationship-outbox-pg-smoke.cjs ./scripts/relationship-outbox-pg-smoke.cjs
+COPY scripts/admin-credential-pg-smoke.cjs ./scripts/admin-credential-pg-smoke.cjs
 COPY scripts/redrive-relationship-outbox.cjs ./scripts/redrive-relationship-outbox.cjs
 
 USER node

@@ -24,7 +24,10 @@ const { ALL_TABLES, APPLICATION_TABLES, enforceRuntimeRolePrivileges, quoteIdent
       requiredRoleTypes: string[];
     }>;
   };
-const { REQUIRED_RUNTIME_TABLES } = require('../../api/schemaGate.cjs') as { REQUIRED_RUNTIME_TABLES: string[] };
+const { REQUIRED_RUNTIME_COLUMNS, REQUIRED_RUNTIME_TABLES } = require('../../api/schemaGate.cjs') as {
+  REQUIRED_RUNTIME_COLUMNS: Record<string, string[]>;
+  REQUIRED_RUNTIME_TABLES: string[];
+};
 
 const roleUsers = Object.freeze({
   api: 'z_api',
@@ -82,9 +85,36 @@ function successfulQuery(users: Record<string, string> = roleUsers, override?: Q
     if (sql.includes('FROM information_schema.tables')) {
       return { rows: ALL_TABLES.map((table_name) => ({ table_name })) };
     }
+    if (sql.includes('FROM information_schema.columns')) {
+      return {
+        rows: Object.entries(REQUIRED_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>
+          columns.map((column_name) => ({ table_name, column_name })),
+        ),
+      };
+    }
     if (sql.includes('has_table_privilege')) return { rows: [] };
     if (sql.includes('has_column_privilege')) return { rows: [] };
     if (sql.includes('has_sequence_privilege')) return { rows: [] };
+    if (sql.includes('function_oid IS NOT NULL')) {
+      return {
+        rows: [
+          {
+            present: true,
+            security_definer: true,
+            safe_search_path: true,
+            owner_name: 'z_migrator',
+            public_execute_revoked: true,
+          },
+          {
+            present: true,
+            security_definer: true,
+            safe_search_path: true,
+            owner_name: 'z_migrator',
+            public_execute_revoked: true,
+          },
+        ],
+      };
+    }
     if (sql.includes("has_schema_privilege(role_name, 'zutomayo_ops'")) {
       return {
         rows: uniqueUsers.map((role_name) => ({
@@ -106,6 +136,7 @@ function successfulQuery(users: Record<string, string> = roleUsers, override?: Q
     if (sql.includes('has_database_privilege')) {
       return { rows: uniqueUsers.map((role_name) => ({ role_name, can_connect: role_name !== users.wal })) };
     }
+    if (sql.includes('function_signature') && sql.includes('has_function_privilege')) return { rows: [] };
     if (sql.includes('has_function_privilege')) {
       return {
         rows: uniqueUsers.map((role_name) => ({
@@ -147,10 +178,29 @@ describe('PostgreSQL runtime role gate', () => {
       'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."account_export_jobs" TO "z_api"',
     );
     expect(statements).toContain('GRANT SELECT, INSERT ON TABLE public."account_export_audit" TO "z_api"');
+    expect(statements).not.toContain(
+      'GRANT UPDATE ("user_id", "details", "identity_anonymized_at") ON TABLE public."account_export_audit" TO "z_api"',
+    );
+    expect(statements).toContain('GRANT SELECT, INSERT ON TABLE public."admin_audit_log" TO "z_api"');
+    expect(statements).not.toContain(
+      'GRANT UPDATE ("target_id", "details", "identity_anonymized_at") ON TABLE public."admin_audit_log" TO "z_api"',
+    );
+    expect(statements).toContain(
+      'GRANT EXECUTE ON FUNCTION public.zutomayo_anonymize_account_export_audit(text) TO "z_api"',
+    );
+    expect(statements).toContain(
+      'GRANT EXECUTE ON FUNCTION public.zutomayo_anonymize_admin_audit_identity(text,text) TO "z_api"',
+    );
+    expect(statements).toContain(
+      'REVOKE UPDATE ("id", "admin_user_id", "action", "target_type", "target_id", "details", "created_at", "identity_anonymized_at") ON TABLE public."admin_audit_log" FROM "z_api"',
+    );
     expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."account_export_jobs" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."account_export_audit" TO "z_retention"');
     expect(statements).not.toContain(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."account_export_audit" TO "z_api"',
+    );
+    expect(statements).not.toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."admin_audit_log" TO "z_api"',
     );
     expect(statements).not.toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."matches" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."users" TO "z_backup"');
@@ -272,6 +322,27 @@ describe('PostgreSQL runtime role gate', () => {
     const invalidStatements = invalidAcl.mock.calls.map(([sql]) => String(sql));
     expect(invalidStatements).toContain('ROLLBACK');
     expect(invalidStatements).not.toContain('COMMIT');
+
+    const unsafeFunction = successfulQuery(roleUsers, (sql) => {
+      if (!sql.includes('function_oid IS NOT NULL')) return undefined;
+      return {
+        rows: [
+          {
+            present: true,
+            security_definer: true,
+            safe_search_path: true,
+            owner_name: roleUsers.api,
+            public_execute_revoked: false,
+          },
+        ],
+      };
+    });
+    await expect(
+      enforceRuntimeRolePrivileges(
+        { query: unsafeFunction },
+        { roleUsers, requireComplete: true, requireDistinct: true },
+      ),
+    ).rejects.toThrow('function contract is missing or unsafe');
   });
 
   it('pins the ACL transaction to one acquired client', async () => {

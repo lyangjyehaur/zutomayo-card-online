@@ -230,7 +230,7 @@ export function validateOperationalConfig() {
     'ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED',
     'Public Access Block',
     's3:DeleteObjectVersion',
-    '000026_account_export_jobs',
+    '000027_account_deletion_anonymization',
     '256 MiB',
   ]);
   requireFragments('docs/DATA_RETENTION.md', [
@@ -258,7 +258,8 @@ export function validateOperationalConfig() {
     'dropped_iterations',
   ]);
   requireFragments('load-tests/websocket-load.js', ['WS_TARGET_CONNECTIONS', 'ws_connecting', 'ws_connect_success']);
-  requireFragments('load-tests/matchmaking-load.js', ['mm_matched']);
+  requireFragments('load-tests/matchmaking-load.js', ['mm_legacy_retired', 'legacy matchmaking returns 410']);
+  requireFragments('package.json', ['"load:matchmaking": "npm run load:matchmaking-retirement"']);
   requireFragments('load-tests/auth-load.js', ['auth_refresh_success']);
   for (const workflow of ['.github/workflows/ci.yml', '.github/workflows/cd.yml']) {
     requireFragments(workflow, [

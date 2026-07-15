@@ -2,8 +2,8 @@
 
 // ===== 反饋功能服務（參考 Fider）=====
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 const { writeAuditLog } = require('./adminService.cjs');
+const { AccountMutationError, withAccountMutationTransaction } = require('./accountMutationLock.cjs');
 // 支援匿名（anonymousId，前端 localStorage 產生）與登入用戶（JWT userId）雙軌。
 // 投票/留言/發文皆以「用戶或匿名擇一」作為身份識別，避免重複投票。
 
@@ -18,6 +18,18 @@ function voterRef(voter) {
   if (voter && voter.userId) return { column: 'voter_user_id', value: voter.userId };
   if (voter && voter.anonymousId) return { column: 'anonymous_id', value: voter.anonymousId };
   return null;
+}
+
+async function withFeedbackMutation(pool, ref, operation) {
+  const userIds = ref.column === 'voter_user_id' ? [ref.value] : [];
+  try {
+    return await withAccountMutationTransaction(pool, userIds, operation);
+  } catch (error) {
+    if (error instanceof AccountMutationError) {
+      return { ok: false, status: 409, error: 'Account is deleted or unavailable' };
+    }
+    throw error;
+  }
 }
 
 function viewerAnonymousId(row, voter) {
@@ -277,37 +289,39 @@ async function createPost({ pool, voter, body, sanitizeText, generateId }) {
   const authorUserId = ref.column === 'voter_user_id' ? ref.value : null;
   const anonymousId = ref.column === 'anonymous_id' ? ref.value : null;
 
-  const { rows } = await pool.query(
-    'INSERT INTO feedback_posts (id, title, description, author_user_id, anonymous_id, status, tag) ' +
-      "VALUES ($1, $2, $3, $4, $5, 'open', '') RETURNING *",
-    [id, title, description, authorUserId, anonymousId],
-  );
-  // 作者自動 +1 票
-  await pool.query('INSERT INTO feedback_votes (post_id, ' + ref.column + ') VALUES ($1, $2)', [id, ref.value]);
-  const row = rows[0];
-  return {
-    ok: true,
-    body: {
-      id: row.id,
-      title: row.title,
-      description: row.description || '',
-      status: row.status,
-      tag: row.tag || '',
-      authorUserId: row.author_user_id || null,
-      authorNickname: null,
-      anonymousId: row.anonymous_id || null,
-      voteCount: 1,
-      commentCount: 0,
-      hasVoted: true,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      editedAt: null,
-      originalPostId: null,
-      originalPostTitle: null,
-      originalPostStatus: null,
-      comments: [],
-    },
-  };
+  return withFeedbackMutation(pool, ref, async (client) => {
+    const { rows } = await client.query(
+      'INSERT INTO feedback_posts (id, title, description, author_user_id, anonymous_id, status, tag) ' +
+        "VALUES ($1, $2, $3, $4, $5, 'open', '') RETURNING *",
+      [id, title, description, authorUserId, anonymousId],
+    );
+    // 作者自動 +1 票
+    await client.query('INSERT INTO feedback_votes (post_id, ' + ref.column + ') VALUES ($1, $2)', [id, ref.value]);
+    const row = rows[0];
+    return {
+      ok: true,
+      body: {
+        id: row.id,
+        title: row.title,
+        description: row.description || '',
+        status: row.status,
+        tag: row.tag || '',
+        authorUserId: row.author_user_id || null,
+        authorNickname: null,
+        anonymousId: row.anonymous_id || null,
+        voteCount: 1,
+        commentCount: 0,
+        hasVoted: true,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        editedAt: null,
+        originalPostId: null,
+        originalPostTitle: null,
+        originalPostStatus: null,
+        comments: [],
+      },
+    };
+  });
 }
 
 // 切換投票。completed/declined/duplicate 狀態不可投票。
@@ -315,23 +329,28 @@ async function toggleVote({ pool, voter, postId }) {
   const ref = voterRef(voter);
   if (!ref) return { ok: false, status: 400, error: 'Identity is required' };
 
-  const postRes = await pool.query('SELECT id, status FROM feedback_posts WHERE id = $1', [postId]);
-  if (postRes.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
-  const status = postRes.rows[0].status;
-  if (NO_VOTE_STATUSES.includes(status)) {
-    return { ok: false, status: 400, error: 'Cannot vote on posts with status: ' + status };
-  }
+  return withFeedbackMutation(pool, ref, async (client) => {
+    const postRes = await client.query('SELECT id, status FROM feedback_posts WHERE id = $1 FOR UPDATE', [postId]);
+    if (postRes.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
+    const status = postRes.rows[0].status;
+    if (NO_VOTE_STATUSES.includes(status)) {
+      return { ok: false, status: 400, error: 'Cannot vote on posts with status: ' + status };
+    }
 
-  const cur = await pool.query('SELECT 1 FROM feedback_votes WHERE post_id = $1 AND ' + ref.column + ' = $2', [
-    postId,
-    ref.value,
-  ]);
-  if (cur.rows.length > 0) {
-    await pool.query('DELETE FROM feedback_votes WHERE post_id = $1 AND ' + ref.column + ' = $2', [postId, ref.value]);
-    return { ok: true, body: { voted: false } };
-  }
-  await pool.query('INSERT INTO feedback_votes (post_id, ' + ref.column + ') VALUES ($1, $2)', [postId, ref.value]);
-  return { ok: true, body: { voted: true } };
+    const cur = await client.query('SELECT 1 FROM feedback_votes WHERE post_id = $1 AND ' + ref.column + ' = $2', [
+      postId,
+      ref.value,
+    ]);
+    if (cur.rows.length > 0) {
+      await client.query('DELETE FROM feedback_votes WHERE post_id = $1 AND ' + ref.column + ' = $2', [
+        postId,
+        ref.value,
+      ]);
+      return { ok: true, body: { voted: false } };
+    }
+    await client.query('INSERT INTO feedback_votes (post_id, ' + ref.column + ') VALUES ($1, $2)', [postId, ref.value]);
+    return { ok: true, body: { voted: true } };
+  });
 }
 
 // 新增留言。支援 isOfficial（管理員官方回應）。
@@ -341,36 +360,38 @@ async function addComment({ pool, voter, postId, body, sanitizeText, generateId,
   const ref = voterRef(voter);
   if (!ref) return { ok: false, status: 400, error: 'Identity is required' };
 
-  const exists = await pool.query('SELECT id FROM feedback_posts WHERE id = $1', [postId]);
-  if (exists.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
+  return withFeedbackMutation(pool, ref, async (client) => {
+    const exists = await client.query('SELECT id FROM feedback_posts WHERE id = $1 FOR UPDATE', [postId]);
+    if (exists.rows.length === 0) return { ok: false, status: 404, error: 'Post not found' };
 
-  const id = generateId();
-  const authorUserId = ref.column === 'voter_user_id' ? ref.value : null;
-  const anonymousId = ref.column === 'anonymous_id' ? ref.value : null;
-  const { rows } = await pool.query(
-    'INSERT INTO feedback_comments (id, post_id, content, author_user_id, anonymous_id, is_official) ' +
-      'VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-    [id, postId, content, authorUserId, anonymousId, Boolean(isOfficial)],
-  );
-  await pool.query('UPDATE feedback_posts SET updated_at = NOW() WHERE id = $1', [postId]);
-  const row = rows[0];
-  return {
-    ok: true,
-    body: {
-      id: row.id,
-      postId: row.post_id,
-      content: row.content,
-      authorUserId: row.author_user_id || null,
-      authorNickname: null,
-      anonymousId: row.anonymous_id || null,
-      isOfficial: Boolean(row.is_official),
-      voteCount: 0,
-      hasVoted: false,
-      createdAt: row.created_at,
-      editedAt: null,
-      reactions: [],
-    },
-  };
+    const id = generateId();
+    const authorUserId = ref.column === 'voter_user_id' ? ref.value : null;
+    const anonymousId = ref.column === 'anonymous_id' ? ref.value : null;
+    const { rows } = await client.query(
+      'INSERT INTO feedback_comments (id, post_id, content, author_user_id, anonymous_id, is_official) ' +
+        'VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [id, postId, content, authorUserId, anonymousId, Boolean(isOfficial)],
+    );
+    await client.query('UPDATE feedback_posts SET updated_at = NOW() WHERE id = $1', [postId]);
+    const row = rows[0];
+    return {
+      ok: true,
+      body: {
+        id: row.id,
+        postId: row.post_id,
+        content: row.content,
+        authorUserId: row.author_user_id || null,
+        authorNickname: null,
+        anonymousId: row.anonymous_id || null,
+        isOfficial: Boolean(row.is_official),
+        voteCount: 0,
+        hasVoted: false,
+        createdAt: row.created_at,
+        editedAt: null,
+        reactions: [],
+      },
+    };
+  });
 }
 
 // 切換留言按讚。
@@ -378,25 +399,27 @@ async function toggleCommentVote({ pool, voter, commentId }) {
   const ref = voterRef(voter);
   if (!ref) return { ok: false, status: 400, error: 'Identity is required' };
 
-  const exists = await pool.query('SELECT id FROM feedback_comments WHERE id = $1', [commentId]);
-  if (exists.rows.length === 0) return { ok: false, status: 404, error: 'Comment not found' };
+  return withFeedbackMutation(pool, ref, async (client) => {
+    const exists = await client.query('SELECT id FROM feedback_comments WHERE id = $1 FOR UPDATE', [commentId]);
+    if (exists.rows.length === 0) return { ok: false, status: 404, error: 'Comment not found' };
 
-  const cur = await pool.query(
-    'SELECT 1 FROM feedback_comment_votes WHERE comment_id = $1 AND ' + ref.column + ' = $2',
-    [commentId, ref.value],
-  );
-  if (cur.rows.length > 0) {
-    await pool.query('DELETE FROM feedback_comment_votes WHERE comment_id = $1 AND ' + ref.column + ' = $2', [
+    const cur = await client.query(
+      'SELECT 1 FROM feedback_comment_votes WHERE comment_id = $1 AND ' + ref.column + ' = $2',
+      [commentId, ref.value],
+    );
+    if (cur.rows.length > 0) {
+      await client.query('DELETE FROM feedback_comment_votes WHERE comment_id = $1 AND ' + ref.column + ' = $2', [
+        commentId,
+        ref.value,
+      ]);
+      return { ok: true, body: { voted: false } };
+    }
+    await client.query('INSERT INTO feedback_comment_votes (comment_id, ' + ref.column + ') VALUES ($1, $2)', [
       commentId,
       ref.value,
     ]);
-    return { ok: true, body: { voted: false } };
-  }
-  await pool.query('INSERT INTO feedback_comment_votes (comment_id, ' + ref.column + ') VALUES ($1, $2)', [
-    commentId,
-    ref.value,
-  ]);
-  return { ok: true, body: { voted: true } };
+    return { ok: true, body: { voted: true } };
+  });
 }
 
 // 切換留言 emoji 反應。
@@ -410,25 +433,27 @@ async function toggleCommentReaction({ pool, voter, commentId, emoji }) {
     return { ok: false, status: 400, error: 'Invalid emoji' };
   }
 
-  const exists = await pool.query('SELECT id FROM feedback_comments WHERE id = $1', [commentId]);
-  if (exists.rows.length === 0) return { ok: false, status: 404, error: 'Comment not found' };
+  return withFeedbackMutation(pool, ref, async (client) => {
+    const exists = await client.query('SELECT id FROM feedback_comments WHERE id = $1 FOR UPDATE', [commentId]);
+    if (exists.rows.length === 0) return { ok: false, status: 404, error: 'Comment not found' };
 
-  const cur = await pool.query(
-    'SELECT 1 FROM feedback_comment_reactions WHERE comment_id = $1 AND ' + ref.column + ' = $2 AND emoji = $3',
-    [commentId, ref.value, emoji],
-  );
-  if (cur.rows.length > 0) {
-    await pool.query(
-      'DELETE FROM feedback_comment_reactions WHERE comment_id = $1 AND ' + ref.column + ' = $2 AND emoji = $3',
+    const cur = await client.query(
+      'SELECT 1 FROM feedback_comment_reactions WHERE comment_id = $1 AND ' + ref.column + ' = $2 AND emoji = $3',
       [commentId, ref.value, emoji],
     );
-    return { ok: true, body: { reacted: false } };
-  }
-  await pool.query(
-    'INSERT INTO feedback_comment_reactions (comment_id, ' + ref.column + ', emoji) VALUES ($1, $2, $3)',
-    [commentId, ref.value, emoji],
-  );
-  return { ok: true, body: { reacted: true } };
+    if (cur.rows.length > 0) {
+      await client.query(
+        'DELETE FROM feedback_comment_reactions WHERE comment_id = $1 AND ' + ref.column + ' = $2 AND emoji = $3',
+        [commentId, ref.value, emoji],
+      );
+      return { ok: true, body: { reacted: false } };
+    }
+    await client.query(
+      'INSERT INTO feedback_comment_reactions (comment_id, ' + ref.column + ', emoji) VALUES ($1, $2, $3)',
+      [commentId, ref.value, emoji],
+    );
+    return { ok: true, body: { reacted: true } };
+  });
 }
 
 // 取得文章投票者列表。

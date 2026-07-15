@@ -1,18 +1,11 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 /* global module, require */
 
 const crypto = require('crypto');
+const { AccountMutationError, withAccountMutationTransaction } = require('./accountMutationLock.cjs');
 
 const DEFAULT_RESERVATION_TTL_SECONDS = 10 * 60;
 
-function mapDeckRow(deck) {
-  return {
-    ...deck,
-    cardIds: Array.isArray(deck.card_ids) ? deck.card_ids : [],
-  };
-}
-
-async function validateDeckInput(pool, name, cardIds) {
+function validateDeckShape(name, cardIds) {
   if (!name || !Array.isArray(cardIds) || cardIds.length !== 20) {
     return 'Name and 20 card IDs required';
   }
@@ -23,7 +16,32 @@ async function validateDeckInput(pool, name, cardIds) {
     counts[id] = (counts[id] || 0) + 1;
     if (counts[id] > 2) return `Card ${id} appears more than twice`;
   }
-  const uniqueIds = Object.keys(counts);
+  return null;
+}
+
+async function withLiveAccountMutation(pool, userId, operation) {
+  try {
+    return await withAccountMutationTransaction(pool, [userId], operation);
+  } catch (error) {
+    if (error instanceof AccountMutationError) {
+      return { ok: false, status: 409, error: 'Account is deleted or unavailable' };
+    }
+    throw error;
+  }
+}
+
+function mapDeckRow(deck) {
+  return {
+    ...deck,
+    cardIds: Array.isArray(deck.card_ids) ? deck.card_ids : [],
+  };
+}
+
+async function validateDeckInput(pool, name, cardIds) {
+  const shapeError = validateDeckShape(name, cardIds);
+  if (shapeError) return shapeError;
+
+  const uniqueIds = [...new Set(cardIds)];
   const existing = new Set(
     (await pool.query('SELECT id FROM cards WHERE id = ANY($1::text[])', [uniqueIds])).rows.map((row) => row.id),
   );
@@ -39,17 +57,22 @@ async function listUserDecks(pool, userId) {
 
 async function createUserDeck(pool, userId, body, generateDeckId = () => 'd_' + crypto.randomBytes(8).toString('hex')) {
   const { name, cardIds } = body;
-  const validationError = await validateDeckInput(pool, name, cardIds);
-  if (validationError) return { ok: false, status: 400, error: validationError };
+  const shapeError = validateDeckShape(name, cardIds);
+  if (shapeError) return { ok: false, status: 400, error: shapeError };
 
-  const id = generateDeckId();
-  await pool.query('INSERT INTO decks (id, user_id, name, card_ids) VALUES ($1, $2, $3, $4::jsonb)', [
-    id,
-    userId,
-    name,
-    JSON.stringify(cardIds),
-  ]);
-  return { ok: true, body: { id, name, cardIds } };
+  return withLiveAccountMutation(pool, userId, async (client) => {
+    const validationError = await validateDeckInput(client, name, cardIds);
+    if (validationError) return { ok: false, status: 400, error: validationError };
+
+    const id = generateDeckId();
+    await client.query('INSERT INTO decks (id, user_id, name, card_ids) VALUES ($1, $2, $3, $4::jsonb)', [
+      id,
+      userId,
+      name,
+      JSON.stringify(cardIds),
+    ]);
+    return { ok: true, body: { id, name, cardIds } };
+  });
 }
 
 async function updateUserDeck(pool, userId, deckId, body) {
@@ -89,44 +112,46 @@ async function reserveUserDeck(
   if (typeof deckId !== 'string' || !deckId.startsWith('d_')) {
     return { ok: false, status: 400, error: 'A saved server deck is required' };
   }
-  const deck = (
-    await pool.query(
-      `SELECT id, card_ids, updated_at
-       FROM decks
-       WHERE id = $1 AND user_id = $2`,
-      [deckId, userId],
-    )
-  ).rows[0];
-  if (!deck) return { ok: false, status: 404, error: 'Deck not found' };
-  const cardIds = Array.isArray(deck.card_ids) ? deck.card_ids : [];
-  const reservationId = generateReservationId();
-  const safeRulesVersion = String(rulesVersion || 'default').slice(0, 120);
-  const lifetime = Math.max(60, Math.min(Number(ttlSeconds) || DEFAULT_RESERVATION_TTL_SECONDS, 30 * 60));
-  const expiresAt = new Date(Date.now() + lifetime * 1000);
-  await pool.query(
-    `INSERT INTO deck_reservations
-       (id, user_id, deck_id, deck_version, rules_version, card_ids, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
-    [
-      reservationId,
-      userId,
-      deck.id,
-      deckVersion(cardIds, deck.updated_at),
-      safeRulesVersion,
-      JSON.stringify(cardIds),
-      expiresAt,
-    ],
-  );
-  return {
-    ok: true,
-    body: {
-      reservationId,
-      deckId: deck.id,
-      deckVersion: deckVersion(cardIds, deck.updated_at),
-      rulesVersion: safeRulesVersion,
-      expiresAt: expiresAt.toISOString(),
-    },
-  };
+  return withLiveAccountMutation(pool, userId, async (client) => {
+    const deck = (
+      await client.query(
+        `SELECT id, card_ids, updated_at
+         FROM decks
+         WHERE id = $1 AND user_id = $2`,
+        [deckId, userId],
+      )
+    ).rows[0];
+    if (!deck) return { ok: false, status: 404, error: 'Deck not found' };
+    const cardIds = Array.isArray(deck.card_ids) ? deck.card_ids : [];
+    const reservationId = generateReservationId();
+    const safeRulesVersion = String(rulesVersion || 'default').slice(0, 120);
+    const lifetime = Math.max(60, Math.min(Number(ttlSeconds) || DEFAULT_RESERVATION_TTL_SECONDS, 30 * 60));
+    const expiresAt = new Date(Date.now() + lifetime * 1000);
+    await client.query(
+      `INSERT INTO deck_reservations
+         (id, user_id, deck_id, deck_version, rules_version, card_ids, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+      [
+        reservationId,
+        userId,
+        deck.id,
+        deckVersion(cardIds, deck.updated_at),
+        safeRulesVersion,
+        JSON.stringify(cardIds),
+        expiresAt,
+      ],
+    );
+    return {
+      ok: true,
+      body: {
+        reservationId,
+        deckId: deck.id,
+        deckVersion: deckVersion(cardIds, deck.updated_at),
+        rulesVersion: safeRulesVersion,
+        expiresAt: expiresAt.toISOString(),
+      },
+    };
+  });
 }
 
 /**

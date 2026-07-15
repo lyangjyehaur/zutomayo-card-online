@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ZutomayoCard } from '../Game';
 import type { GameState } from '../types';
 
-const CONCURRENT_MOVE_NAMES = [
+const STALE_SAFE_SERVER_MOVE_NAMES = [
   'janken',
   'mulligan',
   'keepHand',
@@ -11,9 +11,18 @@ const CONCURRENT_MOVE_NAMES = [
   'setTurnCard',
   'undoSetCard',
   'confirmReady',
+  'surrender',
 ] as const;
 
-function concurrentMove(name: (typeof CONCURRENT_MOVE_NAMES)[number]): LongFormMove<GameState> {
+const AUTHORITATIVE_SERVER_MOVE_NAMES = [
+  ...STALE_SAFE_SERVER_MOVE_NAMES,
+  'timeoutSkip',
+  'timeoutAdvance',
+  'resolvePendingEffect',
+  'submitPendingChoice',
+] as const;
+
+function serverMove(name: (typeof AUTHORITATIVE_SERVER_MOVE_NAMES)[number]): LongFormMove<GameState> {
   const move = ZutomayoCard.moves?.[name];
   expect(move, `${name} should be registered`).toBeDefined();
   expect(typeof move, `${name} should use the long-form server move contract`).toBe('object');
@@ -21,8 +30,15 @@ function concurrentMove(name: (typeof CONCURRENT_MOVE_NAMES)[number]): LongFormM
 }
 
 describe('online simultaneous move contract', () => {
-  it.each(CONCURRENT_MOVE_NAMES)('%s waits for the server and accepts a concurrent stale state ID', (name) => {
-    expect(concurrentMove(name)).toMatchObject({
+  it.each(AUTHORITATIVE_SERVER_MOVE_NAMES)('%s waits for the authoritative server result', (name) => {
+    expect(serverMove(name)).toMatchObject({
+      client: false,
+      move: expect.any(Function),
+    });
+  });
+
+  it.each(STALE_SAFE_SERVER_MOVE_NAMES)('%s accepts an intentionally stale state ID', (name) => {
+    expect(serverMove(name)).toMatchObject({
       client: false,
       ignoreStaleStateID: true,
       move: expect.any(Function),

@@ -30,12 +30,33 @@ const mockPoolEnd = vi.fn().mockResolvedValue(undefined);
 const mockPoolOn = vi.fn();
 const mockPoolRelease = vi.fn();
 const leaseQueryCalls: unknown[][] = [];
+let mockAccountMutationLease = false;
+let lastChatMessageResult: { rows: unknown[]; rowCount?: number } | null = null;
 const mockLeaseQuery = vi.fn(async (sql: string, params?: unknown[]) => {
   leaseQueryCalls.push([sql, params]);
+  if (mockAccountMutationLease) {
+    if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+      return { rows: [{ id: params?.[0], deleted_at: null }], rowCount: 1 };
+    }
+    if (sql === 'SELECT auth_version, deleted_at FROM users WHERE id = $1') {
+      return { rows: [{ auth_version: 1, deleted_at: null }], rowCount: 1 };
+    }
+    if (sql.includes('FOR SHARE OF m, c') && lastChatMessageResult) return lastChatMessageResult;
+  }
   return params === undefined ? mockQuery(sql) : mockQuery(sql, params);
 });
 const mockPoolConnect = vi.fn(async () => ({ query: mockLeaseQuery, release: mockPoolRelease }));
-const mockPool = { query: mockQuery, connect: mockPoolConnect, end: mockPoolEnd, on: mockPoolOn };
+const mockPoolQuery = async (sql: string, params?: unknown[]) => {
+  const result = params === undefined ? await mockQuery(sql) : await mockQuery(sql, params);
+  if (sql.includes('FROM chat_messages m') && sql.includes('JOIN chat_conversations c') && result?.rows?.[0]?.id) {
+    lastChatMessageResult = result;
+  }
+  return result;
+};
+const mockPool = { query: mockPoolQuery, connect: mockPoolConnect, end: mockPoolEnd, on: mockPoolOn };
 
 const mockRedisIncr = vi.fn().mockResolvedValue(1);
 const mockRedisExpire = vi.fn().mockResolvedValue(1);
@@ -384,6 +405,8 @@ describe('server routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     leaseQueryCalls.length = 0;
+    mockAccountMutationLease = false;
+    lastChatMessageResult = null;
     mockFetch.mockReset();
     // Reset default mock behavior after clearAllMocks
     mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
@@ -585,6 +608,7 @@ describe('server routes', () => {
         return 'OK';
       });
       mockRedisEval.mockImplementation(async (_script: string, _keyCount: number, key: string) => {
+        if (key.startsWith('refresh:')) return 1;
         if (!key.startsWith('oauth:')) return null;
         const value = oauthValues.get(key) || null;
         oauthValues.delete(key);
@@ -655,6 +679,7 @@ describe('server routes', () => {
       const ticket = callback._body.match(/body: JSON\.stringify\(\{ ticket: "([^"]+)" \}\)/)?.[1];
       expect(ticket).toBeTruthy();
 
+      mockAccountMutationLease = true;
       const firstRedeem = await sendRequest('POST', '/api/oauth/session', { ticket });
       expect(firstRedeem.statusCode).toBe(200);
       const secondRedeem = await sendRequest('POST', '/api/oauth/session', { ticket });
@@ -809,7 +834,7 @@ describe('server routes', () => {
 
     it('commits a block relationship event to the outbox instead of publishing from the route', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
-        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
           return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
         }
         if (sql.includes('INSERT INTO user_blocks')) {
@@ -829,9 +854,10 @@ describe('server routes', () => {
       );
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO relationship_change_outbox'),
-        expect.arrayContaining(['block_created:u_test:u_target:2026-07-13T00:00:00.000Z']),
+        expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/)]),
       );
       expect(mockRedisPublish).not.toHaveBeenCalled();
+      expect(mockRedisMmApplyBlock).not.toHaveBeenCalled();
       const commitIndex = mockQuery.mock.calls.findIndex(([sql]) => sql === 'COMMIT');
       const outboxIndex = mockQuery.mock.calls.findIndex(([sql]) =>
         sql.includes('INSERT INTO relationship_change_outbox'),
@@ -841,9 +867,9 @@ describe('server routes', () => {
       );
     });
 
-    it('keeps a committed block successful when the immediate Redis projection is unavailable', async () => {
+    it('leaves Redis block projection exclusively to the ordered outbox worker', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
-        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
           return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
         }
         if (sql.includes('INSERT INTO user_blocks')) {
@@ -854,8 +880,6 @@ describe('server routes', () => {
         }
         return { rows: [], rowCount: 0 };
       });
-      mockRedisMmApplyBlock.mockRejectedValueOnce(new Error('Redis projection unavailable'));
-
       const res = await sendRequest('POST', '/api/blocks', { targetUserId: 'u_target' }, userUnsafeHeaders('u_test'));
 
       expect(res.statusCode).toBe(200);
@@ -864,6 +888,31 @@ describe('server routes', () => {
         expect.any(Array),
       );
       expect(mockRedisPublish).not.toHaveBeenCalled();
+      expect(mockRedisMmApplyBlock).not.toHaveBeenCalled();
+    });
+
+    it('leaves Redis unblock projection exclusively to the ordered outbox worker', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('DELETE FROM user_blocks')) {
+          return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO relationship_change_outbox')) {
+          return { rows: [{ event_id: 'event-unblock' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('DELETE', '/api/blocks/u_target', null, userUnsafeHeaders('u_test'));
+
+      expect(res.statusCode).toBe(200);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO relationship_change_outbox'),
+        expect.any(Array),
+      );
+      expect(mockRedisSrem).not.toHaveBeenCalled();
     });
 
     it('GET /api/decks returns 401 without auth', async () => {
@@ -1058,9 +1107,34 @@ describe('server routes', () => {
       const res = await sendRequest('GET', '/api/matchmaking/status');
       expect(res.statusCode).toBe(401);
     });
+
+    it.each([
+      ['POST', '/api/matchmaking/queue', {}],
+      ['GET', '/api/matchmaking/status', null],
+      ['DELETE', '/api/matchmaking/queue', null],
+      ['PUT', '/api/matchmaking/match', { matchId: 'bg_retired' }],
+    ])('retires authenticated legacy matchmaking route %s %s without Redis writes', async (method, path, body) => {
+      const res = await sendRequest(method, path, body, userUnsafeHeaders());
+
+      expect(res.statusCode).toBe(410);
+      expect(parseBody(res)).toEqual({
+        error: 'Legacy REST matchmaking was removed; use the Colyseus quick_match room',
+      });
+      expect(res.headers.deprecation).toBe('true');
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(mockRedisHgetall).not.toHaveBeenCalled();
+      expect(mockRedisHset).not.toHaveBeenCalled();
+      expect(mockRedisZadd).not.toHaveBeenCalled();
+      expect(mockRedisZrem).not.toHaveBeenCalled();
+      expect(mockRedisMmTryMatch).not.toHaveBeenCalled();
+      expect(mockRedisMmCleanExpired).not.toHaveBeenCalled();
+    });
   });
 
   describe('chat routes', () => {
+    beforeEach(() => {
+      mockAccountMutationLease = true;
+    });
     it('GET /api/chat/messages syncs every durable conversation type through the same route', async () => {
       const cases = [
         {
@@ -1344,8 +1418,11 @@ describe('server routes', () => {
       const directMessageRow = {
         id: directMessageId,
         conversation_id: directConversationId,
+        author_user_id: 'u_stranger',
         content: 'private direct message',
         source_language: 'ja',
+        moderation_status: 'visible',
+        deleted_at: null,
         type: 'direct',
         subject_id: directSubjectId,
       };
@@ -1515,8 +1592,11 @@ describe('server routes', () => {
         const messageRow = {
           id: testCase.messageId,
           conversation_id: testCase.conversationId,
+          author_user_id: 'u_author',
           content: 'secret message',
           source_language: 'ja',
+          moderation_status: 'visible',
+          deleted_at: null,
           type: testCase.type,
           subject_id: testCase.subjectId,
         };
@@ -1626,8 +1706,11 @@ describe('server routes', () => {
             {
               id: 'chat_msg_1',
               conversation_id: 'match:bgio-match-1',
+              author_user_id: 'u_author',
               content: 'こんにちは',
               source_language: 'ja',
+              moderation_status: 'visible',
+              deleted_at: null,
               type: 'match',
               subject_id: 'bgio-match-1',
             },
@@ -1636,6 +1719,7 @@ describe('server routes', () => {
         })
         .mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        .mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 })
         .mockResolvedValueOnce({
           rows: [
             {
@@ -1715,8 +1799,11 @@ describe('server routes', () => {
             {
               id: testCase.messageId,
               conversation_id: testCase.conversationId,
+              author_user_id: 'u_author',
               content: `こんにちは ${testCase.type}`,
               source_language: 'ja',
+              moderation_status: 'visible',
+              deleted_at: null,
               type: testCase.type,
               subject_id: testCase.subjectId,
             },
@@ -1732,7 +1819,17 @@ describe('server routes', () => {
         if (testCase.type === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }
-        mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }).mockResolvedValueOnce({
+        mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+        if (testCase.type === 'match') {
+          mockMatchParticipant();
+        }
+        if (testCase.type === 'room') {
+          mockRoomParticipant();
+        }
+        if (testCase.type === 'direct') {
+          mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+        }
+        mockQuery.mockResolvedValueOnce({
           rows: [
             {
               message_id: testCase.messageId,
@@ -1912,6 +2009,9 @@ describe('server routes', () => {
   });
 
   describe('admin chat moderation routes', () => {
+    beforeEach(() => {
+      mockAccountMutationLease = true;
+    });
     it('GET /api/admin/chat/reports returns snapshotted message evidence', async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [
@@ -2355,19 +2455,24 @@ describe('server routes', () => {
   });
 
   describe('auth refresh', () => {
+    beforeEach(() => {
+      mockAccountMutationLease = true;
+    });
+
     it('POST /api/auth/refresh returns 401 without refresh cookie', async () => {
       const res = await sendRequest('POST', '/api/auth/refresh');
       expect(res.statusCode).toBe(401);
     });
 
     it('consumes refresh tokens through the revocation-aware atomic path', async () => {
-      mockRedisEval.mockResolvedValueOnce('u_test');
+      mockRedisEval.mockResolvedValueOnce('u_test').mockResolvedValueOnce(1);
       const refreshToken = createRefreshJwt();
       const res = await sendRequest('POST', '/api/auth/refresh', null, {
         cookie: `zutomayo_refresh=${encodeURIComponent(refreshToken)}`,
       });
       expect(res.statusCode).toBe(200);
-      expect(mockRedisEval).toHaveBeenCalledWith(
+      expect(mockRedisEval).toHaveBeenNthCalledWith(
+        1,
         expect.stringContaining('revokedBefore'),
         2,
         'refresh:refresh-token-test',
@@ -2375,12 +2480,21 @@ describe('server routes', () => {
         expect.any(String),
         'u_test',
       );
-      expect(mockRedisSet).toHaveBeenCalledWith(expect.stringMatching(/^refresh:/), 'u_test', 'EX', expect.any(Number));
+      expect(mockRedisEval).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("redis.call('SET'"),
+        2,
+        expect.stringMatching(/^refresh:/),
+        'auth:revoked-before:u_test',
+        'u_test',
+        expect.any(String),
+        expect.any(String),
+      );
     });
 
     it('preserves the original session lineage when rotating a refresh token', async () => {
       const sessionIat = Math.floor(Date.now() / 1000) - 120;
-      mockRedisEval.mockResolvedValueOnce('u_test');
+      mockRedisEval.mockResolvedValueOnce('u_test').mockResolvedValueOnce(1);
       const res = await sendRequest('POST', '/api/auth/refresh', null, {
         cookie: `zutomayo_refresh=${encodeURIComponent(createRefreshJwt('u_test', sessionIat))}`,
       });

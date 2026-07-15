@@ -5,13 +5,19 @@ export const MAX_PLATFORM_FRIEND_PRESENCE_IDS = 100;
 
 const USER_ID_PATTERN = /^[a-zA-Z0-9:_-]{3,128}$/;
 
+export function platformStoreQueryTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return Math.min(5_000, Math.max(100, Number(env.PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS) || 1_500));
+}
+
 export interface PlatformFriendStore {
   listFriendUserIds(userId: string): Promise<string[]>;
+  areUsersFriends?(firstUserId: string, secondUserId: string): Promise<boolean>;
   close?(): Promise<void>;
 }
 
 interface FriendRow extends QueryResultRow {
-  friend_user_id: unknown;
+  friend_user_id?: unknown;
+  friends?: unknown;
 }
 
 interface Queryable {
@@ -41,6 +47,9 @@ export function createEmptyPlatformFriendStore(): PlatformFriendStore {
     async listFriendUserIds() {
       return [];
     },
+    async areUsersFriends() {
+      return false;
+    },
   };
 }
 
@@ -48,6 +57,30 @@ export function createPostgresPlatformFriendStore(
   pool: Queryable & { end?: () => Promise<void> },
 ): PlatformFriendStore {
   return {
+    async areUsersFriends(firstUserId, secondUserId) {
+      const first = normalizePlatformUserId(firstUserId);
+      const second = normalizePlatformUserId(secondUserId);
+      if (!first || !second || first === second) return false;
+      const { rows } = await pool.query(
+        `SELECT (
+           EXISTS (
+             SELECT 1 FROM user_friends
+             WHERE user_id = $1 AND friend_user_id = $2
+           )
+           AND EXISTS (
+             SELECT 1 FROM user_friends
+             WHERE user_id = $2 AND friend_user_id = $1
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM user_blocks
+             WHERE (blocker_user_id = $1 AND blocked_user_id = $2)
+                OR (blocker_user_id = $2 AND blocked_user_id = $1)
+           )
+         ) AS friends`,
+        [first, second],
+      );
+      return rows[0]?.friends === true;
+    },
     async listFriendUserIds(userId) {
       const cleanUserId = normalizePlatformUserId(userId);
       if (!cleanUserId) return [];
@@ -76,12 +109,15 @@ export function createPostgresPlatformFriendStore(
 export function createPlatformFriendStoreFromEnv(env: NodeJS.ProcessEnv = process.env): PlatformFriendStore {
   const mode = resolvePlatformFriendStoreMode(env);
   if (mode === 'none') return createEmptyPlatformFriendStore();
+  const queryTimeoutMs = platformStoreQueryTimeoutMs(env);
   return createPostgresPlatformFriendStore(
     new Pool({
       connectionString: databaseUrlFromEnv(env),
       max: Number(env.PLATFORM_PG_POOL_MAX || env.PG_POOL_MAX) || 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 3_000,
+      query_timeout: queryTimeoutMs,
+      statement_timeout: queryTimeoutMs,
       ssl: postgresSslConfig(env),
     }),
   );

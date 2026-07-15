@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -10,6 +10,13 @@ function runtimeSourceFiles(directory: string): string[] {
     if (entry.isDirectory()) return entry.name === '__tests__' ? [] : runtimeSourceFiles(path);
     return /\.[cm]?[jt]sx?$/.test(entry.name) ? [path] : [];
   });
+}
+
+function localCommonJsDependencies(file: string): string[] {
+  const source = readFileSync(file, 'utf8');
+  return [...source.matchAll(/require\(['"](\.\.?\/[^'"]+)['"]\)/g)].map(([, dependency]) =>
+    resolve(dirname(file), dependency),
+  );
 }
 
 describe('game runtime image contract', () => {
@@ -48,6 +55,14 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/deckService.cjs');
   });
 
+  it('keeps the account-locked refresh session helper in API build contexts', () => {
+    const apiDockerfile = readFileSync(resolve(root, 'api/Dockerfile'), 'utf8');
+    const apiDockerignore = readFileSync(resolve(root, 'api/.dockerignore'), 'utf8');
+    expect(apiDockerfile).toContain('COPY ./*.cjs ./');
+    expect(apiDockerignore).not.toContain('*.cjs');
+    expect(readFileSync(resolve(root, 'api/authSessionService.cjs'), 'utf8')).toContain('issueAccountRefreshToken');
+  });
+
   it('ships the schema gate helper in the migration image', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile.migrate'), 'utf8');
     const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
@@ -56,17 +71,42 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/runtimeSecurityConfig.cjs');
     expect(dockerfile).toContain('COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs');
     expect(dockerfile).toContain('COPY api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs');
+    expect(dockerfile).toContain('COPY api/observability.cjs ./api/observability.cjs');
+    expect(dockerfile).toContain('COPY api/matchmakingService.cjs ./api/matchmakingService.cjs');
     expect(dockerfile).toContain(
       'COPY scripts/relationship-outbox-pg-smoke.cjs ./scripts/relationship-outbox-pg-smoke.cjs',
+    );
+    expect(readFileSync(resolve(root, 'scripts/relationship-outbox-pg-smoke.cjs'), 'utf8')).toContain(
+      'const redisOptions = { db: redisDb, maxRetriesPerRequest: 1 }',
     );
     expect(dockerfile).toContain(
       'COPY scripts/redrive-relationship-outbox.cjs ./scripts/redrive-relationship-outbox.cjs',
     );
     expect(dockerignore).toContain('!api/relationshipEvents.cjs');
     expect(dockerignore).toContain('!api/relationshipOutbox.cjs');
+    expect(dockerignore).toContain('!api/observability.cjs');
+    expect(dockerignore).toContain('!api/matchmakingService.cjs');
     expect(dockerfile).toContain('COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs');
     expect(dockerfile).toContain('COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs');
     expect(dockerignore).toContain('!api/schemaGate.cjs');
+  });
+
+  it('ships every local module required by the admin credential CLI in the migration image', () => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile.migrate'), 'utf8');
+    const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const cli = resolve(root, 'scripts/create-admin.cjs');
+
+    for (const command of ['admin:create', 'admin:rotate', 'admin:recover']) {
+      expect(packageJson.scripts[command]).toMatch(/^node scripts\/create-admin\.cjs --mode=/);
+    }
+    expect(dockerfile).toContain('COPY scripts/create-admin.cjs ./scripts/create-admin.cjs');
+
+    for (const dependency of localCommonJsDependencies(cli)) {
+      const relativeDependency = dependency.slice(root.length + 1);
+      expect(dockerfile).toContain(`COPY ${relativeDependency} ./${relativeDependency}`);
+    }
   });
 
   it('ships the runtime TLS/role contract in the retention image', () => {

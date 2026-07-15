@@ -10,6 +10,13 @@
 
 後續每一項分開記錄四層證據：`code`、`automated test`、`staging evidence`、`production evidence`。只有必要層級全數完成才可勾選；舊版 [`release-review.md`](./release-review.md) 只作歷史快照，其中 auth、Feedback semantics、modal focus 與 E2E 等部分 finding 已有新實作，必須以當前分支重新跑視覺／service-backed E2E 後判定。
 
+## 2026-07-15 current-tree evidence
+
+- `npm run verify` 通過：Vitest 145 個 test files、1319 tests、production/PWA build；coverage statements 64.44%、branches 57.05%、functions 65.89%、lines 67.79%。
+- Fresh PostgreSQL role smoke 通過 `000001`→`000027` migration、checksum/schema/ACL gate、relationship/Redis、social concurrency、account deletion anonymization/purge/retry 與 admin credential lifecycle。
+- Current-tree Compose E2E images 重建後，`e2e/accessibility.spec.ts:162` Chromium 投降／Result 同步以 `--repeat-each=5 --retries=0` 完成 5/5 passed（1.9m）；fresh-volume full Chromium 以 `--retries=0` 完成 39/39 passed（5.4m），驗證雙方 Result、兩端 match submission 200、無 `stateID-collision` 且 reload 後終局仍持久。
+- 這些是 local/current-tree automated evidence，不是 staging/server4/production evidence；branch protection、production approval、legacy deleted-account backfill、signed-image migration rehearsal、HA/canary/restore/load/alert 與法務項目仍然阻擋 production。
+
 ## 修補波次
 
 ### P0：Release blockers
@@ -60,10 +67,10 @@
 ## P1：發布與供應鏈
 
 - [x] Base、E2E、staging、legacy server4、parallel slot、gateway、monitoring Compose config 全部通過並進 CI。
-- [x] E2E 失敗會阻擋 merge；CD 只部署已通過 CI 的 commit。
+- [ ] CI 與 E2E job、CD 的 successful-CI SHA gate 已存在；但 GitHub `master` 尚無 branch protection/ruleset，required checks 仍可被繞過。
 - [x] Migration 使用同一 release digest，失敗時 app 不啟動。
 - [x] Deploy `--sha`、health port 與 post-deploy smoke 正確。
-- [x] Build once / promote by digest；production environment 有 approval 與 concurrency。
+- [ ] Build once / promote by digest 與 deploy concurrency 已實作；GitHub `production` environment/reviewer approval 尚未建立。
 - [x] Coverage 正確包含 production API CJS，短期門檻 lines/statements/functions 50%、branches 40%。
 - [x] SBOM、依賴／容器／secret scan 與 image signing 已進 release gate。
 - [x] Sentry token 等 build secret 不寫入 image layer 或 build arg cache。
@@ -73,9 +80,9 @@
 - [ ] PostgreSQL encrypted off-site backup + WAL/PITR：腳本與 runbook 已有，尚缺真實 off-site/restore 證據。
 - [ ] server4 維護窗口內啟用並重啟 PostgreSQL continuous archive（`wal_level=replica`、`archive_mode=on`、正式 `archive_command`/provider pipeline），掛入 root-owned PGPASS、age identity、S3 credentials 後，使用 signed `OPS_IMAGE` 取得 live archive/restore gate 證據。OPS runner 不會自行修改 database config 或 production container。
 - [ ] Backup checksum、成功告警、每日 age 檢查與自動 restore 驗證。
-- [ ] Beta RPO 24h / RTO 4h；production RPO 15m / RTO 30m 有實測報告。
+- [ ] Beta RPO 24h / RTO 4h；production RPO 15m / RTO 30m 有實測報告。現行 release gate 的 restore RTO 上限仍為 60m，尚未能證明 30m production SLO。
 - [x] Expand/contract migration 與 schema checksum gate。
-- [ ] 至少兩個 app replica、graceful drain 與連線恢復：parallel slot 已定義 game/API 各 2 replicas、platform p1/p2、獨立 Redis、readiness gateway、WebSocket-only transport 與單一 worker owner；HAProxy 3.2 non-root startup/SIGUSR2 reload，以及 Docker DNS 對 2 game + 2 API + p1/p2 的 `nbsrv` readiness contract 已在 server4 隔離 network 實測，尚缺正式 slot 部署與斷線恢復 evidence。
+- [ ] 至少兩個 app replica、graceful drain 與連線恢復：parallel slot 已定義 game/API 各 2 replicas、platform p1/p2、獨立 Redis、readiness gateway、WebSocket-only transport 與單一 worker owner；HAProxy 3.2 non-root startup/SIGUSR2 reload 與 Docker DNS `nbsrv` contract 有本機隔離 smoke，尚缺可追溯的 server4 artifact、正式 slot 部署與斷線恢復 evidence。
 - [ ] Canary 10% → 50% → 100%，能在 5 分鐘內切回已驗證 digest：repo-owned HAProxy controller、warm slots、nested cohort/slot-pin cookies、active config/container/stats evidence 與 raw metrics collector 已完成；仍缺不同 SHA 的 10/50/100 dwell/sample 及 candidate → stable rollback 真實證據。
 - [ ] 2x 預估峰值、2 小時 soak 達到 SLO。
 
@@ -92,38 +99,38 @@
 
 ## P4：玩家品質、E2E 與無障礙
 
-- [ ] 已有雙 browser game credential E2E、觀戰、斷網重連與完整結算；仍缺兩個真實登入 session、QuickMatch/Invite 與 server deck reservation 流程。
-- [ ] E2E 已覆蓋部分 refresh、斷網重連、觀戰與隱藏資訊；聊天、服務重啟與真實 platform 配對尚待 service-backed 驗收。
-- [ ] 登入玩家的 server match history 為 source of truth，跨裝置同步並去重。
+- [ ] Authenticated 雙 browser E2E 已覆蓋兩個登入 session、server deck、QuickMatch/Invite、聊天、reconnect、投降結算與雙方 history，current-tree Compose run 通過；仍缺自然完成的完整對局與 history 無重複斷言。
+- [ ] E2E 已覆蓋 refresh、斷網重連、觀戰、隱藏資訊與真實 platform 配對；跨 instance full-sync shared-lock race 有真 PG smoke，仍缺服務 process restart、broadcast 後 terminal transaction 失敗恢復與跨裝置完整對局驗收。
+- [ ] 登入玩家的 server match history 為 source of truth 且已有雙 session 查詢；跨裝置同步與無重複 invariant 尚未完整證明。
 - [x] Replay 使用伺服器 authoritative action log 並綁定 rules version。
-- [ ] axe spec 已建立，Login dialog targeted run 已通過；其餘頁面與真實 Battle/Result 尚未全量 service-backed 執行。
-- [ ] 共用 modal focus/inert 與 Battle drawer test 已有；Feedback detail modal、card accessible name 與鍵盤完整對局仍待完成。
-- [ ] Chromium PR gate；WebKit iPhone、Android viewport、Firefox、PWA standalone nightly 通過。
+- [x] Core routes、Login、Feedback detail、Battle/Result 的 service-backed axe spec 已在 rebuilt current-tree images 通過；Feedback 有實際貼文時的 metadata 對比亦符合 WCAG AA。
+- [ ] 共用 modal focus/inert、Battle drawer 與 Feedback detail dialog test 已有；card accessible name 與鍵盤自然完整對局仍待完成。
+- [ ] Chromium PR job 與每週兩次多瀏覽器 matrix 已定義；尚缺 branch required check、成功 run artifact、PWA standalone 與 360/390px visual gate。
 - [ ] 明確定義離線支援，卡牌／ruleset 資料與 engine 版本一致。
 
 ## P5：帳號、社交、LiveOps 與合規
 
 - [x] 一次性 email verification / password reset token service 與 migration。
 - [x] 郵件 webhook delivery fail closed，不向 public response 洩漏 token。
-- [x] 帳號資料匯出與匿名化刪除 service。
+- [ ] Async 帳號匯出、下載授權、物件 expiry/purge 與刪除匿名化 service 已有；000027 對新刪除涵蓋 match/boardgame/direct-chat/translation/admin audit/outbox，fresh PG 亦驗證 purge/retry，但升級前 legacy tombstone backfill 尚未實作，migration 會 fail closed。
 - [ ] 帳號 lifecycle routes/UI、step-up 與 durable session revoke 已有；尚缺真實 email/Logto provider E2E 與故障恢復證據。
 - [x] Friend request 與 block service / migration；不再直接雙向加好友。
-- [ ] Direct chat、presence、legacy matchmaking 與 platform 已接 block/mute；已連線即時撤銷與 join/matched race 尚未完整。
+- [ ] Direct chat、presence、legacy matchmaking 與 platform 已接 block/mute；QuickMatch/Invite 最終 relay 已加入同 relationship writer advisory-lock fence，鎖後重查 live users、block/friendship，room/unit race 通過，仍缺真 platform relay 與 writer transaction 並行 service smoke。
 - [x] Season / placement / idempotent season rating service 與 migration。
 - [x] Season admin、player API/UI、關季與衰減流程。
 - [x] 投降、棄賽、reconnect deadline、rematch 與處罰政策落地。
-- [ ] Admin 個人帳號、RBAC、TOTP MFA、persisted jti revoke 與 audit 已實作；尚缺 production bootstrap/rotation/recovery E2E。
+- [ ] Admin 個人帳號、RBAC、TOTP MFA、persisted jti revoke、transactional bootstrap/rotation/recovery CLI 與 secret-safe audit 已實作；disposable PostgreSQL lifecycle smoke 已接 fresh role gate，仍缺 production 執行與恢復演練證據。
 - [x] Security、Privacy、Terms、Retention policy 基線已建立。
 - [ ] 公開營運者資訊、法務覆核與第三方 IP 書面授權。
 
 ## 最終驗收
 
-- [x] `npm run verify`（2026-07-13：100 test files / 833 tests / production build 通過）
-- [x] `npm run test:coverage`（statements 60.45%、branches 52.31%、functions 63.59%、lines 63.69%）
-- [ ] `npm run e2e`
+- [x] `npm run verify`：2026-07-15 current tree 通過，Vitest 145 test files / 1319 tests / production-PWA build；merge 前仍須由 required CI 綁定最終 commit SHA。
+- [x] `npm run test:coverage`：statements 64.44%、branches 57.05%、functions 65.89%、lines 67.79%。
+- [x] Compose-backed Chromium E2E：current-tree images 重建後，`e2e/accessibility.spec.ts:162` 以 `--repeat-each=5 --retries=0` 完成 5/5 passed（1.9m）；fresh-volume full Chromium 以 `--retries=0` 完成 39/39 passed（5.4m）。
 - [ ] `npm run rule:audit` 並在 unsupported effect 時失敗
-- [x] 所有 production/development Compose config gate（含 parallel slot 與 gateway）
-- [ ] Migration up / app start / rollback compatibility rehearsal：2026-07-14 已由 production-copy `zutomayo` 建立隔離 DB，完整套用 000001→000026、schema checksum gate 通過、第二次執行為 `No migrations to run`，users/cards/matches 仍為 2/422/1；尚缺 signed release images 的 app start 與 N+1 rollback smoke。
+- [ ] production/development Compose config gate（含 parallel slot 與 gateway）曾在舊樹通過；目前分支尚待重跑。
+- [ ] Migration up / app start / rollback compatibility rehearsal：fresh disposable cluster 已套用 000001→000027 並通過 checksum/schema/role/data smoke；production-copy rehearsal 仍只到 000026，且 000027 遇 legacy tombstone 會 fail closed，尚缺 backfill、第二次冪等執行、signed app start 與 N+1 rollback smoke。
 - [ ] Staging 連續三次 deploy + post-deploy smoke
 - [ ] Backup restore、alert delivery、2x soak 與 reconnect chaos drill
 - [ ] 原始 worktree 未被修改；只有隔離 worktree 包含本任務變更

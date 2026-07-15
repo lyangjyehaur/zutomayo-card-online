@@ -11,7 +11,7 @@ const sourceInitPath = resolve(root, 'scripts/pg-pitr-source-init.sh');
 const composePath = resolve(root, 'docker-compose.pitr-drill.yml');
 const pinnedImage = `postgres:16-alpine@sha256:${'a'.repeat(64)}`;
 const pinnedMigrateImage = `ghcr.io/example/migrate@sha256:${'d'.repeat(64)}`;
-const expectedMigration = '000026_account_export_jobs';
+const expectedMigration = '000027_account_deletion_anonymization';
 const expectedChecksum = 'b'.repeat(64);
 const releaseSha = 'c'.repeat(40);
 

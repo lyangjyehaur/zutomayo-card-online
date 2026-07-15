@@ -129,7 +129,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `VITE_UMAMI_SECONDARY_WEBSITE_ID` | empty                | Backward-compatible alias used by `zutumayo-gallery`.                                                                                                                                                        |
 | `VITE_UMAMI_SECONDARY_HOST_URL`   | empty                | Backward-compatible host URL alias used by `zutumayo-gallery`.                                                                                                                                               |
 
-> Admin authentication is no longer handled in the frontend. The `VITE_ADMIN_PASSWORD` build-time variable has been removed; admin login now goes through `POST /api/admin/login` backed by the `ADMIN_PASSWORD` environment variable on the `api` service.
+> Admin authentication is not handled in the frontend. `POST /api/admin/login` verifies an individual PostgreSQL-backed admin account, its password, and TOTP MFA, then issues a persisted revocable jti. `VITE_ADMIN_PASSWORD` and the legacy shared `ADMIN_PASSWORD` are ignored.
 
 ### `api`
 
@@ -145,7 +145,8 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `REDIS_URL`                                | Compose-generated authenticated URL | Redis connection URL for refresh rotation, the compatibility queue, and rate limits. Production/staging require an authenticated TLS URL (`rediss://`).                                                        |
 | `REDIS_DB`                                 | `0`                                 | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                                               |
 | `JWT_SECRET`                               | **required**                        | HMAC key for signed user/admin tokens. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set a stable secret in production or all tokens become invalid when the API process restarts. |
-| `ADMIN_PASSWORD`                           | empty                               | Password checked by `POST /api/admin/login`. **Recommended: at least 8 characters.** When empty, admin login returns `503` and admin endpoints are effectively disabled.                                       |
+| `ADMIN_TOTP_ENCRYPTION_KEY`                | **required**                        | Stable key of at least 32 characters used only to encrypt admin TOTP secrets. Rotating this key requires a separate envelope re-encryption procedure; replacing it directly locks out existing accounts.       |
+| `ADMIN_SESSION_TTL_SECONDS`                | `3600`                              | Persisted admin jti lifetime, clamped between five minutes and eight hours. Credential rotation/recovery revokes every still-active jti for that admin.                                                        |
 | `ALLOWED_ORIGINS`                          | empty                               | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                                                               |
 | `TRUSTED_PROXY`                            | empty                               | Comma-separated trusted proxy IP/CIDR allowlist. `X-Forwarded-For` is honored only when the TCP peer matches this list; keep empty for direct traffic.                                                         |
 | `APP_VERSION`                              | `package.json` version              | App release version returned by `/api/version` and `/api/app-version`. Leave empty to use the package version.                                                                                                 |
@@ -184,6 +185,33 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `ACCOUNT_EXPORT_BASE_RETRY_MS`             | `5000`                              | Initial retry delay for artifact/storage failures.                                                                                                                                                             |
 | `ACCOUNT_EXPORT_MAX_RETRY_MS`              | `300000`                            | Maximum retry delay.                                                                                                                                                                                           |
 | `ACCOUNT_EXPORT_MAX_BYTES`                 | `104857600`                         | Maximum serialized JSON stream before gzip (100 MiB); the 256 MiB tmpfs leaves bounded compressed-file/filesystem headroom.                                                                                    |
+
+#### Admin bootstrap, rotation, and recovery
+
+Run the credential CLI as a controlled one-shot migration operation, with `PG_USER`/`DATABASE_URL` matching `PG_MIGRATION_USER` and the same stable `ADMIN_TOTP_ENCRYPTION_KEY` used by the API. Supply the password through an owner-only regular file whenever possible. If the TOTP secret is generated, an absolute `--totp-output-file` is mandatory; the CLI creates it with `O_EXCL`, mode `0600`, fsyncs it before changing PostgreSQL, and never writes the secret to ordinary stdout.
+
+```bash
+export ADMIN_BOOTSTRAP_PASSWORD_FILE=/run/secrets/admin-bootstrap-password
+
+npm run admin:create -- \
+  --username=operator \
+  --role=operator \
+  --totp-output-file=/run/secrets/admin-operator.totp
+
+npm run admin:rotate -- \
+  --username=operator \
+  --totp-output-file=/run/secrets/admin-operator-rotation.totp
+
+npm run admin:recover -- \
+  --username=operator \
+  --totp-output-file=/run/secrets/admin-operator-recovery.totp
+```
+
+`admin:create` fails if the username already exists. `admin:rotate` accepts only an active account, while `admin:recover` accepts only a disabled account and re-enables it. Omitting `--role` during rotation/recovery preserves the current role. To inject a pre-provisioned TOTP secret instead of generating one, set exactly one of `ADMIN_BOOTSTRAP_TOTP_SECRET` or `ADMIN_BOOTSTRAP_TOTP_SECRET_FILE` and omit the output flag; the file form must be a non-symlink regular file with no group/other permissions.
+
+Creation, rotation, and recovery serialize on the username and lock the admin row. Credential update, active-session revocation, and the durable `admin_audit_log` record commit in one database transaction. The API role has only `SELECT`/`INSERT` on this audit table; policy-driven deletion remains isolated to the retention role. Audit details contain only the operation, target username, previous/current role and disabled state, source, and revoked-session count; password hashes, salts, plaintext TOTP secrets, and encrypted TOTP envelopes are excluded. Move the TOTP material directly into the operator's authenticator, verify a new login, then securely delete the one-time output and password input files.
+
+Before production use, run `npm run smoke:admin-credentials-pg` with `ADMIN_CREDENTIAL_PG_SMOKE_URL` pointing to a disposable local PostgreSQL database. The smoke creates and drops only a random schema and proves all three operations, session revocation, stale-login rejection, secret-free audit contents, and transaction rollback on audit failure. It refuses `NODE_ENV=production`; a remote disposable database additionally requires `ADMIN_CREDENTIAL_PG_SMOKE_ALLOW_REMOTE=true`. Never point this contract at the production database.
 
 #### DSAR object-storage contract
 
@@ -386,7 +414,9 @@ Schema changes are managed by [node-pg-migrate](https://github.com/salsita/node-
 
 The wrapper [`scripts/db-migrate.cjs`](../scripts/db-migrate.cjs) bridges the project's `PG_*` environment variables to node-pg-migrate's `databaseUrl`. If `DATABASE_URL` is set it takes precedence; otherwise the wrapper assembles a `pg.ClientConfig` from `PG_HOST` / `PG_PORT` / `PG_USER` / `PG_PASSWORD` / `PG_DATABASE`.
 
-Server4 may keep using its existing `zutomayo_card` PostgreSQL database; this release does not require copying data to a new database or cluster. Bootstrap the migration owner, runtime-role ownership/ACLs, and migration history in place, then run the signed migration image against that same database. After the existing schema is baselined, the DSAR feature adds only [`000026_account_export_jobs.js`](../migrations/000026_account_export_jobs.js). Always run `npm run db:migrate:release` with the verified image and expected checksum rather than executing that file manually; it creates `account_export_jobs`/`account_export_audit` and runs schema/role gates without moving existing users, cards, decks, or matches.
+Server4 may keep using its existing `zutomayo_card` PostgreSQL database; this release does not require copying data to a new database or cluster. Bootstrap the migration owner, runtime-role ownership/ACLs, and migration history in place, then run the signed migration image against that same database. After the existing schema is baselined, [`000026_account_export_jobs.js`](../migrations/000026_account_export_jobs.js) adds the durable DSAR job/audit tables and [`000027_account_deletion_anonymization.js`](../migrations/000027_account_deletion_anonymization.js) makes retained season, export, deletion, and relationship evidence explicitly anonymizable. Always run `npm run db:migrate:release` with the verified image and expected checksum rather than executing either file manually; the release migration runs schema/role gates without moving existing users, cards, decks, or matches to another server.
+
+> **`000027` deployment blocker:** the current migration intentionally fails closed when `SELECT COUNT(*) FROM users WHERE deleted_at IS NOT NULL` is non-zero. It does not backfill identifiers retained by accounts deleted before this migration. The existing server4 database remains reusable, but do not apply this release to it until a production-copy rehearsal has counted and inspected those tombstones and a reviewed backfill release has reduced every legacy invariant to zero. Bypassing the guard would leave historical personal identifiers behind and is not supported.
 
 ### Docker Compose
 
@@ -563,6 +593,12 @@ REDIS_DB=2
 ```
 
 The `REDIS_DB` option is applied to every ioredis connection (publish, subscribe, and `duplicate()`-d connections inherit it), so boardgame.io PubSub channels, Socket.IO adapter keys, Colyseus room/presence backing, legacy matchmaking, and rate-limit counters all land in the same isolated DB index.
+
+At minimum, the API/relationship Redis ACL must permit connection selection plus the commands exercised by authentication, rate limiting, presence, relationship projection, and account-deletion purge: `SELECT`, `PING`, `GET`, `GETDEL`, `SET`, `DEL`, `MGET`, `SCAN`, `INCR`, `EXPIRE`, `EVAL`, `PUBLISH`, `SUBSCRIBE`, `HGET`, `HGETALL`, `HSET`, `HDEL`, `SADD`, `SREM`, `SISMEMBER`, `ZADD`, `ZREM`, `ZCARD`, `ZCOUNT`, and `ZREMRANGEBYSCORE`. Grant only the additional commands and key/channel patterns required by boardgame.io, Socket.IO, or Colyseus; do not grant `ACL`, `CONFIG`, `FLUSH*`, or other administrative commands to runtime users.
+
+Redis ACL key patterns apply across every logical DB, and granting `SELECT` does not restrict a user to the configured index. `REDIS_DB` prevents accidental key collisions; it is not a tenant security boundary. Prefer a dedicated Redis instance for production. If an instance must be shared, use a dedicated ACL user, constrain known application key/channel patterns where the libraries allow it, and treat every DB on that instance as the same trust boundary.
+
+`npm run db:roles:smoke` verifies this contract without requiring Redis administration privileges: its PostgreSQL/Redis smoke selects `REDIS_DB=7` by default and executes the actual data-structure, Lua, scan, publish, and subscribe operations. Override `REDIS_DB` to rehearse another isolated index. A `NOPERM`, unsupported `SELECT`, or missing Lua subcommand permission fails the smoke before deployment.
 
 Redis eviction policy is instance-wide (not per logical DB). The bundled Compose Redis is pinned to `noeviction`; an external Redis used by server4 must be configured and verified the same way before deploying:
 

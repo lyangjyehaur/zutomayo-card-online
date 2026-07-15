@@ -14,7 +14,7 @@ const remoteObjectUrl = 's3://zutomayo-staging-backups/logical/release.dump.age'
 const objectVersionId = 'artifact-version-123';
 const checksumVersionId = 'checksum-version-456';
 const secret = 'must-not-appear-in-evidence';
-const expectedMigration = '000026_account_export_jobs';
+const expectedMigration = '000027_account_deletion_anonymization';
 const expectedSchemaChecksum = '9'.repeat(64);
 
 type GateModule = {
