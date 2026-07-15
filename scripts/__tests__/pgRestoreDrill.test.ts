@@ -14,7 +14,7 @@ const remoteObjectUrl = 's3://zutomayo-staging-backups/logical/release.dump.age'
 const objectVersionId = 'artifact-version-123';
 const checksumVersionId = 'checksum-version-456';
 const secret = 'must-not-appear-in-evidence';
-const expectedMigration = '000027_account_deletion_anonymization';
+const expectedMigration = '000031_official_card_data_releases';
 const expectedSchemaChecksum = '9'.repeat(64);
 
 type GateModule = {
@@ -151,14 +151,20 @@ case "$command" in
       pg_isready|pg_restore) exit 0 ;;
       psql)
         cat <<'COUNTS'
-cards=240
+cards=422
 deleted_social_violations=0
 deletion_hold_violations=${options.legalHoldFailure ? '1' : '0'}
 invalid_outbox_status=${options.coreDataFailure ? '1' : '0'}
 legal_holds=1
 matches=12
+missing_official_english_effects=0
+missing_official_english_names=0
+official_card_data_releases=1
+official_english_rows=422
+official_errata=12
+official_japanese_rows=422
 relationship_change_outbox=3
-schema_migrations=26
+schema_migrations=31
 expected_schema_binding=${options.schemaBindingFailure ? '0' : '1'}
 unvalidated_constraints=${options.invariantFailure ? '1' : '0'}
 users=8
@@ -255,10 +261,16 @@ describe('encrypted off-site logical restore producer', { timeout: 20_000 }, () 
           migrateImage,
         },
         observations: {
-          schemaMigrations: 26,
+          schemaMigrations: 31,
           expectedSchemaBinding: 1,
           users: 8,
-          cards: 240,
+          cards: 422,
+          officialCardDataReleases: 1,
+          missingOfficialEnglishNames: 0,
+          missingOfficialEnglishEffects: 0,
+          officialErrata: 12,
+          officialJapaneseRows: 422,
+          officialEnglishRows: 422,
           matches: 12,
           relationshipChangeOutbox: 3,
           legalHolds: 1,

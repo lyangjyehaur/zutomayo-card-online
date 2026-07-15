@@ -24,7 +24,7 @@ import {
   adminUpdateCardI18n,
   DEFAULT_ABOUT_PAGE_I18N_CONFIG,
   fetchAboutPageI18n,
-  fetchCardI18n,
+  fetchCardTextsI18n,
 } from '../api/client';
 import type {
   AboutPageConfig,
@@ -109,6 +109,7 @@ type ParsedCardMeta = {
 
 type CardEditDraft = {
   name: string;
+  enNameOfficial: string;
   element: Element;
   type: CardType;
   rarity: string;
@@ -118,6 +119,7 @@ type CardEditDraft = {
   powerCost: string;
   sendToPower: string;
   effect: string;
+  enEffectOfficial: string;
   image: string;
   errata: string;
   pack: string;
@@ -128,6 +130,7 @@ type CardEditDraft = {
 function cardToDraft(card: CardDef): CardEditDraft {
   return {
     name: card.name,
+    enNameOfficial: card.enNameOfficial ?? '',
     element: card.element,
     type: card.type,
     rarity: card.rarity,
@@ -137,6 +140,7 @@ function cardToDraft(card: CardDef): CardEditDraft {
     powerCost: String(card.powerCost),
     sendToPower: String(card.sendToPower),
     effect: card.effect,
+    enEffectOfficial: card.enEffectOfficial ?? '',
     image: card.image,
     errata: card.errata,
     pack: card.pack,
@@ -152,6 +156,7 @@ function draftToPatch(draft: CardEditDraft): Partial<CardDef> {
   };
   return {
     name: draft.name,
+    enNameOfficial: draft.enNameOfficial,
     element: draft.element,
     type: draft.type,
     rarity: draft.rarity,
@@ -160,6 +165,7 @@ function draftToPatch(draft: CardEditDraft): Partial<CardDef> {
     powerCost: num(draft.powerCost),
     sendToPower: num(draft.sendToPower),
     effect: draft.effect,
+    enEffectOfficial: draft.enEffectOfficial,
     image: draft.image.trim(),
     errata: draft.errata,
     pack: draft.pack,
@@ -350,8 +356,12 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
   return (
     <div className="grid gap-3">
       <label className="grid gap-1">
-        <span className="text-xs text-content-primary/50">名稱</span>
+        <span className="text-xs text-content-primary/50">官方日文名稱</span>
         <Input value={draft.name} onChange={(e) => set('name', e.target.value)} />
+      </label>
+      <label className="grid gap-1">
+        <span className="text-xs text-content-primary/50">卡面官方英文名稱</span>
+        <Input value={draft.enNameOfficial} onChange={(e) => set('enNameOfficial', e.target.value)} />
       </label>
       <div className="grid gap-3 md:grid-cols-3">
         <label className="grid gap-1">
@@ -406,8 +416,12 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
         </div>
       )}
       <label className="grid gap-1">
-        <span className="text-xs text-content-primary/50">效果原文</span>
+        <span className="text-xs text-content-primary/50">官方日文效果</span>
         <Textarea value={draft.effect} onChange={(e) => set('effect', e.target.value)} rows={4} />
+      </label>
+      <label className="grid gap-1">
+        <span className="text-xs text-content-primary/50">卡面官方英文效果</span>
+        <Textarea value={draft.enEffectOfficial} onChange={(e) => set('enEffectOfficial', e.target.value)} rows={4} />
       </label>
       <label className="grid gap-1">
         <span className="text-xs text-content-primary/50">圖片 URL</span>
@@ -447,8 +461,18 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
 }
 
 // ===== i18n Editor =====
-function I18nEditor({ cardId }: { cardId: string }) {
-  const [draft, setDraft] = useState<Record<string, string>>({});
+type CardTextDraft = {
+  name: string;
+  effect: string;
+  reviewStatus: 'official' | 'verified' | 'pending_review';
+  reviewNote: string;
+};
+
+const DERIVED_I18N_LANGS = I18N_LANGS.filter((lang) => lang.code !== 'ja' && lang.code !== 'en');
+
+function I18nEditor({ card }: { card: CardDef }) {
+  const cardId = card.id;
+  const [draft, setDraft] = useState<Record<string, CardTextDraft>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -456,15 +480,25 @@ function I18nEditor({ cardId }: { cardId: string }) {
 
   useEffect(() => {
     setLoading(true);
-    fetchCardI18n(cardId)
+    fetchCardTextsI18n(cardId)
       .then((data) => {
-        const init: Record<string, string> = {};
-        for (const lang of I18N_LANGS) init[lang.code] = data[lang.code] ?? '';
+        const init: Record<string, CardTextDraft> = {};
+        for (const lang of DERIVED_I18N_LANGS) {
+          const entry = data[lang.code];
+          init[lang.code] = {
+            name: entry?.name ?? '',
+            effect: entry?.effect ?? '',
+            reviewStatus: entry?.reviewStatus ?? 'pending_review',
+            reviewNote: entry?.reviewNote ?? '',
+          };
+        }
         setDraft(init);
       })
       .catch(() => {
-        const init: Record<string, string> = {};
-        for (const lang of I18N_LANGS) init[lang.code] = '';
+        const init: Record<string, CardTextDraft> = {};
+        for (const lang of DERIVED_I18N_LANGS) {
+          init[lang.code] = { name: '', effect: '', reviewStatus: 'pending_review', reviewNote: '' };
+        }
         setDraft(init);
       })
       .finally(() => setLoading(false));
@@ -475,8 +509,21 @@ function I18nEditor({ cardId }: { cardId: string }) {
     setError('');
     setSuccess(false);
     try {
-      for (const lang of I18N_LANGS) {
-        await adminUpdateCardI18n(cardId, lang.code, draft[lang.code] ?? '');
+      for (const lang of DERIVED_I18N_LANGS) {
+        const entry = draft[lang.code];
+        await adminUpdateCardI18n(cardId, lang.code, {
+          nameText: entry?.name ?? '',
+          effectText: entry?.effect ?? '',
+          reviewStatus: entry?.reviewStatus ?? 'pending_review',
+          reviewNote: entry?.reviewNote ?? '',
+          source: 'admin_bilingual_translation',
+          nameSource: card.officialErrataAffectsName
+            ? 'official_japanese_errata_translation'
+            : 'admin_bilingual_translation',
+          effectSource: card.officialErrataAffectsEffect
+            ? 'official_japanese_errata_translation'
+            : 'admin_bilingual_translation',
+        });
       }
       setSuccess(true);
     } catch (e) {
@@ -490,19 +537,42 @@ function I18nEditor({ cardId }: { cardId: string }) {
 
   return (
     <div className="grid gap-3">
-      {I18N_LANGS.map((lang) => (
-        <label className="grid gap-1" key={lang.code}>
-          <span className="text-xs text-content-primary/50">
-            {lang.label} <span className="opacity-60">({lang.code})</span>
-          </span>
-          <Textarea
-            value={draft[lang.code] ?? ''}
-            onChange={(e) => setDraft((d) => ({ ...d, [lang.code]: e.target.value }))}
-            rows={3}
-            placeholder={`${lang.label} 翻譯…`}
-          />
-        </label>
-      ))}
+      <p className="text-xs text-content-primary/50">
+        翻譯須同時核對官方日文與卡面官方英文；只有標記為「已複核」的文字會顯示給玩家。
+      </p>
+      {DERIVED_I18N_LANGS.map((lang) => {
+        const entry = draft[lang.code] ?? { name: '', effect: '', reviewStatus: 'pending_review', reviewNote: '' };
+        const update = (patch: Partial<CardTextDraft>) =>
+          setDraft((current) => ({ ...current, [lang.code]: { ...entry, ...patch } }));
+        return (
+          <Panel className="grid gap-2" key={lang.code}>
+            <span className="text-xs font-semibold text-content-primary/70">
+              {lang.label} <span className="opacity-60">({lang.code})</span>
+            </span>
+            <Input value={entry.name} onChange={(e) => update({ name: e.target.value })} placeholder="卡牌名稱" />
+            <Textarea
+              value={entry.effect}
+              onChange={(e) => update({ effect: e.target.value })}
+              rows={3}
+              placeholder="卡牌效果"
+            />
+            <div className="grid gap-2 md:grid-cols-2">
+              <Select
+                value={entry.reviewStatus}
+                onChange={(e) => update({ reviewStatus: e.target.value as CardTextDraft['reviewStatus'] })}
+              >
+                <option value="pending_review">待複核</option>
+                <option value="verified">已複核</option>
+              </Select>
+              <Input
+                value={entry.reviewNote}
+                onChange={(e) => update({ reviewNote: e.target.value })}
+                placeholder="複核備註"
+              />
+            </div>
+          </Panel>
+        );
+      })}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" disabled={saving} onClick={() => void handleSave()}>
           {saving ? '儲存中…' : '儲存翻譯'}
@@ -766,6 +836,7 @@ export function AdminPage() {
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
   const [filterPack, setFilterPack] = useState('all');
+  const [errataOnly, setErrataOnly] = useState(false);
   const [filterTrigger, setFilterTrigger] = useState('all');
   const [filterAction, setFilterAction] = useState('');
   const [filterCondition, setFilterCondition] = useState('');
@@ -805,6 +876,7 @@ export function AdminPage() {
     if (filterElement !== 'all') cards = cards.filter((c) => c.element === filterElement);
     if (filterType !== 'all') cards = cards.filter((c) => c.type === filterType);
     if (filterPack !== 'all') cards = cards.filter((c) => c.pack === filterPack);
+    if (errataOnly) cards = cards.filter((c) => c.hasOfficialErrata);
     if (filterTrigger !== 'all') cards = cards.filter((c) => metaById.get(c.id)?.triggers.includes(filterTrigger));
     if (filterAction)
       cards = cards.filter((c) =>
@@ -845,6 +917,7 @@ export function AdminPage() {
     filterPack,
     filterTrigger,
     filterType,
+    errataOnly,
     pendingOnly,
     searchText,
     sortBy,
@@ -860,6 +933,7 @@ export function AdminPage() {
     Boolean(filterCondition),
     pendingOnly,
     areaExpiryOnly,
+    errataOnly,
     sortBy !== 'id',
   ].filter(Boolean).length;
 
@@ -1199,7 +1273,7 @@ export function AdminPage() {
               />
             )}
             {modalTab === 'engine' && <EffectInspector meta={selectedMeta} />}
-            {modalTab === 'i18n' && <I18nEditor cardId={selectedCard.id} />}
+            {modalTab === 'i18n' && <I18nEditor card={selectedCard} />}
           </div>
         </div>
       </Dialog>
@@ -1352,6 +1426,13 @@ export function AdminPage() {
                 >
                   Area expiry
                 </Button>
+                <Button
+                  size="sm"
+                  variant={errataOnly ? 'primary' : 'ghost'}
+                  onClick={() => setErrataOnly((value) => !value)}
+                >
+                  官方勘誤
+                </Button>
               </div>
               <div className="admin-filter-row flex flex-wrap items-center gap-2">
                 <span className="admin-filter-label w-12 text-xs text-content-primary/50">卡包</span>
@@ -1422,6 +1503,11 @@ export function AdminPage() {
                       referrerPolicy="no-referrer"
                     />
                     <div className="absolute inset-x-0 bottom-0 bg-surface-canvas/80 p-3 backdrop-blur">
+                      {card.hasOfficialErrata && (
+                        <Badge className="mb-1" tone="gold">
+                          官方勘誤 #{card.officialErrataId}
+                        </Badge>
+                      )}
                       <h2 className="block truncate text-sm font-bold">{card.name}</h2>
                       <p className="font-mono text-xs opacity-80">{card.id}</p>
                       <p className="text-xs opacity-80">

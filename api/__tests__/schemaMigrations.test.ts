@@ -75,16 +75,16 @@ describe('schema migrations', () => {
     expect(consistencyMigration).not.toContain('WHERE claimed_at IS NOT NULL');
   });
 
-  it('adopts existing official English card fields without a destructive rollback', () => {
+  it('adopts existing official English card fields before the append-only migration tightens nullability', () => {
     const initSchema = readRepoFile('api/server.cjs');
     const seedSchema = readRepoFile('scripts/seed-cards-pg.ts');
     const migration = readRepoFile('migrations/000025_card_official_english.js');
     for (const field of ['en_name_official', 'en_effect_official']) {
       expect(migration).toContain(`${field}: { type: 'text', default: '' }`);
-      expect(initSchema).toContain(`${field} TEXT DEFAULT ''`);
-      expect(seedSchema).toContain(`${field} TEXT DEFAULT ''`);
-      expect(initSchema).toContain(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS ${field} TEXT DEFAULT ''`);
-      expect(seedSchema).toContain(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS ${field} TEXT DEFAULT ''`);
+      expect(initSchema).toContain(`${field} TEXT NOT NULL DEFAULT ''`);
+      expect(seedSchema).toContain(`${field} TEXT NOT NULL DEFAULT ''`);
+      expect(initSchema).toContain(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS ${field} TEXT NOT NULL DEFAULT ''`);
+      expect(seedSchema).toContain(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS ${field} TEXT NOT NULL DEFAULT ''`);
     }
     expect(migration).toContain('{ ifNotExists: true }');
     expect(migration).toContain('export const down = false;');
@@ -146,5 +146,151 @@ describe('schema migrations', () => {
     expect(migration.match(/details = '\{\}'::jsonb/g)).toHaveLength(2);
     expect(migration).toContain("COALESCE(p_replacement, '') !~");
     expect(migration).toContain('export const down = false;');
+  });
+
+  it('keeps official and localized card text schema aligned with initSchema fallback', () => {
+    const initSchema = readRepoFile('api/server.cjs');
+    const migrations = readMigrations();
+    const cardTextArtifacts = [
+      'en_name_official',
+      'en_effect_official',
+      'card_texts_i18n',
+      'name_text',
+      'effect_text',
+      'name_source',
+      'effect_source',
+      'review_status',
+      'review_note',
+      'idx_card_texts_i18n_lang_review',
+      'has_official_errata',
+      'official_errata_id',
+      'official_errata_affects_name',
+      'official_errata_affects_effect',
+      'official_errata_url',
+      'card_official_errata',
+      'corrected_japanese_text',
+      'corrected_english_text',
+      'corrected_english_status',
+      'corrected_english_source',
+      'idx_cards_has_official_errata',
+    ];
+
+    for (const artifact of cardTextArtifacts) {
+      expect(initSchema, `initSchema fallback missing ${artifact}`).toContain(artifact);
+      expect(migrations, `migrations missing ${artifact}`).toContain(artifact);
+    }
+  });
+
+  it('appends the canonical card migrations without invalidating existing P0-P5 histories', () => {
+    const migrationRunner = readRepoFile('scripts/db-migrate.cjs');
+    const developmentRunner = readRepoFile('api/server.cjs');
+    const compatibility = readRepoFile('scripts/migration-order-compat.cjs');
+    const cardTexts = readRepoFile('migrations/000028_card_official_texts_i18n.js');
+    const errata = readRepoFile('migrations/000029_card_official_errata.js');
+    const errataSource = readRepoFile('migrations/000030_card_official_errata_english_source.js');
+
+    expect(migrationRunner).toContain('migrationIgnorePatternForApplied');
+    expect(developmentRunner).toContain('migrationIgnorePatternForApplied');
+    expect(developmentRunner).toContain('ignorePattern,');
+    expect(developmentRunner).toContain('ssl: postgresSslConfig(process.env)');
+    for (const runner of [migrationRunner, developmentRunner]) {
+      expect(runner).toContain('checkOrder: true');
+    }
+    for (const legacyName of [
+      '000007_card_official_texts_i18n',
+      '000008_card_official_errata',
+      '000009_card_official_errata_english_source',
+    ]) {
+      expect(compatibility).toContain(legacyName);
+    }
+    expect(cardTexts).toContain('ALTER COLUMN en_name_official SET NOT NULL');
+    expect(cardTexts).toContain('ALTER COLUMN en_effect_official SET NOT NULL');
+    expect(cardTexts.match(/ON CONFLICT \(card_id, lang\) DO NOTHING/g)).toHaveLength(3);
+    expect(cardTexts).not.toMatch(/ON CONFLICT \(card_id, lang\) DO UPDATE/);
+    expect(errata).toContain('card_official_errata');
+    expect(errataSource).toContain('card_official_errata_english_source_check');
+    for (const migration of [cardTexts, errata, errataSource]) {
+      expect(migration).toContain('export const down = false;');
+    }
+  });
+
+  it('creates an irreversible signed official-card dataset ledger', () => {
+    const migration = readRepoFile('migrations/000031_official_card_data_releases.js');
+
+    for (const column of [
+      'dataset_sha256',
+      'extraction_sha256',
+      'errata_sha256',
+      'review_provenance_sha256',
+      'release_sha',
+      'card_count',
+      'errata_count',
+      'applied_at',
+    ]) {
+      expect(migration).toContain(column);
+    }
+    expect(migration).toContain("dataset_sha256 ~ '^[a-f0-9]{64}$'");
+    expect(migration).toContain("extraction_sha256 ~ '^[a-f0-9]{64}$'");
+    expect(migration).toContain("errata_sha256 ~ '^[a-f0-9]{64}$'");
+    expect(migration).toContain("review_provenance_sha256 ~ '^[a-f0-9]{64}$'");
+    expect(migration).toContain("release_sha ~ '^[a-f0-9]{40}$'");
+    expect(migration).toContain('card_count > 0');
+    expect(migration).toContain('errata_count >= 0');
+    expect(migration).toContain('errata_count <= card_count');
+    expect(migration).toContain('export const down = false;');
+  });
+
+  it('tracks all 12 official errata against the corrected Japanese card source', () => {
+    const errata = JSON.parse(readRepoFile('data/card-official-errata.json')) as {
+      errata: Array<{
+        errataId: string;
+        cardId: string;
+        fields: Array<'name' | 'effect'>;
+        correctedJapaneseText: string;
+        correctedEnglishText: string;
+        correctedEnglishStatus: string;
+        correctedEnglishSource: string;
+      }>;
+    };
+    const extraction = JSON.parse(readRepoFile('data/card-english-extraction.json')) as {
+      cards: Array<{ id: string; japaneseName: string; japaneseEffect: string; enEffectOfficial: string }>;
+    };
+    const cardsById = new Map(extraction.cards.map((card) => [card.id, card]));
+
+    expect(errata.errata).toHaveLength(12);
+    expect(new Set(errata.errata.map((entry) => entry.cardId)).size).toBe(12);
+    for (const entry of errata.errata) {
+      const card = cardsById.get(entry.cardId);
+      expect(card, `missing ${entry.cardId}`).toBeDefined();
+      expect(entry.correctedJapaneseText).toBe(
+        entry.fields.includes('name') ? card?.japaneseName : card?.japaneseEffect,
+      );
+    }
+    expect(errata.errata.find((entry) => entry.cardId === '3rd_31')?.correctedEnglishText).toContain(
+      'regardless of its Power',
+    );
+    expect(errata.errata.find((entry) => entry.cardId === '4th_76')?.correctedEnglishText).toBe(
+      'GUREKUMA-KUN (Pain Give Form)',
+    );
+    expect(errata.errata.find((entry) => entry.cardId === '4th_61')).toMatchObject({
+      correctedEnglishText:
+        'Place any number of cards from your hand at the bottom of the deck. If you do, draw the same number of cards from the deck.',
+      correctedEnglishStatus: 'verified',
+      correctedEnglishSource: 'official_card_print_unaffected',
+    });
+    expect(errata.errata.find((entry) => entry.cardId === '4th_61')?.correctedEnglishText).toBe(
+      cardsById.get('4th_61')?.enEffectOfficial,
+    );
+    for (const cardId of ['3rd_8', '3rd_22']) {
+      const correctedEnglish = errata.errata.find((entry) => entry.cardId === cardId)?.correctedEnglishText;
+      expect(correctedEnglish).toContain('cards of the four attributes');
+      expect(correctedEnglish).not.toContain('all four attributes');
+    }
+    const effectErrata = errata.errata.filter((entry) => entry.fields.includes('effect'));
+    expect(effectErrata).toHaveLength(10);
+    expect(effectErrata.every((entry) => entry.correctedEnglishStatus === 'verified')).toBe(true);
+    for (const entry of effectErrata) {
+      expect(entry.correctedEnglishText).not.toMatch(/\b(?:1|a) card\b/i);
+    }
   });
 });

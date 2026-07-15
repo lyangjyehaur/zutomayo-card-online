@@ -4,10 +4,11 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { ALL_TABLES, APPLICATION_TABLES, enforceRuntimeRolePrivileges, quoteIdentifier } =
+const { ALL_TABLES, APPLICATION_TABLES, PROTECTED_SCHEMA_TABLES, enforceRuntimeRolePrivileges, quoteIdentifier } =
   require('../postgres-role-gate.cjs') as {
     ALL_TABLES: string[];
     APPLICATION_TABLES: string[];
+    PROTECTED_SCHEMA_TABLES: string[];
     quoteIdentifier: (value: unknown) => string;
     enforceRuntimeRolePrivileges: (
       pool: { query: ReturnType<typeof vi.fn>; connect?: ReturnType<typeof vi.fn> },
@@ -167,7 +168,7 @@ describe('PostgreSQL runtime role gate', () => {
     ).resolves.toMatchObject({
       appUser: 'z_api',
       roles: roleUsers,
-      protectedTables: ['schema_migrations', 'schema_migration_checksums'],
+      protectedTables: ['schema_migrations', 'schema_migration_checksums', 'official_card_data_releases'],
     });
 
     const statements = query.mock.calls.map(([sql]) => String(sql));
@@ -204,6 +205,19 @@ describe('PostgreSQL runtime role gate', () => {
     );
     expect(statements).not.toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."matches" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."users" TO "z_backup"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."card_texts_i18n" TO "z_game"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."card_official_errata" TO "z_game"');
+    for (const roleName of [roleUsers.api, roleUsers.game, roleUsers.platform, roleUsers.retention, roleUsers.backup]) {
+      expect(statements).toContain(`GRANT SELECT ON TABLE public."official_card_data_releases" TO "${roleName}"`);
+    }
+    expect(
+      statements.some(
+        (statement) =>
+          statement.startsWith('GRANT ') &&
+          statement.includes('public."official_card_data_releases"') &&
+          /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER)\b/.test(statement),
+      ),
+    ).toBe(false);
     expect(statements).toContain('GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO "z_backup"');
     expect(statements).not.toContain('GRANT USAGE ON SCHEMA public TO "z_monitor"');
     expect(statements).not.toContain('GRANT CONNECT ON DATABASE "zutomayo" TO "z_wal"');
@@ -369,7 +383,7 @@ describe('PostgreSQL role provisioning contract', () => {
       new Set(REQUIRED_RUNTIME_TABLES),
     );
     expect(new Set(APPLICATION_TABLES)).toEqual(
-      new Set(REQUIRED_RUNTIME_TABLES.filter((table) => table !== 'schema_migration_checksums')),
+      new Set(REQUIRED_RUNTIME_TABLES.filter((table) => !PROTECTED_SCHEMA_TABLES.includes(table))),
     );
   });
 

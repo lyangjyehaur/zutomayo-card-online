@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/loader';
-import { getTranslatedEffect } from '../game/cards/i18n';
+import { getLocalizedCardEffect, getLocalizedCardName } from '../game/cards/i18n';
 import { loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
 import {
@@ -143,6 +143,7 @@ export function DeckEditor({
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
   const [filterPack, setFilterPack] = useState('all');
+  const [filterErrata, setFilterErrata] = useState<'all' | 'errata'>('all');
   const [filterCardNumber, setFilterCardNumber] = useState('');
   const [searchText, setSearchText] = useState('');
   const [sortBy, setSortBy] = useState<DeckEditorSort>('number');
@@ -259,6 +260,7 @@ export function DeckEditor({
     if (filterElement !== 'all') cards = cards.filter((card) => card.element === filterElement);
     if (filterType !== 'all') cards = cards.filter((card) => card.type === filterType);
     if (filterPack !== 'all') cards = cards.filter((card) => card.pack === filterPack);
+    if (filterErrata === 'errata') cards = cards.filter((card) => card.hasOfficialErrata);
     if (filterCardNumber.trim()) {
       const cardNumberQuery = normalizeCardNumber(filterCardNumber);
       cards = cards.filter((card) => normalizeCardNumber(card.id).includes(cardNumberQuery));
@@ -267,14 +269,18 @@ export function DeckEditor({
       const query = searchText.toLowerCase();
       const normalizedQuery = normalizeCardNumber(query);
       cards = cards.filter((card) => {
-        const translatedEffect = getTranslatedEffect(card.id, locale);
+        const localizedName = getLocalizedCardName(card, locale);
+        const localizedEffect = getLocalizedCardEffect(card, locale);
         return (
           card.name.toLowerCase().includes(query) ||
+          (!card.officialErrataAffectsName && (card.enNameOfficial?.toLowerCase().includes(query) ?? false)) ||
+          localizedName.toLowerCase().includes(query) ||
           card.id.toLowerCase().includes(query) ||
           normalizeCardNumber(card.id).includes(normalizedQuery) ||
           card.pack.toLowerCase().includes(query) ||
           card.effect.toLowerCase().includes(query) ||
-          (translatedEffect?.toLowerCase().includes(query) ?? false) ||
+          (!card.officialErrataAffectsEffect && (card.enEffectOfficial?.toLowerCase().includes(query) ?? false)) ||
+          localizedEffect.toLowerCase().includes(query) ||
           card.song.toLowerCase().includes(query)
         );
       });
@@ -288,13 +294,13 @@ export function DeckEditor({
         const bAttack = b.attack ? Math.max(b.attack.night, b.attack.day) : 0;
         return bAttack - aAttack;
       }
-      return a.name.localeCompare(b.name);
+      return getLocalizedCardName(a, locale).localeCompare(getLocalizedCardName(b, locale), locale);
     });
-  }, [allCards, filterElement, filterType, filterPack, filterCardNumber, searchText, sortBy, locale]);
+  }, [allCards, filterElement, filterType, filterPack, filterErrata, filterCardNumber, searchText, sortBy, locale]);
 
   useEffect(() => {
     setPage(0);
-  }, [filterElement, filterType, filterPack, filterCardNumber, searchText, sortBy]);
+  }, [filterElement, filterType, filterPack, filterErrata, filterCardNumber, searchText, sortBy]);
 
   useEffect(() => {
     if (initialDeck !== undefined) setDeck(initialDeck);
@@ -361,6 +367,7 @@ export function DeckEditor({
     elementLabel(filterElement),
     typeLabel(filterType),
     filterPack === 'all' ? t('deckEditor.allPacks') : filterPack,
+    filterErrata === 'errata' ? t('card.officialErrata') : null,
     filterCardNumber.trim() ? `${t('deckEditor.cardNumberShort')} ${filterCardNumber.trim()}` : null,
     sortLabel(sortBy),
   ]
@@ -515,6 +522,21 @@ export function DeckEditor({
           />
         </fieldset>
         <fieldset className={fieldsetClass}>
+          <legend className={legendClass}>{t('deckEditor.filterErrata')}</legend>
+          <SegmentedControl
+            className={chipGroupClass}
+            optionClassName={chipOptionClass}
+            size={chipSize}
+            options={[
+              { value: 'all', label: t('deckEditor.all') },
+              { value: 'errata', label: t('card.officialErrata') },
+            ]}
+            value={filterErrata}
+            onChange={setFilterErrata}
+            ariaLabel={t('deckEditor.filterErrata')}
+          />
+        </fieldset>
+        <fieldset className={fieldsetClass}>
           <legend className={legendClass}>{t('deckEditor.sort')}</legend>
           <SegmentedControl
             className={chipGroupClass}
@@ -582,7 +604,9 @@ export function DeckEditor({
               >
                 {card.powerCost}
               </span>
-              <span className="truncate font-display text-sm font-bold text-content-primary/80">{card.name}</span>
+              <span className="truncate font-display text-sm font-bold text-content-primary/80">
+                {getLocalizedCardName(card, locale)}
+              </span>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span
@@ -594,7 +618,7 @@ export function DeckEditor({
               <IconButton
                 onClick={() => removeCard(firstIndex)}
                 className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-content-primary/45 transition hover:bg-content-primary/5 hover:text-accent-action focus:outline-none focus:ring-2 focus:ring-accent-primary/60 focus:ring-offset-2 focus:ring-offset-surface-base"
-                label={`${t('deckEditor.removeCard')} ${card.name}`}
+                label={`${t('deckEditor.removeCard')} ${getLocalizedCardName(card, locale)}`}
                 icon={<X className="size-4" aria-hidden="true" />}
               />
             </div>
@@ -623,7 +647,7 @@ export function DeckEditor({
   );
 
   const cardDetailProps = (card: CardDef) => ({
-    title: card.name,
+    title: getLocalizedCardName(card, locale),
     meta: `${elementLabel(card.element)} · ${typeLabel(card.type)} · ${card.rarity}`,
     stats: (
       <>
@@ -648,7 +672,7 @@ export function DeckEditor({
         )}
       </>
     ),
-    effect: card.effect ? (getTranslatedEffect(card.id, locale) ?? card.effect) : undefined,
+    effect: getLocalizedCardEffect(card, locale) || undefined,
     footer:
       card.song || card.illustrator ? (
         <>
@@ -830,6 +854,7 @@ export function DeckEditor({
           {visibleCards.map((card) => {
             const count = deckCounts.get(card.id) ?? 0;
             const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
+            const localizedName = getLocalizedCardName(card, locale);
             return (
               <div key={card.id} className="group relative">
                 <button
@@ -848,7 +873,7 @@ export function DeckEditor({
                     <CardImage
                       cardId={card.id}
                       context="hand"
-                      alt={card.name}
+                      alt={localizedName}
                       loading="lazy"
                       referrerPolicy="no-referrer"
                       className="absolute inset-0 size-full object-contain"
@@ -864,10 +889,15 @@ export function DeckEditor({
                       ×{count}
                     </span>
                   )}
+                  {card.hasOfficialErrata && (
+                    <span className="absolute bottom-1 left-1 rounded-xs bg-accent-action/90 px-1.5 py-0.5 font-mono text-minutia leading-none text-surface-canvas">
+                      {t('card.officialErrata')}
+                    </span>
+                  )}
                 </button>
                 <IconButton
                   className="absolute bottom-1 right-1 z-[var(--z-dropdown)] bg-surface-canvas/90 text-content-primary/70 ring-1 ring-content-primary/20 backdrop-blur hover:text-accent-primary md:hidden"
-                  label={`Preview ${card.name}`}
+                  label={`Preview ${localizedName}`}
                   icon={<Eye className="size-4" aria-hidden="true" />}
                   onClick={(event) => handlePreviewClick(card, event)}
                   onMouseEnter={(event) => handleCardEnter(card, event)}

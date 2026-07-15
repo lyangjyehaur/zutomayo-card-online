@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import officialErrataSource from '../../data/card-official-errata.json';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS } from '../../src/data/tutorialScenario';
 import { loadSeedCardI18n, loadSeedCards } from '../cardSource';
-import { E2E_SEED_CARDS } from '../fixtures/e2eCards';
+import { E2E_OFFICIAL_ERRATA_CARDS, E2E_SEED_CARDS } from '../fixtures/e2eCards';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -30,6 +31,37 @@ describe('E2E card seed fixture', () => {
     expect(cards).toHaveLength(25);
     expect(cards.filter((card) => card.type === 'Character')).toHaveLength(15);
     expect(cards.filter((card) => card.type !== 'Character')).toHaveLength(10);
+  });
+
+  it('covers all official errata without changing preset or gameplay fixtures', () => {
+    const officialIds = officialErrataSource.errata.map((entry) => entry.cardId);
+    const errataById = new Map(E2E_OFFICIAL_ERRATA_CARDS.map((card) => [card.id, card]));
+
+    expect(E2E_OFFICIAL_ERRATA_CARDS).toHaveLength(12);
+    expect(E2E_OFFICIAL_ERRATA_CARDS.map((card) => card.id)).toEqual(officialIds);
+    expect(E2E_SEED_CARDS.slice(-officialIds.length)).toEqual(E2E_OFFICIAL_ERRATA_CARDS);
+    expect(E2E_OFFICIAL_ERRATA_CARDS.every((card) => card.element === 'カオス')).toBe(true);
+
+    for (const element of ['闇', '炎', '電気', '風'] as const) {
+      const presetCandidates = E2E_SEED_CARDS.filter((card) => card.element === element).slice(0, 20);
+      expect(presetCandidates.every((card) => !errataById.has(card.id))).toBe(true);
+    }
+
+    for (const entry of officialErrataSource.errata) {
+      const card = errataById.get(entry.cardId);
+      expect(card).toMatchObject({
+        officialErrataId: entry.errataId,
+        hasOfficialErrata: true,
+        officialErrataAffectsName: entry.fields.includes('name'),
+        officialErrataAffectsEffect: entry.fields.includes('effect'),
+      });
+      expect(entry.fields.includes('name') ? card?.name : card?.effect).toBe(entry.correctedJapaneseText);
+      if (entry.correctedEnglishSource === 'official_card_print_unaffected') {
+        expect(entry.fields.includes('name') ? card?.enNameOfficial : card?.enEffectOfficial).toBe(
+          entry.correctedEnglishText,
+        );
+      }
+    }
   });
 
   it('loads only the explicitly configured test fixture URLs', async () => {

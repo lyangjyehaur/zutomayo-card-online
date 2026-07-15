@@ -1,4 +1,5 @@
 import type { CardDef, Element } from '../../src/game/types';
+import officialErrataSource from '../../data/card-official-errata.json';
 
 const TUTORIAL_CARDS: CardDef[] = [
   {
@@ -216,12 +217,45 @@ function cardsForElement(element: Exclude<Element, 'カオス'>): CardDef[] {
   return cards;
 }
 
-export const E2E_SEED_CARDS: CardDef[] = [
+function syntheticOfficialErrataCard(entry: (typeof officialErrataSource.errata)[number]): CardDef {
+  const affectsName = entry.fields.includes('name');
+  const printedEnglishUnaffected = entry.correctedEnglishSource === 'official_card_print_unaffected';
+  return {
+    id: entry.cardId,
+    name: affectsName ? entry.correctedJapaneseText : `E2E Official Errata ${entry.errataId}`,
+    pack: 'E2E Errata',
+    song: 'Synthetic Fixture',
+    illustrator: 'E2E',
+    rarity: 'N',
+    element: 'カオス',
+    type: 'Enchant',
+    clock: 0,
+    attack: null,
+    powerCost: 0,
+    sendToPower: 0,
+    effect: affectsName ? '' : entry.correctedJapaneseText,
+    enNameOfficial: printedEnglishUnaffected && affectsName ? entry.correctedEnglishText : '',
+    enEffectOfficial: printedEnglishUnaffected && !affectsName ? entry.correctedEnglishText : '',
+    image: '/card-back.jpg',
+    errata: '',
+    hasOfficialErrata: true,
+    officialErrataId: entry.errataId,
+    officialErrataAffectsName: affectsName,
+    officialErrataAffectsEffect: entry.fields.includes('effect'),
+    officialErrataUrl: entry.sourceUrl,
+  };
+}
+
+export const E2E_OFFICIAL_ERRATA_CARDS: CardDef[] = officialErrataSource.errata.map(syntheticOfficialErrataCard);
+
+const E2E_GAMEPLAY_SEED_CARDS: CardDef[] = [
   ...cardsForElement('闇'),
   ...cardsForElement('炎'),
   ...cardsForElement('電気'),
   ...cardsForElement('風'),
   ...TUTORIAL_CARDS.filter((card) => card.element === 'カオス'),
 ];
+
+export const E2E_SEED_CARDS: CardDef[] = [...E2E_GAMEPLAY_SEED_CARDS, ...E2E_OFFICIAL_ERRATA_CARDS];
 
 export const E2E_SEED_CARD_I18N: Record<string, Record<string, string>> = {};

@@ -819,6 +819,8 @@ export const ja: Record<TranslationKey, string> = {
   'deckEditor.cardNumberShort': '番号',
   'deckEditor.filterElement': '属性',
   'deckEditor.filterType': 'タイプ',
+  'deckEditor.filterErrata': 'エラッタ',
+  'card.officialErrata': '公式エラッタ',
   'deckEditor.sort': '並び替え',
   'deckEditor.all': 'すべて',
   'deckEditor.sortNumber': '番号',

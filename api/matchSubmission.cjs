@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 /* global module, require */
 
 const crypto = require('crypto');

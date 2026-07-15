@@ -48,8 +48,8 @@ import {
   getRequiredSetCount,
   isAttackPowerInsufficient,
 } from '../game/GameLogic';
-import { t, useLocale } from '../i18n';
-import { getTranslatedEffect } from '../game/cards/i18n';
+import { getLocale, t, useLocale } from '../i18n';
+import { getLocalizedCardEffect, getLocalizedCardName, getTranslatedEffect } from '../game/cards/i18n';
 import { pendingChoiceSelectionError } from '../game/pendingChoices';
 import {
   matchDurationSeconds,
@@ -118,7 +118,8 @@ function CardPopover({
   position: PopoverPosition;
 }) {
   const locale = useLocale();
-  const translatedEffect = getTranslatedEffect(def.id, locale);
+  const localizedName = getLocalizedCardName(def, locale);
+  const localizedEffect = getLocalizedCardEffect(def, locale);
   const style: CSSProperties = {
     top: `${position.top}px`,
     left: `${position.left}px`,
@@ -126,7 +127,7 @@ function CardPopover({
 
   return createPortal(
     <aside className={`card-popover popover-${position.placement}`} style={style} aria-hidden="true">
-      <strong>{def.name}</strong>
+      <strong>{localizedName}</strong>
       <span className="popover-meta">
         {t(`card.element.${def.element}` as never)} • {t(`card.type.${def.type}` as never)}
       </span>
@@ -152,10 +153,10 @@ function CardPopover({
           {t('card.charge')}: {def.sendToPower}
         </span>
       )}
-      {def.effect && (
+      {localizedEffect && (
         <>
           <div className="popover-rule" />
-          <p className="popover-effect">{translatedEffect || def.effect}</p>
+          <p className="popover-effect">{localizedEffect}</p>
         </>
       )}
     </aside>,
@@ -232,7 +233,8 @@ function playerName(index: PlayerIndex): string {
 
 function translatedActionLogEffect(entry: ActionLogEntry, locale: string): string | null {
   if (!entry.pendingEffectCardDefId) return null;
-  return getTranslatedEffect(entry.pendingEffectCardDefId, locale);
+  const def = getCardDef(entry.pendingEffectCardDefId);
+  return def ? getLocalizedCardEffect(def, locale) : getTranslatedEffect(entry.pendingEffectCardDefId, locale);
 }
 
 type LogSegment = { type: 'text'; text: string } | { type: 'card'; cardDefId: string };
@@ -392,12 +394,14 @@ function formatLogEntry(
  * 與戰場卡共用 CardPopover 和 computePopoverPosition，定位以 chip 的 DOM rect 為錨點。
  */
 function LogCardChip({ cardDefId }: { cardDefId: string }) {
+  const locale = useLocale();
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [tappedOpen, setTappedOpen] = useState(false);
   const [position, setPosition] = useState<PopoverPosition | null>(null);
   const ref = useRef<HTMLButtonElement>(null);
   const def = getCardDef(cardDefId);
+  const localizedName = def ? getLocalizedCardName(def, locale) : cardDefId;
   const visible = hovered || focused || tappedOpen;
 
   useEffect(() => {
@@ -438,7 +442,7 @@ function LogCardChip({ cardDefId }: { cardDefId: string }) {
       type="button"
       ref={ref}
       className="inline-flex min-h-10 cursor-help items-center rounded-sm bg-transparent p-0 text-left text-accent-primary-soft underline decoration-dotted underline-offset-2 transition hover:text-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/50 focus:ring-offset-2 focus:ring-offset-surface-base"
-      aria-label={def.name}
+      aria-label={localizedName}
       aria-expanded={visible}
       onClick={() => setTappedOpen((open) => !open)}
       onMouseEnter={() => setHovered(true)}
@@ -446,7 +450,7 @@ function LogCardChip({ cardDefId }: { cardDefId: string }) {
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
     >
-      [{def.name}]{visible && position && <CardPopover def={def} position={position} />}
+      [{localizedName}]{visible && position && <CardPopover def={def} position={position} />}
     </button>
   );
 }
@@ -548,10 +552,16 @@ function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | nul
 function formatBreakdownValue(value: string, cardDefId?: string): string {
   if (cardDefId) {
     const def = getCardDef(cardDefId);
-    if (def?.name) return `${def.name} ${value}`;
+    if (def?.name) return `${getLocalizedCardName(def, getLocale())} ${value}`;
   }
   if (value.startsWith('board.')) return t(value as never);
   return value;
+}
+
+function localizedCardNameById(cardDefId?: string): string | undefined {
+  if (!cardDefId) return undefined;
+  const def = getCardDef(cardDefId);
+  return def ? getLocalizedCardName(def, getLocale()) : undefined;
 }
 
 /**
@@ -578,7 +588,7 @@ function chronosTimeLabel(time: ChronosTime): string {
 
 function BreakdownBlock({ breakdown }: { breakdown: HpChangeBreakdown }) {
   const participantNames = breakdown.participantCardDefIds
-    .map((id) => getCardDef(id)?.name)
+    .map((id) => localizedCardNameById(id))
     .filter((n): n is string => Boolean(n));
   return (
     <div className="mt-1 min-w-[240px] max-w-[340px] border-t border-content-primary/10 pt-2">
@@ -632,7 +642,7 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
   switch (notice.kind) {
     case 'hpChange': {
       const isHeal = (notice.delta ?? 0) > 0;
-      const cardName = notice.sourceCardDefId ? getCardDef(notice.sourceCardDefId)?.name : undefined;
+      const cardName = localizedCardNameById(notice.sourceCardDefId);
       const ownerName = notice.player !== undefined ? playerName(notice.player) : '';
       return (
         <>
@@ -651,9 +661,7 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
       );
     }
     case 'chronosChange': {
-      const sourceCardName = notice.chronosSourceCardDefId
-        ? getCardDef(notice.chronosSourceCardDefId)?.name
-        : undefined;
+      const sourceCardName = localizedCardNameById(notice.chronosSourceCardDefId);
       const fromTime = notice.chronosFromTime ? chronosTimeLabel(notice.chronosFromTime) : '';
       const toTime = notice.chronosToTime ? chronosTimeLabel(notice.chronosToTime) : '';
       const delta = notice.chronosDelta ?? 0;
@@ -966,7 +974,7 @@ function MulliganScreen({
   const focusedSelected = focusedIndex >= 0 && selected.includes(focusedIndex);
   const detailTitle =
     focusedCard && focusedCard.card.faceUp && focusedCard.card.defId !== '__hidden__'
-      ? (getCardDef(focusedCard.card.defId)?.name ?? t('card.unknown'))
+      ? (localizedCardNameById(focusedCard.card.defId) ?? t('card.unknown'))
       : t('card.back');
 
   return (
@@ -1289,18 +1297,21 @@ function effectSummary(effect: GameState['pendingEffects'][number][number]): str
 }
 
 function translatedPendingEffectText(effect: GameState['pendingEffects'][number][number], locale: string): string {
-  return getTranslatedEffect(effect.cardDefId, locale) ?? effect.rawText ?? effectSummary(effect);
+  const def = getCardDef(effect.cardDefId);
+  return (def ? getLocalizedCardEffect(def, locale) : null) || effect.rawText || effectSummary(effect);
 }
 
 function translatedChoicePrompt(G: GameState, locale: string): string | null {
   const choice = G.pendingChoice;
   if (!choice?.prompt) return null;
   if (choice.sourceCardDefId) {
-    return getTranslatedEffect(choice.sourceCardDefId, locale) ?? choice.prompt;
+    const def = getCardDef(choice.sourceCardDefId);
+    return (def ? getLocalizedCardEffect(def, locale) : null) || choice.prompt;
   }
   const sourceEffect = G.pendingEffects.flat().find((effect) => effect.rawText === choice.prompt);
   if (!sourceEffect) return choice.prompt;
-  return getTranslatedEffect(sourceEffect.cardDefId, locale) ?? choice.prompt;
+  const def = getCardDef(sourceEffect.cardDefId);
+  return (def ? getLocalizedCardEffect(def, locale) : null) || choice.prompt;
 }
 
 function choiceInstruction(type: string): string {
@@ -1410,7 +1421,9 @@ function EffectOrderPanel({
                 type="button"
                 onClick={() => moves.resolvePendingEffect(index)}
               >
-                <span className="effect-order-card">{card?.name ?? effect.cardDefId}</span>
+                <span className="effect-order-card">
+                  {card ? getLocalizedCardName(card, locale) : effect.cardDefId}
+                </span>
                 <span className="effect-order-text">{effectText}</span>
                 <span className="effect-order-action">{t('common.select')}</span>
               </button>

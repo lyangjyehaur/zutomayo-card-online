@@ -12,7 +12,8 @@ import {
   type MatchRecord,
 } from '../game/matchHistory';
 import { CHRONOS_MAPPING, type ActionLogEntry } from '../game/types';
-import { getTranslatedEffect } from '../game/cards/i18n';
+import { getLocalizedCardEffect } from '../game/cards/i18n';
+import { getCardDef } from '../game/cards/loader';
 import { t, useLocale } from '../i18n';
 import { useToast } from './ToastProvider';
 import {
@@ -112,7 +113,8 @@ function traceContext(entry: ActionLogEntry): string[] {
 
 function traceResultMessage(entry: ActionLogEntry, locale: string): string | null {
   if (entry.pendingEffectCardDefId) {
-    return getTranslatedEffect(entry.pendingEffectCardDefId, locale) ?? entry.result?.message ?? null;
+    const def = getCardDef(entry.pendingEffectCardDefId);
+    return (def ? getLocalizedCardEffect(def, locale) : null) || entry.result?.message || null;
   }
   return entry.result?.message ?? null;
 }

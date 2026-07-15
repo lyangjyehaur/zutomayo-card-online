@@ -1,7 +1,19 @@
 // 卡牌效果 i18n 共享模組。
 // 資料來源：PG-backed API（伺服器於啟動時從 PostgreSQL 載入並提供）。
 
+import type { CardDef } from '../types';
+
+export interface CardTextI18nEntry {
+  name: string;
+  effect: string;
+  nameSource: string;
+  effectSource: string;
+  reviewStatus: 'official' | 'verified' | 'pending_review';
+  reviewNote: string;
+}
+
 let effectI18n: Record<string, Record<string, string>> = {};
+let cardTextsI18n: Record<string, Record<string, CardTextI18nEntry>> = {};
 let _initialized = false;
 
 export function isI18nInitialized(): boolean {
@@ -13,6 +25,11 @@ export function isI18nInitialized(): boolean {
  */
 export function initEffectI18n(data: Record<string, Record<string, string>>): void {
   effectI18n = data;
+  _initialized = true;
+}
+
+export function initCardTextsI18n(data: Record<string, Record<string, CardTextI18nEntry>>): void {
+  cardTextsI18n = data;
   _initialized = true;
 }
 
@@ -36,6 +53,74 @@ export async function loadEffectI18nFromAPI(): Promise<void> {
   if (data && typeof data === 'object') {
     initEffectI18n(data);
   }
+}
+
+export async function loadCardTextsI18nFromAPI(): Promise<void> {
+  const data = await fetchJson<Record<string, Record<string, CardTextI18nEntry>>>('/api/cards/texts');
+  if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+    initCardTextsI18n(data);
+    return;
+  }
+  await loadEffectI18nFromAPI();
+}
+
+function reviewedTranslation(cardId: string, locale: string): CardTextI18nEntry | null {
+  const entry = cardTextsI18n[cardId]?.[locale];
+  if (!entry || entry.reviewStatus === 'pending_review') return null;
+  return entry;
+}
+
+function isCorrectedErrataSource(source: string): boolean {
+  return (
+    source === 'official_errata_notice' ||
+    source === 'official_card_print_unaffected' ||
+    source === 'official_card_print_corrected' ||
+    source === 'official_japanese_errata_translation'
+  );
+}
+
+function correctedTranslation(cardId: string, locale: string, field: 'name' | 'effect'): CardTextI18nEntry | null {
+  const entry = reviewedTranslation(cardId, locale);
+  if (!entry) return null;
+  const source = field === 'name' ? entry.nameSource : entry.effectSource;
+  return isCorrectedErrataSource(source) ? entry : null;
+}
+
+/**
+ * Card-name display policy:
+ * - Japanese uses the corrected official source text.
+ * - English normally uses official print text; errata fields require a
+ *   reviewed correction derived from the official errata.
+ * - Other locales use only reviewed derived translations.
+ * - Errata fields never fall back to superseded printed English.
+ */
+export function getLocalizedCardName(card: CardDef, locale: string): string {
+  if (locale === 'ja') return card.name;
+  if (card.officialErrataAffectsName) {
+    if (locale === 'en') return correctedTranslation(card.id, 'en', 'name')?.name || card.name;
+    return (
+      correctedTranslation(card.id, locale, 'name')?.name ||
+      correctedTranslation(card.id, 'en', 'name')?.name ||
+      card.name
+    );
+  }
+  if (locale === 'en') return card.enNameOfficial || card.name;
+  return reviewedTranslation(card.id, locale)?.name || card.enNameOfficial || card.name;
+}
+
+/** Same provenance policy as getLocalizedCardName, applied to effects. */
+export function getLocalizedCardEffect(card: CardDef, locale: string): string {
+  if (locale === 'ja') return card.effect;
+  if (card.officialErrataAffectsEffect) {
+    if (locale === 'en') return correctedTranslation(card.id, 'en', 'effect')?.effect || card.effect;
+    return (
+      correctedTranslation(card.id, locale, 'effect')?.effect ||
+      correctedTranslation(card.id, 'en', 'effect')?.effect ||
+      card.effect
+    );
+  }
+  if (locale === 'en') return card.enEffectOfficial || card.effect;
+  return reviewedTranslation(card.id, locale)?.effect || card.enEffectOfficial || card.effect;
 }
 
 /**

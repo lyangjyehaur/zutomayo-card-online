@@ -805,6 +805,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'deckEditor.cardNumberShort': '卡号',
   'deckEditor.filterElement': '属性',
   'deckEditor.filterType': '类型',
+  'deckEditor.filterErrata': '勘误',
+  'card.officialErrata': '官方勘误',
   'deckEditor.sort': '排序',
   'deckEditor.all': '全部',
   'deckEditor.sortNumber': '编号',

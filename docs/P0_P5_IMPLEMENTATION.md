@@ -12,9 +12,11 @@
 
 ## 2026-07-15 current-tree evidence
 
-- `npm run verify` 通過：Vitest 145 個 test files、1319 tests、production/PWA build；coverage statements 64.44%、branches 57.05%、functions 65.89%、lines 67.79%。
-- Fresh PostgreSQL role smoke 通過 `000001`→`000027` migration、checksum/schema/ACL gate、relationship/Redis、social concurrency、account deletion anonymization/purge/retry 與 admin credential lifecycle。
-- Current-tree Compose E2E images 重建後，`e2e/accessibility.spec.ts:162` Chromium 投降／Result 同步以 `--repeat-each=5 --retries=0` 完成 5/5 passed（1.9m）；fresh-volume full Chromium 以 `--retries=0` 完成 39/39 passed（5.4m），驗證雙方 Result、兩端 match submission 200、無 `stateID-collision` 且 reload 後終局仍持久。
+- `npm run verify` 通過：Vitest 151 個 test files、1360 tests、official-card review-provenance audit 與 production/PWA build；coverage statements 64.63%、branches 57.18%、functions 66.03%、lines 67.91%。
+- Current-tree focused release tests 通過：migration/schema/ACL、atomic official-card import、signed review provenance、restore/release gate 共 120 tests；dataset 綁定 422 張卡、250 張效果卡、12 筆 errata 及 review/override provenance。
+- 前一版 fresh PostgreSQL role smoke 與 existing/legacy-history rehearsal只驗到 `000030`。加入 `000031_official_card_data_releases`、atomic data import 與 legacy-row preservation 修補後，必須重跑 canonical `000001`→`000031`、production-copy `000026`→`000031`、legacy `000007`→`000009`→`000031` 及第二次 idempotency；不可把舊 rehearsal 當成 current-tree 證據。
+- Production-copy clone 的升級前基線已確認為 `000026`、users/cards=2/422、deleted users=0、官方英文名稱 177/422、有效果卡英文 169/250、errata 0/12，且日文卡牌來源與 signed extraction 完全一致。本機 sandbox 尚未允許 worktree 連線執行升級，因此 clone rehearsal 仍待完成，原 production-copy 未修改。
+- 前一版 Compose E2E 曾完成 stress 5/5 與 fresh-volume Chromium 39/39；但 `000031`、signed data runner、E2E errata fixture 及 migration preservation 都在該次 run 後變更，current-tree 必須重新 build 並重跑，舊結果不列為完成證據。
 - 這些是 local/current-tree automated evidence，不是 staging/server4/production evidence；branch protection、production approval、legacy deleted-account backfill、signed-image migration rehearsal、HA/canary/restore/load/alert 與法務項目仍然阻擋 production。
 
 ## 修補波次
@@ -125,12 +127,12 @@
 
 ## 最終驗收
 
-- [x] `npm run verify`：2026-07-15 current tree 通過，Vitest 145 test files / 1319 tests / production-PWA build；merge 前仍須由 required CI 綁定最終 commit SHA。
-- [x] `npm run test:coverage`：statements 64.44%、branches 57.05%、functions 65.89%、lines 67.79%。
-- [x] Compose-backed Chromium E2E：current-tree images 重建後，`e2e/accessibility.spec.ts:162` 以 `--repeat-each=5 --retries=0` 完成 5/5 passed（1.9m）；fresh-volume full Chromium 以 `--retries=0` 完成 39/39 passed（5.4m）。
+- [x] `npm run verify`：2026-07-15 current tree 通過，Vitest 148 test files / 1342 tests / production-PWA build；merge 前仍須由 required CI 綁定最終 commit SHA。
+- [x] `npm run test:coverage`：statements 64.58%、branches 57.19%、functions 65.95%、lines 67.87%。
+- [ ] Compose-backed Chromium E2E：前一版曾完成 stress 5/5 與 fresh-volume 39/39；加入 `000031`、signed data runner 與 E2E errata fixture 後尚待重新 build/run。
 - [ ] `npm run rule:audit` 並在 unsupported effect 時失敗
 - [ ] production/development Compose config gate（含 parallel slot 與 gateway）曾在舊樹通過；目前分支尚待重跑。
-- [ ] Migration up / app start / rollback compatibility rehearsal：fresh disposable cluster 已套用 000001→000027 並通過 checksum/schema/role/data smoke；production-copy rehearsal 仍只到 000026，且 000027 遇 legacy tombstone 會 fail closed，尚缺 backfill、第二次冪等執行、signed app start 與 N+1 rollback smoke。
+- [ ] Migration up / app start / rollback compatibility rehearsal：前一版已覆蓋 canonical 000001→000030、production-copy 000026→000030 與 master legacy history；`000031` signed dataset ledger、atomic import/data gate 與 legacy-row preservation 加入後必須重跑三條路徑及第二次冪等。000027 遇 legacy tombstone仍會 fail closed；尚缺 reviewed backfill、signed image app start 與 N+1 rollback smoke。
 - [ ] Staging 連續三次 deploy + post-deploy smoke
 - [ ] Backup restore、alert delivery、2x soak 與 reconnect chaos drill
 - [ ] 原始 worktree 未被修改；只有隔離 worktree 包含本任務變更

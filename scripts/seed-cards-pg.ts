@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import type { CardDef } from '../src/game/types';
 import { loadSeedCardI18n, loadSeedCards } from './cardSource';
@@ -11,6 +12,29 @@ const { assertPostgresExpectedRole, postgresConnectionString, postgresSslConfig 
     postgresConnectionString: (env: NodeJS.ProcessEnv) => string | undefined;
     postgresSslConfig: (env: NodeJS.ProcessEnv) => false | { rejectUnauthorized: boolean; ca?: string };
   };
+
+type OfficialErrata = {
+  errataId: string;
+  cardId: string;
+  publishedAt: string;
+  fields: Array<'name' | 'effect'>;
+  incorrectText: string;
+  correctedJapaneseText: string;
+  correctedEnglishText: string;
+  correctedEnglishStatus: 'official' | 'verified' | 'pending_review';
+  correctedEnglishSource:
+    | 'official_errata_notice'
+    | 'official_card_print_unaffected'
+    | 'official_card_print_corrected'
+    | 'official_japanese_errata_translation';
+  sourceUrl: string;
+};
+
+const officialErrata = (
+  JSON.parse(readFileSync(new URL('../data/card-official-errata.json', import.meta.url), 'utf8')) as {
+    errata: OfficialErrata[];
+  }
+).errata;
 
 const migrationUser = assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER');
 const databaseUrl = postgresConnectionString(process.env);
@@ -31,7 +55,7 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS cards (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    en_name_official TEXT DEFAULT '',
+    en_name_official TEXT NOT NULL DEFAULT '',
     pack TEXT NOT NULL,
     song TEXT DEFAULT '',
     illustrator TEXT DEFAULT '',
@@ -44,18 +68,70 @@ const SCHEMA_SQL = `
     power_cost INTEGER DEFAULT 0,
     send_to_power INTEGER DEFAULT 0,
     effect TEXT DEFAULT '',
-    en_effect_official TEXT DEFAULT '',
+    en_effect_official TEXT NOT NULL DEFAULT '',
     image TEXT DEFAULT '',
     errata TEXT DEFAULT '',
+    has_official_errata BOOLEAN NOT NULL DEFAULT FALSE,
+    official_errata_id TEXT,
+    official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE,
+    official_errata_affects_effect BOOLEAN NOT NULL DEFAULT FALSE,
+    official_errata_url TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
-  ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT DEFAULT '';
-  ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT DEFAULT '';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT NOT NULL DEFAULT '';
+  UPDATE cards SET en_name_official = '' WHERE en_name_official IS NULL;
+  UPDATE cards SET en_effect_official = '' WHERE en_effect_official IS NULL;
+  ALTER TABLE cards
+    ALTER COLUMN en_name_official SET DEFAULT '',
+    ALTER COLUMN en_name_official SET NOT NULL,
+    ALTER COLUMN en_effect_official SET DEFAULT '',
+    ALTER COLUMN en_effect_official SET NOT NULL;
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS has_official_errata BOOLEAN NOT NULL DEFAULT FALSE;
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_id TEXT;
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE;
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_effect BOOLEAN NOT NULL DEFAULT FALSE;
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_url TEXT NOT NULL DEFAULT '';
+  CREATE INDEX IF NOT EXISTS idx_cards_has_official_errata ON cards(has_official_errata);
+
+  CREATE TABLE IF NOT EXISTS card_official_errata (
+    errata_id TEXT PRIMARY KEY,
+    card_id TEXT NOT NULL UNIQUE REFERENCES cards(id) ON DELETE CASCADE,
+    published_at DATE NOT NULL,
+    affects_name BOOLEAN NOT NULL DEFAULT FALSE,
+    affects_effect BOOLEAN NOT NULL DEFAULT FALSE,
+    incorrect_text TEXT NOT NULL DEFAULT '',
+    corrected_japanese_text TEXT NOT NULL,
+    corrected_english_text TEXT NOT NULL DEFAULT '',
+    corrected_english_status TEXT NOT NULL DEFAULT 'pending_review'
+      CHECK (corrected_english_status IN ('official', 'verified', 'pending_review')),
+    corrected_english_source TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (affects_name OR affects_effect)
+  );
+  ALTER TABLE card_official_errata
+    ADD COLUMN IF NOT EXISTS corrected_english_source TEXT NOT NULL
+    DEFAULT 'official_japanese_errata_translation';
 
   CREATE TABLE IF NOT EXISTS card_effects_i18n (
     card_id TEXT NOT NULL,
     lang TEXT NOT NULL,
     effect_text TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (card_id, lang)
+  );
+
+  CREATE TABLE IF NOT EXISTS card_texts_i18n (
+    card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    lang TEXT NOT NULL,
+    name_text TEXT NOT NULL DEFAULT '',
+    effect_text TEXT NOT NULL DEFAULT '',
+    name_source TEXT NOT NULL DEFAULT '',
+    effect_source TEXT NOT NULL DEFAULT '',
+    review_status TEXT NOT NULL DEFAULT 'pending_review'
+      CHECK (review_status IN ('official', 'verified', 'pending_review')),
+    review_note TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (card_id, lang)
   );
 
@@ -131,12 +207,34 @@ function cardParams(card: CardDef): unknown[] {
     card.enEffectOfficial ?? '',
     card.image,
     card.errata,
+    Boolean(card.hasOfficialErrata),
+    card.officialErrataId ?? null,
+    Boolean(card.officialErrataAffectsName),
+    Boolean(card.officialErrataAffectsEffect),
+    card.officialErrataUrl ?? '',
   ];
 }
 
 async function main(): Promise<void> {
   const cards = await loadSeedCards();
   const effectsI18n = await loadSeedCardI18n();
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+  if (officialErrata.length !== 12 || new Set(officialErrata.map((entry) => entry.cardId)).size !== 12) {
+    throw new Error('Official errata source must contain 12 unique cards');
+  }
+  for (const entry of officialErrata) {
+    const card = cardsById.get(entry.cardId);
+    const correctedJapanese = entry.fields.includes('name') ? card?.name : card?.effect;
+    if (correctedJapanese !== entry.correctedJapaneseText) {
+      throw new Error(`${entry.cardId}: seed card text does not match corrected official Japanese`);
+    }
+    if (entry.correctedEnglishSource === 'official_card_print_unaffected') {
+      const printedEnglish = entry.fields.includes('name') ? card?.enNameOfficial : card?.enEffectOfficial;
+      if (entry.correctedEnglishText !== printedEnglish) {
+        throw new Error(`${entry.cardId}: unaffected English does not exactly match reviewed card print`);
+      }
+    }
+  }
   const presetDecks = Object.entries(PRESET_DECKS).map(([id, deck]) => ({
     id,
     name: deck.name,
@@ -155,9 +253,11 @@ async function main(): Promise<void> {
         `INSERT INTO cards (
            id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
            attack_night, attack_day, power_cost, send_to_power, effect,
-           en_effect_official, image, errata
+           en_effect_official, image, errata, has_official_errata, official_errata_id,
+           official_errata_affects_name, official_errata_affects_effect, official_errata_url
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+                 $19, $20, $21, $22, $23)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            en_name_official = EXCLUDED.en_name_official,
@@ -176,8 +276,114 @@ async function main(): Promise<void> {
            en_effect_official = EXCLUDED.en_effect_official,
            image = EXCLUDED.image,
            errata = EXCLUDED.errata,
+           has_official_errata = EXCLUDED.has_official_errata,
+           official_errata_id = EXCLUDED.official_errata_id,
+           official_errata_affects_name = EXCLUDED.official_errata_affects_name,
+           official_errata_affects_effect = EXCLUDED.official_errata_affects_effect,
+           official_errata_url = EXCLUDED.official_errata_url,
            updated_at = NOW()`,
         cardParams(card),
+      );
+      await client.query(
+        `INSERT INTO card_texts_i18n (
+           card_id, lang, name_text, effect_text, name_source, effect_source, review_status
+         )
+         VALUES
+           ($1, 'ja', $2, $3, 'official_card_print', 'official_card_print', 'official'),
+           ($1, 'en', $4, $5, 'official_card_print', 'official_card_print', 'official')
+         ON CONFLICT (card_id, lang) DO UPDATE SET
+           name_text = EXCLUDED.name_text,
+           effect_text = EXCLUDED.effect_text,
+           name_source = EXCLUDED.name_source,
+           effect_source = EXCLUDED.effect_source,
+           review_status = EXCLUDED.review_status,
+           review_note = '',
+           updated_at = NOW()`,
+        [card.id, card.name, card.effect, card.enNameOfficial ?? '', card.enEffectOfficial ?? ''],
+      );
+    }
+
+    await client.query(`
+      UPDATE cards
+      SET has_official_errata = FALSE,
+          official_errata_id = NULL,
+          official_errata_affects_name = FALSE,
+          official_errata_affects_effect = FALSE,
+          official_errata_url = '';
+      DELETE FROM card_official_errata;
+    `);
+    for (const entry of officialErrata) {
+      const card = cardsById.get(entry.cardId);
+      if (!card) throw new Error(`${entry.cardId}: missing seed card after validation`);
+      const affectsName = entry.fields.includes('name');
+      const affectsEffect = entry.fields.includes('effect');
+      const correctedEnglish =
+        entry.correctedEnglishSource === 'official_card_print_unaffected'
+          ? affectsName
+            ? card.enNameOfficial || ''
+            : card.enEffectOfficial || ''
+          : entry.correctedEnglishText;
+      await client.query(
+        `UPDATE cards
+         SET has_official_errata = TRUE,
+             official_errata_id = $2,
+             official_errata_affects_name = $3,
+             official_errata_affects_effect = $4,
+             official_errata_url = $5,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [entry.cardId, entry.errataId, affectsName, affectsEffect, entry.sourceUrl],
+      );
+      await client.query(
+        `INSERT INTO card_official_errata (
+           errata_id, card_id, published_at, affects_name, affects_effect,
+           incorrect_text, corrected_japanese_text, corrected_english_text,
+           corrected_english_status, corrected_english_source, source_url
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          entry.errataId,
+          entry.cardId,
+          entry.publishedAt,
+          affectsName,
+          affectsEffect,
+          entry.incorrectText,
+          entry.correctedJapaneseText,
+          correctedEnglish,
+          entry.correctedEnglishStatus,
+          entry.correctedEnglishSource,
+          entry.sourceUrl,
+        ],
+      );
+      await client.query(
+        `INSERT INTO card_texts_i18n (
+           card_id, lang, name_text, effect_text, name_source, effect_source,
+           review_status, review_note
+         )
+         VALUES
+           ($1, 'ja', $2, $3, $4, $5, 'official', $6),
+           ($1, 'en', $7, $8, $9, $10, $11, $6)
+         ON CONFLICT (card_id, lang) DO UPDATE SET
+           name_text = EXCLUDED.name_text,
+           effect_text = EXCLUDED.effect_text,
+           name_source = EXCLUDED.name_source,
+           effect_source = EXCLUDED.effect_source,
+           review_status = EXCLUDED.review_status,
+           review_note = EXCLUDED.review_note,
+           updated_at = NOW()`,
+        [
+          entry.cardId,
+          card.name,
+          card.effect,
+          affectsName ? 'official_errata_notice' : 'official_card_print',
+          affectsEffect ? 'official_errata_notice' : 'official_card_print',
+          `Official errata ${entry.errataId}: ${entry.sourceUrl}`,
+          affectsName ? correctedEnglish : card.enNameOfficial || '',
+          affectsEffect ? correctedEnglish : card.enEffectOfficial || '',
+          affectsName ? entry.correctedEnglishSource : 'official_card_print',
+          affectsEffect ? entry.correctedEnglishSource : 'official_card_print',
+          entry.correctedEnglishStatus,
+        ],
       );
     }
 
@@ -190,6 +396,23 @@ async function main(): Promise<void> {
            ON CONFLICT (card_id, lang) DO UPDATE SET effect_text = EXCLUDED.effect_text`,
           [cardId, lang, effectText],
         );
+        if (lang !== 'ja' && lang !== 'en') {
+          await client.query(
+            `INSERT INTO card_texts_i18n (
+               card_id, lang, effect_text, effect_source, review_status
+             )
+             VALUES ($1, $2, $3, 'legacy_card_effects_i18n', 'pending_review')
+             ON CONFLICT (card_id, lang) DO UPDATE SET
+               effect_text = EXCLUDED.effect_text,
+               effect_source = EXCLUDED.effect_source,
+               review_status = CASE
+                 WHEN card_texts_i18n.review_status = 'official' THEN card_texts_i18n.review_status
+                 ELSE 'pending_review'
+               END,
+               updated_at = NOW()`,
+            [cardId, lang, effectText],
+          );
+        }
         translationCount += 1;
       }
     }

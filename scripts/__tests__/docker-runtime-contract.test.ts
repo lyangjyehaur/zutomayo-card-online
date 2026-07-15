@@ -87,6 +87,19 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/observability.cjs');
     expect(dockerignore).toContain('!api/matchmakingService.cjs');
     expect(dockerfile).toContain('COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs');
+    expect(dockerfile).toContain('COPY scripts/migration-order-compat.cjs ./scripts/migration-order-compat.cjs');
+    expect(dockerfile).toContain('COPY data/card-english-extraction.json ./data/card-english-extraction.json');
+    expect(dockerfile).toContain('COPY data/card-english-human-reviews.json ./data/card-english-human-reviews.json');
+    expect(dockerfile).toContain('COPY data/card-official-errata.json ./data/card-official-errata.json');
+    expect(dockerfile).toContain(
+      'COPY scripts/card-english-ocr-overrides.json ./scripts/card-english-ocr-overrides.json',
+    );
+    expect(dockerfile).toContain('COPY scripts/audit-card-official-texts.ts ./scripts/audit-card-official-texts.ts');
+    expect(dockerfile).toContain(
+      'COPY scripts/import-card-official-texts-pg.ts ./scripts/import-card-official-texts-pg.ts',
+    );
+    expect(dockerfile).toContain('COPY scripts/release-card-data.cjs ./scripts/release-card-data.cjs');
+    expect(dockerfile).toContain('COPY scripts/card-data-gate.cjs ./scripts/card-data-gate.cjs');
     expect(dockerfile).toContain('COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs');
     expect(dockerignore).toContain('!api/schemaGate.cjs');
   });

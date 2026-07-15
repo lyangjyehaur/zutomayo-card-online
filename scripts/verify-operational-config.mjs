@@ -181,7 +181,9 @@ export function validateOperationalConfig() {
   for (const privilegedScript of [
     'scripts/create-admin.cjs',
     'scripts/seed-cards-pg.ts',
+    'scripts/import-card-official-texts-pg.ts',
     'scripts/migrate-sqlite-to-pg.ts',
+    'scripts/card-data-gate.cjs',
   ]) {
     requireFragments(privilegedScript, [
       "assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER')",
@@ -189,6 +191,28 @@ export function validateOperationalConfig() {
       'postgresSslConfig(process.env)',
     ]);
   }
+  requireFragments('scripts/release-card-data.cjs', [
+    'REQUIRE_OFFICIAL_CARD_DATA=true is mandatory for production migration releases',
+    'scripts/audit-card-official-texts.ts',
+    'scripts/import-card-official-texts-pg.ts',
+    'scripts/card-data-gate.cjs',
+  ]);
+  for (const composeFile of [
+    'docker-compose.server4.yml',
+    'docker-compose.server4-slot.yml',
+    'docker-compose.staging.yml',
+  ]) {
+    requireFragments(composeFile, ['REQUIRE_OFFICIAL_CARD_DATA', 'RELEASE_SHA']);
+  }
+  requireFragments('Dockerfile.migrate', [
+    'data/card-english-extraction.json',
+    'data/card-english-human-reviews.json',
+    'data/card-official-errata.json',
+    'scripts/card-english-ocr-overrides.json',
+    'scripts/release-card-data.cjs',
+    'scripts/card-data-gate.cjs',
+  ]);
+  requireFragments('package.json', ['npm run audit:card-official-texts', 'scripts/release-card-data.cjs']);
   requireFragments('docker-compose.pgbouncer.yml', [
     'pgbouncer-role-mode-gate:',
     'REQUIRE_DISTINCT_DB_ROLES',
@@ -230,7 +254,7 @@ export function validateOperationalConfig() {
     'ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED',
     'Public Access Block',
     's3:DeleteObjectVersion',
-    '000027_account_deletion_anonymization',
+    '000031_official_card_data_releases',
     '256 MiB',
   ]);
   requireFragments('docs/DATA_RETENTION.md', [

@@ -1,7 +1,7 @@
 import type { CardInstance, GameState, PlayerIndex } from '../../game/types';
 import { getCardDef } from '../../game/cards/loader';
 import { getBaseAttack, getEffectiveAttack, isAttackPowerInsufficient } from '../../game/GameLogic';
-import { getTranslatedEffect } from '../../game/cards/i18n';
+import { getLocalizedCardEffect, getLocalizedCardName } from '../../game/cards/i18n';
 import { t, useLocale } from '../../i18n';
 import { CardImage } from '../../components/CardImage';
 
@@ -16,7 +16,8 @@ export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G:
   const locale = useLocale();
   const card = focus?.card ?? null;
   const def = card && card.faceUp && card.defId !== '__hidden__' ? getCardDef(card.defId) : undefined;
-  const translatedEffect = def ? getTranslatedEffect(def.id, locale) : null;
+  const localizedName = def ? getLocalizedCardName(def, locale) : '';
+  const localizedEffect = def ? getLocalizedCardEffect(def, locale) : '';
 
   if (!focus || !def) {
     return (
@@ -35,9 +36,19 @@ export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G:
         {ownerName} · {focus.zone}
       </div>
       <div className="carddetail-art">
-        <CardImage cardId={def.id} context="detail" alt={def.name} loading="eager" referrerPolicy="no-referrer" />
+        <CardImage cardId={def.id} context="detail" alt={localizedName} loading="eager" referrerPolicy="no-referrer" />
       </div>
-      <h2 className="carddetail-name">{def.name}</h2>
+      <h2 className="carddetail-name">{localizedName}</h2>
+      {def.hasOfficialErrata && (
+        <a
+          className="inline-flex w-fit text-caption font-bold text-accent-action underline underline-offset-2"
+          href={def.officialErrataUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t('card.officialErrata')} #{def.officialErrataId}
+        </a>
+      )}
       <div className="carddetail-taxonomy">
         {t(`card.element.${def.element}` as never)} · {t(`card.type.${def.type}` as never)}
       </div>
@@ -77,7 +88,7 @@ export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G:
           </div>
         )}
       </dl>
-      <p className="carddetail-effect">{translatedEffect || def.effect || t('card.noEffect' as never)}</p>
+      <p className="carddetail-effect">{localizedEffect || t('card.noEffect' as never)}</p>
     </div>
   );
 }

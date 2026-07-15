@@ -143,6 +143,9 @@ jobs:
       - name: Check i18n completeness
         run: npm run i18n:check
 
+      - name: Audit signed official card text dataset
+        run: npm run audit:card-official-texts
+
       - name: Unit tests
         run: npm test
 
@@ -178,8 +181,8 @@ jobs:
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
-      EXPECTED_SCHEMA_MIGRATION: 000027_account_deletion_anonymization
-      EXPECTED_SCHEMA_CHECKSUM: b84cc250db64d46591bb9fb5441098f132384b9291d0968cae51dfb0c57e4b2c
+      EXPECTED_SCHEMA_MIGRATION: 000031_official_card_data_releases
+      EXPECTED_SCHEMA_CHECKSUM: 172b810651446e91d5ba371e4ee7d6b046c2b76aa8a131dfec014e7fd742b4b8
       PG_MIGRATION_USER: zutomayo_migrator
       PG_MIGRATION_PASSWORD: e2e-test-migration-password
       PG_APP_USER: zutomayo_app

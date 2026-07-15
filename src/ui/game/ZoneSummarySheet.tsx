@@ -1,8 +1,9 @@
 import type { CardInstance } from '../../game/types';
 import { getCardDef } from '../../game/cards/loader';
+import { getLocalizedCardName } from '../../game/cards/i18n';
 import { Sheet } from '../primitives';
 import { CardView } from './CardView';
-import { t } from '../../i18n';
+import { t, useLocale } from '../../i18n';
 
 /**
  * ZoneSummarySheet — 深淵 / 充能區內容摘要（bottom sheet）。
@@ -27,6 +28,7 @@ export function ZoneSummarySheet({
   cards,
   onInspectCard,
 }: ZoneSummarySheetProps) {
+  const locale = useLocale();
   return (
     <Sheet
       open={open}
@@ -45,6 +47,7 @@ export function ZoneSummarySheet({
         <ul className="zonesummary-grid">
           {cards.map((card) => {
             const def = getCardDef(card.defId);
+            const localizedName = def ? getLocalizedCardName(def, locale) : t('card.back');
             return (
               <li key={card.instanceId} className="zonesummary-item">
                 <CardView
@@ -53,9 +56,9 @@ export function ZoneSummarySheet({
                   imageContext="thumbnail"
                   state="idle"
                   onActivate={onInspectCard ? () => onInspectCard(card) : undefined}
-                  ariaLabel={def?.name}
+                  ariaLabel={localizedName}
                 />
-                <span className="zonesummary-name">{def?.name ?? t('card.back')}</span>
+                <span className="zonesummary-name">{localizedName}</span>
                 {def && (
                   <span className="zonesummary-meta">
                     {t('card.energy')} {def.powerCost} · {t('card.charge')} {def.sendToPower ?? 0}

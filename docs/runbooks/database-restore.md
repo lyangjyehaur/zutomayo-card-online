@@ -105,8 +105,8 @@ export PG_BACKUP_METRICS_DIR=/var/lib/node_exporter/textfile_collector
 export PG_RESTORE_DRILL_REPORT_DIR=/var/log/zutomayo/restore-drills
 export PG_RESTORE_DRILL_ARTIFACT_DIR=artifacts/encrypted-offsite-restore
 export RELEASE_SHA='<full-40-character-release-sha>'
-export EXPECTED_SCHEMA_MIGRATION=000027_account_deletion_anonymization
-export EXPECTED_SCHEMA_CHECKSUM=b84cc250db64d46591bb9fb5441098f132384b9291d0968cae51dfb0c57e4b2c
+export EXPECTED_SCHEMA_MIGRATION=000031_official_card_data_releases
+export EXPECTED_SCHEMA_CHECKSUM=172b810651446e91d5ba371e4ee7d6b046c2b76aa8a131dfec014e7fd742b4b8
 export MIGRATE_IMAGE='ghcr.io/.../zutomayo-card-online-migrate@sha256:<release-manifest-digest>'
 export PG_RESTORE_DRILL_OBJECT_VERSION_ID='<backup-object-version-from-upload-receipt>'
 export PG_RESTORE_DRILL_CHECKSUM_VERSION_ID='<checksum-object-version-from-upload-receipt>'
@@ -134,8 +134,8 @@ Drill 會在 `--network none` 且不注入資料庫密碼的一次性 PostgreSQL
 
 ```bash
 export RELEASE_SHA="$(git rev-parse HEAD)"
-export EXPECTED_SCHEMA_MIGRATION=000027_account_deletion_anonymization
-export EXPECTED_SCHEMA_CHECKSUM=b84cc250db64d46591bb9fb5441098f132384b9291d0968cae51dfb0c57e4b2c
+export EXPECTED_SCHEMA_MIGRATION=000031_official_card_data_releases
+export EXPECTED_SCHEMA_CHECKSUM=172b810651446e91d5ba371e4ee7d6b046c2b76aa8a131dfec014e7fd742b4b8
 export PG_PITR_DRILL_MIGRATE_IMAGE='ghcr.io/.../zutomayo-card-online-migrate@sha256:<release-manifest-digest>'
 export PG_PITR_RUN_ID="release-${RELEASE_SHA:0:12}"
 export PG_PITR_DRILL_ARTIFACT_DIR="artifacts/pg-pitr-drill/$PG_PITR_RUN_ID"

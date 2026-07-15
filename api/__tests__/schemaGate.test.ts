@@ -115,16 +115,94 @@ describe('production schema gate', () => {
           tableName: 'cards',
           columnName: 'en_name_official',
           udtName: 'text',
-          nullable: true,
+          nullable: false,
           defaultToken: "''",
         },
         {
           tableName: 'cards',
           columnName: 'en_effect_official',
           udtName: 'text',
-          nullable: true,
+          nullable: false,
           defaultToken: "''",
         },
+      ]),
+    );
+  });
+
+  it('requires the protected signed official-card dataset ledger', () => {
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_card_data_releases');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_card_data_releases).toEqual([
+      'dataset_sha256',
+      'extraction_sha256',
+      'errata_sha256',
+      'review_provenance_sha256',
+      'release_sha',
+      'card_count',
+      'errata_count',
+      'applied_at',
+    ]);
+    expect(
+      REQUIRED_RUNTIME_COLUMN_CONTRACTS.filter(({ tableName }) => tableName === 'official_card_data_releases')
+        .map(({ columnName }) => columnName)
+        .sort(),
+    ).toEqual([...REQUIRED_RUNTIME_COLUMNS.official_card_data_releases].sort());
+    expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toEqual(
+      expect.arrayContaining([
+        {
+          tableName: 'official_card_data_releases',
+          columnName: 'review_provenance_sha256',
+          udtName: 'text',
+          nullable: false,
+          defaultToken: null,
+        },
+        {
+          tableName: 'official_card_data_releases',
+          columnName: 'card_count',
+          udtName: 'int4',
+          nullable: false,
+          defaultToken: null,
+        },
+        {
+          tableName: 'official_card_data_releases',
+          columnName: 'applied_at',
+          udtName: 'timestamptz',
+          nullable: false,
+          defaultToken: 'now()',
+        },
+      ]),
+    );
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tableName: 'official_card_data_releases',
+          constraintType: 'p',
+          fragments: ['primary key (dataset_sha256)'],
+        }),
+        expect.objectContaining({
+          tableName: 'official_card_data_releases',
+          constraintType: 'c',
+          fragments: ['dataset_sha256', '^[a-f0-9]{64}$'],
+        }),
+        expect.objectContaining({
+          tableName: 'official_card_data_releases',
+          constraintType: 'c',
+          fragments: ['review_provenance_sha256', '^[a-f0-9]{64}$'],
+        }),
+        expect.objectContaining({
+          tableName: 'official_card_data_releases',
+          constraintType: 'c',
+          fragments: ['release_sha', '^[a-f0-9]{40}$'],
+        }),
+        expect.objectContaining({
+          tableName: 'official_card_data_releases',
+          constraintType: 'c',
+          fragments: ['card_count > 0'],
+        }),
+        expect.objectContaining({
+          tableName: 'official_card_data_releases',
+          constraintType: 'c',
+          fragments: ['errata_count <= card_count'],
+        }),
       ]),
     );
   });
@@ -215,6 +293,92 @@ describe('production schema gate', () => {
           tableName === 'account_export_jobs' && constraintType === 'f' && fragments.includes('foreign key (user_id)'),
       )?.fragments,
     ).toContain('on delete set null');
+  });
+
+  it('requires official and localized card text schema', () => {
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata');
+    expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
+    expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('has_official_errata');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_texts_i18n).toEqual(
+      expect.arrayContaining(['card_id', 'lang', 'review_status', 'review_note', 'updated_at']),
+    );
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toEqual(
+      expect.arrayContaining([
+        'errata_id',
+        'card_id',
+        'published_at',
+        'incorrect_text',
+        'corrected_english_source',
+        'updated_at',
+      ]),
+    );
+    expect(
+      REQUIRED_RUNTIME_COLUMN_CONTRACTS.filter(({ tableName }) => tableName === 'card_texts_i18n')
+        .map(({ columnName }) => columnName)
+        .sort(),
+    ).toEqual([...REQUIRED_RUNTIME_COLUMNS.card_texts_i18n].sort());
+    expect(
+      REQUIRED_RUNTIME_COLUMN_CONTRACTS.filter(({ tableName }) => tableName === 'card_official_errata')
+        .map(({ columnName }) => columnName)
+        .sort(),
+    ).toEqual([...REQUIRED_RUNTIME_COLUMNS.card_official_errata].sort());
+    expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toEqual(
+      expect.arrayContaining([
+        {
+          tableName: 'card_texts_i18n',
+          columnName: 'review_status',
+          udtName: 'text',
+          nullable: false,
+          defaultToken: "'pending_review'",
+        },
+        {
+          tableName: 'card_official_errata',
+          columnName: 'corrected_english_source',
+          udtName: 'text',
+          nullable: false,
+          defaultToken: "'official_japanese_errata_translation'",
+        },
+      ]),
+    );
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tableName: 'card_texts_i18n',
+          constraintType: 'p',
+          fragments: ['primary key (card_id, lang)'],
+        }),
+        expect.objectContaining({
+          tableName: 'card_texts_i18n',
+          constraintType: 'f',
+          fragments: expect.arrayContaining(['references cards(id)', 'on delete cascade']),
+        }),
+        expect.objectContaining({
+          tableName: 'card_official_errata',
+          constraintType: 'u',
+          fragments: ['unique (card_id)'],
+        }),
+        expect.objectContaining({
+          tableName: 'card_official_errata',
+          constraintName: 'card_official_errata_english_source_check',
+          constraintType: 'c',
+        }),
+      ]),
+    );
+    expect(REQUIRED_RUNTIME_INDEXES).toEqual(
+      expect.arrayContaining([
+        {
+          tableName: 'card_texts_i18n',
+          indexName: 'idx_card_texts_i18n_lang_review',
+          fragments: ['(lang, review_status)'],
+        },
+        {
+          tableName: 'cards',
+          indexName: 'idx_cards_has_official_errata',
+          fragments: ['(has_official_errata)'],
+        },
+      ]),
+    );
   });
 
   it('requires the release migration and every runtime table', async () => {
@@ -326,6 +490,31 @@ describe('production schema gate', () => {
     ).rejects.toThrow('season_ratings');
   });
 
+  it('rejects a same-name card errata source constraint with the wrong definition', async () => {
+    const constraints = allConstraintsPresent().map((row) =>
+      row.constraint_name === 'card_official_errata_english_source_check'
+        ? { ...row, definition: 'CHECK (true)' }
+        : row,
+    );
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+      .mockResolvedValueOnce({ rows: [{ sha256: CHECKSUM }] })
+      .mockResolvedValueOnce({ rows: allTablesPresent() })
+      .mockResolvedValueOnce({ rows: allColumnsPresent() })
+      .mockResolvedValueOnce({ rows: allColumnContractsValid() })
+      .mockResolvedValueOnce({ rows: constraints })
+      .mockResolvedValueOnce({ rows: allIndexesPresent() });
+
+    await expect(
+      assertRuntimeSchema({
+        pool: { query },
+        expectedMigration: '000031_official_card_data_releases',
+        expectedChecksum: CHECKSUM,
+      }),
+    ).rejects.toThrow('card_official_errata_english_source_check');
+  });
+
   it('rejects a missing or malformed partial index', async () => {
     const query = vi
       .fn()
@@ -364,7 +553,7 @@ describe('production schema gate', () => {
 });
 
 describe('boardgame runtime schema gate', () => {
-  const expectedMigration = '000027_account_deletion_anonymization';
+  const expectedMigration = '000031_official_card_data_releases';
   const allTablesPresent = () => REQUIRED_BOARDGAME_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true }));
   const allColumnsPresent = () =>
     Object.entries(REQUIRED_BOARDGAME_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>

@@ -4,7 +4,7 @@ Production deployment uses [docker-compose.yml](../docker-compose.yml) with six 
 
 - `postgres`: PostgreSQL 16 (`postgres:16.4-alpine`) database. Shared data layer for both boardgame.io match state (`bjg_matches` table) and API data (users/decks/matches). Healthcheck: `pg_isready`.
 - `redis`: Redis 7 (`redis:7.2.5-alpine`, `appendonly yes`, `maxmemory-policy noeviction`). Powers boardgame.io PubSub, Socket.IO redis-adapter, Colyseus room/presence backing, legacy matchmaking queue, authentication revocation/refresh state, and rate-limit counters. Healthcheck: `redis-cli ping`. `noeviction` is required because evicting a blacklist or `auth:revoked-before:*` key would silently resurrect a revoked session.
-- `migrate`: One-shot schema migration service (least-privilege migration role). Runs `npm run db:migrate:release` and the schema gate before app services start. Exits `0` on success; app services wait via `depends_on: service_completed_successfully`.
+- `migrate`: One-shot schema/data release service (least-privilege migration role). It applies migrations and, when `REQUIRE_OFFICIAL_CARD_DATA=true`, audits/imports the signed 422-card official-text dataset and requires the 422-card/12-errata completeness gate before app services start. Exits `0` on success; app services wait via `depends_on: service_completed_successfully`.
 - `game`: boardgame.io server, built React app, static card/admin assets, and `/api/*` proxy. Persists match state via `PostgresAdapter` and broadcasts cross-node via `RedisPubSub` + `@socket.io/redis-adapter`.
 - `api`: REST API service with PostgreSQL + Redis persistence. Uses `pg.Pool` for users/decks/matches/chat and Redis for the legacy matchmaking queue (sorted set + Lua atomic pairing) and rate limit (`INCR` + `EXPIRE`).
 - `platform`: Colyseus platform service for lobby presence, quick matchmaking, custom-room lifecycle, invitations, spectator presence, and realtime room coordination. Uses Redis driver/presence in Compose and PostgreSQL-backed friend lookup.
@@ -404,17 +404,24 @@ Schema changes are managed by [node-pg-migrate](https://github.com/salsita/node-
 
 ### Available scripts
 
-| Script                           | Purpose                                                                   |
-| -------------------------------- | ------------------------------------------------------------------------- |
-| `npm run db:migrate`             | Apply all pending migrations (up).                                        |
-| `npm run db:migrate:release`     | Apply migrations, then require `EXPECTED_SCHEMA_MIGRATION` to be applied. |
-| `npm run db:schema:gate`         | Verify the expected migration without changing schema.                    |
-| `npm run db:migrate:down`        | Roll back the most recent migration (down).                               |
-| `npm run db:migrate:make <name>` | Generate a new migration file under `migrations/`.                        |
+| Script                           | Purpose                                                                                       |
+| -------------------------------- | --------------------------------------------------------------------------------------------- |
+| `npm run db:migrate`             | Apply all pending migrations (up).                                                            |
+| `npm run db:migrate:release`     | Apply migrations; in production audit/import/gate signed card data; then run the schema gate. |
+| `npm run db:schema:gate`         | Verify the expected migration without changing schema.                                        |
+| `npm run db:card-data:gate`      | Verify all 422 official English card rows and the exact 12 reviewed errata rows.              |
+| `npm run db:migrate:down`        | Roll back the most recent migration (down).                                                   |
+| `npm run db:migrate:make <name>` | Generate a new migration file under `migrations/`.                                            |
 
 The wrapper [`scripts/db-migrate.cjs`](../scripts/db-migrate.cjs) bridges the project's `PG_*` environment variables to node-pg-migrate's `databaseUrl`. If `DATABASE_URL` is set it takes precedence; otherwise the wrapper assembles a `pg.ClientConfig` from `PG_HOST` / `PG_PORT` / `PG_USER` / `PG_PASSWORD` / `PG_DATABASE`.
 
-Server4 may keep using its existing `zutomayo_card` PostgreSQL database; this release does not require copying data to a new database or cluster. Bootstrap the migration owner, runtime-role ownership/ACLs, and migration history in place, then run the signed migration image against that same database. After the existing schema is baselined, [`000026_account_export_jobs.js`](../migrations/000026_account_export_jobs.js) adds the durable DSAR job/audit tables and [`000027_account_deletion_anonymization.js`](../migrations/000027_account_deletion_anonymization.js) makes retained season, export, deletion, and relationship evidence explicitly anonymizable. Always run `npm run db:migrate:release` with the verified image and expected checksum rather than executing either file manually; the release migration runs schema/role gates without moving existing users, cards, decks, or matches to another server.
+Server4 may keep using its existing `zutomayo_card` PostgreSQL database; this release does not require copying data to a new database or cluster. Bootstrap the migration owner, runtime-role ownership/ACLs, and migration history in place, then run the signed migration image against that same database. After the existing schema is baselined, [`000026_account_export_jobs.js`](../migrations/000026_account_export_jobs.js) adds the durable DSAR job/audit tables, [`000027_account_deletion_anonymization.js`](../migrations/000027_account_deletion_anonymization.js) makes retained season, export, deletion, and relationship evidence explicitly anonymizable, canonical append-only [`000028`](../migrations/000028_card_official_texts_i18n.js)–[`000030`](../migrations/000030_card_official_errata_english_source.js) add official/localized card text and errata schema, and [`000031_official_card_data_releases.js`](../migrations/000031_official_card_data_releases.js) records the signed extraction/errata/review-provenance digests and first applying release SHA. The migration wrapper keeps the master-only legacy `000007`–`000009` chain visible only when that chain is already present in `schema_migrations`; fresh databases and existing P0–P5 histories skip those superseded files and apply `000028`–`000031`, preserving `checkOrder=true` and never replacing pre-existing reviewed localized rows.
+
+The server4 migrate service sets `REQUIRE_OFFICIAL_CARD_DATA=true` and passes the manifest's full `RELEASE_SHA`. The same signed image audits its versioned extraction (422/422 human-reviewed names and 250/250 effect texts), requiring every `human_verified` value to match either the timestamped human-review ledger or a directly image-verified override. The dataset digest covers extraction, errata, human reviews, and overrides. The runner then serializes import with a PostgreSQL advisory transaction lock. For a new dataset digest it imports through the migration role using the production TLS/CA contract, records the ledger row, and checks every signed card/localized/errata value before the same transaction commits. A source/card-count/Japanese-text mismatch or exact-value gate failure rolls back both data and ledger.
+
+Reconciliation is digest-based: deploying the same signed dataset again does not rewrite card rows, so audited AdminPage edits are preserved; it still requires the ledger plus 422/250/12 completeness, reviewed statuses, and consistent card/errata flags. A deliberately changed signed dataset has a new digest and becomes the new official baseline in one transaction. This data step never moves or rewrites users, decks, matches, or the database location. Never delete a ledger row to force reconciliation, bypass the production flag, or run the importer from an unsigned checkout.
+
+Always run `npm run db:migrate:release` with the verified image and expected checksum rather than executing a migration or data file manually. Local/E2E Compose explicitly leaves `REQUIRE_OFFICIAL_CARD_DATA=false` because those stacks seed synthetic cards after migration; `NODE_ENV=production` refuses to skip the signed data path.
 
 > **`000027` deployment blocker:** the current migration intentionally fails closed when `SELECT COUNT(*) FROM users WHERE deleted_at IS NOT NULL` is non-zero. It does not backfill identifiers retained by accounts deleted before this migration. The existing server4 database remains reusable, but do not apply this release to it until a production-copy rehearsal has counted and inspected those tombstones and a reviewed backfill release has reduced every legacy invariant to zero. Bypassing the guard would leave historical personal identifiers behind and is not supported.
 
@@ -432,6 +439,7 @@ migrate:
     PG_PASSWORD: <migration-password>
     EXPECTED_SCHEMA_MIGRATION: <latest migration basename>
     EXPECTED_SCHEMA_CHECKSUM: <64-character lowercase SHA-256>
+    REQUIRE_OFFICIAL_CARD_DATA: 'true'
   depends_on:
     postgres:
       condition: service_healthy

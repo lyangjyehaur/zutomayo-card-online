@@ -9,7 +9,8 @@ const I18N_LANG_ALIASES = new Map([
 
 const CARD_SELECT = `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
                     attack_night, attack_day, power_cost, send_to_power, effect,
-                    en_effect_official, image, errata`;
+                    en_effect_official, image, errata, has_official_errata, official_errata_id,
+                    official_errata_affects_name, official_errata_affects_effect, official_errata_url`;
 
 function cardRowToDef(row) {
   const def = {
@@ -34,9 +35,14 @@ function cardRowToDef(row) {
     effect: row.effect || '',
     image: row.image || '',
     errata: row.errata || '',
+    hasOfficialErrata: Boolean(row.has_official_errata),
+    officialErrataAffectsName: Boolean(row.official_errata_affects_name),
+    officialErrataAffectsEffect: Boolean(row.official_errata_affects_effect),
   };
   if (row.en_name_official) def.enNameOfficial = row.en_name_official;
   if (row.en_effect_official) def.enEffectOfficial = row.en_effect_official;
+  if (row.official_errata_id) def.officialErrataId = row.official_errata_id;
+  if (row.official_errata_url) def.officialErrataUrl = row.official_errata_url;
   return def;
 }
 
@@ -44,6 +50,17 @@ function normalizeI18nLang(lang) {
   if (typeof lang !== 'string') return null;
   const canonical = I18N_LANG_ALIASES.get(lang) || lang;
   return I18N_LANGS.includes(canonical) ? canonical : null;
+}
+
+function cardTextRowToDef(row) {
+  return {
+    name: typeof row.name_text === 'string' ? row.name_text : '',
+    effect: typeof row.effect_text === 'string' ? row.effect_text : '',
+    nameSource: typeof row.name_source === 'string' ? row.name_source : '',
+    effectSource: typeof row.effect_source === 'string' ? row.effect_source : '',
+    reviewStatus: typeof row.review_status === 'string' ? row.review_status : 'pending_review',
+    reviewNote: typeof row.review_note === 'string' ? row.review_note : '',
+  };
 }
 
 async function getPublicCards(pool, searchParams) {
@@ -59,6 +76,11 @@ async function getPublicCards(pool, searchParams) {
       if (!value) continue;
       values.push(value);
       conditions.push(`${column} = $${values.length}`);
+    }
+    const errata = searchParams.get('errata');
+    if (errata === 'true' || errata === 'false') {
+      values.push(errata === 'true');
+      conditions.push(`has_official_errata = $${values.length}`);
     }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const cards = (await pool.query(`${CARD_SELECT} FROM cards ${where} ORDER BY id`, values)).rows;
@@ -98,6 +120,63 @@ async function getCardI18n(pool, cardId) {
   return translations;
 }
 
+async function getAllCardTextsI18n(pool) {
+  try {
+    const rows = (
+      await pool.query(
+        `SELECT card_id, lang, name_text, effect_text, name_source, effect_source,
+                review_status, review_note
+         FROM card_texts_i18n
+         ORDER BY card_id, lang`,
+      )
+    ).rows;
+    const grouped = {};
+    for (const row of rows) {
+      const lang = normalizeI18nLang(row.lang);
+      if (!lang) continue;
+      if (!grouped[row.card_id]) grouped[row.card_id] = {};
+      grouped[row.card_id][lang] = cardTextRowToDef(row);
+    }
+    return grouped;
+  } catch {
+    return {};
+  }
+}
+
+async function getCardTextsI18n(pool, cardId) {
+  const translations = Object.fromEntries(
+    I18N_LANGS.map((lang) => [
+      lang,
+      cardTextRowToDef({
+        name_text: '',
+        effect_text: '',
+        name_source: '',
+        effect_source: '',
+        review_status: 'pending_review',
+        review_note: '',
+      }),
+    ]),
+  );
+  try {
+    const rows = (
+      await pool.query(
+        `SELECT lang, name_text, effect_text, name_source, effect_source,
+                review_status, review_note
+         FROM card_texts_i18n
+         WHERE card_id = $1`,
+        [cardId],
+      )
+    ).rows;
+    for (const row of rows) {
+      const lang = normalizeI18nLang(row.lang);
+      if (lang) translations[lang] = cardTextRowToDef(row);
+    }
+  } catch {
+    // Return the empty language shape when PG is unavailable.
+  }
+  return translations;
+}
+
 async function getPublicCard(pool, cardId) {
   try {
     const card = (await pool.query(`${CARD_SELECT} FROM cards WHERE id = $1`, [cardId])).rows[0];
@@ -124,9 +203,12 @@ async function getPresetDecks(pool) {
 
 module.exports = {
   CARD_SELECT,
+  cardTextRowToDef,
   cardRowToDef,
   getAllCardI18n,
+  getAllCardTextsI18n,
   getCardI18n,
+  getCardTextsI18n,
   getGameConfig,
   getPresetDecks,
   getPublicCard,

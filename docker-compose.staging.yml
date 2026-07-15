@@ -18,6 +18,7 @@ services:
     command: ['npm', 'run', 'db:migrate:release']
     environment:
       - NODE_ENV=production
+      - RELEASE_SHA=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
       - PG_HOST=${PG_HOST:?Set external staging PostgreSQL PG_HOST}
       - PG_PORT=${PG_PORT:-5432}
       - PG_USER=${PG_MIGRATION_USER:?Set PG_MIGRATION_USER in your environment or .env file}
@@ -41,6 +42,7 @@ services:
       - DATABASE_URL=
       - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
       - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
+      - REQUIRE_OFFICIAL_CARD_DATA=true
     secrets:
       - postgres_ca
     restart: 'no'

@@ -206,6 +206,13 @@ counts="$(docker exec "$container_name" psql \
        AND c.sha256 = '$expected_schema_checksum'
     UNION ALL SELECT 'users=' || COUNT(*) FROM users
     UNION ALL SELECT 'cards=' || COUNT(*) FROM cards
+    UNION ALL SELECT 'official_card_data_releases=' || COUNT(*) FROM official_card_data_releases
+    UNION ALL SELECT 'missing_official_english_names=' || COUNT(*) FROM cards WHERE BTRIM(en_name_official) = ''
+    UNION ALL SELECT 'missing_official_english_effects=' || COUNT(*) FROM cards
+      WHERE BTRIM(COALESCE(effect, '')) <> '' AND BTRIM(en_effect_official) = ''
+    UNION ALL SELECT 'official_errata=' || COUNT(*) FROM card_official_errata
+    UNION ALL SELECT 'official_japanese_rows=' || COUNT(*) FROM card_texts_i18n WHERE lang = 'ja'
+    UNION ALL SELECT 'official_english_rows=' || COUNT(*) FROM card_texts_i18n WHERE lang = 'en'
     UNION ALL SELECT 'matches=' || COUNT(*) FROM matches
     UNION ALL SELECT 'relationship_change_outbox=' || COUNT(*) FROM relationship_change_outbox
     UNION ALL SELECT 'legal_holds=' || COUNT(*) FROM legal_holds
@@ -241,6 +248,12 @@ schema_migrations_count="$(count_value schema_migrations)"
 expected_schema_binding_count="$(count_value expected_schema_binding)"
 users_count="$(count_value users)"
 cards_count="$(count_value cards)"
+official_card_data_releases_count="$(count_value official_card_data_releases)"
+missing_official_english_names_count="$(count_value missing_official_english_names)"
+missing_official_english_effects_count="$(count_value missing_official_english_effects)"
+official_errata_count="$(count_value official_errata)"
+official_japanese_rows_count="$(count_value official_japanese_rows)"
+official_english_rows_count="$(count_value official_english_rows)"
 matches_count="$(count_value matches)"
 relationship_change_outbox_count="$(count_value relationship_change_outbox)"
 legal_holds_count="$(count_value legal_holds)"
@@ -255,7 +268,13 @@ legal_hold_invariant_passed=false
 [[ "$expected_schema_binding_count" == 1 ]] || fail 'restored schema migration/checksum binding mismatch'
 [[ "$unvalidated_constraints_count" == 0 ]] || fail 'restored invariant failed: unvalidated_constraints'
 schema_gate_passed=true
-((cards_count >= 1)) || fail 'restored card catalog is empty'
+[[ "$cards_count" == 422 ]] || fail 'restored card catalog is not the complete 422-card release dataset'
+((official_card_data_releases_count >= 1)) || fail 'restored card catalog has no signed dataset ledger'
+[[ "$missing_official_english_names_count" == 0 ]] || fail 'restored card catalog has missing official English names'
+[[ "$missing_official_english_effects_count" == 0 ]] || fail 'restored card catalog has missing official English effects'
+[[ "$official_errata_count" == 12 ]] || fail 'restored card catalog does not contain the exact 12 errata rows'
+[[ "$official_japanese_rows_count" == 422 ]] || fail 'restored Japanese official text rows are incomplete'
+[[ "$official_english_rows_count" == 422 ]] || fail 'restored English official text rows are incomplete'
 [[ "$invalid_outbox_status_count" == 0 ]] || fail 'restored invariant failed: invalid_outbox_status'
 core_data_invariant_passed=true
 [[ "$deletion_hold_violations_count" == 0 ]] || fail 'restored invariant failed: deletion_hold_violations'
@@ -305,6 +324,12 @@ if [[ -n "$evidence_report" ]]; then
     --argjson expectedSchemaBinding "$expected_schema_binding_count" \
     --argjson users "$users_count" \
     --argjson cards "$cards_count" \
+    --argjson officialCardDataReleases "$official_card_data_releases_count" \
+    --argjson missingOfficialEnglishNames "$missing_official_english_names_count" \
+    --argjson missingOfficialEnglishEffects "$missing_official_english_effects_count" \
+    --argjson officialErrata "$official_errata_count" \
+    --argjson officialJapaneseRows "$official_japanese_rows_count" \
+    --argjson officialEnglishRows "$official_english_rows_count" \
     --argjson matches "$matches_count" \
     --argjson relationshipChangeOutbox "$relationship_change_outbox_count" \
     --argjson legalHolds "$legal_holds_count" \
@@ -346,6 +371,12 @@ if [[ -n "$evidence_report" ]]; then
           expectedSchemaBinding: $expectedSchemaBinding,
           users: $users,
           cards: $cards,
+          officialCardDataReleases: $officialCardDataReleases,
+          missingOfficialEnglishNames: $missingOfficialEnglishNames,
+          missingOfficialEnglishEffects: $missingOfficialEnglishEffects,
+          officialErrata: $officialErrata,
+          officialJapaneseRows: $officialJapaneseRows,
+          officialEnglishRows: $officialEnglishRows,
           matches: $matches,
           relationshipChangeOutbox: $relationshipChangeOutbox,
           legalHolds: $legalHolds,

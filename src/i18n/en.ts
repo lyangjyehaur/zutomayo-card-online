@@ -818,6 +818,8 @@ export const en: Record<TranslationKey, string> = {
   'deckEditor.cardNumberShort': 'No.',
   'deckEditor.filterElement': 'Element',
   'deckEditor.filterType': 'Type',
+  'deckEditor.filterErrata': 'Errata',
+  'card.officialErrata': 'Official Errata',
   'deckEditor.sort': 'Sort',
   'deckEditor.all': 'All',
   'deckEditor.sortNumber': 'Number',

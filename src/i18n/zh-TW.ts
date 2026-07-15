@@ -803,6 +803,8 @@ export const zhTW = {
   'deckEditor.cardNumberShort': '卡號',
   'deckEditor.filterElement': '屬性',
   'deckEditor.filterType': '類型',
+  'deckEditor.filterErrata': '勘誤',
+  'card.officialErrata': '官方勘誤',
   'deckEditor.sort': '排序',
   'deckEditor.all': '全部',
   'deckEditor.sortNumber': '編號',

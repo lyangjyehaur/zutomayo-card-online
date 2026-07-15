@@ -106,7 +106,9 @@ const S = require('./schemas.cjs');
 const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigner.cjs');
 const {
   getAllCardI18n,
+  getAllCardTextsI18n,
   getCardI18n,
+  getCardTextsI18n,
   getGameConfig,
   getPresetDecks,
   getPublicCard,
@@ -629,7 +631,7 @@ async function initSchema() {
     `CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      en_name_official TEXT DEFAULT '',
+      en_name_official TEXT NOT NULL DEFAULT '',
       pack TEXT NOT NULL,
       song TEXT DEFAULT '',
       illustrator TEXT DEFAULT '',
@@ -642,13 +644,46 @@ async function initSchema() {
       power_cost INTEGER DEFAULT 0,
       send_to_power INTEGER DEFAULT 0,
       effect TEXT DEFAULT '',
-      en_effect_official TEXT DEFAULT '',
+      en_effect_official TEXT NOT NULL DEFAULT '',
       image TEXT DEFAULT '',
       errata TEXT DEFAULT '',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
-    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT DEFAULT ''`,
-    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT NOT NULL DEFAULT ''`,
+    `UPDATE cards SET en_name_official = '' WHERE en_name_official IS NULL`,
+    `UPDATE cards SET en_effect_official = '' WHERE en_effect_official IS NULL`,
+    `ALTER TABLE cards
+      ALTER COLUMN en_name_official SET DEFAULT '',
+      ALTER COLUMN en_name_official SET NOT NULL,
+      ALTER COLUMN en_effect_official SET DEFAULT '',
+      ALTER COLUMN en_effect_official SET NOT NULL`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS has_official_errata BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_id TEXT`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_effect BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_url TEXT NOT NULL DEFAULT ''`,
+    `CREATE INDEX IF NOT EXISTS idx_cards_has_official_errata ON cards(has_official_errata)`,
+
+    `CREATE TABLE IF NOT EXISTS card_official_errata (
+      errata_id TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL UNIQUE REFERENCES cards(id) ON DELETE CASCADE,
+      published_at DATE NOT NULL,
+      affects_name BOOLEAN NOT NULL DEFAULT FALSE,
+      affects_effect BOOLEAN NOT NULL DEFAULT FALSE,
+      incorrect_text TEXT NOT NULL DEFAULT '',
+      corrected_japanese_text TEXT NOT NULL,
+      corrected_english_text TEXT NOT NULL DEFAULT '',
+      corrected_english_status TEXT NOT NULL DEFAULT 'pending_review'
+        CHECK (corrected_english_status IN ('official', 'verified', 'pending_review')),
+      corrected_english_source TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (affects_name OR affects_effect)
+    )`,
+    `ALTER TABLE card_official_errata
+      ADD COLUMN IF NOT EXISTS corrected_english_source TEXT NOT NULL
+      DEFAULT 'official_japanese_errata_translation'`,
 
     `CREATE TABLE IF NOT EXISTS card_effects_i18n (
       card_id TEXT NOT NULL,
@@ -656,6 +691,31 @@ async function initSchema() {
       effect_text TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (card_id, lang)
     )`,
+
+    `CREATE TABLE IF NOT EXISTS card_texts_i18n (
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      lang TEXT NOT NULL,
+      name_text TEXT NOT NULL DEFAULT '',
+      effect_text TEXT NOT NULL DEFAULT '',
+      name_source TEXT NOT NULL DEFAULT '',
+      effect_source TEXT NOT NULL DEFAULT '',
+      review_status TEXT NOT NULL DEFAULT 'pending_review'
+        CHECK (review_status IN ('official', 'verified', 'pending_review')),
+      review_note TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (card_id, lang)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_card_texts_i18n_lang_review
+      ON card_texts_i18n(lang, review_status)`,
+    `INSERT INTO card_texts_i18n (
+       card_id, lang, effect_text, effect_source, review_status
+     )
+     SELECT legacy.card_id, legacy.lang, legacy.effect_text,
+            'legacy_card_effects_i18n', 'pending_review'
+     FROM card_effects_i18n legacy
+     JOIN cards ON cards.id = legacy.card_id
+     WHERE legacy.lang NOT IN ('ja', 'en')
+     ON CONFLICT (card_id, lang) DO NOTHING`,
 
     `CREATE TABLE IF NOT EXISTS game_config (
       key TEXT PRIMARY KEY,
@@ -969,7 +1029,17 @@ async function runMigrations() {
     user: PG_USER,
     password: PG_PASSWORD,
     database: PG_DATABASE,
+    ssl: postgresSslConfig(process.env),
   };
+  const {
+    listAppliedMigrationNames,
+    migrationIgnorePatternForApplied,
+  } = require('../scripts/migration-order-compat.cjs');
+  const appliedNames = await listAppliedMigrationNames(pool);
+  const ignorePattern = migrationIgnorePatternForApplied(appliedNames);
+  if (ignorePattern) {
+    logger.info('Using canonical append-only card migrations 000028-000030');
+  }
 
   await runner({
     databaseUrl,
@@ -977,6 +1047,8 @@ async function runMigrations() {
     direction: 'up',
     migrationsTable: 'schema_migrations',
     schema: 'public',
+    ignorePattern,
+    checkOrder: true,
     count: Infinity,
     log: (msg) => logger.info({ msg }, 'migration'),
   });
@@ -4739,6 +4811,20 @@ function handleRequest(req, res) {
     if (pathname === '/api/cards/i18n' && method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
       json(await getAllCardI18n(pool));
+      return;
+    }
+
+    if (pathname === '/api/cards/texts' && method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getAllCardTextsI18n(pool));
+      return;
+    }
+
+    const publicCardTextsRoute = pathname.match(/^\/api\/cards\/([^/]+)\/texts$/);
+    if (publicCardTextsRoute && method === 'GET') {
+      const cardId = decodeURIComponent(publicCardTextsRoute[1]);
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getCardTextsI18n(pool, cardId));
       return;
     }
 

@@ -1467,6 +1467,12 @@ function validateRestoreOffsiteArtifact(evidence, policy, missing, verifiedArtif
         'expectedSchemaBinding',
         'users',
         'cards',
+        'officialCardDataReleases',
+        'missingOfficialEnglishNames',
+        'missingOfficialEnglishEffects',
+        'officialErrata',
+        'officialJapaneseRows',
+        'officialEnglishRows',
         'matches',
         'relationshipChangeOutbox',
         'legalHolds',
@@ -1489,7 +1495,15 @@ function validateRestoreOffsiteArtifact(evidence, policy, missing, verifiedArtif
           observations.schemaMigrations >= 1 &&
           observations.expectedSchemaBinding === 1 &&
           observations.unvalidatedConstraints === 0,
-        coreDataInvariantPassed: observations.cards >= 1 && observations.invalidOutboxStatus === 0,
+        coreDataInvariantPassed:
+          observations.cards === 422 &&
+          observations.officialCardDataReleases >= 1 &&
+          observations.missingOfficialEnglishNames === 0 &&
+          observations.missingOfficialEnglishEffects === 0 &&
+          observations.officialErrata === 12 &&
+          observations.officialJapaneseRows === 422 &&
+          observations.officialEnglishRows === 422 &&
+          observations.invalidOutboxStatus === 0,
         legalHoldInvariantPassed:
           observations.deletionHoldViolations === 0 && observations.deletedSocialViolations === 0,
       };

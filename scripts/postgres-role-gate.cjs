@@ -1,6 +1,10 @@
 'use strict';
 
-const PROTECTED_SCHEMA_TABLES = Object.freeze(['schema_migrations', 'schema_migration_checksums']);
+const PROTECTED_SCHEMA_TABLES = Object.freeze([
+  'schema_migrations',
+  'schema_migration_checksums',
+  'official_card_data_releases',
+]);
 
 // Keep this list explicit. A new public table must be added to the role matrix
 // in the same change as its migration; otherwise the release gate fails closed.
@@ -12,6 +16,8 @@ const APPLICATION_TABLES = Object.freeze([
   'matches',
   'cards',
   'card_effects_i18n',
+  'card_texts_i18n',
+  'card_official_errata',
   'game_config',
   'preset_decks',
   'admin_audit_log',
@@ -68,7 +74,14 @@ const ACCOUNT_ANONYMIZATION_FUNCTIONS = Object.freeze([
   'public.zutomayo_anonymize_account_export_audit(text)',
   'public.zutomayo_anonymize_admin_audit_identity(text,text)',
 ]);
-const GAME_READ_TABLES = Object.freeze(['cards', 'card_effects_i18n', 'seasons', ...PROTECTED_SCHEMA_TABLES]);
+const GAME_READ_TABLES = Object.freeze([
+  'cards',
+  'card_effects_i18n',
+  'card_texts_i18n',
+  'card_official_errata',
+  'seasons',
+  ...PROTECTED_SCHEMA_TABLES,
+]);
 const GAME_TABLE_PRIVILEGES = Object.freeze({
   deck_reservations: ['SELECT', 'UPDATE'],
   matches: ['SELECT', 'INSERT'],
@@ -118,6 +131,7 @@ const RETENTION_TABLE_PRIVILEGES = Object.freeze({
   retention_runs: ['INSERT', 'UPDATE'],
   schema_migrations: ['SELECT'],
   schema_migration_checksums: ['SELECT'],
+  official_card_data_releases: ['SELECT'],
 });
 
 function quoteIdentifier(value) {

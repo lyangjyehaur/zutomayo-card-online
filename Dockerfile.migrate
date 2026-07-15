@@ -7,6 +7,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY migrations ./migrations
+COPY data/card-english-extraction.json ./data/card-english-extraction.json
+COPY data/card-english-human-reviews.json ./data/card-english-human-reviews.json
+COPY data/card-official-errata.json ./data/card-official-errata.json
+COPY scripts/card-english-ocr-overrides.json ./scripts/card-english-ocr-overrides.json
 COPY api/schemaGate.cjs ./api/schemaGate.cjs
 COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs
@@ -19,9 +23,14 @@ COPY api/adminCredentialService.cjs ./api/adminCredentialService.cjs
 COPY api/adminSecretCrypto.cjs ./api/adminSecretCrypto.cjs
 COPY scripts/db-migrate.cjs ./scripts/db-migrate.cjs
 COPY scripts/migration-checksums.cjs ./scripts/migration-checksums.cjs
+COPY scripts/migration-order-compat.cjs ./scripts/migration-order-compat.cjs
 COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs
 COPY scripts/postgres-role-tls-smoke.cjs ./scripts/postgres-role-tls-smoke.cjs
 COPY scripts/db-schema-gate.cjs ./scripts/db-schema-gate.cjs
+COPY scripts/card-data-gate.cjs ./scripts/card-data-gate.cjs
+COPY scripts/release-card-data.cjs ./scripts/release-card-data.cjs
+COPY scripts/audit-card-official-texts.ts ./scripts/audit-card-official-texts.ts
+COPY scripts/import-card-official-texts-pg.ts ./scripts/import-card-official-texts-pg.ts
 COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs
 COPY scripts/create-admin.cjs ./scripts/create-admin.cjs
 COPY scripts/relationship-outbox-pg-smoke.cjs ./scripts/relationship-outbox-pg-smoke.cjs

@@ -9,7 +9,9 @@ const require = createRequire(import.meta.url);
 const {
   cardRowToDef,
   getAllCardI18n,
+  getAllCardTextsI18n,
   getCardI18n,
+  getCardTextsI18n,
   getGameConfig,
   getPresetDecks,
   getPublicCard,
@@ -18,7 +20,9 @@ const {
 } = require('../cardDataService.cjs') as {
   cardRowToDef: (row: Record<string, unknown>) => Record<string, unknown>;
   getAllCardI18n: (pool: Queryable) => Promise<Record<string, unknown>>;
+  getAllCardTextsI18n: (pool: Queryable) => Promise<Record<string, unknown>>;
   getCardI18n: (pool: Queryable, cardId: string) => Promise<Record<string, string>>;
+  getCardTextsI18n: (pool: Queryable, cardId: string) => Promise<Record<string, unknown>>;
   getGameConfig: (pool: Queryable) => Promise<Record<string, unknown>>;
   getPresetDecks: (pool: Queryable) => Promise<Array<Record<string, unknown>>>;
   getPublicCard: (
@@ -48,6 +52,11 @@ const dbCard = {
   en_effect_official: 'Effect',
   image: '',
   errata: '',
+  has_official_errata: true,
+  official_errata_id: '009',
+  official_errata_affects_name: false,
+  official_errata_affects_effect: true,
+  official_errata_url: 'https://zutomayocard.net/errata/009/',
 };
 
 function poolWithRows(...rowSets: unknown[][]): Queryable {
@@ -77,7 +86,18 @@ describe('card data service', () => {
       enEffectOfficial: 'Effect',
       image: '',
       errata: '',
+      hasOfficialErrata: true,
+      officialErrataId: '009',
+      officialErrataAffectsName: false,
+      officialErrataAffectsEffect: true,
+      officialErrataUrl: 'https://zutomayocard.net/errata/009/',
     });
+  });
+
+  it('filters cards by structured official errata status', async () => {
+    const pool = poolWithRows([dbCard]);
+    await expect(getPublicCards(pool, new URLSearchParams('errata=true'))).resolves.toEqual([cardRowToDef(dbCard)]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('WHERE has_official_errata = $1'), [true]);
   });
 
   it('returns PG cards and preserves public query params', async () => {
@@ -101,6 +121,35 @@ describe('card data service', () => {
     await expect(getCardI18n(poolWithRows([{ lang: 'zhTW', effect_text: 'TW' }]), 'c_1')).resolves.toMatchObject({
       en: '',
       'zh-TW': 'TW',
+    });
+  });
+
+  it('returns unified card text with provenance and review status', async () => {
+    const row = {
+      card_id: 'c_1',
+      lang: 'zhTW',
+      name_text: '卡名',
+      effect_text: '效果',
+      name_source: 'bilingual_review',
+      effect_source: 'bilingual_review',
+      review_status: 'verified',
+      review_note: 'Compared with official print text',
+    };
+    const expected = {
+      name: '卡名',
+      effect: '效果',
+      nameSource: 'bilingual_review',
+      effectSource: 'bilingual_review',
+      reviewStatus: 'verified',
+      reviewNote: 'Compared with official print text',
+    };
+
+    await expect(getAllCardTextsI18n(poolWithRows([row]))).resolves.toEqual({
+      c_1: { 'zh-TW': expected },
+    });
+    await expect(getCardTextsI18n(poolWithRows([row]), 'c_1')).resolves.toMatchObject({
+      en: { reviewStatus: 'pending_review' },
+      'zh-TW': expected,
     });
   });
 

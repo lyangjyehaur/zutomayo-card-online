@@ -816,6 +816,8 @@ export const ko: Record<TranslationKey, string> = {
   'deckEditor.cardNumberShort': '번호',
   'deckEditor.filterElement': '속성',
   'deckEditor.filterType': '종류',
+  'deckEditor.filterErrata': '정정',
+  'card.officialErrata': '공식 정정',
   'deckEditor.sort': '정렬',
   'deckEditor.all': '전체',
   'deckEditor.sortNumber': '번호',

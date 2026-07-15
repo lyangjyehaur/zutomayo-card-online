@@ -80,6 +80,15 @@ describe('operational shell scripts', () => {
     expect(concurrencySmoke).not.toContain('target: runtime');
   });
 
+  it('requires signed official card data completeness in logical and PITR restore evidence', () => {
+    const logicalRestore = readFileSync(resolve('scripts/pg-restore-drill.sh'), 'utf8');
+    expect(logicalRestore).toContain('[[ "$cards_count" == 422 ]]');
+    expect(logicalRestore).toContain('official_card_data_releases');
+    expect(logicalRestore).toContain('missing_official_english_names');
+    expect(logicalRestore).toContain('missing_official_english_effects');
+    expect(logicalRestore).toContain('[[ "$official_errata_count" == 12 ]]');
+  });
+
   it.skipIf(!hasDockerCompose)('renders the E2E PostgreSQL healthcheck against the overlay database', () => {
     const result = spawnSync(
       'docker',
@@ -111,14 +120,14 @@ describe('operational shell scripts', () => {
     expect(workflow).toContain('"${compose[@]}" build');
     expect(workflow).toContain('"${compose[@]}" run --rm e2e');
     expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
-    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000027_account_deletion_anonymization');
+    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000031_official_card_data_releases');
     expect(workflow).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: b84cc250db64d46591bb9fb5441098f132384b9291d0968cae51dfb0c57e4b2c',
+      'EXPECTED_SCHEMA_CHECKSUM: 172b810651446e91d5ba371e4ee7d6b046c2b76aa8a131dfec014e7fd742b4b8',
     );
     expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
-    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000027_account_deletion_anonymization');
+    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000031_official_card_data_releases');
     expect(browserMatrix).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: b84cc250db64d46591bb9fb5441098f132384b9291d0968cae51dfb0c57e4b2c',
+      'EXPECTED_SCHEMA_CHECKSUM: 172b810651446e91d5ba371e4ee7d6b046c2b76aa8a131dfec014e7fd742b4b8',
     );
     expect(browserMatrix).not.toContain('export EXPECTED_SCHEMA_MIGRATION=');
     expect(workflow).not.toContain('--abort-on-container-exit');
@@ -153,6 +162,40 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('--bootstrap');
   });
 
+  it('imports and gates the signed official card dataset before server4 applications start', () => {
+    const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const server4 = readFileSync(resolve('docker-compose.server4.yml'), 'utf8');
+    const server4Slot = readFileSync(resolve('docker-compose.server4-slot.yml'), 'utf8');
+    const staging = readFileSync(resolve('docker-compose.staging.yml'), 'utf8');
+    const localCompose = readFileSync(resolve('docker-compose.yml'), 'utf8');
+    const importer = readFileSync(resolve('scripts/import-card-official-texts-pg.ts'), 'utf8');
+    const workflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8');
+
+    expect(packageJson.scripts.verify).toContain('npm run audit:card-official-texts');
+    expect(packageJson.scripts['db:migrate:release']).toContain('scripts/release-card-data.cjs');
+    expect(server4).toContain('REQUIRE_OFFICIAL_CARD_DATA=true');
+    expect(server4).toContain('RELEASE_SHA=${RELEASE_SHA:');
+    expect(server4Slot).toContain("REQUIRE_OFFICIAL_CARD_DATA: 'true'");
+    expect(server4Slot).toContain('RELEASE_SHA: ${RELEASE_SHA:');
+    expect(staging).toContain('REQUIRE_OFFICIAL_CARD_DATA=true');
+    expect(staging).toContain('RELEASE_SHA=${RELEASE_SHA:');
+    expect(localCompose).toContain('REQUIRE_OFFICIAL_CARD_DATA=${REQUIRE_OFFICIAL_CARD_DATA:-false}');
+    expect(importer).toContain("assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER')");
+    expect(importer).toContain('postgresConnectionString(process.env)');
+    expect(importer).toContain('ssl: postgresSslConfig(process.env)');
+    expect(importer).toContain("pg_advisory_xact_lock(hashtext('zutomayo:official-card-data-release'))");
+    expect(importer).toContain('Official card dataset ${cardDataManifest.datasetSha256} was already applied');
+    const ledgerInsert = importer.indexOf('INSERT INTO official_card_data_releases');
+    const exactGate = importer.indexOf('requireExact: true', ledgerInsert);
+    const commit = importer.indexOf("client.query('COMMIT')", exactGate);
+    expect(ledgerInsert).toBeGreaterThan(0);
+    expect(exactGate).toBeGreaterThan(ledgerInsert);
+    expect(commit).toBeGreaterThan(exactGate);
+    expect(workflow).toContain('npm run audit:card-official-texts');
+  });
+
   it('validates the active release and smokes its build id after automatic rollback', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
     expect(deploy).toContain('validate_remote_manifest \'.release.env\' "$current_manifest"');
@@ -178,7 +221,7 @@ describe('operational shell scripts', () => {
       'RELEASE_SHA=' + 'a'.repeat(40),
       'APP_VERSION=1.2.3',
       'GAME_RULES_VERSION=1.2.3',
-      'EXPECTED_SCHEMA_MIGRATION=000027_account_deletion_anonymization',
+      'EXPECTED_SCHEMA_MIGRATION=000031_official_card_data_releases',
       'EXPECTED_SCHEMA_CHECKSUM=' + 'b'.repeat(64),
       ...['game', 'api', 'platform', 'migrate', 'retention', 'gateway'].map(
         (app) => app.toUpperCase() + '_IMAGE=' + image(app),

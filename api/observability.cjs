@@ -1,5 +1,5 @@
 /* global module, require, process, URL */
-/* eslint-disable @typescript-eslint/no-require-imports */
+
 const pino = require('pino');
 const promClient = require('prom-client');
 const crypto = require('crypto');
