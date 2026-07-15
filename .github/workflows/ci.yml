@@ -143,18 +143,25 @@ jobs:
 
       - name: Build and start service stack
         run: |
+          set -o pipefail
+          log_file="$(mktemp)"
           mkdir -p playwright-report test-results
           export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
           export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
           export PG_MIGRATION_USER=zutomayo_migrator PG_MIGRATION_PASSWORD=e2e-test-migration-password
           export PG_APP_USER=zutomayo_app PG_APP_PASSWORD=e2e-test-app-password
-          docker compose \
+          if docker compose \
             -f docker-compose.yml \
             -f docker-compose.e2e.yml \
             up \
             --abort-on-container-exit \
             --exit-code-from e2e \
-            --build
+            --build 2>&1 | tee "$log_file"; then
+            exit 0
+          fi
+          details="$(tail -n 40 "$log_file" | tr '\n' ' ' | sed 's/%/%25/g')"
+          echo "::error title=E2E service stack::$details"
+          exit 1
         timeout-minutes: 20
 
       - name: Upload Playwright report

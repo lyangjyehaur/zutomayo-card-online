@@ -3,6 +3,17 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = resolve(import.meta.dirname, '../..');
+const nodeImage = 'node:22.22.2-alpine@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f';
+
+describe('production Node image supply chain', () => {
+  it('pins the base digest and installs the non-vulnerable npm toolchain', () => {
+    for (const relativePath of ['Dockerfile', 'Dockerfile.migrate', 'Dockerfile.retention', 'api/Dockerfile']) {
+      const dockerfile = readFileSync(resolve(root, relativePath), 'utf8');
+      expect(dockerfile).toContain(`FROM ${nodeImage}`);
+      expect(dockerfile).toContain('npm install --global npm@12.0.1');
+    }
+  });
+});
 
 describe('game runtime image contract', () => {
   it('skips development lifecycle hooks in the production dependency layer', () => {
