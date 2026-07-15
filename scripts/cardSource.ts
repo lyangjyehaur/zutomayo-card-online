@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import type { CardDef } from '../src/game/types';
+import { postgresConnectionString, postgresSslConfig } from '../src/runtimeSecurityConfig';
 
 export type CardEffectsI18n = Record<string, Record<string, string>>;
 
@@ -70,12 +71,18 @@ function cardRowToDef(row: CardRow): CardDef {
 }
 
 function poolFromEnv(): Pool {
+  const databaseUrl = postgresConnectionString(process.env);
   return new Pool({
-    host: process.env.PG_HOST || 'localhost',
-    port: Number(process.env.PG_PORT) || 5432,
-    user: process.env.PG_USER || 'postgres',
-    password: process.env.PG_PASSWORD || '',
-    database: process.env.PG_DATABASE || 'postgres',
+    ...(databaseUrl
+      ? { connectionString: databaseUrl }
+      : {
+          host: process.env.PG_HOST || 'localhost',
+          port: Number(process.env.PG_PORT) || 5432,
+          user: process.env.PG_USER || 'postgres',
+          password: process.env.PG_PASSWORD || '',
+          database: process.env.PG_DATABASE || 'postgres',
+        }),
+    ssl: postgresSslConfig(process.env),
   });
 }
 

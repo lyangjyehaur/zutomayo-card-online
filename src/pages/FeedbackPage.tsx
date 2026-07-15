@@ -643,8 +643,11 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
 
   return (
     <section className="feedback-submit-form">
-      <label className="field-label">{t('feedback.titleLabel')}</label>
+      <label className="field-label" htmlFor="feedback-title">
+        {t('feedback.titleLabel')}
+      </label>
       <Input
+        id="feedback-title"
         placeholder={t('feedback.titlePlaceholder')}
         value={title}
         maxLength={120}
@@ -669,8 +672,11 @@ function SubmitForm({ onSubmitted, onCancel }: { onSubmitted: () => void; onCanc
       {title.trim().length >= 2 && !similarLoading && similar.length === 0 && (
         <p className="similar-no-results">{t('feedback.noSimilar')}</p>
       )}
-      <label className="field-label">{t('feedback.descriptionLabel')}</label>
+      <label className="field-label" htmlFor="feedback-description">
+        {t('feedback.descriptionLabel')}
+      </label>
       <Textarea
+        id="feedback-description"
         ref={textareaRef}
         placeholder={t('feedback.descriptionPlaceholder')}
         value={description}

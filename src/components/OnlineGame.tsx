@@ -34,11 +34,11 @@ import {
   type OnlineStateMismatchReason,
   type OnlineStateSnapshot,
 } from '../onlineStateGuard';
+import { type PlatformMatchShellPresence, type PlatformMatchShellRoom } from '../platformClient';
 import {
-  connectPlatformMatchShell,
-  type PlatformMatchShellPresence,
-  type PlatformMatchShellRoom,
-} from '../platformClient';
+  connectPlatformMatchShellWithRetry,
+  type PlatformMatchShellConnectionState,
+} from '../platformMatchShellConnection';
 
 interface OnlineGameProps {
   matchID: string;
@@ -136,13 +136,15 @@ function OnlineLoading() {
 function OnlineBoard(
   props: BoardProps<GameState> & {
     gameOverActions: BoardGameOverActions;
+    spectator: boolean;
     onConnectionStatusChange: (isConnected: boolean) => void;
     onOpponentDetected: () => void;
     onStateMismatch: (reason: OnlineStateMismatchReason) => void;
     onExitRequest: () => void;
   },
 ) {
-  const { gameOverActions, onConnectionStatusChange, onOpponentDetected, onStateMismatch, ...boardProps } = props;
+  const { gameOverActions, spectator, onConnectionStatusChange, onOpponentDetected, onStateMismatch, ...boardProps } =
+    props;
   const lastSnapshot = useRef<OnlineStateSnapshot | null>(null);
 
   useEffect(() => {
@@ -179,7 +181,7 @@ function OnlineBoard(
   }, [props.matchData, onOpponentDetected]);
 
   // P3-16：線上模式啟用伺服器權威計時器（G.turnStartTime + timeoutSkip move）。
-  return <Board {...boardProps} gameOverActions={gameOverActions} useServerTimer />;
+  return <Board {...boardProps} gameOverActions={gameOverActions} spectator={spectator} useServerTimer />;
 }
 
 export function OnlineGame({
@@ -210,6 +212,8 @@ export function OnlineGame({
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
   const [platformShellStatus, setPlatformShellStatus] = useState<PlatformShellStatus>(null);
+  const [platformShellConnectionState, setPlatformShellConnectionState] =
+    useState<PlatformMatchShellConnectionState>('connecting');
   const [platformShellEvidenceReady, setPlatformShellEvidenceReady] = useState(false);
   const [platformShellUnavailable, setPlatformShellUnavailable] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -383,11 +387,10 @@ export function OnlineGame({
   useEffect(() => {
     if (!chatAccountLoaded) return;
     let cancelled = false;
-    let room: PlatformMatchShellRoom | undefined;
     setPlatformShellEvidenceReady(false);
     setPlatformShellUnavailable(false);
 
-    void connectPlatformMatchShell(
+    const controller = connectPlatformMatchShellWithRetry(
       {
         boardgameMatchID: matchID,
         userId: localPlatformUserId,
@@ -398,10 +401,17 @@ export function OnlineGame({
         platformSeatToken: spectator ? undefined : platformSeatToken,
       },
       {
+        onStateChange: (state) => {
+          if (!cancelled) setPlatformShellConnectionState(state);
+        },
+        onRoomChange: (nextRoom) => {
+          if (!cancelled) platformRoomRef.current = nextRoom;
+        },
         onPresence: (presence) => {
           if (!cancelled) {
             setPlatformShellStatus({ ...presence, connected: true });
             setPlatformShellEvidenceReady(true);
+            setPlatformShellUnavailable(false);
           }
         },
         onChatPreview: () => {
@@ -422,29 +432,23 @@ export function OnlineGame({
           );
         },
         onDisconnect: () => {
-          if (!cancelled) setPlatformShellStatus(null);
+          if (!cancelled) {
+            setPlatformShellStatus(null);
+            setPlatformShellEvidenceReady(false);
+          }
         },
-      },
-    ).then(
-      (nextRoom) => {
-        if (cancelled) {
-          void nextRoom.leave(true).catch(() => undefined);
-          return;
-        }
-        room = nextRoom;
-        platformRoomRef.current = nextRoom;
-      },
-      (err) => {
-        Sentry.addBreadcrumb({
-          category: 'platform',
-          message: 'match shell unavailable',
-          level: 'warning',
-          data: { match_id: matchID, error: err instanceof Error ? err.message : String(err) },
-        });
-        if (!cancelled) {
-          setPlatformShellStatus(null);
-          setPlatformShellUnavailable(true);
-        }
+        onError: (err) => {
+          Sentry.addBreadcrumb({
+            category: 'platform',
+            message: 'match shell unavailable; retry scheduled',
+            level: 'warning',
+            data: { match_id: matchID, error: err instanceof Error ? err.message : String(err) },
+          });
+          if (!cancelled) {
+            setPlatformShellStatus(null);
+            setPlatformShellUnavailable(true);
+          }
+        },
       },
     );
 
@@ -452,9 +456,10 @@ export function OnlineGame({
       cancelled = true;
       platformRoomRef.current = null;
       setPlatformShellStatus(null);
+      setPlatformShellConnectionState('stopped');
       setPlatformShellEvidenceReady(false);
       setPlatformShellUnavailable(false);
-      void room?.leave(true).catch(() => undefined);
+      void controller.stop();
     };
   }, [
     chatAccount,
@@ -637,6 +642,7 @@ export function OnlineGame({
               variant: 'secondary',
             },
           }}
+          spectator={spectator}
           onConnectionStatusChange={handleConnectionStatusChange}
           onOpponentDetected={handleOpponentDetected}
           onStateMismatch={handleStateMismatch}
@@ -655,7 +661,10 @@ export function OnlineGame({
   return (
     <PageShell>
       {visibleConnectionStatus && (
-        <div className="absolute right-6 top-1.5 z-[var(--z-modal)]">
+        <div
+          className="absolute right-6 top-1.5 z-[var(--z-modal)]"
+          data-online-connection-status={visibleConnectionStatus}
+        >
           <span
             className={`font-mono text-caption uppercase tracking-[var(--tracking-kicker)] ${
               visibleConnectionStatus === 'disconnected' ? 'text-accent-action/80' : 'text-accent-primary/70'
@@ -674,8 +683,20 @@ export function OnlineGame({
           <span
             className="online-platform-status font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70"
             aria-label={`Platform room connected, ${platformShellStatus.players} players, ${platformShellStatus.spectators} spectators`}
+            data-platform-connection-status="connected"
           >
             P {platformShellStatus.players} / S {platformShellStatus.spectators}
+          </span>
+        </div>
+      )}
+      {platformShellConnectionState !== 'connected' && platformShellConnectionState !== 'stopped' && (
+        <div
+          className="absolute left-6 top-7 z-[var(--z-modal)]"
+          aria-live="polite"
+          data-platform-connection-status={platformShellConnectionState}
+        >
+          <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/45">
+            {platformShellConnectionState === 'reconnecting' ? t('onlineSession.reconnecting') : t('chat.matchSyncing')}
           </span>
         </div>
       )}

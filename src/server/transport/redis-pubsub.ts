@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import * as Sentry from '@sentry/node';
+import { resolveRedisConnectionConfig } from '../../runtimeSecurityConfig';
 
 /**
  * boardgame.io GenericPubSub 的 Redis 實作。
@@ -17,7 +18,9 @@ import * as Sentry from '@sentry/node';
  * 因此 publish 必須用另一條連線。subClient 用 duplicate() 共用連線池設定。
  */
 
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+const REDIS_CONNECTION = resolveRedisConnectionConfig(process.env);
+const REDIS_URL = REDIS_CONNECTION.url;
+const REDIS_TLS = REDIS_CONNECTION.tls ? { rejectUnauthorized: true } : undefined;
 
 export class RedisPubSub<T = unknown> {
   private pubClient: Redis;
@@ -27,7 +30,7 @@ export class RedisPubSub<T = unknown> {
   private connected = false;
 
   constructor(opts: { pubClient?: Redis; subClient?: Redis } = {}) {
-    this.pubClient = opts.pubClient ?? new Redis(REDIS_URL);
+    this.pubClient = opts.pubClient ?? new Redis(REDIS_URL, REDIS_TLS ? { tls: REDIS_TLS } : {});
     this.subClient = opts.subClient ?? this.pubClient.duplicate();
     this.subClient.on('message', this.handleMessage);
   }

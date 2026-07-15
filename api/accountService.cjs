@@ -1,4 +1,6 @@
-/* global module */
+/* global module, require */
+
+const { isPrincipalDeletionTombstoned } = require('./accountDeletionService.cjs');
 
 function normalizeEmail(email) {
   return String(email || '')
@@ -28,9 +30,14 @@ function createAvatarUrls(email, country, hashEmail) {
 
 function mapAccountProfile(user, options = {}) {
   const avatar = createAvatarUrls(user.email, options.country, options.hashEmail);
+  const hasLocalPassword =
+    typeof user.has_local_password === 'boolean'
+      ? user.has_local_password
+      : typeof user.password_hash === 'string' && !user.password_hash.startsWith('oauth:');
   return {
     id: user.id,
     email: user.email,
+    emailVerified: Boolean(user.email_verified ?? user.emailVerified),
     nickname: user.nickname,
     avatarUrl: avatar.avatarUrl,
     avatarFallbackUrls: avatar.avatarFallbackUrls,
@@ -39,6 +46,8 @@ function mapAccountProfile(user, options = {}) {
     wins: user.wins,
     winRate: user.match_count > 0 ? Math.round((user.wins / user.match_count) * 100) : 0,
     createdAt: user.created_at,
+    hasLocalPassword,
+    hasLogtoIdentity: Boolean(user.has_logto_identity),
   };
 }
 
@@ -56,7 +65,7 @@ function normalizeOAuthProfile(profile) {
 async function registerAccount({ pool, body, sanitizeText, hashPassword, createToken, generateUserId, generateSalt }) {
   const { email, password, nickname } = body;
   if (!email || !password) return { ok: false, status: 400, error: 'Email and password required' };
-  if (password.length < 6) return { ok: false, status: 400, error: 'Password must be at least 6 characters' };
+  if (password.length < 12) return { ok: false, status: 400, error: 'Password must be at least 12 characters' };
 
   const cleanEmail = normalizeEmail(email);
   const cleanNickname = sanitizeText(nickname || String(cleanEmail).split('@')[0], 30) || 'player';
@@ -78,7 +87,7 @@ async function registerAccount({ pool, body, sanitizeText, hashPassword, createT
 
   return {
     ok: true,
-    body: { token: createToken(id), user: { id, email: cleanEmail, nickname: cleanNickname, elo: 1000 } },
+    body: { token: createToken(id, undefined, 1), user: { id, email: cleanEmail, nickname: cleanNickname, elo: 1000 } },
   };
 }
 
@@ -102,7 +111,7 @@ async function loginAccount({ pool, body, hashPassword, createToken, currentIter
   return {
     ok: true,
     body: {
-      token: createToken(user.id),
+      token: createToken(user.id, undefined, Number.isInteger(user.auth_version) ? user.auth_version : 1),
       user: { id: user.id, email: user.email, nickname: user.nickname, elo: user.elo },
     },
   };
@@ -112,6 +121,35 @@ async function getAccountProfile(pool, userId, options = {}) {
   const user = (await pool.query('SELECT * FROM users WHERE id = $1', [userId])).rows[0];
   if (!user) return { ok: false, status: 404, error: 'User not found' };
   return { ok: true, body: mapAccountProfile(user, options) };
+}
+
+/**
+ * Return account sign-in capabilities without exposing password material.
+ * Authentication mode is deployment-wide, but the available credential
+ * methods are account-specific (for example, an OAuth-only account in a
+ * hybrid deployment has no local password to verify).
+ */
+async function getAccountSecurityCapabilities(pool, userId) {
+  const row = (
+    await pool.query(
+      `SELECT u.password_hash,
+              EXISTS (
+                SELECT 1 FROM user_identities i
+                WHERE i.user_id = u.id AND i.provider = 'logto'
+              ) AS has_logto_identity
+       FROM users u
+       WHERE u.id = $1 AND u.deleted_at IS NULL`,
+      [userId],
+    )
+  ).rows[0];
+  if (!row) return { ok: false, status: 404, error: 'User not found' };
+  return {
+    ok: true,
+    body: {
+      hasLocalPassword: typeof row.password_hash === 'string' && !row.password_hash.startsWith('oauth:'),
+      hasLogtoIdentity: Boolean(row.has_logto_identity),
+    },
+  };
 }
 
 async function updateAccountProfile({ pool, userId, body, sanitizeText, country, hashEmail }) {
@@ -130,13 +168,15 @@ async function updateAccountPassword({
   generateSalt,
   currentIterations,
   legacyIterations,
+  beforeUpdate,
+  incrementAuthVersion = false,
 }) {
   const { currentPassword, newPassword } = body;
   if (!currentPassword || !newPassword) {
     return { ok: false, status: 400, error: 'Current password and new password required' };
   }
-  if (String(newPassword).length < 6) {
-    return { ok: false, status: 400, error: 'Password must be at least 6 characters' };
+  if (String(newPassword).length < 12) {
+    return { ok: false, status: 400, error: 'Password must be at least 12 characters' };
   }
 
   const user = (await pool.query('SELECT id, password_hash, salt FROM users WHERE id = $1', [userId])).rows[0];
@@ -150,7 +190,18 @@ async function updateAccountPassword({
 
   const nextSalt = generateSalt();
   const nextHash = await hashPassword(newPassword, nextSalt, currentIterations);
-  await pool.query('UPDATE users SET password_hash = $1, salt = $2 WHERE id = $3', [nextHash, nextSalt, userId]);
+  // Session revocation must succeed before the password write is committed;
+  // otherwise a Redis outage could leave a changed password with live old
+  // sessions. Callers can use this hook to perform the durable auth step.
+  if (typeof beforeUpdate === 'function') await beforeUpdate();
+  if (incrementAuthVersion) {
+    await pool.query(
+      'UPDATE users SET password_hash = $1, salt = $2, auth_version = COALESCE(auth_version, 1) + 1 WHERE id = $3',
+      [nextHash, nextSalt, userId],
+    );
+  } else {
+    await pool.query('UPDATE users SET password_hash = $1, salt = $2 WHERE id = $3', [nextHash, nextSalt, userId]);
+  }
   return { ok: true, body: { ok: true } };
 }
 
@@ -185,6 +236,15 @@ async function linkOAuthIdentity({ pool, userId, profile }) {
   const cleanProfile = normalizeOAuthProfile(profile);
   if (!cleanProfile.provider || !cleanProfile.providerUserId) {
     return { ok: false, status: 400, error: 'Invalid OAuth profile' };
+  }
+  if (
+    await isPrincipalDeletionTombstoned({
+      pool,
+      provider: cleanProfile.provider,
+      providerUserId: cleanProfile.providerUserId,
+    })
+  ) {
+    return { ok: false, status: 410, error: 'OAuth account has been deleted' };
   }
 
   const existing = (
@@ -276,6 +336,16 @@ async function loginWithOAuthIdentity({
     return { ok: false, status: 400, error: 'Invalid OAuth profile' };
   }
 
+  if (
+    await isPrincipalDeletionTombstoned({
+      pool,
+      provider: cleanProfile.provider,
+      providerUserId: cleanProfile.providerUserId,
+    })
+  ) {
+    return { ok: false, status: 410, error: 'OAuth account has been deleted' };
+  }
+
   const identity = (
     await pool.query('SELECT user_id FROM user_identities WHERE provider = $1 AND provider_user_id = $2', [
       cleanProfile.provider,
@@ -317,6 +387,7 @@ async function loginWithOAuthIdentity({
 module.exports = {
   createAvatarUrls,
   getAccountProfile,
+  getAccountSecurityCapabilities,
   linkOAuthIdentity,
   listAccountIdentities,
   loginAccount,

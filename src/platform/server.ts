@@ -3,6 +3,7 @@ import './tracing.js';
 import * as Sentry from '@sentry/node';
 import { platformLogger as logger } from './logger';
 import { createPlatformRuntime } from './runtime';
+import { requireSecret, validateProductionRuntimeSecurity } from '../runtimeSecurityConfig';
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -41,6 +42,19 @@ function validateSecurityConfig(): void {
       );
     }
   }
+  if (isProduction) {
+    try {
+      requireSecret('JWT_SECRET', process.env.JWT_SECRET);
+      requireSecret(
+        'PLATFORM_SEAT_TOKEN_SECRET or JWT_SECRET',
+        process.env.PLATFORM_SEAT_TOKEN_SECRET || process.env.JWT_SECRET,
+      );
+      validateProductionRuntimeSecurity(process.env);
+    } catch (error) {
+      logger.fatal(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  }
 }
 
 validateSecurityConfig();
@@ -58,7 +72,14 @@ process.on('unhandledRejection', (reason) => {
   logger.error({ err: reason }, 'unhandled platform rejection');
 });
 
-await platform.gameServer.listen(platform.port);
+try {
+  await platform.schemaReady;
+  await platform.gameServer.listen(platform.port);
+} catch (err) {
+  logger.fatal({ err }, 'platform schema gate failed; refusing to listen');
+  await platform.closeStores().catch(() => undefined);
+  process.exit(1);
+}
 logger.info(
   {
     port: platform.port,

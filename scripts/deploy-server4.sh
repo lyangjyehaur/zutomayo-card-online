@@ -1,21 +1,15 @@
-#!/bin/bash
-# deploy-server4.sh — ZUTOMAYO Card Online 標準部署腳本
+#!/usr/bin/env bash
+# Deploy or roll back a verified immutable release on server4.
+# The script never builds on the server and never uses a mutable tag.
 #
-# 一鍵完成:備份 → server4 git reset → 更新 APP_BUILD_ID → tag rollback → build → up → verify
-#
-# 用法:
-#   ./scripts/deploy-server4.sh                    # 直接執行
-#   ./scripts/deploy-server4.sh --confirm          # 執行前二次確認
-#   ./scripts/deploy-server4.sh --sha <sha>       # 指定要部署的 commit(預設=本地 HEAD)
-#   ./scripts/deploy-server4.sh --dry-run          # 只顯示會做什麼,不真的執行
-#   ./scripts/deploy-server4.sh --rollback         # 回滾到上一版 image (:rollback tag)
-#
-# 環境變數覆寫:
-#   SERVER_HOST=149.104.6.238 SERVER_PORT=4649 ./scripts/deploy-server4.sh
+# Usage:
+#   ./scripts/deploy-server4.sh --manifest .release.env --confirm
+#   ./scripts/deploy-server4.sh --manifest .release.env --bootstrap --confirm
+#   ./scripts/deploy-server4.sh --rollback --confirm
+#   ./scripts/deploy-server4.sh --manifest .release.env --dry-run
 
 set -euo pipefail
 
-# --- 設定 ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_HOST="${SERVER_HOST:-149.104.6.238}"
@@ -23,349 +17,271 @@ SERVER_PORT="${SERVER_PORT:-4649}"
 SERVER_USER="${SERVER_USER:-root}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/zutomayo-card-online}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.server4.yml}"
-GHCR_OWNER="${GHCR_OWNER:-lyangjyehaur}"
-GAME_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-game"
-API_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-api"
-PLATFORM_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-platform"
-
-# --- 旗標解析 ---
+RETENTION_COMPOSE_FILE="${RETENTION_COMPOSE_FILE:-docker-compose.retention.yml}"
+RETENTION_SERVICE_GROUP="${RETENTION_SERVICE_GROUP:-zutomayo-retention}"
+GAME_PORT="${GAME_PORT:-3000}"
+API_PORT="${API_PORT:-3001}"
+PLATFORM_PORT="${PLATFORM_PORT:-3002}"
+SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
+SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
+SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
+VERIFY_RELEASE_ARTIFACTS="${VERIFY_RELEASE_ARTIFACTS:-true}"
+COSIGN_IDENTITY_REGEXP="${COSIGN_IDENTITY_REGEXP:-https://github.com/${GITHUB_REPOSITORY:-}/.github/workflows/cd\\.yml@refs/(heads/master|tags/v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?)$}"
+COSIGN_OIDC_ISSUER="${COSIGN_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
+MANIFEST_FILE="${RELEASE_MANIFEST:-$PROJECT_DIR/.release.env}"
 CONFIRM=false
 DRY_RUN=false
-TARGET_SHA=""
 ROLLBACK=false
+BOOTSTRAP=false
+ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full --require-rediss'
+
+usage() {
+  sed -n '2,10p' "$0"
+  exit 0
+}
 
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --confirm) CONFIRM=true; shift ;;
-        --dry-run) DRY_RUN=true; shift ;;
-        --rollback) ROLLBACK=true; shift ;;
-        --sha) TARGET_SHA="$2"; shift 2 ;;
-        -h|--help)
-            sed -n '2,15p' "$0"
-            exit 0
-            ;;
-        *) echo "未知參數: $1" >&2; exit 2 ;;
-    esac
+  case "$1" in
+    --manifest)
+      [[ $# -ge 2 ]] || { echo '--manifest requires a file' >&2; exit 2; }
+      MANIFEST_FILE="$2"
+      shift 2
+      ;;
+    --confirm) CONFIRM=true; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
+    --rollback) ROLLBACK=true; shift ;;
+    --bootstrap) BOOTSTRAP=true; shift ;;
+    -h|--help) usage ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
 done
 
-# --- 工具函式 ---
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-log()  { echo -e "${BLUE}[$(date +%H:%M:%S)]${NC} $*"; }
-ok()   { echo -e "${GREEN}[$(date +%H:%M:%S)] ✓${NC} $*"; }
-warn() { echo -e "${YELLOW}[$(date +%H:%M:%S)] ⚠${NC} $*"; }
-err()  { echo -e "${RED}[$(date +%H:%M:%S)] ✗${NC} $*" >&2; }
-
+log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
+die() { printf '[%s] ERROR: %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 1; }
 ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 
-run_or_dry() {
-    if [[ "$DRY_RUN" == true ]]; then
-        echo -e "${YELLOW}[DRY-RUN]${NC} $*"
-    else
-        "$@"
-    fi
+[[ "$RETENTION_SERVICE_GROUP" =~ ^[a-z_][a-z0-9_-]*$ ]] || die 'RETENTION_SERVICE_GROUP is invalid'
+
+validate_manifest() {
+  local file="$1" key value app
+  [[ -f "$file" ]] || die "release manifest not found: $file"
+  RELEASE_SHA=''
+  APP_VERSION=''
+  GAME_RULES_VERSION=''
+  EXPECTED_SCHEMA_MIGRATION=''
+  EXPECTED_SCHEMA_CHECKSUM=''
+  GAME_IMAGE=''
+  API_IMAGE=''
+  PLATFORM_IMAGE=''
+  MIGRATE_IMAGE=''
+  RETENTION_IMAGE=''
+  while IFS='=' read -r key value || [[ -n "$key" ]]; do
+    [[ -z "$key" ]] && continue
+    case "$key" in
+      RELEASE_SHA|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE)
+        printf -v "$key" '%s' "$value"
+        ;;
+      *) die "invalid manifest key: $key" ;;
+    esac
+  done < "$file"
+  [[ "$RELEASE_SHA" =~ ^[[:xdigit:]]{40}$ ]] || die 'manifest RELEASE_SHA must be a full commit SHA'
+  [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || die 'manifest APP_VERSION is invalid'
+  [[ "$GAME_RULES_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || die 'manifest GAME_RULES_VERSION is invalid'
+  [[ "$EXPECTED_SCHEMA_MIGRATION" =~ ^[0-9]{6,}_[a-z0-9_]+$ ]] || die 'manifest EXPECTED_SCHEMA_MIGRATION is invalid'
+  [[ "$EXPECTED_SCHEMA_CHECKSUM" =~ ^[a-f0-9]{64}$ ]] || die 'manifest EXPECTED_SCHEMA_CHECKSUM is invalid'
+  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE; do
+    app="${key%_IMAGE}"
+    app="$(printf '%s' "$app" | tr '[:upper:]' '[:lower:]')"
+    value="${!key}"
+    [[ "$value" =~ ^ghcr\.io/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+-${app}@sha256:[[:xdigit:]]{64}$ ]] || die "manifest $key must be an immutable GHCR digest"
+  done
 }
 
-# 驗證部署健康狀態；回傳 0 = 全部通過，1 = 有失敗
-verify_health() {
-    local failed=0
-    GAME_VERSION=$(curl -s --max-time 5 "http://$SERVER_HOST:3000/api/version" 2>/dev/null || echo "FAILED")
-    API_VERSION=$(curl -s --max-time 5 "http://$SERVER_HOST:3001/api/version" 2>/dev/null || echo "FAILED")
-    PLATFORM_HEALTH=$(curl -s --max-time 5 "http://$SERVER_HOST:3002/health" 2>/dev/null || echo "FAILED")
-    PLATFORM_READY=$(curl -s --max-time 5 "http://$SERVER_HOST:3002/ready" 2>/dev/null || echo "FAILED")
-    GAME_HTTP=$(curl -sI --max-time 5 "http://$SERVER_HOST:3000/" 2>/dev/null | head -1 || echo "FAILED")
-    API_HTTP=$(curl -sI --max-time 5 "http://$SERVER_HOST:3001/" 2>/dev/null | head -1 || echo "FAILED")
-    PLATFORM_HTTP=$(curl -sI --max-time 5 "http://$SERVER_HOST:3002/health" 2>/dev/null | head -1 || echo "FAILED")
-
-    echo "  game /api/version : $GAME_VERSION"
-    echo "  api  /api/version : $API_VERSION"
-    echo "  platform /health  : $PLATFORM_HEALTH"
-    echo "  platform /ready   : $PLATFORM_READY"
-    echo "  game HTTP         : $GAME_HTTP"
-    echo "  api  HTTP         : $API_HTTP"
-    echo "  platform HTTP     : $PLATFORM_HTTP"
-
-    [[ "$GAME_VERSION" == "FAILED" ]] && { warn "game /api/version 失敗"; failed=1; }
-    [[ "$API_VERSION" == "FAILED" ]] && { warn "api /api/version 失敗"; failed=1; }
-    [[ "$PLATFORM_HEALTH" == "FAILED" ]] && { warn "platform /health 失敗"; failed=1; }
-    return $failed
+verify_manifest_artifacts() {
+  [[ "$VERIFY_RELEASE_ARTIFACTS" == true ]] || return 0
+  [[ -n "${GITHUB_REPOSITORY:-}" ]] || die 'GITHUB_REPOSITORY is required for release attestation verification'
+  command -v cosign >/dev/null 2>&1 || die 'cosign is required for release artifact verification'
+  command -v gh >/dev/null 2>&1 || die 'gh is required for release attestation verification'
+  local key ref
+  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE; do
+    ref="${!key}"
+    cosign verify \
+      --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
+      --certificate-oidc-issuer "$COSIGN_OIDC_ISSUER" \
+      "$ref" >/dev/null
+    gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY" >/dev/null
+  done
 }
 
-# 回滾到 :rollback tag 的 image
-perform_rollback() {
-    log "回滾到 :rollback tag 的 image"
-    ssh_run "
-cd $REMOTE_DIR
-TAG=rollback docker compose -f $COMPOSE_FILE up -d 2>&1 | tail -10
-sleep 8
-docker compose -f $COMPOSE_FILE ps
-" || true
+validate_remote_previous_manifest() {
+  local file="$1"
+  ssh_run "cat '$REMOTE_DIR/.release.previous.env'" > "$file" || die 'remote previous release manifest is unreadable'
+  validate_manifest "$file"
+  local migration_file="${PROJECT_DIR}/migrations/${EXPECTED_SCHEMA_MIGRATION}.js"
+  [[ -f "$migration_file" ]] || die "rollback migration file is missing: $migration_file"
+  local actual_checksum
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual_checksum="$(sha256sum "$migration_file" | awk '{print $1}')"
+  else
+    actual_checksum="$(shasum -a 256 "$migration_file" | awk '{print $1}')"
+  fi
+  [[ "$actual_checksum" == "$EXPECTED_SCHEMA_CHECKSUM" ]] || die 'rollback schema checksum is not present in this checkout'
+  verify_manifest_artifacts
 }
 
-# --- Rollback 模式（--rollback flag）---
+confirm_action() {
+  [[ "$CONFIRM" == true ]] || return 0
+  read -r -p "Continue with $1 on $SERVER_HOST? [y/N] " answer
+  [[ "$answer" =~ ^[Yy]$ ]] || die 'cancelled'
+}
+
+copy_release_files() {
+  local source="$1" compose_source="$PROJECT_DIR/$COMPOSE_FILE" retention_compose_source="$PROJECT_DIR/$RETENTION_COMPOSE_FILE"
+  [[ -f "$compose_source" ]] || die "local compose file not found: $compose_source"
+  [[ -f "$retention_compose_source" ]] || die "local retention compose file not found: $retention_compose_source"
+  scp -P "$SERVER_PORT" "$source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.release.env.incoming"
+  scp -P "$SERVER_PORT" "$compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.compose.incoming"
+  scp -P "$SERVER_PORT" "$retention_compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.retention-compose.incoming"
+  scp -P "$SERVER_PORT" "$PROJECT_DIR/scripts/postgres-init-roles.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.postgres-init-roles.incoming"
+}
+
+remote_deploy() {
+  ssh_run "set -euo pipefail;
+    cd '$REMOTE_DIR';
+    test -f .env;
+    getent group '$RETENTION_SERVICE_GROUP' >/dev/null || { echo 'retention service group is missing' >&2; exit 1; };
+    if test -f .release.env; then cp -p .release.env .release.previous.env; chgrp '$RETENTION_SERVICE_GROUP' .release.previous.env; chmod 0640 .release.previous.env; fi;
+    if test -f '$COMPOSE_FILE'; then cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.previous'; fi;
+    if test -f '$RETENTION_COMPOSE_FILE'; then cp -p '$RETENTION_COMPOSE_FILE' '$RETENTION_COMPOSE_FILE.previous'; fi;
+    install -m 0640 .release.env.incoming .release.env;
+    chgrp '$RETENTION_SERVICE_GROUP' .release.env;
+    install -m 0644 .compose.incoming '$COMPOSE_FILE';
+    install -m 0644 .retention-compose.incoming '$RETENTION_COMPOSE_FILE';
+    install -d -m 0755 scripts;
+    install -m 0755 .postgres-init-roles.incoming scripts/postgres-init-roles.sh;
+    rm -f .release.env.incoming .compose.incoming .retention-compose.incoming .postgres-init-roles.incoming;
+    set -a; . ./.release.env; set +a;
+    docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
+    docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' pull --quiet retention;
+    docker compose -f '$COMPOSE_FILE' config --quiet;
+    docker compose -f '$COMPOSE_FILE' pull --quiet;
+    docker compose -f '$COMPOSE_FILE' config --format json | docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate node scripts/verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS;
+    docker compose -f '$COMPOSE_FILE' run --rm migrate;
+    docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout 180;
+    date -u +%Y-%m-%dT%H:%M:%SZ > .release.deployed-at;
+    docker compose -f '$COMPOSE_FILE' ps"
+}
+
+remote_rollback() {
+  ssh_run "set -euo pipefail;
+    cd '$REMOTE_DIR';
+    test -s .release.previous.env || { echo 'no verified previous release manifest' >&2; exit 1; };
+    test -s '$RETENTION_COMPOSE_FILE.previous' || { echo 'no verified previous retention compose file' >&2; exit 1; };
+    getent group '$RETENTION_SERVICE_GROUP' >/dev/null || { echo 'retention service group is missing' >&2; exit 1; };
+    cp -p .release.env .release.failed.env 2>/dev/null || true;
+    cp -p .release.previous.env .release.env;
+    chgrp '$RETENTION_SERVICE_GROUP' .release.env;
+    chmod 0640 .release.env;
+    if test -f '$COMPOSE_FILE.previous'; then cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.failed'; cp -p '$COMPOSE_FILE.previous' '$COMPOSE_FILE'; fi;
+    cp -p '$RETENTION_COMPOSE_FILE' '$RETENTION_COMPOSE_FILE.failed' 2>/dev/null || true;
+    cp -p '$RETENTION_COMPOSE_FILE.previous' '$RETENTION_COMPOSE_FILE';
+    set -a; . ./.release.env; set +a;
+    docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
+    docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' pull --quiet retention;
+    docker compose -f '$COMPOSE_FILE' config --quiet;
+    docker compose -f '$COMPOSE_FILE' pull --quiet;
+    docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout 180;
+    date -u +%Y-%m-%dT%H:%M:%SZ > .release.rolled-back-at;
+    docker compose -f '$COMPOSE_FILE' ps"
+}
+
+run_smoke() {
+  local tunnel_pid status
+  ssh -p "$SERVER_PORT" -o ExitOnForwardFailure=yes -N -T \
+    -L "${SMOKE_LOCAL_GAME_PORT}:127.0.0.1:${GAME_PORT}" \
+    -L "${SMOKE_LOCAL_API_PORT}:127.0.0.1:${API_PORT}" \
+    -L "${SMOKE_LOCAL_PLATFORM_PORT}:127.0.0.1:${PLATFORM_PORT}" \
+    "$SERVER_USER@$SERVER_HOST" &
+  tunnel_pid=$!
+  sleep 2
+  if ! kill -0 "$tunnel_pid" 2>/dev/null; then
+    wait "$tunnel_pid" || true
+    return 1
+  fi
+  set +e
+  node "$SCRIPT_DIR/deploy-smoke.mjs" \
+    --host 127.0.0.1 \
+    --game-port "$SMOKE_LOCAL_GAME_PORT" \
+    --api-port "$SMOKE_LOCAL_API_PORT" \
+    --platform-port "$SMOKE_LOCAL_PLATFORM_PORT" \
+    --expected-build-id "$RELEASE_SHA"
+  status=$?
+  set -e
+  kill "$tunnel_pid" >/dev/null 2>&1 || true
+  wait "$tunnel_pid" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+rollback_and_smoke() {
+  remote_rollback || return 1
+  run_smoke
+}
+
 if [[ "$ROLLBACK" == true ]]; then
-    log "=== ZUTOMAYO Card Online Rollback ==="
-    log "Server: $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
-    log "Remote: $REMOTE_DIR"
-
-    cd "$PROJECT_DIR"
-
-    # SSH 連線
-    if ! ssh_run "echo ok" >/dev/null 2>&1; then
-        err "無法 SSH 到 $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
-        exit 1
-    fi
-    ok "SSH 連線正常"
-
-    # server4 .env 存在
-    if ! ssh_run "test -f $REMOTE_DIR/.env" >/dev/null 2>&1; then
-        err "server4 上 $REMOTE_DIR/.env 不存在,請先建立"
-        exit 1
-    fi
-    ok "server4 .env 存在"
-
-    if [[ "$CONFIRM" == true ]]; then
-        warn "即將回滾 $SERVER_HOST 上的服務到 :rollback image"
-        read -rp "確認繼續? [y/N] " ans
-        [[ "$ans" =~ ^[Yy]$ ]] || { err "取消"; exit 1; }
-    fi
-
-    log ""
-    log "執行 rollback..."
-    run_or_dry perform_rollback
-
-    log ""
-    log "驗證 rollback 結果"
-    echo ""
-    if verify_health; then
-        echo ""
-        echo "================================================================"
-        ok "Rollback 完成 ★ 已恢復上一版 image"
-        echo "  訪問: http://$SERVER_HOST:3000"
-        echo "  API:  http://$SERVER_HOST:3001"
-        echo "  Platform: http://$SERVER_HOST:3002/health"
-        echo "================================================================"
-    else
-        echo ""
-        err "Rollback 後驗證仍失敗，請手動檢查:"
-        err "  ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST 'docker compose -f $COMPOSE_FILE logs --tail=50'"
-        exit 1
-    fi
+  confirm_action 'rollback to the previously verified manifest'
+  if [[ "$DRY_RUN" == true ]]; then
+    log '[dry-run] would restore .release.previous.env and restart the stack'
     exit 0
+  fi
+  previous_manifest="$(mktemp)"
+  trap 'rm -f "$previous_manifest"' EXIT
+  ssh_run "test -s '$REMOTE_DIR/.release.previous.env'" || die 'remote previous release manifest is missing'
+  validate_remote_previous_manifest "$previous_manifest"
+  remote_rollback
+  run_smoke
+  log 'rollback completed'
+  exit 0
 fi
 
-# --- 前置檢查 ---
-log "=== ZUTOMAYO Card Online 部署腳本 ==="
-log "Server: $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
-log "Remote: $REMOTE_DIR"
-
-cd "$PROJECT_DIR"
-
-# 1. 工作樹乾淨
-if ! git diff --quiet HEAD 2>/dev/null; then
-    err "工作樹有未提交變更,請先 commit 或 stash"
-    git status --short
-    exit 1
-fi
-ok "工作樹乾淨"
-
-# 2. 確認已 push 到 origin
-HEAD_SHA=$(git rev-parse HEAD)
-HEAD_SHORT=$(git rev-parse --short HEAD)
-
-# 確認 origin/master = HEAD(都已 push)
-git fetch origin >/dev/null 2>&1 || true
-ORIGIN_SHA=$(git rev-parse origin/master 2>/dev/null || echo "")
-if [[ -n "$ORIGIN_SHA" && "$ORIGIN_SHA" != "$HEAD_SHA" ]]; then
-    err "本地 HEAD ($HEAD_SHORT) 跟 origin/master ($(git rev-parse --short origin/master 2>/dev/null)) 不一致"
-    err "請先 git push origin master 再部署"
-    exit 1
-fi
-ok "目標 commit: $HEAD_SHORT(已 push 到 origin/master)"
-
-# 3. server4 可達
-if ! ssh_run "echo ok" >/dev/null 2>&1; then
-    err "無法 SSH 到 $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
-    exit 1
-fi
-ok "SSH 連線正常"
-
-# 4. server4 .env 存在
-if ! ssh_run "test -f $REMOTE_DIR/.env" >/dev/null 2>&1; then
-    err "server4 上 $REMOTE_DIR/.env 不存在,請先建立"
-    exit 1
-fi
-ok "server4 .env 存在"
-
-# 5. 二次確認
-if [[ "$CONFIRM" == true ]]; then
-    warn "即將部署 commit $HEAD_SHORT 到 $SERVER_HOST"
-    warn "影響容器: zutomayo-card-online-game-1, zutomayo-card-online-api-1, zutomayo-card-online-platform-1"
-    read -rp "確認繼續? [y/N] " ans
-    [[ "$ans" =~ ^[Yy]$ ]] || { err "取消"; exit 1; }
+validate_manifest "$MANIFEST_FILE"
+verify_manifest_artifacts
+confirm_action "deploy $(sed -n 's/^RELEASE_SHA=//p' "$MANIFEST_FILE" | cut -c1-12)"
+if [[ "$DRY_RUN" == true ]]; then
+  log "[dry-run] would upload $MANIFEST_FILE and deploy immutable images"
+  exit 0
 fi
 
-# --- Step 1:備份 ---
-log ""
-log "Step 1/7: 備份 server4 .env 與 $COMPOSE_FILE"
-run_or_dry ssh_run "
-cd $REMOTE_DIR
-TS=\$(date +%Y%m%d%H%M%S)
-cp -p .env .env.bak.\$TS
-cp -p $COMPOSE_FILE $COMPOSE_FILE.bak.\$TS
-ls -la .env.bak.\$TS $COMPOSE_FILE.bak.\$TS
-"
-ok "備份完成"
-
-# --- Step 2:server4 git 對齊 ---
-log ""
-log "Step 2/7: server4 git reset 到 origin/master"
-run_or_dry ssh_run "
-set -e
-cd $REMOTE_DIR
-git config --global --add safe.directory $REMOTE_DIR 2>/dev/null || true
-git fetch origin 2>&1 | tail -3
-
-BEHIND=\$(git rev-list --count HEAD..origin/master 2>/dev/null || echo 0)
-AHEAD=\$(git rev-list --count origin/master..HEAD 2>/dev/null || echo 0)
-echo \"  server4 HEAD 落後 origin/master: \$BEHIND 個 commit\"
-echo \"  server4 HEAD 領先 origin/master: \$AHEAD 個 commit\"
-
-if [[ \$AHEAD -gt 0 ]]; then
-    echo '  ⚠ server4 有未推回 origin 的 commit,將會丟失'
-    git log --oneline origin/master..HEAD
-fi
-
-git reset --hard origin/master
-git log --oneline -3
-"
-ok "git reset 完成"
-
-# --- Step 3:更新 APP_BUILD_ID / APP_VERSION / GAME_RULES_VERSION ---
-# 三個都要從 package.json 跟 HEAD 同步，避免依賴 Docker/Compose 的空值 fallback。
-log ""
-log "Step 3/7: 同步 server4 .env 的版本號(APP_BUILD_ID / APP_VERSION / GAME_RULES_VERSION)"
-PACKAGE_VERSION=$(python3 -c "import json; print(json.load(open('$PROJECT_DIR/package.json'))['version'])")
-run_or_dry ssh_run "
-cd $REMOTE_DIR
-
-# APP_BUILD_ID = commit short SHA(部署時動態填)
-sed -i.bak \"s/^APP_BUILD_ID=.*/APP_BUILD_ID=$HEAD_SHORT/\" .env
-
-# APP_VERSION = package.json version(沒有的話新增)
-if grep -q '^APP_VERSION=' .env; then
-    sed -i 's/^APP_VERSION=.*/APP_VERSION=$PACKAGE_VERSION/' .env
+ssh_run 'echo connected' >/dev/null || die 'SSH connection failed'
+ssh_run "test -d '$REMOTE_DIR' && test -f '$REMOTE_DIR/.env'" || die 'remote deployment directory or .env is missing'
+if ssh_run "test -s '$REMOTE_DIR/.release.previous.env' && test -s '$REMOTE_DIR/$RETENTION_COMPOSE_FILE.previous'"; then
+  HAS_PREVIOUS=true
 else
-    echo 'APP_VERSION=$PACKAGE_VERSION' >> .env
+  HAS_PREVIOUS=false
 fi
-
-# GAME_RULES_VERSION = package.json version(沒有的話新增;rules 改版時手動 bump)
-if grep -q '^GAME_RULES_VERSION=' .env; then
-    sed -i 's/^GAME_RULES_VERSION=.*/GAME_RULES_VERSION=$PACKAGE_VERSION/' .env
-else
-    echo 'GAME_RULES_VERSION=$PACKAGE_VERSION' >> .env
+if [[ "$HAS_PREVIOUS" != true && "$BOOTSTRAP" != true ]]; then
+  die 'no verified previous release is present; use --bootstrap for the one-time cutover with a manual rollback plan'
 fi
-
-grep -E '^(APP_|GAME_RULES)' .env
-"
-ok "版本號已同步"
-
-# --- Step 4:標記現有 image 為 :rollback（供回滾用）---
-log ""
-log "Step 4/7: 標記現有 image 為 :rollback（供回滾用）"
-run_or_dry ssh_run "
-cd $REMOTE_DIR
-for IMG in $GAME_IMAGE $API_IMAGE $PLATFORM_IMAGE; do
-    if docker image inspect \"\${IMG}:latest\" >/dev/null 2>&1; then
-        docker tag \"\${IMG}:latest\" \"\${IMG}:rollback\"
-        echo \"  tagged \${IMG}:rollback\"
-    else
-        echo \"  skip \${IMG} (無 :latest image，首次部署)\"
+copy_release_files "$MANIFEST_FILE"
+if ! remote_deploy; then
+  if [[ "$HAS_PREVIOUS" == true ]]; then
+    log 'remote deployment failed; restoring previous verified release'
+    if ! rollback_and_smoke; then
+      log 'rollback verification failed; manual intervention is required'
     fi
-done
-"
-ok "rollback tag 完成"
-
-# --- Step 5:build ---
-log ""
-log "Step 5/7: docker compose build(可能要 1-3 分鐘)"
-run_or_dry ssh_run "
-cd $REMOTE_DIR
-docker compose -f $COMPOSE_FILE build --progress=plain 2>&1 | tail -20
-"
-ok "build 完成"
-
-# --- Step 6:up -d ---
-log ""
-log "Step 6/7: docker compose up -d"
-run_or_dry ssh_run "
-cd $REMOTE_DIR
-docker compose -f $COMPOSE_FILE up -d 2>&1 | tail -10
-sleep 8
-docker compose -f $COMPOSE_FILE ps
-"
-ok "容器重啟完成"
-
-# --- Step 7:verify + 自動 rollback ---
-log ""
-log "Step 7/7: 驗證部署"
-echo ""
-if verify_health; then
-    VERIFY_OK=true
-else
-    VERIFY_OK=false
+  else
+    log 'bootstrap deployment failed; no automatic rollback is available, manual intervention is required'
+  fi
+  exit 1
 fi
-
-# 驗證 game log 訊息
-if [[ "$DRY_RUN" != true ]]; then
-    GAME_LOG=$(ssh_run "docker logs --tail 10 zutomayo-card-online-game-1" 2>&1)
-    if echo "$GAME_LOG" | grep -q "Loaded 422 cards"; then
-        ok "game 載入 422 張卡成功"
-    else
-        warn "game 載入卡數訊息未見,請檢查 log"
+if ! run_smoke; then
+  if [[ "$HAS_PREVIOUS" == true ]]; then
+    log 'deployment smoke failed; restoring previous verified release'
+    if ! rollback_and_smoke; then
+      log 'rollback verification failed; manual intervention is required'
     fi
-
-    PLATFORM_LOG=$(ssh_run "docker logs --tail 20 zutomayo-card-online-platform-1" 2>&1)
-    if echo "$PLATFORM_LOG" | grep -q "Zutomayo platform server running"; then
-        ok "platform 啟動訊息正常"
-    else
-        warn "platform 啟動訊息未見,請檢查 log"
-    fi
+  else
+    log 'bootstrap smoke failed; no automatic rollback is available, manual intervention is required'
+  fi
+  exit 1
 fi
-
-echo ""
-
-# 驗證失敗 → 自動 rollback
-if [[ "$VERIFY_OK" != true ]]; then
-    err "驗證失敗，啟動自動 rollback..."
-    if [[ "$DRY_RUN" != true ]]; then
-        perform_rollback
-        echo ""
-        log "重新驗證 rollback 結果"
-        echo ""
-        if verify_health; then
-            echo ""
-            echo "================================================================"
-            ok "Rollback 成功 ★ 已恢復上一版 image"
-            echo "  訪問: http://$SERVER_HOST:3000"
-            echo "  API:  http://$SERVER_HOST:3001"
-            echo "  Platform: http://$SERVER_HOST:3002/health"
-            echo "================================================================"
-        else
-            echo ""
-            err "Rollback 後驗證仍失敗，請手動檢查:"
-            err "  ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST 'docker compose -f $COMPOSE_FILE logs --tail=50'"
-        fi
-    else
-        warn "[DRY-RUN] 跳過實際 rollback"
-    fi
-    exit 1
-fi
-
-echo "================================================================"
-ok "部署完成 ★ commit=$HEAD_SHORT"
-echo "  訪問: http://$SERVER_HOST:3000"
-echo "  API:  http://$SERVER_HOST:3001"
-echo "  Platform: http://$SERVER_HOST:3002/health"
-echo "  Domain: https://battle.zutomayocard.online"
-echo "  Rollback: ./scripts/deploy-server4.sh --rollback"
-echo "================================================================"
+log 'deployment completed and smoke checks passed'

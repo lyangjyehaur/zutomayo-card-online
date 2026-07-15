@@ -1,7 +1,8 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { platformLogger as logger } from '../logger';
+import { recordPlatformReconnect } from '../metrics';
 import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
-import { authenticatePlatformClient } from './auth';
+import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   BoardgameMatchReadyMessage,
   CustomRoomMetadata,
@@ -80,7 +81,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     await this.refreshMetadata();
   }
 
-  onAuth(_client: PlatformClient, options: CustomRoomOptions, context: AuthContext): PlatformAuth {
+  async onAuth(_client: PlatformClient, options: CustomRoomOptions, context: AuthContext): Promise<PlatformAuth> {
     if (!this.isJoinableStatus()) {
       throw new Error('Custom room is not joinable');
     }
@@ -90,12 +91,13 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     if (!sameOptionalText(this.boardgameMatchID, options.boardgameMatchID, 128)) {
       throw new Error('Custom room access denied');
     }
-    return authenticatePlatformClient(options, context);
+    return authenticatePlatformClientCurrent(options, context);
   }
 
   async onJoin(client: PlatformClient): Promise<void> {
     const auth = client.auth;
     if (!auth) throw new Error('Missing platform auth');
+    await assertPlatformAuthCurrent(auth);
     const previousHost = this.host;
     const role = this.resolveRole(auth.role, auth.userId, previousHost);
     const profile: PlatformClientProfile = {
@@ -106,7 +108,17 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       joinedAt: Date.now(),
     };
     const isHostReconnect = previousHost?.userId === profile.userId;
+    if (isHostReconnect) recordPlatformReconnect('custom_room');
 
+    if (auth.authenticated && this.boardgameMatchID && CustomRoom.participantStore.authorizeMatchParticipant) {
+      const authorized = await CustomRoom.participantStore.authorizeMatchParticipant({
+        boardgameMatchID: this.boardgameMatchID,
+        userId: profile.userId,
+        role: 'spectator',
+        displayName: profile.displayName,
+      });
+      if (!authorized) throw new Error('Custom room access denied');
+    }
     await this.recordRoomParticipant(profile, auth.authenticated);
 
     client.userData = profile;
@@ -192,12 +204,21 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
   private async recordRoomParticipant(profile: PlatformClientProfile, authenticated: boolean): Promise<void> {
     if (!authenticated) return;
     try {
-      await CustomRoom.participantStore.recordRoomParticipant({
+      const input = {
         roomCode: this.roomCode,
         userId: profile.userId,
         role: profile.role,
         displayName: profile.displayName,
-      });
+      };
+      // Reaching onJoin means Colyseus admitted this client to this exact
+      // live room instance. Only the durable Postgres store consumes the
+      // verification marker; lightweight test/dev stores retain the legacy
+      // input shape.
+      if (CustomRoom.participantStore.authorizeMatchParticipant) {
+        await CustomRoom.participantStore.recordRoomParticipant({ ...input, accessVerified: true });
+      } else {
+        await CustomRoom.participantStore.recordRoomParticipant(input);
+      }
     } catch (err) {
       logger.warn({ err, roomCode: this.roomCode, userId: profile.userId }, 'failed to record custom-room participant');
       throw err;

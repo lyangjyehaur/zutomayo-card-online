@@ -1,5 +1,5 @@
 /* global module, require, process, URL */
-/* eslint-disable @typescript-eslint/no-require-imports */
+ 
 const pino = require('pino');
 const promClient = require('prom-client');
 const crypto = require('crypto');
@@ -36,6 +36,69 @@ const rateLimitedTotal = new promClient.Counter({
   labelNames: ['pathname'],
   registers: [register],
 });
+
+const matchmakingQueueDepth = new promClient.Gauge({
+  name: 'matchmaking_queue_depth',
+  help: 'Current number of users in the Redis matchmaking sorted set',
+  registers: [register],
+});
+
+const matchmakingQueueMetricFailuresTotal = new promClient.Counter({
+  name: 'matchmaking_queue_metric_failures_total',
+  help: 'Failed attempts to read the Redis matchmaking queue depth',
+  registers: [register],
+});
+
+const relationshipOutboxPending = new promClient.Gauge({
+  name: 'relationship_change_outbox_pending',
+  help: 'Relationship/account revocation events waiting for delivery',
+  registers: [register],
+});
+
+const relationshipOutboxDeadLetter = new promClient.Gauge({
+  name: 'relationship_change_outbox_dead_letter',
+  help: 'Relationship/account revocation events that exhausted retries',
+  registers: [register],
+});
+
+const relationshipOutboxOldestAgeSeconds = new promClient.Gauge({
+  name: 'relationship_change_outbox_oldest_age_seconds',
+  help: 'Age of the oldest undelivered relationship/account revocation event',
+  registers: [register],
+});
+
+const relationshipOutboxProcessedTotal = new promClient.Counter({
+  name: 'relationship_change_outbox_processed_total',
+  help: 'Relationship/account revocation outbox delivery results',
+  labelNames: ['result'],
+  registers: [register],
+});
+
+const relationshipOutboxMetricsRefreshSuccess = new promClient.Gauge({
+  name: 'relationship_change_outbox_metrics_refresh_success',
+  help: 'Whether the latest relationship outbox PostgreSQL metrics refresh succeeded',
+  registers: [register],
+});
+
+const relationshipOutboxMetricsLastSuccess = new promClient.Gauge({
+  name: 'relationship_change_outbox_metrics_last_success_unixtime_seconds',
+  help: 'Unix timestamp of the latest successful relationship outbox metrics refresh',
+  registers: [register],
+});
+
+async function refreshMatchmakingQueueDepth(redis) {
+  if (!redis || typeof redis.zcard !== 'function') return;
+  try {
+    const depth = Number(await redis.zcard('mm:queue'));
+    if (!Number.isFinite(depth)) throw new Error('Redis returned a non-numeric queue depth');
+    matchmakingQueueDepth.set(Math.max(0, depth));
+  } catch (error) {
+    // Do not leave an old depth sample looking healthy while Redis is down.
+    matchmakingQueueDepth.set(Number.NaN);
+    matchmakingQueueMetricFailuresTotal.inc();
+    throw error;
+  }
+}
 
 function normalizePath(path) {
   return path
@@ -77,9 +140,9 @@ function attachRequestObservability(req, res) {
   return { log, requestId };
 }
 
-function metricsResponse(res) {
+async function metricsResponse(res) {
   res.writeHead(200, { 'Content-Type': register.contentType });
-  res.end(register.metrics());
+  res.end(await register.metrics());
 }
 
 module.exports = {
@@ -87,7 +150,16 @@ module.exports = {
   register,
   httpRequestDuration,
   httpRequestsTotal,
+  matchmakingQueueDepth,
+  matchmakingQueueMetricFailuresTotal,
+  relationshipOutboxPending,
+  relationshipOutboxDeadLetter,
+  relationshipOutboxOldestAgeSeconds,
+  relationshipOutboxProcessedTotal,
+  relationshipOutboxMetricsRefreshSuccess,
+  relationshipOutboxMetricsLastSuccess,
   rateLimitedTotal,
+  refreshMatchmakingQueueDepth,
   attachRequestObservability,
   metricsResponse,
 };

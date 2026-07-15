@@ -2,6 +2,7 @@
 
 import ws from 'k6/ws';
 import { check } from 'k6';
+import { Rate } from 'k6/metrics';
 
 // WebSocket 負載測試：對 game server（boardgame.io + socket.io）的 WebSocket 連線進行壓力測試。
 //
@@ -15,14 +16,20 @@ import { check } from 'k6';
 // 注意：game server 預設 MAX_CONN_PER_IP=10，從單一 IP 建立超過此數量的連線會被立即 disconnect。
 // 進行 200/500 並發測試時請提高 MAX_CONN_PER_IP，或從多個來源 IP 分散連線。
 
+const targetConnections = Number(__ENV.WS_TARGET_CONNECTIONS || 200);
+const rampDuration = __ENV.WS_RAMP_DURATION || '30s';
+const soakDuration = __ENV.WS_SOAK_DURATION || '60s';
+const connectSuccess = new Rate('ws_connect_success');
+
 export const options = {
   stages: [
-    { duration: '30s', target: 50 }, // 爬升到 50 條並發連線
-    { duration: '60s', target: 200 }, // 維持 200 條並發連線 60 秒
-    { duration: '30s', target: 0 }, // 降至 0
+    { duration: rampDuration, target: targetConnections },
+    { duration: soakDuration, target: targetConnections },
+    { duration: rampDuration, target: 0 },
   ],
   thresholds: {
     ws_connecting: ['p(95)<2000'],
+    ws_connect_success: ['rate>0.99'],
     ws_msgs_received: ['count>0'],
   },
 };
@@ -59,7 +66,8 @@ export default function () {
     });
   });
 
-  check(res, {
+  const connected = check(res, {
     'ws connected': (r) => r && r.status === 101,
   });
+  connectSuccess.add(connected);
 }

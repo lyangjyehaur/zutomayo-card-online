@@ -1,5 +1,7 @@
 # Release Candidate Design Review
 
+> 歷史快照：此文件早於 `codex/p0-p5-production` 的 auth、Feedback semantics、modal focus 與 E2E 修補，不能直接代表 2026-07-13 的當前狀態。保留問題清單作回歸範圍；public beta 決策必須以當前分支的 service-backed E2E、axe、360/390px 視覺 QA 與真實 mobile 操作重跑後更新。
+
 ## Executive Summary
 
 目前版本已具備可玩的核心內容，但以「明天公開 Beta」標準看仍 **NOT READY**：新玩家的線上配對入口存在登入死路，Battle 行動/資訊層級仍偏高負荷，且可訪問性與 legacy UI 債務尚不足以支撐公開玩家流量。

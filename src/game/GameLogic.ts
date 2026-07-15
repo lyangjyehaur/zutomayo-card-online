@@ -1264,6 +1264,14 @@ export function endGame(G: GameState, winner: PlayerIndex | null, reason: string
   recordGameOverTrace(G);
 }
 
+export function surrenderGame(G: GameState, player: PlayerIndex): boolean {
+  if (G.step === 'gameOver') return false;
+  const winner = (1 - player) as PlayerIndex;
+  recordAction(G, player, 'surrender', { winner }, { result: { ok: true, message: `Player ${player} surrendered.` } });
+  endGame(G, winner, `Player ${player} surrendered.`);
+  return true;
+}
+
 function characterElementPlayedThisTurn(G: GameState, player: PlayerIndex): Element | null {
   for (const card of G.setCardsThisTurn[player]) {
     const def = getCardDef(card.defId);

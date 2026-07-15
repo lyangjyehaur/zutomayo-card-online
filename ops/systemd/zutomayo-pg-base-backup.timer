@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Zutomayo encrypted PostgreSQL physical base backup
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00 UTC
+RandomizedDelaySec=30m
+Persistent=true
+Unit=zutomayo-pg-base-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -3,11 +3,15 @@ import {
   buildMatchHistoryChatPath,
   getMatchRecords,
   historyChatSubjectId,
+  linkMatchRecordToServer,
+  matchRecordFromServer,
+  mergeMatchRecords,
   resolveInitialHistoryChatRecord,
   saveMatchRecord,
   type MatchRecord,
 } from '../matchHistory';
 import type { GameState } from '../types';
+import { APP_VERSION_INFO } from '../../version';
 
 const storage = new Map<string, string>();
 
@@ -51,6 +55,7 @@ describe('match history', () => {
     expect(getMatchRecords()[0]).toEqual(
       expect.objectContaining({
         sourceMatchId: 'bgio-match-1',
+        rulesVersion: APP_VERSION_INFO.rulesVersion,
         turns: 4,
       }),
     );
@@ -69,6 +74,73 @@ describe('match history', () => {
       winner: 0,
       duration: 65,
     });
+  });
+
+  it('links a local result to its server match id after submission', () => {
+    saveMatchRecord(gameState(), 0, 65, 'room-1', 'room-1-result');
+
+    linkMatchRecordToServer('room-1-result', 'server-match-1');
+
+    expect(getMatchRecords()[0]).toMatchObject({
+      id: 'room-1-result',
+      serverMatchId: 'server-match-1',
+    });
+  });
+
+  it('maps server history from the signed-in account perspective', () => {
+    const victory = matchRecordFromServer(
+      {
+        id: 'server-match-1',
+        winnerId: 'user-1',
+        loserId: 'user-2',
+        sourceMatchId: 'bgio-match-1',
+        rulesVersion: 'rules-2026-01',
+        turns: 7,
+        duration: 93,
+        createdAt: '2026-07-12T08:00:00.000Z',
+      },
+      'user-1',
+    );
+    const defeat = matchRecordFromServer(
+      {
+        id: 'server-match-2',
+        winnerId: 'user-2',
+        loserId: 'user-1',
+        turns: 8,
+        duration: 101,
+        createdAt: '2026-07-12T09:00:00.000Z',
+      },
+      'user-1',
+    );
+
+    expect(victory).toMatchObject({
+      serverMatchId: 'server-match-1',
+      sourceMatchId: 'bgio-match-1',
+      rulesVersion: 'rules-2026-01',
+      outcome: 'victory',
+      detailsAvailable: false,
+      turns: 7,
+    });
+    expect(defeat).toMatchObject({ serverMatchId: 'server-match-2', outcome: 'defeat' });
+  });
+
+  it('prefers server records and deduplicates linked local results', () => {
+    saveMatchRecord(gameState(), 0, 65, 'room-1', 'room-1-result');
+    linkMatchRecordToServer('room-1-result', 'server-match-1');
+    const local = getMatchRecords();
+    const server = matchRecordFromServer(
+      {
+        id: 'server-match-1',
+        winnerId: 'user-1',
+        loserId: 'user-2',
+        turns: 4,
+        duration: 65,
+        createdAt: '2026-07-12T08:00:00.000Z',
+      },
+      'user-1',
+    );
+
+    expect(mergeMatchRecords([server], local)).toEqual([server]);
   });
 
   it('uses only the durable online source match id for post-match chat lookup', () => {

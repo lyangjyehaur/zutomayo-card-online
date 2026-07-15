@@ -43,6 +43,36 @@ describe('schema migrations', () => {
       expect(initSchema, `initSchema fallback missing ${artifact}`).toContain(artifact);
       expect(migrations, `migrations missing ${artifact}`).toContain(artifact);
     }
+
+    for (const artifact of ['bjg_matches', 'bjg_match_seats', 'bjg_match_result_outbox']) {
+      expect(migrations, `migrations missing game trust-chain table ${artifact}`).toContain(artifact);
+    }
+    expect(migrations).toContain('rules_version');
+    for (const artifact of [
+      'completed_at',
+      'settling_at',
+      'season_reward_entitlements',
+      'uq_season_match_results_source',
+      'action_log_purged_at',
+      'anonymized_at',
+      'retention_anonymized_at',
+      'legal_hold_objects',
+      'account_deletion_requests',
+      'provider_deleting',
+      'provider_deleted',
+      'relationship_change_outbox',
+      'dead_letter',
+    ]) {
+      expect(migrations, `migrations missing season consistency artifact ${artifact}`).toContain(artifact);
+    }
+    expect(initSchema).toContain("rules_version TEXT NOT NULL DEFAULT 'legacy'");
+    expect(initSchema, 'initSchema fallback missing verified chat membership column').toContain('access_verified');
+  });
+
+  it('backfills the reward entitlement ledger for every existing grant', () => {
+    const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
+    expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');
+    expect(consistencyMigration).not.toContain('WHERE claimed_at IS NOT NULL');
   });
 
   it('keeps official and localized card text schema aligned with initSchema fallback', () => {

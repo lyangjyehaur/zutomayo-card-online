@@ -1,9 +1,30 @@
 /* global module */
 
+const { AccountMutationError, acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
+const { enqueueRelationshipChange } = require('./relationshipOutbox.cjs');
+
 function normalizeUserId(value) {
   if (typeof value !== 'string') return '';
   const userId = value.trim().slice(0, 128);
   return /^[a-zA-Z0-9:_-]{3,128}$/.test(userId) ? userId : '';
+}
+
+async function withRelationshipTransaction(pool, userIds, operation) {
+  const client = typeof pool.connect === 'function' ? await pool.connect() : pool;
+  const release = typeof client.release === 'function' ? () => client.release() : () => undefined;
+  try {
+    await client.query('BEGIN');
+    await acquireAccountMutationLocks(client, userIds);
+    const result = await operation(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    if (error instanceof AccountMutationError) return { ok: false, status: 404, error: 'User not found' };
+    throw error;
+  } finally {
+    release();
+  }
 }
 
 function mapFriend(row) {
@@ -39,16 +60,23 @@ async function addFriend({ pool, userId, body }) {
     return { ok: false, status: 400, error: 'Invalid friend user' };
   }
 
-  const friend = (await pool.query('SELECT id FROM users WHERE id = $1', [friendUserId])).rows[0];
-  if (!friend) return { ok: false, status: 404, error: 'User not found' };
-
-  await pool.query(
-    `INSERT INTO user_friends (user_id, friend_user_id)
-     VALUES ($1, $2), ($2, $1)
-     ON CONFLICT (user_id, friend_user_id) DO NOTHING`,
-    [cleanUserId, friendUserId],
-  );
-  return { ok: true, body: { ok: true, friendUserId } };
+  return withRelationshipTransaction(pool, [cleanUserId, friendUserId], async (client) => {
+    const inserted = await client.query(
+      `INSERT INTO user_friends (user_id, friend_user_id)
+       VALUES ($1, $2), ($2, $1)
+       ON CONFLICT (user_id, friend_user_id) DO NOTHING
+       RETURNING created_at`,
+      [cleanUserId, friendUserId],
+    );
+    if (inserted.rows[0]) {
+      await enqueueRelationshipChange(client, 'friendship_added', [cleanUserId, friendUserId], {
+        idempotencyKey: `friendship_added:${cleanUserId}:${friendUserId}:${new Date(
+          inserted.rows[0].created_at,
+        ).toISOString()}`,
+      });
+    }
+    return { ok: true, body: { ok: true, friendUserId } };
+  });
 }
 
 async function removeFriend({ pool, userId, friendUserId }) {
@@ -58,13 +86,23 @@ async function removeFriend({ pool, userId, friendUserId }) {
   if (!cleanFriendUserId || cleanFriendUserId === cleanUserId) {
     return { ok: false, status: 400, error: 'Invalid friend user' };
   }
-  await pool.query(
-    `DELETE FROM user_friends
-     WHERE (user_id = $1 AND friend_user_id = $2)
-        OR (user_id = $2 AND friend_user_id = $1)`,
-    [cleanUserId, cleanFriendUserId],
-  );
-  return { ok: true, body: { ok: true } };
+  return withRelationshipTransaction(pool, [cleanUserId, cleanFriendUserId], async (client) => {
+    const removed = await client.query(
+      `DELETE FROM user_friends
+       WHERE (user_id = $1 AND friend_user_id = $2)
+          OR (user_id = $2 AND friend_user_id = $1)
+       RETURNING created_at`,
+      [cleanUserId, cleanFriendUserId],
+    );
+    if (removed.rows[0]) {
+      await enqueueRelationshipChange(client, 'friendship_removed', [cleanUserId, cleanFriendUserId], {
+        idempotencyKey: `friendship_removed:${cleanUserId}:${cleanFriendUserId}:${new Date(
+          removed.rows[0].created_at,
+        ).toISOString()}`,
+      });
+    }
+    return { ok: true, body: { ok: true } };
+  });
 }
 
 module.exports = {

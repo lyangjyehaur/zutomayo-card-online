@@ -10,7 +10,7 @@ function clampOffset(value) {
 }
 
 function mapMatchRow(match) {
-  return {
+  const mapped = {
     id: match.id,
     winnerId: match.winner_id,
     loserId: match.loser_id,
@@ -22,25 +22,34 @@ function mapMatchRow(match) {
     duration: match.duration_seconds,
     createdAt: match.created_at,
   };
+  // Preserve the authoritative boardgame id for history/chat correlation.
+  // Keep the field omitted for pre-migration rows so legacy API consumers that
+  // compare exact shapes remain compatible.
+  if (match.source_match_id !== undefined) mapped.sourceMatchId = match.source_match_id || null;
+  if (match.rules_version !== undefined) mapped.rulesVersion = match.rules_version || 'legacy';
+  return mapped;
 }
 
 async function getMatchActionLog(pool, matchId, sanitizeActionLog, userId) {
   const match = (
-    await pool.query('SELECT id, action_log FROM matches WHERE id = $1 AND (player0_id = $2 OR player1_id = $2)', [
-      matchId,
-      userId,
-    ])
+    await pool.query(
+      'SELECT id, rules_version, action_log FROM matches WHERE id = $1 AND (player0_id = $2 OR player1_id = $2)',
+      [matchId, userId],
+    )
   ).rows[0];
   if (!match) return { ok: false, status: 403, error: 'Forbidden' };
   const actionLog = Array.isArray(match.action_log) ? match.action_log : [];
-  return { ok: true, body: { matchId: match.id, actionLog: sanitizeActionLog(actionLog) } };
+  return {
+    ok: true,
+    body: { matchId: match.id, rulesVersion: match.rules_version || 'legacy', actionLog: sanitizeActionLog(actionLog) },
+  };
 }
 
 async function getLeaderboard(pool, limitParam, sanitizeText) {
   const limit = clampLimit(limitParam, 100, 500);
   const entries = (
     await pool.query(
-      'SELECT id, nickname, elo, match_count, wins FROM users WHERE match_count > 0 ORDER BY elo DESC LIMIT $1',
+      'SELECT id, nickname, elo, match_count, wins FROM users WHERE deleted_at IS NULL AND match_count > 0 ORDER BY elo DESC LIMIT $1',
       [limit],
     )
   ).rows;

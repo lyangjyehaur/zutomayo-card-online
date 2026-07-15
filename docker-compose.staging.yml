@@ -2,133 +2,222 @@
 #
 # 與 docker-compose.server4.yml 的差異：
 #   - 使用 GHCR 預建 image（game / api / platform），不在 server 上 build
-#   - 獨立的 PostgreSQL database（zutomayo_staging）與 Redis DB index（3）
+#   - 使用外部 PostgreSQL（verify-full + CA secret）與 Redis（rediss + ACL/password）
 #   - port 映射避開 production：4000（game）/ 4001（api）/ 4002（platform）
-#   - 自帶 postgres / redis 容器，可獨立運行（不依賴 1panel-network）
 #
 # 使用方式：
-#   TAG=staging docker compose -f docker-compose.staging.yml up -d
-#   TAG=<commit-sha> docker compose -f docker-compose.staging.yml up -d
+#   GAME_IMAGE=ghcr.io/...@sha256:... API_IMAGE=... docker compose -f docker-compose.staging.yml up -d
 #
 # 環境變數：
-#   PG_PASSWORD, JWT_SECRET 等必填變數請透過 .env 提供（見 .env.example）。
+#   PG_HOST/PG_DATABASE/PGSSLMODE/PG_CA_SECRET_NAME、REDIS_URL 等必填變數請透過 .env 提供。
 #   GHCR_OWNER 可覆寫（fork 部署用），預設 lyangjyehaur。
-#   TAG 控制要拉取的 image tag，預設 staging。
+#   四個 *_IMAGE 必須是 CD 產出的、已驗證簽章與 provenance 的完整 digest。
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: ${PG_USER:-zutomayo}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:?Set PG_PASSWORD in your environment or .env file}
-      POSTGRES_DB: zutomayo_staging
-    volumes:
-      - pg-staging-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${PG_USER:-zutomayo} -d zutomayo_staging']
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    command:
-      [
-        'redis-server',
-        '--appendonly',
-        'yes',
-        '--maxmemory-policy',
-        'allkeys-lru',
-        '--requirepass',
-        '${REDIS_PASSWORD:-}',
-      ]
-    volumes:
-      - redis-staging-data:/data
-    healthcheck:
-      test: ['CMD-SHELL', 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping 2>/dev/null || redis-cli ping']
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
   migrate:
-    # migrate 需要 builder stage（含 devDependencies / node-pg-migrate），
-    # 因此仍在 server 上 build；其餘 app 服務一律使用 GHCR 預建 image。
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: builder
-    command: ['npm', 'run', 'db:migrate']
+    image: ${MIGRATE_IMAGE:?Set MIGRATE_IMAGE to a verified @sha256 digest}
+    command: ['npm', 'run', 'db:migrate:release']
     env_file: .env
     environment:
-      - PG_HOST=postgres
-      - PG_PORT=5432
-      - PG_DATABASE=zutomayo_staging
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - PG_HOST=${PG_HOST:?Set external staging PostgreSQL PG_HOST}
+      - PG_PORT=${PG_PORT:-5432}
+      - PG_USER=${PG_MIGRATION_USER:?Set PG_MIGRATION_USER in your environment or .env file}
+      - PG_PASSWORD=${PG_MIGRATION_PASSWORD:?Set PG_MIGRATION_PASSWORD in your environment or .env file}
+      - PG_DATABASE=${PG_DATABASE:?Set external staging PG_DATABASE}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for external staging PostgreSQL}
+      - PGSSLROOTCERT=/run/secrets/postgres_ca
+      - NODE_EXTRA_CA_CERTS=/run/secrets/postgres_ca
+      - PG_MIGRATION_PASSWORD=${PG_MIGRATION_PASSWORD:?Set PG_MIGRATION_PASSWORD in your environment or .env file}
+      - PG_APP_PASSWORD=
+      - PG_API_PASSWORD=
+      - PG_GAME_PASSWORD=
+      - PG_PLATFORM_PASSWORD=
+      - PG_RETENTION_PASSWORD=
+      - PG_MONITOR_PASSWORD=
+      - PG_BACKUP_PASSWORD=
+      - PG_WAL_PASSWORD=
+      - PG_APP_USER=${PG_APP_USER:?Set PG_APP_USER in your environment or .env file}
+      - PG_API_USER=${PG_API_USER:?Set PG_API_USER in your environment or .env file}
+      - PG_GAME_USER=${PG_GAME_USER:?Set PG_GAME_USER in your environment or .env file}
+      - PG_PLATFORM_USER=${PG_PLATFORM_USER:?Set PG_PLATFORM_USER in your environment or .env file}
+      - PG_RETENTION_USER=${PG_RETENTION_USER:?Set PG_RETENTION_USER in your environment or .env file}
+      - PG_MONITOR_USER=${PG_MONITOR_USER:?Set PG_MONITOR_USER in your environment or .env file}
+      - PG_BACKUP_USER=${PG_BACKUP_USER:?Set PG_BACKUP_USER in your environment or .env file}
+      - PG_WAL_USER=${PG_WAL_USER:?Set PG_WAL_USER in your environment or .env file}
+      - REQUIRE_APP_ROLE_GATE=true
+      - REQUIRE_ROLE_MATRIX_GATE=true
+      - REQUIRE_DISTINCT_DB_ROLES=true
+      - DATABASE_URL=
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
+    secrets:
+      - postgres_ca
     restart: 'no'
 
   game:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-game:${TAG:-staging}
+    image: ${GAME_IMAGE:?Set GAME_IMAGE to a verified @sha256 digest}
     ports:
       - '4000:3000'
     env_file: .env
+    secrets:
+      - postgres_ca
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
-      - PG_HOST=postgres
-      - PG_PORT=5432
-      - PG_DATABASE=zutomayo_staging
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
-      - REDIS_DB=3
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
+      - PG_HOST=${PG_HOST:?Set external staging PostgreSQL PG_HOST}
+      - PG_PORT=${PG_PORT:-5432}
+      - PG_USER=${PG_GAME_USER:?Set PG_GAME_USER in your environment or .env file}
+      - PG_PASSWORD=${PG_GAME_PASSWORD:?Set PG_GAME_PASSWORD in your environment or .env file}
+      - PG_DATABASE=${PG_DATABASE:?Set external staging PG_DATABASE}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for external staging PostgreSQL}
+      - PGSSLROOTCERT=/run/secrets/postgres_ca
+      - NODE_EXTRA_CA_CERTS=/run/secrets/postgres_ca
+      - PG_MIGRATION_PASSWORD=
+      - PG_APP_PASSWORD=
+      - PG_API_PASSWORD=
+      - PG_GAME_PASSWORD=${PG_GAME_PASSWORD:?Set PG_GAME_PASSWORD in your environment or .env file}
+      - PG_PLATFORM_PASSWORD=
+      - PG_RETENTION_PASSWORD=
+      - PG_MONITOR_PASSWORD=
+      - PG_BACKUP_PASSWORD=
+      - PG_WAL_PASSWORD=
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
+      - REDIS_URL=${REDIS_URL:?Set REDIS_URL=rediss://... for external staging Redis}
+      - REDIS_DB=${STAGING_REDIS_DB:-3}
       - API_URL=${API_URL:-http://api:3001}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in your environment or .env file}
       - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-staging}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-zutomayo-game-staging}
+      - OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=staging}
+      - PG_POOL_MAX=${PG_POOL_MAX:-20}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MAX_CONN_PER_IP=${MAX_CONN_PER_IP:-10}
+      - AUTH_REVOCATION_TIMEOUT_MS=${AUTH_REVOCATION_TIMEOUT_MS:-750}
+      - GAME_AUTH_DB_QUERY_TIMEOUT_MS=${GAME_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
+      - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
+      - GAME_DRAIN_GRACE_MS=${GAME_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/health || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   api:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-api:${TAG:-staging}
+    image: ${API_IMAGE:?Set API_IMAGE to a verified @sha256 digest}
     ports:
       - '4001:3001'
     env_file: .env
+    secrets:
+      - postgres_ca
     environment:
       - API_PORT=3001
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
-      - PG_HOST=postgres
-      - PG_PORT=5432
-      - PG_DATABASE=zutomayo_staging
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
-      - REDIS_DB=3
+      - NODE_ENV=production
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
+      - PG_HOST=${PG_HOST:?Set external staging PostgreSQL PG_HOST}
+      - PG_PORT=${PG_PORT:-5432}
+      - PG_USER=${PG_API_USER:?Set PG_API_USER in your environment or .env file}
+      - PG_PASSWORD=${PG_API_PASSWORD:?Set PG_API_PASSWORD in your environment or .env file}
+      - PG_DATABASE=${PG_DATABASE:?Set external staging PG_DATABASE}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for external staging PostgreSQL}
+      - PGSSLROOTCERT=/run/secrets/postgres_ca
+      - NODE_EXTRA_CA_CERTS=/run/secrets/postgres_ca
+      - PG_MIGRATION_PASSWORD=
+      - PG_APP_PASSWORD=
+      - PG_API_PASSWORD=${PG_API_PASSWORD:?Set PG_API_PASSWORD in your environment or .env file}
+      - PG_GAME_PASSWORD=
+      - PG_PLATFORM_PASSWORD=
+      - PG_RETENTION_PASSWORD=
+      - PG_MONITOR_PASSWORD=
+      - PG_BACKUP_PASSWORD=
+      - PG_WAL_PASSWORD=
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
+      - REDIS_URL=${REDIS_URL:?Set REDIS_URL=rediss://... for external staging Redis}
+      - REDIS_DB=${STAGING_REDIS_DB:-3}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in your environment or .env file}
+      - AUTH_MODE=${AUTH_MODE:-hybrid}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      - TURNSTILE_REQUIRED=${TURNSTILE_REQUIRED:-false}
+      - TURNSTILE_SITEVERIFY_URL=${TURNSTILE_SITEVERIFY_URL:-https://challenges.cloudflare.com/turnstile/v0/siteverify}
+      - OAUTH_TOKEN_ENCRYPTION_KEY=${OAUTH_TOKEN_ENCRYPTION_KEY:-}
+      - OAUTH_PUBLIC_BASE_URL=${OAUTH_PUBLIC_BASE_URL:-}
+      - ACCESS_TOKEN_TTL_SECONDS=${ACCESS_TOKEN_TTL_SECONDS:-3600}
+      - REFRESH_TOKEN_TTL_SECONDS=${REFRESH_TOKEN_TTL_SECONDS:-604800}
+      - AUTH_COOKIE_DOMAIN=${AUTH_COOKIE_DOMAIN:-}
+      - AUTH_COOKIE_SAMESITE=${AUTH_COOKIE_SAMESITE:-Lax}
+      - ADMIN_TOTP_ENCRYPTION_KEY=${ADMIN_TOTP_ENCRYPTION_KEY:-}
+      - ADMIN_SESSION_TTL_SECONDS=${ADMIN_SESSION_TTL_SECONDS:-3600}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - ACCOUNT_EMAIL_WEBHOOK_URL=${ACCOUNT_EMAIL_WEBHOOK_URL:-}
+      - ACCOUNT_EMAIL_WEBHOOK_SECRET=${ACCOUNT_EMAIL_WEBHOOK_SECRET:-}
+      - LOGTO_ENDPOINT=${LOGTO_ENDPOINT:-}
+      - LOGTO_ISSUER=${LOGTO_ISSUER:-}
+      - LOGTO_DISCOVERY_URL=${LOGTO_DISCOVERY_URL:-}
+      - LOGTO_APP_ID=${LOGTO_APP_ID:-}
+      - LOGTO_APP_SECRET=${LOGTO_APP_SECRET:-}
+      - LOGTO_OAUTH_SCOPE=${LOGTO_OAUTH_SCOPE:-openid profile email}
+      - LOGTO_M2M_APP_ID=${LOGTO_M2M_APP_ID:-}
+      - LOGTO_M2M_APP_SECRET=${LOGTO_M2M_APP_SECRET:-}
+      - LOGTO_MANAGEMENT_RESOURCE=${LOGTO_MANAGEMENT_RESOURCE:-}
+      - LOGTO_MANAGEMENT_SCOPE=${LOGTO_MANAGEMENT_SCOPE:-}
+      - LOGTO_ACCOUNT_CENTER_URL=${LOGTO_ACCOUNT_CENTER_URL:-}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      - GITHUB_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID:-}
+      - GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET:-}
+      - DISCORD_OAUTH_CLIENT_ID=${DISCORD_OAUTH_CLIENT_ID:-}
+      - DISCORD_OAUTH_CLIENT_SECRET=${DISCORD_OAUTH_CLIENT_SECRET:-}
+      - ACCOUNT_DELETION_RECOVERY_INTERVAL_MS=${ACCOUNT_DELETION_RECOVERY_INTERVAL_MS:-60000}
+      - ACCOUNT_EXPORT_MAX_BYTES=${ACCOUNT_EXPORT_MAX_BYTES:-8388608}
+      - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - IMGPROXY_INTERNAL_BASE_URL=${IMGPROXY_INTERNAL_BASE_URL:-}
       - IMGPROXY_KEY=${IMGPROXY_KEY:-}
       - IMGPROXY_SALT=${IMGPROXY_SALT:-}
       - IMGPROXY_ALLOWED_SOURCES=${IMGPROXY_ALLOWED_SOURCES:-https://r2.dan.tw/cards/}
       - IMGPROXY_CACHE_CONTROL=${IMGPROXY_CACHE_CONTROL:-public, max-age=31536000, immutable}
       - RATE_LIMIT_IMGPROXY=${RATE_LIMIT_IMGPROXY:-600}
+      - CHAT_BLOCKED_WORDS=${CHAT_BLOCKED_WORDS:-}
+      - CHAT_REVIEW_WORDS=${CHAT_REVIEW_WORDS:-}
+      - CHAT_TRANSLATION_ENDPOINT=${CHAT_TRANSLATION_ENDPOINT:-}
+      - CHAT_TRANSLATION_API_KEY=${CHAT_TRANSLATION_API_KEY:-}
+      - CHAT_TRANSLATION_PROVIDER=${CHAT_TRANSLATION_PROVIDER:-}
+      - CHAT_TRANSLATION_MODEL=${CHAT_TRANSLATION_MODEL:-}
+      - CHAT_TRANSLATION_TIMEOUT_MS=${CHAT_TRANSLATION_TIMEOUT_MS:-10000}
       - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-staging}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-zutomayo-api-staging}
+      - OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=staging}
+      - PG_POOL_MAX=${PG_POOL_MAX:-20}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     healthcheck:
@@ -137,35 +226,75 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
   platform:
-    image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-platform:${TAG:-staging}
+    image: ${PLATFORM_IMAGE:?Set PLATFORM_IMAGE to a verified @sha256 digest}
     command: ['npm', 'run', 'platform']
     ports:
       - '4002:3002'
     env_file: .env
+    secrets:
+      - postgres_ca
     environment:
       - PLATFORM_PORT=3002
       - NODE_ENV=production
-      - APP_VERSION=${APP_VERSION:-}
-      - APP_BUILD_ID=${APP_BUILD_ID:-}
-      - GAME_RULES_VERSION=${GAME_RULES_VERSION:-}
-      - PG_HOST=postgres
-      - PG_PORT=5432
-      - PG_DATABASE=zutomayo_staging
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-}@redis:6379
-      - REDIS_DB=3
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
+      - PG_HOST=${PG_HOST:?Set external staging PostgreSQL PG_HOST}
+      - PG_PORT=${PG_PORT:-5432}
+      - PG_USER=${PG_PLATFORM_USER:?Set PG_PLATFORM_USER in your environment or .env file}
+      - PG_PASSWORD=${PG_PLATFORM_PASSWORD:?Set PG_PLATFORM_PASSWORD in your environment or .env file}
+      - PG_DATABASE=${PG_DATABASE:?Set external staging PG_DATABASE}
+      - PGSSLMODE=${PGSSLMODE:?Set PGSSLMODE=verify-full for external staging PostgreSQL}
+      - PGSSLROOTCERT=/run/secrets/postgres_ca
+      - NODE_EXTRA_CA_CERTS=/run/secrets/postgres_ca
+      - PG_MIGRATION_PASSWORD=
+      - PG_APP_PASSWORD=
+      - PG_API_PASSWORD=
+      - PG_GAME_PASSWORD=
+      - PG_PLATFORM_PASSWORD=${PG_PLATFORM_PASSWORD:?Set PG_PLATFORM_PASSWORD in your environment or .env file}
+      - PG_RETENTION_PASSWORD=
+      - PG_MONITOR_PASSWORD=
+      - PG_BACKUP_PASSWORD=
+      - PG_WAL_PASSWORD=
+      - DATABASE_URL=
+      - RUNTIME_SCHEMA_DDL=false
+      - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
+      - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
+      - REDIS_URL=${REDIS_URL:?Set REDIS_URL=rediss://... for external staging Redis}
+      - REDIS_DB=${STAGING_REDIS_DB:-3}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in your environment or .env file}
+      - METRICS_TOKEN=${METRICS_TOKEN:?Set a strong METRICS_TOKEN in your environment or .env file}
       - PLATFORM_REDIS_MODE=redis
       - PLATFORM_FRIEND_STORE=postgres
+      - PLATFORM_BLOCK_STORE=postgres
       - PLATFORM_MATCH_PARTICIPANT_STORE=postgres
       - PLATFORM_CHAT_PREVIEW_STORE=postgres
+      - PLATFORM_ADMISSION_IP_LIMIT=${PLATFORM_ADMISSION_IP_LIMIT:-30}
+      - PLATFORM_ADMISSION_USER_LIMIT=${PLATFORM_ADMISSION_USER_LIMIT:-10}
+      - PLATFORM_ADMISSION_GLOBAL_LIMIT=${PLATFORM_ADMISSION_GLOBAL_LIMIT:-2000}
+      - PLATFORM_ADMISSION_WINDOW_SECONDS=${PLATFORM_ADMISSION_WINDOW_SECONDS:-60}
+      - PLATFORM_ADMISSION_REDIS_TIMEOUT_MS=${PLATFORM_ADMISSION_REDIS_TIMEOUT_MS:-750}
+      - PLATFORM_AUTH_DB_POOL_MAX=${PLATFORM_AUTH_DB_POOL_MAX:-8}
+      - PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS=${PLATFORM_AUTH_DB_QUERY_TIMEOUT_MS:-1500}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
       - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-staging}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      - OTEL_SERVICE_NAME=${OTEL_SERVICE_NAME:-zutomayo-platform-staging}
+      - OTEL_RESOURCE_ATTRIBUTES=${OTEL_RESOURCE_ATTRIBUTES:-deployment.environment=staging}
+      - PG_POOL_MAX=${PG_POOL_MAX:-20}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PLATFORM_DRAIN_GRACE_MS=${PLATFORM_DRAIN_GRACE_MS:-5000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
     healthcheck:
@@ -174,7 +303,9 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 45s
 
-volumes:
-  pg-staging-data:
-  redis-staging-data:
+secrets:
+  postgres_ca:
+    external: true
+    name: ${PG_CA_SECRET_NAME:?Set PG_CA_SECRET_NAME to the external PostgreSQL CA secret}

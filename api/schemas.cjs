@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
+ 
 /* global module, require */
 // Zod schemas for API request body validation.
 // Service layers retain their own sanitization for defense-in-depth; these schemas
@@ -6,7 +6,7 @@
 const { z } = require('zod');
 
 const email = z.string().email().max(120).toLowerCase();
-const password = z.string().min(6).max(200);
+const password = z.string().min(12).max(200);
 const anonymousId = z.string().regex(/^[a-zA-Z0-9_-]{8,64}$/);
 
 // ===== Auth =====
@@ -27,13 +27,47 @@ const profileUpdateSchema = z.object({
 
 const passwordChangeSchema = z.object({
   currentPassword: z.string().min(1).max(200),
-  newPassword: z.string().min(6).max(200),
+  newPassword: password,
+});
+
+const accountTokenSchema = z.object({
+  token: z.string().min(32).max(512),
+});
+
+const passwordResetRequestSchema = z.object({ email });
+
+const passwordResetConfirmSchema = z.object({
+  token: z.string().min(32).max(512),
+  newPassword: password,
+});
+
+const accountDeleteSchema = z.object({
+  confirmation: z.literal('DELETE'),
+  // Destructive account actions require a fresh local-password proof or a
+  // server-issued, one-time Logto step-up token. Provider verification record
+  // IDs must never cross the browser boundary.
+  currentPassword: z.string().min(1).max(200).optional(),
+  stepUpToken: z.string().min(32).max(512).optional(),
+});
+
+const accountCenterVerificationSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+});
+
+const accountCenterPasswordSchema = z.object({
+  stepUpToken: z.string().min(32).max(512),
+  newPassword: password,
 });
 
 // ===== Deck =====
 const deckCreateSchema = z.object({
   name: z.string().min(1).max(60),
   cardIds: z.array(z.string().min(1).max(40)).length(20),
+});
+
+const deckReservationSchema = z.object({
+  deckId: z.string().regex(/^d_[A-Za-z0-9_-]{4,128}$/),
+  rulesVersion: z.string().min(1).max(120).optional(),
 });
 
 // ===== Match submission =====
@@ -60,6 +94,10 @@ const heartbeatSchema = z.object({
 const friendCreateSchema = z.object({
   friendUserId: z.string().min(3).max(128),
 });
+
+const friendRequestResponseSchema = z.object({ accept: z.boolean() });
+
+const userBlockSchema = z.object({ targetUserId: z.string().min(3).max(128) });
 
 // ===== Chat =====
 const chatConversationType = z.enum(['match', 'room', 'direct', 'global']);
@@ -122,12 +160,58 @@ const chatTranslationRequestSchema = z
 
 // ===== Admin =====
 const adminLoginSchema = z.object({
+  username: z.string().min(3).max(80),
   password: z.string().min(1).max(200),
+  totpCode: z.string().regex(/^\d{6}$/),
 });
 
 const adminEloSchema = z.object({
   elo: z.number().int().min(0).max(9999),
 });
+
+const seasonIdSchema = z.string().regex(/^[a-zA-Z0-9._:-]{3,80}$/);
+const seasonRewardTierSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    maxRank: z.number().int().min(1).max(1_000_000),
+    payload: z.record(z.string(), z.unknown()).optional().default({}),
+  })
+  .strict();
+const adminSeasonCreateSchema = z
+  .object({
+    id: seasonIdSchema,
+    name: z.string().trim().min(1).max(120),
+    startsAt: z.iso.datetime({ offset: true }),
+    endsAt: z.iso.datetime({ offset: true }),
+    startingRating: z.number().int().min(500).max(3000),
+    placementMatches: z.number().int().min(0).max(20),
+    ratingDecayPercent: z.number().int().min(0).max(100),
+    rulesVersion: z.string().trim().min(1).max(64),
+    rewardConfig: z.object({ tiers: z.array(seasonRewardTierSchema).max(50) }).strict(),
+  })
+  .strict();
+const adminSeasonListQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }).strict();
+
+const legalHoldSubjectTypeSchema = z.enum(['account', 'match', 'conversation', 'message', 'report', 'feedback']);
+const legalHoldCreateSchema = z
+  .object({
+    subjectType: legalHoldSubjectTypeSchema,
+    subjectId: z.string().trim().min(1).max(300),
+    reason: z.string().trim().min(10).max(1000),
+    owner: z.string().trim().min(2).max(120),
+    expiresAt: z.iso.datetime({ offset: true }),
+    caseReference: z.string().trim().max(120).optional(),
+  })
+  .strict();
+const legalHoldReleaseSchema = z.object({ reason: z.string().trim().min(10).max(1000) }).strict();
+const legalHoldListQuerySchema = z
+  .object({
+    status: z.enum(['active', 'released', 'expired', 'all']).optional(),
+    subjectType: legalHoldSubjectTypeSchema.optional(),
+    subjectId: z.string().trim().min(1).max(300).optional(),
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+  })
+  .strict();
 
 // ===== Matchmaking =====
 const mmQueueSchema = z
@@ -183,10 +267,19 @@ module.exports = {
   loginSchema,
   profileUpdateSchema,
   passwordChangeSchema,
+  accountTokenSchema,
+  passwordResetRequestSchema,
+  passwordResetConfirmSchema,
+  accountDeleteSchema,
+  accountCenterVerificationSchema,
+  accountCenterPasswordSchema,
   deckCreateSchema,
+  deckReservationSchema,
   matchSubmitSchema,
   heartbeatSchema,
   friendCreateSchema,
+  friendRequestResponseSchema,
+  userBlockSchema,
   chatMessageCreateSchema,
   chatReadSchema,
   chatReportCreateSchema,
@@ -196,6 +289,12 @@ module.exports = {
   chatTranslationRequestSchema,
   adminLoginSchema,
   adminEloSchema,
+  seasonIdSchema,
+  adminSeasonCreateSchema,
+  adminSeasonListQuerySchema,
+  legalHoldCreateSchema,
+  legalHoldReleaseSchema,
+  legalHoldListQuerySchema,
   mmQueueSchema,
   mmMatchSchema,
   feedbackPostCreateSchema,

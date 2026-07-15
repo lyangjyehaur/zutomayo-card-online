@@ -19,6 +19,7 @@ import {
   setInitialCard,
   setTurnCard,
   setupGame,
+  surrenderGame,
   submitPendingChoice,
   timeoutAdvance,
   timeoutSkip,
@@ -197,6 +198,10 @@ const moves: Record<string, Move<GameState>> = {
     if (caller === null) return INVALID_MOVE;
     const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
     if (!timeoutAdvance(G, target, getParsedEffects())) return INVALID_MOVE;
+  },
+  surrender: ({ G, playerID }) => {
+    const player = playerIndex(playerID);
+    if (player === null || !surrenderGame(G, player)) return INVALID_MOVE;
   },
   resolvePendingEffect: ({ G, playerID }, index: number) => {
     const player = playerIndex(playerID);

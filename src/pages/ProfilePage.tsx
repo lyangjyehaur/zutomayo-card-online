@@ -1,24 +1,56 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { CheckCircle2, ExternalLink, KeyRound, Link2, Mail, Save, ShieldCheck, Trophy } from 'lucide-react';
+import {
+  CheckCircle2,
+  Ban,
+  Download,
+  ExternalLink,
+  Gift,
+  KeyRound,
+  Link2,
+  Mail,
+  Save,
+  ShieldCheck,
+  Trash2,
+  Trophy,
+  UserPlus,
+  Users,
+} from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ApiError,
+  addFriend,
+  blockUser,
+  deleteAccount,
+  exportAccountData,
+  claimSeasonReward,
+  getBlocks,
+  getFriendRequests,
+  getFriends,
   getAuthConfig,
   getLinkedOAuthIdentities,
   getLogtoAccountCenter,
   getOAuthStartUrl,
   getProfile,
+  getSeasonRewards,
   isLoggedIn,
+  removeFriend,
+  requestEmailVerification,
+  respondToFriendRequest,
+  unblockUser,
   unlinkOAuthIdentity,
   updateLogtoPassword,
   updatePassword,
   updateProfile,
   verifyLogtoPassword,
   type LogtoAccountCenterResponse,
+  type BlockedProfile,
+  type FriendProfile,
+  type FriendRequest,
   type OAuthProviderId,
   type OAuthIdentity,
   type OAuthProvider,
   type ProfileResponse,
+  type SeasonReward,
 } from '../api/client';
 import { UserAvatar } from '../components/UserAvatar';
 import { t } from '../i18n';
@@ -62,6 +94,12 @@ function accountValue(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value : '-';
 }
 
+function rewardPayloadSummary(payload: Record<string, unknown>): string {
+  return Object.entries(payload)
+    .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`)
+    .join(' · ');
+}
+
 export function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -85,6 +123,29 @@ export function ProfilePage() {
   const [error, setError] = useState('');
   const [unlinkTarget, setUnlinkTarget] = useState<OAuthProvider | null>(null);
   const [unlinkingProvider, setUnlinkingProvider] = useState<OAuthProviderId | null>(null);
+  const [sendingVerification, setSendingVerification] = useState(false);
+  const [exportingAccount, setExportingAccount] = useState(false);
+  const [deletePromptOpen, setDeletePromptOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [friends, setFriends] = useState<FriendProfile[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
+  const [blocks, setBlocks] = useState<BlockedProfile[]>([]);
+  const [friendUserId, setFriendUserId] = useState('');
+  const [socialLoading, setSocialLoading] = useState(true);
+  const [socialActionId, setSocialActionId] = useState('');
+  const [seasonRewards, setSeasonRewards] = useState<SeasonReward[]>([]);
+  const [seasonRewardsLoading, setSeasonRewardsLoading] = useState(true);
+  const [seasonRewardAction, setSeasonRewardAction] = useState('');
+  const [seasonRewardError, setSeasonRewardError] = useState('');
+
+  // Credential availability belongs to the account, not the deployment. The
+  // fallback keeps older API responses usable while the capability fields are
+  // rolled out.
+  const accountHasLocalPassword = profile?.hasLocalPassword ?? localAuthEnabled;
+  const accountHasLogtoIdentity =
+    profile?.hasLogtoIdentity ?? oauthIdentities.some((identity) => identity.provider === 'logto');
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -93,14 +154,24 @@ export function ProfilePage() {
     }
 
     let cancelled = false;
-    Promise.all([getProfile(), getAuthConfig().catch(() => null), getLinkedOAuthIdentities().catch(() => [])])
-      .then(async ([data, authConfig, identities]) => {
+    Promise.all([
+      getProfile(),
+      getAuthConfig().catch(() => null),
+      getLinkedOAuthIdentities().catch(() => []),
+      getSeasonRewards().catch(() => null),
+    ])
+      .then(async ([data, authConfig, identities, rewards]) => {
         const shouldLoadAccountCenter = Boolean(
-          authConfig && !authConfig.localAuthEnabled && !authConfig.accountLinkingEnabled,
+          (data.hasLogtoIdentity || identities.some((identity) => identity.provider === 'logto')) && authConfig,
         );
         const accountCenter = shouldLoadAccountCenter
           ? await getLogtoAccountCenter().catch((err) => (err instanceof Error ? err : new Error(String(err))))
           : null;
+        const [friendList, requestList, blockList] = await Promise.all([
+          getFriends().catch(() => []),
+          getFriendRequests(data.id).catch(() => []),
+          getBlocks().catch(() => []),
+        ]);
         if (cancelled) return;
         setProfile(data);
         setNickname(data.nickname);
@@ -109,6 +180,13 @@ export function ProfilePage() {
         setAccountLinkingEnabled(authConfig?.accountLinkingEnabled ?? true);
         setAccountCenterUrl(authConfig?.accountCenterUrl || '');
         setOauthIdentities(identities);
+        setFriends(friendList);
+        setFriendRequests(requestList);
+        setBlocks(blockList);
+        setSocialLoading(false);
+        setSeasonRewards(rewards || []);
+        setSeasonRewardError(rewards === null ? t('profile.seasonRewardError') : '');
+        setSeasonRewardsLoading(false);
         if (accountCenter instanceof Error) {
           setLogtoAccountCenter(null);
           setLogtoAccountError(accountCenter.message);
@@ -124,7 +202,11 @@ export function ProfilePage() {
         if (oauthStatus === 'error') setError(t('profile.oauthError'));
       })
       .catch(() => {
-        if (!cancelled) setError(t('auth.profileUnavailable'));
+        if (!cancelled) {
+          setError(t('auth.profileUnavailable'));
+          setSocialLoading(false);
+          setSeasonRewardsLoading(false);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -164,16 +246,18 @@ export function ProfilePage() {
         setError(t('profile.passwordMismatch'));
         return;
       }
-      if (localAuthEnabled) {
+      if (accountHasLocalPassword) {
         await updatePassword(currentPassword, newPassword);
-      } else {
-        const verification = await verifyLogtoPassword(currentPassword);
-        await updateLogtoPassword(newPassword, verification.verificationRecordId);
+        navigate('/', { replace: true });
+        return;
       }
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setPasswordStatus(t('profile.passwordSaved'));
+      if (accountHasLogtoIdentity) {
+        const verification = await verifyLogtoPassword(currentPassword);
+        await updateLogtoPassword(newPassword, verification.stepUpToken);
+        navigate('/', { replace: true });
+        return;
+      }
+      throw new Error('No supported account password method is available');
     } catch (err) {
       setError(accountErrorMessage(err));
     } finally {
@@ -182,6 +266,120 @@ export function ProfilePage() {
   };
 
   const linkedProviderIds = new Set(oauthIdentities.map((identity) => identity.provider));
+
+  const refreshSocial = async () => {
+    if (!profile) return;
+    const [friendList, requestList, blockList] = await Promise.all([
+      getFriends(),
+      getFriendRequests(profile.id),
+      getBlocks(),
+    ]);
+    setFriends(friendList);
+    setFriendRequests(requestList);
+    setBlocks(blockList);
+  };
+
+  const runSocialAction = async (actionId: string, action: () => Promise<unknown>) => {
+    setSocialActionId(actionId);
+    setError('');
+    setProfileStatus('');
+    try {
+      await action();
+      await refreshSocial();
+      setProfileStatus(t('profile.socialUpdated'));
+      return true;
+    } catch {
+      setError(t('profile.socialError'));
+      return false;
+    } finally {
+      setSocialActionId('');
+    }
+  };
+
+  const handleAddFriend = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const targetUserId = friendUserId.trim();
+    if (!targetUserId) return;
+    if (await runSocialAction(`add:${targetUserId}`, () => addFriend(targetUserId))) setFriendUserId('');
+  };
+
+  const handleSendVerification = async () => {
+    setSendingVerification(true);
+    setError('');
+    setProfileStatus('');
+    try {
+      const result = await requestEmailVerification();
+      if (result.alreadyVerified) {
+        setProfile((current) => (current ? { ...current, emailVerified: true } : current));
+      }
+      setProfileStatus(result.alreadyVerified ? t('profile.emailVerified') : t('profile.verificationSent'));
+    } catch {
+      setError(t('profile.saveError'));
+    } finally {
+      setSendingVerification(false);
+    }
+  };
+
+  const handleExportAccount = async () => {
+    setExportingAccount(true);
+    setError('');
+    setProfileStatus('');
+    try {
+      const data = await exportAccountData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `zutomayo-account-${profile?.id || 'export'}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setProfileStatus(t('profile.exported'));
+    } catch {
+      setError(t('profile.saveError'));
+    } finally {
+      setExportingAccount(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmation !== 'DELETE') return;
+    setDeletingAccount(true);
+    setError('');
+    try {
+      // Any linked Logto principal must be deleted at the provider before the
+      // local account is anonymized, including hybrid accounts with a local password.
+      const stepUp = accountHasLogtoIdentity
+        ? { stepUpToken: (await verifyLogtoPassword(deletePassword)).stepUpToken }
+        : accountHasLocalPassword
+          ? { currentPassword: deletePassword }
+          : null;
+      if (!stepUp) throw new Error('No supported account verification method is available');
+      await deleteAccount(stepUp);
+      setDeletePromptOpen(false);
+      navigate('/', { replace: true });
+    } catch {
+      setError(t('profile.deleteAccountError'));
+      setDeletePromptOpen(false);
+    } finally {
+      setDeletingAccount(false);
+      setDeleteConfirmation('');
+      setDeletePassword('');
+    }
+  };
+
+  const handleClaimSeasonReward = async (seasonId: string) => {
+    setSeasonRewardAction(seasonId);
+    setSeasonRewardError('');
+    try {
+      await claimSeasonReward(seasonId);
+      setSeasonRewards(await getSeasonRewards());
+      setProfileStatus(t('profile.seasonRewardClaimSuccess'));
+    } catch {
+      setSeasonRewardError(t('profile.seasonRewardError'));
+    } finally {
+      setSeasonRewardAction('');
+    }
+  };
   const handleOAuthLink = (provider: OAuthProvider) => {
     window.location.assign(getOAuthStartUrl(provider.provider, 'link', '/profile'));
   };
@@ -208,7 +406,7 @@ export function ProfilePage() {
     }
   };
 
-  const accountCenterMode = !localAuthEnabled && !accountLinkingEnabled;
+  const accountCenterMode = !accountHasLocalPassword;
   const logtoIdentityEntries = Object.entries(logtoAccountCenter?.account.identities || {});
   const logtoReconnectProvider = oauthProviders.find((provider) => provider.provider === 'logto' && provider.enabled);
 
@@ -259,6 +457,9 @@ export function ProfilePage() {
                   <Mail className="size-4 shrink-0" aria-hidden="true" />
                   <span className="truncate">{profile.email}</span>
                 </p>
+                <Badge className="mt-2" tone={profile.emailVerified ? 'jade' : 'neutral'}>
+                  {profile.emailVerified ? t('profile.emailVerified') : t('profile.emailUnverified')}
+                </Badge>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Badge tone="gold">ELO {profile.elo}</Badge>
                   <Badge tone="jade">
@@ -301,6 +502,215 @@ export function ProfilePage() {
 
             <Panel size="lg">
               <div className="mb-4 flex items-center gap-2">
+                <Gift className="size-5 text-accent-action" aria-hidden="true" />
+                <h2 className="font-display text-title-sm font-bold">{t('profile.seasonRewards')}</h2>
+              </div>
+              {seasonRewardError && (
+                <Alert className="mb-3" tone="danger" role="alert">
+                  {seasonRewardError}
+                </Alert>
+              )}
+              {seasonRewardsLoading ? (
+                <LoadingState label={t('profile.loading')} />
+              ) : seasonRewards.length === 0 ? (
+                <p className="text-body-sm text-content-muted">{t('common.empty')}</p>
+              ) : (
+                <div className="grid gap-2">
+                  {seasonRewards.map((reward) => {
+                    const payload = rewardPayloadSummary(reward.rewardPayload);
+                    return (
+                      <div
+                        key={reward.seasonId}
+                        className="flex flex-col gap-3 border-b border-border-soft py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <strong className="text-body-sm">{reward.seasonName}</strong>
+                            <Badge tone="gold">{reward.rewardTier}</Badge>
+                            {reward.claimedAt && <Badge tone="jade">{t('profile.seasonRewardClaimed')}</Badge>}
+                          </div>
+                          <p className="mt-1 text-caption text-content-muted">
+                            {t('profile.seasonRewardRank')} {reward.finalRank} · ELO {reward.finalRating}
+                          </p>
+                          {payload && (
+                            <p className="mt-1 break-words text-caption text-content-muted">
+                              {t('profile.seasonRewardPayload')}: {payload}
+                            </p>
+                          )}
+                        </div>
+                        {!reward.claimedAt && (
+                          <Button
+                            className="shrink-0"
+                            size="sm"
+                            variant="primary"
+                            disabled={Boolean(seasonRewardAction)}
+                            leftIcon={<Gift className="size-4" aria-hidden="true" />}
+                            onClick={() => void handleClaimSeasonReward(reward.seasonId)}
+                          >
+                            {seasonRewardAction === reward.seasonId
+                              ? t('auth.submitting')
+                              : t('profile.seasonRewardClaim')}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+
+            <Panel size="lg">
+              <div className="mb-4 flex items-center gap-2">
+                <Users className="size-5 text-accent-primary" aria-hidden="true" />
+                <h2 className="font-display text-title-sm font-bold">{t('profile.socialSafety')}</h2>
+              </div>
+              <form className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={handleAddFriend}>
+                <FormField label={t('profile.friendId')}>
+                  <Input
+                    value={friendUserId}
+                    autoComplete="off"
+                    maxLength={128}
+                    disabled={Boolean(socialActionId)}
+                    onChange={(event) => setFriendUserId(event.target.value)}
+                  />
+                </FormField>
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={!friendUserId.trim() || Boolean(socialActionId)}
+                  leftIcon={<UserPlus className="size-4" aria-hidden="true" />}
+                >
+                  {t('profile.addFriend')}
+                </Button>
+              </form>
+
+              <div className="mt-5 grid gap-5">
+                <section className="grid gap-2">
+                  <h3 className="font-display text-body-lg font-bold">{t('profile.friendRequests')}</h3>
+                  {!socialLoading && friendRequests.length === 0 && (
+                    <p className="text-body-sm text-content-muted">{t('common.empty')}</p>
+                  )}
+                  {friendRequests.map((request) => {
+                    const peerId = request.direction === 'incoming' ? request.requesterUserId : request.recipientUserId;
+                    return (
+                      <div
+                        key={request.id}
+                        className="flex flex-col gap-3 border-b border-border-soft py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <strong className="block truncate text-body-sm">{request.nickname || peerId}</strong>
+                          <span className="block truncate font-mono text-caption text-content-muted">{peerId}</span>
+                        </div>
+                        {request.direction === 'incoming' ? (
+                          <div className="flex gap-2">
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              disabled={Boolean(socialActionId)}
+                              onClick={() =>
+                                void runSocialAction(`accept:${request.id}`, () =>
+                                  respondToFriendRequest(request.id, true),
+                                )
+                              }
+                            >
+                              {t('profile.accept')}
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={Boolean(socialActionId)}
+                              onClick={() =>
+                                void runSocialAction(`reject:${request.id}`, () =>
+                                  respondToFriendRequest(request.id, false),
+                                )
+                              }
+                            >
+                              {t('profile.reject')}
+                            </Button>
+                          </div>
+                        ) : (
+                          <Badge tone="neutral">{t('profile.requestOutgoing')}</Badge>
+                        )}
+                      </div>
+                    );
+                  })}
+                </section>
+
+                <section className="grid gap-2">
+                  <h3 className="font-display text-body-lg font-bold">{t('profile.friends')}</h3>
+                  {!socialLoading && friends.length === 0 && (
+                    <p className="text-body-sm text-content-muted">{t('common.empty')}</p>
+                  )}
+                  {friends.map((friend) => (
+                    <div
+                      key={friend.userId}
+                      className="flex flex-col gap-3 border-b border-border-soft py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <strong className="block truncate text-body-sm">{friend.nickname || friend.userId}</strong>
+                        <span className="block truncate font-mono text-caption text-content-muted">
+                          {friend.userId}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={Boolean(socialActionId)}
+                          onClick={() =>
+                            void runSocialAction(`remove:${friend.userId}`, () => removeFriend(friend.userId))
+                          }
+                        >
+                          {t('profile.remove')}
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          disabled={Boolean(socialActionId)}
+                          leftIcon={<Ban className="size-4" aria-hidden="true" />}
+                          onClick={() => void runSocialAction(`block:${friend.userId}`, () => blockUser(friend.userId))}
+                        >
+                          {t('profile.block')}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+
+                <section className="grid gap-2">
+                  <h3 className="font-display text-body-lg font-bold">{t('profile.blocks')}</h3>
+                  {!socialLoading && blocks.length === 0 && (
+                    <p className="text-body-sm text-content-muted">{t('common.empty')}</p>
+                  )}
+                  {blocks.map((blocked) => (
+                    <div
+                      key={blocked.userId}
+                      className="flex flex-col gap-3 border-b border-border-soft py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <strong className="block truncate text-body-sm">{blocked.nickname || blocked.userId}</strong>
+                        <span className="block truncate font-mono text-caption text-content-muted">
+                          {blocked.userId}
+                        </span>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={Boolean(socialActionId)}
+                        onClick={() =>
+                          void runSocialAction(`unblock:${blocked.userId}`, () => unblockUser(blocked.userId))
+                        }
+                      >
+                        {t('profile.unblock')}
+                      </Button>
+                    </div>
+                  ))}
+                </section>
+              </div>
+            </Panel>
+
+            <Panel size="lg">
+              <div className="mb-4 flex items-center gap-2">
                 <ShieldCheck className="size-5 text-accent-primary" aria-hidden="true" />
                 <h2 className="font-display text-title-sm font-bold">{t('profile.basicInfo')}</h2>
               </div>
@@ -327,7 +737,7 @@ export function ProfilePage() {
               </form>
             </Panel>
 
-            {!accountCenterMode && (
+            {!(accountCenterMode && !accountLinkingEnabled) && (
               <Panel size="lg">
                 <div className="mb-4 flex items-center gap-2">
                   <Link2 className="size-5 text-accent-primary" aria-hidden="true" />
@@ -379,7 +789,7 @@ export function ProfilePage() {
               </Panel>
             )}
 
-            {localAuthEnabled ? (
+            {accountHasLocalPassword ? (
               <Panel size="lg">
                 <div className="mb-4 flex items-center gap-2">
                   <KeyRound className="size-5 text-accent-primary" aria-hidden="true" />
@@ -401,7 +811,7 @@ export function ProfilePage() {
                         type="password"
                         value={newPassword}
                         autoComplete="new-password"
-                        minLength={6}
+                        minLength={12}
                         required
                         onChange={(event) => setNewPassword(event.target.value)}
                       />
@@ -411,7 +821,7 @@ export function ProfilePage() {
                         type="password"
                         value={confirmPassword}
                         autoComplete="new-password"
-                        minLength={6}
+                        minLength={12}
                         required
                         onChange={(event) => setConfirmPassword(event.target.value)}
                       />
@@ -439,6 +849,11 @@ export function ProfilePage() {
                   {t('profile.accountSecurityIntegrated')}
                 </p>
                 {logtoAccountError && (
+                  <Alert className="mt-4" tone="warning">
+                    {t('profile.logtoReconnectRequired')}
+                  </Alert>
+                )}
+                {!accountHasLogtoIdentity && (
                   <Alert className="mt-4" tone="warning">
                     {t('profile.logtoReconnectRequired')}
                   </Alert>
@@ -485,7 +900,7 @@ export function ProfilePage() {
                         type="password"
                         value={newPassword}
                         autoComplete="new-password"
-                        minLength={6}
+                        minLength={12}
                         required
                         onChange={(event) => setNewPassword(event.target.value)}
                       />
@@ -495,7 +910,7 @@ export function ProfilePage() {
                         type="password"
                         value={confirmPassword}
                         autoComplete="new-password"
-                        minLength={6}
+                        minLength={12}
                         required
                         onChange={(event) => setConfirmPassword(event.target.value)}
                       />
@@ -505,7 +920,7 @@ export function ProfilePage() {
                     <Button
                       variant="primary"
                       type="submit"
-                      disabled={savingPassword || Boolean(logtoAccountError)}
+                      disabled={savingPassword || Boolean(logtoAccountError) || !accountHasLogtoIdentity}
                       leftIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
                     >
                       {savingPassword ? t('auth.submitting') : t('profile.savePassword')}
@@ -539,6 +954,52 @@ export function ProfilePage() {
                 )}
               </Panel>
             )}
+
+            <Panel size="lg">
+              <div className="mb-4 flex items-center gap-2">
+                <ShieldCheck className="size-5 text-accent-primary" aria-hidden="true" />
+                <h2 className="font-display text-title-sm font-bold">{t('profile.accountData')}</h2>
+              </div>
+              <div className="grid gap-4">
+                <div className="flex flex-col gap-3 rounded-sm border border-border-soft bg-surface-canvas/45 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <strong className="text-body-sm">{profile.email}</strong>
+                    <p className="mt-1 text-caption text-content-muted">
+                      {profile.emailVerified ? t('profile.emailVerified') : t('profile.emailUnverified')}
+                    </p>
+                  </div>
+                  {!profile.emailVerified && (
+                    <Button
+                      className="shrink-0"
+                      variant="secondary"
+                      size="sm"
+                      disabled={sendingVerification}
+                      leftIcon={<Mail className="size-4" aria-hidden="true" />}
+                      onClick={handleSendVerification}
+                    >
+                      {sendingVerification ? t('auth.submitting') : t('profile.sendVerification')}
+                    </Button>
+                  )}
+                </div>
+                <FormActions>
+                  <Button
+                    variant="secondary"
+                    disabled={exportingAccount}
+                    leftIcon={<Download className="size-4" aria-hidden="true" />}
+                    onClick={handleExportAccount}
+                  >
+                    {exportingAccount ? t('auth.submitting') : t('profile.exportData')}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    leftIcon={<Trash2 className="size-4" aria-hidden="true" />}
+                    onClick={() => setDeletePromptOpen(true)}
+                  >
+                    {t('profile.deleteAccount')}
+                  </Button>
+                </FormActions>
+              </div>
+            </Panel>
           </div>
         </div>
       </main>
@@ -560,6 +1021,58 @@ export function ProfilePage() {
           </>
         }
       />
+      <Dialog
+        open={deletePromptOpen}
+        onOpenChange={(open) => {
+          if (deletingAccount) return;
+          setDeletePromptOpen(open);
+          if (!open) {
+            setDeleteConfirmation('');
+            setDeletePassword('');
+          }
+        }}
+        title={t('profile.deleteAccountTitle')}
+        description={t('profile.deleteAccountConfirm')}
+        dismissible={!deletingAccount}
+        footer={
+          <>
+            <Button variant="secondary" disabled={deletingAccount} onClick={() => setDeletePromptOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              disabled={
+                deleteConfirmation !== 'DELETE' ||
+                !deletePassword ||
+                deletingAccount ||
+                (!accountHasLocalPassword && !accountHasLogtoIdentity)
+              }
+              onClick={handleDeleteAccount}
+            >
+              {deletingAccount ? t('auth.submitting') : t('profile.deleteAccountAction')}
+            </Button>
+          </>
+        }
+      >
+        <FormField label={t('profile.deleteAccountInput')}>
+          <Input
+            value={deleteConfirmation}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={deletingAccount}
+            onChange={(event) => setDeleteConfirmation(event.target.value)}
+          />
+        </FormField>
+        <FormField label={t('profile.currentPassword')}>
+          <Input
+            type="password"
+            value={deletePassword}
+            autoComplete="current-password"
+            disabled={deletingAccount}
+            onChange={(event) => setDeletePassword(event.target.value)}
+          />
+        </FormField>
+      </Dialog>
     </PageShell>
   );
 }
