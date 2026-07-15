@@ -66,7 +66,6 @@ describe('official card-text review store', () => {
       ledger,
       'test_1',
       {
-        reviewer: 'Daner',
         confirmName: true,
         confirmEffect: true,
         nameText: 'CORRECTED NAME',
@@ -82,8 +81,8 @@ describe('official card-text review store', () => {
       effectStatus: 'human_verified',
     });
     expect(ledger.reviews.test_1).toEqual({
-      name: { value: 'CORRECTED NAME', reviewer: 'Daner', reviewedAt },
-      effect: { value: 'CORRECTED EFFECT', reviewer: 'Daner', reviewedAt },
+      name: { value: 'CORRECTED NAME', source: 'local-web-review', reviewedAt },
+      effect: { value: 'CORRECTED EFFECT', source: 'local-web-review', reviewedAt },
     });
     expect(data.summary).toMatchObject({ humanVerifiedNames: 1, humanVerifiedEffectCards: 1 });
   });
@@ -94,7 +93,6 @@ describe('official card-text review store', () => {
 
     expect(() =>
       applyHumanReview(data, ledger, 'test_1', {
-        reviewer: 'Daner',
         confirmEffect: true,
         effectText: 'Unexpected effect',
       }),

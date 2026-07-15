@@ -240,13 +240,6 @@
         color: var(--muted);
         font-size: 12px;
       }
-      .reviewer {
-        display: grid;
-        grid-template-columns: 110px minmax(0, 1fr);
-        align-items: center;
-        gap: 10px;
-        margin: 13px 0;
-      }
       .field {
         padding: 15px 0;
         border-top: 1px solid var(--line);
@@ -343,9 +336,6 @@
         }
         main {
           padding: 10px;
-        }
-        .reviewer {
-          grid-template-columns: 1fr;
         }
         .navigation {
           flex-wrap: wrap;
@@ -502,19 +492,18 @@
                 <button id="nextButton" type="button" ${index < 0 || index >= state.filtered.length - 1 ? 'disabled' : ''}>下一張 →</button>
               </div>
               <div class="card-title"><span class="meta">${card.id}</span><h2 id="displayName"></h2></div>
-              <label class="reviewer"><span>複核者</span><input id="reviewer" maxlength="80" /></label>
               <section class="field">
                 <div class="field-heading"><h3>卡牌名稱</h3>${badge(card.nameStatus)}</div>
                 <div class="official-ja" id="japaneseName"></div>
                 <input id="englishName" maxlength="500" aria-label="官方英文名稱" />
-                <div class="source-text">${escapeHtml(card.nameVerificationSource)}${nameReview ? ` · ${escapeHtml(nameReview.reviewer)} · ${new Date(nameReview.reviewedAt).toLocaleString()}` : ''}</div>
+                <div class="source-text">${escapeHtml(card.nameVerificationSource)}${nameReview ? ` · 網頁人工複核 · ${new Date(nameReview.reviewedAt).toLocaleString()}` : ''}</div>
                 <div class="actions"><button id="confirmNameButton" class="confirm" type="button">確認名稱</button></div>
               </section>
               <section class="field">
                 <div class="field-heading"><h3>卡牌效果</h3>${badge(card.effectStatus)}</div>
                 <div class="official-ja" id="japaneseEffect"></div>
                 <textarea id="englishEffect" rows="5" maxlength="5000" aria-label="官方英文效果" ${hasEffect ? '' : 'disabled'}></textarea>
-                <div class="source-text">${escapeHtml(card.effectVerificationSource)}${effectReview ? ` · ${escapeHtml(effectReview.reviewer)} · ${new Date(effectReview.reviewedAt).toLocaleString()}` : ''}</div>
+                <div class="source-text">${escapeHtml(card.effectVerificationSource)}${effectReview ? ` · 網頁人工複核 · ${new Date(effectReview.reviewedAt).toLocaleString()}` : ''}</div>
                 <div class="actions"><button id="confirmEffectButton" class="confirm" type="button" ${hasEffect ? '' : 'disabled'}>確認效果</button></div>
               </section>
               <p id="notice" class="notice" role="status"></p>
@@ -525,8 +514,6 @@
         $('englishName').value = card.enNameOfficial;
         $('japaneseEffect').textContent = card.japaneseEffect || '（官方日文無效果文字）';
         $('englishEffect').value = card.enEffectOfficial;
-        $('reviewer').value = localStorage.getItem('card-reviewer') || '';
-        $('reviewer').addEventListener('input', (event) => localStorage.setItem('card-reviewer', event.target.value));
         $('zoomButton').addEventListener('click', () => {
           state.zoomed = !state.zoomed;
           $('imageFrame').classList.toggle('zoomed', state.zoomed);
@@ -557,7 +544,6 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              reviewer: $('reviewer').value,
               confirmName,
               confirmEffect,
               nameText: $('englishName').value,

@@ -8,7 +8,7 @@ export type ReviewField = 'name' | 'effect';
 
 type HumanReview = {
   value: string;
-  reviewer: string;
+  source: 'local-web-review';
   reviewedAt: string;
 };
 
@@ -39,7 +39,6 @@ export type Extraction = {
 };
 
 export type ReviewRequest = {
-  reviewer?: unknown;
   confirmName?: unknown;
   confirmEffect?: unknown;
   nameText?: unknown;
@@ -150,7 +149,6 @@ export function applyHumanReview(
 ): ExtractionCard {
   const card = extraction.cards.find((entry) => entry.id === cardId);
   if (!card) throw new Error('Card not found');
-  const reviewer = validatedText(request.reviewer, 'Reviewer', 80);
   const confirmName = request.confirmName === true;
   const confirmEffect = request.confirmEffect === true;
   if (!confirmName && !confirmEffect) throw new Error('Select at least one field to confirm');
@@ -162,14 +160,14 @@ export function applyHumanReview(
     card.enNameOfficial = value;
     card.nameStatus = 'human_verified';
     card.nameVerificationSource = 'human-image-review';
-    cardReviews.name = { value, reviewer, reviewedAt };
+    cardReviews.name = { value, source: 'local-web-review', reviewedAt };
   }
   if (confirmEffect) {
     const value = validatedText(request.effectText, 'English effect', 5000);
     card.enEffectOfficial = value;
     card.effectStatus = 'human_verified';
     card.effectVerificationSource = 'human-image-review';
-    cardReviews.effect = { value, reviewer, reviewedAt };
+    cardReviews.effect = { value, source: 'local-web-review', reviewedAt };
   }
   card.evidence = {
     ...card.evidence,
