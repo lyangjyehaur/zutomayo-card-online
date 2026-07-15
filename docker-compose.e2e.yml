@@ -48,6 +48,7 @@ services:
       args:
         VITE_PLATFORM_URL: ws://platform:3002
     environment:
+      - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
       - ALLOWED_ORIGINS=http://game:3000
@@ -63,6 +64,7 @@ services:
 
   api:
     environment:
+      - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
     depends_on:
@@ -77,6 +79,7 @@ services:
 
   platform:
     environment:
+      - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
       - ALLOWED_ORIGINS=http://game:3000
