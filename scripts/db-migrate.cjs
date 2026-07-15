@@ -20,6 +20,7 @@ const {
   postgresSslConfig,
 } = require('../api/runtimeSecurityConfig.cjs');
 const { recordMigrationChecksums } = require('./migration-checksums.cjs');
+const { listAppliedMigrationNames, migrationIgnorePatternForApplied } = require('./migration-order-compat.cjs');
 const { enforceRuntimeRolePrivileges } = require('./postgres-role-gate.cjs');
 
 async function main() {
@@ -62,12 +63,26 @@ async function main() {
 
   const direction = subCommand;
 
+  const historyPool = new Pool(databaseConfig);
+  let ignorePattern;
+  try {
+    const appliedNames = await listAppliedMigrationNames(historyPool);
+    ignorePattern = migrationIgnorePatternForApplied(appliedNames);
+  } finally {
+    await historyPool.end();
+  }
+  if (ignorePattern) {
+    console.log('Using canonical append-only card migrations 000028-000030');
+  }
+
   await runner({
     databaseUrl: databaseConfig,
     dir: migrationsDir,
     direction,
     migrationsTable: 'schema_migrations',
     schema: 'public',
+    ignorePattern,
+    checkOrder: true,
     count: direction === 'down' ? 1 : Infinity,
     log: (msg) => console.log(msg),
   });
