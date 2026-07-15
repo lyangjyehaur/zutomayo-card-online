@@ -82,21 +82,61 @@ function normalizeCardForUpsert(id, body, baseCard) {
 async function upsertCardI18n(pool, cardId, body, adminUserId) {
   const lang = normalizeI18nLang(body?.lang);
   if (!lang) return { ok: false, status: 400, error: 'Unsupported language' };
-  if (typeof body?.effectText !== 'string') return { ok: false, status: 400, error: 'effectText required' };
+  if (lang === 'ja' || lang === 'en') {
+    return { ok: false, status: 400, error: 'Official text must be updated through the card endpoint' };
+  }
+  const hasName = typeof body?.nameText === 'string';
+  const hasEffect = typeof body?.effectText === 'string';
+  if (!hasName && !hasEffect) return { ok: false, status: 400, error: 'nameText or effectText required' };
+  const allowedReviewStatuses = ['official', 'verified', 'pending_review'];
+  if (body?.reviewStatus !== undefined && !allowedReviewStatuses.includes(body.reviewStatus)) {
+    return { ok: false, status: 400, error: 'Unsupported review status' };
+  }
+  if (body?.reviewStatus === 'official') {
+    return { ok: false, status: 400, error: 'Derived translations cannot be marked official' };
+  }
+  const reviewStatus = body?.reviewStatus || 'pending_review';
+  const source = typeof body?.source === 'string' && body.source ? body.source : 'admin';
+  const reviewNote = typeof body?.reviewNote === 'string' ? body.reviewNote : '';
 
   await pool.query(
-    `INSERT INTO card_effects_i18n (card_id, lang, effect_text)
-     VALUES ($1, $2, $3)
+    `INSERT INTO card_texts_i18n (
+       card_id, lang, name_text, effect_text, name_source, effect_source,
+       review_status, review_note
+     )
+     VALUES ($1, $2, $3, $4, $5, $5, $6, $7)
      ON CONFLICT (card_id, lang) DO UPDATE SET
-       effect_text = EXCLUDED.effect_text`,
-    [cardId, lang, body.effectText],
+       name_text = CASE WHEN $8 THEN EXCLUDED.name_text ELSE card_texts_i18n.name_text END,
+       effect_text = CASE WHEN $9 THEN EXCLUDED.effect_text ELSE card_texts_i18n.effect_text END,
+       name_source = CASE WHEN $8 THEN EXCLUDED.name_source ELSE card_texts_i18n.name_source END,
+       effect_source = CASE WHEN $9 THEN EXCLUDED.effect_source ELSE card_texts_i18n.effect_source END,
+       review_status = EXCLUDED.review_status,
+       review_note = EXCLUDED.review_note,
+       updated_at = NOW()`,
+    [cardId, lang, body.nameText || '', body.effectText || '', source, reviewStatus, reviewNote, hasName, hasEffect],
   );
+  if (hasEffect) {
+    await pool.query(
+      `INSERT INTO card_effects_i18n (card_id, lang, effect_text)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (card_id, lang) DO UPDATE SET
+         effect_text = EXCLUDED.effect_text`,
+      [cardId, lang, body.effectText],
+    );
+  }
   await writeAuditLog(pool, {
     adminUserId: adminUserId ?? null,
     action: 'upsert_card_i18n',
-    targetType: 'card_effects_i18n',
+    targetType: 'card_texts_i18n',
     targetId: cardId,
-    details: { lang, effectText: body.effectText },
+    details: {
+      lang,
+      ...(hasName ? { nameText: body.nameText } : {}),
+      ...(hasEffect ? { effectText: body.effectText } : {}),
+      reviewStatus,
+      reviewNote,
+      source,
+    },
   });
   return { ok: true, body: { ok: true } };
 }
@@ -133,6 +173,24 @@ async function upsertCard(pool, cardId, body, adminUserId) {
        errata = EXCLUDED.errata,
        updated_at = NOW()`,
     cardDefToDbParams(card),
+  );
+  await pool.query(
+    `INSERT INTO card_texts_i18n (
+       card_id, lang, name_text, effect_text, name_source, effect_source,
+       review_status, review_note
+     )
+     VALUES
+       ($1, 'ja', $2, $3, 'official_card_print', 'official_card_print', 'official', ''),
+       ($1, 'en', $4, $5, 'official_card_print', 'official_card_print', 'official', '')
+     ON CONFLICT (card_id, lang) DO UPDATE SET
+       name_text = EXCLUDED.name_text,
+       effect_text = EXCLUDED.effect_text,
+       name_source = EXCLUDED.name_source,
+       effect_source = EXCLUDED.effect_source,
+       review_status = EXCLUDED.review_status,
+       review_note = EXCLUDED.review_note,
+       updated_at = NOW()`,
+    [card.id, card.name, card.effect, card.enNameOfficial || '', card.enEffectOfficial || ''],
   );
   await writeAuditLog(pool, {
     adminUserId: adminUserId ?? null,

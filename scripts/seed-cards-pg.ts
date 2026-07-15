@@ -36,11 +36,27 @@ const SCHEMA_SQL = `
     errata TEXT DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT NOT NULL DEFAULT '';
 
   CREATE TABLE IF NOT EXISTS card_effects_i18n (
     card_id TEXT NOT NULL,
     lang TEXT NOT NULL,
     effect_text TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (card_id, lang)
+  );
+
+  CREATE TABLE IF NOT EXISTS card_texts_i18n (
+    card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    lang TEXT NOT NULL,
+    name_text TEXT NOT NULL DEFAULT '',
+    effect_text TEXT NOT NULL DEFAULT '',
+    name_source TEXT NOT NULL DEFAULT '',
+    effect_source TEXT NOT NULL DEFAULT '',
+    review_status TEXT NOT NULL DEFAULT 'pending_review'
+      CHECK (review_status IN ('official', 'verified', 'pending_review')),
+    review_note TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (card_id, lang)
   );
 
@@ -164,6 +180,23 @@ async function main(): Promise<void> {
            updated_at = NOW()`,
         cardParams(card),
       );
+      await client.query(
+        `INSERT INTO card_texts_i18n (
+           card_id, lang, name_text, effect_text, name_source, effect_source, review_status
+         )
+         VALUES
+           ($1, 'ja', $2, $3, 'official_card_print', 'official_card_print', 'official'),
+           ($1, 'en', $4, $5, 'official_card_print', 'official_card_print', 'official')
+         ON CONFLICT (card_id, lang) DO UPDATE SET
+           name_text = EXCLUDED.name_text,
+           effect_text = EXCLUDED.effect_text,
+           name_source = EXCLUDED.name_source,
+           effect_source = EXCLUDED.effect_source,
+           review_status = EXCLUDED.review_status,
+           review_note = '',
+           updated_at = NOW()`,
+        [card.id, card.name, card.effect, card.enNameOfficial ?? '', card.enEffectOfficial ?? ''],
+      );
     }
 
     for (const [cardId, translations] of Object.entries(effectsI18n)) {
@@ -175,6 +208,23 @@ async function main(): Promise<void> {
            ON CONFLICT (card_id, lang) DO UPDATE SET effect_text = EXCLUDED.effect_text`,
           [cardId, lang, effectText],
         );
+        if (lang !== 'ja' && lang !== 'en') {
+          await client.query(
+            `INSERT INTO card_texts_i18n (
+               card_id, lang, effect_text, effect_source, review_status
+             )
+             VALUES ($1, $2, $3, 'legacy_card_effects_i18n', 'pending_review')
+             ON CONFLICT (card_id, lang) DO UPDATE SET
+               effect_text = EXCLUDED.effect_text,
+               effect_source = EXCLUDED.effect_source,
+               review_status = CASE
+                 WHEN card_texts_i18n.review_status = 'official' THEN card_texts_i18n.review_status
+                 ELSE 'pending_review'
+               END,
+               updated_at = NOW()`,
+            [cardId, lang, effectText],
+          );
+        }
         translationCount += 1;
       }
     }

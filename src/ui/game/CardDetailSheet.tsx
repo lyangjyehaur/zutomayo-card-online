@@ -1,7 +1,8 @@
 import type { GameState } from '../../game/types';
 import { getCardDef } from '../../game/cards/loader';
+import { getLocalizedCardName } from '../../game/cards/i18n';
 import { Sheet } from '../primitives';
-import { t } from '../../i18n';
+import { t, useLocale } from '../../i18n';
 import { CardDetailBody, type FocusedCard } from './CardDetail';
 
 /**
@@ -18,9 +19,14 @@ export interface CardDetailSheetProps {
 }
 
 export function CardDetailSheet({ open, onOpenChange, focus, G, ownerName }: CardDetailSheetProps) {
+  const locale = useLocale();
+  const def =
+    focus && focus.card.faceUp && focus.card.defId !== '__hidden__' ? getCardDef(focus.card.defId) : undefined;
   const title =
     focus && focus.card.faceUp && focus.card.defId !== '__hidden__'
-      ? (getCardDef(focus.card.defId)?.name ?? t('card.unknown'))
+      ? def
+        ? getLocalizedCardName(def, locale)
+        : t('card.unknown')
       : t('card.back');
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={title} closeLabel={t('common.close')}>

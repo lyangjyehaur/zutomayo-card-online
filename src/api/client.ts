@@ -467,6 +467,25 @@ export async function fetchCardI18n(cardId: string): Promise<Record<string, stri
   return request<Record<string, string>>(`/cards/${encodeURIComponent(cardId)}/i18n`);
 }
 
+export interface CardTextI18nEntry {
+  name: string;
+  effect: string;
+  nameSource: string;
+  effectSource: string;
+  reviewStatus: 'official' | 'verified' | 'pending_review';
+  reviewNote: string;
+}
+
+export type CardTextsI18n = Record<string, Record<string, CardTextI18nEntry>>;
+
+export async function fetchAllCardTextsI18n(): Promise<CardTextsI18n> {
+  return request<CardTextsI18n>('/cards/texts');
+}
+
+export async function fetchCardTextsI18n(cardId: string): Promise<Record<string, CardTextI18nEntry>> {
+  return request<Record<string, CardTextI18nEntry>>(`/cards/${encodeURIComponent(cardId)}/texts`);
+}
+
 export async function fetchGameConfig(): Promise<Record<string, unknown>> {
   if (PUBLIC_DATA_CACHE_MS > 0 && isFresh(configCache)) return configCache.data;
   const data = await request<Record<string, unknown>>('/config');
@@ -1037,11 +1056,23 @@ export async function adminUpdateAboutPage(value: AboutPageI18nConfig): Promise<
   await adminUpdateConfig('about_page', value);
 }
 
-export async function adminUpdateCardI18n(cardId: string, lang: string, effectText: string): Promise<void> {
+export interface AdminCardTextUpdate {
+  nameText?: string;
+  effectText?: string;
+  reviewStatus?: 'official' | 'verified' | 'pending_review';
+  reviewNote?: string;
+  source?: string;
+}
+
+export async function adminUpdateCardI18n(
+  cardId: string,
+  lang: string,
+  text: string | AdminCardTextUpdate,
+): Promise<void> {
   await request<{ ok: boolean }>(`/admin/cards/${encodeURIComponent(cardId)}/i18n`, {
     method: 'PUT',
     headers: adminAuthHeaders(),
-    body: JSON.stringify({ lang, effectText }),
+    body: JSON.stringify({ lang, ...(typeof text === 'string' ? { effectText: text } : text) }),
   });
   await adminReloadGameCards();
 }

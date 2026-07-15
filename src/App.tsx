@@ -476,14 +476,14 @@ function RouterShell() {
   useEffect(() => {
     let cancelled = false;
     const boot = async () => {
-      const [{ loadConfigFromAPI }, { loadEffectI18nFromAPI }] = await Promise.all([
+      const [{ loadConfigFromAPI }, { loadCardTextsI18nFromAPI }] = await Promise.all([
         import('./game/cards/loader'),
         import('./game/cards/i18n'),
       ]);
       await Promise.allSettled([
         refreshCardResources(),
         withBootTimeout(loadConfigFromAPI()),
-        withBootTimeout(loadEffectI18nFromAPI()),
+        withBootTimeout(loadCardTextsI18nFromAPI()),
         withBootTimeout(waitForFonts(), 2500),
       ]);
       if (cancelled) return;

@@ -103,16 +103,65 @@ describe('admin card service', () => {
       ok: true,
       body: { ok: true },
     });
-    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('INSERT INTO card_effects_i18n'), [
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('INSERT INTO card_texts_i18n'), [
+      'c_1',
+      'zh-TW',
+      '',
+      '效果',
+      'admin',
+      'pending_review',
+      '',
+      false,
+      true,
+    ]);
+    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('INSERT INTO card_effects_i18n'), [
       'c_1',
       'zh-TW',
       '效果',
     ]);
     expect(pool.query).toHaveBeenNthCalledWith(
-      2,
+      3,
       'INSERT INTO admin_audit_log (admin_user_id, action, target_type, target_id, details) VALUES ($1, $2, $3, $4, $5::jsonb)',
-      [null, 'upsert_card_i18n', 'card_effects_i18n', 'c_1', JSON.stringify({ lang: 'zh-TW', effectText: '效果' })],
+      [
+        null,
+        'upsert_card_i18n',
+        'card_texts_i18n',
+        'c_1',
+        JSON.stringify({
+          lang: 'zh-TW',
+          effectText: '效果',
+          reviewStatus: 'pending_review',
+          reviewNote: '',
+          source: 'admin',
+        }),
+      ],
     );
+  });
+
+  it('stores reviewed bilingual card text with provenance', async () => {
+    const pool = poolWithRows();
+    await expect(
+      upsertCardI18n(pool, 'c_1', {
+        lang: 'ko',
+        nameText: '카드 이름',
+        effectText: '카드 효과',
+        reviewStatus: 'verified',
+        reviewNote: 'Compared with official Japanese and English',
+        source: 'admin_bilingual_translation',
+      }),
+    ).resolves.toEqual({ ok: true, body: { ok: true } });
+
+    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('INSERT INTO card_texts_i18n'), [
+      'c_1',
+      'ko',
+      '카드 이름',
+      '카드 효과',
+      'admin_bilingual_translation',
+      'verified',
+      'Compared with official Japanese and English',
+      true,
+      true,
+    ]);
   });
 
   it('rejects invalid card i18n payloads before writing', async () => {
@@ -122,6 +171,12 @@ describe('admin card service', () => {
       status: 400,
     });
     await expect(upsertCardI18n(pool, 'c_1', { lang: 'en' })).resolves.toMatchObject({ ok: false, status: 400 });
+    await expect(
+      upsertCardI18n(pool, 'c_1', { lang: 'ko', nameText: 'name', reviewStatus: 'official' }),
+    ).resolves.toMatchObject({ ok: false, status: 400 });
+    await expect(
+      upsertCardI18n(pool, 'c_1', { lang: 'ko', nameText: 'name', reviewStatus: 'unknown' }),
+    ).resolves.toMatchObject({ ok: false, status: 400 });
     expect(pool.query).not.toHaveBeenCalled();
   });
 
@@ -150,6 +205,13 @@ describe('admin card service', () => {
       body: { id: 'c_1', name: 'Updated', pack: 'pack-a' },
     });
     expect(existingPool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO cards'), expect.any(Array));
+    expect(existingPool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO card_texts_i18n'), [
+      'c_1',
+      'Updated',
+      '',
+      '',
+      '',
+    ]);
     expect(existingPool.query).toHaveBeenCalledWith(
       'INSERT INTO admin_audit_log (admin_user_id, action, target_type, target_id, details) VALUES ($1, $2, $3, $4, $5::jsonb)',
       expect.arrayContaining(['upsert_card', 'card', 'c_1']),

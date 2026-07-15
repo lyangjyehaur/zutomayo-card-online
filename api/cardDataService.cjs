@@ -46,6 +46,17 @@ function normalizeI18nLang(lang) {
   return I18N_LANGS.includes(canonical) ? canonical : null;
 }
 
+function cardTextRowToDef(row) {
+  return {
+    name: typeof row.name_text === 'string' ? row.name_text : '',
+    effect: typeof row.effect_text === 'string' ? row.effect_text : '',
+    nameSource: typeof row.name_source === 'string' ? row.name_source : '',
+    effectSource: typeof row.effect_source === 'string' ? row.effect_source : '',
+    reviewStatus: typeof row.review_status === 'string' ? row.review_status : 'pending_review',
+    reviewNote: typeof row.review_note === 'string' ? row.review_note : '',
+  };
+}
+
 async function getPublicCards(pool, searchParams) {
   try {
     const conditions = [];
@@ -98,6 +109,63 @@ async function getCardI18n(pool, cardId) {
   return translations;
 }
 
+async function getAllCardTextsI18n(pool) {
+  try {
+    const rows = (
+      await pool.query(
+        `SELECT card_id, lang, name_text, effect_text, name_source, effect_source,
+                review_status, review_note
+         FROM card_texts_i18n
+         ORDER BY card_id, lang`,
+      )
+    ).rows;
+    const grouped = {};
+    for (const row of rows) {
+      const lang = normalizeI18nLang(row.lang);
+      if (!lang) continue;
+      if (!grouped[row.card_id]) grouped[row.card_id] = {};
+      grouped[row.card_id][lang] = cardTextRowToDef(row);
+    }
+    return grouped;
+  } catch {
+    return {};
+  }
+}
+
+async function getCardTextsI18n(pool, cardId) {
+  const translations = Object.fromEntries(
+    I18N_LANGS.map((lang) => [
+      lang,
+      cardTextRowToDef({
+        name_text: '',
+        effect_text: '',
+        name_source: '',
+        effect_source: '',
+        review_status: 'pending_review',
+        review_note: '',
+      }),
+    ]),
+  );
+  try {
+    const rows = (
+      await pool.query(
+        `SELECT lang, name_text, effect_text, name_source, effect_source,
+                review_status, review_note
+         FROM card_texts_i18n
+         WHERE card_id = $1`,
+        [cardId],
+      )
+    ).rows;
+    for (const row of rows) {
+      const lang = normalizeI18nLang(row.lang);
+      if (lang) translations[lang] = cardTextRowToDef(row);
+    }
+  } catch {
+    // Return the empty language shape when PG is unavailable.
+  }
+  return translations;
+}
+
 async function getPublicCard(pool, cardId) {
   try {
     const card = (await pool.query(`${CARD_SELECT} FROM cards WHERE id = $1`, [cardId])).rows[0];
@@ -124,9 +192,12 @@ async function getPresetDecks(pool) {
 
 module.exports = {
   CARD_SELECT,
+  cardTextRowToDef,
   cardRowToDef,
   getAllCardI18n,
+  getAllCardTextsI18n,
   getCardI18n,
+  getCardTextsI18n,
   getGameConfig,
   getPresetDecks,
   getPublicCard,

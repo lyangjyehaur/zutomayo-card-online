@@ -1,7 +1,8 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { CardInstance, Element } from '../../game/types';
 import { getCardDef } from '../../game/cards/loader';
-import { t } from '../../i18n';
+import { getLocalizedCardName } from '../../game/cards/i18n';
+import { t, useLocale } from '../../i18n';
 import { CardImage } from '../../components/CardImage';
 import type { CardImageContext } from '../../lib/cardImages';
 
@@ -55,10 +56,11 @@ export function CardView({
   className,
   tutId,
 }: CardViewProps) {
+  const locale = useLocale();
   const faceUp = card.faceUp && card.defId !== '__hidden__';
   const def = faceUp ? getCardDef(card.defId) : undefined;
   const interactive = Boolean(onActivate) && state !== 'disabled';
-  const label = ariaLabel ?? (def ? def.name : t('card.back'));
+  const label = ariaLabel ?? (def ? getLocalizedCardName(def, locale) : t('card.back'));
   const resolvedImageContext: CardImageContext =
     imageContext ?? (size === 'mini' || size === 'sm' ? 'mobile-board' : size === 'xl' ? 'preview' : 'board');
 

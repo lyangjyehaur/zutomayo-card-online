@@ -44,4 +44,26 @@ describe('schema migrations', () => {
       expect(migrations, `migrations missing ${artifact}`).toContain(artifact);
     }
   });
+
+  it('keeps official and localized card text schema aligned with initSchema fallback', () => {
+    const initSchema = readRepoFile('api/server.cjs');
+    const migrations = readMigrations();
+    const cardTextArtifacts = [
+      'en_name_official',
+      'en_effect_official',
+      'card_texts_i18n',
+      'name_text',
+      'effect_text',
+      'name_source',
+      'effect_source',
+      'review_status',
+      'review_note',
+      'idx_card_texts_i18n_lang_review',
+    ];
+
+    for (const artifact of cardTextArtifacts) {
+      expect(initSchema, `initSchema fallback missing ${artifact}`).toContain(artifact);
+      expect(migrations, `migrations missing ${artifact}`).toContain(artifact);
+    }
+  });
 });

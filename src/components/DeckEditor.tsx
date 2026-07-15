@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/loader';
-import { getTranslatedEffect } from '../game/cards/i18n';
+import { getLocalizedCardEffect, getLocalizedCardName } from '../game/cards/i18n';
 import { loadCustomDeckIds } from '../game/cards/customDeck';
 import { t, useLocale } from '../i18n';
 import {
@@ -267,14 +267,18 @@ export function DeckEditor({
       const query = searchText.toLowerCase();
       const normalizedQuery = normalizeCardNumber(query);
       cards = cards.filter((card) => {
-        const translatedEffect = getTranslatedEffect(card.id, locale);
+        const localizedName = getLocalizedCardName(card, locale);
+        const localizedEffect = getLocalizedCardEffect(card, locale);
         return (
           card.name.toLowerCase().includes(query) ||
+          (card.enNameOfficial?.toLowerCase().includes(query) ?? false) ||
+          localizedName.toLowerCase().includes(query) ||
           card.id.toLowerCase().includes(query) ||
           normalizeCardNumber(card.id).includes(normalizedQuery) ||
           card.pack.toLowerCase().includes(query) ||
           card.effect.toLowerCase().includes(query) ||
-          (translatedEffect?.toLowerCase().includes(query) ?? false) ||
+          (card.enEffectOfficial?.toLowerCase().includes(query) ?? false) ||
+          localizedEffect.toLowerCase().includes(query) ||
           card.song.toLowerCase().includes(query)
         );
       });
@@ -288,7 +292,7 @@ export function DeckEditor({
         const bAttack = b.attack ? Math.max(b.attack.night, b.attack.day) : 0;
         return bAttack - aAttack;
       }
-      return a.name.localeCompare(b.name);
+      return getLocalizedCardName(a, locale).localeCompare(getLocalizedCardName(b, locale), locale);
     });
   }, [allCards, filterElement, filterType, filterPack, filterCardNumber, searchText, sortBy, locale]);
 
@@ -584,7 +588,9 @@ export function DeckEditor({
               >
                 {card.powerCost}
               </span>
-              <span className="truncate font-display text-sm font-bold text-content-primary/80">{card.name}</span>
+              <span className="truncate font-display text-sm font-bold text-content-primary/80">
+                {getLocalizedCardName(card, locale)}
+              </span>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span
@@ -596,7 +602,7 @@ export function DeckEditor({
               <IconButton
                 onClick={() => removeCard(firstIndex)}
                 className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm text-content-primary/45 transition hover:bg-content-primary/5 hover:text-accent-action focus:outline-none focus:ring-2 focus:ring-accent-primary/60 focus:ring-offset-2 focus:ring-offset-surface-base"
-                label={`${t('deckEditor.removeCard')} ${card.name}`}
+                label={`${t('deckEditor.removeCard')} ${getLocalizedCardName(card, locale)}`}
                 icon={<X className="size-4" aria-hidden="true" />}
               />
             </div>
@@ -625,7 +631,7 @@ export function DeckEditor({
   );
 
   const cardDetailProps = (card: CardDef) => ({
-    title: card.name,
+    title: getLocalizedCardName(card, locale),
     meta: `${elementLabel(card.element)} · ${typeLabel(card.type)} · ${card.rarity}`,
     stats: (
       <>
@@ -650,7 +656,7 @@ export function DeckEditor({
         )}
       </>
     ),
-    effect: card.effect ? (getTranslatedEffect(card.id, locale) ?? card.effect) : undefined,
+    effect: getLocalizedCardEffect(card, locale) || undefined,
     footer:
       card.song || card.illustrator ? (
         <>
@@ -832,6 +838,7 @@ export function DeckEditor({
           {visibleCards.map((card) => {
             const count = deckCounts.get(card.id) ?? 0;
             const canAdd = count < MAX_COPIES && deck.length < DECK_SIZE;
+            const localizedName = getLocalizedCardName(card, locale);
             return (
               <div key={card.id} className="group relative">
                 <button
@@ -850,7 +857,7 @@ export function DeckEditor({
                     <CardImage
                       cardId={card.id}
                       context="hand"
-                      alt={card.name}
+                      alt={localizedName}
                       loading="lazy"
                       referrerPolicy="no-referrer"
                       className="absolute inset-0 size-full object-contain"
@@ -869,7 +876,7 @@ export function DeckEditor({
                 </button>
                 <IconButton
                   className="absolute bottom-1 right-1 z-[var(--z-dropdown)] bg-surface-canvas/90 text-content-primary/70 ring-1 ring-content-primary/20 backdrop-blur hover:text-accent-primary md:hidden"
-                  label={`Preview ${card.name}`}
+                  label={`Preview ${localizedName}`}
                   icon={<Eye className="size-4" aria-hidden="true" />}
                   onClick={(event) => handlePreviewClick(card, event)}
                   onMouseEnter={(event) => handleCardEnter(card, event)}

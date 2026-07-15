@@ -26,7 +26,9 @@ const S = require('./schemas.cjs');
 const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigner.cjs');
 const {
   getAllCardI18n,
+  getAllCardTextsI18n,
   getCardI18n,
+  getCardTextsI18n,
   getGameConfig,
   getPresetDecks,
   getPublicCard,
@@ -390,6 +392,8 @@ async function initSchema() {
       errata TEXT DEFAULT '',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT NOT NULL DEFAULT ''`,
 
     `CREATE TABLE IF NOT EXISTS card_effects_i18n (
       card_id TEXT NOT NULL,
@@ -397,6 +401,31 @@ async function initSchema() {
       effect_text TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (card_id, lang)
     )`,
+
+    `CREATE TABLE IF NOT EXISTS card_texts_i18n (
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      lang TEXT NOT NULL,
+      name_text TEXT NOT NULL DEFAULT '',
+      effect_text TEXT NOT NULL DEFAULT '',
+      name_source TEXT NOT NULL DEFAULT '',
+      effect_source TEXT NOT NULL DEFAULT '',
+      review_status TEXT NOT NULL DEFAULT 'pending_review'
+        CHECK (review_status IN ('official', 'verified', 'pending_review')),
+      review_note TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (card_id, lang)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_card_texts_i18n_lang_review
+      ON card_texts_i18n(lang, review_status)`,
+    `INSERT INTO card_texts_i18n (
+       card_id, lang, effect_text, effect_source, review_status
+     )
+     SELECT legacy.card_id, legacy.lang, legacy.effect_text,
+            'legacy_card_effects_i18n', 'pending_review'
+     FROM card_effects_i18n legacy
+     JOIN cards ON cards.id = legacy.card_id
+     WHERE legacy.lang NOT IN ('ja', 'en')
+     ON CONFLICT (card_id, lang) DO NOTHING`,
 
     `CREATE TABLE IF NOT EXISTS game_config (
       key TEXT PRIMARY KEY,
@@ -3003,6 +3032,20 @@ function handleRequest(req, res) {
     if (pathname === '/api/cards/i18n' && method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
       json(await getAllCardI18n(pool));
+      return;
+    }
+
+    if (pathname === '/api/cards/texts' && method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getAllCardTextsI18n(pool));
+      return;
+    }
+
+    const publicCardTextsRoute = pathname.match(/^\/api\/cards\/([^/]+)\/texts$/);
+    if (publicCardTextsRoute && method === 'GET') {
+      const cardId = decodeURIComponent(publicCardTextsRoute[1]);
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getCardTextsI18n(pool, cardId));
       return;
     }
 

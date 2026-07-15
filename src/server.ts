@@ -2,7 +2,7 @@
 import './server/observability/tracing.js';
 import { ZutomayoOnlineCard, resetParsedEffects } from './game/Game';
 import { initCards } from './game/cards/loader';
-import { initEffectI18n } from './game/cards/i18n';
+import { initCardTextsI18n, initEffectI18n, type CardTextI18nEntry } from './game/cards/i18n';
 import type { CardDef } from './game/types';
 import { APP_VERSION_INFO, isCompatibleVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 import path from 'path';
@@ -234,6 +234,41 @@ async function loadCardsFromPG(): Promise<void> {
   }
   initEffectI18n(i18n);
   logger.info({ count: Object.keys(i18n).length }, 'loaded card i18n entries from PostgreSQL');
+
+  try {
+    const textRows = await cardPool.query(
+      `SELECT card_id, lang, name_text, effect_text, name_source, effect_source,
+              review_status, review_note
+       FROM card_texts_i18n
+       ORDER BY card_id, lang`,
+    );
+    const texts: Record<string, Record<string, CardTextI18nEntry>> = {};
+    for (const row of textRows.rows) {
+      const r = row as {
+        card_id: string;
+        lang: string;
+        name_text: string;
+        effect_text: string;
+        name_source: string;
+        effect_source: string;
+        review_status: CardTextI18nEntry['reviewStatus'];
+        review_note: string;
+      };
+      if (!texts[r.card_id]) texts[r.card_id] = {};
+      texts[r.card_id][r.lang] = {
+        name: r.name_text || '',
+        effect: r.effect_text || '',
+        nameSource: r.name_source || '',
+        effectSource: r.effect_source || '',
+        reviewStatus: r.review_status || 'pending_review',
+        reviewNote: r.review_note || '',
+      };
+    }
+    initCardTextsI18n(texts);
+    logger.info({ count: Object.keys(texts).length }, 'loaded localized card texts from PostgreSQL');
+  } catch (error) {
+    logger.warn({ error }, 'localized card texts unavailable; using legacy effect translations');
+  }
 }
 
 const API_SERVER = process.env.API_URL || 'http://api:3001';
