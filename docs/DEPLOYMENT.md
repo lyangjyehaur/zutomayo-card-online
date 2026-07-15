@@ -626,6 +626,50 @@ npm run verify
 
 ## CD / 持續部署
 
+### Server4 beta 部署（目前 `master` 的實際流程）
+
+Server4 現階段由 `master` 原始碼在主機上建置，不使用下方延後中的 immutable image、
+Cosign、attestation、retention worker 或七角色矩陣。部署入口只有：
+
+```bash
+./scripts/deploy-server4.sh --confirm
+```
+
+腳本只接受目前乾淨且已推送的本機 `master`，並要求本機 `HEAD`、`origin/master` 與
+server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`。Server4 的 `.env`
+至少需要：
+
+- `PG_MIGRATION_USER` / `PG_MIGRATION_PASSWORD`：只供 migration 使用。
+- `PG_APP_USER` / `PG_APP_PASSWORD`：由 game、api、platform 共用。
+- `PG_DATABASE`、`PGSSLMODE=verify-full`、`PG_CA_FILE`、`PG_SSLROOTCERT` 與
+  `NODE_EXTRA_CA_CERTS`。
+- `REDIS_URL`、三個 runtime 共用的 `REDIS_DB`，以及外部 Redis 的
+  `REDIS_PASSWORD`（若 Redis 啟用密碼）。
+- 現有 runtime 所需的 `JWT_SECRET`、`METRICS_TOKEN` 與其他功能設定。
+
+部署順序固定為：備份 `.env`/Compose → 以 migration role 產生新的 `pg_dump -Fc`
+並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
+`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000030_card_official_errata_english_source`
+及 migration checksum → 實際檢查三服務 `REDIS_DB` 一致且 Redis
+`maxmemory-policy=noeviction` → 保存目前 runtime images → build →
+`docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready` 與 build ID。
+
+`POSTGRES_CONTAINER`（預設 `postgresql`）、`REDIS_CONTAINER`（預設 `redis`）與
+`REMOTE_BACKUP_DIR` 可依 server4 的實際容器名稱或路徑覆寫。部署或健康驗證失敗時，
+腳本會還原部署前的 `.env`、Compose 與 runtime images；手動回滾使用：
+
+```bash
+./scripts/deploy-server4.sh --rollback --confirm
+```
+
+此 beta rollback 不執行 destructive down migration，因此 migration 仍須保持
+expand/contract 與舊 runtime 相容。每次部署前產生的 custom-format dump 與
+`.sha256` 是必要的就地回復保險，但不等同後期的 WAL/PITR 或異地備份方案。
+
+以下 immutable image/staging 成熟度 CD 僅保留供
+`codex/deferred-production-hardening` 分支後續開發；`master` push 不會觸發它，也不是
+目前 server4 beta 部署的前置條件。
+
 Continuous Deployment pipeline: [.github/workflows/cd.yml](../.github/workflows/cd.yml).
 
 ### 觸發條件
