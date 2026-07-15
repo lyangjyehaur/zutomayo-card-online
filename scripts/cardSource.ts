@@ -22,11 +22,17 @@ type CardRow = {
   en_effect_official?: string | null;
   image?: string | null;
   errata?: string | null;
+  has_official_errata?: boolean | null;
+  official_errata_id?: string | null;
+  official_errata_affects_name?: boolean | null;
+  official_errata_affects_effect?: boolean | null;
+  official_errata_url?: string | null;
 };
 
 const CARD_SELECT = `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
                     attack_night, attack_day, power_cost, send_to_power, effect,
-                    en_effect_official, image, errata
+                    en_effect_official, image, errata, has_official_errata, official_errata_id,
+                    official_errata_affects_name, official_errata_affects_effect, official_errata_url
                     FROM cards ORDER BY id`;
 
 function cardRowToDef(row: CardRow): CardDef {
@@ -52,9 +58,14 @@ function cardRowToDef(row: CardRow): CardDef {
     effect: row.effect || '',
     image: row.image || '',
     errata: row.errata || '',
+    hasOfficialErrata: Boolean(row.has_official_errata),
+    officialErrataAffectsName: Boolean(row.official_errata_affects_name),
+    officialErrataAffectsEffect: Boolean(row.official_errata_affects_effect),
   };
   if (row.en_name_official) def.enNameOfficial = row.en_name_official;
   if (row.en_effect_official) def.enEffectOfficial = row.en_effect_official;
+  if (row.official_errata_id) def.officialErrataId = row.official_errata_id;
+  if (row.official_errata_url) def.officialErrataUrl = row.official_errata_url;
   return def;
 }
 

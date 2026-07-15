@@ -59,11 +59,53 @@ describe('schema migrations', () => {
       'review_status',
       'review_note',
       'idx_card_texts_i18n_lang_review',
+      'has_official_errata',
+      'official_errata_id',
+      'official_errata_affects_name',
+      'official_errata_affects_effect',
+      'official_errata_url',
+      'card_official_errata',
+      'corrected_japanese_text',
+      'corrected_english_text',
+      'corrected_english_status',
+      'idx_cards_has_official_errata',
     ];
 
     for (const artifact of cardTextArtifacts) {
       expect(initSchema, `initSchema fallback missing ${artifact}`).toContain(artifact);
       expect(migrations, `migrations missing ${artifact}`).toContain(artifact);
     }
+  });
+
+  it('tracks all 12 official errata against the corrected Japanese card source', () => {
+    const errata = JSON.parse(readRepoFile('data/card-official-errata.json')) as {
+      errata: Array<{
+        errataId: string;
+        cardId: string;
+        fields: Array<'name' | 'effect'>;
+        correctedJapaneseText: string;
+        correctedEnglishText: string;
+      }>;
+    };
+    const extraction = JSON.parse(readRepoFile('data/card-english-extraction.json')) as {
+      cards: Array<{ id: string; japaneseName: string; japaneseEffect: string }>;
+    };
+    const cardsById = new Map(extraction.cards.map((card) => [card.id, card]));
+
+    expect(errata.errata).toHaveLength(12);
+    expect(new Set(errata.errata.map((entry) => entry.cardId)).size).toBe(12);
+    for (const entry of errata.errata) {
+      const card = cardsById.get(entry.cardId);
+      expect(card, `missing ${entry.cardId}`).toBeDefined();
+      expect(entry.correctedJapaneseText).toBe(
+        entry.fields.includes('name') ? card?.japaneseName : card?.japaneseEffect,
+      );
+    }
+    expect(errata.errata.find((entry) => entry.cardId === '3rd_31')?.correctedEnglishText).toContain(
+      'regardless of its Power',
+    );
+    expect(errata.errata.find((entry) => entry.cardId === '4th_76')?.correctedEnglishText).toBe(
+      'GUREKUMA-KUN (Pain Give Form)',
+    );
   });
 });

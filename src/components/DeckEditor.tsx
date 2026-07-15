@@ -143,6 +143,7 @@ export function DeckEditor({
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
   const [filterPack, setFilterPack] = useState('all');
+  const [filterErrata, setFilterErrata] = useState<'all' | 'errata'>('all');
   const [filterCardNumber, setFilterCardNumber] = useState('');
   const [searchText, setSearchText] = useState('');
   const [sortBy, setSortBy] = useState<DeckEditorSort>('number');
@@ -259,6 +260,7 @@ export function DeckEditor({
     if (filterElement !== 'all') cards = cards.filter((card) => card.element === filterElement);
     if (filterType !== 'all') cards = cards.filter((card) => card.type === filterType);
     if (filterPack !== 'all') cards = cards.filter((card) => card.pack === filterPack);
+    if (filterErrata === 'errata') cards = cards.filter((card) => card.hasOfficialErrata);
     if (filterCardNumber.trim()) {
       const cardNumberQuery = normalizeCardNumber(filterCardNumber);
       cards = cards.filter((card) => normalizeCardNumber(card.id).includes(cardNumberQuery));
@@ -271,13 +273,13 @@ export function DeckEditor({
         const localizedEffect = getLocalizedCardEffect(card, locale);
         return (
           card.name.toLowerCase().includes(query) ||
-          (card.enNameOfficial?.toLowerCase().includes(query) ?? false) ||
+          (!card.officialErrataAffectsName && (card.enNameOfficial?.toLowerCase().includes(query) ?? false)) ||
           localizedName.toLowerCase().includes(query) ||
           card.id.toLowerCase().includes(query) ||
           normalizeCardNumber(card.id).includes(normalizedQuery) ||
           card.pack.toLowerCase().includes(query) ||
           card.effect.toLowerCase().includes(query) ||
-          (card.enEffectOfficial?.toLowerCase().includes(query) ?? false) ||
+          (!card.officialErrataAffectsEffect && (card.enEffectOfficial?.toLowerCase().includes(query) ?? false)) ||
           localizedEffect.toLowerCase().includes(query) ||
           card.song.toLowerCase().includes(query)
         );
@@ -294,11 +296,11 @@ export function DeckEditor({
       }
       return getLocalizedCardName(a, locale).localeCompare(getLocalizedCardName(b, locale), locale);
     });
-  }, [allCards, filterElement, filterType, filterPack, filterCardNumber, searchText, sortBy, locale]);
+  }, [allCards, filterElement, filterType, filterPack, filterErrata, filterCardNumber, searchText, sortBy, locale]);
 
   useEffect(() => {
     setPage(0);
-  }, [filterElement, filterType, filterPack, filterCardNumber, searchText, sortBy]);
+  }, [filterElement, filterType, filterPack, filterErrata, filterCardNumber, searchText, sortBy]);
 
   useEffect(() => {
     if (initialDeck !== undefined) setDeck(initialDeck);
@@ -365,6 +367,7 @@ export function DeckEditor({
     elementLabel(filterElement),
     typeLabel(filterType),
     filterPack === 'all' ? t('deckEditor.allPacks') : filterPack,
+    filterErrata === 'errata' ? t('card.officialErrata') : null,
     filterCardNumber.trim() ? `${t('deckEditor.cardNumberShort')} ${filterCardNumber.trim()}` : null,
     sortLabel(sortBy),
   ]
@@ -516,6 +519,21 @@ export function DeckEditor({
             value={filterType}
             onChange={setFilterType}
             ariaLabel={t('deckEditor.filterType')}
+          />
+        </fieldset>
+        <fieldset className={fieldsetClass}>
+          <legend className={legendClass}>{t('deckEditor.filterErrata')}</legend>
+          <SegmentedControl
+            className={chipGroupClass}
+            optionClassName={chipOptionClass}
+            size={chipSize}
+            options={[
+              { value: 'all', label: t('deckEditor.all') },
+              { value: 'errata', label: t('card.officialErrata') },
+            ]}
+            value={filterErrata}
+            onChange={setFilterErrata}
+            ariaLabel={t('deckEditor.filterErrata')}
           />
         </fieldset>
         <fieldset className={fieldsetClass}>
@@ -871,6 +889,11 @@ export function DeckEditor({
                   {count > 0 && (
                     <span className="absolute right-1 top-1 rounded-full bg-accent-primary/30 px-1.5 py-0.5 font-mono text-minutia leading-none text-accent-primary ring-1 ring-accent-primary/40">
                       ×{count}
+                    </span>
+                  )}
+                  {card.hasOfficialErrata && (
+                    <span className="absolute bottom-1 left-1 rounded-xs bg-accent-action/90 px-1.5 py-0.5 font-mono text-minutia leading-none text-surface-canvas">
+                      {t('card.officialErrata')}
                     </span>
                   )}
                 </button>

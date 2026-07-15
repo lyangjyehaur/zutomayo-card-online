@@ -32,6 +32,11 @@ function cardDefToDbParams(card) {
     card.enEffectOfficial || '',
     card.image || '',
     card.errata || '',
+    Boolean(card.hasOfficialErrata),
+    card.officialErrataId || null,
+    Boolean(card.officialErrataAffectsName),
+    Boolean(card.officialErrataAffectsEffect),
+    card.officialErrataUrl || '',
   ];
 }
 
@@ -76,6 +81,11 @@ function normalizeCardForUpsert(id, body, baseCard) {
     enEffectOfficial: typeof candidate.enEffectOfficial === 'string' ? candidate.enEffectOfficial : '',
     image: typeof candidate.image === 'string' ? candidate.image : '',
     errata: typeof candidate.errata === 'string' ? candidate.errata : '',
+    hasOfficialErrata: Boolean(baseCard?.hasOfficialErrata),
+    officialErrataId: typeof baseCard?.officialErrataId === 'string' ? baseCard.officialErrataId : undefined,
+    officialErrataAffectsName: Boolean(baseCard?.officialErrataAffectsName),
+    officialErrataAffectsEffect: Boolean(baseCard?.officialErrataAffectsEffect),
+    officialErrataUrl: typeof baseCard?.officialErrataUrl === 'string' ? baseCard.officialErrataUrl : undefined,
   };
 }
 
@@ -97,6 +107,8 @@ async function upsertCardI18n(pool, cardId, body, adminUserId) {
   }
   const reviewStatus = body?.reviewStatus || 'pending_review';
   const source = typeof body?.source === 'string' && body.source ? body.source : 'admin';
+  const nameSource = typeof body?.nameSource === 'string' && body.nameSource ? body.nameSource : source;
+  const effectSource = typeof body?.effectSource === 'string' && body.effectSource ? body.effectSource : source;
   const reviewNote = typeof body?.reviewNote === 'string' ? body.reviewNote : '';
 
   await pool.query(
@@ -104,16 +116,27 @@ async function upsertCardI18n(pool, cardId, body, adminUserId) {
        card_id, lang, name_text, effect_text, name_source, effect_source,
        review_status, review_note
      )
-     VALUES ($1, $2, $3, $4, $5, $5, $6, $7)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (card_id, lang) DO UPDATE SET
-       name_text = CASE WHEN $8 THEN EXCLUDED.name_text ELSE card_texts_i18n.name_text END,
-       effect_text = CASE WHEN $9 THEN EXCLUDED.effect_text ELSE card_texts_i18n.effect_text END,
-       name_source = CASE WHEN $8 THEN EXCLUDED.name_source ELSE card_texts_i18n.name_source END,
-       effect_source = CASE WHEN $9 THEN EXCLUDED.effect_source ELSE card_texts_i18n.effect_source END,
+       name_text = CASE WHEN $9 THEN EXCLUDED.name_text ELSE card_texts_i18n.name_text END,
+       effect_text = CASE WHEN $10 THEN EXCLUDED.effect_text ELSE card_texts_i18n.effect_text END,
+       name_source = CASE WHEN $9 THEN EXCLUDED.name_source ELSE card_texts_i18n.name_source END,
+       effect_source = CASE WHEN $10 THEN EXCLUDED.effect_source ELSE card_texts_i18n.effect_source END,
        review_status = EXCLUDED.review_status,
        review_note = EXCLUDED.review_note,
        updated_at = NOW()`,
-    [cardId, lang, body.nameText || '', body.effectText || '', source, reviewStatus, reviewNote, hasName, hasEffect],
+    [
+      cardId,
+      lang,
+      body.nameText || '',
+      body.effectText || '',
+      nameSource,
+      effectSource,
+      reviewStatus,
+      reviewNote,
+      hasName,
+      hasEffect,
+    ],
   );
   if (hasEffect) {
     await pool.query(
@@ -136,6 +159,8 @@ async function upsertCardI18n(pool, cardId, body, adminUserId) {
       reviewStatus,
       reviewNote,
       source,
+      ...(body.nameSource ? { nameSource } : {}),
+      ...(body.effectSource ? { effectSource } : {}),
     },
   });
   return { ok: true, body: { ok: true } };
@@ -150,9 +175,11 @@ async function upsertCard(pool, cardId, body, adminUserId) {
     `INSERT INTO cards (
        id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
        attack_night, attack_day, power_cost, send_to_power, effect,
-       en_effect_official, image, errata
+       en_effect_official, image, errata, has_official_errata, official_errata_id,
+       official_errata_affects_name, official_errata_affects_effect, official_errata_url
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+             $19, $20, $21, $22, $23)
      ON CONFLICT (id) DO UPDATE SET
        name = EXCLUDED.name,
        en_name_official = EXCLUDED.en_name_official,
@@ -171,6 +198,11 @@ async function upsertCard(pool, cardId, body, adminUserId) {
        en_effect_official = EXCLUDED.en_effect_official,
        image = EXCLUDED.image,
        errata = EXCLUDED.errata,
+       has_official_errata = EXCLUDED.has_official_errata,
+       official_errata_id = EXCLUDED.official_errata_id,
+       official_errata_affects_name = EXCLUDED.official_errata_affects_name,
+       official_errata_affects_effect = EXCLUDED.official_errata_affects_effect,
+       official_errata_url = EXCLUDED.official_errata_url,
        updated_at = NOW()`,
     cardDefToDbParams(card),
   );
@@ -183,14 +215,28 @@ async function upsertCard(pool, cardId, body, adminUserId) {
        ($1, 'ja', $2, $3, 'official_card_print', 'official_card_print', 'official', ''),
        ($1, 'en', $4, $5, 'official_card_print', 'official_card_print', 'official', '')
      ON CONFLICT (card_id, lang) DO UPDATE SET
-       name_text = EXCLUDED.name_text,
-       effect_text = EXCLUDED.effect_text,
-       name_source = EXCLUDED.name_source,
-       effect_source = EXCLUDED.effect_source,
-       review_status = EXCLUDED.review_status,
-       review_note = EXCLUDED.review_note,
+       name_text = CASE WHEN EXCLUDED.lang = 'en' AND $6 THEN card_texts_i18n.name_text ELSE EXCLUDED.name_text END,
+       effect_text = CASE WHEN EXCLUDED.lang = 'en' AND $7 THEN card_texts_i18n.effect_text ELSE EXCLUDED.effect_text END,
+       name_source = CASE WHEN EXCLUDED.lang = 'en' AND $6 THEN card_texts_i18n.name_source ELSE EXCLUDED.name_source END,
+       effect_source = CASE WHEN EXCLUDED.lang = 'en' AND $7 THEN card_texts_i18n.effect_source ELSE EXCLUDED.effect_source END,
+       review_status = CASE
+         WHEN EXCLUDED.lang = 'en' AND ($6 OR $7) THEN card_texts_i18n.review_status
+         ELSE EXCLUDED.review_status
+       END,
+       review_note = CASE
+         WHEN EXCLUDED.lang = 'en' AND ($6 OR $7) THEN card_texts_i18n.review_note
+         ELSE EXCLUDED.review_note
+       END,
        updated_at = NOW()`,
-    [card.id, card.name, card.effect, card.enNameOfficial || '', card.enEffectOfficial || ''],
+    [
+      card.id,
+      card.name,
+      card.effect,
+      card.enNameOfficial || '',
+      card.enEffectOfficial || '',
+      Boolean(card.officialErrataAffectsName),
+      Boolean(card.officialErrataAffectsEffect),
+    ],
   );
   await writeAuditLog(pool, {
     adminUserId: adminUserId ?? null,

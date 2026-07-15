@@ -70,14 +70,35 @@ function reviewedTranslation(cardId: string, locale: string): CardTextI18nEntry 
   return entry;
 }
 
+function isCorrectedErrataSource(source: string): boolean {
+  return source === 'official_errata_notice' || source === 'official_japanese_errata_translation';
+}
+
+function correctedTranslation(cardId: string, locale: string, field: 'name' | 'effect'): CardTextI18nEntry | null {
+  const entry = reviewedTranslation(cardId, locale);
+  if (!entry) return null;
+  const source = field === 'name' ? entry.nameSource : entry.effectSource;
+  return isCorrectedErrataSource(source) ? entry : null;
+}
+
 /**
  * Card-name display policy:
- * - Japanese and English always use official card-print text.
+ * - Japanese uses the corrected official source text.
+ * - English normally uses official print text; errata fields require a
+ *   reviewed correction derived from the official errata.
  * - Other locales use only reviewed derived translations.
- * - Missing/unreviewed translations fall back to official English, then Japanese.
+ * - Errata fields never fall back to superseded printed English.
  */
 export function getLocalizedCardName(card: CardDef, locale: string): string {
   if (locale === 'ja') return card.name;
+  if (card.officialErrataAffectsName) {
+    if (locale === 'en') return correctedTranslation(card.id, 'en', 'name')?.name || card.name;
+    return (
+      correctedTranslation(card.id, locale, 'name')?.name ||
+      correctedTranslation(card.id, 'en', 'name')?.name ||
+      card.name
+    );
+  }
   if (locale === 'en') return card.enNameOfficial || card.name;
   return reviewedTranslation(card.id, locale)?.name || card.enNameOfficial || card.name;
 }
@@ -85,6 +106,14 @@ export function getLocalizedCardName(card: CardDef, locale: string): string {
 /** Same provenance policy as getLocalizedCardName, applied to effects. */
 export function getLocalizedCardEffect(card: CardDef, locale: string): string {
   if (locale === 'ja') return card.effect;
+  if (card.officialErrataAffectsEffect) {
+    if (locale === 'en') return correctedTranslation(card.id, 'en', 'effect')?.effect || card.effect;
+    return (
+      correctedTranslation(card.id, locale, 'effect')?.effect ||
+      correctedTranslation(card.id, 'en', 'effect')?.effect ||
+      card.effect
+    );
+  }
   if (locale === 'en') return card.enEffectOfficial || card.effect;
   return reviewedTranslation(card.id, locale)?.effect || card.enEffectOfficial || card.effect;
 }

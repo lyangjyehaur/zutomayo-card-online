@@ -1,4 +1,4015 @@
 {
   "schemaVersion": 1,
-  "reviews": {}
+  "reviews": {
+    "1st_1": {
+      "name": {
+        "value": "NIRA-CHAN (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:24:17.261Z"
+      }
+    },
+    "1st_2": {
+      "name": {
+        "value": "NIRA-CHAN (Seigi)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:24:25.319Z"
+      }
+    },
+    "1st_3": {
+      "name": {
+        "value": "NIRA-CHAN (Hunch Gray)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:24:31.410Z"
+      }
+    },
+    "1st_4": {
+      "name": {
+        "value": "NIRA-CHAN (Ham)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:24:37.631Z"
+      }
+    },
+    "1st_5": {
+      "name": {
+        "value": "SHAKUMA-MEN (Humanoid)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:25:30.676Z"
+      },
+      "effect": {
+        "value": "Reverses the opponent's attack power day and night. Effective after the opponent's enchantment is activated.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:25:30.676Z"
+      }
+    },
+    "1st_6": {
+      "name": {
+        "value": "KITTE-MEN · INC-NEKO (Seigi)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:26:05.342Z"
+      },
+      "effect": {
+        "value": "Choose any one of the Abyss cards and use it in this turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:26:05.342Z"
+      }
+    },
+    "1st_7": {
+      "name": {
+        "value": "Laboratory of Ashban Electric Inc. (Ham)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:26:22.187Z"
+      },
+      "effect": {
+        "value": "Attack +50 if the Abyss's card has four different attributes.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:26:22.187Z"
+      }
+    },
+    "1st_8": {
+      "name": {
+        "value": "Compass Clock (Hunch Gray)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:26:47.391Z"
+      },
+      "effect": {
+        "value": "Clock disabled. Return to the time at the beginning of this turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:26:47.391Z"
+      }
+    },
+    "1st_9": {
+      "name": {
+        "value": "NIRA-CHAN (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:26:54.275Z"
+      }
+    },
+    "1st_10": {
+      "name": {
+        "value": "NIRA-CHAN (One's Mind)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:27:01.428Z"
+      }
+    },
+    "1st_11": {
+      "name": {
+        "value": "NIRA-CHAN (Stay Foolish)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:27:21.176Z"
+      }
+    },
+    "1st_12": {
+      "name": {
+        "value": "NIRA-CHAN[Job:Animator] (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:27:47.890Z"
+      }
+    },
+    "1st_13": {
+      "name": {
+        "value": "AFRO☆SAMURAI (MILABO)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:27:56.757Z"
+      }
+    },
+    "1st_14": {
+      "name": {
+        "value": "NIRA-CHAN (JK BOMBER)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:28:09.398Z"
+      }
+    },
+    "1st_15": {
+      "name": {
+        "value": "NIRA-CHAN (Minority Myakuraku)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:28:24.233Z"
+      }
+    },
+    "1st_16": {
+      "name": {
+        "value": "NIRA-CHAN (Byoushinwo Kamu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:28:34.150Z"
+      }
+    },
+    "1st_17": {
+      "name": {
+        "value": "NIRA-CHAN (Haze Haseru Haterumade)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:28:43.448Z"
+      }
+    },
+    "1st_18": {
+      "name": {
+        "value": "NIRA-CHAN (Inside Joke)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:29:10.390Z"
+      }
+    },
+    "1st_19": {
+      "name": {
+        "value": "NIRA-CHAN (MIRROR TUNE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:29:18.544Z"
+      }
+    },
+    "1st_20": {
+      "name": {
+        "value": "ZUTOMAYO SQUARE",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:29:29.991Z"
+      }
+    },
+    "1st_21": {
+      "name": {
+        "value": "UNIGURI are multiplying",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:29:59.689Z"
+      }
+    },
+    "1st_22": {
+      "name": {
+        "value": "NIRA-CHAN (Humanoid)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:30:09.645Z"
+      }
+    },
+    "1st_23": {
+      "name": {
+        "value": "NIRA-CHAN (Hunch Gray)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:30:16.472Z"
+      }
+    },
+    "1st_24": {
+      "name": {
+        "value": "NIRA-CHAN (Can't Be Right)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:30:22.363Z"
+      }
+    },
+    "1st_25": {
+      "name": {
+        "value": "Incarnation of HASAMI",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:30:44.898Z"
+      },
+      "effect": {
+        "value": "Attack +50 if the attribute of the opponent's character card is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:30:44.898Z"
+      }
+    },
+    "1st_26": {
+      "name": {
+        "value": "Declaration of the Opening",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:31:09.062Z"
+      },
+      "effect": {
+        "value": "Time goes back by the opponent's clock minutes from the beginning of this turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:31:09.062Z"
+      }
+    },
+    "1st_27": {
+      "name": {
+        "value": "Mirror Shooter",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:31:21.635Z"
+      },
+      "effect": {
+        "value": "Attack +50 if the attribute of the opponent's character card is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:31:21.635Z"
+      }
+    },
+    "1st_28": {
+      "name": {
+        "value": "Study Group",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:31:35.520Z"
+      },
+      "effect": {
+        "value": "40 damage reduction when you take damage.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:31:35.520Z"
+      }
+    },
+    "1st_29": {
+      "name": {
+        "value": "Microwave Oven of Lightning",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:31:50.872Z"
+      },
+      "effect": {
+        "value": "Attack +50 if the attribute of the opponent's character card is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:31:50.872Z"
+      }
+    },
+    "1st_30": {
+      "name": {
+        "value": "Sphere like a Bomb",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:32:04.125Z"
+      },
+      "effect": {
+        "value": "Your attack power is increased by 30.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:32:04.125Z"
+      }
+    },
+    "1st_31": {
+      "name": {
+        "value": "Washing a Car",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:32:18.049Z"
+      },
+      "effect": {
+        "value": "Attack +50 if the attribute of the opponent's character card is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:32:18.049Z"
+      }
+    },
+    "1st_32": {
+      "name": {
+        "value": "INC-NEKO ver.Cerberus",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:32:45.610Z"
+      },
+      "effect": {
+        "value": "Attack +50 if your HP is below 30.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:32:45.610Z"
+      }
+    },
+    "1st_33": {
+      "name": {
+        "value": "NIRA-CHAN (Inemuri Enseitai)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:33:03.203Z"
+      }
+    },
+    "1st_34": {
+      "name": {
+        "value": "Squad of Radiant DNA",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:33:10.356Z"
+      }
+    },
+    "1st_35": {
+      "name": {
+        "value": "GREINU (One's Mind)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:33:16.121Z"
+      }
+    },
+    "1st_36": {
+      "name": {
+        "value": "SYAKUMA-MEN...?",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:33:30.311Z"
+      }
+    },
+    "1st_37": {
+      "name": {
+        "value": "UNIGURI SUPER STAR",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:33:36.814Z"
+      }
+    },
+    "1st_38": {
+      "name": {
+        "value": "NIRA-CHAN (Inside Joke)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:34:14.911Z"
+      }
+    },
+    "1st_39": {
+      "name": {
+        "value": "GRAY (Ham)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:34:21.788Z"
+      }
+    },
+    "1st_40": {
+      "name": {
+        "value": "NIRA-CHAN (MIRROR TUNE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:34:27.424Z"
+      }
+    },
+    "1st_41": {
+      "name": {
+        "value": "NIRA-CHAN·NANASHI (DARKEN)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:34:41.858Z"
+      }
+    },
+    "1st_42": {
+      "name": {
+        "value": "UNIGURI-KUN・MIMI-KAYUSHI",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:35:03.525Z"
+      }
+    },
+    "1st_43": {
+      "name": {
+        "value": "Paper Carrier (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:35:09.956Z"
+      }
+    },
+    "1st_45": {
+      "name": {
+        "value": "NIRA-CHAN (Haze Haseru Haterumade)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:35:17.092Z"
+      }
+    },
+    "1st_46": {
+      "name": {
+        "value": "Knight of Justice",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:35:20.659Z"
+      }
+    },
+    "1st_47": {
+      "name": {
+        "value": "NIRA-CHINA (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:35:31.168Z"
+      }
+    },
+    "1st_48": {
+      "name": {
+        "value": "NIRA-CHAN (MILABO)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:35:40.210Z"
+      }
+    },
+    "1st_49": {
+      "name": {
+        "value": "NIRA-CHAN (Nouriueno Cracker)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:35:48.427Z"
+      }
+    },
+    "1st_50": {
+      "name": {
+        "value": "Growing UNIGURI",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:35:59.288Z"
+      }
+    },
+    "1st_51": {
+      "name": {
+        "value": "NIRA-CHAN (Hunch Gray)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:36:11.808Z"
+      }
+    },
+    "1st_52": {
+      "name": {
+        "value": "NIRA-CHAN on the run (Kan Saete Kuyashiiwa)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:36:25.664Z"
+      }
+    },
+    "1st_53": {
+      "name": {
+        "value": "Ferris wheel (Nouriueno Cracker)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:36:31.701Z"
+      },
+      "effect": {
+        "value": "Attack +30 if it's night.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:36:53.038Z"
+      }
+    },
+    "1st_54": {
+      "name": {
+        "value": "CYOKI·CYOKI",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:37:09.393Z"
+      },
+      "effect": {
+        "value": "Attack +30 if the attribute of the opponent's character card is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:37:09.393Z"
+      }
+    },
+    "1st_55": {
+      "name": {
+        "value": "Supporting Band",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:37:19.586Z"
+      },
+      "effect": {
+        "value": "Attack +20 if your HP is below 50.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:37:19.586Z"
+      }
+    },
+    "1st_56": {
+      "name": {
+        "value": "Kazekazami of Sunset",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:37:40.526Z"
+      },
+      "effect": {
+        "value": "Attack +30 if the attribute of the opponent's character card is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:37:40.526Z"
+      }
+    },
+    "1st_57": {
+      "name": {
+        "value": "UNIGURI Bread",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:37:49.022Z"
+      },
+      "effect": {
+        "value": "30 damage reduction when you take damage.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:37:49.022Z"
+      }
+    },
+    "1st_58": {
+      "name": {
+        "value": "Bomb Stripe",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:38:42.700Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the opponent's character card has a power cost of 2 or more ★.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:38:42.700Z"
+      }
+    },
+    "1st_59": {
+      "name": {
+        "value": "Lemon-scented sautéed UNIGURI",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:38:58.770Z"
+      },
+      "effect": {
+        "value": "Attack +30 if it's daytime.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:38:58.770Z"
+      }
+    },
+    "1st_60": {
+      "name": {
+        "value": "Electric Key",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:07.067Z"
+      },
+      "effect": {
+        "value": "Attack +30 if the attribute of the opponent's character card is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:07.067Z"
+      }
+    },
+    "1st_61": {
+      "name": {
+        "value": "ZUTOMAYO CITY",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:13.713Z"
+      },
+      "effect": {
+        "value": "Attack +30 when day changes to night.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:13.713Z"
+      }
+    },
+    "1st_62": {
+      "name": {
+        "value": "Rice cooked with Bamboo Shoots",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:25.542Z"
+      },
+      "effect": {
+        "value": "Attack +30 if the attribute of the opponent's character card is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:25.542Z"
+      }
+    },
+    "1st_63": {
+      "name": {
+        "value": "Fluffy Cat",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:35.760Z"
+      },
+      "effect": {
+        "value": "Reversing one's basic attack power day and night.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:35.760Z"
+      }
+    },
+    "1st_64": {
+      "name": {
+        "value": "A little luxury breakfast",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:52.804Z"
+      },
+      "effect": {
+        "value": "Attack +30 if the opponent's character card has a power cost of 2 or more ★.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:39:52.804Z"
+      }
+    },
+    "1st_68": {
+      "name": {
+        "value": "UCHUJIN-STRINGS (Inside Joke)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:40:09.169Z"
+      }
+    },
+    "1st_70": {
+      "name": {
+        "value": "UNIGURI-KUN (Kettobashita Moufu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:40:18.950Z"
+      }
+    },
+    "1st_71": {
+      "name": {
+        "value": "NIRA-CHAN (Konnakoto Soudou)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:40:23.088Z"
+      }
+    },
+    "1st_72": {
+      "name": {
+        "value": "TEIKETSU (FASTENING)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:40:31.793Z"
+      }
+    },
+    "1st_73": {
+      "name": {
+        "value": "UNIGURI-KUN (Konnakoto Soudou)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:40:35.978Z"
+      }
+    },
+    "1st_74": {
+      "name": {
+        "value": "FRANKEN (Dear. Mr「F」)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:42:04.796Z"
+      }
+    },
+    "1st_75": {
+      "name": {
+        "value": "NIRA-CHAN (QUILT)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:42:16.444Z"
+      }
+    },
+    "1st_76": {
+      "name": {
+        "value": "UNIGURI-KUN (QUILT)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:42:20.565Z"
+      }
+    },
+    "1st_77": {
+      "name": {
+        "value": "NIRA-CHAN (Mabushii DNA Dake)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:42:26.310Z"
+      }
+    },
+    "1st_78": {
+      "name": {
+        "value": "NIRA-CHAN (Kettobashita Moufu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:42:29.440Z"
+      }
+    },
+    "1st_79": {
+      "name": {
+        "value": "GRAY? (Can't Be Right)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:42:35.780Z"
+      }
+    },
+    "1st_80": {
+      "name": {
+        "value": "NANASHI (DARKEN)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:42:39.456Z"
+      }
+    },
+    "1st_81": {
+      "name": {
+        "value": "Strawberry Cake",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:42:51.499Z"
+      },
+      "effect": {
+        "value": "Recovers 10 HP if your character card's attribute is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:42:51.499Z"
+      }
+    },
+    "1st_82": {
+      "name": {
+        "value": "Portrait of the deceased",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:43:45.100Z"
+      },
+      "effect": {
+        "value": "Attack +20 if your character card's attribute is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:43:45.100Z"
+      }
+    },
+    "1st_83": {
+      "name": {
+        "value": "Corridor",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:43:53.740Z"
+      },
+      "effect": {
+        "value": "Attack +20 if it's night.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:43:53.740Z"
+      }
+    },
+    "1st_84": {
+      "name": {
+        "value": "Crater",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:06.450Z"
+      },
+      "effect": {
+        "value": "Attack +30 when night changes to day.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:06.450Z"
+      }
+    },
+    "1st_85": {
+      "name": {
+        "value": "Cluttered Sofas",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:16.573Z"
+      },
+      "effect": {
+        "value": "20 damage reduction when you take damage.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:16.573Z"
+      }
+    },
+    "1st_86": {
+      "name": {
+        "value": "Fate",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:26.520Z"
+      },
+      "effect": {
+        "value": "Swap one card in hand with the top card of the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:26.520Z"
+      }
+    },
+    "1st_87": {
+      "name": {
+        "value": "Remnants",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:36.510Z"
+      },
+      "effect": {
+        "value": "Recovers 10 HP if your character card's attribute is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:36.510Z"
+      }
+    },
+    "1st_88": {
+      "name": {
+        "value": "Illuminate into the Red Darkness",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:48.476Z"
+      },
+      "effect": {
+        "value": "Attack +20 if your character card's attribute is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:48.476Z"
+      }
+    },
+    "1st_89": {
+      "name": {
+        "value": "Clock (Byoushinwo Kamu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:57.033Z"
+      },
+      "effect": {
+        "value": "Your attack power is increased by 10.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:44:57.033Z"
+      }
+    },
+    "1st_90": {
+      "name": {
+        "value": "DNA NABE",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:45:07.081Z"
+      },
+      "effect": {
+        "value": "Attack +20 when day changes to night.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:45:07.081Z"
+      }
+    },
+    "1st_91": {
+      "name": {
+        "value": "SHAKKURI's beckoning cat shop",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:45:28.068Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the attribute of the opponent's character card is flame or wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:45:28.068Z"
+      }
+    },
+    "1st_92": {
+      "name": {
+        "value": "Compounding of Wonder Drug",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:46:17.891Z"
+      },
+      "effect": {
+        "value": "Draw a card from the deck and add it to your hand. \n*After using this card, the number of cards in your hand increases by one until the end of the battle.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:46:17.891Z"
+      }
+    },
+    "1st_93": {
+      "name": {
+        "value": "CRT TV \"STRONG\"",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:46:34.011Z"
+      },
+      "effect": {
+        "value": "Recovers 10 HP if your character card's attribute is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:46:34.011Z"
+      }
+    },
+    "1st_94": {
+      "name": {
+        "value": "Control Room",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:46:43.181Z"
+      },
+      "effect": {
+        "value": "Attack +20 if your character card's attribute is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:46:43.181Z"
+      }
+    },
+    "1st_95": {
+      "name": {
+        "value": "Parabolic Antenna",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:46:59.133Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the attribute of the opponent's character card is darkness or electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:46:59.133Z"
+      }
+    },
+    "1st_96": {
+      "name": {
+        "value": "FPS",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:47:10.977Z"
+      },
+      "effect": {
+        "value": "Attack +10 when day changes to night.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:47:10.977Z"
+      }
+    },
+    "1st_97": {
+      "name": {
+        "value": "Mental Maintenance",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:47:22.469Z"
+      },
+      "effect": {
+        "value": "Attack +20 when night changes to day.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:47:22.469Z"
+      }
+    },
+    "1st_98": {
+      "name": {
+        "value": "Slum Mart",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:47:57.917Z"
+      },
+      "effect": {
+        "value": "Attack +30 if the opponent's character card has a power cost of 0 or 1★.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:47:57.917Z"
+      }
+    },
+    "1st_99": {
+      "name": {
+        "value": "Scribble on the Blackboard",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:48:11.316Z"
+      },
+      "effect": {
+        "value": "Recovers 10 HP if your character card's attribute is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:48:11.316Z"
+      }
+    },
+    "1st_100": {
+      "name": {
+        "value": "Vegetatisation",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:48:20.227Z"
+      },
+      "effect": {
+        "value": "Attack +20 if your character card's attribute is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:48:20.227Z"
+      }
+    },
+    "1st_101": {
+      "name": {
+        "value": "Eggs of Justice",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:48:42.583Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the opponent's character card has a power cost of 0 or 1★.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:48:42.583Z"
+      }
+    },
+    "1st_102": {
+      "name": {
+        "value": "A sense of Thirst",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:48:53.736Z"
+      },
+      "effect": {
+        "value": "Attack +20 if it's daytime.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:48:53.736Z"
+      }
+    },
+    "1st_103": {
+      "name": {
+        "value": "Concession",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:49:04.728Z"
+      },
+      "effect": {
+        "value": "Select one of your opponent's Abyss cards and have it returned to the deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:49:04.728Z"
+      }
+    },
+    "1st_104": {
+      "name": {
+        "value": "Historical Documents, Summon",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:49:20.098Z"
+      },
+      "effect": {
+        "value": "Put the top card of the opponent's deck, with or without power, on the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:49:20.098Z"
+      }
+    },
+    "1st_105": {
+      "name": {
+        "value": "UNIGURI-KUN (Kan Saete Kuyashiiwa)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:49:32.875Z"
+      }
+    },
+    "1st_106": {
+      "name": {
+        "value": "GRAY (Ham)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:49:55.030Z"
+      }
+    },
+    "2nd_1": {
+      "name": {
+        "value": "NIRA-CHAN (Time Left)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:50:04.510Z"
+      }
+    },
+    "2nd_2": {
+      "name": {
+        "value": "NIRA-CHAN (Kettobashita Moufu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:50:18.061Z"
+      }
+    },
+    "2nd_3": {
+      "name": {
+        "value": "NIRA-CHAN (QUILT)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:50:22.783Z"
+      }
+    },
+    "2nd_4": {
+      "name": {
+        "value": "NIRA-CHAN (MIRROR TUNE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:50:28.349Z"
+      }
+    },
+    "2nd_6": {
+      "name": {
+        "value": "When he had a head",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:51:17.885Z"
+      },
+      "effect": {
+        "value": "The power cost of your character card that is played at the same time is -2.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:51:17.885Z"
+      }
+    },
+    "2nd_7": {
+      "name": {
+        "value": "Collect the wind",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:52:08.443Z"
+      },
+      "effect": {
+        "value": "While using this card, your attack power will always be your daytime attack power. Place this card in the Abyss at the end of the turn of your opponent plays an area enchantment.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:52:08.443Z"
+      }
+    },
+    "2nd_8": {
+      "name": {
+        "value": "KIRA-MAID GO!",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:52:55.884Z"
+      },
+      "effect": {
+        "value": "If your character card's attribute is electric, choose a card from your opponent's Power charger with a SEND TO POWER 2★ card and place it at the bottom of your opponent's deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:52:55.884Z"
+      }
+    },
+    "2nd_9": {
+      "name": {
+        "value": "NIRA-CHAN (STUDYME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:53:07.910Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the attribute of the opponent's character card is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:53:07.910Z"
+      }
+    },
+    "2nd_10": {
+      "name": {
+        "value": "NIRA-CHAN (Time Left)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:53:20.607Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the attribute of the character card used in the previous turn is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:53:20.607Z"
+      }
+    },
+    "2nd_11": {
+      "name": {
+        "value": "NIRA-CHAN (Kan Saete Kuyashiiwa)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:53:43.475Z"
+      },
+      "effect": {
+        "value": "If the attribute of the character card used in the previous turn was flame, you can move the clock forward from 0 to 5.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:53:43.475Z"
+      }
+    },
+    "2nd_12": {
+      "name": {
+        "value": "NIRA-CHAN (Inside Joke)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:53:49.899Z"
+      }
+    },
+    "2nd_13": {
+      "name": {
+        "value": "AFRO☆SAMURAI (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:54:00.048Z"
+      }
+    },
+    "2nd_14": {
+      "name": {
+        "value": "ZUTOMARUKI-GO",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:54:29.621Z"
+      },
+      "effect": {
+        "value": "If the Abyss has two or more cards of the darkness attribute, recover 20 HP.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:54:29.621Z"
+      }
+    },
+    "2nd_15": {
+      "name": {
+        "value": "Playground equipment : Sphyrna lewini",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:55:58.546Z"
+      },
+      "effect": {
+        "value": "If the attribute of the character card used in the previous turn is darkness and it is now daytime, you may use an additional enchantment from your hand only the first time you use the card. Then draw a card.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:55:58.546Z"
+      }
+    },
+    "2nd_17": {
+      "name": {
+        "value": "NIRA-CHAN (QUILT)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:56:05.609Z"
+      }
+    },
+    "2nd_18": {
+      "name": {
+        "value": "HAKASE (FASTENING)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:56:21.737Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the attribute of the character card used in the previous turn is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:56:21.737Z"
+      }
+    },
+    "2nd_19": {
+      "name": {
+        "value": "GRAY (MIRROR TUNE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:57:00.640Z"
+      },
+      "effect": {
+        "value": "If the attribute of the character card used in the previous turn was wind, choose a SEND TO POWER 1★ card from your opponent's Power charger and place it at the bottom of your opponent's deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:57:00.640Z"
+      }
+    },
+    "2nd_20": {
+      "name": {
+        "value": "NIRA-CHAN[Job:Camera Crew] (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:57:10.852Z"
+      }
+    },
+    "2nd_21": {
+      "name": {
+        "value": "NIRA-CHAN (Byoushinwo Kamu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:57:31.456Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the attribute of the opponent's character card is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:57:31.456Z"
+      }
+    },
+    "2nd_22": {
+      "name": {
+        "value": "NIRA-MAID·NANASHI·KIRA-CHAN",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:57:59.764Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the attribute of the character card used in the previous turn is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:57:59.764Z"
+      }
+    },
+    "2nd_23": {
+      "name": {
+        "value": "NIRA-CHAN (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:58:41.326Z"
+      },
+      "effect": {
+        "value": "Attack +40 if the attribute of the character card used in the previous turn is electric and the opponent's character card is flame or darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:58:41.326Z"
+      }
+    },
+    "2nd_24": {
+      "name": {
+        "value": "NIRA-CHAN (MIRROR TUNE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:59:13.324Z"
+      },
+      "effect": {
+        "value": "If the attribute of the character card used in the previous turn was electric and it is now night, choose a SEND TO POWER 1★ card from your opponent's Power Charger and place it at the bottom of your opponent's deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:59:13.324Z"
+      }
+    },
+    "2nd_25": {
+      "name": {
+        "value": "Furueru-koe-ni-mimi-sumashite",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:59:34.698Z"
+      },
+      "effect": {
+        "value": "Attack +50 if it's night.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:59:34.698Z"
+      }
+    },
+    "2nd_26": {
+      "name": {
+        "value": "Officers belonging to Ashban Electric Inc.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:59:50.855Z"
+      },
+      "effect": {
+        "value": "If it is night, +30 attack power of your character cards played at the same time.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T04:59:50.855Z"
+      }
+    },
+    "2nd_27": {
+      "name": {
+        "value": "Neapolitan with UNIGURI-KUN",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:00:18.612Z"
+      },
+      "effect": {
+        "value": "Select two cards from your hand, place them at the bottom of the deck and draw two cards.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:00:18.612Z"
+      }
+    },
+    "2nd_28": {
+      "name": {
+        "value": "After-party in a bathtub",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:00:37.707Z"
+      },
+      "effect": {
+        "value": "If your character card and your opponent's character card have the same Power cost, attack +40.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:00:37.707Z"
+      }
+    },
+    "2nd_29": {
+      "name": {
+        "value": "Nighthawk",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:01:07.172Z"
+      },
+      "effect": {
+        "value": "If the opponent's character card has a Power cost of 6 or more, attack power +50.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:01:07.172Z"
+      }
+    },
+    "2nd_30": {
+      "name": {
+        "value": "UNIGURI are cultivated",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:01:17.162Z"
+      },
+      "effect": {
+        "value": "Attack +50 if it's daytime.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:01:17.162Z"
+      }
+    },
+    "2nd_31": {
+      "name": {
+        "value": "In delivery",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:01:34.222Z"
+      },
+      "effect": {
+        "value": "Select two cards from your hand, place them at the bottom of the deck and draw two cards.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:01:34.222Z"
+      }
+    },
+    "2nd_32": {
+      "name": {
+        "value": "Desire",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:01:40.688Z"
+      },
+      "effect": {
+        "value": "Attack +30.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:01:40.688Z"
+      }
+    },
+    "2nd_33": {
+      "name": {
+        "value": "GRAY (Stay Foolish)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:01:48.186Z"
+      }
+    },
+    "2nd_34": {
+      "name": {
+        "value": "NIRA-CHAN (Stay Foolish)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:02:16.861Z"
+      }
+    },
+    "2nd_35": {
+      "name": {
+        "value": "KIRA-CHAN (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:02:54.819Z"
+      },
+      "effect": {
+        "value": "Attack +20 if there is a flame card in the Power charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:33:58.594Z"
+      }
+    },
+    "2nd_36": {
+      "name": {
+        "value": "NIRA-CHAN (Hunch Gray)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:03:00.975Z"
+      },
+      "effect": {
+        "value": "The clock changes to midnight if there are two or more flame cards in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:34:07.468Z"
+      }
+    },
+    "2nd_37": {
+      "name": {
+        "value": "NIRA-CHAN DOLL",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:03:07.528Z"
+      }
+    },
+    "2nd_38": {
+      "name": {
+        "value": "NIRA-CHAN (Haze Haseru Haterumade)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:03:15.473Z"
+      }
+    },
+    "2nd_39": {
+      "name": {
+        "value": "Officer belonging to Ashban Electric Inc.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:03:21.316Z"
+      }
+    },
+    "2nd_40": {
+      "name": {
+        "value": "Cat made of milk and concrete",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:03:36.562Z"
+      },
+      "effect": {
+        "value": "Attack +30 if there is a darkness card in the Power charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:34:14.501Z"
+      }
+    },
+    "2nd_41": {
+      "name": {
+        "value": "UNIGURI-GAHAKU",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:03:42.727Z"
+      },
+      "effect": {
+        "value": "If the attribute of the character card used in the previous turn is darkness, place the top card of the deck on the Power charger if it has power, otherwise on the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:34:35.482Z"
+      }
+    },
+    "2nd_42": {
+      "name": {
+        "value": "Part-timer·Baker (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:03:48.458Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the attribute of the character card used in the previous turn is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:34:51.519Z"
+      }
+    },
+    "2nd_43": {
+      "name": {
+        "value": "NIRA-CHAN (Haze Haseru Haterumade)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:03:55.793Z"
+      }
+    },
+    "2nd_45": {
+      "name": {
+        "value": "NIRA-CHAN・KIRA-CHAN(Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:01.199Z"
+      },
+      "effect": {
+        "value": "If the Power charger has a wind card, attack +20.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:34:56.170Z"
+      }
+    },
+    "2nd_46": {
+      "name": {
+        "value": "Neko Reset in midnight",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:05.967Z"
+      }
+    },
+    "2nd_47": {
+      "name": {
+        "value": "NIRA-MAID(DARKEN)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:09.668Z"
+      },
+      "effect": {
+        "value": "If the attribute of the character card used in the previous turn is wind and it is now daytime, attack power +40 only the first time the card is used.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:35:10.410Z"
+      }
+    },
+    "2nd_48": {
+      "name": {
+        "value": "UNIGURI-KUN, a wanderer",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:14.824Z"
+      }
+    },
+    "2nd_49": {
+      "name": {
+        "value": "KIRA Makeup",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:21.000Z"
+      },
+      "effect": {
+        "value": "If the Power charger has a electric card, attack +20.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:35:13.617Z"
+      }
+    },
+    "2nd_50": {
+      "name": {
+        "value": "ERI-HEAD-MEN (Kettobashita Moufu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:26.455Z"
+      },
+      "effect": {
+        "value": "If the Abyss has an electric card, reduce the opponent's HP by 20.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:35:19.263Z"
+      }
+    },
+    "2nd_51": {
+      "name": {
+        "value": "NIRA-CHAN (Summer Slack)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:31.258Z"
+      }
+    },
+    "2nd_53": {
+      "name": {
+        "value": "Last resort",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:34.615Z"
+      },
+      "effect": {
+        "value": "If the Power charger card was only darkness, your attack power +40.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:35:24.823Z"
+      }
+    },
+    "2nd_54": {
+      "name": {
+        "value": "Different forms in different worlds",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:45.543Z"
+      },
+      "effect": {
+        "value": "Attack +30 if your character card's attribute is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:35:30.343Z"
+      }
+    },
+    "2nd_55": {
+      "name": {
+        "value": "ZTMY claw-machine",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:04:57.602Z"
+      },
+      "effect": {
+        "value": "If your character card's attribute is flame, place your opponent's area enchantment card on top of your opponent's deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:35:41.154Z"
+      }
+    },
+    "2nd_56": {
+      "name": {
+        "value": "Part-timers (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:04.192Z"
+      },
+      "effect": {
+        "value": "If the Power charger card was only flame, your attack power +30.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:35:48.662Z"
+      }
+    },
+    "2nd_57": {
+      "name": {
+        "value": "I want to know every inch of you.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:14.646Z"
+      },
+      "effect": {
+        "value": "Attack +30 if your character card's attribute is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:35:52.754Z"
+      }
+    },
+    "2nd_58": {
+      "name": {
+        "value": "Preparing for opening",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:22.630Z"
+      },
+      "effect": {
+        "value": "+1★ for each darkness card in the Abyss. Place this card in the Abyss at the end of the turn when your character card is placed on your Power charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:36:16.735Z"
+      }
+    },
+    "2nd_59": {
+      "name": {
+        "value": "Catch",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:24.077Z"
+      },
+      "effect": {
+        "value": "If it is daytime, +30 attack power of your character cards which is playing at the same time.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:36:24.952Z"
+      }
+    },
+    "2nd_60": {
+      "name": {
+        "value": "Camera full of memories",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:26.736Z"
+      },
+      "effect": {
+        "value": "Attack +30 if your character card's attribute is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:36:28.884Z"
+      }
+    },
+    "2nd_61": {
+      "name": {
+        "value": "Umbrella of Seigi",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:29.062Z"
+      },
+      "effect": {
+        "value": "If the Power charger card was only electric, your attack power +40.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:36:35.723Z"
+      }
+    },
+    "2nd_62": {
+      "name": {
+        "value": "Moon Reflected on the Water",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:38.309Z"
+      },
+      "effect": {
+        "value": "Character cards played at the same time do not have to be changed.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:36:43.205Z"
+      }
+    },
+    "2nd_63": {
+      "name": {
+        "value": "Hi cheese",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:48.081Z"
+      },
+      "effect": {
+        "value": "Attack +30 if your character card's attribute is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:36:48.017Z"
+      }
+    },
+    "2nd_64": {
+      "name": {
+        "value": "UNIGIRI-KORORIN",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:52.749Z"
+      },
+      "effect": {
+        "value": "Attack +20 for each electric card in the Power charger. Place on the Abyss at the end of the turn when the opponent's HP falls below 30.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:37:02.049Z"
+      }
+    },
+    "2nd_66": {
+      "name": {
+        "value": "GRAY (Stay Foolish)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:05:56.940Z"
+      }
+    },
+    "2nd_67": {
+      "name": {
+        "value": "MURAKUMO-NO-TSURUGI (Time Left)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:06:13.644Z"
+      }
+    },
+    "2nd_68": {
+      "name": {
+        "value": "Doppelganger (Time Left)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:06:23.136Z"
+      },
+      "effect": {
+        "value": "If the attribute of the character card used in the previous turn is flame and it's night, attack power +30 only the first time the card is used.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:37:21.646Z"
+      }
+    },
+    "2nd_69": {
+      "name": {
+        "value": "GEKI-UNIGURI-KUN (Haze Haseru Haterumade)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:06:37.570Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the attribute of the opponent's character card is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:37:27.860Z"
+      }
+    },
+    "2nd_70": {
+      "name": {
+        "value": "NIRA-CHAN (Can't Be Right)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:06:41.149Z"
+      }
+    },
+    "2nd_71": {
+      "name": {
+        "value": "NIRA-CHAN (Nouriueno Cracker)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:06:44.921Z"
+      }
+    },
+    "2nd_72": {
+      "name": {
+        "value": "CHOUCHO·NIRA-CHAN (MIRROR TUNE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:06:58.008Z"
+      }
+    },
+    "2nd_73": {
+      "name": {
+        "value": "NIRA-CHAN (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:07:03.025Z"
+      }
+    },
+    "2nd_74": {
+      "name": {
+        "value": "NANASHI (DARKEN)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:07:05.271Z"
+      }
+    },
+    "2nd_75": {
+      "name": {
+        "value": "GRAY·NIRA-CHAN (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:07:13.089Z"
+      }
+    },
+    "2nd_77": {
+      "name": {
+        "value": "TEIKETSU (FASTENING)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:07:19.019Z"
+      }
+    },
+    "2nd_78": {
+      "name": {
+        "value": "NIRA-CHAN (Summer Slack)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:07:23.370Z"
+      }
+    },
+    "2nd_79": {
+      "name": {
+        "value": "NIRA-CHAN (Humanoid)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:07:26.631Z"
+      }
+    },
+    "2nd_80": {
+      "name": {
+        "value": "NIRA-CHAN (MILABO)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:07:29.643Z"
+      }
+    },
+    "2nd_81": {
+      "name": {
+        "value": "OISHII",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:00.543Z"
+      },
+      "effect": {
+        "value": "If the Abyss card was only darkness, your attack power +20.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:37:36.617Z"
+      }
+    },
+    "2nd_82": {
+      "name": {
+        "value": "Danger Signal",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:03.141Z"
+      },
+      "effect": {
+        "value": "Select a card from your hand, place it at the bottom of the deck and draw one more card.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:37:43.461Z"
+      }
+    },
+    "2nd_83": {
+      "name": {
+        "value": "Memories of That day",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:06.665Z"
+      },
+      "effect": {
+        "value": "Attack +30 if it's night.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:37:49.306Z"
+      }
+    },
+    "2nd_84": {
+      "name": {
+        "value": "See through the Devil",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:15.735Z"
+      },
+      "effect": {
+        "value": "+10 to your attack power and the attribute of your opponent's character card changes to electric while they are on the battlefield.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:37:58.521Z"
+      }
+    },
+    "2nd_85": {
+      "name": {
+        "value": "Crossroads",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:17.752Z"
+      },
+      "effect": {
+        "value": "Recovers 10 HP if your character card's attribute is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:38:01.808Z"
+      }
+    },
+    "2nd_86": {
+      "name": {
+        "value": "Imprison the Curse",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:24.137Z"
+      },
+      "effect": {
+        "value": "Attack +20 if it's night, if it's not night, place it on the Power charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:38:08.681Z"
+      }
+    },
+    "2nd_87": {
+      "name": {
+        "value": "You live in a different world",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:31.966Z"
+      },
+      "effect": {
+        "value": "Attack +20 if there is only flame card in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:38:13.383Z"
+      }
+    },
+    "2nd_88": {
+      "name": {
+        "value": "Factory tour",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:33.939Z"
+      },
+      "effect": {
+        "value": "+10 to your attack power and the attribute of your opponent's character card changes to darkness while they are on the battlefield.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:38:24.074Z"
+      }
+    },
+    "2nd_89": {
+      "name": {
+        "value": "Laundry detergents",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:37.726Z"
+      },
+      "effect": {
+        "value": "20 damage reduction when you take damage.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:38:27.273Z"
+      }
+    },
+    "2nd_90": {
+      "name": {
+        "value": "Nice shot",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:41.126Z"
+      },
+      "effect": {
+        "value": "30 damage reduction when you take damage.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:38:30.115Z"
+      }
+    },
+    "2nd_91": {
+      "name": {
+        "value": "The meaning to Exist",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:45.168Z"
+      },
+      "effect": {
+        "value": "Recovers 10 HP if your character card's attribute is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:38:34.816Z"
+      }
+    },
+    "2nd_92": {
+      "name": {
+        "value": "Banquet",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:48.855Z"
+      },
+      "effect": {
+        "value": "If the character card costs 2 or more, attack +20, if the opponent's character card costs 4 or more, place it on the Power charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:38:42.855Z"
+      }
+    },
+    "2nd_93": {
+      "name": {
+        "value": "Cold sleep",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:50.329Z"
+      },
+      "effect": {
+        "value": "If the Abyss card was only the electric attribute, your attack power +20.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:38:50.445Z"
+      }
+    },
+    "2nd_94": {
+      "name": {
+        "value": "Unforgivable encounter",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:08:56.485Z"
+      },
+      "effect": {
+        "value": "Select a card from your hand, place it at the bottom of the deck and draw one more card.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:07.110Z"
+      }
+    },
+    "2nd_95": {
+      "name": {
+        "value": "Sign pole",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:09:04.921Z"
+      },
+      "effect": {
+        "value": "Attack +30 if it's daytime.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:09.020Z"
+      }
+    },
+    "2nd_96": {
+      "name": {
+        "value": "14.4 light-years away",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:09:07.932Z"
+      },
+      "effect": {
+        "value": "+10 to your attack power and the attribute of your opponent's character card changes to wind while they are on the battlefield.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:19.910Z"
+      }
+    },
+    "2nd_97": {
+      "name": {
+        "value": "Stardust Shakehand",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:09:11.751Z"
+      },
+      "effect": {
+        "value": "Recovers 10 HP if your character card's attribute is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:22.717Z"
+      }
+    },
+    "2nd_98": {
+      "name": {
+        "value": "Evaluation",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:09:14.146Z"
+      },
+      "effect": {
+        "value": "Attack +20 if it's daytime, if it's not daytime, place it on the Power charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:27.415Z"
+      }
+    },
+    "2nd_99": {
+      "name": {
+        "value": "Leap",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:09:15.409Z"
+      },
+      "effect": {
+        "value": "Attack +30 if there is only wind card in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:30.879Z"
+      }
+    },
+    "2nd_100": {
+      "name": {
+        "value": "Clock tower",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:09:17.469Z"
+      },
+      "effect": {
+        "value": "+10 to your attack power and the attribute of your opponent's character card changes to flame while they are on the battlefield.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:40.653Z"
+      }
+    },
+    "2nd_101": {
+      "name": {
+        "value": "Message board",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:09:23.609Z"
+      },
+      "effect": {
+        "value": "Attack +20",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:42.150Z"
+      }
+    },
+    "2nd_102": {
+      "name": {
+        "value": "Post a letter",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:10:00.765Z"
+      },
+      "effect": {
+        "value": "If the Power charger card was only wind, your attack power +50.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:47.373Z"
+      }
+    },
+    "2nd_103": {
+      "name": {
+        "value": "Surveillance monitor",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:10:07.576Z"
+      },
+      "effect": {
+        "value": "Recovers 10 HP if your character card's attribute is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:50.472Z"
+      }
+    },
+    "2nd_104": {
+      "name": {
+        "value": "Ruined world",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:10:12.990Z"
+      },
+      "effect": {
+        "value": "If character card costs 2 or less, +20 attack, if character card costs 4 or more, place on Power charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:39:57.873Z"
+      }
+    },
+    "2nd_106": {
+      "name": {
+        "value": "NIRA ver. swimsuit (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:10:29.517Z"
+      },
+      "effect": {
+        "value": "If the Abyss has two or more cards of the wind attribute, the clock changes to noon.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:09.277Z"
+      }
+    },
+    "3rd_1": {
+      "name": {
+        "value": "NIRA-CHAN (Byoushinwo Kamu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:10:33.538Z"
+      },
+      "effect": {
+        "value": "Attack +100 if it's midnight.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:12.054Z"
+      }
+    },
+    "3rd_2": {
+      "name": {
+        "value": "TEIKETSU (FASTENING)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:10:38.759Z"
+      }
+    },
+    "3rd_3": {
+      "name": {
+        "value": "NIRA-CHAN (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:10:41.133Z"
+      }
+    },
+    "3rd_4": {
+      "name": {
+        "value": "NIRA-CHAN (Inside Joke)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:10:44.861Z"
+      }
+    },
+    "3rd_5": {
+      "name": {
+        "value": "The egocentric password“︀”︀",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:12:15.830Z"
+      },
+      "effect": {
+        "value": "If your HP is less than opponent's HP, set the Clock to midnight.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:18.905Z"
+      }
+    },
+    "3rd_6": {
+      "name": {
+        "value": "Byoushinwo Kamu",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:12:42.918Z"
+      },
+      "effect": {
+        "value": "Attack +100 if the opponent's HP is 100.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:22.221Z"
+      }
+    },
+    "3rd_7": {
+      "name": {
+        "value": "Them",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:12:47.712Z"
+      },
+      "effect": {
+        "value": "If your HP is less than opponent's HP, set the Clock to noon.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:25.476Z"
+      }
+    },
+    "3rd_8": {
+      "name": {
+        "value": "NIRA (Maid) & NIRA (Butler)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:12:55.024Z"
+      },
+      "effect": {
+        "value": "Attack +100 if there are cards of 4 different attributes in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:29.672Z"
+      }
+    },
+    "3rd_9": {
+      "name": {
+        "value": "NIRA-CHAN (MIRROR TUNE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:01.628Z"
+      },
+      "effect": {
+        "value": "Attack +50 if it's midnight.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:31.618Z"
+      }
+    },
+    "3rd_10": {
+      "name": {
+        "value": "NIRA-CHAN (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:06.297Z"
+      }
+    },
+    "3rd_11": {
+      "name": {
+        "value": "NIRA-CHAN (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:10.076Z"
+      },
+      "effect": {
+        "value": "Attack +40 if all the cards in the opponent's Power Charger are of the wind attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:36.426Z"
+      }
+    },
+    "3rd_12": {
+      "name": {
+        "value": "NIRA-CHAN (Kettobashita Moufu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:13.318Z"
+      }
+    },
+    "3rd_13": {
+      "name": {
+        "value": "GRAY (Hunch Gray)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:18.374Z"
+      }
+    },
+    "3rd_15": {
+      "name": {
+        "value": "NIRA-CHAN (Seigi)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:22.051Z"
+      }
+    },
+    "3rd_16": {
+      "name": {
+        "value": "NIRA-CHAN (Konnakoto Soudou)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:26.781Z"
+      }
+    },
+    "3rd_17": {
+      "name": {
+        "value": "NIRA-MAID·NANASHI (DARKEN)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:37.653Z"
+      },
+      "effect": {
+        "value": "Attack +40 if all the cards in the opponent's Power Charger are of the darkness attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:49.526Z"
+      }
+    },
+    "3rd_18": {
+      "name": {
+        "value": "NIRA-CHAN (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:44.645Z"
+      }
+    },
+    "3rd_19": {
+      "name": {
+        "value": "NIRA-CHAN (Hunch Gray)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:48.279Z"
+      },
+      "effect": {
+        "value": "Attack +30 if all the cards in the Power Charger are of the Electric attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:41:31.848Z"
+      }
+    },
+    "3rd_20": {
+      "name": {
+        "value": "NIRA-CHAN (Flow Different)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:13:58.529Z"
+      }
+    },
+    "3rd_21": {
+      "name": {
+        "value": "NIRA-CHAN (Kan Saete Kuyashiiwa)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:14:03.398Z"
+      },
+      "effect": {
+        "value": "Put the opponent's Area Enchantment card on top of the opponent's deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:41:43.428Z"
+      }
+    },
+    "3rd_22": {
+      "name": {
+        "value": "NIRA-CHAN (Haze Haseru Haterumade)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:14:14.356Z"
+      },
+      "effect": {
+        "value": "Attack +40 if there are cards of 4 different attributes in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:41:48.637Z"
+      }
+    },
+    "3rd_24": {
+      "name": {
+        "value": "UNIGURI's holiday",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:14:19.157Z"
+      }
+    },
+    "3rd_25": {
+      "name": {
+        "value": "Ai no Pegasus",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:14:39.999Z"
+      },
+      "effect": {
+        "value": "Attack +70 if it's midnight.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:41:50.919Z"
+      }
+    },
+    "3rd_26": {
+      "name": {
+        "value": "Trick & Treat",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:14:46.698Z"
+      },
+      "effect": {
+        "value": "Two squares before and after midnight are also treated as midnight.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:42:01.529Z"
+      }
+    },
+    "3rd_27": {
+      "name": {
+        "value": "Miserable liberation",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:14:52.836Z"
+      },
+      "effect": {
+        "value": "Recovers 50 HP to the opponent and inflicts 50 damage at the end of the turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:42:10.111Z"
+      }
+    },
+    "3rd_28": {
+      "name": {
+        "value": "Explosion",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:14:55.335Z"
+      },
+      "effect": {
+        "value": "Attack +80 if all the cards in the Power Charger are of the flame attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:42:15.467Z"
+      }
+    },
+    "3rd_29": {
+      "name": {
+        "value": "Dance, Dance, Dance",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:15:00.656Z"
+      },
+      "effect": {
+        "value": "Attack +50 if it's daytime.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:42:20.734Z"
+      }
+    },
+    "3rd_30": {
+      "name": {
+        "value": "Ingredients for DNA NABE",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:15:13.437Z"
+      },
+      "effect": {
+        "value": "Attack +70 if there are at least three cards of the electric attribute in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:42:27.724Z"
+      }
+    },
+    "3rd_31": {
+      "name": {
+        "value": "Moonlight",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:15:16.557Z"
+      },
+      "effect": {
+        "value": "Choose a card from your hand, regardless of it's Power, and place it in the Abyss. Draw a card from the deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:43:37.811Z"
+      }
+    },
+    "3rd_32": {
+      "name": {
+        "value": "UNIGURI village",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:15:19.543Z"
+      },
+      "effect": {
+        "value": "Attack +80 if there are at least three cards of the wind attribute in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:43:46.362Z"
+      }
+    },
+    "3rd_33": {
+      "name": {
+        "value": "ZUTOMAYO PUZZLE GAME",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:15:31.059Z"
+      },
+      "effect": {
+        "value": "If it's noon, advance the clocks by two.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:43:49.708Z"
+      }
+    },
+    "3rd_34": {
+      "name": {
+        "value": "NIRA-CHAN (Hanaichi Monnme)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:15:38.184Z"
+      }
+    },
+    "3rd_35": {
+      "name": {
+        "value": "NIRA-CHAN (Mabushii DNA Dake)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:15:45.887Z"
+      }
+    },
+    "3rd_36": {
+      "name": {
+        "value": "SHOGA-MODOKI (Nareai Serve)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:15:59.258Z"
+      },
+      "effect": {
+        "value": "Attack +30 if all the cards in the Power Charger are of the darkness attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:43:56.034Z"
+      }
+    },
+    "3rd_37": {
+      "name": {
+        "value": "NIRA-CHAN (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:16:03.077Z"
+      }
+    },
+    "3rd_38": {
+      "name": {
+        "value": "NIRA-CHAN (Can't Be Right)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:16:11.826Z"
+      }
+    },
+    "3rd_39": {
+      "name": {
+        "value": "NIRA-CHAN (Mabushii DNA Dake)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:16:16.526Z"
+      },
+      "effect": {
+        "value": "Attack +50 if all the cards in the opponent's Power Charger are of the electric attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:44:01.647Z"
+      }
+    },
+    "3rd_40": {
+      "name": {
+        "value": "RANI-CHAN (Intrusion)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:16:26.692Z"
+      },
+      "effect": {
+        "value": "Attack +20 if all the cards in the Power Charger are of the flame attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:44:05.776Z"
+      }
+    },
+    "3rd_41": {
+      "name": {
+        "value": "NIRA-CHAN•KIRA-CHAN (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:16:40.177Z"
+      }
+    },
+    "3rd_42": {
+      "name": {
+        "value": "NIRA-CHAN (Seigi)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:16:44.318Z"
+      },
+      "effect": {
+        "value": "Attack +50 if the opponent's HP is 100.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:44:08.785Z"
+      }
+    },
+    "3rd_43": {
+      "name": {
+        "value": "ZUTOMAYO KIDS",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:16:49.290Z"
+      }
+    },
+    "3rd_44": {
+      "name": {
+        "value": "NIRA-BAND",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:16:54.831Z"
+      }
+    },
+    "3rd_45": {
+      "name": {
+        "value": "ZUTOMAYO QUEST",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:16:57.434Z"
+      },
+      "effect": {
+        "value": "Reveal the opponent's hand.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:44:10.912Z"
+      }
+    },
+    "3rd_46": {
+      "name": {
+        "value": "Small cheering squad",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:17:01.772Z"
+      }
+    },
+    "3rd_47": {
+      "name": {
+        "value": "NIRA-CHAN (Humanoid)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:17:06.025Z"
+      },
+      "effect": {
+        "value": "Specify the name of a card. Choose and reveal 1 card from the opponent's hand. If it matches the specified name, Attack +50.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:44:26.212Z"
+      }
+    },
+    "3rd_48": {
+      "name": {
+        "value": "UNIGURI compounding",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:17:10.582Z"
+      }
+    },
+    "3rd_49": {
+      "name": {
+        "value": "SHOGAST",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:17:19.385Z"
+      }
+    },
+    "3rd_51": {
+      "name": {
+        "value": "NIRA-CHAN·KIRA-CHAN (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:17:27.296Z"
+      },
+      "effect": {
+        "value": "Attack +40 if there are cards of 3 different attributes in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:44:33.400Z"
+      }
+    },
+    "3rd_52": {
+      "name": {
+        "value": "NIRA-CHAN (Nouriueno Cracker)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:17:32.276Z"
+      },
+      "effect": {
+        "value": "Attack +40 if all the cards in the Power Charger are of the wind attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:44:38.017Z"
+      }
+    },
+    "3rd_53": {
+      "name": {
+        "value": "Zanki-Sword",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:17:38.050Z"
+      },
+      "effect": {
+        "value": "Attack +40 if it's night.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:44:39.883Z"
+      }
+    },
+    "3rd_54": {
+      "name": {
+        "value": "Muttering, in the seventh one.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:17:54.003Z"
+      },
+      "effect": {
+        "value": "Attack +60 if your character card's attribute is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:44:43.123Z"
+      }
+    },
+    "3rd_55": {
+      "name": {
+        "value": "The unsuitable rally is over.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:17:59.398Z"
+      },
+      "effect": {
+        "value": "Return the opponent's Area Enchantment card to the bottom of the deck, the opponent cannot set any Area Enchantment anymore. When the opponent places a card in the Abyss, place this card on your Power Charger at the end of the turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:45:10.028Z"
+      }
+    },
+    "3rd_56": {
+      "name": {
+        "value": "BENTO ME",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:18:01.583Z"
+      },
+      "effect": {
+        "value": "Attack +50 if there are less than 3 cards on the Power Charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:45:14.008Z"
+      }
+    },
+    "3rd_57": {
+      "name": {
+        "value": "Very spicy Nira-men",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:18:14.388Z"
+      },
+      "effect": {
+        "value": "Attack +70 if there are 4 or more cards of the flame attribute in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:45:18.763Z"
+      }
+    },
+    "3rd_58": {
+      "name": {
+        "value": "Dual-wielding",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:18:19.066Z"
+      },
+      "effect": {
+        "value": "At the end of the turn, recover each other's HP by 10. If you take more than 30 damage, immediately place this card in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:45:30.476Z"
+      }
+    },
+    "3rd_59": {
+      "name": {
+        "value": "Playing make-believe",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:18:22.528Z"
+      },
+      "effect": {
+        "value": "Specify the name of a card. Choose and reveal 1 card from the opponent's hand. If it matches the specified name, Attack +100.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:45:41.659Z"
+      }
+    },
+    "3rd_60": {
+      "name": {
+        "value": "To be continued",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:18:38.644Z"
+      },
+      "effect": {
+        "value": "Attack +70 if all the cards in the Abyss are of the wind attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:45:45.661Z"
+      }
+    },
+    "3rd_61": {
+      "name": {
+        "value": "GAME CENTER TECHNO POOR",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:18:45.332Z"
+      },
+      "effect": {
+        "value": "Set all cards' clocks to 1. At the end of the turn, if there is an Area Enchantment card on the opponent's field, place it on the Power Charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:45:56.973Z"
+      }
+    },
+    "3rd_62": {
+      "name": {
+        "value": "Best kelp broth",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:18:55.570Z"
+      },
+      "effect": {
+        "value": "Attack +50 if there are cards of 3 different attributes in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:46:00.568Z"
+      }
+    },
+    "3rd_63": {
+      "name": {
+        "value": "Uniguri Smash",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:18:58.371Z"
+      },
+      "effect": {
+        "value": "Attack +60 if all the cards in the Abyss are of the electric attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:46:04.266Z"
+      }
+    },
+    "3rd_64": {
+      "name": {
+        "value": "Matching mobile phones",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:02.994Z"
+      },
+      "effect": {
+        "value": "+ Attack by the amount of your own HP each other. Place in the Abyss at the end of the turn when the opponent's HP falls below 40.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:46:42.459Z"
+      }
+    },
+    "3rd_65": {
+      "name": {
+        "value": "HAKASE (Intrusion)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:09.941Z"
+      }
+    },
+    "3rd_66": {
+      "name": {
+        "value": "NIRA-CHAN (Hanaichi Monnme)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:16.629Z"
+      }
+    },
+    "3rd_67": {
+      "name": {
+        "value": "SASHIMI (Truth In Lies)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:24.499Z"
+      }
+    },
+    "3rd_68": {
+      "name": {
+        "value": "NIRA-CHAN (Time Left)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:28.201Z"
+      }
+    },
+    "3rd_69": {
+      "name": {
+        "value": "UNIGURI-KUN (Byoushinwo Kamu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:33.252Z"
+      }
+    },
+    "3rd_70": {
+      "name": {
+        "value": "INC-NEKO (Seigi)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:37.098Z"
+      }
+    },
+    "3rd_71": {
+      "name": {
+        "value": "NIRA-CHAN (Seigi)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:39.747Z"
+      }
+    },
+    "3rd_72": {
+      "name": {
+        "value": "NIRA-CHAN (MIRROR TUNE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:43.622Z"
+      }
+    },
+    "3rd_73": {
+      "name": {
+        "value": "SHOGAST (Blues in the Closet)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:49.743Z"
+      }
+    },
+    "3rd_75": {
+      "name": {
+        "value": "MAYONAKA (Hunch Gray)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:19:58.400Z"
+      }
+    },
+    "3rd_76": {
+      "name": {
+        "value": "NIRA-CHAN (Inside Joke)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:03.610Z"
+      }
+    },
+    "3rd_77": {
+      "name": {
+        "value": "NIRA-CHAN (Intrusion)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:06.427Z"
+      }
+    },
+    "3rd_78": {
+      "name": {
+        "value": "RANI-CHAN (Intrusion)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:12.605Z"
+      }
+    },
+    "3rd_79": {
+      "name": {
+        "value": "NIRA-CHAN (Ham)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:15.766Z"
+      }
+    },
+    "3rd_80": {
+      "name": {
+        "value": "MIMI-KAYUSHI (Nouriueno Cracker)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:30.556Z"
+      }
+    },
+    "3rd_81": {
+      "name": {
+        "value": "CITY HIGHWAY",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:36.095Z"
+      },
+      "effect": {
+        "value": "Attack +20 if your character card's attribute is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:46:46.334Z"
+      }
+    },
+    "3rd_82": {
+      "name": {
+        "value": "Spy",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:37.581Z"
+      },
+      "effect": {
+        "value": "Attack +40 if all the cards in the Power Charger are of the darkness attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:46:54.731Z"
+      }
+    },
+    "3rd_83": {
+      "name": {
+        "value": "I met the one I was always meant to be with.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:46.312Z"
+      },
+      "effect": {
+        "value": "Attack +60 if there are 4 or more cards of the darkness attribute in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:47:01.110Z"
+      }
+    },
+    "3rd_84": {
+      "name": {
+        "value": "Ordinary life",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:52.894Z"
+      },
+      "effect": {
+        "value": "Attack +70 if all the cards in the Abyss are of the flame attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:47:05.954Z"
+      }
+    },
+    "3rd_85": {
+      "name": {
+        "value": "Break off",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:20:55.170Z"
+      },
+      "effect": {
+        "value": "At the end of the turn, if it is daytime, advance the clock by 2. If you take more than 30 damage in this turn, immediately place this card in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:47:21.546Z"
+      }
+    },
+    "3rd_86": {
+      "name": {
+        "value": "Don't say goodbye.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:00.494Z"
+      },
+      "effect": {
+        "value": "Attack +10 for each darkness card in the Abyss. If there are 4 or more cards in the Abyss, place this card in the Abyss at the end of the turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:47:40.584Z"
+      }
+    },
+    "3rd_87": {
+      "name": {
+        "value": "Meals for banquet",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:04.882Z"
+      },
+      "effect": {
+        "value": "Attack +40 if the opponent's HP is 100.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:47:42.518Z"
+      }
+    },
+    "3rd_88": {
+      "name": {
+        "value": "Incense burner",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:09.960Z"
+      },
+      "effect": {
+        "value": "Attack +30 if all the cards in the Abyss are of the darkness attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:47:54.346Z"
+      }
+    },
+    "3rd_89": {
+      "name": {
+        "value": "Cell division",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:13.024Z"
+      },
+      "effect": {
+        "value": "Attack +50 if your character card's attribute is darkness.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:47:57.747Z"
+      }
+    },
+    "3rd_90": {
+      "name": {
+        "value": "I can't go back",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:18.655Z"
+      },
+      "effect": {
+        "value": "Attack +30 if your character card's attribute is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:48:00.049Z"
+      }
+    },
+    "3rd_91": {
+      "name": {
+        "value": "Subject",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:22.051Z"
+      },
+      "effect": {
+        "value": "Attack +20 if your character card's power cost is 3 or more. When the opponent places a card in the Abyss, place this card on your Power Charger at the end of the turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:48:09.366Z"
+      }
+    },
+    "3rd_92": {
+      "name": {
+        "value": "Bivouac",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:25.333Z"
+      },
+      "effect": {
+        "value": "Attack +10 for each flame card in the Abyss. If there are 4 or more cards in the Abyss, place this card in the Abyss at the end of the turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:48:14.095Z"
+      }
+    },
+    "3rd_93": {
+      "name": {
+        "value": "Switch",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:27.645Z"
+      },
+      "effect": {
+        "value": "Attack +30 if your character card's attribute is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:48:15.919Z"
+      }
+    },
+    "3rd_94": {
+      "name": {
+        "value": "Shoot",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:29.110Z"
+      },
+      "effect": {
+        "value": "Specify the name of a card. Choose and reveal 1 card from the opponent's hand. If it matches the specified name, Attack +40.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:48:24.531Z"
+      }
+    },
+    "3rd_95": {
+      "name": {
+        "value": "cleaning",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:30.773Z"
+      },
+      "effect": {
+        "value": "Attack +50 if all the cards in the Power Charger are of the electric attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:48:28.297Z"
+      }
+    },
+    "3rd_97": {
+      "name": {
+        "value": "High alert",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:32.991Z"
+      },
+      "effect": {
+        "value": "The opponent reveals the top card of his/her deck at the start of his/her turn. If there is a card with a power cost 6 or more, place it on the Power Charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:48:50.744Z"
+      }
+    },
+    "3rd_98": {
+      "name": {
+        "value": "Nutritional supplement",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:41.065Z"
+      },
+      "effect": {
+        "value": "Attack +10 for each electric card in the Abyss. If there are 4 or more cards in the Abyss, place this card in the Abyss at the end of the turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:49:01.799Z"
+      }
+    },
+    "3rd_99": {
+      "name": {
+        "value": "stow away",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:44.603Z"
+      },
+      "effect": {
+        "value": "Attack +30 if your character card's attribute is wind.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:49:04.531Z"
+      }
+    },
+    "3rd_100": {
+      "name": {
+        "value": "Bats",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:46.034Z"
+      },
+      "effect": {
+        "value": "Attack +40 if your character card's attribute is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:49:09.138Z"
+      }
+    },
+    "3rd_101": {
+      "name": {
+        "value": "Research routines",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:49.125Z"
+      },
+      "effect": {
+        "value": "Attack +40 if there are 2 or more cards in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:50:20.784Z"
+      }
+    },
+    "3rd_102": {
+      "name": {
+        "value": "burrowing",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:51.311Z"
+      },
+      "effect": {
+        "value": "Attack +40 if all the cards in the Power Charger are of the wind attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:50:26.308Z"
+      }
+    },
+    "3rd_103": {
+      "name": {
+        "value": "Treatment options",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:21:53.359Z"
+      },
+      "effect": {
+        "value": "At the start of your turn, reveal the top card of your opponent's deck. If there is no SEND TO POWER★ on your opponent's card, +30 Attack to you; if there is a SEND TO POWER★, immediately place this card on the Power Charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:50:55.343Z"
+      }
+    },
+    "3rd_104": {
+      "name": {
+        "value": "It has to be you.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:22:00.526Z"
+      },
+      "effect": {
+        "value": "Attack +10 for each wind card in the Abyss. If there are 4 or more cards in the Abyss, place this card in the Abyss at the end of the turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:51:07.552Z"
+      }
+    },
+    "3rd_105": {
+      "name": {
+        "value": "The shadow (FASTENING)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:22:33.238Z"
+      },
+      "effect": {
+        "value": "Specify the name of a card. Choose and reveal 1 card from the opponent's hand. If it matches the specified name, Attack +100.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:22:33.238Z"
+      }
+    },
+    "3rd_106": {
+      "name": {
+        "value": "NEKO-RESETTER (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:22:41.593Z"
+      },
+      "effect": {
+        "value": "Attack +100 if the opponent's HP is 100.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:22:41.593Z"
+      }
+    },
+    "4th_1": {
+      "name": {
+        "value": "NIRA-CHAN (TAIDADA)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:10.701Z"
+      },
+      "effect": {
+        "value": "Reveal any number of (TAIDADA) characters from your hand. Attack +30 for each.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:10.701Z"
+      }
+    },
+    "4th_2": {
+      "name": {
+        "value": "The last dance at the ball (SHADE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:18.717Z"
+      }
+    },
+    "4th_3": {
+      "name": {
+        "value": "NIRA-CHAN (SHADE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:21.011Z"
+      }
+    },
+    "4th_4": {
+      "name": {
+        "value": "MEGAGURI-KUN (Kira Killer)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:27.440Z"
+      }
+    },
+    "4th_5": {
+      "name": {
+        "value": "NIRA-CHAN (Mabushii DNA Dake)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:31.449Z"
+      },
+      "effect": {
+        "value": "Attack +20 for each wind card in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:51:12.741Z"
+      }
+    },
+    "4th_6": {
+      "name": {
+        "value": "NIRA-CHAN (Hippocampal Pain)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:41.844Z"
+      }
+    },
+    "4th_7": {
+      "name": {
+        "value": "Yearn for",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:45.514Z"
+      },
+      "effect": {
+        "value": "Reveal any number of (TAIDADA) characters from your hand, Attack +20 for each.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:51:20.043Z"
+      }
+    },
+    "4th_8": {
+      "name": {
+        "value": "ASAYAKE-CHIRITORI-MEN",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:51.784Z"
+      },
+      "effect": {
+        "value": "Reveal your hand. +80 Attack if it contains 4 or more attributes.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:51:26.406Z"
+      }
+    },
+    "4th_9": {
+      "name": {
+        "value": "Underwater scenery",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:23:55.523Z"
+      }
+    },
+    "4th_11": {
+      "name": {
+        "value": "NIRA-CHAN (CREAM)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:24:07.238Z"
+      }
+    },
+    "4th_12": {
+      "name": {
+        "value": "NIRA-CHAN (Hanaichi Monnme)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:24:12.456Z"
+      }
+    },
+    "4th_13": {
+      "name": {
+        "value": "NIRA-CHANs gathered at the Kissa",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:24:22.415Z"
+      }
+    },
+    "4th_14": {
+      "name": {
+        "value": "UNIGREAM-WORLD",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:24:28.947Z"
+      }
+    },
+    "4th_15": {
+      "name": {
+        "value": "NIRA-CHAN (Konnakoto Soudou)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:24:32.588Z"
+      }
+    },
+    "4th_16": {
+      "name": {
+        "value": "NIRA-CHAN·SASHIMI (Truth in Lies)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:24:45.418Z"
+      }
+    },
+    "4th_17": {
+      "name": {
+        "value": "NIRA-CHAN (KUZURI)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:24:55.635Z"
+      },
+      "effect": {
+        "value": "Attack +50 if all cards in your Power Charger are flame attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:51:53.899Z"
+      }
+    },
+    "4th_18": {
+      "name": {
+        "value": "UNIGURI-ENSEITAI",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:25:03.670Z"
+      }
+    },
+    "4th_19": {
+      "name": {
+        "value": "NIRA-CHAN (Hunch Gray)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:25:09.185Z"
+      }
+    },
+    "4th_20": {
+      "name": {
+        "value": "NIRA-CHAN (Hippocampal Pain)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:25:14.462Z"
+      },
+      "effect": {
+        "value": "Attack +20 for each electric card in the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:51:56.278Z"
+      }
+    },
+    "4th_21": {
+      "name": {
+        "value": "NIRA-CHAN [Job:Convenience store Clerk] (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:25:27.036Z"
+      }
+    },
+    "4th_22": {
+      "name": {
+        "value": "NIRA-CHAN (QUILT)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:25:29.512Z"
+      }
+    },
+    "4th_23": {
+      "name": {
+        "value": "NIRA-CHAN (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:25:42.022Z"
+      }
+    },
+    "4th_24": {
+      "name": {
+        "value": "NIRA-CHAN (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:25:47.317Z"
+      }
+    },
+    "4th_25": {
+      "name": {
+        "value": "NIRA-CHAN (Summer Slack)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:25:51.093Z"
+      }
+    },
+    "4th_26": {
+      "name": {
+        "value": "UNIGRIMAZE",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:25:54.447Z"
+      }
+    },
+    "4th_27": {
+      "name": {
+        "value": "TORI-NIRA-CHAN (One's Mind)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:26:06.670Z"
+      },
+      "effect": {
+        "value": "Select 1 or more cards from the Abyss. Shuffle them face down and place them at the bottom of your deck. Otherwise, you lose the game. Then, place the same number of cards from the top of your opponent's deck into the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:52:22.995Z"
+      }
+    },
+    "4th_28": {
+      "name": {
+        "value": "RANI-CHAN [Status : Awakening] (Pain Give Form)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:26:35.185Z"
+      },
+      "effect": {
+        "value": "Select 6 cards from the Abyss. Shuffle them face down and place them at the bottom of your deck. Otherwise, you lose the game. Set Chronos to your preferred time.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:52:40.847Z"
+      }
+    },
+    "4th_29": {
+      "name": {
+        "value": "Longing for Home",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:26:42.936Z"
+      },
+      "effect": {
+        "value": "Attack +100 if there are no cards in your opponent's Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:52:45.657Z"
+      }
+    },
+    "4th_31": {
+      "name": {
+        "value": "Together into the future",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:26:47.504Z"
+      }
+    },
+    "4th_32": {
+      "name": {
+        "value": "Patchwork notes",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:26:51.062Z"
+      },
+      "effect": {
+        "value": "Reveal your hand. Attack +50 if it contains 4 or more attributes. If there is an Area Enchantment on your opponent's side, immediately place it into the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:53:04.468Z"
+      }
+    },
+    "4th_33": {
+      "name": {
+        "value": "The beginning from the end",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:26:53.838Z"
+      },
+      "effect": {
+        "value": "Attack +20 if all cards in your Abyss are wind attribute. When a card is placed into your Power Charger, immediately place this card into your Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:53:16.801Z"
+      }
+    },
+    "4th_34": {
+      "name": {
+        "value": "Stardust UNIGURI-KUN",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:00.896Z"
+      },
+      "effect": {
+        "value": "Attack +30 if the opponent's character's attack is 0.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:53:18.980Z"
+      }
+    },
+    "4th_35": {
+      "name": {
+        "value": "NIRA-CHAN (TAIDADA)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:03.032Z"
+      },
+      "effect": {
+        "value": "Reveal any number of (TAIDADA) characters from your hand, Attack +10 for each.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:53:26.001Z"
+      }
+    },
+    "4th_36": {
+      "name": {
+        "value": "NIRA-CHAN (CREAM)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:06.018Z"
+      }
+    },
+    "4th_37": {
+      "name": {
+        "value": "GREINU (One's Mind)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:10.696Z"
+      },
+      "effect": {
+        "value": "Attack +20 if all cards in your Power Charger are darkness attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:53:29.534Z"
+      }
+    },
+    "4th_38": {
+      "name": {
+        "value": "NIRA-CHAN (Byoushinwo Kamu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:12.704Z"
+      }
+    },
+    "4th_39": {
+      "name": {
+        "value": "NIRA-CHAN (KUZURI)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:14.289Z"
+      },
+      "effect": {
+        "value": "Attack +40 if the opponent's character's attack is 0.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:53:34.149Z"
+      }
+    },
+    "4th_40": {
+      "name": {
+        "value": "MIMI-KAYUSHI Parfait",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:18.300Z"
+      }
+    },
+    "4th_41": {
+      "name": {
+        "value": "INC-NEKO (SHADE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:22.713Z"
+      },
+      "effect": {
+        "value": "If you swapped with a (SHADE) character this turn, negate all effects of all enchantments controlled by your opponent. (Effects that have already resolved are unaffected.)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:53:59.892Z"
+      }
+    },
+    "4th_42": {
+      "name": {
+        "value": "UNICREAM Sundae",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:26.256Z"
+      }
+    },
+    "4th_43": {
+      "name": {
+        "value": "MUSHIGURI-KUN",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:31.113Z"
+      }
+    },
+    "4th_44": {
+      "name": {
+        "value": "Biker UNIGURI-KUN (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:35.332Z"
+      }
+    },
+    "4th_45": {
+      "name": {
+        "value": "UNISHOGA a la mode",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:39.598Z"
+      }
+    },
+    "4th_46": {
+      "name": {
+        "value": "Glitter SHOGAST",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:43.139Z"
+      }
+    },
+    "4th_47": {
+      "name": {
+        "value": "AFRO☆COSMO",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:27:47.990Z"
+      }
+    },
+    "4th_48": {
+      "name": {
+        "value": "Delivery (Blues in the Closet)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:00.389Z"
+      }
+    },
+    "4th_49": {
+      "name": {
+        "value": "Baby NANASHI (DARKEN)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:06.706Z"
+      }
+    },
+    "4th_50": {
+      "name": {
+        "value": "NIRA-CHAN (Haze Haseru Haterumade)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:13.471Z"
+      }
+    },
+    "4th_51": {
+      "name": {
+        "value": "NIRA-CHAN (Byoushinwo Kamu)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:16.031Z"
+      }
+    },
+    "4th_52": {
+      "name": {
+        "value": "ZUTOMAYO Archive",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:17.902Z"
+      }
+    },
+    "4th_53": {
+      "name": {
+        "value": "NIRA-CHAN (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:20.963Z"
+      },
+      "effect": {
+        "value": "You may place a (STUDY ME) character card from your hand and place it on the Power Charger. If you do, draw 1 card.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:54:12.100Z"
+      }
+    },
+    "4th_54": {
+      "name": {
+        "value": "They've switched",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:24.349Z"
+      },
+      "effect": {
+        "value": "Place an electric card from your hand into the Abyss. If you do, draw 1 card.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:54:17.746Z"
+      }
+    },
+    "4th_55": {
+      "name": {
+        "value": "Deco-Bike'd here",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:30.047Z"
+      },
+      "effect": {
+        "value": "HP +20 if the card in the Battle Zone is a (TAIDADA) character.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:54:21.967Z"
+      }
+    },
+    "4th_56": {
+      "name": {
+        "value": "Grave Dance",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:32.161Z"
+      },
+      "effect": {
+        "value": "Attack +50 if the opponent's Abyss has no cards.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:54:24.550Z"
+      }
+    },
+    "4th_57": {
+      "name": {
+        "value": "The Byoushin that foretells the future",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:41.038Z"
+      },
+      "effect": {
+        "value": "If there are 3 or more cards in your Abyss, place the top 2 cards from your opponent's deck into their Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:54:32.515Z"
+      }
+    },
+    "4th_58": {
+      "name": {
+        "value": "Joint polishing",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:43.778Z"
+      },
+      "effect": {
+        "value": "Place a wind card from your hand into the Abyss. If you do, draw 1 card.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:54:39.321Z"
+      }
+    },
+    "4th_59": {
+      "name": {
+        "value": "Sinful midnight ramen",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:28:48.081Z"
+      },
+      "effect": {
+        "value": "HP +50 if there are 3 or more attributes in the Power Charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:54:42.256Z"
+      }
+    },
+    "4th_60": {
+      "name": {
+        "value": "Friendship squared",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:10.354Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the opponent's Character's SEND TO POWER is ★★.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:10.354Z"
+      }
+    },
+    "4th_61": {
+      "name": {
+        "value": "The Stage's Recurrence",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:17.808Z"
+      },
+      "effect": {
+        "value": "Place any number of cards from your hand at the bottom of the deck. If you do, draw the same number of cards from the deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:54:51.986Z"
+      }
+    },
+    "4th_62": {
+      "name": {
+        "value": "Build",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:19.205Z"
+      },
+      "effect": {
+        "value": "Place any number of darkness cards from your hand into the Abyss. If you do, draw the same number of cards.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:54:59.488Z"
+      }
+    },
+    "4th_63": {
+      "name": {
+        "value": "Gohan is better than the flowers",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:23.690Z"
+      },
+      "effect": {
+        "value": "Place any number of flame cards from your hand into the Abyss. If you do, draw the same number of cards.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:55:06.390Z"
+      }
+    },
+    "4th_64": {
+      "name": {
+        "value": "Summer UNIGURI and the friends",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:27.262Z"
+      },
+      "effect": {
+        "value": "Attack +60 if all cards in your Abyss are wind attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:55:08.667Z"
+      }
+    },
+    "4th_65": {
+      "name": {
+        "value": "JK BIOSCOPE",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:35.790Z"
+      },
+      "effect": {
+        "value": "If the card in the Battle Zone is a (STUDY ME), reduce that character's Power Cost by ★★. When the character in the Battle Zone is swapped for a Character other than (STUDY ME), immediately place this card into the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:55:33.826Z"
+      }
+    },
+    "4th_66": {
+      "name": {
+        "value": "SHOGAST (Hippocampal Pain)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:41.925Z"
+      },
+      "effect": {
+        "value": "Attack +30 if the opponent's Character's SEND TO POWER is ★★.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:55:47.001Z"
+      }
+    },
+    "4th_67": {
+      "name": {
+        "value": "UCHUJIN-STRINGS (TAIDADA)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:46.296Z"
+      }
+    },
+    "4th_69": {
+      "name": {
+        "value": "NIRA-CHAN (TAIDADA)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:48.932Z"
+      }
+    },
+    "4th_70": {
+      "name": {
+        "value": "UNIGURI-KUN·NIRA-CHAN (TAIDADA)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:29:57.530Z"
+      }
+    },
+    "4th_71": {
+      "name": {
+        "value": "STRIPE-SISHO (Haze Haseru Haterumade)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:06.365Z"
+      }
+    },
+    "4th_72": {
+      "name": {
+        "value": "UNIGURI-KUN (One's Mind)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:10.488Z"
+      }
+    },
+    "4th_73": {
+      "name": {
+        "value": "SHADE-SHEPHERD-TAI (SHADE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:20.698Z"
+      },
+      "effect": {
+        "value": "HP +20 if you swapped with a (SHADE) character this turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:55:53.235Z"
+      }
+    },
+    "4th_74": {
+      "name": {
+        "value": "NIRA-CHAN (SHADE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:23.399Z"
+      },
+      "effect": {
+        "value": "Opponent's Attack -30 if you swapped with a (SHADE) character this turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:55:58.626Z"
+      }
+    },
+    "4th_75": {
+      "name": {
+        "value": "KAITO-INC-NEKO (SHADE)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:27.340Z"
+      },
+      "effect": {
+        "value": "Opponent's HP -20 if you swapped with a (SHADE) character this turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:56:03.757Z"
+      }
+    },
+    "4th_76": {
+      "name": {
+        "value": "GREINU (Pain Give Form)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:32.957Z"
+      }
+    },
+    "4th_77": {
+      "name": {
+        "value": "NIRA-CHAN (Pain Give Form)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:37.229Z"
+      }
+    },
+    "4th_78": {
+      "name": {
+        "value": "NIRA-CHAN (Warmthaholic)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:42.246Z"
+      }
+    },
+    "4th_79": {
+      "name": {
+        "value": "NIRA-CHAN (CREAM)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:45.302Z"
+      }
+    },
+    "4th_80": {
+      "name": {
+        "value": "GRAY [Job:Taxi Driver] (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:30:57.647Z"
+      }
+    },
+    "4th_81": {
+      "name": {
+        "value": "NIRA-CHAN [Job:Camera Crew] (Neko Reset)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:31:01.899Z"
+      }
+    },
+    "4th_82": {
+      "name": {
+        "value": "MUGEN (KUZURI)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:31:04.401Z"
+      }
+    },
+    "4th_83": {
+      "name": {
+        "value": "GRAY...? (CREAM)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:31:07.287Z"
+      }
+    },
+    "4th_84": {
+      "name": {
+        "value": "NIRA-CHAN (Haze Haseru Haterumade)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:31:13.696Z"
+      },
+      "effect": {
+        "value": "Attack +50 if the opponent's character's attack is 0.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:56:07.525Z"
+      }
+    },
+    "4th_86": {
+      "name": {
+        "value": "NIRA-CHAN (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:31:17.126Z"
+      }
+    },
+    "4th_87": {
+      "name": {
+        "value": "NIRA-CHINA (STUDY ME)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:31:20.886Z"
+      },
+      "effect": {
+        "value": "Attack +50 if you swapped with a (STUDY ME) character this turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:56:11.947Z"
+      }
+    },
+    "4th_88": {
+      "name": {
+        "value": "NIRA-CHAN...? (Warmthaholic)",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:13.159Z"
+      },
+      "effect": {
+        "value": "Select a card from the Abyss. Shuffle them face down and place them at the bottom of your deck. Otherwise, you lose the game. Look at the top 3 cards of your opponent's deck, rearrange them in any order you like, and return them to the deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:56:42.595Z"
+      }
+    },
+    "4th_89": {
+      "name": {
+        "value": "Abduction",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:17.689Z"
+      },
+      "effect": {
+        "value": "If the card in the Battle Zone is a (TAIDADA) character, draw 1 card. If you drew a card due to this card's effect, your hand limit increases by 1 until the end of the game.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:57:02.833Z"
+      }
+    },
+    "4th_90": {
+      "name": {
+        "value": "Resurrection of the Dead",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:24.819Z"
+      },
+      "effect": {
+        "value": "Return a card from your opponent's Abyss to the bottom of their deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:57:26.228Z"
+      }
+    },
+    "4th_91": {
+      "name": {
+        "value": "Counterattack",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:29.537Z"
+      },
+      "effect": {
+        "value": "Reveal any number of (TAIDADA) characters from your hand, Attack +10 for each. When your HP becomes 50 or less, place this card into your Power Charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:57:42.922Z"
+      }
+    },
+    "4th_92": {
+      "name": {
+        "value": "Take charge at the front line",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:32.776Z"
+      },
+      "effect": {
+        "value": "If the character in the Battle Zone is (SHADE), the opponent's Attack is reduced by 40.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:57:50.325Z"
+      }
+    },
+    "4th_93": {
+      "name": {
+        "value": "Sharing the pain",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:35.227Z"
+      },
+      "effect": {
+        "value": "HP +30 if there are 2 or more attributes in the Power Charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:58:13.734Z"
+      }
+    },
+    "4th_94": {
+      "name": {
+        "value": "Searching !",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:41.375Z"
+      },
+      "effect": {
+        "value": "Select a (SHADE) character from the Power Charger and use it as this card's effect. If there are 5 or more cards placed on the Power Charger, immediately place this card into the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:58:25.184Z"
+      }
+    },
+    "4th_95": {
+      "name": {
+        "value": "Not a laughing matter",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:45.796Z"
+      },
+      "effect": {
+        "value": "Attack +50 if there are 4 or more attributes in the Power Charger. When you lose a battle, immediately place this card into the Abyss.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:58:32.099Z"
+      }
+    },
+    "4th_96": {
+      "name": {
+        "value": "Webbing Map",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:49.168Z"
+      },
+      "effect": {
+        "value": "If the card in the Battle Zone is a (Neko Reset) character, reduce damage by 50 when you take damage.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:58:38.777Z"
+      }
+    },
+    "4th_97": {
+      "name": {
+        "value": "Three people working together",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:52.794Z"
+      },
+      "effect": {
+        "value": "Reveal your hand. Attack +50 if it contains 3 or more attributes.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:59:00.526Z"
+      }
+    },
+    "4th_98": {
+      "name": {
+        "value": "Convalescence",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:56.820Z"
+      },
+      "effect": {
+        "value": "If the card in the Battle Zone is a (Neko Reset) character, reduce damage by 100 when you take damage.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:59:07.274Z"
+      }
+    },
+    "4th_99": {
+      "name": {
+        "value": "Job Change",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:32:58.199Z"
+      },
+      "effect": {
+        "value": "If the card in the Battle Zone is a (Neko Reset) character, set the opponent's Attack to 100.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:59:13.672Z"
+      }
+    },
+    "4th_100": {
+      "name": {
+        "value": "Location of the bomb",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:33:00.546Z"
+      },
+      "effect": {
+        "value": "If the card in the Battle Zone is a (Neko Reset) character, deal damage to your opponent at the end of the turn equal to the amount reduced this turn.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:59:31.314Z"
+      }
+    },
+    "4th_101": {
+      "name": {
+        "value": "Fresh ice cream",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:33:03.938Z"
+      },
+      "effect": {
+        "value": "Attack +20 if the opponent's character's attack is 0.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:59:34.800Z"
+      }
+    },
+    "4th_102": {
+      "name": {
+        "value": "Leapt Through Time",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:33:09.077Z"
+      },
+      "effect": {
+        "value": "Attack +10 for each (STUDY ME) card in your Power Charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:59:39.067Z"
+      }
+    },
+    "4th_103": {
+      "name": {
+        "value": "Firestorm",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:33:12.740Z"
+      },
+      "effect": {
+        "value": "Attack +40 if all cards in your Abyss are wind attribute.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:59:42.812Z"
+      }
+    },
+    "4th_104": {
+      "name": {
+        "value": "Flashback",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:33:14.939Z"
+      },
+      "effect": {
+        "value": "Attack +20 for each (STUDY ME) card in your Power Charger.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:59:46.010Z"
+      }
+    },
+    "2nd_76": {
+      "effect": {
+        "value": "Attack +20 if the attribute of the opponent's character card is flame.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:37:33.195Z"
+      }
+    },
+    "3rd_14": {
+      "effect": {
+        "value": "Put the opponent's Area Enchantment card at the bottom of the opponent's deck.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:40:41.207Z"
+      }
+    },
+    "3rd_96": {
+      "effect": {
+        "value": "Attack +50 if your character card's attribute is electric.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:48:30.134Z"
+      }
+    },
+    "4th_10": {
+      "effect": {
+        "value": "Reveal any number of (TAIDADA) characters from your hand, Attack +20 for each.",
+        "source": "local-web-review",
+        "reviewedAt": "2026-07-15T05:51:33.913Z"
+      }
+    }
+  }
 }

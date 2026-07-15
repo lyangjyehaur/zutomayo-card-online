@@ -468,7 +468,8 @@ type CardTextDraft = {
 
 const DERIVED_I18N_LANGS = I18N_LANGS.filter((lang) => lang.code !== 'ja' && lang.code !== 'en');
 
-function I18nEditor({ cardId }: { cardId: string }) {
+function I18nEditor({ card }: { card: CardDef }) {
+  const cardId = card.id;
   const [draft, setDraft] = useState<Record<string, CardTextDraft>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -514,6 +515,12 @@ function I18nEditor({ cardId }: { cardId: string }) {
           reviewStatus: entry?.reviewStatus ?? 'pending_review',
           reviewNote: entry?.reviewNote ?? '',
           source: 'admin_bilingual_translation',
+          nameSource: card.officialErrataAffectsName
+            ? 'official_japanese_errata_translation'
+            : 'admin_bilingual_translation',
+          effectSource: card.officialErrataAffectsEffect
+            ? 'official_japanese_errata_translation'
+            : 'admin_bilingual_translation',
         });
       }
       setSuccess(true);
@@ -825,6 +832,7 @@ export function AdminPage() {
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
   const [filterPack, setFilterPack] = useState('all');
+  const [errataOnly, setErrataOnly] = useState(false);
   const [filterTrigger, setFilterTrigger] = useState('all');
   const [filterAction, setFilterAction] = useState('');
   const [filterCondition, setFilterCondition] = useState('');
@@ -864,6 +872,7 @@ export function AdminPage() {
     if (filterElement !== 'all') cards = cards.filter((c) => c.element === filterElement);
     if (filterType !== 'all') cards = cards.filter((c) => c.type === filterType);
     if (filterPack !== 'all') cards = cards.filter((c) => c.pack === filterPack);
+    if (errataOnly) cards = cards.filter((c) => c.hasOfficialErrata);
     if (filterTrigger !== 'all') cards = cards.filter((c) => metaById.get(c.id)?.triggers.includes(filterTrigger));
     if (filterAction)
       cards = cards.filter((c) =>
@@ -904,6 +913,7 @@ export function AdminPage() {
     filterPack,
     filterTrigger,
     filterType,
+    errataOnly,
     pendingOnly,
     searchText,
     sortBy,
@@ -919,6 +929,7 @@ export function AdminPage() {
     Boolean(filterCondition),
     pendingOnly,
     areaExpiryOnly,
+    errataOnly,
     sortBy !== 'id',
   ].filter(Boolean).length;
 
@@ -1229,7 +1240,7 @@ export function AdminPage() {
               />
             )}
             {modalTab === 'engine' && <EffectInspector meta={selectedMeta} />}
-            {modalTab === 'i18n' && <I18nEditor cardId={selectedCard.id} />}
+            {modalTab === 'i18n' && <I18nEditor card={selectedCard} />}
           </div>
         </div>
       </Dialog>
@@ -1381,6 +1392,13 @@ export function AdminPage() {
                 >
                   Area expiry
                 </Button>
+                <Button
+                  size="sm"
+                  variant={errataOnly ? 'primary' : 'ghost'}
+                  onClick={() => setErrataOnly((value) => !value)}
+                >
+                  官方勘誤
+                </Button>
               </div>
               <div className="admin-filter-row flex flex-wrap items-center gap-2">
                 <span className="admin-filter-label w-12 text-xs text-content-primary/50">卡包</span>
@@ -1451,6 +1469,11 @@ export function AdminPage() {
                       referrerPolicy="no-referrer"
                     />
                     <div className="absolute inset-x-0 bottom-0 bg-surface-canvas/80 p-3 backdrop-blur">
+                      {card.hasOfficialErrata && (
+                        <Badge className="mb-1" tone="gold">
+                          官方勘誤 #{card.officialErrataId}
+                        </Badge>
+                      )}
                       <h2 className="block truncate text-sm font-bold">{card.name}</h2>
                       <p className="font-mono text-xs opacity-80">{card.id}</p>
                       <p className="text-xs opacity-80">

@@ -14,8 +14,22 @@ type ExtractedCard = {
   effectStatus: string;
 };
 
+type OfficialErrata = {
+  errataId: string;
+  cardId: string;
+  publishedAt: string;
+  fields: Array<'name' | 'effect'>;
+  incorrectText: string;
+  correctedJapaneseText: string;
+  correctedEnglishText: string;
+  correctedEnglishStatus: 'official' | 'verified' | 'pending_review';
+  sourceUrl: string;
+};
+
 const source = process.argv[2] || 'data/card-english-extraction.json';
 const cards = (JSON.parse(fs.readFileSync(source, 'utf8')) as { cards: ExtractedCard[] }).cards;
+const errataSource = process.env.CARD_ERRATA_SOURCE || 'data/card-official-errata.json';
+const officialErrata = (JSON.parse(fs.readFileSync(errataSource, 'utf8')) as { errata: OfficialErrata[] }).errata;
 if (
   cards.some(
     (card) =>
@@ -24,6 +38,9 @@ if (
   )
 ) {
   throw new Error('Refusing import: every printed English name/effect must be human-reviewed');
+}
+if (officialErrata.length !== 12 || new Set(officialErrata.map((entry) => entry.cardId)).size !== 12) {
+  throw new Error('Refusing import: official errata source must contain 12 unique cards');
 }
 
 const pool = new Pool({
@@ -57,6 +74,22 @@ async function main(): Promise<void> {
       throw new Error(`Refusing import due to source mismatch:\n${mismatches.join('\n')}`);
     }
 
+    const cardsById = new Map(cards.map((card) => [card.id, card]));
+    for (const entry of officialErrata) {
+      const card = cardsById.get(entry.cardId);
+      if (!card) {
+        mismatches.push(`${entry.cardId}: official errata card missing from extraction`);
+        continue;
+      }
+      const correctedJapanese = entry.fields.includes('name') ? card.japaneseName : card.japaneseEffect;
+      if (correctedJapanese !== entry.correctedJapaneseText) {
+        mismatches.push(`${entry.cardId}: corrected Japanese does not match official card data`);
+      }
+    }
+    if (mismatches.length > 0) {
+      throw new Error(`Refusing import due to official errata mismatch:\n${mismatches.join('\n')}`);
+    }
+
     for (const card of cards) {
       await client.query(
         `UPDATE cards
@@ -83,8 +116,92 @@ async function main(): Promise<void> {
         [card.id, card.japaneseName, card.japaneseEffect, card.enNameOfficial, card.enEffectOfficial],
       );
     }
+
+    await client.query(`
+      UPDATE cards
+      SET has_official_errata = FALSE,
+          official_errata_id = NULL,
+          official_errata_affects_name = FALSE,
+          official_errata_affects_effect = FALSE,
+          official_errata_url = '';
+      DELETE FROM card_official_errata;
+    `);
+
+    for (const entry of officialErrata) {
+      const card = cardsById.get(entry.cardId);
+      if (!card) throw new Error(`${entry.cardId}: missing extraction after validation`);
+      const affectsName = entry.fields.includes('name');
+      const affectsEffect = entry.fields.includes('effect');
+      const correctedSource =
+        entry.correctedEnglishStatus === 'official' ? 'official_errata_notice' : 'official_japanese_errata_translation';
+
+      await client.query(
+        `UPDATE cards
+         SET has_official_errata = TRUE,
+             official_errata_id = $2,
+             official_errata_affects_name = $3,
+             official_errata_affects_effect = $4,
+             official_errata_url = $5,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [entry.cardId, entry.errataId, affectsName, affectsEffect, entry.sourceUrl],
+      );
+      await client.query(
+        `INSERT INTO card_official_errata (
+           errata_id, card_id, published_at, affects_name, affects_effect,
+           incorrect_text, corrected_japanese_text, corrected_english_text,
+           corrected_english_status, source_url
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          entry.errataId,
+          entry.cardId,
+          entry.publishedAt,
+          affectsName,
+          affectsEffect,
+          entry.incorrectText,
+          entry.correctedJapaneseText,
+          entry.correctedEnglishText,
+          entry.correctedEnglishStatus,
+          entry.sourceUrl,
+        ],
+      );
+      await client.query(
+        `INSERT INTO card_texts_i18n (
+           card_id, lang, name_text, effect_text, name_source, effect_source,
+           review_status, review_note
+         )
+         VALUES
+           ($1, 'ja', $2, $3, $4, $5, 'official', $6),
+           ($1, 'en', $7, $8, $9, $10, $11, $6)
+         ON CONFLICT (card_id, lang) DO UPDATE SET
+           name_text = EXCLUDED.name_text,
+           effect_text = EXCLUDED.effect_text,
+           name_source = EXCLUDED.name_source,
+           effect_source = EXCLUDED.effect_source,
+           review_status = EXCLUDED.review_status,
+           review_note = EXCLUDED.review_note,
+           updated_at = NOW()`,
+        [
+          entry.cardId,
+          card.japaneseName,
+          card.japaneseEffect,
+          affectsName ? 'official_errata_notice' : 'official_card_print',
+          affectsEffect ? 'official_errata_notice' : 'official_card_print',
+          `Official errata ${entry.errataId}: ${entry.sourceUrl}`,
+          affectsName ? entry.correctedEnglishText : card.enNameOfficial,
+          affectsEffect ? entry.correctedEnglishText : card.enEffectOfficial,
+          affectsName ? correctedSource : 'official_card_print',
+          affectsEffect ? correctedSource : 'official_card_print',
+          entry.correctedEnglishStatus,
+        ],
+      );
+    }
+
     await client.query('COMMIT');
-    console.log(`Imported official Japanese/English text for ${cards.length} cards.`);
+    console.log(
+      `Imported official Japanese/printed English text for ${cards.length} cards and ${officialErrata.length} errata.`,
+    );
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

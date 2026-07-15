@@ -394,6 +394,28 @@ async function initSchema() {
     )`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS has_official_errata BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_id TEXT`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_effect BOOLEAN NOT NULL DEFAULT FALSE`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_url TEXT NOT NULL DEFAULT ''`,
+    `CREATE INDEX IF NOT EXISTS idx_cards_has_official_errata ON cards(has_official_errata)`,
+
+    `CREATE TABLE IF NOT EXISTS card_official_errata (
+      errata_id TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL UNIQUE REFERENCES cards(id) ON DELETE CASCADE,
+      published_at DATE NOT NULL,
+      affects_name BOOLEAN NOT NULL DEFAULT FALSE,
+      affects_effect BOOLEAN NOT NULL DEFAULT FALSE,
+      incorrect_text TEXT NOT NULL DEFAULT '',
+      corrected_japanese_text TEXT NOT NULL,
+      corrected_english_text TEXT NOT NULL DEFAULT '',
+      corrected_english_status TEXT NOT NULL DEFAULT 'pending_review'
+        CHECK (corrected_english_status IN ('official', 'verified', 'pending_review')),
+      source_url TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (affects_name OR affects_effect)
+    )`,
 
     `CREATE TABLE IF NOT EXISTS card_effects_i18n (
       card_id TEXT NOT NULL,

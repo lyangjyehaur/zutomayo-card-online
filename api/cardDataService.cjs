@@ -9,7 +9,8 @@ const I18N_LANG_ALIASES = new Map([
 
 const CARD_SELECT = `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
                     attack_night, attack_day, power_cost, send_to_power, effect,
-                    en_effect_official, image, errata`;
+                    en_effect_official, image, errata, has_official_errata, official_errata_id,
+                    official_errata_affects_name, official_errata_affects_effect, official_errata_url`;
 
 function cardRowToDef(row) {
   const def = {
@@ -34,9 +35,14 @@ function cardRowToDef(row) {
     effect: row.effect || '',
     image: row.image || '',
     errata: row.errata || '',
+    hasOfficialErrata: Boolean(row.has_official_errata),
+    officialErrataAffectsName: Boolean(row.official_errata_affects_name),
+    officialErrataAffectsEffect: Boolean(row.official_errata_affects_effect),
   };
   if (row.en_name_official) def.enNameOfficial = row.en_name_official;
   if (row.en_effect_official) def.enEffectOfficial = row.en_effect_official;
+  if (row.official_errata_id) def.officialErrataId = row.official_errata_id;
+  if (row.official_errata_url) def.officialErrataUrl = row.official_errata_url;
   return def;
 }
 
@@ -70,6 +76,11 @@ async function getPublicCards(pool, searchParams) {
       if (!value) continue;
       values.push(value);
       conditions.push(`${column} = $${values.length}`);
+    }
+    const errata = searchParams.get('errata');
+    if (errata === 'true' || errata === 'false') {
+      values.push(errata === 'true');
+      conditions.push(`has_official_errata = $${values.length}`);
     }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const cards = (await pool.query(`${CARD_SELECT} FROM cards ${where} ORDER BY id`, values)).rows;

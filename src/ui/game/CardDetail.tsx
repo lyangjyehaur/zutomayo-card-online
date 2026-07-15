@@ -39,6 +39,16 @@ export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G:
         <CardImage cardId={def.id} context="detail" alt={localizedName} loading="eager" referrerPolicy="no-referrer" />
       </div>
       <h2 className="carddetail-name">{localizedName}</h2>
+      {def.hasOfficialErrata && (
+        <a
+          className="inline-flex w-fit text-caption font-bold text-accent-action underline underline-offset-2"
+          href={def.officialErrataUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t('card.officialErrata')} #{def.officialErrataId}
+        </a>
+      )}
       <div className="carddetail-taxonomy">
         {t(`card.element.${def.element}` as never)} · {t(`card.type.${def.type}` as never)}
       </div>

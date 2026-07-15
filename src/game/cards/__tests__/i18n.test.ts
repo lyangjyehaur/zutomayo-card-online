@@ -73,4 +73,62 @@ describe('localized card text policy', () => {
     expect(getLocalizedCardName(japaneseOnly, 'zh-CN')).toBe('公式日本語名');
     expect(getLocalizedCardEffect(japaneseOnly, 'zh-CN')).toBe('公式日本語効果');
   });
+
+  it('never uses printed English for an errata-affected field', () => {
+    const errataCard = { ...card, officialErrataAffectsEffect: true };
+    initCardTextsI18n({
+      test_1: {
+        en: {
+          name: 'OFFICIAL ENGLISH NAME',
+          effect: 'UNCHECKED CORRECTED EFFECT',
+          nameSource: 'official_card_print',
+          effectSource: 'official_japanese_errata_translation',
+          reviewStatus: 'pending_review',
+          reviewNote: '',
+        },
+        'zh-TW': {
+          name: '已複核卡名',
+          effect: '舊版錯誤效果',
+          nameSource: 'bilingual_review',
+          effectSource: 'bilingual_review',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+      },
+    });
+
+    expect(getLocalizedCardName(errataCard, 'en')).toBe('OFFICIAL ENGLISH NAME');
+    expect(getLocalizedCardEffect(errataCard, 'en')).toBe('公式日本語効果');
+    expect(getLocalizedCardEffect(errataCard, 'zh-TW')).toBe('公式日本語効果');
+  });
+
+  it('uses reviewed translations derived from corrected Japanese errata', () => {
+    const errataCard = { ...card, officialErrataAffectsName: true, officialErrataAffectsEffect: true };
+    initCardTextsI18n({
+      test_1: {
+        en: {
+          name: 'CORRECTED ENGLISH NAME',
+          effect: 'CORRECTED ENGLISH EFFECT',
+          nameSource: 'official_errata_notice',
+          effectSource: 'official_japanese_errata_translation',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+        ko: {
+          name: '수정된 이름',
+          effect: '수정된 효과',
+          nameSource: 'official_japanese_errata_translation',
+          effectSource: 'official_japanese_errata_translation',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+      },
+    });
+
+    expect(getLocalizedCardName(errataCard, 'en')).toBe('CORRECTED ENGLISH NAME');
+    expect(getLocalizedCardEffect(errataCard, 'en')).toBe('CORRECTED ENGLISH EFFECT');
+    expect(getLocalizedCardName(errataCard, 'ko')).toBe('수정된 이름');
+    expect(getLocalizedCardEffect(errataCard, 'ko')).toBe('수정된 효과');
+    expect(getLocalizedCardName(errataCard, 'zh-CN')).toBe('CORRECTED ENGLISH NAME');
+  });
 });

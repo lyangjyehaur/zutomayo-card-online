@@ -52,6 +52,11 @@ const dbCard = {
   en_effect_official: 'Effect',
   image: '',
   errata: '',
+  has_official_errata: true,
+  official_errata_id: '009',
+  official_errata_affects_name: false,
+  official_errata_affects_effect: true,
+  official_errata_url: 'https://zutomayocard.net/errata/009/',
 };
 
 function poolWithRows(...rowSets: unknown[][]): Queryable {
@@ -81,7 +86,18 @@ describe('card data service', () => {
       enEffectOfficial: 'Effect',
       image: '',
       errata: '',
+      hasOfficialErrata: true,
+      officialErrataId: '009',
+      officialErrataAffectsName: false,
+      officialErrataAffectsEffect: true,
+      officialErrataUrl: 'https://zutomayocard.net/errata/009/',
     });
+  });
+
+  it('filters cards by structured official errata status', async () => {
+    const pool = poolWithRows([dbCard]);
+    await expect(getPublicCards(pool, new URLSearchParams('errata=true'))).resolves.toEqual([cardRowToDef(dbCard)]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('WHERE has_official_errata = $1'), [true]);
   });
 
   it('returns PG cards and preserves public query params', async () => {

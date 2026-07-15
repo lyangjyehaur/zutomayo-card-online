@@ -163,6 +163,11 @@ export interface CardDef {
   name: string;
   enNameOfficial?: string;
   enEffectOfficial?: string;
+  hasOfficialErrata?: boolean;
+  officialErrataId?: string;
+  officialErrataAffectsName?: boolean;
+  officialErrataAffectsEffect?: boolean;
+  officialErrataUrl?: string;
   pack: string;
   song: string;
   illustrator: string;

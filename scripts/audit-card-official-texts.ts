@@ -51,6 +51,7 @@ function mechanicNumbers(value: string, lang: 'ja' | 'en'): string[] {
     const words: Record<string, string> = { one: '1', two: '2', three: '3', four: '4', five: '5', six: '6' };
     normalized = normalized
       .replace(/◆+/g, (symbols) => ` ${symbols.length} `)
+      .replace(/★+/g, (symbols) => ` ${symbols.length} `)
       .replace(/\+{2,}/g, (symbols) => ` ${symbols.length} `)
       .replace(/\b(one(?!'s)|two|three|four|five|six)\b/g, (word) => words[word])
       .replace(/\b(?:1|a|an)\s+(?=cards?|characters?)/g, '');

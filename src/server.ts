@@ -184,7 +184,9 @@ const cardPool = new Pool({
 
 const CARD_SELECT_SQL = `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
                     attack_night, attack_day, power_cost, send_to_power, effect,
-                    en_effect_official, image, errata FROM cards ORDER BY id`;
+                    en_effect_official, image, errata, has_official_errata, official_errata_id,
+                    official_errata_affects_name, official_errata_affects_effect, official_errata_url
+                    FROM cards ORDER BY id`;
 
 function cardRowToDef(row: Record<string, unknown>): CardDef {
   const def: CardDef = {
@@ -209,9 +211,14 @@ function cardRowToDef(row: Record<string, unknown>): CardDef {
     effect: (row.effect as string) || '',
     image: (row.image as string) || '',
     errata: (row.errata as string) || '',
+    hasOfficialErrata: Boolean(row.has_official_errata),
+    officialErrataAffectsName: Boolean(row.official_errata_affects_name),
+    officialErrataAffectsEffect: Boolean(row.official_errata_affects_effect),
   };
   if (row.en_name_official) def.enNameOfficial = row.en_name_official as string;
   if (row.en_effect_official) def.enEffectOfficial = row.en_effect_official as string;
+  if (row.official_errata_id) def.officialErrataId = row.official_errata_id as string;
+  if (row.official_errata_url) def.officialErrataUrl = row.official_errata_url as string;
   return def;
 }
 

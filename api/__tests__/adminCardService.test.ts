@@ -74,6 +74,10 @@ describe('admin card service', () => {
         enEffectOfficial: 'EN Effect',
         image: 'image.png',
         errata: 'errata',
+        hasOfficialErrata: true,
+        officialErrataId: '001',
+        officialErrataAffectsEffect: true,
+        officialErrataUrl: 'https://zutomayocard.net/errata/001/',
       }),
     ).toEqual([
       'c_1',
@@ -94,6 +98,11 @@ describe('admin card service', () => {
       'EN Effect',
       'image.png',
       'errata',
+      true,
+      '001',
+      false,
+      true,
+      'https://zutomayocard.net/errata/001/',
     ]);
   });
 
@@ -108,6 +117,7 @@ describe('admin card service', () => {
       'zh-TW',
       '',
       '效果',
+      'admin',
       'admin',
       'pending_review',
       '',
@@ -156,6 +166,7 @@ describe('admin card service', () => {
       'ko',
       '카드 이름',
       '카드 효과',
+      'admin_bilingual_translation',
       'admin_bilingual_translation',
       'verified',
       'Compared with official Japanese and English',
@@ -211,6 +222,8 @@ describe('admin card service', () => {
       '',
       '',
       '',
+      false,
+      false,
     ]);
     expect(existingPool.query).toHaveBeenCalledWith(
       'INSERT INTO admin_audit_log (admin_user_id, action, target_type, target_id, details) VALUES ($1, $2, $3, $4, $5::jsonb)',

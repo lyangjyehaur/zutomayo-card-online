@@ -1062,6 +1062,8 @@ export interface AdminCardTextUpdate {
   reviewStatus?: 'official' | 'verified' | 'pending_review';
   reviewNote?: string;
   source?: string;
+  nameSource?: string;
+  effectSource?: string;
 }
 
 export async function adminUpdateCardI18n(
