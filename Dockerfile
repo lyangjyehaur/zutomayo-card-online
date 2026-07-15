@@ -54,7 +54,8 @@ ARG APP_BUILD_ID
 ARG GAME_RULES_VERSION
 ARG SENTRY_DSN=
 # node:22-alpine 已內建非 root 的 node 使用者
-RUN npm install --global --prefix /opt/npm npm@12.0.1 \
+RUN apk upgrade --no-cache \
+    && npm install --global --prefix /opt/npm npm@12.0.1 \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
     && ln -s /opt/npm/bin/npm /usr/local/bin/npm \
     && ln -s /opt/npm/bin/npx /usr/local/bin/npx \

@@ -159,7 +159,12 @@ jobs:
             --build 2>&1 | tee "$log_file"; then
             exit 0
           fi
-          details="$(tail -n 40 "$log_file" | tr '\n' ' ' | sed 's/%/%25/g')"
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml ps --all \
+            2>&1 | tee -a "$log_file" || true
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs \
+            --no-color --tail 80 migrate seed game api platform e2e \
+            2>&1 | tee -a "$log_file" || true
+          details="$(tail -n 60 "$log_file" | tr '\n' ' ' | sed 's/%/%25/g')"
           echo "::error title=E2E service stack::$details"
           exit 1
         timeout-minutes: 20
