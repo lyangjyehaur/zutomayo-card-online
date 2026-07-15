@@ -1,9 +1,17 @@
 import { Pool } from 'pg';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import type { CardDef } from '../src/game/types';
 import { postgresConnectionString, postgresSslConfig } from '../src/runtimeSecurityConfig';
 import { E2E_SEED_CARDS, E2E_SEED_CARD_I18N } from './fixtures/e2eCards';
 
 export type CardEffectsI18n = Record<string, Record<string, string>>;
+
+type SeedCardFixture = {
+  schemaVersion: 1;
+  cards: CardDef[];
+  i18n: CardEffectsI18n;
+};
 
 type CardRow = {
   id: string;
@@ -101,6 +109,22 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+let seedFixturePromise: Promise<SeedCardFixture> | undefined;
+
+function loadSeedFixture(filePath: string): Promise<SeedCardFixture> {
+  seedFixturePromise ??= readFile(resolve(process.cwd(), filePath), 'utf8').then((source) => {
+    const fixture = JSON.parse(source) as SeedCardFixture;
+    if (fixture.schemaVersion !== 1 || !Array.isArray(fixture.cards) || fixture.cards.length === 0) {
+      throw new Error(`Invalid card seed fixture: ${filePath}`);
+    }
+    if (!fixture.i18n || typeof fixture.i18n !== 'object' || Array.isArray(fixture.i18n)) {
+      throw new Error(`Invalid card seed i18n fixture: ${filePath}`);
+    }
+    return fixture;
+  });
+  return seedFixturePromise;
+}
+
 function apiUrl(baseUrl: string, path: string): string {
   return new URL(path, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`).toString();
 }
@@ -132,6 +156,8 @@ export async function loadCardsForScript(): Promise<CardDef[]> {
 }
 
 export async function loadSeedCards(): Promise<CardDef[]> {
+  const fixturePath = process.env.SEED_CARD_FIXTURE_FILE;
+  if (fixturePath) return (await loadSeedFixture(fixturePath)).cards;
   const url = sourceUrl('SEED_CARDS_URL', 'cards');
   if (!url) throw new Error('Set SEED_CARDS_URL or SEED_CARD_API_URL before running card seed.');
   const cards = await fetchJson<CardDef[]>(url);
@@ -140,6 +166,8 @@ export async function loadSeedCards(): Promise<CardDef[]> {
 }
 
 export async function loadSeedCardI18n(): Promise<CardEffectsI18n> {
+  const fixturePath = process.env.SEED_CARD_FIXTURE_FILE;
+  if (fixturePath) return (await loadSeedFixture(fixturePath)).i18n;
   const url = sourceUrl('SEED_CARD_I18N_URL', 'cards/i18n');
   if (!url) throw new Error('Set SEED_CARD_I18N_URL or SEED_CARD_API_URL before running card seed.');
   const i18n = await fetchJson<CardEffectsI18n>(url);

@@ -194,11 +194,29 @@ jobs:
 
       - name: Build and run E2E service stack
         run: |
+          set -o pipefail
+          log_file="$(mktemp)"
+          mkdir -p playwright-report test-results
           test "$EXPECTED_SCHEMA_MIGRATION" = "$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
           test "$EXPECTED_SCHEMA_CHECKSUM" = "$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
           compose=(docker compose -f docker-compose.yml -f docker-compose.e2e.yml)
-          "${compose[@]}" build
-          "${compose[@]}" run --rm e2e
+          if "${compose[@]}" build 2>&1 | tee "$log_file" \
+            && "${compose[@]}" up --wait --wait-timeout 180 game api platform \
+              2>&1 | tee -a "$log_file" \
+            && "${compose[@]}" run --rm e2e 2>&1 | tee -a "$log_file"; then
+            exit 0
+          fi
+          service_status="$("${compose[@]}" ps --all --format '{{.Service}}={{.State}}/{{.ExitCode}}' | tr '\n' ' ')"
+          echo "::error title=E2E service status::$service_status"
+          for service in game api platform e2e; do
+            service_log="$("${compose[@]}" logs --no-color --tail 40 "$service" | tr '\n' ' ' | sed 's/%/%25/g')"
+            echo "::error title=E2E $service log::$service_log"
+          done
+          "${compose[@]}" logs --no-color --tail 80 migrate seed game api platform e2e \
+            2>&1 | tee -a "$log_file" || true
+          details="$(tail -n 60 "$log_file" | tr '\n' ' ' | sed 's/%/%25/g')"
+          echo "::error title=E2E service stack::$details"
+          exit 1
         timeout-minutes: 20
 
       - name: Upload Playwright report
@@ -234,7 +252,15 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Run disposable fresh-cluster smoke
-        run: npm run db:roles:smoke
+        run: |
+          set -o pipefail
+          log_file="$(mktemp)"
+          if npm run db:roles:smoke 2>&1 | tee "$log_file"; then
+            exit 0
+          fi
+          details="$(tail -n 40 "$log_file" | tr '\n' ' ' | sed 's/%/%25/g')"
+          echo "::error title=Fresh PostgreSQL role matrix smoke::$details"
+          exit 1
         timeout-minutes: 20
 
   # Smoke tests 需要真實卡牌數據（422 張），CI 環境無法模擬

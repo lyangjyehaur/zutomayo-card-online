@@ -3,6 +3,38 @@ import { dirname, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = resolve(import.meta.dirname, '../..');
+const nodeImage = 'node:22.22.2-alpine@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f';
+
+describe('production Node image supply chain', () => {
+  it('pins the base digest and installs the non-vulnerable npm toolchain', () => {
+    for (const relativePath of ['Dockerfile', 'Dockerfile.migrate', 'Dockerfile.retention', 'api/Dockerfile']) {
+      const dockerfile = readFileSync(resolve(root, relativePath), 'utf8');
+      expect(dockerfile).toContain(`FROM ${nodeImage}`);
+      expect(dockerfile).toContain('apk upgrade --no-cache');
+      expect(dockerfile).toContain('npm install --global --prefix /opt/npm npm@12.0.1');
+      expect(dockerfile).toContain('rm -rf /usr/local/lib/node_modules/npm');
+    }
+  });
+
+  it('declares every API tracing module as a production dependency', () => {
+    const manifest = JSON.parse(readFileSync(resolve(root, 'api/package.json'), 'utf8')) as {
+      dependencies: Record<string, string>;
+    };
+    const tracing = readFileSync(resolve(root, 'api/tracing.cjs'), 'utf8');
+    for (const moduleName of [
+      '@opentelemetry/sdk-node',
+      '@opentelemetry/exporter-trace-otlp-http',
+      '@opentelemetry/resources',
+      '@opentelemetry/semantic-conventions',
+      '@opentelemetry/instrumentation-http',
+      '@opentelemetry/instrumentation-ioredis',
+      '@opentelemetry/instrumentation-pg',
+    ]) {
+      expect(tracing).toContain(`require('${moduleName}')`);
+      expect(manifest.dependencies).toHaveProperty(moduleName);
+    }
+  });
+});
 
 function runtimeSourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -148,6 +180,8 @@ describe('game runtime image contract', () => {
       'COPY --from=builder /app/api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs',
     );
     expect(dockerignore).toContain('!api/runtimeSecurityConfig.cjs');
+    expect(dockerfile).toContain('COPY --from=builder /app/api/seasonResultService.cjs ./api/seasonResultService.cjs');
+    expect(dockerignore).toContain('!api/seasonResultService.cjs');
   });
 
   it('ships every CommonJS API helper imported by a game or platform runtime source', () => {

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-alpine AS builder
+FROM node:22.22.2-alpine@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f AS builder
 WORKDIR /app
 # APP_BUILD_ID 建議在 CI/部署時設為 git commit hash，確保每次部署有獨立 Sentry release。
 ARG APP_VERSION
@@ -47,13 +47,19 @@ RUN --mount=type=secret,id=sentry_auth_token,required=false \
     SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" npm run build \
     && find dist -name "*.map" -type f -delete
 
-FROM node:22-alpine
+FROM node:22.22.2-alpine@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f
 WORKDIR /app
 ARG APP_VERSION
 ARG APP_BUILD_ID
 ARG GAME_RULES_VERSION
 ARG SENTRY_DSN=
 # node:22-alpine 已內建非 root 的 node 使用者
+RUN apk upgrade --no-cache \
+    && npm install --global --prefix /opt/npm npm@12.0.1 \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    && ln -s /opt/npm/bin/npm /usr/local/bin/npm \
+    && ln -s /opt/npm/bin/npx /usr/local/bin/npx \
+    && npm cache clean --force
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=builder /app/dist ./dist
