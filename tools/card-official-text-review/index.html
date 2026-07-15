@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>官方英文卡面複核</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
+        color: #1c2024;
+        background: #eef0f2;
+        --line: #ccd1d5;
+        --muted: #667078;
+        --surface: #ffffff;
+        --ink: #1c2024;
+        --machine: #a65321;
+        --human: #18745a;
+        --accent: #b52b3a;
+        --focus: #1e64a7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-width: 320px;
+      }
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+        letter-spacing: 0;
+      }
+      button,
+      input,
+      textarea,
+      select {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+      button {
+        min-height: 38px;
+        padding: 0 13px;
+        background: var(--surface);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: #8b949b;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible,
+      select:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--focus) 25%, transparent);
+        outline-offset: 1px;
+        border-color: var(--focus);
+      }
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+      button.confirm {
+        border-color: var(--human);
+        background: var(--human);
+        color: #fff;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+      header {
+        min-height: 68px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--line);
+        background: #20262b;
+        color: #fff;
+      }
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: 18px;
+      }
+      .summary {
+        display: flex;
+        gap: 18px;
+        font-variant-numeric: tabular-nums;
+      }
+      .summary span {
+        color: #bdc5ca;
+        font-size: 12px;
+      }
+      .summary strong {
+        display: block;
+        color: #fff;
+        font-size: 15px;
+      }
+      .workspace {
+        display: grid;
+        grid-template-columns: 270px minmax(0, 1fr);
+        min-height: calc(100vh - 68px);
+      }
+      aside {
+        min-width: 0;
+        border-right: 1px solid var(--line);
+        background: #f7f8f9;
+      }
+      .filters {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 9px 10px;
+        background: #fff;
+        color: var(--ink);
+      }
+      textarea {
+        resize: vertical;
+        line-height: 1.5;
+      }
+      .card-list {
+        height: calc(100vh - 171px);
+        overflow: auto;
+      }
+      .card-row {
+        width: 100%;
+        min-height: 55px;
+        display: grid;
+        grid-template-columns: 8px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 9px;
+        padding: 7px 11px;
+        border: 0;
+        border-bottom: 1px solid #e0e3e5;
+        border-radius: 0;
+        background: transparent;
+        text-align: left;
+      }
+      .card-row.active {
+        background: #e4e9ed;
+        box-shadow: inset 3px 0 var(--focus);
+      }
+      .status-dot {
+        width: 8px;
+        height: 28px;
+        border-radius: 3px;
+        background: var(--machine);
+      }
+      .status-dot.human {
+        background: var(--human);
+      }
+      .row-copy {
+        min-width: 0;
+      }
+      .row-copy strong,
+      .row-copy small {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .row-copy strong {
+        font-size: 13px;
+      }
+      .row-copy small,
+      .row-id {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      main {
+        min-width: 0;
+        padding: 16px;
+      }
+      .review-layout {
+        display: grid;
+        grid-template-columns: minmax(300px, 0.85fr) minmax(380px, 1.15fr);
+        gap: 18px;
+        max-width: 1380px;
+        margin: 0 auto;
+      }
+      .image-panel,
+      .text-panel {
+        min-width: 0;
+      }
+      .image-toolbar,
+      .navigation,
+      .field-heading,
+      .actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .image-toolbar,
+      .navigation {
+        margin-bottom: 10px;
+      }
+      .image-frame {
+        max-height: calc(100vh - 150px);
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #30363b;
+        text-align: center;
+      }
+      .image-frame img {
+        display: block;
+        width: min(100%, 700px);
+        height: auto;
+        margin: 0 auto;
+      }
+      .image-frame.zoomed img {
+        width: auto;
+        max-width: none;
+      }
+      .card-title {
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .card-title h2 {
+        margin-top: 4px;
+        font-size: 21px;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .reviewer {
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        margin: 13px 0;
+      }
+      .field {
+        padding: 15px 0;
+        border-top: 1px solid var(--line);
+      }
+      .field-heading {
+        margin-bottom: 8px;
+      }
+      .field-heading h3 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 2px 7px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        color: var(--machine);
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .badge.human {
+        color: var(--human);
+      }
+      .badge.na {
+        color: var(--muted);
+      }
+      .source-text {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .official-ja {
+        margin-bottom: 8px;
+        padding: 9px 10px;
+        border-left: 3px solid #7a858d;
+        background: #f3f4f5;
+        white-space: pre-wrap;
+        line-height: 1.45;
+      }
+      .actions {
+        margin-top: 9px;
+        justify-content: flex-end;
+      }
+      .notice {
+        min-height: 24px;
+        margin-top: 8px;
+        color: var(--human);
+        font-size: 12px;
+        text-align: right;
+      }
+      .notice.error {
+        color: var(--accent);
+      }
+      .empty {
+        padding: 40px;
+        color: var(--muted);
+        text-align: center;
+      }
+      @media (max-width: 900px) {
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+        aside {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .filters {
+          grid-template-columns: 1fr 1fr;
+        }
+        .card-list {
+          height: 170px;
+        }
+        .review-layout {
+          grid-template-columns: 1fr;
+        }
+        .image-frame {
+          max-height: 62vh;
+        }
+      }
+      @media (max-width: 520px) {
+        .summary {
+          width: 100%;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .filters {
+          grid-template-columns: 1fr;
+        }
+        main {
+          padding: 10px;
+        }
+        .reviewer {
+          grid-template-columns: 1fr;
+        }
+        .navigation {
+          flex-wrap: wrap;
+        }
+        .navigation .primary {
+          order: 3;
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>官方英文卡面複核</h1>
+      <div class="summary" aria-label="複核進度">
+        <div><span>名稱</span><strong id="nameProgress">--</strong></div>
+        <div><span>效果</span><strong id="effectProgress">--</strong></div>
+        <div><span>卡牌</span><strong id="cardProgress">--</strong></div>
+      </div>
+    </header>
+    <div class="workspace">
+      <aside>
+        <div class="filters">
+          <input id="search" type="search" placeholder="搜尋卡號或名稱" aria-label="搜尋卡牌" />
+          <select id="statusFilter" aria-label="複核狀態">
+            <option value="pending">待人工複核</option>
+            <option value="all">全部</option>
+            <option value="human">已人工複核</option>
+            <option value="name">名稱待複核</option>
+            <option value="effect">效果待複核</option>
+          </select>
+        </div>
+        <div id="cardList" class="card-list"></div>
+      </aside>
+      <main id="main"><div class="empty">正在載入卡牌資料…</div></main>
+    </div>
+    <script>
+      const state = { cards: [], filtered: [], activeId: '', summary: {}, zoomed: false };
+      const $ = (id) => document.getElementById(id);
+      const statusLabel = {
+        machine_verified: '機器確認',
+        human_verified: '人工確認',
+        not_applicable: '無效果',
+        needs_review: '需複核',
+        missing: '缺失',
+      };
+      const escapeHtml = (value) =>
+        String(value).replace(
+          /[&<>'"]/g,
+          (character) =>
+            ({
+              '&': '&amp;',
+              '<': '&lt;',
+              '>': '&gt;',
+              "'": '&#39;',
+              '"': '&quot;',
+            })[character],
+        );
+
+      function isHuman(card) {
+        return (
+          card.nameStatus === 'human_verified' &&
+          (!card.japaneseEffect.trim() || card.effectStatus === 'human_verified')
+        );
+      }
+
+      function filterCards() {
+        const query = $('search').value.trim().toLowerCase();
+        const filter = $('statusFilter').value;
+        state.filtered = state.cards.filter((card) => {
+          const matchesQuery =
+            !query ||
+            [card.id, card.japaneseName, card.enNameOfficial].some((value) => value.toLowerCase().includes(query));
+          const hasEffect = Boolean(card.japaneseEffect.trim());
+          const matchesStatus =
+            filter === 'all' ||
+            (filter === 'pending' && !isHuman(card)) ||
+            (filter === 'human' && isHuman(card)) ||
+            (filter === 'name' && card.nameStatus !== 'human_verified') ||
+            (filter === 'effect' && hasEffect && card.effectStatus !== 'human_verified');
+          return matchesQuery && matchesStatus;
+        });
+        if (!state.filtered.some((card) => card.id === state.activeId)) {
+          state.activeId = state.filtered[0]?.id || '';
+        }
+        renderList();
+        renderCard();
+      }
+
+      function renderSummary() {
+        const summary = state.summary;
+        $('nameProgress').textContent = `${summary.humanVerifiedNames || 0}/${summary.cardCount || 0}`;
+        $('effectProgress').textContent = `${summary.humanVerifiedEffectCards || 0}/${summary.effectCardCount || 0}`;
+        const complete = state.cards.filter(isHuman).length;
+        $('cardProgress').textContent = `${complete}/${summary.cardCount || 0}`;
+      }
+
+      function renderList() {
+        const list = $('cardList');
+        list.replaceChildren();
+        for (const card of state.filtered) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `card-row${card.id === state.activeId ? ' active' : ''}`;
+          button.dataset.cardId = card.id;
+          button.innerHTML = `
+            <span class="status-dot ${isHuman(card) ? 'human' : ''}"></span>
+            <span class="row-copy"><strong></strong><small></small></span>
+            <span class="row-id"></span>`;
+          button.querySelector('strong').textContent = card.enNameOfficial;
+          button.querySelector('small').textContent = card.japaneseName;
+          button.querySelector('.row-id').textContent = card.id;
+          button.addEventListener('click', () => {
+            state.activeId = card.id;
+            location.hash = card.id;
+            renderList();
+            renderCard();
+          });
+          list.append(button);
+        }
+        if (!state.filtered.length) list.innerHTML = '<div class="empty">沒有符合條件的卡牌</div>';
+      }
+
+      function badge(status) {
+        const tone = status === 'human_verified' ? 'human' : status === 'not_applicable' ? 'na' : '';
+        return `<span class="badge ${tone}">${statusLabel[status] || status}</span>`;
+      }
+
+      function renderCard() {
+        const card = state.cards.find((entry) => entry.id === state.activeId);
+        if (!card) {
+          $('main').innerHTML = '<div class="empty">沒有可複核的卡牌</div>';
+          return;
+        }
+        const index = state.filtered.findIndex((entry) => entry.id === card.id);
+        const hasEffect = Boolean(card.japaneseEffect.trim());
+        const nameReview = card.humanReview?.name;
+        const effectReview = card.humanReview?.effect;
+        $('main').innerHTML = `
+          <div class="review-layout">
+            <section class="image-panel">
+              <div class="image-toolbar">
+                <span class="meta">${card.id}</span>
+                <button id="zoomButton" type="button">放大</button>
+              </div>
+              <div id="imageFrame" class="image-frame">
+                <img src="/images/${encodeURIComponent(card.id)}.jpg" alt="${card.id} 卡面" />
+              </div>
+            </section>
+            <section class="text-panel">
+              <div class="navigation">
+                <button id="previousButton" type="button" ${index <= 0 ? 'disabled' : ''}>← 上一張</button>
+                <button id="confirmCardButton" class="primary" type="button">確認整張</button>
+                <button id="nextButton" type="button" ${index < 0 || index >= state.filtered.length - 1 ? 'disabled' : ''}>下一張 →</button>
+              </div>
+              <div class="card-title"><span class="meta">${card.id}</span><h2 id="displayName"></h2></div>
+              <label class="reviewer"><span>複核者</span><input id="reviewer" maxlength="80" /></label>
+              <section class="field">
+                <div class="field-heading"><h3>卡牌名稱</h3>${badge(card.nameStatus)}</div>
+                <div class="official-ja" id="japaneseName"></div>
+                <input id="englishName" maxlength="500" aria-label="官方英文名稱" />
+                <div class="source-text">${escapeHtml(card.nameVerificationSource)}${nameReview ? ` · ${escapeHtml(nameReview.reviewer)} · ${new Date(nameReview.reviewedAt).toLocaleString()}` : ''}</div>
+                <div class="actions"><button id="confirmNameButton" class="confirm" type="button">確認名稱</button></div>
+              </section>
+              <section class="field">
+                <div class="field-heading"><h3>卡牌效果</h3>${badge(card.effectStatus)}</div>
+                <div class="official-ja" id="japaneseEffect"></div>
+                <textarea id="englishEffect" rows="5" maxlength="5000" aria-label="官方英文效果" ${hasEffect ? '' : 'disabled'}></textarea>
+                <div class="source-text">${escapeHtml(card.effectVerificationSource)}${effectReview ? ` · ${escapeHtml(effectReview.reviewer)} · ${new Date(effectReview.reviewedAt).toLocaleString()}` : ''}</div>
+                <div class="actions"><button id="confirmEffectButton" class="confirm" type="button" ${hasEffect ? '' : 'disabled'}>確認效果</button></div>
+              </section>
+              <p id="notice" class="notice" role="status"></p>
+            </section>
+          </div>`;
+        $('displayName').textContent = card.enNameOfficial;
+        $('japaneseName').textContent = card.japaneseName;
+        $('englishName').value = card.enNameOfficial;
+        $('japaneseEffect').textContent = card.japaneseEffect || '（官方日文無效果文字）';
+        $('englishEffect').value = card.enEffectOfficial;
+        $('reviewer').value = localStorage.getItem('card-reviewer') || '';
+        $('reviewer').addEventListener('input', (event) => localStorage.setItem('card-reviewer', event.target.value));
+        $('zoomButton').addEventListener('click', () => {
+          state.zoomed = !state.zoomed;
+          $('imageFrame').classList.toggle('zoomed', state.zoomed);
+          $('zoomButton').textContent = state.zoomed ? '適應寬度' : '放大';
+        });
+        $('previousButton').addEventListener('click', () => navigate(index - 1));
+        $('nextButton').addEventListener('click', () => navigate(index + 1));
+        $('confirmNameButton').addEventListener('click', () => saveReview(card, true, false));
+        $('confirmEffectButton').addEventListener('click', () => saveReview(card, false, true));
+        $('confirmCardButton').addEventListener('click', () => saveReview(card, true, hasEffect));
+      }
+
+      function navigate(index) {
+        const card = state.filtered[index];
+        if (!card) return;
+        state.activeId = card.id;
+        location.hash = card.id;
+        renderList();
+        renderCard();
+      }
+
+      async function saveReview(card, confirmName, confirmEffect) {
+        const notice = $('notice');
+        notice.className = 'notice';
+        notice.textContent = '儲存中…';
+        try {
+          const response = await fetch(`/api/review/${encodeURIComponent(card.id)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              reviewer: $('reviewer').value,
+              confirmName,
+              confirmEffect,
+              nameText: $('englishName').value,
+              effectText: $('englishEffect').value,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || '儲存失敗');
+          const target = state.cards.find((entry) => entry.id === card.id);
+          Object.assign(target, result.card, { humanReview: result.humanReview });
+          state.summary = result.summary;
+          renderSummary();
+          filterCards();
+          const next = state.filtered.find((entry) => !isHuman(entry));
+          if (next) {
+            state.activeId = next.id;
+            location.hash = next.id;
+            renderList();
+            renderCard();
+          }
+        } catch (error) {
+          notice.className = 'notice error';
+          notice.textContent = error instanceof Error ? error.message : '儲存失敗';
+        }
+      }
+
+      async function load() {
+        try {
+          const response = await fetch('/api/state', { cache: 'no-store' });
+          if (!response.ok) throw new Error('無法載入複核資料');
+          const data = await response.json();
+          state.cards = data.cards;
+          state.summary = data.summary;
+          const hashId = decodeURIComponent(location.hash.slice(1));
+          state.activeId = state.cards.some((card) => card.id === hashId) ? hashId : '';
+          renderSummary();
+          filterCards();
+        } catch (error) {
+          $('main').innerHTML = `<div class="empty">${error instanceof Error ? error.message : '載入失敗'}</div>`;
+        }
+      }
+
+      $('search').addEventListener('input', filterCards);
+      $('statusFilter').addEventListener('change', filterCards);
+      load();
+    </script>
+  </body>
+</html>

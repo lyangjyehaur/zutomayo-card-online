@@ -12,6 +12,7 @@ type ExtractedCard = {
 
 type Extraction = { cards: ExtractedCard[] };
 
+const verifiedStatuses = new Set(['machine_verified', 'human_verified']);
 const knownOfficialEnglishPrintDifferences = new Set(['4th_23']);
 const suspiciousOcrArtifact = /\b(?:ff|retum|charaoter|opponet|nand|specily|electrig|attibute|immedlately)\b/i;
 
@@ -73,7 +74,7 @@ const seenPrintDifferences = new Set<string>();
 for (const card of extraction.cards) {
   if (ids.has(card.id)) problems.push(`${card.id}: duplicate id`);
   ids.add(card.id);
-  if (card.nameStatus !== 'verified' || !card.enNameOfficial.trim()) {
+  if (!verifiedStatuses.has(card.nameStatus) || !card.enNameOfficial.trim()) {
     problems.push(`${card.id}: official English name is not verified`);
   }
   if (/[\u3040-\u309f\u30a0-\u30fa\u31f0-\u31ff\u3400-\u9fff]/u.test(card.enNameOfficial)) {
@@ -91,9 +92,12 @@ for (const card of extraction.cards) {
   const englishEffect = card.enEffectOfficial.trim();
   if (!japaneseEffect) {
     if (englishEffect) problems.push(`${card.id}: English effect exists while Japanese effect is empty`);
+    if (card.effectStatus !== 'not_applicable') {
+      problems.push(`${card.id}: no-effect card must use not_applicable effect status`);
+    }
     continue;
   }
-  if (card.effectStatus !== 'verified' || !englishEffect) {
+  if (!verifiedStatuses.has(card.effectStatus) || !englishEffect) {
     problems.push(`${card.id}: official English effect is not verified`);
     continue;
   }
@@ -147,4 +151,10 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-console.log(`Official card-text audit passed: ${extraction.cards.length} cards, ${ids.size} unique IDs.`);
+const humanNames = extraction.cards.filter((card) => card.nameStatus === 'human_verified').length;
+const effectCards = extraction.cards.filter((card) => card.japaneseEffect.trim());
+const humanEffects = effectCards.filter((card) => card.effectStatus === 'human_verified').length;
+console.log(
+  `Official card-text audit passed: ${extraction.cards.length} cards, ${ids.size} unique IDs; ` +
+    `human-reviewed names ${humanNames}/${extraction.cards.length}, effects ${humanEffects}/${effectCards.length}.`,
+);

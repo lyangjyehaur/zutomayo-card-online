@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     prior.add_argument("--prior-git-object")
     parser.add_argument("--overrides", type=Path)
     parser.add_argument("--second-pass", type=Path)
+    parser.add_argument("--human-reviews", type=Path)
     return parser.parse_args()
 
 
@@ -143,9 +144,9 @@ def merge_field(
     prior: str, candidate: str, similarity: float, override: str
 ) -> tuple[str, str, str]:
     if override:
-        return override, "verified", "manual-image-review"
+        return override, "human_verified", "manual-image-review"
     if prior and candidate and similarity >= 0.86:
-        return prior, "verified", "prior-and-new-ocr-agree"
+        return prior, "machine_verified", "prior-and-new-ocr-agree"
     if candidate:
         return candidate, "needs_review", "new-ocr-candidate"
     if prior:
@@ -176,6 +177,15 @@ def second_pass_verified(evidence: dict[str, Any] | None) -> bool:
     )
 
 
+def human_review(
+    reviews: dict[str, Any], card_id: str, field: str
+) -> dict[str, Any] | None:
+    review = reviews.get(card_id, {}).get(field)
+    if not isinstance(review, dict) or not isinstance(review.get("value"), str):
+        return None
+    return review
+
+
 def main() -> None:
     args = parse_args()
     raw = load_json(args.raw)
@@ -189,6 +199,9 @@ def main() -> None:
         }
         if args.second_pass
         else {}
+    )
+    human_reviews = (
+        load_json(args.human_reviews).get("reviews", {}) if args.human_reviews else {}
     )
 
     cards = []
@@ -206,9 +219,14 @@ def main() -> None:
             override.get("enNameOfficial", ""),
         )
         name_second_pass = second_pass_evidence(second_pass_records, card_id, "name")
-        if name_status != "verified" and second_pass_verified(name_second_pass):
-            name_status = "verified"
+        if name_status not in {"machine_verified", "human_verified"} and second_pass_verified(name_second_pass):
+            name_status = "machine_verified"
             name_source = "targeted-color-and-enhanced-ocr-agree"
+        name_human_review = human_review(human_reviews, card_id, "name")
+        if name_human_review:
+            name = name_human_review["value"]
+            name_status = "human_verified"
+            name_source = "human-image-review"
 
         has_effect = bool(str(record.get("japaneseEffect", "")).strip())
         effect_candidate = join_effect(record)
@@ -228,24 +246,30 @@ def main() -> None:
                 override.get("enEffectOfficial", ""),
             )
         else:
-            effect, effect_status, effect_source = "", "verified", "card-has-no-effect"
+            effect, effect_status, effect_source = "", "not_applicable", "card-has-no-effect"
         effect_second_pass = second_pass_evidence(
             second_pass_records, card_id, "effect"
         )
-        if effect_status != "verified" and second_pass_verified(effect_second_pass):
-            effect_status = "verified"
+        if effect_status not in {"machine_verified", "human_verified"} and second_pass_verified(effect_second_pass):
+            effect_status = "machine_verified"
             effect_source = "targeted-color-and-enhanced-ocr-agree"
+        effect_human_review = human_review(human_reviews, card_id, "effect")
+        if has_effect and effect_human_review:
+            effect = effect_human_review["value"]
+            effect_status = "human_verified"
+            effect_source = "human-image-review"
 
         review_reasons = []
-        if name_status != "verified":
+        if name_status not in {"machine_verified", "human_verified"}:
             review_reasons.append(f"name: {name_source}")
-        if effect_status != "verified":
+        if effect_status not in {"machine_verified", "human_verified", "not_applicable"}:
             review_reasons.append(f"effect: {effect_source}")
         if override.get("note"):
             review_reasons.append(override["note"])
         cards.append(
             {
                 "id": card_id,
+                "imageUrl": record.get("image", ""),
                 "japaneseName": record.get("japaneseName", ""),
                 "enNameOfficial": name,
                 "nameStatus": name_status,
@@ -262,6 +286,8 @@ def main() -> None:
                     "priorEffect": prior_effect,
                     "secondPassName": name_second_pass,
                     "secondPassEffect": effect_second_pass,
+                    "humanNameReview": name_human_review,
+                    "humanEffectReview": effect_human_review,
                 },
             }
         )
@@ -269,13 +295,17 @@ def main() -> None:
     effect_cards = [card for card in cards if card["japaneseEffect"].strip()]
     summary = {
         "cardCount": len(cards),
-        "verifiedNames": sum(card["nameStatus"] == "verified" for card in cards),
+        "machineVerifiedNames": sum(card["nameStatus"] == "machine_verified" for card in cards),
+        "humanVerifiedNames": sum(card["nameStatus"] == "human_verified" for card in cards),
         "reviewNames": sum(card["nameStatus"] == "needs_review" for card in cards),
         "missingNames": sum(card["nameStatus"] == "missing" for card in cards),
         "effectCardCount": len(effect_cards),
         "noEffectCardCount": len(cards) - len(effect_cards),
-        "verifiedEffectCards": sum(
-            card["effectStatus"] == "verified" for card in effect_cards
+        "machineVerifiedEffectCards": sum(
+            card["effectStatus"] == "machine_verified" for card in effect_cards
+        ),
+        "humanVerifiedEffectCards": sum(
+            card["effectStatus"] == "human_verified" for card in effect_cards
         ),
         "reviewEffectCards": sum(
             card["effectStatus"] == "needs_review" for card in effect_cards
@@ -284,7 +314,7 @@ def main() -> None:
             card["effectStatus"] == "missing" for card in effect_cards
         ),
     }
-    payload = {"schemaVersion": 1, "summary": summary, "cards": cards}
+    payload = {"schemaVersion": 2, "summary": summary, "cards": cards}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

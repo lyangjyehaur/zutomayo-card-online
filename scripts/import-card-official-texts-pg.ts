@@ -16,8 +16,14 @@ type ExtractedCard = {
 
 const source = process.argv[2] || 'data/card-english-extraction.json';
 const cards = (JSON.parse(fs.readFileSync(source, 'utf8')) as { cards: ExtractedCard[] }).cards;
-if (cards.some((card) => card.nameStatus !== 'verified' || card.effectStatus !== 'verified')) {
-  throw new Error('Refusing import: every official name/effect must be verified');
+if (
+  cards.some(
+    (card) =>
+      card.nameStatus !== 'human_verified' ||
+      (card.japaneseEffect ? card.effectStatus !== 'human_verified' : card.effectStatus !== 'not_applicable'),
+  )
+) {
+  throw new Error('Refusing import: every printed English name/effect must be human-reviewed');
 }
 
 const pool = new Pool({
