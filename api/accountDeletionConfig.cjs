@@ -2,6 +2,14 @@
 
 const LOGTO_ACCOUNT_DELETION_SCOPE = 'delete:users';
 
+function accountDeletionRecoveryEnabled(env = process.env) {
+  return (
+    String(env.ACCOUNT_DELETION_RECOVERY_ENABLED || 'true')
+      .trim()
+      .toLowerCase() !== 'false'
+  );
+}
+
 function logtoBaseUrl(env) {
   const endpoint = String(env.LOGTO_ENDPOINT || '')
     .trim()
@@ -14,6 +22,8 @@ function logtoBaseUrl(env) {
 }
 
 function validateLogtoAccountDeletionConfig(env = process.env) {
+  if (!accountDeletionRecoveryEnabled(env)) return true;
+
   const baseUrl = logtoBaseUrl(env);
   const appId = String(env.LOGTO_M2M_APP_ID || '').trim();
   const appSecret = String(env.LOGTO_M2M_APP_SECRET || '').trim();
@@ -46,6 +56,7 @@ function validateLogtoAccountDeletionConfig(env = process.env) {
 
 module.exports = {
   LOGTO_ACCOUNT_DELETION_SCOPE,
+  accountDeletionRecoveryEnabled,
   logtoBaseUrl,
   validateLogtoAccountDeletionConfig,
 };

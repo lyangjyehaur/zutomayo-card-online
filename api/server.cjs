@@ -31,7 +31,11 @@ const {
 } = require('./accountLifecycleService.cjs');
 const { deliverAccountAction } = require('./accountNotificationService.cjs');
 const { consumeAccountStepUp, issueAccountStepUp } = require('./accountStepUpService.cjs');
-const { LOGTO_ACCOUNT_DELETION_SCOPE, validateLogtoAccountDeletionConfig } = require('./accountDeletionConfig.cjs');
+const {
+  LOGTO_ACCOUNT_DELETION_SCOPE,
+  accountDeletionRecoveryEnabled,
+  validateLogtoAccountDeletionConfig,
+} = require('./accountDeletionConfig.cjs');
 const {
   listRecoverableAccountDeletions,
   markProviderDeleted,
@@ -263,6 +267,7 @@ const LOGTO_M2M_APP_ID = process.env.LOGTO_M2M_APP_ID || '';
 const LOGTO_M2M_APP_SECRET = process.env.LOGTO_M2M_APP_SECRET || '';
 const LOGTO_MANAGEMENT_RESOURCE = process.env.LOGTO_MANAGEMENT_RESOURCE || '';
 const LOGTO_MANAGEMENT_SCOPE = process.env.LOGTO_MANAGEMENT_SCOPE || '';
+const ACCOUNT_DELETION_RECOVERY_ENABLED = accountDeletionRecoveryEnabled(process.env);
 const ACCOUNT_DELETION_RECOVERY_INTERVAL_MS = Math.max(
   10_000,
   Math.min(Number(process.env.ACCOUNT_DELETION_RECOVERY_INTERVAL_MS) || 60_000, 60 * 60 * 1000),
@@ -2336,6 +2341,7 @@ async function recoverAccountDeletions() {
 }
 
 function startAccountDeletionRecovery() {
+  if (!ACCOUNT_DELETION_RECOVERY_ENABLED) return;
   if (accountDeletionRecoveryTimer) return;
   void recoverAccountDeletions();
   accountDeletionRecoveryTimer = setInterval(
@@ -3540,6 +3546,9 @@ function handleRequest(req, res) {
       // A linked Logto principal must be removed before local anonymization,
       // including hybrid accounts that also have a local password.
       if (capabilities.body.hasLogtoIdentity) {
+        if (!ACCOUNT_DELETION_RECOVERY_ENABLED) {
+          return json({ error: 'Logto account deletion is not enabled' }, 503);
+        }
         const prepared = await prepareLogtoAccountDeletion({ pool, userId });
         if (!prepared.ok) return json({ error: prepared.error }, prepared.status);
         let deletionRequest = prepared.body.request;
