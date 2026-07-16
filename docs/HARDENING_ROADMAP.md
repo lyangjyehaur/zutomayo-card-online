@@ -17,13 +17,13 @@
 
 ### 第一階段（緊急，1-2 週）— ✅ 全部完成
 
-| # | 項目 | 狀態 | 落地證據 |
-|---|------|------|---------|
-| 1.1 | 接入 Sentry（前後端） | ✅ | [src/sentry.ts](../src/sentry.ts)、[src/main.tsx](../src/main.tsx)、[src/components/ErrorBoundary.tsx](../src/components/ErrorBoundary.tsx)、`Sentry.init` in [src/server.ts](../src/server.ts) 與 [api/server.cjs](../api/server.cjs) |
-| 1.2 | /health 端點 + healthcheck | ✅ | [src/server.ts](../src/server.ts) `/health` 同時檢查 PG（`SELECT 1`）+ Redis（`ping`），degraded 回 503 |
-| 1.3 | Helmet + Admin constant-time 比較 | ✅ | `koa-helmet` in [src/server.ts](../src/server.ts)；API server 手動 `X-Content-Type-Options` / `X-Frame-Options`；`crypto.timingSafeEqual` in [api/adminService.cjs](../api/adminService.cjs) |
-| 1.4 | API Dockerfile USER node | ✅ | [api/Dockerfile](../api/Dockerfile) multi-stage + `USER node` |
-| 1.5 | PG 自動備份 cron | ✅ | [scripts/pg-backup.sh](../scripts/pg-backup.sh)（`pg_dump | gzip`、7 天 retention、含 cron 範例註解） |
+| #   | 項目                              | 狀態 | 落地證據                                                                                                                                                                                                                               |
+| --- | --------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1 | 接入 Sentry（前後端）             | ✅   | [src/sentry.ts](../src/sentry.ts)、[src/main.tsx](../src/main.tsx)、[src/components/ErrorBoundary.tsx](../src/components/ErrorBoundary.tsx)、`Sentry.init` in [src/server.ts](../src/server.ts) 與 [api/server.cjs](../api/server.cjs) |
+| 1.2 | /health 端點 + healthcheck        | ✅   | [src/server.ts](../src/server.ts) `/health` 同時檢查 PG（`SELECT 1`）+ Redis（`ping`），degraded 回 503                                                                                                                                |
+| 1.3 | Helmet + Admin constant-time 比較 | ✅   | `koa-helmet` in [src/server.ts](../src/server.ts)；API server 手動 `X-Content-Type-Options` / `X-Frame-Options`；`crypto.timingSafeEqual` in [api/adminService.cjs](../api/adminService.cjs)                                           |
+| 1.4 | API Dockerfile USER node          | ✅   | [api/Dockerfile](../api/Dockerfile) multi-stage + `USER node`                                                                                                                                                                          |
+| 1.5 | PG 自動備份 cron                  | ✅   | [scripts/pg-backup.sh](../scripts/pg-backup.sh)（`pg_dump \| gzip`、7 天 retention、含 cron 範例註解）                                                                                                                                 |
 
 **備註：** cron job 本身需在 server4 上手動配置（`crontab -e`），腳本已就緒。
 
@@ -31,13 +31,13 @@
 
 ### 第二階段（重要，2-4 週）— ✅ 全部完成
 
-| # | 項目 | 狀態 | 說明 |
-|---|------|------|------|
-| 2.1 | pino 結構化日誌 + request ID | ✅ | [src/server/observability/logger.ts](../src/server/observability/logger.ts) AsyncLocalStorage + requestId；[api/observability.cjs](../api/observability.cjs) |
-| 2.2 | 資料庫遷移系統（node-pg-migrate） | ✅ | B1 完成 — `migrations/` 目錄 + `scripts/db-migrate.cjs` + docker-compose `migrate` service（commit `5658c687`） |
-| 2.3 | 擴大測試覆蓋率到 API + server 層 | ✅ | B2 完成 — coverage 擴至 `src/**` + `api/**`，新增 executor/GameLogic/ai/server.routes 測試，測試數 135→330（commit `e6e38240`） |
-| 2.4 | Token refresh 機制 + 黑名單 | ✅ | B3 完成 — Access token 1hr + refresh token 7d（Redis）+ 黑名單 + `/api/auth/refresh`（commit `0fea3100`）；M4.5 E1 改用 GETDEL 原子操作修復 TOCTOU（commit `8bf328e2`） |
-| 2.5 | Game server rate limiting | ✅ | [src/server/rateLimit.ts](../src/server/rateLimit.ts) Koa middleware，`/games/*` 120 req/min/IP，Redis 斷線 fail open |
+| #   | 項目                              | 狀態 | 說明                                                                                                                                                                    |
+| --- | --------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1 | pino 結構化日誌 + request ID      | ✅   | [src/server/observability/logger.ts](../src/server/observability/logger.ts) AsyncLocalStorage + requestId；[api/observability.cjs](../api/observability.cjs)            |
+| 2.2 | 資料庫遷移系統（node-pg-migrate） | ✅   | B1 完成 — `migrations/` 目錄 + `scripts/db-migrate.cjs` + docker-compose `migrate` service（commit `5658c687`）                                                         |
+| 2.3 | 擴大測試覆蓋率到 API + server 層  | ✅   | B2 完成 — coverage 擴至 `src/**` + `api/**`，新增 executor/GameLogic/ai/server.routes 測試，測試數 135→330（commit `e6e38240`）                                         |
+| 2.4 | Token refresh 機制 + 黑名單       | ✅   | B3 完成 — Access token 1hr + refresh token 7d（Redis）+ 黑名單 + `/api/auth/refresh`（commit `0fea3100`）；M4.5 E1 改用 GETDEL 原子操作修復 TOCTOU（commit `8bf328e2`） |
+| 2.5 | Game server rate limiting         | ✅   | [src/server/rateLimit.ts](../src/server/rateLimit.ts) Koa middleware，`/games/*` 120 req/min/IP，Redis 斷線 fail open                                                   |
 
 **完成度：5/5（100%）**
 
@@ -45,13 +45,13 @@
 
 ### 第三階段（功能擴展，1-2 個月）— 部分完成
 
-| # | 項目 | 狀態 | 說明 |
-|---|------|------|------|
-| 3.1 | 密碼找回 + 郵箱驗證 | ❌ | 本地註冊無 email 驗證；密碼找回依賴 Logto account center（已整合但非本地流程）→ C1（M7） |
-| 3.2 | 牌組代碼導入導出 + 分享 | ⚠️ | JSON 匯入/匯出已實作（[src/game/cards/customDeck.ts](../src/game/cards/customDeck.ts)），**無短碼分享系統** → C2（M7） |
-| 3.3 | 聊天系統（遊戲內 emoji/快捷語） | ✅ | **已實作** — platform server chat room + OnlineGame.tsx 聊天 UI + i18n（E13 補齊翻譯） |
-| 3.4 | 好友系統 | ✅ | **已實作** — `user_friends` 表 + `/api/friends` GET/POST/DELETE 路由 + `migrations/000006_user_friends.js`（E7 補 migration） |
-| 3.5 | 回放系統 | ❌ | 僅有 action log 文字，無 replay → C5（M7） |
+| #   | 項目                            | 狀態 | 說明                                                                                                                          |
+| --- | ------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 3.1 | 密碼找回 + 郵箱驗證             | ❌   | 本地註冊無 email 驗證；密碼找回依賴 Logto account center（已整合但非本地流程）→ C1（M7）                                      |
+| 3.2 | 牌組代碼導入導出 + 分享         | ⚠️   | JSON 匯入/匯出已實作（[src/game/cards/customDeck.ts](../src/game/cards/customDeck.ts)），**無短碼分享系統** → C2（M7）        |
+| 3.3 | 聊天系統（遊戲內 emoji/快捷語） | ✅   | **已實作** — platform server chat room + OnlineGame.tsx 聊天 UI + i18n（E13 補齊翻譯）                                        |
+| 3.4 | 好友系統                        | ✅   | **已實作** — `user_friends` 表 + `/api/friends` GET/POST/DELETE 路由 + `migrations/000006_user_friends.js`（E7 補 migration） |
+| 3.5 | 回放系統                        | ❌   | 僅有 action log 文字，無 replay → C5（M7）                                                                                    |
 
 **完成度：2.5/5（50%，聊天 + 好友已完成，牌組 JSON 匯入匯出部分完成）**
 
@@ -59,13 +59,13 @@
 
 ### 第四階段（成熟化，長期）— 部分完成
 
-| # | 項目 | 狀態 | 說明 |
-|---|------|------|------|
-| 4.1 | E2E 測試 + 負載測試 | ✅ | **M5 完成** — Playwright（26 tests）+ k6（4 scripts）+ `@requires-backend` tag 模式（commit `36bc4a98`/`36dd8774`） |
-| 4.2 | 自動部署 pipeline + staging 環境 | ✅ | **M5 完成** — GitHub Actions CD pipeline + `docker-compose.staging.yml` + GHCR image tagging + rollback 機制（commit `ca53b675`） |
-| 4.3 | 賽季/段位系統 | ⚠️ | 段位「顯示」已實作（金輝 V / 朱痕 IV / 幽影 III / 殘月 II / 新月 I），但**無賽季重置/衰減機制** → C6（M7） |
-| 4.4 | OAuth 登入 | ✅ | **提前完成** — Logto + Google + GitHub + Discord 四 provider（[api/server.cjs](../api/server.cjs) OAuth callback flow） |
-| 4.5 | SSR/SSG（若需 SEO） | ❌ | 純 SPA，未評估需求 → D6（視需求） |
+| #   | 項目                             | 狀態 | 說明                                                                                                                              |
+| --- | -------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 4.1 | E2E 測試 + 負載測試              | ✅   | **M5 完成** — Playwright（26 tests）+ k6（4 scripts）+ `@requires-backend` tag 模式（commit `36bc4a98`/`36dd8774`）               |
+| 4.2 | 自動部署 pipeline + staging 環境 | ✅   | **M5 完成** — GitHub Actions CD pipeline + `docker-compose.staging.yml` + GHCR image tagging + rollback 機制（commit `ca53b675`） |
+| 4.3 | 賽季/段位系統                    | ⚠️   | 段位「顯示」已實作（金輝 V / 朱痕 IV / 幽影 III / 殘月 II / 新月 I），但**無賽季重置/衰減機制** → C6（M7）                        |
+| 4.4 | OAuth 登入                       | ✅   | **提前完成** — Logto + Google + GitHub + Discord 四 provider（[api/server.cjs](../api/server.cjs) OAuth callback flow）           |
+| 4.5 | SSR/SSG（若需 SEO）              | ❌   | 純 SPA，未評估需求 → D6（視需求）                                                                                                 |
 
 **完成度：3/5（60%，E2E + CD + OAuth 完成，段位部分完成）**
 
@@ -73,13 +73,13 @@
 
 ## 二、整體完成度統計
 
-| 階段 | 完成數 | 總數 | 完成率 |
-|------|--------|------|--------|
-| 第一階段（緊急） | 5 | 5 | 100% |
-| 第二階段（重要） | 5 | 5 | 100% |
-| 第三階段（功能擴展） | 2.5 | 5 | 50% |
-| 第四階段（成熟化） | 3 | 5 | 60% |
-| **合計** | **15.5** | **20** | **77.5%** |
+| 階段                 | 完成數   | 總數   | 完成率    |
+| -------------------- | -------- | ------ | --------- |
+| 第一階段（緊急）     | 5        | 5      | 100%      |
+| 第二階段（重要）     | 5        | 5      | 100%      |
+| 第三階段（功能擴展） | 2.5      | 5      | 50%       |
+| 第四階段（成熟化）   | 3        | 5      | 60%       |
+| **合計**             | **15.5** | **20** | **77.5%** |
 
 ---
 
@@ -179,7 +179,7 @@
 - **修復內容：**
   - 安裝 `node-pg-migrate@^8.0.4`（devDependency）
   - 建立 `migrations/000001_init_schema.js`：將 `initSchema()` 的所有表與索引轉為 `pgm.createTable` / `pgm.createIndex` / `pgm.addColumn`，全部 `ifNotExists: true` 確保向後相容
-  - 建立 `scripts/db-migrate.cjs` CLI wrapper，橋接 PG_* 環境變數至 databaseUrl
+  - 建立 `scripts/db-migrate.cjs` CLI wrapper，橋接 PG\_\* 環境變數至 databaseUrl
   - `api/server.cjs` 新增 `runMigrations()`，偵測 `migrations/` 目錄存在時跑 migration，否則 fallback 至 `initSchema()`
   - `docker-compose.yml` / `docker-compose.server4.yml` 新增 `migrate` service，`api` 透過 `depends_on: service_completed_successfully` 等待
   - `package.json` 加 `db:migrate` / `db:migrate:down` / `db:migrate:make` scripts
@@ -533,16 +533,16 @@
 
 ### 里程碑時程
 
-| 里程碑 | 內容 | 預估週數 | 累計 |
-|--------|------|---------|------|
-| **M1：安全補強** ✅ | A1-A5（P0 全部） | 1 週 | 1 週 |
-| **M2：運維補強** ✅ | A6-A10 + B1（migration） | 2 週 | 3 週 |
-| **M3：測試強化** ✅ | B2 + B5 + B7（架構文檔） | 2 週 | 5 週 |
-| **M4：Token 安全** ✅ | B3 + B4 + B6（CSRF） | 2.5 週 | 7.5 週 |
-| **M4.5：第三輪快速修復** ✅ | E1-E13（P1×9 + P2×4） | 0.3 週 | 7.8 週 |
-| **M5：E2E + 負載 + CD** ✅ | D1-D3（PgBouncer 移至 M6） | 3.5 週 | 11.3 週 |
-| **M6：可觀測性進階** ✅ | D4-D5 + D7-D8（Grafana/OTel/PgBouncer/i18n check） | 1.5 週 | 12.8 週 |
-| **M7：功能擴展** | C1-C11（視需求挑選） | 6-8 週 | 18-20 週 |
+| 里程碑                      | 內容                                               | 預估週數 | 累計     |
+| --------------------------- | -------------------------------------------------- | -------- | -------- |
+| **M1：安全補強** ✅         | A1-A5（P0 全部）                                   | 1 週     | 1 週     |
+| **M2：運維補強** ✅         | A6-A10 + B1（migration）                           | 2 週     | 3 週     |
+| **M3：測試強化** ✅         | B2 + B5 + B7（架構文檔）                           | 2 週     | 5 週     |
+| **M4：Token 安全** ✅       | B3 + B4 + B6（CSRF）                               | 2.5 週   | 7.5 週   |
+| **M4.5：第三輪快速修復** ✅ | E1-E13（P1×9 + P2×4）                              | 0.3 週   | 7.8 週   |
+| **M5：E2E + 負載 + CD** ✅  | D1-D3（PgBouncer 移至 M6）                         | 3.5 週   | 11.3 週  |
+| **M6：可觀測性進階** ✅     | D4-D5 + D7-D8（Grafana/OTel/PgBouncer/i18n check） | 1.5 週   | 12.8 週  |
+| **M7：功能擴展**            | C1-C11（視需求挑選）                               | 6-8 週   | 18-20 週 |
 
 ### 關鍵路徑
 
@@ -572,18 +572,18 @@ M1 (安全) → M2 (運維) → M3 (測試) → M5 (E2E/CD)
 
 ## 六、歷史記錄
 
-| 日期 | 事件 |
-|------|------|
-| 2026-07-07 | 初版路線圖建立。Phase 1（Sentry/health/Helmet/Dockerfile/backup）+ Phase 2 部分（pino/rate-limit）+ OAuth（提前完成）已落地於 `codex/prod-hardening-stage1` 分支並 merge 至 master |
-| 2026-07-07 | 第二輪深度審查後補充：新增 A9（deck route Zod）、A10（tsconfig 嚴格度）、B6（CSRF）、B7（架構文檔）、C7（ELO 配對）、C8（卡名 i18n）、C9（離線對戰）、C10（通知系統）、C11（牌組統計）、D7（PgBouncer）、D8（i18n 警示）共 11 項 |
-| 2026-07-09 | M1（安全補強）完成於 worktree `codex/m1-security-p0`。A1-A5 全部完成（4 commits + A3 驗證通過無需修改）。typecheck/lint/format/test(135)/build 全綠 |
-| 2026-07-09 | M2（運維補強）完成。A6-A10 + B1 全部完成（7 commits）。typecheck/lint/format/test(135) 全綠 |
-| 2026-07-09 | M3（測試強化）完成。B2 + B5 + B7 全部完成（3 commits）。測試從 135 提升至 330。typecheck/lint/format/test(330) 全綠 |
-| 2026-07-09 | M4（Token 安全）完成。B3 + B4 + B6 全部完成（3 commits）。typecheck/lint/format/test(335) 全綠 |
-| 2026-07-09 | M1-M4 merge 至 master（`d4aa3dc1`）。6 個衝突檔解決（版本號為主）。typecheck/lint/test(336) 全綠 |
-| 2026-07-12 | 第三輪深度審查（基於 HEAD `ca717aa2`，含 209 個新 commit：Colyseus 平台、聊天系統、自訂房間、配對快照恢復、卡牌戰場動畫）。發現 15 個 P1 + 20 個 P2 新問題。finishMulligan splice 已修復、CardView 鍵盤可操作性已修復 |
-| 2026-07-12 | M4.5（第三輪快速修復）完成於 worktree `codex/m45-third-round-fixes`。E1-E13 全部完成（16 commits）。typecheck/lint/format/test(617) 全綠 |
-| 2026-07-12 | M4.5 merge 至 master（`70b3a8a7`）並 push。617 tests 全綠 |
-| 2026-07-12 | M5（E2E + 負載 + CD）完成於 worktree `codex/m5-test-cd`。D1 Playwright（26 tests）+ D2 k6（4 scripts）+ D3 CD pipeline + staging（3 commits）。typecheck/lint/format/test(617) 全綠 |
+| 日期       | 事件                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-07-07 | 初版路線圖建立。Phase 1（Sentry/health/Helmet/Dockerfile/backup）+ Phase 2 部分（pino/rate-limit）+ OAuth（提前完成）已落地於 `codex/prod-hardening-stage1` 分支並 merge 至 master                                                                                                                                                                                                                                                    |
+| 2026-07-07 | 第二輪深度審查後補充：新增 A9（deck route Zod）、A10（tsconfig 嚴格度）、B6（CSRF）、B7（架構文檔）、C7（ELO 配對）、C8（卡名 i18n）、C9（離線對戰）、C10（通知系統）、C11（牌組統計）、D7（PgBouncer）、D8（i18n 警示）共 11 項                                                                                                                                                                                                      |
+| 2026-07-09 | M1（安全補強）完成於 worktree `codex/m1-security-p0`。A1-A5 全部完成（4 commits + A3 驗證通過無需修改）。typecheck/lint/format/test(135)/build 全綠                                                                                                                                                                                                                                                                                   |
+| 2026-07-09 | M2（運維補強）完成。A6-A10 + B1 全部完成（7 commits）。typecheck/lint/format/test(135) 全綠                                                                                                                                                                                                                                                                                                                                           |
+| 2026-07-09 | M3（測試強化）完成。B2 + B5 + B7 全部完成（3 commits）。測試從 135 提升至 330。typecheck/lint/format/test(330) 全綠                                                                                                                                                                                                                                                                                                                   |
+| 2026-07-09 | M4（Token 安全）完成。B3 + B4 + B6 全部完成（3 commits）。typecheck/lint/format/test(335) 全綠                                                                                                                                                                                                                                                                                                                                        |
+| 2026-07-09 | M1-M4 merge 至 master（`d4aa3dc1`）。6 個衝突檔解決（版本號為主）。typecheck/lint/test(336) 全綠                                                                                                                                                                                                                                                                                                                                      |
+| 2026-07-12 | 第三輪深度審查（基於 HEAD `ca717aa2`，含 209 個新 commit：Colyseus 平台、聊天系統、自訂房間、配對快照恢復、卡牌戰場動畫）。發現 15 個 P1 + 20 個 P2 新問題。finishMulligan splice 已修復、CardView 鍵盤可操作性已修復                                                                                                                                                                                                                 |
+| 2026-07-12 | M4.5（第三輪快速修復）完成於 worktree `codex/m45-third-round-fixes`。E1-E13 全部完成（16 commits）。typecheck/lint/format/test(617) 全綠                                                                                                                                                                                                                                                                                              |
+| 2026-07-12 | M4.5 merge 至 master（`70b3a8a7`）並 push。617 tests 全綠                                                                                                                                                                                                                                                                                                                                                                             |
+| 2026-07-12 | M5（E2E + 負載 + CD）完成於 worktree `codex/m5-test-cd`。D1 Playwright（26 tests）+ D2 k6（4 scripts）+ D3 CD pipeline + staging（3 commits）。typecheck/lint/format/test(617) 全綠                                                                                                                                                                                                                                                   |
 | 2026-07-12 | M6（可觀測性進階）完成於 worktree `codex/m6-observability`。D4 Grafana 4 dashboards + 8 alert rules + Prometheus（commit `ba8b53dc`）、D5 OpenTelemetry 3 tracing configs + Jaeger + pino traceId（commit `bbd49a12`）、D7 PgBouncer transaction pool + compose overlay（commit `71202390`）、D8 i18n check script + CI step（commit `9b8b46c7`）。4 commits、28 files、+2801/-54 行。typecheck/lint/format/test(617)/i18n:check 全綠 |
-| 2026-07-12 | M6 merge 至 master（`d375b8c5`）並 push。617 tests 全綠。至此 M1-M6 全部完成，僅剩 M7 功能擴展（C1-C11）視需求挑選 |
+| 2026-07-12 | M6 merge 至 master（`d375b8c5`）並 push。617 tests 全綠。至此 M1-M6 全部完成，僅剩 M7 功能擴展（C1-C11）視需求挑選                                                                                                                                                                                                                                                                                                                    |
