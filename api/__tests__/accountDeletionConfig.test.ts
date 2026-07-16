@@ -29,6 +29,16 @@ describe('Logto account deletion production configuration', () => {
     );
   });
 
+  it('allows the beta deployment to explicitly disable Logto deletion recovery', () => {
+    expect(
+      validateLogtoAccountDeletionConfig({
+        NODE_ENV: 'production',
+        LOGTO_ENDPOINT: 'https://auth.example.com',
+        ACCOUNT_DELETION_RECOVERY_ENABLED: 'false',
+      }),
+    ).toBe(true);
+  });
+
   it('rejects broad or additional management scopes', () => {
     expect(() => validateLogtoAccountDeletionConfig({ ...productionConfig, LOGTO_MANAGEMENT_SCOPE: 'all' })).toThrow(
       'exactly delete:users',
