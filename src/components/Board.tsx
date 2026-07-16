@@ -1878,6 +1878,7 @@ function BattleBoard({
   const previousTurnNumber = useRef(G.turnNumber);
   const awaitingPlayers = getPlayersAwaitingAction(G);
   const awaitingPlayersKey = awaitingPlayers.join(',');
+  const meReady = G.ready[meIndex];
   const hasRequiredTutorialCards =
     !tutorialRequiredSetCardDefIds ||
     tutorialRequiredSetCardDefIds.every((defId) => G.setCardsThisTurn[meIndex].some((card) => card.defId === defId));
@@ -1978,7 +1979,7 @@ function BattleBoard({
   useEffect(() => {
     setSelectedHandIndex(null);
     setInteractionMessage('');
-  }, [G.step, G.turnNumber, G.ready, meIndex]);
+  }, [G.step, G.turnNumber, meReady, meIndex]);
 
   useEffect(() => {
     if (focusedCard || me.hand.length === 0) return;
