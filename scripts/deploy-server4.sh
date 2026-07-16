@@ -20,6 +20,9 @@ COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.server4.yml}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-postgresql}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-redis}"
 REMOTE_BACKUP_DIR="${REMOTE_BACKUP_DIR:-$REMOTE_DIR/backups/pre-deploy}"
+BATTLE_ASSET_DIR="${BATTLE_ASSET_DIR:-$PROJECT_DIR/public/battle}"
+BATTLE_ASSET_CHECKSUMS="${BATTLE_ASSET_CHECKSUMS:-$PROJECT_DIR/scripts/battle-assets.sha256}"
+REMOTE_BATTLE_ASSET_DIR="${REMOTE_BATTLE_ASSET_DIR:-$REMOTE_DIR/public/battle}"
 DEPLOY_WAIT_SECONDS="${DEPLOY_WAIT_SECONDS:-180}"
 GAME_PORT="${GAME_PORT:-3000}"
 API_PORT="${API_PORT:-3001}"
@@ -58,6 +61,8 @@ ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 
 [[ "$REMOTE_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'REMOTE_DIR contains unsupported characters'
 [[ "$REMOTE_BACKUP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'REMOTE_BACKUP_DIR contains unsupported characters'
+[[ "$REMOTE_BATTLE_ASSET_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'REMOTE_BATTLE_ASSET_DIR contains unsupported characters'
+[[ "$REMOTE_BATTLE_ASSET_DIR" == "$REMOTE_DIR/"* ]] || die 'REMOTE_BATTLE_ASSET_DIR must be inside REMOTE_DIR'
 [[ "$COMPOSE_FILE" =~ ^[A-Za-z0-9._-]+$ ]] || die 'COMPOSE_FILE must be a file name'
 [[ "$POSTGRES_CONTAINER" =~ ^[A-Za-z0-9._-]+$ ]] || die 'POSTGRES_CONTAINER is invalid'
 [[ "$REDIS_CONTAINER" =~ ^[A-Za-z0-9._-]+$ ]] || die 'REDIS_CONTAINER is invalid'
@@ -69,6 +74,31 @@ sha256_file() {
   else
     shasum -a 256 "$1" | awk '{print $1}'
   fi
+}
+
+verify_local_battle_assets() {
+  local expected relative extra actual expected_count=0 actual_count
+  [[ -d "$BATTLE_ASSET_DIR" ]] || die "private battle asset directory is missing: $BATTLE_ASSET_DIR"
+  [[ -f "$BATTLE_ASSET_CHECKSUMS" ]] || die "battle asset checksum file is missing: $BATTLE_ASSET_CHECKSUMS"
+
+  while read -r expected relative extra; do
+    [[ -n "${expected:-}" ]] || continue
+    [[ "$expected" =~ ^[a-f0-9]{64}$ ]] || die "invalid battle asset checksum: $expected"
+    [[ -z "${extra:-}" ]] || die "battle asset checksum entry contains unsupported whitespace: $relative"
+    [[ "$relative" =~ ^[A-Za-z0-9._/-]+\.(png|svg)$ ]] || die "invalid battle asset path: $relative"
+    [[ "$relative" != /* && "$relative" != ../* && "$relative" != */../* && "$relative" != */.. ]] || \
+      die "battle asset path escapes its directory: $relative"
+    [[ -f "$BATTLE_ASSET_DIR/$relative" ]] || die "required battle asset is missing: $relative"
+    actual="$(sha256_file "$BATTLE_ASSET_DIR/$relative")"
+    [[ "$actual" == "$expected" ]] || die "battle asset checksum mismatch: $relative"
+    expected_count=$((expected_count + 1))
+  done < "$BATTLE_ASSET_CHECKSUMS"
+
+  actual_count="$(find "$BATTLE_ASSET_DIR" -type f \( -iname '*.png' -o -iname '*.svg' \) | wc -l | tr -d '[:space:]')"
+  [[ "$expected_count" -gt 0 ]] || die 'battle asset checksum file is empty'
+  [[ "$actual_count" == "$expected_count" ]] || \
+    die "battle asset inventory mismatch: checksums=$expected_count files=$actual_count"
+  BATTLE_ASSET_COUNT="$expected_count"
 }
 
 confirm_action() {
@@ -94,6 +124,7 @@ load_local_release() {
   [[ -f "$migration_file" ]] || die "expected migration is missing: $migration_file"
   EXPECTED_SCHEMA_CHECKSUM="$(sha256_file "$migration_file")"
   [[ "$EXPECTED_SCHEMA_CHECKSUM" =~ ^[a-f0-9]{64}$ ]] || die 'migration checksum is invalid'
+  verify_local_battle_assets
 }
 
 remote_predeploy_backup() {
@@ -149,6 +180,27 @@ remote_sync_master_and_env() {
     upsert_env EXPECTED_SCHEMA_MIGRATION '$EXPECTED_SCHEMA_MIGRATION'
     upsert_env EXPECTED_SCHEMA_CHECKSUM '$EXPECTED_SCHEMA_CHECKSUM'
     grep -E '^(APP_BUILD_ID|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM)=' .env"
+}
+
+sync_battle_assets() {
+  local remote_stage="${REMOTE_BATTLE_ASSET_DIR}.next"
+  local remote_previous="$REMOTE_DIR/backups/battle-assets/previous"
+  awk 'NF { print $2 }' "$BATTLE_ASSET_CHECKSUMS" \
+    | tar -C "$BATTLE_ASSET_DIR" -cf - -T - \
+    | ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail
+        rm -rf '$remote_stage'
+        mkdir -p '$remote_stage' '$REMOTE_DIR/backups/battle-assets'
+        tar -xf - -C '$remote_stage'
+        find '$remote_stage' -type d -exec chmod 0755 {} +
+        find '$remote_stage' -type f -exec chmod 0644 {} +
+        cd '$remote_stage'
+        sha256sum --check '$REMOTE_DIR/scripts/battle-assets.sha256'
+        actual_count=\$(find . -type f \( -iname '*.png' -o -iname '*.svg' \) | wc -l | tr -d '[:space:]')
+        test \"\$actual_count\" = '$BATTLE_ASSET_COUNT'
+        rm -rf '$remote_previous'
+        if test -d '$REMOTE_BATTLE_ASSET_DIR'; then mv '$REMOTE_BATTLE_ASSET_DIR' '$remote_previous'; fi
+        mv '$remote_stage' '$REMOTE_BATTLE_ASSET_DIR'"
+  log "synchronized and verified $BATTLE_ASSET_COUNT private battle assets"
 }
 
 verify_remote_runtime_config() {
@@ -227,6 +279,13 @@ remote_rollback() {
     cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.failed' 2>/dev/null || true
     cp -p .env.previous .env
     cp -p '$COMPOSE_FILE.previous' '$COMPOSE_FILE'
+    if test -d '$REMOTE_DIR/backups/battle-assets/previous'; then
+      rm -rf '$REMOTE_DIR/backups/battle-assets/failed'
+      if test -d '$REMOTE_BATTLE_ASSET_DIR'; then
+        mv '$REMOTE_BATTLE_ASSET_DIR' '$REMOTE_DIR/backups/battle-assets/failed'
+      fi
+      mv '$REMOTE_DIR/backups/battle-assets/previous' '$REMOTE_BATTLE_ASSET_DIR'
+    fi
     TAG=rollback docker compose -f '$COMPOSE_FILE' config --quiet
     TAG=rollback docker compose -f '$COMPOSE_FILE' up -d --no-build --no-deps --wait \
       --wait-timeout '$DEPLOY_WAIT_SECONDS' game api platform
@@ -239,7 +298,7 @@ remote_build_id() {
 }
 
 run_smoke() {
-  local expected_build_id="$1" tunnel_pid status
+  local expected_build_id="$1" check_battle_assets="${2:-true}" tunnel_pid status
   ssh -p "$SERVER_PORT" -o ExitOnForwardFailure=yes -N -T \
     -L "${SMOKE_LOCAL_GAME_PORT}:127.0.0.1:${GAME_PORT}" \
     -L "${SMOKE_LOCAL_API_PORT}:127.0.0.1:${API_PORT}" \
@@ -257,7 +316,8 @@ run_smoke() {
     --game-port "$SMOKE_LOCAL_GAME_PORT" \
     --api-port "$SMOKE_LOCAL_API_PORT" \
     --platform-port "$SMOKE_LOCAL_PLATFORM_PORT" \
-    --expected-build-id "$expected_build_id"
+    --expected-build-id "$expected_build_id" \
+    --check-battle-assets "$check_battle_assets"
   status=$?
   set -e
   kill "$tunnel_pid" >/dev/null 2>&1 || true
@@ -270,7 +330,7 @@ rollback_and_smoke() {
   local previous_build_id
   previous_build_id="$(remote_build_id)"
   [[ -n "$previous_build_id" ]] || return 1
-  run_smoke "$previous_build_id"
+  run_smoke "$previous_build_id" false
 }
 
 if [[ "$ROLLBACK" == true ]]; then
@@ -291,6 +351,7 @@ confirm_action "deploy origin/master $TARGET_SHORT"
 if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would back up PostgreSQL and deploy origin/master $TARGET_SHORT"
   log "[dry-run] schema=$EXPECTED_SCHEMA_MIGRATION checksum=$EXPECTED_SCHEMA_CHECKSUM"
+  log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   exit 0
 fi
 
@@ -304,6 +365,8 @@ log "aligning server4 source and release metadata to origin/master $TARGET_SHORT
 remote_sync_master_and_env
 log 'checking PostgreSQL TLS and shared Redis safety configuration'
 verify_remote_runtime_config
+log 'synchronizing private battle assets outside GitHub'
+sync_battle_assets
 capture_rollback_images
 
 if ! remote_build_and_start; then
@@ -316,7 +379,7 @@ if ! remote_build_and_start; then
   exit 1
 fi
 
-if ! run_smoke "$TARGET_SHA"; then
+if ! run_smoke "$TARGET_SHA" true; then
   if ssh_run "test -f '$REMOTE_DIR/.server4-rollback-ready'"; then
     log 'health verification failed; restoring the previous runtime images and configuration'
     rollback_and_smoke || log 'rollback verification failed; manual intervention is required'

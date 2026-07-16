@@ -101,6 +101,7 @@ services:
       - 1panel-network
     volumes:
       - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
+      - ${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -63,6 +63,9 @@ describe('operational shell scripts', () => {
 
   it('keeps the server4 beta deployment backup, Redis, health, and rollback gates', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    const compose = readFileSync(resolve('docker-compose.server4.yml'), 'utf8');
+    const smoke = readFileSync(resolve('scripts/deploy-smoke.mjs'), 'utf8');
+    const assetChecksums = readFileSync(resolve('scripts/battle-assets.sha256'), 'utf8').trim().split('\n');
     expect(deploy).toContain('git reset --hard origin/master');
     expect(deploy).toContain('pg_dump');
     expect(deploy).toContain('--format=custom');
@@ -72,7 +75,18 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('noeviction');
     expect(deploy).toContain('build --pull migrate game api platform');
     expect(deploy).toContain('up -d --wait');
+    expect(deploy).toContain('battle-assets.sha256');
+    expect(deploy).toContain('sync_battle_assets');
+    expect(deploy).toContain('sha256sum --check');
+    expect(deploy).toContain('--check-battle-assets "$check_battle_assets"');
+    expect(deploy).toContain('run_smoke "$previous_build_id" false');
     expect(deploy).toContain('rollback_and_smoke');
+    expect(compose).toContain('${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro');
+    expect(smoke).toContain('/battle/chronos.svg');
+    expect(smoke).toContain('/battle/medal.png');
+    expect(smoke).toContain('if (checkBattleAssets)');
+    expect(assetChecksums).toHaveLength(22);
+    expect(assetChecksums.every((line) => /^[a-f0-9]{64} {2}[A-Za-z0-9._/-]+\.(png|svg)$/.test(line))).toBe(true);
     expect(deploy).not.toContain('--manifest');
     expect(deploy).not.toContain('cosign');
     expect(deploy).not.toContain('attestation');

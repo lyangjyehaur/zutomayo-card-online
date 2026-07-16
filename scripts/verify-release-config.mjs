@@ -124,6 +124,11 @@ function assertRuntimeEnvironmentInventory() {
       }
     }
   }
+
+  const game = serviceBlock(SERVER4_COMPOSE, 'game');
+  if (!game.includes('${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro')) {
+    throw new Error(`${SERVER4_COMPOSE} game must mount private battle assets read-only`);
+  }
 }
 
 function assertServer4BetaCompose() {
@@ -238,6 +243,8 @@ function assertServer4DeployScript() {
     'build --pull migrate game api platform',
     'up -d --wait',
     'deploy-smoke.mjs',
+    'battle-assets.sha256',
+    'sync_battle_assets',
     'rollback_and_smoke',
   ];
   for (const fragment of requiredFragments) {
