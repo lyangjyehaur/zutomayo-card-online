@@ -914,13 +914,27 @@ async function runMigrations() {
 
   // node-pg-migrate runner 接受 connection string 或 pg ClientConfig。
   // 專案用 PG_* 分開的環境變數，直接組成 ClientConfig。
-  const databaseUrl = process.env.DATABASE_URL || {
-    host: PG_HOST,
-    port: PG_PORT,
-    user: PG_USER,
-    password: PG_PASSWORD,
-    database: PG_DATABASE,
+  const databaseUrl = {
+    ...(DATABASE_CONNECTION_URL
+      ? { connectionString: DATABASE_CONNECTION_URL }
+      : {
+          host: PG_HOST,
+          port: PG_PORT,
+          user: PG_USER,
+          password: PG_PASSWORD,
+          database: PG_DATABASE,
+        }),
+    ssl: postgresSslConfig(process.env),
   };
+  const {
+    listAppliedMigrationNames,
+    migrationIgnorePatternForApplied,
+  } = require('../scripts/migration-order-compat.cjs');
+  const appliedNames = await listAppliedMigrationNames(pool);
+  const ignorePattern = migrationIgnorePatternForApplied(appliedNames);
+  if (ignorePattern) {
+    logger.info('Using canonical append-only card migrations 000028-000030');
+  }
 
   await runner({
     databaseUrl,
@@ -928,6 +942,8 @@ async function runMigrations() {
     direction: 'up',
     migrationsTable: 'schema_migrations',
     schema: 'public',
+    ignorePattern,
+    checkOrder: true,
     count: Infinity,
     log: (msg) => logger.info({ msg }, 'migration'),
   });

@@ -3,17 +3,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const COMPOSE_FILES = [
-  'docker-compose.yml',
-  'docker-compose.staging.yml',
-  'docker-compose.server4.yml',
-  'docker-compose.monitoring.yml',
-  'docker-compose.retention.yml',
-  'docker-compose.load-test.yml',
-  'docker-compose.pgbouncer.yml',
-];
-const RELEASE_COMPOSE_FILES = ['docker-compose.staging.yml', 'docker-compose.server4.yml'];
-const REQUIRED_IMAGES = ['GAME_IMAGE', 'API_IMAGE', 'PLATFORM_IMAGE', 'MIGRATE_IMAGE'];
+const SERVER4_COMPOSE = 'docker-compose.server4.yml';
+const SERVER4_SERVICES = Object.freeze(['migrate', 'game', 'api', 'platform']);
+const SERVER4_RUNTIME_SERVICES = Object.freeze(['game', 'api', 'platform']);
 
 function read(relativePath) {
   const absolutePath = path.join(ROOT, relativePath);
@@ -26,14 +18,6 @@ function nonCommentLines(contents) {
     .split(/\r?\n/)
     .map((line) => line.replace(/\s+#.*$/, '').trim())
     .filter(Boolean);
-}
-
-function assertNoMutableImageTags(relativePath) {
-  const lines = nonCommentLines(read(relativePath));
-  const mutable = lines.filter((line) => /\bimage:\s*[^\n]*(?::latest|:staging)(?:\s|$)/i.test(line));
-  if (mutable.length > 0) {
-    throw new Error(`${relativePath} contains mutable image tags:\n${mutable.join('\n')}`);
-  }
 }
 
 export function findUnpinnedWorkflowActions(contents) {
@@ -49,7 +33,6 @@ export function findUnpinnedWorkflowActions(contents) {
 
 function assertPinnedWorkflowActions() {
   const workflowDirectory = path.join(ROOT, '.github/workflows');
-  if (!existsSync(workflowDirectory)) throw new Error('missing GitHub workflow directory');
   const workflowFiles = readdirSync(workflowDirectory)
     .filter((name) => /\.ya?ml$/i.test(name))
     .sort();
@@ -66,39 +49,6 @@ function assertPinnedWorkflowActions() {
   }
 }
 
-function assertDigestInputs(relativePath) {
-  const lines = nonCommentLines(read(relativePath));
-  for (const image of REQUIRED_IMAGES) {
-    const matches = lines.filter((line) => line.startsWith('image:') && line.includes(`\${${image}:?`));
-    if (matches.length !== 1) throw new Error(`${relativePath} must require exactly one ${image} digest input`);
-  }
-  const checksumInputs = lines.filter((line) => line.includes('EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?'));
-  if (checksumInputs.length !== 4) {
-    throw new Error(`${relativePath} must pass EXPECTED_SCHEMA_CHECKSUM to migrate and all app services`);
-  }
-  for (const [variable, expectedInput] of [
-    ['APP_VERSION', 'APP_VERSION=${APP_VERSION:?'],
-    ['APP_BUILD_ID', 'APP_BUILD_ID=${RELEASE_SHA:?'],
-    ['GAME_RULES_VERSION', 'GAME_RULES_VERSION=${GAME_RULES_VERSION:?'],
-  ]) {
-    const matches = lines.filter((line) => line.includes(expectedInput));
-    if (matches.length !== 3) {
-      throw new Error(`${relativePath} must bind ${variable} to verified release metadata for all app services`);
-    }
-  }
-}
-
-function assertRetentionDigestInput() {
-  const lines = nonCommentLines(read('docker-compose.retention.yml'));
-  const matches = lines.filter((line) => line.startsWith('image:') && line.includes('${RETENTION_IMAGE:?'));
-  if (matches.length !== 1)
-    throw new Error('docker-compose.retention.yml must require exactly one RETENTION_IMAGE digest input');
-}
-
-function countFragment(relativePath, fragment) {
-  return nonCommentLines(read(relativePath)).filter((line) => line.includes(fragment)).length;
-}
-
 function serviceBlock(relativePath, serviceName) {
   const lines = read(relativePath).split(/\r?\n/);
   const start = lines.findIndex((line) => line === `  ${serviceName}:`);
@@ -111,50 +61,15 @@ function serviceBlock(relativePath, serviceName) {
   return block.join('\n');
 }
 
-const ROLE_PASSWORDS = [
-  'PG_MIGRATION_PASSWORD',
-  'PG_APP_PASSWORD',
-  'PG_API_PASSWORD',
-  'PG_GAME_PASSWORD',
-  'PG_PLATFORM_PASSWORD',
-  'PG_RETENTION_PASSWORD',
-  'PG_MONITOR_PASSWORD',
-  'PG_BACKUP_PASSWORD',
-  'PG_WAL_PASSWORD',
-];
-
-function assertRoleEnvFileMasks(relativePath) {
-  const serviceRoles = {
-    migrate: { user: 'PG_MIGRATION_USER', password: 'PG_MIGRATION_PASSWORD' },
-    game: { user: 'PG_GAME_USER', password: 'PG_GAME_PASSWORD' },
-    api: { user: 'PG_API_USER', password: 'PG_API_PASSWORD' },
-    platform: { user: 'PG_PLATFORM_USER', password: 'PG_PLATFORM_PASSWORD' },
-  };
-  for (const [serviceName, role] of Object.entries(serviceRoles)) {
-    const block = serviceBlock(relativePath, serviceName);
-    if (!/\n {4}env_file:\s+\.env(?:\n|$)/.test(`\n${block}\n`)) {
-      throw new Error(`${relativePath} ${serviceName} must retain env_file: .env for optional runtime configuration`);
-    }
-    if (!block.includes(`PG_USER=\${${role.user}:?`)) {
-      throw new Error(`${relativePath} ${serviceName} must bind PG_USER to ${role.user}`);
-    }
-    if (!block.includes(`PG_PASSWORD=\${${role.password}:?`)) {
-      throw new Error(`${relativePath} ${serviceName} must bind PG_PASSWORD to ${role.password}`);
-    }
-    if (!block.includes('DATABASE_URL=')) {
-      throw new Error(`${relativePath} ${serviceName} must clear DATABASE_URL`);
-    }
-    for (const variable of ROLE_PASSWORDS) {
-      if (variable === role.password) continue;
-      if (!block.includes(`${variable}=`)) {
-        throw new Error(`${relativePath} ${serviceName} must explicitly mask ${variable} inherited from env_file`);
-      }
-    }
-  }
+function server4ServiceNames() {
+  const compose = read(SERVER4_COMPOSE);
+  const serviceSection = compose.match(/^services:\s*\n([\s\S]*?)(?=^\S|^networks:)/m)?.[1];
+  if (!serviceSection) throw new Error(`${SERVER4_COMPOSE} has no services section`);
+  return [...serviceSection.matchAll(/^ {2}([A-Za-z0-9_.-]+):\s*$/gm)].map((match) => match[1]);
 }
 
-function assertRuntimeEnvironmentInventory(relativePath) {
-  const api = serviceBlock(relativePath, 'api');
+function assertRuntimeEnvironmentInventory() {
+  const api = serviceBlock(SERVER4_COMPOSE, 'api');
   const requiredApiVariables = [
     'AUTH_MODE',
     'TURNSTILE_SECRET_KEY',
@@ -189,11 +104,11 @@ function assertRuntimeEnvironmentInventory(relativePath) {
   ];
   for (const variable of requiredApiVariables) {
     if (!api.includes(`${variable}=\${${variable}`)) {
-      throw new Error(`${relativePath} API runtime must explicitly map ${variable}`);
+      throw new Error(`${SERVER4_COMPOSE} API runtime must explicitly map ${variable}`);
     }
   }
-  for (const serviceName of ['game', 'api', 'platform']) {
-    const block = serviceBlock(relativePath, serviceName);
+  for (const serviceName of SERVER4_RUNTIME_SERVICES) {
+    const block = serviceBlock(SERVER4_COMPOSE, serviceName);
     for (const variable of [
       'SENTRY_DSN',
       'SENTRY_ENVIRONMENT',
@@ -205,241 +120,183 @@ function assertRuntimeEnvironmentInventory(relativePath) {
       'PG_POOL_MAX',
     ]) {
       if (!block.includes(`${variable}=\${${variable}`)) {
-        throw new Error(`${relativePath} ${serviceName} must explicitly map ${variable}`);
+        throw new Error(`${SERVER4_COMPOSE} ${serviceName} must explicitly map ${variable}`);
       }
     }
   }
 }
 
-function assertProductionRuntimeInputs() {
-  const roleUserInputs = [
+function assertServer4BetaCompose() {
+  const compose = read(SERVER4_COMPOSE);
+  const services = server4ServiceNames();
+  if (JSON.stringify(services) !== JSON.stringify(SERVER4_SERVICES)) {
+    throw new Error(`${SERVER4_COMPOSE} beta services must be exactly: ${SERVER4_SERVICES.join(', ')}`);
+  }
+
+  const forbiddenMaturityInputs = [
+    'PG_API_USER',
+    'PG_API_PASSWORD',
+    'PG_GAME_USER',
+    'PG_GAME_PASSWORD',
+    'PG_PLATFORM_USER',
+    'PG_PLATFORM_PASSWORD',
+    'PG_RETENTION_',
+    'PG_MONITOR_',
+    'PG_BACKUP_',
+    'PG_WAL_',
+    'REQUIRE_DISTINCT_DB_ROLES',
+    'RETENTION_IMAGE',
+    '${GAME_IMAGE:?',
+    '${API_IMAGE:?',
+    '${PLATFORM_IMAGE:?',
+    '${MIGRATE_IMAGE:?',
+    '@sha256:',
+  ];
+  for (const input of forbiddenMaturityInputs) {
+    if (compose.includes(input)) throw new Error(`${SERVER4_COMPOSE} beta path must not require ${input}`);
+  }
+
+  const migrate = serviceBlock(SERVER4_COMPOSE, 'migrate');
+  for (const fragment of [
+    'dockerfile: Dockerfile.migrate',
+    'PG_USER=${PG_MIGRATION_USER:?',
+    'PG_PASSWORD=${PG_MIGRATION_PASSWORD:?',
+    'PG_APP_USER=${PG_APP_USER:?',
+    'PG_APP_PASSWORD=',
+    'REQUIRE_APP_ROLE_GATE=true',
+    'REQUIRE_ROLE_MATRIX_GATE=false',
+    'DATABASE_URL=',
+  ]) {
+    if (!migrate.includes(fragment)) throw new Error(`${SERVER4_COMPOSE} migrate is missing ${fragment}`);
+  }
+
+  for (const serviceName of SERVER4_RUNTIME_SERVICES) {
+    const block = serviceBlock(SERVER4_COMPOSE, serviceName);
+    for (const fragment of [
+      'build:',
+      'APP_VERSION=${APP_VERSION:?',
+      'APP_BUILD_ID=${APP_BUILD_ID:?',
+      'GAME_RULES_VERSION=${GAME_RULES_VERSION:?',
+      'PG_USER=${PG_APP_USER:?',
+      'PG_PASSWORD=${PG_APP_PASSWORD:?',
+      'PG_MIGRATION_PASSWORD=',
+      'DATABASE_URL=',
+      'RUNTIME_SCHEMA_DDL=false',
+      'REDIS_URL=${REDIS_URL:?',
+      'REDIS_DB=${REDIS_DB:-0}',
+      'EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?',
+      'EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?',
+      'depends_on:',
+      'condition: service_completed_successfully',
+      'healthcheck:',
+    ]) {
+      if (!block.includes(fragment)) throw new Error(`${SERVER4_COMPOSE} ${serviceName} is missing ${fragment}`);
+    }
+  }
+
+  for (const [fragment, expectedCount] of [
+    ['PGSSLMODE=${PGSSLMODE:?', 4],
+    ['PG_SSLROOTCERT=${PG_SSLROOTCERT:?', 4],
+    ['PG_CA_FILE:?', 4],
+    ['EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?', 4],
+    ['EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?', 4],
+    ['METRICS_TOKEN=${METRICS_TOKEN:?', 3],
+  ]) {
+    const actualCount = nonCommentLines(compose).filter((line) => line.includes(fragment)).length;
+    if (actualCount !== expectedCount) {
+      throw new Error(`${SERVER4_COMPOSE} must contain ${expectedCount} instances of ${fragment}`);
+    }
+  }
+  assertRuntimeEnvironmentInventory();
+}
+
+function assertServer4DeployScript() {
+  const relativePath = 'scripts/deploy-server4.sh';
+  const absolutePath = path.join(ROOT, relativePath);
+  const deploy = read(relativePath);
+  if ((statSync(absolutePath).mode & 0o111) === 0) throw new Error(`${relativePath} must be executable`);
+
+  const requiredFragments = [
+    'origin/master',
+    'git reset --hard origin/master',
+    '000030_card_official_errata_english_source',
+    'APP_BUILD_ID',
+    'APP_VERSION',
+    'GAME_RULES_VERSION',
+    'EXPECTED_SCHEMA_MIGRATION',
+    'EXPECTED_SCHEMA_CHECKSUM',
+    'pg_dump',
+    '--format=custom',
+    'pg_restore --list',
+    'sha256sum --check',
+    '.env.previous',
+    '$COMPOSE_FILE.previous',
+    'extract_redis_db',
+    'CONFIG GET maxmemory-policy',
+    'noeviction',
+    'docker compose -f',
+    'build --pull migrate game api platform',
+    'up -d --wait',
+    'deploy-smoke.mjs',
+    'rollback_and_smoke',
+  ];
+  for (const fragment of requiredFragments) {
+    if (!deploy.includes(fragment)) throw new Error(`${relativePath} is missing beta safety step: ${fragment}`);
+  }
+
+  for (const forbidden of [
+    '--manifest',
+    '--sha',
+    'cosign',
+    'attestation',
+    'RETENTION_',
     'PG_API_USER',
     'PG_GAME_USER',
     'PG_PLATFORM_USER',
-    'PG_RETENTION_USER',
     'PG_MONITOR_USER',
     'PG_BACKUP_USER',
     'PG_WAL_USER',
-  ];
-  for (const relativePath of ['docker-compose.yml', ...RELEASE_COMPOSE_FILES]) {
-    if (countFragment(relativePath, 'METRICS_TOKEN=${METRICS_TOKEN:?') !== 3) {
-      throw new Error(`${relativePath} must require METRICS_TOKEN for all three runtime services`);
-    }
-    if (countFragment(relativePath, 'REQUIRE_APP_ROLE_GATE=true') !== 1) {
-      throw new Error(`${relativePath} must fail deployment when the post-migrate app role gate fails`);
-    }
-  }
-
-  for (const relativePath of RELEASE_COMPOSE_FILES) {
-    assertRoleEnvFileMasks(relativePath);
-    assertRuntimeEnvironmentInventory(relativePath);
-    for (const variable of roleUserInputs) {
-      if (countFragment(relativePath, `${variable}=\${${variable}:?`) < 1) {
-        throw new Error(`${relativePath} must require an explicit ${variable} role in production/staging`);
-      }
-    }
-    if (!read(relativePath).includes('REQUIRE_ROLE_MATRIX_GATE=true')) {
-      throw new Error(`${relativePath} must enable the complete PostgreSQL role matrix gate`);
-    }
-    if (!read(relativePath).includes('REQUIRE_DISTINCT_DB_ROLES=true')) {
-      throw new Error(`${relativePath} must reject aliased PostgreSQL roles in production/staging`);
-    }
-  }
-
-  const rolePasswordInputs = [
-    'PG_API_PASSWORD',
-    'PG_GAME_PASSWORD',
-    'PG_PLATFORM_PASSWORD',
-    'PG_RETENTION_PASSWORD',
-    'PG_MONITOR_PASSWORD',
-    'PG_BACKUP_PASSWORD',
-    'PG_WAL_PASSWORD',
-  ];
-  const configuredPasswords = rolePasswordInputs.map((name) => process.env[name]?.trim()).filter(Boolean);
-  if (
-    configuredPasswords.length === rolePasswordInputs.length &&
-    new Set(configuredPasswords).size !== configuredPasswords.length
-  ) {
-    throw new Error('production PostgreSQL role passwords must be pairwise distinct');
-  }
-
-  if (countFragment('docker-compose.server4.yml', 'PGSSLMODE=${PGSSLMODE:?') !== 4) {
-    throw new Error('docker-compose.server4.yml must require an explicit PostgreSQL TLS mode for every DB client');
-  }
-  if (countFragment('docker-compose.server4.yml', 'PG_SSLROOTCERT=${PG_SSLROOTCERT:?') !== 4) {
-    throw new Error('docker-compose.server4.yml must require a PostgreSQL CA path for every DB client');
-  }
-  if (countFragment('docker-compose.server4.yml', 'PG_CA_FILE:?') !== 4) {
-    throw new Error('docker-compose.server4.yml must mount the host service CA into every DB client');
-  }
-  if (countFragment('docker-compose.staging.yml', 'PGSSLMODE=${PGSSLMODE:?') !== 4) {
-    throw new Error('docker-compose.staging.yml must require an explicit PostgreSQL TLS mode for every DB client');
-  }
-  if (read('docker-compose.staging.yml').includes('PGSSLMODE=disable')) {
-    throw new Error('docker-compose.staging.yml must not force plaintext PostgreSQL');
-  }
-  const staging = read('docker-compose.staging.yml');
-  if (/^ {2}(?:postgres|redis):$/m.test(staging)) {
-    throw new Error(
-      'docker-compose.staging.yml must use external PostgreSQL/Redis instead of bundled plaintext services',
-    );
-  }
-  if (countFragment('docker-compose.staging.yml', 'REDIS_URL=${REDIS_URL:?Set REDIS_URL=rediss://') !== 3) {
-    throw new Error('docker-compose.staging.yml must require rediss:// for every Redis client');
-  }
-  if (countFragment('docker-compose.staging.yml', 'PGSSLROOTCERT=/run/secrets/postgres_ca') !== 4) {
-    throw new Error('docker-compose.staging.yml must mount the external PostgreSQL CA into every DB client');
-  }
-  if (!staging.includes('PG_CA_SECRET_NAME:?Set PG_CA_SECRET_NAME')) {
-    throw new Error('docker-compose.staging.yml must require an external PostgreSQL CA secret');
-  }
-  const monitoring = read('docker-compose.monitoring.yml');
-  if (!monitoring.includes('sslmode=${PG_MONITOR_SSLMODE:?') || monitoring.includes('sslmode=disable')) {
-    throw new Error('monitoring PostgreSQL TLS mode must be explicit and must not default to disabled');
-  }
-  if (
-    !monitoring.includes('PG_MONITOR_DATABASE:?') ||
-    !monitoring.includes('PGSSLROOTCERT=${PG_SSLROOTCERT:?') ||
-    !monitoring.includes('--redis.addr=rediss://') ||
-    !monitoring.includes('--tls-ca-cert-file=') ||
-    !monitoring.includes('--skip-tls-verification=false')
-  ) {
-    throw new Error('monitoring database exporters must require explicit databases and trusted TLS CAs');
-  }
-  if (!monitoring.includes("content: '${METRICS_TOKEN:?")) {
-    throw new Error('monitoring Compose must require the shared metrics token');
-  }
-
-  for (const relativePath of ['docker-compose.yml', ...RELEASE_COMPOSE_FILES]) {
-    for (const variable of [
-      'LOGTO_M2M_APP_ID',
-      'LOGTO_M2M_APP_SECRET',
-      'LOGTO_MANAGEMENT_RESOURCE',
-      'LOGTO_MANAGEMENT_SCOPE',
-      'ACCOUNT_DELETION_RECOVERY_INTERVAL_MS',
-      'ACCOUNT_EXPORT_MAX_BYTES',
-    ]) {
-      if (countFragment(relativePath, `${variable}=\${${variable}`) !== 1) {
-        throw new Error(`${relativePath} must pass ${variable} exactly once to the API runtime`);
-      }
-    }
-  }
-  for (const dockerfile of ['Dockerfile', 'Dockerfile.migrate', 'api/Dockerfile']) {
-    if (read(dockerfile).includes('LOGTO_M2M_APP_SECRET')) {
-      throw new Error(`${dockerfile} must not bake LOGTO_M2M_APP_SECRET into an image`);
-    }
-  }
-  if (!read('.env.example').includes('LOGTO_MANAGEMENT_SCOPE=delete:users')) {
-    throw new Error('.env.example must document the least-privilege Logto account deletion scope');
-  }
-  const retention = read('docker-compose.retention.yml');
-  if (!retention.includes('PGSSLMODE: ${PG_RETENTION_SSLMODE:?')) {
-    throw new Error('retention worker must require an explicit PostgreSQL TLS mode');
-  }
-  if (!retention.includes('PG_RETENTION_DATABASE:?') || !retention.includes('PG_CA_FILE:?')) {
-    throw new Error('retention worker must require an explicit database and mounted PostgreSQL CA');
-  }
-  if (!retention.includes('RETENTION_METRICS_GID:?')) {
-    throw new Error('retention worker must declare its metrics group contract');
+  ]) {
+    if (deploy.includes(forbidden)) throw new Error(`${relativePath} beta path must not require ${forbidden}`);
   }
 }
 
 function assertWorkflowContract() {
-  const workflow = read('.github/workflows/cd.yml');
-  const requiredFragments = [
-    'workflow_dispatch:',
-    'release_ref:',
-    'npm run verify',
-    'gh run list --workflow ci.yml --commit',
-    'sha256sum',
-    'EXPECTED_SCHEMA_CHECKSUM',
-    'trivy',
-    'cosign verify',
-    'gh attestation verify',
-    'actions/attest-build-provenance@',
-    'docker/build-push-action@',
-    'Dockerfile.retention',
-    'RETENTION_IMAGE',
-    '@sha256:',
-    'verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss',
-    'release-gate:',
-    'staging_evidence_run_id:',
-    'npm run release:gate',
-    '--release-manifest .release.env',
-    '--evidence-run-id "$STAGING_EVIDENCE_RUN_ID"',
-    'release-gate-${{ needs.preflight.outputs.release_sha }}',
-  ];
-  for (const fragment of requiredFragments) {
-    if (!workflow.includes(fragment)) throw new Error(`cd.yml is missing release gate: ${fragment}`);
-  }
-  if (/\bTAG\b/.test(workflow) || /:latest|:staging/.test(workflow)) {
-    throw new Error('cd.yml must not deploy mutable TAG/latest/staging references');
-  }
-  if (
-    !read('.github/workflows/ci.yml').includes(
-      'verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss',
-    )
-  ) {
-    throw new Error('ci.yml must validate the rendered staging TLS/role environment');
-  }
-}
-
-function assertReleaseManifestContract() {
-  const resolver = read('scripts/resolve-release-manifest.sh');
-  const deploy = read('scripts/deploy-server4.sh');
-  for (const key of ['RELEASE_SHA', 'APP_VERSION', 'GAME_RULES_VERSION']) {
-    if (!resolver.includes(`printf '${key}=%s\\n'`)) {
-      throw new Error(`release manifest resolver must emit ${key}`);
-    }
-    if (!deploy.includes(key)) throw new Error(`deployment manifest validator must require ${key}`);
-  }
-  if (!deploy.includes('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS')) {
-    throw new Error('deployment must validate the rendered PostgreSQL role/TLS environment before migration');
-  }
-  if (!read('Dockerfile.migrate').includes('COPY scripts/verify-compose-role-env.mjs')) {
-    throw new Error('migration image must contain the rendered role environment validator');
-  }
-}
-
-function assertCosignIdentityPolicy() {
-  for (const relativePath of [
-    '.github/workflows/cd.yml',
-    'scripts/resolve-release-manifest.sh',
-    'scripts/deploy-server4.sh',
+  const ci = read('.github/workflows/ci.yml');
+  for (const fragment of [
+    'PG_MIGRATION_USER:',
+    'PG_MIGRATION_PASSWORD:',
+    'PG_APP_USER:',
+    'PG_APP_PASSWORD:',
+    'docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet',
+    'npm run release:config',
   ]) {
-    const contents = read(relativePath);
-    if (!contents.includes('refs/(heads/master|tags/v[0-9]+')) {
-      throw new Error(`${relativePath} must trust only master and semver-tag CD identities`);
-    }
-    if (contents.includes('@refs/.*')) throw new Error(`${relativePath} contains an over-broad Cosign identity policy`);
+    if (!ci.includes(fragment)) throw new Error(`ci.yml is missing server4 beta contract: ${fragment}`);
   }
-}
+  for (const forbidden of [
+    'docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs',
+    'Fresh PostgreSQL role matrix smoke',
+    'docker compose -f docker-compose.retention.yml',
+  ]) {
+    if (ci.includes(forbidden)) throw new Error(`ci.yml must not block beta on deferred gate: ${forbidden}`);
+  }
 
-function assertScripts() {
-  for (const relativePath of ['scripts/resolve-release-manifest.sh', 'scripts/postgres-init-roles.sh']) {
-    const absolutePath = path.join(ROOT, relativePath);
-    if (!existsSync(absolutePath)) throw new Error(`missing release script: ${relativePath}`);
-    if ((statSync(absolutePath).mode & 0o111) === 0) throw new Error(`${relativePath} must be executable`);
+  const cd = read('.github/workflows/cd.yml');
+  for (const fragment of [
+    'branches: [codex/deferred-production-hardening]',
+    "if: github.ref == 'refs/heads/codex/deferred-production-hardening'",
+  ]) {
+    if (!cd.includes(fragment)) {
+      throw new Error(`cd.yml must restrict deferred immutable release jobs to hardening: ${fragment}`);
+    }
   }
-  for (const relativePath of ['ops/systemd/zutomayo-retention.service', 'ops/systemd/zutomayo-retention.timer']) {
-    if (!existsSync(path.join(ROOT, relativePath))) throw new Error(`missing release unit: ${relativePath}`);
-  }
-  if (!existsSync(path.join(ROOT, 'scripts/verify-compose-role-env.mjs'))) {
-    throw new Error('missing rendered Compose role environment validator');
-  }
-  if (!existsSync(path.join(ROOT, 'Dockerfile.retention'))) throw new Error('missing retention worker Dockerfile');
 }
 
 export function validateReleaseConfig() {
-  for (const relativePath of COMPOSE_FILES) assertNoMutableImageTags(relativePath);
-  for (const relativePath of RELEASE_COMPOSE_FILES) assertDigestInputs(relativePath);
-  assertRetentionDigestInput();
-  assertProductionRuntimeInputs();
+  assertServer4BetaCompose();
+  assertServer4DeployScript();
   assertPinnedWorkflowActions();
   assertWorkflowContract();
-  assertReleaseManifestContract();
-  assertCosignIdentityPolicy();
-  assertScripts();
   return true;
 }
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Deploy or roll back a verified immutable release on server4.
-# The script never builds on the server and never uses a mutable tag.
+# Deploy the current origin/master beta release to server4, or restore the
+# runtime images and configuration captured immediately before that release.
 #
 # Usage:
-#   ./scripts/deploy-server4.sh --manifest .release.env --confirm
-#   ./scripts/deploy-server4.sh --manifest .release.env --bootstrap --confirm
+#   ./scripts/deploy-server4.sh
+#   ./scripts/deploy-server4.sh --confirm
+#   ./scripts/deploy-server4.sh --dry-run
 #   ./scripts/deploy-server4.sh --rollback --confirm
-#   ./scripts/deploy-server4.sh --manifest .release.env --dry-run
 
 set -euo pipefail
 
@@ -17,23 +17,25 @@ SERVER_PORT="${SERVER_PORT:-4649}"
 SERVER_USER="${SERVER_USER:-root}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/zutomayo-card-online}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.server4.yml}"
-RETENTION_COMPOSE_FILE="${RETENTION_COMPOSE_FILE:-docker-compose.retention.yml}"
-RETENTION_SERVICE_GROUP="${RETENTION_SERVICE_GROUP:-zutomayo-retention}"
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-postgresql}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-redis}"
+REMOTE_BACKUP_DIR="${REMOTE_BACKUP_DIR:-$REMOTE_DIR/backups/pre-deploy}"
+DEPLOY_WAIT_SECONDS="${DEPLOY_WAIT_SECONDS:-180}"
 GAME_PORT="${GAME_PORT:-3000}"
 API_PORT="${API_PORT:-3001}"
 PLATFORM_PORT="${PLATFORM_PORT:-3002}"
 SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
-VERIFY_RELEASE_ARTIFACTS="${VERIFY_RELEASE_ARTIFACTS:-true}"
-COSIGN_IDENTITY_REGEXP="${COSIGN_IDENTITY_REGEXP:-https://github.com/${GITHUB_REPOSITORY:-}/.github/workflows/cd\\.yml@refs/(heads/master|tags/v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?)$}"
-COSIGN_OIDC_ISSUER="${COSIGN_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
-MANIFEST_FILE="${RELEASE_MANIFEST:-$PROJECT_DIR/.release.env}"
+GHCR_OWNER="${GHCR_OWNER:-lyangjyehaur}"
+GAME_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-game"
+API_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-api"
+PLATFORM_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-platform"
+EXPECTED_SCHEMA_MIGRATION="000030_card_official_errata_english_source"
+
 CONFIRM=false
 DRY_RUN=false
 ROLLBACK=false
-BOOTSTRAP=false
-ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full --require-rediss'
 
 usage() {
   sed -n '2,10p' "$0"
@@ -42,17 +44,11 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --manifest)
-      [[ $# -ge 2 ]] || { echo '--manifest requires a file' >&2; exit 2; }
-      MANIFEST_FILE="$2"
-      shift 2
-      ;;
     --confirm) CONFIRM=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --rollback) ROLLBACK=true; shift ;;
-    --bootstrap) BOOTSTRAP=true; shift ;;
     -h|--help) usage ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
+    *) printf 'unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
 done
 
@@ -60,143 +56,190 @@ log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 die() { printf '[%s] ERROR: %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 1; }
 ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 
-[[ "$RETENTION_SERVICE_GROUP" =~ ^[a-z_][a-z0-9_-]*$ ]] || die 'RETENTION_SERVICE_GROUP is invalid'
+[[ "$REMOTE_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'REMOTE_DIR contains unsupported characters'
+[[ "$REMOTE_BACKUP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'REMOTE_BACKUP_DIR contains unsupported characters'
+[[ "$COMPOSE_FILE" =~ ^[A-Za-z0-9._-]+$ ]] || die 'COMPOSE_FILE must be a file name'
+[[ "$POSTGRES_CONTAINER" =~ ^[A-Za-z0-9._-]+$ ]] || die 'POSTGRES_CONTAINER is invalid'
+[[ "$REDIS_CONTAINER" =~ ^[A-Za-z0-9._-]+$ ]] || die 'REDIS_CONTAINER is invalid'
+[[ "$DEPLOY_WAIT_SECONDS" =~ ^[0-9]+$ ]] || die 'DEPLOY_WAIT_SECONDS must be an integer'
 
-validate_manifest() {
-  local file="$1" key value app
-  [[ -f "$file" ]] || die "release manifest not found: $file"
-  RELEASE_SHA=''
-  APP_VERSION=''
-  GAME_RULES_VERSION=''
-  EXPECTED_SCHEMA_MIGRATION=''
-  EXPECTED_SCHEMA_CHECKSUM=''
-  GAME_IMAGE=''
-  API_IMAGE=''
-  PLATFORM_IMAGE=''
-  MIGRATE_IMAGE=''
-  RETENTION_IMAGE=''
-  while IFS='=' read -r key value || [[ -n "$key" ]]; do
-    [[ -z "$key" ]] && continue
-    case "$key" in
-      RELEASE_SHA|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE)
-        printf -v "$key" '%s' "$value"
-        ;;
-      *) die "invalid manifest key: $key" ;;
-    esac
-  done < "$file"
-  [[ "$RELEASE_SHA" =~ ^[[:xdigit:]]{40}$ ]] || die 'manifest RELEASE_SHA must be a full commit SHA'
-  [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || die 'manifest APP_VERSION is invalid'
-  [[ "$GAME_RULES_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || die 'manifest GAME_RULES_VERSION is invalid'
-  [[ "$EXPECTED_SCHEMA_MIGRATION" =~ ^[0-9]{6,}_[a-z0-9_]+$ ]] || die 'manifest EXPECTED_SCHEMA_MIGRATION is invalid'
-  [[ "$EXPECTED_SCHEMA_CHECKSUM" =~ ^[a-f0-9]{64}$ ]] || die 'manifest EXPECTED_SCHEMA_CHECKSUM is invalid'
-  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE; do
-    app="${key%_IMAGE}"
-    app="$(printf '%s' "$app" | tr '[:upper:]' '[:lower:]')"
-    value="${!key}"
-    [[ "$value" =~ ^ghcr\.io/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+-${app}@sha256:[[:xdigit:]]{64}$ ]] || die "manifest $key must be an immutable GHCR digest"
-  done
-}
-
-verify_manifest_artifacts() {
-  [[ "$VERIFY_RELEASE_ARTIFACTS" == true ]] || return 0
-  [[ -n "${GITHUB_REPOSITORY:-}" ]] || die 'GITHUB_REPOSITORY is required for release attestation verification'
-  command -v cosign >/dev/null 2>&1 || die 'cosign is required for release artifact verification'
-  command -v gh >/dev/null 2>&1 || die 'gh is required for release attestation verification'
-  local key ref
-  for key in GAME_IMAGE API_IMAGE PLATFORM_IMAGE MIGRATE_IMAGE RETENTION_IMAGE; do
-    ref="${!key}"
-    cosign verify \
-      --certificate-identity-regexp "$COSIGN_IDENTITY_REGEXP" \
-      --certificate-oidc-issuer "$COSIGN_OIDC_ISSUER" \
-      "$ref" >/dev/null
-    gh attestation verify "oci://${ref}" --repo "$GITHUB_REPOSITORY" >/dev/null
-  done
-}
-
-validate_remote_previous_manifest() {
-  local file="$1"
-  ssh_run "cat '$REMOTE_DIR/.release.previous.env'" > "$file" || die 'remote previous release manifest is unreadable'
-  validate_manifest "$file"
-  local migration_file="${PROJECT_DIR}/migrations/${EXPECTED_SCHEMA_MIGRATION}.js"
-  [[ -f "$migration_file" ]] || die "rollback migration file is missing: $migration_file"
-  local actual_checksum
+sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
-    actual_checksum="$(sha256sum "$migration_file" | awk '{print $1}')"
+    sha256sum "$1" | awk '{print $1}'
   else
-    actual_checksum="$(shasum -a 256 "$migration_file" | awk '{print $1}')"
+    shasum -a 256 "$1" | awk '{print $1}'
   fi
-  [[ "$actual_checksum" == "$EXPECTED_SCHEMA_CHECKSUM" ]] || die 'rollback schema checksum is not present in this checkout'
-  verify_manifest_artifacts
 }
 
 confirm_action() {
   [[ "$CONFIRM" == true ]] || return 0
+  local answer
   read -r -p "Continue with $1 on $SERVER_HOST? [y/N] " answer
   [[ "$answer" =~ ^[Yy]$ ]] || die 'cancelled'
 }
 
-copy_release_files() {
-  local source="$1" compose_source="$PROJECT_DIR/$COMPOSE_FILE" retention_compose_source="$PROJECT_DIR/$RETENTION_COMPOSE_FILE"
-  [[ -f "$compose_source" ]] || die "local compose file not found: $compose_source"
-  [[ -f "$retention_compose_source" ]] || die "local retention compose file not found: $retention_compose_source"
-  scp -P "$SERVER_PORT" "$source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.release.env.incoming"
-  scp -P "$SERVER_PORT" "$compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.compose.incoming"
-  scp -P "$SERVER_PORT" "$retention_compose_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.retention-compose.incoming"
-  scp -P "$SERVER_PORT" "$PROJECT_DIR/scripts/postgres-init-roles.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.postgres-init-roles.incoming"
+load_local_release() {
+  cd "$PROJECT_DIR"
+  [[ -z "$(git status --porcelain)" ]] || die 'local worktree is not clean'
+  [[ "$(git branch --show-current)" == master ]] || die 'server4 deployments must run from the master branch'
+  git fetch origin >/dev/null
+  TARGET_SHA="$(git rev-parse HEAD)"
+  local origin_sha
+  origin_sha="$(git rev-parse origin/master)"
+  [[ "$TARGET_SHA" == "$origin_sha" ]] || die 'local master must exactly match origin/master before deployment'
+  TARGET_SHORT="$(git rev-parse --short=12 "$TARGET_SHA")"
+  PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+  [[ "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || die 'package version is invalid'
+  local migration_file="migrations/${EXPECTED_SCHEMA_MIGRATION}.js"
+  [[ -f "$migration_file" ]] || die "expected migration is missing: $migration_file"
+  EXPECTED_SCHEMA_CHECKSUM="$(sha256_file "$migration_file")"
+  [[ "$EXPECTED_SCHEMA_CHECKSUM" =~ ^[a-f0-9]{64}$ ]] || die 'migration checksum is invalid'
 }
 
-remote_deploy() {
-  ssh_run "set -euo pipefail;
-    cd '$REMOTE_DIR';
-    test -f .env;
-    getent group '$RETENTION_SERVICE_GROUP' >/dev/null || { echo 'retention service group is missing' >&2; exit 1; };
-    if test -f .release.env; then cp -p .release.env .release.previous.env; chgrp '$RETENTION_SERVICE_GROUP' .release.previous.env; chmod 0640 .release.previous.env; fi;
-    if test -f '$COMPOSE_FILE'; then cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.previous'; fi;
-    if test -f '$RETENTION_COMPOSE_FILE'; then cp -p '$RETENTION_COMPOSE_FILE' '$RETENTION_COMPOSE_FILE.previous'; fi;
-    install -m 0640 .release.env.incoming .release.env;
-    chgrp '$RETENTION_SERVICE_GROUP' .release.env;
-    install -m 0644 .compose.incoming '$COMPOSE_FILE';
-    install -m 0644 .retention-compose.incoming '$RETENTION_COMPOSE_FILE';
-    install -d -m 0755 scripts;
-    install -m 0755 .postgres-init-roles.incoming scripts/postgres-init-roles.sh;
-    rm -f .release.env.incoming .compose.incoming .retention-compose.incoming .postgres-init-roles.incoming;
-    set -a; . ./.release.env; set +a;
-    docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
-    docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' pull --quiet retention;
-    docker compose -f '$COMPOSE_FILE' config --quiet;
-    docker compose -f '$COMPOSE_FILE' pull --quiet;
-    docker compose -f '$COMPOSE_FILE' config --format json | docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate node scripts/verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS;
-    docker compose -f '$COMPOSE_FILE' run --rm migrate;
-    docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout 180;
-    date -u +%Y-%m-%dT%H:%M:%SZ > .release.deployed-at;
+remote_predeploy_backup() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    test -f .env
+    test -f '$COMPOSE_FILE'
+    umask 077
+    timestamp=\$(date -u +%Y%m%dT%H%M%SZ)
+    mkdir -p '$REMOTE_BACKUP_DIR'
+    chmod 0700 '$REMOTE_BACKUP_DIR'
+    cp -p .env '$REMOTE_BACKUP_DIR/.env.'\"\$timestamp\"
+    cp -p '$COMPOSE_FILE' '$REMOTE_BACKUP_DIR/$COMPOSE_FILE.'\"\$timestamp\"
+    cp -p .env .env.previous
+    cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.previous'
+    set -a
+    . ./.env
+    set +a
+    : \"\${PG_MIGRATION_USER:?PG_MIGRATION_USER is required for the pre-deploy backup}\"
+    : \"\${PG_MIGRATION_PASSWORD:?PG_MIGRATION_PASSWORD is required for the pre-deploy backup}\"
+    : \"\${PG_DATABASE:?PG_DATABASE is required for the pre-deploy backup}\"
+    dump='$REMOTE_BACKUP_DIR/zutomayo-'\"\$timestamp\"'.dump'
+    docker exec -e PGPASSWORD=\"\$PG_MIGRATION_PASSWORD\" '$POSTGRES_CONTAINER' \
+      pg_dump --username \"\$PG_MIGRATION_USER\" --dbname \"\$PG_DATABASE\" \
+      --format=custom --compress=6 --no-owner --no-privileges > \"\$dump\"
+    test -s \"\$dump\"
+    docker exec -i '$POSTGRES_CONTAINER' pg_restore --list < \"\$dump\" >/dev/null
+    sha256sum \"\$dump\" > \"\$dump.sha256\"
+    sha256sum --check \"\$dump.sha256\"
+    printf 'pre-deploy backup: %s\n' \"\$dump\""
+}
+
+remote_sync_master_and_env() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    git config --global --add safe.directory '$REMOTE_DIR' 2>/dev/null || true
+    git fetch origin
+    git reset --hard origin/master
+    test \"\$(git rev-parse HEAD)\" = '$TARGET_SHA'
+    printf '%s  %s\n' '$EXPECTED_SCHEMA_CHECKSUM' 'migrations/$EXPECTED_SCHEMA_MIGRATION.js' | sha256sum --check
+    upsert_env() {
+      key=\"\$1\"
+      value=\"\$2\"
+      if grep -q \"^\${key}=\" .env; then
+        sed -i \"s|^\${key}=.*|\${key}=\${value}|\" .env
+      else
+        printf '%s=%s\n' \"\$key\" \"\$value\" >> .env
+      fi
+    }
+    upsert_env APP_BUILD_ID '$TARGET_SHA'
+    upsert_env APP_VERSION '$PACKAGE_VERSION'
+    upsert_env GAME_RULES_VERSION '$PACKAGE_VERSION'
+    upsert_env EXPECTED_SCHEMA_MIGRATION '$EXPECTED_SCHEMA_MIGRATION'
+    upsert_env EXPECTED_SCHEMA_CHECKSUM '$EXPECTED_SCHEMA_CHECKSUM'
+    grep -E '^(APP_BUILD_ID|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM)=' .env"
+}
+
+verify_remote_runtime_config() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    set -a
+    . ./.env
+    set +a
+    : \"\${PG_MIGRATION_USER:?PG_MIGRATION_USER is required}\"
+    : \"\${PG_MIGRATION_PASSWORD:?PG_MIGRATION_PASSWORD is required}\"
+    : \"\${PG_APP_USER:?PG_APP_USER is required}\"
+    : \"\${PG_APP_PASSWORD:?PG_APP_PASSWORD is required}\"
+    : \"\${REDIS_URL:?REDIS_URL is required}\"
+    test \"\${PGSSLMODE:-}\" = verify-full || { echo 'PGSSLMODE must be verify-full' >&2; exit 1; }
+    test -r \"\${PG_CA_FILE:?PG_CA_FILE is required}\" || { echo 'PG_CA_FILE is not readable' >&2; exit 1; }
+    docker compose -f '$COMPOSE_FILE' config --quiet
+    config=\$(docker compose -f '$COMPOSE_FILE' config)
+    extract_redis_db() {
+      printf '%s\n' \"\$config\" | awk -v service=\"\$1\" '
+        \$0 == \"  \" service \":\" { in_service=1; next }
+        in_service && \$0 ~ /^  [A-Za-z0-9_.-]+:$/ { in_service=0 }
+        in_service && \$0 ~ /^      REDIS_DB:/ {
+          sub(/^      REDIS_DB:[[:space:]]*/, \"\")
+          gsub(/[\"\x27]/, \"\")
+          print
+          exit
+        }
+      '
+    }
+    game_redis_db=\$(extract_redis_db game)
+    api_redis_db=\$(extract_redis_db api)
+    platform_redis_db=\$(extract_redis_db platform)
+    if test -z \"\$game_redis_db\" || test \"\$game_redis_db\" != \"\$api_redis_db\" || test \"\$game_redis_db\" != \"\$platform_redis_db\"; then
+      printf 'Redis DB mismatch: game=%s api=%s platform=%s\n' \"\$game_redis_db\" \"\$api_redis_db\" \"\$platform_redis_db\" >&2
+      exit 1
+    fi
+    printf 'Redis DB consistent: %s\n' \"\$game_redis_db\"
+    policy=\$(docker exec -e REDISCLI_AUTH=\"\${REDIS_PASSWORD:-}\" '$REDIS_CONTAINER' \
+      redis-cli --no-auth-warning CONFIG GET maxmemory-policy | tail -n 1)
+    test \"\$policy\" = noeviction || { printf 'Redis maxmemory-policy must be noeviction (got: %s)\n' \"\$policy\" >&2; exit 1; }
+    echo 'Redis eviction policy: noeviction'"
+}
+
+capture_rollback_images() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    rm -f .server4-rollback-ready
+    if docker image inspect '$GAME_IMAGE:latest' '$API_IMAGE:latest' '$PLATFORM_IMAGE:latest' >/dev/null 2>&1; then
+      docker tag '$GAME_IMAGE:latest' '$GAME_IMAGE:rollback'
+      docker tag '$API_IMAGE:latest' '$API_IMAGE:rollback'
+      docker tag '$PLATFORM_IMAGE:latest' '$PLATFORM_IMAGE:rollback'
+      touch .server4-rollback-ready
+    elif grep -Eq '^GAME_IMAGE=.+@sha256:' .env.previous \
+      && grep -Eq '^API_IMAGE=.+@sha256:' .env.previous \
+      && grep -Eq '^PLATFORM_IMAGE=.+@sha256:' .env.previous; then
+      touch .server4-rollback-ready
+    else
+      echo 'warning: complete previous runtime image set was not found; automatic rollback is unavailable' >&2
+    fi"
+}
+
+remote_build_and_start() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    docker compose -f '$COMPOSE_FILE' build --pull migrate game api platform
+    docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout '$DEPLOY_WAIT_SECONDS'
     docker compose -f '$COMPOSE_FILE' ps"
 }
 
 remote_rollback() {
-  ssh_run "set -euo pipefail;
-    cd '$REMOTE_DIR';
-    test -s .release.previous.env || { echo 'no verified previous release manifest' >&2; exit 1; };
-    test -s '$RETENTION_COMPOSE_FILE.previous' || { echo 'no verified previous retention compose file' >&2; exit 1; };
-    getent group '$RETENTION_SERVICE_GROUP' >/dev/null || { echo 'retention service group is missing' >&2; exit 1; };
-    cp -p .release.env .release.failed.env 2>/dev/null || true;
-    cp -p .release.previous.env .release.env;
-    chgrp '$RETENTION_SERVICE_GROUP' .release.env;
-    chmod 0640 .release.env;
-    if test -f '$COMPOSE_FILE.previous'; then cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.failed'; cp -p '$COMPOSE_FILE.previous' '$COMPOSE_FILE'; fi;
-    cp -p '$RETENTION_COMPOSE_FILE' '$RETENTION_COMPOSE_FILE.failed' 2>/dev/null || true;
-    cp -p '$RETENTION_COMPOSE_FILE.previous' '$RETENTION_COMPOSE_FILE';
-    set -a; . ./.release.env; set +a;
-    docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
-    docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' pull --quiet retention;
-    docker compose -f '$COMPOSE_FILE' config --quiet;
-    docker compose -f '$COMPOSE_FILE' pull --quiet;
-    docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout 180;
-    date -u +%Y-%m-%dT%H:%M:%SZ > .release.rolled-back-at;
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    test -s .env.previous
+    test -s '$COMPOSE_FILE.previous'
+    cp -p .env .env.failed 2>/dev/null || true
+    cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.failed' 2>/dev/null || true
+    cp -p .env.previous .env
+    cp -p '$COMPOSE_FILE.previous' '$COMPOSE_FILE'
+    TAG=rollback docker compose -f '$COMPOSE_FILE' config --quiet
+    TAG=rollback docker compose -f '$COMPOSE_FILE' up -d --no-build --no-deps --wait \
+      --wait-timeout '$DEPLOY_WAIT_SECONDS' game api platform
+    date -u +%Y-%m-%dT%H:%M:%SZ > .release.rolled-back-at
     docker compose -f '$COMPOSE_FILE' ps"
 }
 
+remote_build_id() {
+  ssh_run "set -euo pipefail; cd '$REMOTE_DIR'; sed -n 's/^APP_BUILD_ID=//p' .env | tail -n 1"
+}
+
 run_smoke() {
-  local tunnel_pid status
+  local expected_build_id="$1" tunnel_pid status
   ssh -p "$SERVER_PORT" -o ExitOnForwardFailure=yes -N -T \
     -L "${SMOKE_LOCAL_GAME_PORT}:127.0.0.1:${GAME_PORT}" \
     -L "${SMOKE_LOCAL_API_PORT}:127.0.0.1:${API_PORT}" \
@@ -214,7 +257,7 @@ run_smoke() {
     --game-port "$SMOKE_LOCAL_GAME_PORT" \
     --api-port "$SMOKE_LOCAL_API_PORT" \
     --platform-port "$SMOKE_LOCAL_PLATFORM_PORT" \
-    --expected-build-id "$RELEASE_SHA"
+    --expected-build-id "$expected_build_id"
   status=$?
   set -e
   kill "$tunnel_pid" >/dev/null 2>&1 || true
@@ -224,64 +267,64 @@ run_smoke() {
 
 rollback_and_smoke() {
   remote_rollback || return 1
-  run_smoke
+  local previous_build_id
+  previous_build_id="$(remote_build_id)"
+  [[ -n "$previous_build_id" ]] || return 1
+  run_smoke "$previous_build_id"
 }
 
 if [[ "$ROLLBACK" == true ]]; then
-  confirm_action 'rollback to the previously verified manifest'
+  confirm_action 'rollback to the previous server4 runtime images and configuration'
   if [[ "$DRY_RUN" == true ]]; then
-    log '[dry-run] would restore .release.previous.env and restart the stack'
+    log '[dry-run] would restore .env.previous, the previous Compose file, and previous runtime images'
     exit 0
   fi
-  previous_manifest="$(mktemp)"
-  trap 'rm -f "$previous_manifest"' EXIT
-  ssh_run "test -s '$REMOTE_DIR/.release.previous.env'" || die 'remote previous release manifest is missing'
-  validate_remote_previous_manifest "$previous_manifest"
-  remote_rollback
-  run_smoke
-  log 'rollback completed'
+  ssh_run "test -s '$REMOTE_DIR/.env.previous' && test -s '$REMOTE_DIR/$COMPOSE_FILE.previous'" || \
+    die 'previous server4 configuration is unavailable'
+  rollback_and_smoke || die 'rollback or rollback health verification failed'
+  log 'rollback completed and health checks passed'
   exit 0
 fi
 
-validate_manifest "$MANIFEST_FILE"
-verify_manifest_artifacts
-confirm_action "deploy $(sed -n 's/^RELEASE_SHA=//p' "$MANIFEST_FILE" | cut -c1-12)"
+load_local_release
+confirm_action "deploy origin/master $TARGET_SHORT"
 if [[ "$DRY_RUN" == true ]]; then
-  log "[dry-run] would upload $MANIFEST_FILE and deploy immutable images"
+  log "[dry-run] would back up PostgreSQL and deploy origin/master $TARGET_SHORT"
+  log "[dry-run] schema=$EXPECTED_SCHEMA_MIGRATION checksum=$EXPECTED_SCHEMA_CHECKSUM"
   exit 0
 fi
 
 ssh_run 'echo connected' >/dev/null || die 'SSH connection failed'
-ssh_run "test -d '$REMOTE_DIR' && test -f '$REMOTE_DIR/.env'" || die 'remote deployment directory or .env is missing'
-if ssh_run "test -s '$REMOTE_DIR/.release.previous.env' && test -s '$REMOTE_DIR/$RETENTION_COMPOSE_FILE.previous'"; then
-  HAS_PREVIOUS=true
-else
-  HAS_PREVIOUS=false
-fi
-if [[ "$HAS_PREVIOUS" != true && "$BOOTSTRAP" != true ]]; then
-  die 'no verified previous release is present; use --bootstrap for the one-time cutover with a manual rollback plan'
-fi
-copy_release_files "$MANIFEST_FILE"
-if ! remote_deploy; then
-  if [[ "$HAS_PREVIOUS" == true ]]; then
-    log 'remote deployment failed; restoring previous verified release'
-    if ! rollback_and_smoke; then
-      log 'rollback verification failed; manual intervention is required'
-    fi
+ssh_run "test -d '$REMOTE_DIR' && test -f '$REMOTE_DIR/.env' && test -f '$REMOTE_DIR/$COMPOSE_FILE'" || \
+  die 'remote deployment directory, .env, or Compose file is missing'
+
+log 'creating a fresh PostgreSQL custom-format backup and configuration snapshots'
+remote_predeploy_backup
+log "aligning server4 source and release metadata to origin/master $TARGET_SHORT"
+remote_sync_master_and_env
+log 'checking PostgreSQL TLS and shared Redis safety configuration'
+verify_remote_runtime_config
+capture_rollback_images
+
+if ! remote_build_and_start; then
+  if ssh_run "test -f '$REMOTE_DIR/.server4-rollback-ready'"; then
+    log 'deployment failed; restoring the previous runtime images and configuration'
+    rollback_and_smoke || log 'rollback verification failed; manual intervention is required'
   else
-    log 'bootstrap deployment failed; no automatic rollback is available, manual intervention is required'
+    log 'deployment failed and no complete rollback image set is available'
   fi
   exit 1
 fi
-if ! run_smoke; then
-  if [[ "$HAS_PREVIOUS" == true ]]; then
-    log 'deployment smoke failed; restoring previous verified release'
-    if ! rollback_and_smoke; then
-      log 'rollback verification failed; manual intervention is required'
-    fi
+
+if ! run_smoke "$TARGET_SHA"; then
+  if ssh_run "test -f '$REMOTE_DIR/.server4-rollback-ready'"; then
+    log 'health verification failed; restoring the previous runtime images and configuration'
+    rollback_and_smoke || log 'rollback verification failed; manual intervention is required'
   else
-    log 'bootstrap smoke failed; no automatic rollback is available, manual intervention is required'
+    log 'health verification failed and no complete rollback image set is available'
   fi
   exit 1
 fi
-log 'deployment completed and smoke checks passed'
+
+ssh_run "date -u +%Y-%m-%dT%H:%M:%SZ > '$REMOTE_DIR/.release.deployed-at'"
+log "deployment completed: origin/master $TARGET_SHORT"

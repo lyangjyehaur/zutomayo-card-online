@@ -318,17 +318,25 @@ describe('PostgreSQL role provisioning contract', () => {
   });
 
   it('masks non-own role secrets while retaining optional env-file configuration', () => {
-    for (const composeFile of ['docker-compose.server4.yml', 'docker-compose.staging.yml']) {
-      const compose = readFileSync(composeFile, 'utf8');
-      expect(compose).toContain('env_file: .env');
-      expect(compose).toContain('PG_GAME_PASSWORD');
-      expect(compose).toContain('PG_API_PASSWORD');
-      expect(compose).toContain('PG_PLATFORM_PASSWORD');
-      expect(compose).toContain('PG_MIGRATION_PASSWORD=');
-      expect(compose).toContain('PG_RETENTION_PASSWORD=');
-      expect(compose).toContain('PG_MONITOR_PASSWORD=');
-      expect(compose).toContain('PG_BACKUP_PASSWORD=');
-      expect(compose).toContain('PG_WAL_PASSWORD=');
-    }
+    const staging = readFileSync('docker-compose.staging.yml', 'utf8');
+    expect(staging).toContain('env_file: .env');
+    expect(staging).toContain('PG_GAME_PASSWORD');
+    expect(staging).toContain('PG_API_PASSWORD');
+    expect(staging).toContain('PG_PLATFORM_PASSWORD');
+    expect(staging).toContain('PG_MIGRATION_PASSWORD=');
+    expect(staging).toContain('PG_RETENTION_PASSWORD=');
+    expect(staging).toContain('PG_MONITOR_PASSWORD=');
+    expect(staging).toContain('PG_BACKUP_PASSWORD=');
+    expect(staging).toContain('PG_WAL_PASSWORD=');
+
+    const server4 = readFileSync('docker-compose.server4.yml', 'utf8');
+    expect(server4).toContain('env_file: .env');
+    expect(server4.match(/PG_USER=\$\{PG_APP_USER:/g)).toHaveLength(3);
+    expect(server4.match(/PG_PASSWORD=\$\{PG_APP_PASSWORD:/g)).toHaveLength(3);
+    expect(server4.match(/PG_MIGRATION_PASSWORD=/g)).toHaveLength(3);
+    expect(server4).not.toContain('PG_GAME_PASSWORD');
+    expect(server4).not.toContain('PG_API_PASSWORD');
+    expect(server4).not.toContain('PG_PLATFORM_PASSWORD');
+    expect(server4).not.toContain('PG_RETENTION_PASSWORD');
   });
 });

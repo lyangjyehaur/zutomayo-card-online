@@ -189,16 +189,15 @@ export function validateOperationalConfig() {
   requireFragments('load-tests/websocket-load.js', ['WS_TARGET_CONNECTIONS', 'ws_connecting', 'ws_connect_success']);
   requireFragments('load-tests/matchmaking-load.js', ['mm_matched']);
   requireFragments('load-tests/auth-load.js', ['auth_refresh_success']);
-  for (const workflow of ['.github/workflows/ci.yml', '.github/workflows/cd.yml']) {
-    requireFragments(workflow, [
-      'npm run ops:config',
-      'docker-compose.yml -f docker-compose.retention.yml config --quiet',
-      'PG_RETENTION_HOST:',
-      'PG_RETENTION_USER:',
-      'PG_RETENTION_PASSWORD:',
-      'PG_RETENTION_SSLMODE:',
-    ]);
-  }
+  requireFragments('.github/workflows/ci.yml', ['npm run ops:config']);
+  requireFragments('.github/workflows/cd.yml', [
+    'npm run ops:config',
+    'docker-compose.yml -f docker-compose.retention.yml config --quiet',
+    'PG_RETENTION_HOST:',
+    'PG_RETENTION_USER:',
+    'PG_RETENTION_PASSWORD:',
+    'PG_RETENTION_SSLMODE:',
+  ]);
   return true;
 }
 

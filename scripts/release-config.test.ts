@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { findUnpinnedWorkflowActions } from './verify-release-config.mjs';
 
 describe('release configuration contract', () => {
-  it('rejects mutable deployment references and requires release gates', () => {
+  it('accepts the isolated server4 beta deployment contract', () => {
     const script = resolve(process.cwd(), 'scripts/verify-release-config.mjs');
     const output = execFileSync(process.execPath, [script], { encoding: 'utf8' });
     expect(output).toContain('release config: valid');

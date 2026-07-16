@@ -61,11 +61,21 @@ describe('operational shell scripts', () => {
     expect(smoke).toContain('api node social-concurrency-pg-smoke.cjs');
   });
 
-  it('gates the rendered production role/TLS environment before migration', () => {
+  it('keeps the server4 beta deployment backup, Redis, health, and rollback gates', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
-    expect(deploy).toContain('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS');
-    expect(deploy).toContain("ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full --require-rediss'");
-    expect(deploy).toContain('--bootstrap');
+    expect(deploy).toContain('git reset --hard origin/master');
+    expect(deploy).toContain('pg_dump');
+    expect(deploy).toContain('--format=custom');
+    expect(deploy).toContain('sha256sum --check');
+    expect(deploy).toContain('extract_redis_db');
+    expect(deploy).toContain('CONFIG GET maxmemory-policy');
+    expect(deploy).toContain('noeviction');
+    expect(deploy).toContain('build --pull migrate game api platform');
+    expect(deploy).toContain('up -d --wait');
+    expect(deploy).toContain('rollback_and_smoke');
+    expect(deploy).not.toContain('--manifest');
+    expect(deploy).not.toContain('cosign');
+    expect(deploy).not.toContain('attestation');
   });
 
   it('rejects an unknown migration subcommand instead of defaulting to up', () => {

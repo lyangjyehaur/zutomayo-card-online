@@ -2,8 +2,9 @@ name: CD
 
 on:
   push:
-    branches: [master]
-    tags: ['v*']
+    # Deferred production hardening is intentionally isolated from the
+    # server4 beta deployment sourced from master.
+    branches: [codex/deferred-production-hardening]
   workflow_dispatch:
     inputs:
       environment:
@@ -40,6 +41,7 @@ jobs:
   preflight:
     name: Release preflight
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/codex/deferred-production-hardening'
     timeout-minutes: 20
     outputs:
       release_sha: ${{ steps.release.outputs.sha }}

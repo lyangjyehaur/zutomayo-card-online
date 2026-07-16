@@ -626,108 +626,75 @@ npm run verify
 
 ## CD / 持續部署
 
-Continuous Deployment pipeline: [.github/workflows/cd.yml](../.github/workflows/cd.yml).
+### Server4 beta 部署（目前 `master` 的實際流程）
 
-### 觸發條件
-
-| 事件                | 動作                                                                    |
-| ------------------- | ----------------------------------------------------------------------- |
-| push to `master`    | 同一 preflight、verify、Trivy、build、Cosign、provenance、digest gate   |
-| push tag `v*`       | 上述 gate 後建立 semver alias 與 GitHub Release                         |
-| `workflow_dispatch` | 輸入 `release_ref`，重新跑 preflight，驗證 CI、簽章、attestation 後部署 |
-
-### GHCR Image 列表
-
-五個服務 image 位於 GitHub Container Registry (`ghcr.io`)：
-
-| Service     | Image                                                 |
-| ----------- | ----------------------------------------------------- |
-| `game`      | `ghcr.io/lyangjyehaur/zutomayo-card-online-game`      |
-| `api`       | `ghcr.io/lyangjyehaur/zutomayo-card-online-api`       |
-| `platform`  | `ghcr.io/lyangjyehaur/zutomayo-card-online-platform`  |
-| `migrate`   | `ghcr.io/lyangjyehaur/zutomayo-card-online-migrate`   |
-| `retention` | `ghcr.io/lyangjyehaur/zutomayo-card-online-retention` |
-
-部署不可直接使用 tag。CD 會以完整 commit SHA 建立可追溯 tag，然後
-解析成 `image@sha256:<digest>`，驗證 Cosign keyless signature 與 GitHub
-build provenance，最後才寫入 `.release.env`。staging/production Compose
-只接受五個完整 digest；`latest`、`staging`、`rollback` 均被禁止。
-
-GHCR 登入使用內建 `GITHUB_TOKEN`（`packages: write` permission）。在 server 上手動 pull 時需 `docker login ghcr.io -u <github-username> -p <personal-access-token>`。
-
-### Build 快取
-
-CD pipeline 使用 GitHub Actions cache（`type=gha`）加速 build。game、api、platform、migrate 與 retention 都使用獨立的 cache scope；game 與 platform 共用相同 Dockerfile，但 cache 仍分開管理。
-
-共用 Dockerfile 的 runtime stage 以 `npm ci --omit=dev --ignore-scripts` 安裝 production dependencies，避免在未安裝 devDependencies 的映像中觸發 Husky 等開發期 lifecycle scripts；builder stage 仍執行完整的 `npm ci`。
-
-### GitHub Release
-
-Push tag `v*` 時自動建立 GitHub Release（使用 `softprops/action-gh-release`），含自動產生的 changelog。預發布版本（tag 含 `-rc` / `-beta` / `-alpha`）標記為 prerelease。
-
-## Staging 環境 / Staging Environment
-
-Staging compose file: [docker-compose.staging.yml](../docker-compose.staging.yml).
-
-與 production（server4）的差異：
-
-| 項目           | Production (server4)             | Staging                                                                          |
-| -------------- | -------------------------------- | -------------------------------------------------------------------------------- |
-| DB 名稱        | `zutomayo_card`                  | 外部 `PG_DATABASE`（建議 `zutomayo_staging`）                                    |
-| Redis DB       | `0`                              | `3`                                                                              |
-| game port      | `3000`                           | `4000`                                                                           |
-| api port       | `3001`（expose）                 | `4001`                                                                           |
-| platform port  | `3002`                           | `4002`                                                                           |
-| image 來源     | server 上 `docker compose build` | GHCR 預建 image（`pull`）                                                        |
-| postgres/redis | 外部（1panel-network）           | 外部 PostgreSQL `verify-full` + CA secret；外部 Redis `rediss://` + ACL/password |
-
-### Staging 部署流程
-
-1. 先在 staging 基礎設施建立外部 PostgreSQL/Redis：PostgreSQL 必須提供
-   `verify-full` 與 CA，Redis 必須啟用 TLS、ACL 與密碼；建立 Docker external
-   secret `PG_CA_SECRET_NAME` 指向的 CA。不要以 bundled plaintext 服務替代。
-2. 在外部 PostgreSQL 以 bootstrap administrator 執行
-   `scripts/postgres-init-roles.sh`，再執行 migration role 的 migration/schema gate。
-3. CD pipeline 在 push 或手動 `workflow_dispatch` 時完成相同 preflight。
-4. 從 verified release artifact 取得 `.release.env`，其內容包含五個 digest、
-   `APP_VERSION`、`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION` 與 migration file checksum：
+Server4 現階段由 `master` 原始碼在主機上建置，不使用下方延後中的 immutable image、
+Cosign、attestation、retention worker 或七角色矩陣。部署入口只有：
 
 ```bash
-./scripts/deploy-server4.sh --manifest .release.env
+./scripts/deploy-server4.sh --confirm
 ```
 
-腳本只 pull 已驗證 image，先執行 migration/schema gate，再啟動服務；不在
-server build image。驗證包含 game/api/platform 的 health、ready 與 build ID
-一致性（staging ports `4000/4001/4002`）。
+腳本只接受目前乾淨且已推送的本機 `master`，並要求本機 `HEAD`、`origin/master` 與
+server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`。Server4 的 `.env`
+至少需要：
 
-```bash
-DEPLOY_HOST=<staging-host> GAME_PORT=4000 API_PORT=4001 PLATFORM_PORT=4002 \
-  node scripts/deploy-smoke.mjs
-```
+- `PG_MIGRATION_USER` / `PG_MIGRATION_PASSWORD`：只供 migration 使用。
+- `PG_APP_USER` / `PG_APP_PASSWORD`：由 game、api、platform 共用。
+- `PG_DATABASE`、`PGSSLMODE=verify-full`、`PG_CA_FILE`、`PG_SSLROOTCERT` 與
+  `NODE_EXTRA_CA_CERTS`。
+- `REDIS_URL`、三個 runtime 共用的 `REDIS_DB`，以及外部 Redis 的
+  `REDIS_PASSWORD`（若 Redis 啟用密碼）。
+- 現有 runtime 所需的 `JWT_SECRET`、`METRICS_TOKEN` 與其他功能設定。
 
-需要配置 GitHub Environment 的 `STAGING_DEPLOY_HOST`、
-`STAGING_DEPLOY_USER`、`STAGING_DEPLOY_SSH_KEY` 與
-`STAGING_DEPLOY_KNOWN_HOSTS` secrets；production 使用 `DEPLOY_*` 對應值，
-並要求 `v*` release tag。`*_KNOWN_HOSTS` 必須是預先核對過的 server host key，
-部署流程不使用 `ssh-keyscan` 動態信任未知主機。
+部署順序固定為：備份 `.env`/Compose → 以 migration role 產生新的 `pg_dump -Fc`
+並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
+`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000030_card_official_errata_english_source`
+及 migration checksum → 實際檢查三服務 `REDIS_DB` 一致且 Redis
+`maxmemory-policy=noeviction` → 保存目前 runtime images → build →
+`docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready` 與 build ID。
 
-## Rollback 流程 / Rollback
-
-部署腳本 [scripts/deploy-server4.sh](../scripts/deploy-server4.sh) 會在遠端保留
-上一個 verified manifest 為 `.release.previous.env`。新版本 smoke 失敗時只切回
-該 manifest，不建立或拉取 mutable rollback tag。
-
-### 手動 rollback
+`POSTGRES_CONTAINER`（預設 `postgresql`）、`REDIS_CONTAINER`（預設 `redis`）與
+`REMOTE_BACKUP_DIR` 可依 server4 的實際容器名稱或路徑覆寫。部署或健康驗證失敗時，
+腳本會還原部署前的 `.env`、Compose 與 runtime images；手動回滾使用：
 
 ```bash
 ./scripts/deploy-server4.sh --rollback --confirm
 ```
 
-此指令會跳過 build，直接使用上一份已驗證 manifest 的 immutable digest 重啟服務並驗證。
+此 beta rollback 不執行 destructive down migration，因此 migration 仍須保持
+expand/contract 與舊 runtime 相容。每次部署前產生的 custom-format dump 與
+`.sha256` 是必要的就地回復保險，但不等同後期的 WAL/PITR 或異地備份方案。
 
-### 注意事項
+#### 2026-07-16 live-copy migration rehearsal
 
-- 首次部署若沒有 `.release.previous.env`，rollback 會拒絕執行。
-- 首次 immutable cutover 必須明確使用 `--bootstrap`，並保留人工回退方案；成功後後續部署才會有可驗證的 `.release.previous.env`。
-- Rollback 不執行 destructive down migration；schema 必須採 expand/contract，或先發布向後相容修復。
-- 每次 rollout/rollback 應保留 manifest、migration、操作者、時間與 smoke 結果。
+- 從 server4 `zutomayo_card` 以 `pg_dump -Fc --no-owner --no-privileges` 取得 dump；
+  遠端與本機 SHA-256 均為
+  `8ec2d749a7e08b87470f2d885edb434cd8cf1488d7042a315c471cafee926bd8`。
+- 隔離 clone 基線為 12 users、422 cards、12 errata、1844 localized card rows，且
+  不存在 `schema_migrations`／`schema_migration_checksums`，與 live 狀態一致。
+- 首次執行套用 `000001`–`000006`、`000010`–`000024` 與 canonical
+  `000028`–`000030`；相容層跳過已被取代的 `000007`–`000009`。第二次執行回報
+  `No migrations to run!`，結果為 24 筆 migration 與 24 筆 checksum。
+- `000030_card_official_errata_english_source` schema gate 通過；users/cards/errata/
+  localized rows/decks/matches 數量與 live 一致，既有 user identity/auth 欄位及卡牌、
+  errata、localized text 的逐欄／逐列 hash 均保持不變。
+- 422-card 規則審計為 267/267 lines parsed，unsupported/partial/false-draw 均為 0。
+- 前一版 API image 對升級後 clone 的 `/health`、`/ready`、`/api/version` 與
+  `/api/cards` 均回 200，卡牌數為 422。
+
+## Deferred production hardening（不屬於目前 beta）
+
+Immutable GHCR image、七個 image digest（game、api、platform、migrate、retention、
+gateway、ops）、staging、Cosign/provenance、release 與 immutable rollback 等成熟度工作，
+保留在 `codex/deferred-production-hardening` 分支獨立開發。詳細規約與操作指令以該分支的
+`docs/DEPLOYMENT.md`、`.github/workflows/cd.yml` 與 `scripts/deploy-server4.sh` 為準，
+不複製到目前 beta 文件，避免兩邊規約漂移。
+
+目前 deferred 分支自己的 workflow 尚未改成監聽該分支 push，因此自動 push path
+尚未啟用；`master` push、`v*` tag 與 master 上的手動 dispatch 也不會執行 deferred
+部署或部署 server4。若後期要啟用，必須先在 deferred 分支同步並驗證 workflow，
+再經明確審查後合併。
+
+目前 `master`／server4 beta 部署器明確不支援 `--manifest`，rollback 只使用前述
+`.env.previous`、Compose snapshot 與 `:rollback` runtime image 流程。

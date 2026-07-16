@@ -138,6 +138,9 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
       await pause.click();
       const drawer = page.getByRole('dialog');
       await expect(drawer).toBeVisible();
+      // Axe should measure the settled drawer, not colors composited mid-fade.
+      await expect(page.locator('.app-drawer-overlay')).toHaveCSS('opacity', '1');
+      await expect(drawer).toHaveCSS('opacity', '1');
       await expectNoBlockingAxeViolations(page, 'Battle pause drawer');
 
       const board = page.locator('[data-board-layout="responsive"]');

@@ -16,6 +16,7 @@
   --nocturne-500: oklch(0.63 0.17 278); /* 夜・青（官方 Chronos 夜側） */
   --daybreak-500: oklch(0.66 0.2 32); /* 晝・緋紅（官方 Chronos 晝側） */
   --cyan-400: oklch(0.8 0.12 215);
+  --rose-400: oklch(0.66 0.19 15);
   --rose-500: oklch(0.6 0.21 15);
   --jade-400: oklch(0.72 0.14 155);
   --abyss-500: oklch(0.5 0.06 300);
@@ -55,6 +56,7 @@
   --accent-primary-soft: var(--volt-500);
   --accent-action: var(--daybreak-500); /* 緋紅 — 對手側、戰鬥張力 */
   --accent-danger: var(--rose-500);
+  --accent-danger-hover: var(--rose-400);
   --accent-success: var(--jade-400);
   --accent-info: var(--cyan-400);
   --color-accent-primary: var(--accent-primary);

@@ -108,6 +108,39 @@ describe('schema migrations', () => {
     }
   });
 
+  it('appends the canonical card migrations without invalidating existing P0-P5 histories', () => {
+    const migrationRunner = readRepoFile('scripts/db-migrate.cjs');
+    const developmentRunner = readRepoFile('api/server.cjs');
+    const compatibility = readRepoFile('scripts/migration-order-compat.cjs');
+    const cardTexts = readRepoFile('migrations/000028_card_official_texts_i18n.js');
+    const errata = readRepoFile('migrations/000029_card_official_errata.js');
+    const errataSource = readRepoFile('migrations/000030_card_official_errata_english_source.js');
+
+    expect(migrationRunner).toContain('migrationIgnorePatternForApplied');
+    expect(developmentRunner).toContain('migrationIgnorePatternForApplied');
+    expect(developmentRunner).toContain('ignorePattern,');
+    expect(developmentRunner).toContain('ssl: postgresSslConfig(process.env)');
+    for (const runner of [migrationRunner, developmentRunner]) {
+      expect(runner).toContain('checkOrder: true');
+    }
+    for (const legacyName of [
+      '000007_card_official_texts_i18n',
+      '000008_card_official_errata',
+      '000009_card_official_errata_english_source',
+    ]) {
+      expect(compatibility).toContain(legacyName);
+    }
+    expect(cardTexts).toContain('ALTER COLUMN en_name_official SET NOT NULL');
+    expect(cardTexts).toContain('ALTER COLUMN en_effect_official SET NOT NULL');
+    expect(cardTexts.match(/ON CONFLICT \(card_id, lang\) DO NOTHING/g)).toHaveLength(3);
+    expect(cardTexts).not.toMatch(/ON CONFLICT \(card_id, lang\) DO UPDATE/);
+    expect(errata).toContain('card_official_errata');
+    expect(errataSource).toContain('card_official_errata_english_source_check');
+    for (const migration of [cardTexts, errata, errataSource]) {
+      expect(migration).toContain('export const down = false;');
+    }
+  });
+
   it('tracks all 12 official errata against the corrected Japanese card source', () => {
     const errata = JSON.parse(readRepoFile('data/card-official-errata.json')) as {
       errata: Array<{

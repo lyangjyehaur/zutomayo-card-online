@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Client, type BoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
+import { onlineSocketOptions } from '../onlineSocketConfig';
 import { ChevronDown, Flag, Languages, MessageCircle, Send } from 'lucide-react';
 import { ZutomayoCard } from '../game/Game';
 import type { GameState } from '../game/types';
@@ -651,7 +652,7 @@ export function OnlineGame({
       ),
       loading: OnlineLoading,
       numPlayers: 2,
-      multiplayer: SocketIO({ server: window.location.origin }),
+      multiplayer: SocketIO({ server: window.location.origin, socketOpts: onlineSocketOptions() }),
       debug: false,
     }),
   );
