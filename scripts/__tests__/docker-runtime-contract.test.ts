@@ -96,3 +96,12 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/seasonResultService.cjs');
   });
 });
+
+describe('API runtime image contract', () => {
+  it('makes copied runtime inputs readable before dropping privileges', () => {
+    const dockerfile = readFileSync(resolve(root, 'api/Dockerfile'), 'utf8');
+    const chmod = 'RUN chmod 0444 package.json package-lock.json ./*.cjs';
+    expect(dockerfile).toContain(chmod);
+    expect(dockerfile.indexOf(chmod)).toBeLessThan(dockerfile.indexOf('USER node'));
+  });
+});
