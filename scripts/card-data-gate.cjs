@@ -12,10 +12,18 @@ const {
 } = require('../api/runtimeSecurityConfig.cjs');
 
 const EXPECTED_CARD_COUNT = 422;
-const EXTRACTION_PATH = resolve(__dirname, '..', 'data', 'card-english-extraction.json');
-const ERRATA_PATH = resolve(__dirname, '..', 'data', 'card-official-errata.json');
-const HUMAN_REVIEWS_PATH = resolve(__dirname, '..', 'data', 'card-english-human-reviews.json');
-const OCR_OVERRIDES_PATH = resolve(__dirname, 'card-english-ocr-overrides.json');
+const EXTRACTION_PATH = resolve(
+  process.env.CARD_EXTRACTION_SOURCE || resolve(__dirname, '..', 'data', 'card-english-extraction.json'),
+);
+const ERRATA_PATH = resolve(
+  process.env.CARD_ERRATA_SOURCE || resolve(__dirname, '..', 'data', 'card-official-errata.json'),
+);
+const HUMAN_REVIEWS_PATH = resolve(
+  process.env.CARD_HUMAN_REVIEWS_SOURCE || resolve(__dirname, '..', 'data', 'card-english-human-reviews.json'),
+);
+const OCR_OVERRIDES_PATH = resolve(
+  process.env.CARD_OCR_OVERRIDES_SOURCE || resolve(__dirname, 'card-english-ocr-overrides.json'),
+);
 
 function sha256(contents) {
   return createHash('sha256').update(contents).digest('hex');
@@ -63,14 +71,14 @@ function loadOfficialCardDataManifest({
   };
 }
 
-function loadExpectedErrataCardIds() {
-  return loadOfficialCardDataManifest()
+function loadExpectedErrataCardIds(sourcePaths) {
+  return loadOfficialCardDataManifest(sourcePaths)
     .errata.map((entry) => String(entry.cardId || ''))
     .sort();
 }
 
-function officialCardDataChecksum() {
-  return loadOfficialCardDataManifest().datasetSha256;
+function officialCardDataChecksum(sourcePaths) {
+  return loadOfficialCardDataManifest(sourcePaths).datasetSha256;
 }
 
 function count(row, key) {

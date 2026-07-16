@@ -19,7 +19,7 @@ const verifiedStatuses = new Set(['machine_verified', 'human_verified']);
 const knownOfficialEnglishPrintDifferences = new Set(['4th_23']);
 const suspiciousOcrArtifact = /\b(?:ff|retum|charaoter|opponet|nand|specily|electrig|attibute|immedlately)\b/i;
 
-const source = process.argv[2] || 'data/card-english-extraction.json';
+const source = process.argv[2] || process.env.CARD_EXTRACTION_SOURCE || 'data/card-english-extraction.json';
 const extraction = JSON.parse(fs.readFileSync(source, 'utf8')) as Extraction;
 const humanReviewsSource = process.env.CARD_HUMAN_REVIEWS_SOURCE || 'data/card-english-human-reviews.json';
 const overridesSource = process.env.CARD_OCR_OVERRIDES_SOURCE || 'scripts/card-english-ocr-overrides.json';

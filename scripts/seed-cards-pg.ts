@@ -30,11 +30,18 @@ type OfficialErrata = {
   sourceUrl: string;
 };
 
-const officialErrata = (
-  JSON.parse(readFileSync(new URL('../data/card-official-errata.json', import.meta.url), 'utf8')) as {
-    errata: OfficialErrata[];
-  }
-).errata;
+const allowEmptyOfficialErrata =
+  process.env.NODE_ENV === 'test' && process.env.SEED_ALLOW_EMPTY_OFFICIAL_ERRATA === 'true';
+const officialErrata = allowEmptyOfficialErrata
+  ? []
+  : (
+      JSON.parse(
+        readFileSync(
+          process.env.CARD_ERRATA_SOURCE || new URL('../data/card-official-errata.json', import.meta.url),
+          'utf8',
+        ),
+      ) as { errata: OfficialErrata[] }
+    ).errata;
 
 const migrationUser = assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER');
 const databaseUrl = postgresConnectionString(process.env);
@@ -219,8 +226,12 @@ async function main(): Promise<void> {
   const cards = await loadSeedCards();
   const effectsI18n = await loadSeedCardI18n();
   const cardsById = new Map(cards.map((card) => [card.id, card]));
-  if (officialErrata.length !== 12 || new Set(officialErrata.map((entry) => entry.cardId)).size !== 12) {
-    throw new Error('Official errata source must contain 12 unique cards');
+  const expectedErrataCount = allowEmptyOfficialErrata ? 0 : 12;
+  if (
+    officialErrata.length !== expectedErrataCount ||
+    new Set(officialErrata.map((entry) => entry.cardId)).size !== expectedErrataCount
+  ) {
+    throw new Error(`Official errata source must contain ${expectedErrataCount} unique cards`);
   }
   for (const entry of officialErrata) {
     const card = cardsById.get(entry.cardId);

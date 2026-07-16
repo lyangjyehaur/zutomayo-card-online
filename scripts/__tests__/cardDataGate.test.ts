@@ -1,5 +1,26 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { describe, expect, it, vi } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+type SourcePaths = {
+  extractionPath: string;
+  errataPath: string;
+  humanReviewsPath: string;
+  ocrOverridesPath: string;
+};
+
+type CardDataManifest = {
+  cards: Array<Record<string, unknown>>;
+  errata: Array<Record<string, unknown>>;
+  datasetSha256: string;
+  extractionSha256: string;
+  errataSha256: string;
+  reviewProvenanceSha256: string;
+  cardCount: number;
+  errataCount: number;
+};
 
 const require_ = createRequire(import.meta.url);
 const { assertOfficialCardData, loadExpectedErrataCardIds, loadOfficialCardDataManifest, officialCardDataChecksum } =
@@ -11,20 +32,55 @@ const { assertOfficialCardData, loadExpectedErrataCardIds, loadOfficialCardDataM
         expectedErrataCardIds?: string[];
         requireLedger?: boolean;
         requireExact?: boolean;
-        manifest?: Record<string, unknown>;
+        manifest?: CardDataManifest;
       },
     ) => Promise<{ cardCount: number; errataCount: number; checksum: string }>;
-    loadExpectedErrataCardIds: () => string[];
-    loadOfficialCardDataManifest: () => {
-      datasetSha256: string;
-      extractionSha256: string;
-      errataSha256: string;
-      reviewProvenanceSha256: string;
-      cardCount: number;
-      errataCount: number;
-    };
-    officialCardDataChecksum: () => string;
+    loadExpectedErrataCardIds: (sourcePaths?: SourcePaths) => string[];
+    loadOfficialCardDataManifest: (sourcePaths?: SourcePaths) => CardDataManifest;
+    officialCardDataChecksum: (sourcePaths?: SourcePaths) => string;
   };
+
+let sourceDirectory = '';
+let sourcePaths: SourcePaths;
+let sourceManifest: CardDataManifest;
+
+beforeAll(() => {
+  sourceDirectory = mkdtempSync(join(tmpdir(), 'zutomayo-card-data-gate-'));
+  sourcePaths = {
+    extractionPath: join(sourceDirectory, 'extraction.json'),
+    errataPath: join(sourceDirectory, 'errata.json'),
+    humanReviewsPath: join(sourceDirectory, 'human-reviews.json'),
+    ocrOverridesPath: join(sourceDirectory, 'ocr-overrides.json'),
+  };
+  const cards = Array.from({ length: 422 }, (_, index) => ({
+    id: `synthetic-card-${index + 1}`,
+    japaneseName: `合成名${index + 1}`,
+    japaneseEffect: '',
+    enNameOfficial: `Synthetic Card ${index + 1}`,
+    enEffectOfficial: '',
+  }));
+  const errata = Array.from({ length: 12 }, (_, index) => ({
+    errataId: `synthetic-errata-${index + 1}`,
+    cardId: `synthetic-card-${index + 1}`,
+    publishedAt: '2026-01-01',
+    fields: ['effect'],
+    incorrectText: 'Synthetic old text.',
+    correctedJapaneseText: `合成訂正文${index + 1}`,
+    correctedEnglishText: `Synthetic corrected text ${index + 1}.`,
+    correctedEnglishStatus: 'verified',
+    correctedEnglishSource: 'synthetic_test_source',
+    sourceUrl: `https://example.test/errata/${index + 1}`,
+  }));
+  writeFileSync(sourcePaths.extractionPath, JSON.stringify({ cards }));
+  writeFileSync(sourcePaths.errataPath, JSON.stringify({ errata }));
+  writeFileSync(sourcePaths.humanReviewsPath, JSON.stringify({ reviews: [] }));
+  writeFileSync(sourcePaths.ocrOverridesPath, JSON.stringify({ overrides: {} }));
+  sourceManifest = loadOfficialCardDataManifest(sourcePaths);
+});
+
+afterAll(() => {
+  rmSync(sourceDirectory, { recursive: true, force: true });
+});
 
 function completeQuery() {
   return vi
@@ -52,9 +108,9 @@ function completeQuery() {
 
 describe('official card data release gate', () => {
   it('binds the gate to the complete versioned errata dataset', () => {
-    expect(loadExpectedErrataCardIds()).toHaveLength(12);
-    expect(new Set(loadExpectedErrataCardIds()).size).toBe(12);
-    expect(officialCardDataChecksum()).toMatch(/^[a-f0-9]{64}$/);
+    expect(loadExpectedErrataCardIds(sourcePaths)).toHaveLength(12);
+    expect(new Set(loadExpectedErrataCardIds(sourcePaths)).size).toBe(12);
+    expect(officialCardDataChecksum(sourcePaths)).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('accepts complete official text and errata rows', async () => {
@@ -66,6 +122,7 @@ describe('official card data release gate', () => {
           expectedCardCount: 2,
           expectedErrataCardIds: ['card-2'],
           requireLedger: false,
+          manifest: sourceManifest,
         },
       ),
     ).resolves.toMatchObject({ cardCount: 2, errataCount: 1 });
@@ -102,13 +159,14 @@ describe('official card data release gate', () => {
           expectedCardCount: 2,
           expectedErrataCardIds: ['card-2'],
           requireLedger: false,
+          manifest: sourceManifest,
         },
       ),
     ).rejects.toThrow(/missing official English names[\s\S]*errata card IDs[\s\S]*flags disagree/);
   });
 
   it('requires a matching signed dataset ledger row', async () => {
-    const manifest = loadOfficialCardDataManifest();
+    const manifest = sourceManifest;
     const query = completeQuery().mockResolvedValueOnce({
       rows: [
         {
@@ -128,6 +186,7 @@ describe('official card data release gate', () => {
         {
           expectedCardCount: 2,
           expectedErrataCardIds: ['card-2'],
+          manifest,
         },
       ),
     ).resolves.toMatchObject({ checksum: manifest.datasetSha256 });
@@ -142,6 +201,7 @@ describe('official card data release gate', () => {
         {
           expectedCardCount: 2,
           expectedErrataCardIds: ['card-2'],
+          manifest: sourceManifest,
         },
       ),
     ).rejects.toThrow('has no completed release ledger row');
@@ -160,6 +220,7 @@ describe('official card data release gate', () => {
           expectedErrataCardIds: ['card-2'],
           requireLedger: false,
           requireExact: true,
+          manifest: sourceManifest,
         },
       ),
     ).rejects.toThrow(/card text rows differ[\s\S]*localized rows differ[\s\S]*errata rows differ/);

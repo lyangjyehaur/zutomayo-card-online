@@ -43,8 +43,14 @@ services:
       - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
       - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
       - REQUIRE_OFFICIAL_CARD_DATA=true
+      - CARD_EXTRACTION_SOURCE=/run/card-data/card-english-extraction.json
+      - CARD_HUMAN_REVIEWS_SOURCE=/run/card-data/card-english-human-reviews.json
+      - CARD_ERRATA_SOURCE=/run/card-data/card-official-errata.json
+      - CARD_OCR_OVERRIDES_SOURCE=/run/card-data/card-english-ocr-overrides.json
     secrets:
       - postgres_ca
+    volumes:
+      - ${CARD_DATA_DIR:?Set CARD_DATA_DIR to the private reviewed card-data directory}:/run/card-data:ro
     restart: 'no'
 
   game:

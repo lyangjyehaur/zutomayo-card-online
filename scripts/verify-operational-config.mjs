@@ -17,6 +17,14 @@ function requireFragments(relativePath, fragments) {
   }
 }
 
+function rejectFragments(relativePath, fragments) {
+  const contents = read(relativePath);
+  for (const fragment of fragments) {
+    if (contents.includes(fragment))
+      throw new Error(`${relativePath} contains forbidden operational content: ${fragment}`);
+  }
+}
+
 function assertExecutable(relativePath) {
   const mode = statSync(path.join(ROOT, relativePath)).mode;
   if ((mode & 0o111) === 0) throw new Error(`${relativePath} must be executable`);
@@ -202,17 +210,20 @@ export function validateOperationalConfig() {
     'docker-compose.server4-slot.yml',
     'docker-compose.staging.yml',
   ]) {
-    requireFragments(composeFile, ['REQUIRE_OFFICIAL_CARD_DATA', 'RELEASE_SHA']);
+    requireFragments(composeFile, [
+      'REQUIRE_OFFICIAL_CARD_DATA',
+      'RELEASE_SHA',
+      'CARD_DATA_DIR',
+      'CARD_EXTRACTION_SOURCE',
+      'CARD_HUMAN_REVIEWS_SOURCE',
+      'CARD_ERRATA_SOURCE',
+      'CARD_OCR_OVERRIDES_SOURCE',
+      '/run/card-data',
+    ]);
   }
-  requireFragments('Dockerfile.migrate', [
-    'data/card-english-extraction.json',
-    'data/card-english-human-reviews.json',
-    'data/card-official-errata.json',
-    'scripts/card-english-ocr-overrides.json',
-    'scripts/release-card-data.cjs',
-    'scripts/card-data-gate.cjs',
-  ]);
-  requireFragments('package.json', ['npm run audit:card-official-texts', 'scripts/release-card-data.cjs']);
+  requireFragments('Dockerfile.migrate', ['scripts/release-card-data.cjs', 'scripts/card-data-gate.cjs']);
+  rejectFragments('Dockerfile.migrate', ['COPY data/card-', 'COPY scripts/card-english-ocr-overrides.json']);
+  requireFragments('package.json', ['npm run data:policy', 'scripts/release-card-data.cjs']);
   requireFragments('docker-compose.pgbouncer.yml', [
     'pgbouncer-role-mode-gate:',
     'REQUIRE_DISTINCT_DB_ROLES',

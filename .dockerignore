@@ -54,8 +54,10 @@ QA_OFFICIAL*.json
 cards-by-pack
 schema.json
 cards.json
-data/card-effects-i18n.json
+data/card*.json
+data/e2e-card-seed.json
 data/vision-ocr
+scripts/card-english-*.json
 
 # Playwright E2E
 playwright-report

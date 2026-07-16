@@ -143,8 +143,8 @@ jobs:
       - name: Check i18n completeness
         run: npm run i18n:check
 
-      - name: Audit signed official card text dataset
-        run: npm run audit:card-official-texts
+      - name: Enforce private card-source data policy
+        run: npm run data:policy
 
       - name: Unit tests
         run: npm test

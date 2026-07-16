@@ -61,7 +61,7 @@ const { assertOfficialCardData, loadOfficialCardDataManifest } = require('./card
   }) => OfficialCardDataManifest;
 };
 
-const source = process.argv[2] || 'data/card-english-extraction.json';
+const source = process.argv[2] || process.env.CARD_EXTRACTION_SOURCE || 'data/card-english-extraction.json';
 const cards = (JSON.parse(fs.readFileSync(source, 'utf8')) as { cards: ExtractedCard[] }).cards;
 const errataSource = process.env.CARD_ERRATA_SOURCE || 'data/card-official-errata.json';
 const officialErrata = (JSON.parse(fs.readFileSync(errataSource, 'utf8')) as { errata: OfficialErrata[] }).errata;

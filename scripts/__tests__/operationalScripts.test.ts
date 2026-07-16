@@ -173,7 +173,7 @@ describe('operational shell scripts', () => {
     const importer = readFileSync(resolve('scripts/import-card-official-texts-pg.ts'), 'utf8');
     const workflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8');
 
-    expect(packageJson.scripts.verify).toContain('npm run audit:card-official-texts');
+    expect(packageJson.scripts.verify).toContain('npm run data:policy');
     expect(packageJson.scripts['db:migrate:release']).toContain('scripts/release-card-data.cjs');
     expect(server4).toContain('REQUIRE_OFFICIAL_CARD_DATA=true');
     expect(server4).toContain('RELEASE_SHA=${RELEASE_SHA:');
@@ -193,7 +193,7 @@ describe('operational shell scripts', () => {
     expect(ledgerInsert).toBeGreaterThan(0);
     expect(exactGate).toBeGreaterThan(ledgerInsert);
     expect(commit).toBeGreaterThan(exactGate);
-    expect(workflow).toContain('npm run audit:card-official-texts');
+    expect(workflow).toContain('npm run data:policy');
   });
 
   it('validates the active release and smokes its build id after automatic rollback', () => {

@@ -120,12 +120,10 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/matchmakingService.cjs');
     expect(dockerfile).toContain('COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs');
     expect(dockerfile).toContain('COPY scripts/migration-order-compat.cjs ./scripts/migration-order-compat.cjs');
-    expect(dockerfile).toContain('COPY data/card-english-extraction.json ./data/card-english-extraction.json');
-    expect(dockerfile).toContain('COPY data/card-english-human-reviews.json ./data/card-english-human-reviews.json');
-    expect(dockerfile).toContain('COPY data/card-official-errata.json ./data/card-official-errata.json');
-    expect(dockerfile).toContain(
-      'COPY scripts/card-english-ocr-overrides.json ./scripts/card-english-ocr-overrides.json',
-    );
+    expect(dockerfile).not.toContain('COPY data/card-');
+    expect(dockerfile).not.toContain('COPY scripts/card-english-ocr-overrides.json');
+    expect(dockerignore).toContain('data/card*.json');
+    expect(dockerignore).toContain('scripts/card-english-*.json');
     expect(dockerfile).toContain('COPY scripts/audit-card-official-texts.ts ./scripts/audit-card-official-texts.ts');
     expect(dockerfile).toContain(
       'COPY scripts/import-card-official-texts-pg.ts ./scripts/import-card-official-texts-pg.ts',

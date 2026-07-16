@@ -13,10 +13,6 @@ RUN apk upgrade --no-cache \
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY migrations ./migrations
-COPY data/card-english-extraction.json ./data/card-english-extraction.json
-COPY data/card-english-human-reviews.json ./data/card-english-human-reviews.json
-COPY data/card-official-errata.json ./data/card-official-errata.json
-COPY scripts/card-english-ocr-overrides.json ./scripts/card-english-ocr-overrides.json
 COPY api/schemaGate.cjs ./api/schemaGate.cjs
 COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs
