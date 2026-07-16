@@ -10,7 +10,7 @@ const variantClass: Record<ButtonVariant, string> = {
   primary: 'bg-accent-primary text-content-inverse hover:bg-accent-primary-soft disabled:hover:bg-accent-primary',
   secondary:
     'border border-border-soft text-content-muted hover:border-accent-action/50 hover:text-accent-action disabled:hover:border-border-soft disabled:hover:text-content-muted',
-  danger: 'bg-accent-danger text-content-primary hover:bg-accent-danger/90 disabled:hover:bg-accent-danger',
+  danger: 'bg-accent-danger text-content-inverse hover:bg-accent-danger/90 disabled:hover:bg-accent-danger',
   ghost: 'text-content-dim hover:text-content-primary disabled:hover:text-content-dim',
 };
 
