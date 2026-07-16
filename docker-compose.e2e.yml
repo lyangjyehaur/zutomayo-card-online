@@ -28,14 +28,16 @@ services:
       context: .
       dockerfile: Dockerfile
       target: builder
-    command: ['npm', 'run', 'seed:cards']
+    command: ['sh', '-lc', 'npm run generate:e2e-card-seed -- /tmp/e2e-card-seed.json && npm run seed:cards']
     environment:
+      - NODE_ENV=test
       - PG_HOST=postgres
       - PG_PORT=5432
       - PG_USER=${PG_MIGRATION_USER:-zutomayo_migrator}
       - PG_PASSWORD=${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
       - PG_DATABASE=zutomayo_e2e
-      - SEED_CARD_FIXTURE_FILE=/app/data/e2e-card-seed.json
+      - SEED_CARD_FIXTURE_FILE=/tmp/e2e-card-seed.json
+      - SEED_ALLOW_EMPTY_OFFICIAL_ERRATA=true
     depends_on:
       postgres:
         condition: service_healthy

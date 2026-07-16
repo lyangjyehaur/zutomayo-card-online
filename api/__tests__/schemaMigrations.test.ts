@@ -141,57 +141,15 @@ describe('schema migrations', () => {
     }
   });
 
-  it('tracks all 12 official errata against the corrected Japanese card source', () => {
-    const errata = JSON.parse(readRepoFile('data/card-official-errata.json')) as {
-      errata: Array<{
-        errataId: string;
-        cardId: string;
-        fields: Array<'name' | 'effect'>;
-        correctedJapaneseText: string;
-        correctedEnglishText: string;
-        correctedEnglishStatus: string;
-        correctedEnglishSource: string;
-      }>;
-    };
-    const extraction = JSON.parse(readRepoFile('data/card-english-extraction.json')) as {
-      cards: Array<{ id: string; japaneseName: string; japaneseEffect: string; enEffectOfficial: string }>;
-    };
-    const cardsById = new Map(extraction.cards.map((card) => [card.id, card]));
+  it('keeps reviewed card-source validation in explicit local import workflows', () => {
+    const officialImport = readRepoFile('scripts/import-card-official-texts-pg.ts');
+    const derivedImport = readRepoFile('scripts/import-card-derived-effects-pg.ts');
+    const derivedAudit = readRepoFile('scripts/cardDerivedEffects.ts');
 
-    expect(errata.errata).toHaveLength(12);
-    expect(new Set(errata.errata.map((entry) => entry.cardId)).size).toBe(12);
-    for (const entry of errata.errata) {
-      const card = cardsById.get(entry.cardId);
-      expect(card, `missing ${entry.cardId}`).toBeDefined();
-      expect(entry.correctedJapaneseText).toBe(
-        entry.fields.includes('name') ? card?.japaneseName : card?.japaneseEffect,
-      );
-    }
-    expect(errata.errata.find((entry) => entry.cardId === '3rd_31')?.correctedEnglishText).toContain(
-      'regardless of its Power',
-    );
-    expect(errata.errata.find((entry) => entry.cardId === '4th_76')?.correctedEnglishText).toBe(
-      'GUREKUMA-KUN (Pain Give Form)',
-    );
-    expect(errata.errata.find((entry) => entry.cardId === '4th_61')).toMatchObject({
-      correctedEnglishText:
-        'Place any number of cards from your hand at the bottom of the deck. If you do, draw the same number of cards from the deck.',
-      correctedEnglishStatus: 'verified',
-      correctedEnglishSource: 'official_card_print_unaffected',
-    });
-    expect(errata.errata.find((entry) => entry.cardId === '4th_61')?.correctedEnglishText).toBe(
-      cardsById.get('4th_61')?.enEffectOfficial,
-    );
-    for (const cardId of ['3rd_8', '3rd_22']) {
-      const correctedEnglish = errata.errata.find((entry) => entry.cardId === cardId)?.correctedEnglishText;
-      expect(correctedEnglish).toContain('cards of the four attributes');
-      expect(correctedEnglish).not.toContain('all four attributes');
-    }
-    const effectErrata = errata.errata.filter((entry) => entry.fields.includes('effect'));
-    expect(effectErrata).toHaveLength(10);
-    expect(effectErrata.every((entry) => entry.correctedEnglishStatus === 'verified')).toBe(true);
-    for (const entry of effectErrata) {
-      expect(entry.correctedEnglishText).not.toMatch(/\b(?:1|a) card\b/i);
-    }
+    expect(officialImport).toContain('every printed English name/effect must be human-reviewed');
+    expect(officialImport).toContain('official errata source must contain 12 unique cards');
+    expect(officialImport).toContain('corrected Japanese does not match official card data');
+    expect(derivedImport).toContain('PostgreSQL English effect differs from the human-verified official print');
+    expect(derivedAudit).toContain('legacy en is forbidden');
   });
 });

@@ -56,10 +56,12 @@ scripts/audit-dump.ts
 cards-by-pack/
 schema.json
 
-# Card data (source of truth is PostgreSQL; files kept locally for dev/scripts only)
+# Card data (source of truth is PostgreSQL; source/review JSON stays local only)
 cards.json
-data/card-effects-i18n.json
+data/card*.json
+data/e2e-card-seed.json
 data/vision-ocr/
+scripts/card-english-*.json
 
 # Environment variables (contain secrets)
 .env

@@ -12,7 +12,7 @@
 4. 衍生翻譯必須同時參考官方日文和卡面官方英文；兩者有歧義時，以官方修正後日文語義為準。
 5. `pending_review` 的衍生翻譯不得展示給玩家。只有 `verified`（或官方來源使用的 `official`）可以進入顯示鏈路。
 6. 勘誤影響的欄位不得回退到已失效的卡面英文。其英文及其他語言必須使用已複核的勘誤文本；尚未複核時回退到官方日文。
-7. `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL。
+7. 本機受控來源 `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL；該檔及其他卡牌文本來源不得提交到 Git 或進入容器映像。
 8. 舊式 `card_effects_i18n.lang='en'` 是已停用流程產生的英文翻譯，必須刪除且不得重新建立。英文效果只可來自 `cards.en_effect_official`；受勘誤影響時使用已複核的勘誤英文。
 
 ## 資料模型
@@ -92,6 +92,8 @@
 
 ## 主要資料與程式入口
 
+下表中的 JSON 來源／複核檔只存在於維護者本機或受控備份，不受 Git 追蹤，也會由 `.dockerignore` 排除。GitHub 只保存處理程式、schema、測試及維護指南。
+
 | 路徑                                          | 用途                                                |
 | --------------------------------------------- | --------------------------------------------------- |
 | `data/card-english-extraction.json`           | 422 張卡的日文對照、卡面英文、複核狀態與證據        |
@@ -100,7 +102,7 @@
 | `scripts/card-english-ocr-overrides.json`     | OCR 合併階段的已知覆蓋值                            |
 | `scripts/audit-card-official-texts.ts`        | 卡數、複核狀態、常見 OCR 錯字、數字與語義一致性稽核 |
 | `scripts/import-card-official-texts-pg.ts`    | 驗證後以交易寫入 PostgreSQL                         |
-| `data/card-derived-effects-review.json`       | 衍生效果的複核範圍、依據及來源檔雜湊                |
+| `data/card-derived-effects-review.json`       | 本機衍生效果複核範圍、依據及來源檔雜湊              |
 | `scripts/audit-card-derived-effects.ts`       | 稽核 1,000 條衍生效果、語言混入、數值及舊英文       |
 | `scripts/import-card-derived-effects-pg.ts`   | 交易匯入已複核衍生效果並清除舊英文                  |
 | `scripts/card-official-text-review-server.ts` | 僅監聽本機的人工複核服務                            |
@@ -125,7 +127,9 @@
 
 衍生翻譯不能標記為 `official`，API 會拒絕此操作。管理端的修改會寫入管理稽核紀錄。
 
-目前 250 張有效果卡的 `zh-TW`、`zh-CN`、`zh-HK`、`ko` 效果已同時依官方修正後日文及人工校對的卡面英文複核。複核來源檔 `data/card-effects-i18n.json` 是本機匯入資料，不進 Git；Git 追蹤的 `data/card-derived-effects-review.json` 以 SHA-256 鎖定確切版本。來源檔不得含 `en`，英文只維護於官方英文資料流。
+目前 250 張有效果卡的 `zh-TW`、`zh-CN`、`zh-HK`、`ko` 效果已同時依官方修正後日文及人工校對的卡面英文複核。複核來源檔 `data/card-effects-i18n.json` 與本機 review manifest 以 SHA-256 鎖定確切版本，兩者都不進 Git。來源檔不得含 `en`，英文只維護於官方英文資料流。
+
+CI/E2E 不使用線上卡牌快照；`scripts/create-e2e-card-seed.ts` 會在測試容器內生成無正式卡名、效果及翻譯的合成卡牌資料。
 
 ## 英文卡面複核流程
 
