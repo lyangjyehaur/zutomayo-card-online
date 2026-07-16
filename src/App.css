@@ -20,6 +20,7 @@
   --color-accent-primary-soft: var(--accent-primary-soft);
   --color-accent-action: var(--accent-action);
   --color-accent-danger: var(--accent-danger);
+  --color-accent-danger-hover: var(--accent-danger-hover);
   --color-accent-success: var(--accent-success);
   --color-accent-info: var(--accent-info);
   --color-border-default: var(--border-default);
