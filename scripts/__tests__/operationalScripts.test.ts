@@ -77,6 +77,8 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('up -d --wait');
     expect(deploy).toContain('battle-assets.sha256');
     expect(deploy).toContain('sync_battle_assets');
+    expect(deploy).toContain('COPYFILE_DISABLE=1 tar');
+    expect(deploy).toContain("-name '._*' -delete");
     expect(deploy).toContain('sha256sum --check');
     expect(deploy).toContain('--check-battle-assets "$check_battle_assets"');
     expect(deploy).toContain('run_smoke "$previous_build_id" false');

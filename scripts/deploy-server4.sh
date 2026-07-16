@@ -186,11 +186,12 @@ sync_battle_assets() {
   local remote_stage="${REMOTE_BATTLE_ASSET_DIR}.next"
   local remote_previous="$REMOTE_DIR/backups/battle-assets/previous"
   awk 'NF { print $2 }' "$BATTLE_ASSET_CHECKSUMS" \
-    | tar -C "$BATTLE_ASSET_DIR" -cf - -T - \
+    | COPYFILE_DISABLE=1 tar -C "$BATTLE_ASSET_DIR" -cf - -T - \
     | ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail
         rm -rf '$remote_stage'
         mkdir -p '$remote_stage' '$REMOTE_DIR/backups/battle-assets'
         tar -xf - -C '$remote_stage'
+        find '$remote_stage' -type f -name '._*' -delete
         find '$remote_stage' -type d -exec chmod 0755 {} +
         find '$remote_stage' -type f -exec chmod 0644 {} +
         cd '$remote_stage'
