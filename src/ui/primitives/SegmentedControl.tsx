@@ -54,7 +54,7 @@ export function SegmentedControl<T extends string>({
                 : 'min-h-control-sm px-3 tracking-[var(--tracking-control)]',
               selected
                 ? 'bg-accent-primary text-content-inverse'
-                : 'text-content-primary/45 hover:bg-content-primary/5 hover:text-content-primary',
+                : 'text-content-muted hover:bg-content-primary/5 hover:text-content-primary',
               optionClassName,
             )}
             onClick={() => onChange(option.value)}

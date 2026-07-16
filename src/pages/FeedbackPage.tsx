@@ -286,7 +286,7 @@ export function FeedbackPage() {
       <AppHeader title={t('feedback.title')} subtitle={t('feedback.subtitle')} backTo="/" />
 
       {!isLoggedIn() && (
-        <p className="feedback-anon-notice text-caption text-content-primary/40">{t('feedback.anonymousNotice')}</p>
+        <p className="feedback-anon-notice text-caption text-content-muted">{t('feedback.anonymousNotice')}</p>
       )}
 
       {stats && (
@@ -341,6 +341,7 @@ export function FeedbackPage() {
               className="status-filter min-h-11 w-full text-body-sm md:w-44"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as FeedbackStatus | '')}
+              aria-label={t('feedback.filterAll')}
             >
               <option value="">{t('feedback.filterAll')}</option>
               {STATUS_OPTIONS.map((s) => (
@@ -354,6 +355,7 @@ export function FeedbackPage() {
                 className="status-filter min-h-11 w-full text-body-sm md:w-44"
                 value={tagFilter}
                 onChange={(e) => setTagFilter(e.target.value)}
+                aria-label={t('feedback.filterAllTags')}
               >
                 <option value="">{t('feedback.filterAllTags')}</option>
                 {tags.map((tg) => (
