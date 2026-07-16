@@ -13,6 +13,7 @@
 5. `pending_review` 的衍生翻譯不得展示給玩家。只有 `verified`（或官方來源使用的 `official`）可以進入顯示鏈路。
 6. 勘誤影響的欄位不得回退到已失效的卡面英文。其英文及其他語言必須使用已複核的勘誤文本；尚未複核時回退到官方日文。
 7. `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL。
+8. 舊式 `card_effects_i18n.lang='en'` 是已停用流程產生的英文翻譯，必須刪除且不得重新建立。英文效果只可來自 `cards.en_effect_official`；受勘誤影響時使用已複核的勘誤英文。
 
 ## 資料模型
 
@@ -99,6 +100,9 @@
 | `scripts/card-english-ocr-overrides.json`     | OCR 合併階段的已知覆蓋值                            |
 | `scripts/audit-card-official-texts.ts`        | 卡數、複核狀態、常見 OCR 錯字、數字與語義一致性稽核 |
 | `scripts/import-card-official-texts-pg.ts`    | 驗證後以交易寫入 PostgreSQL                         |
+| `data/card-derived-effects-review.json`       | 衍生效果的複核範圍、依據及來源檔雜湊                |
+| `scripts/audit-card-derived-effects.ts`       | 稽核 1,000 條衍生效果、語言混入、數值及舊英文       |
+| `scripts/import-card-derived-effects-pg.ts`   | 交易匯入已複核衍生效果並清除舊英文                  |
 | `scripts/card-official-text-review-server.ts` | 僅監聽本機的人工複核服務                            |
 | `api/cardDataService.cjs`                     | 對外卡牌及多語言文本查詢                            |
 | `api/adminCardService.cjs`                    | 衍生翻譯寫入、狀態限制與管理稽核紀錄                |
@@ -120,6 +124,8 @@
 6. 驗證實際 UI，不要只檢查資料庫值，因為玩家端還會套用複核與 fallback 規則。
 
 衍生翻譯不能標記為 `official`，API 會拒絕此操作。管理端的修改會寫入管理稽核紀錄。
+
+目前 250 張有效果卡的 `zh-TW`、`zh-CN`、`zh-HK`、`ko` 效果已同時依官方修正後日文及人工校對的卡面英文複核。複核來源檔 `data/card-effects-i18n.json` 是本機匯入資料，不進 Git；Git 追蹤的 `data/card-derived-effects-review.json` 以 SHA-256 鎖定確切版本。來源檔不得含 `en`，英文只維護於官方英文資料流。
 
 ## 英文卡面複核流程
 
@@ -220,11 +226,30 @@ npm run import:card-official-texts
 - `/api/cards/texts` 返回 422 張卡的文本資料。
 - 英文、日文和至少一個衍生語言實際 UI 的名稱、效果與勘誤 fallback。
 
+### 匯入已複核的衍生效果
+
+衍生效果匯入使用獨立 transaction，並先執行：
+
+```bash
+npm run audit:card-derived-effects
+npm run import:card-derived-effects
+```
+
+腳本會拒絕來源雜湊、卡牌 ID、官方日文、人工校對卡面英文或勘誤集合不一致的資料，也會拒絕任何已填入但尚未複核的衍生卡名，避免共用的 `review_status` 誤把卡名標記為已複核。匯入成功後會：
+
+- 寫入 4 種語言共 1,000 條效果並標記為 `verified`。
+- 一般卡使用 `admin_bilingual_translation`；效果勘誤卡使用 `official_japanese_errata_translation`。
+- 刪除 `card_effects_i18n` 中所有舊 `en` 列，但保留 `card_texts_i18n` 的官方英文鏡像。
+- 寫入一筆批次管理稽核紀錄。
+
+生產匯入前必須備份資料庫。匯入後確認每種衍生語言各有 250 條 `verified` 效果、舊英文列為 0，並重新載入 game 服務的卡牌資料或重啟 game 服務。
+
 ## 修改時的最小驗證
 
 只改衍生翻譯時：
 
 ```bash
+npm run audit:card-derived-effects
 npm test -- src/game/cards/__tests__/i18n.test.ts
 npm run typecheck
 ```

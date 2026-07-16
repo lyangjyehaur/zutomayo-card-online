@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-07-16T23:07:08+08:00",
+  "reviewScope": "all_effect_rows",
+  "reviewBasis": ["corrected_official_japanese", "human_verified_official_printed_english"],
+  "sourceFile": "data/card-effects-i18n.json",
+  "sourceSha256": "4ec4cf78e4c3c150460cb3528ccc3470749dfeabfe1b8b79cc74f260395cf550",
+  "effectCardIdsSha256": "89b0233f89c469201bcdf8bfd3017422d3c24946e10a56bc6aaebd32a31892ba",
+  "effectErrataCardIdsSha256": "f52ec8fb3d23e93b90ea7a80030a77d8dbcd004b1bba080fa3856a3124eddb37",
+  "cardCount": 250,
+  "languages": ["zh-TW", "zh-CN", "zh-HK", "ko"]
+}
