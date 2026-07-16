@@ -472,18 +472,18 @@ function LogBreakdown({ breakdown }: { breakdown: HpChangeBreakdown }) {
       {breakdown.lines.map((line, idx) => {
         const valueDisplay = line.value.startsWith('board.') ? t(line.value as never) : line.value;
         return (
-          <div key={idx} className="flex items-baseline gap-1 text-micro text-content-primary/45">
-            <span className="text-content-primary/30">{t(line.label as never)}:</span>
+          <div key={idx} className="flex items-baseline gap-1 text-micro text-content-muted">
+            <span className="text-content-muted">{t(line.label as never)}:</span>
             {line.cardDefId ? (
               <LogCardChip cardDefId={line.cardDefId} />
             ) : (
               <span
                 className={
                   line.value.startsWith('-')
-                    ? 'text-accent-action/70'
+                    ? 'text-accent-action'
                     : line.value.startsWith('+')
-                      ? 'text-accent-info/70'
-                      : 'text-content-primary/55'
+                      ? 'text-accent-info'
+                      : 'text-content-muted'
                 }
               >
                 {valueDisplay}
@@ -1552,24 +1552,24 @@ function BattleLogSidebarPanel({ G, compact = false }: { G: GameState; compact?:
             const { segments, tone, breakdown } = formatLogEntry(entry, locale);
             const toneClass =
               tone === 'battle'
-                ? 'text-accent-action/80'
+                ? 'text-accent-action'
                 : tone === 'set'
-                  ? 'text-accent-primary/60'
+                  ? 'text-accent-primary'
                   : tone === 'effect'
-                    ? 'text-content-primary/70'
-                    : 'text-content-primary/40';
+                    ? 'text-content-primary'
+                    : 'text-content-muted';
             return (
               <div key={entry.id}>
                 <p className={toneClass}>
-                  <span className="text-content-primary/20">T{entry.turn}</span> {renderLogSegments(segments)}
+                  <span className="text-content-muted">T{entry.turn}</span> {renderLogSegments(segments)}
                   {entry.hp && tone !== 'battle' && (
-                    <span className="text-content-primary/25">
+                    <span className="text-content-muted">
                       {' '}
                       [{entry.hp[0]}/{entry.hp[1]}]
                     </span>
                   )}
                   {typeof entry.chronosPosition === 'number' && (
-                    <span className="text-content-primary/25">
+                    <span className="text-content-muted">
                       {' '}
                       ⏱{entry.chronosPosition}/{CHRONOS_MAPPING.positions}
                     </span>
@@ -1580,7 +1580,7 @@ function BattleLogSidebarPanel({ G, compact = false }: { G: GameState; compact?:
             );
           })}
         {(!G.actionLog || G.actionLog.length === 0) && (
-          <p className="text-content-primary/20">{t('board.waitingOpponent')}</p>
+          <p className="text-content-muted">{t('board.waitingOpponent')}</p>
         )}
       </div>
     </div>
@@ -2184,7 +2184,11 @@ function BattleBoard({
               />
               {mobileAbyssButton(opponentIndex, opponent.abyss.length)}
             </div>
-            <div className="bf-opponent-handbacks" aria-label={`${t('board.hand')} ${opponent.hand.length}`}>
+            <div
+              className="bf-opponent-handbacks"
+              role="group"
+              aria-label={`${t('board.hand')} ${opponent.hand.length}`}
+            >
               {opponent.hand.map((card) => (
                 <img key={card.instanceId} src="/card-back.jpg" alt="" loading="lazy" decoding="async" />
               ))}
