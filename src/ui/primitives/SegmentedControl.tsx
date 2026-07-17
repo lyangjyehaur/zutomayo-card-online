@@ -51,7 +51,7 @@ export function SegmentedControl<T extends string>({
               'focus-visible:outline-none focus-visible:ring-[length:var(--focus-ring-width)] focus-visible:ring-[--focus-ring-color] focus-visible:ring-offset-[length:var(--focus-ring-offset)] focus-visible:ring-offset-surface-base',
               size === 'md'
                 ? 'min-h-touch px-3 tracking-[var(--tracking-control)] md:tracking-[var(--tracking-kicker)]'
-                : 'min-h-control-sm px-3 tracking-[var(--tracking-control)]',
+                : 'min-h-touch px-3 tracking-[var(--tracking-control)]',
               selected
                 ? 'bg-accent-primary text-content-inverse'
                 : 'text-content-dim hover:bg-content-primary/5 hover:text-content-primary',

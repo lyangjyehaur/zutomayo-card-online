@@ -158,8 +158,8 @@ const setup = `
   };
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : input.url;
-    const method = init?.method || 'GET';
+    const url = input instanceof Request ? input.url : String(input);
+    const method = init?.method || (input instanceof Request ? input.method : 'GET');
     window.__zutomayoOnlineLobbySmoke.requests.push({
       method,
       url,
@@ -359,7 +359,7 @@ const metricsExpression = `
     custom: visible('[data-room-panel="custom"]').slice(0, 2),
     status: visible('[data-room-panel="status"]').slice(0, 2),
     platformError: visible('[role="alert"]').slice(0, 3),
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40).slice(0, 12),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter(isVisible)
       .map(box)

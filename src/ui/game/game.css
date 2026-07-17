@@ -191,6 +191,15 @@
   letter-spacing: 0;
 }
 
+@media (max-width: 820px) {
+  .bf-hud .battle-side-panel-actions button,
+  .board-pause-button,
+  button.cardstack {
+    min-width: var(--touch-target-min) !important;
+    min-height: var(--touch-target-min) !important;
+  }
+}
+
 .board-pause-button .board-pause-icon {
   display: block;
 }
@@ -1133,6 +1142,7 @@
 
 .mobile-zone-button {
   display: inline-flex;
+  min-width: var(--touch-target-min);
   min-height: var(--touch-target-min);
   align-items: center;
   justify-content: center;
@@ -2331,6 +2341,13 @@ button.cardstack:focus-visible {
 
   .actiondock-hint {
     display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .bf-root button.cardstack {
+    width: var(--touch-target-min) !important;
+    min-width: var(--touch-target-min) !important;
   }
 }
 

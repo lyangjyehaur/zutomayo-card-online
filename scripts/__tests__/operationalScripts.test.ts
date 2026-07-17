@@ -157,6 +157,26 @@ describe('operational shell scripts', () => {
     expect(spec).not.toContain('test.skip');
   });
 
+  it('gates standalone PWA behavior and deterministic responsive layouts in CI', () => {
+    const workflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8');
+    const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const pwaSmoke = readFileSync(resolve('scripts/pwa-standalone-smoke.mjs'), 'utf8');
+
+    expect(packageJson.scripts['smoke:pwa-standalone']).toContain('pwa-standalone-smoke.mjs');
+    expect(workflow).toContain('name: Responsive & PWA gates');
+    expect(workflow).toContain('npm run smoke:pwa-standalone');
+    expect(workflow).toContain('npm run smoke:ui-responsive');
+    expect(workflow).toContain('npm run smoke:battle-responsive');
+    expect(workflow).toContain('npm run smoke:online-lobby-responsive');
+    expect(workflow).toContain('npm run smoke:tools-responsive');
+    expect(workflow).toContain('responsive-pwa-evidence');
+    expect(pwaSmoke).toContain("matchMedia('(display-mode: standalone)').matches");
+    expect(pwaSmoke).toContain('navigator.serviceWorker?.controller');
+    expect(pwaSmoke).toContain('Network.emulateNetworkConditions');
+  });
+
   it('gates the rendered production role/TLS environment before migration', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
     expect(deploy).toContain('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS');

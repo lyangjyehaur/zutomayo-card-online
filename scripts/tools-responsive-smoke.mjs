@@ -272,7 +272,7 @@ const metricsExpression = `
     },
     shell: visible('main').slice(0, 1),
     toolbar: visible('.feedback-toolbar, .responsive-data-list, .i18n-responsive-table, article').slice(0, 8),
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40).slice(0, 12),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter(isVisible)
       .map(box)

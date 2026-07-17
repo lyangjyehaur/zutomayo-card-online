@@ -146,7 +146,44 @@ const setupAuth = `
   sessionStorage.setItem('zutomayo_admin_token', 'responsive-smoke-admin');
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : input.url;
+    const url = input instanceof Request ? input.url : String(input);
+    if (new URL(url, location.href).pathname === '/api/cards') {
+      return new Response(JSON.stringify([
+        {
+          id: 'admin-responsive-card-001',
+          name: 'Admin Responsive Character',
+          pack: 'qa',
+          song: 'qa',
+          illustrator: 'qa',
+          rarity: 'N',
+          element: '闇',
+          type: 'Character',
+          clock: 1,
+          attack: { night: 100, day: 100 },
+          powerCost: 1,
+          sendToPower: 1,
+          effect: '',
+          image: '',
+          errata: ''
+        },
+        {
+          id: 'admin-responsive-card-002',
+          name: 'Admin Responsive Enchant',
+          pack: 'qa',
+          song: 'qa',
+          illustrator: 'qa',
+          rarity: 'N',
+          element: '炎',
+          type: 'Enchant',
+          clock: 1,
+          powerCost: 1,
+          sendToPower: 0,
+          effect: 'Draw 1.',
+          image: '',
+          errata: ''
+        }
+      ]), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
     if (url.includes('/api/admin/users')) {
       return new Response(JSON.stringify({
         users: [
@@ -234,7 +271,7 @@ const pageMetrics = `
     advanced: visible('.admin-filter-advanced'),
     filterRows: visible('.admin-filter-row'),
     cards: visible('.admin-card-grid > button').slice(0, 10),
-    smallTargets: buttons.filter((item) => item.width < 40 || item.height < 40),
+    smallTargets: buttons.filter((item) => item.width < 44 || item.height < 44),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter((el) => !el.closest('.admin-filter-row, .admin-tablist, .admin-card-modal-tabs'))
       .map(box)
@@ -279,7 +316,7 @@ const tableMetrics = `
     rows: visible('.admin-responsive-table tbody tr').slice(0, 5),
     cells: visible('.admin-responsive-table td').slice(0, 14),
     controls: targets,
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44),
     offscreen: [...document.querySelectorAll('.admin-responsive-table, .admin-responsive-table *')]
       .filter(isVisible)
       .map(box)
@@ -362,7 +399,18 @@ try {
       await waitForSelector(client, '.admin-responsive-table tbody tr');
       await new Promise((resolve) => setTimeout(resolve, 600));
     } else {
-      await waitForSelector(client, '.admin-card-grid');
+      try {
+        await waitForSelector(client, '.admin-card-grid');
+      } catch {
+        await client.send('Page.navigate', { url: `${baseUrl}/` });
+        await waitForSelector(client, 'main');
+        await new Promise((resolve) => setTimeout(resolve, 3200));
+        await evalChecked(
+          client,
+          `history.pushState({}, '', '/admin'); window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));`,
+        );
+        await waitForSelector(client, '.admin-card-grid');
+      }
       await new Promise((resolve) => setTimeout(resolve, 700));
       if (testCase.openFilters) {
         await evalChecked(client, `document.querySelector('.admin-mobile-filter-summary button')?.click()`);

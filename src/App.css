@@ -873,7 +873,7 @@ input:focus {
 
 .version-update-trigger {
   display: inline-flex;
-  min-height: 2.5rem;
+  min-height: var(--touch-target-min);
   min-width: 10.5rem;
   align-items: center;
   border: 0;
@@ -3707,6 +3707,15 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 768px) {
+  .deck-library-actions .deck-library-action {
+    width: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+  }
+
+  .deck-save-action {
+    min-width: var(--touch-target-min);
+  }
+
   .opponent-stats-bar {
     min-height: 2rem;
     gap: 0.35rem;
