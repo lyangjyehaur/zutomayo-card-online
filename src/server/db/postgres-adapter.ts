@@ -93,7 +93,8 @@ interface CreateMatchOpts {
 interface UpdateLockContext {
   matchID: string;
   client: PoolClient;
-  timeout: ReturnType<typeof setTimeout>;
+  releaseHandle: ReturnType<typeof setImmediate>;
+  writing: boolean;
   released: boolean;
 }
 
@@ -427,7 +428,9 @@ export class PostgresAdapter {
     await this.connect();
 
     const lock = this.updateLocks.get(matchID);
-    if (lock && !lock.released) {
+    if (lock && !lock.released && !lock.writing) {
+      lock.writing = true;
+      clearImmediate(lock.releaseHandle);
       try {
         await this.writeState(lock.client, matchID, state, deltalog);
         await this.releaseUpdateLock(lock, 'commit');
@@ -1002,17 +1005,18 @@ export class PostgresAdapter {
       const lock: UpdateLockContext = {
         matchID,
         client,
+        writing: false,
         released: false,
-        timeout: setTimeout(() => {
+        releaseHandle: setImmediate(() => {
           this.releaseUpdateLock(lock, 'rollback').catch((err) => {
             Sentry.captureException(err, {
-              tags: { layer: 'postgres', op: 'lock-release-timeout', match_id: matchID },
+              tags: { layer: 'postgres', op: 'unused-update-lock-release', match_id: matchID },
             });
-            console.error(`[PostgresAdapter] timed-out update lock release failed for ${matchID}:`, err);
+            console.error(`[PostgresAdapter] unused update lock release failed for ${matchID}:`, err);
           });
-        }, 5000),
+        }),
       };
-      lock.timeout.unref?.();
+      lock.releaseHandle.unref?.();
       this.updateLocks.set(matchID, lock);
       return { state: result.rows[0].state as State };
     } catch (err) {
@@ -1027,8 +1031,8 @@ export class PostgresAdapter {
   private async releaseUpdateLock(lock: UpdateLockContext, mode: 'commit' | 'rollback'): Promise<void> {
     if (lock.released) return;
     lock.released = true;
-    this.updateLocks.delete(lock.matchID);
-    clearTimeout(lock.timeout);
+    if (this.updateLocks.get(lock.matchID) === lock) this.updateLocks.delete(lock.matchID);
+    clearImmediate(lock.releaseHandle);
     try {
       await lock.client.query(mode === 'commit' ? 'COMMIT' : 'ROLLBACK');
     } finally {

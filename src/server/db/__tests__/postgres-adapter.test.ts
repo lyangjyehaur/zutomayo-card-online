@@ -74,4 +74,20 @@ describe('PostgresAdapter state constraints', () => {
     expect(lockClient.release).toHaveBeenCalledTimes(1);
     expect(poolQuery).not.toHaveBeenCalled();
   });
+
+  it('releases an update lock on the next event-loop turn when boardgame.io rejects the move', async () => {
+    const schemaClient = mockClient();
+    const lockClient = mockClient(async (sql: string) => {
+      if (sql.includes('FOR UPDATE')) return { rows: [{ state: stateWithID(4) }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    const pool = mockPool([schemaClient, lockClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+
+    await expect(adapter.fetch('match_1', { state: true })).resolves.toEqual({ state: stateWithID(4) });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(lockClient.query).toHaveBeenNthCalledWith(3, 'ROLLBACK');
+    expect(lockClient.release).toHaveBeenCalledTimes(1);
+  });
 });

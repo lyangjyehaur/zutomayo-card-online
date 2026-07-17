@@ -200,7 +200,7 @@ const moves: Record<string, Move<GameState>> = {
     if (player === null || !confirmReady(G, player, getParsedEffects())) return INVALID_MOVE;
   }),
   // P3-16：線上回合超時由伺服器權威判斷，強制跳過該玩家回合（避免卡死）。
-  timeoutSkip: authoritativeServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
+  timeoutSkip: concurrentServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
     const caller = playerIndex(playerID);
     if (caller === null) return INVALID_MOVE;
     // 權威時間到後，允許仍在線的一方代為跳過斷線／無回應的玩家。
@@ -208,7 +208,7 @@ const moves: Record<string, Move<GameState>> = {
     const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
     if (!timeoutSkip(G, target, getParsedEffects())) return INVALID_MOVE;
   }),
-  timeoutAdvance: authoritativeServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
+  timeoutAdvance: concurrentServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
     const caller = playerIndex(playerID);
     if (caller === null) return INVALID_MOVE;
     const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;

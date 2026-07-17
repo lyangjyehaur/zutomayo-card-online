@@ -441,6 +441,7 @@ export function resolveJanken(
 
 export function chooseJanken(G: GameState, player: PlayerIndex, choice: JankenChoice): boolean {
   if (G.step !== 'janken' || G.jankenChoices[player] !== null) return false;
+  if (G.jankenChoices[0] === null && G.jankenChoices[1] === null) startInteractionWindow(G);
   G.jankenChoices[player] = choice;
   recordAction(G, player, 'janken', { choice });
   if (G.jankenChoices[0] && G.jankenChoices[1]) {
