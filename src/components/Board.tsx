@@ -51,6 +51,7 @@ import {
 import { getLocale, t, useLocale } from '../i18n';
 import { getLocalizedCardEffect, getLocalizedCardName, getTranslatedEffect } from '../game/cards/i18n';
 import { pendingChoiceSelectionError } from '../game/pendingChoices';
+import { canSubmitOnlineTimeout, onlinePhaseTimerStartedAt } from '../onlineTimeout';
 import {
   matchDurationSeconds,
   normalizeGameOverWinner,
@@ -1829,6 +1830,7 @@ function BattleBoard({
   G,
   moves,
   playerID,
+  _stateID,
   spectator = false,
   useServerTimer = false,
   opponentLabel,
@@ -1864,6 +1866,15 @@ function BattleBoard({
   // 觸控互動模式：coarse pointer 或非桌面佈局。手牌 tap=選中、詳情走 sheet。
   const touchLike = viewport.isTouch || viewport.mode !== 'desktop';
   const [timeLeft, setTimeLeft] = useState(TURN_TIMER_SECONDS);
+  const phaseClockKey = `${G.step}:${G.turnNumber}:${G.interactionStartTime ?? ''}:${G.jankenDrawCount}:${G.pendingChoice?.id ?? ''}:${G.pendingEffectPlayer ?? ''}`;
+  const phaseObservedAtRef = useRef({ key: phaseClockKey, at: Date.now() });
+  const timeoutExpiredAtRef = useRef<number | null>(null);
+  const timeoutAttemptsRef = useRef(new Map<string, number>());
+  if (phaseObservedAtRef.current.key !== phaseClockKey) {
+    phaseObservedAtRef.current = { key: phaseClockKey, at: Date.now() };
+    timeoutExpiredAtRef.current = null;
+    timeoutAttemptsRef.current.clear();
+  }
   // P3-16：伺服器權威計時器超時後，每秒遞增 retryTick 以重試 timeoutSkip（處理時鐘漂移）。
   const [retryTick, setRetryTick] = useState(0);
   const [focusedCard, setFocusedCard] = useState<FocusedCard>(null);
@@ -1898,9 +1909,13 @@ function BattleBoard({
     if (useServerTimer) {
       // 線上模式：正式回合與前置／效果互動都使用伺服器權威起始時間。
       const compute = () => {
-        const startedAt =
+        const serverStartedAt =
           G.step === 'turnSet' && !G.pendingChoice ? G.turnStartTime : (G.interactionStartTime ?? G.matchStartedAt);
-        if (typeof startedAt !== 'number') return TURN_TIMER_SECONDS;
+        const startedAt = onlinePhaseTimerStartedAt({
+          step: G.step,
+          serverStartedAt,
+          phaseObservedAt: phaseObservedAtRef.current.at,
+        });
         const elapsed = Math.floor((Date.now() - startedAt) / 1000);
         return Math.max(0, TURN_TIMER_SECONDS - elapsed);
       };
@@ -1948,13 +1963,25 @@ function BattleBoard({
 
   useEffect(() => {
     if (spectator) return;
-    if (timeLeft > 0) return;
+    if (timeLeft > 0) {
+      timeoutExpiredAtRef.current = null;
+      return;
+    }
     // 教學流程不使用真實倒數；一般本機與線上模式皆走同一 timeoutSkip 規則，
     // 允許未達最低出牌數時跳過，避免 00 秒後仍可無限操作。
     if (onNoticeDismiss) return;
     if (useServerTimer) {
+      const now = Date.now();
+      if (timeoutExpiredAtRef.current === null) timeoutExpiredAtRef.current = now;
+      const expiredForMs = now - timeoutExpiredAtRef.current;
       for (const value of awaitingPlayersKey.split(',')) {
-        if (value === '0' || value === '1') moves.timeoutAdvance(Number(value) as PlayerIndex);
+        if (value !== '0' && value !== '1') continue;
+        const target = Number(value) as PlayerIndex;
+        const attemptKey = `${_stateID ?? -1}:${target}`;
+        const lastAttemptAt = timeoutAttemptsRef.current.get(attemptKey);
+        if (!canSubmitOnlineTimeout({ target, localPlayer: meIndex, expiredForMs, lastAttemptAt, now })) continue;
+        timeoutAttemptsRef.current.set(attemptKey, now);
+        moves.timeoutAdvance(target);
       }
       return;
     }
@@ -1973,6 +2000,7 @@ function BattleBoard({
     retryTick,
     useServerTimer,
     awaitingPlayersKey,
+    _stateID,
     spectator,
   ]);
 

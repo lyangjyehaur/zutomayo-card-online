@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Client, type BoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { onlineSocketOptions } from '../onlineSocketConfig';
@@ -35,6 +35,7 @@ import {
   type OnlineStateMismatchReason,
   type OnlineStateSnapshot,
 } from '../onlineStateGuard';
+import { didOnlineStateAdvance, ONLINE_MOVE_ACK_TIMEOUT_MS, shouldTrackOnlineMove } from '../onlineMoveAck';
 import { type PlatformMatchShellPresence, type PlatformMatchShellRoom } from '../platformClient';
 import {
   connectPlatformMatchShellWithRetry,
@@ -141,12 +142,37 @@ function OnlineBoard(
     onConnectionStatusChange: (isConnected: boolean) => void;
     onOpponentDetected: () => void;
     onStateMismatch: (reason: OnlineStateMismatchReason) => void;
+    onMoveSubmitted: (moveName: string, stateID: number | undefined) => void;
+    onStateObserved: (stateID: number) => void;
     onExitRequest: () => void;
   },
 ) {
-  const { gameOverActions, spectator, onConnectionStatusChange, onOpponentDetected, onStateMismatch, ...boardProps } =
-    props;
+  const {
+    gameOverActions,
+    spectator,
+    onConnectionStatusChange,
+    onOpponentDetected,
+    onStateMismatch,
+    onMoveSubmitted,
+    onStateObserved,
+    moves,
+    _stateID,
+    ...boardProps
+  } = props;
   const lastSnapshot = useRef<OnlineStateSnapshot | null>(null);
+  const trackedMoves = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(moves).map(([name, move]) => [
+          name,
+          (...args: unknown[]) => {
+            onMoveSubmitted(name, _stateID);
+            return (move as (...moveArgs: unknown[]) => unknown)(...args);
+          },
+        ]),
+      ) as typeof moves,
+    [_stateID, moves, onMoveSubmitted],
+  );
 
   useEffect(() => {
     onConnectionStatusChange(props.isConnected);
@@ -154,6 +180,7 @@ function OnlineBoard(
 
   useEffect(() => {
     if (typeof props._stateID !== 'number' || !props.G || !props.ctx) return;
+    onStateObserved(props._stateID);
     // 同步 game_phase tag 到 Sentry，便於後台依遊戲階段篩選錯誤。
     if (props.G.step) {
       Sentry.setTag('game_phase', props.G.step);
@@ -170,7 +197,7 @@ function OnlineBoard(
       return;
     }
     lastSnapshot.current = result.snapshot;
-  }, [props._stateID, props.G, props.ctx, onStateMismatch]);
+  }, [props._stateID, props.G, props.ctx, onStateMismatch, onStateObserved]);
 
   // P2-13：改用 Socket.IO 推送的 matchData 變化偵測對手加入，取代 HTTP 輪詢。
   // boardgame.io client 連線後，當第二個玩家 join 時 server 會推送 matchData 更新。
@@ -182,7 +209,16 @@ function OnlineBoard(
   }, [props.matchData, onOpponentDetected]);
 
   // P3-16：線上模式啟用伺服器權威計時器（G.turnStartTime + timeoutSkip move）。
-  return <Board {...boardProps} gameOverActions={gameOverActions} spectator={spectator} useServerTimer />;
+  return (
+    <Board
+      {...boardProps}
+      _stateID={_stateID}
+      moves={trackedMoves}
+      gameOverActions={gameOverActions}
+      spectator={spectator}
+      useServerTimer
+    />
+  );
 }
 
 export function OnlineGame({
@@ -203,6 +239,9 @@ export function OnlineGame({
   const connectedOnce = useRef(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moveAckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestStateIDRef = useRef<number | null>(null);
+  const pendingMoveRef = useRef<{ moveName: string; stateID: number } | null>(null);
   const onReturnToLobbyRef = useRef(onReturnToLobby);
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
   const onLeaveRequestRef = useRef(onLeaveRequest);
@@ -251,9 +290,18 @@ export function OnlineGame({
     () => () => {
       if (statusTimer.current) clearTimeout(statusTimer.current);
       if (resyncTimer.current) clearTimeout(resyncTimer.current);
+      if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
     },
     [],
   );
+
+  useEffect(() => {
+    pendingMoveRef.current = null;
+    latestStateIDRef.current = null;
+    if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
+    moveAckTimer.current = null;
+    connectedOnce.current = false;
+  }, [matchID]);
 
   useEffect(() => {
     onReturnToLobbyRef.current = onReturnToLobby;
@@ -516,20 +564,55 @@ export function OnlineGame({
     [flashRejoined, matchID, showRejoinedStatus],
   );
 
+  const rebuildOnlineClient = useCallback(() => {
+    pendingMoveRef.current = null;
+    if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
+    moveAckTimer.current = null;
+    if (statusTimer.current) clearTimeout(statusTimer.current);
+    if (resyncTimer.current) clearTimeout(resyncTimer.current);
+    setConnectionStatus('reconnecting');
+    setResyncingState(true);
+    setClientSyncNonce((nonce) => nonce + 1);
+    resyncTimer.current = setTimeout(() => setResyncingState(false), 5000);
+  }, []);
+
   const handleStateMismatch = useCallback(
     (reason: OnlineStateMismatchReason) => {
       console.warn(`[online-sync] detected ${reason}; rebuilding client to resync authoritative state`);
       Sentry.captureException(new Error(`Online state mismatch: ${reason}`), {
         tags: { layer: 'online-sync', reason, match_id: matchID },
       });
-      if (statusTimer.current) clearTimeout(statusTimer.current);
-      if (resyncTimer.current) clearTimeout(resyncTimer.current);
-      setConnectionStatus('reconnecting');
-      setResyncingState(true);
-      setClientSyncNonce((nonce) => nonce + 1);
-      resyncTimer.current = setTimeout(() => setResyncingState(false), 5000);
+      rebuildOnlineClient();
     },
-    [matchID],
+    [matchID, rebuildOnlineClient],
+  );
+
+  const handleStateObserved = useCallback((stateID: number) => {
+    latestStateIDRef.current = stateID;
+    const pending = pendingMoveRef.current;
+    if (!pending || !didOnlineStateAdvance(pending.stateID, stateID)) return;
+    pendingMoveRef.current = null;
+    if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
+    moveAckTimer.current = null;
+  }, []);
+
+  const handleMoveSubmitted = useCallback(
+    (moveName: string, stateID: number | undefined) => {
+      if (!shouldTrackOnlineMove(moveName) || typeof stateID !== 'number') return;
+      pendingMoveRef.current = { moveName, stateID };
+      if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
+      moveAckTimer.current = setTimeout(() => {
+        const pending = pendingMoveRef.current;
+        if (!pending || didOnlineStateAdvance(pending.stateID, latestStateIDRef.current)) return;
+        pendingMoveRef.current = null;
+        Sentry.captureException(new Error(`Online move acknowledgement timed out: ${pending.moveName}`), {
+          tags: { layer: 'online-sync', reason: 'move-ack-timeout', move: pending.moveName, match_id: matchID },
+          extra: { submittedStateID: pending.stateID, observedStateID: latestStateIDRef.current },
+        });
+        rebuildOnlineClient();
+      }, ONLINE_MOVE_ACK_TIMEOUT_MS);
+    },
+    [matchID, rebuildOnlineClient],
   );
 
   const handleChatSubmit = useCallback(
@@ -625,31 +708,53 @@ export function OnlineGame({
     [applyChatTranslation, locale, matchID],
   );
 
+  const onlineBoardRuntimeRef = useRef({
+    spectator,
+    handleConnectionStatusChange,
+    handleOpponentDetected,
+    handleStateMismatch,
+    handleMoveSubmitted,
+    handleStateObserved,
+  });
+  onlineBoardRuntimeRef.current = {
+    spectator,
+    handleConnectionStatusChange,
+    handleOpponentDetected,
+    handleStateMismatch,
+    handleMoveSubmitted,
+    handleStateObserved,
+  };
+
   const [OnlineClient] = useState(() =>
     Client({
       game: ZutomayoCard,
-      board: (props: BoardProps<GameState>) => (
-        <OnlineBoard
-          {...props}
-          gameOverActions={{
-            helperText: t('online.gameOverHelper'),
-            primary: {
-              label: t('common.backToLobby'),
-              onClick: () => onReturnToLobbyRef.current(),
-            },
-            secondary: {
-              label: t('online.createNewRoom'),
-              onClick: () => onCreateNewRoomRef.current(),
-              variant: 'secondary',
-            },
-          }}
-          spectator={spectator}
-          onConnectionStatusChange={handleConnectionStatusChange}
-          onOpponentDetected={handleOpponentDetected}
-          onStateMismatch={handleStateMismatch}
-          onExitRequest={() => onLeaveRequestRef.current()}
-        />
-      ),
+      board: (props: BoardProps<GameState>) => {
+        const runtime = onlineBoardRuntimeRef.current;
+        return (
+          <OnlineBoard
+            {...props}
+            gameOverActions={{
+              helperText: t('online.gameOverHelper'),
+              primary: {
+                label: t('common.backToLobby'),
+                onClick: () => onReturnToLobbyRef.current(),
+              },
+              secondary: {
+                label: t('online.createNewRoom'),
+                onClick: () => onCreateNewRoomRef.current(),
+                variant: 'secondary',
+              },
+            }}
+            spectator={runtime.spectator}
+            onConnectionStatusChange={runtime.handleConnectionStatusChange}
+            onOpponentDetected={runtime.handleOpponentDetected}
+            onStateMismatch={runtime.handleStateMismatch}
+            onMoveSubmitted={runtime.handleMoveSubmitted}
+            onStateObserved={runtime.handleStateObserved}
+            onExitRequest={() => onLeaveRequestRef.current()}
+          />
+        );
+      },
       loading: OnlineLoading,
       numPlayers: 2,
       multiplayer: SocketIO({ server: window.location.origin, socketOpts: onlineSocketOptions() }),

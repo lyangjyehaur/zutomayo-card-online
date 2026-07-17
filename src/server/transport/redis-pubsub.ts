@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import * as Sentry from '@sentry/node';
+import { randomUUID } from 'node:crypto';
 import { resolveRedisConnectionConfig } from '../../runtimeSecurityConfig';
 
 /**
@@ -28,6 +29,7 @@ export class RedisPubSub<T = unknown> {
   /** channel → callbacks。同一 channel 可能被多個本節點 client 訂閱。 */
   private callbacks = new Map<string, Set<(payload: T) => void>>();
   private connected = false;
+  private readonly instanceId = randomUUID();
 
   constructor(opts: { pubClient?: Redis; subClient?: Redis } = {}) {
     this.pubClient = opts.pubClient ?? new Redis(REDIS_URL, REDIS_TLS ? { tls: REDIS_TLS } : {});
@@ -38,13 +40,27 @@ export class RedisPubSub<T = unknown> {
   private handleMessage = (channel: string, message: string): void => {
     const cbs = this.callbacks.get(channel);
     if (!cbs || cbs.size === 0) return;
-    let payload: T;
+    let decoded: T | { __zutomayoPubSub: true; sourceId: string; payload?: T };
     try {
-      payload = JSON.parse(message) as T;
+      decoded = JSON.parse(message) as T | { __zutomayoPubSub: true; sourceId: string; payload?: T };
     } catch {
       // 不合法的 payload 直接丟棄，避免單一壞訊息拖垮整個節點。
       return;
     }
+    if (decoded && typeof decoded === 'object' && '__zutomayoPubSub' in decoded && decoded.__zutomayoPubSub === true) {
+      if (decoded.sourceId === this.instanceId) return;
+      if ('payload' in decoded) {
+        this.deliver(cbs, decoded.payload as T, channel);
+        return;
+      }
+      const { __zutomayoPubSub: _marker, sourceId: _sourceId, ...payload } = decoded as Record<string, unknown>;
+      this.deliver(cbs, payload as T, channel);
+      return;
+    }
+    this.deliver(cbs, decoded as T, channel);
+  };
+
+  private deliver(cbs: Set<(payload: T) => void>, payload: T, channel: string): void {
     for (const cb of cbs) {
       try {
         cb(payload);
@@ -54,7 +70,7 @@ export class RedisPubSub<T = unknown> {
         console.error(`[RedisPubSub] callback error on channel ${channel}:`, err);
       }
     }
-  };
+  }
 
   async connect(): Promise<void> {
     if (this.connected) return;
@@ -74,9 +90,17 @@ export class RedisPubSub<T = unknown> {
   }
 
   publish(channelId: string, payload: T): void {
+    const localCallbacks = this.callbacks.get(channelId);
+    if (localCallbacks) this.deliver(localCallbacks, payload, channelId);
     // publish 不 await：boardgame.io 的 GenericPubSub.publish 是同步簽名。
     // ioredis publish 回 Promise，這裡 fire-and-forget，錯誤由 reject handler 記錄。
-    this.pubClient.publish(channelId, JSON.stringify(payload)).catch((err) => {
+    // Keep object payload fields at the top level so an older node in a rolling
+    // deployment can still consume type/args while newer nodes suppress echoes.
+    const envelope =
+      payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? { ...payload, __zutomayoPubSub: true as const, sourceId: this.instanceId }
+        : { __zutomayoPubSub: true as const, sourceId: this.instanceId, payload };
+    this.pubClient.publish(channelId, JSON.stringify(envelope)).catch((err) => {
       Sentry.captureException(err, { tags: { layer: 'redis-pubsub', op: 'publish', channel: channelId } });
       console.error(`[RedisPubSub] publish error on ${channelId}:`, err);
     });

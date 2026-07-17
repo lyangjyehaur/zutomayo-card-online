@@ -364,14 +364,22 @@ function assertHiddenOpponentInfo(viewerState: NonNullable<ClientState>, opponen
   );
 }
 
-function assertVisibleDeckMatchesIds(
-  viewerState: NonNullable<ClientState>,
-  player: 0 | 1,
-  expectedIds: string[],
-): void {
-  const actualIds = [...viewerState.G.players[player].hand, ...viewerState.G.players[player].deck]
-    .map((card: CardInstance) => card.defId)
-    .sort();
+function assertOwnDeckView(viewerState: NonNullable<ClientState>, player: 0 | 1, expectedIds: string[]): void {
+  const playerState = viewerState.G.players[player];
+  assert.equal(playerState.hand.length + playerState.deck.length, expectedIds.length);
+  assert.ok(
+    playerState.hand.every((card: CardInstance) => card.defId !== '__hidden__'),
+    'own hand should be visible',
+  );
+  assert.ok(
+    playerState.deck.every((card: CardInstance) => card.defId === '__hidden__'),
+    'own deck order should be hidden',
+  );
+}
+
+function assertStoredDeckMatchesIds(stored: StoredState, player: 0 | 1, expectedIds: string[]): void {
+  const playerState = stored.G.players[player];
+  const actualIds = [...playerState.hand, ...playerState.deck].map((card) => card.defId).sort();
   assert.deepEqual(actualIds, [...expectedIds].sort());
 }
 
@@ -565,8 +573,11 @@ try {
     assert.equal(validateConstructedDeckIds(customDeck0Ids), null);
     assert.equal(validateConstructedDeckIds(customDeck1Ids), null);
     const customMatch = await startJoinedClients({ deck0Ids: customDeck0Ids, deck1Ids: customDeck1Ids });
-    assertVisibleDeckMatchesIds(customMatch.state0, 0, customDeck0Ids);
-    assertVisibleDeckMatchesIds(customMatch.state1, 1, customDeck1Ids);
+    const customStored = await fetchStoredState(customMatch.matchID);
+    assertStoredDeckMatchesIds(customStored, 0, customDeck0Ids);
+    assertStoredDeckMatchesIds(customStored, 1, customDeck1Ids);
+    assertOwnDeckView(customMatch.state0, 0, customDeck0Ids);
+    assertOwnDeckView(customMatch.state1, 1, customDeck1Ids);
     assertHiddenOpponentInfo(customMatch.state0, 1);
     assertHiddenOpponentInfo(customMatch.state1, 0);
     const customTurnSet = await playToTurnSet(customMatch.client0, customMatch.client1);
