@@ -202,6 +202,8 @@ SQL
 
 "${source_smoke_compose[@]}" run --build --rm --no-deps boardgame-metadata-pg-smoke
 
+"${source_smoke_compose[@]}" run --build --rm --no-deps platform-relationship-race-pg-smoke
+
 "${compose[@]}" run --rm --no-deps \
   --env NODE_ENV=test \
   --env ADMIN_CREDENTIAL_PG_SMOKE_ALLOW_REMOTE=true \

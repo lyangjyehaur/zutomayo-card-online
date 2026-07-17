@@ -9,6 +9,8 @@ api/*
 !api/observability.cjs
 !api/matchmakingService.cjs
 !api/accountMutationLock.cjs
+!api/friendService.cjs
+!api/socialSafetyService.cjs
 !api/accountLifecycleService.cjs
 !api/accountExportService.cjs
 !api/legalHoldService.cjs

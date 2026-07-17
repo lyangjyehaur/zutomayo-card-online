@@ -68,6 +68,7 @@ describe('operational shell scripts', () => {
     expect(smoke).toContain('migrate npm run relationship:outbox:pg-smoke');
     expect(smoke).toContain('migrate npm run db:migration-lineage:smoke');
     expect(smoke).toContain('migrate npm run db:platform-schema:smoke');
+    expect(smoke).toContain('platform-relationship-race-pg-smoke');
     expect(smoke).toContain('lineage_database="${PG_DATABASE}_lineage"');
     expect(smoke).toContain('--env REQUIRE_APP_ROLE_GATE=false');
     expect(smoke).toContain('REDIS_DB="${REDIS_DB:-7}"');
@@ -179,6 +180,9 @@ describe('operational shell scripts', () => {
 
     expect(packageJson.scripts.verify).toContain('npm run data:policy');
     expect(packageJson.scripts['db:migrate:release']).toContain('scripts/backfill-legacy-deleted-accounts-pg.cjs');
+    expect(packageJson.scripts['platform:relationship-race:pg-smoke']).toContain(
+      'scripts/platform-relationship-race-pg-smoke.ts',
+    );
     expect(packageJson.scripts['db:migrate:release']).toContain('scripts/release-card-data.cjs');
     expect(server4).toContain('REQUIRE_OFFICIAL_CARD_DATA=true');
     expect(server4).toContain('RELEASE_SHA=${RELEASE_SHA:');

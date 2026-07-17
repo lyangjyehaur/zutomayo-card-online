@@ -88,6 +88,7 @@
     "retention:run": "node scripts/run-retention.cjs",
     "relationship:outbox:redrive": "node scripts/redrive-relationship-outbox.cjs",
     "relationship:outbox:pg-smoke": "node scripts/relationship-outbox-pg-smoke.cjs",
+    "platform:relationship-race:pg-smoke": "node --import tsx scripts/platform-relationship-race-pg-smoke.ts",
     "prepare": "husky",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",

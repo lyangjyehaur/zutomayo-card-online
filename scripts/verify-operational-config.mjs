@@ -243,8 +243,23 @@ export function validateOperationalConfig() {
   requireFragments('scripts/postgres-role-smoke.sh', [
     'db:migration-lineage:smoke',
     'db:platform-schema:smoke',
+    'platform-relationship-race-pg-smoke',
     'lineage_database',
     'REQUIRE_APP_ROLE_GATE=false',
+  ]);
+  requireFragments('docker-compose.postgres-concurrency-smoke.yml', [
+    'platform-relationship-race-pg-smoke:',
+    "command: ['npm', 'run', 'platform:relationship-race:pg-smoke']",
+    'PG_API_USER:',
+    'PG_PLATFORM_USER:',
+  ]);
+  requireFragments('scripts/platform-relationship-race-pg-smoke.ts', [
+    'createPostgresPlatformBlockStore',
+    'createPostgresPlatformFriendStore',
+    'blockUser',
+    'removeFriend',
+    'finishBoardgameMatch',
+    'Platform relay/relationship writer PostgreSQL concurrency smoke passed',
   ]);
   requireFragments('scripts/platform-schema-gate-pg-smoke.cjs', [
     "assertPostgresExpectedRole(process.env, 'PG_PLATFORM_USER')",
@@ -253,6 +268,7 @@ export function validateOperationalConfig() {
   rejectFragments('Dockerfile.migrate', ['COPY data/card-', 'COPY scripts/card-english-ocr-overrides.json']);
   requireFragments('package.json', [
     'npm run data:policy',
+    'platform:relationship-race:pg-smoke',
     'scripts/db-migrate.cjs up && node scripts/backfill-legacy-deleted-accounts-pg.cjs && node scripts/release-card-data.cjs',
   ]);
   requireFragments('docker-compose.pgbouncer.yml', [

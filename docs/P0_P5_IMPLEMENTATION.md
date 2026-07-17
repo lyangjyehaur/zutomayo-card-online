@@ -16,7 +16,7 @@
 
 - `npm run verify` 通過：Vitest 153 個 test files、1374 tests、資料來源政策、release/operational config、i18n、coverage 與 production/PWA build；coverage statements 64.58%、branches 57.20%、functions 65.96%、lines 67.85%。
 - `npm run rule:audit` 對本機 422 張線上資料副本通過：250 張效果卡、267 行效果全部解析，`unparsedLines=0`、`parsedButPartial=0`、`falseDraw=0`。
-- Fresh PostgreSQL 九角色 smoke 通過：canonical `000001`→`000031`、API role matrix、platform 獨立最小權限 schema gate、relationship outbox、social/account-deletion concurrency、boardgame metadata、admin credential lifecycle；另自動重現 card-first 歷史，補套 `000019`–`000027`、正規化 migration metadata，再以 `checkOrder=true` 嚴格重跑。
+- Fresh PostgreSQL 九角色 smoke 通過：canonical `000001`→`000031`、API role matrix、platform 獨立最小權限 schema gate、relationship outbox、social/account-deletion concurrency、boardgame metadata、admin credential lifecycle，以及 QuickMatch block／Invite friendship-removal writer transaction 與真 platform relay 的 distinct-role 並行競態；另自動重現 card-first 歷史，補套 `000019`–`000027`、正規化 migration metadata，再以 `checkOrder=true` 嚴格重跑。
 - Legacy deleted-account backfill 已改為受審核、精確數量、fail-closed 的 release step。單元測試覆蓋零筆 no-op、未核准、數量漂移、逐筆成功與 hash-only failure；真 PostgreSQL smoke 造出既有 tombstone，驗證 legal-hold/account lock、全 identity-domain 匿名化、purge/retry 與 `users.identity_anonymized_at` marker。API 與 platform schema gate 都拒絕任何未清零 tombstone。
 - 由未修改的 card-first 本機資料庫（2 users、422 cards、`000028`–`000030` 已存在而 `000019`–`000027` 缺失）建立全新 clone，current-tree `db:migrate:release` 已成功升到 28 筆 canonical migrations／`000031`，匯入並 gate 422 cards、12 errata、1 筆 signed dataset ledger、0 pending tombstones；第二次 release 顯示 no migrations 並保留 audited edits。原資料庫未修改。
 - Fresh-volume Compose 重新 build current-tree images，migration/seed 後 Chromium 40/40 通過，包含 service-backed accessibility，authenticated QuickMatch/Invite/chat/reconnect，以可控強弱 synthetic deck 自然完成對局，以及兩個獨立重新登入 browser context 證明跨裝置 history 各只有同一筆 canonical result。Distinct platform role 同時驗證 participant/chat writer 只用共用 advisory fence 與最小 `users(id, deleted_at)` live check，不需要 `users` UPDATE 權限。
@@ -120,7 +120,7 @@
 - [x] Async 帳號匯出、下載授權、物件 expiry/purge 與刪除匿名化 service 已有；000027 對新刪除涵蓋 match/boardgame/direct-chat/translation/admin audit/outbox，legacy tombstone 以精確核准數量回填並由 runtime schema gate 要求清零；fresh PG 已驗證 marker、legal hold、purge/retry 與全域不變量。
 - [ ] 帳號 lifecycle routes/UI、step-up 與 durable session revoke 已有；尚缺真實 email/Logto provider E2E 與故障恢復證據。
 - [x] Friend request 與 block service / migration；不再直接雙向加好友。
-- [ ] Direct chat、presence、legacy matchmaking 與 platform 已接 block/mute；QuickMatch/Invite 最終 relay 已加入同 relationship writer advisory-lock fence，鎖後重查 live users、block/friendship，room/unit race 通過，仍缺真 platform relay 與 writer transaction 並行 service smoke。
+- [x] Direct chat、presence、legacy matchmaking 與 platform 已接 block/mute；QuickMatch/Invite 最終 relay 已加入同 relationship writer advisory-lock fence，鎖後重查 live users、block/friendship。除 room/unit race 外，fresh PostgreSQL 九角色 smoke 亦以獨立 API/platform role 驗證 QuickMatch block writer 與 Invite friendship-removal writer 在 transaction 中暫停時，真 platform relay 會等待同一 advisory fence，commit 後取消房間且不廣播 `boardgameMatchReady`。
 - [x] Season / placement / idempotent season rating service 與 migration。
 - [x] Season admin、player API/UI、關季與衰減流程。
 - [x] 投降、棄賽、reconnect deadline、rematch 與處罰政策落地。
