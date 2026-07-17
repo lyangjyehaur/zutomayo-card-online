@@ -355,11 +355,13 @@ export function validateOperationalConfig() {
   requireFragments('scripts/e2e-game-process-restart-smoke.sh', [
     'RESTART_SMOKE_CONFIRM',
     'docker compose',
+    '-e E2E_PROCESS_RESTART_CONTROLLER=1',
     'restart game platform',
     'StartedAt',
     'game-process-restart.restarted.json',
   ]);
   requireFragments('e2e/game-process-restart.spec.ts', [
+    "process.env.E2E_PROCESS_RESTART_CONTROLLER !== '1'",
     'data-game-step="turnSet"',
     'waitForBoardgameReconnect',
     'getAuthenticatedMatchHistory',

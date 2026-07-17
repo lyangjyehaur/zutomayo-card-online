@@ -11,6 +11,11 @@ import {
 const readyMarker = resolve('test-results/game-process-restart.ready');
 const restartedMarker = resolve('test-results/game-process-restart.restarted.json');
 
+test.skip(
+  process.env.E2E_PROCESS_RESTART_CONTROLLER !== '1',
+  'requires scripts/e2e-game-process-restart-smoke.sh to restart the services',
+);
+
 async function expectLobby(page: Page, nickname: string): Promise<void> {
   await expect(page.getByText(`${nickname} · ELO`).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: '開始匹配' })).toBeEnabled({ timeout: 30_000 });

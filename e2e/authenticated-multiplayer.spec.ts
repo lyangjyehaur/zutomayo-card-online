@@ -57,8 +57,13 @@ async function expectAuthenticatedLobby(page: Page, nickname: string): Promise<v
 }
 
 async function activateWithKeyboard(locator: Locator): Promise<void> {
-  await locator.focus();
-  await expect(locator).toBeFocused();
+  await expect(locator).toBeEnabled();
+  await expect
+    .poll(async () => {
+      await locator.focus();
+      return locator.evaluate((element) => document.activeElement === element);
+    })
+    .toBe(true);
   await locator.press('Enter');
 }
 

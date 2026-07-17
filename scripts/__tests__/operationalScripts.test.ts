@@ -178,6 +178,7 @@ describe('operational shell scripts', () => {
     };
     const pwaSmoke = readFileSync(resolve('scripts/pwa-standalone-smoke.mjs'), 'utf8');
     const adminSmoke = readFileSync(resolve('scripts/admin-responsive-smoke.mjs'), 'utf8');
+    const uiSmoke = readFileSync(resolve('scripts/ui-responsive-smoke.mjs'), 'utf8');
     const adminCss = readFileSync(resolve('src/components/AdminPanel.css'), 'utf8');
     const browserSmokeFiles = [
       'scripts/pwa-standalone-smoke.mjs',
@@ -228,6 +229,8 @@ describe('operational shell scripts', () => {
     expect(adminSmoke).toContain("waitForSelector(client, '.admin-card-list')");
     expect(adminSmoke).toContain("document.querySelectorAll('.admin-nav-item')");
     expect(adminSmoke).not.toContain('.admin-card-grid');
+    expect(uiSmoke).toContain("client.send('Page.addScriptToEvaluateOnNewDocument', { source: setup })");
+    expect(uiSmoke).not.toContain('evalChecked(client, setup)');
     expect(adminCss).toMatch(/@media \(max-width: 1179px\) \{[\s\S]*\.admin-responsive-table/);
     expect(adminCss).toMatch(/\.admin-nav-item \{[\s\S]*min-height: var\(--touch-target-min\)/);
     expect(viteConfig).toContain("['/api/cards', '/api/cards/i18n', '/api/cards/texts']");
@@ -281,12 +284,16 @@ describe('operational shell scripts', () => {
     const localCompose = readFileSync(resolve('docker-compose.yml'), 'utf8');
     const importer = readFileSync(resolve('scripts/import-card-official-texts-pg.ts'), 'utf8');
     const workflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8');
+    const restartSmoke = readFileSync(resolve('scripts/e2e-game-process-restart-smoke.sh'), 'utf8');
+    const restartSpec = readFileSync(resolve('e2e/game-process-restart.spec.ts'), 'utf8');
 
     expect(packageJson.scripts.verify).toContain('npm run data:policy');
     expect(packageJson.scripts.verify).toContain('npm run dependency:patches');
     expect(packageJson.scripts['dependency:patches']).toBe('patch-package --error-on-fail');
     expect(packageJson.scripts.postinstall).toBe('patch-package');
     expect(packageJson.scripts['e2e:game-restart']).toContain('e2e-game-process-restart-smoke.sh');
+    expect(restartSmoke).toContain('-e E2E_PROCESS_RESTART_CONTROLLER=1');
+    expect(restartSpec).toContain("process.env.E2E_PROCESS_RESTART_CONTROLLER !== '1'");
     expect(packageJson.scripts['db:migrate:release']).toContain('scripts/backfill-legacy-deleted-accounts-pg.cjs');
     expect(packageJson.scripts['platform:relationship-race:pg-smoke']).toContain(
       'scripts/platform-relationship-race-pg-smoke.ts',

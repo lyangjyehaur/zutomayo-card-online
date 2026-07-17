@@ -69,7 +69,8 @@ else
   "${compose[@]}" build
 fi
 "${compose[@]}" up --no-build --wait --wait-timeout 180 game api platform
-"${compose[@]}" run --rm e2e npx playwright test e2e/game-process-restart.spec.ts --project=chromium --retries=0 &
+"${compose[@]}" run --rm -e E2E_PROCESS_RESTART_CONTROLLER=1 e2e \
+  npx playwright test e2e/game-process-restart.spec.ts --project=chromium --retries=0 &
 runner_pid=$!
 
 deadline=$((SECONDS + 120))

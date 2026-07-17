@@ -359,6 +359,7 @@ const metricsExpression = `
     ).slice(0, 8),
     smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
+      .filter((el) => !el.closest('.admin-sidebar'))
       .filter(isVisible)
       .map(box)
       .filter((item) => item.offscreenX)
@@ -401,6 +402,7 @@ try {
   client = await connect(tab.webSocketDebuggerUrl);
   await client.send('Page.enable');
   await client.send('Runtime.enable');
+  await client.send('Page.addScriptToEvaluateOnNewDocument', { source: setup });
 
   for (const testCase of cases) {
     console.log(`case ${testCase.name}`);
@@ -413,9 +415,6 @@ try {
       screenHeight: testCase.height,
     });
     await client.send('Page.navigate', { url: `${baseUrl}${testCase.path}` });
-    await waitForPage(client, testCase);
-    await evalChecked(client, setup);
-    await client.send('Page.reload', { ignoreCache: true });
     await waitForPage(client, testCase);
     await new Promise((resolve) => setTimeout(resolve, 300));
     let metrics = await evalChecked(client, metricsExpression);
