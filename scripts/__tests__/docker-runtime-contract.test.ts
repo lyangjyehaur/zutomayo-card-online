@@ -66,6 +66,7 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/relationshipEvents.cjs');
     expect(dockerignore).toContain('!api/relationshipOutbox.cjs');
     expect(dockerfile).toContain('COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs');
+    expect(dockerfile).toContain('COPY scripts/link-admin-user.cjs ./scripts/link-admin-user.cjs');
     expect(dockerfile).toContain('COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs');
     expect(dockerignore).toContain('!api/schemaGate.cjs');
   });

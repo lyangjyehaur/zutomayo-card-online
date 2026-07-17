@@ -69,6 +69,18 @@ describe('schema migrations', () => {
     expect(initSchema, 'initSchema fallback missing verified chat membership column').toContain('access_verified');
   });
 
+  it('links administrator roles to signed-in user accounts', () => {
+    const migration = readRepoFile('migrations/000031_user_linked_admins.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const linkScript = readRepoFile('scripts/link-admin-user.cjs');
+
+    expect(migration).toContain("references: 'users(id)'");
+    expect(migration).toContain("name: 'uq_admin_users_user_id'");
+    expect(schemaGate).toContain("admin_users: ['id', 'user_id', 'username', 'role', 'disabled_at']");
+    expect(linkScript).toContain('ON CONFLICT (user_id)');
+    expect(linkScript).toContain('DELETE FROM admin_users WHERE user_id = $1 RETURNING id');
+  });
+
   it('backfills the reward entitlement ledger for every existing grant', () => {
     const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');

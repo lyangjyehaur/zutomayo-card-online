@@ -1,6 +1,18 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CardDef } from '../../types';
-import { getLocalizedCardEffect, getLocalizedCardName, initCardTextsI18n } from '../i18n';
+import {
+  getLocalizedCardEffect,
+  getLocalizedCardName,
+  getLocalizedCardSearchTerms,
+  initCardTextsI18n,
+  matchesLocalizedCardSearch,
+} from '../i18n';
+
+const { gameConfig } = vi.hoisted(() => ({ gameConfig: {} as Record<string, unknown> }));
+
+vi.mock('../loader', () => ({
+  getGameConfig: () => gameConfig,
+}));
 
 const card: CardDef = {
   id: 'test_1',
@@ -23,7 +35,10 @@ const card: CardDef = {
 };
 
 describe('localized card text policy', () => {
-  beforeEach(() => initCardTextsI18n({}));
+  beforeEach(() => {
+    initCardTextsI18n({});
+    for (const key of Object.keys(gameConfig)) delete gameConfig[key];
+  });
 
   it('uses official print text for Japanese and English', () => {
     expect(getLocalizedCardName(card, 'ja')).toBe('公式日本語名');
@@ -148,5 +163,68 @@ describe('localized card text policy', () => {
     });
 
     expect(getLocalizedCardEffect(errataCard, 'en')).toBe('UNCHANGED PRINTED ENGLISH EFFECT');
+  });
+
+  it('builds search terms from card names, songs, and effects in every requested locale', () => {
+    const songCard = {
+      ...card,
+      name: '角色（原曲）',
+      song: '原曲',
+      effect: '使用《原曲》的效果。',
+    };
+    initCardTextsI18n({
+      test_1: {
+        'zh-TW': {
+          name: '繁中角色（舊歌名）',
+          effect: '繁中效果《舊歌名》。',
+          nameSource: 'bilingual_review',
+          effectSource: 'bilingual_review',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+        'zh-CN': {
+          name: '简中角色（旧歌名）',
+          effect: '简中效果《旧歌名》。',
+          nameSource: 'bilingual_review',
+          effectSource: 'bilingual_review',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+        ko: {
+          name: '한국어 카드（이전 곡명）',
+          effect: '한국어 효과《이전 곡명》。',
+          nameSource: 'bilingual_review',
+          effectSource: 'bilingual_review',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+      },
+    });
+    gameConfig.card_song_titles_i18n = {
+      原曲: {
+        'zh-TW': '繁中歌名',
+        'zh-CN': '简中歌名',
+        en: 'English Song',
+        ko: '한국어 곡명',
+      },
+    };
+
+    const terms = getLocalizedCardSearchTerms(songCard, ['zh-TW', 'zh-CN', 'en', 'ko']);
+
+    expect(terms).toContain('繁中角色（繁中歌名）');
+    expect(terms).toContain('简中歌名');
+    expect(terms).toContain('OFFICIAL ENGLISH EFFECT');
+    expect(terms).toContain('한국어 카드（한국어 곡명）');
+    expect(matchesLocalizedCardSearch(songCard, '한국어 곡명', ['zh-TW', 'zh-CN', 'en', 'ko'])).toBe(true);
+    expect(matchesLocalizedCardSearch(songCard, '不存在的翻譯', ['zh-TW', 'zh-CN', 'en', 'ko'])).toBe(false);
+    expect(
+      matchesLocalizedCardSearch({ ...songCard, id: '1st_120' }, '존재하지 않는 효과 +20', [
+        'zh-TW',
+        'zh-CN',
+        'en',
+        'ko',
+      ]),
+    ).toBe(false);
+    expect(matchesLocalizedCardSearch({ ...songCard, id: '1st_120' }, '1st120', ['zh-TW'])).toBe(true);
   });
 });

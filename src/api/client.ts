@@ -4,6 +4,7 @@ import { Sentry } from '../sentry';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
+const ADMIN_ROLE_KEY = 'zutomayo_admin_role';
 const SESSION_HINT_KEY = 'zutomayo_session';
 const LEGACY_TOKEN_KEY = 'zutomayo_token';
 const PUBLIC_DATA_CACHE_MS = 0;
@@ -502,11 +503,23 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
 }
 
 function adminAuthHeaders(): Record<string, string> {
-  const token =
+  const token = readStoredAdminToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function readStoredAdminToken(): string {
+  return (
     (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(ADMIN_TOKEN_KEY)) ||
     (typeof localStorage !== 'undefined' && localStorage.getItem(ADMIN_TOKEN_KEY)) ||
-    '';
-  return token ? { Authorization: `Bearer ${token}` } : {};
+    ''
+  );
+}
+
+function clearStoredAdminSession(): void {
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(ADMIN_ROLE_KEY);
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(ADMIN_TOKEN_KEY);
+  if (typeof localStorage !== 'undefined') localStorage.removeItem(ADMIN_ROLE_KEY);
 }
 
 function markAccountSession() {
@@ -517,6 +530,7 @@ function markAccountSession() {
 function clearAccountSession() {
   localStorage.removeItem(SESSION_HINT_KEY);
   localStorage.removeItem(LEGACY_TOKEN_KEY);
+  clearStoredAdminSession();
 }
 
 function isFresh<T>(cache: { expiresAt: number; data: T } | null): cache is { expiresAt: number; data: T } {
@@ -709,7 +723,9 @@ export async function loginWithVerification({
 }
 
 export function logout() {
+  const adminToken = readStoredAdminToken();
   clearAccountSession();
+  if (adminToken) void adminLogout(adminToken).catch(() => undefined);
   void request('/logout', { method: 'POST' }).catch(() => {});
 }
 
@@ -1262,6 +1278,8 @@ export async function reportChatMessage(
 }
 
 // ===== Admin =====
+export type AdminRole = 'viewer' | 'moderator' | 'operator' | 'admin';
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -1271,6 +1289,8 @@ export interface AdminUser {
   wins: number;
   winRate: number;
   createdAt: string;
+  adminRole: AdminRole | null;
+  isCurrentAdmin: boolean;
 }
 
 export interface AdminMatch {
@@ -1290,10 +1310,17 @@ export async function adminLogin(credentials: {
   username: string;
   password: string;
   totpCode: string;
-}): Promise<{ token: string; role: string; expiresIn: number }> {
-  return request<{ token: string; role: string; expiresIn: number }>('/admin/login', {
+}): Promise<{ token: string; role: AdminRole; expiresIn: number }> {
+  return request<{ token: string; role: AdminRole; expiresIn: number }>('/admin/login', {
     method: 'POST',
     body: JSON.stringify(credentials),
+  });
+}
+
+export async function adminLoginWithAccount(): Promise<{ token: string; role: AdminRole; expiresIn: number }> {
+  return request<{ token: string; role: AdminRole; expiresIn: number }>('/admin/session', {
+    method: 'POST',
+    body: '{}',
   });
 }
 
@@ -1304,11 +1331,28 @@ export async function adminLogout(token: string): Promise<void> {
   });
 }
 
-export async function adminGetUsers(token: string, limit = 100): Promise<{ users: AdminUser[] }> {
-  const data = await request<{ users: AdminUser[] }>(`/admin/users?limit=${limit}`, {
+export async function adminGetUsers(
+  token: string,
+  { limit = 100, query = '' }: { limit?: number; query?: string } = {},
+): Promise<{ users: AdminUser[] }> {
+  const search = new URLSearchParams({ limit: String(limit) });
+  if (query.trim()) search.set('q', query.trim());
+  const data = await request<{ users: AdminUser[] }>(`/admin/users?${search.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;
+}
+
+export async function adminUpdateUserRole(
+  token: string,
+  userId: string,
+  role: AdminRole | null,
+): Promise<{ id: string; adminRole: AdminRole | null }> {
+  return request(`/admin/users/${encodeURIComponent(userId)}/admin-role`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ role }),
+  });
 }
 
 export async function adminGetMatches(token: string, limit = 50): Promise<{ matches: AdminMatch[] }> {

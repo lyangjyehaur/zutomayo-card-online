@@ -22,6 +22,7 @@ COPY scripts/migration-checksums.cjs ./scripts/migration-checksums.cjs
 COPY scripts/migration-order-compat.cjs ./scripts/migration-order-compat.cjs
 COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs
 COPY scripts/db-schema-gate.cjs ./scripts/db-schema-gate.cjs
+COPY scripts/link-admin-user.cjs ./scripts/link-admin-user.cjs
 COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs
 COPY scripts/relationship-outbox-pg-smoke.cjs ./scripts/relationship-outbox-pg-smoke.cjs
 COPY scripts/redrive-relationship-outbox.cjs ./scripts/redrive-relationship-outbox.cjs

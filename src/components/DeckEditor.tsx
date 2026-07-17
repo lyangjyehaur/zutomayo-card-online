@@ -2,9 +2,14 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/loader';
-import { getLocalizedCardEffect, getLocalizedCardName } from '../game/cards/i18n';
+import {
+  getLocalizedCardEffect,
+  getLocalizedCardName,
+  getLocalizedSongTitle,
+  matchesLocalizedCardSearch,
+} from '../game/cards/i18n';
 import { loadCustomDeckIds } from '../game/cards/customDeck';
-import { t, useLocale } from '../i18n';
+import { availableLocales, t, useLocale } from '../i18n';
 import {
   ChevronDown,
   ChevronLeft,
@@ -266,24 +271,7 @@ export function DeckEditor({
       cards = cards.filter((card) => normalizeCardNumber(card.id).includes(cardNumberQuery));
     }
     if (searchText) {
-      const query = searchText.toLowerCase();
-      const normalizedQuery = normalizeCardNumber(query);
-      cards = cards.filter((card) => {
-        const localizedName = getLocalizedCardName(card, locale);
-        const localizedEffect = getLocalizedCardEffect(card, locale);
-        return (
-          card.name.toLowerCase().includes(query) ||
-          (!card.officialErrataAffectsName && (card.enNameOfficial?.toLowerCase().includes(query) ?? false)) ||
-          localizedName.toLowerCase().includes(query) ||
-          card.id.toLowerCase().includes(query) ||
-          normalizeCardNumber(card.id).includes(normalizedQuery) ||
-          card.pack.toLowerCase().includes(query) ||
-          card.effect.toLowerCase().includes(query) ||
-          (!card.officialErrataAffectsEffect && (card.enEffectOfficial?.toLowerCase().includes(query) ?? false)) ||
-          localizedEffect.toLowerCase().includes(query) ||
-          card.song.toLowerCase().includes(query)
-        );
-      });
+      cards = cards.filter((card) => matchesLocalizedCardSearch(card, searchText, availableLocales));
     }
 
     return [...cards].sort((a, b) => {
@@ -676,7 +664,7 @@ export function DeckEditor({
     footer:
       card.song || card.illustrator ? (
         <>
-          {card.song && <span>{card.song}</span>}
+          {card.song && <span>{getLocalizedSongTitle(card.song, locale)}</span>}
           {card.song && card.illustrator && <span> · </span>}
           {card.illustrator && <span>illust. {card.illustrator}</span>}
         </>

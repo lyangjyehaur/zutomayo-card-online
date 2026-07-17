@@ -13,7 +13,7 @@ Authenticated endpoints prefer the `zutomayo_session` HttpOnly cookie establishe
 Authorization: Bearer <token>
 ```
 
-User tokens are returned by `POST /api/register` and `POST /api/login` for backward compatibility. Admin tokens are returned by `POST /api/admin/login` (24-hour expiry) and carry an `admin: true` claim.
+User tokens are returned by `POST /api/register` and `POST /api/login` for backward compatibility. Linked administrator accounts exchange a valid user session through `POST /api/admin/session`; legacy standalone administrators can use `POST /api/admin/login`. Admin tokens carry an `admin: true` claim and are backed by revocable PostgreSQL sessions.
 
 Cookie-authenticated `POST`, `PUT`, and `DELETE` requests use double-submit CSRF protection. Fetch `GET /api/csrf-token`, retain the `zutomayo_csrf` cookie, and send the same value in `X-CSRF-Token`. Login, registration, OAuth session exchange, and admin login are intentionally exempt because they establish authentication rather than consume an existing user session.
 
@@ -430,17 +430,48 @@ Response:
 
 ## Admin / 管理後台
 
-All admin endpoints require an admin token in the `Authorization: Bearer <token>` header, obtained from `POST /api/admin/login`. The admin password is configured via the `ADMIN_PASSWORD` environment variable on the API service; if unset, `POST /api/admin/login` returns `503`.
+All admin endpoints require an admin token in the `Authorization: Bearer <token>` header. The preferred flow links an existing user to `admin_users.user_id`; the signed-in user exchanges the normal account session for an admin token. Role changes, account deletion, administrator disabling, session expiry, and explicit revocation take effect server-side.
+
+Link an existing account after applying migrations:
+
+```bash
+npm run admin:link -- --email=user@example.com --role=admin
+```
+
+Supported roles are `viewer`, `moderator`, `operator`, and `admin`.
+The CLI is the bootstrap path for the first full administrator. After that, an `admin` can search registered users and manage linked roles from the **使用者** tab in `/admin`; lower roles cannot see or call the role-management controls.
+
+Revoke the linked role and all of its administrator sessions:
+
+```bash
+npm run admin:unlink -- --email=user@example.com
+```
+
+### `POST /api/admin/session`
+
+Exchange the current signed-in user session for an admin token. No request body fields are required. Returns `403` when the user is not linked to an enabled administrator record.
+
+Response:
+
+```json
+{
+  "token": "<admin-token>",
+  "role": "admin",
+  "expiresIn": 3600
+}
+```
 
 ### `POST /api/admin/login`
 
-Exchange the configured admin password for an admin token (24-hour expiry). Subject to the auth rate limit (10/min).
+Legacy compatibility flow for a standalone administrator account protected by password and TOTP MFA. Subject to the auth rate limit (10/min).
 
 Request:
 
 ```json
 {
-  "password": "admin-secret"
+  "username": "operator",
+  "password": "admin-secret",
+  "totpCode": "123456"
 }
 ```
 
@@ -448,11 +479,13 @@ Response:
 
 ```json
 {
-  "token": "<admin-token>"
+  "token": "<admin-token>",
+  "role": "operator",
+  "expiresIn": 3600
 }
 ```
 
-Errors: `401` (wrong password), `503` (admin not configured).
+Errors: `401` (invalid credentials or MFA code), `403` (MFA missing), `503` (legacy admin login not configured).
 
 ### `GET /api/admin/users`
 
@@ -461,6 +494,7 @@ List registered users, newest first. Requires an admin token.
 Query:
 
 - `limit`: optional, defaults to `100`, maximum `500`.
+- `q`: optional case-insensitive substring search across user ID, email, and nickname.
 
 Response:
 
@@ -475,13 +509,50 @@ Response:
       "matchCount": 0,
       "wins": 0,
       "winRate": 0,
-      "createdAt": "2026-06-26 00:00:00"
+      "createdAt": "2026-06-26 00:00:00",
+      "adminRole": "operator",
+      "isCurrentAdmin": false
     }
   ]
 }
 ```
 
-Errors: `401`.
+`adminRole` and `isCurrentAdmin` are populated only for a full `admin`; lower roles with `users:read` receive `null` and `false` respectively.
+
+Errors: `400` (invalid query), `401`.
+
+### `PUT /api/admin/users/:id/admin-role`
+
+Assign, change, or revoke a linked administrator role. Requires the `admins:manage` permission, which is available only to a full `admin`. The acting administrator cannot change their own role from this endpoint.
+
+Request:
+
+```json
+{
+  "role": "operator"
+}
+```
+
+Use `null` to revoke access:
+
+```json
+{
+  "role": null
+}
+```
+
+Assigning or changing a role deletes the target administrator's existing sessions. Revoking the role deletes the linked `admin_users` record and cascades session deletion. Every change is written to `admin_audit_log` in the same database transaction.
+
+Response:
+
+```json
+{
+  "id": "u_...",
+  "adminRole": "operator"
+}
+```
+
+Errors: `400` (invalid role), `401` (missing permission), `404` (active user not found), `409` (attempt to change the acting administrator's own role).
 
 ### `GET /api/admin/matches`
 

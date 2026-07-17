@@ -51,6 +51,10 @@
   min-width: 48rem;
 }
 
+.admin-users-table {
+  min-width: 68rem;
+}
+
 @media (max-width: 1179px) {
   .admin-stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -170,12 +174,23 @@
   }
 
   .admin-responsive-table input,
+  .admin-responsive-table select,
   .admin-responsive-table button {
     min-height: 2.75rem;
   }
 
   .admin-responsive-table input {
     min-width: 0;
+  }
+
+  .admin-role-field {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+  }
+
+  .admin-role-field select {
+    min-width: 0 !important;
   }
 
   .admin-elo-field {

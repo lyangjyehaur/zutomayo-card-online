@@ -44,8 +44,13 @@ const {
   prepareLogtoAccountDeletion,
 } = require('./accountDeletionService.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
-const { listAdminUsers, resetUserElo } = require('./adminService.cjs');
-const { authenticateAdmin, revokeAdminSession, verifyAdminSession } = require('./adminAuthService.cjs');
+const { listAdminUsers, resetUserElo, updateLinkedAdminRole } = require('./adminService.cjs');
+const {
+  authenticateAdmin,
+  createLinkedAdminSession,
+  revokeAdminSession,
+  verifyAdminSession,
+} = require('./adminAuthService.cjs');
 const { assertRuntimeSchema } = require('./schemaGate.cjs');
 const { fetchWithResilience } = require('./oauthHttp.cjs');
 const {
@@ -318,10 +323,6 @@ function validateSecurityConfig() {
   }
   if (process.env.NODE_ENV !== 'production' && Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
     logger.warn('JWT_SECRET should be at least 32 bytes for security');
-  }
-  if (process.env.NODE_ENV === 'production' && ADMIN_TOTP_ENCRYPTION_KEY.length < 32) {
-    logger.fatal('ADMIN_TOTP_ENCRYPTION_KEY must be at least 32 characters in production');
-    process.exit(1);
   }
   if (process.env.ADMIN_PASSWORD) {
     logger.warn(
@@ -4260,6 +4261,21 @@ function handleRequest(req, res) {
 
     // ===== Admin API (P0-3 + P2-12) =====
 
+    // 已綁定的普通使用者登入後，可直接換取受 RBAC 與撤銷機制保護的管理員 session。
+    if (pathname === '/api/admin/session' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await createLinkedAdminSession({
+        pool,
+        userId,
+        createSessionToken: createAdminToken,
+        sessionTtlSeconds: ADMIN_SESSION_TTL_SECONDS,
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
     // Admin 登入
     if (pathname === '/api/admin/login' && method === 'POST') {
       const __body = await readBody();
@@ -4290,8 +4306,33 @@ function handleRequest(req, res) {
 
     // Admin：使用者列表
     if (pathname === '/api/admin/users' && method === 'GET') {
-      if (!(await authorizeAdmin(req, 'users:read'))) return json({ error: 'Unauthorized' }, 401);
-      json(await listAdminUsers(pool, url.searchParams.get('limit')));
+      const admin = await authorizeAdmin(req, 'users:read');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.adminUserListQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      json(
+        await listAdminUsers(pool, parsed.data.limit, {
+          query: parsed.data.q,
+          includeAdminRoles: admin.role === 'admin',
+          currentAdminUserId: admin.role === 'admin' ? admin.adminUserId : '',
+        }),
+      );
+      return;
+    }
+
+    const adminUserRoleRoute = pathname.match(/^\/api\/admin\/users\/([^/]+)\/admin-role$/);
+    if (adminUserRoleRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'admins:manage');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody();
+      const __parsed = validateBody(S.adminRoleUpdateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await updateLinkedAdminRole(pool, {
+        targetUserId: decodeURIComponent(adminUserRoleRoute[1]),
+        role: __parsed.data.role,
+        actorAdminUserId: admin.adminUserId,
+      });
+      serviceJson(result);
       return;
     }
 

@@ -195,7 +195,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'updated_at',
     'delivered_at',
   ],
-  admin_users: ['id', 'username', 'role', 'disabled_at'],
+  admin_users: ['id', 'user_id', 'username', 'role', 'disabled_at'],
   admin_sessions: ['jti', 'admin_user_id', 'role', 'expires_at', 'revoked_at'],
   bjg_matches: ['match_id', 'state', 'initial_state', 'metadata', 'log', 'updated_at'],
   bjg_match_seats: ['match_id', 'player_id', 'user_id', 'ranked_eligible', 'credential_hash', 'last_resumed_at'],

@@ -93,6 +93,9 @@ async function authenticateAdmin({
     )
   ).rows[0];
   if (!user) return { ok: false, status: 401, error: 'Invalid admin credentials' };
+  if (!user.password_hash || !user.salt) {
+    return { ok: false, status: 401, error: 'Invalid admin credentials' };
+  }
 
   const computedHash = await hashPassword(body.password, user.salt, passwordIterations);
   if (!timingSafeTextEqual(computedHash, user.password_hash)) {
@@ -102,16 +105,63 @@ async function authenticateAdmin({
   const totpSecret = await decryptTotpSecret(user.totp_secret_ciphertext);
   if (!verifyTotp(totpSecret, body.totpCode)) return { ok: false, status: 401, error: 'Invalid admin MFA code' };
 
+  return issueAdminSession({
+    pool,
+    adminUserId: user.id,
+    role: user.role,
+    createSessionToken,
+    sessionTtlSeconds,
+    generateJti,
+  });
+}
+
+async function issueAdminSession({
+  pool,
+  adminUserId,
+  role,
+  createSessionToken,
+  sessionTtlSeconds = 60 * 60,
+  generateJti = () => crypto.randomBytes(18).toString('hex'),
+}) {
   const jti = generateJti();
   const ttl = Math.max(300, Math.min(Number(sessionTtlSeconds) || 3600, 8 * 60 * 60));
-  const token = createSessionToken({ adminUserId: user.id, role: user.role, jti, expiresIn: ttl });
+  const token = createSessionToken({ adminUserId, role, jti, expiresIn: ttl });
   await pool.query(
     `INSERT INTO admin_sessions (jti, admin_user_id, role, expires_at)
      VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 second'))`,
-    [jti, user.id, user.role, ttl],
+    [jti, adminUserId, role, ttl],
   );
-  await pool.query('UPDATE admin_users SET last_login_at = NOW() WHERE id = $1', [user.id]);
-  return { ok: true, body: { token, role: user.role, expiresIn: ttl } };
+  await pool.query('UPDATE admin_users SET last_login_at = NOW() WHERE id = $1', [adminUserId]);
+  return { ok: true, body: { token, role, expiresIn: ttl } };
+}
+
+async function createLinkedAdminSession({
+  pool,
+  userId,
+  createSessionToken,
+  sessionTtlSeconds = 60 * 60,
+  generateJti = () => crypto.randomBytes(18).toString('hex'),
+}) {
+  const admin = (
+    await pool.query(
+      `SELECT a.id, a.role
+       FROM admin_users a
+       JOIN users u ON u.id = a.user_id
+       WHERE a.user_id = $1
+         AND a.disabled_at IS NULL
+         AND u.deleted_at IS NULL`,
+      [userId],
+    )
+  ).rows[0];
+  if (!admin) return { ok: false, status: 403, error: 'Account does not have admin access' };
+  return issueAdminSession({
+    pool,
+    adminUserId: admin.id,
+    role: admin.role,
+    createSessionToken,
+    sessionTtlSeconds,
+    generateJti,
+  });
 }
 
 async function verifyAdminSession({ pool, payload, permission }) {
@@ -149,6 +199,7 @@ async function revokeAdminSession({ pool, jti, adminUserId }) {
 module.exports = {
   ROLE_PERMISSIONS,
   authenticateAdmin,
+  createLinkedAdminSession,
   decodeBase32,
   hasAdminPermission,
   revokeAdminSession,

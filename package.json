@@ -80,6 +80,8 @@
     "db:migrate:make": "node scripts/db-migrate.cjs create",
     "db:roles:smoke": "bash scripts/postgres-role-smoke.sh",
     "admin:create": "node scripts/create-admin.cjs",
+    "admin:link": "node scripts/link-admin-user.cjs",
+    "admin:unlink": "node scripts/link-admin-user.cjs --remove",
     "retention:run": "node scripts/run-retention.cjs",
     "relationship:outbox:redrive": "node scripts/redrive-relationship-outbox.cjs",
     "relationship:outbox:pg-smoke": "node scripts/relationship-outbox-pg-smoke.cjs",

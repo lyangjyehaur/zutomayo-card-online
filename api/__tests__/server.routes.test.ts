@@ -247,13 +247,13 @@ function base64urlJson(value: Record<string, unknown>) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
 }
 
-function createAdminJwt() {
+function createAdminJwt(role = 'admin', adminUserId = 'admin_test') {
   const now = Math.floor(Date.now() / 1000);
   const header = base64urlJson({ alg: 'HS256', typ: 'JWT' });
   const payload = base64urlJson({
     admin: true,
-    adminUserId: 'admin_test',
-    role: 'admin',
+    adminUserId,
+    role,
     jti: 'admin-session-test',
     iat: now,
     exp: now + 60 * 60,
@@ -691,6 +691,44 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(400);
     });
 
+    it('POST /api/admin/session exchanges a linked user session for an admin session', async () => {
+      mockQuery.mockReset();
+      mockQuery
+        .mockResolvedValueOnce({ rows: [{ id: 'admin_linked', role: 'admin' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+      const res = await sendRequest('POST', '/api/admin/session', {}, userUnsafeHeaders('u_linked'));
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual(
+        expect.objectContaining({ token: expect.any(String), role: 'admin', expiresIn: 3600 }),
+      );
+      expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('a.user_id = $1'), ['u_linked']);
+    });
+
+    it('POST /api/admin/session rejects an unlinked user without revoking the account session', async () => {
+      mockQuery.mockReset();
+      mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+
+      const res = await sendRequest('POST', '/api/admin/session', {}, userUnsafeHeaders('u_regular'));
+
+      expect(res.statusCode).toBe(403);
+      expect(parseBody(res)).toEqual({ error: 'Account does not have admin access' });
+    });
+
+    it('PUT /api/admin/users/:id/admin-role rejects invalid roles', async () => {
+      const res = await sendRequest(
+        'PUT',
+        '/api/admin/users/u_target/admin-role',
+        { role: 'superadmin' },
+        adminUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(400);
+      expect(parseBody(res)).toEqual(expect.objectContaining({ error: 'Validation failed' }));
+    });
+
     it('POST /api/presence/heartbeat rejects missing visitorId', async () => {
       const res = await sendRequest('POST', '/api/presence/heartbeat', {});
       expect(res.statusCode).toBe(400);
@@ -711,6 +749,82 @@ describe('server routes', () => {
     it('returns 404 for unknown API path', async () => {
       const res = await sendRequest('GET', '/api/nonexistent');
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('admin role management', () => {
+    it('searches users and exposes linked roles to full admins', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('FROM admin_sessions')) {
+          return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+        }
+        if (sql.includes('FROM users u')) {
+          expect(params).toEqual([100, 'target@example.com', '%target@example.com%']);
+          return {
+            rows: [
+              {
+                id: 'u_target',
+                email: 'target@example.com',
+                nickname: 'Target',
+                elo: 1000,
+                match_count: 0,
+                wins: 0,
+                created_at: '2026-07-17T00:00:00.000Z',
+                admin_user_id: 'admin_target',
+                admin_role: 'operator',
+                admin_disabled_at: null,
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('GET', '/api/admin/users?q=target%40example.com', null, adminHeaders());
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({
+        users: [expect.objectContaining({ id: 'u_target', adminRole: 'operator', isCurrentAdmin: false })],
+      });
+    });
+
+    it('assigns a linked role through the admin API and invalidates prior sessions', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM admin_sessions') && sql.includes('JOIN admin_users')) {
+          return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+        }
+        if (sql.includes('FROM users u')) {
+          return {
+            rows: [{ id: 'u_target', email: 'target@example.com', admin_user_id: null, admin_role: null }],
+            rowCount: 1,
+          };
+        }
+        if (sql.includes('INSERT INTO admin_users')) {
+          return { rows: [{ id: 'admin_user_target', role: 'operator' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest(
+        'PUT',
+        '/api/admin/users/u_target/admin-role',
+        { role: 'operator' },
+        adminUnsafeHeaders(),
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({ id: 'u_target', adminRole: 'operator' });
+      expect(mockQuery).toHaveBeenCalledWith('DELETE FROM admin_sessions WHERE admin_user_id = $1', [
+        'admin_user_target',
+      ]);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO admin_audit_log'), [
+        'admin_test',
+        'grant_admin_role',
+        'user',
+        'u_target',
+        expect.stringContaining('operator'),
+      ]);
     });
   });
 
@@ -967,6 +1081,32 @@ describe('server routes', () => {
     it('GET /api/admin/users returns 401 without admin token', async () => {
       const res = await sendRequest('GET', '/api/admin/users');
       expect(res.statusCode).toBe(401);
+    });
+
+    it('PUT /api/admin/users/:id/admin-role requires a full admin role', async () => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const noAuth = await sendRequest(
+        'PUT',
+        '/api/admin/users/u_target/admin-role',
+        { role: 'operator' },
+        {
+          cookie: `zutomayo_csrf=${csrfToken}`,
+          'x-csrf-token': csrfToken,
+        },
+      );
+      expect(noAuth.statusCode).toBe(401);
+
+      const operator = await sendRequest(
+        'PUT',
+        '/api/admin/users/u_target/admin-role',
+        { role: 'operator' },
+        {
+          authorization: `Bearer ${createAdminJwt('operator', 'admin_operator')}`,
+          cookie: `zutomayo_csrf=${csrfToken}`,
+          'x-csrf-token': csrfToken,
+        },
+      );
+      expect(operator.statusCode).toBe(401);
     });
 
     it('GET /api/admin/matches returns 401 without admin token', async () => {
