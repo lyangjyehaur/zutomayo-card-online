@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { CardDef } from '../src/game/types';
 import { postgresConnectionString, postgresSslConfig } from '../src/runtimeSecurityConfig';
+import { type SeedCardDataRelease, validateSeedCardDataRelease } from './cardSeedRelease';
 
 export type CardEffectsI18n = Record<string, Record<string, string>>;
 
@@ -10,6 +11,7 @@ type SeedCardFixture = {
   schemaVersion: 1;
   cards: CardDef[];
   i18n: CardEffectsI18n;
+  cardDataRelease?: SeedCardDataRelease;
 };
 
 type CardRow = {
@@ -111,6 +113,11 @@ function loadSeedFixture(filePath: string): Promise<SeedCardFixture> {
     if (!fixture.i18n || typeof fixture.i18n !== 'object' || Array.isArray(fixture.i18n)) {
       throw new Error(`Invalid card seed i18n fixture: ${filePath}`);
     }
+    if (fixture.cardDataRelease) {
+      const release = validateSeedCardDataRelease(fixture.cardDataRelease, fixture.cards, fixture.i18n);
+      if (!release) throw new Error(`Invalid card seed release metadata: ${filePath}`);
+      fixture.cardDataRelease = release;
+    }
     return fixture;
   });
   return seedFixturePromise;
@@ -163,4 +170,9 @@ export async function loadSeedCardI18n(): Promise<CardEffectsI18n> {
   if (!url) throw new Error('Set SEED_CARD_I18N_URL or SEED_CARD_API_URL before running card seed.');
   const i18n = await fetchJson<CardEffectsI18n>(url);
   return i18n && typeof i18n === 'object' && !Array.isArray(i18n) ? i18n : {};
+}
+
+export async function loadSeedCardDataRelease(): Promise<SeedCardDataRelease | null> {
+  const fixturePath = process.env.SEED_CARD_FIXTURE_FILE;
+  return fixturePath ? ((await loadSeedFixture(fixturePath)).cardDataRelease ?? null) : null;
 }

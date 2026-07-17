@@ -32,6 +32,7 @@ services:
     command: ['sh', '-lc', 'npm run generate:e2e-card-seed -- /tmp/e2e-card-seed.json && npm run seed:cards']
     environment:
       - NODE_ENV=test
+      - APP_BUILD_ID=${APP_BUILD_ID:-}
       - PG_HOST=postgres
       - PG_PORT=5432
       - PG_USER=${PG_MIGRATION_USER:-zutomayo_migrator}

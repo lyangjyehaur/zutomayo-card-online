@@ -124,7 +124,7 @@
   }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 1179px) {
   .admin-responsive-table {
     min-width: 0;
     border-collapse: separate !important;

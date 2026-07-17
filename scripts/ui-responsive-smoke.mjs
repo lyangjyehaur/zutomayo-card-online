@@ -1,13 +1,15 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const chromePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
-const outDir = process.env.OUT_DIR ?? '/private/tmp/zutomayo-ui-responsive-screenshots';
-const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-ui-responsive-report.json';
+const outDir = process.env.OUT_DIR ?? join(tmpdir(), 'zutomayo-ui-responsive-screenshots');
+const reportPath = process.env.REPORT_PATH ?? join(tmpdir(), 'zutomayo-ui-responsive-report.json');
 const port = Number(process.env.CDP_PORT ?? 9947);
-const profileDir = `/private/tmp/zutomayo-ui-responsive-profile-${process.pid}-${Date.now()}`;
+const profileDir = join(tmpdir(), `zutomayo-ui-responsive-profile-${process.pid}-${Date.now()}`);
 const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
 if (typeof packageJson.version !== 'string' || !packageJson.version) {
   throw new Error('package.json version is required');

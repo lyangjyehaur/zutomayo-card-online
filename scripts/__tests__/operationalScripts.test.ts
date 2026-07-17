@@ -140,6 +140,19 @@ describe('operational shell scripts', () => {
     expect(workflow).not.toContain('--exit-code-from e2e');
   });
 
+  it('binds synthetic E2E cards to release metadata without relaxing the public API contract', () => {
+    const generator = readFileSync(resolve('scripts/create-e2e-card-seed.ts'), 'utf8');
+    const seed = readFileSync(resolve('scripts/seed-cards-pg.ts'), 'utf8');
+    const server = readFileSync(resolve('api/server.cjs'), 'utf8');
+
+    expect(generator).toContain('createSeedCardDataRelease(cards, i18n, releaseSha)');
+    expect(seed).toContain('loadSeedCardDataRelease()');
+    expect(seed).toContain('INSERT INTO official_card_data_releases');
+    expect(seed).toContain('Card seed release metadata does not match APP_BUILD_ID');
+    expect(readFileSync(resolve('docker-compose.e2e.yml'), 'utf8')).toContain('APP_BUILD_ID=${APP_BUILD_ID:-}');
+    expect(server).toContain("json({ error: 'Card data release metadata unavailable' }, 503)");
+  });
+
   it('makes authenticated ranked multiplayer mandatory in the Docker E2E stack', () => {
     const compose = readFileSync(resolve('docker-compose.e2e.yml'), 'utf8');
     const spec = readFileSync(resolve('e2e/authenticated-multiplayer.spec.ts'), 'utf8');
@@ -164,6 +177,14 @@ describe('operational shell scripts', () => {
       scripts: Record<string, string>;
     };
     const pwaSmoke = readFileSync(resolve('scripts/pwa-standalone-smoke.mjs'), 'utf8');
+    const browserSmokeFiles = [
+      'scripts/pwa-standalone-smoke.mjs',
+      'scripts/ui-responsive-smoke.mjs',
+      'scripts/admin-responsive-smoke.mjs',
+      'scripts/battle-responsive-smoke.mjs',
+      'scripts/online-lobby-responsive-smoke.mjs',
+      'scripts/tools-responsive-smoke.mjs',
+    ];
     const viteConfig = readFileSync(resolve('vite.config.ts'), 'utf8');
 
     expect(packageJson.scripts['smoke:pwa-standalone']).toContain('pwa-standalone-smoke.mjs');
@@ -177,6 +198,29 @@ describe('operational shell scripts', () => {
     expect(pwaSmoke).toContain("matchMedia('(display-mode: standalone)').matches");
     expect(pwaSmoke).toContain('navigator.serviceWorker?.controller');
     expect(pwaSmoke).toContain('Network.emulateNetworkConditions');
+    for (const file of browserSmokeFiles) {
+      const source = readFileSync(resolve(file), 'utf8');
+      expect(source, file).toContain("from 'node:os'");
+      expect(source, file).toContain('tmpdir()');
+      expect(source, file).not.toContain('/private/tmp');
+    }
+    for (const file of [
+      'scripts/pwa-standalone-smoke.mjs',
+      'scripts/admin-responsive-smoke.mjs',
+      'scripts/online-lobby-responsive-smoke.mjs',
+    ]) {
+      const source = readFileSync(resolve(file), 'utf8');
+      for (const header of [
+        'X-Card-Dataset-Sha256',
+        'X-Card-Dataset-Release-Sha',
+        'X-Card-Dataset-Count',
+        'X-Card-Data-App-Version',
+        'X-Card-Data-Build-Id',
+        'X-Card-Data-Rules-Version',
+      ]) {
+        expect(source, `${file}: ${header}`).toContain(header);
+      }
+    }
     expect(pwaSmoke).toContain("location.pathname === '/play/ai'");
     expect(pwaSmoke).toContain('X-Card-Dataset-Sha256');
     expect(viteConfig).toContain("['/api/cards', '/api/cards/i18n', '/api/cards/texts']");

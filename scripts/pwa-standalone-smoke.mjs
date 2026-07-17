@@ -1,13 +1,14 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const chromePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:4173';
-const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-pwa-standalone-report.json';
+const reportPath = process.env.REPORT_PATH ?? path.join(tmpdir(), 'zutomayo-pwa-standalone-report.json');
 const port = Number(process.env.CDP_PORT ?? 9000 + Math.floor(Math.random() * 900));
-const profileDir = `/private/tmp/zutomayo-pwa-standalone-profile-${process.pid}-${Date.now()}`;
+const profileDir = path.join(tmpdir(), `zutomayo-pwa-standalone-profile-${process.pid}-${Date.now()}`);
 const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const appVersion = process.env.APP_VERSION ?? packageJson.version;
 const buildId = process.env.APP_BUILD_ID ?? appVersion;

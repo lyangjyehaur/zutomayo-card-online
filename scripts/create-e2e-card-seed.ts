@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { CardDef, CardType, Element } from '../src/game/types';
+import { createSeedCardDataRelease, type SeedCardDataRelease } from './cardSeedRelease';
 
 const PRESET_ELEMENTS: Array<{ code: string; element: Element }> = [
   { code: 'dark', element: '闇' },
@@ -46,7 +47,12 @@ function syntheticCard(id: string, element: Element, type: CardType, index: numb
   };
 }
 
-export function createE2ECardSeed(): { schemaVersion: 1; cards: CardDef[]; i18n: Record<string, never> } {
+export function createE2ECardSeed(releaseSha?: string): {
+  schemaVersion: 1;
+  cards: CardDef[];
+  i18n: Record<string, never>;
+  cardDataRelease: SeedCardDataRelease;
+} {
   const cards: CardDef[] = [];
   let index = 1;
   for (const { code, element } of PRESET_ELEMENTS) {
@@ -59,12 +65,13 @@ export function createE2ECardSeed(): { schemaVersion: 1; cards: CardDef[]; i18n:
     cards.push(syntheticCard(tutorial.id, 'カオス', tutorial.type, index));
     index += 1;
   }
-  return { schemaVersion: 1, cards, i18n: {} };
+  const i18n = {};
+  return { schemaVersion: 1, cards, i18n, cardDataRelease: createSeedCardDataRelease(cards, i18n, releaseSha) };
 }
 
 async function main(): Promise<void> {
   const target = resolve(process.cwd(), process.argv[2] || '/tmp/e2e-card-seed.json');
-  const fixture = createE2ECardSeed();
+  const fixture = createE2ECardSeed(process.env.APP_BUILD_ID);
   await writeFile(target, `${JSON.stringify(fixture)}\n`, { encoding: 'utf8', mode: 0o600 });
   console.log(`Generated ${fixture.cards.length} synthetic E2E cards at ${target}`);
 }

@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import type { CardDef } from '../src/game/types';
-import { loadSeedCardI18n, loadSeedCards } from './cardSource';
+import { loadSeedCardDataRelease, loadSeedCardI18n, loadSeedCards } from './cardSource';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg') as typeof import('pg');
@@ -225,6 +225,11 @@ function cardParams(card: CardDef): unknown[] {
 async function main(): Promise<void> {
   const cards = await loadSeedCards();
   const effectsI18n = await loadSeedCardI18n();
+  const cardDataRelease = await loadSeedCardDataRelease();
+  const releaseBuildId = process.env.APP_BUILD_ID?.trim() || '';
+  if (/^[a-f0-9]{40}$/.test(releaseBuildId) && cardDataRelease?.releaseSha !== releaseBuildId) {
+    throw new Error('Card seed release metadata does not match APP_BUILD_ID');
+  }
   const cardsById = new Map(cards.map((card) => [card.id, card]));
   const expectedErrataCount = allowEmptyOfficialErrata ? 0 : 12;
   if (
@@ -468,6 +473,26 @@ async function main(): Promise<void> {
            description = EXCLUDED.description,
            updated_at = NOW()`,
         [config.key, JSON.stringify(config.value), config.description],
+      );
+    }
+
+    if (cardDataRelease) {
+      await client.query(
+        `INSERT INTO official_card_data_releases (
+           dataset_sha256, extraction_sha256, errata_sha256, review_provenance_sha256,
+           release_sha, card_count, errata_count
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (dataset_sha256) DO UPDATE SET applied_at = NOW()`,
+        [
+          cardDataRelease.datasetSha256,
+          cardDataRelease.extractionSha256,
+          cardDataRelease.errataSha256,
+          cardDataRelease.reviewProvenanceSha256,
+          cardDataRelease.releaseSha,
+          cardDataRelease.cardCount,
+          cardDataRelease.errataCount,
+        ],
       );
     }
 

@@ -1,13 +1,21 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const chromePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
-const outDir = process.env.OUT_DIR ?? '/private/tmp/zutomayo-admin-responsive-screenshots';
-const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-admin-responsive-report.json';
+const outDir = process.env.OUT_DIR ?? join(tmpdir(), 'zutomayo-admin-responsive-screenshots');
+const reportPath = process.env.REPORT_PATH ?? join(tmpdir(), 'zutomayo-admin-responsive-report.json');
 const port = Number(process.env.CDP_PORT ?? 9899);
-const profileDir = `/private/tmp/zutomayo-admin-responsive-profile-${process.pid}-${Date.now()}`;
+const profileDir = join(tmpdir(), `zutomayo-admin-responsive-profile-${process.pid}-${Date.now()}`);
+const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const appVersion = process.env.APP_VERSION ?? packageJson.version;
+const buildId = process.env.APP_BUILD_ID ?? appVersion;
+const rulesVersion = process.env.GAME_RULES_VERSION ?? appVersion;
+const releaseSha = /^[a-f0-9]{40}$/.test(buildId) ? buildId : 'b'.repeat(40);
+const datasetSha256 = 'a'.repeat(64);
 
 const cases = [
   { name: 'admin-360x740', width: 360, height: 740, surface: 'cards' },
@@ -182,7 +190,18 @@ const setupAuth = `
           image: '',
           errata: ''
         }
-      ]), { status: 200, headers: { 'content-type': 'application/json' } });
+      ]), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Card-Dataset-Sha256': ${JSON.stringify(datasetSha256)},
+          'X-Card-Dataset-Release-Sha': ${JSON.stringify(releaseSha)},
+          'X-Card-Dataset-Count': '2',
+          'X-Card-Data-App-Version': ${JSON.stringify(appVersion)},
+          'X-Card-Data-Build-Id': ${JSON.stringify(buildId)},
+          'X-Card-Data-Rules-Version': ${JSON.stringify(rulesVersion)}
+        }
+      });
     }
     if (url.includes('/api/admin/users')) {
       return new Response(JSON.stringify({
