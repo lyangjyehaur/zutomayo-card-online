@@ -1,0 +1,156 @@
+diff --git a/node_modules/boardgame.io/dist/cjs/master-9bf9c1d4.js b/node_modules/boardgame.io/dist/cjs/master-9bf9c1d4.js
+index d095c85..764849d 100644
+--- a/node_modules/boardgame.io/dist/cjs/master-9bf9c1d4.js
++++ b/node_modules/boardgame.io/dist/cjs/master-9bf9c1d4.js
+@@ -138,23 +138,6 @@ class Master {
+         // Update server's version of the store.
+         store.dispatch(action);
+         state = store.getState();
+-        this.subscribeCallback({
+-            state,
+-            action,
+-            matchID,
+-        });
+-        if (this.game.deltaState) {
+-            this.transportAPI.sendAll({
+-                type: 'patch',
+-                args: [matchID, stateID, prevState, state],
+-            });
+-        }
+-        else {
+-            this.transportAPI.sendAll({
+-                type: 'update',
+-                args: [matchID, state],
+-            });
+-        }
+         const { deltalog, ...stateWithoutDeltalog } = state;
+         let newMetadata;
+         if (metadata &&
+@@ -181,6 +164,23 @@ class Master {
+             }
+             await Promise.all(writes);
+         }
++        this.subscribeCallback({
++            state,
++            action,
++            matchID,
++        });
++        if (this.game.deltaState) {
++            this.transportAPI.sendAll({
++                type: 'patch',
++                args: [matchID, stateID, prevState, state],
++            });
++        }
++        else {
++            this.transportAPI.sendAll({
++                type: 'update',
++                args: [matchID, state],
++            });
++        }
+     }
+     /**
+      * Called when the client connects / reconnects.
+diff --git a/node_modules/boardgame.io/dist/cjs/server.js b/node_modules/boardgame.io/dist/cjs/server.js
+index e6848d4..33b7065 100644
+--- a/node_modules/boardgame.io/dist/cjs/server.js
++++ b/node_modules/boardgame.io/dist/cjs/server.js
+@@ -3493,23 +3493,6 @@ class Master {
+         // Update server's version of the store.
+         store.dispatch(action);
+         state = store.getState();
+-        this.subscribeCallback({
+-            state,
+-            action,
+-            matchID,
+-        });
+-        if (this.game.deltaState) {
+-            this.transportAPI.sendAll({
+-                type: 'patch',
+-                args: [matchID, stateID, prevState, state],
+-            });
+-        }
+-        else {
+-            this.transportAPI.sendAll({
+-                type: 'update',
+-                args: [matchID, state],
+-            });
+-        }
+         const { deltalog, ...stateWithoutDeltalog } = state;
+         let newMetadata;
+         if (metadata &&
+@@ -3536,6 +3519,23 @@ class Master {
+             }
+             await Promise.all(writes);
+         }
++        this.subscribeCallback({
++            state,
++            action,
++            matchID,
++        });
++        if (this.game.deltaState) {
++            this.transportAPI.sendAll({
++                type: 'patch',
++                args: [matchID, stateID, prevState, state],
++            });
++        }
++        else {
++            this.transportAPI.sendAll({
++                type: 'update',
++                args: [matchID, state],
++            });
++        }
+     }
+     /**
+      * Called when the client connects / reconnects.
+diff --git a/node_modules/boardgame.io/dist/esm/master-17425f07.js b/node_modules/boardgame.io/dist/esm/master-17425f07.js
+index 50e3047..8d39121 100644
+--- a/node_modules/boardgame.io/dist/esm/master-17425f07.js
++++ b/node_modules/boardgame.io/dist/esm/master-17425f07.js
+@@ -136,23 +136,6 @@ class Master {
+         // Update server's version of the store.
+         store.dispatch(action);
+         state = store.getState();
+-        this.subscribeCallback({
+-            state,
+-            action,
+-            matchID,
+-        });
+-        if (this.game.deltaState) {
+-            this.transportAPI.sendAll({
+-                type: 'patch',
+-                args: [matchID, stateID, prevState, state],
+-            });
+-        }
+-        else {
+-            this.transportAPI.sendAll({
+-                type: 'update',
+-                args: [matchID, state],
+-            });
+-        }
+         const { deltalog, ...stateWithoutDeltalog } = state;
+         let newMetadata;
+         if (metadata &&
+@@ -179,6 +162,23 @@ class Master {
+             }
+             await Promise.all(writes);
+         }
++        this.subscribeCallback({
++            state,
++            action,
++            matchID,
++        });
++        if (this.game.deltaState) {
++            this.transportAPI.sendAll({
++                type: 'patch',
++                args: [matchID, stateID, prevState, state],
++            });
++        }
++        else {
++            this.transportAPI.sendAll({
++                type: 'update',
++                args: [matchID, state],
++            });
++        }
+     }
+     /**
+      * Called when the client connects / reconnects.

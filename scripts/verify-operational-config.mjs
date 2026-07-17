@@ -31,6 +31,23 @@ function assertExecutable(relativePath) {
 }
 
 export function validateOperationalConfig() {
+  requireFragments('package.json', [
+    'npm run dependency:patches',
+    'patch-package --error-on-fail',
+    '"postinstall": "patch-package"',
+  ]);
+  requireFragments('patches/boardgame.io+0.50.2.patch', [
+    'await Promise.all(writes)',
+    '+        this.subscribeCallback({',
+    '+            this.transportAPI.sendAll({',
+    'this.transportAPI.sendAll',
+  ]);
+  requireFragments('Dockerfile', [
+    'COPY patches ./patches',
+    'node_modules/boardgame.io/dist/cjs/master-9bf9c1d4.js',
+    'node_modules/boardgame.io/dist/cjs/server.js',
+    'node_modules/boardgame.io/dist/esm/master-17425f07.js',
+  ]);
   const backupScripts = [
     'scripts/pg-backup.sh',
     'scripts/pg-base-backup.sh',
