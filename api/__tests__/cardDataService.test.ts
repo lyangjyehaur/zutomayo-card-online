@@ -13,6 +13,7 @@ const {
   getCardI18n,
   getCardTextsI18n,
   getGameConfig,
+  getOfficialCardDataVersion,
   getPresetDecks,
   getPublicCard,
   getPublicCards,
@@ -24,6 +25,7 @@ const {
   getCardI18n: (pool: Queryable, cardId: string) => Promise<Record<string, string>>;
   getCardTextsI18n: (pool: Queryable, cardId: string) => Promise<Record<string, unknown>>;
   getGameConfig: (pool: Queryable) => Promise<Record<string, unknown>>;
+  getOfficialCardDataVersion: (pool: Queryable) => Promise<Record<string, unknown> | null>;
   getPresetDecks: (pool: Queryable) => Promise<Array<Record<string, unknown>>>;
   getPublicCard: (
     pool: Queryable,
@@ -67,6 +69,26 @@ function poolWithRows(...rowSets: unknown[][]): Queryable {
 }
 
 describe('card data service', () => {
+  it('returns the newest signed card dataset identity', async () => {
+    const appliedAt = new Date('2026-07-17T00:00:00.000Z');
+    const pool = poolWithRows([
+      {
+        dataset_sha256: 'a'.repeat(64),
+        release_sha: 'b'.repeat(40),
+        card_count: 422,
+        applied_at: appliedAt,
+      },
+    ]);
+
+    await expect(getOfficialCardDataVersion(pool)).resolves.toEqual({
+      datasetSha256: 'a'.repeat(64),
+      releaseSha: 'b'.repeat(40),
+      cardCount: 422,
+      appliedAt: appliedAt.toISOString(),
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('ORDER BY applied_at DESC'));
+  });
+
   it('maps DB card rows to API card definitions', () => {
     expect(cardRowToDef(dbCard)).toEqual({
       id: 'c_1',

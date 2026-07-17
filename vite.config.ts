@@ -18,6 +18,7 @@ function versionEnv(name: string, fallback: string): string {
 const appVersion = versionEnv('APP_VERSION', packageVersion);
 const appBuildId = versionEnv('APP_BUILD_ID', appVersion);
 const gameRulesVersion = versionEnv('GAME_RULES_VERSION', appVersion);
+const cardDataCacheKey = `${appBuildId}-${gameRulesVersion}`.replace(/[^a-zA-Z0-9._-]/g, '_');
 
 // Release 字串必須與 src/sentry.ts 的 release 完全一致，source map 才能正確關聯。
 const release = `${appVersion}@${appBuildId}`;
@@ -100,6 +101,21 @@ export default defineConfig({
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.origin === globalThis.location.origin &&
+              ['/api/cards', '/api/cards/i18n', '/api/cards/texts'].includes(url.pathname),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: `card-data-${cardDataCacheKey}`,
+              networkTimeoutSeconds: 3,
+              cacheableResponse: { statuses: [200] },
+              expiration: {
+                maxEntries: 3,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+              },
+            },
+          },
           {
             urlPattern: /^https:\/\/r2\.dan\.tw\/.*/i,
             handler: 'CacheFirst',

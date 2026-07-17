@@ -163,6 +163,7 @@ describe('operational shell scripts', () => {
       scripts: Record<string, string>;
     };
     const pwaSmoke = readFileSync(resolve('scripts/pwa-standalone-smoke.mjs'), 'utf8');
+    const viteConfig = readFileSync(resolve('vite.config.ts'), 'utf8');
 
     expect(packageJson.scripts['smoke:pwa-standalone']).toContain('pwa-standalone-smoke.mjs');
     expect(workflow).toContain('name: Responsive & PWA gates');
@@ -175,6 +176,11 @@ describe('operational shell scripts', () => {
     expect(pwaSmoke).toContain("matchMedia('(display-mode: standalone)').matches");
     expect(pwaSmoke).toContain('navigator.serviceWorker?.controller');
     expect(pwaSmoke).toContain('Network.emulateNetworkConditions');
+    expect(pwaSmoke).toContain("location.pathname === '/play/ai'");
+    expect(pwaSmoke).toContain('X-Card-Dataset-Sha256');
+    expect(viteConfig).toContain("['/api/cards', '/api/cards/i18n', '/api/cards/texts']");
+    expect(viteConfig).toContain("handler: 'NetworkFirst'");
+    expect(viteConfig).toContain('cacheName: `card-data-${cardDataCacheKey}`');
   });
 
   it('gates the rendered production role/TLS environment before migration', () => {

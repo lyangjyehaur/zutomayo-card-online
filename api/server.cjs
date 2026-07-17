@@ -110,6 +110,7 @@ const {
   getCardI18n,
   getCardTextsI18n,
   getGameConfig,
+  getOfficialCardDataVersion,
   getPresetDecks,
   getPublicCard,
   getPublicCards,
@@ -4824,23 +4825,44 @@ function handleRequest(req, res) {
 
     // ===== Card Data Routes =====
 
+    const sendVersionedCardData = async (loadData, validateData = () => true) => {
+      const version = await getOfficialCardDataVersion(pool);
+      if (!version) {
+        json({ error: 'Card data release metadata unavailable' }, 503);
+        return;
+      }
+      const data = await loadData();
+      if (!validateData(data, version)) {
+        json({ error: 'Card data release is incomplete' }, 503);
+        return;
+      }
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+      res.setHeader('X-Card-Dataset-Sha256', version.datasetSha256);
+      res.setHeader('X-Card-Dataset-Release-Sha', version.releaseSha);
+      res.setHeader('X-Card-Dataset-Count', String(version.cardCount));
+      res.setHeader('X-Card-Data-App-Version', APP_VERSION);
+      res.setHeader('X-Card-Data-Build-Id', APP_BUILD_ID);
+      res.setHeader('X-Card-Data-Rules-Version', GAME_RULES_VERSION);
+      json(data);
+    };
+
     // Public: list card definitions from PostgreSQL.
     if (pathname === '/api/cards' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getPublicCards(pool, url.searchParams));
+      await sendVersionedCardData(
+        () => getPublicCards(pool, url.searchParams),
+        (cards, version) => Array.isArray(cards) && (url.searchParams.size > 0 || cards.length === version.cardCount),
+      );
       return;
     }
 
     // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯。
     if (pathname === '/api/cards/i18n' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getAllCardI18n(pool));
+      await sendVersionedCardData(() => getAllCardI18n(pool));
       return;
     }
 
     if (pathname === '/api/cards/texts' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getAllCardTextsI18n(pool));
+      await sendVersionedCardData(() => getAllCardTextsI18n(pool));
       return;
     }
 

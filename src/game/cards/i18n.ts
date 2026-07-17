@@ -2,6 +2,7 @@
 // 資料來源：PG-backed API（伺服器於啟動時從 PostgreSQL 載入並提供）。
 
 import type { CardDef } from '../types';
+import { acceptCardDataResponse } from './dataContract';
 
 export interface CardTextI18nEntry {
   name: string;
@@ -38,6 +39,7 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   try {
     const response = await fetch(path);
     if (!response.ok) return null;
+    if (!acceptCardDataResponse(response)) return null;
     return (await response.json()) as T;
   } catch {
     return null;

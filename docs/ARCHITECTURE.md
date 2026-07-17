@@ -127,6 +127,9 @@ flowchart LR
 ### PWA
 
 - `vite-plugin-pwa` 產生 Service Worker 與 manifest（`src/clientVersion.ts`）。
+- 離線支援範圍是「已成功暖機過卡牌資料的本機 AI 對戰」；登入、配對、聊天、排行榜、Feedback 與管理功能仍需要網路，不承諾離線寫入或稍後同步。
+- Workbox 對 `/api/cards`、`/api/cards/i18n`、`/api/cards/texts` 使用 build/rules 隔離的 `NetworkFirst` cache。Production 客戶端只接受帶 signed dataset SHA、dataset release SHA、card count、app/build/rules headers 的 response；缺少 metadata、張數不符、同一 runtime dataset 漂移或版本不一致都 fail closed。
+- `buildId` 是前端 engine identity；正式 release 使用完整 commit SHA。當 `buildId` 為完整 SHA 時，卡牌 dataset ledger 的 `releaseSha` 必須完全相同，因而將 engine、rules 與 signed card dataset 綁在同一 release。
 - **自動更新**：`registerPwaAutoUpdate()` 註冊 SW，`onNeedRefresh` 時派發 `zutomayo:pwa-update-ready` 事件，由 `PwaStatusPrompt` 提示使用者。
 - **強制復原**：`recoverPwaAndReload()` 會 unregister 所有 SW 並清空 caches 後重整，用於偵測到壞版本時。
 - **版本相容**：`ensureCompatibleAppVersion()` 比對 `/api/app-version` 與本地 `APP_VERSION_INFO`，不符時拋 `VersionMismatchError` 並提示重整。

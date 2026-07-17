@@ -6,8 +6,15 @@ import path from 'node:path';
 const chromePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:4173';
 const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-pwa-standalone-report.json';
-const port = Number(process.env.CDP_PORT ?? 9959);
+const port = Number(process.env.CDP_PORT ?? 9000 + Math.floor(Math.random() * 900));
 const profileDir = `/private/tmp/zutomayo-pwa-standalone-profile-${process.pid}-${Date.now()}`;
+const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const appVersion = process.env.APP_VERSION ?? packageJson.version;
+const buildId = process.env.APP_BUILD_ID ?? appVersion;
+const rulesVersion = process.env.GAME_RULES_VERSION ?? appVersion;
+const cacheKey = `${buildId}-${rulesVersion}`.replace(/[^a-zA-Z0-9._-]/g, '_');
+const datasetSha256 = 'a'.repeat(64);
+const releaseSha = /^[a-f0-9]{40}$/.test(buildId) ? buildId : 'b'.repeat(40);
 
 let chromeStderr = '';
 const chrome = spawn(
@@ -128,10 +135,15 @@ async function waitFor(client, expression, label, timeoutMs = 20000) {
     if (await evaluate(client, expression)) return;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(`Timed out waiting for ${label}`);
+  const debug = await evaluate(
+    client,
+    `(async () => ({ href: location.href, text: document.body?.innerText?.slice(0, 1200) ?? '', caches: await caches.keys() }))()`,
+  );
+  throw new Error(`Timed out waiting for ${label}\n${JSON.stringify(debug, null, 2)}`);
 }
 
 let client;
+let workerClient;
 try {
   await waitForCdp();
   const targets = await getJson('/json/list');
@@ -141,6 +153,7 @@ try {
   await client.send('Page.enable');
   await client.send('Runtime.enable');
   await client.send('Network.enable');
+  await client.send('Page.navigate', { url: `${baseUrl}/` });
 
   await waitFor(client, `document.readyState === 'complete'`, 'initial document load');
   const manifest = await evaluate(
@@ -165,6 +178,14 @@ try {
     `document.readyState === 'complete' && Boolean(navigator.serviceWorker?.controller)`,
     'service worker controlled reload',
   );
+  const controlledTargets = await getJson('/json/list');
+  const serviceWorker = controlledTargets.find(
+    (target) => target.type === 'service_worker' && target.url === `${baseUrl}/sw.js`,
+  );
+  if (!serviceWorker)
+    throw new Error(`No application service worker target\n${JSON.stringify(controlledTargets, null, 2)}`);
+  workerClient = await connect(serviceWorker.webSocketDebuggerUrl);
+  await workerClient.send('Network.enable');
 
   const online = await evaluate(
     client,
@@ -186,6 +207,94 @@ try {
     uploadThroughput: 0,
     connectionType: 'none',
   });
+  await workerClient.send('Network.emulateNetworkConditions', {
+    offline: true,
+    latency: 0,
+    downloadThroughput: 0,
+    uploadThroughput: 0,
+    connectionType: 'none',
+  });
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  const warmedCardData = await evaluate(
+    client,
+    `(async () => {
+      const cards = Array.from({ length: 40 }, (_, index) => ({
+        id: 'offline-card-' + String(index + 1).padStart(3, '0'),
+        name: 'Offline Card ' + (index + 1),
+        pack: 'offline-smoke',
+        song: 'offline-smoke',
+        illustrator: 'offline-smoke',
+        rarity: 'N',
+        element: ['闇', '炎', '電気', '風'][index % 4],
+        type: index < 24 ? 'Character' : 'Enchant',
+        clock: 1,
+        attack: index < 24 ? { night: 100 + index, day: 100 + index } : null,
+        powerCost: 1,
+        sendToPower: index < 24 ? 1 : 0,
+        effect: '',
+        image: '',
+        errata: ''
+      }));
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-Card-Dataset-Sha256': ${JSON.stringify(datasetSha256)},
+        'X-Card-Dataset-Release-Sha': ${JSON.stringify(releaseSha)},
+        'X-Card-Dataset-Count': String(cards.length),
+        'X-Card-Data-App-Version': ${JSON.stringify(appVersion)},
+        'X-Card-Data-Build-Id': ${JSON.stringify(buildId)},
+        'X-Card-Data-Rules-Version': ${JSON.stringify(rulesVersion)}
+      };
+      const cacheName = ${JSON.stringify(`card-data-${cacheKey}`)};
+      const cache = await caches.open(cacheName);
+      for (const request of await cache.keys()) {
+        if (['/api/cards', '/api/cards/i18n', '/api/cards/texts'].includes(new URL(request.url).pathname)) {
+          await cache.delete(request, { ignoreVary: true });
+        }
+      }
+      await Promise.all([
+        cache.put('/api/cards', new Response(JSON.stringify(cards), { status: 200, headers })),
+        cache.put('/api/cards/i18n', new Response('{}', { status: 200, headers })),
+        cache.put('/api/cards/texts', new Response('{}', { status: 200, headers }))
+      ]);
+      const stored = await cache.match('/api/cards');
+      return {
+        cacheName,
+        entries: (await cache.keys()).map((request) => new URL(request.url).pathname),
+        cardCount: cards.length,
+        storedDataset: stored?.headers.get('X-Card-Dataset-Sha256') ?? null
+      };
+    })()`,
+  );
+  if (
+    warmedCardData.entries.length !== 3 ||
+    warmedCardData.cardCount !== 40 ||
+    warmedCardData.storedDataset !== datasetSha256
+  ) {
+    throw new Error(`card data cache warmup failed: ${JSON.stringify(warmedCardData)}`);
+  }
+
+  const offlineCardProbe = await evaluate(
+    client,
+    `(async () => {
+      try {
+        const response = await fetch('/api/cards', { cache: 'no-store' });
+        const data = await response.json();
+        return {
+          ok: response.ok,
+          status: response.status,
+          dataset: response.headers.get('X-Card-Dataset-Sha256'),
+          count: Array.isArray(data) ? data.length : 'invalid',
+          firstId: Array.isArray(data) ? data[0]?.id ?? null : null
+        };
+      } catch (error) {
+        return { ok: false, error: String(error) };
+      }
+    })()`,
+  );
+  if (!offlineCardProbe.ok || offlineCardProbe.dataset !== datasetSha256 || offlineCardProbe.count !== 40) {
+    throw new Error(`offline card cache probe failed: ${JSON.stringify(offlineCardProbe)}`);
+  }
   await client.send('Page.reload');
   await waitFor(
     client,
@@ -204,15 +313,60 @@ try {
   if (!offline.standalone || !offline.controlled || !offline.hasShell) {
     throw new Error(`offline standalone invariant failed: ${JSON.stringify(offline)}`);
   }
+  await evaluate(client, `window.dispatchEvent(new Event('offline'))`);
+  await waitFor(
+    client,
+    `document.querySelector('[data-offline-requires-network="online"]')?.disabled === true && document.querySelector('[data-offline-requires-network="leaderboard"]')?.disabled === true`,
+    'offline-only navigation policy',
+  );
+
+  await client.send('Page.navigate', { url: `${baseUrl}/ai` });
+  await waitFor(
+    client,
+    `location.pathname === '/ai' && document.readyState === 'complete' && Boolean(document.querySelector('section[aria-label^="01"] button:not([disabled])'))`,
+    'offline AI lobby with cached cards',
+  );
+  await evaluate(client, `document.querySelector('section[aria-label^="01"] button:not([disabled])')?.click()`);
+  await waitFor(
+    client,
+    `Boolean(document.querySelector('section[aria-label^="01"] button[aria-pressed="true"]'))`,
+    'player deck selected',
+  );
+  await evaluate(client, `document.querySelector('section[aria-label^="02"] button:not([disabled])')?.click()`);
+  await waitFor(
+    client,
+    `Boolean(document.querySelector('section[aria-label^="02"] button[aria-pressed="true"]'))`,
+    'opponent deck selected',
+  );
+  await waitFor(
+    client,
+    `Boolean(document.querySelector('section[aria-label^="03"] button:not([disabled])'))`,
+    'AI start enabled',
+  );
+  await evaluate(client, `document.querySelector('section[aria-label^="03"] button:not([disabled])')?.click()`);
+  await waitFor(
+    client,
+    `location.pathname === '/play/ai' && Boolean(document.querySelector('.bf-root'))`,
+    'offline AI match start',
+  );
+  const offlineAi = await evaluate(
+    client,
+    `({ href: location.href, hasBoard: Boolean(document.querySelector('.bf-root')), controlled: Boolean(navigator.serviceWorker?.controller) })`,
+  );
 
   await fs.mkdir(path.dirname(reportPath), { recursive: true });
   await fs.writeFile(
     reportPath,
-    JSON.stringify({ checkedAt: new Date().toISOString(), manifest, online, offline }, null, 2),
+    JSON.stringify(
+      { checkedAt: new Date().toISOString(), manifest, online, warmedCardData, offlineCardProbe, offline, offlineAi },
+      null,
+      2,
+    ),
   );
   console.log(`PWA standalone smoke: valid (${reportPath})`);
 } finally {
   if (client) client.close();
+  if (workerClient) workerClient.close();
   if (chrome.exitCode === null) {
     const exited = new Promise((resolve) => chrome.once('exit', resolve));
     chrome.kill('SIGTERM');

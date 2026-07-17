@@ -14,7 +14,7 @@
 
 ## 2026-07-17 current-tree evidence
 
-- `npm run verify` 通過：Vitest 155 個 test files、1379 tests、dependency patch、資料來源政策、release/operational config、i18n、coverage 與 production/PWA build；coverage statements 64.60%、branches 57.25%、functions 65.96%、lines 67.88%。
+- `npm run verify` 通過：Vitest 156 個 test files、1382 tests、dependency patch、資料來源政策、release/operational config、i18n、coverage 與 production/PWA build；coverage statements 64.57%、branches ≥57.23%、functions 65.89%、lines 67.86%。
 - `npm run rule:audit` 對本機 422 張線上資料副本通過：250 張效果卡、267 行效果全部解析，`unparsedLines=0`、`parsedButPartial=0`、`falseDraw=0`。
 - Fresh PostgreSQL 九角色 smoke 通過：canonical `000001`→`000031`、API role matrix、platform 獨立最小權限 schema gate、relationship outbox、social/account-deletion concurrency、boardgame metadata、admin credential lifecycle，以及 QuickMatch block／Invite friendship-removal writer transaction 與真 platform relay 的 distinct-role 並行競態；另自動重現 card-first 歷史，補套 `000019`–`000027`、正規化 migration metadata，再以 `checkOrder=true` 嚴格重跑。
 - Legacy deleted-account backfill 已改為受審核、精確數量、fail-closed 的 release step。單元測試覆蓋零筆 no-op、未核准、數量漂移、逐筆成功與 hash-only failure；真 PostgreSQL smoke 造出既有 tombstone，驗證 legal-hold/account lock、全 identity-domain 匿名化、purge/retry 與 `users.identity_anonymized_at` marker。API 與 platform schema gate 都拒絕任何未清零 tombstone。
@@ -113,7 +113,7 @@
 - [x] Core routes、Login、Feedback detail、Battle/Result 的 service-backed axe spec 已以 current-tree fresh images/volumes 重跑並包含在 Chromium 40/40。
 - [x] 共用 modal focus/inert、Battle drawer 與 Feedback detail dialog test 已有；手牌／mulligan 卡牌 accessible name 包含名稱、充能成本與區域內唯一位置，選取型卡牌暴露 `aria-pressed`。Fresh-volume authenticated E2E 已以 Enter 鍵完成匹配、猜拳、mulligan、選牌、出牌與確認的自然完整對局，並保留雙方與重新登入裝置只對應同一 canonical history 的證據。
 - [ ] Chromium PR job、每週兩次多瀏覽器 matrix，以及 production-build 的 PWA standalone／responsive CI job 已定義；本機 production preview 已驗證 Chrome app standalone display mode、service worker control 與 offline cached-shell reload，deterministic responsive smoke 也以 44px 觸控下限覆蓋 360/390px 與 Battle 多狀態。尚缺 branch required check及遠端成功 run artifact。
-- [ ] 明確定義離線支援，卡牌／ruleset 資料與 engine 版本一致。
+- [x] 離線支援明確限定為已暖機卡牌資料後的本機 AI 對戰；Workbox card-data cache 依 build/rules 隔離，API response 綁 signed dataset SHA、dataset release SHA、card count 與 app/build/rules，完整 SHA build 另要求 dataset release SHA 相同。Production PWA smoke 會同時將 page 與 service-worker target 真斷網，驗證 versioned cache response、離線 `/ai` 選牌並進入 `.bf-root` 對局；在線服務不承諾離線使用或寫入同步。
 
 ## P5：帳號、社交、LiveOps 與合規
 
@@ -132,8 +132,8 @@
 
 ## 最終驗收
 
-- [x] `npm run verify`：2026-07-17 current tree 通過，Vitest 155 test files / 1379 tests / production-PWA build；push 後仍須由 required CI 綁定最終 commit SHA。
-- [x] `npm run test:coverage`：statements 64.60%、branches 57.25%、functions 65.96%、lines 67.88%。
+- [x] `npm run verify`：2026-07-17 current tree 通過，Vitest 156 test files / 1382 tests / production-PWA build；push 後仍須由 required CI 綁定最終 commit SHA。
+- [x] `npm run test:coverage`：statements 64.57%、branches ≥57.23%、functions 65.89%、lines 67.86%。
 - [x] Compose-backed Chromium E2E：current-tree fresh images/volumes、migration/seed 後 40/40，含自然完成 authenticated 對局與獨立重新登入跨裝置 history。
 - [x] `npm run rule:audit`：422 cards／250 effect cards／267 effect lines，unsupported/partial/false-draw 全為 0。
 - [x] Production/development Compose 靜態 config、fresh role matrix、platform least-privilege schema gate 與 fresh-volume E2E 均由 current tree 通過。

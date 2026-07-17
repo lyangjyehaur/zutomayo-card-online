@@ -136,6 +136,9 @@ function AboutFeatureLink({ link, Icon }: { link: AboutPageLink; Icon: typeof Gi
 export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const navigate = useNavigate();
   const locale = useLocale();
+  const [networkOnline, setNetworkOnline] = useState(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine,
+  );
   const [showDeckIntro, setShowDeckIntro] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { onlineCount } = useOnlinePresence();
@@ -144,6 +147,17 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const [backgroundImage, setBackgroundImage] = useState(
     () => randomLobbyBackgroundImage(getAllCardDefs()) ?? LOBBY_BACKGROUND_FALLBACK_IMAGE,
   );
+
+  useEffect(() => {
+    const handleOnline = () => setNetworkOnline(true);
+    const handleOffline = () => setNetworkOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const seen = localStorage.getItem('zutomayo_deck_intro_seen');
@@ -359,6 +373,8 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
                 size="lg"
                 className="flex-1"
                 onClick={() => navigate('/online')}
+                disabled={!networkOnline}
+                data-offline-requires-network="online"
                 data-umami-event="home-hero-online"
               >
                 {t('lobby.onlineTitle')} →
@@ -395,40 +411,45 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             <span className="h-px flex-1 bg-border-soft" aria-hidden="true" />
           </div>
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3">
-            {CHANNELS.map(({ to, no, titleKey, captionKey, Icon }) => (
-              <li key={to} className="min-w-0">
-                <button
-                  type="button"
-                  onClick={() => navigate(to)}
-                  className="group flex min-h-[var(--size-touch-min)] w-full items-center gap-3 rounded-md border border-border-soft bg-surface-base/60 px-4 py-3 text-left backdrop-blur transition hover:border-accent-primary/50 hover:bg-surface-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] lg:h-full lg:flex-col lg:items-start lg:gap-2 lg:py-4"
-                >
-                  <span className="flex items-center gap-3 lg:w-full lg:justify-between">
-                    <span className="font-mono text-caption tracking-[var(--tracking-meta)] text-accent-primary/70">
-                      CH.{no}
-                    </span>
-                    <Icon
-                      className="size-4 text-content-dim transition-colors group-hover:text-accent-primary"
-                      strokeWidth={1.5}
-                      aria-hidden="true"
-                    />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-display text-body-lg font-bold leading-tight">
-                      {t(titleKey)}
-                    </span>
-                    <span className="mt-1 hidden min-h-[2.25em] text-caption leading-snug text-content-dim lg:line-clamp-2">
-                      {t(captionKey)}
-                    </span>
-                  </span>
-                  <span
-                    className="font-mono text-body text-content-dim transition group-hover:translate-x-0.5 group-hover:text-accent-primary lg:hidden"
-                    aria-hidden="true"
+            {CHANNELS.map(({ to, no, titleKey, captionKey, Icon }) => {
+              const requiresNetwork = to === '/online' || to === '/leaderboard';
+              return (
+                <li key={to} className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => navigate(to)}
+                    disabled={requiresNetwork && !networkOnline}
+                    data-offline-requires-network={requiresNetwork ? to.slice(1) : undefined}
+                    className="group flex min-h-[var(--size-touch-min)] w-full items-center gap-3 rounded-md border border-border-soft bg-surface-base/60 px-4 py-3 text-left backdrop-blur transition hover:border-accent-primary/50 hover:bg-surface-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] lg:h-full lg:flex-col lg:items-start lg:gap-2 lg:py-4"
                   >
-                    →
-                  </span>
-                </button>
-              </li>
-            ))}
+                    <span className="flex items-center gap-3 lg:w-full lg:justify-between">
+                      <span className="font-mono text-caption tracking-[var(--tracking-meta)] text-accent-primary/70">
+                        CH.{no}
+                      </span>
+                      <Icon
+                        className="size-4 text-content-dim transition-colors group-hover:text-accent-primary"
+                        strokeWidth={1.5}
+                        aria-hidden="true"
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-display text-body-lg font-bold leading-tight">
+                        {t(titleKey)}
+                      </span>
+                      <span className="mt-1 hidden min-h-[2.25em] text-caption leading-snug text-content-dim lg:line-clamp-2">
+                        {t(captionKey)}
+                      </span>
+                    </span>
+                    <span
+                      className="font-mono text-body text-content-dim transition group-hover:translate-x-0.5 group-hover:text-accent-primary lg:hidden"
+                      aria-hidden="true"
+                    >
+                      →
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
 
           {/* footer 資訊行 */}
