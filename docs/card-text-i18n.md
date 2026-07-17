@@ -9,11 +9,12 @@
 1. `cards.name` 與 `cards.effect` 是官方修正後日文的權威來源，不得由英文 OCR、既有翻譯或卡面錯字覆蓋。
 2. `cards.en_name_official` 與 `cards.en_effect_official` 保存卡面印刷的官方英文。這兩個欄位不是一般翻譯，也不代表勘誤後英文。
 3. `card_texts_i18n` 保存統一的各語言名稱與效果、來源及複核狀態。日文與英文是官方來源的鏡像；其他語言是衍生翻譯。
-4. 衍生翻譯必須同時參考官方日文和卡面官方英文；兩者有歧義時，以官方修正後日文語義為準。
-5. `pending_review` 的衍生翻譯不得展示給玩家。只有 `verified`（或官方來源使用的 `official`）可以進入顯示鏈路。
-6. 勘誤影響的欄位不得回退到已失效的卡面英文。其英文及其他語言必須使用已複核的勘誤文本；尚未複核時回退到官方日文。
-7. 本機受控來源 `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL；該檔及其他卡牌文本來源不得提交到 Git 或進入容器映像。
-8. 舊式 `card_effects_i18n.lang='en'` 是已停用流程產生的英文翻譯，必須刪除且不得重新建立。英文效果只可來自 `cards.en_effect_official`；受勘誤影響時使用已複核的勘誤英文。
+4. `game_config.card_song_titles_i18n` 保存歌曲日文原題對應的多語歌名。卡名或效果包含歌名時，玩家端一律以這份設定訂正其中的歌名部分。
+5. 衍生翻譯必須同時參考官方日文和卡面官方英文；兩者有歧義時，以官方修正後日文語義為準。
+6. `pending_review` 的衍生翻譯不得展示給玩家。只有 `verified`（或官方來源使用的 `official`）可以進入顯示鏈路。
+7. 勘誤影響的欄位不得回退到已失效的卡面英文。其英文及其他語言必須使用已複核的勘誤文本；尚未複核時回退到官方日文。
+8. 本機受控來源 `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL；該檔及其他卡牌文本來源不得提交到 Git 或進入容器映像。
+9. 舊式 `card_effects_i18n.lang='en'` 是已停用流程產生的英文翻譯，必須刪除且不得重新建立。英文效果只可來自 `cards.en_effect_official`；受勘誤影響時使用已複核的勘誤英文。
 
 ## 資料模型
 
@@ -118,16 +119,26 @@
 
 ## 日常翻譯流程
 
-1. 在管理頁選擇卡牌並進入「多語言」。日文與英文不在這個編輯器內修改。
+1. 在管理頁進入「卡牌翻譯」，選擇卡牌後會直接開啟「多語言」。日文與英文不在這個編輯器內修改。
 2. 翻譯名稱與效果時，同時核對官方修正後日文及卡面英文。
 3. 尚未完成核對時保持 `pending_review`，並在 `review_note` 記錄歧義或待確認事項。
 4. 人工確認語義、術語、數值、卡牌數量及作用範圍後，改為 `verified`。
 5. 若卡牌有勘誤，受影響欄位必須以官方修正後日文為準。管理頁會將其來源寫成 `official_japanese_errata_translation`。
 6. 驗證實際 UI，不要只檢查資料庫值，因為玩家端還會套用複核與 fallback 規則。
 
+### 歌名翻譯
+
+1. 在管理頁進入「歌名翻譯」，切換繁中、簡中、廣東話、英文或韓文。
+2. 列表以 `cards.song` 的日文原題彙整，並顯示引用該歌曲的卡牌數量；搜尋會比對日文及所有已填語言。
+3. 可使用「只看缺失」逐語言補值。繁中、英文與韓文以官方來源優先；簡中以社群慣用譯名優先；廣東話沒有獨立值時玩家端可回退繁中。
+4. 儲存會整份更新 `game_config.card_song_titles_i18n` 並寫入管理稽核紀錄。既有但目前沒有卡牌引用的歌曲也會保留。
+5. 卡名或效果包含歌曲日文原題時，玩家端會使用這份表統一替換歌名；不要在每張卡的翻譯內建立互相衝突的歌名版本。
+
 衍生翻譯不能標記為 `official`，API 會拒絕此操作。管理端的修改會寫入管理稽核紀錄。
 
 目前 250 張有效果卡的 `zh-TW`、`zh-CN`、`zh-HK`、`ko` 效果已同時依官方修正後日文及人工校對的卡面英文複核。複核來源檔 `data/card-effects-i18n.json` 與本機 review manifest 以 SHA-256 鎖定確切版本，兩者都不進 Git。來源檔不得含 `en`，英文只維護於官方英文資料流。
+
+422 張卡名與 42 首歌名使用相同的本機複核流程。`data/card-names-i18n.json`、`data/card-song-titles-i18n.json` 與 `data/card-derived-names-review.json` 均不得提交到 Git；review manifest 會以 SHA-256 鎖定卡名、歌名、官方日英來源及卡牌 seed。批量匯入前執行 `npm run audit:card-derived-names`，確認卡片數量、語言完整性、重複卡名一致性及卡名內歌名均符合 canonical 表，再以 `npm run import:card-derived-names` 寫入 PostgreSQL。匯入只更新衍生卡名與 `game_config.card_song_titles_i18n`，不得改動既有效果翻譯。
 
 CI/E2E 不使用線上卡牌快照；`scripts/create-e2e-card-seed.ts` 會在測試容器內生成無正式卡名、效果及翻譯的合成卡牌資料。
 

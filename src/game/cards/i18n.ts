@@ -4,6 +4,7 @@
 import type { CardDef } from '../types';
 import { acceptCardDataResponse } from './dataContract';
 import { getGameConfig } from './loader';
+import { CARD_SONG_TITLES_I18N_CONFIG_KEY, normalizeSongTitleConfig } from './songTitleConfig';
 
 export interface CardTextI18nEntry {
   name: string;
@@ -17,8 +18,6 @@ export interface CardTextI18nEntry {
 let effectI18n: Record<string, Record<string, string>> = {};
 let cardTextsI18n: Record<string, Record<string, CardTextI18nEntry>> = {};
 let _initialized = false;
-
-const CARD_SONG_TITLES_I18N_CONFIG_KEY = 'card_song_titles_i18n';
 
 export function isI18nInitialized(): boolean {
   return _initialized;
@@ -153,9 +152,7 @@ export function getLocalizedCardEffect(card: CardDef, locale: string): string {
 }
 
 function songTitlesI18n(): Record<string, Record<string, string>> {
-  const value = getGameConfig()[CARD_SONG_TITLES_I18N_CONFIG_KEY];
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return value as Record<string, Record<string, string>>;
+  return normalizeSongTitleConfig(getGameConfig()[CARD_SONG_TITLES_I18N_CONFIG_KEY]);
 }
 
 export function getLocalizedSongTitle(song: string, locale: string): string {

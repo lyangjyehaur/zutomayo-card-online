@@ -177,6 +177,8 @@ describe('operational shell scripts', () => {
       scripts: Record<string, string>;
     };
     const pwaSmoke = readFileSync(resolve('scripts/pwa-standalone-smoke.mjs'), 'utf8');
+    const adminSmoke = readFileSync(resolve('scripts/admin-responsive-smoke.mjs'), 'utf8');
+    const adminCss = readFileSync(resolve('src/components/AdminPanel.css'), 'utf8');
     const browserSmokeFiles = [
       'scripts/pwa-standalone-smoke.mjs',
       'scripts/ui-responsive-smoke.mjs',
@@ -223,6 +225,11 @@ describe('operational shell scripts', () => {
     }
     expect(pwaSmoke).toContain("location.pathname === '/play/ai'");
     expect(pwaSmoke).toContain('X-Card-Dataset-Sha256');
+    expect(adminSmoke).toContain("waitForSelector(client, '.admin-card-list')");
+    expect(adminSmoke).toContain("document.querySelectorAll('.admin-nav-item')");
+    expect(adminSmoke).not.toContain('.admin-card-grid');
+    expect(adminCss).toMatch(/@media \(max-width: 1179px\) \{[\s\S]*\.admin-responsive-table/);
+    expect(adminCss).toMatch(/\.admin-nav-item \{[\s\S]*min-height: var\(--touch-target-min\)/);
     expect(viteConfig).toContain("['/api/cards', '/api/cards/i18n', '/api/cards/texts']");
     expect(viteConfig).toContain("handler: 'NetworkFirst'");
     expect(viteConfig).toContain('cacheName: `card-data-${cardDataCacheKey}`');

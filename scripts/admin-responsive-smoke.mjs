@@ -24,9 +24,9 @@ const cases = [
   { name: 'admin-768x1024', width: 768, height: 1024, surface: 'cards' },
   { name: 'admin-1024x768', width: 1024, height: 768, surface: 'cards' },
   { name: 'admin-users-360x740', width: 360, height: 740, surface: 'table', tab: '使用者' },
-  { name: 'admin-matches-360x740', width: 360, height: 740, surface: 'table', tab: '對戰' },
+  { name: 'admin-matches-360x740', width: 360, height: 740, surface: 'table', tab: '對戰紀錄' },
   { name: 'admin-users-390x844', width: 390, height: 844, surface: 'table', tab: '使用者' },
-  { name: 'admin-matches-768x1024', width: 768, height: 1024, surface: 'table', tab: '對戰' },
+  { name: 'admin-matches-768x1024', width: 768, height: 1024, surface: 'table', tab: '對戰紀錄' },
   { name: 'admin-users-1024x768', width: 1024, height: 768, surface: 'table', tab: '使用者' },
 ];
 
@@ -286,13 +286,13 @@ const pageMetrics = `
     },
     header: visible('.admin-header'),
     tabs: visible('.admin-tablist'),
-    summary: visible('.admin-mobile-filter-summary'),
+    summary: visible('.admin-card-browser-actions'),
     advanced: visible('.admin-filter-advanced'),
     filterRows: visible('.admin-filter-row'),
-    cards: visible('.admin-card-grid > button').slice(0, 10),
+    cards: visible('.admin-card-list-item').slice(0, 10),
     smallTargets: buttons.filter((item) => item.width < 44 || item.height < 44),
     offscreen: [...document.body.querySelectorAll('*')]
-      .filter((el) => !el.closest('.admin-filter-row, .admin-tablist, .admin-card-modal-tabs'))
+      .filter((el) => !el.closest('.admin-sidebar, .admin-filter-row, .admin-tablist, .admin-card-modal-tabs'))
       .map(box)
       .filter((item) => item.visible && item.offscreenX)
       .slice(0, 20),
@@ -409,17 +409,17 @@ try {
       `history.pushState({}, '', '/admin'); window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));`,
     );
     if (testCase.surface === 'table') {
-      await waitForSelector(client, '[role="tab"]');
+      await waitForSelector(client, '.admin-nav-item');
       await new Promise((resolve) => setTimeout(resolve, 700));
       await evalChecked(
         client,
-        `[...document.querySelectorAll('[role="tab"]')].find((button) => button.textContent.trim() === ${JSON.stringify(testCase.tab)})?.click()`,
+        `[...document.querySelectorAll('.admin-nav-item')].find((button) => button.getAttribute('aria-label') === ${JSON.stringify(testCase.tab)})?.click()`,
       );
       await waitForSelector(client, '.admin-responsive-table tbody tr');
       await new Promise((resolve) => setTimeout(resolve, 600));
     } else {
       try {
-        await waitForSelector(client, '.admin-card-grid');
+        await waitForSelector(client, '.admin-card-list');
       } catch {
         await client.send('Page.navigate', { url: `${baseUrl}/` });
         await waitForSelector(client, 'main');
@@ -428,11 +428,14 @@ try {
           client,
           `history.pushState({}, '', '/admin'); window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));`,
         );
-        await waitForSelector(client, '.admin-card-grid');
+        await waitForSelector(client, '.admin-card-list');
       }
       await new Promise((resolve) => setTimeout(resolve, 700));
       if (testCase.openFilters) {
-        await evalChecked(client, `document.querySelector('.admin-mobile-filter-summary button')?.click()`);
+        await evalChecked(
+          client,
+          `document.querySelector('.admin-card-browser-actions button[aria-expanded]')?.click()`,
+        );
         await new Promise((resolve) => setTimeout(resolve, 400));
       }
     }
