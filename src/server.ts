@@ -383,12 +383,19 @@ async function loadCardsFromPG(): Promise<void> {
 const API_SERVER = process.env.API_URL || 'http://api:3001';
 const API_PROXY_MAX_BODY_BYTES = Number(process.env.API_PROXY_MAX_BODY_BYTES) || 3 * 1024 * 1024;
 
-async function verifyAdminReloadToken(authorization: string | undefined): Promise<boolean> {
+async function verifyAdminReloadToken(
+  authorization: string | undefined,
+  cookie: string | undefined,
+  csrfToken: string | undefined,
+): Promise<boolean> {
   if (!authorization) return false;
   try {
+    const headers: Record<string, string> = { Authorization: authorization };
+    if (cookie) headers.cookie = cookie;
+    if (csrfToken) headers['x-csrf-token'] = csrfToken;
     const response = await fetch(new URL('/api/admin/cards/reload', API_SERVER), {
       method: 'POST',
-      headers: { Authorization: authorization },
+      headers,
     });
     return response.ok;
   } catch {
@@ -558,7 +565,9 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   }
   if (ctx.path === '/api/admin/cards/reload' && ctx.method === 'POST') {
     const authorization = firstHeaderValue(ctx.request.headers.authorization);
-    if (!(await verifyAdminReloadToken(authorization))) {
+    const cookie = firstHeaderValue(ctx.request.headers.cookie);
+    const csrfToken = firstHeaderValue(ctx.request.headers['x-csrf-token']);
+    if (!(await verifyAdminReloadToken(authorization, cookie, csrfToken))) {
       ctx.status = 401;
       ctx.body = { error: 'Unauthorized' };
       return;

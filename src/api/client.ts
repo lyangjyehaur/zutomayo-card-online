@@ -409,6 +409,7 @@ export class ApiError extends Error {
 
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
+let adminRefreshPromise: Promise<string | null> | null = null;
 
 function getCsrfToken(): string {
   const match = document.cookie.match(/(?:^|; )zutomayo_csrf=([^;]*)/);
@@ -450,6 +451,48 @@ async function tryRefreshToken(): Promise<boolean> {
   return refreshPromise;
 }
 
+async function attachCsrfHeader(headers: Record<string, string>): Promise<void> {
+  const csrfToken = await ensureCsrfToken();
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+  else delete headers['X-CSRF-Token'];
+}
+
+async function requestLinkedAdminSession(): Promise<Response> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  await attachCsrfHeader(headers);
+  return fetch(`${API_BASE}/admin/session`, {
+    method: 'POST',
+    headers,
+    body: '{}',
+    credentials: 'include',
+  });
+}
+
+async function tryRefreshLinkedAdminSession(): Promise<string | null> {
+  if (adminRefreshPromise) return adminRefreshPromise;
+  adminRefreshPromise = (async () => {
+    try {
+      let response = await requestLinkedAdminSession();
+      if (response.status === 401 && (await tryRefreshToken())) {
+        response = await requestLinkedAdminSession();
+      }
+      if (!response.ok) return null;
+      const body = (await response.json()) as { token?: unknown; role?: unknown };
+      if (typeof body.token !== 'string' || typeof body.role !== 'string') return null;
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(ADMIN_TOKEN_KEY, body.token);
+        sessionStorage.setItem(ADMIN_ROLE_KEY, body.role);
+      }
+      return body.token;
+    } catch {
+      return null;
+    } finally {
+      adminRefreshPromise = null;
+    }
+  })();
+  return adminRefreshPromise;
+}
+
 async function request<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem(LEGACY_TOKEN_KEY);
   const headers: Record<string, string> = {
@@ -460,8 +503,7 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
   // CSRF: double-submit cookie pattern — attach X-CSRF-Token for state-changing methods
   const method = (options.method || 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') {
-    const csrfToken = await ensureCsrfToken();
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    await attachCsrfHeader(headers);
   }
 
   const doFetch = async (): Promise<Response> =>
@@ -469,10 +511,21 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
 
   let res = await doFetch();
 
-  // 401 攔截：嘗試 refresh token 後重試一次（refresh 路由自身不遞迴）
+  const canRefreshAdminSession =
+    path.startsWith('/admin/') && path !== '/admin/session' && path !== '/admin/login' && path !== '/admin/logout';
+
+  // 管理員 session 與一般帳號 session 分開續期。帳號 refresh 會輪替
+  // CSRF cookie，因此任何重試都必須重新讀取 token 後再送出。
   if (res.status === 401 && !path.startsWith('/auth/refresh') && !path.startsWith('/logout')) {
-    const refreshed = await tryRefreshToken();
-    if (refreshed) {
+    if (canRefreshAdminSession) {
+      const adminToken = await tryRefreshLinkedAdminSession();
+      if (adminToken) {
+        headers.Authorization = `Bearer ${adminToken}`;
+        if (method !== 'GET' && method !== 'HEAD') await attachCsrfHeader(headers);
+        res = await doFetch();
+      }
+    } else if (await tryRefreshToken()) {
+      if (method !== 'GET' && method !== 'HEAD') await attachCsrfHeader(headers);
       res = await doFetch();
     }
   }
@@ -488,9 +541,10 @@ async function request<T = unknown>(path: string, options: RequestInit = {}): Pr
   }
   if (!res.ok) {
     // refresh 失敗後的 401 清除前端 session 狀態
-    if (res.status === 401) {
+    if (res.status === 401 && !path.startsWith('/admin/')) {
       clearAccountSession();
     }
+    if (res.status === 401 && canRefreshAdminSession) clearStoredAdminSession();
     // 5xx 為伺服器錯誤，上報 Sentry 以利定位線上問題；4xx 為客戶端錯誤，不上報。
     if (res.status >= 500) {
       Sentry.captureException(new Error(`API ${res.status}: ${path}`), {
