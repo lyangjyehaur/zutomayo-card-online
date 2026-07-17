@@ -5,7 +5,11 @@ import { postgresConnectionString, postgresSslConfig } from '../runtimeSecurityC
 
 const require = createRequire(import.meta.url);
 const { acquireAccountMutationLocks } = require('../../api/accountMutationLock.cjs') as {
-  acquireAccountMutationLocks: (client: Queryable, userIds: string[]) => Promise<QueryResultRow[]>;
+  acquireAccountMutationLocks: (
+    client: Queryable,
+    userIds: string[],
+    options?: { lockUserRows?: boolean },
+  ) => Promise<QueryResultRow[]>;
 };
 
 export type PlatformMatchParticipantRole = 'player' | 'spectator';
@@ -50,7 +54,7 @@ async function withAccountMutation<T>(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await acquireAccountMutationLocks(client, [userId]);
+    await acquireAccountMutationLocks(client, [userId], { lockUserRows: false });
     const result = await operation(client);
     await client.query('COMMIT');
     return result;

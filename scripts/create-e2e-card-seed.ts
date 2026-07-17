@@ -24,6 +24,7 @@ const TUTORIAL_IDS: Array<{ id: string; type: CardType }> = [
 ];
 
 function syntheticCard(id: string, element: Element, type: CardType, index: number): CardDef {
+  const attack = element === '闇' ? 60 : element === '炎' ? 20 : 40;
   return {
     id,
     name: `E2E CARD ${index}`,
@@ -35,7 +36,7 @@ function syntheticCard(id: string, element: Element, type: CardType, index: numb
     element,
     type,
     clock: 1,
-    attack: type === 'Character' ? { night: 40, day: 40 } : null,
+    attack: type === 'Character' ? { night: attack, day: attack } : null,
     powerCost: 0,
     sendToPower: 1,
     effect: '',

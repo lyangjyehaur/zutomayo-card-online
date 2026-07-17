@@ -90,15 +90,28 @@ function accountSuffix(label: string): string {
   return `${cleanLabel}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function authenticatedTestPassword(): string {
+  return process.env.E2E_AUTH_PASSWORD || 'E2e-service-secret-123!';
+}
+
+async function configureAuthenticatedBrowserContext(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    localStorage.setItem('zutomayo_session', '1');
+    localStorage.setItem('zutomayo_locale', 'zh-TW');
+    localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+  });
+}
+
 export async function registerAuthenticatedOnlineAccount(
   context: BrowserContext,
   nickname: string,
+  options: { deckStrength?: 'strong' | 'weak' } = {},
 ): Promise<AuthenticatedOnlineAccount> {
   const email = `${accountSuffix(nickname)}@e2e.example.test`;
   const response = await context.request.post('/api/register', {
     data: {
       email,
-      password: process.env.E2E_AUTH_PASSWORD || 'E2e-service-secret-123!',
+      password: authenticatedTestPassword(),
       nickname,
     },
   });
@@ -117,23 +130,37 @@ export async function registerAuthenticatedOnlineAccount(
     throw new Error('Registration did not return a complete authenticated account');
   }
 
-  await context.addInitScript(() => {
-    localStorage.setItem('zutomayo_session', '1');
-    localStorage.setItem('zutomayo_locale', 'zh-TW');
-    localStorage.setItem('zutomayo_deck_intro_seen', 'true');
-  });
+  await configureAuthenticatedBrowserContext(context);
 
   const cardsResponse = await context.request.get('/api/cards');
   if (!cardsResponse.ok()) throw await responseError(cardsResponse);
-  const cards = (await cardsResponse.json()) as Array<{ id?: unknown; type?: unknown; effect?: unknown }>;
-  const cardIds = cards
-    .filter(
-      (card) =>
-        card.type === 'Character' &&
-        (typeof card.effect !== 'string' || card.effect.trim() === '') &&
-        typeof card.id === 'string' &&
-        card.id.length > 0,
-    )
+  const cards = (await cardsResponse.json()) as Array<{
+    id?: unknown;
+    type?: unknown;
+    effect?: unknown;
+    attack?: { night?: unknown; day?: unknown } | null;
+  }>;
+  const effectFreeCharacters = cards.filter(
+    (card) =>
+      card.type === 'Character' &&
+      (typeof card.effect !== 'string' || card.effect.trim() === '') &&
+      typeof card.id === 'string' &&
+      card.id.length > 0,
+  );
+  const attackScore = (card: (typeof effectFreeCharacters)[number]): number => {
+    const night = typeof card.attack?.night === 'number' ? card.attack.night : 0;
+    const day = typeof card.attack?.day === 'number' ? card.attack.day : 0;
+    return night + day;
+  };
+  const deckCandidates = options.deckStrength
+    ? [...effectFreeCharacters].sort((left, right) => {
+        const scoreDifference = attackScore(left) - attackScore(right);
+        if (scoreDifference !== 0) return options.deckStrength === 'strong' ? -scoreDifference : scoreDifference;
+        return String(left.id).localeCompare(String(right.id));
+      })
+    : effectFreeCharacters;
+  const cardIds = deckCandidates
+    .filter((card) => typeof card.id === 'string' && card.id.length > 0)
     .map((card) => card.id as string)
     .slice(0, 10)
     .flatMap((id) => [id, id]);
@@ -161,6 +188,19 @@ export async function registerAuthenticatedOnlineAccount(
     elo: body.user.elo,
     deck: { id: deck.id, name: deck.name, cardIds: deck.cardIds as string[] },
   };
+}
+
+export async function loginAuthenticatedOnlineAccount(
+  context: BrowserContext,
+  account: AuthenticatedOnlineAccount,
+): Promise<void> {
+  const response = await context.request.post('/api/login', {
+    data: { email: account.email, password: authenticatedTestPassword() },
+  });
+  if (!response.ok()) throw await responseError(response);
+  const body = (await response.json()) as { user?: { id?: unknown } };
+  if (body.user?.id !== account.id) throw new Error('Independent authenticated login returned the wrong account');
+  await configureAuthenticatedBrowserContext(context);
 }
 
 export async function establishAuthenticatedFriendship(

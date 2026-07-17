@@ -26,7 +26,7 @@ function normalizeUserIds(userIds) {
 async function acquireAccountMutationLocks(
   client,
   userIds,
-  { includeRetention = false, requireLiveUsers = true } = {},
+  { includeRetention = false, requireLiveUsers = true, lockUserRows = true } = {},
 ) {
   const ids = normalizeUserIds(userIds);
   if (includeRetention) {
@@ -39,8 +39,15 @@ async function acquireAccountMutationLocks(
 
   const rows = [];
   for (const id of ids) {
+    // Runtime roles that only append dependent evidence (for example the
+    // platform participant store) serialize through the same advisory lock
+    // but intentionally cannot UPDATE users. Their live-account recheck uses
+    // the minimal SELECT contract; destructive/rating writers retain the row
+    // lock and rating snapshot by default.
     const result = await client.query(
-      'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE',
+      lockUserRows
+        ? 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE'
+        : 'SELECT id, deleted_at FROM users WHERE id = $1',
       [id],
     );
     if (result.rows[0]) rows.push(result.rows[0]);

@@ -14,5 +14,7 @@ describe('synthetic E2E card seed', () => {
     expect(fixture.cards.every((card) => card.name.startsWith('E2E CARD '))).toBe(true);
     expect(fixture.cards.every((card) => card.effect === '' && card.enEffectOfficial === '')).toBe(true);
     expect(fixture.cards.map((card) => card.id)).toEqual(expect.arrayContaining(['1st_2', '1st_98', '2nd_86']));
+    expect(fixture.cards.find((card) => card.element === '闇')?.attack).toEqual({ night: 60, day: 60 });
+    expect(fixture.cards.find((card) => card.element === '炎')?.attack).toEqual({ night: 20, day: 20 });
   });
 });

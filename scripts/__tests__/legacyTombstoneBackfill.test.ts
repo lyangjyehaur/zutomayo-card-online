@@ -2,17 +2,16 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { auditRef, expectedCount, runLegacyTombstoneBackfill } = require(
-  '../backfill-legacy-deleted-accounts-pg.cjs',
-) as {
-  auditRef: (userId: string) => string;
-  expectedCount: (value: unknown) => number | null;
-  runLegacyTombstoneBackfill: (input: {
-    pool: { query: ReturnType<typeof vi.fn> };
-    env?: Record<string, string | undefined>;
-    backfill?: (input: { pool: unknown; userId: string }) => Promise<Record<string, unknown>>;
-  }) => Promise<{ reviewed: number; backfilled: number }>;
-};
+const { auditRef, expectedCount, runLegacyTombstoneBackfill } =
+  require('../backfill-legacy-deleted-accounts-pg.cjs') as {
+    auditRef: (userId: string) => string;
+    expectedCount: (value: unknown) => number | null;
+    runLegacyTombstoneBackfill: (input: {
+      pool: { query: ReturnType<typeof vi.fn> };
+      env?: Record<string, string | undefined>;
+      backfill?: (input: { pool: unknown; userId: string }) => Promise<Record<string, unknown>>;
+    }) => Promise<{ reviewed: number; backfilled: number }>;
+  };
 
 describe('legacy deleted-account backfill gate', () => {
   it('accepts only safe non-negative integer review counts', () => {

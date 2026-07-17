@@ -14,12 +14,12 @@
 
 ## 2026-07-17 current-tree evidence
 
-- `npm run verify` 通過：Vitest 152 個 test files、1372 tests、資料來源政策、release/operational config、i18n、coverage 與 production/PWA build；coverage statements 64.59%、branches 57.22%、functions 65.92%、lines 67.87%。
+- `npm run verify` 通過：Vitest 153 個 test files、1374 tests、資料來源政策、release/operational config、i18n、coverage 與 production/PWA build；coverage statements 64.58%、branches 57.20%、functions 65.96%、lines 67.85%。
 - `npm run rule:audit` 對本機 422 張線上資料副本通過：250 張效果卡、267 行效果全部解析，`unparsedLines=0`、`parsedButPartial=0`、`falseDraw=0`。
 - Fresh PostgreSQL 九角色 smoke 通過：canonical `000001`→`000031`、API role matrix、platform 獨立最小權限 schema gate、relationship outbox、social/account-deletion concurrency、boardgame metadata、admin credential lifecycle；另自動重現 card-first 歷史，補套 `000019`–`000027`、正規化 migration metadata，再以 `checkOrder=true` 嚴格重跑。
 - Legacy deleted-account backfill 已改為受審核、精確數量、fail-closed 的 release step。單元測試覆蓋零筆 no-op、未核准、數量漂移、逐筆成功與 hash-only failure；真 PostgreSQL smoke 造出既有 tombstone，驗證 legal-hold/account lock、全 identity-domain 匿名化、purge/retry 與 `users.identity_anonymized_at` marker。API 與 platform schema gate 都拒絕任何未清零 tombstone。
 - 由未修改的 card-first 本機資料庫（2 users、422 cards、`000028`–`000030` 已存在而 `000019`–`000027` 缺失）建立全新 clone，current-tree `db:migrate:release` 已成功升到 28 筆 canonical migrations／`000031`，匯入並 gate 422 cards、12 errata、1 筆 signed dataset ledger、0 pending tombstones；第二次 release 顯示 no migrations 並保留 audited edits。原資料庫未修改。
-- Fresh-volume Compose 重新 build current-tree images，migration/seed 後 Chromium 39/39 通過，包含 authenticated multiplayer 與 service-backed accessibility；第一次因 33 小時前的舊 E2E stack 佔用 host port 未列證據，停止舊測試容器後以全新 volume 重跑才採計。
+- Fresh-volume Compose 重新 build current-tree images，migration/seed 後 Chromium 40/40 通過，包含 service-backed accessibility，authenticated QuickMatch/Invite/chat/reconnect，以可控強弱 synthetic deck 自然完成對局，以及兩個獨立重新登入 browser context 證明跨裝置 history 各只有同一筆 canonical result。Distinct platform role 同時驗證 participant/chat writer 只用共用 advisory fence 與最小 `users(id, deleted_at)` live check，不需要 `users` UPDATE 權限。
 - 以上仍是 local/current-tree automated evidence，不是 staging/server4/production evidence；branch protection、production approval、signed-image staging rehearsal、HA/canary/off-site restore/load/alert、provider account E2E、production admin recovery 與法務項目仍阻擋 production。
 
 ## 修補波次
@@ -71,7 +71,7 @@
 
 ## P1：發布與供應鏈
 
-- [x] Base、E2E、staging、legacy server4、parallel slot、gateway、monitoring Compose 靜態 config gate 全部通過並進 CI；current-tree fresh-volume runtime images、migration/seed 與 Chromium 39/39 亦已重跑。
+- [x] Base、E2E、staging、legacy server4、parallel slot、gateway、monitoring Compose 靜態 config gate 全部通過並進 CI；current-tree fresh-volume runtime images、migration/seed 與 Chromium 40/40 亦已重跑。
 - [ ] CI 與 E2E job、CD 的 successful-CI SHA gate 已存在；但 GitHub `master` 尚無 branch protection/ruleset，required checks 仍可被繞過。
 - [x] Migration 使用同一 release digest，失敗時 app 不啟動。
 - [x] Deploy `--sha`、health port 與 post-deploy smoke 正確。
@@ -104,11 +104,11 @@
 
 ## P4：玩家品質、E2E 與無障礙
 
-- [ ] Authenticated 雙 browser E2E 已覆蓋兩個登入 session、server deck、QuickMatch/Invite、聊天、reconnect、投降結算與雙方 history，current-tree Compose run 通過；仍缺自然完成的完整對局與 history 無重複斷言。
+- [x] Authenticated 雙 browser E2E 覆蓋兩個登入 session、server deck、QuickMatch/Invite、聊天、reconnect、投降結算與雙方 history；另以強弱無效果 synthetic deck 自然完成對局，並斷言兩方與獨立重新登入 context 的 source match 各只有一筆。
 - [ ] E2E 已覆蓋 refresh、斷網重連、觀戰、隱藏資訊與真實 platform 配對；跨 instance full-sync shared-lock race 有真 PG smoke，仍缺服務 process restart、broadcast 後 terminal transaction 失敗恢復與跨裝置完整對局驗收。
-- [ ] 登入玩家的 server match history 為 source of truth 且已有雙 session 查詢；跨裝置同步與無重複 invariant 尚未完整證明。
+- [x] 登入玩家的 server match history 為 source of truth；同一自然完成對局已由雙方原 session 與兩個獨立重新登入 context 查詢，並證明四個視角都只對應同一 canonical history ID。
 - [x] Replay 使用伺服器 authoritative action log 並綁定 rules version。
-- [x] Core routes、Login、Feedback detail、Battle/Result 的 service-backed axe spec 已以 current-tree fresh images/volumes 重跑並包含在 Chromium 39/39。
+- [x] Core routes、Login、Feedback detail、Battle/Result 的 service-backed axe spec 已以 current-tree fresh images/volumes 重跑並包含在 Chromium 40/40。
 - [ ] 共用 modal focus/inert、Battle drawer 與 Feedback detail dialog test 已有；card accessible name 與鍵盤自然完整對局仍待完成。
 - [ ] Chromium PR job 與每週兩次多瀏覽器 matrix 已定義；尚缺 branch required check、成功 run artifact、PWA standalone 與 360/390px visual gate。
 - [ ] 明確定義離線支援，卡牌／ruleset 資料與 engine 版本一致。
@@ -130,9 +130,9 @@
 
 ## 最終驗收
 
-- [x] `npm run verify`：2026-07-17 current tree 通過，Vitest 152 test files / 1372 tests / production-PWA build；push 後仍須由 required CI 綁定最終 commit SHA。
-- [x] `npm run test:coverage`：statements 64.59%、branches 57.22%、functions 65.92%、lines 67.87%。
-- [x] Compose-backed Chromium E2E：current-tree fresh images/volumes、migration/seed 後 39/39。
+- [x] `npm run verify`：2026-07-17 current tree 通過，Vitest 153 test files / 1374 tests / production-PWA build；push 後仍須由 required CI 綁定最終 commit SHA。
+- [x] `npm run test:coverage`：statements 64.58%、branches 57.20%、functions 65.96%、lines 67.85%。
+- [x] Compose-backed Chromium E2E：current-tree fresh images/volumes、migration/seed 後 40/40，含自然完成 authenticated 對局與獨立重新登入跨裝置 history。
 - [x] `npm run rule:audit`：422 cards／250 effect cards／267 effect lines，unsupported/partial/false-draw 全為 0。
 - [x] Production/development Compose 靜態 config、fresh role matrix、platform least-privilege schema gate 與 fresh-volume E2E 均由 current tree 通過。
 - [ ] Migration up / app start / rollback compatibility rehearsal：fresh canonical、card-first deferred lineage、422-card production-copy clone、signed dataset ledger/data gate、第二次 strict/idempotent release 與 reviewed legacy tombstone backfill均已本機通過；仍缺 immutable signed image 的真 staging app start、三次 deploy 與 N+1 rollback smoke。

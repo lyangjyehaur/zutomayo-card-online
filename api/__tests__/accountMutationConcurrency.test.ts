@@ -9,7 +9,11 @@ const { submitMatchResult } = require('../matchSubmission.cjs') as {
   submitMatchResult: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
 };
 const { acquireAccountMutationLocks, withAccountMutationTransaction } = require('../accountMutationLock.cjs') as {
-  acquireAccountMutationLocks: (client: Record<string, unknown>, userIds: string[]) => Promise<unknown[]>;
+  acquireAccountMutationLocks: (
+    client: Record<string, unknown>,
+    userIds: string[],
+    options?: { lockUserRows?: boolean },
+  ) => Promise<unknown[]>;
   withAccountMutationTransaction: (
     pool: Record<string, unknown>,
     userIds: string[],
@@ -18,6 +22,7 @@ const { acquireAccountMutationLocks, withAccountMutationTransaction } = require(
 };
 
 const ACCOUNT_ROW_LOCK_SQL = 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE';
+const ACCOUNT_LIVE_CHECK_SQL = 'SELECT id, deleted_at FROM users WHERE id = $1';
 
 function deferred() {
   let resolve!: () => void;
@@ -79,6 +84,25 @@ describe('account mutation concurrency', () => {
     expect(advisoryKeys).toEqual(['legal-hold:account:u_alice', 'legal-hold:account:u_zed']);
     expect(rowIds).toEqual(['u_alice', 'u_zed']);
     expect(query.mock.calls.some(([sql]) => String(sql).includes('SELECT *'))).toBe(false);
+  });
+
+  it('supports an advisory-only live-account check for least-privilege append writers', async () => {
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql === ACCOUNT_LIVE_CHECK_SQL) {
+        return { rows: [{ id: params?.[0], deleted_at: null }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await expect(acquireAccountMutationLocks({ query }, ['u_platform'], { lockUserRows: false })).resolves.toEqual([
+      { id: 'u_platform', deleted_at: null },
+    ]);
+    expect(query.mock.calls.map(([sql]) => sql)).toEqual([
+      'SELECT pg_advisory_xact_lock(hashtext($1))',
+      ACCOUNT_LIVE_CHECK_SQL,
+    ]);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('FOR UPDATE'))).toBe(false);
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('elo'))).toBe(false);
   });
 
   it('pins live-account writes to one transaction client and rolls back before release on failure', async () => {
