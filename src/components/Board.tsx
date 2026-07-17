@@ -1016,6 +1016,8 @@ function MulliganScreen({
                   state={done ? 'disabled' : selected.includes(index) ? 'selected' : 'idle'}
                   onActivate={done ? undefined : () => activateCard(card, index)}
                   onInspect={() => focusCard(card)}
+                  positionInSet={{ index, total: G.players[me].hand.length }}
+                  ariaPressed={selected.includes(index)}
                 />
               </div>
             ))}

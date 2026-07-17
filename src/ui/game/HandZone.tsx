@@ -63,6 +63,8 @@ export function HandZone({
               imageContext="hand"
               state={state}
               onActivate={() => onCardTap(index)}
+              positionInSet={{ index, total: cards.length }}
+              ariaPressed={selectedIndex === index}
               tutId={card.defId}
             />
           </div>

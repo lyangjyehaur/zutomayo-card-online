@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import {
   establishAuthenticatedFriendship,
   getAuthenticatedMatchHistory,
@@ -56,6 +56,12 @@ async function expectAuthenticatedLobby(page: Page, nickname: string): Promise<v
   await expect(page.getByRole('button', { name: '開始匹配' })).toBeEnabled({ timeout: 30_000 });
 }
 
+async function activateWithKeyboard(locator: Locator): Promise<void> {
+  await locator.focus();
+  await expect(locator).toBeFocused();
+  await locator.press('Enter');
+}
+
 async function expectSharedOnlineMatch(first: Page, second: Page): Promise<string> {
   await Promise.all([
     first.waitForURL(/\/play\/online\/[^/?#]+/, { timeout: 45_000 }),
@@ -73,31 +79,31 @@ async function expectSharedOnlineMatch(first: Page, second: Page): Promise<strin
 }
 
 async function completeSetup(first: Page, second: Page): Promise<void> {
-  await first.locator('[data-tut="janken-rock"]').click();
-  await second.locator('[data-tut="janken-scissors"]').click();
+  await activateWithKeyboard(first.locator('[data-tut="janken-rock"]'));
+  await activateWithKeyboard(second.locator('[data-tut="janken-scissors"]'));
   await Promise.all([
     expect(first.locator('[data-game-step="mulligan"]')).toBeVisible({ timeout: 20_000 }),
     expect(second.locator('[data-game-step="mulligan"]')).toBeVisible({ timeout: 20_000 }),
   ]);
   await Promise.all([
-    first.getByRole('button', { name: '保留手牌' }).click(),
-    second.getByRole('button', { name: '保留手牌' }).click(),
+    activateWithKeyboard(first.getByRole('button', { name: '保留手牌' })),
+    activateWithKeyboard(second.getByRole('button', { name: '保留手牌' })),
   ]);
   await Promise.all([
     expect(first.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 }),
     expect(second.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 }),
   ]);
   await Promise.all([
-    first.locator('[data-zone="hand"] button').first().click(),
-    second.locator('[data-zone="hand"] button').first().click(),
+    activateWithKeyboard(first.locator('[data-zone="hand"] button').first()),
+    activateWithKeyboard(second.locator('[data-zone="hand"] button').first()),
   ]);
   await Promise.all([
-    first.getByRole('button', { name: /打出檢視中的牌/ }).click(),
-    second.getByRole('button', { name: /打出檢視中的牌/ }).click(),
+    activateWithKeyboard(first.getByRole('button', { name: /打出檢視中的牌/ })),
+    activateWithKeyboard(second.getByRole('button', { name: /打出檢視中的牌/ })),
   ]);
   await Promise.all([
-    first.getByRole('button', { name: /確認出牌/ }).click(),
-    second.getByRole('button', { name: /確認出牌/ }).click(),
+    activateWithKeyboard(first.getByRole('button', { name: /確認出牌/ })),
+    activateWithKeyboard(second.getByRole('button', { name: /確認出牌/ })),
   ]);
   await Promise.all([
     expect(first.locator('[data-game-step="turnSet"]')).toBeVisible({ timeout: 30_000 }),
@@ -136,10 +142,11 @@ async function setFirstAvailableCard(page: Page): Promise<void> {
   await waitForSettledOnlineState(page);
   const card = page.locator('[data-zone="hand"] button').first();
   await expect(card).toBeVisible({ timeout: 20_000 });
-  await card.click();
+  await expect(card).toHaveAttribute('aria-label', /充能成本 \d+ · \d+\/\d+/);
+  await activateWithKeyboard(card);
   const setCard = page.getByRole('button', { name: /打出檢視中的牌/ });
   await expect(setCard).toBeEnabled({ timeout: 10_000 });
-  await setCard.click();
+  await activateWithKeyboard(setCard);
 }
 
 async function setOptionalSecondCard(page: Page): Promise<void> {
@@ -170,8 +177,8 @@ async function completeNaturally(first: Page, second: Page): Promise<[NaturalMat
     // overdraw produces a winner instead of relying on surrender or timeout.
     await Promise.all([setOptionalSecondCard(first), setOptionalSecondCard(second)]);
     await Promise.all([
-      first.getByRole('button', { name: /確認出牌/ }).click(),
-      second.getByRole('button', { name: /確認出牌/ }).click(),
+      activateWithKeyboard(first.getByRole('button', { name: /確認出牌/ })),
+      activateWithKeyboard(second.getByRole('button', { name: /確認出牌/ })),
     ]);
 
     await expect
@@ -232,8 +239,8 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       ]);
 
       await Promise.all([
-        page.getByRole('button', { name: '開始匹配' }).click(),
-        guestPage.getByRole('button', { name: '開始匹配' }).click(),
+        activateWithKeyboard(page.getByRole('button', { name: '開始匹配' })),
+        activateWithKeyboard(guestPage.getByRole('button', { name: '開始匹配' })),
       ]);
       const matchID = await expectSharedOnlineMatch(page, guestPage);
 
@@ -315,8 +322,8 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       ]);
 
       await Promise.all([
-        page.getByRole('button', { name: '開始匹配' }).click(),
-        guestPage.getByRole('button', { name: '開始匹配' }).click(),
+        activateWithKeyboard(page.getByRole('button', { name: '開始匹配' })),
+        activateWithKeyboard(guestPage.getByRole('button', { name: '開始匹配' })),
       ]);
       const matchID = await expectSharedOnlineMatch(page, guestPage);
       const outcomes = await completeNaturally(page, guestPage);

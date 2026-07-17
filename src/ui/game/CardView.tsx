@@ -38,6 +38,10 @@ export interface CardViewProps {
   onInspect?: () => void;
   onInspectEnd?: () => void;
   ariaLabel?: string;
+  /** 同一區域內的位置，讓同名卡仍有唯一的 accessible name。 */
+  positionInSet?: { index: number; total: number };
+  /** 選取型卡牌按鈕的切換狀態；非選取型動作不要傳入。 */
+  ariaPressed?: boolean;
   className?: string;
   /** 教學系統定位錨點（data-tut-card） */
   tutId?: string;
@@ -53,6 +57,8 @@ export function CardView({
   onInspect,
   onInspectEnd,
   ariaLabel,
+  positionInSet,
+  ariaPressed,
   className,
   tutId,
 }: CardViewProps) {
@@ -60,7 +66,11 @@ export function CardView({
   const faceUp = card.faceUp && card.defId !== '__hidden__';
   const def = faceUp ? getCardDef(card.defId) : undefined;
   const interactive = Boolean(onActivate) && state !== 'disabled';
-  const label = ariaLabel ?? (def ? getLocalizedCardName(def, locale) : t('card.back'));
+  const baseLabel = def
+    ? `${getLocalizedCardName(def, locale)} · ${t('card.energy')} ${def.powerCost}`
+    : t('card.back');
+  const label =
+    ariaLabel ?? (positionInSet ? `${baseLabel} · ${positionInSet.index + 1}/${positionInSet.total}` : baseLabel);
   const resolvedImageContext: CardImageContext =
     imageContext ?? (size === 'mini' || size === 'sm' ? 'mobile-board' : size === 'xl' ? 'preview' : 'board');
 
@@ -119,6 +129,7 @@ export function CardView({
         data-anim-card={card.instanceId}
         data-tut-card={tutId}
         aria-label={label}
+        aria-pressed={ariaPressed}
         onClick={onActivate}
         onKeyDown={handleKeyDown}
         onMouseEnter={onInspect}
