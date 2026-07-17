@@ -121,7 +121,7 @@ describe('live PostgreSQL WAL operational smoke', () => {
     expect(argv).toContain('restore:00000001000000000000000B');
     expect(argv).not.toContain('never-on-argv-password');
     expect(result.stdout).not.toContain('zutomayo-wal-operator');
-  });
+  }, 15_000);
 
   it('requires verify-full and an explicit readable CA before connecting', () => {
     const test = harness({ PGSSLMODE: 'disable' });

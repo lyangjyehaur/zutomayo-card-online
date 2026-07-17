@@ -125,6 +125,7 @@ describe('operational shell scripts', () => {
     expect(workflow).toContain('"${compose[@]}" build');
     expect(workflow).toContain('"${compose[@]}" run --rm e2e');
     expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
+    expect(workflow).toContain('CARD_DATA_DIR: /tmp/zutomayo-card-data');
     expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000033_admin_linked_auth_contract');
     expect(workflow).toContain(
       'EXPECTED_SCHEMA_CHECKSUM: 3e1140398d4b9de39cf3e95dfac626fc50ac587127c5c556e9e9ad3b63489c45',

@@ -64,6 +64,7 @@ jobs:
           PG_HOST: staging-postgres.example.internal
           PG_DATABASE: zutomayo
           PG_CA_FILE: /tmp/zutomayo-service-ca.crt
+          CARD_DATA_DIR: /tmp/zutomayo-card-data
           PG_SSLROOTCERT: /run/secrets/zutomayo-service-ca.crt
           NODE_EXTRA_CA_CERTS: /run/secrets/zutomayo-service-ca.crt
           PG_CA_SECRET_NAME: zutomayo-staging-postgres-ca
